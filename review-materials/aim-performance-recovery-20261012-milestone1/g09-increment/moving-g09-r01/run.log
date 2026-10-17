@@ -1,0 +1,36 @@
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-zero-correction-g09 MVID=4f8f5800-b8ff-4a33-adff-a74c5b43f8af SHA256=7A8A19BB3F311FE7549DA72F0330F75A6F6376B66545BA7B809F0C662B8A46D2 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g09\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-zero-correction-g09 MVID=a4308117-251a-448b-b309-3fdcd038d3eb SHA256=51DB2340B13C42B7C6A4C7BF28B5CB68182303F2A913CC91F306E2820E64D28C location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g09\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-zero-correction-g09 MVID=602c607d-8803-4064-870e-ef27005ef165 SHA256=5F5D0AC5C7C456A3890A4EBCF551972F8F3AD050518A0951CDC6C78899F6F2C7 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g09\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-zero-correction-g09 MVID=a220125c-f55e-4fb9-acdd-3343b96c1b30 SHA256=957A5463BD9399C597E24A4218BEEAB94268759528C0313F69765FCF879372C5 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g09\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g09\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=a220125c-f55e-4fb9-acdd-3343b96c1b30
+COMPOSITION initialization-ms=5586.6031 code-prepare-ms=341.5084 exact-comparison=False
+MOVING PLAYER FIRST FAILURE tick=85 frame=0 inputFrame=87 moved=1 xRange=700..700.08 player={X:700.08 Y:646} velocity={X:0.08 Y:0} controls=False,True film=False selected=2/0 expected=12/1 futureSteps=16 budgetExceeded=True budgetMs=6.5083 attackFailed=False pathFailed=False selectionFailed=False
+MOVING PLAYER NPC slot=2 generation=0 active=True life=100000 immune=0 position={X:788.5 Y:609.15} displacement={X:-6.5 Y:-0.8499756} velocity={X:-1.5 Y:-0.15} receiveDistance2=6747.524
+MOVING PLAYER plan=4 prepared=False phase=CompletedWorld timeline=none contact=none candidateMissCurrent=False
+MOVING PLAYER plan=5 prepared=False phase=BeforeNpc timeline=none contact=none candidateMissCurrent=False
+MOVING PLAYER NPC slot=3 generation=0 active=True life=100000 immune=0 position={X:795.5 Y:611.15} displacement={X:-6.5 Y:-0.8499756} velocity={X:-1.5 Y:-0.15} receiveDistance2=7787.403
+MOVING PLAYER NPC slot=4 generation=0 active=True life=100000 immune=0 position={X:802.5 Y:613.15} displacement={X:-6.5 Y:-0.8499756} velocity={X:-1.5 Y:-0.15} receiveDistance2=8933.283
+MOVING PLAYER NPC slot=5 generation=0 active=True life=100000 immune=0 position={X:809.5 Y:615.15} displacement={X:-6.5 Y:-0.8499756} velocity={X:-1.5 Y:-0.15} receiveDistance2=10185.16
+MOVING PLAYER NPC slot=6 generation=0 active=True life=100000 immune=0 position={X:816.5 Y:617.15} displacement={X:-6.5 Y:-0.8499756} velocity={X:-1.5 Y:-0.15} receiveDistance2=11543.04
+MOVING PLAYER NPC slot=7 generation=0 active=True life=100000 immune=0 position={X:823.5 Y:619.15} displacement={X:-6.5 Y:-0.8499756} velocity={X:-1.5 Y:-0.15} receiveDistance2=13006.92
+MOVING PLAYER NPC slot=12 generation=1 active=True life=1000 immune=0 position={X:535 Y:648} displacement={X:0 Y:0} velocity={X:0 Y:0} receiveDistance2=24674.13
+MOVING PLAYER plan=24 none
+MOVING PLAYER plan=25 none
+System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation. ---> System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation. ---> System.InvalidOperationException: continuous original player motion keeps the farther feasible target ahead of six blocked actors
+   at NativeWorldTextProbe.NativeInformationChecks.Require(Boolean value, String reason)
+   at NativeWorldTextProbe.NativeCombatAttackCostChecks.MovingPlayerCandidates(Object context, Object combat, Object host, Object attack, Object input)
+   at NativeWorldTextProbe.NativeCombatAttackCostChecks.Run(Object context)
+   --- End of inner exception stack trace ---
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Object[] arguments, Signature sig, Boolean constructor)
+   at System.Reflection.RuntimeMethodInfo.UnsafeInvokeInternal(Object obj, Object[] parameters, Object[] arguments)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at ContinuousCombatMeasure.Invoke(String t, String n, Object[] a)
+   at ContinuousCombatMeasure.Exercise(Object context)
+   at NativeWorldTextProbe.NativeQuickItemChecks.Run(Action`1 visual, Boolean coins, Boolean about, Boolean recovery, Boolean processing, Boolean shortFeedback, String candidateAssembly, String predictionHostHash, String candidatePackageId, Boolean exactPredictionComparison)
+   --- End of inner exception stack trace ---
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Object[] arguments, Signature sig, Boolean constructor)
+   at System.Reflection.RuntimeMethodInfo.UnsafeInvokeInternal(Object obj, Object[] parameters, Object[] arguments)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at ContinuousCombatMeasure.Invoke(String t, String n, Object[] a)
+   at ContinuousCombatMeasure.Main(String[] a)

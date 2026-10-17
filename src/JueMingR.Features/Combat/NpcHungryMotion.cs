@@ -11,8 +11,8 @@ namespace JueMingR.Features.Combat
             stop=PredictionStop.None;if(n.JustHit)n.A1=10;
             NpcTargeting.Face(ref n,ref e,true,confused);
             float acc=.1f,radius=300;
-            if(owner.Life<owner.LifeMax*.5f){n.Health.Defense=30;if(e.Expert)acc+=.066f;else radius=700;}
-            else if(owner.Life<owner.LifeMax*.75f){n.Health.Defense=20;if(e.Expert)acc+=.033f;else radius=500;}
+            if((double)owner.Life<(double)owner.LifeMax*.5){n.Health.Defense=30;if(e.Expert)acc+=.066f;else radius=700;}
+            else if((double)owner.Life<(double)owner.LifeMax*.75){n.Health.Defense=20;if(e.Expert)acc+=.033f;else radius=500;}
             if(e.Expert)
             {
                 // Normal mode leaves previously raised defense alone at >=75%;
@@ -24,11 +24,14 @@ namespace JueMingR.Features.Combat
             // the next action sees the reset clock/base radius.
             if(++n.A2>100){radius=(int)(radius*1.3f);if(n.A2>200)n.A2=0;}
             float anchorX=owner.X+owner.Width/2,anchorY=n.PositionParameter;
-            float dx=e.PlayerX-n.Width/2-anchorX,dy=e.PlayerY-n.Height/2-anchorY;
+            // Native uses precise player.position plus INTEGER half dimensions.
+            // targetRect is an integer facing rectangle, not this motor input.
+            float targetX=e.PlayerX-e.PlayerWidth*.5f+(int)e.PlayerWidth/2,targetY=e.PlayerY-e.PlayerHeight*.5f+(int)e.PlayerHeight/2;
+            float dx=targetX-n.Width/2-anchorX,dy=targetY-n.Height/2-anchorY;
             if(n.A1==0)
             {
                 float distance=(float)Math.Sqrt(dx*dx+dy*dy);if(distance>radius){float scale=radius/distance;dx*=scale;dy*=scale;}
-                Axis(ref n.Vx,n.X,anchorX+dx,dx,acc);Axis(ref n.Vy,n.Y,anchorY+dy,dy,acc);
+                Axis(ref n.Vx,n.X,anchorX,dx,acc);Axis(ref n.Vy,n.Y,anchorY,dy,acc);
                 float max=4;
                 if(e.Expert)
                 {
@@ -44,7 +47,14 @@ namespace JueMingR.Features.Combat
             else if(n.A1>0)n.A1--;else n.A1=0;
             if(dx>0)n.SpriteDirection=1;else if(dx<0)n.SpriteDirection=-1;return true;
         }
-        private static void Axis(ref float velocity,float position,float goal,float offset,float acceleration)
-        {if(position<goal){velocity+=acceleration;if(velocity<0 && offset>0)velocity+=acceleration*2.5f;}else if(position>goal){velocity-=acceleration;if(velocity>0 && offset<0)velocity-=acceleration*2.5f;}}
+        private static void Axis(ref float velocity,float position,float anchor,float offset,float acceleration)
+        {
+            // Native compares the inline sum, without storing a float goal.
+            // On x86 that sum can lie just below a position whose float-rounded
+            // goal is equal: rounding it at the call boundary skips acceleration.
+            double goal=(double)anchor+offset;
+            if(position<goal){velocity+=acceleration;if(velocity<0 && offset>0)velocity+=acceleration*2.5f;}
+            else if(position>goal){velocity-=acceleration;if(velocity>0 && offset<0)velocity-=acceleration*2.5f;}
+        }
     }
 }

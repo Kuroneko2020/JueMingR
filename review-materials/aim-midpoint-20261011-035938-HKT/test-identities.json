@@ -1,0 +1,869 @@
+{
+  "note": "Historical candidates were dirty builds on HEAD 223c121. Different fingerprints are distinct candidates. These are not passes for source WIP 4850a29. Full historical source texts were not snapshotted each round.",
+  "candidates": [
+    {
+      "candidate": "r03",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r03/build-record.json",
+      "sha256": "7AA04F4FEBE5EB4582347ADD0F71456E369D4F4BFEB2257422F14787523F3E59",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "4B4B72AE756CFF0EB102A62658F1819427D3CF57EFD9AFC1C0DE6F85B44EE504",
+        "inputFingerprint": "EB17C5D4C66CE2BA8201891C47C8F6CBC8CC007709A2A7F1FC46F2DBE0140034",
+        "compileFingerprint": "B8DD49D60B2F27B947E007C75A935E943BD007158391BE31688FC0FACABA042B",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "8F745A79E883624C038047A4B0237B33EB6994680072E13FD333056DB87ABB27",
+        "record": [
+          {
+            "sha256": "BA3B835BF2CDD280375E9859DF1950F0EEDE8BD93F58E00B6B91F6A2AC841345",
+            "length": 482816,
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll"
+          },
+          {
+            "sha256": "6215B33DF9AAF57AD60E838A2D7BDB79BF924E87A9ABFF9142EA0294F698AC60",
+            "length": 20992,
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll"
+          },
+          {
+            "sha256": "D46D908FDD1F848B1E44950D9DEE7F4ED91D4F306879F997DCDAAE1F961E46E4",
+            "length": 98816,
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll"
+          },
+          {
+            "sha256": "8A900508BE9DBF71A0066CF74734F9FE07BFDEF4C19F07E37633972ABCD92969",
+            "length": 1892352,
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll"
+          }
+        ]
+      }
+    },
+    {
+      "candidate": "r04",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r04/build-record.json",
+      "sha256": "FDB1A50F20FF25E6D03BB2A75B474098467AB19805FCA347EE45B201918C2835",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "3096AB1D82EA6079E5D78B0E818DD2EB88C4143F24EB6169E49753411B4C0813",
+        "inputFingerprint": "E2A4F2BB8E954811F57557767769BC50419E728B97F11F5FE6A12D5EB0D252C0",
+        "compileFingerprint": "C67F59E80EB8746B32A055A94818D0233C19F7E705C275DD3A50F270C0D00641",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "89FBCECD69B6227CAFB85B565840513E64A8406DBA0B882E9BCDEBE68127F9FD",
+        "record": [
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll",
+            "sha256": "D349D5E30C87937C0FA7FB29E127014AEABC5655D19FFEB98F254023B6D36606",
+            "length": 485376
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll",
+            "sha256": "280AA0AF7C4EA28DB114566FE942112C8DD0DFDD7BD3EF7F6AEBACA411D33948",
+            "length": 20992
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll",
+            "sha256": "534C48884E86A92AAE9990A11185198B3345CE9D7A4F783BAED4069AE52811AD",
+            "length": 98816
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll",
+            "sha256": "F12D54C2794B1EAB1E992D31A22A38C27D42AF211E691F3ECFEDDB0C10086851",
+            "length": 1895424
+          }
+        ]
+      }
+    },
+    {
+      "candidate": "r07",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r07/build-record.json",
+      "sha256": "EE35B4EE522156AB3B88F7640B65874331D8996A342CC33AEBAFD3A6339B5A28",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "924EAA19F76FA927840E9C9DE74195B756C952349CE172089499F0765BB1200F",
+        "inputFingerprint": "2F15A1E90DFCD5AEBA8C8F15C031ACD1A18410E6FB7EF4FF58024AE128A4393B",
+        "compileFingerprint": "CB02C26894B455699682450DED3651E53EF4995C7C3FAB81FFCBEF8BF8B29BCE",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "A7E393FFA6299D3A11FB04DEAEDF4CA60A65B62727E883F1466F815152CFD8BA",
+        "record": [
+          {
+            "sha256": "94874DE3939F4DB382E81AF4B3D720D99287B9D521AABCE899AA13D11C32AADA",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll",
+            "length": 501248
+          },
+          {
+            "sha256": "E34A90872C3DE841C4D630A6C8AD4F75EF78BBAF519515E34D97D83DD9F9E84A",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll",
+            "length": 20992
+          },
+          {
+            "sha256": "3B1A6F3ACAB39EE6F8D6E1AD8BFE01581F0F0AC954E3FFB0AD833BFCACA3A8EE",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll",
+            "length": 101376
+          },
+          {
+            "sha256": "F2816C358B6C156350E7725A042788851D0A2E0087D6B934890218556398F9AD",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll",
+            "length": 1920512
+          }
+        ]
+      }
+    },
+    {
+      "candidate": "r08",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r08/build-record.json",
+      "sha256": "43A316EBA2E49061422B65F727E4603F73C99D58CC6BAA4453B05D4B8ECC3DF4",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "AA5F881E7C81BF909883E220B2F150CB8A42933D3010428288E563B095C8A102",
+        "inputFingerprint": "5F59B99AA7E00FF02D6BDD0F42D947661B3F94CEC64A4EE861C414912FA5C010",
+        "compileFingerprint": "4A0030B5A45DA1A7E6FBFCF67A1647AA41036E321930DB485D0A9BA41F980211",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "85D4A551B61F033A0BDFED76F55EB90325A6556439F06F28C9FA65006167AF05",
+        "record": [
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll",
+            "length": 512512,
+            "sha256": "F559C0DA2C7A84A61438316912D51ADFB014FDF4B5625FAE7B6CB8F87FC37538"
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll",
+            "length": 20992,
+            "sha256": "AB3E6138EBF5DFCCB2084557B60CDC72FD438D5163F67DACBC1C49B9A07CC9D5"
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll",
+            "length": 101376,
+            "sha256": "5F5EBD9420E227D765278AB83D3C785878126481C2E77BBEA33E2934494EC8ED"
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll",
+            "length": 1938432,
+            "sha256": "B91AF01A0569F4E0E9B59E009662EC652ED8857AFDD3C975E400BACE147BABD1"
+          }
+        ]
+      }
+    },
+    {
+      "candidate": "r10",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r10/build-record.json",
+      "sha256": "1D93C047F10D7527AF999845BEAC5C937C90B9C2DA15EE8C83A8A2986C12AE58",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "2D10D9EBFDDADC894D683DD075B642C1488613F67A3EF702161E016327179D3A",
+        "inputFingerprint": "686A34BCF39A98612DFC98505289BEFAC8C251FEE961F58D893A5A99A1601061",
+        "compileFingerprint": "AC6BB6FDCFB1742A644E2FEA5900D13AC7DD01FAB9A120DBAC854B793709A80A",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "31BCDD6CB59B3B5AFC8FA1EDEE32D4AD0D34A3D5EE79462BBE6D690B74076283",
+        "record": [
+          {
+            "length": 548352,
+            "sha256": "F07D2AF11B9B8B1C14B995CFEBFB7C1933B2CAFCBAE0F59CD613C2B84FBB96F0",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll"
+          },
+          {
+            "length": 20992,
+            "sha256": "917DBFA8AE38D1A245354931DE5EC43CAE126A637BBEF446178D816B4A1640D5",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll"
+          },
+          {
+            "length": 103936,
+            "sha256": "D05EF9D30872492AA7D54814047B7480967D1666319C8952B307AA85C434C117",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll"
+          },
+          {
+            "length": 1955840,
+            "sha256": "FF397ED88FBCA2CFBEED892F475E17E7EEA3A7D7E30F343BAD7F61C48845B85E",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll"
+          }
+        ]
+      }
+    },
+    {
+      "candidate": "r12",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r12/build-record.json",
+      "sha256": "E08A741978920B4D36B3D13AE52B4240B932659F6053216AF8F99638FE22E19F",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "825BCBA9C7573F9A636E2AD19308CC78F4960CC28FC00DFD9E70DFC49AEDFD72",
+        "inputFingerprint": "DD57BA8EB1C7C543CCE06C62357A35116BDCF51B673C2527286EF227341CF6C5",
+        "compileFingerprint": "A269B731A1C2DFA2A75F221A87D0BA36A9B164D24238A1AB418615F104692305",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "BF4AA55A665C5E50EB29D1A1E53D1385BC7F457F5E690294A09DF6A124951B30",
+        "record": [
+          {
+            "sha256": "D3E5477B25327F1E12AE22F46C347AC6DC6BD92C28908DFEBE74DCE66B78C993",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll",
+            "length": 562688
+          },
+          {
+            "sha256": "3EEA591E43EE3AD33B84A3FBFDC0A6920461115536282217C4D7B9398CAC642D",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll",
+            "length": 20992
+          },
+          {
+            "sha256": "2006547888E5E61503451F361CE75226814E7A64DAC689E2757EF63DE6EB94EF",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll",
+            "length": 104448
+          },
+          {
+            "sha256": "28810CEF6325D1860BEC26AEAD5886BE4C54A0691EFC968F024E314ACD650DBB",
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll",
+            "length": 1970176
+          }
+        ]
+      }
+    },
+    {
+      "candidate": "r18b",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r18b/build-record.json",
+      "sha256": "75DF3579EC257209F375FAD1D52A080990DEF680BB6277502AB8FF1197124364",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "23846A371D9D5B0AE608DFCB3E99220E134F9EE66431A6399DB89A1AE9715FB9",
+        "inputFingerprint": "4FFF163154BEA58463ACB50A45E0658AEFBEC2E242A34F8D890D1AFA88E025DF",
+        "compileFingerprint": "2E0E0F87914C6214269EB1B0D6FC45EBA3D90CE27A5C8DD601CE768730A704FD",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "22D213E5DDD9268E4E8E80494DD04B0852BA0D0C57EB1949230D8D30B7D3DE03",
+        "record": [
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll",
+            "sha256": "199ECE90A002B6DD4B9EC396979E0FABBECE8C7A1E6B3863CD26DB8A260166ED",
+            "length": 607232
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll",
+            "sha256": "AF38BB12DFA5EEE19FF4B0AE1B05B5E608781A52EEC5A4816BE7BC82CB8328F6",
+            "length": 20992
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll",
+            "sha256": "34302FCACD3DE037D34F4DC902B1C6317CA52DD2289DF79703F6A7B7E4066B6C",
+            "length": 107520
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll",
+            "sha256": "D6BD5874485BE89CD431DD5A372A5F73376FF3373089E1E99707A85DC0C7E23E",
+            "length": 2024448
+          }
+        ]
+      }
+    },
+    {
+      "candidate": "r19",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r19/build-record.json",
+      "sha256": "C58105AB02D506CCC181B2210DB3D49FBF3F90A0BA3739B8E21B31E1606A957D",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "796A4883A5D6A33AF87BEBAB0961FFE3A8EAE1B2554DF3F84B97A199F9FCC673",
+        "inputFingerprint": "E927DDBB1F479C35E710178EA284E6FDEF95D705F05D3FE35B45459AE996DD63",
+        "compileFingerprint": "5A2195F332DC6804BBF22B05CC18BDA0D6130BD323336B06CC8D01690B2501BD",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "C325D97F1E85579133C4EE0CD8062D5F8A9EDBEEB20D0A54CB49622433BACE8A",
+        "record": [
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll",
+            "length": 622592,
+            "sha256": "E77E6DCB0911005F782875497DE106CAA3717A1C78255D61F9ABF6D21EDAA830"
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll",
+            "length": 20992,
+            "sha256": "771ECD56E46E997AE13EF76A82238278FD519E6EC56B5913C57071A0687597BB"
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll",
+            "length": 108544,
+            "sha256": "6C0E8B4B8D65B8579DD03325AC48DF10FBBB76CCE1BBC0E916435B46F7D99554"
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll",
+            "length": 2044928,
+            "sha256": "3EE914DCFA3D77E48846CF02C3B48DEFD467AD42C2EA086480632526D2322526"
+          }
+        ]
+      }
+    },
+    {
+      "candidate": "r20",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r20/build-record.json",
+      "sha256": "2F42686DB0D60F68D553BD0B6AD39437C2DAFDC7534264B508B666AF695CB8F6",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "3F70A2D4F1E294A40978025583A62502AA7F1A4285C9C2565CDD4F90E5D4CD2D",
+        "inputFingerprint": "5DEFF861F4F012B9D73215F8123DE57EDC542723B0B2ACB688BCF4E0AD126F20",
+        "compileFingerprint": "50E78C0C8861D008CE3E49681EBC241CD4587413B5146972BBB583752073B28A",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "7F188E59CB4045BD356D7D0A8DC07D0B2C3895AB56652C55F47B985B5548BAB0",
+        "record": [
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll",
+            "sha256": "4F656333C32E6656FF23B6496346CA2FA23A737D847C1F7CF6DA6B8EF6AAAE02",
+            "length": 633856
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll",
+            "sha256": "F728E982F3D078BD553635744F5D03201B12121AB48DC98BE961B34E196353F8",
+            "length": 20992
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll",
+            "sha256": "6190504C5BA78FAA95756E9C72C50E62950CD4F7A86D3F57080EC6035989DBFA",
+            "length": 108544
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll",
+            "sha256": "B40333DA77C88F1ADB5E12529B616D0586555C2FD02C49353F2298F31A8B6505",
+            "length": 2048000
+          }
+        ]
+      }
+    },
+    {
+      "candidate": "r21",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r21/build-record.json",
+      "sha256": "6967BD6DACCA58F04B3B12FCB5DF65AB4C3EB90CFCCDA394D525C13345FCD34F",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "5756A5BEAAEB5DAC061DF8C3D9F0B12E8CEB2A7FE622C824D5AEFBC6E5DE2FB8",
+        "inputFingerprint": "3B5074D6533962EEE6F6E810DCB9EA3AF240C759456A8286D9199DEEE6BAEB9B",
+        "compileFingerprint": "B708E87CEF738EDF74E65434AD547C926EFF551F828D90C99B2BFF596B9F26A2",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "2B6FF1D3BAD002C0BBD5FBB7611EED79BCA321E9709FD1F60F4BE3DC4E6A694B",
+        "record": [
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll",
+            "sha256": "C18B06E94259F4E79B53B33BF2F5D33250645E09EA9F1E811F2A83A72A9455A1",
+            "length": 636416
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll",
+            "sha256": "9FEB084BBFD6FC6C91054D2E1828708A51A0CD0BAE3BB23D3518165855B0D653",
+            "length": 20992
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll",
+            "sha256": "7171031D2D9BE1B747A97B5AD2173D7B99CEE5E8F52EB2B696A2BE4BB21DAE0C",
+            "length": 111616
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll",
+            "sha256": "4F98C2F2E9AE395BA272B201D613B57C1A77D21BCC2DF3BBECEA13C51C51890C",
+            "length": 2071552
+          }
+        ]
+      }
+    },
+    {
+      "candidate": "r22",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r22/build-record.json",
+      "sha256": "5F249E27D55B90DB94CE7C3BB30D51C907A01472527EF47A7F53E8075E7F9511",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "BCD6E2295152B0C98AC8A1DBA0D41F769540D5711FC006AA1FB8DC290C8ECFE3",
+        "inputFingerprint": "E53263B1C001B248667F7BB7FF21C17EEBFC1D895B0D33AE09A6D77E932A86B4",
+        "compileFingerprint": "BA5E038E18045DE79FCEF4050A09345E8B051E17ADB92738C407D07AF49A7133",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "B12D358167EA7D79D3F9864AD69223E38704F501C4F89653C073473C014A1665",
+        "record": [
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll",
+            "sha256": "558F33E7CFBE431EC8C393262FC04ACD33DD78CD207B405D97DFD04453718CDC",
+            "length": 650752
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll",
+            "sha256": "03319B94286EFC52CFA0C62B537C1F9A5E9A807108318CB2224905CC2FF1936F",
+            "length": 20992
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll",
+            "sha256": "CAE6F1D77FF71566ADCC01FEFEBAA0CD62CCFDE2A3FE6B0BE12E4C60EF987E94",
+            "length": 116224
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll",
+            "sha256": "A49AD70C8F5BB90DA77D56AA8D4F471F7E35185C0B97FCF57F9B242647AB6378",
+            "length": 2080768
+          }
+        ]
+      }
+    },
+    {
+      "candidate": "r23b",
+      "original": ".local/aim-comprehensive-repair-20261010/fixed-r23b/build-record.json",
+      "sha256": "5CA3C9D194AF548E28D57BB1897690E42264BA091836CFF48CB0121D68D34D5F",
+      "fields": {
+        "schemaVersion": 4,
+        "commit": "223c121dd3ff3a62eb5640edaae8d26add9495f3",
+        "clean": false,
+        "sdk": "10.0.203",
+        "configuration": "Debug",
+        "sourceFingerprint": "B8AFF31C07932A38EBF6AEA4C71A4136DE4F7ED5F4216EC3E24BD9A84FA0E12A",
+        "inputFingerprint": "5284882E49E712318240B76BEDCFA5FC74F46040F52558BCBD7657D557CE00A6",
+        "compileFingerprint": "B0126D965B7F90A3B2D7573A71805344D1C563EE75548CD9D743D98F836A3AAA",
+        "baselineSha256": "F834065C566E7805CEC2038851F45AC78AE57BCDB34D819F03013F9FC1AE86C7",
+        "harmonyBaselineSha256": "830EBA4A798477EF7FD90F38834FF3B2024F1CCB74D8997A66B959125C896960"
+      },
+      "compiled-output-identity.json": {
+        "sha256": "FB46DA533759995F650416DB2BFA2B6146BC3A2ACADD4DFB1A31520FDCA83A9B",
+        "record": [
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Features.dll",
+            "length": 659456,
+            "sha256": "FA4AE486AB94DE01ACE118FBC1E3C5D5FCA7279D7BB29844FA4C8ECDEF5751F4"
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Infrastructure.dll",
+            "length": 20992,
+            "sha256": "71750B5F26B3A057ADF13E153BF2EEB0FD021F159704A31FB1D5496B0C572CCE"
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.Platform.dll",
+            "length": 117760,
+            "sha256": "CD3D08950296083802A69C95C5F9402E5D2687952FFFBD5AE31E2C28CA879090"
+          },
+          {
+            "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\work\\bin\\JueMingR.TerrariaHost\\x86\\Debug\\net472\\JueMingR.TerrariaHost.dll",
+            "length": 2097152,
+            "sha256": "4D003E82AEBE3DF405B06C504E440D019296B26661F6328AC42580BEC2A943C3"
+          }
+        ]
+      },
+      "probe-identity.json": {
+        "sha256": "CE60809F9E8F4A9D7D32639509014320CE6D24B02B033509E2B14E7E9EB1E6ED",
+        "record": {
+          "buildRecordSha256": "5CA3C9D194AF548E28D57BB1897690E42264BA091836CFF48CB0121D68D34D5F",
+          "sha256": "C936FEA33A6EA898AF8E1C291CB36464486C6F2004D2E84644F0EB6FC9B61A10",
+          "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\artifacts\\build\\Debug\\checks\\bin\\NativeWorldTextProbe\\x86\\Debug\\net472\\NativeWorldTextProbe.exe",
+          "length": 3737600
+        }
+      }
+    }
+  ],
+  "receipts": [
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/integration-r03-receipt.json",
+      "sha256": "66BA2A5CCA7CB254D383B8DA7F6820F48FF668B751FD1004A44B534CB98FD9AC",
+      "candidate": "r03",
+      "record": {
+        "environmentKey": "",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\integration-r03.log",
+        "exit": 1,
+        "seconds": 34.5691213,
+        "scope": "CombatIntegrationCpu"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/integration-r04-receipt.json",
+      "sha256": "08C7D3A62DCA0AD7B920106E69027EC77800701BB835883C99AA08A5159F1C64",
+      "candidate": "r04",
+      "record": {
+        "seconds": 30.3656322,
+        "exit": 1,
+        "scope": "CombatIntegrationCpu",
+        "environmentKey": "",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\integration-r04.log"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/integration-r08-receipt.json",
+      "sha256": "8290311310A0ADF05A7816C496EDEF45169D5F3BA597AE2545F5EC7FA671DADB",
+      "candidate": "r08",
+      "record": {
+        "scope": "CombatIntegrationCpu",
+        "environmentKey": "",
+        "seconds": 43.6424065,
+        "exit": 0,
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\integration-r08.log"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/weapons-r10-receipt.json",
+      "sha256": "DEAF77C9AC8B540C379A2BF3C56B5622B53FE70C61079671F728AF1F0493AC7E",
+      "candidate": "r10",
+      "record": {
+        "exit": 0,
+        "scope": "CombatAimCpu",
+        "seconds": 29.2821552,
+        "environmentKey": "",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\weapons-r10.log"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/effects-r10-receipt.json",
+      "sha256": "0659C1F8BDF44CE58A700F44205814ADBE9BF492F624F876AF7300009AB3A34E",
+      "candidate": "r10",
+      "record": {
+        "scope": "CombatEffectsCpu",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\effects-r10.log",
+        "seconds": 31.7217386,
+        "exit": 0,
+        "environmentKey": ""
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/mechanics-r10-receipt.json",
+      "sha256": "BAEE7475752B01181786F5E6A35C6DA6A824B110EFCCDBC5747B60A59878E18C",
+      "candidate": "r10",
+      "record": {
+        "environmentKey": "",
+        "exit": 1,
+        "scope": "CombatMechanicsCpu",
+        "seconds": 18.058028,
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\mechanics-r10.log"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/navigation-r04-receipt.json",
+      "sha256": "2815402ED1E9F76EA42327DF84FA6200056A7EB749AA0349A1195D9698F9BF30",
+      "candidate": "r04",
+      "record": {
+        "environmentKey": "",
+        "exit": 0,
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\navigation-r04.log",
+        "seconds": 24.3904534,
+        "scope": "CombatNavigationCpu"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/costs-r03-receipt.json",
+      "sha256": "EFE47B454BF2127AF0199E0D35F497B1A45E6119EA6E28A3A4531C611CE51088",
+      "candidate": "r03",
+      "record": {
+        "seconds": 26.7341234,
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\costs-r03.log",
+        "exit": 1,
+        "environmentKey": "",
+        "scope": "CombatAttackCosts"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/costs-r07-receipt.json",
+      "sha256": "4C2B8EF790DB6D2C7478F0E9C090AD08BABABFAEA6D2C6B024DF23948CB275C2",
+      "candidate": "r07",
+      "record": {
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\costs-r07.log",
+        "seconds": 16.6486761,
+        "exit": 0,
+        "environmentKey": "",
+        "scope": "CombatAttackCosts"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/attack-costs-r19-receipt.json",
+      "sha256": "49350DEE67A6D43A062D6965E25D6E4602D6D49E0329D34EC88665B61B713F74",
+      "candidate": "r19",
+      "record": {
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\attack-costs-r19.log",
+        "seconds": 15.7930081,
+        "exit": 0,
+        "environmentKey": "",
+        "scope": "CombatAttackCosts"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/control-r08-receipt.json",
+      "sha256": "50BC29C047009822AAC293B7A69FA17F9C0E67E66DAF76BE33311EBFCAE760F2",
+      "candidate": "r08",
+      "record": {
+        "scope": "CombatControlCpu",
+        "environmentKey": "",
+        "seconds": 27.2727426,
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\control-r08.log",
+        "exit": 1
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/bubble-r12-receipt.json",
+      "sha256": "2A3ACE4A26E24CCF955575555925CBC59DCAFA9D51B9204E25307AEEB4122968",
+      "candidate": "r12",
+      "record": {
+        "seconds": 19.2636314,
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\bubble-r12.log",
+        "exit": 0,
+        "environmentKey": "",
+        "scope": "CombatControlCpu"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/cold-bolt-r18b-receipt.json",
+      "sha256": "A2E3B4D1A922D9A21E80CD7E1E2B3555EE938CB9D65D7EDA18B1EA4C70929383",
+      "candidate": "r18b",
+      "record": {
+        "exit": 0,
+        "scope": "CombatEffectsCpu",
+        "seconds": 21.7311515,
+        "environmentKey": "",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\cold-bolt-r18b.log"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/cold-bolt-r19-receipt.json",
+      "sha256": "D0BC6BEFD4B4E12CF8397B7D62786D23BC1C7072599267648C1AEC8014AA8975",
+      "candidate": "r19",
+      "record": {
+        "exit": 0,
+        "seconds": 16.917308,
+        "scope": "CombatEffectsCpu",
+        "environmentKey": "",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\cold-bolt-r19.log"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/attached-r20-receipt.json",
+      "sha256": "6072C58DEB1ABB9E02E4CD21094CB4075A0EAD3639C7F628F863CF7B96CF0DDC",
+      "candidate": "r20",
+      "record": {
+        "environmentKey": "",
+        "scope": "NpcAttachedWeapon",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\attached-r20.log",
+        "seconds": 283.1541152,
+        "exit": 1
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/attached-r21-receipt.json",
+      "sha256": "F7E1798A4543E5C81F132B54CFC75B691C464A4D9D92CF5F3B0F0B2DEE7CB714",
+      "candidate": "r21",
+      "record": {
+        "scope": "NpcAttachedWeapon",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\attached-r21.log",
+        "seconds": 290.0028848,
+        "exit": 0,
+        "environmentKey": ""
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/queen-bee-r22-receipt.json",
+      "sha256": "EB424A874BB42CD33980AB79B91B22471EC3ADF096F067E8036C621D91B36194",
+      "candidate": "r22",
+      "record": {
+        "exit": 0,
+        "seconds": 430.0480582,
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\queen-bee-r22.log",
+        "environmentKey": "",
+        "scope": "NpcQueenBee"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/brain-r22-receipt.json",
+      "sha256": "1871F4DA5E387F10CBE7F44770B4864B1550198E9146D0A9916F720F646239FE",
+      "candidate": "r22",
+      "record": {
+        "scope": "NpcBrainSwarm",
+        "environmentKey": "",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\brain-r22.log",
+        "seconds": 13.5345073,
+        "exit": 1
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/wall-boss-r22-receipt.json",
+      "sha256": "E9F62E30CACDD10AC985CBEBF9788198B4AF45CEED8B4D7BF0DFE49F947765A5",
+      "candidate": "r22",
+      "record": {
+        "seconds": 105.4864998,
+        "exit": 1,
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\wall-boss-r22.log",
+        "environmentKey": "",
+        "scope": "NpcWallBoss"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/gem-motor-r22-receipt.json",
+      "sha256": "E66D5D2F1B0F0E3EC32635FE9DE46A70AF0D3BA7FA29A90B369803EF66143DD2",
+      "candidate": "r22",
+      "record": {
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\gem-motor-r22.log",
+        "environmentKey": "",
+        "exit": 1,
+        "seconds": 13.4996151,
+        "scope": "CombatEffectsCpu"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/gem-collision-r22-receipt.json",
+      "sha256": "C5ED23BC6F5FA0C8DFBC4DE655874BB637FB56145CFCF2B77E645BB93DE8CFDA",
+      "candidate": "r22",
+      "record": {
+        "scope": "CombatEffectsCpu",
+        "seconds": 69.7192323,
+        "environmentKey": "",
+        "exit": 0,
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\gem-collision-r22.log"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/gem-natural-r22-receipt.json",
+      "sha256": "A67CE509B94C68FF995C16ED7CE20B38BCDBAC4C604B35747017BBC04D0EA520",
+      "candidate": "r22",
+      "record": {
+        "environmentKey": "",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\gem-natural-r22.log",
+        "exit": 1,
+        "seconds": 195.4220174,
+        "scope": "CombatEffectsCpu"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/common-boomerang-r22-receipt.json",
+      "sha256": "D59B58FADD80C510BFA3542B6B4903B09CA6C4CEA2D9DCBD85C5A159AB32F9C0",
+      "candidate": "r22",
+      "record": {
+        "seconds": 28.1460192,
+        "environmentKey": "",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\common-boomerang-r22.log",
+        "scope": "CombatMechanicsCpu",
+        "exit": 1
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/phaseblade-integration-r22-receipt.json",
+      "sha256": "606A7D3D06CEF1D60F8B97C6096BF160A69A1DBBAC374C7542D8B51887D99C57",
+      "candidate": "r22",
+      "record": {
+        "scope": "CombatEffectsCpu",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\phaseblade-integration-r22.log",
+        "environmentKey": "",
+        "seconds": 15.1956441,
+        "exit": 0
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/reflection-r22-receipt.json",
+      "sha256": "4AF2594681724576F23EEE14D77C34690C0260AC77400919307D1820AFFF0C21",
+      "candidate": "r22",
+      "record": {
+        "exit": 0,
+        "environmentKey": "",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\reflection-r22.log",
+        "scope": "CombatEffectsCpu",
+        "seconds": 17.6976989
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/poison-cloud-r22-receipt.json",
+      "sha256": "563E8A4322AFAD4E279608A0797DD1608CD93BA81E0E76B7934DBD6F8CFBC26C",
+      "candidate": "r22",
+      "record": {
+        "environmentKey": "",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\poison-cloud-r22.log",
+        "seconds": 22.4938948,
+        "exit": 0,
+        "scope": "CombatEffectsCpu"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/gem-motor-r23b-receipt.json",
+      "sha256": "25BB99A6BB1B130F3784956400CCF434122689501591564F5B82AC931A4B6A85",
+      "candidate": "r23b",
+      "record": {
+        "environmentKey": "",
+        "scope": "CombatEffectsCpu",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\gem-motor-r23b.log",
+        "seconds": 85.3432248,
+        "exit": 0
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/reflection-r23b-receipt.json",
+      "sha256": "7375BE0637E5808195708DAF43BE8B4A4CBB1B70437F655D2C6E581E72A1C881",
+      "candidate": "r23b",
+      "record": {
+        "seconds": 41.2643013,
+        "exit": 1,
+        "environmentKey": "",
+        "scope": "CombatEffectsCpu",
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\reflection-r23b.log"
+      }
+    },
+    {
+      "file": ".local/aim-comprehensive-repair-20261010/flame-r23b-receipt.json",
+      "sha256": "61859BE9C7B9D1466C4D460AF05ABC34AA49EDE8CED7D7594600218824C4A5AA",
+      "candidate": "r23b",
+      "record": {
+        "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-comprehensive-repair-20261010\\flame-r23b.log",
+        "seconds": 37.845338,
+        "environmentKey": "",
+        "exit": 1,
+        "scope": "CombatEffectsCpu"
+      }
+    }
+  ],
+  "missing": []
+}

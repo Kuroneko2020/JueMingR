@@ -1,7 +1,14 @@
-# One maintained definition supplies both selection and evidence projection.
+﻿# One maintained definition supplies both selection and evidence projection.
 # Unknown/shared inputs stay conservative; compile identity is separate.
 function Get-WorkloadLeafChecks {
+    # Hand-opening/navigation owners are consumed by the attack preparation,
+    # G11 yoyo and presentation chains, not by NPC motion models. Parent CPU
+    # entries still own Navigation/AttackCosts; the children remain specialists.
+    $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
     $leaves = @{
+        'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs'=$attackConsumers
+        'src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs'=$attackConsumers
+        'src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs'=$attackConsumers
         'scripts/verify-existing-package.ps1'=@('workload-PackageVerification')
         'scripts/phase0s/PackageVerification.Support.ps1'=@('workload-PackageVerification')
         'tests/Phase0S/Invoke-PackageVerificationChecks.ps1'=@('workload-PackageVerification')
@@ -10,7 +17,222 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
         'tests/NativeWorldTextProbe/NativeYoyoAdoptionChecks.cs'=@('native-CombatCpu','native-CombatYoyoCausal')
+        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatVisualChecks.cs'=@('native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatAimQualificationChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAimUiChecks.cs'=@('native-CombatAimUi','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.cs'=@('native-CombatImpactVisual','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatImpactRetirementChecks.cs'=@('native-CombatImpactVisual','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.Geometry.cs'=@('native-CombatImpactVisual','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBalancedAimChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBalancedPhaseChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBalancedCandidateChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs'=@('native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts')
+        'tests/NativeWorldTextProbe/NativeCombatControlPreviewChecks.cs'=@('native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts')
+        'tests/NativeWorldTextProbe/NativeCombatUsageChecks.cs'=@('native-CombatIntegrationCpu','native-CombatImpactVisual')
+        'tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs'=@('native-CombatIntegrationCpu','native-CombatImpactVisual')
+        'tests/NativeWorldTextProbe/NativeCombatOriginalRangedChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatCelebrationChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBasicAimChecks.cs'=@('native-CombatAimCpu','native-CombatIntegrationCpu','native-CombatImpactVisual')
+        'tests/NativeWorldTextProbe/NativeCombatMagicStringAimChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticPreparationChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticSceneChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticMotionChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticSeedChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticFreeFlightChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticCloudChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticRapierChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticTyphoonChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatHomingEffectChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatTerrainLineChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatYoyoFamilyChecks.cs'=@('native-CombatControlCpu','native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatYoyoFamilyConsumerChecks.cs'=@('native-CombatControlCpu','native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPhantasmEchoChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSpearShardChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatGuitarCurveChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatWeatherPainChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSolarEruptionChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatNailChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatInfluxChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatNebulaArcanumChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatMedusaScanChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSuperStarChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatMonkStaffChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatGrassCurveChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAmmoImpactChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatNorthPoleChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatLightsBaneChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatOnyxBlastChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBeeHandChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatMeleeHitChildChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatMeleeHitFamilyChecks.cs'=@('native-CombatEffectsCpu','native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatHandFixture.cs'=@('native-CombatEffectsCpu','native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAmmoSteeringChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatHeldAmmoFamilyChecks.cs'=@('native-CombatEffectsCpu','native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSharpTearsChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPiranhaChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBubbleFlailFamilyChecks.cs'=@('native-CombatEffectsCpu','native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatHarpyArrowFamilyChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatClingerWallChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatArrowFamilyChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatJoustingLanceChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatWhipStarChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatFixedSkyChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSeedlerChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatRainbowChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatImpactBurstChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticSpiritChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPlacedPulseChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatMagnetSphereChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatDirectionalControlChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatCostNavigationChecks.cs'=@('native-CombatControlCpu','native-CombatNavigationCpu','native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/Fixtures/MagicReleaseBeforeNpc.bits'=@('native-CombatControlCpu','native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPathContinuityChecks.cs'=@('native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatPathDisplayChecks.cs'=@('native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatPlacementChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatCadenceAimChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatResourceChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatCandidateDemandChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatCurrentDemandChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatCandidateFailureChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatCandidateReuseChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatNeighborChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs'=@('native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Optional.cs'=@('native-CombatCosts','native-CombatAttackCosts')
+        # CombatAttackCosts is a specialist selector; its normal workload
+        # dispatcher is CombatCosts, which actually calls the new leaf once.
+        'tests/NativeWorldTextProbe/NativeCombatDedupChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupPremiseChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupReasons.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupPrefixChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupModelChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupSourceChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatPreviewLeaseChecks.cs'=@('native-CombatCosts','native-CombatAttackCosts','native-CombatControlCpu','native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Natural.cs'=@('native-CombatCosts','native-CombatAttackCosts')
+        'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.CandidateState.cs'=@('native-CombatCosts','native-CombatAttackCosts')
+        'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatObstacleChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAmmoChecks.cs'=@('native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSkyChecks.cs'=@('native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatScatterChecks.cs'=@('native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatHeldSequenceChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttackFailureChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatControlChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBubbleChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatFlyingKnifeChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatLaserChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatHarpyChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatFiniteThrowChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatFiniteShotChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatMixedSwingChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBeeGunChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatWaspBatChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatDartChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatLaserPaintChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatJavelinChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPhoenixChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatThornChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatStreamChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBottleChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatNoteChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatNebulaBlazeChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSkyFractureChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatIceRodChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAi29SpellChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatFlareChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBlizzardChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatRaySpellChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPaperAirplaneChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatInfernoChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatOrnamentChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSonicBoomChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBookStaffChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSkullChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatArcSwingChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttachedShotChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBetsyFlameChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatElectrosphereChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBarrelChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatLineChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBeeChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatReflectionChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatColdBoltChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatScytheChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatScourgeChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPhasebladeChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatClusterChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBoomerangVariantChecks.cs'=@('native-CombatMechanicsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBoomerangCommonChecks.cs'=@('native-CombatMechanicsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatGemStaffChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPoisonCloudChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatFlameChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSpecialArrowChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatExplosiveChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatHarpoonChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBeamChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatYoyoNavigationChecks.cs'=@('native-CombatControlCpu','native-CombatNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatYoyoGapChecks.cs'=@('native-CombatControlCpu','native-CombatNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatYoyoChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatReceiveChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatMeleeChecks.cs'=@('native-CombatMechanicsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPhaseChecks.cs'=@('native-CombatMechanicsCpu','native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSwingChecks.cs'=@('native-CombatMechanicsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSwingSpecialChecks.cs'=@('native-CombatMechanicsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatWhipChecks.cs'=@('native-CombatMechanicsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatReturnChecks.cs'=@('native-CombatMechanicsCpu')
         'tests/NativeWorldTextProbe/NativeCombatFoundationChecks.cs'=@('native-NpcFoundationRules','native-NpcFoundationContinuous','native-NpcStrategyContinuous')
+        'tests/NativeWorldTextProbe/NativeCombatPhasedFlightChecks.cs'=@('native-NpcPhasedFlight')
+        'tests/NativeWorldTextProbe/NativeCombatAmbientFlightChecks.cs'=@('native-NpcAmbientFlight')
+        'tests/NativeWorldTextProbe/NativeCombatRelatedChecks.cs'=@('native-NpcRelatedMotion')
+        'tests/NativeWorldTextProbe/NativeCombatFreeFlightBoundsChecks.cs'=@('native-NpcRelatedMotion')
+        'tests/NativeWorldTextProbe/NativeCombatPlanteraChecks.cs'=@('native-NpcPlantera')
+        'tests/NativeWorldTextProbe/NativeCombatInvasionFlightChecks.cs'=@('native-NpcInvasionFlightCpu','native-NpcInvasionFlightLoss')
+        'tests/NativeWorldTextProbe/NativeCombatInvasionGroundChecks.cs'=@('native-NpcInvasionGround')
+        'tests/NativeWorldTextProbe/NativeCombatEyeBossChecks.cs'=@('native-NpcEyeBoss')
+        'tests/NativeWorldTextProbe/NativeCombatSnowmanChecks.cs'=@('native-NpcSnowman')
+        'tests/NativeWorldTextProbe/NativeCombatSantaTankChecks.cs'=@('native-NpcSantaTank')
+        'tests/NativeWorldTextProbe/NativeCombatPlayerBorderChecks.cs'=@('native-NpcPlayerPolicy')
+        'tests/NativeWorldTextProbe/NativeCombatKingSlimeChecks.cs'=@('native-NpcKingSlime')
+        'tests/NativeWorldTextProbe/NativeCombatSkeletonBossChecks.cs'=@('native-NpcSkeletonBoss')
+        'tests/NativeWorldTextProbe/NativeCombatBetsyChecks.cs'=@('native-NpcBetsy')
+        'tests/NativeWorldTextProbe/NativeCombatTownCritterChecks.cs'=@('native-NpcTownCritter')
+        'tests/NativeWorldTextProbe/NativeCombatInvasionLightningChecks.cs'=@('native-NpcInvasionLightning')
+        'tests/NativeWorldTextProbe/NativeCombatDiveFlightChecks.cs'=@('native-NpcDiveFlight')
+        'tests/NativeWorldTextProbe/NativeCombatAttachedWeaponChecks.cs'=@('native-NpcAttachedWeapon')
+        'tests/NativeWorldTextProbe/NativeCombatDarkMageChecks.cs'=@('native-NpcDarkMage')
+        'tests/NativeWorldTextProbe/NativeCombatBloodNautilusChecks.cs'=@('native-NpcBloodNautilus')
+        'tests/NativeWorldTextProbe/NativeCombatGolemChecks.cs'=@('native-NpcGolem')
+        'tests/NativeWorldTextProbe/NativeCombatQueenBeeChecks.cs'=@('native-NpcQueenBee')
+        'tests/NativeWorldTextProbe/NativeCombatBrainSwarmChecks.cs'=@('native-NpcBrainSwarm')
+        'tests/NativeWorldTextProbe/NativeCombatWallBossChecks.cs'=@('native-NpcWallBoss')
+        'tests/NativeWorldTextProbe/NativeCombatTreeBossChecks.cs'=@('native-NpcTreeBoss')
+        'tests/NativeWorldTextProbe/NativeCombatCelestialTowerChecks.cs'=@('native-NpcCelestialTower')
+        'tests/NativeWorldTextProbe/NativeCombatPumpkingChecks.cs'=@('native-NpcPumpking')
+        'tests/NativeWorldTextProbe/NativeCombatIceQueenChecks.cs'=@('native-NpcIceQueen')
+        'tests/NativeWorldTextProbe/NativeCombatCultistBossChecks.cs'=@('native-NpcCultistBoss')
+        'tests/NativeWorldTextProbe/NativeCombatCultistDoomOwnerChecks.cs'=@('native-NpcCultistBoss')
+        'tests/NativeWorldTextProbe/NativeCombatCultistRitualChecks.cs'=@('native-NpcCultistRitual')
+        'tests/NativeWorldTextProbe/NativeCombatMoonLordChecks.cs'=@('native-NpcMoonLord')
+        'tests/NativeWorldTextProbe/NativeCombatMoonLeechChecks.cs'=@('native-NpcMoonLeech')
+        'tests/NativeWorldTextProbe/NativeCombatQueenSlimeChecks.cs'=@('native-NpcQueenSlime')
+        'tests/NativeWorldTextProbe/NativeCombatWindyBalloonChecks.cs'=@('native-NpcWindyBalloon')
+        'tests/NativeWorldTextProbe/NativeCombatBirdChecks.cs'=@('native-NpcBird')
+        'tests/NativeWorldTextProbe/NativeCombatBirdTownChecks.cs'=@('native-NpcBird')
+        'tests/NativeWorldTextProbe/NativeCombatCasterChecks.cs'=@('native-NpcCaster')
+        'tests/NativeWorldTextProbe/NativeCombatMartianTurretChecks.cs'=@('native-NpcMartianTurret')
+        'tests/NativeWorldTextProbe/NativeCombatSegmentedWormChecks.cs'=@('native-NpcSegmentedWorm')
+        'tests/NativeWorldTextProbe/NativeCombatSolitaryWormChecks.cs'=@('native-NpcSolitaryWorm')
+        'tests/NativeWorldTextProbe/NativeCombatSolarWormChecks.cs'=@('native-NpcSolarWorm')
+        'tests/NativeWorldTextProbe/NativeCombatEmpressChecks.cs'=@('native-NpcEmpress')
+        'tests/NativeWorldTextProbe/NativeCombatDeerclopsChecks.cs'=@('native-NpcDeerclops')
+        'tests/NativeWorldTextProbe/NativeCombatFishronChecks.cs'=@('native-NpcFishron')
+        'tests/NativeWorldTextProbe/NativeCombatFishronChildChecks.cs'=@('native-NpcFishron')
+        'tests/NativeWorldTextProbe/NativeCombatBigMimicChecks.cs'=@('native-NpcBigMimic')
+        'tests/NativeWorldTextProbe/NativeCombatAquaticActionChecks.cs'=@('native-NpcAquaticActions')
+        'tests/NativeWorldTextProbe/NativeCombatTerrainFlightChecks.cs'=@('native-NpcTerrainFlight','native-NpcUmbrella')
         'tests/NativeWorldTextProbe/NativeCombatFoundationContinuousChecks.cs'=@('native-NpcFoundationContinuous','native-NpcStrategyContinuous','native-NpcFiniteFlight')
         'tests/NativeWorldTextProbe/NativeCombatStrategyChecks.cs'=@('native-NpcStrategy','native-NpcStrategy-rollchoice')
         'tests/NativeWorldTextProbe/NativeCombatFamilyControlChecks.cs'=@('native-NpcStrategy')
@@ -33,10 +255,45 @@ function Get-WorkloadLeafChecks {
     return $leaves
 }
 function Get-WorkloadNativeScopes {
+    # CPU cumulative entries own Navigation through Control and AttackCosts
+    # through CombatCosts. Their independent specialist flags remain available
+    # in test-world-object-text. Impact/AimUi/Visual need matching real Content
+    # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
         'NpcRollingCpu'=@('combat-host');
+        'CombatAimCpu'=@('combat-host');
+        'CombatControlCpu'=@('combat-host');
+        'CombatMechanicsCpu'=@('combat-host');
+        'CombatEffectsCpu'=@('combat-host');
+        'CombatIntegrationCpu'=@('combat-host');
         'NpcRollingSelectionNegative'=@('combat-host');
         'NpcBasicMotion'=@('combat-host');
+        'NpcPhasedFlight'=@('combat-host'); 'NpcAmbientFlight'=@('combat-host'); 'NpcRelatedMotion'=@('combat-host'); 'NpcTerrainFlight'=@('combat-host'); 'NpcUmbrella'=@('combat-host');
+        'NpcPlantera'=@('combat-host'); 'NpcBigMimic'=@('combat-host'); 'NpcAquaticActions'=@('combat-host');
+        'NpcInvasionFlight'=@('combat-host'); 'NpcInvasionGround'=@('combat-host'); 'NpcEyeBoss'=@('combat-host'); 'NpcSnowman'=@('combat-host');
+        'NpcSantaTank'=@('combat-host'); 'NpcKingSlime'=@('combat-host'); 'NpcSkeletonBoss'=@('combat-host');
+        'NpcInvasionFlightCpu'=@('combat-host'); 'NpcInvasionFlightLoss'=@('combat-host'); 'NpcBetsy'=@('combat-host'); 'NpcTownCritter'=@('combat-host');
+        'NpcInvasionLightning'=@('combat-host'); 'NpcDiveFlight'=@('combat-host'); 'NpcAttachedWeapon'=@('combat-host'); 'NpcDarkMage'=@('combat-host'); 'CombatTerrainCpu'=@('combat-host');
+        'NpcBloodNautilus'=@('combat-host'); 'NpcGolem'=@('combat-host');
+        'NpcQueenBee'=@('combat-host'); 'NpcBrainSwarm'=@('combat-host');
+        'NpcWallBoss'=@('combat-host');
+        'NpcTreeBoss'=@('combat-host'); 'NpcCelestialTower'=@('combat-host');
+        'NpcPumpking'=@('combat-host'); 'NpcIceQueen'=@('combat-host');
+        'NpcCultistBoss'=@('combat-host');
+        'NpcCultistRitual'=@('combat-host');
+        'NpcMoonLord'=@('combat-host');
+        'NpcMoonLeech'=@('combat-host');
+        'NpcQueenSlime'=@('combat-host');
+        'NpcWindyBalloon'=@('combat-host');
+        'NpcBird'=@('combat-host');
+        'NpcCaster'=@('combat-host');
+        'NpcMartianTurret'=@('combat-host');
+        'NpcSegmentedWorm'=@('combat-host');
+        'NpcSolitaryWorm'=@('combat-host');
+        'NpcSolarWorm'=@('combat-host');
+        'NpcEmpress'=@('combat-host');
+        'NpcDeerclops'=@('combat-host');
+        'NpcFishron'=@('combat-host');
         'NpcFoundationRules'=@('combat-host'); 'NpcFoundationContinuous'=@('combat-host'); 'NpcPlayerPolicy'=@('combat-host'); 'NpcStrategy'=@('combat-host'); 'NpcStrategyContinuous'=@('combat-host'); 'NpcEventRetirementCpu'=@('combat-host');
         # Ordinary delivery retains the real shared selection/terrain and
         # marker consumer seams; detailed phase matrices stay bounded probes.
@@ -194,12 +451,38 @@ function Test-WorkloadBehaviorRecipes {
 }
 function Get-WorkloadLegacyCheckFingerprint {
     param($InputIdentity, [string] $Name)
+    # Before the three attack owners became leaves they were combat-host
+    # grouped inputs. Verify that immutable original projection only against
+    # its recorded fingerprint; current candidate comparison always uses the
+    # precise map in Get-WorkloadCheckFingerprint. Never rewrite old receipts
+    # or use this compatibility projection to exempt another changed input.
+    if($null -ne $InputIdentity.PSObject.Properties['inputFingerprint']){
+        $groups=@(Get-WorkloadCheckGroups $Name)
+        $groupedLeaves=Get-WorkloadLeafChecks
+        foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){$groupedLeaves.Remove($path)}
+        $groupedRows=@($InputIdentity.inputs | Where-Object {
+            $path=($_ -split ':',2)[0]
+            if($groupedLeaves.ContainsKey($path)){$groupedLeaves[$path] -contains $Name}
+            elseif($path -in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){$groups -contains '*' -or $groups -contains 'combat-host'}
+            elseif($path -match '^scripts/workload/|^scripts/(build|test-workload-regressions|test-world-object-text)\.ps1$|^tests/Workload/'){$Name.StartsWith('workload-')}
+            elseif($groups -contains '*' -or $path -notmatch '^(src/|tests/|scripts/)'){$true}
+            else{
+                $route=Get-WorkloadRoute @($path)
+                $route.unknown.Count -gt 0 -or @($route.groups | Where-Object {$_ -ne 'core' -and $groups -contains $_}).Count -gt 0
+            }
+        })
+        $groupedFingerprint=Get-WorkloadHash $groupedRows
+        if($InputIdentity.inputFingerprint -ceq $groupedFingerprint){return $groupedFingerprint}
+    }
+    # Immutable pre-DT common projection included all production, including
+    # the three owners now mapped above. Keep those original bytes bound here.
     # Only reviewed leaf assertion files may be omitted from another CPU check.
     # NativeChecks/CheckCatalog, shared helpers, projects, all production and all
     # recipes remain common inputs. New consumers must update this map in the
     # same change (the dispatcher change itself invalidates all old evidence).
     # Page composition is also used by ToolsVisual, outside this CPU cache.
     $leaves=Get-WorkloadLeafChecks
+    foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){$leaves.Remove($path)}
     # Immutable pre-DT projection compatibility: this helper used to omit the
     # vertical assertion shared by the continuous scopes. This does not grant
     # reuse across that input changing; current projection still binds it.

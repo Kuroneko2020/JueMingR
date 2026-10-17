@@ -1,0 +1,12 @@
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-dry-wind-clock-g07 MVID=049aa527-3429-4907-a3af-f8d975310b96 SHA256=3138DC4EBD3B4F2563DE73CE3F461547C99F4A6683B5B1207047A9B30E9E69DC location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g07\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-dry-wind-clock-g07 MVID=b4dff3ee-010f-49b4-a81b-c7f7c6b64461 SHA256=2E0829EAB91CE34B95F9FF4AE3FB7E35DE77C908E98B41CAF0FC2AA2A8D9E3A3 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g07\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-dry-wind-clock-g07 MVID=760f43a1-4073-4384-bce9-4ad622dfbbc4 SHA256=CB897FDAC545F05BB6B10D736198BD5B927848FA8E6626146C97AF313D9B57E9 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g07\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-dry-wind-clock-g07 MVID=acb6c341-68a1-4369-b81a-f257372320f1 SHA256=0E12FC88C66F3A12689B0ACF545E3E2726962364EF07FCBB68D7B02E44446D5A location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g07\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g07\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=acb6c341-68a1-4369-b81a-f257372320f1
+COMPOSITION initialization-ms=4919.3934 code-prepare-ms=328.1106 exact-comparison=False
+MEASURE weapon=1228 mode=aim moving=True use=True warm=240 n=720 avg=1.19838194444444 p95=1.5621 p99=2.3991 max=3.8835 allocated=27066056 gc=5/5/0 preview=720 path=720 live=626 moved=720 xRange=700..807.9987 targetActive=True exitLive=0
+SEGMENT attack-cycles n=540 mean=1.24220574074074 p95=1.6589 p99=2.5299 max=3.8835
+SEGMENT exit n=180 mean=1.06691055555556 p95=1.2798 p99=1.4128 max=2.3991
+BUDGET available=True exceeded=0/720
+ENVIRONMENT naturalUpdateWeather=True windChanges=720 windFinal=0.573991 target=0.8 (selected native stages, not full Main.DoUpdate)

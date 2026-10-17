@@ -1,0 +1,269 @@
+LOAD 0Harmony source=2.4.2.0+a264a1bf1ce689e4589e8dcc54b1e2818602a90a MVID=024a0e6e-c8c2-437e-ad04-7b6279389c23 SHA256=7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\0Harmony.dll
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=0979ed61-52ae-400a-b94a-82870cd69758 SHA256=38A4D5F982E57A1D6FE6C8EABE3DBAB466B4B5EB3EE6314E8D77683ACFA7FE6B location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=fa1a7ba6-b3bb-4c9e-a9ec-77b50bff5b61 SHA256=99B10CB658251BE90863AB68AD4AF1EB7CE2C3BC9EAE250C80EADD82DF892E2D location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=723d92dd-f8bb-4550-8c68-ff1dbd6d5a55 SHA256=AE1B191ED0C0AC7B27217A7F84FC9AA4383AB5A14CB62777A3A5B03FDB403603 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178 SHA256=F1072D318426809C9360CB45C7B85B7013BE865E8C13637C8B0B344A71AC6685 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+ISOLATED SavePath=C:\Users\kongd\Desktop\JueMingR\.local\ir-9ea942a2
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3 location=C:\Users\kongd\Desktop\JueMingR\external\TerrariaRefs\Terraria.exe
+PROBE MVID=f7d4fe9c-d4a9-4f8c-ab10-ad8a38d80802 SHA256=5770027B129FFDBC3F6AC4C179092E9CAD2AD106C3DC5C3E16D678C921E07656 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\probe-current-g13\bin\NativeWorldTextProbe\x86\Debug\net472\NativeWorldTextProbe.exe
+INCIDENT leaf=geometry actualDraw=False Content=F:\Games\GamePlats\Steam\steamapps\common\Terraria\Content; functional regression, no FPS/timing claim
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178
+COMPOSITION initialization-ms=5668.7126 code-prepare-ms=404.4546 exact-comparison=False
+CONTEXT Host MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+GEOMETRY ORACLE Sun Dance full native range inside=876 outside=1938
+GEOMETRY ORACLE expanded explosion inside=961 outside=128
+GEOMETRY ORACLE prism beam 0 inside=904 outside=1197
+GEOMETRY ORACLE prism beam 1 inside=904 outside=1197
+GEOMETRY ORACLE prism beam 2 inside=904 outside=1197
+GEOMETRY ORACLE prism beam 3 inside=904 outside=1197
+GEOMETRY ORACLE prism beam 4 inside=904 outside=1197
+GEOMETRY ORACLE prism beam 5 inside=904 outside=1197
+GEOMETRY ORACLE whip point unions and gaps inside=36 outside=45
+COVERAGE native type=76 inside=72 missed=0 extra=0
+COVERAGE native type=77 inside=72 missed=0 extra=0
+COVERAGE native type=78 inside=72 missed=0 extra=0
+COVERAGE native type=85 inside=145 missed=0 extra=0
+COVERAGE native type=121 inside=160 missed=0 extra=0
+COVERAGE native type=122 inside=160 missed=0 extra=0
+COVERAGE native type=123 inside=160 missed=0 extra=0
+COVERAGE native type=124 inside=160 missed=0 extra=0
+COVERAGE native type=125 inside=160 missed=0 extra=0
+COVERAGE native type=126 inside=160 missed=0 extra=0
+COVERAGE native type=294 inside=49 missed=0 extra=0
+COVERAGE native type=301 inside=177 missed=0 extra=0
+COVERAGE native type=452 inside=38 missed=0 extra=0
+COVERAGE native type=454 inside=82 missed=0 extra=0
+COVERAGE native type=455 inside=281 missed=0 extra=0
+COVERAGE native type=461 inside=228 missed=0 extra=0
+COVERAGE native type=464 inside=491 missed=0 extra=0
+COVERAGE native type=466 inside=84 missed=0 extra=0
+COVERAGE native type=537 inside=231 missed=0 extra=0
+COVERAGE native type=554 inside=126 missed=0 extra=0
+COVERAGE native type=580 inside=84 missed=0 extra=0
+COVERAGE native type=597 inside=160 missed=0 extra=0
+COVERAGE native type=598 inside=26 missed=0 extra=0
+COVERAGE native type=607 inside=38 missed=0 extra=0
+COVERAGE native type=611 inside=75 missed=0 extra=0
+COVERAGE native type=614 inside=26 missed=0 extra=0
+COVERAGE native type=623 inside=149 missed=0 extra=0
+COVERAGE native type=632 inside=228 missed=0 extra=0
+COVERAGE native type=636 inside=26 missed=0 extra=0
+COVERAGE native type=642 inside=264 missed=0 extra=0
+COVERAGE native type=661 inside=38 missed=0 extra=0
+COVERAGE native type=684 inside=113 missed=0 extra=0
+COVERAGE native type=686 inside=115 missed=0 extra=0
+COVERAGE native type=687 inside=424 missed=0 extra=0
+COVERAGE native type=697 inside=283 missed=0 extra=0
+COVERAGE native type=698 inside=640 missed=0 extra=0
+COVERAGE native type=699 inside=121 missed=0 extra=0
+COVERAGE native type=707 inside=506 missed=0 extra=0
+COVERAGE native type=711 inside=106 missed=0 extra=0
+COVERAGE native type=756 inside=247 missed=0 extra=0
+COVERAGE native type=758 inside=81 missed=0 extra=0
+COVERAGE native type=802 inside=57 missed=0 extra=0
+COVERAGE native type=842 inside=57 missed=0 extra=0
+COVERAGE native type=871 inside=725 missed=0 extra=0
+COVERAGE native type=872 inside=206 missed=0 extra=0
+COVERAGE native type=877 inside=121 missed=0 extra=0
+COVERAGE native type=878 inside=121 missed=0 extra=0
+COVERAGE native type=879 inside=121 missed=0 extra=0
+COVERAGE native type=919 inside=76 missed=0 extra=0
+COVERAGE native type=923 inside=1186 missed=0 extra=0
+COVERAGE native type=927 inside=311 missed=0 extra=0
+COVERAGE native type=932 inside=76 missed=0 extra=0
+COVERAGE native type=933 inside=184 missed=0 extra=0
+COVERAGE native type=938 inside=57 missed=0 extra=0
+COVERAGE native type=939 inside=57 missed=0 extra=0
+COVERAGE native type=940 inside=57 missed=0 extra=0
+COVERAGE native type=941 inside=57 missed=0 extra=0
+COVERAGE native type=942 inside=57 missed=0 extra=0
+COVERAGE native type=943 inside=57 missed=0 extra=0
+COVERAGE native type=944 inside=57 missed=0 extra=0
+COVERAGE native type=945 inside=57 missed=0 extra=0
+COVERAGE native type=961 inside=247 missed=0 extra=0
+COVERAGE native type=963 inside=199 missed=0 extra=0
+COVERAGE native type=965 inside=64 missed=0 extra=0
+COVERAGE native type=973 inside=659 missed=0 extra=0
+COVERAGE native type=974 inside=109 missed=0 extra=0
+COVERAGE native type=985 inside=164 missed=0 extra=0
+COVERAGE native type=1041 inside=247 missed=0 extra=0
+COVERAGE native type=1093 inside=50 missed=0 extra=0
+COVERAGE native type=1100 inside=184 missed=0 extra=0
+COVERAGE native type=1106 inside=79 missed=0 extra=0
+COVERAGE native type=1112 inside=50 missed=0 extra=0
+COVERAGE native type=1115 inside=92 missed=0 extra=0
+COVERAGE native type=1116 inside=64 missed=0 extra=0
+COVERAGE native type=1117 inside=658 missed=0 extra=0
+COVERAGE native type=1118 inside=50 missed=0 extra=0
+COVERAGE native type=1124 inside=38 missed=0 extra=0
+COVERAGE native type=1125 inside=247 missed=0 extra=0
+COVERAGE native type=1127 inside=64 missed=0 extra=0
+COVERAGE native type=688 inside=441 missed=0 extra=0
+COVERAGE native type=689 inside=441 missed=0 extra=0
+COVERAGE native type=690 inside=441 missed=0 extra=0
+COVERAGE native type=972 inside=267 missed=0 extra=0
+COVERAGE native type=982 inside=267 missed=0 extra=0
+COVERAGE native type=983 inside=267 missed=0 extra=0
+COVERAGE native type=984 inside=267 missed=0 extra=0
+COVERAGE native type=997 inside=267 missed=0 extra=0
+COVERAGE native type=1043 inside=267 missed=0 extra=0
+COVERAGE native type=1126 inside=267 missed=0 extra=0
+COVERAGE native type=1091 inside=498 missed=0 extra=0
+COVERAGE native type=1122 inside=498 missed=0 extra=0
+COVERAGE native type=163 inside=38 missed=0 extra=0
+COVERAGE native type=847 inside=51 missed=0 extra=0
+COVERAGE native type=841 inside=51 missed=0 extra=0
+COVERAGE native type=848 inside=51 missed=0 extra=0
+COVERAGE native type=849 inside=51 missed=0 extra=0
+COVERAGE native type=912 inside=51 missed=0 extra=0
+COVERAGE native type=913 inside=51 missed=0 extra=0
+COVERAGE native type=914 inside=51 missed=0 extra=0
+COVERAGE native type=915 inside=51 missed=0 extra=0
+COVERAGE native type=952 inside=51 missed=0 extra=0
+COVERAGE native type=1028 inside=51 missed=0 extra=0
+COVERAGE native type=1029 inside=51 missed=0 extra=0
+COVERAGE native type=1030 inside=51 missed=0 extra=0
+COVERAGE native type=1031 inside=51 missed=0 extra=0
+COVERAGE native type=1032 inside=51 missed=0 extra=0
+COVERAGE native type=1033 inside=51 missed=0 extra=0
+COVERAGE native type=1034 inside=51 missed=0 extra=0
+COVERAGE native type=1035 inside=51 missed=0 extra=0
+COVERAGE native type=1104 inside=51 missed=0 extra=0
+COVERAGE native type=25 inside=149 missed=0 extra=0
+COVERAGE native type=46 inside=83 missed=0 extra=0
+COVERAGE native type=105 inside=87 missed=0 extra=0
+COVERAGE native type=153 inside=74 missed=0 extra=0
+COVERAGE additional 96 native variants: whip clocks/scales, flail ellipse, four Gem feature combinations and real LOS walls; independent three-size domains.
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+Invariant Failed: Expected Type: 643, got: 644
+WORKLOAD dense native geometry: 1000 natural Damage callbacks; all 130 mixed local/remote bursts retained; no-Draw retention and session cleanup verified.
+PASS first batch geometry: natural hitbox scope, destructive getter once, six prism beams, NPC gameplay categories, extra harm and OFF native callbacks.

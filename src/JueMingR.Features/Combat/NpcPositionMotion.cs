@@ -12,8 +12,21 @@ namespace JueMingR.Features.Combat
             // Negative vanilla wof index is an explicit retirement, distinct
             // from an unavailable/stale necessary owner identity.
             if(n.PositionRelation==7 && n.ParentSlot==-2){n.Active=false;stop=PredictionStop.Despawn;return false;}
+            if(n.Style==12 && n.PositionRelation==6 && n.PositionOwnerCaptured && !n.PositionOwnerValid)return NpcParentMotion.Orphan(ref n,out stop);
             for(int i=0;i<count;i++)if(group[i].Identity.Equals(n.PositionOwner)){index=i;break;}
-            if(index<0 || !group[index].Active || group[index].Life<=0){stop=PredictionStop.MissingDependency;return false;}
+            if(n.Style==72 && n.PositionRelation==2)
+            {
+                if(!n.PositionOwnerCaptured){stop=PredictionStop.MissingDependency;return false;}
+                if(n.PositionOwnerValid && index<0){stop=PredictionStop.MissingDependency;return false;}
+                if(!n.PositionOwnerValid || !group[index].Active || group[index].EffectiveType!=383)
+                {n.Life=0;n.Active=false;stop=PredictionStop.Despawn;return false;}
+            }
+            else if(n.Style==12 && n.PositionRelation==6 && n.PositionOwnerCaptured)
+            {
+                if(index<0){stop=PredictionStop.MissingDependency;return false;}
+                if(!group[index].Active || group[index].Style!=11)return NpcParentMotion.Orphan(ref n,out stop);
+            }
+            else if(index<0 || !group[index].Active || group[index].Life<=0){stop=PredictionStop.MissingDependency;return false;}
             var owner=group[index];
             switch(n.PositionRelation)
             {
@@ -26,7 +39,7 @@ namespace JueMingR.Features.Combat
                     // body's velocity here would integrate that X twice.
                     break;
                 case 2:
-                    n.X=owner.Bounds.CenterX-n.Width/2;n.Y=owner.Bounds.CenterY-n.Height/2;n.Vx=n.Vy=0;break;
+                    n.X=owner.Bounds.CenterX-(int)n.Width/2;n.Y=owner.Bounds.CenterY-(int)n.Height/2;n.Vx=n.Vy=0;break;
                 case 3:
                     n.X=owner.Bounds.CenterX-n.Width*.5f;n.Y=owner.Bounds.CenterY-400-n.Height*.5f;n.Vx=n.Vy=0;break;
                 case 4:

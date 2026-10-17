@@ -1,0 +1,56 @@
+[
+  {
+    "agent": "weapon_models",
+    "file": "C:\\Users\\kongd\\.codex\\sessions\\2026\\10\\10\\rollout-2026-10-10T17-18-04-01a1251a-eb8d-7572-890c-c5105df1063b.jsonl",
+    "line": 8,
+    "id": "01a1251a-eb8d-7572-890c-c5105df1063b",
+    "time": "2026-10-10T09:18:22.446Z",
+    "model": "gpt-6.1-sol",
+    "effort": "high"
+  },
+  {
+    "agent": "npc_prediction",
+    "file": "C:\\Users\\kongd\\.codex\\sessions\\2026\\10\\10\\rollout-2026-10-10T17-18-23-01a1251b-36d5-7e22-89da-fa85e6644d32.jsonl",
+    "line": 8,
+    "id": "01a1251b-36d5-7e22-89da-fa85e6644d32",
+    "time": "2026-10-10T09:18:39.532Z",
+    "model": "gpt-6.1-sol",
+    "effort": "high"
+  },
+  {
+    "agent": "selection_preview",
+    "file": "C:\\Users\\kongd\\.codex\\sessions\\2026\\10\\10\\rollout-2026-10-10T17-18-43-01a1251b-86d4-76f3-b947-5a01550e7f19.jsonl",
+    "line": 8,
+    "id": "01a1251b-86d4-76f3-b947-5a01550e7f19",
+    "time": "2026-10-10T09:19:00.088Z",
+    "model": "gpt-6.1-sol",
+    "effort": "high"
+  },
+  {
+    "agent": "npc_ambient",
+    "file": "C:\\Users\\kongd\\.codex\\sessions\\2026\\10\\10\\rollout-2026-10-10T17-57-03-01a1253e-9e78-77b2-8d45-5bad0367d99a.jsonl",
+    "line": 8,
+    "id": "01a1253e-9e78-77b2-8d45-5bad0367d99a",
+    "time": "2026-10-10T09:57:19.738Z",
+    "model": "gpt-6.1-sol",
+    "effort": "high"
+  },
+  {
+    "agent": "integration_review",
+    "file": "C:\\Users\\kongd\\.codex\\sessions\\2026\\10\\10\\rollout-2026-10-10T18-15-18-01a1254f-5458-7a72-8029-dd54f279056b.jsonl",
+    "line": 8,
+    "id": "01a1254f-5458-7a72-8029-dd54f279056b",
+    "time": "2026-10-10T10:15:35.402Z",
+    "model": "gpt-6.1-sol",
+    "effort": "high"
+  },
+  {
+    "agent": "npc_relations",
+    "file": "C:\\Users\\kongd\\.codex\\sessions\\2026\\10\\10\\rollout-2026-10-10T18-36-22-01a12562-9b9e-7462-afae-5314dbf527f2.jsonl",
+    "line": 9,
+    "id": "01a12562-9b9e-7462-afae-5314dbf527f2",
+    "time": "2026-10-10T10:36:38.443Z",
+    "model": "gpt-6.1-sol",
+    "effort": "high"
+  }
+]

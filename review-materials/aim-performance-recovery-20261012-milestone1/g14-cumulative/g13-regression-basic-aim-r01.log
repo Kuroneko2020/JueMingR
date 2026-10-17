@@ -1,0 +1,38 @@
+LOAD 0Harmony source=2.4.2.0+a264a1bf1ce689e4589e8dcc54b1e2818602a90a MVID=024a0e6e-c8c2-437e-ad04-7b6279389c23 SHA256=7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\0Harmony.dll
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=0979ed61-52ae-400a-b94a-82870cd69758 SHA256=38A4D5F982E57A1D6FE6C8EABE3DBAB466B4B5EB3EE6314E8D77683ACFA7FE6B location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=fa1a7ba6-b3bb-4c9e-a9ec-77b50bff5b61 SHA256=99B10CB658251BE90863AB68AD4AF1EB7CE2C3BC9EAE250C80EADD82DF892E2D location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=723d92dd-f8bb-4550-8c68-ff1dbd6d5a55 SHA256=AE1B191ED0C0AC7B27217A7F84FC9AA4383AB5A14CB62777A3A5B03FDB403603 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178 SHA256=F1072D318426809C9360CB45C7B85B7013BE865E8C13637C8B0B344A71AC6685 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+ISOLATED SavePath=C:\Users\kongd\Desktop\JueMingR\.local\ir-2490a24e
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3 location=C:\Users\kongd\Desktop\JueMingR\external\TerrariaRefs\Terraria.exe
+PROBE MVID=f7d4fe9c-d4a9-4f8c-ab10-ad8a38d80802 SHA256=5770027B129FFDBC3F6AC4C179092E9CAD2AD106C3DC5C3E16D678C921E07656 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\probe-current-g13\bin\NativeWorldTextProbe\x86\Debug\net472\NativeWorldTextProbe.exe
+INCIDENT leaf=basic-aim actualDraw=False Content=F:\Games\GamePlats\Steam\steamapps\common\Terraria\Content; functional regression, no FPS/timing claim
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178
+COMPOSITION initialization-ms=5758.5234 code-prepare-ms=429.6577 exact-comparison=False
+CONTEXT Host MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+USAGE fixture initialLayer=Pending actualDraw=False
+PASS BASIC item=3507 targetTileX=85 moving=False reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=65 targetTileX=85 moving=False reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=49 moving=False reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=False reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=85 moving=False reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=True reverseGravity=False assist=False consumers=3 assisted=0 enhanced=0 manual=3 parentHits=0 childHits=0
+PASS BASIC item=3507 targetTileX=85 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC item=65 targetTileX=85 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=49 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=2 manual=1 parentHits=2 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=2 manual=1 parentHits=0 childHits=11
+PASS BASIC item=1228 targetTileX=85 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=60 moving=True reverseGravity=False assist=True consumers=3 assisted=2 enhanced=2 manual=1 parentHits=0 childHits=6
+PASS BASIC item=1228 targetTileX=52 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=2 manual=1 parentHits=4 childHits=0
+PASS BASIC item=1228 targetTileX=56 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=2 manual=1 parentHits=2 childHits=2
+PASS BASIC item=1228 targetTileX=64 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC item=1228 targetTileX=70 moving=False reverseGravity=False assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC item=65 targetTileX=85 moving=False reverseGravity=True assist=True consumers=3 assisted=2 enhanced=0 manual=1 parentHits=0 childHits=0
+PASS BASIC pure-swing item=24 assist=False naturalStarts=2 direction=-1
+PASS BASIC pure-swing item=24 assist=True naturalStarts=2 direction=1
+PASS BASIC future-fault selection/native consumer and death/identity/weapon/UI/focus/OFF/selector rejection
+PASS BASIC actual bow input/free-preview incompatibility and idle Path-only hypothesis preservation
+PASS BASIC enhanced-failed DD2 native CanUse/Shoot and Aim OFF/receipt identity rejection
+PASS BASIC yoyo current-body geometry gap=0 point={X:790 Y:664} source={X:710 Y:664}
+PASS BASIC yoyo current-body geometry gap=8 point={X:790 Y:664} source={X:710 Y:664}
+PASS BASIC yoyo current-body geometry gap=16 point={X:839 Y:664} source={X:710 Y:664}

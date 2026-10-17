@@ -1,0 +1,20 @@
+Baseline uninstrumented r11 vs readonly r14 fixed same g05/probe/scene/seed
+Rows compared=
+600
+/
+600
+Geometry differing rows=
+0
+Birth lines=
+30
+/
+30
+First birth exact equal=
+True
+Full births differing pair count=
+2
+NativeHits standing/moving16/15 in both; landings16/15; normalGravity69/69; playerDelta0/91.32001.
+r14 later second shot tick269 differs:
+=> tick=269 projectile=14 key=spawner:0, index:0, gen:2 origin={X:710 Y:1259} velocity={X:-8.25066 Y:-6.957965} consumedCursor={X:687 Y:1239} physical={X:930 Y:1199} selectedReceiver=2/1 center={X:687.4222 Y:1239.2}
+<= tick=269 projectile=14 key=spawner:0, index:0, gen:2 origin={X:710 Y:1259} velocity={X:-8.831284 Y:-6.230207} consumedCursor={X:-8171 Y:-5231} physical={X:930 Y:1199} selectedReceiver=2/1 center={X:687.4222 Y:1239.2}
+Full birth equivalence NOT PASS; r14 only local first-shot diagnostic per parent ruling, never r11 same budget number or full-window equivalence.

@@ -1,0 +1,4 @@
+MICRO n=1000000 pass=0 delegate-noop-ns=1.5796 qpc-ns=26.4832 inactive-Check-ns=3.5307 active-Check-ns=33.1541 active-minus-noop-ns=31.5745
+MICRO n=1000000 pass=1 delegate-noop-ns=1.7605 qpc-ns=26.3473 inactive-Check-ns=3.9208 active-Check-ns=32.7919 active-minus-noop-ns=31.031399999999998
+MICRO n=1000000 pass=2 delegate-noop-ns=1.5722 qpc-ns=26.299 inactive-Check-ns=3.6862 active-Check-ns=32.6076 active-minus-noop-ns=31.0354
+MICRO standalone delegate loop, not world cost or admission; no claim about inlined call cost. sink=3081098407330

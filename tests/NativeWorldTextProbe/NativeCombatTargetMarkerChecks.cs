@@ -25,13 +25,15 @@ namespace NativeWorldTextProbe
             var options=(ObservationOptions)Activator.CreateInstance(typeof(ObservationOptions),new object[]{false,false,false,false,false,25,true});
             NativeCombatObservationChecks.Save(host,options);NativeCombatObservationChecks.Fresh(context,host);
             Console.WriteLine("MARKER GATE enabled="+Get(host,"Enabled")+" marker="+Get(host,"Marker")+" session="+Get(host,"Session")+" active="+Main.LocalPlayer.active+" dead="+Main.LocalPlayer.dead+" targetLife="+target.life+" count="+Get(Get(context,"nativeNpcs"),"Count")+" selected="+Get(selection,"HasTarget"));
-            Require((bool)Get(selection,"HasTarget") && ((NpcIdentity)Get(selection,"Target")).Slot==2,"Marker-only uses actual shared selection.");
+            Require(!(bool)Get(selection,"HasTarget") && !(bool)Get(host,"Marker"),"Saved Marker without Aim/Path does not independently select a target.");
             Require(cache.Required==0 && GetOptional(cache,"result")==null,"Marker-only has zero future demand or fabricated cache result.");
             Require(GetOptional(source,"Native")==null,"Marker-only does not start the exact comparison helper.");
-            Call(host,"Poll");Require((bool)Get(selection,"HasTarget"),"Poll keeps marker-only target alive.");
-            var shell=Get(context,"Shell");var state=Get(shell,"State");var renderer=Get(shell,"renderer");var layout=Get(state,"Layout");
+            Call(host,"Poll");Require(!(bool)Get(selection,"HasTarget"),"Poll keeps the saved-only marker inactive.");
+            var shell=Get(context,"Shell");var state=Get(shell,"State");var renderer=Get(shell,"renderer");
             Call(renderer,"RefreshResources");Call(state,"Navigate",8);Call(renderer,"Prepare",state,960f,640f,1f);
-            object Button()=>((IEnumerable)Get(layout,"Elements")).Cast<object>().Single(e=>Get(e,"Command").ToString()=="ObservationMarker");
+            Require(!Elements(state).Any(e=>Get(e,"Command").ToString()=="ObservationMarker"),"Aim OFF hides settings controls and preserves the inactive marker preference.");
+            SetAim(host,renderer,state,true);
+            object Button()=>Elements(state).Single(e=>Get(e,"Command").ToString()=="ObservationMarker");
             Require((string)Get(Button(),"Text")=="目标标记：开","Same-page initial marker text is committed ON.");
             var control=Get(renderer,"CombatObservationControls");Call(control,"Execute",Get(Button(),"Command"));
             var settings=(ObservationSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});
@@ -41,11 +43,14 @@ namespace NativeWorldTextProbe
             Call(control,"Execute",Get(Button(),"Command"));
             NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Call(renderer,"Prepare",state,960f,640f,1f);
             Require((string)Get(Button(),"Text")=="目标标记：开","Actual same-page command refreshes ON after commit.");
-            Require(!((IEnumerable)Get(layout,"Elements")).Cast<object>().Any(e=>(string)GetOptional(e,"HotkeyTarget")=="combat.target-marker"),"F5 has no marker key picker.");
-            var row=((IEnumerable)Get(layout,"Elements")).Cast<object>().Where(e=>new[]{"ObservationPolicy","ObservationCenter","ObservationDummy","ObservationMarker"}.Contains(Get(e,"Command").ToString())).ToArray();Require(row.Length==4 && row.All(e=>(float)Get(Get(e,"Rect"),"Y")== (float)Get(Get(Button(),"Rect"),"Y")),"Four settings share the same measured row.");
-            RequireTitleRow(((IEnumerable)Get(layout,"Elements")).Cast<object>().ToArray(),row);
+            Require(!Elements(state).Any(e=>(string)GetOptional(e,"HotkeyTarget")=="combat.target-marker"),"F5 has no marker key picker.");
+            var row=Elements(state).Where(e=>new[]{"ObservationPolicy","ObservationCenter","ObservationDummy","ObservationMarker"}.Contains(Get(e,"Command").ToString())).ToArray();Require(row.Length==4 && row.All(e=>(float)Get(Get(e,"Rect"),"Y")== (float)Get(Get(Button(),"Rect"),"Y")),"Four settings share the same measured row.");
+            RequireTitleRow(Elements(state),row);
             foreach(object element in row)
             {var rect=Get(element,"Rect");Require((float)Get(rect,"X")>=0 && (float)Get(rect,"Right")<=522,"Measured marker controls stay inside their actual panel.");}
+            SetAim(host,renderer,state,false);NativeCombatObservationChecks.Fresh(context,host);
+            Require(((ObservationSettings)Get(host,"Settings")).Value.Marker && cache.Required==0 && GetOptional(source,"Native")==null && !(bool)Get(selection,"HasTarget"),"Closing the final parent preserves marker preference and retires its target with zero future work.");
+            SetAim(host,renderer,state,true);NativeCombatObservationChecks.Fresh(context,host);
             var world=Get(host,"World");var display=Get(world,"Marker");Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
             Main.screenWidth=960;Main.screenHeight=640;Main.screenPosition=new Vector2(300,300);Main.GameViewMatrix.Zoom=Vector2.One;
             target.position=new Vector2(720,450);target.netOffset=new Vector2(8,6);NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);
@@ -63,12 +68,13 @@ namespace NativeWorldTextProbe
         internal static void Graphics(object context,ProbeGraphics graphics,string output)
         {
             graphics.LoadTexture("LockOnCursor","Images/UI/LockOn_Cursor");var atlas=Terraria.GameContent.TextureAssets.LockOnCursor;
-            Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");var shell=Get(context,"Shell");var ui=Get(shell,"State");var renderer=Get(shell,"renderer");var layout=Get(ui,"Layout");Call(renderer,"RefreshResources");Call(ui,"Navigate",8);
+            Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");var shell=Get(context,"Shell");var ui=Get(shell,"State");var renderer=Get(shell,"renderer");Call(renderer,"RefreshResources");Call(ui,"Navigate",8);
+            var settingsHost=Get(context,"CombatObservation");Call(renderer,"Prepare",ui,960f,640f,1f);SetAim(settingsHost,renderer,ui,true);
             foreach(var size in new[]{new[]{960,760,100},new[]{960,440,100},new[]{1440,900,150}})
             {
                 Main.screenWidth=size[0];Main.screenHeight=size[1];Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();Main.UIScale=size[2]/100f;NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);Call(ui,"RestoreVisible");NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
                 Require(Math.Abs(Main.UIScale-size[2]/100f)<.001f && Math.Abs(Main.UIScaleMatrix.M11-size[2]/100f)<.001f && Math.Abs(((Matrix)Get(shell,"matrix")).M11-size[2]/100f)<.001f,"Requested actual UI scale and sampled Shell matrix match.");
-                var elements=((IEnumerable)Get(layout,"Elements")).Cast<object>().ToArray();var button=elements.Single(e=>Get(e,"Command").ToString()=="ObservationMarker");
+                var elements=Elements(ui);var button=elements.Single(e=>Get(e,"Command").ToString()=="ObservationMarker");
                 var row=elements.Where(e=>new[]{"ObservationPolicy","ObservationCenter","ObservationDummy","ObservationMarker"}.Contains(Get(e,"Command").ToString())).ToArray();Require(row.Length==4 && row.All(e=>(float)Get(Get(e,"Rect"),"Y")== (float)Get(Get(button,"Rect"),"Y")),"Original font draws all four settings on the same row.");
                 RequireTitleRow(elements,row);
                 foreach(var e in row)Require((float)Get(Get(e,"Rect"),"Right")<=510,"Original Chinese font four controls fit panel at "+Main.UIScale);
@@ -76,11 +82,12 @@ namespace NativeWorldTextProbe
                 var pixels=graphics.Pixels(()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);Require(!(bool)Get(shell,"Failed") && pixels.Count(p=>p.A>0)>1000 && pixels.Any(p=>p.R>180 && p.G>180 && p.B>180 && p.A>0),"Actual F5 panel and text draw visible pixels, not a saved empty canvas.");
                 graphics.Image(System.IO.Path.Combine(output,"marker-f5-"+size[0]+"-"+size[1]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);
             }
+            SetAim(settingsHost,renderer,ui,false);
             if(Environment.GetEnvironmentVariable("JUEMINGR_MARKER_F5_ONLY")=="1"){Console.WriteLine("PASS TARGET-MARKER F5 title plus four controls same row, full top at scroll0, real Chinese font and actual150%. No world Draw rerun.");return;}
             Call(ui,"Close");Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
             var host=Get(context,"CombatObservation");var world=Get(host,"World");var marker=Get(world,"Marker");
             foreach(var n in Main.npc)n.active=false;var target=Main.npc[2];target.SetDefaults(2);target.whoAmI=2;target.active=true;target.position=new Vector2(720,450);target.target=0;Main.LocalPlayer.position=new Vector2(640,500);Main.dayTime=false;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");var markerOnlyPixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true).Toggle(6));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");var markerOnlyPixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             Require((bool)Get(marker,"Visible") && (int)Get(world,"StrokeCount")==0 && ((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Required==0 && markerOnlyPixels.Any(pixel=>pixel.A>0),"Actual marker-only Draw has pixels without future path work");
             NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));NativeCombatObservationChecks.Fresh(context,host);Call(world,"Prepare");var pathOnlyPixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             Require(!(bool)Get(marker,"Visible") && (int)Get(world,"StrokeCount")>5 && pathOnlyPixels.Count(pixel=>pixel.A>0 && pixel.R>pixel.G+10 && pixel.G>pixel.B+20)>20,"Actual path-only Draw has gold route pixels without marker commands");
@@ -103,6 +110,19 @@ namespace NativeWorldTextProbe
             {Main.LocalPlayer.gravDir=gravity;Main.GameViewMatrix.Zoom=new Vector2(zoom);Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require((bool)Get(marker,"Visible"),"Marker survives supported gravity/zoom.");graphics.Image(System.IO.Path.Combine(output,"marker-transform-"+gravity+"-"+zoom.ToString(System.Globalization.CultureInfo.InvariantCulture)+".png"),()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);}
             Main.LocalPlayer.gravDir=1;Main.GameViewMatrix.Zoom=Vector2.One;NativeCombatMarkerCapacityChecks.Run(context,graphics,output);NativeGuidanceCameraChecks.Run(context,graphics,output);Main.mapFullscreen=true;Call(world,"Prepare");NativeCombatPresentationChecks.Project(world);Require(!(bool)Get(marker,"Visible"),"Fullscreen map retires marker commands.");Main.mapFullscreen=false;
             NativeCombatObservationChecks.Save(host,new ObservationOptions());Console.WriteLine("PASS TARGET-MARKER real original atlas/Draw, resource-failure remaining path pixels, bounded retry. This is isolated XNA, not gameplay FPS/owner acceptance.");
+        }
+        private static object[] Elements(object state)=>((IEnumerable)Get(Get(state,"Layout"),"Elements")).Cast<object>().ToArray();
+        private static void SetAim(object host,object renderer,object state,bool enabled)
+        {
+            // Only the control-query segment needs the committed ON card.
+            // Keep the preceding/following marker-only checks genuinely OFF.
+            var settings=(ObservationSettings)Get(host,"Settings");long accepted=settings.AcceptedCommandId;
+            var button=Elements(state).Single(e=>Get(e,"Command").ToString()==(enabled?"ObservationAimOn":"ObservationAimOff"));
+            Call(Get(renderer,"CombatObservationControls"),"Execute",Get(button,"Command"));
+            NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return settings.Ready;});
+            Require(settings.AcceptedCommandId==accepted+1 && settings.CompletedCommandId==accepted+1 && settings.CompletionSucceeded && settings.Value.Aim==enabled,"Actual Aim command commits the requested card state once.");
+            Call(renderer,"Prepare",state,(float)Main.screenWidth/Main.UIScale,(float)Main.screenHeight/Main.UIScale,Main.UIScale);
+            Require(Elements(state).Any(e=>Get(e,"Command").ToString()=="ObservationMarker")==enabled,"Committed Aim state controls settings hit geometry.");
         }
         private static void RequireTitleRow(object[] elements,object[] row)
         {

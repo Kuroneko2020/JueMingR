@@ -1,0 +1,494 @@
+{
+  "schema": "aim-cost-nav-review-map-20261015-1",
+  "taskBase": "69ffc7bfd5223069081c848f1646b49e958b2eea",
+  "branch": "codex/aim-attack-modeling-and-integration",
+  "reviewStatus": "APPROVED_FOR_STAGE",
+  "packageStatus": "EXECUTED_VERIFIED",
+  "installStatus": "INSTALLED_VERIFIED",
+  "qualification": "INCOMPLETE",
+  "releaseEligible": false,
+  "finalMeasurementHost": {
+    "mvid": "37b7ffd8-855b-4f57-a21f-e5c9cd24bc7b",
+    "sha256": "E536FC4D99882305A0C53EC6C2BF6443725370CB386B0EF94025F0C5EE27A743"
+  },
+  "sourceFiles": [
+    {
+      "path": "docs/计划/辅助瞄准阶段文档.md",
+      "length": 540273,
+      "sha256": "465CC3E10ED5C86755F8BB3ED0B6017A72ED50ADA23795CA2C6DE1427F006CB5"
+    },
+    {
+      "path": "docs/设计/战斗辅助实现设计.md",
+      "length": 186998,
+      "sha256": "85E09016964C5E15C18D5DE3C3BEB38777D507F2838C74ECB80EBC4C6721F897"
+    },
+    {
+      "path": "docs/AI经验笔记/战斗移动与钓鱼机制.md",
+      "length": 43464,
+      "sha256": "A45C5D4E4269928A3EA0E58197D7FBBD21CB274676E291F700FFA32E23CBBB57"
+    },
+    {
+      "path": "scripts/workload/AimStage.Development.ps1",
+      "length": 31990,
+      "sha256": "C771F48642831BB2E8C715F369B9C4AE2199F6749677880CB17BA567A1835070"
+    },
+    {
+      "path": "scripts/workload/Workload.Definitions.ps1",
+      "length": 39702,
+      "sha256": "0B559548BB59A72DE150D7FF8E04620044403F9F58EC35B3E38EFEB45F124947"
+    },
+    {
+      "path": "src/JueMingR.Features/Combat/AttackBallisticCandidates.cs",
+      "length": 9545,
+      "sha256": "15CEAEAFA42E72433CBC613EDA48470F7D72AABCCE2788188DFF939BE61EF284"
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/CombatObservationWorldLayer.cs",
+      "length": 23086,
+      "sha256": "A0218673309866EB69DF6CDC4E50A9F6C5E55714B662BF95BDA7DFFF2A50045B"
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs",
+      "length": 36243,
+      "sha256": "0E5B8B4A93BEEA86AB8DA488EC0B1019E2F389369611657D85B4BB569235F5BA"
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs",
+      "length": 34699,
+      "sha256": "350EA6915D7431EACB7DDDB3EDDFBC0C728DB7970BE019BB9482D874440AD6B0"
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostAttackObstacles.cs",
+      "length": 39906,
+      "sha256": "9FCEE6D9341546338118804F60617A326F289723A558062FC056862FC74AEB40"
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostBetsyFlameAttack.cs",
+      "length": 24164,
+      "sha256": "4F7618B9E6FF10D4D089E8F9F15441FF5BA7515692A324E7681F83F91A2BD2AE"
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostBottleAttack.cs",
+      "length": 25378,
+      "sha256": "1FDE2B0F45646527E936EBFAFEC87EA7CAA9D42A7319BDEB7350536474080A85"
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostCombatObservation.cs",
+      "length": 34459,
+      "sha256": "4744129B555654C1D5774BDB7D9EA5846523EF21034E000DF1F071230888CA39"
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs",
+      "length": 30649,
+      "sha256": "4B19FDF05D6C527CA87CCCF2DA01D62A08A8B2E0AED11BF9E83D587E279578FB"
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostYoyoReleaseAttack.cs",
+      "length": 17672,
+      "sha256": "18E685B5634AB632FD3A96296B50A56CB804C8F4D0433B2574E3A129135CAC02"
+    },
+    {
+      "path": "tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs",
+      "length": 11238,
+      "sha256": "5EAA0D859ED4C18BD5938F37EE05B5174D517C60B4E4B9C4E7883BF74038E841"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/Fixtures/MagicReleaseBeforeNpc.bits",
+      "length": 124612,
+      "sha256": "0AF132B3F2E0940DF4D0F8606690B0E4B03A97C5FAB8DA132F96DA9B6B1E2E98"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeChecks.cs",
+      "length": 52837,
+      "sha256": "788094672E829F569B891A8929CD9BCD0D20F4A02B5865C6F25DB48214D579D9"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs",
+      "length": 22741,
+      "sha256": "576B63448FA23E9A4C9C7564E8AB1B873548428DF9D2685139B1AE4ACCF5CA2B"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBallisticPreparationChecks.cs",
+      "length": 13655,
+      "sha256": "315574F2DC601684C0E7005BF03CF661C9EC6E2306CAFC410B1581F164FF66A9"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBetsyFlameChecks.cs",
+      "length": 22410,
+      "sha256": "085560FB7925B650118182655D08CF945A25BB9C30FD69430CC661D25E279966"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBottleChecks.cs",
+      "length": 23281,
+      "sha256": "B02A7EC58CD1A8323AF6C17DBCF5D28DA8428C5902F79CAC66475A8F69EB40A9"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatCostNavigationChecks.cs",
+      "length": 41580,
+      "sha256": "6BEC0FE9AB00664C34F0F19B24A755B30300E51B49A5A874216C4FA5EEF857C9"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatMagicStringAimChecks.cs",
+      "length": 16612,
+      "sha256": "7230ACA8DDA54440302AEF4E354776141251D7A5D2031AF76258EC4E5461DD19"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatPathContinuityChecks.cs",
+      "length": 8496,
+      "sha256": "8D308C3CA2F31064C09898C68CF1913C764FF2D15BBA7A5FBF481D66DF808FAF"
+    },
+    {
+      "path": "tests/NativeWorldTextProbe/NativeCombatYoyoNavigationChecks.cs",
+      "length": 22907,
+      "sha256": "48EDFFA1C8B4A5F401D3C90091DBF62E842019DE1D8232F8C24DB4B064D88A21"
+    }
+  ],
+  "responsibilities": [
+    {
+      "id": "architecture-combat",
+      "status": "EXECUTED_PASS",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/architecture-final.log",
+          "length": 126,
+          "sha256": "1A61DD9ED16DCF68918C3D0D42949A589D0B14CBDD8E71B1E009D18DA9E96724"
+        }
+      ]
+    },
+    {
+      "id": "contact-navigation",
+      "status": "EXECUTED_PASS_WITH_REVIEWED_REUSE_PENDING",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/A-navigation-r8.log",
+          "length": 55615,
+          "sha256": "7E33731B700F8D904EF1D5848079E8765B3334D1CA626FAB934AB5296D680E83"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/A-terrarian-base-r1.log",
+          "length": 1740,
+          "sha256": "ABF3EA12EF6327F0AA12AD56D08496D2BE2DF1826AED3D9A66ACF6261518CA37"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/recovery-byte-proof.txt",
+          "length": 100,
+          "sha256": "7F66EB2BB02AEE9B3581813D4497D9065E0402955D782E7AF4A2371B11AB9C21"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/A-work-base.log",
+          "length": 1706,
+          "sha256": "A3D25F9C83532652411208768F9A3EC2CC23C656E6845603A0D129F0AD117B51"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/A-work-new.log",
+          "length": 1590,
+          "sha256": "51E7E05E4859A49FB34101E99FE91232D44DC83DFA9970869B3D193A0676EE69"
+        }
+      ],
+      "applicability": "A-r8 original collision/navigation matrix, exact recovered type/nested IL, followed by the separately validated normal-centre early return and A Main13 receives."
+    },
+    {
+      "id": "magic-release",
+      "status": "EXECUTED_PASS_REPAIR_PENDING_REVIEW",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/C-review-final-model.log",
+          "length": 31624,
+          "sha256": "ADF3C9BA4F5F69E3F664C3DED8E1A0C0DFF0E06291B45AA4ADD4FB740000044C"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/C-review-final-native.log",
+          "length": 37203,
+          "sha256": "F3F807FA162C25FB7789884D0E901AA510AD9340C7C8FC5DBB9D5311A946D5F7"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/C-review-receive-RED.log",
+          "length": 28987,
+          "sha256": "10A0FA755CF0D009454410365E27FED80851F1448D47478A09D9C7F48F72BC9E"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/C-review-follow.log",
+          "length": 32361,
+          "sha256": "6B579C17334245F34652C66C87A484114D1925C99300B50C6C0F0C6B43FD9C23"
+        }
+      ],
+      "applicability": "Current exact production/source inputs. Fixed 1ababaf same current regression RED (actual initialized detached AI99 first Damage37 vs95), repair original native firstDamage37/37 and mirror36/36; 20 neighboring geometry/window cases and 12 raw IEEE phase/window cases PASS. 256177/177 steps1603510 to771559. No old51.91% resignment."
+    },
+    {
+      "id": "ballistic-candidates",
+      "status": "EXECUTED_PASS_SOURCE_IDENTICAL",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/ballistics-repair2-ballistic-candidates.log",
+          "length": 9116,
+          "sha256": "EF94F3E0BC10C2432D870E25F066E51EEB2A34A734FFED78B7B9CA41B264C24E"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/ballistics-repair-receipt.json",
+          "length": 1683,
+          "sha256": "0835DA148BED68FABB3E4B3ACCDFF27DF5CC4A126CDC8489D6DB1F1477F996FD"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/ballistics-repair-source-inputs.json",
+          "length": 1510,
+          "sha256": "F2361599298A86E874FE4688F5AE6B45B7975E184473E02933F5995574EDF3C6"
+        }
+      ]
+    },
+    {
+      "id": "ballistic-preparation",
+      "status": "EXECUTED_PASS_SOURCE_IDENTICAL",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/ballistics-repair-result.md",
+          "length": 6130,
+          "sha256": "15F660843360FF5477F5E3B98583E00817FCFE6287DAD88202EC2DC813F7896E"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/ballistics-repair2-ballistic-candidates.log",
+          "length": 9116,
+          "sha256": "EF94F3E0BC10C2432D870E25F066E51EEB2A34A734FFED78B7B9CA41B264C24E"
+        }
+      ],
+      "applicability": "All final D/E production/test inputs match repair2. Host-wide A/C later changes do not change these component paths; no newly executed Main claimed."
+    },
+    {
+      "id": "betsy-native",
+      "status": "EXECUTED_PASS_SOURCE_IDENTICAL",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/ballistics-repair2-betsy-flame.log",
+          "length": 3435,
+          "sha256": "45C8C4475906FD4E756FB828625EC3B1AF63D325018C90C545340A652D9B9839"
+        }
+      ]
+    },
+    {
+      "id": "bottle-native",
+      "status": "EXECUTED_PASS_SOURCE_IDENTICAL",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/ballistics-repair2-bottle.log",
+          "length": 2128,
+          "sha256": "4D0732DA00920C1EF0FEB026D2C418788A79A55AA54767D73AD09B645C6EDA60"
+        }
+      ]
+    },
+    {
+      "id": "effects-receive",
+      "status": "REUSED_UNCHANGED_CONSUMER_PENDING_REVIEW",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/ballistics-receive.log",
+          "length": 495,
+          "sha256": "16709D8A8D85848A6A700B6A0D4A7EBF7705E0708353450561BFA96032F3CF86"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/ballistics-candidate-reuse.log",
+          "length": 702,
+          "sha256": "170F7610E7EA84223E735FD029412A4D149CFF49C281030D144FF47B3D8791C3"
+        }
+      ],
+      "applicability": "Receive/candidate lease semantics unchanged; final repair2 full native family consumer additionally green."
+    },
+    {
+      "id": "path-continuity",
+      "status": "EXECUTED_PASS_SOURCE_IDENTICAL",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/B-base-r02.log",
+          "length": 1830,
+          "sha256": "0E970205B3FC05F83D4CFBE1E2E4C95D93582DFA0AFD9F32A68758ECFE8CE0A7"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/B-candidate-r01.log",
+          "length": 687,
+          "sha256": "973E5833D7A0E734473061C4CB7CC8FC33282CA6CD1E4EB39126AA3F97246AC4"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/B-evidence.json",
+          "length": 1641,
+          "sha256": "C8600C0855356049E79E0EF92293B4118769A14333D319AC805B30BD72199026"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/B-source-followup.md",
+          "length": 3357,
+          "sha256": "72D755A33565F2C12A863E5A7E4EA65AF79F0ED4E4DC17BA3B0442D9B53E086B"
+        }
+      ],
+      "applicability": "Same two B production files and narrow GPU assertions; no current host MVID relabel of old B execution."
+    },
+    {
+      "id": "main-performance",
+      "status": "EXECUTED_WITH_UNFAVORABLE_RESULTS_DISCLOSED",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/measurement/formal-summary.json",
+          "length": 147113,
+          "sha256": "48DB85E51EA2169C67012173FCA0AD93D2C1710F1ADF92A2FDEA98B26C512E39"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/measurement/review-repair-build-record.json",
+          "length": 106139,
+          "sha256": "61DCC3EC38B015AD86C497B4619DA361E7D1282150780047DD3A0755323F16EE"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/measurement/review-repair-payload-receipt.json",
+          "length": 446,
+          "sha256": "9857BB2DD30F6FDE85B2052C8A7862C54B0C1DFCCB97FA34293112F6986D97AC"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/measurement/new-C-both-r11/receipt.json",
+          "length": 855,
+          "sha256": "D3FE98C02A669AB8E5639BCECDCF7DD24E8A3C8857E4756C204E096193FDB61F"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/ballistics-repair2-cost.log",
+          "length": 1005,
+          "sha256": "9A1B1B8D28365EEFBD266400E28A031AA4FE8F3298D8E4321401D75DF9995F80"
+        }
+      ],
+      "applicability": "Initial14 and all A/C repair windows retained; final A Aim/Both r02 reused, C r11 new ordinary Release window. D Main pre-repair2 unchanged and repair2 component evidence retained. Final C steady/p99/first shot/Draw disadvantages disclosed, no overall threadCPU/FPS claim."
+    },
+    {
+      "id": "representative-opportunities",
+      "status": "EXECUTED_PASS_WITH_EXTRA_BASIC_LIMIT",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/measurement/new-C-both-r11/out/world-smoke-summary.txt",
+          "length": 790,
+          "sha256": "F3EA5C696E3AABCAB296073B9B6B302252563FAC8F0898C6D1E34BAB7A16ACD6"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/measurement/new-Nav-aim-r02/out/world-smoke-summary.txt",
+          "length": 779,
+          "sha256": "FDBF84C3D7CB30B1B33054E0ADF5793E0B88C614A02D97A2FC4A9E5A7C3D7BB9"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/measurement/new-Nav-both-r02/out/world-smoke-summary.txt",
+          "length": 780,
+          "sha256": "0C8261D9C13B3C463C63C69102486D2A567EFA4A3622451D69CAB2831BCE8489"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/measurement/new-Gun-both-r02/out/world-smoke-summary.txt",
+          "length": 785,
+          "sha256": "5F9FBE2B437031AC5A187122A1A551533C1BA20C1C55BF450C1F812D623AC10B"
+        }
+      ],
+      "applicability": "C29/A13/Gun20 actual receives, no delayed consumption. Gun44E1B to43E2B is disclosed, inner first cause unknown, not full equivalence."
+    },
+    {
+      "id": "workload-routing",
+      "status": "EXECUTED_PASS",
+      "artifacts": [
+        {
+          "path": ".local/aim-cost-nav-20261015/workload-routing-final.log",
+          "length": 15987,
+          "sha256": "D07F25F3A28E1B99E975EAF8DD74D5DC753AB69CAB5FA5ABF70CE46CB10477ED"
+        },
+        {
+          "path": ".local/aim-cost-nav-20261015/workload-evidence-ps51.log",
+          "length": 6103,
+          "sha256": "22588F98E1E2CB0638761DEB3CC1BB5C79E9BD6E80B58F6BD05C6318E60C5205"
+        }
+      ],
+      "applicability": "Routing final includes actual diff and exact fixture mapping; existing evidence regression valid WindowsPowerShell5.1 input preserved."
+    }
+  ],
+  "rawCounterexampleAndRecovery": [
+    {
+      "path": ".local/aim-cost-nav-20261015/measurement/diagnostic-C-full-bits-r2/out/release-row-1-step-337.bits",
+      "length": 78689,
+      "sha256": "34CF5621E2423A1C2FEC02B7E3165177B5D562AB12DE0DBBF1B4587FE8895A8B"
+    },
+    {
+      "path": ".local/aim-cost-nav-20261015/measurement/diagnostic-C-full-bits-r2/out/release-row-2-step-337.bits",
+      "length": 133231,
+      "sha256": "0780505FE8EBD109D637B4751302F709E5A6B79D4EFBFE23C5D2BEBA52BC27BA"
+    },
+    {
+      "path": ".local/aim-cost-nav-20261015/measurement/diagnostic-C-full-bits-r2/out/release-diagnostic.txt",
+      "length": 36964,
+      "sha256": "95BB26430B3164B157F475B476D35238224EE7A5246374181B289163AFC38622"
+    },
+    {
+      "path": ".local/aim-cost-nav-20261015/A-validated-debug/JueMingR.TerrariaHost.dll",
+      "length": 2442752,
+      "sha256": "E49683CDB4A80183E222E47F6112F74E32236E6DDEBB0E78E7D4127320364C74"
+    },
+    {
+      "path": ".local/aim-cost-nav-20261015/HostYoyoNavigation-recovered.cs.txt",
+      "length": 29945,
+      "sha256": "BBAB2FB667109261D5AFB6A812BA6B0DF61C58D42DAC3AE0DD2F675DEB01A017"
+    }
+  ],
+  "sourceIdentityChecks": {
+    "ballisticsRepair2Mismatches": 0,
+    "presentationMismatches": 0
+  },
+  "reviewBoundary": "Only TASK_BASE to fixed candidate commit. Commit supplied by Git/STATE after these self-referential materials are saved. Raw local files not committed. No approval inferred from this map.",
+  "repair": {
+    "reviewedCandidate": "1ababafef603c19576e12ad4d3914c3669070651",
+    "priorVerdict": "NEEDS_FIX",
+    "blockingFinding": "P2 C finite candidate generation omitted effective low arc at H120 target500,-100 vx0, oldnearest37/error16.00157 versus96/29.23829; <16 eligibility cannot excuse it.",
+    "originalReview": {
+      "path": ".local/aim-cost-nav-20261015/independent-review-1ababaf-original.md",
+      "length": 4281,
+      "sha256": "E29691D3262D0C3947DD0D0CCE10C411CF7570491017A5A82C84887A1EABD568"
+    },
+    "repairScope": [
+      "src/JueMingR.TerrariaHost/Combat/HostYoyoReleaseAttack.cs",
+      "tests/NativeWorldTextProbe/NativeCombatCostNavigationChecks.cs",
+      "three existing responsibility documents",
+      "three existing review material files"
+    ],
+    "mechanism": "Five unique nominations per band; follow unevaluated nearest canonical before symmetric neighbors. Fixed point/cycle and original five-slot allowance bound work to42; no threshold or coordinate special case.",
+    "nativeReceiveBoundary": "Clearly initialized model detached birth state then original AI99/collision/NPC immunity/Damage. It is not the full parent-born chain; that chain separately passed native MagicStringAimChecks. Old reviewed direction actually95 vsoldreference37; repaired37/37, mirror36/36. Modelnearest37/96 not called nativeDamage59 frames.",
+    "model": {
+      "oldValid": 177,
+      "newValid": 177,
+      "oldSteps": 1603510,
+      "newSteps": 771559,
+      "qualityEqual": 174,
+      "qualityWorse": 3,
+      "worstSquaredLoss": 8.769718,
+      "bothPreciseLater": 0
+    },
+    "mainWindow": "new-C-both-r11",
+    "allOtherSixItems": "frozen; source bytes unchanged; same prior executions and reviewed reuse, not rerun",
+    "qualification": "INCOMPLETE",
+    "releaseEligible": false
+  },
+  "completedReviews": {
+    "productionCandidate": "936f865e10d6d4307804b15c6466505c71241c8b",
+    "initialVerdict": "NEEDS_FIX",
+    "repairVerdict": "PASS",
+    "fullReview": {
+      "path": ".local/aim-cost-nav-20261015/independent-review-1ababaf-original.md",
+      "length": 4281,
+      "sha256": "E29691D3262D0C3947DD0D0CCE10C411CF7570491017A5A82C84887A1EABD568"
+    },
+    "repairReview": {
+      "path": ".local/aim-cost-nav-20261015/independent-review-936f865-PASS-original.md",
+      "length": 2756,
+      "sha256": "5F6DA3D717D0E66D2D926BF5AC222A19F2A23624F41FDC849AF2E47DAF31E966"
+    },
+    "deliveryDecision": {
+      "path": ".local/aim-cost-nav-20261015/delivery-decision-936f865.md",
+      "length": 969,
+      "sha256": "B82CB78AA9D62EB117A2F06B86A86F96270E65DAB493E923445489B4394A3BD8"
+    },
+    "scope": "Initial six unaffected items combined with exact C repair eight-file narrow review; documentation records outcomes only; no claim reviewer ran builds/tests."
+  },
+  "delivery": {
+    "sourceCommit": "357df9bd4790aa85f0658e97bc30897b01b2d652",
+    "productionCandidate": "936f865e10d6d4307804b15c6466505c71241c8b",
+    "receipt": "review-materials/aim-cost-nav-20261015/delivery-receipt.json",
+    "zipSha256": "336BFFEC081B3E686E730CA2D43F5875BAC6D24148CC596D93E6243134E7FEC6",
+    "packageHostMvid": "f5553df0-eb8f-40a7-8927-68f71bfea6f8",
+    "packageHostSha256": "64F2D965FF0E8D164AE971C40569325509F8E6F9D83A0773BC966D1F48CFD9F2",
+    "scope": "One final full package andone narrow actual consumer; backup/officialRestore/Install/readback once; noMain orsource changes afterinstallation",
+    "qualification": "INCOMPLETE",
+    "releaseEligible": false
+  }
+}

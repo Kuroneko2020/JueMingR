@@ -20,7 +20,7 @@ namespace JueMingR.TerrariaHost.F5
         internal bool OwnsPointer {get{return Captured || tail || ConsumeLeft;}}
         internal int Draft {get;private set;}
         internal int Value {get{return Captured?Draft:host.Options.Radius;}}
-        internal bool Available {get{return host.CanConfigure && host.Options.MouseCenter;}}
+        internal bool Available {get{return host.CanConfigure && host.Options.Aim && host.Options.MouseCenter;}}
         internal F5Rect Track {get;private set;}
         internal CombatRadiusDrag(ICombatObservationControls host,F5Interaction state){this.host=host;this.state=state;}
         internal static F5Rect TrackIn(F5Rect field,float labelWidth){return new F5Rect(field.X+labelWidth+16,field.Y+field.Height/2-7,Math.Max(20,field.Width-labelWidth-24),14);}

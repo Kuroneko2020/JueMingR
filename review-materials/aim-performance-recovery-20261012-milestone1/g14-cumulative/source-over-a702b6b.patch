@@ -1,0 +1,303 @@
+diff --git a/src/JueMingR.Features/Combat/RollingNpcPrediction.cs b/src/JueMingR.Features/Combat/RollingNpcPrediction.cs
+index acec83c..fcc2346 100644
+--- a/src/JueMingR.Features/Combat/RollingNpcPrediction.cs
++++ b/src/JueMingR.Features/Combat/RollingNpcPrediction.cs
+@@ -35,7 +35,7 @@ namespace JueMingR.Features.Combat
+         // excludes trend/history, observation fallback and timed source payloads;
+         // it never permits retimestamping a conditional trajectory.
+         public bool FixedInputResult {get;private set;}
+-        public void Clear(){Continuation=null;FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;Array.Clear(work,0,work.Length);}
++        public void Clear(){Continuation=null;FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;ClearPlayerFixedPoint();Array.Clear(work,0,work.Length);}
+         public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null,bool firstPlayerStepCompleted=false)
+         {
+             CombatPredictionWork.Check();
+@@ -97,7 +97,7 @@ namespace JueMingR.Features.Combat
+             Array.Copy(source,resultSample,count);for(int i=0;i<count;i++)resultRoles[i]=motionRoles==null || motionRoles[i];
+             resultEnvironment=environment;resultPlayer=player;resultCount=count;resultSelected=selected;resultRequired=required;resultTick=tick;resultEpoch=epoch;resultTerrain=terrain;resultObserved=observed;
+             Array.Copy(source,work,count);work[selected]=current;
+-            terrain.Reset();playerSettled=false;points[0]=new NpcTrajectoryPoint(0,current);int length=1;PredictionStop stop=PredictionStop.None;
++            terrain.Reset();ClearPlayerFixedPoint();points[0]=new NpcTrajectoryPoint(0,current);int length=1;PredictionStop stop=PredictionStop.None;
+             var towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);
+             var moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);
+             var gravityEnvironment=environment;bool gravityNeeded=player.GravitySourceExpected || player.ForcedGravityTicks>0;
+@@ -129,7 +129,7 @@ namespace JueMingR.Features.Combat
+                     // its whole player timeline at point zero, once; never
+                     // begin simulating that player halfway through the path.
+                     if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
+-                    needsPlayer=true;observedPlayer=boundedPlayer;restarted=true;player=initialPlayer;terrain.Reset();playerSettled=false;
++                    needsPlayer=true;observedPlayer=boundedPlayer;restarted=true;player=initialPlayer;terrain.Reset();ClearPlayerFixedPoint();
+                     Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;continue;
+                 }
+                 // Natural ItemCheck sees this player's completed move but the
+@@ -150,7 +150,7 @@ namespace JueMingR.Features.Combat
+                         // once with one consistent real-observation premise.
+                         // Switching back to the real origin halfway through
+                         // a retained path would create an artificial turn.
+-                        observedPlayer=restarted=true;boundedPlayer=floatingFailure;stop=PredictionStop.None;terrain.Reset();playerSettled=false;
++                        observedPlayer=restarted=true;boundedPlayer=floatingFailure;stop=PredictionStop.None;terrain.Reset();ClearPlayerFixedPoint();
+                         Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;continue;
+                     }
+                     else{FailureLayer=PredictionFailureLayer.PlayerPremise;break;}
+@@ -219,7 +219,7 @@ namespace JueMingR.Features.Combat
+                     if(playerNeededThisAction && !needsPlayer)
+                     {
+                         if(restarted || !Valid(initialPlayer)){stop=PredictionStop.PhaseBoundary;FailureLayer=PredictionFailureLayer.PlayerPremise;advanced=false;break;}
+-                        needsPlayer=restarted=true;observedPlayer=boundedPlayer;player=initialPlayer;terrain.Reset();playerSettled=false;
++                        needsPlayer=restarted=true;observedPlayer=boundedPlayer;player=initialPlayer;terrain.Reset();ClearPlayerFixedPoint();
+                         Array.Copy(source,work,count);work[selected]=current;towerConsumers=NpcCelestialTowerMotion.CreateConsumers(environment);moonLeeches=NpcMoonLeechMotion.CreateLeeches(environment);gravityEnvironment=environment;gravityPoints[0]=GravityPoint(gravityEnvironment);wallPoints[0]=WallPoint(work,count);length=1;future=0;actorRestart=true;break;
+                     }
+                     // A shared-life owner is a health dependency, not permission
+@@ -303,19 +303,41 @@ namespace JueMingR.Features.Combat
+         }
+         private NpcMotionState playerBody;
+         private bool playerSettled;
++        private PredictionPlayerMotion playerFixedInput;
++        private PredictionEnvironment playerFixedEnvironment;
++        private IPredictionTerrain playerFixedTerrain;
++        private void ClearPlayerFixedPoint()
++        {playerSettled=false;playerFixedInput=default(PredictionPlayerMotion);playerFixedEnvironment=default(PredictionEnvironment);playerFixedTerrain=null;}
++        private static bool SamePlayerPhysicalInput(PredictionPlayerMotion prior,PredictionPlayerMotion current)
++        {
++            // Only BeginGravity/BeginWall read these trajectory indices, and
++            // both have already consumed THIS action before this comparison.
++            // Horizontal/Vertical, terrain movement, AfterFluid and Borders
++            // do not read them. Align only the historical VALUE copy; retain
++            // every resulting gravity, Wall, health, fluid and control fact.
++            // Never weaken SameSample or alter the live forecast's clocks.
++            prior.GravityAction=current.GravityAction;prior.WallAction=current.WallAction;
++            return prior.SameSample(current);
++        }
+         private bool AdvancePlayer(ref PredictionPlayerMotion p,PredictionEnvironment e,IPredictionTerrain terrain,out PredictionStop stop)
+         {
+-            stop=PredictionStop.None;float priorGravity=p.GravityDirection;
+-            if(!PlayerMotionContinuation.BeginWallFall(ref p,e,terrain,out stop))return false;
+-            if(!PlayerMotionContinuation.BeginGravity(ref p,e,out stop))return false;
+-            if(priorGravity!=p.GravityDirection)playerSettled=false;
+-            bool wallHandled;if(!PlayerMotionContinuation.BeginWall(ref p,e,terrain,out wallHandled,out stop))return false;
+-            if(wallHandled){playerSettled=false;return true;}
+-            // Within this one forecast the sampled local cells are immutable.
+-            // A grounded idle fixed point needs one collision/liquid query,
+-            // not the same rectangle 120 times. Reset on EVERY real sample.
+-            if(playerSettled){if(!PlayerMotionContinuation.ClampBorders(ref p,out stop))return false;PlayerMotionContinuation.CompleteItemCheck(ref p);return true;}
+-            float oldX=p.X,oldY=p.Y;
++            stop=PredictionStop.None;
++            if(!PlayerMotionContinuation.BeginWallFall(ref p,e,terrain,out stop)){ClearPlayerFixedPoint();return false;}
++            if(!PlayerMotionContinuation.BeginGravity(ref p,e,out stop)){ClearPlayerFixedPoint();return false;}
++            bool wallHandled;if(!PlayerMotionContinuation.BeginWall(ref p,e,terrain,out wallHandled,out stop)){ClearPlayerFixedPoint();return false;}
++            if(wallHandled){ClearPlayerFixedPoint();return true;}
++            var physicalInput=p;bool fixedEligible=!p.Complex && !p.Hover;
++            // Certificate covers the COMPLETE post-prefix -> post-fluid and
++            // border physical state, not XY/velocity or released controls.
++            // Queried cells belong to this synchronous forecast's immutable
++            // local terrain lease. Its first query records Ice reads normally;
++            // every new sample/terrain Reset/restart clears the certificate.
++            // Prefixes still run each action, and ItemCheck is never skipped.
++            if(playerSettled && fixedEligible && ReferenceEquals(playerFixedTerrain,terrain) &&
++                playerFixedEnvironment.Equals(e) && playerFixedEnvironment.PlayerTimelineActive==e.PlayerTimelineActive &&
++                SamePlayerPhysicalInput(playerFixedInput,p))
++            {if(!PlayerMotionContinuation.ClampBorders(ref p,out stop)){ClearPlayerFixedPoint();return false;}PlayerMotionContinuation.CompleteItemCheck(ref p);return true;}
++            ClearPlayerFixedPoint();
+             if(!p.Complex || p.Hover)
+             {
+                 PlayerHorizontalMotion.Step(ref p);
+@@ -349,8 +371,9 @@ namespace JueMingR.Features.Combat
+             p.X=playerBody.X;p.Y=playerBody.Y;p.Vx=playerBody.Vx;p.Vy=playerBody.Vy;
+             PlayerVerticalMotion.AfterFluid(ref p,playerBody.Wet,playerBody.Honey,playerBody.Lava,playerBody.Shimmer);
+             if(!PlayerMotionContinuation.ClampBorders(ref p,out stop))return false;
++            if(fixedEligible && physicalInput.SameSample(p))
++            {playerSettled=true;playerFixedInput=physicalInput;playerFixedEnvironment=e;playerFixedTerrain=terrain;}
+             PlayerMotionContinuation.CompleteItemCheck(ref p);
+-            playerSettled=!p.Complex && !p.Hover && !p.Left && !p.Right && !p.Up && !p.Down && !p.HoldJump && p.Vx==0 && p.Vy==0 && p.X==oldX && p.Y==oldY;
+             return true;
+         }
+         private static bool Valid(NpcMotionState n)
+diff --git a/src/JueMingR.TerrariaHost/Combat/PredictionTerrain.cs b/src/JueMingR.TerrariaHost/Combat/PredictionTerrain.cs
+index 7c34395..5200a26 100644
+--- a/src/JueMingR.TerrariaHost/Combat/PredictionTerrain.cs
++++ b/src/JueMingR.TerrariaHost/Combat/PredictionTerrain.cs
+@@ -24,13 +24,16 @@ namespace JueMingR.TerrariaHost.Combat
+         private struct DryRegion
+         {internal int Left,Right,Top,Bottom;internal long Epoch;}
+         private readonly DryRegion[] dryRegions=new DryRegion[32];
++        private struct SlopeFreeRegion
++        {internal int Left,Right,Top,Bottom;internal long Epoch;}
++        private readonly SlopeFreeRegion[] slopeFreeRegions=new SlopeFreeRegion[32];
+         private long epoch=1;
+         private int width,height;
+         private bool continuing;
+ #if DEBUG
+         internal int Reads {get;private set;}
+ #endif
+-        public void Reset(){if(continuing)return;cells.Clear();width=Main.maxTilesX;height=Main.maxTilesY;if(epoch==long.MaxValue){Array.Clear(hotEpochs,0,hotEpochs.Length);Array.Clear(dryRegions,0,dryRegions.Length);epoch=0;}epoch++;}
++        public void Reset(){if(continuing)return;cells.Clear();width=Main.maxTilesX;height=Main.maxTilesY;if(epoch==long.MaxValue){Array.Clear(hotEpochs,0,hotEpochs.Length);Array.Clear(dryRegions,0,dryRegions.Length);Array.Clear(slopeFreeRegions,0,slopeFreeRegions.Length);epoch=0;}epoch++;}
+         public bool Unchanged
+         {
+             get{if(width!=Main.maxTilesX || height!=Main.maxTilesY)return false;foreach(var pair in cells){Cell current;if(!Read(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}return true;}
+@@ -539,10 +542,23 @@ namespace JueMingR.TerrariaHost.Combat
+         {
+             stop=PredictionStop.None;float x=n.X,y=n.Y,w=n.Width,h=n.Height,correctX=x,correctY=y,upper=y,lower=y,vx=n.Vx,vy=n.Vy;int mask=0;bool stairFall=false;
+             if(signedProjectile?!SignedProjectileArea(x,y,w,h,true,out stop,nativeClip):nativeClip?!FreeBody(x,y,w,h,out stop):!QueryArea(x,y,w,h,out stop))return false;
+-            for(int i=Math.Max(0,(int)(x/16)-1);i<Math.Min(Main.maxTilesX-1,(int)((x+w)/16)+2);i++)
+-            for(int j=Math.Max(0,(int)(y/16)-1);j<Math.Min(Main.maxTilesY-40,(int)((y+h)/16)+2);j++)
++            CombatPredictionWork.Check();
++            int left=Math.Max(0,(int)(x/16)-1),right=Math.Min(Main.maxTilesX-1,(int)((x+w)/16)+2);
++            int top=Math.Max(0,(int)(y/16)-1),bottom=Math.Min(Main.maxTilesY-40,(int)((y+h)/16)+2);
++            bool cacheable=w>0 && h>0 && width==Main.maxTilesX && height==Main.maxTilesY && icePlayerGuard==null && icePathReads==null;
++            int slot=(left^(right*397)^(top*17)^(bottom*31))&31;var flat=slopeFreeRegions[slot];
++            bool flatMatch=cacheable && flat.Epoch==epoch && flat.Left==left && flat.Right==right && flat.Top==top && flat.Bottom==bottom;
++            // A COMPLETE scan proving every leased cell has Slope==0 cannot
++            // write any correction/mask/stair state, regardless of float pose
++            // inside the same discrete bounds. Retain acquisition and the
++            // whole cell lease; unknowns and even inactive nonzero slopes deny
++            // this proof. Ice capture/guards must still visit each cell. A hit
++            // saves only this first scan, never entry/exit validation or tails.
++            bool allFlat=true;
++            for(int i=left;!flatMatch && i<right;i++)
++            for(int j=top;j<bottom;j++)
+             {
+-                Cell c;if(!CellAt(i,j,out c,out stop))return false;if(!c.Solid && !(c.Platform && c.PlatformFrame))continue;
++                Cell c;if(!CellAt(i,j,out c,out stop))return false;if(c.Slope!=0)allFlat=false;if(!c.Solid && !(c.Platform && c.PlatformFrame))continue;
+                 float tx=i*16,ty=j*16+(c.Half?8:0),th=c.Half?8:16;
+                 if(x+w<=tx || x>=tx+16 || y+h<=ty || y>=ty+th)continue;
+                 if(c.StairPlatform && (n.Vy<0 || y+h<j*16 || y+h-(1+Math.Abs(n.Vx))>j*16+16 || ((c.Slope==1 && n.Vx>=0) || (c.Slope==2 && n.Vx<=0)) && (y+h)/16-1==j))continue;
+@@ -572,6 +588,7 @@ namespace JueMingR.TerrariaHost.Combat
+             if(ry>shift){float delta=shift-ry;correctY=y+ry;if((mask&2)!=0)correctX=x-delta;if((mask&4)!=0)correctX=x+delta;vx=vy=0;up=false;}
+             else if(ry<shift){float delta=ry-shift;correctY=y+ry;if((mask&8)!=0)correctX=x-delta;if((mask&16)!=0)correctX=x+delta;vx=vy=0;}
+             if(signedProjectile?!SignedProjectileArea(correctX,correctY,w,h,false,out stop,nativeClip):nativeClip?!FreeBody(correctX,correctY,w,h,out stop):!Area(correctX,correctY,w,h,out stop))return false;
++            if(cacheable && !flatMatch && allFlat)slopeFreeRegions[slot]=new SlopeFreeRegion{Left=left,Right=right,Top=top,Bottom=bottom,Epoch=epoch};
+             // Native SlopeCollision's final TileCollision replaces the shared
+             // flags even for zero correction. Early Dry Jump remains separate.
+             if(playerMode)n.PlayerHeadCollision=gravDir>0?up:down;
+diff --git a/tests/NativeWorldTextProbe/NativeCombatObservationChecks.cs b/tests/NativeWorldTextProbe/NativeCombatObservationChecks.cs
+index c9f6d03..4b6eb01 100644
+--- a/tests/NativeWorldTextProbe/NativeCombatObservationChecks.cs
++++ b/tests/NativeWorldTextProbe/NativeCombatObservationChecks.cs
+@@ -70,7 +70,18 @@ namespace NativeWorldTextProbe
+             var bubble=Main.npc[0];bubble.SetDefaults(371);bubble.whoAmI=0;bubble.active=true;bubble.position=new Vector2(700,650);bubble.target=0;bubble.ai[3]=1;
+             Save(host,new ObservationOptions(path:true,radius:0));Fresh(context,host);
+             Require((bool)Get(selection,"HasTarget") && ((NpcIdentity)Get(selection,"Target")).Type==371,"path alone selects 1 HP bubble while holding a tool with no attack; player range ignores mouse radius zero");
+-            var result=cache.Read(0);Require(result!=null && result.Count>1,"real path demand prepares a future without aim provider");
++            var result=cache.Read(0);
++            if(result==null || result.Count<=1)
++            {
++                // One post-failure snapshot only: inspect the actual producer
++                // outcome, never prepare another future to satisfy the test.
++                var source=Get(host,"Prediction");var work=Get(host,"PredictionWork");var raw=(NpcTrajectory)GetOptional(cache,"result");
++                Console.WriteLine("OBSERVATION PATH FIRST FAILURE GUC="+Main.GameUpdateCount+" budgetTick="+Get(work,"tick")+" budgetSpent="+Get(work,"spent")+" budgetExceeded="+Get(work,"Exceeded")+" budgetMs="+Get(work,"UsedMilliseconds")+
++                    " cacheRequired="+cache.Required+" minimum="+cache.MinimumRequired+" rawCount="+(raw==null?"none":raw.Count.ToString())+" rawStop="+(raw==null?"none":raw.Stop.ToString())+
++                    " sourceFailure="+Get(Get(source,"rolling"),"FailureLayer")+" sourceOutcome="+Get(source,"outcomeStop")+" outcomeTick="+Get(source,"outcomeTick")+" future="+Get(source,"outcomeFuture")+" owns="+Get(source,"ownsState")+" observed="+Get(source,"observedCount")+" native="+(GetOptional(source,"Native")!=null)+
++                    " pathFailed="+Get(host,"pathFailed")+" bubble="+bubble.type+"/style"+bubble.aiStyle+" active="+bubble.active+" life="+bubble.life+" ai="+string.Join(",",bubble.ai)+" player="+player.position+" size="+player.width+"x"+player.height+" dead="+player.dead+" gravity="+player.gravDir+" item="+player.HeldItem.type);
++            }
++            Require(result!=null && result.Count>1,"real path demand prepares a future without aim provider");
+             int existing=NativeCombatUsageChecks.ObservedNpcSteps;for(int i=0;i<2000;i++)Require(ReferenceEquals(cache.Read(0),result),"cached reads preserve result identity");Require(NativeCombatUsageChecks.ObservedNpcSteps==existing,"reading never advances NPC simulation");
+             // This bubble is already in its short terminal phase. Preserving
+             // demand cannot turn its real tail into sixty future updates.
+diff --git a/tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs b/tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs
+index 277c454..bfb66da 100644
+--- a/tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs
++++ b/tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs
+@@ -488,7 +488,8 @@ namespace NativeWorldTextProbe
+                     if(hasBody)bodyDraw=true;else childDraw=true;
+                 }
+             }
+-            Console.WriteLine("ORIGINAL floating route qualified="+qualified+" publishedSelected="+published+" previewTimeline="+(GetOptional(Get(attack,"preview"),"Timeline")!=null)+" flightReads="+(flightReads-initialFlights)+" familyCalls="+(familyCalls-initialFamilies)+" floatingMotionRefusals="+floatingMotionRefusals+" nativeParentDamage="+parentHits+" nativeChildDamage="+childHits);tracingFloating=false;
++            Console.WriteLine("ORIGINAL floating route qualified="+qualified+" publishedSelected="+published+" previewTimeline="+(GetOptional(Get(attack,"preview"),"Timeline")!=null)+" flightReads="+(flightReads-initialFlights)+" familyCalls="+(familyCalls-initialFamilies)+" floatingMotionRefusals="+floatingMotionRefusals+" nativeParentDamage="+parentHits+" nativeChildDamage="+childHits+
++                " parentBirths="+parentBirths+" childBirths="+childBirths+" bodyDraw="+bodyDraw+" childDraw="+childDraw+" memberChecked="+memberChecked+" detachedPreviews="+detachedPreviews+" detachedReceiveCount="+detachedReceives.Count+" detachedHit="+floatingDetachedHit+" hitMatched="+(floatingDetachedHit.HasValue && detachedReceives.Contains(floatingDetachedHit.Value)));tracingFloating=false;
+             Require(qualified==70 && published==70 && floatingMotionRefusals>0 && familyCalls>initialFamilies && parentBirths==1 && childBirths==1 && childHits>0 && bodyDraw && childDraw && memberChecked && detachedPreviews>0 && floatingDetachedHit.HasValue && detachedReceives.Contains(floatingDetachedHit.Value),"unsupported live hand withdraws while the sealed child's future contact independently matches a native receive after hand retirement");
+             Console.WriteLine("PASS ORIGINAL floating hand withdrawal/sealed-child receive="+floatingDetachedHit+" previews="+detachedPreviews+" actual World.Draw; zero extra terrain/discovery/replay; no future floating motion support claimed");
+         }
+diff --git a/tests/NativeWorldTextProbe/NativeCombatPlayerPolicyChecks.cs b/tests/NativeWorldTextProbe/NativeCombatPlayerPolicyChecks.cs
+index 90afce9..48fa9fd 100644
+--- a/tests/NativeWorldTextProbe/NativeCombatPlayerPolicyChecks.cs
++++ b/tests/NativeWorldTextProbe/NativeCombatPlayerPolicyChecks.cs
+@@ -63,6 +63,7 @@ namespace NativeWorldTextProbe
+                 ((IPredictionTerrain)terrain).Reset();Require(((IPredictionTerrain)terrain).Move(ref npc,default(PredictionEnvironment),out npcStop) && npc.Health.Fire==0,"NPC wet extinguish remains its own health consumer.");cases++;
+             }
+             finally{cell.CopyFrom(saved);Main.bottomWorld=bottom;}
++            NativeCombatPlayerFixedPointChecks.Run(context);
+             Console.WriteLine("PASS PLAYER POLICY independent native phase cases="+cases);
+         }
+         private static void Compare(Player p,string label,MethodInfo read,IPredictionPlayerTerrain terrain,ref int cases)
+diff --git a/tests/NativeWorldTextProbe/NativeCombatTerrainChecks.cs b/tests/NativeWorldTextProbe/NativeCombatTerrainChecks.cs
+index 29715cf..5b04ee4 100644
+--- a/tests/NativeWorldTextProbe/NativeCombatTerrainChecks.cs
++++ b/tests/NativeWorldTextProbe/NativeCombatTerrainChecks.cs
+@@ -63,6 +63,7 @@ namespace NativeWorldTextProbe
+         {
+             NativeCombatDryRegionChecks.Run(context);
+             NativeCombatWindDependencyChecks.Run(context);
++            SlopeFreeRegions(context);
+             var source=Get(Get(context,"CombatObservation"),"Prediction");var terrain=(IPredictionTerrain)Get(source,"Terrain");
+             var read=source.GetType().GetMethod("Read",BindingFlags.Static|BindingFlags.NonPublic);
+             var nativeMove=typeof(NPC).GetMethod("UpdateCollision",BindingFlags.Instance|BindingFlags.NonPublic);
+@@ -94,6 +95,70 @@ namespace NativeWorldTextProbe
+             }
+             finally{Main.tile[60,60]=saved;nativeGravity.SetValue(null,savedGravity);}
+         }
++        private static int slopeRegionCells;
++        private static void SlopeRegionCell(){slopeRegionCells++;}
++        private static bool SlopeRegionQuery(object terrain,float x,int width,bool expect=true)
++        {
++            const BindingFlags flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
++            var body=new NpcMotionState{X=x,Y=400.125f,Width=width,Height=20,Vx=.5f,Vy=.3f,StairFall=true,PlayerHeadCollision=true};
++            var args=new object[]{body,false,PredictionStop.None,true,1,false,false,false};
++            bool success=(bool)terrain.GetType().GetMethod("Slopes",flags).Invoke(terrain,args);
++            Require(success==expect,"slope region query keeps defined versus unavailable terrain");
++            if(!success){Require((PredictionStop)args[2]==PredictionStop.TerrainUnavailable,"unknown/guarded slope terrain retains its real stop");return false;}
++            var actual=(NpcMotionState)args[0];
++            var original=Collision.SlopeCollision(new Vector2(body.X,body.Y),new Vector2(body.Vx,body.Vy),body.Width,body.Height);
++            Require(Math.Abs(actual.X-original.X)<.0001f && Math.Abs(actual.Y-original.Y)<.0001f &&
++                Math.Abs(actual.Vx-original.Z)<.0001f && Math.Abs(actual.Vy-original.W)<.0001f &&
++                actual.PlayerHeadCollision==Collision.up && actual.StairFall==Collision.stairFall,
++                "warm/cold slope region preserves original position/velocity/head/stair tail at x="+x+" width="+width);
++            return true;
++        }
++        private static void SlopeFreeRegions(object context)
++        {
++            const BindingFlags flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
++            var host=Get(context,"CombatObservation");
++            var terrain=Activator.CreateInstance(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);
++            var cells=new System.Collections.Generic.List<Tuple<int,int,Tile>>();
++            for(int x=24;x<=35;x++)for(int y=23;y<=30;y++)cells.Add(Tuple.Create(x,y,Main.tile[x,y]));
++            bool solid=Main.tileSolid[TileID.Stone],capturing=false,guarding=false;int height=Main.maxTilesY;
++            var observer=new Harmony("JueMingR.Tests.SlopeRegionCells");
++            try
++            {
++                var cellAt=terrain.GetType().GetMethod("CellAt",flags);Require(cellAt!=null,"slope proof uses the real terrain cell consumer");
++                observer.Patch(cellAt,prefix:new HarmonyMethod(typeof(NativeCombatTerrainChecks).GetMethod("SlopeRegionCell",flags)));
++                foreach(var cell in cells)Main.tile[cell.Item1,cell.Item2]=new Tile();Main.tileSolid[TileID.Stone]=true;
++                Call(terrain,"Reset");slopeRegionCells=0;SlopeRegionQuery(terrain,400.125f,20);
++                Require(slopeRegionCells>0,"cold flat rectangle actually acquires its cells");int before=slopeRegionCells;
++                SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells==before,"same fully proved rectangle saves its repeated first slope scan");
++                SlopeRegionQuery(terrain,407.125f,80);Require(slopeRegionCells>before,"larger body acquires new scan bounds instead of borrowing the prior proof");
++
++                Call(terrain,"Reset");SlopeRegionQuery(terrain,407.125f,20);before=slopeRegionCells;
++                Main.maxTilesY=height+1;SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"world dimensions deny an old slope proof even within an unchanged local rectangle");Main.maxTilesY=height;
++                NativeToolsChecks.Tile(26,25,TileID.Stone);Main.tile[26,25].slope(1);
++                Require(!(bool)Get(terrain,"Unchanged"),"actual new slope retires the old complete cell lease");Call(terrain,"Reset");before=slopeRegionCells;
++                SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"new sample evaluates the actual slope against original collision");before=slopeRegionCells;
++                SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"a nonzero slope never becomes an all-flat region");
++
++                Main.tile[26,25].active(false);Call(terrain,"Reset");SlopeRegionQuery(terrain,407.125f,20);before=slopeRegionCells;
++                SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"even inactive nonzero slope conservatively denies the proof");
++                Main.tile[26,25]=new Tile();Main.tile[25,25]=null;Call(terrain,"Reset");SlopeRegionQuery(terrain,407.125f,20,false);
++                Main.tile[25,25]=new Tile();before=slopeRegionCells;SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"a failed partial scan cannot publish a flat proof");
++
++                Call(terrain,"BeginIcePathReadCapture");capturing=true;before=slopeRegionCells;SlopeRegionQuery(terrain,407.125f,20);
++                var reads=Call(terrain,"EndIcePathReadCapture");capturing=false;
++                Require(slopeRegionCells>before && !(bool)Call(reads,"Unaffected",new[]{new Point(25,25)}),"warm slope proof still visits and records cells while Ice capture is active");
++                Require((bool)Call(terrain,"BeginIcePlayerReadGuard",new[]{new Point(25,25)}),"slope test admits its private Ice guard");guarding=true;
++                SlopeRegionQuery(terrain,407.125f,20,false);Call(terrain,"EndIcePlayerReadGuard");guarding=false;
++                terrain.GetType().GetField("epoch",flags).SetValue(terrain,long.MaxValue);Call(terrain,"Reset");before=slopeRegionCells;
++                SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"epoch rollover clears old region proof and reacquires cells");
++                Console.WriteLine("PASS slope-free region: actual hot hit / float pose / size / dimensions / new slope / inactive slope / unknown partial / Ice reads and guard / epoch rollover; original SlopeCollision oracle");
++            }
++            finally
++            {
++                try{try{if(capturing)Call(terrain,"EndIcePathReadCapture");}finally{if(guarding)Call(terrain,"EndIcePlayerReadGuard");}}
++                finally{try{observer.UnpatchAll(observer.Id);}finally{Main.maxTilesY=height;Main.tileSolid[TileID.Stone]=solid;foreach(var cell in cells)Main.tile[cell.Item1,cell.Item2]=cell.Item3;Call(terrain,"Reset");}}
++            }
++        }
+         private static void SolidBoundaries(IPredictionTerrain terrain)
+         {
+             var tiles=Main.tile;int width=Main.maxTilesX,height=Main.maxTilesY,cases=0,positive=0;

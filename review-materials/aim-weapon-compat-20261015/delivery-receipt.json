@@ -1,0 +1,123 @@
+{
+  "schema": "aim-weapon-compat-delivery-20261015-1",
+  "status": "INSTALLED_VERIFIED",
+  "sourceCommit": "d177b0a1de35228057c5afc690459dfc70615e7f",
+  "productionSource": "48651f824e8805fece5c1bf76779208916558e39",
+  "taskBase": "0f93019526aa334877b4cfb4b5d38c3d1c0c55c4",
+  "coreReview": "APPROVED_FOR_STAGE",
+  "independentReview": ".local/aim-weapon-compat-20261015/independent-review-original.md",
+  "stageRecord": ".local/aim-weapon-compat-20261015/stage-reviewed-d177b0a-r02.json",
+  "stageRecordSha256": "DFB324485CB05E1B9509F3A4D8A0D95A83CC1A5A8D9A0E817ED0AA72087C1B5F",
+  "archive": {
+    "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\outputs\\aim-weapon-compat-delivery-20261015-d177b0a\\JueMingR-Continuous-Processing-d177b0a1de35228057c5afc690459dfc70615e7f.zip",
+    "length": 2171336,
+    "sha256": "2C8F97ADCE467ED22BF17CDE47A76EF08D808F3ADFE58C7BF0B6190A46CBA81C",
+    "identityReceipt": ".local/aim-weapon-compat-20261015/package-identity-r01.log"
+  },
+  "packageRoot": "C:\\Users\\kongd\\Desktop\\JueMingR\\outputs\\aim-weapon-compat-delivery-20261015-d177b0a\\JueMingR-Continuous-Processing-d177b0a1de35228057c5afc690459dfc70615e7f",
+  "packageFileCount": 17,
+  "payloadCount": 10,
+  "representativeConsumer": {
+    "exitCode": 0,
+    "log": ".local/aim-weapon-compat-20261015/package-representative-r01.log",
+    "scope": "one existing native magic-string original consumer on actual final package four modules; compile inputs unchanged, new commit metadata/MVID bound; no repeated Main or A/B/C matrix"
+  },
+  "target": "F:\\Games\\GamePlats\\Steam\\steamapps\\common\\Terraria",
+  "previousSource": "9f0e7569fac23be89378c537a0baac90be9b9322",
+  "backupRoot": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-weapon-compat-20261015\\install-d177b0a-20261015-031616\\backup\\controlled",
+  "backupFileCount": 12,
+  "backupVerified": true,
+  "restore": {
+    "schemaVersion": 1,
+    "operation": "restore",
+    "status": "success",
+    "code": "RESTORE_COMPLETE",
+    "exitCode": 0,
+    "packageId": "continuous-processing-9f0e7569fac23be89378c537a0baac90be9b9322",
+    "object": "owned-files",
+    "sha256": null
+  },
+  "install": {
+    "schemaVersion": 1,
+    "operation": "install",
+    "status": "success",
+    "code": "INSTALL_COMPLETE",
+    "exitCode": 0,
+    "packageId": "continuous-processing-d177b0a1de35228057c5afc690459dfc70615e7f",
+    "object": "installation",
+    "sha256": null
+  },
+  "payload": [
+    {
+      "relative": "JueMingR.Bootstrap.dll",
+      "length": 26624,
+      "sha256": "8C5B19F0E2CBD8D08F15D6479AF99F7DB6FA229F387A5E01A1A06BA54A24BDA3"
+    },
+    {
+      "relative": "JueMingR.Validation/0Harmony.dll",
+      "length": 2461696,
+      "sha256": "7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.Features.dll",
+      "length": 670208,
+      "sha256": "F7BB5A695B0835E679B45DD9ACA04DC8A77B4DF5A5E912BF526467750E389A53"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.Infrastructure.dll",
+      "length": 19456,
+      "sha256": "908523B929E70A47B1DAE6018E762BBFE28EB773E1D58516E1BCE03F091DDC87"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.Platform.dll",
+      "length": 117760,
+      "sha256": "99F065C70E667F36031F17CAA131082F0DB01081FE2DDA6306894FD4931657AA"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.PredictionWorker.exe",
+      "length": 22016,
+      "sha256": "102492F3D6D3EAFAF8E5A4DD878D8832C1EB8ECB1F42C7F4EDA0DAE6DB05375E"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.PredictionWorker.exe.config",
+      "length": 176,
+      "sha256": "AD8267122C40D37DCD9D99E1412D763187A1825732F378DB8867F3ECF675CF70"
+    },
+    {
+      "relative": "JueMingR.Validation/JueMingR.TerrariaHost.dll",
+      "length": 2219520,
+      "sha256": "2EDEF9ABD0D37FA20E4FE92BDD88D28962786AFA741A86A395ECC89AC7C312D4"
+    },
+    {
+      "relative": "JueMingR.Validation/phase-0-s-runtime.manifest",
+      "length": 1422,
+      "sha256": "DC6FF7118D0A4C29B955CB2BA005152B736F45CA2DB0A50A05981571C4E2FAFA"
+    },
+    {
+      "relative": "Terraria.exe.config",
+      "length": 440,
+      "sha256": "C8995B0D9C4BEF954FAAAFF79685628AFC71A5801DF4F60E9E5904182FEF03B6"
+    }
+  ],
+  "installedManifestMatches": true,
+  "installedManifestSha256": "8DBE6EA084C50FADB56B8086F3F634BBF01A902DC00EB02116660774EAEAEF02",
+  "originalGameUnchanged": true,
+  "originalGameSha256": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+  "restoreMaterialsUsable": true,
+  "fullQualification": "INCOMPLETE",
+  "releaseEligible": false,
+  "ownerGameLoad": "NOT_RUN",
+  "ownerAcceptance": "NOT_RUN",
+  "fps": "NOT_RUN",
+  "multiplayer": "NOT_RUN",
+  "gameLaunched": false,
+  "forcedKill": false,
+  "userSaveOperations": "NONE",
+  "protectedDirectoryScan": "NOT_RUN_PER_04",
+  "limits": [
+    "C last5 Basic exact per-hand rejection UNKNOWN, not proved unreachable.",
+    "control/laser whole leaves exit1 at OWNER_WITHDRAWN idle preview; only observed local passes retained.",
+    "Engineering/package/install readback does not prove owner new-package/FPS/multiplayer acceptance."
+  ],
+  "utc": "2026-10-14T19:17:38.3584187Z"
+}

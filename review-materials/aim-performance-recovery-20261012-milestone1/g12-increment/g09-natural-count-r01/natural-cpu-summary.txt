@@ -1,0 +1,38 @@
+CPU only: NO Draw/GetData/PNG; pixel denominator294 unchanged but unmeasured here. Complete CpuStep timed; no player/RNG audit cloning, per-birth formatting or per-call probes. Adapter must not subscribe FirstChance or timed-call patches.
+Order: standing OFF, standing ON, moving OFF, moving ON. Same physical world point930,1199 every frame; left use180..269/274..299; left/right40-frame rhythm; same original map/seed/AI/knockback/gravity/life/immunity.
+Weather is fixed dayTime=false/raining=false/windPhysics=false; no native UpdateWeather/Main.DoUpdate loop. The separate real weather paired checks own that boundary.
+Existing Reset's80 empty outer callbacks precede each fresh scene; no extra actual-player/NPC/forecast warmup. Initial measured frames are kept. Native damage changes OFF/ON futures; it is not restored.
+GC/budget/path/preview readings occur outside Stopwatch interval; all frame numbers and complete phases preserved.
+AppDomain MonitoringTotalAllocatedMemorySize start=0 end=23845828 delta=23845828 bytes; starts after records/bindings allocation and stops before output. Includes fixture setup, window-external numeric observations and background work, not pure product allocation. Budget key not equal GUC is unavailable and excluded from exceed counts.
+case=0 phase=idle n=180 meanMs=4.89280055555555 p95Ms=0.3248 p99Ms=1.9188 maxMs=854.1744 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=0 phase=cold0..9 n=10 meanMs=85.81613 p95Ms=854.1744 p99Ms=854.1744 maxMs=854.1744 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=0 phase=attack n=90 meanMs=1.96162444444444 p95Ms=0.3231 p99Ms=127.9108 maxMs=127.9108 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=0 phase=switch n=4 meanMs=2.922475 p95Ms=10.6599 p99Ms=10.6599 maxMs=10.6599 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=0 phase=restore n=26 meanMs=0.178396153846154 p95Ms=0.3392 p99Ms=0.3751 maxMs=0.3751 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=0 phase=release n=60 meanMs=0.0956016666666667 p95Ms=0.1981 p99Ms=0.3672 maxMs=0.3672 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=0 phase=idle10..179 supplemental n=170 meanMs=0.132604705882353 p95Ms=0.3193 p99Ms=0.4119 maxMs=0.4634 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=0 allocatedBytesIncludingFixtureAndObservation=4360948 nativeBirths=15 assisted=0 nativeHits=0 npcLife=100000 releaseFrames=60 exitComplete=True (max180; no forced Kill/timer reset)
+case=1 phase=idle n=180 meanMs=2.801655 p95Ms=5.7254 p99Ms=16.4799 maxMs=19.3962 budgetExceeded=4 budgetUnavailable=0 gc=0/0/0
+case=1 phase=cold0..9 n=10 meanMs=7.64608 p95Ms=19.3962 p99Ms=19.3962 maxMs=19.3962 budgetExceeded=4 budgetUnavailable=0 gc=0/0/0
+case=1 phase=attack n=90 meanMs=5.46035888888889 p95Ms=3.5649 p99Ms=253.0266 maxMs=253.0266 budgetExceeded=2 budgetUnavailable=0 gc=0/0/0
+case=1 phase=switch n=4 meanMs=4.080975 p95Ms=8.3132 p99Ms=8.3132 maxMs=8.3132 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=1 phase=restore n=26 meanMs=2.87858846153846 p95Ms=3.5072 p99Ms=3.6466 maxMs=3.6466 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=1 phase=release n=60 meanMs=3.096065 p95Ms=3.6996 p99Ms=13.9173 maxMs=13.9173 budgetExceeded=0 budgetUnavailable=0 gc=1/1/0
+case=1 phase=idle10..179 supplemental n=170 meanMs=2.51668882352941 p95Ms=4.2018 p99Ms=6.2867 maxMs=6.3573 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=1 allocatedBytesIncludingFixtureAndObservation=7632816 nativeBirths=15 assisted=15 nativeHits=16 npcLife=99818 releaseFrames=60 exitComplete=True (max180; no forced Kill/timer reset)
+case=2 phase=idle n=180 meanMs=0.127238333333333 p95Ms=0.1731 p99Ms=1.1898 maxMs=1.1903 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=2 phase=cold0..9 n=10 meanMs=0.34692 p95Ms=1.1903 p99Ms=1.1903 maxMs=1.1903 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=2 phase=attack n=90 meanMs=0.149295555555556 p95Ms=0.1957 p99Ms=0.2266 maxMs=0.2266 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=2 phase=switch n=4 meanMs=0.095475 p95Ms=0.0981 p99Ms=0.0981 maxMs=0.0981 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=2 phase=restore n=26 meanMs=0.120869230769231 p95Ms=0.1838 p99Ms=0.2123 maxMs=0.2123 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=2 phase=release n=60 meanMs=0.126186666666667 p95Ms=0.1656 p99Ms=0.1929 maxMs=0.1929 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=2 phase=idle10..179 supplemental n=170 meanMs=0.114315882352941 p95Ms=0.1624 p99Ms=0.1975 maxMs=0.3799 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=2 allocatedBytesIncludingFixtureAndObservation=4178652 nativeBirths=15 assisted=0 nativeHits=0 npcLife=100000 releaseFrames=60 exitComplete=True (max180; no forced Kill/timer reset)
+case=3 phase=idle n=180 meanMs=3.578855 p95Ms=4.6778 p99Ms=5.0631 maxMs=5.5126 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=3 phase=cold0..9 n=10 meanMs=4.01228 p95Ms=4.6113 p99Ms=4.6113 maxMs=4.6113 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=3 phase=attack n=90 meanMs=4.19186666666667 p95Ms=5.7283 p99Ms=7.1789 maxMs=7.1789 budgetExceeded=2 budgetUnavailable=0 gc=0/0/0
+case=3 phase=switch n=4 meanMs=3.570375 p95Ms=4.3552 p99Ms=4.3552 maxMs=4.3552 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=3 phase=restore n=26 meanMs=4.55332307692308 p95Ms=5.3758 p99Ms=5.9432 maxMs=5.9432 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=3 phase=release n=60 meanMs=3.85314166666667 p95Ms=4.8676 p99Ms=5.4838 maxMs=5.4838 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=3 phase=idle10..179 supplemental n=170 meanMs=3.55335941176471 p95Ms=4.704 p99Ms=5.0631 maxMs=5.5126 budgetExceeded=0 budgetUnavailable=0 gc=0/0/0
+case=3 allocatedBytesIncludingFixtureAndObservation=7673412 nativeBirths=15 assisted=15 nativeHits=15 npcLife=99813 releaseFrames=60 exitComplete=True (max180; no forced Kill/timer reset)

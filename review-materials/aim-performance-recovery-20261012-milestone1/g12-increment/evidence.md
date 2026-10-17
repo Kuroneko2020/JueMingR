@@ -1,0 +1,15 @@
+# 有界几何检查候选、实测旧升级基线与完整状态观察
+
+当前仍 **NEEDS_FIX / INCOMPLETE，未准入打包安装**。g12 仅替换 Terrain.CellAt 的逐格立即时钟检查为同 GUC 所有者共享的 CheckGeometry：首格立即、随后最多32格再取时；已耗尽任何调用立即退出。future/纯CPU/Read/lease边界继续立即检查，6ms累计与真实GUC不变。合作间隔不是硬实时上界。`g12-source-over-08616eb.patch`保存相对08616eb的这两生产文件与必要预算测试、观察清理修复；它不含后继g13玩家固定点实验。
+
+私有优化Release/x86 g12 Host SHA440FAE345E3C066887EA5C83B4382D1AA8410FBAD1F709938D26CE342941B5D2 / MVIDed65a495-20c8-459e-a48b-227011eb6aff；Features SHA6F787524D905CF6E934AFA038A5162EFDBD05504AC824F5B6CD0320D98658296 / MVID41c1343a-4fbd-4be0-abf9-5989b598db08；共同probe FA8F05FE09A38DDCDB96F0BB9C73AE5AF2D94EF21623E3216924EC25AFAA94DB。私有标签不冒称后来提交或最终包SourceSHA。g12 Budget/强clock/partial不是miss/Basic自然使用/nextGUC恢复/PathOFF清线与Terrain/Wind反控PASS，原日志保留。
+
+无逐调用诊断、无FirstChance、无Draw的同房间4case CPU原窗(g12-natural-cpu-r01)仍拒门：moving idle180新增均值约3.0941ms、attack90约2.8487ms，attack p99增量约6.9375ms；冷4次和其余触限帧全部保留。为区分条件漂移，只预先声明一次紧邻g09→g12 A/B复核，使用同FA8F和B64191无图形适配、完整各4×360且保全部行。standing稳定idle170净成本2.26707→1.71330ms；moving attack90净3.83607→3.10055ms，攻击触限3→0；moving稳定idle170净3.25228→3.41243ms，后一窗GC1/1和14.1685ms尖峰不删除。完整moving idle180净3.4000ms、attack90净3.10055ms、release60净2.997535ms仍FAIL；attack p95增量4.091ms、idle max增量13.0222ms也FAIL。保留小候选有局部收益，但mixed idle/tails仍失败或未决，不签整体优化或最终准入。相邻窗口的后台CPU前后快照仅是条件线索，无逐帧对应证据，不能据此排除尖峰。各分段n不足360，不能替代冻结的最终正式窗口。
+
+低开销整数计数(g09-natural-count-r01)另进程完整1440行：case0 standingOFF/1 standingON/2 movingOFF/3 movingON；按case+frame行序配对，不能以重复GUC tick join。稳定idle10..179每更新standing CellAt7802.63、Read152.34、Advance120；moving CellAt17445.17、Read173.81、Advance120。future持键零速同pose约48.03次仅为线索。独立Check micro三轮active-minus-noop约31ns，非真实world占比或准入证明，不关闭生产6ms预算。
+
+继后只读完整状态观察(g12-natural-state-count-r02)用原4×360无图形场景、同g12/FA8F。实际AdvancePlayer scope内：B=Horizontal前/三个prefix后；C=AfterFluid后/Clamp前；D=Clamp后/ItemCheck前；E=ItemCheck后。完整SameSample不归零动作时钟、不绑定业务ref/out/__args。稳定moving idle170共20400次Advance，全20400有B/C/D/E，其中8165完整B==C==D(48.0294/更新)，pressed-zero8165全部满足；DE20400相同。standing仅170次有完整边界，另20230已被旧settled跳过，未观察不算相等。总1440行、overflow0/otherthread0，预算截断/失败/零call行保留，完整状态是后继设计线索而不是缓存安全或性能PASS。初次exe在任何LOAD前因静态依赖载入失败，原日志保留；限定StateBootstrap仅先加载真实固定依赖再反射Main，不改65CB4F观察源码/四边界，无fake/stub。
+
+真实升级前b038a1e固定ZIP/manifest及四payload身份已核，使用私有ContinuousCombatMeasureB038(仅旧ExpectedPreview缺字段明确unavailable；其他世界调用/计时边界不变)。同锁定原版1.4.5.8、Release/x86、预热60/n360、武器1228且不攻击：OFF moving mean0.096424/p95.1201/p99.1494/max.615ms；Path standing .279154/.3088/.4004/.7679ms；Path moving .265588/.298/.3655/.6041ms。两Path360/360，moving360/360；分配1,114,112/2,883,584/2,924,544，GC均0。无旧预算/新预览API必须标unavailable，不填成功0；前两驱动不兼容失败原件保留，不计产品/性能反例。旧HostB7316619A3227CC0F18CEA990E93978AD879CE206EE3925ABA79E02EBAB6748F / MVID7fba96ff-6305-4d93-aad5-7136bef41ee6。该旧原有路径对照支持75a新增持续需求/重复工作的事故链，不取消新预览合同回旧功能。没有旧正常游戏/用户存档操作，不以3504替代。
+
+`review/`四份为独审原样复制件：observer measurement评审仅确定Natural生命周期P2；C1A2源码收口静态关闭(未runtime故障注入)，g12几何增量无新确定P1/P2但均值/尾部仍FAIL。原成功CPU数据不受后继cleanup修复影响。raw-manifest.json核原始复制件长度/SHA；未上传程序集、私有用户目录或全会话。后续g13玩家完整状态固定点、正常Draw294/cold与正式各≥360性能窗口、最终包和安装都未由此材料证明。

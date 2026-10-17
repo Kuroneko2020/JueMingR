@@ -100,7 +100,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(b.Observed && b.Tick==tick)velocity=b.Velocity;
             }
             var state=new NpcMotionState{Identity=identity,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,
-                Vx=velocity.X,Vy=velocity.Y,A0=n.ai[0],Active=true,CanReceive=true,CanHarm=!n.friendly && n.damage>0,
+                Vx=velocity.X,Vy=velocity.Y,A0=n.ai[0],NoTileCollide=n.noTileCollide,Wet=n.wet,ReflectsProjectiles=n.reflectsProjectiles,Active=true,CanReceive=true,CanHarm=!n.friendly && n.damage>0,
                 NetOffsetX=n.netOffset.X,NetOffsetY=n.netOffset.Y};
             var assumptions=PredictionAssumption.ApproximateMechanism|PredictionAssumption.NoNewHits|PredictionAssumption.CurrentConnection;
             if(Main.netMode==1)assumptions|=PredictionAssumption.NetworkObservation;
@@ -109,7 +109,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // neighbour-derived velocity and mutable same-tick presentation.
             if(!changed && prepared!=null && prepared.CaptureTick==tick && prepared.Count==required+1 && prepared.Assumptions==assumptions && prepared.Quality==quality &&
                 preparedState.X==state.X && preparedState.Y==state.Y && preparedState.Width==state.Width && preparedState.Height==state.Height &&
-                preparedState.Vx==state.Vx && preparedState.Vy==state.Vy && preparedState.A0==state.A0 && preparedState.CanHarm==state.CanHarm &&
+                preparedState.ReflectsProjectiles==state.ReflectsProjectiles && preparedState.Wet==state.Wet && preparedState.NoTileCollide==state.NoTileCollide && preparedState.Vx==state.Vx && preparedState.Vy==state.Vy && preparedState.A0==state.A0 && preparedState.CanHarm==state.CanHarm &&
                 preparedState.NetOffsetX==state.NetOffsetX && preparedState.NetOffsetY==state.NetOffsetY)return prepared;
             points[0]=new NpcTrajectoryPoint(0,state);
             // Measured position-difference baseline. No unvalidated curvature

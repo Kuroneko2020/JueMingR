@@ -17,9 +17,12 @@ namespace JueMingR.TerrariaHost.Combat
         private static readonly Color[] colors={new Color(90,205,250),new Color(145,230,120),new Color(245,185,65),new Color(245,100,120),new Color(215,140,255)};
         private readonly HostCombatObservation host;
         internal readonly CombatTargetMarker Marker;
+        // Retained inert identity for existing read-only probes. The withdrawn
+        // red display has no prepare/project/draw or resource polling entry.
+        internal readonly CombatImpactMarker Impact;
         private int strokeLimit=16384;
         private int count,eventStart,eventEnd;private long presentation;private bool eventsDrawn;private Matrix zoom,inverse;private NpcTrajectory preparedPath;private string pathText;private bool legend,limited;
-        internal CombatObservationWorldLayer(HostCombatObservation host){this.host=host;Marker=new CombatTargetMarker(host);}
+        internal CombatObservationWorldLayer(HostCombatObservation host){this.host=host;Marker=new CombatTargetMarker(host);Impact=new CombatImpactMarker(host);}
         internal int StrokeCount {get{return count;}}
         internal bool Failed {get;private set;}
         private object failedPixel,failedFont,failedBatch;
@@ -27,7 +30,7 @@ namespace JueMingR.TerrariaHost.Combat
         // an explicit retry, replaced borrowed resources or a new session
         // clears it; clearing a frame does not. Never read Asset.Value to retry.
         internal void DisplayFailed(){Clear();Failed=true;failedPixel=TextureAssets.MagicPixel;failedFont=FontAssets.MouseText;failedBatch=Main.spriteBatch;}
-        internal void Recover(){Clear();Failed=false;failedPixel=failedFont=failedBatch=null;}
+        internal void Recover(){Clear();Failed=false;failedPixel=failedFont=failedBatch=null;Impact.Reset();}
         internal void PollResources()
         {
             if(Failed && (!ReferenceEquals(failedPixel,TextureAssets.MagicPixel) || !ReferenceEquals(failedFont,FontAssets.MouseText) || !ReferenceEquals(failedBatch,Main.spriteBatch)))Recover();
@@ -56,7 +59,7 @@ namespace JueMingR.TerrariaHost.Combat
             Clear();if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.GameViewMatrix==null){Prediction.AimLightTrace.Presentation(!host.Enabled?"prepare-disabled":!host.CanDraw?"prepare-host-gate":!WorldPresentation.CanDraw?"prepare-world-gate":"prepare-no-matrix",null,0,0,false);return;}
             Marker.Capture();
             if(host.Collision){host.Geometry.PrepareEvents();legend=true;limited=host.Geometry.EventOverflow;}
-            var path=host.Path?host.Prediction.Cache.Read(0):null;
+            var path=host.DisplayPath;
             Prediction.AimLightTrace.Presentation("cache-consume",path,0,eventEnd,false);
             if(path==null)
             {
@@ -70,7 +73,8 @@ namespace JueMingR.TerrariaHost.Combat
             bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
             var color=approximate?new Color(255,210,110):new Color(235,235,255);
             pathText=path.Stop==PredictionStop.None?(approximate?"NPC 路径：近似":"NPC 路径：条件预测"):StopText(path.Stop);
-            pathText+=" · 未来约 "+((path.Count-1)/60f).ToString(path.Count<7?"0.00":"0.0",System.Globalization.CultureInfo.InvariantCulture)+" 秒";
+            int future=Math.Max(0,path.Count-1-host.DisplayAge);
+            pathText+=" · 未来约 "+(future/60f).ToString(future<6?"0.00":"0.0",System.Globalization.CultureInfo.InvariantCulture)+" 秒";
             if((path.Assumptions&PredictionAssumption.RandomRepresentative)!=0)pathText+=" · 随机代表路线";
             if((path.Assumptions&PredictionAssumption.NetworkObservation)!=0)pathText+=" · 依据本机网络观察";
             if((path.Assumptions&PredictionAssumption.UnmodeledDamageEffects)!=0)pathText+=" · 未估计部分持续伤害";
@@ -97,14 +101,17 @@ namespace JueMingR.TerrariaHost.Combat
             {Samples(host.Geometry.Attacks,0);Samples(host.Geometry.Npcs,1);Samples(host.Geometry.Bodies,3);eventStart=count;presentation++;Samples(host.Geometry.Events,2);eventEnd=count;}
             projectedEvent=null;strokeLimit=strokes.Length;var path=preparedPath;
             if(path==null)return;
-            if(!host.Path || !host.Selection.HasTarget || !host.Selection.Target.Equals(path.Identity) || !ReferenceEquals(host.Prediction.Cache.Read(0),path) || !CombatSelection.Valid(path.Identity,host.Session)){pathText=null;return;}
+            if(!host.Path || !host.Selection.HasTarget || !host.Selection.Target.Equals(path.Identity) || !ReferenceEquals(host.DisplayPath,path) || !CombatSelection.Valid(path.Identity,host.Session)){pathText=null;return;}
             bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
             var color=approximate?new Color(255,210,110):new Color(235,235,255);
-            for(int i=1;i<path.Count;i++)
+            for(int i=host.DisplayAge+1;i<path.Count;i++)
             {
                 var point=path[i];var prior=path[i-1];var b=new Vector2(point.Bounds.CenterX,point.Bounds.CenterY);
                 if(!point.NewSegment)Line(new Vector2(prior.Bounds.CenterX,prior.Bounds.CenterY),b,color,approximate,1.5f);
-                if(point.NewSegment || i%30==0 || i==path.Count-1)
+                // Milestones refer to absolute simulation time, not a new
+                // publication's array origin. Equivalent rolling samples must
+                // not move the same future marker every refresh.
+                if(point.NewSegment || (path.SampleTick+point.TickOffset)%30==0 || i==path.Count-1)
                 {Line(b-new Vector2(3,0),b+new Vector2(3,0),color,false,2);Line(b-new Vector2(0,3),b+new Vector2(0,3),color,false,2);}
             }
         }
@@ -234,7 +241,7 @@ namespace JueMingR.TerrariaHost.Combat
         private void Add(Vector2 a,Vector2 b,Color color,float width)
         {if(!Finite(a) || !Finite(b))return;if(count==strokeLimit){limited=true;return;}if(projectedEvent!=null)projectedEvent.Presentation=presentation;strokes[count++]=new Stroke{A=Vector2.Transform(a,inverse),B=Vector2.Transform(b,inverse),Color=color,Width=width*inverse.M11};}
         private static bool Finite(Vector2 p){return !float.IsNaN(p.X) && !float.IsNaN(p.Y) && !float.IsInfinity(p.X) && !float.IsInfinity(p.Y);}
-        private static bool Clip(ref Vector2 a,ref Vector2 b)
+        internal static bool Clip(ref Vector2 a,ref Vector2 b)
         {
             if(float.IsNaN(a.X) || float.IsNaN(a.Y) || float.IsNaN(b.X) || float.IsNaN(b.Y))return false;
             var delta=b-a;float lo=0,hi=1;

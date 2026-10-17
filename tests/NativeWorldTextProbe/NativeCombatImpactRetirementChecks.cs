@@ -2,20 +2,128 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using JueMingR.Features.Combat;
+using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
+using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
 {
-    // One real native hit after a sealed request. Only mailbox consumption is
-    // delayed; neither response bytes nor Session acceptance are substituted.
+    // A graphics-backed component/work leaf for the owner's feature withdrawal.
+    // It proves retained Path drawing and absence of retired work, not Main/FPS
+    // performance. Existing ProbeGraphics owns its component device/resources;
+    // the separately frozen Main carrier owns complete game initialization.
     internal static class NativeCombatImpactRetirementChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
+        private static int captures,projects,draws,polls,plans,flights;
+        private static bool observed;
+        private static void Capture(){captures++;}
+        private static void Project(){projects++;}
+        private static void Draw(){draws++;}
+        private static void Poll(){polls++;}
+        private static void Plan(){plans++;}
+        private static void Flight(){flights++;}
+
+        internal static void Run(object context,ProbeGraphics graphics)
+        {
+            Require(graphics!=null && graphics.GraphicsDevice!=null,"retirement leaf requires its real XNA graphics device");
+            Require(!observed,"retirement work counters have one synchronous owner");
+            // The regular visual route/private carrier performs original initialization once.
+            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var input=Get(context,"Input");
+            var world=Get(host,"World");var impact=Get(world,"Impact");var marker=Get(world,"Marker");var attack=Get(combat,"Attack");
+            // Same completed interface-setup premise as the existing GPU World leaf.
+            host.GetType().GetField("LayerStatus",Flags).SetValue(host,Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
+            var player=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,98,0,0);
+            foreach(var npc in Main.npc)npc.active=false;
+            foreach(var projectile in Main.projectile)projectile.active=false;
+            graphics.LoadTexture("LockOnCursor","Images/UI/LockOn_Cursor");
+            player.position=new Vector2(640,500);player.velocity=Vector2.Zero;player.gravDir=1;
+            player.itemAnimation=player.itemTime=player.reuseDelay=0;player.controlUseItem=false;
+            player.inventory[0].SetDefaults(98);player.inventory[54].SetDefaults(97);player.inventory[54].stack=999;
+            var target=Main.npc[2];target.SetDefaults(2);target.whoAmI=2;target.active=true;target.position=new Vector2(720,450);target.target=0;
+            target.dontTakeDamage=target.immortal=target.friendly=false;target.damage=0;
+            Main.dayTime=false;Main.screenWidth=960;Main.screenHeight=640;Main.screenPosition=new Vector2(300,300);Main.GameViewMatrix.Zoom=Vector2.One;
+            NativeCombatCadenceChecks.Save(combat,new CombatOptions(0,12));
+            var audit=new Harmony("JueMingR.Tests.ImpactRetirement");
+            captures=projects=draws=polls=plans=flights=0;
+            try
+            {
+                // Bind every overload once before owner work. Prefixes are
+                // integer counters only; there are no Step hooks, clocks,
+                // reflection, dependency getters or injected budget charges.
+                Patch(audit,impact.GetType(),"Capture",nameof(Capture),false);
+                Patch(audit,impact.GetType(),"Project",nameof(Project),false);
+                Patch(audit,impact.GetType(),"Draw",nameof(Draw),false);
+                Patch(audit,impact.GetType(),"PollResources",nameof(Poll),false);
+                Patch(audit,attack.GetType(),"PreparePlan",nameof(Plan),true);
+                Patch(audit,attack.GetType(),"ReadFlight",nameof(Flight),true);
+                observed=true;
+                foreach(bool savedMarker in new[]{true,false,true})
+                {
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,marker:savedMarker));
+                    // Six existing5due opportunities form a fixed finite
+                    // publication bound; this is not an unbounded retry-until-
+                    // green loop. An empty World cannot prove zero work.
+                    for(int step=0;step<30;step++)Advance(context,host,combat,input,target);
+                    var path=Get(host,"DisplayPath") as NpcTrajectory;
+                    Require(path!=null && path.Count>1,"pure Path publishes actual NPC motion with savedMarker="+savedMarker);
+                    Call(world,"PollResources");Call(world,"Prepare");
+                    Console.WriteLine("RETIREMENT DRAW PREMISE hostCanDraw="+Get(host,"CanDraw")+" enabled="+Get(host,"Enabled")+" failed="+Get(world,"Failed")+" layer="+Get(host,"LayerStatus")+" pathCount="+path.Count+" age="+Get(host,"DisplayAge")+" strokes="+Get(world,"StrokeCount")+" gameMenu="+Main.gameMenu+" hideUI="+Main.hideUI+" map="+Main.mapFullscreen+" fancy="+Main.onlyDrawFancyUI+" options="+Main.ingameOptionsWindow);
+                    var pixels=graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+                    // ProjectPresentation constructs stroke commands during actual Draw.
+                    Require((int)Get(world,"StrokeCount")>0,"pure Path produces real stroke commands before the zero-work check");
+                    Require(pixels.Any(pixel=>pixel.A>0),"actual XNA World.Draw contains retained Path pixels");
+                    Require((bool)Get(marker,"Visible")==savedMarker,"retained target marker follows its preference with a real parent and loaded original atlas");
+                    // Repeat actual entry/consumer at the same GUC as well.
+                    Call(host,"Update",(ulong)Main.GameUpdateCount);Call(world,"Prepare");
+                    graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+                    Require(!(bool)Get(impact,"Visible"),"legacy collector Impact stays retired despite target-marker preference");
+                    RequireZero();
+                    Console.WriteLine("RETIREMENT PURE-PATH marker="+savedMarker+" count="+path.Count+" strokes="+Get(world,"StrokeCount")+" GUC="+Main.GameUpdateCount);
+                }
+                foreach(bool collision in new[]{false,true})
+                {
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(collision:collision,marker:true));
+                    // The first actual entry must withdraw Path/target tickets,
+                    // even though the old target-marker preference remains.
+                    Advance(context,host,combat,input,target);Call(world,"Prepare");
+                    Require(!(bool)Get(host,"Marker") && !(bool)Get(marker,"Visible") && Get(host,"DisplayPath")==null,
+                        "OFF/Collision-only immediately removes Path and target-marker parent demand");
+                    Require(((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Required==0,"OFF/Collision-only retains no selected NPC path demand");
+                    for(int step=0;step<5;step++)Advance(context,host,combat,input,target);
+                    Call(world,"PollResources");Call(world,"Prepare");graphics.Pixels(()=>Call(world,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+                    Require(!(bool)Get(impact,"Visible"),"OFF/Collision-only cannot reactivate the retired rectangle");RequireZero();
+                }
+                Console.WriteLine("PASS IMPACT RETIRED actual World.Prepare/Draw; Capture=0 Project=0 Draw=0 Poll=0 purePath PreparePlan=0 ReadFlight=0; positive NPC path/strokes/pixels and immediate OFF parent retirement. Component evidence, not full Main or CPU.");
+            }
+            finally
+            {
+                observed=false;audit.UnpatchAll(audit.Id);
+                NativeCombatObservationChecks.Save(host,new ObservationOptions());
+                NativeCombatCadenceChecks.Save(combat,new CombatOptions(0,12));
+            }
+        }
+        private static void Advance(object context,object host,object combat,object input,NPC target)
+        {
+            NativeToolExecutionChecks.Sample(context,input,target.Center,false);Call(combat,"Sample");Call(host,"SampleMouse");
+            NativeCombatObservationChecks.Fresh(context,host);
+        }
+        private static void RequireZero()
+        {Require(captures==0 && projects==0 && draws==0 && polls==0 && plans==0 && flights==0,
+            "retired work stays absent: Capture="+captures+" Project="+projects+" Draw="+draws+" Poll="+polls+" Plan="+plans+" Flight="+flights);}
+        private static void Patch(Harmony audit,Type owner,string name,string counter,bool required)
+        {
+            var methods=owner.GetMethods(Flags).Where(method=>method.Name==name).ToArray();
+            Require(!required || methods.Length>0,"retained actual attack observer exists: "+name);
+            foreach(var method in methods)audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatImpactRetirementChecks),counter));
+            Console.WriteLine("RETIREMENT OBSERVER "+owner.FullName+"."+name+" overloads="+methods.Length);
+        }
         private static object heldWorker;
         private static bool hold;
         private static bool Mailbox(object __instance){return !hold || !ReferenceEquals(__instance,heldWorker);}

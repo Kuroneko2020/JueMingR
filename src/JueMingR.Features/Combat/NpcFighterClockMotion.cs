@@ -81,7 +81,7 @@ namespace JueMingR.Features.Combat
         // Locked CanHitLine alternates proportional X/Y runs and rejects any
         // solid side cell; CanHit's paired-side rule is not interchangeable.
         // All cells join the same bounded terrain snapshot and failure owner.
-        private static bool Line(IPredictionTerrain t,PredictionEnvironment e,MotionRect a,MotionRect b,out bool clear,out PredictionStop stop)
+        internal static bool Line(IPredictionTerrain t,PredictionEnvironment e,MotionRect a,MotionRect b,out bool clear,out PredictionStop stop)
         {
             clear=false;stop=PredictionStop.None;
             if(e.WorldWidth<3 || e.WorldHeight<=40){stop=PredictionStop.TerrainUnavailable;return false;}
@@ -95,7 +95,7 @@ namespace JueMingR.Features.Combat
                 int run;if(axis==2){carryX+=stepX;run=(int)carryX;carryX-=run;}else{carryY+=stepY;run=(int)carryY;carryY-=run;}
                 for(int i=0;i<run;i++)
                 {
-                    bool blocked;if(!LineCell(t,x,y,axis==2,out blocked,out stop))return false;if(blocked)return true;
+                    bool blocked;if(!LineCell(t,e,x,y,axis==2,out blocked,out stop))return false;if(blocked)return true;
                     if(rx==0 && ry==0){done=true;break;}
                     if(axis==2){x+=sx;rx--;}else{y+=sy;ry--;}
                     if(rx==0 && ry==0 && run==1)done=true;
@@ -105,9 +105,15 @@ namespace JueMingR.Features.Combat
             }while(!done);
             clear=true;return true;
         }
-        private static bool LineCell(IPredictionTerrain t,int x,int y,bool horizontal,out bool blocked,out PredictionStop stop)
+        private static bool LineCell(IPredictionTerrain t,PredictionEnvironment e,int x,int y,bool horizontal,out bool blocked,out PredictionStop stop)
         {
             PredictionTile a,b,c;blocked=false;
+            // Native CanHitLine catches an out-of-world side access and
+            // returns false. This is a known obstruction result, distinct
+            // from a missing necessary tile inside the captured world.
+            stop=PredictionStop.None;
+            if(x-(horizontal?0:1)<0 || y-(horizontal?1:0)<0 || x+(horizontal?0:1)>=e.WorldWidth || y+(horizontal?1:0)>=e.WorldHeight)
+            {blocked=true;return true;}
             if(!t.Tile(x-(horizontal?0:1),y-(horizontal?1:0),out a,out stop) || !t.Tile(x,y,out b,out stop) || !t.Tile(x+(horizontal?0:1),y+(horizontal?1:0),out c,out stop))return false;
             blocked=a.Active && a.Solid && !a.SolidTop || b.Active && b.Solid && !b.SolidTop || c.Active && c.Solid && !c.SolidTop;return true;
         }

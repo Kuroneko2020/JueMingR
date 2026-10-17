@@ -43,7 +43,7 @@ namespace NativeWorldTextProbe
             Call(use,"Sync",p);long token=(long)Get(use,"Operation");Call(use,"End",outer,new InvalidOperationException("late"));
             Require((long)Get(use,"Operation")==token && (bool)Get(use,"Active"),"late finalizer cannot stop new operation");
             Call(use,"Stop");
-            var aim=Get(combat,"Aim");var property=aim.GetType().GetProperty("Provider",BindingFlags.Instance|BindingFlags.NonPublic);int calls=0;object old=null;
+            var aim=Get(combat,"Aim");var property=aim.GetType().GetProperty("Provider",BindingFlags.Instance|BindingFlags.NonPublic);object priorProvider=property.GetValue(aim);int calls=0;object old=null;
             Type result=aim.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.CombatAimPoint");
             property.SetValue(aim,Provider(property.PropertyType,request=>{calls++;old=Activator.CreateInstance(result,BindingFlags.Instance|BindingFlags.NonPublic,null,new[]{request,(object)(p.Center-new Vector2(200,0))},null);return old;}));
             try
@@ -59,7 +59,7 @@ namespace NativeWorldTextProbe
                 property.SetValue(aim,Provider(property.PropertyType,r=>{calls++;return null;}));for(int i=0;i<30;i++)NativeCombatCadenceChecks.Step(context,true,false,0);
                 Require(calls==before,"ordinary auto click never consults deferred aim seam");
             }
-            finally{property.SetValue(aim,null);NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+            finally{property.SetValue(aim,priorProvider);NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
             p=NativeToolExecutionChecks.Reset(context,tools,input,198,0,0);p.inventory[1].SetDefaults(671);p.inventory[2].SetDefaults(3772);NativeCombatCadenceChecks.Save(combat,new CombatOptions(4));
             for(int i=0;i<120;i++)NativeCombatCadenceChecks.Step(context,false,true,0);
             p.selectedItemState.Select(2);for(int i=0;i<120;i++)NativeCombatCadenceChecks.Step(context,false,true,0);

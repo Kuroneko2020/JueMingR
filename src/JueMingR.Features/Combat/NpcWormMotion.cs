@@ -21,7 +21,6 @@ namespace JueMingR.Features.Combat
         {
             stop=PredictionStop.None;int type=n.Identity.Type;
             bool destroyer=n.Style==37;
-            if(destroyer && e.MechQueenUp){stop=PredictionStop.MissingDependency;return false;}
             if(!destroyer && (e.PlayerDead || (type==10 || type==39 || type==95) && e.PlayerY-e.PlayerHeight/2<e.WorldSurface*16))
             {n.TimeLeft=Math.Min(n.TimeLeft,300);if(type==10 || type==39 || type==95)n.Vy+=.2f;}
             bool earth=e.SkyblockLowTiles && type==13;
@@ -78,6 +77,81 @@ namespace JueMingR.Features.Combat
                 else{Toward(ref n.Vy,dy,acceleration*1.1f);if(Math.Abs(n.Vx)+Math.Abs(n.Vy)<speed*.5f)n.Vx+=n.Vx>0?acceleration:-acceleration;}
             }
             n.L0=earth?1:0;return true;
+        }
+        // AI37 still performs its own terrain/lifetime motor in a MechQueen
+        // combination. The head anchor is a final AI override; body geometry
+        // uses the current slot-ordered parent chain, never a frozen queen.
+        internal static bool BeginDestroyer(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment e,out PredictionStop stop)
+        {
+            stop=PredictionStop.None;
+            NpcMotionState queen;bool up;if(!Queen(n,group,count,e,out queen,out up,out stop))return false;
+            if(n.Identity.Type==134){n.Alpha=Math.Max(0,n.Alpha-42);return true;}
+            if(n.ParentSlot<=0){stop=PredictionStop.Despawn;return false;}
+            int parent=Parent(n,group,count);if(parent<0){stop=PredictionStop.MissingDependency;return false;}
+            if(group[parent].Life<=0){n.Life=0;stop=PredictionStop.Despawn;return false;}
+            if(group[parent].Alpha<128)n.Alpha=Math.Max(0,n.Alpha-42);
+            return true;
+        }
+        internal static bool LinkDestroyer(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment e,out PredictionStop stop)
+        {
+            stop=PredictionStop.None;int parent=Parent(n,group,count);
+            if(parent<0 || !group[parent].Active || group[parent].Style!=37){stop=PredictionStop.MissingDependency;return false;}
+            NpcMotionState queen;bool up;if(!Queen(n,group,count,e,out queen,out up,out stop))return false;
+            int nearHead=0;
+            if(up)
+            {
+                var child=n;int slot=n.ParentSlot;
+                while(slot>0 && nearHead<10)
+                {
+                    int index=Parent(child,group,count);if(index<0){stop=PredictionStop.MissingDependency;return false;}
+                    var ancestor=group[index];
+                    if(!ancestor.Active || ancestor.Identity.Type<134 || ancestor.Identity.Type>136){nearHead=0;break;}
+                    nearHead++;if(ancestor.Identity.Type==134)break;
+                    if(nearHead>=10){nearHead=0;break;}
+                    child=ancestor;slot=ancestor.ParentSlot;
+                }
+            }
+            int spacing=(int)(44f*n.Scale);
+            float dx=group[parent].X+group[parent].Width/2-n.Bounds.CenterX;
+            float dy=group[parent].Y+group[parent].Height/2-n.Bounds.CenterY;
+            if(nearHead>0)
+            {
+                float offset=spacing-spacing*((nearHead-1f)*.1f);offset=Math.Max(0,Math.Min(spacing,offset));
+                dy=group[parent].Y+group[parent].Height/2+offset-n.Bounds.CenterY;
+            }
+            float distance=(float)Math.Sqrt(dx*dx+dy*dy);
+            // This division is deliberately integer-first in locked AI37.
+            if(nearHead>0)spacing=spacing/10*nearHead;
+            if(distance==0){stop=PredictionStop.InvalidState;return false;}
+            float amount=(distance-spacing)/distance;dx*=amount;dy*=amount;n.X+=dx;n.Y+=dy;n.Vx=n.Vy=0;return true;
+        }
+        internal static bool AnchorDestroyer(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment e,out PredictionStop stop)
+        {
+            NpcMotionState queen;bool up;if(!Queen(n,group,count,e,out queen,out up,out stop))return false;
+            if(!up || n.Identity.Type!=134)return true;
+            float centerX=queen.Bounds.CenterX,centerY=queen.Bounds.CenterY-14f;
+            float pointY=centerY+100f,relativeY=pointY-centerY,angle=queen.Vx*.025f;
+            // Utils.RotatedBy stores cosine/sine as floats, then rotates the
+            // actual add/subtract result; do not replace it with a static 100.
+            float cosine=(float)Math.Cos(angle),sine=(float)Math.Sin(angle);
+            float x=centerX-relativeY*sine,y=centerY+relativeY*cosine;
+            n.X=x-n.Width*.5f+queen.Vx;n.Y=y-n.Height*.5f+queen.Vy;n.Vx=n.Vy=0;
+            return true;
+        }
+        private static int Parent(NpcMotionState n,NpcMotionState[] group,int count)
+        {
+            if(group==null)return -1;
+            for(int i=0;i<count;i++)if(group[i].Identity.Slot==n.ParentSlot && (n.ParentIdentity.Token==null || group[i].Identity.Equals(n.ParentIdentity)))return i;
+            return -1;
+        }
+        private static bool Queen(NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment e,out NpcMotionState queen,out bool up,out PredictionStop stop)
+        {
+            queen=default(NpcMotionState);up=false;stop=PredictionStop.None;
+            if(!n.MechFactsCaptured){if(e.MechQueenUp){stop=PredictionStop.MissingDependency;return false;}return true;}
+            if(n.MechQueenIdentity.Token==null)return true;
+            if(group!=null)for(int i=0;i<count;i++)if(group[i].Identity.Equals(n.MechQueenIdentity))
+            {queen=group[i];up=queen.Active && queen.Identity.Type==127;return true;}
+            stop=PredictionStop.MissingDependency;return false;
         }
         private static bool SameSign(float a,float b){return a>0 && b>0 || a<0 && b<0;}
         private static bool Opposite(float a,float b){return a>0 && b<0 || a<0 && b>0;}

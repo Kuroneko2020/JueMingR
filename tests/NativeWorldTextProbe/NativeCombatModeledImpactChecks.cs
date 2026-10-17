@@ -81,7 +81,7 @@ namespace NativeWorldTextProbe
                 // Prediction-only proves source collection does not depend on
                 // enabling the separate collision-display consumer.
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,clearLine:false,mouseCenter:true,dummy:true,radius:25));
-                if(trace!=null){trace.Selected=target;cache.Demand(1,120);}
+                if(trace!=null){trace.Selected=target;cache.Demand(NativeCombatObservationChecks.IndependentReader,120);}
                 Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
                 long requests=(long)Get(native,"Requests"),rejected=(long)Get(native,"Rejected"),refused=(long)Get(native,"Refused");
                 int allShown=0,attackShown=0,longest=0,blank=0;
@@ -100,7 +100,7 @@ namespace NativeWorldTextProbe
                     if(shown)
                     {
                         Require(path.SampleTick==Main.GameUpdateCount && path.Count>=minimumFuture+1 && path.Count<=121 && ReferenceEquals(path.Identity.Token,npc),"Modeled impact publishes the current instance with its actual required future.");
-                        if(trace!=null)Require((cache.Read(1)!=null)==(path.Count==121),"The strict consumer never receives a short native window across real hits.");
+                        if(trace!=null)Require((cache.Read(NativeCombatObservationChecks.IndependentReader)!=null)==(path.Count==121),"The strict consumer never receives a short native window across real hits.");
                         allShown++;blank=0;
                     }
                     else longest=Math.Max(longest,++blank);
@@ -115,7 +115,7 @@ namespace NativeWorldTextProbe
             }
             finally
             {
-                if(trace!=null)cache.Release(1);
+                if(trace!=null)cache.Release(NativeCombatObservationChecks.IndependentReader);
                 hooks.UnpatchAll(hooks.Id);Main.hardMode=hard;owner=null;source=null;
                 string prefix=otherSource?"other-impact":"modeled-impact";
                 File.WriteAllLines(Path.Combine(output,prefix+"-updates.csv"),rows);File.WriteAllLines(Path.Combine(output,prefix+"-replies.csv"),replies);File.WriteAllLines(Path.Combine(output,prefix+"-hits.csv"),hitRows);

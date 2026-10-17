@@ -1,0 +1,22 @@
+LOAD 0Harmony MVID=024a0e6e-c8c2-437e-ad04-7b6279389c23 SHA256=7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\0Harmony.dll
+LOAD JueMingR.Platform MVID=0979ed61-52ae-400a-b94a-82870cd69758 SHA256=38A4D5F982E57A1D6FE6C8EABE3DBAB466B4B5EB3EE6314E8D77683ACFA7FE6B location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features MVID=fa1a7ba6-b3bb-4c9e-a9ec-77b50bff5b61 SHA256=99B10CB658251BE90863AB68AD4AF1EB7CE2C3BC9EAE250C80EADD82DF892E2D location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure MVID=723d92dd-f8bb-4550-8c68-ff1dbd6d5a55 SHA256=AE1B191ED0C0AC7B27217A7F84FC9AA4383AB5A14CB62777A3A5B03FDB403603 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178 SHA256=F1072D318426809C9360CB45C7B85B7013BE865E8C13637C8B0B344A71AC6685 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+ISOLATED SavePath=C:\Users\kongd\Desktop\JueMingR\.local\ia-c3ad66c5 max-path-safe private root
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+PROBE SHA256=B026E6C6B85B6DB9D0A3AE87993DE4B1C4788D2524963B478716E4E07A5E2CB4 scope=NaturalCpu:no-draw mode=cpu; release runtime, debug-only measurement counters unused
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178
+COMPOSITION initialization-ms=5774.1738000000005 code-prepare-ms=349.1593 exact-comparison=False
+COUNTER target=JueMingR.TerrariaHost.Combat.PredictionTerrain.CellAt ILbytes=274; entry counts can omit already-inlined callers
+COUNTER target=JueMingR.TerrariaHost.Combat.PredictionTerrain.Read ILbytes=629; entry counts can omit already-inlined callers
+COUNTER no business ref/out/__args bindings; private __state only. No per-cell timestamps; diagnostic time is NOT admission. Pose/zeroV is a clue, not a complete fixed-point proof.
+NATURAL-MAP original Stone sidewalls x=41,63 y=55..79; Stone floor y=80/worldSurface=80, ordinary original height-derived gravity; same OFF/ON map; slime life=100000, player immunity for finite observation only
+NATURAL-WORLD id=6957aa0a-1749-440a-8f5e-a4ce75fe8e0e footprintPair=83324fb0f09cae98044349e3237fa4ba6f6062cd4965ffcc6cc129689356f01b footprintDimensions=400x240
+NATURAL-MAP original Stone sidewalls x=41,63 y=55..79; Stone floor y=80/worldSurface=80, ordinary original height-derived gravity; same OFF/ON map; slime life=100000, player immunity for finite observation only
+NATURAL-WORLD id=cc2290df-fe34-4067-b554-ffb79b91fb7e footprintPair=c5966e2307cb5f19c78f4e18a117a362b6032cdd4426989489aa55ce1b040ecc footprintDimensions=400x240
+NATURAL-MAP original Stone sidewalls x=41,63 y=55..79; Stone floor y=80/worldSurface=80, ordinary original height-derived gravity; same OFF/ON map; slime life=100000, player immunity for finite observation only
+NATURAL-WORLD id=b754cf51-7fd0-4de0-9a41-1a1b8d6eabf0 footprintPair=2631efe32276a24c654f87a7939c1c8f358cbe0b32a0c9b25b209e6b271e600d footprintDimensions=400x240
+NATURAL-MAP original Stone sidewalls x=41,63 y=55..79; Stone floor y=80/worldSurface=80, ordinary original height-derived gravity; same OFF/ON map; slime life=100000, player immunity for finite observation only
+NATURAL-WORLD id=f3f24571-bb5e-497b-9ded-ff014a6f37d2 footprintPair=566da5bc483c4a657a34ce7b4c0911c0ece6f900f3d0be1850303250c1a9341c footprintDimensions=400x240
+COUNTER samples=1440 cellEntries=7643463 nativeReads=128797 playerReturns=86547 futurePressedSamePoseZeroV=17027 budgetExceeded=12; retain truncated frames, no timing admission

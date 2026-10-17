@@ -8,6 +8,29 @@ function Assert-Evidence([bool] $Condition, [string] $Message) {
     if (-not $Condition) { throw ('Evidence contract: ' + $Message) }
 }
 Assert-Evidence (-not (Test-WorkloadReusable $root $null ([pscustomobject]@{inputs=@()}) 'workload-Routing' 'signature')) 'missing retired evidence allows new independent execution without claiming reuse'
+# These three attack owners do not implement NPC motion. Historical grouped
+# receipts still bind their original bytes; current reuse compares the actual
+# consumer projection, without rewriting that original fingerprint/identity.
+$attackPaths=@('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')
+$attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
+foreach($path in $attackPaths){
+    $old=[pscustomobject]@{inputs=@(($path+':A'),'src/JueMingR.TerrariaHost/Combat/HostCombat.cs:A','environment:test:A')}
+    $new=[pscustomobject]@{inputs=@(($path+':B'),'src/JueMingR.TerrariaHost/Combat/HostCombat.cs:A','environment:test:A')}
+    $old|Add-Member inputFingerprint (Get-WorkloadHash $old.inputs)
+    Assert-Evidence (Test-WorkloadOriginalProjection $old 'native-NpcBasicMotion') 'unchanged original grouped receipt remains verifiable'
+    Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-NpcBasicMotion') -ceq (Get-WorkloadCheckFingerprint $new 'native-NpcBasicMotion')) 'attack-only delta leaves current NPC consumer projection unchanged'
+    foreach($name in $attackConsumers){Assert-Evidence ((Get-WorkloadCheckFingerprint $old $name) -cne (Get-WorkloadCheckFingerprint $new $name)) ('attack delta invalidates actual consumer '+$name)}
+    $corrupt=$old|ConvertTo-Json -Depth 5|ConvertFrom-Json;$corrupt.inputs[0]=$path+':CORRUPT'
+    Assert-Evidence (-not (Test-WorkloadOriginalProjection $corrupt 'native-NpcBasicMotion')) 'original grouped bytes cannot change under the recorded fingerprint'
+    foreach($shared in @('src/JueMingR.TerrariaHost/Combat/HostCombat.cs','environment:test','src/UnknownAttackOwner.cs')){
+        $sharedOld=[pscustomobject]@{inputs=@($shared+':A')};$sharedNew=[pscustomobject]@{inputs=@($shared+':B')}
+        Assert-Evidence ((Get-WorkloadCheckFingerprint $sharedOld 'native-NpcBasicMotion') -cne (Get-WorkloadCheckFingerprint $sharedNew 'native-NpcBasicMotion')) 'shared/environment/unknown delta still invalidates NPC evidence'
+    }
+}
+$preDtRows=@($attackPaths|ForEach-Object {$_+':A'})+@('tests/NativeWorldTextProbe/NativeCombatFoundationContinuousChecks.cs:A','src/JueMingR.TerrariaHost/Combat/HostCombat.cs:A','environment:test:A')
+Assert-Evidence ($preDtRows.Count -eq 6) 'pre-DT fixture has separate real-format production/assertion/environment rows'
+$preDt=[pscustomobject]@{inputs=$preDtRows;inputFingerprint=Get-WorkloadHash @($preDtRows|Where-Object {$_ -cnotmatch '^tests/NativeWorldTextProbe/NativeCombatFoundationContinuousChecks\.cs:'})}
+Assert-Evidence (Test-WorkloadOriginalProjection $preDt 'native-NpcFiniteFlight') 'immutable pre-DT common projection still includes original production bytes'
 # Prove the chosen boundary, rather than enumerate a PowerShell interpreter.
 $projectionPath='scripts/build.ps1'
 $statusResults=@()

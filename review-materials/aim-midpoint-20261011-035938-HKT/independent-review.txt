@@ -1,0 +1,17 @@
+Original final report, not a new review. Source: root task session, line 1783; timestamp 2026-10-10T10:33:28.778Z (UTC). Encrypted intermediate messages are not exported.
+
+Message Type: FINAL_ANSWER
+Task name: /root
+Sender: /root/integration_review
+Payload:
+阶段独审结论：**NEEDS_FIX，不能签整体 PASS**。
+
+已确认并交主调度处理的 P2：
+
+- 预览复用遗漏转身方向：源码已补，动态证据待复核。
+- 静态免疫的相对剩余时间未进入缓存依赖；选中目标及其他阻挡受击者均受影响。
+- 攻击消费者使用 NPC 当前 `noTileCollide`，遗漏未来阶段状态；涉及近战射弹和普通挥击。
+
+静态核对未发现新增确定 P1。控制体来源、预览与输入权限分离、有限候选遍历、ReceiveTick 中心映射具有对应实现。完整武器与 NPC 机制缺口及 R03 失败仍未闭合。
+
+本审查未写入、构建或运行测试；最终结论须待固定候选、完整累计增量及有效包证据复核。

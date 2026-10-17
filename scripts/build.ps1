@@ -8,7 +8,8 @@ param(
     [switch] $RerunChecks,
     [string] $ApplicabilityRecord,
     [switch] $PrepareOnly,
-    [string] $ApprovedRetainedAssets
+    [string] $ApprovedRetainedAssets,
+    [string] $StageDevelopmentRecord
 )
 
 $ErrorActionPreference = 'Stop'
@@ -110,8 +111,10 @@ if ($RequireClean -and -not $isClean) {
 $commit = [string] (Invoke-Git -Arguments @('rev-parse', 'HEAD') | Select-Object -First 1)
 $commit = $commit.Trim()
 $sourceIdentity = Get-WorkloadIdentity $repositoryRoot
-$admission=Initialize-WorkloadWorkspace $repositoryRoot $ApprovedRetainedAssets
+$admission=Initialize-WorkloadWorkspace $repositoryRoot $ApprovedRetainedAssets -RequireCommitted:([bool]$StageDevelopmentRecord)
 $inputIdentity = Get-WorkloadEvidenceInput $repositoryRoot $sourceIdentity
+if($StageDevelopmentRecord -and ($Configuration -cne 'Release' -or $PrepareOnly -or $ApplicabilityRecord -or $RerunChecks -or $WorkloadMode -cne 'Related' -or $WorkloadBaseline)){throw 'Explicit stage admission is Release-only and cannot be combined with formal workload selectors.'}
+if($StageDevelopmentRecord){$stageAdmission=Read-AimStageDevelopment $repositoryRoot $StageDevelopmentRecord $sourceIdentity $inputIdentity}
 if($PrepareOnly -and ($WorkloadBaseline -or $ApplicabilityRecord -or $RerunChecks -or $WorkloadMode -cne 'Related')){throw 'PrepareOnly prepares compile/structure only; workload arguments belong to the runner.'}
 $existing=Read-WorkloadJson $recordPath
 if($PrepareOnly -and $Configuration -ceq 'Debug' -and (Test-WorkloadBuildMatch $repositoryRoot $existing $sourceIdentity $inputIdentity)){
@@ -120,8 +123,8 @@ if($PrepareOnly -and $Configuration -ceq 'Debug' -and (Test-WorkloadBuildMatch $
 }
 # Read a saved finite lock before the owned build-root cleanup. In-progress or
 # failed validation retains this identity too; no default full-plan fallback.
-if (-not $PrepareOnly -and -not $ApplicabilityRecord) {$ApplicabilityRecord=Read-WorkloadApplicabilityPointer $repositoryRoot $sourceIdentity $inputIdentity}
-if (-not $PrepareOnly -and -not $ApplicabilityRecord) {
+if (-not $StageDevelopmentRecord -and -not $PrepareOnly -and -not $ApplicabilityRecord) {$ApplicabilityRecord=Read-WorkloadApplicabilityPointer $repositoryRoot $sourceIdentity $inputIdentity}
+if (-not $StageDevelopmentRecord -and -not $PrepareOnly -and -not $ApplicabilityRecord) {
     $previousDebug=Read-WorkloadJson (Join-Path $repositoryRoot 'artifacts/build/Debug/build-record.json')
     if ($null -ne $previousDebug -and $previousDebug.workload.PSObject.Properties.Name -contains 'applicabilityRecord') {
         $previousPath=$previousDebug.workload.applicabilityRecord
@@ -263,6 +266,16 @@ if($PrepareOnly){
     $record.workload=[ordered]@{status='PREPARED';mode='PrepareOnly';productChecks='NOT_EXECUTED';deliveryEligible=$false}
     Write-WorkloadJson $recordPath $record
     Write-Output 'PREPARED: Debug compilation + structure only; product checks NOT_EXECUTED; no delivery qualification.'
+    return
+}
+if($StageDevelopmentRecord){
+    $stageAfter=Read-AimStageDevelopment $repositoryRoot $StageDevelopmentRecord (Get-WorkloadIdentity $repositoryRoot) (Get-WorkloadEvidenceInput $repositoryRoot (Get-WorkloadIdentity $repositoryRoot))
+    if(($stageAdmission | ConvertTo-Json -Depth 6 -Compress) -cne ($stageAfter | ConvertTo-Json -Depth 6 -Compress) -or
+        $sourceIdentity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint -or
+        -not (Test-WorkloadOutputs $workRoot $record.outputs)){throw 'Stage source, outputs or evidence changed during Release build.'}
+    $record.workload=$stageAfter
+    Write-WorkloadJson $recordPath $record
+    Write-Output ('STAGE_DEVELOPMENT: ordinary Release + structure + explicit scoped evidence; full qualification INCOMPLETE; releaseEligible=false. Build record: '+$recordPath)
     return
 }
 try { $workload = & (Join-Path $PSScriptRoot 'test-workload-regressions.ps1') -Baseline $WorkloadBaseline -Mode $WorkloadMode -Rerun:$RerunChecks -ApplicabilityRecord $ApplicabilityRecord -ApprovedRetainedAssets $ApprovedRetainedAssets }

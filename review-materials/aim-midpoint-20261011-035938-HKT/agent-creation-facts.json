@@ -1,0 +1,98 @@
+[
+  {
+    "line": 98,
+    "time": "2026-10-10T09:18:03.648Z",
+    "kind": "creation_request",
+    "name": "weapon_models",
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "callId": "call_022aa74dc63446379aff366bba3605c8"
+  },
+  {
+    "line": 101,
+    "time": "2026-10-10T09:18:04.596Z",
+    "kind": "creation_receipt",
+    "name": "weapon_models",
+    "output": "{\"task_name\":\"/root/weapon_models\"}"
+  },
+  {
+    "line": 104,
+    "time": "2026-10-10T09:18:22.924Z",
+    "kind": "creation_request",
+    "name": "npc_prediction",
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "callId": "call_c6e613fa7eda48e1bcb753af59f66dd5"
+  },
+  {
+    "line": 107,
+    "time": "2026-10-10T09:18:23.421Z",
+    "kind": "creation_receipt",
+    "name": "npc_prediction",
+    "output": "{\"task_name\":\"/root/npc_prediction\"}"
+  },
+  {
+    "line": 110,
+    "time": "2026-10-10T09:18:43.404Z",
+    "kind": "creation_request",
+    "name": "selection_preview",
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "callId": "call_9713a2d6bd5e465683a1c231e9a7ea05"
+  },
+  {
+    "line": 113,
+    "time": "2026-10-10T09:18:43.916Z",
+    "kind": "creation_receipt",
+    "name": "selection_preview",
+    "output": "{\"task_name\":\"/root/selection_preview\"}"
+  },
+  {
+    "line": 959,
+    "time": "2026-10-10T09:57:03.209Z",
+    "kind": "creation_request",
+    "name": "npc_ambient",
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "callId": "call_108d2da5ca4042a8b28d9d8be6f9c01c"
+  },
+  {
+    "line": 962,
+    "time": "2026-10-10T09:57:03.728Z",
+    "kind": "creation_receipt",
+    "name": "npc_ambient",
+    "output": "{\"task_name\":\"/root/npc_ambient\"}"
+  },
+  {
+    "line": 1367,
+    "time": "2026-10-10T10:15:18.349Z",
+    "kind": "creation_request",
+    "name": "integration_review",
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "callId": "call_878p3g8zefb9Yn96DUP3lldp"
+  },
+  {
+    "line": 1370,
+    "time": "2026-10-10T10:15:18.787Z",
+    "kind": "creation_receipt",
+    "name": "integration_review",
+    "output": "{\"task_name\":\"/root/integration_review\"}"
+  },
+  {
+    "line": 1874,
+    "time": "2026-10-10T10:36:21.762Z",
+    "kind": "creation_request",
+    "name": "npc_relations",
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "callId": "call_8d0822d2f9784d21910a173370cd69a9"
+  },
+  {
+    "line": 1877,
+    "time": "2026-10-10T10:36:22.609Z",
+    "kind": "creation_receipt",
+    "name": "npc_relations",
+    "output": "{\"task_name\":\"/root/npc_relations\"}"
+  }
+]

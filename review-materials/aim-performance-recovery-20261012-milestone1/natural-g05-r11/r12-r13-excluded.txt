@@ -1,0 +1,8 @@
+r12, r12b, and r13 are entirely excluded as product causal or functional evidence.
+r12 initial adapter failed before natural scene: GameUpdateCount property read as field, Tick NullReferenceException.
+r12b/r13 bound Harmony object[] __args including out HostAttackInput. The copy was written back as default, changing native consumers.
+r13 observed consumedOrigin 0/0 and nativeHits3/0, contrary to uninstrumented r11 nativeHits16/15; do not salvage entrance/gate/cost claims from contaminated runs.
+Keep all raw executables, sources, logs, frames and CSV; no original failure is overwritten.
+Valid uninstrumented r11 uses g05 Host SHA173863731C388FD5B88CED965CE4DE0DBED9EE0EB41A5AD1905BE60545A7DCDC and fixed probe SHA D747F4910BF8957BD157317913A1F11B1F9B15244628CE1A8A59E7C85065ED58.
+r11 standing294/290 missingidle2,3,4 andattack180; moving294/294; original denominator stays unchanged.
+r14 adapter avoids every business out parameter (including __3), every __args array, direct preparation, and gameplay writes. It first must match full native births/hits/geometry before causal interpretation.

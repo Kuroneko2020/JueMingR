@@ -1,0 +1,247 @@
+[
+  {
+    "name": "budget-g05-r05/run.log",
+    "length": 4216,
+    "sha256": "BE9EA2B4A7603B93F470F9697792999DE25522429B95697D0AB94F8E0A6E3EB5"
+  },
+  {
+    "name": "budget-g08-r01/run.log",
+    "length": 5757,
+    "sha256": "B3ADD4DA5C7F10B7B03C55895975C3049646F185A349EE244CB4967950C29508"
+  },
+  {
+    "name": "budget-g09-r01/run.log",
+    "length": 2517,
+    "sha256": "BB782DC38C48F9DD853933F7AFE55C300F8CF67C662252199C273724F7060B9C"
+  },
+  {
+    "name": "evidence.md",
+    "length": 4926,
+    "sha256": "11454156FE7166086FFCBCEDB00582534FB85B4B88D5D4C1177E272F0955AFC8"
+  },
+  {
+    "name": "g08-r16-natural/g08-r16-summary.txt",
+    "length": 2221,
+    "sha256": "498F8CD8D09E3BE2E8A4A1245FB72FC4F0E4DD5BF925E3C960D9EEE77B906B79"
+  },
+  {
+    "name": "g08-r16-natural/moving-attack.png",
+    "length": 24734,
+    "sha256": "6DA0537848D3E7CBBE9E235EC7A2902BBD43EF2763F4866E132C460247B84A17"
+  },
+  {
+    "name": "g08-r16-natural/moving-first-failure.png",
+    "length": 3895,
+    "sha256": "4256F460F7C057EC03BB622FE4F46587784B8F5A03297230A6CFE2B3CED61887"
+  },
+  {
+    "name": "g08-r16-natural/moving-idle.png",
+    "length": 25116,
+    "sha256": "6A1C070D21A61916FD97BE063F20ACE61A494E29C3DF4E113BD7CB57255B1EE2"
+  },
+  {
+    "name": "g08-r16-natural/moving-restore.png",
+    "length": 24694,
+    "sha256": "0CA77DD758058890F525E6CFFA7F8B3AC204E784ECAAA68A2425668E0D17B092"
+  },
+  {
+    "name": "g08-r16-natural/natural-births.txt",
+    "length": 6524,
+    "sha256": "FDC34CB1D0A64EF5DAEB3946598A8ACDF1F5206A87823D6D2F46385592A16250"
+  },
+  {
+    "name": "g08-r16-natural/natural-input-facts.txt",
+    "length": 3547,
+    "sha256": "C72EC7FB2183219524F1122E81DA2EBF5F19EFD8D0AD40FBB8CB2F3DEC933B8B"
+  },
+  {
+    "name": "g08-r16-natural/natural-slime-frames.csv",
+    "length": 73465,
+    "sha256": "145CA3CE41AF4BA60410AE54323BCCC1BBE5D2899A9A122A0200F326148375E1"
+  },
+  {
+    "name": "g08-r16-natural/run.log",
+    "length": 20458,
+    "sha256": "025171FE3B1EE27268CB3A3D6BE4C79BD0BDBBCA9F7CA798AC61765052C52313"
+  },
+  {
+    "name": "g08-r16-natural/standing-attack.png",
+    "length": 25258,
+    "sha256": "F267CD5F0397A0BC7BA976F53B6C701864BA1487046CD14DA9197F491AF3EB6F"
+  },
+  {
+    "name": "g08-r16-natural/standing-first-failure.png",
+    "length": 25053,
+    "sha256": "D6C7ACB3E66FFDF3ACA96D733C3ED0E10C0D17E2799090FC3E778F8FFEDE3732"
+  },
+  {
+    "name": "g08-r16-natural/standing-idle.png",
+    "length": 25114,
+    "sha256": "33D31E6ED1292B9F348C65878A6D4BE6C2E2A4C79C2C9D2830A12CB0ACB59EBD"
+  },
+  {
+    "name": "g08-r16-natural/standing-restore.png",
+    "length": 25386,
+    "sha256": "DB018398F4AA292F575C8842D99D1E282363BC777C31EBBB024128CDD34B1241"
+  },
+  {
+    "name": "g08-roomphase-r01.log",
+    "length": 14756,
+    "sha256": "C07B1036D54ED17C72162DC2A7AE2C191D37665B7A06AB5B5154B069BF618FBD"
+  },
+  {
+    "name": "g09-natural-cpu-background-after.txt",
+    "length": 394,
+    "sha256": "6353BB8EB2AC9C304434DE8079E41A768FA66F5D04487B2807059C3FFAD6C14A"
+  },
+  {
+    "name": "g09-natural-cpu-background-before.txt",
+    "length": 394,
+    "sha256": "3E3F7270AB74B1C165E32DDC76F92D0116BA22E9C928724C357591F93F195BFD"
+  },
+  {
+    "name": "g09-natural-cpu-prejit-r01/natural-cpu-frames.csv",
+    "length": 185637,
+    "sha256": "C68857205340D0429CA9902E13203D0C2F9D4E4BBCE7340C2D65506444542052"
+  },
+  {
+    "name": "g09-natural-cpu-prejit-r01/natural-cpu-summary.txt",
+    "length": 5835,
+    "sha256": "903875251927633D54C5A27A79CF056E92003A98DD27550CBA182350F21FC701"
+  },
+  {
+    "name": "g09-natural-cpu-prejit-r01/run.log",
+    "length": 3796,
+    "sha256": "07A17BACFBCEF493C352C3E6509068797E23A0E088AEE1AABEB0792AABA0DA63"
+  },
+  {
+    "name": "g09-natural-cpu-r01/natural-cpu-frames.csv",
+    "length": 185620,
+    "sha256": "367C9792105AE8691B9FCF4421EF8814F738B6A3D21BD73AEC45A6CF0FFDDBCE"
+  },
+  {
+    "name": "g09-natural-cpu-r01/natural-cpu-summary.txt",
+    "length": 5848,
+    "sha256": "FCAF552D3B7B6C945FA11E5DB900B424ED9B08A80D808ACF50A74368DDBB6A3F"
+  },
+  {
+    "name": "g09-natural-cpu-r01/run.log",
+    "length": 3651,
+    "sha256": "F57B61BF8CA42E4FD0282D12731A18687F483426DCF6014DEE2989C70A286A21"
+  },
+  {
+    "name": "g09-r17-natural/g09-r17-summary.txt",
+    "length": 1769,
+    "sha256": "9E04F0CDB2C82B56740C2532A27EF414EE7CD17701CA09C52D54D2C72E4A44B8"
+  },
+  {
+    "name": "g09-r17-natural/moving-attack.png",
+    "length": 24734,
+    "sha256": "6DA0537848D3E7CBBE9E235EC7A2902BBD43EF2763F4866E132C460247B84A17"
+  },
+  {
+    "name": "g09-r17-natural/moving-idle.png",
+    "length": 25116,
+    "sha256": "6A1C070D21A61916FD97BE063F20ACE61A494E29C3DF4E113BD7CB57255B1EE2"
+  },
+  {
+    "name": "g09-r17-natural/moving-restore.png",
+    "length": 24694,
+    "sha256": "0CA77DD758058890F525E6CFFA7F8B3AC204E784ECAAA68A2425668E0D17B092"
+  },
+  {
+    "name": "g09-r17-natural/natural-births.txt",
+    "length": 6524,
+    "sha256": "FDC34CB1D0A64EF5DAEB3946598A8ACDF1F5206A87823D6D2F46385592A16250"
+  },
+  {
+    "name": "g09-r17-natural/natural-input-facts.txt",
+    "length": 3246,
+    "sha256": "9C31B328ACF93A84484AE66354887CF2562C82EBFFF1CDF83D19CA944E4AD808"
+  },
+  {
+    "name": "g09-r17-natural/natural-slime-frames.csv",
+    "length": 73475,
+    "sha256": "1044C6B09B4B565930161A4844B7EE2196F411CE4FB1FBC436A14F8F976B8BED"
+  },
+  {
+    "name": "g09-r17-natural/run.log",
+    "length": 14583,
+    "sha256": "45DF15DC859407A35B066BAD56083CCC031374224712A184396BC964A66801AB"
+  },
+  {
+    "name": "g09-r17-natural/standing-attack.png",
+    "length": 25258,
+    "sha256": "F267CD5F0397A0BC7BA976F53B6C701864BA1487046CD14DA9197F491AF3EB6F"
+  },
+  {
+    "name": "g09-r17-natural/standing-first-failure.png",
+    "length": 25053,
+    "sha256": "D6C7ACB3E66FFDF3ACA96D733C3ED0E10C0D17E2799090FC3E778F8FFEDE3732"
+  },
+  {
+    "name": "g09-r17-natural/standing-idle.png",
+    "length": 25114,
+    "sha256": "33D31E6ED1292B9F348C65878A6D4BE6C2E2A4C79C2C9D2830A12CB0ACB59EBD"
+  },
+  {
+    "name": "g09-r17-natural/standing-restore.png",
+    "length": 25386,
+    "sha256": "DB018398F4AA292F575C8842D99D1E282363BC777C31EBBB024128CDD34B1241"
+  },
+  {
+    "name": "g09-roomphase-r01.log",
+    "length": 14767,
+    "sha256": "6A9B7FCC576A5DD08FB1063E080483DBAD6AA73EC69456E1847EA32CB574DFFD"
+  },
+  {
+    "name": "g09-terrain-r01.log",
+    "length": 2296,
+    "sha256": "9E739B3880B116FE7B260C1286078FC176DE44EB85CDD709DAD672F79658F678"
+  },
+  {
+    "name": "g09-wind-r01.log",
+    "length": 3679,
+    "sha256": "222171A780B94793A87F325135FA11503E9AE700D88BE571CFD67B491AB052B2"
+  },
+  {
+    "name": "g09-wind-r02.log",
+    "length": 1987,
+    "sha256": "078E63D40CFDC4E943B0C82CF1105611B2EB2132EDA424618A02B2F0A0EC125D"
+  },
+  {
+    "name": "incremental-review-g09-20261012.md",
+    "length": 8034,
+    "sha256": "B2D803C60BB3C34741B5B05526A34EEEAB8CF29FE8A826F4065958DBBE68ED66"
+  },
+  {
+    "name": "moving-g08-r01/run.log",
+    "length": 5701,
+    "sha256": "782DC3215C26ECF56A60E294EE549788F03D5C2333EF1280152342F16889B2A6"
+  },
+  {
+    "name": "moving-g09-r01/run.log",
+    "length": 5709,
+    "sha256": "A4E5A23E63D46F8EE6C3F527CD5D5AB6E3671AA4F16DE1840376293A96273B15"
+  },
+  {
+    "name": "RoomPhaseMeasure.cs",
+    "length": 7927,
+    "sha256": "59FD3C47B4373A4659345BD9CB3F455B84530DA9956505E6178AB93ADB9A20FA"
+  },
+  {
+    "name": "RunNaturalCpu.cs",
+    "length": 4747,
+    "sha256": "70B6199171469B48B8BD15F015F79A1071E6CF30DB4131D0F95636E44AD8C7E6"
+  },
+  {
+    "name": "RunNaturalCpuJit.cs",
+    "length": 7134,
+    "sha256": "F5C6DF40F33F392F6F946160011EB3419138D2011C3EAC7D911F3D2B7BA080E1"
+  },
+  {
+    "name": "source-current-g11-files.txt",
+    "length": 161407,
+    "sha256": "0659D96CA20942E55552ACB7586134E608CEE9861EA99AD74AC31D5202A5BD91"
+  }
+]

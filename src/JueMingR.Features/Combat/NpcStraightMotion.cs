@@ -42,13 +42,17 @@ namespace JueMingR.Features.Combat
             n.TimeLeft=Math.Min(n.TimeLeft,100);
             if(type==516)
             {
-                float dx=e.PlayerX-n.Bounds.CenterX,dy=e.PlayerY-n.Bounds.CenterY,length=(float)Math.Sqrt(dx*dx+dy*dy);
-                if(length==0){dx=n.Direction;dy=0;}else{float inv=1/length;dx*=inv;dy*=inv;}
-                float speed=(float)Math.Sqrt(n.Vx*n.Vx+n.Vy*n.Vy)+1f/12;
-                n.Vx=(n.Vx*14+dx*speed)/15;n.Vy=(n.Vy*14+dy*speed)/15;
-                if(n.Vx*n.Vx+n.Vy*n.Vy<36){n.Vx*=1.05f;n.Vy*=1.05f;}
+                float dx=e.PlayerX-n.Bounds.CenterX,dy=e.PlayerY-n.Bounds.CenterY,length=Length516(dx,dy);
+                if(length==0){dx=n.Direction;dy=0;}else{double inv=1d/length;dx=(float)(dx*inv);dy=(float)(dy*inv);}
+                float speed=Length516(n.Vx,n.Vy)+1f/12;
+                // Native Vector2 arithmetic stores each multiply and sum as
+                // float, then Divide retains its reciprocal until field store.
+                float oldX=n.Vx*14,oldY=n.Vy*14;dx*=speed;dy*=speed;oldX+=dx;oldY+=dy;
+                n.Vx=(float)(oldX*(1d/15));n.Vy=(float)(oldY*(1d/15));
+                if(Length516(n.Vx,n.Vy)<6){n.Vx*=1.05f;n.Vy*=1.05f;}
             }
             return true;
         }
+        private static float Length516(float x,float y){return (float)Math.Sqrt((double)x*x+(double)y*y);}
     }
 }

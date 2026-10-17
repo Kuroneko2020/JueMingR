@@ -1,0 +1,406 @@
+[
+  {
+    "id": "aged-idle-owner",
+    "disposition": "PRODUCT_FIXED",
+    "cause": "7576 aged显示分支漏idle WhipOwner.Current及Obstacles.BirthInputsCurrent，live Flight guard不能覆盖Flight=null的owner。",
+    "resolution": "r11仅Preview恢复两完整标量/出生输入门，保age0/时基/输入/调度；实际graphics成员负控与完整integration复核。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-7576-usage-diagnostic2.log",
+        "length": 39439,
+        "sha256": "A9AEBD1DFD8892C712F05D47F73DA7B758226E7E4BD4233B79143A74D6F63F88"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-integration4.log",
+        "length": 78612,
+        "sha256": "777685FC243E2E75859812F3626356512DA2FF00C44A1F94DD1B3B08077F6F50"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-whip-next-corrected2-graphics.log",
+        "length": 7289,
+        "sha256": "81AED3CF61F2C14272B25045C69B279AFB9029F4C99600D03DF03669CF260591"
+      }
+    ]
+  },
+  {
+    "id": "draw-bool-adapter",
+    "disposition": "TEST_CORRECTED",
+    "cause": "bool Draw方法被错误Action delegate适配，原失败属于载体边界。",
+    "resolution": "corrected adapter保bool边界/物理窗口/全部行，原rawfailure不改写PASS。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-7576-draw-cpu-rawfailure.log",
+        "length": 4929,
+        "sha256": "8B6FE402B778FA5F203BE3A496ACAEB3CE9DB94025D5790DDD5EBE343728AE68"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-7576-draw-cpu-corrected.log",
+        "length": 3301,
+        "sha256": "ADAD7AC7CF9B64DB5233C22A3E01DB94E38E6E17B801C908FFEFD5585A780088"
+      }
+    ]
+  },
+  {
+    "id": "setdefaults-initial-velocity",
+    "disposition": "TEST_CORRECTED",
+    "cause": "锁定原版SetDefaults保留前场景velocity，未声明初速污染静止夹具。",
+    "resolution": "仅初始化zero，不逐帧擦native移动/击退；原失败保留，后继通过不称产品算法修复。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r07-yoyo-first-ai.log",
+        "length": 8604,
+        "sha256": "A608E722037F40335B01AE86ABA0FF7C9E9F1FB9890E9E945AFD2FA4EF156464"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r08-prepared-obstacle.log",
+        "length": 4114,
+        "sha256": "E58959CF8DAFF29E40F00308429160B91AAA732A56E514590FAFC754F9C5CD4B"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r10-candidate-demand.log",
+        "length": 8075,
+        "sha256": "A4671E03821C8E17FC1A2DAB1B57CB696BD15D36DCA27E1378A669CD18ACEF12"
+      }
+    ]
+  },
+  {
+    "id": "optional-display-vs-input",
+    "disposition": "TEST_CORRECTED",
+    "cause": "旧idle0/每更新非空期待未分可选显示预算/旧capture年龄和实际发射，首断言遮蔽完整区间。",
+    "resolution": "保75/45等完整窗口、出生方向伤害孩子/Solar；记录短缺/最长空白，拒长期无显示；完整当前输入身份不放宽。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-7576-integration.log",
+        "length": 8258,
+        "sha256": "94E6A2A0B15A6151B7C65D89CF6405287B09E64858905F39ACDCCF6773EA5325"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-integration4.log",
+        "length": 78612,
+        "sha256": "777685FC243E2E75859812F3626356512DA2FF00C44A1F94DD1B3B08077F6F50"
+      }
+    ]
+  },
+  {
+    "id": "family-and-absolute-clock",
+    "disposition": "TEST_CORRECTED",
+    "cause": "每GUC固定family<=2及Delay==1忽略prefix/尾/window的不同sample/phase与旧Timeline绝对出生时基。",
+    "resolution": "区分真实请求与成员，保同path/phase/未变成员重复拒门；按真实绝对出生/receive核，不抬预测范围或缩分母。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-7576-usage-diagnostic2.log",
+        "length": 39439,
+        "sha256": "A9AEBD1DFD8892C712F05D47F73DA7B758226E7E4BD4233B79143A74D6F63F88"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-spears-diagnostic.log",
+        "length": 26149,
+        "sha256": "6DE47FB94D54B1D38626B36C7C7DE5949A99E4F843EBD525D3E718E0E0F7E5A4"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-integration4.log",
+        "length": 78612,
+        "sha256": "777685FC243E2E75859812F3626356512DA2FF00C44A1F94DD1B3B08077F6F50"
+      }
+    ]
+  },
+  {
+    "id": "capture-vs-draw-terrain",
+    "disposition": "TEST_CORRECTED",
+    "cause": "wrapper把ExpectedImpact/World.Prepare合法地形依赖复核计为Draw，5669暴露误归属。",
+    "resolution": "Capture报告读取；Project/Draw strict0 terrain/discovery/replay。产品未删除地形校验。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-integration3.log",
+        "length": 10774,
+        "sha256": "450818716498C71466AA6C3A574722488E313707226FE366B8B9114548359251"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-integration4.log",
+        "length": 78612,
+        "sha256": "777685FC243E2E75859812F3626356512DA2FF00C44A1F94DD1B3B08077F6F50"
+      }
+    ]
+  },
+  {
+    "id": "cold-pathoff-and-no-demand",
+    "disposition": "TEST_CORRECTED",
+    "cause": "Aim-only无Path四idle未held不建未来；冷未解可Basic；曾将release无需求回nearest误作真实消费失败。",
+    "resolution": "同进程两轮各保原4idle/首按0/160完整窗：冷0/17/34 Basic未知+硬退出、51首次far Enhanced新Before18点Contact8且hit1；第二轮0直接fresh far Enhanced、1机会1birth1hit、Used1.3705。有限单次对照，不称cold首发清线PASS。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-path-off-selection.log",
+        "length": 6670,
+        "sha256": "DA5A994688219AE36050FC47A491C90C14D7FDBEEB57EC21CF9D5EBF9EA0DE5C"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-path-off-receipt.log",
+        "length": 7197,
+        "sha256": "041C48FBE909684FEDFC095350D25D845FA022AC2271ECFFE4A7D2B1C34FDD61"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-path-off-recovery.log",
+        "length": 16679,
+        "sha256": "A8EE6C37B1DB0410CD5FFAA4D5B33E9E708470104F3C05A808C35AC5AA8EF044"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-budget-clock3.log",
+        "length": 5811,
+        "sha256": "DB3F64391D0FCC28BF206B1A3BA8BC062F7C4410674CA0C94AF93B071595A4C7"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-path-off-same-process.log",
+        "length": 31342,
+        "sha256": "00545F96BE51A631BC6B305A260D506F44D5AEC1D588A0B91C8C671854DCCEEB"
+      }
+    ]
+  },
+  {
+    "id": "navigation-basic-and-premises",
+    "disposition": "TEST_CORRECTED",
+    "cause": "旧null输入scope期待混淆合法Basic与staleEnhanced；旧helper隐式Display及同GUC多个独立恢复前提批次会耗尽组件预算，HasPoint失败原件保留。",
+    "resolution": "Basic核sameGUC完整当前identity并finally End；显示helper显式、独立恢复前提分原BeginWorldStep/Sample/Combat.Sample。无抬预算/清Work/放宽HasPoint；原15场几何/真实Damage、同tick4Prepare无重搜、age15/+5恢复全部EXIT0。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-navigation-original.log",
+        "length": 5077,
+        "sha256": "32933266A6224CE4AFEBEF1893404E4CA0A5FA1CB2AE9735012AD76F567E5A49"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-navigation-corrected.log",
+        "length": 5354,
+        "sha256": "5C96263FE27DEF526C10A8C9D3003C6B17B9CC09F3C2B9B98CA6B783A9D96144"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-navigation-explicit-helper.log",
+        "length": 5688,
+        "sha256": "36930F1D9D6729C5D672CAE4CC1A78DACF3525962304F19F96F4FE88B6EDAE27"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-navigation-separated-premises.log",
+        "length": 20145,
+        "sha256": "844ED100BB7B0BE4A9590F0000C9DCF4E3A7BA22229F5C14CB3C6A311400324D"
+      }
+    ]
+  },
+  {
+    "id": "attack-costs-whole",
+    "disposition": "TEST_CORRECTED",
+    "cause": "旧母scope含Aim-only idle不可见Preview、旧4arg反射、全候选固定121/endpoint和机械次数，整体FAIL不可被通过子叶覆盖。",
+    "resolution": "默认旧whole失败保留；当前确定性预算、sameGUC/next tick、冷/已运行后真实receipt+hit、ordinary-work九场+SameEpoch与实际Draw0完成。旧每候选同步121/首短prefix复杂弓world立即Contact由13map精确当前范围承接，未执行旧branch不冒称PASS，性能另锁最终普通字节。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-attack-costs.log",
+        "length": 4199,
+        "sha256": "BA8549B3F0EAF32087D23C90DF5A829893254B105A3E9510E0AE84CFECCCFA9D"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-budget-clock3.log",
+        "length": 5811,
+        "sha256": "DB3F64391D0FCC28BF206B1A3BA8BC062F7C4410674CA0C94AF93B071595A4C7"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-ordinary-work.log",
+        "length": 5864,
+        "sha256": "EDE115E9EC678D1EEDCA4E186213AD862B0C3504289B1D509A4E376A4E905EE0"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-ordinary-work-mapped.log",
+        "length": 4918,
+        "sha256": "A6F39DA9C7DBB8064F259E2DD15A7093D5A46E724B61D314B2AA95B8738E46A7"
+      }
+    ]
+  },
+  {
+    "id": "impact-empty-terrain-lease",
+    "disposition": "TEST_CORRECTED",
+    "cause": "纯值合成Cache.Publish未初始化Source.Terrain尺寸，FreezeCells width/height=0被CellLease.Current拒绝；Used0.322/0.258不足以支持冷预算归因。",
+    "resolution": "夹具发布合成路径前初始化空地形lease真实尺寸；不查NPC未来地形，不改product/natural Source。组件只验已准备路径像素；真实Source/地形另由自然与既有机制证据覆盖，完整Impact入口EXIT0。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-impact-prepared-components.log",
+        "length": 4676,
+        "sha256": "F0E58F828F97FB379DE32BC9DBAB30EE395A0B365F7EEEA167E62AA5C49C04E3"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-impact-initialized-lease.log",
+        "length": 5273,
+        "sha256": "EB43D9993D1189C0E47D91A2D9789C4F67B70EAFEB28BCCCE9DC5CDAC9434BD4"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-impact-independent-sources.log",
+        "length": 29391,
+        "sha256": "BA326BB7AC6C6BB944EC487F8F97E4B6F9DE7609B094C2B0F919E755FF9FA8BE"
+      }
+    ]
+  },
+  {
+    "id": "impact-execution-versus-preview",
+    "disposition": "TEST_CORRECTED",
+    "cause": "marker已Capture execution后Control.Clear清presentation，旧期待仍红将独立Preview误当已Capture的execution。",
+    "resolution": "execution旧marker立即撤销/Draw0；独立ExpectedPreview可保留，显式World.Prepare重新Capture后才显示。tile/string BeginAI允许同GUC合法Basic或null但拒旧Enhanced且立即撤红；整叶适配已EXIT0。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-impact-initialized-lease.log",
+        "length": 5273,
+        "sha256": "EB43D9993D1189C0E47D91A2D9789C4F67B70EAFEB28BCCCE9DC5CDAC9434BD4"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r11-impact-independent-sources.log",
+        "length": 29391,
+        "sha256": "BA326BB7AC6C6BB944EC487F8F97E4B6F9DE7609B094C2B0F919E755FF9FA8BE"
+      }
+    ]
+  },
+  {
+    "id": "r01-r10-development-failures",
+    "disposition": "PRODUCT_FIXED",
+    "cause": "旧预览第二3ms门/接收窗口周期缺框；candidate完整性、aged短miss、World公平/变化票、hint及paused significant资格接缝分别有原失败。r09 full moving fail未在moving-only复现，不宣称唯一动态归因。",
+    "resolution": "各候选原字节与失败保留。r10完整五场严格sameGUC ContactInput→RecordInput→nativebirth验far/新near，原180/5机会未加长。最终复用需按不变生产IL和受影响age门独审。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r01-natural-draw.log",
+        "length": 3958,
+        "sha256": "712368D63469B9A17D8DA06DBA3176B47BC1C5E5683345E5A0D6E90E6DEAE998"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r08-stress-only.log",
+        "length": 5913,
+        "sha256": "D7A79A26A454D86A4C78FE5AFD6151B0A7E87EE6ED1F996800A021550014E310"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r09-candidate-demand.log",
+        "length": 9738,
+        "sha256": "CED1D556E74C67505128F08B35FFB8720260EBFBA1E876FED2C7B6FFB4B76B44"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r10-candidate-demand.log",
+        "length": 8075,
+        "sha256": "A4671E03821C8E17FC1A2DAB1B57CB696BD15D36DCA27E1378A669CD18ACEF12"
+      }
+    ]
+  },
+  {
+    "id": "r02-bow-observer-and-progress",
+    "disposition": "TEST_CORRECTED",
+    "cause": "r02木弓520px原件无Contact/出生失败仍保留；旧临时源码未找回，不能精确把旧出生过滤认定唯一根因，也不能称projectile1未建模。",
+    "resolution": "锁定item39+arrow40+真实projectile1过滤最终7576自然重放：远4三次Enhanced Contact57/57/62；移近2一次Contact46；均sameGUC完整receipt/contact/point，5机会包含首0 Basic。新调度和未完成计划恢复后的当前范围成立，不冒称预测Tick是native first-hit。",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/candidate-r02-late-bow.log",
+        "length": 6374,
+        "sha256": "94B64BCA5404933708CDC9B4350032AE0BDC7566225DBF5FC0CE34720420FCD2"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-7576-bow-only.log",
+        "length": 3424,
+        "sha256": "937E32371EBA0B100E639372950C8C44FFC0205D384FF8376EF7F750515C15E5"
+      }
+    ]
+  },
+  {
+    "id": "private-whip-carrier-premises",
+    "disposition": "TEST_CORRECTED",
+    "cause": "G13-derived private wrapper invoked Initialize twice after startup lock; next observer name absent; first argument4654 was vanity leggings, not the native whip4672. No valid attack-cost claim from these failed/zero-birth runs.",
+    "resolution": "Private corrected wrapper initializes once, binds real TryUpdateChannel/ItemCheck_StartActualUse/StrikeNPC; asserts4672/841 and repeated native births/hits with unchanged firstpress360. Product A/probe unchanged, raw failed logs retained.",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-444e-whip-normal.log",
+        "length": 3726,
+        "sha256": "7BC0F71E8B70B10C9A1C0FBB404E9AD1FE46A1FB708E74E28123E60E602277FB"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-444e-whip-normal-corrected.log",
+        "length": 2998,
+        "sha256": "79F3DD2B395FF1DD85276D6C32103639CBCABFCAF5A2306B60211341BFC112E2"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-444e-whip-normal-native-hook.log",
+        "length": 2363,
+        "sha256": "5B7F928DB38907E153647B238FE4F51B9478DA0F169937347D19144593A1352C"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/final-444e-whip-4672.log",
+        "length": 2372,
+        "sha256": "DAC84FF15D10282F8405C6AAF9C1197B02A2C5FB56248F5086B6182842324DC4"
+      }
+    ]
+  },
+  {
+    "id": "derived-percentile-convention",
+    "disposition": "TEST_CORRECTED",
+    "cause": "Initial unsealed derived Stats used floor(n*q)-1 while the formal source uses nearest-rank ceil(n*q)-1.",
+    "resolution": "Recomputed only derivatives from unchanged raw using ceil; old floor derivation explicitly reconstructed from raw in labelled folder, not called original sealed bytes. No test/product rerun or source change.",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/derived-floor-preserved/disposition.json",
+        "length": 395,
+        "sha256": "4FAAFBED4C06A6A027B4A95C95082D9C80C1F50EB0EB800811ACB022C1879103"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/derived-floor-preserved/final-444e-natural-cpu-summary.csv",
+        "length": 3642,
+        "sha256": "1DA9CE0387EAA115E19EAD98AA85DEE87BB160A72A956661146422D0FF12D9FA"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/derived-floor-preserved/final-444e-draw-cpu-summary.csv",
+        "length": 1746,
+        "sha256": "F2ACA2799346F2E019FC74DEC4C9D44FBD0BCDDBA0D2143CF62E170CAD132FA5"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/derived-floor-preserved/final-444e-whip-summary.json",
+        "length": 6602,
+        "sha256": "CF3DB6E71DBF34CBEAA5577C42E8F4D2C08639D38A36335DD1BF2C72E0824E6C"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/Summarize-Final.ps1",
+        "length": 6519,
+        "sha256": "7EB0B45AED81906C644767F40C818C2E5FD67881BFB32EDB627EB2BE5EA7515B"
+      }
+    ]
+  },
+  {
+    "id": "stage-reader-ps5-utf8",
+    "disposition": "PRODUCT_FIXED",
+    "category": "BUILD_ENTRY_TOOL",
+    "cause": "OfficialPS5 dot-source decoded unmarkedUTF8 reader Chinese literals asANSI:4 allowed docs paths mojibake, actual40/record40 difference0. PS7 decoded text but calculated a different159449 source identity; neither bypass nor relabel accepted.",
+    "resolution": "OnlyEF BB BF added to tracked existing reader, remaining14991 original bytes equal. No schema/logic/allowlist or product/test rule change; normalA2 commit and currentPS5 Release source/input lock, independent3byte review and actual10713 IL/compileInputs equivalence. Exact reader positive/rejections still required.",
+    "artifacts": [
+      {
+        "path": ".local/aim-priority-recovery-20261013/reader-before-approval-artifact.log",
+        "length": 623,
+        "sha256": "0D10C244407CC5D4A0EC6ABC8F7D84AA653A12FCFFE158AF726A2DEC011403A7"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/reader-before-approval-utf8.log",
+        "length": 623,
+        "sha256": "0D10C244407CC5D4A0EC6ABC8F7D84AA653A12FCFFE158AF726A2DEC011403A7"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/reader-encoding-ps5-diff.json",
+        "length": 904,
+        "sha256": "EFDD0FCAAB2CD96F6D87C64AC4A0132ECAED920624710E9EE121F89CB349B106"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/reader-encoding-pwsh7-diff.json",
+        "length": 507,
+        "sha256": "ADC67084A42E62DD51A0F028327A55B0C533DE9C90A7DCC4099AC4B9574C0173"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/reader-bom-only-diff.json",
+        "length": 350,
+        "sha256": "79EA1F170FB04267C93E786ABEAA227E65B26AA7E5555EC3622AD8C8B13586EE"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/AimStage.Development.before-bom.ps1",
+        "length": 14991,
+        "sha256": "A1AB951885607C3A371F39C73FE922C7DEF31AE3A65E8BB0B344088DCF3F21AD"
+      },
+      {
+        "path": ".local/aim-priority-recovery-20261013/a-to-a2-compile-equivalence.json",
+        "length": 513,
+        "sha256": "01D371D6C9D442BB58EA6479078244B461BDA29005707C78194F6D84255A38FF"
+      }
+    ]
+  }
+]

@@ -15,12 +15,17 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly int Slot,Type,NetId,Generation;
         internal readonly long Session;
         internal readonly uint Step;
-        internal FacingTarget(NPC npc,long session)
-        {Npc=npc;Slot=npc.whoAmI;Type=npc.type;NetId=npc.netID;Generation=npc.generation;Session=session;Step=Main.GameUpdateCount;}
+        internal readonly Vector2? PreparedPoint;
+        private readonly bool shared;
+        internal FacingTarget(NPC npc,long session):this(npc,session,false){}
+        internal FacingTarget(NPC npc,long session,bool shared)
+        {Npc=npc;Slot=npc.whoAmI;Type=npc.type;NetId=npc.netID;Generation=npc.generation;Session=session;Step=Main.GameUpdateCount;this.shared=shared;}
+        internal FacingTarget(NPC npc,long session,Vector2 preparedPoint):this(npc,session,true)
+        {PreparedPoint=preparedPoint;}
         internal bool Valid(long session)
         {
             return Session==session && Slot>=0 && Slot<Main.maxNPCs && ReferenceEquals(Main.npc[Slot],Npc) && Npc.whoAmI==Slot &&
-                Npc.type==Type && Npc.netID==NetId && Npc.generation==Generation && CombatFacing.Targetable(Npc);
+                Npc.type==Type && Npc.netID==NetId && Npc.generation==Generation && (shared?CombatSelection.Receives(Npc,true):CombatFacing.Targetable(Npc));
         }
     }
     internal sealed class CombatFacing
@@ -33,6 +38,7 @@ namespace JueMingR.TerrariaHost.Combat
         private uint nextDecision,lastSearch;
         private bool searched,hasDecision,fromProvider;
         internal Func<Player,FacingTarget> TargetProvider {get;set;}
+        internal Func<bool> SharedTargetRequired {get;set;}
         internal bool LastChangeObserved {get;private set;}
 #if DEBUG
         internal int Searches {get;private set;}
@@ -68,13 +74,16 @@ namespace JueMingR.TerrariaHost.Combat
             FacingTarget provided=null;
             try{provided=TargetProvider?.Invoke(p);}catch{ /* An optional failed result grants no direction authority. */ }
             bool validProvider=provided!=null && provided.Valid(host.Runtime.Generation) && unchecked(now-provided.Step)<=1;
+            // When aim owns a final selection, do not silently substitute the
+            // independent Facing selector's different NPC or old eligibility.
+            if(SharedTargetRequired?.Invoke()==true && !validProvider){ClearDecision();return;}
             if(!fromProvider && validProvider)ClearDecision();
             if(fromProvider && (!validProvider || !SameTarget(target,provided)))ClearDecision();
             if(!hasDecision || unchecked((int)(now-nextDecision))>=0)
             {
                 if(searched && lastSearch==now)return;searched=true;lastSearch=now;
                 target=validProvider?provided:Find(p);fromProvider=validProvider;
-                Vector2 point=target!=null?target.Npc.Center:Main.MouseWorld;
+                Vector2 point=target!=null?target.PreparedPoint??target.Npc.Center:Main.MouseWorld;
                 direction=float.IsNaN(point.X) || float.IsInfinity(point.X) || float.IsNaN(point.Y) || float.IsInfinity(point.Y)?0:point.X-p.Center.X>2?1:point.X-p.Center.X< -2?-1:0;
                 weapon=p.HeldItem;weaponType=weapon.type;slot=p.selectedItem;hasDecision=true;nextDecision=unchecked(now+10);
             }
@@ -101,7 +110,7 @@ namespace JueMingR.TerrariaHost.Combat
         private static bool InRange(Player p,NPC n)
         {var v=Vector2.Clamp(p.Center,n.position,n.position+new Vector2(n.width,n.height));return Vector2.DistanceSquared(v,p.Center)<=FacingSelector.Range*FacingSelector.Range;}
         private static bool SameTarget(FacingTarget a,FacingTarget b)
-        {return a!=null && b!=null && ReferenceEquals(a.Npc,b.Npc) && a.Type==b.Type && a.Generation==b.Generation && a.Session==b.Session;}
+        {return a!=null && b!=null && ReferenceEquals(a.Npc,b.Npc) && a.Type==b.Type && a.Generation==b.Generation && a.Session==b.Session && a.PreparedPoint==b.PreparedPoint;}
         private void Change(Player p,int value)
         {if(p.direction!=value)p.ChangeDir(value);LastChangeObserved=p.direction==value;}
         private void ClearDecision(){target=null;weapon=null;direction=0;hasDecision=fromProvider=false;}

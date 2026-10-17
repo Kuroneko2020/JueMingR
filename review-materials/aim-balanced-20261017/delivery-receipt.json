@@ -1,0 +1,168 @@
+{
+  "schema": "aim-balanced-delivery-20261017-1",
+  "status": "INSTALLED_VERIFIED_READY_FOR_OWNER_TEST",
+  "taskBase": "112e9d629e3caf75c5d2ed9d021ac9c255b68e34",
+  "sourceCommit": "a283747627ad9159225481b0705d9aec7336b7b4",
+  "branch": "codex/aim-attack-modeling-and-integration",
+  "metadataBoundary": "This receipt and subsequent prose-only commit record delivery facts; package/installed code remains a283747, no rebuild/reinstall for metadata HEAD",
+  "sourceFingerprint": "AEF4A7B772F8E321EFA8416D0DAB763F09D4A47B2EC9EC098AD80B3077C2464F",
+  "inputFingerprint": "74969E53C57448DDF1A928AF60A334C9FA90C6F8EFC55DBA642C4F9C70ED323E",
+  "compileFingerprint": "8F05F20F436F28C8176DA5ADFF6D46B48B902394F7F8ADE3D0C4C105D048ECED",
+  "fullQualification": "INCOMPLETE",
+  "releaseEligible": false,
+  "sourceCommitTaskClean": true,
+  "wholeWorkspaceClean": false,
+  "protectedOwnerAssetCategories": 5,
+  "independent05": "Original complete independent review plus R1 recheck PASS; d5 originalNEEDS_FIX retained",
+  "root07": "Explicitly admitted before package/build/install",
+  "review": {
+    "path": ".local/aim-balanced-20261017/independent-final-review.md",
+    "length": 4742,
+    "sha256": "E905F1825F9FE1A7A45C1A76E5CB00F3AD62C9CA81551AA6C7852F456CEFAD8E"
+  },
+  "stage": {
+    "path": ".local/aim-balanced-20261017/stage-reviewed-a283747.json",
+    "length": 33744,
+    "sha256": "2A2B8BB80492C3BB4377D03CAE0BE5D01908466F33152C3DD5A4BFDD476F9B7F"
+  },
+  "stageReaderPositive": {
+    "path": ".local/aim-balanced-20261017/stage-reader-positive.json",
+    "length": 1442,
+    "sha256": "6A0A7CCA9A5718E157BEA4AA0743FF07D2589553FED7B04BA491A5C0095CE6C6"
+  },
+  "archive": {
+    "path": "outputs/aim-balanced-delivery-20261017-a283747/JueMingR-Continuous-Processing-a283747627ad9159225481b0705d9aec7336b7b4.zip",
+    "length": 2310828,
+    "verification": "Official builder member/archive/source validation reused, no second archive consumer/audit",
+    "sha256": "B73405E4E0F6FBFA44616E383FC136A86414EB99A0F088C9555C8E66AAAD3BD6"
+  },
+  "packageRoot": "outputs/aim-balanced-delivery-20261017-a283747/JueMingR-Continuous-Processing-a283747627ad9159225481b0705d9aec7336b7b4",
+  "packageProfile": "Complete ordinary Release/net472/x86 ContinuousProcessing",
+  "officialBuildExit": 0,
+  "actualInstalled": {
+    "payload": [
+      {
+        "length": 26624,
+        "sha256": "87328086FDD4D76085F3BBDDC6CB584ACA4E955A7E374C6782F03FBA9F09169E",
+        "relative": "JueMingR.Bootstrap.dll"
+      },
+      {
+        "length": 2461696,
+        "sha256": "7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C",
+        "relative": "JueMingR.Validation/0Harmony.dll"
+      },
+      {
+        "length": 675840,
+        "sha256": "1CD02EC426C119B35F8013676A16A56B4C6169C1C59E3BECEF3D7B69DF14668D",
+        "relative": "JueMingR.Validation/JueMingR.Features.dll"
+      },
+      {
+        "length": 19456,
+        "sha256": "104B17BE56D700BF068883D14557DA256D1241C95B88C2A1D3B8340FB5C4CFF8",
+        "relative": "JueMingR.Validation/JueMingR.Infrastructure.dll"
+      },
+      {
+        "length": 117760,
+        "sha256": "429F47EB24E4C71D53C5AA99D95E74A890B764725A8E8F5B03E25883AE9B9389",
+        "relative": "JueMingR.Validation/JueMingR.Platform.dll"
+      },
+      {
+        "length": 22016,
+        "sha256": "FE04762AC245E644E3870A2B022E980A462EAEC8188C928CB65CB715EDB2D3C8",
+        "relative": "JueMingR.Validation/JueMingR.PredictionWorker.exe"
+      },
+      {
+        "length": 176,
+        "sha256": "AD8267122C40D37DCD9D99E1412D763187A1825732F378DB8867F3ECF675CF70",
+        "relative": "JueMingR.Validation/JueMingR.PredictionWorker.exe.config"
+      },
+      {
+        "length": 2582016,
+        "sha256": "AEDFB6BDCADEC787C8F088DE3D4977B6AF87FCC26A5178C63300DAE1F5B3D43F",
+        "relative": "JueMingR.Validation/JueMingR.TerrariaHost.dll"
+      },
+      {
+        "length": 1422,
+        "sha256": "39845AAB7A05F655A2F397C80430A20DF0B6D338646308897F8526573A917797",
+        "relative": "JueMingR.Validation/phase-0-s-runtime.manifest"
+      },
+      {
+        "length": 440,
+        "sha256": "C8995B0D9C4BEF954FAAAFF79685628AFC71A5801DF4F60E9E5904182FEF03B6",
+        "relative": "Terraria.exe.config"
+      }
+    ],
+    "packageId": "continuous-processing-a283747627ad9159225481b0705d9aec7336b7b4",
+    "hostSha256": "AEDFB6BDCADEC787C8F088DE3D4977B6AF87FCC26A5178C63300DAE1F5B3D43F",
+    "restoreExit": 0,
+    "hostMvid": "2b040559-d347-4650-a1a3-79f2136f8077",
+    "ownershipReadbackValid": true,
+    "target": "F:\\Games\\GamePlats\\Steam\\steamapps\\common\\Terraria",
+    "receiptSha256": "C26A94556600B7E90EFAC30556261ED49D23DC0FD31492A64464FA060D6AB786",
+    "installExit": 0,
+    "gameExeUnchanged": true,
+    "payloadCount": 10,
+    "gameSha256": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+    "sourceCommit": "a283747627ad9159225481b0705d9aec7336b7b4"
+  },
+  "backup": {
+    "backupVerified": true,
+    "priorSource": "4c7ac5cddfaa0e79cef2749250086732a0ab09e7",
+    "scope": "Only11 old controlled files incl installed receipt, plus necessary prior delivery receipt; no owner saves/user settings/unrelated files",
+    "recoveryInstructions": ".local/aim-balanced-20261017/install-a283747-20261017-143801/recovery.txt",
+    "path": ".local/aim-balanced-20261017/install-a283747-20261017-143801",
+    "rollbackDrill": "NOT_RUN",
+    "controlledFiles": 11,
+    "priorDeliveryReceipt": ".local/aim-balanced-20261017/install-a283747-20261017-143801/backup/prior-delivery-receipt.json"
+  },
+  "rawInstallEvidence": {
+    "path": ".local/aim-balanced-20261017/install-a283747-20261017-143801/readback.json",
+    "length": 3224,
+    "sha256": "58688598C51D5BC678D3EC0E487723B1F033C86E78DF4911722E6EF9CE294A05"
+  },
+  "restoreResult": {
+    "path": ".local/aim-balanced-20261017/install-a283747-20261017-143801/restore.log",
+    "length": 215,
+    "sha256": "4F037DF4BBFD93DA93FFA569FB01C3D5FE1D6F183BFD8267EBFA24C4630AD5BA"
+  },
+  "installResult": {
+    "path": ".local/aim-balanced-20261017/install-a283747-20261017-143801/install.log",
+    "length": 216,
+    "sha256": "19D11FEBCDDB51ECF1DE14E8169C426B99D0BE9532F80CC93EB8C60872874DD1"
+  },
+  "productionEquivalence": {
+    "actualReleaseHostMvid": "2b040559-d347-4650-a1a3-79f2136f8077",
+    "releaseBuildRecord": {
+      "path": ".local/aim-balanced-20261017/delivery-final/release-build-record.json",
+      "length": 119184,
+      "sha256": "8B6EEA8C9B3DFCBD269CED57909C8E96EE97A8D330298AF2B04CA9C3FE7C5F49"
+    },
+    "actualFullCompileInputRows": 826,
+    "sourceRevisionId": "Official actuala283747 source revision, not forced old revision; no claim of identical Debug/Release/tested7a DLL bytes or new native execution",
+    "packageBuildRecord": {
+      "path": ".local/aim-balanced-20261017/delivery-final/package-build-record.json",
+      "length": 7644,
+      "sha256": "0AA281F941D9D98FC799569FF6E1A069DC6EDC4A46C5FBBD642DBB92E49ED212"
+    },
+    "fullCompileInputsEqualActualR19": true,
+    "actualR19ProductionSourceRows": 746,
+    "actualReleaseHostSha": "AEDFB6BDCADEC787C8F088DE3D4977B6AF87FCC26A5178C63300DAE1F5B3D43F"
+  },
+  "validation": {
+    "notRepeated": "No full matrix/Main rerun, extra package consumer/audit/install independent review or rollback drill",
+    "before07": "Complete05 author scopes, original Main and separate diagnostics plus independent full/R1 reviews; original failures retained",
+    "multiplayer": "NOT_MEASURED",
+    "ownerGame": "NOT_STARTED",
+    "after07": "Stage reader positive; one official full ordinary Release/package validation; one controlled backup/Restore/Install/readback",
+    "ownerSavesAndUserSettings": "NOT_READ_OR_MODIFIED; tool-owned Terraria.exe.config handled only by authorized installer",
+    "fps": "NOT_MEASURED",
+    "ownerAcceptance": "PENDING"
+  },
+  "limits": [
+    "Representative main projectile approximation, no pershot scatter/secondary effect guarantee; Sword450 exterior low receive remains",
+    "Path/Off no weapon fact relies on full rawCSV audit, not broad unbound exclusion guard",
+    "sameFrameCpuMs historical elapsed column, not pure CPU; Main/diagnostic/Present denominators remain separate",
+    "Full project qualification incomplete and releaseEligible false; no merge/close/tag/release"
+  ],
+  "completedUtc": "2026-10-17T06:38:05.342678Z"
+}

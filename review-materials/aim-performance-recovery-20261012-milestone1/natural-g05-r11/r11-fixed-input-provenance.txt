@@ -1,0 +1,9 @@
+r11 fixed validation input only; no production edits, no .git, no engineering checkout; not current full-probe build.
+baseCommit=380132ecfe93c5daa79a5fcd6f2a62463d4fe76a
+changed tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs archiveSHA=DEDB30A43810FF91710C8AFAA0AD34D8ADFB5BF0957FCFA529C5087FCE277872 fixedSHA=5FA43606B124998E38C70F6E6322D730137F41AEF63BEEE0F12AA5A52138D6C6
+changed tests/NativeWorldTextProbe/ProbeGraphics.cs archiveSHA=F399AE3ED693A8BA1FD9723AA712A44AC1A6C787391895F9CF51AAE9ED94F1D1 fixedSHA=926E3C3F1A478DF346E324FF4F8950E5481459C4C7EFF1036698925851A7B7DA
+archive .cs file count=420
+Copied owned three files: NativeCombatNaturalImpactChecks.cs, NativeCombatImpactVisualChecks.cs, ProbeGraphics.cs. ImpactVisual remains byte-identical to base.
+Private csproj changes resolve external/link references absolutely and reference the preexisting public Debug runtime; validation outputs remain private.
+Probe SHA D747F4910BF8957BD157317913A1F11B1F9B15244628CE1A8A59E7C85065ED58
+Archive ZIP SHA 124EA7391B1BBD2DC73EDDB26B587E83446D3B29652747D2246E2FAFE97C15BC

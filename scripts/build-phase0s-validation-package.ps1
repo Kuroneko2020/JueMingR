@@ -6,6 +6,7 @@ param(
     [string] $Profile = 'Phase0S',
     [string] $WorkloadBaseline,
     [string] $ApprovedRetainedAssets,
+    [string] $StageDevelopmentRecord,
     [switch] $Rebuild
 )
 
@@ -15,6 +16,11 @@ Set-StrictMode -Version 2.0
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
 . (Join-Path $PSScriptRoot 'phase0s\Phase0S.ScriptSupport.ps1')
 . (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
+if($StageDevelopmentRecord -and ($Profile -cne 'ContinuousProcessing' -or $WorkloadBaseline)){throw 'This explicit stage uses the existing complete ContinuousProcessing profile without formal workload selectors.'}
+function Test-PackageBuildAdmission($Record) {
+    if($StageDevelopmentRecord){return Test-AimStageDevelopmentBuild $repositoryRoot $Record $StageDevelopmentRecord $admission}
+    return Test-WorkloadDelivery $repositoryRoot $Record $WorkloadBaseline -RetainedAssets $admission
+}
 $ownerTestCardName = if ($Profile -eq 'ContinuousProcessing') { 'Continuous-Processing-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'Recovery-Buffs-Services-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'AboutHelpFeedback') { 'About-Help-Feedback-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'CoinDeposit') { 'Coin-Deposit-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'Keep-Favorited-Quick-Items-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'ItemBrowser') { 'Item-Browser-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'Footprints') { 'Footprints-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'MapMarkersExploration') { 'Map-Markers-Exploration-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'DeathHistory') {
     'Death-History-Owner-Test-Card.zh-CN.md'
 } elseif ($Profile -eq 'DirectionEquipment') {
@@ -369,11 +375,12 @@ try {
 $buildRecordPath = Join-Path $repositoryRoot 'artifacts\build\Release\build-record.json'
 $existingBuild = Read-WorkloadJson $buildRecordPath
 $buildOutput = @()
-if (-not $Rebuild -and (Test-WorkloadDelivery $repositoryRoot $existingBuild $WorkloadBaseline -RetainedAssets $admission)) {
-    Write-Host 'REUSED verified Release build and complete applicable check evidence.'
+if (-not $Rebuild -and (Test-PackageBuildAdmission $existingBuild)) {
+    Write-Host ('REUSED verified Release build; admission='+$(if($StageDevelopmentRecord){'explicit stage, full qualification INCOMPLETE'}else{'complete applicable check evidence'}))
 } else {
     Stop-WorkloadReadWindow
     $buildArguments=@{Configuration='Release';WorkloadBaseline=$WorkloadBaseline}
+    if($StageDevelopmentRecord){$buildArguments.StageDevelopmentRecord=$StageDevelopmentRecord}
     if($null -eq $admission){$buildArguments.RequireClean=$true}else{$buildArguments.ApprovedRetainedAssets=$ApprovedRetainedAssets}
     $buildOutput = @(& (Join-Path $PSScriptRoot 'build.ps1') @buildArguments 2>&1)
     if (-not $?) { throw 'The locked Release build failed.' }
@@ -393,7 +400,7 @@ if ([int] $buildRecord.schemaVersion -ne 4 -or [string] $buildRecord.commit -cne
     [string] $buildRecord.configuration -cne 'Release') {
     throw 'The Release build record does not describe the clean source commit.'
 }
-if (-not (Test-WorkloadDelivery $repositoryRoot $buildRecord -RetainedAssets $admission)) {
+if (-not (Test-PackageBuildAdmission $buildRecord)) {
     throw 'The Release package requires the completed matching automatic workload gate.'
 }
 if (@($buildRecord.outputs | Where-Object { [string] $_.path -match '(?i)(^|\\)0Harmony\.dll$' }).Count -ne 0) {
@@ -547,6 +554,13 @@ try {
     )) {
         Copy-Phase0SBuilderFileCreateNew -SourcePath $sourceAndName[0] -DestinationPath (Join-Path $packageRoot $sourceAndName[1])
     }
+    if($StageDevelopmentRecord){
+        # Keep the strict package/runtime manifests and fixed member contract.
+        # The ordinary owner card is the compatible in-ZIP disclosure surface.
+        $card=Join-Path $packageRoot $ownerTestCardName
+        $installationBoundary=if($buildRecord.workload.mode -ceq 'ExplicitAimContinuation20261013'){'本轮已授权在当前载荷与实际ZIP检查通过后，核归属、备份并使用正式工具安全安装；安装回执另行核验，正常游戏体验仍由所有者操作。'}else{'交包后停止，安装和体验由所有者另行决定。'}
+        [IO.File]::AppendAllText($card,"`r`n本包为已授权的辅助瞄准阶段开发测试包。完整文件与 Release 载荷齐全；全量累计资格未完成，不是正式发布候选。未完成机制及实机／多人／FPS边界见 Issue #114。$installationBoundary`r`n",(New-Object Text.UTF8Encoding($false)))
+    }
 
     $validatedPackage = Read-Phase0SPackage -PackageRoot $packageRoot
     if ($validatedPackage.packageId -cne $packageId -or $validatedPackage.sourceCommit -cne $sourceCommit) {
@@ -566,7 +580,7 @@ try {
         clean = ($null -eq $admission)
         workspaceDirty = ($null -ne $admission)
         committedProductSourceClean = $true
-        releaseEligible = ($null -eq $admission)
+        releaseEligible = ($null -eq $admission -and -not $StageDevelopmentRecord)
         workspace = $admission
         packageId = $packageId
         sdk = '10.0.203'
@@ -625,7 +639,7 @@ try {
     if ($sourceIdentity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint -or
         ($null -eq $admission -and @(Invoke-Phase0SGit -Arguments @('status','--porcelain=v1','--untracked-files=all')).Count -ne 0) -or
         ($admission|ConvertTo-Json -Depth 8 -Compress) -cne ($promotionAdmission|ConvertTo-Json -Depth 8 -Compress) -or
-        -not (Test-WorkloadDelivery $repositoryRoot $buildRecord -RetainedAssets $admission)) { throw 'Package inputs or evidence changed before promotion.' }
+        -not (Test-PackageBuildAdmission $buildRecord)) { throw 'Package inputs or evidence changed before promotion.' }
     [System.IO.File]::Delete($markerPath)
     $markerRemoved = $true
     if ((Get-Phase0SPathState -Path $outputRoot).exists) {

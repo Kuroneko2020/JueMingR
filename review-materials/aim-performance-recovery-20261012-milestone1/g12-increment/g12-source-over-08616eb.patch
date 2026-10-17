@@ -1,0 +1,164 @@
+diff --git a/src/JueMingR.Features/Combat/CombatPredictionWork.cs b/src/JueMingR.Features/Combat/CombatPredictionWork.cs
+index d43bff3..011855b 100644
+--- a/src/JueMingR.Features/Combat/CombatPredictionWork.cs
++++ b/src/JueMingR.Features/Combat/CombatPredictionWork.cs
+@@ -14,13 +14,14 @@ namespace JueMingR.Features.Combat
+         private bool started,exceeded;
+         private long spent,entered;
+         private int depth;
++        private int geometryRemaining;
+         public CombatPredictionWork(double milliseconds)
+         {if(milliseconds<=0 || double.IsNaN(milliseconds) || double.IsInfinity(milliseconds))throw new ArgumentOutOfRangeException(nameof(milliseconds));allowance=Math.Max(1,(long)(milliseconds*Stopwatch.Frequency/1000));}
+         public bool Exceeded {get{return exceeded;}}
+         public double UsedMilliseconds {get{return (spent+(depth==0?0:Stopwatch.GetTimestamp()-entered))*1000.0/Stopwatch.Frequency;}}
+         public Scope Enter(ulong update)
+         {
+-            if(depth==0){if(!started || tick!=update){started=true;tick=update;spent=0;exceeded=false;}entered=Stopwatch.GetTimestamp();}
++            if(depth==0){if(!started || tick!=update){started=true;tick=update;spent=0;exceeded=false;geometryRemaining=0;}entered=Stopwatch.GetTimestamp();}
+             var previous=active;active=this;depth++;return new Scope(this,previous);
+         }
+         public static void Check()
+@@ -29,6 +30,19 @@ namespace JueMingR.Features.Combat
+             if(owner.exceeded || owner.spent+Stopwatch.GetTimestamp()-owner.entered>=owner.allowance)
+             {owner.exceeded=true;throw new CombatPredictionBudgetExceededException();}
+         }
++        public static void CheckGeometry()
++        {
++            var owner=active;if(owner==null)return;
++            if(owner.exceeded)throw new CombatPredictionBudgetExceededException();
++            // Cell acquisition is a finite in-memory operation. Its first
++            // request checks the clock, then at most 32 requests separate real
++            // checks. This counter belongs to the whole real update, so short
++            // scopes/nesting/candidate owners cannot restart that interval.
++            // Future-action and other CPU-loop Check calls remain immediate;
++            // this cooperative interval is not a hard real-time guarantee.
++            if(owner.geometryRemaining==0){owner.geometryRemaining=31;Check();}
++            else owner.geometryRemaining--;
++        }
+         private void Leave(CombatPredictionWork previous)
+         {if(--depth==0)spent+=Stopwatch.GetTimestamp()-entered;active=previous;}
+         public readonly struct Scope:IDisposable
+diff --git a/src/JueMingR.TerrariaHost/Combat/PredictionTerrain.cs b/src/JueMingR.TerrariaHost/Combat/PredictionTerrain.cs
+index 79af831..7c34395 100644
+--- a/src/JueMingR.TerrariaHost/Combat/PredictionTerrain.cs
++++ b/src/JueMingR.TerrariaHost/Combat/PredictionTerrain.cs
+@@ -89,7 +89,7 @@ namespace JueMingR.TerrariaHost.Combat
+         }
+         private bool CellAt(int x,int y,out Cell cell,out PredictionStop stop)
+         {
+-            CombatPredictionWork.Check();
++            CombatPredictionWork.CheckGeometry();
+             stop=PredictionStop.None;cell=default(Cell);
+             if(x<0 || y<0 || x>=Main.maxTilesX || y>=Main.maxTilesY){stop=PredictionStop.TerrainUnavailable;return false;}
+             int key=y*Main.maxTilesX+x,hot=(key^(key>>7)^(key>>16))&255;
+diff --git a/tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Incident.cs b/tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Incident.cs
+index 3a8da2c..97973a4 100644
+--- a/tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Incident.cs
++++ b/tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Incident.cs
+@@ -55,6 +55,7 @@ namespace NativeWorldTextProbe
+         }
+         private static void BudgetAndPathOffSelection(object context,object combat,object host,object attack,object input,bool checkWorldClock=false)
+         {
++            GeometryAllowanceIntervals(host);
+             var audit=new Harmony("JueMingR.Tests.IncidentBudgetSelection");
+             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
+             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13),postfix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks),nameof(IncidentBirth)));
+@@ -112,6 +113,31 @@ namespace NativeWorldTextProbe
+             }
+             finally{forceBudget=false;budgetAttack=budgetHost=budgetContext=abortedPlan=abortedPhase=null;incidentPlayer=null;incidentReceiver=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+         }
++        private static void GeometryAllowanceIntervals(object host)
++        {
++            // Exercise the actual Release owner implementation at the real
++            // world key. No world counter or clock delay is fabricated.
++            var type=Get(host,"PredictionWork").GetType();var enter=type.GetMethod("Enter",Flags);
++            var geometry=(Action)Delegate.CreateDelegate(typeof(Action),type.GetMethod("CheckGeometry",Flags));
++            var spent=type.GetField("spent",Flags);var allowance=type.GetField("allowance",Flags);
++            Func<object> create=()=>Activator.CreateInstance(type,new object[]{6.0});
++            Func<object,IDisposable> scope=owner=>(IDisposable)enter.Invoke(owner,new object[]{(ulong)Main.GameUpdateCount});
++            Func<bool> exhausted=()=>{try{geometry();return false;}catch(Exception error){if(error.GetType().Name=="CombatPredictionBudgetExceededException")return true;throw;}};
++            var first=create();
++            using(scope(first)){spent.SetValue(first,allowance.GetValue(first));Require(exhausted(),"the first geometry access immediately checks an exhausted real owner allowance");}
++            var shared=create();
++            using(scope(shared)){geometry();spent.SetValue(shared,allowance.GetValue(shared));}
++            int calls=0;bool stopped=false;
++            while(!stopped && calls<32)
++            {
++                // Repeated short scopes and one nested scope use this SAME
++                // GUC/owner. Neither is allowed to restart the cell interval.
++                using(scope(shared))using(scope(shared)){calls++;stopped=exhausted();}
++            }
++            Require(stopped && calls<=32,"geometry checks cannot indefinitely defer exhaustion through same-GUC short or nested scopes");
++            using(scope(shared))Require(exhausted(),"an already-exhausted owner rejects the very next geometry call");
++            Console.WriteLine("PASS geometry allowance first access / shared short+nested scope interval calls="+calls+" (at most32), immediate exceeded signal; actual GUC="+Main.GameUpdateCount);
++        }
+         private static void PathOffSelection(object context,object combat,object host,object attack,object input,bool clearLine)
+         {
+             NativeCombatObservationChecks.Save(host,new ObservationOptions());
+diff --git a/tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs b/tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs
+index 3fdce96..4c702ce 100644
+--- a/tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs
++++ b/tests/NativeWorldTextProbe/NativeCombatNaturalImpactChecks.cs
+@@ -152,21 +152,26 @@ namespace NativeWorldTextProbe
+             Directory.CreateDirectory(output);
+             var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var input=Get(context,"Input");var world=Get(host,"World");var attack=Get(combat,"Attack");
+             var audit=new Harmony("JueMingR.Tests.NaturalSlimeImpact");
+-            foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
+-            audit.Patch(typeof(Player).GetMethod("TryUpdateChannel",Flags),postfix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(Born),Flags)));
+-            audit.Patch(AccessTools.Method(typeof(Player),"Update",new[]{typeof(int)}),prefix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(MoveBefore),Flags)));
+-            audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(Hit),Flags)));
+             bool originalFilm=Main.LocalPlayer.isControlledByFilm;
+             var rows=new List<string>{"run,phase,frame,tick,expected,contact,visible,redPixels,pathCount,npcX,npcY,npcVx,npcVy,playerX,playerY,playerVx,playerVy,receiveTick,stop,selected,budgetExceeded,budgetMs,previewPhase"};
+             var failures=new List<string>();
+             var inputRows=new List<string>();birthRows.Clear();
+             var pixelBuffer=timing?null:new Color[960*640];
+-            var cpuRecords=timing?new CpuRecord[4*480]:null;int cpuCount=0,cpuCase=0;cpuMode=timing;
+-            var bound=timing?new CpuBindings(context,combat,host,input,attack):null;
++            var cpuRecords=timing?new CpuRecord[4*480]:null;int cpuCount=0,cpuCase=0;
+             var cpuAllocations=timing?new long[4]:null;long allocationStart=0,allocationEnd=0;
+-            if(timing){AppDomain.MonitoringIsEnabled=true;allocationStart=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;}
++            Exception runFailure=null;
++            var cleanupFailures=new List<Exception>();
+             try
+             {
++                // Even a partial hook installation or binding failure owns
++                // the same cleanup as a completed observation window.
++                foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
++                audit.Patch(typeof(Player).GetMethod("TryUpdateChannel",Flags),postfix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(Born),Flags)));
++                audit.Patch(AccessTools.Method(typeof(Player),"Update",new[]{typeof(int)}),prefix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(MoveBefore),Flags)));
++                audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatNaturalImpactChecks).GetMethod(nameof(Hit),Flags)));
++                cpuMode=timing;
++                var bound=timing?new CpuBindings(context,combat,host,input,attack):null;
++                if(timing){AppDomain.MonitoringIsEnabled=true;allocationStart=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;}
+                 Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;
+                 foreach(bool moving in new[]{false,true})
+                 {
+@@ -337,11 +342,25 @@ namespace NativeWorldTextProbe
+                 Require(failures.Count==0,"natural slime complete declared windows contain "+failures.Count+" invalid red frames; first="+(failures.Count==0?"none":failures[0]));
+                 Console.WriteLine("PASS natural blue slime idle/attack/movement/switch/restore actual World.Draw; independent original gun damage and unreachable blade negative");
+             }
++            catch(Exception failure){runFailure=failure;throw;}
+             finally
+             {
+-                if(timing){allocationEnd=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;WriteCpu(output,cpuRecords,cpuCount,allocationStart,allocationEnd,cpuAllocations);}else{File.WriteAllLines(Path.Combine(output,"natural-slime-frames.csv"),rows);File.WriteAllLines(Path.Combine(output,"natural-input-facts.txt"),inputRows);File.WriteAllLines(Path.Combine(output,"natural-births.txt"),birthRows);}
+-                cpuMode=false;Main.LocalPlayer.isControlledByFilm=originalFilm;player=null;receiver=null;audit.UnpatchAll(audit.Id);
+-                NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
++                // Evidence I/O and each restoration are independent: one
++                // failure must not retain hooks, references or film ownership.
++                // Preserve all original exceptions rather than masking the run.
++                try{if(timing){allocationEnd=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;WriteCpu(output,cpuRecords,cpuCount,allocationStart,allocationEnd,cpuAllocations);}else{File.WriteAllLines(Path.Combine(output,"natural-slime-frames.csv"),rows);File.WriteAllLines(Path.Combine(output,"natural-input-facts.txt"),inputRows);File.WriteAllLines(Path.Combine(output,"natural-births.txt"),birthRows);}}
++                catch(Exception failure){cleanupFailures.Add(failure);}
++                try{audit.UnpatchAll(audit.Id);}catch(Exception failure){cleanupFailures.Add(failure);}
++                try{Main.LocalPlayer.isControlledByFilm=originalFilm;}
++                catch(Exception failure){cleanupFailures.Add(failure);}
++                finally{cpuMode=false;player=null;receiver=null;}
++                try{NativeCombatObservationChecks.Save(host,new ObservationOptions());}catch(Exception failure){cleanupFailures.Add(failure);}
++                try{NativeCombatCadenceChecks.Save(combat,new CombatOptions());}catch(Exception failure){cleanupFailures.Add(failure);}
++                if(cleanupFailures.Count>0)
++                {
++                    if(runFailure!=null)cleanupFailures.Insert(0,runFailure);
++                    throw new AggregateException("Natural observation cleanup failed; original run and cleanup errors are retained.",cleanupFailures);
++                }
+             }
+         }
+     }

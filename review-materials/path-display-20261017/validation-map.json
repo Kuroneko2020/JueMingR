@@ -1,0 +1,1669 @@
+{
+  "schema": "path-display-validation-20261017-1",
+  "base": "1014c7d58f83460bb5a422bf5fc0a80e4f4bd0f8",
+  "installedBaseline": "a283747627ad9159225481b0705d9aec7336b7b4",
+  "baseProductionDelta": [],
+  "productionFiles": [
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/HostCombatObservation.cs",
+      "length": 38058,
+      "sha256": "E50995F7D145E140E286E3A9321829D1C88C639C5D26D05D3E08706B38309362"
+    },
+    {
+      "path": "src/JueMingR.TerrariaHost/Combat/PredictionTerrain.cs",
+      "length": 48636,
+      "sha256": "68881E61E3F05CC45E2EC87A1B848FF734CF1240BF0FF672D18DE6D3ACC3A68B"
+    }
+  ],
+  "candidateSourceBoundary": "R03 fixed production compiled at dirty HEAD1014c7d, later committed as unchanged source. Normal measurement carrier is NOT an authorized delivery package; package stage/commit generated separately after independent review.",
+  "baselineIdentity": {
+    "path": ".local/path-display-20261017/baseline/identity.json",
+    "length": 4137,
+    "sha256": "E662A6EB57BB3A53618746A2904DD077C265519B40947D5BF7AE128C0667C594"
+  },
+  "foreignAssets": {
+    "path": ".local/path-display-20261017/foreign-assets.json",
+    "length": 826,
+    "sha256": "A1C6366E74BDC0761B47B4647C4FD5A784548EEF84D88192B8FDB64EFFC1F88D"
+  },
+  "detectionFiles": [
+    {
+      "path": "artifacts/build/Debug/checks/bin/NativeWorldTextProbe/x86/Debug/net472/NativeWorldTextProbe.exe",
+      "length": 5861376,
+      "sha256": "52C34E0D1AB4E24C080C188A42348217CCCAA2C673080A568C5683B718CAD1A2"
+    },
+    {
+      "path": "artifacts/build/Debug/work/bin/JueMingR.Platform/x86/Debug/net472/JueMingR.Platform.dll",
+      "length": 125440,
+      "sha256": "500E5E5EC4DE6BA2755ACAACA716D516CD8C3D15388F8938D24E4DB3FE40A3FE"
+    },
+    {
+      "path": "artifacts/build/Debug/work/bin/JueMingR.Features/x86/Debug/net472/JueMingR.Features.dll",
+      "length": 776704,
+      "sha256": "614D0FC51F2F6F8B79DAD0AAA6EF3BBAB218E88E2DE961C7DD345072B4F9D5C3"
+    },
+    {
+      "path": "artifacts/build/Debug/work/bin/JueMingR.Infrastructure/x86/Debug/net472/JueMingR.Infrastructure.dll",
+      "length": 20992,
+      "sha256": "99EA1C08F058CE7BB8021BA632332657F34CC2FF3D02A8ABADC3B39544E9EB99"
+    },
+    {
+      "path": "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll",
+      "length": 2838016,
+      "sha256": "A58D02B2926DC80645E8100DFB7309D58D3545B2E7737AFF21C9F592531B274E"
+    }
+  ],
+  "checks": [
+    {
+      "name": "architecture-combat",
+      "status": "CURRENT",
+      "scope": "selected architecture combat, zero failures",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/architecture-combat.log",
+          "length": 126,
+          "sha256": "1A61DD9ED16DCF68918C3D0D42949A589D0B14CBDD8E71B1E009D18DA9E96724"
+        }
+      ]
+    },
+    {
+      "name": "independent-source-draw",
+      "status": "CURRENT",
+      "scope": "Same final fixture: expected old failure; actual Source+GPU new pass; warm finite first-request interruption, not cold-start guarantee",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/old-red-source-gpu-r07.log",
+          "length": 2528,
+          "sha256": "B33F7FEC665E065BABEE7A4FA309CA642C2AACC821463E61A095A6252091981A"
+        },
+        {
+          "path": ".local/path-display-20261017/new-green-source-gpu-r07.log",
+          "length": 1598,
+          "sha256": "352C3D12F1526E72BC385ECB3E6AA59231D32936AB178B5C907A1CEADB163BA5"
+        }
+      ]
+    },
+    {
+      "name": "default-visual-route",
+      "status": "CURRENT",
+      "scope": "Actual default CombatVisual executes old visual and path continuity then new Source/GPU oracle, initialized once",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/visual-default-final.log",
+          "length": 7810,
+          "sha256": "A0A53D5843D0CC2D0BB4EE4FCB5F48BAD50A75EE36173F934631A21ED9C68498"
+        }
+      ]
+    },
+    {
+      "name": "same-update-facts",
+      "status": "CURRENT",
+      "scope": "Exhausted unchanged sameGUC actual pixels preserved, zero producer admissions; true changes still retire; 4096-cell exact last-cell negative",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/new-green-source-gpu-r07.log",
+          "length": 1598,
+          "sha256": "352C3D12F1526E72BC385ECB3E6AA59231D32936AB178B5C907A1CEADB163BA5"
+        },
+        {
+          "path": ".local/path-display-20261017/optional-consumption-current.log",
+          "length": 9461,
+          "sha256": "86F01F3B03D4AD3615E41EFC497C15202651516F815D945AB1D344521A721520"
+        }
+      ]
+    },
+    {
+      "name": "selection-modes",
+      "status": "CURRENT",
+      "scope": "16 center/order/four-switch combinations, original placed targets, wall-change/fair clear line",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/modes-current.log",
+          "length": 1796,
+          "sha256": "54B83AB7C4BBC8FF8A94F3555B431D7B25F841FEDF8CFC07D464A67CE8D6FF7A"
+        }
+      ]
+    },
+    {
+      "name": "npc-yoyo-safety",
+      "status": "CURRENT",
+      "scope": "Actual sentry physical mouse, ordinary and managed yoyo, original motor/lifetime/geometry and family protection",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/safety-current.log",
+          "length": 99818,
+          "sha256": "8F363FEA31F86BC2BC3E7B2B0CBED608579410830593AF091291CCBF9C15187A"
+        }
+      ]
+    },
+    {
+      "name": "path-continuity",
+      "status": "CURRENT",
+      "scope": "Existing GPU absolute milestone, repeated draw/camera/pause and life/age/new segment negatives",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/path-continuity-current.log",
+          "length": 687,
+          "sha256": "25845997C69AE628A8527170F2ECFED6C1BFF6AC7913914E7FD74B05057CF61D"
+        }
+      ]
+    },
+    {
+      "name": "main-performance",
+      "status": "CURRENT",
+      "scope": "Eight paired ordinary optimized Release windows with exact600/240 advances; independent diagnostic windows retain own identity",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main-summary.json",
+          "length": 41638,
+          "sha256": "ED0C8F8CD377292E32E340F01C74876346E2E0C8E8B975EBC312D30199DD52DD"
+        },
+        {
+          "path": ".local/path-display-20261017/measurement-release-build-record.json",
+          "length": 141198,
+          "sha256": "9256A62FDAACFDA5A931075F4A0ECC960D35550C746BB667C09A3B61D71885AC"
+        }
+      ]
+    },
+    {
+      "name": "workload-routing",
+      "status": "CURRENT",
+      "scope": "Exact new test leaf maps native-CombatVisual, and default call inspected/executed",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/routing-final.json",
+          "length": 116,
+          "sha256": "99ADCA5BE71F2AF31F152EF5CDEB45D6ABF7D465512E889BE9480F64FD9C8997"
+        }
+      ]
+    }
+  ],
+  "ordinaryMain": [
+    {
+      "name": "baseline-path-matched",
+      "receipt": {
+        "name": "baseline-path-matched",
+        "startUtc": "2026-10-17T09:35:11.608041Z",
+        "endUtc": "2026-10-17T09:35:32.9326434Z",
+        "exit": 0,
+        "pid": 47548,
+        "mode": "path",
+        "steps": 240,
+        "item": 1229,
+        "ammoItem": 40,
+        "pressCycle": "continuous",
+        "dummy": 0,
+        "standing": true,
+        "static": false,
+        "noAttack": true,
+        "payloadRoot": ".local/path-display-20261017/baseline/payload",
+        "driverSha": "34C587D4960513339C694136334D0CA7B5261D2C32098A5898D9A3385F86607D",
+        "hostSha": "AEDFB6BDCADEC787C8F088DE3D4977B6AF87FCC26A5178C63300DAE1F5B3D43F",
+        "gameSha": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+        "clearedOtherJmrEnvironment": true,
+        "defaultSilentRequired": true,
+        "scope": "Complete original Main.Update/Draw/EndDraw elapsed intervals. No detailed Core/Source hooks. Synthetic isolated room, scripted device transport, not owner gameplay/FPS. Native birth receipts are grouped separately from potential attack opportunities; no diagnostic or lottery overrides.",
+        "diagnostic": false,
+        "workProbe": false,
+        "moduleHashes": {
+          "JueMingR.Platform.dll": "429F47EB24E4C71D53C5AA99D95E74A890B764725A8E8F5B03E25883AE9B9389",
+          "JueMingR.Features.dll": "1CD02EC426C119B35F8013676A16A56B4C6169C1C59E3BECEF3D7B69DF14668D",
+          "JueMingR.Infrastructure.dll": "104B17BE56D700BF068883D14557DA256D1241C95B88C2A1D3B8340FB5C4CFF8",
+          "JueMingR.TerrariaHost.dll": "AEDFB6BDCADEC787C8F088DE3D4977B6AF87FCC26A5178C63300DAE1F5B3D43F"
+        },
+        "runtimeManifestSha256": "39845AAB7A05F655A2F397C80430A20DF0B6D338646308897F8526573A917797"
+      },
+      "firstActualPathDrawStep": 11,
+      "presents": 1403,
+      "eligiblePathDraws": 1403,
+      "actualPathDraws": 1391,
+      "steadyObservedGucs": 220,
+      "steadyLongestNoDrawGuc": 0,
+      "sameGucLaterDrawLoss": 0,
+      "birthTypes": {},
+      "familyParents": 0,
+      "familyChildren": 0,
+      "primaryBirthCount": 0,
+      "primaryInputKinds": {},
+      "nativeEmissionGucIntervals": {},
+      "hitTypes": {},
+      "metrics": {
+        "all": {
+          "advancingUpdate": {
+            "n": 240,
+            "mean": 1.40257125,
+            "p95": 2.7669,
+            "max": 34.5415
+          },
+          "allUpdateCalls": 1404,
+          "presents": 1403,
+          "workMs": {
+            "n": 240,
+            "mean": 0.40788583333333334,
+            "p95": 1.9135,
+            "max": 3.5626
+          }
+        },
+        "cold": {
+          "advancingUpdate": {
+            "n": 20,
+            "mean": 3.26556,
+            "p95": 34.5415,
+            "max": 34.5415
+          },
+          "allUpdateCalls": 64,
+          "presents": 59,
+          "workMs": {
+            "n": 20,
+            "mean": 0.549895,
+            "p95": 3.5626,
+            "max": 3.5626
+          }
+        },
+        "steady": {
+          "advancingUpdate": {
+            "n": 220,
+            "mean": 1.2332086363636363,
+            "p95": 2.7326,
+            "max": 3.3525
+          },
+          "allUpdateCalls": 1339,
+          "presents": 1344,
+          "workMs": {
+            "n": 220,
+            "mean": 0.39497590909090907,
+            "p95": 1.9033,
+            "max": 2.191
+          }
+        }
+      },
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main/baseline-path-matched/receipt.json",
+          "length": 1790,
+          "sha256": "5E6D37A6909CED62835953CEF4CE9069EAE703BA4CB59B4C3817DBCB016F187D"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-path-matched/out/main-loop-frames.csv",
+          "length": 389048,
+          "sha256": "ABBBE6067292766824FAA2FDB1A7C7EC5044029D0DBC0C3E5026DAA5D9F5D6D4"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-path-matched/out/main-draw-presentation.csv",
+          "length": 109908,
+          "sha256": "CF09E021C2B09736EE70F1A6FBBA9B92545A781B78D911866FDE7F3F1623FDD1"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-path-matched/out/world-smoke-frames.csv",
+          "length": 33189,
+          "sha256": "12D639162DC617C591909E39B20C17D8D0AC2BCAAAE1232576956194E936A927"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-path-matched/out/native-birth-inputs.csv",
+          "length": 162,
+          "sha256": "DDF21D27733B0BDAFF6F00EFF6B56D950E89A8D24EFE953A00B3E58ED6442653"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-path-matched/out/native-hit-events.csv",
+          "length": 92,
+          "sha256": "93B543AE03C2C68004B1B4056429F3C21F8D3B8399E2E2B30E48A1781FD9D868"
+        }
+      ]
+    },
+    {
+      "name": "candidate-path-final-240",
+      "receipt": {
+        "name": "candidate-path-final-240",
+        "startUtc": "2026-10-17T09:46:34.0527152Z",
+        "endUtc": "2026-10-17T09:46:55.4300565Z",
+        "exit": 0,
+        "pid": 45992,
+        "mode": "path",
+        "steps": 240,
+        "item": 1229,
+        "ammoItem": 40,
+        "pressCycle": "continuous",
+        "dummy": 0,
+        "standing": true,
+        "static": false,
+        "noAttack": true,
+        "payloadRoot": ".local/path-display-20261017/candidate-final-payload",
+        "driverSha": "34C587D4960513339C694136334D0CA7B5261D2C32098A5898D9A3385F86607D",
+        "hostSha": "F7BF201C7069EA6E3B596464E22351696414BC8EF7068512D345BF444A747E3A",
+        "gameSha": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+        "clearedOtherJmrEnvironment": true,
+        "defaultSilentRequired": true,
+        "scope": "Complete original Main.Update/Draw/EndDraw elapsed intervals. No detailed Core/Source hooks. Synthetic isolated room, scripted device transport, not owner gameplay/FPS. Native birth receipts are grouped separately from potential attack opportunities; no diagnostic or lottery overrides.",
+        "diagnostic": false,
+        "workProbe": false,
+        "moduleHashes": {
+          "JueMingR.Platform.dll": "933BEB6E8156EA9C649156C80FE44AD20961A58F828592A4899F91678E437B3D",
+          "JueMingR.Features.dll": "25704FE3879419F0183EF6D9F227F75550FEC3D8B2BBC03AA3C74B6031779F33",
+          "JueMingR.Infrastructure.dll": "CDDC446DA54FA7BABA45F9C39E868FADF858304F8765AA8B2CFD7891770A4DFB",
+          "JueMingR.TerrariaHost.dll": "F7BF201C7069EA6E3B596464E22351696414BC8EF7068512D345BF444A747E3A"
+        },
+        "runtimeManifestSha256": "9114BAAB58A0BC87AEA72EE80E10099F119F0C2BCF527E72112836394AC33BC0"
+      },
+      "firstActualPathDrawStep": 5,
+      "presents": 1265,
+      "eligiblePathDraws": 1265,
+      "actualPathDraws": 1260,
+      "steadyObservedGucs": 220,
+      "steadyLongestNoDrawGuc": 0,
+      "sameGucLaterDrawLoss": 0,
+      "birthTypes": {},
+      "familyParents": 0,
+      "familyChildren": 0,
+      "primaryBirthCount": 0,
+      "primaryInputKinds": {},
+      "nativeEmissionGucIntervals": {},
+      "hitTypes": {},
+      "metrics": {
+        "all": {
+          "advancingUpdate": {
+            "n": 240,
+            "mean": 1.4774479166666667,
+            "p95": 3.0111,
+            "max": 34.1376
+          },
+          "allUpdateCalls": 1266,
+          "presents": 1265,
+          "workMs": {
+            "n": 240,
+            "mean": 0.44897583333333335,
+            "p95": 2.0323,
+            "max": 4.0273
+          }
+        },
+        "cold": {
+          "advancingUpdate": {
+            "n": 20,
+            "mean": 3.800095,
+            "p95": 34.1376,
+            "max": 34.1376
+          },
+          "allUpdateCalls": 42,
+          "presents": 37,
+          "workMs": {
+            "n": 20,
+            "mean": 0.75889,
+            "p95": 4.0273,
+            "max": 4.0273
+          }
+        },
+        "steady": {
+          "advancingUpdate": {
+            "n": 220,
+            "mean": 1.2662981818181818,
+            "p95": 2.8776,
+            "max": 3.3253
+          },
+          "allUpdateCalls": 1223,
+          "presents": 1228,
+          "workMs": {
+            "n": 220,
+            "mean": 0.42080181818181817,
+            "p95": 2.0104,
+            "max": 2.2734
+          }
+        }
+      },
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main/candidate-path-final-240/receipt.json",
+          "length": 1800,
+          "sha256": "C53F168FFDC3147087A577480338E5658E4FCDBD66EA0CA1D979D836C2CAA0F7"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-path-final-240/out/main-loop-frames.csv",
+          "length": 472690,
+          "sha256": "AF9EA1C1DDE62F56C56F1A3C234EED36A8637228152A5CBC6040B435B98A89C2"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-path-final-240/out/main-draw-presentation.csv",
+          "length": 99371,
+          "sha256": "69E3D47F7553816FD86C13B7F01990D2ED1A0BA0A3998F2CA9954AFF70751847"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-path-final-240/out/world-smoke-frames.csv",
+          "length": 33200,
+          "sha256": "124E2C5E36BD381258491EDDED9A775DCEC20FEF9F87F6411461BA7E093EABAD"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-path-final-240/out/native-birth-inputs.csv",
+          "length": 162,
+          "sha256": "DDF21D27733B0BDAFF6F00EFF6B56D950E89A8D24EFE953A00B3E58ED6442653"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-path-final-240/out/native-hit-events.csv",
+          "length": 92,
+          "sha256": "93B543AE03C2C68004B1B4056429F3C21F8D3B8399E2E2B30E48A1781FD9D868"
+        }
+      ]
+    },
+    {
+      "name": "baseline-both-600",
+      "receipt": {
+        "name": "baseline-both-600",
+        "startUtc": "2026-10-17T09:45:46.215498Z",
+        "endUtc": "2026-10-17T09:46:12.6456899Z",
+        "exit": 0,
+        "pid": 20728,
+        "mode": "both",
+        "steps": 600,
+        "item": 1229,
+        "ammoItem": 40,
+        "pressCycle": "continuous",
+        "dummy": 0,
+        "standing": true,
+        "static": false,
+        "noAttack": false,
+        "payloadRoot": ".local/path-display-20261017/baseline/payload",
+        "driverSha": "34C587D4960513339C694136334D0CA7B5261D2C32098A5898D9A3385F86607D",
+        "hostSha": "AEDFB6BDCADEC787C8F088DE3D4977B6AF87FCC26A5178C63300DAE1F5B3D43F",
+        "gameSha": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+        "clearedOtherJmrEnvironment": true,
+        "defaultSilentRequired": true,
+        "scope": "Complete original Main.Update/Draw/EndDraw elapsed intervals. No detailed Core/Source hooks. Synthetic isolated room, scripted device transport, not owner gameplay/FPS. Native birth receipts are grouped separately from potential attack opportunities; no diagnostic or lottery overrides.",
+        "diagnostic": false,
+        "workProbe": false,
+        "moduleHashes": {
+          "JueMingR.Platform.dll": "429F47EB24E4C71D53C5AA99D95E74A890B764725A8E8F5B03E25883AE9B9389",
+          "JueMingR.Features.dll": "1CD02EC426C119B35F8013676A16A56B4C6169C1C59E3BECEF3D7B69DF14668D",
+          "JueMingR.Infrastructure.dll": "104B17BE56D700BF068883D14557DA256D1241C95B88C2A1D3B8340FB5C4CFF8",
+          "JueMingR.TerrariaHost.dll": "AEDFB6BDCADEC787C8F088DE3D4977B6AF87FCC26A5178C63300DAE1F5B3D43F"
+        },
+        "runtimeManifestSha256": "39845AAB7A05F655A2F397C80430A20DF0B6D338646308897F8526573A917797"
+      },
+      "firstActualPathDrawStep": 11,
+      "presents": 3158,
+      "eligiblePathDraws": 3158,
+      "actualPathDraws": 3113,
+      "steadyObservedGucs": 580,
+      "steadyLongestNoDrawGuc": 2,
+      "sameGucLaterDrawLoss": 0,
+      "birthTypes": {
+        "1": 43,
+        "720": 1
+      },
+      "familyParents": 0,
+      "familyChildren": 0,
+      "primaryBirthCount": 43,
+      "primaryInputKinds": {
+        "0": 8,
+        "1": 35
+      },
+      "nativeEmissionGucIntervals": {
+        "19": 18
+      },
+      "hitTypes": {
+        "1": 21
+      },
+      "metrics": {
+        "all": {
+          "advancingUpdate": {
+            "n": 600,
+            "mean": 1.6369148333333334,
+            "p95": 3.474,
+            "max": 33.6942
+          },
+          "allUpdateCalls": 3159,
+          "presents": 3158,
+          "workMs": {
+            "n": 600,
+            "mean": 0.549762,
+            "p95": 2.0662,
+            "max": 12.8662
+          }
+        },
+        "cold": {
+          "advancingUpdate": {
+            "n": 20,
+            "mean": 3.5419300000000002,
+            "p95": 33.6942,
+            "max": 33.6942
+          },
+          "allUpdateCalls": 56,
+          "presents": 52,
+          "workMs": {
+            "n": 20,
+            "mean": 0.554705,
+            "p95": 3.7291,
+            "max": 3.7291
+          }
+        },
+        "steady": {
+          "advancingUpdate": {
+            "n": 580,
+            "mean": 1.5712246551724138,
+            "p95": 3.3165,
+            "max": 24.3336
+          },
+          "allUpdateCalls": 3102,
+          "presents": 3106,
+          "workMs": {
+            "n": 580,
+            "mean": 0.549591551724138,
+            "p95": 2.0255,
+            "max": 12.8662
+          }
+        },
+        "attack": {
+          "advancingUpdate": {
+            "n": 360,
+            "mean": 1.7471219444444444,
+            "p95": 3.6331,
+            "max": 24.3336
+          },
+          "allUpdateCalls": 1791,
+          "presents": 1791,
+          "workMs": {
+            "n": 360,
+            "mean": 0.6344425,
+            "p95": 2.1711,
+            "max": 12.8662
+          }
+        },
+        "stop": {
+          "advancingUpdate": {
+            "n": 120,
+            "mean": 1.2738925,
+            "p95": 2.9813,
+            "max": 4.0048
+          },
+          "allUpdateCalls": 727,
+          "presents": 731,
+          "workMs": {
+            "n": 120,
+            "mean": 0.41574416666666664,
+            "p95": 1.883,
+            "max": 3.0947
+          }
+        }
+      },
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main/baseline-both-600/receipt.json",
+          "length": 1787,
+          "sha256": "23FA255950214F42ACF607591127E508148EBAD4C72E94E511DC6D91BC499C75"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-both-600/out/main-loop-frames.csv",
+          "length": 915513,
+          "sha256": "9CBFCED77B785DCB397FC63E0A8A365993A083C5A7AC6ABFD573801314B3A5C4"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-both-600/out/main-draw-presentation.csv",
+          "length": 250014,
+          "sha256": "2B1A24CF1FA86A714CBB5AE3998B82C9546DF8C7B739FDDFD8BC727BCC00EF10"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-both-600/out/world-smoke-frames.csv",
+          "length": 87741,
+          "sha256": "9158288D67460D8843ED9212F350477E74F86C72CAFF696FDB40F2F128808294"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-both-600/out/native-birth-inputs.csv",
+          "length": 4263,
+          "sha256": "A8974F414D593EFD6A5F781950C6667DC0945F345D80781FD0B922C668CE7CF5"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-both-600/out/native-hit-events.csv",
+          "length": 1022,
+          "sha256": "54BE5F21199E8DDCB9D85AA24C82802FC0A032A1EB6017F548977F19E3C95BEF"
+        }
+      ]
+    },
+    {
+      "name": "candidate-both-final-600",
+      "receipt": {
+        "name": "candidate-both-final-600",
+        "startUtc": "2026-10-17T09:46:55.9909171Z",
+        "endUtc": "2026-10-17T09:47:22.3910645Z",
+        "exit": 0,
+        "pid": 2408,
+        "mode": "both",
+        "steps": 600,
+        "item": 1229,
+        "ammoItem": 40,
+        "pressCycle": "continuous",
+        "dummy": 0,
+        "standing": true,
+        "static": false,
+        "noAttack": false,
+        "payloadRoot": ".local/path-display-20261017/candidate-final-payload",
+        "driverSha": "34C587D4960513339C694136334D0CA7B5261D2C32098A5898D9A3385F86607D",
+        "hostSha": "F7BF201C7069EA6E3B596464E22351696414BC8EF7068512D345BF444A747E3A",
+        "gameSha": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+        "clearedOtherJmrEnvironment": true,
+        "defaultSilentRequired": true,
+        "scope": "Complete original Main.Update/Draw/EndDraw elapsed intervals. No detailed Core/Source hooks. Synthetic isolated room, scripted device transport, not owner gameplay/FPS. Native birth receipts are grouped separately from potential attack opportunities; no diagnostic or lottery overrides.",
+        "diagnostic": false,
+        "workProbe": false,
+        "moduleHashes": {
+          "JueMingR.Platform.dll": "933BEB6E8156EA9C649156C80FE44AD20961A58F828592A4899F91678E437B3D",
+          "JueMingR.Features.dll": "25704FE3879419F0183EF6D9F227F75550FEC3D8B2BBC03AA3C74B6031779F33",
+          "JueMingR.Infrastructure.dll": "CDDC446DA54FA7BABA45F9C39E868FADF858304F8765AA8B2CFD7891770A4DFB",
+          "JueMingR.TerrariaHost.dll": "F7BF201C7069EA6E3B596464E22351696414BC8EF7068512D345BF444A747E3A"
+        },
+        "runtimeManifestSha256": "9114BAAB58A0BC87AEA72EE80E10099F119F0C2BCF527E72112836394AC33BC0"
+      },
+      "firstActualPathDrawStep": 8,
+      "presents": 3492,
+      "eligiblePathDraws": 3492,
+      "actualPathDraws": 3432,
+      "steadyObservedGucs": 580,
+      "steadyLongestNoDrawGuc": 1,
+      "sameGucLaterDrawLoss": 0,
+      "birthTypes": {
+        "1": 43,
+        "720": 1
+      },
+      "familyParents": 0,
+      "familyChildren": 0,
+      "primaryBirthCount": 43,
+      "primaryInputKinds": {
+        "0": 5,
+        "1": 38
+      },
+      "nativeEmissionGucIntervals": {
+        "19": 18
+      },
+      "hitTypes": {
+        "1": 20
+      },
+      "metrics": {
+        "all": {
+          "advancingUpdate": {
+            "n": 600,
+            "mean": 1.5373791666666667,
+            "p95": 3.0061,
+            "max": 34.1433
+          },
+          "allUpdateCalls": 3493,
+          "presents": 3492,
+          "workMs": {
+            "n": 600,
+            "mean": 0.5396003333333333,
+            "p95": 2.0329,
+            "max": 12.5487
+          }
+        },
+        "cold": {
+          "advancingUpdate": {
+            "n": 20,
+            "mean": 3.7138750000000003,
+            "p95": 34.1433,
+            "max": 34.1433
+          },
+          "allUpdateCalls": 58,
+          "presents": 52,
+          "workMs": {
+            "n": 20,
+            "mean": 0.77286,
+            "p95": 3.353,
+            "max": 3.353
+          }
+        },
+        "steady": {
+          "advancingUpdate": {
+            "n": 580,
+            "mean": 1.4623275862068965,
+            "p95": 2.9525,
+            "max": 22.9287
+          },
+          "allUpdateCalls": 3434,
+          "presents": 3440,
+          "workMs": {
+            "n": 580,
+            "mean": 0.5315568965517241,
+            "p95": 2.0039,
+            "max": 12.5487
+          }
+        },
+        "attack": {
+          "advancingUpdate": {
+            "n": 360,
+            "mean": 1.5659372222222223,
+            "p95": 3.0061,
+            "max": 22.9287
+          },
+          "allUpdateCalls": 2101,
+          "presents": 2102,
+          "workMs": {
+            "n": 360,
+            "mean": 0.5976913888888888,
+            "p95": 2.034,
+            "max": 12.5487
+          }
+        },
+        "stop": {
+          "advancingUpdate": {
+            "n": 120,
+            "mean": 1.3072391666666667,
+            "p95": 2.9525,
+            "max": 3.2535
+          },
+          "allUpdateCalls": 720,
+          "presents": 725,
+          "workMs": {
+            "n": 120,
+            "mean": 0.4246683333333333,
+            "p95": 1.9738,
+            "max": 2.2184
+          }
+        }
+      },
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main/candidate-both-final-600/receipt.json",
+          "length": 1800,
+          "sha256": "451E59E613DACD3A7118BD7EB903A31799FA17C7AC743F3F345F4D74BDE7C8FD"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-both-final-600/out/main-loop-frames.csv",
+          "length": 1023576,
+          "sha256": "D559B73AA1A752462078E7895644E443270A68C4A020D7A5E72530A07DC23801"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-both-final-600/out/main-draw-presentation.csv",
+          "length": 276455,
+          "sha256": "491E7EF8C790199F9061A5B4B026C3CAEA79AD755030F3912E4BDD375F76DC14"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-both-final-600/out/world-smoke-frames.csv",
+          "length": 87690,
+          "sha256": "D354ECE2ABBB987B472B6DE97C72D02EBAB211850C6C2595E3DEA981D0F22BDE"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-both-final-600/out/native-birth-inputs.csv",
+          "length": 4295,
+          "sha256": "5FA50E2F6A39658072B4470EE3D962BDA1FF371F90A623897DD9CDA5E9D24B3D"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-both-final-600/out/native-hit-events.csv",
+          "length": 976,
+          "sha256": "76035B100E5FF7AF518DA91D5CB9C0448591B5104461D4FDE8B82781A30AFE02"
+        }
+      ]
+    },
+    {
+      "name": "baseline-off-240",
+      "receipt": {
+        "name": "baseline-off-240",
+        "startUtc": "2026-10-17T09:46:13.1892938Z",
+        "endUtc": "2026-10-17T09:46:33.514285Z",
+        "exit": 0,
+        "pid": 29284,
+        "mode": "off",
+        "steps": 240,
+        "item": 1229,
+        "ammoItem": 40,
+        "pressCycle": "continuous",
+        "dummy": 0,
+        "standing": true,
+        "static": false,
+        "noAttack": true,
+        "payloadRoot": ".local/path-display-20261017/baseline/payload",
+        "driverSha": "34C587D4960513339C694136334D0CA7B5261D2C32098A5898D9A3385F86607D",
+        "hostSha": "AEDFB6BDCADEC787C8F088DE3D4977B6AF87FCC26A5178C63300DAE1F5B3D43F",
+        "gameSha": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+        "clearedOtherJmrEnvironment": true,
+        "defaultSilentRequired": true,
+        "scope": "Complete original Main.Update/Draw/EndDraw elapsed intervals. No detailed Core/Source hooks. Synthetic isolated room, scripted device transport, not owner gameplay/FPS. Native birth receipts are grouped separately from potential attack opportunities; no diagnostic or lottery overrides.",
+        "diagnostic": false,
+        "workProbe": false,
+        "moduleHashes": {
+          "JueMingR.Platform.dll": "429F47EB24E4C71D53C5AA99D95E74A890B764725A8E8F5B03E25883AE9B9389",
+          "JueMingR.Features.dll": "1CD02EC426C119B35F8013676A16A56B4C6169C1C59E3BECEF3D7B69DF14668D",
+          "JueMingR.Infrastructure.dll": "104B17BE56D700BF068883D14557DA256D1241C95B88C2A1D3B8340FB5C4CFF8",
+          "JueMingR.TerrariaHost.dll": "AEDFB6BDCADEC787C8F088DE3D4977B6AF87FCC26A5178C63300DAE1F5B3D43F"
+        },
+        "runtimeManifestSha256": "39845AAB7A05F655A2F397C80430A20DF0B6D338646308897F8526573A917797"
+      },
+      "firstActualPathDrawStep": -1,
+      "presents": 1393,
+      "eligiblePathDraws": 0,
+      "actualPathDraws": 0,
+      "steadyObservedGucs": 0,
+      "steadyLongestNoDrawGuc": 0,
+      "sameGucLaterDrawLoss": 0,
+      "birthTypes": {},
+      "familyParents": 0,
+      "familyChildren": 0,
+      "primaryBirthCount": 0,
+      "primaryInputKinds": {},
+      "nativeEmissionGucIntervals": {},
+      "hitTypes": {},
+      "metrics": {
+        "all": {
+          "advancingUpdate": {
+            "n": 240,
+            "mean": 1.1185570833333334,
+            "p95": 1.5432,
+            "max": 33.36
+          },
+          "allUpdateCalls": 1394,
+          "presents": 1393,
+          "workMs": {
+            "n": 240,
+            "mean": 0.0009929166666666667,
+            "p95": 0.0017,
+            "max": 0.0027
+          }
+        },
+        "cold": {
+          "advancingUpdate": {
+            "n": 20,
+            "mean": 3.192065,
+            "p95": 33.36,
+            "max": 33.36
+          },
+          "allUpdateCalls": 40,
+          "presents": 36,
+          "workMs": {
+            "n": 20,
+            "mean": 0.001385,
+            "p95": 0.0024,
+            "max": 0.0024
+          }
+        },
+        "steady": {
+          "advancingUpdate": {
+            "n": 220,
+            "mean": 0.9300563636363637,
+            "p95": 1.3793,
+            "max": 2.0907
+          },
+          "allUpdateCalls": 1353,
+          "presents": 1357,
+          "workMs": {
+            "n": 220,
+            "mean": 0.0009572727272727273,
+            "p95": 0.0016,
+            "max": 0.0027
+          }
+        }
+      },
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main/baseline-off-240/receipt.json",
+          "length": 1784,
+          "sha256": "C053E06873FDB9619196EE93165990F6407CBEE18B908C3CEE57B54DD84CAB59"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-off-240/out/main-loop-frames.csv",
+          "length": 537500,
+          "sha256": "691598ADE4F5A4444805F0F7C6B860AB33AFD15B3155A257E24A9B131D982AF6"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-off-240/out/main-draw-presentation.csv",
+          "length": 100236,
+          "sha256": "3B1F6A6DB9F32A62A256A4C114A6B086F98E23A9358FACF9DDD6512FF42D552B"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-off-240/out/world-smoke-frames.csv",
+          "length": 32961,
+          "sha256": "B5883A1DD406739BF03EEC0617644CC2BA0CDF88591B95FAEF735AD940321FFE"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-off-240/out/native-birth-inputs.csv",
+          "length": 162,
+          "sha256": "DDF21D27733B0BDAFF6F00EFF6B56D950E89A8D24EFE953A00B3E58ED6442653"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-off-240/out/native-hit-events.csv",
+          "length": 92,
+          "sha256": "93B543AE03C2C68004B1B4056429F3C21F8D3B8399E2E2B30E48A1781FD9D868"
+        }
+      ]
+    },
+    {
+      "name": "candidate-off-final-240",
+      "receipt": {
+        "name": "candidate-off-final-240",
+        "startUtc": "2026-10-17T09:47:22.9213624Z",
+        "endUtc": "2026-10-17T09:47:43.2551025Z",
+        "exit": 0,
+        "pid": 32096,
+        "mode": "off",
+        "steps": 240,
+        "item": 1229,
+        "ammoItem": 40,
+        "pressCycle": "continuous",
+        "dummy": 0,
+        "standing": true,
+        "static": false,
+        "noAttack": true,
+        "payloadRoot": ".local/path-display-20261017/candidate-final-payload",
+        "driverSha": "34C587D4960513339C694136334D0CA7B5261D2C32098A5898D9A3385F86607D",
+        "hostSha": "F7BF201C7069EA6E3B596464E22351696414BC8EF7068512D345BF444A747E3A",
+        "gameSha": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+        "clearedOtherJmrEnvironment": true,
+        "defaultSilentRequired": true,
+        "scope": "Complete original Main.Update/Draw/EndDraw elapsed intervals. No detailed Core/Source hooks. Synthetic isolated room, scripted device transport, not owner gameplay/FPS. Native birth receipts are grouped separately from potential attack opportunities; no diagnostic or lottery overrides.",
+        "diagnostic": false,
+        "workProbe": false,
+        "moduleHashes": {
+          "JueMingR.Platform.dll": "933BEB6E8156EA9C649156C80FE44AD20961A58F828592A4899F91678E437B3D",
+          "JueMingR.Features.dll": "25704FE3879419F0183EF6D9F227F75550FEC3D8B2BBC03AA3C74B6031779F33",
+          "JueMingR.Infrastructure.dll": "CDDC446DA54FA7BABA45F9C39E868FADF858304F8765AA8B2CFD7891770A4DFB",
+          "JueMingR.TerrariaHost.dll": "F7BF201C7069EA6E3B596464E22351696414BC8EF7068512D345BF444A747E3A"
+        },
+        "runtimeManifestSha256": "9114BAAB58A0BC87AEA72EE80E10099F119F0C2BCF527E72112836394AC33BC0"
+      },
+      "firstActualPathDrawStep": -1,
+      "presents": 1531,
+      "eligiblePathDraws": 0,
+      "actualPathDraws": 0,
+      "steadyObservedGucs": 0,
+      "steadyLongestNoDrawGuc": 0,
+      "sameGucLaterDrawLoss": 0,
+      "birthTypes": {},
+      "familyParents": 0,
+      "familyChildren": 0,
+      "primaryBirthCount": 0,
+      "primaryInputKinds": {},
+      "nativeEmissionGucIntervals": {},
+      "hitTypes": {},
+      "metrics": {
+        "all": {
+          "advancingUpdate": {
+            "n": 240,
+            "mean": 1.0329425,
+            "p95": 1.2237,
+            "max": 35.5768
+          },
+          "allUpdateCalls": 1532,
+          "presents": 1531,
+          "workMs": {
+            "n": 240,
+            "mean": 0.0007516666666666667,
+            "p95": 0.0014,
+            "max": 0.0031
+          }
+        },
+        "cold": {
+          "advancingUpdate": {
+            "n": 20,
+            "mean": 3.03398,
+            "p95": 35.5768,
+            "max": 35.5768
+          },
+          "allUpdateCalls": 74,
+          "presents": 67,
+          "workMs": {
+            "n": 20,
+            "mean": 0.00108,
+            "p95": 0.0021,
+            "max": 0.0021
+          }
+        },
+        "steady": {
+          "advancingUpdate": {
+            "n": 220,
+            "mean": 0.85103,
+            "p95": 1.1503,
+            "max": 1.842
+          },
+          "allUpdateCalls": 1457,
+          "presents": 1464,
+          "workMs": {
+            "n": 220,
+            "mean": 0.0007218181818181818,
+            "p95": 0.0012,
+            "max": 0.0031
+          }
+        }
+      },
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main/candidate-off-final-240/receipt.json",
+          "length": 1798,
+          "sha256": "D431103A1437C4EF36FA49A746B1794A1A932D061D987BFB07ED9F9723F9367E"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-off-final-240/out/main-loop-frames.csv",
+          "length": 563204,
+          "sha256": "01ED9F2D01A199C2D373C32A0C85040683F95EC89B862C199BC69651ED0D433C"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-off-final-240/out/main-draw-presentation.csv",
+          "length": 110170,
+          "sha256": "8E334DE2949EA7FC7A1274B06EC40BC442BB6180297F41C184E1AB49D62F801C"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-off-final-240/out/world-smoke-frames.csv",
+          "length": 32967,
+          "sha256": "916A05C6C16FA06BA20D5CAF17919BF3A684E466C561F0F465F022EDCEDB0FD0"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-off-final-240/out/native-birth-inputs.csv",
+          "length": 162,
+          "sha256": "DDF21D27733B0BDAFF6F00EFF6B56D950E89A8D24EFE953A00B3E58ED6442653"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-off-final-240/out/native-hit-events.csv",
+          "length": 92,
+          "sha256": "93B543AE03C2C68004B1B4056429F3C21F8D3B8399E2E2B30E48A1781FD9D868"
+        }
+      ]
+    },
+    {
+      "name": "baseline-yoyo-600",
+      "receipt": {
+        "name": "baseline-yoyo-600",
+        "startUtc": "2026-10-17T09:47:43.799475Z",
+        "endUtc": "2026-10-17T09:48:10.2088129Z",
+        "exit": 0,
+        "pid": 73460,
+        "mode": "both",
+        "steps": 600,
+        "item": 3262,
+        "ammoItem": 97,
+        "pressCycle": "continuous",
+        "dummy": 0,
+        "standing": true,
+        "static": false,
+        "noAttack": false,
+        "payloadRoot": ".local/path-display-20261017/baseline/payload",
+        "driverSha": "34C587D4960513339C694136334D0CA7B5261D2C32098A5898D9A3385F86607D",
+        "hostSha": "AEDFB6BDCADEC787C8F088DE3D4977B6AF87FCC26A5178C63300DAE1F5B3D43F",
+        "gameSha": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+        "clearedOtherJmrEnvironment": true,
+        "defaultSilentRequired": true,
+        "scope": "Complete original Main.Update/Draw/EndDraw elapsed intervals. No detailed Core/Source hooks. Synthetic isolated room, scripted device transport, not owner gameplay/FPS. Native birth receipts are grouped separately from potential attack opportunities; no diagnostic or lottery overrides.",
+        "diagnostic": false,
+        "workProbe": false,
+        "moduleHashes": {
+          "JueMingR.Platform.dll": "429F47EB24E4C71D53C5AA99D95E74A890B764725A8E8F5B03E25883AE9B9389",
+          "JueMingR.Features.dll": "1CD02EC426C119B35F8013676A16A56B4C6169C1C59E3BECEF3D7B69DF14668D",
+          "JueMingR.Infrastructure.dll": "104B17BE56D700BF068883D14557DA256D1241C95B88C2A1D3B8340FB5C4CFF8",
+          "JueMingR.TerrariaHost.dll": "AEDFB6BDCADEC787C8F088DE3D4977B6AF87FCC26A5178C63300DAE1F5B3D43F"
+        },
+        "runtimeManifestSha256": "39845AAB7A05F655A2F397C80430A20DF0B6D338646308897F8526573A917797"
+      },
+      "firstActualPathDrawStep": 8,
+      "presents": 3312,
+      "eligiblePathDraws": 3312,
+      "actualPathDraws": 3282,
+      "steadyObservedGucs": 580,
+      "steadyLongestNoDrawGuc": 2,
+      "sameGucLaterDrawLoss": 0,
+      "birthTypes": {
+        "534": 90
+      },
+      "familyParents": 90,
+      "familyChildren": 90,
+      "primaryBirthCount": 90,
+      "primaryInputKinds": {
+        "0": 1,
+        "1": 89
+      },
+      "nativeEmissionGucIntervals": {
+        "4": 89
+      },
+      "hitTypes": {
+        "534": 36
+      },
+      "metrics": {
+        "all": {
+          "advancingUpdate": {
+            "n": 600,
+            "mean": 1.8121128333333334,
+            "p95": 3.3916,
+            "max": 56.1594
+          },
+          "allUpdateCalls": 3313,
+          "presents": 3312,
+          "workMs": {
+            "n": 600,
+            "mean": 0.7141781666666667,
+            "p95": 2.2113,
+            "max": 7.363
+          }
+        },
+        "cold": {
+          "advancingUpdate": {
+            "n": 20,
+            "mean": 3.72563,
+            "p95": 37.9587,
+            "max": 37.9587
+          },
+          "allUpdateCalls": 48,
+          "presents": 41,
+          "workMs": {
+            "n": 20,
+            "mean": 0.59406,
+            "p95": 3.8333,
+            "max": 3.8333
+          }
+        },
+        "steady": {
+          "advancingUpdate": {
+            "n": 580,
+            "mean": 1.7461294827586207,
+            "p95": 3.1627,
+            "max": 56.1594
+          },
+          "allUpdateCalls": 3264,
+          "presents": 3271,
+          "workMs": {
+            "n": 580,
+            "mean": 0.7183201724137931,
+            "p95": 2.2054,
+            "max": 7.363
+          }
+        },
+        "attack": {
+          "advancingUpdate": {
+            "n": 360,
+            "mean": 2.0215216666666667,
+            "p95": 3.6256,
+            "max": 56.1594
+          },
+          "allUpdateCalls": 1973,
+          "presents": 1975,
+          "workMs": {
+            "n": 360,
+            "mean": 0.9076963888888889,
+            "p95": 2.6296,
+            "max": 7.363
+          }
+        },
+        "stop": {
+          "advancingUpdate": {
+            "n": 120,
+            "mean": 1.3351233333333334,
+            "p95": 2.9011,
+            "max": 3.4838
+          },
+          "allUpdateCalls": 692,
+          "presents": 695,
+          "workMs": {
+            "n": 120,
+            "mean": 0.41910166666666665,
+            "p95": 1.9368,
+            "max": 2.2218
+          }
+        }
+      },
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main/baseline-yoyo-600/receipt.json",
+          "length": 1787,
+          "sha256": "168574647781700D0AB3C7A4378F54B0336F7A281F8F879E514E7CB56C5CCAFB"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-yoyo-600/out/main-loop-frames.csv",
+          "length": 920277,
+          "sha256": "F4838D35943588717813EA2D9F7B933FEA5871B2AAE9C859C9B2BC3DD74CDEEB"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-yoyo-600/out/main-draw-presentation.csv",
+          "length": 261933,
+          "sha256": "4CB5302C0428767EF80080D83945EE73472152576927557AA73362B1E4D5857F"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-yoyo-600/out/world-smoke-frames.csv",
+          "length": 86388,
+          "sha256": "38A4D49DBEBA83A09C353C5DBA7AEC107EA18D6A370CC76D92EBDD0570149A05"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-yoyo-600/out/native-birth-inputs.csv",
+          "length": 8897,
+          "sha256": "9A9959188BE6323EC4C05B0BFE92A2BF3C7696D9E6E5EA09F7E428FA6B67B48B"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-yoyo-600/out/native-hit-events.csv",
+          "length": 1681,
+          "sha256": "D4151E8BAD614403DAFCF07F9F8B9CE6939B18CFCC09FD2DE7DCDD4F43742BBB"
+        }
+      ]
+    },
+    {
+      "name": "candidate-yoyo-final-600",
+      "receipt": {
+        "name": "candidate-yoyo-final-600",
+        "startUtc": "2026-10-17T09:48:10.7866626Z",
+        "endUtc": "2026-10-17T09:48:38.1671535Z",
+        "exit": 0,
+        "pid": 65180,
+        "mode": "both",
+        "steps": 600,
+        "item": 3262,
+        "ammoItem": 97,
+        "pressCycle": "continuous",
+        "dummy": 0,
+        "standing": true,
+        "static": false,
+        "noAttack": false,
+        "payloadRoot": ".local/path-display-20261017/candidate-final-payload",
+        "driverSha": "34C587D4960513339C694136334D0CA7B5261D2C32098A5898D9A3385F86607D",
+        "hostSha": "F7BF201C7069EA6E3B596464E22351696414BC8EF7068512D345BF444A747E3A",
+        "gameSha": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+        "clearedOtherJmrEnvironment": true,
+        "defaultSilentRequired": true,
+        "scope": "Complete original Main.Update/Draw/EndDraw elapsed intervals. No detailed Core/Source hooks. Synthetic isolated room, scripted device transport, not owner gameplay/FPS. Native birth receipts are grouped separately from potential attack opportunities; no diagnostic or lottery overrides.",
+        "diagnostic": false,
+        "workProbe": false,
+        "moduleHashes": {
+          "JueMingR.Platform.dll": "933BEB6E8156EA9C649156C80FE44AD20961A58F828592A4899F91678E437B3D",
+          "JueMingR.Features.dll": "25704FE3879419F0183EF6D9F227F75550FEC3D8B2BBC03AA3C74B6031779F33",
+          "JueMingR.Infrastructure.dll": "CDDC446DA54FA7BABA45F9C39E868FADF858304F8765AA8B2CFD7891770A4DFB",
+          "JueMingR.TerrariaHost.dll": "F7BF201C7069EA6E3B596464E22351696414BC8EF7068512D345BF444A747E3A"
+        },
+        "runtimeManifestSha256": "9114BAAB58A0BC87AEA72EE80E10099F119F0C2BCF527E72112836394AC33BC0"
+      },
+      "firstActualPathDrawStep": 8,
+      "presents": 3245,
+      "eligiblePathDraws": 3245,
+      "actualPathDraws": 3218,
+      "steadyObservedGucs": 580,
+      "steadyLongestNoDrawGuc": 1,
+      "sameGucLaterDrawLoss": 0,
+      "birthTypes": {
+        "534": 90
+      },
+      "familyParents": 90,
+      "familyChildren": 90,
+      "primaryBirthCount": 90,
+      "primaryInputKinds": {
+        "0": 1,
+        "1": 89
+      },
+      "nativeEmissionGucIntervals": {
+        "4": 89
+      },
+      "hitTypes": {
+        "534": 36
+      },
+      "metrics": {
+        "all": {
+          "advancingUpdate": {
+            "n": 600,
+            "mean": 1.8361195,
+            "p95": 3.3254,
+            "max": 54.2646
+          },
+          "allUpdateCalls": 3246,
+          "presents": 3245,
+          "workMs": {
+            "n": 600,
+            "mean": 0.7195965,
+            "p95": 2.1835,
+            "max": 7.0996
+          }
+        },
+        "cold": {
+          "advancingUpdate": {
+            "n": 20,
+            "mean": 3.716155,
+            "p95": 36.0549,
+            "max": 36.0549
+          },
+          "allUpdateCalls": 59,
+          "presents": 52,
+          "workMs": {
+            "n": 20,
+            "mean": 0.77806,
+            "p95": 3.4179,
+            "max": 3.4179
+          }
+        },
+        "steady": {
+          "advancingUpdate": {
+            "n": 580,
+            "mean": 1.7712906896551723,
+            "p95": 3.261,
+            "max": 54.2646
+          },
+          "allUpdateCalls": 3186,
+          "presents": 3193,
+          "workMs": {
+            "n": 580,
+            "mean": 0.7175805172413793,
+            "p95": 2.1592,
+            "max": 7.0996
+          }
+        },
+        "attack": {
+          "advancingUpdate": {
+            "n": 360,
+            "mean": 2.0495763888888887,
+            "p95": 3.5804,
+            "max": 54.2646
+          },
+          "allUpdateCalls": 1887,
+          "presents": 1888,
+          "workMs": {
+            "n": 360,
+            "mean": 0.8900605555555555,
+            "p95": 2.3181,
+            "max": 7.0996
+          }
+        },
+        "stop": {
+          "advancingUpdate": {
+            "n": 120,
+            "mean": 1.3317275,
+            "p95": 2.9237,
+            "max": 3.1184
+          },
+          "allUpdateCalls": 702,
+          "presents": 706,
+          "workMs": {
+            "n": 120,
+            "mean": 0.44411666666666666,
+            "p95": 2.1057,
+            "max": 2.158
+          }
+        }
+      },
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main/candidate-yoyo-final-600/receipt.json",
+          "length": 1801,
+          "sha256": "1366921C787E4BD73F0AE2EA70AB169EDE0D0F70CD0EF5B822EC7A1115B92A40"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-yoyo-final-600/out/main-loop-frames.csv",
+          "length": 891506,
+          "sha256": "D9D70498027CEB9BE688B189352BF8290F57FA069FBD136362501D2043B3908B"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-yoyo-final-600/out/main-draw-presentation.csv",
+          "length": 255927,
+          "sha256": "CBA36B446AC8A92E38B66CF3931E864F79E149BAF45B142B7B71C396339E3BA5"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-yoyo-final-600/out/world-smoke-frames.csv",
+          "length": 86400,
+          "sha256": "935E27ACA648F22D4BD29AF04D7EE60AD3BD3A1C8E70201D6E2130D86C6B88A5"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-yoyo-final-600/out/native-birth-inputs.csv",
+          "length": 8897,
+          "sha256": "9A9959188BE6323EC4C05B0BFE92A2BF3C7696D9E6E5EA09F7E428FA6B67B48B"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-yoyo-final-600/out/native-hit-events.csv",
+          "length": 1681,
+          "sha256": "D4151E8BAD614403DAFCF07F9F8B9CE6939B18CFCC09FD2DE7DCDD4F43742BBB"
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "name": "baseline-path-reasons-r02",
+      "scope": "Finite diagnostic calls; real Source/World.Draw/SpriteBatch.Draw; observer overhead changes budgets; never ordinary performance",
+      "reasonCalls": {
+        "no-publication": 5,
+        "CombatPredictionBudgetExceededException": 1,
+        "ok": 598,
+        "age-or-no-future": 5
+      },
+      "lifeGucCauses": [],
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main/baseline-path-reasons-r02/receipt.json",
+          "length": 1784,
+          "sha256": "65274B32DAE0893710A61408FB800832521B3CEE1D5503D019D663DD4ED79B2C"
+        },
+        {
+          "path": ".local/path-display-20261017/main/baseline-path-reasons-r02/out/path-display-reasons.csv",
+          "length": 294489,
+          "sha256": "B6BF26D3797A6EC683A4016A265E6F008019BA1AD9CC85F2D424344863F3A97B"
+        }
+      ]
+    },
+    {
+      "name": "candidate-path-reasons-r02",
+      "scope": "Finite diagnostic calls; real Source/World.Draw/SpriteBatch.Draw; observer overhead changes budgets; never ordinary performance",
+      "reasonCalls": {
+        "no-publication": 11,
+        "ok": 1955,
+        "age-or-no-future": 45
+      },
+      "lifeGucCauses": [],
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main/candidate-path-reasons-r02/receipt.json",
+          "length": 1792,
+          "sha256": "69622A2D55ACC1E5F639684CEA18372DFC13D38C2DCFD0EEA8E60E4448B204B6"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-path-reasons-r02/out/path-display-reasons.csv",
+          "length": 594963,
+          "sha256": "25532EFB22B3E55C71AF3DB5F44B9FC902ECD7336C54B1FD27C8A98492F21062"
+        }
+      ]
+    },
+    {
+      "name": "candidate-both-motion-reasons-r03",
+      "scope": "Finite diagnostic calls; real Source/World.Draw/SpriteBatch.Draw; observer overhead changes budgets; never ordinary performance",
+      "reasonCalls": {
+        "no-publication": 11,
+        "ok": 4294,
+        "age-or-no-future": 125,
+        "CombatPredictionBudgetExceededException": 4,
+        "life+velocity": 24
+      },
+      "lifeGucCauses": [
+        [
+          "126",
+          "life+velocity"
+        ],
+        [
+          "127",
+          "life+velocity"
+        ],
+        [
+          "168",
+          "life+velocity"
+        ],
+        [
+          "190",
+          "life+velocity"
+        ],
+        [
+          "213",
+          "life+velocity"
+        ],
+        [
+          "215",
+          "life+velocity"
+        ],
+        [
+          "218",
+          "life+velocity"
+        ],
+        [
+          "238",
+          "life+velocity"
+        ],
+        [
+          "259",
+          "life+velocity"
+        ]
+      ],
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/main/candidate-both-motion-reasons-r03/receipt.json",
+          "length": 1799,
+          "sha256": "A1E12E7FD38137CB2CB2680D58AABEAB559DF2E1A1BE71CD6D1263135A576665"
+        },
+        {
+          "path": ".local/path-display-20261017/main/candidate-both-motion-reasons-r03/out/path-display-reasons.csv",
+          "length": 1335331,
+          "sha256": "BF347CC71D39516DF320818F4E82397925B4E7A64210EB947169462DD1C8A3E0"
+        }
+      ]
+    }
+  ],
+  "probeSupplement": {
+    "ordinaryDriverSha256": "34C587D4960513339C694136334D0CA7B5261D2C32098A5898D9A3385F86607D",
+    "reasonDriverSha256": "F8111FC2F7D21E6E32D9AA578A5E052AE4D98E07BACB9D757A6357D7C30DC618",
+    "motionReasonDriverSha256": "0D822C95E4FCC4FBFF1CB02654EABCE83B066E5AD0FA973EA15123D9369A9769",
+    "currentProbeSource": {
+      "path": ".local/path-display-20261017/main/PathDisplayProbe.cs",
+      "length": 5602,
+      "sha256": "4FCF17501905103CE98C15CE19B9C73E1906BC66FC3728C286D7264EC72D77F2"
+    },
+    "recipe": {
+      "path": ".local/path-display-20261017/main/Build-Driver.ps1",
+      "length": 3616,
+      "sha256": "32DCF5CD6C926986C3FEBF9B0834A1BB7AD90A50284B9E69FF0DDD3FF3871BDB"
+    },
+    "ordinaryRunner": {
+      "path": ".local/path-display-20261017/Run-Ordinary-Main.ps1",
+      "length": 1472,
+      "sha256": "DF8E0737398A03106DEC22A8DD49589D0A9DBEE2691D1755C350EF1D2567C051"
+    },
+    "boundary": "Build-Driver historical source array omits new PathDisplayProbe; this supplement explicitly binds the actual additional source. r01 compile succeeded but MVID-sidecar read failed; actual exe34C was kept. r02/r03 source inputs and compile identities retain separate hashes. Ordinary diagnostics disabled; default silent marker required."
+  },
+  "reusedCancellation": {
+    "status": "INDEPENDENT_REVIEW_APPROVED_REUSE",
+    "source": "boundaries-r15 at7a8f18a dirty; original independent-final-review plus existing a283747 R1; not rerun on f399",
+    "scope": "Six release/off/replacement/focus/ui/session assertions directly exercise unchanged Use/Input/Basic/control permission seams. Old fixture ClearLine=false exits before EvaluateCandidate. Selection differs by preexisting a283747 R1 null/short Source and budget plan.Clear; a283747..f399 has no Selection diff. This is semantic applicability plus actual relevant seam matches, not all old372 src hashes equal.",
+    "artifacts": [
+      {
+        "path": ".local/aim-balanced-20261017/boundaries-r15.log",
+        "length": 6325,
+        "sha256": "C8D590D182C66B900BF1619EDA9EA74C42017E9D08E44F888934019DB6C4B6F6"
+      },
+      {
+        "path": ".local/aim-balanced-20261017/boundaries-r15/source-inputs.json",
+        "length": 205767,
+        "sha256": "11DD3B4CB8B1F7BF0573C20D2053C036673FE79C82F841804E003864DC661337"
+      },
+      {
+        "path": ".local/aim-balanced-20261017/independent-final-review.md",
+        "length": 4742,
+        "sha256": "E905F1825F9FE1A7A45C1A76E5CB00F3AD62C9CA81551AA6C7852F456CEFAD8E"
+      }
+    ]
+  },
+  "failureDispositions": [
+    {
+      "disposition": "PRODUCT_FIXED",
+      "cause": "No first-publication short retry and quota-driven sameGUC lease revocation, plus replacement-before-validation",
+      "resolution": "Independent32 prefix/two-update retry, full actual sameGUC facts guard, transactional capture; old-red/new-green and realMain scopes",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/old-red-source-gpu-r07.log",
+          "length": 2528,
+          "sha256": "B33F7FEC665E065BABEE7A4FA309CA642C2AACC821463E61A095A6252091981A"
+        },
+        {
+          "path": ".local/path-display-20261017/new-green-source-gpu-r07.log",
+          "length": 1598,
+          "sha256": "352C3D12F1526E72BC385ECB3E6AA59231D32936AB178B5C907A1CEADB163BA5"
+        }
+      ]
+    },
+    {
+      "disposition": "TEST_CORRECTED",
+      "cause": "Earlier fixture treated legal null as missing; wrote readonly generation; exceeded actual120x120 tile bounds; duplicated locked startup initialization",
+      "resolution": "GetOptional, real same-slot new NPC, bounded64x64 cells within actual dimensions, initialized argument at existing default route; all raw failures retained",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/old-red-source-gpu-r01.log",
+          "length": 1724,
+          "sha256": "CB08BF9D9D7D2C7F2E1AB4329DC4B1662BD10A4CBC67FC0157611981A5AEE070"
+        },
+        {
+          "path": ".local/path-display-20261017/new-green-source-gpu-r04.log",
+          "length": 2545,
+          "sha256": "47C65CF75D0D413917B653D795C8DD7E317B32A12C8ABBC55A0B9C918280140C"
+        },
+        {
+          "path": ".local/path-display-20261017/visual-default-current.log",
+          "length": 8026,
+          "sha256": "38F12A6C3F0F2F6A9683F94EA62FA00584CD120857D7DD22CB7C85031BA9C09C"
+        },
+        {
+          "path": ".local/path-display-20261017/visual-default-final.log",
+          "length": 7810,
+          "sha256": "A0A53D5843D0CC2D0BB4EE4FCB5F48BAD50A75EE36173F934631A21ED9C68498"
+        }
+      ]
+    },
+    {
+      "disposition": "TEST_CORRECTED",
+      "cause": "Invented fixed coldT+2/T+3 deadline conflated retry cadence with real JIT/Source interruption; Both240 had empty attack interval with120 idle at each end",
+      "resolution": "Warm deterministic retry oracle with actual first Source budget interruption, ordinary cold data kept separately; actual Both600 positive opportunities/births/receives; no product budget/clock modification",
+      "artifacts": [
+        {
+          "path": ".local/path-display-20261017/new-green-source-gpu-final.log",
+          "length": 2160,
+          "sha256": "8382C8B940DC6C256EA1C6D6D6F6025EC778F949BE5290FA8CB44696C5679995"
+        },
+        {
+          "path": ".local/path-display-20261017/new-green-source-gpu-r07.log",
+          "length": 1598,
+          "sha256": "352C3D12F1526E72BC385ECB3E6AA59231D32936AB178B5C907A1CEADB163BA5"
+        },
+        {
+          "path": ".local/path-display-20261017/baseline-both-main-wrapper.log",
+          "length": 1692,
+          "sha256": "0658544812C34C7342C1C8D3CCB57B33A79871F384C070A61B35C38E2B97100D"
+        },
+        {
+          "path": ".local/path-display-20261017/baseline-both-600-wrapper.log",
+          "length": 2888,
+          "sha256": "A28742314842A6326ED21804152F04F2A4B8F0BE94B1688ED197BA61086B73F3"
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Full qualification incomplete and releaseEligible=false",
+    "Original Main and GPU are isolated scripted scenes, not owner gameplay, real physical input, FPS, multiplayer or every NPC",
+    "No blanket life-independence classification: diagnostic life rejections all also velocity changes; deterministic life-only control remains conservative; no natural life-only hit observed",
+    "Natural cold first visibility is measured, not promised at2/3GUC; finite warm retry oracle is separate",
+    "Whole Update elapsed, prediction elapsed, Present and diagnostic guard costs have separate denominators"
+  ],
+  "delivery": {
+    "status": "INSTALLED_VERIFIED_READY_FOR_OWNER_TEST",
+    "sourceCommit": "f399f761552b7caf5d62cc0e43c9fc1df8eeb0bd",
+    "receipt": {
+      "path": "review-materials/path-display-20261017/delivery-receipt.json",
+      "length": 9679,
+      "sha256": "01C278865213DD288FF1E8F689FC24C8C43450D1B4A628261AF71E4392273143"
+    },
+    "independentReview": {
+      "path": ".local/path-display-20261017/independent-review.md",
+      "length": 11190,
+      "sha256": "819E52E04A87949E8F96161055F2DE305A6D676810D510C1679924ACC5F531D0"
+    },
+    "stageReaderReview": {
+      "path": ".local/path-display-20261017/stage-reader-review.md",
+      "length": 3097,
+      "sha256": "6A5CEACAF1332B6735C7D21427CEDE72F9D850A7817E17CB38C3C68F23DA511F"
+    },
+    "stage": {
+      "path": ".local/path-display-20261017/stage-reviewed.json",
+      "length": 23475,
+      "sha256": "B055A00B6A90E8F7AF137B1364EBCF6C0CEFD3D7DD7D8334D419C9386C2811DB"
+    },
+    "stageReaderControls": {
+      "path": ".local/path-display-20261017/stage-reader-controls.json",
+      "length": 3937,
+      "sha256": "94A1441017308F5B8A55B13567266FBB610ED29C147B17E4ADEF86AB8E4FC7F5"
+    },
+    "metadataOnlySuccessor": true
+  },
+  "stageReaderEncoding": {
+    "retainedFailure": {
+      "length": 521,
+      "sha256": "52380DCBDD3ACB2F555BD87396B37537F0957DD835709C733A73868C3D82D1AA",
+      "path": ".local/path-display-20261017/stage-encoding-rejected.log"
+    },
+    "encoding": "UTF-8 BOM",
+    "actualParser": "Windows PowerShell5.1",
+    "readerSha256": "BA20C3505B75CEA436E276FE946B51A40CB0D73E238F55BC0F9D5F0AA6C84950",
+    "boundary": "Same intended source characters/tokens, actual5.1 ANSI misdecode fixed; not unconditional executable equivalence"
+  }
+}

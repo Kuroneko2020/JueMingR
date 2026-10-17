@@ -19,9 +19,9 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatWorkerChecks
     {
 #if JMR_CONDITIONAL_RESEARCH
-        internal static readonly int ExpectedProtocol=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_EXPECTED_PROTOCOL")??"135");
+        internal static readonly int ExpectedProtocol=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_EXPECTED_PROTOCOL")??"137");
 #else
-        internal static readonly int ExpectedProtocol=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_EXPECTED_PROTOCOL")??"35");
+        internal static readonly int ExpectedProtocol=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_EXPECTED_PROTOCOL")??"37");
 #endif
         internal const int PointBytes=75;
         private static readonly Main weatherOracle=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));
@@ -66,7 +66,14 @@ namespace NativeWorldTextProbe
             }
             if(productionOnly || menuOnly)
             {
-                Terraria.Program.SavePath=Path.Combine(output,"isolated-user");
+                // Formal scopes can revisit the same output directory. Fresh
+                // user preferences are part of the initial OFF premise; only
+                // authenticated prediction materials may cross executions.
+                // Keep this root for the whole Run (menu/toggle lifecycle).
+                // A short unique segment also leaves room for the worker's
+                // authenticated hash filenames under .NET Framework MAX_PATH.
+                Terraria.Program.SavePath=Path.Combine(output,"u-"+Guid.NewGuid().ToString("N").Substring(0,12));
+                Require(!Directory.Exists(Terraria.Program.SavePath),"Fresh user directory must not reuse existing preferences.");
                 string cached=Path.Combine(Terraria.Program.SavePath,"composition/JueMingRData/cache/npc-prediction");Directory.CreateDirectory(cached);
                 // Repeat measurements may reuse exact authenticated prepared
                 // materials. Product still selects its normal gameDirectory

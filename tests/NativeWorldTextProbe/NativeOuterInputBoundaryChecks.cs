@@ -32,7 +32,12 @@ internal static class NativeOuterInputBoundaryChecks
         hostPath=Environment.GetEnvironmentVariable("JUEMINGR_INPUT_BOUNDARY_CANDIDATE");
         if(String.IsNullOrEmpty(hostPath))hostPath=Path.Combine(root,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll");
         hostPath=Path.GetFullPath(hostPath);
-        Terraria.Program.SavePath=Path.Combine(output,"user-data");Directory.CreateDirectory(Terraria.Program.SavePath);
+        // This Check starts with the shared full-profile defaults. Its later
+        // real UseGesture command persists an enabled entry, so a repeated
+        // execution needs a fresh root; all phases within this Run share it.
+        Terraria.Program.SavePath=Path.Combine(output,"u-"+Guid.NewGuid().ToString("N").Substring(0,12));
+        Require(!Directory.Exists(Terraria.Program.SavePath),"Fresh input fixture must not reuse prior user preferences.");
+        Directory.CreateDirectory(Terraria.Program.SavePath);
         Run();return 0;
     }
     [MethodImpl(MethodImplOptions.NoInlining)] static void Run()

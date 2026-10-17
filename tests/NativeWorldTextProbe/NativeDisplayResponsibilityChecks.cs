@@ -32,8 +32,9 @@ namespace NativeWorldTextProbe
                 Call(context,"UpdateShell");for(int i=0;i<3;i++){Call(context,"UpdateRuntime");Call(context,"UpdateShell");}
                 Require(faults==1 && (bool)Get(world,"Failed") && !(bool)Get(host,"Path"),"Real outer shell latches optional preparation once; saved display intent remains.");
                 Require((bool)Get(Get(context,"Tools"),"Available") && (bool)Get(Get(context,"QuickItems"),"Available"),"Optional display failure leaves actual adjacent operation owners available.");
-                cache.Demand(1,1,120);NativeCombatObservationChecks.Fresh(context,host);
-                Require(cache.Read(1)!=null && cache.Read(0)==null,"Healthy independent prediction consumer keeps shared Source despite failed display.");
+                // 0 is the display and 1 belongs to aim, including its OFF release.
+                cache.Demand(2,1,120);NativeCombatObservationChecks.Fresh(context,host);
+                Require(cache.Read(2)!=null && cache.Read(0)==null,"Healthy independent prediction consumer keeps shared Source despite failed display.");
             }
             finally{harmony.Unpatch(prepare,HarmonyPatchType.All,harmony.Id);}
             var pixel=Terraria.GameContent.TextureAssets.MagicPixel;
@@ -43,7 +44,7 @@ namespace NativeWorldTextProbe
                 Call(host,"Poll");Require(!(bool)Get(world,"Failed"),"Replaced borrowed resource lifetime restores display without reading failed Asset.Value.");
             }
             finally{Terraria.GameContent.TextureAssets.MagicPixel=pixel;}
-            Call(host,"Set",1,true);NativeCombatObservationChecks.Fresh(context,host);Call(context,"UpdateShell");Require(!(bool)Get(world,"Failed") && cache.Read(0)!=null,"Explicit retry restores preparation without lost intent.");cache.Release(1);
+            Call(host,"Set",1,true);NativeCombatObservationChecks.Fresh(context,host);Call(context,"UpdateShell");Require(!(bool)Get(world,"Failed") && cache.Read(0)!=null,"Explicit retry restores preparation without lost intent.");cache.Release(2);
             Set(marker,"Failed",true);NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true));
             var selection=Get(host,"Selection");var candidatesProperty=selection.GetType().GetProperty("Candidates",Flags);
             // Candidates is DEBUG observation only. Release still exercises the

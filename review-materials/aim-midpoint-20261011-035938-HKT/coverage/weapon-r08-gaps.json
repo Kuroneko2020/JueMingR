@@ -1,0 +1,1255 @@
+{
+  "boundary": "fixedR08 explicit UNKNOWN stage only; grouping by actual native ContentSamples AIStyle does not imply equivalence or completion",
+  "groups": {
+    "4": [
+      {
+        "item": 64,
+        "ammo": 0,
+        "projectile": 7
+      },
+      {
+        "item": 788,
+        "ammo": 0,
+        "projectile": 150
+      },
+      {
+        "item": 3051,
+        "ammo": 0,
+        "projectile": 494
+      }
+    ],
+    "12": [
+      {
+        "item": 157,
+        "ammo": 0,
+        "projectile": 22
+      },
+      {
+        "item": 1336,
+        "ammo": 0,
+        "projectile": 280
+      }
+    ],
+    "13": [
+      {
+        "item": 160,
+        "ammo": 0,
+        "projectile": 23
+      },
+      {
+        "item": 1297,
+        "ammo": 0,
+        "projectile": 262
+      },
+      {
+        "item": 1314,
+        "ammo": 0,
+        "projectile": 271
+      },
+      {
+        "item": 1325,
+        "ammo": 0,
+        "projectile": 273
+      },
+      {
+        "item": 3012,
+        "ammo": 0,
+        "projectile": 481
+      }
+    ],
+    "14": [
+      {
+        "item": 161,
+        "ammo": 0,
+        "projectile": 24
+      },
+      {
+        "item": 1130,
+        "ammo": 0,
+        "projectile": 183
+      },
+      {
+        "item": 1296,
+        "ammo": 0,
+        "projectile": 261
+      },
+      {
+        "item": 3018,
+        "ammo": 0,
+        "projectile": 483
+      }
+    ],
+    "16": [
+      {
+        "item": 168,
+        "ammo": 0,
+        "projectile": 30
+      },
+      {
+        "item": 758,
+        "ammo": 4445,
+        "projectile": 777
+      },
+      {
+        "item": 758,
+        "ammo": 4446,
+        "projectile": 781
+      },
+      {
+        "item": 758,
+        "ammo": 4447,
+        "projectile": 785
+      },
+      {
+        "item": 758,
+        "ammo": 4448,
+        "projectile": 788
+      },
+      {
+        "item": 758,
+        "ammo": 4449,
+        "projectile": 791
+      },
+      {
+        "item": 758,
+        "ammo": 4457,
+        "projectile": 794
+      },
+      {
+        "item": 758,
+        "ammo": 4458,
+        "projectile": 797
+      },
+      {
+        "item": 758,
+        "ammo": 4459,
+        "projectile": 800
+      },
+      {
+        "item": 759,
+        "ammo": 4445,
+        "projectile": 776
+      },
+      {
+        "item": 759,
+        "ammo": 4446,
+        "projectile": 780
+      },
+      {
+        "item": 759,
+        "ammo": 4447,
+        "projectile": 784
+      },
+      {
+        "item": 759,
+        "ammo": 4448,
+        "projectile": 787
+      },
+      {
+        "item": 759,
+        "ammo": 4449,
+        "projectile": 790
+      },
+      {
+        "item": 759,
+        "ammo": 4457,
+        "projectile": 793
+      },
+      {
+        "item": 759,
+        "ammo": 4458,
+        "projectile": 796
+      },
+      {
+        "item": 759,
+        "ammo": 4459,
+        "projectile": 799
+      },
+      {
+        "item": 760,
+        "ammo": 4445,
+        "projectile": 778
+      },
+      {
+        "item": 760,
+        "ammo": 4446,
+        "projectile": 782
+      },
+      {
+        "item": 760,
+        "ammo": 4447,
+        "projectile": 786
+      },
+      {
+        "item": 760,
+        "ammo": 4448,
+        "projectile": 789
+      },
+      {
+        "item": 760,
+        "ammo": 4449,
+        "projectile": 792
+      },
+      {
+        "item": 760,
+        "ammo": 4457,
+        "projectile": 795
+      },
+      {
+        "item": 760,
+        "ammo": 4458,
+        "projectile": 798
+      },
+      {
+        "item": 760,
+        "ammo": 4459,
+        "projectile": 801
+      },
+      {
+        "item": 1946,
+        "ammo": 771,
+        "projectile": 338
+      },
+      {
+        "item": 1946,
+        "ammo": 772,
+        "projectile": 339
+      },
+      {
+        "item": 1946,
+        "ammo": 773,
+        "projectile": 340
+      },
+      {
+        "item": 1946,
+        "ammo": 774,
+        "projectile": 341
+      },
+      {
+        "item": 1946,
+        "ammo": 4445,
+        "projectile": 803
+      },
+      {
+        "item": 1946,
+        "ammo": 4446,
+        "projectile": 804
+      },
+      {
+        "item": 1946,
+        "ammo": 4447,
+        "projectile": 805
+      },
+      {
+        "item": 1946,
+        "ammo": 4448,
+        "projectile": 806
+      },
+      {
+        "item": 1946,
+        "ammo": 4449,
+        "projectile": 807
+      },
+      {
+        "item": 1946,
+        "ammo": 4457,
+        "projectile": 808
+      },
+      {
+        "item": 1946,
+        "ammo": 4458,
+        "projectile": 809
+      },
+      {
+        "item": 1946,
+        "ammo": 4459,
+        "projectile": 810
+      },
+      {
+        "item": 2586,
+        "ammo": 0,
+        "projectile": 397
+      },
+      {
+        "item": 3116,
+        "ammo": 0,
+        "projectile": 517
+      },
+      {
+        "item": 3548,
+        "ammo": 0,
+        "projectile": 588
+      },
+      {
+        "item": 5629,
+        "ammo": 27,
+        "projectile": 1088
+      }
+    ],
+    "152": [
+      {
+        "item": 190,
+        "ammo": 0,
+        "projectile": 976
+      }
+    ],
+    "3": [
+      {
+        "item": 198,
+        "ammo": 0,
+        "projectile": 1059
+      },
+      {
+        "item": 199,
+        "ammo": 0,
+        "projectile": 1060
+      },
+      {
+        "item": 200,
+        "ammo": 0,
+        "projectile": 1061
+      },
+      {
+        "item": 201,
+        "ammo": 0,
+        "projectile": 1062
+      },
+      {
+        "item": 202,
+        "ammo": 0,
+        "projectile": 1063
+      },
+      {
+        "item": 203,
+        "ammo": 0,
+        "projectile": 1064
+      },
+      {
+        "item": 671,
+        "ammo": 0,
+        "projectile": 1074
+      },
+      {
+        "item": 1122,
+        "ammo": 0,
+        "projectile": 182
+      },
+      {
+        "item": 1513,
+        "ammo": 0,
+        "projectile": 301
+      },
+      {
+        "item": 1825,
+        "ammo": 0,
+        "projectile": 320
+      },
+      {
+        "item": 2424,
+        "ammo": 0,
+        "projectile": 383
+      },
+      {
+        "item": 3764,
+        "ammo": 0,
+        "projectile": 1065
+      },
+      {
+        "item": 3765,
+        "ammo": 0,
+        "projectile": 1066
+      },
+      {
+        "item": 3766,
+        "ammo": 0,
+        "projectile": 1067
+      },
+      {
+        "item": 3767,
+        "ammo": 0,
+        "projectile": 1068
+      },
+      {
+        "item": 3768,
+        "ammo": 0,
+        "projectile": 1069
+      },
+      {
+        "item": 3769,
+        "ammo": 0,
+        "projectile": 1070
+      },
+      {
+        "item": 4258,
+        "ammo": 0,
+        "projectile": 1071
+      },
+      {
+        "item": 4259,
+        "ammo": 0,
+        "projectile": 1072
+      },
+      {
+        "item": 4760,
+        "ammo": 0,
+        "projectile": 866
+      },
+      {
+        "item": 5535,
+        "ammo": 0,
+        "projectile": 1075
+      },
+      {
+        "item": 5536,
+        "ammo": 0,
+        "projectile": 1076
+      },
+      {
+        "item": 5670,
+        "ammo": 0,
+        "projectile": 1101
+      },
+      {
+        "item": 5671,
+        "ammo": 0,
+        "projectile": 1102
+      }
+    ],
+    "10": [
+      {
+        "item": 266,
+        "ammo": 169,
+        "projectile": 42
+      },
+      {
+        "item": 266,
+        "ammo": 370,
+        "projectile": 65
+      },
+      {
+        "item": 266,
+        "ammo": 408,
+        "projectile": 68
+      },
+      {
+        "item": 266,
+        "ammo": 1246,
+        "projectile": 354
+      },
+      {
+        "item": 5572,
+        "ammo": 0,
+        "projectile": 1081
+      }
+    ],
+    "18": [
+      {
+        "item": 272,
+        "ammo": 0,
+        "projectile": 45
+      },
+      {
+        "item": 1306,
+        "ammo": 0,
+        "projectile": 263
+      },
+      {
+        "item": 1327,
+        "ammo": 0,
+        "projectile": 274
+      }
+    ],
+    "190": [
+      {
+        "item": 273,
+        "ammo": 0,
+        "projectile": 972
+      },
+      {
+        "item": 674,
+        "ammo": 0,
+        "projectile": 983
+      },
+      {
+        "item": 1226,
+        "ammo": 0,
+        "projectile": 1126
+      }
+    ],
+    "1": [
+      {
+        "item": 281,
+        "ammo": 3009,
+        "projectile": 477
+      },
+      {
+        "item": 281,
+        "ammo": 3010,
+        "projectile": 478
+      },
+      {
+        "item": 281,
+        "ammo": 3011,
+        "projectile": 479
+      },
+      {
+        "item": 514,
+        "ammo": 0,
+        "projectile": 88
+      },
+      {
+        "item": 986,
+        "ammo": 3009,
+        "projectile": 477
+      },
+      {
+        "item": 986,
+        "ammo": 3010,
+        "projectile": 478
+      },
+      {
+        "item": 986,
+        "ammo": 3011,
+        "projectile": 479
+      },
+      {
+        "item": 1313,
+        "ammo": 0,
+        "projectile": 837
+      },
+      {
+        "item": 1931,
+        "ammo": 0,
+        "projectile": 337
+      },
+      {
+        "item": 2796,
+        "ammo": 771,
+        "projectile": 442
+      },
+      {
+        "item": 2796,
+        "ammo": 772,
+        "projectile": 442
+      },
+      {
+        "item": 2796,
+        "ammo": 773,
+        "projectile": 442
+      },
+      {
+        "item": 2796,
+        "ammo": 774,
+        "projectile": 442
+      },
+      {
+        "item": 2796,
+        "ammo": 4445,
+        "projectile": 442
+      },
+      {
+        "item": 2796,
+        "ammo": 4446,
+        "projectile": 442
+      },
+      {
+        "item": 2796,
+        "ammo": 4447,
+        "projectile": 442
+      },
+      {
+        "item": 2796,
+        "ammo": 4448,
+        "projectile": 442
+      },
+      {
+        "item": 2796,
+        "ammo": 4449,
+        "projectile": 442
+      },
+      {
+        "item": 2796,
+        "ammo": 4457,
+        "projectile": 442
+      },
+      {
+        "item": 2796,
+        "ammo": 4458,
+        "projectile": 442
+      },
+      {
+        "item": 2796,
+        "ammo": 4459,
+        "projectile": 442
+      },
+      {
+        "item": 2888,
+        "ammo": 40,
+        "projectile": 469
+      },
+      {
+        "item": 2888,
+        "ammo": 3103,
+        "projectile": 469
+      },
+      {
+        "item": 3007,
+        "ammo": 3009,
+        "projectile": 477
+      },
+      {
+        "item": 3007,
+        "ammo": 3010,
+        "projectile": 478
+      },
+      {
+        "item": 3007,
+        "ammo": 3011,
+        "projectile": 479
+      },
+      {
+        "item": 3008,
+        "ammo": 3009,
+        "projectile": 477
+      },
+      {
+        "item": 3008,
+        "ammo": 3010,
+        "projectile": 478
+      },
+      {
+        "item": 3008,
+        "ammo": 3011,
+        "projectile": 479
+      },
+      {
+        "item": 3019,
+        "ammo": 40,
+        "projectile": 485
+      },
+      {
+        "item": 3019,
+        "ammo": 3103,
+        "projectile": 485
+      },
+      {
+        "item": 3094,
+        "ammo": 0,
+        "projectile": 507
+      },
+      {
+        "item": 3350,
+        "ammo": 0,
+        "projectile": 587
+      },
+      {
+        "item": 3542,
+        "ammo": 0,
+        "projectile": 634
+      },
+      {
+        "item": 3787,
+        "ammo": 0,
+        "projectile": 660
+      },
+      {
+        "item": 3827,
+        "ammo": 0,
+        "projectile": 684
+      },
+      {
+        "item": 3852,
+        "ammo": 0,
+        "projectile": 712
+      },
+      {
+        "item": 3870,
+        "ammo": 0,
+        "projectile": 711
+      },
+      {
+        "item": 4347,
+        "ammo": 0,
+        "projectile": 876
+      },
+      {
+        "item": 4348,
+        "ammo": 0,
+        "projectile": 876
+      },
+      {
+        "item": 5460,
+        "ammo": 0,
+        "projectile": 1023
+      }
+    ],
+    "2": [
+      {
+        "item": 422,
+        "ammo": 0,
+        "projectile": 69
+      },
+      {
+        "item": 423,
+        "ammo": 0,
+        "projectile": 70
+      },
+      {
+        "item": 517,
+        "ammo": 0,
+        "projectile": 93
+      },
+      {
+        "item": 949,
+        "ammo": 0,
+        "projectile": 166
+      },
+      {
+        "item": 1319,
+        "ammo": 949,
+        "projectile": 166
+      },
+      {
+        "item": 1571,
+        "ammo": 0,
+        "projectile": 306
+      },
+      {
+        "item": 3054,
+        "ammo": 0,
+        "projectile": 497
+      },
+      {
+        "item": 3069,
+        "ammo": 0,
+        "projectile": 954
+      },
+      {
+        "item": 3105,
+        "ammo": 0,
+        "projectile": 510
+      },
+      {
+        "item": 3477,
+        "ammo": 0,
+        "projectile": 621
+      },
+      {
+        "item": 5147,
+        "ammo": 0,
+        "projectile": 979
+      }
+    ],
+    "161": [
+      {
+        "item": 486,
+        "ammo": 0,
+        "projectile": 842
+      },
+      {
+        "item": 1227,
+        "ammo": 0,
+        "projectile": 1127
+      },
+      {
+        "item": 4463,
+        "ammo": 0,
+        "projectile": 802
+      }
+    ],
+    "21": [
+      {
+        "item": 494,
+        "ammo": 0,
+        "projectile": 76
+      }
+    ],
+    "22": [
+      {
+        "item": 496,
+        "ammo": 0,
+        "projectile": 80
+      }
+    ],
+    "193": [
+      {
+        "item": 506,
+        "ammo": 23,
+        "projectile": 85
+      },
+      {
+        "item": 1910,
+        "ammo": 23,
+        "projectile": 85
+      }
+    ],
+    "191": [
+      {
+        "item": 675,
+        "ammo": 0,
+        "projectile": 973
+      },
+      {
+        "item": 757,
+        "ammo": 0,
+        "projectile": 985
+      }
+    ],
+    "28": [
+      {
+        "item": 676,
+        "ammo": 0,
+        "projectile": 119
+      },
+      {
+        "item": 724,
+        "ammo": 0,
+        "projectile": 118
+      },
+      {
+        "item": 726,
+        "ammo": 0,
+        "projectile": 359
+      }
+    ],
+    "27": [
+      {
+        "item": 683,
+        "ammo": 0,
+        "projectile": 114
+      },
+      {
+        "item": 723,
+        "ammo": 0,
+        "projectile": 116
+      },
+      {
+        "item": 989,
+        "ammo": 0,
+        "projectile": 173
+      }
+    ],
+    "29": [
+      {
+        "item": 739,
+        "ammo": 0,
+        "projectile": 121
+      },
+      {
+        "item": 740,
+        "ammo": 0,
+        "projectile": 122
+      },
+      {
+        "item": 741,
+        "ammo": 0,
+        "projectile": 123
+      },
+      {
+        "item": 742,
+        "ammo": 0,
+        "projectile": 124
+      },
+      {
+        "item": 743,
+        "ammo": 0,
+        "projectile": 125
+      },
+      {
+        "item": 744,
+        "ammo": 0,
+        "projectile": 126
+      },
+      {
+        "item": 3209,
+        "ammo": 0,
+        "projectile": 521
+      },
+      {
+        "item": 3377,
+        "ammo": 0,
+        "projectile": 597
+      },
+      {
+        "item": 4062,
+        "ammo": 0,
+        "projectile": 731
+      }
+    ],
+    "33": [
+      {
+        "item": 930,
+        "ammo": 931,
+        "projectile": 163
+      },
+      {
+        "item": 930,
+        "ammo": 1614,
+        "projectile": 310
+      },
+      {
+        "item": 930,
+        "ammo": 5377,
+        "projectile": 1008
+      },
+      {
+        "item": 930,
+        "ammo": 5378,
+        "projectile": 1009
+      },
+      {
+        "item": 930,
+        "ammo": 5379,
+        "projectile": 1010
+      },
+      {
+        "item": 930,
+        "ammo": 5380,
+        "projectile": 1011
+      }
+    ],
+    "36": [
+      {
+        "item": 1121,
+        "ammo": 0,
+        "projectile": 181
+      },
+      {
+        "item": 1155,
+        "ammo": 0,
+        "projectile": 189
+      },
+      {
+        "item": 1801,
+        "ammo": 0,
+        "projectile": 316
+      }
+    ],
+    "39": [
+      {
+        "item": 1156,
+        "ammo": 0,
+        "projectile": 190
+      }
+    ],
+    "40": [
+      {
+        "item": 1178,
+        "ammo": 0,
+        "projectile": 206
+      }
+    ],
+    "45": [
+      {
+        "item": 1244,
+        "ammo": 0,
+        "projectile": 237
+      },
+      {
+        "item": 1256,
+        "ammo": 0,
+        "projectile": 243
+      }
+    ],
+    "46": [
+      {
+        "item": 1260,
+        "ammo": 0,
+        "projectile": 250
+      }
+    ],
+    "47": [
+      {
+        "item": 1266,
+        "ammo": 0,
+        "projectile": 254
+      }
+    ],
+    "48": [
+      {
+        "item": 1295,
+        "ammo": 0,
+        "projectile": 260
+      },
+      {
+        "item": 1444,
+        "ammo": 0,
+        "projectile": 294
+      }
+    ],
+    "50": [
+      {
+        "item": 1445,
+        "ammo": 0,
+        "projectile": 295
+      }
+    ],
+    "30": [
+      {
+        "item": 1928,
+        "ammo": 0,
+        "projectile": 907
+      }
+    ],
+    "68": [
+      {
+        "item": 2590,
+        "ammo": 0,
+        "projectile": 399
+      },
+      {
+        "item": 3821,
+        "ammo": 353,
+        "projectile": 669
+      }
+    ],
+    "69": [
+      {
+        "item": 2611,
+        "ammo": 0,
+        "projectile": 404
+      }
+    ],
+    "71": [
+      {
+        "item": 2622,
+        "ammo": 0,
+        "projectile": 409
+      }
+    ],
+    "72": [
+      {
+        "item": 2623,
+        "ammo": 0,
+        "projectile": 410
+      }
+    ],
+    "75": [
+      {
+        "item": 2795,
+        "ammo": 0,
+        "projectile": 439
+      },
+      {
+        "item": 3368,
+        "ammo": 0,
+        "projectile": 595
+      },
+      {
+        "item": 4144,
+        "ammo": 0,
+        "projectile": 735
+      }
+    ],
+    "81": [
+      {
+        "item": 2880,
+        "ammo": 0,
+        "projectile": 451
+      }
+    ],
+    "185": [
+      {
+        "item": 3006,
+        "ammo": 0,
+        "projectile": 476
+      }
+    ],
+    "87": [
+      {
+        "item": 3014,
+        "ammo": 0,
+        "projectile": 482
+      }
+    ],
+    "91": [
+      {
+        "item": 3053,
+        "ammo": 0,
+        "projectile": 496
+      }
+    ],
+    "93": [
+      {
+        "item": 3107,
+        "ammo": 3108,
+        "projectile": 514
+      }
+    ],
+    "95": [
+      {
+        "item": 3210,
+        "ammo": 0,
+        "projectile": 523
+      }
+    ],
+    "100": [
+      {
+        "item": 3269,
+        "ammo": 0,
+        "projectile": 535
+      }
+    ],
+    "201": [
+      {
+        "item": 3352,
+        "ammo": 0,
+        "projectile": 1083
+      },
+      {
+        "item": 3772,
+        "ammo": 0,
+        "projectile": 1082
+      }
+    ],
+    "113": [
+      {
+        "item": 3378,
+        "ammo": 0,
+        "projectile": 598
+      },
+      {
+        "item": 3543,
+        "ammo": 0,
+        "projectile": 636
+      },
+      {
+        "item": 5461,
+        "ammo": 0,
+        "projectile": 1024
+      }
+    ],
+    "118": [
+      {
+        "item": 3476,
+        "ammo": 0,
+        "projectile": 617
+      }
+    ],
+    "129": [
+      {
+        "item": 3779,
+        "ammo": 0,
+        "projectile": 659
+      }
+    ],
+    "140": [
+      {
+        "item": 3835,
+        "ammo": 0,
+        "projectile": 697
+      },
+      {
+        "item": 3858,
+        "ammo": 0,
+        "projectile": 707
+      }
+    ],
+    "142": [
+      {
+        "item": 3836,
+        "ammo": 0,
+        "projectile": 699
+      }
+    ],
+    "151": [
+      {
+        "item": 4060,
+        "ammo": 75,
+        "projectile": 728
+      }
+    ],
+    "157": [
+      {
+        "item": 4270,
+        "ammo": 0,
+        "projectile": 756
+      }
+    ],
+    "159": [
+      {
+        "item": 4343,
+        "ammo": 0,
+        "projectile": 761
+      },
+      {
+        "item": 4344,
+        "ammo": 0,
+        "projectile": 762
+      }
+    ],
+    "167": [
+      {
+        "item": 4715,
+        "ammo": 0,
+        "projectile": 856
+      }
+    ],
+    "171": [
+      {
+        "item": 4952,
+        "ammo": 0,
+        "projectile": 931
+      }
+    ],
+    "181": [
+      {
+        "item": 4953,
+        "ammo": 40,
+        "projectile": 932
+      },
+      {
+        "item": 4953,
+        "ammo": 3103,
+        "projectile": 932
+      }
+    ],
+    "186": [
+      {
+        "item": 5065,
+        "ammo": 0,
+        "projectile": 950
+      }
+    ],
+    "177": [
+      {
+        "item": 5118,
+        "ammo": 0,
+        "projectile": 969
+      }
+    ],
+    "198": [
+      {
+        "item": 5462,
+        "ammo": 0,
+        "projectile": 1040
+      }
+    ],
+    "208": [
+      {
+        "item": 6153,
+        "ammo": 0,
+        "projectile": 1115
+      }
+    ],
+    "196": [
+      {
+        "item": 6154,
+        "ammo": 0,
+        "projectile": 1116
+      }
+    ],
+    "203": [
+      {
+        "item": 6155,
+        "ammo": 0,
+        "projectile": 1117
+      },
+      {
+        "item": 6173,
+        "ammo": 0,
+        "projectile": 1122
+      }
+    ]
+  }
+}

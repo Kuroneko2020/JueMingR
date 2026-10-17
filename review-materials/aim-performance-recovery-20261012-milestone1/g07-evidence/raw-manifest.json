@@ -1,0 +1,122 @@
+[
+  {
+    "name": "ContinuousCombatMeasure.cs",
+    "length": 13414,
+    "sha256": "9A3FBB0A65450A2B8DB4A80B1FF7C7C2823E183B19B4FB455F3DA3E9D050F248"
+  },
+  {
+    "name": "g07-weather-1228-aim-move-use-7ed37d1a/frames.csv",
+    "length": 55108,
+    "sha256": "BDAA56C0B96A5FEF973AA57CD0CAA0022957D545D646AAD3B76C682B387571E9"
+  },
+  {
+    "name": "g07-weather-1228-aim-move-use-7ed37d1a/g07-weather-1228-aim-move-use-7ed37d1a.log",
+    "length": 2376,
+    "sha256": "F4F22D5F5B54B3B46D39D529C0828889C0133EA09EAB40542869C7BA471F61A8"
+  },
+  {
+    "name": "g07-weather-1228-off-move-use-af8954bc/frames.csv",
+    "length": 55126,
+    "sha256": "A3DCDECB083CEF5798EA3459327A339E74E36ADF868BE4FC1586A70AA55EE5C3"
+  },
+  {
+    "name": "g07-weather-1228-off-move-use-af8954bc/g07-weather-1228-off-move-use-af8954bc.log",
+    "length": 2367,
+    "sha256": "7851402680BBF2FC1801FFD38A4CED3BDB2CBFC9F95CC1F5B5675555EA88E08D"
+  },
+  {
+    "name": "g07-weather-3473-aim-move-use-8e7aaf1b/frames.csv",
+    "length": 55094,
+    "sha256": "5A6999196324B27E608337F71D49A905A3B45AA51E19A84191A7FD54C1D8763B"
+  },
+  {
+    "name": "g07-weather-3473-aim-move-use-8e7aaf1b/g07-weather-3473-aim-move-use-8e7aaf1b.log",
+    "length": 2375,
+    "sha256": "F5D1D46DE1EC3565DB9F1E83DDBF1F35478824FE3C315DB410F6158443F53459"
+  },
+  {
+    "name": "g07-weather-3473-off-move-use-c05cdbf7/frames.csv",
+    "length": 55103,
+    "sha256": "273AB11B15BA753577A540E5834722B211BFEC99093AA8C4769D28DE318EE9FD"
+  },
+  {
+    "name": "g07-weather-3473-off-move-use-c05cdbf7/g07-weather-3473-off-move-use-c05cdbf7.log",
+    "length": 2373,
+    "sha256": "60B1F3930898346D7E4FCD0410D5CEEE77E76BF645385E771BF6CB3EFA053C26"
+  },
+  {
+    "name": "natural-r15/g07-r15-causal.txt",
+    "length": 3299,
+    "sha256": "743D2638D234256D93F5308D1FAC4D6F9F434EF65B7EDE27868AD5FFE8751DCD"
+  },
+  {
+    "name": "natural-r15/g07-r15-natural-draw.log",
+    "length": 18426,
+    "sha256": "F33ACBB5B579525D60A45183D9976BEAC65728E99D12B22923B923EA11AED1F4"
+  },
+  {
+    "name": "natural-r15/g07-r15-summary.txt",
+    "length": 2638,
+    "sha256": "1C15847A08CD95A2A8ED42B480EF1A89CFEB4A1672F3CD34A90D43521B9C0BE5"
+  },
+  {
+    "name": "natural-r15/moving-attack.png",
+    "length": 24734,
+    "sha256": "6DA0537848D3E7CBBE9E235EC7A2902BBD43EF2763F4866E132C460247B84A17"
+  },
+  {
+    "name": "natural-r15/moving-first-failure.png",
+    "length": 3895,
+    "sha256": "4256F460F7C057EC03BB622FE4F46587784B8F5A03297230A6CFE2B3CED61887"
+  },
+  {
+    "name": "natural-r15/moving-idle.png",
+    "length": 25116,
+    "sha256": "6A1C070D21A61916FD97BE063F20ACE61A494E29C3DF4E113BD7CB57255B1EE2"
+  },
+  {
+    "name": "natural-r15/moving-restore.png",
+    "length": 24694,
+    "sha256": "0CA77DD758058890F525E6CFFA7F8B3AC204E784ECAAA68A2425668E0D17B092"
+  },
+  {
+    "name": "natural-r15/natural-births.txt",
+    "length": 6524,
+    "sha256": "FDC34CB1D0A64EF5DAEB3946598A8ACDF1F5206A87823D6D2F46385592A16250"
+  },
+  {
+    "name": "natural-r15/natural-input-facts.txt",
+    "length": 3247,
+    "sha256": "BA434A9FAC910B9DCAF4109F0CC669792986580BBDC0BECA715905FFF31EC10B"
+  },
+  {
+    "name": "natural-r15/natural-slime-frames.csv",
+    "length": 73456,
+    "sha256": "251E8C3997471648455E1644CE224C3CBA2454DBD552629EB888C61098C77618"
+  },
+  {
+    "name": "natural-r15/standing-attack.png",
+    "length": 25258,
+    "sha256": "F267CD5F0397A0BC7BA976F53B6C701864BA1487046CD14DA9197F491AF3EB6F"
+  },
+  {
+    "name": "natural-r15/standing-first-failure.png",
+    "length": 25053,
+    "sha256": "D6C7ACB3E66FFDF3ACA96D733C3ED0E10C0D17E2799090FC3E778F8FFEDE3732"
+  },
+  {
+    "name": "natural-r15/standing-idle.png",
+    "length": 25114,
+    "sha256": "33D31E6ED1292B9F348C65878A6D4BE6C2E2A4C79C2C9D2830A12CB0ACB59EBD"
+  },
+  {
+    "name": "natural-r15/standing-restore.png",
+    "length": 25386,
+    "sha256": "DB018398F4AA292F575C8842D99D1E282363BC777C31EBBB024128CDD34B1241"
+  },
+  {
+    "name": "pathoff-no-audit/run.log",
+    "length": 5563,
+    "sha256": "2FF6111F88A7819194200740391DDCE95854C717F431C12DA4D417EB1CA552FA"
+  }
+]

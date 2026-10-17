@@ -1,0 +1,724 @@
+{
+  "schema": "weapon-compat-review-map-20261015-1",
+  "taskId": "JMR-AIM-WEAPON-COMPAT-20261015-v1",
+  "taskBase": "0f93019526aa334877b4cfb4b5d38c3d1c0c55c4",
+  "productionCommit": "48651f824e8805fece5c1bf76779208916558e39",
+  "finalCandidate": "Reviewed/packaged candidate d177b0a1de35228057c5afc690459dfc70615e7f; later delivery documentation commit changes no production/package bytes.",
+  "fullQualification": "INCOMPLETE",
+  "releaseEligible": false,
+  "independentReview": "APPROVED_FOR_STAGE",
+  "package": "IDENTITY_VERIFIED",
+  "installation": "INSTALLED_VERIFIED",
+  "installedSource": "d177b0a1de35228057c5afc690459dfc70615e7f",
+  "changedFiles": [
+    "docs/功能介绍/战斗辅助行为合同.md",
+    "docs/规范/工程治理规则.md",
+    "docs/计划/辅助瞄准阶段文档.md",
+    "docs/设计/可重复构建与项目骨架.md",
+    "docs/设计/战斗辅助实现设计.md",
+    "docs/网页Chat协作约定.md",
+    "review-materials/aim-weapon-compat-20261015/evidence.md",
+    "review-materials/aim-weapon-compat-20261015/validation-map.json",
+    "scripts/workload/AimStage.Development.ps1",
+    "scripts/workload/Workload.Definitions.ps1",
+    "src/JueMingR.Features/Combat/AttackBallisticCandidates.cs",
+    "src/JueMingR.TerrariaHost/Combat/CombatUse.cs",
+    "src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs",
+    "src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs",
+    "src/JueMingR.TerrariaHost/Combat/HostAttackControl.Preview.cs",
+    "src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs",
+    "src/JueMingR.TerrariaHost/Combat/HostBetsyFlameAttack.cs",
+    "src/JueMingR.TerrariaHost/Combat/HostBottleAttack.cs",
+    "src/JueMingR.TerrariaHost/Combat/HostPlacementAttack.cs",
+    "src/JueMingR.TerrariaHost/Combat/HostYoyoReleaseAttack.cs",
+    "tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs",
+    "tests/NativeWorldTextProbe/NativeChecks.cs",
+    "tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs",
+    "tests/NativeWorldTextProbe/NativeCombatBasicAimChecks.cs",
+    "tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs",
+    "tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs",
+    "tests/NativeWorldTextProbe/NativeCombatMagicStringAimChecks.cs",
+    "tests/NativeWorldTextProbe/NativeCombatPlacementChecks.cs"
+  ],
+  "checks": [
+    {
+      "name": "architecture-combat",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "CURRENT",
+      "scope": "48651f8 Debug combat architecture/public contract checks",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/architecture-combat-48651f8-r01.log",
+          "length": 126,
+          "sha256": "1A61DD9ED16DCF68918C3D0D42949A589D0B14CBDD8E71B1E009D18DA9E96724"
+        }
+      ]
+    },
+    {
+      "name": "sentry-placement",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "REVIEWED_REUSE",
+      "scope": "f720242 ordinary Release CanUse/Shoot/native birth, 46 families/50 births and mirrored sentry negatives;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-placement-r01.log",
+          "length": 2904,
+          "sha256": "47EC111C5F3BFF73A8C1A73C5B14400B74670181976D40A7DFC23C41DA3FDE1B"
+        }
+      ]
+    },
+    {
+      "name": "magic-string-aim",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "REVIEWED_REUSE",
+      "scope": "f720242 ordinary Release natural Player-NPC-Projectile mirrored split/receive/rope-range; optional original glove/counterweight and six cancellation boundaries retain their narrower layer;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-magic-string-aim-r01.log",
+          "length": 12119,
+          "sha256": "54C84E5FCF589DF6923A4447C1CC463D30D46BC81C4A8248043CD5813EDE0DF0"
+        }
+      ]
+    },
+    {
+      "name": "ballistic-candidates",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "REVIEWED_REUSE",
+      "scope": "f720242 ordinary Release same native three-member/Bottle families; r12 old-angle rejection/motor costs and full unchanged motor checks remain supplemental;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-ballistic-candidates-r01.log",
+          "length": 11023,
+          "sha256": "DE7972D42B413C5FBD581FB2DD118C3D0B6097F8773135078FBD961D8213B8AA"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/c-r12.log",
+          "length": 8382,
+          "sha256": "2CA53A6A368C9A68EBE6D85F1E7BABBBB1BCBA0459273F5852D2C7ACCB300362"
+        }
+      ]
+    },
+    {
+      "name": "candidate-demand",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "REVIEWED_REUSE",
+      "scope": "7227 ordinary Release full shared prefix/candidate demand; changes after7227 are only actual managed-yoyo branches and preview owner checks, covered by current B",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-candidate-demand-full-r01.log",
+          "length": 8364,
+          "sha256": "3636924D0F91AE0DF034087DA4F28AD1A0F8AB29ED9F268D05607FF3E77E1757"
+        }
+      ]
+    },
+    {
+      "name": "attack-costs",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "CURRENT_AND_REVIEWED_REUSE",
+      "scope": "2fcc counted Source new steps in actual native 80-update modes, scoped reuse after f720 owner check;7227 generic cached/shared allowance assertions remain unaffected",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/weapon-work-final-r01.log",
+          "length": 5901,
+          "sha256": "0CF26968514F2FD649B454BC359C9F2B57891B268E37AAFFFFEBAA97D89656C8"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/weapon-work-old-r01.log",
+          "length": 6723,
+          "sha256": "A5AB87E4C9C4EE4D983B65A1D6059DEB71CE9D1003481B77FF96971B50360EBF"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/weapon-work-new-r02.log",
+          "length": 5915,
+          "sha256": "54D95DEED166C7BAE8450064F97C58702AB685FE054613535120E46376CE441C"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-attack-costs-r01.log",
+          "length": 36865,
+          "sha256": "4B7E63036E9EDDC00AF9D63334A1DD1051AEB257CDBE818F67213E8B96197BE6"
+        }
+      ]
+    },
+    {
+      "name": "basic-aim",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "REVIEWED_REUSE",
+      "scope": "f720 ordinary Release Basic native consumers including sentry fault/physical placement and same identity cancellation;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-basic-aim-r01.log",
+          "length": 9083,
+          "sha256": "6558937282EA777D036967A3685C49F209DCC237DF32BBABCF2DA5C2266BD6B8"
+        }
+      ]
+    },
+    {
+      "name": "selection-preview",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "REVIEWED_REUSE",
+      "scope": "f720 ordinary Release player/mouse centre and nearest/clear-line actual ranking; free opening private proof and actual out-of-rope receive in B;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-selection-preview-r01.log",
+          "length": 8629,
+          "sha256": "63E29C0A426337E74B430D2802422F6575DBAFCC623271D4CCE78D84C0AEE7B9"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-magic-string-aim-r01.log",
+          "length": 12119,
+          "sha256": "54C84E5FCF589DF6923A4447C1CC463D30D46BC81C4A8248043CD5813EDE0DF0"
+        }
+      ]
+    },
+    {
+      "name": "navigation",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "REVIEWED_REUSE",
+      "scope": "f720 ordinary Release unmodified ordinary yoyo gap/progress/retirement/recovery with normal finite navigation;48651f8 only limits openingAmmo to managed births, leaves these measured sentry/managed-yoyo/autonomous-C branches unchanged, ordinary initialization restored.",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-navigation-r01.log",
+          "length": 20090,
+          "sha256": "3C6B8D78B6E4B695375A5EA3619CE43447DEBDAD3C2880F79A9E698C0AC5FA6A"
+        }
+      ]
+    },
+    {
+      "name": "whip-terrain",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "REVIEWED_REUSE",
+      "scope": "7227 ordinary Release original whip5480/1035 terrain and owner gates; f720 changes are sentry/classic yoyo or two C solvers, not whip motor/player continuation",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-whip-terrain-r01.log",
+          "length": 4011,
+          "sha256": "C5B809C51BC89FBBC580601022D4C28311C7DB873B12941670A05C659EEF89A1"
+        }
+      ]
+    },
+    {
+      "name": "main-performance",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "REVIEWED_REUSE",
+      "scope": "fixed normal Release7227 C,541 B pre-fix,2fcc B repaired; exact inclusive Main/Draw/EndDraw raw 13 windows. f720 only adds actual player/null ownership validation to clear-line preview; formal clearLine=false path unchanged",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/measurement/formal-summary.json",
+          "length": 71677,
+          "sha256": "0DF632B50D5EDC98A957611A0F7A2FF9FEBE10B1131F1054C5A65B87692EC861"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/measurement/final-driver-receipt.json",
+          "length": 643,
+          "sha256": "24A1CEA751EE35949B4D0F8B7E137F05529217EE0A12B2C18664052E64A743A6"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/measurement/carrier-laa-correction.json",
+          "length": 607,
+          "sha256": "E7584DEFE3D017F7F1218562EB45F2F5AEDB165DFD4D5CE7862AC93E0E8C0763"
+        }
+      ]
+    },
+    {
+      "name": "representative-opportunities",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "CURRENT_AND_REVIEWED_REUSE",
+      "scope": "f720 actual A/B/C consumers and 13 original Main raw native schedules/receivers; mixed producer identities retained, no 100percent Enhanced or human rate claim",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-placement-r01.log",
+          "length": 2904,
+          "sha256": "47EC111C5F3BFF73A8C1A73C5B14400B74670181976D40A7DFC23C41DA3FDE1B"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-magic-string-aim-r01.log",
+          "length": 12119,
+          "sha256": "54C84E5FCF589DF6923A4447C1CC463D30D46BC81C4A8248043CD5813EDE0DF0"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-ballistic-candidates-r01.log",
+          "length": 11023,
+          "sha256": "DE7972D42B413C5FBD581FB2DD118C3D0B6097F8773135078FBD961D8213B8AA"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/measurement/formal-summary.json",
+          "length": 71677,
+          "sha256": "0DF632B50D5EDC98A957611A0F7A2FF9FEBE10B1131F1054C5A65B87692EC861"
+        }
+      ]
+    },
+    {
+      "name": "workload-routing",
+      "status": "OBSERVED_EXIT_0",
+      "disposition": "CURRENT",
+      "scope": "actual current leaf classifications and isolated real Git diff/index/shared/rename boundary regression",
+      "applicability": "Independent Sol/High approved the d177b0a1 whole28-file delta and this listed scope reuse; original source/MVID remains in every raw artifact. Final delivery documentation changes no production bytes.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/workload-routing-final-r01.log",
+          "length": 15987,
+          "sha256": "D07F25F3A28E1B99E975EAF8DD74D5DC753AB69CAB5FA5ABF70CE46CB10477ED"
+        }
+      ]
+    }
+  ],
+  "failureDispositions": [
+    {
+      "name": "last self-review opening ammo scope",
+      "disposition": "PRODUCT_FIXED",
+      "cause": "initial new birth receipt copied openingAmmo to every controller; Clear did not clear old openingAmmo, allowing unrelated member initialization",
+      "resolution": "48651f8 assigns it only to real managed-yoyo birth; others regain original independent members. Current control observed actual guided/bubble prefix only; whole leaf exits1 at retired idle preview and is NOT PASS. Static causal diff and partial native observations retained.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/self-review-ammo-scope.diff",
+          "length": 2647,
+          "sha256": "276D8DFEC044526BFF9243A7CF8F729AE215BEECAF5FA6AA74C5F328079DBBA9"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-48651f8-control-r01.log",
+          "length": 42042,
+          "sha256": "7FA95F7542185BCE430E7EF99B01E7782DFB03886FFAB305A309BEFC4B47192B"
+        }
+      ]
+    },
+    {
+      "name": "adjacent obsolete idle expectations",
+      "disposition": "OWNER_WITHDRAWN",
+      "cause": "control whole leaf reaches retired knife idle ExpectedPreview assertion; laser whole leaf passes72motor then reaches retired idle preview assertion. Both exit1, not whole-leaf PASS.",
+      "resolution": "Owner2026-10-14 withdrew impact/idle preview; do not revive production or silently rewrite expectations. Preserve local native passes and obsolete-tail failures as separate boundary.",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-48651f8-control-r01.log",
+          "length": 42042,
+          "sha256": "7FA95F7542185BCE430E7EF99B01E7782DFB03886FFAB305A309BEFC4B47192B"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-48651f8-laser-r01.log",
+          "length": 4898,
+          "sha256": "9B2F351912DCCE3778013DF9645F8D65383362992A2E161D3E5420351F2AF7CB"
+        }
+      ],
+      "ownerDecision": "2026-10-14-impact-single-attempt-stop-loss",
+      "capability": "impact-preview"
+    },
+    {
+      "name": "initial C compilation and public contract",
+      "disposition": "PRODUCT_FIXED",
+      "cause": "first C namespace was GameContent rather than locked Terraria.ID; two-consumer public pure contract needed explicit architecture admission",
+      "resolution": "correct namespace and only the real two-consumer candidate/Direction contract whitelist; final compilation/architecture pass",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/prepare-debug-r01.log",
+          "length": 4878,
+          "sha256": "274FD6452FAD56C9BE36D0E8C120BF4DBC4942F38397EA482176A1D8A9C0E70B"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/prepare-debug-r02.log",
+          "length": 2530,
+          "sha256": "E8D709C0D736236144B5461F88E01E2D28755D66B6E7284D42634E67ED5E574E"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/prepare-debug-r03.log",
+          "length": 2569,
+          "sha256": "8D0C0C0DBAC4FAA0D5B5415BC881CE1E3726EAA12BBCD25D6793647C7F462101"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/architecture-combat-final-r01.log",
+          "length": 126,
+          "sha256": "1A61DD9ED16DCF68918C3D0D42949A589D0B14CBDD8E71B1E009D18DA9E96724"
+        }
+      ]
+    },
+    {
+      "name": "A initial selector/oracle",
+      "disposition": "TEST_CORRECTED",
+      "cause": "unknown selected leaf then DD2 native facing changed during Shoot; two-pixel expected origin error",
+      "resolution": "correct actual birth-time facing oracle; no production Facing workaround",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/A-first-r01.log",
+          "length": 1142,
+          "sha256": "08818D26DF5AFAF941FD127415E053D08DBFEF293A30A6578AF00694B152FFF5"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/A-r02.log",
+          "length": 5924,
+          "sha256": "92D5E8E9DCEF956416E419E884DAB493AE6C20A80FAE8918875045F94A2ADBEF"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-placement-r01.log",
+          "length": 2904,
+          "sha256": "47EC111C5F3BFF73A8C1A73C5B14400B74670181976D40A7DFC23C41DA3FDE1B"
+        }
+      ]
+    },
+    {
+      "name": "B incorrect original consumer",
+      "disposition": "PRODUCT_FIXED",
+      "cause": "native release copies parent velocity and does not reread cursor; original navigation did not prepare free stage",
+      "resolution": "real birth-held direction/managed identity and discrete free seed; no post-birth steering",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/B-natural-baseline-r01.log",
+          "length": 2952,
+          "sha256": "04902C81FACD8E1DE3F30D1B3B9CAFF8A9CCC7DD6944E8A4F9CF886DF1A91A43"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-magic-string-aim-r01.log",
+          "length": 12119,
+          "sha256": "54C84E5FCF589DF6923A4447C1CC463D30D46BC81C4A8248043CD5813EDE0DF0"
+        }
+      ]
+    },
+    {
+      "name": "B old receive fixture",
+      "disposition": "TEST_CORRECTED",
+      "cause": "Player/Projectile-only fixture did not advance NPC immune; earlier moving/continuous interpretation withdrawn",
+      "resolution": "actual Player-NPC-Projectile fixture; old results retain limited layer",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/B-cause-r01.log",
+          "length": 5480,
+          "sha256": "D2CD5C380D6F102238F5FA077C166DEA01A9447A14AAA3A48EF07F5771D70AB1"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/B-natural-boundaries-r01.log",
+          "length": 8852,
+          "sha256": "C019CC407DA669C3871CB2BC060936D51FD81F534496A198A770847E5DB9719F"
+        }
+      ]
+    },
+    {
+      "name": "B clear-line free range",
+      "disposition": "PRODUCT_FIXED",
+      "cause": "7227 preview still used held rope navigation at515px/220 range",
+      "resolution": "bounded dry representative free opening; real mirrored manual and enhanced receivers",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/B-free-preview-red.log",
+          "length": 4788,
+          "sha256": "0567C45544F6A816CAFD0EE5FC238A699EA4231DCF47367AE123D042D161C64F"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/B-free-preview-green-r04.log",
+          "length": 8775,
+          "sha256": "5C5F497F902247C94EAA0A4FD2FA6170C9A452CA5168E8328907971B8299C228"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-magic-string-aim-r01.log",
+          "length": 12119,
+          "sha256": "54C84E5FCF589DF6923A4447C1CC463D30D46BC81C4A8248043CD5813EDE0DF0"
+        }
+      ]
+    },
+    {
+      "name": "B redundant release work",
+      "disposition": "PRODUCT_FIXED",
+      "cause": "541 controller demand ran when release did not read cursor; cached birth point not accepted as prepared input",
+      "resolution": "2fcc actual opening/birth-held demand, protected independent Path and quality; maxima retained",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/B-demand-red-r01.log",
+          "length": 5479,
+          "sha256": "214BE48A70CCF300CCF328B1362C5D7A5E17402F3B9A08A0F298EEDDE1081FFA"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/B-demand-green-r01.log",
+          "length": 8811,
+          "sha256": "99FF24013F8E3356B9E0E0D8072B7F1F45756A657A7C6B633DFE308E86C858E5"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/weapon-work-final-r01.log",
+          "length": 5901,
+          "sha256": "0CF26968514F2FD649B454BC359C9F2B57891B268E37AAFFFFEBAA97D89656C8"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/measurement/formal-summary.json",
+          "length": 71677,
+          "sha256": "0DF632B50D5EDC98A957611A0F7A2FF9FEBE10B1131F1054C5A65B87692EC861"
+        }
+      ]
+    },
+    {
+      "name": "C candidate/initial hints",
+      "disposition": "PRODUCT_FIXED",
+      "cause": "sparse old 9plus32 directions; horizontal-only hint/fan/receiver tolerance missed new current geometry",
+      "resolution": "inverse actual discrete candidate and conservative current-hand hint; cold Basic remains legal",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/c-r03.log",
+          "length": 1850,
+          "sha256": "7F11BF0991446699ADAEB47709AA602C0A43C853999100E9F3DEBB7654BCA58F"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/c-r07.log",
+          "length": 2281,
+          "sha256": "484743600C35A1D28B177E88E380E6BD0F65E67DE20E4570595F35ECE219D439"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/c-r09.log",
+          "length": 2280,
+          "sha256": "1635691EB6F92FFDF199CCB66AA69A3B1ED0D182396E0513A29996C0C0CA1921"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/c-r12.log",
+          "length": 8382,
+          "sha256": "2CA53A6A368C9A68EBE6D85F1E7BABBBB1BCBA0459273F5852D2C7ACCB300362"
+        }
+      ]
+    },
+    {
+      "name": "C fixture expectations",
+      "disposition": "TEST_CORRECTED",
+      "cause": "initial radius80 illegal max50; initially chosen between-grid point still had old high-angle solution",
+      "resolution": "keep failures; use legal radius and independently proven tile80,25 old complete-window null",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/c-r01.log",
+          "length": 2095,
+          "sha256": "24E54DF964942AC7B7331967D17A3F8D4BC4CCCD1E5F20420FDB5463770FB4DD"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/c-r02.log",
+          "length": 2175,
+          "sha256": "A9A52C4879B212B2D7F108F47AE8AA3A4C031D3F1F96F1D14777D03816DF690C"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/c-r12.log",
+          "length": 8382,
+          "sha256": "2CA53A6A368C9A68EBE6D85F1E7BABBBB1BCBA0459273F5852D2C7ACCB300362"
+        }
+      ]
+    },
+    {
+      "name": "temporary setup/probe inputs",
+      "disposition": "TEST_CORRECTED",
+      "cause": "preparation cleans probe output assets; no-restore/missing consumer attempts; no product consumer ran in those cases",
+      "resolution": "normal existing dotnet restore/build to public checks root; final observed consumers use actual fixed payload",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/probe-free-preview-r02.log",
+          "length": 901,
+          "sha256": "5080B553D6647C0333F9717C9EB4387C3E8DF6E4F30695BF6AAB9EFE4319C3BD"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/B-free-preview-green-r01.log",
+          "length": 3598,
+          "sha256": "5F81EE1A93461EE247ABB2F33E6760D8212B0A221012CB06EF826361A4D6546E"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/probe-consumer-final-r01.log",
+          "length": 398,
+          "sha256": "7EE2837CB725FE00918B486C26CDF8B095E4E4DB683F156E84B475FEDA4056CC"
+        }
+      ]
+    },
+    {
+      "name": "optimized runner configuration",
+      "disposition": "TEST_CORRECTED",
+      "cause": "initial diagnostic Debug payload was rejected by existing optimized-only scoped runner",
+      "resolution": "use actual normal Release; optimized gate was never bypassed",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/check-basic-direct-r01.log",
+          "length": 468,
+          "sha256": "8CD3553D96DCB453E77FDB66A1E2215AED006D29B0A52C67AF5D91BAEB86712A"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/check-candidate-demand-full-r01.log",
+          "length": 468,
+          "sha256": "8CD3553D96DCB453E77FDB66A1E2215AED006D29B0A52C67AF5D91BAEB86712A"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/check-selection-preview-r01.log",
+          "length": 468,
+          "sha256": "8CD3553D96DCB453E77FDB66A1E2215AED006D29B0A52C67AF5D91BAEB86712A"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-basic-aim-r01.log",
+          "length": 9083,
+          "sha256": "6558937282EA777D036967A3685C49F209DCC237DF32BBABCF2DA5C2266BD6B8"
+        }
+      ]
+    },
+    {
+      "name": "Basic sentry old expectation",
+      "disposition": "TEST_CORRECTED",
+      "cause": "old DD2 Basic test expected selected NPC despite newly authorized physical sentry contract",
+      "resolution": "physical CanUse/Shoot expectation and real non-sentry1309 identity cancellation; no product concession",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-basic-r01.log",
+          "length": 11891,
+          "sha256": "8EE994A403B589F4A1D2C4D2F3AFE60BC9E70A9797AC93A7107E203E8C07956C"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-basic-r02.log",
+          "length": 8986,
+          "sha256": "4799E2EC55EBDA4F57D3F605D934D5A898D145782B51565B842ECAFF0AF4B6EB"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/release-f720242-basic-aim-r01.log",
+          "length": 9083,
+          "sha256": "6558937282EA777D036967A3685C49F209DCC237DF32BBABCF2DA5C2266BD6B8"
+        }
+      ]
+    },
+    {
+      "name": "temporary carrier wrong root",
+      "disposition": "TEST_CORRECTED",
+      "cause": "first temporary carrier copied package root instead of payload; Validation path became a file; no game process started",
+      "resolution": "fresh corrected carrier uses actual payload subdirectory; preserve original wrong temporary file and actual initialized successor receipt",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/carrier-release-r01/JueMingR.Validation",
+          "length": 2216960,
+          "sha256": "9B3B9268B34D66573082564ABABB7B9E5576C8201E0D40DFF54778D16B391214"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/measurement/new-C-both-r03/receipt.json",
+          "length": 828,
+          "sha256": "213015B45A30BF82621CEFB29508BBA7E85533565918512DC026248B1F892EFF"
+        }
+      ]
+    },
+    {
+      "name": "Main original initialize OOM",
+      "disposition": "ENVIRONMENT_LIMITATION",
+      "cause": "recompiled temporary x86 carrier lost LAA; original Initialize_AlmostEverything threw before gameplay",
+      "resolution": "restore0122 equal locked original/existing carrier, retain original exception; no game/product/system edit",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/measurement/new-C-both-r01/out/original-exception.txt",
+          "length": 1767,
+          "sha256": "53011A77018D68CB964A426C6D452FB94A7A0C731657405315F22D44FFD6B051"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/measurement/new-C-both-r01/receipt.json",
+          "length": 828,
+          "sha256": "900CAA84C82302D88255B24C4042E4384B1BA6AFE41E339F28F41CACBF31C9EF"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/measurement/carrier-laa-correction.json",
+          "length": 607,
+          "sha256": "E7584DEFE3D017F7F1218562EB45F2F5AEDB165DFD4D5CE7862AC93E0E8C0763"
+        }
+      ]
+    },
+    {
+      "name": "Main pilot denominator",
+      "disposition": "TEST_CORRECTED",
+      "cause": "r02 timing pilot initial lower mana/one natural720 counted as source; it is not final paired quality",
+      "resolution": "fixed legal mana200 and711/yoyo-parent filter; pilot retained separate",
+      "artifacts": [
+        {
+          "path": ".local/aim-weapon-compat-20261015/measurement/new-C-both-r02/receipt.json",
+          "length": 828,
+          "sha256": "4059079462D968D035C19B1582D8E7CC21E13D22A32584DDB7B3720A99ECCE31"
+        },
+        {
+          "path": ".local/aim-weapon-compat-20261015/measurement/final-driver-receipt.json",
+          "length": 643,
+          "sha256": "24A1CEA751EE35949B4D0F8B7E137F05529217EE0A12B2C18664052E64A743A6"
+        }
+      ]
+    }
+  ],
+  "productionAssemblies": [
+    {
+      "name": "TerrariaHost",
+      "mvid": "2966d931-76eb-49df-aa72-03cfa0b89916",
+      "artifact": {
+        "path": ".local/aim-weapon-compat-20261015/payload-release-48651f8/JueMingR.TerrariaHost.dll",
+        "length": 2219520,
+        "sha256": "6B9C2C8E1F9FC429498A135F74DC053ED61CC964DF9F284D6647C023005F1965"
+      }
+    },
+    {
+      "name": "Features",
+      "mvid": "ae553495-98b3-40b4-9352-abe52c76fc5e",
+      "artifact": {
+        "path": ".local/aim-weapon-compat-20261015/payload-release-48651f8/JueMingR.Features.dll",
+        "length": 670208,
+        "sha256": "746CC105CF2F23D56181D0F63F255534F4B2F7AFCBFA215DDAF9DE7036D5B4B9"
+      }
+    },
+    {
+      "name": "Platform",
+      "mvid": "6cbb4cab-84be-45e7-8adb-e5f5f30f79cf",
+      "artifact": {
+        "path": ".local/aim-weapon-compat-20261015/payload-release-48651f8/JueMingR.Platform.dll",
+        "length": 117760,
+        "sha256": "752FF0A59E4CDC877B07279BE4917EDC39C41BF2497C5F83987CC6A115BF22D3"
+      }
+    },
+    {
+      "name": "Infrastructure",
+      "mvid": "d4eeb12a-3aea-4801-91e6-53817111969f",
+      "artifact": {
+        "path": ".local/aim-weapon-compat-20261015/payload-release-48651f8/JueMingR.Infrastructure.dll",
+        "length": 19456,
+        "sha256": "4A22E6679FE5878741C2CD5CC3C2504AA9471A01B113B978AD39B2D27149A67F"
+      }
+    }
+  ],
+  "componentEvidence": [
+    {
+      "path": ".local/aim-weapon-compat-20261015/component-build-48651f8.json",
+      "length": 107472,
+      "sha256": "C9B422952788770175236331C31FE13D086940BC16A2F3317E8E4F5DCFD37A22"
+    },
+    {
+      "path": ".local/aim-weapon-compat-20261015/release-48651f8-control-r01.log",
+      "length": 42042,
+      "sha256": "7FA95F7542185BCE430E7EF99B01E7782DFB03886FFAB305A309BEFC4B47192B"
+    },
+    {
+      "path": ".local/aim-weapon-compat-20261015/component-build-f720242.json",
+      "length": 107472,
+      "sha256": "E2C319E4B48E4F7EC1E23C4FA5F1B021867E0D9790A6BB092B53DBA8DFAC88DA"
+    },
+    {
+      "path": ".local/aim-weapon-compat-20261015/component-build-2fcc5db.json",
+      "length": 107472,
+      "sha256": "FFD68971650FED4AD4A86BE8F39E12C7631E5B9A6A56607BCD95B6A4F9DB5784"
+    },
+    {
+      "path": ".local/aim-weapon-compat-20261015/component-build-541997e.json",
+      "length": 107472,
+      "sha256": "B6E9AFBBBED8F5FAC01EACDC55193CE0287206CFBA65CF240B8234C32243CCD8"
+    },
+    {
+      "path": ".local/aim-weapon-compat-20261015/component-build-fixed-r01.json",
+      "length": 107472,
+      "sha256": "BDEE54D5AB9DE93126503EB6116558D7A6478E9C91467CEFC5DAB7759BDFA109"
+    },
+    {
+      "path": ".local/aim-weapon-compat-20261015/c-r12.log",
+      "length": 8382,
+      "sha256": "2CA53A6A368C9A68EBE6D85F1E7BABBBB1BCBA0459273F5852D2C7ACCB300362"
+    }
+  ],
+  "selfReview": "Pre-delivery self-review read full TASK_BASE delta/input/source lifetime/comments/public contract and protected scope. Subsequent authorized Stage/package/install facts are separately recorded in deliveryReceipt.",
+  "limits": [
+    "Independent review, official Stage/package identity and one installation/readback completed; no owner new-package/FPS/multiplayer acceptance.",
+    "C Main final five Basic hands not diagnosed individually; natural motion/actual receive and sparse-direction counterexample are separate evidence layers.",
+    "Cold Basic and unknown/budget-bound supply remain honest; no100percent Enhanced or all moderate-range sustained solution promise.",
+    "B explicit-vx moving fixture advances original NPC.UpdateNPC but is not complete original family AI; early Player/Projectile-only records cannot establish NPC motion.",
+    "Dry free preview remains representative and conditional; liquid/bounce/near-vertical owner-side/family uncertainty has no invented Contact.",
+    "Independent review approved listed old-byte scope reuse; original metadata never relabelled. Main spikes and all early failures retained."
+  ],
+  "deliveryReceipt": "review-materials/aim-weapon-compat-20261015/delivery-receipt.json"
+}

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -23,7 +23,17 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Combat.ObservationOptions", "JueMingR.Features.Combat.ObservationSettings", "JueMingR.Features.Combat.NpcMotion", "JueMingR.Features.Combat.NpcPredictionCache", "JueMingR.Features.Combat.NpcHealth",
                 "JueMingR.Features.Combat.FacingCandidate", "JueMingR.Features.Combat.FacingSelector",
                 "JueMingR.Features.Combat.RollingNpcPrediction",
+                "JueMingR.Features.Combat.RollingNpcPrediction+CandidateContinuation",
+                "JueMingR.Features.Combat.RollingNpcPrediction+ContinuationOrigin",
+                "JueMingR.Features.Combat.CombatPredictionWork",
+                "JueMingR.Features.Combat.CombatPredictionWork+Scope",
+                "JueMingR.Features.Combat.CombatPredictionWork+LimitScope",
+                "JueMingR.Features.Combat.CombatPredictionWork+OptionalScope",
+                "JueMingR.Features.Combat.CombatPredictionBudgetExceededException",
+                "JueMingR.Features.Combat.AttackConfidence", "JueMingR.Features.Combat.AttackSolveStatus", "JueMingR.Features.Combat.AttackMotion", "JueMingR.Features.Combat.AttackMotionCandidates",
+                "JueMingR.Features.Combat.AttackPassage", "JueMingR.Features.Combat.AttackContact", "JueMingR.Features.Combat.AttackReceiveGeometry", "JueMingR.Features.Combat.AttackIntercept", "JueMingR.Features.Combat.AttackBallisticCandidates", "JueMingR.Features.Combat.AttackBallisticCandidates+Direction", "JueMingR.Features.Combat.AttackBallisticCandidates+Response",
                 "JueMingR.Features.Combat.PlayerVerticalMotion",
+                "JueMingR.Features.Combat.PlayerMotionContinuation",
                 "JueMingR.Features.Fishing.FishingCodec", "JueMingR.Features.Fishing.FishingSettings", "JueMingR.Features.Fishing.PlayerNameRules",
                 "JueMingR.Features.Fishing.FishingGear", "JueMingR.Features.Fishing.FishingGearCandidate", "JueMingR.Features.Fishing.FishingEquipmentCatalog",
                 "JueMingR.Features.Recovery.RecoveryRules", "JueMingR.Features.Recovery.RecoveryOptions", "JueMingR.Features.Recovery.RecoveryCodec", "JueMingR.Features.Recovery.RecoverySettings",

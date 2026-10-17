@@ -63,6 +63,7 @@ namespace NativeWorldTextProbe
                 ((IPredictionTerrain)terrain).Reset();Require(((IPredictionTerrain)terrain).Move(ref npc,default(PredictionEnvironment),out npcStop) && npc.Health.Fire==0,"NPC wet extinguish remains its own health consumer.");cases++;
             }
             finally{cell.CopyFrom(saved);Main.bottomWorld=bottom;}
+            NativeCombatPlayerFixedPointChecks.Run(context);
             Console.WriteLine("PASS PLAYER POLICY independent native phase cases="+cases);
         }
         private static void Compare(Player p,string label,MethodInfo read,IPredictionPlayerTerrain terrain,ref int cases)

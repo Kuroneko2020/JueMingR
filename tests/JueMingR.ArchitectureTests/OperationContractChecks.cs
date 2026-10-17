@@ -38,6 +38,15 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Combat.NpcIdentity", "JueMingR.Platform.Combat.PredictionAssumption", "JueMingR.Platform.Combat.PredictionStop",
                 "JueMingR.Platform.Combat.PredictionStrategy", "JueMingR.Platform.Combat.PredictionQuality", "JueMingR.Platform.Combat.PredictionFailureLayer",
                 "JueMingR.Platform.Combat.PredictionPlayerMotion",
+                // DD2's actual target search needs immutable player/pet and
+                // aggro facts shared by Host capture and the pure feature model.
+                "JueMingR.Platform.Combat.PredictionInvasionPlayer", "JueMingR.Platform.Combat.PredictionInvasionPlayers",
+                "JueMingR.Platform.Combat.PredictionMageCorpses",
+                "JueMingR.Platform.Combat.PredictionGravitySource", "JueMingR.Platform.Combat.PredictionGravitySources",
+                "JueMingR.Platform.Combat.PredictionWallPlayer", "JueMingR.Platform.Combat.PredictionWallPlayers", "JueMingR.Platform.Combat.PredictionWallSource", "JueMingR.Platform.Combat.PredictionWallSources",
+                "JueMingR.Platform.Combat.PredictionTowerShieldConsumer", "JueMingR.Platform.Combat.PredictionTowerShieldConsumers",
+                "JueMingR.Platform.Combat.PredictionMoonLeech", "JueMingR.Platform.Combat.PredictionMoonLeeches",
+                "JueMingR.Platform.Combat.PredictionDeerclopsPlayer", "JueMingR.Platform.Combat.PredictionDeerclopsPlayers",
                 "JueMingR.Platform.Combat.MotionRect", "JueMingR.Platform.Combat.NpcMotionState", "JueMingR.Platform.Combat.NpcHealthState", "JueMingR.Platform.Combat.NpcBuffLayout", "JueMingR.Platform.Combat.PredictionEnvironment", "JueMingR.Platform.Combat.PredictionTile", "JueMingR.Platform.Combat.PredictionPlayers",
                 "JueMingR.Platform.Combat.IPredictionTerrain", "JueMingR.Platform.Combat.IPredictionResizeTerrain", "JueMingR.Platform.Combat.IPredictionWaterSurfaceTerrain", "JueMingR.Platform.Combat.IPredictionPlayerTerrain", "JueMingR.Platform.Combat.NpcTrajectoryPoint", "JueMingR.Platform.Combat.NpcTrajectory",
                 "JueMingR.Platform.ItemCatalog.ItemCategory", "JueMingR.Platform.ItemCatalog.CatalogItem",

@@ -11,6 +11,8 @@ using ReLogic.Content.Readers;
 using ReLogic.Graphics;
 using ReLogic.Content;
 using ReLogic.Content.Sources;
+using Terraria.Graphics.Effects;
+using Terraria.Graphics.Shaders;
 
 namespace NativeWorldTextProbe
 {
@@ -21,6 +23,9 @@ namespace NativeWorldTextProbe
         private readonly XnbReader reader;
         private RenderTarget2D costCanvas;
         private readonly string contentDirectory;
+        private IAssetRepository screenEffectsRepository,previousAssets;
+        private Asset<Effect> previousScreenShader;
+        private FilterManager previousFilters;
         private readonly Dictionary<int, Texture2D> tiles = new Dictionary<int, Texture2D>();
         public GraphicsDevice GraphicsDevice { get; private set; }
         internal DynamicSpriteFont Font { get; }
@@ -40,6 +45,46 @@ namespace NativeWorldTextProbe
                 var asset=Loaded(relative,reader.FromStream<Texture2D>(stream));var target=typeof(Terraria.GameContent.TextureAssets).GetField(field);
                 if(index<0)target.SetValue(null,asset);else ((Array)target.GetValue(null)).SetValue(asset,index);
             }
+        }
+        private void EnsureNativeAssets()
+        {
+            if(screenEffectsRepository!=null)return;
+            // Original asset services/XNB decoding read the supplied content
+            // directory. XnaContentSource assumes a relative TitleContainer
+            // URI; this isolated probe receives an absolute directory, so use
+            // ReLogic's existing filesystem provider without game startup or
+            // resource-pack/configuration enumeration.
+            var services=new GameServiceContainer();services.AddService(typeof(IGraphicsDeviceService),this);
+            Terraria.Initializers.AssetInitializer.CreateAssetServices(services);
+            screenEffectsRepository=(IAssetRepository)services.GetService(typeof(IAssetRepository));
+            screenEffectsRepository.SetSources(new IContentSource[]{new FileSystemContentSource(contentDirectory)});
+            previousAssets=Terraria.Main.Assets;previousScreenShader=Terraria.Main.ScreenShaderRef;
+            Terraria.Main.Assets=screenEffectsRepository;
+        }
+        internal void LoadMoonDeathAssets()
+        {
+            // AI77's death explosion is a real visual outlet. Keep its native
+            // object creation and RNG; load only its original XNB dependency.
+            EnsureNativeAssets();
+            var explosion=screenEffectsRepository.Request<Texture2D>("Images/Misc/MoonExplosion/Explosion",AssetRequestMode.ImmediateLoad);
+            if(!explosion.IsLoaded || explosion.Value==null)throw new InvalidOperationException("original-moon-explosion-content-not-loaded");
+        }
+        internal void LoadScreenEffects()
+        {
+            if(previousFilters!=null)return;
+            EnsureNativeAssets();
+            Terraria.Main.ScreenShaderRef=screenEffectsRepository.Request<Effect>("ScreenShader",AssetRequestMode.ImmediateLoad);
+            var noise=screenEffectsRepository.Request<Texture2D>("Images/Misc/noise",AssetRequestMode.ImmediateLoad);
+            if(!Terraria.Main.ScreenShaderRef.IsLoaded || !noise.IsLoaded)throw new InvalidOperationException("original-screen-effect-content-not-loaded");
+            // These are the native initializer's three DD2 filter bindings.
+            // Load real Effect/Filter objects; the unrelated ending-credit
+            // sky requires the full NPC texture atlas and is not a dependency
+            // of AI132 crystal loss or AI146 victory.
+            previousFilters=Filters.Scene;Filters.Scene=new FilterManager();
+            Filters.Scene["CrystalDestructionColor"]=new Filter(new ScreenShaderData("FilterCrystalDestructionColor").UseColor(1f,0f,.75f).UseIntensity(1f).UseOpacity(.8f),EffectPriority.VeryHigh);
+            Filters.Scene["CrystalDestructionVortex"]=new Filter(new ScreenShaderData("FilterCrystalDestructionVortex").UseImage("Images/Misc/noise"),EffectPriority.VeryHigh);
+            Filters.Scene["CrystalWin"]=new Filter(new ScreenShaderData("FilterCrystalWin"),EffectPriority.VeryHigh);
+            Filters.Scene.Load();
         }
         internal ProbeGraphics(string content, bool largeCanvas = false)
         {
@@ -111,6 +156,14 @@ namespace NativeWorldTextProbe
             if(costCanvas==null)costCanvas=new RenderTarget2D(GraphicsDevice,960,640);
             GraphicsDevice.SetRenderTarget(costCanvas);GraphicsDevice.Clear(Color.Transparent);
             batch.Begin(SpriteSortMode.Deferred,null,null,null,null,null,matrix);draw();batch.End();GraphicsDevice.SetRenderTarget(null);
+        }
+        internal void ReadRenderedPixels(Color[] destination)
+        {
+            // Reuse the Render-owned canvas and caller-owned complete buffer.
+            // Continuous pixel checks must not create a 2.4 MB buffer and a
+            // GPU target every update, perturbing the next CPU budget scope.
+            if(costCanvas==null || destination==null || destination.Length!=costCanvas.Width*costCanvas.Height)throw new ArgumentException("rendered-pixel-buffer-size");
+            costCanvas.GetData(destination);
         }
         internal void Image(string output, Action draw, Matrix matrix, int width = 960, int height = 640)
         {
@@ -184,7 +237,7 @@ namespace NativeWorldTextProbe
             if (bottom < 0) throw new InvalidOperationException("Empty native art fixture");
             return new Rectangle(left, top + (type == 85 ? 2 : 0), right - left + 1, bottom - top + 1);
         }
-        public void Dispose() { foreach (var texture in tiles.Values) texture.Dispose(); costCanvas?.Dispose(); reader?.Dispose(); batch?.Dispose(); GraphicsDevice?.Dispose(); if (window != IntPtr.Zero) { DestroyWindow(window); window = IntPtr.Zero; } }
+        public void Dispose() { if(screenEffectsRepository!=null){if(previousFilters!=null)Filters.Scene=previousFilters;Terraria.Main.Assets=previousAssets;Terraria.Main.ScreenShaderRef=previousScreenShader;(screenEffectsRepository as IDisposable)?.Dispose();screenEffectsRepository=null;} foreach (var texture in tiles.Values) texture.Dispose(); costCanvas?.Dispose(); reader?.Dispose(); batch?.Dispose(); GraphicsDevice?.Dispose(); if (window != IntPtr.Zero) { DestroyWindow(window); window = IntPtr.Zero; } }
         private Asset<T> Loaded<T>(string name, T value) where T : class
         {
             var asset = (Asset<T>)Activator.CreateInstance(typeof(Asset<T>), BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { name }, null);

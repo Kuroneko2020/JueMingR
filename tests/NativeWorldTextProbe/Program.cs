@@ -11,10 +11,15 @@ namespace NativeWorldTextProbe
         private static Assembly game;
         internal static string Repository { get; private set; }
         internal static string ProductionConfiguration { get; private set; } = "Debug";
+        internal static bool TestSoundRequested { get; private set; }
         private static int Main(string[] args)
         {
             try
             {
+                // Opt-in belongs to this explicit invocation, never inherited
+                // owner/global environment. Use only at the owner's request.
+                if(args.Length>0 && args[args.Length-1]=="--allow-test-sound")
+                {TestSoundRequested=true;Array.Resize(ref args,args.Length-1);}
                 if (args.Length < 3 || args.Length > 4) throw new ArgumentException("repository Content output [Full|SelectionCpuCosts|SelectionCpuChecks|WorkloadCpu|InformationCpu|GuidanceCpu|GuidanceVisual|DeathCpu|DeathVisual|ExplorationCpu|ExplorationRelease|MapVisual] required");
                 // A formal whole-strategy request owns its scope. Inherited
                 // debug-only variables cannot silently reduce the obligation.

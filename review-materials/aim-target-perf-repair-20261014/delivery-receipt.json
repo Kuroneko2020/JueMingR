@@ -1,0 +1,62 @@
+{
+  "schema": "aim-target-perf-delivery-20261014-1",
+  "sourceCommit": "9f0e7569fac23be89378c537a0baac90be9b9322",
+  "taskBase": "72970569c11dd09e3e210894c25cc06e4cfc1a7f",
+  "coreReview": "APPROVED_FOR_STAGE",
+  "stageReader": "1 positive and 16 intended refusals PASS; same independent reviewer narrow PASS",
+  "stageRecordSha256": "824C51C6703FC2B7AC99C7450AC06B891891A3A5F7F0B80E96EB8455C2836D9B",
+  "archive": {
+    "identityReceipt": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-target-perf-repair-20261014\\package-identity-r01.log",
+    "sha256": "8B7A6C47160241E97F9BE357F692B7E739819AFDDA2B0874588E775835CA8EF7",
+    "path": "C:\\Users\\kongd\\Desktop\\JueMingR\\outputs\\aim-target-perf-delivery-20261014-9f0e756\\JueMingR-Continuous-Processing-9f0e7569fac23be89378c537a0baac90be9b9322.zip",
+    "length": 2167651
+  },
+  "packageFileCount": 17,
+  "payloadCount": 10,
+  "representativeConsumer": {
+    "exitCode": 0,
+    "raw": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\ir-692758ce\\current-demand",
+    "log": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-target-perf-repair-20261014\\package-representative-r01.log",
+    "scope": "One A240 Path OFF/ON native consumer using same-byte builder package directory; not a second archive extraction or full qualification"
+  },
+  "installationStatus": "INSTALLED_VERIFIED",
+  "target": "F:\\Games\\GamePlats\\Steam\\steamapps\\common\\Terraria",
+  "previousSource": "e26234b48ae24be88d95fda19c74a8cd29ca245c",
+  "backupRoot": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-target-perf-repair-20261014\\install-9f0e756-20261014-225631\\backup\\controlled",
+  "backupFileCount": 11,
+  "backupVerified": true,
+  "restore": {
+    "schemaVersion": 1,
+    "operation": "restore",
+    "status": "success",
+    "code": "RESTORE_COMPLETE",
+    "exitCode": 0,
+    "packageId": "continuous-processing-e26234b48ae24be88d95fda19c74a8cd29ca245c",
+    "object": "owned-files",
+    "sha256": null
+  },
+  "install": {
+    "schemaVersion": 1,
+    "operation": "install",
+    "status": "success",
+    "code": "INSTALL_COMPLETE",
+    "exitCode": 0,
+    "packageId": "continuous-processing-9f0e7569fac23be89378c537a0baac90be9b9322",
+    "object": "installation",
+    "sha256": null
+  },
+  "installedManifestMatches": true,
+  "originalGameUnchanged": true,
+  "localReceipt": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\aim-target-perf-repair-20261014\\install-9f0e756-20261014-225631\\installation-receipt.json",
+  "fullQualification": "INCOMPLETE",
+  "releaseEligible": false,
+  "ownerGameLoad": "NOT_RUN",
+  "ownerAcceptance": "NOT_RUN",
+  "fps": "NOT_RUN",
+  "multiplayer": "NOT_RUN",
+  "gameLaunched": false,
+  "forcedKill": false,
+  "userSaveOperations": "NONE",
+  "protectedDirectoryScan": "NOT_RUN_PER_04",
+  "utc": "2026-10-14T14:57:37.0776059Z"
+}

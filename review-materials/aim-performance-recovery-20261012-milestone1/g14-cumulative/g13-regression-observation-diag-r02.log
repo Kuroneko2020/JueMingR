@@ -1,0 +1,30 @@
+LOAD 0Harmony source=2.4.2.0+a264a1bf1ce689e4589e8dcc54b1e2818602a90a MVID=024a0e6e-c8c2-437e-ad04-7b6279389c23 SHA256=7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\0Harmony.dll
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=0979ed61-52ae-400a-b94a-82870cd69758 SHA256=38A4D5F982E57A1D6FE6C8EABE3DBAB466B4B5EB3EE6314E8D77683ACFA7FE6B location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=fa1a7ba6-b3bb-4c9e-a9ec-77b50bff5b61 SHA256=99B10CB658251BE90863AB68AD4AF1EB7CE2C3BC9EAE250C80EADD82DF892E2D location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=723d92dd-f8bb-4550-8c68-ff1dbd6d5a55 SHA256=AE1B191ED0C0AC7B27217A7F84FC9AA4383AB5A14CB62777A3A5B03FDB403603 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-g13-player-fixed-point MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178 SHA256=F1072D318426809C9360CB45C7B85B7013BE865E8C13637C8B0B344A71AC6685 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+ISOLATED SavePath=C:\Users\kongd\Desktop\JueMingR\.local\ir-d168f421
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3 location=C:\Users\kongd\Desktop\JueMingR\external\TerrariaRefs\Terraria.exe
+PROBE MVID=8b2dfeab-4742-45b2-8f9f-4f907ba1e017 SHA256=894DFF6253A5E5335F67577E4688F284C5C957C8D2792A9251A5B72C9255E8B7 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\probe-current-g13-diag\bin\NativeWorldTextProbe\x86\Debug\net472\NativeWorldTextProbe.exe
+INCIDENT leaf=observation actualDraw=False Content=F:\Games\GamePlats\Steam\steamapps\common\Terraria\Content; functional regression, no FPS/timing claim
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178
+COMPOSITION initialization-ms=5534.0519 code-prepare-ms=405.3117 exact-comparison=False
+CONTEXT Host MVID=64eed61e-f77b-4ce3-bfa1-6232764b4178 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g13\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+OBSERVATION PATH FIRST FAILURE GUC=1 budgetTick=1 budgetSpent=68120 budgetExceeded=True budgetMs=6.812 cacheRequired=120 minimum=1 rawCount=none rawStop=none sourceFailure=None sourceOutcome=None outcomeTick=-1 future=0 owns=False observed=0 native=False pathFailed=False bubble=371/style70 active=True life=1 ai=0,0,0,1 player={X:640 Y:640} size=20x42 dead=False gravity=1 item=3509
+System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation. ---> System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation. ---> System.InvalidOperationException: real path demand prepares a future without aim provider
+   at NativeWorldTextProbe.NativeInformationChecks.Require(Boolean value, String reason)
+   at NativeWorldTextProbe.NativeCombatObservationChecks.RunCore(Object context)
+   at NativeWorldTextProbe.NativeCombatObservationChecks.Run(Object context)
+   --- End of inner exception stack trace ---
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Object[] arguments, Signature sig, Boolean constructor)
+   at System.Reflection.RuntimeMethodInfo.UnsafeInvokeInternal(Object obj, Object[] parameters, Object[] arguments)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at RunIncidentRegression.Invoke(String type, String method, Object[] args)
+   at RunIncidentRegression.Exercise(Object context)
+   at NativeWorldTextProbe.NativeQuickItemChecks.Run(Action`1 visual, Boolean coins, Boolean about, Boolean recovery, Boolean processing, Boolean shortFeedback, String candidateAssembly, String predictionHostHash, String candidatePackageId, Boolean exactPredictionComparison)
+   --- End of inner exception stack trace ---
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Object[] arguments, Signature sig, Boolean constructor)
+   at System.Reflection.RuntimeMethodInfo.UnsafeInvokeInternal(Object obj, Object[] parameters, Object[] arguments)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at RunIncidentRegression.Invoke(String type, String method, Object[] args)
+   at RunIncidentRegression.Main(String[] args)

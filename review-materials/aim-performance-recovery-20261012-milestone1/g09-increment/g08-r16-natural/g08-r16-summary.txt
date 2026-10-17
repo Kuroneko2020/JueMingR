@@ -1,0 +1,28 @@
+g08 r16 fixed normal-adapter natural World.Draw: FAIL exit1, full600+negative12, no diagnostics/extra warmup.
+HostF9E1AD9F9213AC82E057701D037349FF50BAA75AF0E72922D8F3A0F62E37C36E MVID95d3790d-5cda-4392-ae25-6d5a29e986fd; normal shared probeE01D1E72C01D7AB3485876D3446E7517FC6BBCE8506916B83DE09CE9A7E9CBC8, Natural/Graphics unchanged.
+Same immutable original map/seed/native AI1/knockback/gravity, independent Should294each. No lowering denominator; no scene replacement.
+Standing287/294 missing7 longest3; moving285/294 missing9 longest1. All16missingBudgetExceededtrue. Cold standing2..4 persists.
+g07 periodic actualbirth every8frames14missing in moving no longer reproduced as a regular sequence; thisrun onlymovingattack207 + restore282/292, plus6idle misses. Counts are functional observation, NOT signed performance claim.
+Nativebirth15/15 assisted15/15 hits16/15 landings16/15 normalGravity69/69 playerDelta0/91.32001; fullbirths byte-identical to g07 SHA FDC34CB1D0A64EF5DAEB3946598A8ACDF1F5206A87823D6D2F46385592A16250.
+Negative12 completed before final16-invalid-frame aggregate failure. Each required scene condition/range/normalgravity/life check held.
+Missing rows run phase frame tick pathCount exceeded usedms:
+standing idle 2 83 121 True 7.8316
+standing idle 3 84 121 True 6.455
+standing idle 4 85 121 True 6.8326
+standing idle 39 120 121 True 6.3864
+standing idle 112 193 0 True 8.6754
+standing attack 180 261 121 True 6.2064
+standing attack 204 285 0 True 7.4453
+moving idle 12 473 0 True 6.4909
+moving idle 31 492 0 True 7.2307
+moving idle 50 511 0 True 7.0081
+moving idle 129 590 0 True 6.3817
+moving idle 154 615 0 True 7.5794
+moving idle 163 624 0 True 7.4364
+moving attack 207 668 121 True 6.4756
+moving restore 282 743 121 True 6.5129
+moving restore 292 753 0 True 6.5729
+logSHA025171FE3B1EE27268CB3A3D6BE4C79BD0BDBBCA9F7CA798AC61765052C52313
+CSV SHA145CA3CE41AF4BA60410AE54323BCCC1BBE5D2899A9A122A0200F326148375E1
+factsSHAC72EC7FB2183219524F1122E81DA2EBF5F19EFD8D0AD40FBB8CB2F3DEC933B8B
+Directory C:/Users/kongd/Desktop/JueMingR/.local/aim-performance-incident-20261012/impact/g08-r16-natural-draw; no oldFAIL overwritten. All normalPNG/birth/facts/CSV/log preserved.

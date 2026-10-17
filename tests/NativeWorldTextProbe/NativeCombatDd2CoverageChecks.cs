@@ -19,10 +19,24 @@ namespace NativeWorldTextProbe
         internal static int Birth(int type,Assembly host,out string scene,bool beforeBetsy=false)
         {
             NativeCombatWorkerChecks.Scene(false);NPC.ClearAll();Projectile.ClearAll();DD2Event.ResetProgressEntirely();
+            // Main.Initialize pairs every genuine WorldItem with its slot.
+            // Scene(false) creates the objects but leaves that entity identity
+            // at zero; original pickups/drop stacking assert it on every tick.
+            for(int i=0;i<Main.item.Length;i++)Main.item[i].whoAmI=i;
+            // The isolated scene bypasses Main.Initialize. Genuine death and
+            // DD2 wave progression still require its original populated loot
+            // database/resolver; never suppress NPCLoot or the receiving hit.
+            if(Main.ItemDropSolver==null)
+            {
+                Main.ItemDropsDB=new Terraria.GameContent.ItemDropRules.ItemDropDatabase();
+                Main.ItemDropsDB.Populate();
+                Main.ItemDropSolver=new Terraria.GameContent.ItemDropRules.ItemDropResolver(Main.ItemDropsDB);
+            }
             const int width=384,height=160,floor=65,center=192;
             Main.maxTilesX=width;Main.maxTilesY=height;Main.rightWorld=width*16;Main.bottomWorld=height*16;
+            Main.Map=new Terraria.Map.WorldMap(width,height);
             Main.tile=new Tile[width,height];for(int x=0;x<width;x++)for(int y=0;y<height;y++){var t=new Tile();Main.tile[x,y]=t;if(y>=floor){t.active(true);t.type=1;}}
-            var p=Main.LocalPlayer;p.position=new Vector2(center*16,floor*16-p.height);p.immune=true;p.immuneTime=1000000;
+            var p=Main.LocalPlayer;p.position=new Vector2(center*16,floor*16-p.height);p.ResetFallDamage();p.immune=true;p.immuneTime=1000000;
             for(int i=0;i<p.hurtCooldowns.Length;i++)p.hurtCooldowns[i]=1000000;
             Main.CurrentFrameFlags.ActivePlayersCount=1;
             int difficulty=Tier(type);Main.hardMode=difficulty>1;NPC.downedMechBossAny=difficulty>1;NPC.downedGolemBoss=difficulty==3;

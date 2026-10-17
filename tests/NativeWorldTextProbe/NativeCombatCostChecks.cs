@@ -35,7 +35,7 @@ namespace NativeWorldTextProbe
                 {var n=Main.npc[i];n.SetDefaults(many?1:scenario=="changing"?370:488);n.active=true;n.whoAmI=i;n.target=0;n.damage=0;n.life=n.lifeMax=1000000;n.timeLeft=750;n.position=many?new Vector2(20+i%40*22,30+i/40*60):new Vector2(700,600);if(scenario=="changing"){n.ai[0]=1;n.localAI[0]=1;n.velocity=new Vector2(16,0);}}
                 for(int i=0;i<shots;i++)
                 {var p=Main.projectile[i];p.SetDefaults(1);p.active=true;p.whoAmI=i;p.owner=Main.myPlayer;p.damage=1;p.friendly=true;p.penetrate=p.maxPenetrate=-1;p.position=new Vector2(20+i%50*18,30+i/50*20);}
-                SetOptions(scenario=="off"?new ObservationOptions():new ObservationOptions(collision:collision,path:pathEnabled,dummy:true,marker:marker));
+                SetOptions(scenario=="off"?new ObservationOptions():new ObservationOptions(collision,pathEnabled,false,false,true,25,marker,marker));
                 void Input(int index)
                 {
                     // Advancing the fixture clock, native oracle and settings
@@ -60,7 +60,7 @@ namespace NativeWorldTextProbe
                 if(marker)
                 {
                     var prediction=Get(host,"Prediction");Require(GetOptional(prediction,"Native")==null,"Marker costs cannot start exact worker.");
-                    Require(((NpcPredictionCache)cache).Required==(pathEnabled?120:0),"Actual marker-only/dual cache demand remains independent.");
+                    Require(((NpcPredictionCache)cache).Required==(pathEnabled?120:0),"Marker with an idle Aim parent/dual cache demand remains independent.");
                     Require((bool)Get(Get(layer,"Marker"),"Visible")==!none,"Actual current marker command survives the measured update/prepare.");
                     if(!pathEnabled)Require(strokes==0 && path==null,"Marker-only costs contain selection/commands without path work.");
                     else Require(path!=null && (int)Get(path,"Count")==121,"Dual cost includes the full unchanged selected path.");
@@ -73,6 +73,7 @@ namespace NativeWorldTextProbe
             foreach(var row in rows)Console.WriteLine(row);File.WriteAllLines(Path.Combine(output,"combat-costs.tsv"),rows);
             Console.WriteLine("COST IDENTITY "+host.GetType().Assembly.Location+" MVID="+host.GetType().Assembly.ManifestModule.ModuleVersionId+"; CPU natural Damage and actual Host update/prepare; no GPU/readback, gameplay FPS or long-run claim. Release-only counters are NA.");
             SetOptions(new ObservationOptions());update();prepare();
+            NativeCombatAimChecks.Initialize();NativeCombatAttackCostChecks.Run(context);
             void SetOptions(ObservationOptions value){NativeQuickItemChecks.Until(()=>{settings.Poll();return settings.Ready;});Require(settings.Set(value),"cost setting accepted");NativeQuickItemChecks.Until(()=>{settings.Poll();return !settings.Busy;});Require(settings.CompletionSucceeded,"cost setting committed");}
         }
         private static int? Counter(object owner,string name){var value=GetOptional(owner,name);return value is int?(int?)value:null;}

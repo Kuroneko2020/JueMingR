@@ -1,0 +1,194 @@
+{
+  "schema": "path-display-delivery-20261017-1",
+  "status": "INSTALLED_VERIFIED_READY_FOR_OWNER_TEST",
+  "taskBase": "1014c7d58f83460bb5a422bf5fc0a80e4f4bd0f8",
+  "sourceCommit": "f399f761552b7caf5d62cc0e43c9fc1df8eeb0bd",
+  "branch": "codex/aim-attack-modeling-and-integration",
+  "metadataBoundary": "Subsequent receipt/prose commit records delivery only; source/package/installation remain f399f761. No rebuild/reinstall for metadata HEAD.",
+  "sourceFingerprint": "EB5BEAEC9642A1F54FA19949DF8EA5DB370A1289E6C07E56A7DA69045F25797E",
+  "inputFingerprint": "61E9D711C4B10451677EB2ADD09DBF988560E499A3A0A143A16D950ED3842C02",
+  "compileFingerprint": "F2F45AF2CB3E8F0FDF6BE96DB6FB0B70F7CB64B0A78F6DA141DB2A64C5DC39E0",
+  "fullQualification": "INCOMPLETE",
+  "releaseEligible": false,
+  "sourceCommitTaskClean": true,
+  "wholeWorkspaceClean": false,
+  "protectedOwnerAssetCategories": 5,
+  "protectedAssetsVerifiedUnchanged": true,
+  "foreignAssets": {
+    "path": ".local/path-display-20261017/foreign-assets.json",
+    "length": 826,
+    "sha256": "A1C6366E74BDC0761B47B4647C4FD5A784548EEF84D88192B8FDB64EFFC1F88D"
+  },
+  "review": {
+    "path": ".local/path-display-20261017/independent-review.md",
+    "length": 11190,
+    "sha256": "819E52E04A87949E8F96161055F2DE305A6D676810D510C1679924ACC5F531D0"
+  },
+  "stageReaderReview": {
+    "path": ".local/path-display-20261017/stage-reader-review.md",
+    "length": 3097,
+    "sha256": "6A5CEACAF1332B6735C7D21427CEDE72F9D850A7817E17CB38C3C68F23DA511F"
+  },
+  "rootAdmission": "Explicit complete candidate and mechanical review accepted before this one delivery window",
+  "stage": {
+    "path": ".local/path-display-20261017/stage-reviewed.json",
+    "length": 23475,
+    "sha256": "B055A00B6A90E8F7AF137B1364EBCF6C0CEFD3D7DD7D8334D419C9386C2811DB"
+  },
+  "stageReaderPositive": {
+    "path": ".local/path-display-20261017/stage-reader-positive.json",
+    "length": 1508,
+    "sha256": "B0345843AF3EAF6A230DC5E64612FAD2A50DABCEB06EEC6CF87BEFBCD64780C8"
+  },
+  "stageReaderControls": {
+    "path": ".local/path-display-20261017/stage-reader-controls.json",
+    "length": 3937,
+    "sha256": "94A1441017308F5B8A55B13567266FBB610ED29C147B17E4ADEF86AB8E4FC7F5"
+  },
+  "stageReader": {
+    "actualPowerShell": "5.1.26100.9223",
+    "positive": 1,
+    "negative": 13,
+    "status": "PASS",
+    "originalReportBytesUnchanged": true
+  },
+  "archive": {
+    "path": "outputs/path-display-delivery-20261017-f399f76/JueMingR-Continuous-Processing-f399f761552b7caf5d62cc0e43c9fc1df8eeb0bd.zip",
+    "length": 2268404,
+    "sha256": "574CB2B3271CFB4767B8E73CBA98B32853EFF9366A8453CDD850DBDDF68687CA",
+    "verification": "Official builder package/member/archive checks reused; no second archive consumer or audit"
+  },
+  "packageRoot": "outputs/path-display-delivery-20261017-f399f76/JueMingR-Continuous-Processing-f399f761552b7caf5d62cc0e43c9fc1df8eeb0bd",
+  "packageProfile": "Complete ordinary Release/net472/x86 ContinuousProcessing",
+  "officialBuildExit": 0,
+  "packageBuildRecord": {
+    "path": "outputs/path-display-delivery-20261017-f399f76/phase-0-s-build-record.json",
+    "length": 12744,
+    "sha256": "2BC66CD06B5D6584D549CA64CD4043C25A87743AF49C5DBE1168F3CD76434B12"
+  },
+  "releaseBuildRecord": {
+    "path": ".local/path-display-20261017/delivery-release-build-record.json",
+    "length": 142892,
+    "sha256": "E2D1D5E0C7539574D8A5FD69EC7B6BE52B522E6DAFFA186908C8A00CCFDD915B"
+  },
+  "buildLog": {
+    "path": ".local/path-display-20261017/package-f399f76.log",
+    "length": 438,
+    "sha256": "9A9805740B60C3124E37C1A9130C295392451E15F374CEB821497816D8AD1E52"
+  },
+  "productionBoundary": "Formal sourceFingerprint equals fixed reviewed candidate; actual honest f399 revision metadata changes DLL identities from dirty1014 ordinary measurement carrier. No claim of identical measured/formal DLL bytes or new native execution.",
+  "actualInstalled": {
+    "target": "F:\\Games\\GamePlats\\Steam\\steamapps\\common\\Terraria",
+    "sourceCommit": "f399f761552b7caf5d62cc0e43c9fc1df8eeb0bd",
+    "packageId": "continuous-processing-f399f761552b7caf5d62cc0e43c9fc1df8eeb0bd",
+    "restoreExit": 0,
+    "installExit": 0,
+    "payloadCount": 10,
+    "payload": [
+      {
+        "installRelativePath": "JueMingR.Bootstrap.dll",
+        "length": 26624,
+        "sha256": "4E8F9D48949A6C5276BE1A4DBED34A534CA4D6E2BC1C34238314937C5A23B130"
+      },
+      {
+        "installRelativePath": "JueMingR.Validation/0Harmony.dll",
+        "length": 2461696,
+        "sha256": "7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C"
+      },
+      {
+        "installRelativePath": "JueMingR.Validation/JueMingR.Features.dll",
+        "length": 675840,
+        "sha256": "82A011F2B3C840F97C46A55F5F1EFBE0E9840A51571BF7BDA551B955FC452438"
+      },
+      {
+        "installRelativePath": "JueMingR.Validation/JueMingR.Infrastructure.dll",
+        "length": 19456,
+        "sha256": "B170E3E2B4887FC9C2CB5067D77F110A5EB23998C7E756F2565B257E0B583782"
+      },
+      {
+        "installRelativePath": "JueMingR.Validation/JueMingR.Platform.dll",
+        "length": 117760,
+        "sha256": "1AF31CB1A43424FDECA7149A6B79FA4CA7B189FEDA14B034DE0A70961C8B6D45"
+      },
+      {
+        "installRelativePath": "JueMingR.Validation/JueMingR.PredictionWorker.exe",
+        "length": 22016,
+        "sha256": "DE750E39C7526B88587F816C525BC47F59E206D5FEC313DA0D66DC47CE7A62A0"
+      },
+      {
+        "installRelativePath": "JueMingR.Validation/JueMingR.PredictionWorker.exe.config",
+        "length": 176,
+        "sha256": "AD8267122C40D37DCD9D99E1412D763187A1825732F378DB8867F3ECF675CF70"
+      },
+      {
+        "installRelativePath": "JueMingR.Validation/JueMingR.TerrariaHost.dll",
+        "length": 2583040,
+        "sha256": "5AB456D2B23D2E62213398179BEDCAC2796505DF5EFB3B08637D3A4CCA0D1895"
+      },
+      {
+        "installRelativePath": "JueMingR.Validation/phase-0-s-runtime.manifest",
+        "length": 1422,
+        "sha256": "292D6737BB4344AABFF1C15A2A0E84C936967B7D231EF0346C1D1B9C36163DB9"
+      },
+      {
+        "installRelativePath": "Terraria.exe.config",
+        "length": 440,
+        "sha256": "C8995B0D9C4BEF954FAAAFF79685628AFC71A5801DF4F60E9E5904182FEF03B6"
+      }
+    ],
+    "ownershipReadbackValid": true,
+    "receiptSha256": "61AB869EE637A2E3765BDCA5C1E69FDE5F1759B601D02288BEC8A7EEB3FCF7D2",
+    "gameSha256": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+    "gameExeUnchanged": true,
+    "ownerGameStarted": false,
+    "backupRoot": "C:\\Users\\kongd\\Desktop\\JueMingR\\.local\\path-display-20261017\\install-f399f76-20261017-182736",
+    "backupControlledFiles": 12,
+    "completedUtc": "2026-10-17T10:27:39.53631Z"
+  },
+  "backup": {
+    "path": ".local/path-display-20261017/install-f399f76-20261017-182736",
+    "controlledFiles": 12,
+    "priorSource": "a283747627ad9159225481b0705d9aec7336b7b4",
+    "backupVerified": true,
+    "scope": "Only12 controlled files:10 old payloads, old install receipt and existing runtime evidence log; necessary recovery/build/old-delivery metadata. No user data.",
+    "inventory": {
+      "path": ".local/path-display-20261017/install-f399f76-20261017-182736/backup.json",
+      "length": 3706,
+      "sha256": "0C92DB5B0B4270483C22D43E3A6E8C7E32F8BCAF847F15413CEB7599C1B018BE"
+    },
+    "recoveryInstructions": ".local/path-display-20261017/install-f399f76-20261017-182736/recovery.txt",
+    "rollbackDrill": "NOT_RUN"
+  },
+  "rawInstallEvidence": {
+    "path": ".local/path-display-20261017/install-f399f76-20261017-182736/readback.json",
+    "length": 3700,
+    "sha256": "6B81CBE85032EC0E5256C72558AB03050E267D4154C4B5FABF5FD917569BDC35"
+  },
+  "restoreResult": {
+    "path": ".local/path-display-20261017/install-f399f76-20261017-182736/restore.log",
+    "length": 432,
+    "sha256": "F062C1DA5FEB03573A6653E74CD9CEAF05793B4FFE16F9C001C34B972335B086"
+  },
+  "installResult": {
+    "path": ".local/path-display-20261017/install-f399f76-20261017-182736/install.log",
+    "length": 434,
+    "sha256": "2CB011E8BDC268CF682FEC5F109E6A46A72EDFD31D9F605924BFFB10C18FD912"
+  },
+  "validation": {
+    "beforeDelivery": "Final identical-fixture old-red/new-green Source/GPU,16 modes, safety, continuity, optional consumption, architecture/routing;8 matched ordinary Main windows and separate reason/cell diagnostics; independent full review + stage supplement",
+    "afterAdmission": "One official ordinary full build/package;one controlled backup;official Restore and Install each once;one installed payload/receipt/ownership readback",
+    "notRepeated": "No second archive consumer/install audit, rollback drill, full post-install matrix or Main rerun",
+    "ownerGame": "NOT_STARTED",
+    "ownerSavesAndUserSettings": "NOT_READ_OR_MODIFIED; tool-owned Terraria.exe.config handled by official installer",
+    "fps": "NOT_MEASURED",
+    "multiplayer": "NOT_MEASURED",
+    "ownerAcceptance": "PENDING"
+  },
+  "limits": [
+    "Useful short routes retained; no long-tail guarantee or zero-cold-latency guarantee",
+    "SameGUC budget counterexample fixed; real facts/age/terrain changes still revoke. Natural life-only hits not classified; no claim every hit requires revocation",
+    "Representative balanced aim and prior bounded weapon limits remain; no all-NPC/all-weapon/FPS/multiplayer qualification",
+    "No merge/close/Tag/Release; full qualification INCOMPLETE and releaseEligible=false"
+  ],
+  "completedUtc": "2026-10-17T10:27:39.53631Z"
+}

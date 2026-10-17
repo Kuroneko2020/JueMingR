@@ -35,6 +35,7 @@ namespace NativeWorldTextProbe
             if(image==null)throw new InvalidDataException("No matching authenticated private image.");
             var native=Assembly.Load(image);Program.UsePrivateGame(native);
             native.GetType("Terraria.Program",true).GetField("SavePath",Flags).SetValue(null,Path.Combine(Path.GetFullPath(output),"private-unused"));
+            NativeTestAudio.Install(native);
             Console.WriteLine("PRIVATE image="+expected+" host-mvid="+host.ManifestModule.ModuleVersionId);
             return NativeValues(host,output,safetyOnly);
         }
@@ -146,7 +147,7 @@ namespace NativeWorldTextProbe
         }
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static int PresentationOriginal(string output)
-        {Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"original-unused");File.WriteAllLines(Path.Combine(output,"presentation-original.txt"),PresentationValues(null));return 0;}
+        {Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"original-unused");NativeTestAudio.Install(typeof(Terraria.Main).Assembly);File.WriteAllLines(Path.Combine(output,"presentation-original.txt"),PresentationValues(null));return 0;}
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static IEnumerable<string> PresentationValues(Assembly host)
         {

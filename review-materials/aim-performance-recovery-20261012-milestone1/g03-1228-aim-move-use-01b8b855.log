@@ -1,0 +1,11 @@
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-perf-input-g03 MVID=4882c881-0853-4e3a-bba2-b3029277bb4f SHA256=3B3AA0A62657F0DA401CFF883DF2498357EE9F1BA0048A4A8019B05D4B54363E location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g03\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-perf-input-g03 MVID=748371c1-ac84-43b5-8697-4562ba795667 SHA256=059F97D245CA13DCC163B3C519467C24D0964CFA668A172A1D2B2C2CCD095E21 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g03\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-perf-input-g03 MVID=1bfe0355-9e90-4d8f-baa0-71521fbe5d36 SHA256=3BE43A13531F55464128E080669E78ACE258714AE15D05ED12AF70DDA39BC841 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g03\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-perf-input-g03 MVID=b8e986e1-62e9-43da-b21e-49529bb957eb SHA256=613A5B0F80ACA4F0D9192CBDEC4958A4DC0DD251FA8BA49F872E5E747DE0AE9B location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g03\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g03\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=b8e986e1-62e9-43da-b21e-49529bb957eb
+COMPOSITION initialization-ms=5030.5175 code-prepare-ms=317.6141 exact-comparison=False
+MEASURE weapon=1228 mode=aim moving=True use=True warm=240 n=720 avg=2.02993458333333 p95=3.1434 p99=3.4195 max=5.337 allocated=47246692 gc=9/8/0 preview=720 path=720 live=626 moved=720 xRange=700..807.9987 targetActive=True exitLive=0
+SEGMENT attack-cycles n=540 mean=2.33547907407408 p95=3.2051 p99=3.463 max=5.337
+SEGMENT exit n=180 mean=1.11330111111111 p95=1.3324 p99=1.5417 max=2.4684
+ENVIRONMENT naturalUpdateWeather=True windChanges=0 windFinal=0.01 target=0.01 (selected native stages, not full Main.DoUpdate)

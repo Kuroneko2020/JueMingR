@@ -1,0 +1,22 @@
+param([Parameter(Mandatory=$true)][string]$Round)
+$ErrorActionPreference='Stop'
+$taskRoot=(git rev-parse --show-toplevel).Trim()
+$taskDir=Join-Path $taskRoot '.local/aim-comprehensive-repair-20261010'
+$retained=Join-Path $taskRoot '.local/prediction-closeout-20261008/tool-reduction-20261009/retained-assets.json'
+$log=Join-Path $taskDir ('build-debug-'+$Round+'.log')
+& (Join-Path $taskRoot 'scripts/build.ps1') -Configuration Debug -PrepareOnly -ApprovedRetainedAssets $retained *> $log
+if($LASTEXITCODE -ne 0){Get-Content -LiteralPath $log -Tail 28;exit $LASTEXITCODE}
+. (Join-Path $taskRoot 'scripts/workload/Workload.Support.ps1')
+$null=Initialize-WorkloadWorkspace $taskRoot $retained
+$identity=Get-WorkloadIdentity $taskRoot
+$inputs=Get-WorkloadEvidenceInput $taskRoot $identity
+$watch=[Diagnostics.Stopwatch]::StartNew()
+$probe=Ensure-WorkloadFixture $taskRoot NativeWorldTextProbe $inputs
+$watch.Stop()
+@{probe=$probe;seconds=$watch.Elapsed.TotalSeconds;fingerprint=$inputs.fingerprint;inputs=$inputs} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $taskDir ('fixture-'+$Round+'.json')) -Encoding utf8
+$fixed=Join-Path $taskDir ('fixed-'+$Round)
+New-Item -ItemType Directory -Path $fixed -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $taskRoot 'artifacts/build/Debug/build-record.json') -Destination (Join-Path $fixed 'build-record.json')
+Get-ChildItem -LiteralPath (Join-Path $taskRoot 'artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472') -Filter 'JueMingR*.dll' | ForEach-Object { @{path=$_.FullName;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash;length=$_.Length} } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $fixed 'compiled-output-identity.json') -Encoding utf8
+Get-Content -LiteralPath $log -Tail 6
+$probe

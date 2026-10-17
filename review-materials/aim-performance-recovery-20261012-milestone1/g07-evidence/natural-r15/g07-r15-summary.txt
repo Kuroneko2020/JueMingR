@@ -1,0 +1,35 @@
+g07 r15 actual natural World.Draw: FAIL, exit1, full declared windows preserved.
+Scope is functional XNA/native validation; recorded budget durations are NOT standalone performance measurements.
+No out/ref diagnostic hooks or __args; original adapterSHA35A0273020B1CE6BB5C61894B7303EA490CB13E33DBBB867103A459E12562EEF.
+Fixed shared probeSHA E01D1E72C01D7AB3485876D3446E7517FC6BBCE8506916B83DE09CE9A7E9CBC8; no archived project build this run.
+HostSHA0E12FC88C66F3A12689B0ACF545E3E2726962364EF07FCBB68D7B02E44446D5A MVIDacb6c341-68a1-4369-b81a-f257372320f1.
+Same r9 independent reference/room/seed/Should frame>=2 except4switch updates. Standing300/moving300; expected294each.
+Standing visible290 missing4 longest3; moving280 missing14 longest1. All18missing Exceededtrue after GUC-key repair.
+Native births15/15 assisted15/15 hits16/15 landings16/15 normalGravity69/69 playerDelta0/91.32001. Full NPC/player600frame geometry equal r11.
+Unreachable short-blade12frames reached and passed before final aggregate18invalidframe assertion; this does not erase positive failures.
+First real shot now Enhanced in both scenes, so missing is raw preview/path budget clearing, not incompatible Basic ray. Standing consumptionpoint(-2234.083,-9339.696), nativevelocity(-3.014185,-10.63867), origin710,1259; movingpoint(-9885.469,-1528.663). First-nextframe181 rawContact and marker recover.
+Selected target remains true all18; missingpath standing0=1/121=3, moving0=11/121=3.
+Missing rows (run phase frame tick pathCount Exceeded milliseconds):
+standing idle 2 83 121 True 7.3153
+standing idle 3 84 121 True 6.9167
+standing idle 4 85 121 True 6.5535
+standing attack 180 261 0 True 6.7875
+moving attack 180 641 0 True 6.4015
+moving attack 188 649 0 True 6.4063
+moving attack 196 657 0 True 6.3826
+moving attack 204 665 121 True 6.3922
+moving attack 212 673 0 True 6.3851
+moving attack 220 681 0 True 6.4201
+moving attack 228 689 0 True 6.6112
+moving attack 236 697 121 True 6.2299
+moving attack 244 705 0 True 6.4231
+moving attack 252 713 0 True 6.3765
+moving attack 260 721 0 True 6.3913
+moving attack 268 729 0 True 6.3839
+moving restore 276 737 0 True 6.4216
+moving restore 292 753 121 True 6.3764
+Full原件 directory: C:/Users/kongd/Desktop/JueMingR/.local/aim-performance-incident-20261012/impact/g07-r15-natural-draw
+logSHA F33ACBB5B579525D60A45183D9976BEAC65728E99D12B22923B923EA11AED1F4
+CSV SHA251E8C3997471648455E1644CE224C3CBA2454DBD552629EB888C61098C77618
+factsSHABA434A9FAC910B9DCAF4109F0CC669792986580BBDC0BECA715905FFF31EC10B
+birthSHA FDC34CB1D0A64EF5DAEB3946598A8ACDF1F5206A87823D6D2F46385592A16250

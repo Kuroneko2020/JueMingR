@@ -18,6 +18,16 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+$attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
+foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){
+    $consumers=@(Get-WorkloadPathChecks $path)
+    Assert-Route ((($consumers|Sort-Object)-join '|') -ceq (($attackConsumers|Sort-Object)-join '|')) ('three attack owners bind all direct consumers '+$path)
+    $route=Get-WorkloadRoute @($path)
+    Assert-Route ($route.unknown.Count -eq 0 -and $route.groups -notcontains 'combat-host' -and $route.groups -notcontains 'legacy-worker') 'attack owners do not select unrelated NPC families'
+    $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $route.groups|ForEach-Object {$_.name})
+    foreach($name in @('native-CombatControlCpu','native-CombatCosts','native-CombatCpu','native-CombatYoyoCausal')){Assert-Route ($plan -contains $name) ('actual attack parent consumer selected '+$name)}
+    Assert-Route ($plan -notcontains 'native-CombatNavigationCpu' -and $plan -notcontains 'native-CombatAttackCosts' -and $plan -notcontains 'native-NpcBasicMotion') 'parent plan neither duplicates specialist children nor selects NPC motion'
+}
 try {
     Invoke-WorkloadGit $fixtureRoot @('init', '--quiet') | Out-Null
     Invoke-WorkloadGit $fixtureRoot @('config', 'core.autocrlf', 'false') | Out-Null
@@ -78,7 +88,10 @@ try {
         'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = 'world-host';
         'src/JueMingR.Platform/WorldTargets/WorldTargetObservation.cs' = 'world-host';
         'src/JueMingR.TerrariaHost/Map/FullscreenMapDrawing.cs' = 'map-host';
-        'docs/guide.md' = 'core'
+        'docs/guide.md' = 'core';
+        'review-materials/aim-dedup-repair-20261014/evidence.md' = 'core';
+        'review-materials/aim-dedup-repair-20261014/F-natural-time-summary.csv' = 'core';
+        'review-materials/aim-dedup-repair-20261014/validation-map.json' = 'core'
     }
     $exactGroups = @{
         'src/JueMingR.TerrariaHost/Tools/AutoCapture.cs' = @('core','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
@@ -165,6 +178,12 @@ try {
         $exactGroups[$path] = @($expected | Sort-Object -Unique)
     }
     $cases['tests/NativeWorldTextProbe/NativePageCompositionChecks.cs'] = 'pages-host'
+    $cases['tests/NativeWorldTextProbe/NativeCombatDedupChecks.cs'] = 'combat-host'
+    $cases['tests/NativeWorldTextProbe/NativeCombatDedupPremiseChecks.cs'] = 'combat-host'
+    $cases['tests/NativeWorldTextProbe/NativeCombatDedupReasons.cs'] = 'combat-host'
+    $cases['tests/NativeWorldTextProbe/NativeCombatDedupPrefixChecks.cs'] = 'combat-host'
+    $cases['tests/NativeWorldTextProbe/NativeCombatDedupModelChecks.cs'] = 'combat-host'
+    $cases['tests/NativeWorldTextProbe/NativeCombatDedupSourceChecks.cs'] = 'combat-host'
     $exactGroups['tests/NativeWorldTextProbe/NativePageCompositionChecks.cs'] = @('core','hotkeys','pages-host')
     $cases['src/JueMingR.TerrariaHost/Npcs/NativeNpcObservation.cs'] = 'tools-host'
     $exactGroups['src/JueMingR.TerrariaHost/Npcs/NativeNpcObservation.cs'] = @($exactGroups['src/JueMingR.TerrariaHost/F5/F5Layout.cs'] + 'storage-host' | Sort-Object -Unique)
@@ -235,6 +254,9 @@ try {
     $identity = Get-WorkloadIdentity $fixtureRoot; Write-Fixture 'unclassified/new.cs' "new`n"
     $changes = Get-WorkloadChanges $fixtureRoot $baseline; $route = Get-WorkloadRoute $changes.paths
     Assert-Route ($route.groups -contains 'core' -and $route.unknown -contains 'unclassified/new.cs') 'unknown untracked input keeps core and blocks unclassified delivery'
+    Write-Fixture 'review-materials/aim-dedup-repair-20261014/unexpected.ps1' "exit 0`n"
+    $changes=Get-WorkloadChanges $fixtureRoot $baseline;$route=Get-WorkloadRoute $changes.paths
+    Assert-Route ($route.unknown -contains 'review-materials/aim-dedup-repair-20261014/unexpected.ps1') 'published evidence boundary never exempts an unregistered executable'
     Assert-Route ($identity.fingerprint -cne (Get-WorkloadIdentity $fixtureRoot).fingerprint) 'untracked bytes belong to build identity'
     Assert-Route ($null -ne (Get-WorkloadChanges $fixtureRoot 'missing-baseline').reason) 'missing baseline is an explicit unresolved risk'
     # Exercise the actual executable plan, not script text or a duplicate dispatcher.
@@ -255,6 +277,9 @@ try {
     Assert-Route (@($workerPlan | Where-Object {$_.name -ceq 'native-NpcModeledImpact' -and $_.arguments[-1] -ceq 'NpcModeledImpact'}).Count -eq 1) 'modeled and unmodeled hit boundaries belong to ordinary combat delivery'
     Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcRollingCpu' -and $_.arguments[-1] -ceq 'NpcRollingCpu'}).Count -eq 1) 'default rolling source must have its own ordinary combat regression'
     Assert-Route ($scopeValidation[0].ValidValues -contains 'NpcRollingCpu') 'native entry accepts the default rolling regression'
+    foreach($scope in @('NpcPhasedFlight','NpcAmbientFlight','NpcRelatedMotion','NpcTerrainFlight','NpcUmbrella','NpcPlantera','NpcBigMimic','NpcAquaticActions','NpcInvasionFlight','NpcInvasionGround','NpcEyeBoss','NpcSnowman','NpcSantaTank','NpcKingSlime','NpcSkeletonBoss','NpcInvasionFlightCpu','NpcInvasionFlightLoss','NpcBetsy','NpcTownCritter','NpcInvasionLightning','NpcDiveFlight','NpcAttachedWeapon','NpcDarkMage','NpcBloodNautilus','NpcGolem','NpcQueenBee','NpcBrainSwarm','NpcWallBoss','NpcTreeBoss','NpcCelestialTower','NpcPumpking','NpcIceQueen', 'NpcCultistBoss', 'NpcCultistRitual', 'NpcMoonLord', 'NpcMoonLeech', 'NpcQueenSlime', 'NpcWindyBalloon', 'NpcBird', 'NpcMartianTurret', 'NpcSegmentedWorm', 'NpcSolitaryWorm', 'NpcSolarWorm', 'NpcEmpress', 'NpcDeerclops', 'NpcFishron')) {
+        Assert-Route (@($combatPlan | Where-Object {$_.name -ceq ('native-'+$scope) -and $_.arguments[-1] -ceq $scope}).Count -eq 1 -and $scopeValidation[0].ValidValues -contains $scope) ('new motion families retain their real continuous source consumers '+$scope)
+    }
     Assert-Route (@($combatPlan | Where-Object {$_.name -ceq 'native-NpcRollingSelectionNegative' -and $_.arguments[-1] -ceq 'NpcRollingSelectionNegative'}).Count -eq 1 -and $scopeValidation[0].ValidValues -contains 'NpcRollingSelectionNegative') 'real selection-negative regression belongs to ordinary delivery'
     foreach($scope in @('NpcSharedGeometry','NpcTargetMarker','NpcFoundationRules','NpcFoundationContinuous','NpcPlayerPolicy')) {
         Assert-Route (@($combatPlan | Where-Object {$_.name -ceq ('native-'+$scope) -and $_.arguments[-1] -ceq $scope}).Count -eq 1 -and $scopeValidation[0].ValidValues -contains $scope) ('shared observation consumer in ordinary delivery '+$scope)

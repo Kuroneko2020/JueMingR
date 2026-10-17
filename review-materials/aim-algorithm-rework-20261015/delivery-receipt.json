@@ -1,0 +1,187 @@
+{
+  "schema": "aim-algorithm-rework-delivery-20261015-1",
+  "status": "INSTALLED_VERIFIED_READY_FOR_OWNER_TEST",
+  "taskBase": "97ceecf7c8706779bc2cf9acfff795830eb449da",
+  "sourceCommit": "4c7ac5cddfaa0e79cef2749250086732a0ab09e7",
+  "metadataBoundary": "Thisreceiptandlatercurrentproseonly; installedpackage source remains4c7ac5c. Receipt enclosingGitcommit is deliverymetadataHEAD; no rebuild/reinstall for prose.",
+  "branch": "codex/aim-attack-modeling-and-integration",
+  "fullQualification": "INCOMPLETE",
+  "releaseEligible": false,
+  "07": "Completecandidate READY_FOR_OWNER_TEST byroot aftertwoactualindependentcumulative/domainqualitycloseoutreviews",
+  "finalReviewedSourceFingerprint": "BF6B3CC2994B3639BDC090813147D6983E301F773B76A5A577C5B50DD5693B59",
+  "finalReviewedInputFingerprint": "FBA4B24FE5C7E81E7C8CC7ACAA67B7529FEECA7EF1A1C2E2261ABA385638EE2B",
+  "compileFingerprint": "49D35E5D0447C1E001AC36FF20BC46F4F1B16533971B93C3841E303A0A0F3393",
+  "finalManifestSha256": "CA62A0B74F3A9C226BA311A82363B3C738B16707A6D2B63B7FB329FB90DE4CBB",
+  "sourceCommitTaskClean": true,
+  "wholeWorkspaceClean": false,
+  "ownerAssetsExcludedPreserved": 4,
+  "sourceFilesCommitted": 290,
+  "independentFinalSourceApprovals": [
+    {
+      "path": ".local/aim-algorithm-rework-20261015/independent-weapon-lifecycle-final-source-approval.json",
+      "length": 9972,
+      "sha256": "94D3A3ACFCF30E7BC9FA33C31BD9403D138FB5A8093C82EDC4BC982BEAC4B5E9"
+    },
+    {
+      "path": ".local/aim-algorithm-rework-20261015/independent-npc-control-cost-final-source-approval.json",
+      "length": 11540,
+      "sha256": "6E238AF84F282553EAA754FBC1023DD124AE42D0535A07B78E8EEF666FE9410D"
+    }
+  ],
+  "cumulativeQualityReviews": [
+    {
+      "path": ".local/aim-algorithm-rework-20261015/independent-weapon-lifecycle-quality-closeout-review.json",
+      "length": 17605,
+      "sha256": "CB0916DF1FA0A89C3B58351BB746779870DCEEA8633CC255A738E8609C36A4A3"
+    },
+    {
+      "path": ".local/aim-algorithm-rework-20261015/independent-npc-control-cost-quality-closeout-review.json",
+      "length": 20394,
+      "sha256": "636C220D52D55D768BE2ACDF7F0E2E98BCDDC63BE954410CC70411789596F721"
+    }
+  ],
+  "stage": {
+    "path": ".local/aim-algorithm-rework-20261015/stage-reviewed-delivery-source-r02.json",
+    "length": 101117,
+    "sha256": "D4D8E0455C376584A97018623DF692B20B6C3050DA6426AB45123B63FB024670"
+  },
+  "archive": {
+    "length": 2304689,
+    "sha256": "4B6B4EBCEA408EE043E784FE04FD95A5CF10FA4A1817166244237424BFBB4330",
+    "path": "outputs/aim-algorithm-rework-delivery-20261017-4c7ac5c/JueMingR-Continuous-Processing-4c7ac5cddfaa0e79cef2749250086732a0ab09e7.zip",
+    "verification": "Official builder archive/member/source validation reused; no second consumer/full archive audit"
+  },
+  "packageRoot": "outputs/aim-algorithm-rework-delivery-20261017-4c7ac5c/JueMingR-Continuous-Processing-4c7ac5cddfaa0e79cef2749250086732a0ab09e7",
+  "packageProfile": "ContinuousProcessing complete ordinary Release/net472/x86",
+  "officialBuildExit": 0,
+  "actualInstalled": {
+    "sourceCommit": "4c7ac5cddfaa0e79cef2749250086732a0ab09e7",
+    "packageId": "continuous-processing-4c7ac5cddfaa0e79cef2749250086732a0ab09e7",
+    "target": "F:\\Games\\GamePlats\\Steam\\steamapps\\common\\Terraria",
+    "restoreExit": 0,
+    "installExit": 0,
+    "ownershipReadbackValid": true,
+    "payloadCount": 10,
+    "payload": [
+      {
+        "relative": "JueMingR.Bootstrap.dll",
+        "length": 26624,
+        "sha256": "E9B90D24C039B46E63FB18E9B85BB04C901DFF8B9BEBC9D2DE348B41015F38FF"
+      },
+      {
+        "relative": "JueMingR.Validation/0Harmony.dll",
+        "length": 2461696,
+        "sha256": "7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C"
+      },
+      {
+        "relative": "JueMingR.Validation/JueMingR.Features.dll",
+        "length": 675328,
+        "sha256": "36BDDC5977CD73B12EFCC42382A3D1E4731C9D3FFB884CA71C8D9CA0A435B05F"
+      },
+      {
+        "relative": "JueMingR.Validation/JueMingR.Infrastructure.dll",
+        "length": 19456,
+        "sha256": "B8F082DB30806BBCFBCEFE4E970E80D34BB6E5B1776916E4FB19F361C7F89F5A"
+      },
+      {
+        "relative": "JueMingR.Validation/JueMingR.Platform.dll",
+        "length": 117760,
+        "sha256": "FC4C9CE933A6B359AB316FCF779AFCDDCD704177A337B1D42068FAD7A77F0FFC"
+      },
+      {
+        "relative": "JueMingR.Validation/JueMingR.PredictionWorker.exe",
+        "length": 22016,
+        "sha256": "D15DC928CBAFE13D3E06FA58A9987296472C97471EA420523C56C5AE2694C7F0"
+      },
+      {
+        "relative": "JueMingR.Validation/JueMingR.PredictionWorker.exe.config",
+        "length": 176,
+        "sha256": "AD8267122C40D37DCD9D99E1412D763187A1825732F378DB8867F3ECF675CF70"
+      },
+      {
+        "relative": "JueMingR.Validation/JueMingR.TerrariaHost.dll",
+        "length": 2568704,
+        "sha256": "07CE753C17E2821C6795B5F9B1592D10F7E5B8B9EEC6124109FBA5F3DA7699AA"
+      },
+      {
+        "relative": "JueMingR.Validation/phase-0-s-runtime.manifest",
+        "length": 1422,
+        "sha256": "70C7362D55EA47DE0D7E6F946EE9EBAB1516736CA470FA8E3C9F890D708E1891"
+      },
+      {
+        "relative": "Terraria.exe.config",
+        "length": 440,
+        "sha256": "C8995B0D9C4BEF954FAAAFF79685628AFC71A5801DF4F60E9E5904182FEF03B6"
+      }
+    ],
+    "hostMvid": "59f7bb21-abc4-4fbd-b70d-12b6069cfb61",
+    "originalGameSha256Unchanged": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+    "runtimeLoadedByOwner": "NOT_RUN"
+  },
+  "previousInstall": {
+    "sourceCommit": "357df9bd4790aa85f0658e97bc30897b01b2d652",
+    "oldReceiptRetained": "review-materials/aim-cost-nav-20261015/delivery-receipt.json",
+    "newBackupRoot": ".local/aim-algorithm-rework-20261015/install-4c7ac5c-20261017-035625/backup/controlled",
+    "controlledFilesBackedUp": 11,
+    "backupVerified": true,
+    "oldReceiptBackup": ".local/aim-algorithm-rework-20261015/install-4c7ac5c-20261017-035625/backup/prior-delivery-receipt.json",
+    "recoveryInstructions": ".local/aim-algorithm-rework-20261015/install-4c7ac5c-20261017-035625/recovery.txt",
+    "newRestoreEntry": "outputs/aim-algorithm-rework-delivery-20261017-4c7ac5c/JueMingR-Continuous-Processing-4c7ac5cddfaa0e79cef2749250086732a0ab09e7/Restore-Phase0S.ps1",
+    "previousInstallEntry": "outputs/aim-cost-nav-delivery-20261015-357df9b/JueMingR-Continuous-Processing-357df9bd4790aa85f0658e97bc30897b01b2d652/Install-Phase0S.ps1",
+    "rollbackDrill": "NOT_RUN; use newRestore thenpreviousInstall ifneeded"
+  },
+  "rawInstallEvidence": {
+    "path": ".local/aim-algorithm-rework-20261015/install-4c7ac5c-20261017-035625/readback.json",
+    "length": 3842,
+    "sha256": "30417A02CD52299E9F31F72668849641E8B11D8161E97914F7336BB6B0F4C422"
+  },
+  "productionEquivalence": {
+    "schema": "installed-source-to-reviewed-product-input-equivalence-1",
+    "sourceCommit": "4c7ac5cddfaa0e79cef2749250086732a0ab09e7",
+    "approvedSourceFingerprint": "BF6B3CC2994B3639BDC090813147D6983E301F773B76A5A577C5B50DD5693B59",
+    "compileFingerprint": "49D35E5D0447C1E001AC36FF20BC46F4F1B16533971B93C3841E303A0A0F3393",
+    "actualFullCompileInputRowsEqualTestedAq": 822,
+    "reviewedProductionSourceInputsVerified": 742,
+    "sourceRevisionId": "Official build passes actual source commit, no old revision forced",
+    "actualReleaseHostSha256": "07CE753C17E2821C6795B5F9B1592D10F7E5B8B9EEC6124109FBA5F3DA7699AA",
+    "actualReleaseHostMvid": "59f7bb21-abc4-4fbd-b70d-12b6069cfb61",
+    "testedAqReleaseHostSha256": "C99B85B0BE3981AA13A047D5BAAAF47791967B4450CE9880FCF02B5963AFDBB1",
+    "releaseDllBytesEqualTestedAq": false,
+    "reason": "Same source/822 compile inputs and officialcompiler/options; actual SourceRevisionId changes InformationalVersion and build/MVID/PDB identities. We claim production-input equivalence, not byte-identical final DLLs or a new native execution.",
+    "sameSourceDebugAndPublicProbe": "Original approved Debug5files retained by hash-verified exact compileinput reuse; no native/retest on finalpackage",
+    "stage": {
+      "path": ".local/aim-algorithm-rework-20261015/stage-reviewed-delivery-source-r02.json",
+      "length": 101117,
+      "sha256": "D4D8E0455C376584A97018623DF692B20B6C3050DA6426AB45123B63FB024670"
+    },
+    "officialBuildRecord": {
+      "path": "artifacts/build/Release/build-record.json",
+      "length": 119011,
+      "sha256": "CA001C930B3BE6805CCEB5550DFE45BCF383B8D8CE51BD3C08A85CBA02A5C41F"
+    },
+    "packageBuildRecord": {
+      "path": "outputs/aim-algorithm-rework-delivery-20261017-4c7ac5c/phase-0-s-build-record.json",
+      "length": 8001,
+      "sha256": "721E9C61AF2778B955EBB2CF6B0C710A9C07A7483DCB608F176DA547B30ADD54"
+    },
+    "newChecks": "Officialbuild/structure+realstage12scopevalidation/packageidentitypromotion and once08ownership/readback only",
+    "newNativeMainOwnerRuns": 0
+  },
+  "validation": {
+    "executed": "Completeauthoraffectednative/ordinary/Main evidence and actualtwoindependentreviews before07; finalofficialbuild/stage/package and oncebackup/Restore/Install/readback aftersourcecommit",
+    "reused": "OriginalwholeEffects r96 and unchangedscopes retainactualae/af/an/ao/ap identities; Debug5files/source/carrier exactreuse; nofullmatrix orfinalpackageconsumer rerun",
+    "heldQualitySupplement": "Onevalidprelockedtypedpair; invalidoutobserverpair quarantined; no productpatchoroldDamage0backfill",
+    "optionalFormatCheck": "git staged diffcheck reported5 preexistingcosmeticwhitespace findings inreviewedbytes; retainednonzero log, no sourceformatting or businesscheck failure hidden",
+    "ownerRealGame": "NOT_RUN",
+    "ownerFps": "NOT_RUN",
+    "multiplayer": "NOT_RUN"
+  },
+  "retainedLimits": [
+    "FixedfairYoyo600GUC/599Present netprocessCPU-5.0796%, not universalFPSclaim.",
+    "Held old22/21strikes/first100+0.470ms+14.36%/steady+0.057ms+1.975%/p99/GC remain; newtyped25doesnoteraseoldloss.",
+    "Sky Update-8.5142% butpairedelapsed+6.7706%; 7noCurrentReceiver birthsnotBasic, selectorcauseUNKNOWN.",
+    "NativefutureRNG/winningContactmemberUNKNOWN; legalrepresentative aimed-use isnot pershotguarantee.",
+    "Nomerge/close/Tag/Release; afterdeliverystopandwaitownerfeedback."
+  ],
+  "completedUtc": "2026-10-16T19:56:28.5300720Z"
+}

@@ -1,0 +1,35 @@
+Read-only Git facts after source WIP checkpoint, before materials commit.
+Pause status is status-before.txt; these are distinct moments.
+
+$ git rev-parse --show-toplevel
+C:/Users/kongd/Desktop/JueMingR
+
+$ git branch --show-current
+codex/aim-attack-modeling-and-integration
+
+$ git log --format=%H %aI %cI %s 80c0fdde7d1451aa9d3ae844c20387611bb36dcd..HEAD
+4850a290e7ec7f3d086de5e4efe48694adc4c821 2026-10-11T04:06:25+08:00 2026-10-11T04:06:25+08:00 WIP: checkpoint paused comprehensive aim repair (not buildable)
+223c121dd3ff3a62eb5640edaae8d26add9495f3 2026-10-10T15:47:27+08:00 2026-10-10T17:17:19+08:00 docs: streamline task navigation and collaboration workflow
+
+$ git show --no-patch --format=fuller 223c121dd3ff3a62eb5640edaae8d26add9495f3
+commit 223c121dd3ff3a62eb5640edaae8d26add9495f3
+Author:     YoakeTsuki <68938852+Kuroneko2020@users.noreply.github.com>
+AuthorDate: Sat Oct 10 15:47:27 2026 +0800
+Commit:     YoakeTsuki <68938852+Kuroneko2020@users.noreply.github.com>
+CommitDate: Sat Oct 10 17:17:19 2026 +0800
+
+    docs: streamline task navigation and collaboration workflow
+    
+    Prepare Proposed ADR-0018 and focused documentation changes for issue #116; preserve existing authorization, evidence, installation, and review boundaries.
+    
+    (cherry picked from commit f470072446d4879da838748d06e214bf63813943)
+
+$ git diff --shortstat 223c121dd3ff3a62eb5640edaae8d26add9495f3 4850a290e7ec7f3d086de5e4efe48694adc4c821
+ 207 files changed, 22584 insertions(+), 647 deletions(-)
+
+$ git -c core.quotepath=false status --short
+ M docs/设计/本地参考资料使用说明.md
+?? .workbuddy/
+?? issue112.txt
+?? pr113.json
+?? review-materials/

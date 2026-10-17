@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal Vector2[] NpcVelocity,NpcOldVelocity,ProjectileVelocity,ProjectileOldVelocity;
             internal Vector2[][] NpcPositions,ProjectilePositions;
             internal Vector2 NetOffset;
-            internal bool CanReceive,CanHarm,NewSegment,HasState;
+            internal bool CanReceive,CanHarm,NewSegment,HasState,NoTileCollide,Wet,ReflectsProjectiles,ProjectileReflectionUnknown;
         }
         internal static Frame Observe(long tick,int[] npcs,int[] projectiles,int selected)
         {
@@ -82,7 +82,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     frame.PlayerPremise[i]=writer.Hash;frame.PlayerPosition[i]=p.position;frame.PlayerVelocity[i]=p.velocity;frame.PlayerConditional[i]=NativePlayerMotion.Conditional(p);
                 }
             }
-            NPC target=Main.npc[selected];frame.NetOffset=target.netOffset;frame.CanReceive=target.active && CombatSelection.Receives(target,true);frame.CanHarm=target.active && !target.friendly && target.damage>0;
+            NPC target=Main.npc[selected];frame.NetOffset=target.netOffset;frame.NoTileCollide=target.noTileCollide;frame.Wet=target.wet;frame.ReflectsProjectiles=target.reflectsProjectiles;frame.CanReceive=target.active && CombatSelection.Receives(target,true);frame.CanHarm=target.active && !target.friendly && target.damage>0;
             return frame;
         }
         internal static void ImpactState(BinaryWriter writer,NPC npc,Projectile source)
@@ -148,7 +148,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal static Frame Presentation(long tick,int selected)
         {
             NPC target=Main.npc[selected];
-            return new Frame{Tick=tick,NetOffset=target.netOffset,CanReceive=target.active && CombatSelection.Receives(target,true),CanHarm=target.active && !target.friendly && target.damage>0};
+            return new Frame{Tick=tick,NetOffset=target.netOffset,NoTileCollide=target.noTileCollide,Wet=target.wet,ReflectsProjectiles=target.reflectsProjectiles,CanReceive=target.active && CombatSelection.Receives(target,true),CanHarm=target.active && !target.friendly && target.damage>0};
         }
         private static void PlayerPremise(BinaryWriter w,Player p)
         {
@@ -197,7 +197,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             WritePositions(writer,frame.NpcPositions);WritePositions(writer,frame.ProjectilePositions);
             writer.Write(frame.Players.Length);for(int i=0;i<frame.Players.Length;i++){writer.Write(frame.Players[i]);writer.Write(frame.PlayerPremise[i]);writer.Write(frame.PlayerConditional[i]);Vector(writer,frame.PlayerPosition[i]);Vector(writer,frame.PlayerVelocity[i]);}
             }
-            Vector(writer,frame.NetOffset);writer.Write(frame.CanReceive);writer.Write(frame.CanHarm);writer.Write(frame.NewSegment);
+            Vector(writer,frame.NetOffset);writer.Write(frame.CanReceive);writer.Write(frame.CanHarm);writer.Write(frame.NewSegment);writer.Write(frame.NoTileCollide);writer.Write(frame.Wet);writer.Write(frame.ReflectsProjectiles);writer.Write(frame.ProjectileReflectionUnknown);
         }
         internal static Frame Read(BinaryReader reader)
         {
@@ -214,13 +214,17 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             frame.Players=new int[count];frame.PlayerPremise=new ulong[count];frame.PlayerConditional=new bool[count];frame.PlayerPosition=new Vector2[count];frame.PlayerVelocity=new Vector2[count];int prior=-1;
             for(int i=0;i<count;i++){int slot=reader.ReadInt32();if(slot<=prior || slot>=255)throw new InvalidDataException("Alignment player order.");prior=slot;frame.Players[i]=slot;frame.PlayerPremise[i]=reader.ReadUInt64();frame.PlayerConditional[i]=reader.ReadBoolean();frame.PlayerPosition[i]=Vector(reader);frame.PlayerVelocity[i]=Vector(reader);}
             }
-            frame.NetOffset=Vector(reader);frame.CanReceive=reader.ReadBoolean();frame.CanHarm=reader.ReadBoolean();frame.NewSegment=reader.ReadBoolean();return frame;
+            frame.NetOffset=Vector(reader);frame.CanReceive=reader.ReadBoolean();frame.CanHarm=reader.ReadBoolean();frame.NewSegment=reader.ReadBoolean();frame.NoTileCollide=reader.ReadBoolean();frame.Wet=reader.ReadBoolean();frame.ReflectsProjectiles=reader.ReadBoolean();frame.ProjectileReflectionUnknown=reader.ReadBoolean();return frame;
         }
         internal static string Difference(Frame expected,Frame actual)
         {
             if(expected.Tick!=actual.Tick)return "tick";
             if(!expected.HasState || !actual.HasState)return "missing state proof";
             if(expected.World!=actual.World)return "world premise";
+            if(expected.NoTileCollide!=actual.NoTileCollide)return "NPC future tile-collision gate";
+            if(expected.Wet!=actual.Wet)return "NPC future wet state";
+            if(expected.ReflectsProjectiles!=actual.ReflectsProjectiles)return "NPC future projectile reflection";
+            if(expected.ProjectileReflectionUnknown!=actual.ProjectileReflectionUnknown)return "NPC future reflection uncertainty";
             bool[] required=expected.IsSample?null:expected.NpcRequired;
             bool[] requiredProjectiles=expected.IsSample?null:expected.ProjectileRequired;
             string changed=Different(expected.Npcs,expected.NpcIdentity,actual.Npcs,actual.NpcIdentity,"NPC identity");if(changed!=null)return changed;

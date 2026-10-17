@@ -1,0 +1,13 @@
+LOAD JueMingR.Platform source=0.0.0-dev+uncommitted-bounded-cell-check-g12 MVID=daaea4f7-d133-4dcf-8107-cf12c65fd5e3 SHA256=7F58F5F7BF44C9F4F7112C5C115751820F224CAF9E47BDD38DA5DD4B728DA096 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g12\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Platform.dll
+LOAD JueMingR.Features source=0.0.0-dev+uncommitted-bounded-cell-check-g12 MVID=41c1343a-4fbd-4be0-abf9-5989b598db08 SHA256=6F787524D905CF6E934AFA038A5162EFDBD05504AC824F5B6CD0320D98658296 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g12\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Features.dll
+LOAD JueMingR.Infrastructure source=0.0.0-dev+uncommitted-bounded-cell-check-g12 MVID=95e6d643-9d00-4e07-88e8-93005f9576a4 SHA256=26C497DC1C2D1C3C76668635773018636A557A55F99E2BC56EA50944B8E8A9A8 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g12\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.Infrastructure.dll
+LOAD JueMingR.TerrariaHost source=0.0.0-dev+uncommitted-bounded-cell-check-g12 MVID=ed65a495-20c8-459e-a48b-227011eb6aff SHA256=440FAE345E3C066887EA5C83B4382D1AA8410FBAD1F709938D26CE342941B5D2 location=C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g12\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll
+GAME MVID=2c29f6c3-4bd9-4add-9c58-da159804e083 SHA256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3
+Explicit historical candidate: C:\Users\kongd\Desktop\JueMingR\.local\aim-performance-recovery-20261012\g12\bin\JueMingR.TerrariaHost\x86\Release\net472\JueMingR.TerrariaHost.dll MVID=ed65a495-20c8-459e-a48b-227011eb6aff
+COMPOSITION initialization-ms=5626.2354000000005 code-prepare-ms=408.5359 exact-comparison=False
+PASS dry region: same rectangle float motion / sensor miss then water / slope above / actual tile change and reset / ice reads and guard; original WetCollision oracle
+PASS wind dependencies original projectile cases=1136 sensitive=346 immune=790 actual UpdateWeather changes=60; gate toggle / player positive and negative / pure hand
+TERRAIN native UpdateCollision slope cases=5103 contacts=1180
+PASS native SolidCollision strict ULP / half / slope / platform / inactive / clipped queries=1782 positive=114
+PASS original CanHit clipped center cases=1792 clear=1389 blocked=403 missing-cell=unknown
+PASS native NPC clipped edge collision cases=882

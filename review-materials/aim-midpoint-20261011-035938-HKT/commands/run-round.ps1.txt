@@ -1,0 +1,13 @@
+param([Parameter(Mandatory=$true)][string]$Round,[Parameter(Mandatory=$true)][string]$Name,[Parameter(Mandatory=$true)][string]$Scope,[string]$EnvironmentKey)
+$ErrorActionPreference='Stop'
+$taskRoot=(git rev-parse --show-toplevel).Trim()
+$taskOut=Join-Path $taskRoot ('.local/aim-comprehensive-repair-20261010/'+$Name+'-'+$Round)
+New-Item -ItemType Directory -Path $taskOut -Force | Out-Null
+if($EnvironmentKey){[Environment]::SetEnvironmentVariable($EnvironmentKey,'1','Process')}
+$watch=[Diagnostics.Stopwatch]::StartNew()
+& (Join-Path $taskRoot 'artifacts/build/Debug/checks/bin/NativeWorldTextProbe/x86/Debug/net472/NativeWorldTextProbe.exe') $taskRoot 'F:/Games/GamePlats/Steam/steamapps/common/Terraria/Content' $taskOut $Scope *> ($taskOut+'.log')
+$code=$LASTEXITCODE
+$watch.Stop()
+@{exit=$code;scope=$Scope;seconds=$watch.Elapsed.TotalSeconds;log=$taskOut+'.log';environmentKey=$EnvironmentKey} | ConvertTo-Json | Set-Content -LiteralPath ($taskOut+'-receipt.json') -Encoding utf8
+Get-Content -LiteralPath ($taskOut+'.log') -Tail 14
+exit $code

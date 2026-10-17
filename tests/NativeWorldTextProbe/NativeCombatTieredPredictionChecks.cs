@@ -123,7 +123,7 @@ namespace NativeWorldTextProbe
             using(var trace=new NativeCombatAttackTrace(native,output))
             try
             {
-                cache.Demand(1,120);
+                cache.Demand(NativeCombatObservationChecks.IndependentReader,120);
                 Func<NpcTrajectory> advance=()=>
                 {
                     trace.Phase=phase;trace.Selected=slot;trace.Frame=rows.Count-1;
@@ -133,7 +133,7 @@ namespace NativeWorldTextProbe
                     if(path!=null)
                     {
                         Require(path.SampleTick==Main.GameUpdateCount && ReferenceEquals(path.Identity.Token,target) && path.Count>=31 && path.Count<=121,"Display uses this current identity and actual 30..120 future steps.");
-                        Require((cache.Read(1)!=null)==(path.Count==121),"The real shared consumer never receives a short native window.");
+                        Require((cache.Read(NativeCombatObservationChecks.IndependentReader)!=null)==(path.Count==121),"The real shared consumer never receives a short native window.");
                         if(checkedRequests.Add(request))
                         {
                             int actual;lock(gate)Require(horizons.TryGetValue(path.CaptureTick,out actual) && actual==(int)Get(request,"Horizon"),"Accepted horizon comes from actual encoded transport bytes.");
@@ -169,7 +169,7 @@ namespace NativeWorldTextProbe
                 Require(shown!=null && shown.Count<=61 && ReferenceEquals(shown.Identity.Token,replacement),"Replacement gets its own real short capture, never the retired result.");
                 Console.WriteLine("PASS actual Hurt and same-slot replacement revoke immediately; late replies retire; new short capture restores current identity");
             }
-            finally{cache.Release(1);hooks.UnpatchAll(hooks.Id);File.WriteAllLines(Path.Combine(output,"tiered-boundaries.csv"),rows);lock(gate)File.WriteAllLines(Path.Combine(output,"tiered-encoded.csv"),encoded);}
+            finally{cache.Release(NativeCombatObservationChecks.IndependentReader);hooks.UnpatchAll(hooks.Id);File.WriteAllLines(Path.Combine(output,"tiered-boundaries.csv"),rows);lock(gate)File.WriteAllLines(Path.Combine(output,"tiered-encoded.csv"),encoded);}
         }
         private static void Call(object value,string name,params object[] args)=>value.GetType().GetMethod(name,Flags).Invoke(value,args);
         private static void Require(bool condition,string message){if(!condition)throw new InvalidOperationException(message);}

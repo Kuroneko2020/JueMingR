@@ -14,6 +14,88 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatPredictionChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
+        internal static void RunContinuation(object context)
+        {
+            var host=Get(context,"CombatObservation");var existing=Get(host,"Prediction");
+            var source=Activator.CreateInstance(existing.GetType(),Flags,null,new object[]{null,false},null);
+            var cache=(NpcPredictionCache)Get(source,"Cache");cache.Demand(0,1,120);
+            var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),95,0,0);p.ResetEffects();p.velocity=Vector2.Zero;p.position=new Vector2(1000,688-p.height);
+            // An idle native Player action has already released both controls
+            // (Player.JumpMovement and releaseUp's control tail). Reset builds
+            // a new Player rather than executing that action. Do not weaken
+            // production equality to forgive these different first inputs.
+            p.controlJump=p.controlUp=false;p.releaseJump=p.releaseUp=true;
+            p.immune=true;p.immuneTime=120;
+            Main.dayTime=false;Main.worldSurface=100;Main.wofNPCIndex=-1;NPC.brainOfGravity=-1;
+            foreach(var other in Main.npc)other.active=false;
+            for(int x=20;x<115;x++)for(int y=20;y<60;y++)Main.tile[x,y].ClearEverything();
+            Main.tileSolid[1]=true;
+            for(int x=20;x<115;x++)NativeToolsChecks.Tile(x,43,1);
+            var n=Main.npc[2];n.SetDefaults(1);n.whoAmI=2;n.active=true;n.position=new Vector2(1280,688-n.height);n.velocity=Vector2.Zero;n.target=p.whoAmI;n.ai[0]=-2;n.ai[2]=1;n.timeLeft=750;
+            var identity=new NpcIdentity((long)Get(host,"Session"),n,n.whoAmI,n.generation,n.type,n.netID);
+            // A newborn ordinary type1 has not selected its contained item.
+            // Preserve that original unknown branch; the continuous fixture
+            // below starts from an already observed no-item ai1=-1 state.
+            Call(source,"PreparePrefix",identity,(long)Main.GameUpdateCount,120,120);
+            var pending=GetOptional(cache,"result") as NpcTrajectory;
+            Require(pending!=null && pending.Count==1 && pending.Stop==PredictionStop.PhaseBoundary,"unobserved first contained-item choice does not invent a complete slime future");
+            n.ai[1]=-1;Call(source,"Clear");
+            bool jumped=false,landed=false;int compared=0;NpcTrajectory prior=null;
+            // NPC.UpdateNPC_UpdateGravity clamps this y<60-tile sky premise
+            // to .3*.25=.075 gravity. A -6 jump takes about160 actions to
+            // return, so the prior80-action window ended near its apex. Keep
+            // that high-altitude case and cover its complete natural arc.
+            for(int step=0;step<180;step++)
+            {
+                Call(source,"PreparePrefix",identity,(long)Main.GameUpdateCount,120,120);var path=cache.Read(0);
+                if(step<3 || step==20 || step==79)ContinuationFacts(source,step);
+                if(path==null || path.Count!=121 || path.CaptureTick!=(long)Main.GameUpdateCount)
+                {
+                    var raw=GetOptional(cache,"result") as NpcTrajectory;
+                    Console.WriteLine("SELECTED SAMPLE step="+step+" tick="+Main.GameUpdateCount+" demand="+cache.Required+" session="+Get(host,"Session")+" identity="+identity.Slot+"/"+identity.Generation+"/"+identity.Type+" npc="+n.active+"/"+n.generation+"/"+n.life+" player="+p.active+"/"+p.dead+"/"+p.position+" path="+(path==null?"null":path.Count+"/"+path.Stop+"/"+path.CaptureTick)+" raw="+(raw==null?"null":raw.Count+"/"+raw.Stop+"/"+raw.CaptureTick)+" failure="+GetOptional(Get(source,"rolling"),"FailureLayer"));
+                }
+                Require(path!=null && path.Count==121 && path.CaptureTick==(long)Main.GameUpdateCount,"selected source keeps the fresh full slime future");
+                if(prior!=null)Require(prior.CaptureTick+1==path.CaptureTick,"a reused suffix is a verified new observation, never an old capture waiver");
+                var frozen=path[1];var oldEnd=path[120];long oldTick=path.CaptureTick;
+                NativeQuickItemChecks.BeginWorldStep();p.UpdateImmunity();n.UpdateNPC(2);compared++;
+                Require(Math.Abs(n.position.X-frozen.Bounds.X)<.12f && Math.Abs(n.position.Y-frozen.Bounds.Y)<.12f,"frozen next slime jump/landing position matches original UpdateNPC");
+                jumped|=n.velocity.Y<0;landed|=jumped && n.velocity.Y==0;
+                Require(path.CaptureTick==oldTick && path[120].Bounds.Equals(oldEnd.Bounds),"later native updates cannot mutate an old immutable publication");
+                prior=path;
+            }
+            int continuations=(int)Get(source,"SelectedContinuations");
+            Console.WriteLine("SELECTED CONTINUATION originalActions="+compared+" reuses="+continuations+" jumped="+jumped+" landed="+landed+" npc="+n.position+" v="+n.velocity+" ai="+string.Join(",",n.ai)+" gravity="+n.noGravity+"/"+n.noTileCollide+" floor="+Main.tile[80,43].active()+"/"+Main.tileSolid[Main.tile[80,43].type]);
+            Require(jumped && landed && continuations>0,"real selected slime jump and landing exercise verified suffix reuse");
+            // Each change is made before preparing the new real observation.
+            // Old suffixes must not swallow a new input, hit, jump phase or tile.
+            foreach(int change in new[]{0,1,2,3})
+            {
+                Call(source,"PreparePrefix",identity,(long)Main.GameUpdateCount,120,120);int before=(int)Get(source,"SelectedContinuations");
+                NativeQuickItemChecks.BeginWorldStep();p.UpdateImmunity();n.UpdateNPC(2);
+                if(change==0){n.justHit=true;n.velocity.X=-4;n.life--;}
+                if(change==1)n.ai[0]+=7;
+                if(change==2)p.controlRight=!p.controlRight;
+                if(change==3)NativeToolsChecks.Tile((int)n.Center.X/16,42,1);
+                Call(source,"PreparePrefix",identity,(long)Main.GameUpdateCount,120,120);
+                Require((int)Get(source,"SelectedContinuations")==before,"changed hit/clock/player/consumed terrain rejects the old selected proof: "+change);
+                var path=cache.Read(0);Require(path==null || path.CaptureTick==(long)Main.GameUpdateCount && path[0].Bounds.X==n.position.X && path[0].Bounds.Y==n.position.Y,"replacement always starts at the real changed observation");
+                n.justHit=false;
+                if(change==2)p.controlRight=false;
+            }
+            Call(source,"Clear");cache.Release(0);
+            Console.WriteLine("PASS SELECTED CONTINUATION original NPC1 jump/landing, immutable old publication and hit/phase/player/terrain revocation.");
+        }
+        private static void ContinuationFacts(object source,int step)
+        {
+            var rolling=Get(source,"rolling");var progress=Get(rolling,"progress");
+            var initial=(PredictionPlayerMotion)Get(progress,"InitialPlayer");var first=(PredictionPlayerMotion)Get(progress,"FirstPlayer");var last=(PredictionPlayerMotion)Get(progress,"Player");
+            var states=(NpcMotionState[])Get(source,"states");var environment=(PredictionEnvironment)Get(rolling,"resultEnvironment");
+            bool independent=(bool)rolling.GetType().GetMethod("IndependentContinuation",Flags).Invoke(null,new object[]{states[0],environment,initial});
+            var differences=new StringBuilder();
+            foreach(var field in typeof(PredictionPlayerMotion).GetFields(BindingFlags.Instance|BindingFlags.Public))
+                if(!Equals(field.GetValue(initial),field.GetValue(last)))differences.Append(field.Name).Append('=').Append(field.GetValue(initial)).Append("->").Append(field.GetValue(last)).Append(';');
+            Console.WriteLine("SELECTED PROOF step="+step+" independent="+independent+" proof="+(GetOptional(rolling,"Continuation")!=null)+" fixed="+Get(rolling,"FixedInputResult")+" retain="+Get(progress,"Retain")+" observed="+Get(progress,"ObservedPlayer")+" firstPlayer="+PlayerMotionContinuation.SameFixedInput(initial,first,false)+" lastPlayer="+PlayerMotionContinuation.SameFixedInput(initial,last,false)+" differences="+differences);
+        }
         internal static void Run(object context)
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var terrain=(IPredictionTerrain)Get(source,"Terrain");
@@ -22,18 +104,21 @@ namespace NativeWorldTextProbe
             for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]==null)Main.player[i]=new Player();
             foreach(var n in Main.npc)n.active=false;
             var player=Main.LocalPlayer;player.position=new Vector2(640,640);
-            var env=new PredictionEnvironment{PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,WorldWidth=Main.maxTilesX,WorldSurface=(float)Main.worldSurface,Enraged=true,ClearLine=true};
+            var env=new PredictionEnvironment{PlayerX=player.Center.X,PlayerY=player.Center.Y,PlayerWidth=player.width,PlayerHeight=player.height,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,GravityWorldSurface=Main.worldSurface,Multiplayer=Main.netMode==1,Enraged=true,ClearLine=true};
             Func<NPC,NpcMotionState> capture=n=>(NpcMotionState)read.Invoke(null,new object[]{n,session});
-            ReceiveShapes(capture,env,terrain);
+            ReceiveShapes(source,capture,env,terrain);
             var cache=new NpcPredictionCache();cache.Demand(0,60);
             var npc=Main.npc[0];npc.SetDefaults(372);npc.active=true;npc.whoAmI=0;npc.target=0;npc.position=new Vector2(400,400);npc.ai[0]=0;npc.ai[1]=88;npc.ai[3]=-2;npc.direction=1;
             var states=new[]{capture(npc)};
-            string initial=Stamp();cache.Prepare(states,1,0,100,env,terrain);Require(Stamp()==initial,"prediction preserves all native fields/arrays, tile values, RNG and Collision scratch");
-            int computed=cache.Steps;var first=cache.Read(0);cache.Demand(1,30);cache.Prepare(states,1,0,100,env,terrain);
+            // Exercise an acquisition stop explicitly. Native NPC queries
+            // clip world edges, so crossing the bottom scan margin is no
+            // longer (and was never natively) evidence of missing terrain.
+            var limited=new LimitedTerrain(terrain,68);
+            string initial=Stamp();cache.Prepare(states,1,0,100,env,limited);Require(Stamp()==initial,"prediction preserves all native fields/arrays, tile values, RNG and Collision scratch");
+            int computed=cache.Steps;var first=cache.Read(0);cache.Demand(1,30);cache.Prepare(states,1,0,100,env,limited);
             Require(first!=null && cache.Steps==computed && ReferenceEquals(first,cache.Read(1)),"two equivalent consumers share one real result");
-            cache.Demand(1,30,120);cache.Prepare(states,1,0,100,env,terrain);Require(cache.Builds==1 && cache.Steps<=120,"longer preferred demand extends existing tail");
-            // The shark reaches the finite terrain boundary after 68 future
-            // updates. Cancellation preserves this real tail, not 120 steps.
+            cache.Demand(1,30,120);cache.Prepare(states,1,0,100,env,limited);Require(cache.Builds==1 && cache.Steps<=120,"longer preferred demand extends existing tail");
+            // Cancellation retains only the successfully acquired 68 updates.
             var cancellationTail=cache.Read(1);cache.Demand(2,120);
             Require(cancellationTail!=null && cancellationTail.Count==69 && cancellationTail.Stop==PredictionStop.TerrainUnavailable && cache.Read(2)==null,"short reader receives the truthful terrain-boundary tail while strict120 rejects it");
             cache.Release(0);Require(cache.Read(0)==null && ReferenceEquals(cache.Read(1),cancellationTail) && cache.Read(2)==null,"consumer cancellation preserves the same other-reader result and strict minimum");
@@ -138,7 +223,19 @@ namespace NativeWorldTextProbe
         }
         private sealed class FailedTerrain : IPredictionTerrain
         {public bool Unchanged {get{throw new InvalidOperationException("isolated terrain failure");}}public void Reset(){throw new InvalidOperationException("isolated terrain failure");}public bool Move(ref NpcMotionState n,PredictionEnvironment environment,out PredictionStop stop){stop=PredictionStop.None;throw new InvalidOperationException();}public bool Solid(MotionRect b,out bool value,out PredictionStop stop){value=false;stop=PredictionStop.None;throw new InvalidOperationException();}public bool CanHit(MotionRect a,MotionRect b,out bool value,out PredictionStop stop){value=false;stop=PredictionStop.None;throw new InvalidOperationException();}public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop){tile=default(PredictionTile);stop=PredictionStop.None;throw new InvalidOperationException();}}
-        private static void ReceiveShapes(Func<NPC,NpcMotionState> capture,PredictionEnvironment env,IPredictionTerrain terrain)
+        private sealed class LimitedTerrain : IPredictionTerrain
+        {
+            private readonly IPredictionTerrain source;private readonly int limit;private int moves;
+            internal LimitedTerrain(IPredictionTerrain source,int limit){this.source=source;this.limit=limit;}
+            public bool Unchanged {get{return source.Unchanged;}}
+            public void Reset(){moves=0;source.Reset();}
+            public bool Move(ref NpcMotionState n,PredictionEnvironment environment,out PredictionStop stop)
+            {if(moves++>=limit){stop=PredictionStop.TerrainUnavailable;return false;}return source.Move(ref n,environment,out stop);}
+            public bool Solid(MotionRect b,out bool value,out PredictionStop stop){return source.Solid(b,out value,out stop);}
+            public bool CanHit(MotionRect a,MotionRect b,out bool value,out PredictionStop stop){return source.CanHit(a,b,out value,out stop);}
+            public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop){return source.Tile(x,y,out tile,out stop);}
+        }
+        private static void ReceiveShapes(object source,Func<NPC,NpcMotionState> capture,PredictionEnvironment env,IPredictionTerrain terrain)
         {
             var npc=Main.npc[0];bool server=Main.dedServ;int delay=NPC.offSetDelayTime,smoothing=Main.multiplayerNPCSmoothingRange;
             try
@@ -155,7 +252,22 @@ namespace NativeWorldTextProbe
                 var tail=Main.npc[6];tail.SetDefaults(414);tail.whoAmI=6;tail.active=true;tail.target=0;tail.ai[1]=5;tail.position=new Vector2(420.75f,400.25f);tail.netOffset=new Vector2(20,10);tail.timeLeft=750;
                 tail.buffType[0]=24;tail.buffTime[0]=10;tail.buffType[1]=323;tail.buffTime[1]=10;
                 for(int x=20;x<40;x++)for(int y=20;y<40;y++)Main.tile[x,y].liquid=255;
-                var model=capture(tail);var group=new[]{capture(parent),model};var points=new NpcTrajectoryPoint[2];points[0]=new NpcTrajectoryPoint(0,model);PredictionStop stop;terrain.Reset();Require(NpcMotion.Step(ref model,group,2,env,terrain,1,out stop),"414 known parent predicts next attachment");points[1]=new NpcTrajectoryPoint(1,model);
+                // Read alone is a raw value observation, not a completed worm
+                // relation/target sample. Use the real Source closure (including
+                // raw slot0 guards) without changing the live observation owner.
+                // This oracle then advances only the tail, exactly like the
+                // single native UpdateNPC(6) below; it is not a whole-chain step.
+                var sampled=Activator.CreateInstance(source.GetType(),Flags,null,new object[]{null,false},null);
+                ((NpcPredictionCache)Get(sampled,"Cache")).Demand(0,1);
+                var identity=capture(tail).Identity;
+                sampled.GetType().GetMethod("Prepare",Flags).Invoke(sampled,new object[]{identity,(long)Main.GameUpdateCount});
+                int count=(int)Get(sampled,"observedCount");var group=new NpcMotionState[count];
+                Array.Copy((NpcMotionState[])Get(sampled,"states"),group,count);
+                int selected=-1;for(int i=0;i<count;i++)if(group[i].Identity.Equals(identity))selected=i;
+                Require(selected>=0,"414 real Source sample retains the selected tail identity");
+                var model=group[selected];
+                Require(model.WormRelationsCaptured && model.WormRelationsComplete && model.WormLinkFactsCaptured && model.TargetCaptured && model.ParentIdentity.Equals(capture(parent).Identity),"414 real Source completes raw parent relations and tracking before the action oracle");
+                var points=new NpcTrajectoryPoint[2];points[0]=new NpcTrajectoryPoint(0,model);PredictionStop stop;terrain.Reset();Require(NpcMotion.Step(ref model,group,count,env,terrain,1,out stop),"414 known parent predicts next attachment");points[1]=new NpcTrajectoryPoint(1,model);
                 for(int tick=0;tick<=1;tick++)
                 {
                     if(tick>0)tail.UpdateNPC(6);var body=new Rectangle((int)(tail.position.X+tail.netOffset.X),(int)(tail.position.Y+tail.netOffset.Y),tail.width,tail.height);var projectile=body;projectile.Inflate(8,8);var point=points[tick];

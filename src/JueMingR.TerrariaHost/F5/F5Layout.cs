@@ -38,7 +38,7 @@ namespace JueMingR.TerrariaHost.F5
         CombatRevolverOn, CombatRevolverOff, CombatStringOn, CombatStringOff, CombatFacingOn, CombatFacingOff,
         CombatReportOn, CombatReportOff, CombatGoblinOn, CombatGoblinOff, CombatInterval,
         ObservationPolicy,ObservationCenter,ObservationDummy,ObservationRadius,
-        ObservationCollisionOn,ObservationCollisionOff,ObservationPathOn,ObservationPathOff,ObservationMarker }
+        ObservationCollisionOn,ObservationCollisionOff,ObservationPathOn,ObservationPathOff,ObservationMarker,ObservationAimOn,ObservationAimOff }
 
     internal sealed class F5Element
     {
@@ -78,7 +78,7 @@ namespace JueMingR.TerrariaHost.F5
         private int observationRevision,builtObservationRevision;
         internal void SetObservationOptions(Features.Combat.ObservationOptions value)
         {
-            if(observation.ClearLine!=value.ClearLine || observation.MouseCenter!=value.MouseCenter || observation.Dummy!=value.Dummy || observation.Marker!=value.Marker)observationRevision++;
+            if(observation.ClearLine!=value.ClearLine || observation.MouseCenter!=value.MouseCenter || observation.Dummy!=value.Dummy || observation.Marker!=value.Marker || observation.Aim!=value.Aim)observationRevision++;
             observation=value;
         }
         private Features.WorldObjectText.WorldObjectSettings objectSettings = Features.WorldObjectText.WorldObjectSettings.Default;
