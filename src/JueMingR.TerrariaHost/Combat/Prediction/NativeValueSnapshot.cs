@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static bool Supported(Type type)
         {return Scalar(type) || type.IsArray && type.GetArrayRank()==1 && Scalar(type.GetElementType());}
         private static bool Scalar(Type type)
-        {return type.IsPrimitive && type!=typeof(IntPtr) && type!=typeof(UIntPtr) || type.IsEnum || type==typeof(Vector2) || type==typeof(Rectangle) || type==typeof(Color) || type==typeof(Terraria.BitsByte) || type==typeof(Terraria.DataStructures.ProjectileKey);}
+        {return type.IsPrimitive && type!=typeof(IntPtr) && type!=typeof(UIntPtr) || type.IsEnum || type==typeof(float?) || type==typeof(Vector2) || type==typeof(Rectangle) || type==typeof(Color) || type==typeof(Terraria.BitsByte) || type==typeof(Terraria.DataStructures.ProjectileKey);}
         internal void Write(BinaryWriter writer,object value)
         {
             writer.Write(Schema);writeFields(writer,value);
@@ -75,6 +75,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private static void WriteValue(BinaryWriter w,Color p){w.Write(p.PackedValue);}
         private static void WriteValue(BinaryWriter w,Terraria.BitsByte p){w.Write((byte)p);}
         private static void WriteValue(BinaryWriter w,Terraria.DataStructures.ProjectileKey p){w.Write((uint)p);}
+        // Main's effective Journey difficulty is a nullable scalar. Null means
+        // use the persistent base mode; losing a non-null value changes native
+        // expert/master rules in the receiver even when GameMode is unchanged.
+        private static void WriteValue(BinaryWriter w,float? value)
+        {w.Write(value.HasValue);if(value.HasValue)w.Write(Finite(value.Value));}
         private static void WriteArray(BinaryWriter writer,Array array,Type element)
         {
             // The measured production cost includes repeated alignment hashes.
@@ -108,6 +113,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static void WriteScalar(BinaryWriter w,Type t,object v)
         {
+            if(t==typeof(float?)){WriteValue(w,(float?)v);return;}
             if(t.IsEnum){WriteScalar(w,Enum.GetUnderlyingType(t),Convert.ChangeType(v,Enum.GetUnderlyingType(t)));return;}
             if(t==typeof(Vector2)){var p=(Vector2)v;w.Write(p.X);w.Write(p.Y);return;}
             if(t==typeof(Rectangle)){var p=(Rectangle)v;w.Write(p.X);w.Write(p.Y);w.Write(p.Width);w.Write(p.Height);return;}
@@ -127,6 +133,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static object ReadScalar(BinaryReader r,Type t)
         {
+            if(t==typeof(float?))return r.ReadBoolean()?(object)Finite(r.ReadSingle()):null;
             if(t.IsEnum)return Enum.ToObject(t,ReadScalar(r,Enum.GetUnderlyingType(t)));
             if(t==typeof(Vector2))return new Vector2(Finite(r.ReadSingle()),Finite(r.ReadSingle()));
             if(t==typeof(Rectangle))return new Rectangle(r.ReadInt32(),r.ReadInt32(),r.ReadInt32(),r.ReadInt32());

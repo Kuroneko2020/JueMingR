@@ -14,6 +14,9 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "Journey") return NativeJourneyChecks.Run(content, output);
+            if (scope == "JourneyCpu") return NativeJourneyChecks.RunCpu(content, output);
+            if (scope == "JourneyPredictionCpu") return NativeJourneyPredictionChecks.Run(content, output);
             if(scope=="InputBoundary")return NativeOuterInputBoundaryChecks.Check(output);
             if(scope=="NpcSelectedContinuation")
             {

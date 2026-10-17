@@ -31,6 +31,66 @@ namespace JueMingR.TerrariaHost.F5
         internal Feedback.LocalShortFeedback ShortFeedback;
         private readonly HostHotkeys hotkeys;
         private readonly HiddenFeatureAccess hiddenAccess;
+        private IJourneyControls journey;
+        private bool journeyLeavePending;
+        internal void AttachJourney(IJourneyControls owner)
+        { journey = owner; renderer.JourneyControls = owner == null ? null : new JourneyControls(owner); }
+
+        internal void ToggleJourneyFromHotkey() { RequestJourneyCommand(F5Command.None, true); }
+        private void RequestJourneyCommand(F5Command command, bool hotkey)
+        {
+            if (journey == null || hiddenAccess == null || !hiddenAccess.IsUnlocked || journeyLeavePending) return;
+            bool opens = command == F5Command.OpenJourney || command == F5Command.EnableJourney || command == F5Command.None && !journey.IsActive;
+            if (opens && !journey.CanEnable) return;
+            // Own the accepted gesture now, including when Notes must await a
+            // save. Delayed navigation must not leak its original native key.
+            inputState.Hotkeys.SuppressHeld(); inputState.ConsumeHotkeyActions();
+            // Close/recovery is not coupled to F5 visibility or enable readiness.
+            if (!opens) { ExecuteJourneyCommand(command, hotkey); return; }
+            if (State.Visible && State.Page == 4)
+            {
+                journeyLeavePending = true;
+                if (!notes.RequestSafeLeave(success =>
+                {
+                    journeyLeavePending = false;
+                    if (!success || failed || !CanPresentNow) return;
+                    // Notes completes its safe save/navigation first. Restore the
+                    // shell in this same callback until the native open succeeds;
+                    // a failed open leaves the original editor reachable.
+                    State.RestoreVisible();
+                    ExecuteJourneyCommand(command, hotkey);
+                })) journeyLeavePending = false;
+                return;
+            }
+            if (State.Visible && State.BeforeLeave != null && !State.BeforeLeave(-1)) return;
+            ExecuteJourneyCommand(command, hotkey);
+        }
+        private void ExecuteJourneyCommand(F5Command command, bool hotkey)
+        {
+            bool succeeded = false;
+            Action execute = () =>
+            {
+                // Retain the full opening chord/release. This is an explicit UI
+                // handoff, never a blanket native CreativeUI input filter.
+                inputState.Hotkeys.SuppressHeld(); inputState.ConsumeHotkeyActions();
+                succeeded = command == F5Command.OpenJourney ? journey.Open() : command == F5Command.None ? journey.Toggle() : journey.SetEnabled(command == F5Command.EnableJourney);
+            };
+            if (hotkey && hotkeys?.Feedback != null)
+                hotkeys.Feedback.Immediate(JourneyControls.ActionId, "旅行菜单", execute, () => journey.IsActive ? 1 : 0,
+                    () => succeeded && hiddenAccess.IsUnlocked)();
+            else execute();
+            if (!succeeded)
+            {
+                string message = journey.LastFailure ?? journey.UnavailableReason;
+                if (!string.IsNullOrEmpty(message))
+                    try { ShortFeedback?.Show("journey.failure", message, false, () => journey.LastFailure == message || journey.UnavailableReason == message, ShortFeedback.Capture()); } catch { }
+                return;
+            }
+            if (journey.IsMenuOpen)
+            {
+                CloseAndSubmitPosition(); RestoreLeases();
+            }
+        }
         internal QuickItems.HostQuickItems QuickItems { get; set; }
         private CoinDeposit.HostCoinDeposit coinDeposit;
         private Processing.HostProcessing processing;
@@ -178,18 +238,33 @@ namespace JueMingR.TerrariaHost.F5
         // permission excludes public UI owners without banning those contexts.
         internal bool CanProcessingInput {get{return CanProcessingActions(true) && !OwnsPointer;}}
         internal bool CanAutomaticProcessingInput {get{return CanProcessingActions(false) && CanAutomaticMouseInterface;}}
-        private bool CanProcessingActions(bool requireFocus){return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) &&
+        private bool CanProcessingActions(bool requireFocus){return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !NativeJourneyInputBusy &&
             !inputState.HotkeyCapture && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow;}
         // Opening F5 is not a gameplay barrier. Only its actual text/gesture
         // owners may conflict. While focused, automatic work may coexist with
         // our proven hover lease, never a foreign one. In the background that
         // Draw-owned flag can be stale; actual owners have separate gates.
-        internal bool CanAutomaticMouseInterface {get{return !inputState.IsFocused || Main.LocalPlayer!=null &&
-            (!Main.LocalPlayer.mouseInterface || ReferenceEquals(leasedPlayer,Main.LocalPlayer) && !priorMouseInterface);}}
+        internal bool CanAutomaticMouseInterface {get{return !NativeJourneyInputBusy && (!inputState.IsFocused || Main.LocalPlayer!=null &&
+            (!Main.LocalPlayer.mouseInterface || ReferenceEquals(leasedPlayer,Main.LocalPlayer) && !priorMouseInterface));}}
+        // Vanilla clears mouseInterface at the start of Draw and keeps its last
+        // value for consumers. Respect real creative hover/text/item ownership
+        // even in the background; an active session with a closed window has no
+        // input claim. These gates only admit new work, never retire receipts.
+        private bool NativeJourneyInputBusy
+        {
+            get
+            {
+                Player player = Main.LocalPlayer;
+                return journey != null && journey.IsMenuOpen && (Main.CurrentInputTextTakerOverride != null || PlayerInput.WritingText ||
+                    Main.mouseItem != null && Main.mouseItem.stack > 0 || player != null &&
+                    (player.mouseInterface && !(ReferenceEquals(leasedPlayer, player) && !priorMouseInterface) || player.lastMouseInterface && !State.Visible));
+            }
+        }
+        internal bool CanStartJourneyItemOperation { get { return !NativeJourneyInputBusy; } }
         private bool CanFishingEquipmentInput {get{return CanAutomaticProcessingInput;}}
         internal bool CanAutomaticBuff {get{return CanAutomaticTargetInput;}}
         private bool CanTargetActions(bool requireFocus)
-        { return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture && Main.LocalPlayer != null && Main.LocalPlayer.talkNPC < 0 && Main.LocalPlayer.sign < 0 && Main.npcShop == 0 && string.IsNullOrEmpty(Main.npcChatText) && !Main.clothesWindow && !Main.hairWindow && !(information != null && information.Adjustment.Active) && !adjustmentPending; }
+        { return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !NativeJourneyInputBusy && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture && Main.LocalPlayer != null && Main.LocalPlayer.talkNPC < 0 && Main.LocalPlayer.sign < 0 && Main.npcShop == 0 && string.IsNullOrEmpty(Main.npcChatText) && !Main.clothesWindow && !Main.hairWindow && !(information != null && information.Adjustment.Active) && !adjustmentPending; }
         internal bool BlocksMapInput { get { return failed || State.Visible || notes.OwnsPointer || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || MapPopup != null && MapPopup.Visible; } }
         internal void CloseForMapLocate() { CombatInterval?.Cancel(); CombatRadius?.Cancel(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); }
         internal void OpenHotkey(string id, F5Rect rect)
@@ -280,7 +355,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void BeforeInput()
-        { try { CheckLabelSession(); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); RecoveryUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
+        { try { hotkeys?.PollJourneyRegistration(); CheckLabelSession(); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); RecoveryUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
 
         internal void ProcessInput()
         {
@@ -297,6 +372,8 @@ namespace JueMingR.TerrariaHost.F5
                     PlayerInput.MouseInfo.Y * PlayerInput.RawMouseScale.Y);
                 KeyboardState keySample = inputState.KeyboardSample;
                 bool f5 = !(TargetGestureBusy?.Invoke() ?? false) && keySample.IsKeyDown(Keys.F5) && !inputState.Hotkeys.IsSuppressed((int)Keys.F5) && !(HotkeyPopup != null && HotkeyPopup.Capturing);
+                if (f5 && !State.Visible && inputState.CanUseInput && journey != null && journey.IsMenuOpen)
+                    journey.CloseMenu();
                 // Map/camera requests precede their modal flags and draw layers.
                 // The shell and Notes must yield the same newly sampled input.
                 bool inputActive = !failed && CanPresentNow && inputState.CanUseInput && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode;
@@ -435,6 +512,8 @@ namespace JueMingR.TerrariaHost.F5
                 }
                 else { renderer.EntityControls?.Execute(State.Command); renderer.WorldControls?.Execute(State.Command); renderer.ObjectControls?.Execute(State.Command);
                     renderer.GuidanceControls?.Execute(State.Command);
+                    if (JourneyControls.Owns(State.Command) && renderer.JourneyControls != null && renderer.JourneyControls.Available(State.Command))
+                        RequestJourneyCommand(State.Command, false);
                     renderer.CombatControls?.Execute(State.Command);
                     renderer.CombatObservationControls?.Execute(State.Command);
                     if (State.Command == F5Command.AboutRevealHidden)
@@ -444,6 +523,7 @@ namespace JueMingR.TerrariaHost.F5
                         if (State.Layout.About.CompleteTitleClick(State.TitleClickMilliseconds, State.TitleClickIdentity))
                         {
                             State.Layout.SetHiddenFeaturesVisible(true);
+                            hotkeys?.PollJourneyRegistration();
                             try { ShortFeedback?.Show("hidden-entry.revealed", "隐藏功能已显示", true, () => hiddenAccess.IsUnlocked, ShortFeedback.Capture()); }
                             catch { /* A presentation failure cannot revoke access or repeat the gesture. */ }
                         }
@@ -456,6 +536,13 @@ namespace JueMingR.TerrariaHost.F5
                     !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(DeathPopup != null && DeathPopup.Visible) && !(MapPopup != null && MapPopup.Visible) && !(FootprintPopup != null && FootprintPopup.Visible) && !(RecoveryUi != null && RecoveryUi.Selecting) && !(items != null && items.Selecting) &&
                     !(Main.LocalPlayer != null && Main.LocalPlayer.mouseInterface);
                 hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, gameplay);
+                // Native CreativeUI owns mouseInterface while hovered. Its own
+                // switch must still be able to close the active R session; text
+                // entry/capture continues to protect ordinary typed characters.
+                bool journeyClose = journey != null && journey.IsActive && inputActive && !journeyLeavePending &&
+                    !inputState.HotkeyCapture && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText &&
+                    !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible);
+                hotkeys?.Bindings.Dispatch(inputState.Hotkeys, HotkeyContext.SinglePlayer, journeyClose && Main.netMode == 0, JourneyControls.ActionId);
                 QuickItems?.AfterDispatch(gameplay);
                 // Older development profiles have no target owner or actions;
                 // do not evaluate the new native observation gate for them.
