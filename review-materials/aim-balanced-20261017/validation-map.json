@@ -1,0 +1,1842 @@
+{
+  "schema": "aim-balanced-validation-map-1",
+  "productCommit": "7a8f18a475e43f985cc761295f03a4cfbe844e05",
+  "taskBase": "112e9d629e3caf75c5d2ed9d021ac9c255b68e34",
+  "checks": [
+    {
+      "name": "balanced-r06",
+      "result": "PASS_DECLARED_SCOPE",
+      "scope": "19 public/native scenarios",
+      "actualSource": "ADBD69647EE43A3287DED2AE278BC5329C3E8C299E5D8407B501AF87FBD8027B",
+      "actualCompile": "D49C1E3BCA39219F6B642498C874F0F425C57CF127B929B6D2AE8A932CDFAAAA",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/balanced-r06.log",
+          "length": 132489,
+          "sha256": "00450F93A2C47E755D9A7BD0205BB21A9FA80ACAD0E9A0127F00CB4ACD8BBEB5"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/balanced-r06/source-build-record.json",
+          "length": 117755,
+          "sha256": "1A4898B0268CE21A66EDC50A5CDF868665FDA22AABD948657397DBCE877DC26F"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/balanced-r06/source-inputs.json",
+          "length": 204753,
+          "sha256": "F58B6867AFFC3D52CC88662A4B5D14D29236DBE28EE4C1B9AF97B36F5070684F"
+        }
+      ]
+    },
+    {
+      "name": "modes-r10",
+      "result": "PASS_DECLARED_SCOPE",
+      "scope": "16 selection/mode pairs",
+      "actualSource": "9A0A292DE908C67D3E5A981EE789C971B1D4C685DCB87143F3C2490C0842BC50",
+      "actualCompile": "D6C51BB664D9EE047A267C0228AA58F36D175CBC7B004227D315B8A742E47DCC",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/modes-r10.log",
+          "length": 4447,
+          "sha256": "75C232C0EB9101EEA8614F8ADEE30F168317BF97FE4BB15480F223854850F5FE"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/modes-r10/source-build-record.json",
+          "length": 117755,
+          "sha256": "0D5A6F6280D1B24841DAC69729B6FCFCF397230C423A9AE5B371A5BC89F758F8"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/modes-r10/source-inputs.json",
+          "length": 204753,
+          "sha256": "F58B6867AFFC3D52CC88662A4B5D14D29236DBE28EE4C1B9AF97B36F5070684F"
+        }
+      ]
+    },
+    {
+      "name": "safety-r13",
+      "result": "PASS_DECLARED_SCOPE",
+      "scope": "sentry/MagicString/ordinary yoyo/navigation",
+      "actualSource": "9A0A292DE908C67D3E5A981EE789C971B1D4C685DCB87143F3C2490C0842BC50",
+      "actualCompile": "D6C51BB664D9EE047A267C0228AA58F36D175CBC7B004227D315B8A742E47DCC",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/safety-r13.log",
+          "length": 100184,
+          "sha256": "16B80094BD1FC7B0B453BED1D8966913BDD94223D8407A18A4EC61F5681A2A6D"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/safety-r13/source-build-record.json",
+          "length": 117755,
+          "sha256": "0D5A6F6280D1B24841DAC69729B6FCFCF397230C423A9AE5B371A5BC89F758F8"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/safety-r13/source-inputs.json",
+          "length": 204753,
+          "sha256": "D1CD21F8631606D21B524530643B36EA4DABD20AD5BCB15F2EA30CAF24C5713D"
+        }
+      ]
+    },
+    {
+      "name": "phase-r13",
+      "result": "PASS_DECLARED_SCOPE",
+      "scope": "private fresh-hand timers and Eventide phase",
+      "actualSource": "CFA4017A278291DFCD56D2595FEA84CAAFB21FC0CD3A089F44B704E6E4414965",
+      "actualCompile": "1E4E1554739781DA81BA21AF1D65D2D3B13CB162EDDA126ACA412C92E4B77BEE",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/phase-r13.log",
+          "length": 1155,
+          "sha256": "EF92B95CB07DF588210D63BE390ABD5AB7B7FC0D320627C776F58F45788BD240"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/phase-r13/source-build-record.json",
+          "length": 117863,
+          "sha256": "4C6683A6E004F31069CC3DC2C154A53A4DF2F8AC8ABB80B11C15189ACD7C802B"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/phase-r13/source-inputs.json",
+          "length": 204753,
+          "sha256": "D1CD21F8631606D21B524530643B36EA4DABD20AD5BCB15F2EA30CAF24C5713D"
+        }
+      ]
+    },
+    {
+      "name": "shot5382-r13",
+      "result": "PASS_DECLARED_SCOPE",
+      "scope": "natural shootsEveryUse",
+      "actualSource": "CFA4017A278291DFCD56D2595FEA84CAAFB21FC0CD3A089F44B704E6E4414965",
+      "actualCompile": "1E4E1554739781DA81BA21AF1D65D2D3B13CB162EDDA126ACA412C92E4B77BEE",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/shot5382-r13.log",
+          "length": 3051,
+          "sha256": "6EB44E23F4A548BFFE17291568B161E2C84CD01B7D5E6DF226AFE15F5328C442"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/shot5382-r13/source-build-record.json",
+          "length": 117863,
+          "sha256": "4C6683A6E004F31069CC3DC2C154A53A4DF2F8AC8ABB80B11C15189ACD7C802B"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/shot5382-r13/source-inputs.json",
+          "length": 204753,
+          "sha256": "D1CD21F8631606D21B524530643B36EA4DABD20AD5BCB15F2EA30CAF24C5713D"
+        }
+      ]
+    },
+    {
+      "name": "motion-r14",
+      "result": "PASS_DECLARED_SCOPE",
+      "scope": "16 local original motion receive checks",
+      "actualSource": "A8995559B5F417E6E5AEACEB14E81833CDE2D93C1AF688677B3438C455D47DE3",
+      "actualCompile": "D6C51BB664D9EE047A267C0228AA58F36D175CBC7B004227D315B8A742E47DCC",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/motion-r14.log",
+          "length": 4277,
+          "sha256": "578FC81A14E8EF57B8C17554F892F22A1C2B1AB8705600CF3C0EC86F27C59618"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/motion-r14/source-build-record.json",
+          "length": 117755,
+          "sha256": "051D5FE693D41C9157155DA8EB7869D5C1943B71AED04533956834CD7C917C44"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/motion-r14/source-inputs.json",
+          "length": 204753,
+          "sha256": "387386F9290CEAFEF41A33B80D55D7C3C7A9906B044F57E3E0A44D1560C21B6F"
+        }
+      ]
+    },
+    {
+      "name": "boundaries-r15",
+      "result": "PASS_DECLARED_SCOPE",
+      "scope": "4 original accepted-hit scenes and six cancellation boundaries",
+      "actualSource": "E3BA1267F864E09F9B8FBF829370B503ADABF2F3D407CB57601B975C7DB764FB",
+      "actualCompile": "C7C03420A0E16716CC434201049F2A3BE42C2AE56F71102F6E4B744BC9A263BC",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/boundaries-r15.log",
+          "length": 6325,
+          "sha256": "C8D590D182C66B900BF1619EDA9EA74C42017E9D08E44F888934019DB6C4B6F6"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/boundaries-r15/source-build-record.json",
+          "length": 117871,
+          "sha256": "1C525678E9B7F98E5A28D537896A4670A9003A49F81CB2F735BE4851F9F27F81"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/boundaries-r15/source-inputs.json",
+          "length": 205767,
+          "sha256": "11DD3B4CB8B1F7BF0573C20D2053C036673FE79C82F841804E003864DC661337"
+        }
+      ]
+    },
+    {
+      "name": "ammoswap-r15",
+      "result": "PASS_DECLARED_SCOPE",
+      "scope": "real3475 release/new holder/selected silver ammo receive",
+      "actualSource": "E3BA1267F864E09F9B8FBF829370B503ADABF2F3D407CB57601B975C7DB764FB",
+      "actualCompile": "BFB1E4C0CFCF9BA9816053EE4C8C78ED834670BF4AA1E3B2D674E62015044A76",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/ammoswap-r15.log",
+          "length": 10943,
+          "sha256": "1353F670CB87437314BCF3E2FF7694652CA7C3521BB8F7DFE600599AF3BB046D"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/ammoswap-r15/source-build-record.json",
+          "length": 117979,
+          "sha256": "357AE64637B3A52268C270BB275C05CD08E549363C9E3AC92F54A96D64AEE1C1"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/ammoswap-r15/source-inputs.json",
+          "length": 205767,
+          "sha256": "11DD3B4CB8B1F7BF0573C20D2053C036673FE79C82F841804E003864DC661337"
+        }
+      ]
+    },
+    {
+      "name": "architecture-combat-r14",
+      "result": "PASS_DECLARED_SCOPE",
+      "scope": "architecture-combat-r14",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/architecture-combat-r14.log",
+          "length": 126,
+          "sha256": "1A61DD9ED16DCF68918C3D0D42949A589D0B14CBDD8E71B1E009D18DA9E96724"
+        }
+      ]
+    },
+    {
+      "name": "routing-r15",
+      "result": "PASS_DECLARED_SCOPE",
+      "scope": "routing-r15",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/routing-r15.log",
+          "length": 15987,
+          "sha256": "D07F25F3A28E1B99E975EAF8DD74D5DC753AB69CAB5FA5ABF70CE46CB10477ED"
+        }
+      ]
+    }
+  ],
+  "ordinaryMain": [
+    {
+      "name": "base-1229-r02",
+      "driverSha": "FE8893C37A948923F56A9CA3EE104C253BE157E6746EA9CF91DA6E858153B97D",
+      "hostSha": "07CE753C17E2821C6795B5F9B1592D10F7E5B8B9EEC6124109FBA5F3DA7699AA",
+      "guc": 600,
+      "presents": 4007,
+      "qualityByType": {
+        "1": {
+          "births": 43,
+          "enhanced": 0,
+          "basic": 43,
+          "unbound": 0,
+          "hits": 8,
+          "firstBirth": 121,
+          "firstHit": 162,
+          "intervals": [
+            0,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            0,
+            19,
+            0,
+            0,
+            19,
+            0,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0
+          ],
+          "lastBirth": 463
+        },
+        "720": {
+          "births": 1,
+          "enhanced": 0,
+          "basic": 0,
+          "unbound": 1,
+          "hits": 0,
+          "firstBirth": 434,
+          "firstHit": null,
+          "intervals": [],
+          "lastBirth": 434
+        }
+      },
+      "presentation": {
+        "draws": 4006,
+        "selected": 4006,
+        "pathPublished": 4005,
+        "pathDrawn": 4004,
+        "maxDisplayCount": 121
+      },
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/base-1229-r02/receipt.json",
+          "length": 1615,
+          "sha256": "E8D994CEEBDFB621433C6B6D0D48F7341BAA1AB450C6F9521594C8E04E985EBF"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-1229-r02/out/main-loop-frames.csv",
+          "length": 1264612,
+          "sha256": "6D82E1F8FC272E78C850181B41BEF5C755E156FC73E0FA919692A4B247CE798F"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-1229-r02/out/main-window-process-cpu.csv",
+          "length": 144,
+          "sha256": "19CE34B3D25D4FC245972E7C716B73C47714963F51ADB3FAFBF6302EC09E4D36"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-1229-r02/out/world-smoke-frames.csv",
+          "length": 79207,
+          "sha256": "F5F45BF3A0CBDF4CCD9EB8B09861C49E3C5190BCF966066A8D347C82186DB629"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-1229-r02/out/native-birth-inputs.csv",
+          "length": 4038,
+          "sha256": "4F09EAE5A49187286B31576876032A2C4C2A8CA23FE1452238743462D2C7A52D"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-1229-r02/out/native-hit-events.csv",
+          "length": 400,
+          "sha256": "FFC8B293F7374BA6153400C29A9CAFD210FB77B9C8C93A7A20DF6FCDCB095668"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-1229-r02/out/main-draw-presentation.csv",
+          "length": 334487,
+          "sha256": "2903CCBE11737A44A857104D5DFC1AEA643DD0CAC9D20030B4BFCAB6812A7DDB"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-1229-r02/out/world-smoke-summary.txt",
+          "length": 780,
+          "sha256": "C90E04A88CFEA32217EDE6CB3C9631009F8CDD40E676DC876FBD1094B088A0D5"
+        }
+      ]
+    },
+    {
+      "name": "new-1229-r03",
+      "driverSha": "FE8893C37A948923F56A9CA3EE104C253BE157E6746EA9CF91DA6E858153B97D",
+      "hostSha": "135AA995190886700B8240D11B88BDB76EC817FEBF761D59D14E4466E23841FE",
+      "guc": 600,
+      "presents": 3986,
+      "qualityByType": {
+        "1": {
+          "births": 43,
+          "enhanced": 38,
+          "basic": 5,
+          "unbound": 0,
+          "hits": 25,
+          "firstBirth": 121,
+          "firstHit": 162,
+          "intervals": [
+            0,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0,
+            0,
+            19,
+            0,
+            0,
+            19,
+            0,
+            0,
+            19,
+            0,
+            19,
+            0,
+            19,
+            0
+          ],
+          "lastBirth": 463
+        },
+        "720": {
+          "births": 1,
+          "enhanced": 0,
+          "basic": 0,
+          "unbound": 1,
+          "hits": 0,
+          "firstBirth": 434,
+          "firstHit": null,
+          "intervals": [],
+          "lastBirth": 434
+        }
+      },
+      "presentation": {
+        "draws": 3985,
+        "selected": 3985,
+        "pathPublished": 3980,
+        "pathDrawn": 3980,
+        "maxDisplayCount": 121
+      },
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-r03/receipt.json",
+          "length": 1621,
+          "sha256": "8C03FDEA1C5FD345049573F20F7AAB2B837C862C50655F825D8ABD4319E8FDB0"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-r03/out/main-loop-frames.csv",
+          "length": 1214208,
+          "sha256": "E54D1E340D53AE8E5ACB5EBA7094BEFA2547F43F9A91B13D67D88A0E2479C40B"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-r03/out/main-window-process-cpu.csv",
+          "length": 140,
+          "sha256": "EDB871B343BCFA40720C5CFBD1525981EDC1B3E9D33E0398CE90923AB376882D"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-r03/out/world-smoke-frames.csv",
+          "length": 79433,
+          "sha256": "9C6C3178FF5AF37291530E7539A3746437ABB3C5390286F5F90E09CD7803CFBC"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-r03/out/native-birth-inputs.csv",
+          "length": 4281,
+          "sha256": "96B2833707231CA83C70D84D959FEB07E0837A1CB9A58371B2C07377AB92C352"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-r03/out/native-hit-events.csv",
+          "length": 1056,
+          "sha256": "407FCF4739B1662FFCE34FC5FFA185DFE662F88081D6C970A25C86D806038B6F"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-r03/out/main-draw-presentation.csv",
+          "length": 332973,
+          "sha256": "369D129C4E58F6A4F0ED34F7A5D88FEFDAF5275A520825AD66BD06948B42275E"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-r03/out/world-smoke-summary.txt",
+          "length": 781,
+          "sha256": "85FE33E37CAF302385684D83CB89376F6BEE794965257EA675661BDCEF1CC796"
+        }
+      ]
+    },
+    {
+      "name": "base-3475-r02",
+      "driverSha": "FE8893C37A948923F56A9CA3EE104C253BE157E6746EA9CF91DA6E858153B97D",
+      "hostSha": "07CE753C17E2821C6795B5F9B1592D10F7E5B8B9EEC6124109FBA5F3DA7699AA",
+      "guc": 600,
+      "presents": 4123,
+      "qualityByType": {
+        "615": {
+          "births": 1,
+          "enhanced": 0,
+          "basic": 1,
+          "unbound": 0,
+          "hits": 0,
+          "firstBirth": 121,
+          "firstHit": null,
+          "intervals": [],
+          "lastBirth": 121
+        },
+        "14": {
+          "births": 72,
+          "enhanced": 44,
+          "basic": 28,
+          "unbound": 0,
+          "hits": 18,
+          "firstBirth": 121,
+          "firstHit": 141,
+          "intervals": [
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5
+          ],
+          "lastBirth": 476
+        },
+        "616": {
+          "births": 10,
+          "enhanced": 7,
+          "basic": 3,
+          "unbound": 0,
+          "hits": 0,
+          "firstBirth": 141,
+          "firstHit": null,
+          "intervals": [
+            35,
+            35,
+            35,
+            35,
+            35,
+            35,
+            35,
+            35,
+            35
+          ],
+          "lastBirth": 456
+        },
+        "720": {
+          "births": 1,
+          "enhanced": 0,
+          "basic": 0,
+          "unbound": 1,
+          "hits": 0,
+          "firstBirth": 434,
+          "firstHit": null,
+          "intervals": [],
+          "lastBirth": 434
+        }
+      },
+      "presentation": {
+        "draws": 4122,
+        "selected": 4122,
+        "pathPublished": 4118,
+        "pathDrawn": 4118,
+        "maxDisplayCount": 121
+      },
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-r02/receipt.json",
+          "length": 1615,
+          "sha256": "74EAAB68F2F9BD5F9D40B74BDD2956690B31DD9F01538018F604F198024AE89C"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-r02/out/main-loop-frames.csv",
+          "length": 1150882,
+          "sha256": "556AC98ED8AD79072FD0EC26D50C5429D1CFEECF80350C6A245F65685AFEA411"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-r02/out/main-window-process-cpu.csv",
+          "length": 143,
+          "sha256": "522B360DE9BE0298B9B1BD7AA1C33C3F179FD6195992DE33B2B2EFF973C49726"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-r02/out/world-smoke-frames.csv",
+          "length": 80157,
+          "sha256": "C0005B766A5E0830C9923D35E6B44F0BB9C21FBA33B0DCBAC850DA229E6A2490"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-r02/out/native-birth-inputs.csv",
+          "length": 7974,
+          "sha256": "D2F4C2FE73382BA8F81631EDE1C1CDCB14437487989A73265F63DFC6570ABFBF"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-r02/out/native-hit-events.csv",
+          "length": 807,
+          "sha256": "A24B112C4A98820A139D48C79315EB4BFCCFB8B6DE2B090E2A2330C49F169542"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-r02/out/main-draw-presentation.csv",
+          "length": 344068,
+          "sha256": "A8F533E207100E19F724CDA1C7BE7C32F13AF0955F51559DB3F72B10C9341365"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-r02/out/world-smoke-summary.txt",
+          "length": 782,
+          "sha256": "8AEA3574C402C2243C98C1F8B3C9FE5B37E7760BF28B9DFA77147A04FFAF2581"
+        }
+      ]
+    },
+    {
+      "name": "new-3475-r03",
+      "driverSha": "FE8893C37A948923F56A9CA3EE104C253BE157E6746EA9CF91DA6E858153B97D",
+      "hostSha": "135AA995190886700B8240D11B88BDB76EC817FEBF761D59D14E4466E23841FE",
+      "guc": 600,
+      "presents": 2866,
+      "qualityByType": {
+        "615": {
+          "births": 1,
+          "enhanced": 0,
+          "basic": 1,
+          "unbound": 0,
+          "hits": 0,
+          "firstBirth": 121,
+          "firstHit": null,
+          "intervals": [],
+          "lastBirth": 121
+        },
+        "14": {
+          "births": 72,
+          "enhanced": 69,
+          "basic": 3,
+          "unbound": 0,
+          "hits": 18,
+          "firstBirth": 121,
+          "firstHit": 141,
+          "intervals": [
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5
+          ],
+          "lastBirth": 476
+        },
+        "616": {
+          "births": 10,
+          "enhanced": 10,
+          "basic": 0,
+          "unbound": 0,
+          "hits": 0,
+          "firstBirth": 141,
+          "firstHit": null,
+          "intervals": [
+            35,
+            35,
+            35,
+            35,
+            35,
+            35,
+            35,
+            35,
+            35
+          ],
+          "lastBirth": 456
+        },
+        "720": {
+          "births": 1,
+          "enhanced": 0,
+          "basic": 0,
+          "unbound": 1,
+          "hits": 0,
+          "firstBirth": 434,
+          "firstHit": null,
+          "intervals": [],
+          "lastBirth": 434
+        }
+      },
+      "presentation": {
+        "draws": 2865,
+        "selected": 2865,
+        "pathPublished": 2864,
+        "pathDrawn": 2863,
+        "maxDisplayCount": 121
+      },
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/new-3475-r03/receipt.json",
+          "length": 1621,
+          "sha256": "2AE0C5878BB1EFE4D0BD00BF7CE92A24299BB1B25476D4FD197BC91D26D95239"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-3475-r03/out/main-loop-frames.csv",
+          "length": 836679,
+          "sha256": "72FE3E2937AD744B0C51D7BA9212C3BD67D7182B20E03378379B53909DC334CC"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-3475-r03/out/main-window-process-cpu.csv",
+          "length": 144,
+          "sha256": "7D812E7E8F2FE6374416C58566101D7F967B67E1A1A63B742C449A913BE9FDCA"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-3475-r03/out/world-smoke-frames.csv",
+          "length": 79954,
+          "sha256": "3054897136367C57234ED2A748C51B49572485125C570682C41D4EF51F689DD0"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-3475-r03/out/native-birth-inputs.csv",
+          "length": 8174,
+          "sha256": "283F717344F31E70590A406FA364200C8511F35479540E188D5D4E185CCACF7A"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-3475-r03/out/native-hit-events.csv",
+          "length": 807,
+          "sha256": "A24B112C4A98820A139D48C79315EB4BFCCFB8B6DE2B090E2A2330C49F169542"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-3475-r03/out/main-draw-presentation.csv",
+          "length": 238792,
+          "sha256": "38C6F6EB59A0C8C2046917F4E32928F3FF9B4D08D8631B251253EBDC1DED2C60"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-3475-r03/out/world-smoke-summary.txt",
+          "length": 781,
+          "sha256": "F614352E7EA4611E4845C4EF2F652570047DA755A65E39ED6684E9C02AD0F726"
+        }
+      ]
+    },
+    {
+      "name": "base-yoyo-r02",
+      "driverSha": "FE8893C37A948923F56A9CA3EE104C253BE157E6746EA9CF91DA6E858153B97D",
+      "hostSha": "07CE753C17E2821C6795B5F9B1592D10F7E5B8B9EEC6124109FBA5F3DA7699AA",
+      "guc": 600,
+      "presents": 3179,
+      "qualityByType": {
+        "534": {
+          "births": 90,
+          "enhanced": 89,
+          "basic": 1,
+          "unbound": 0,
+          "hits": 0,
+          "firstBirth": 121,
+          "firstHit": null,
+          "intervals": [
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4
+          ],
+          "lastBirth": 477
+        }
+      },
+      "presentation": {
+        "draws": 3179,
+        "selected": 3179,
+        "pathPublished": 3116,
+        "pathDrawn": 3116,
+        "maxDisplayCount": 121
+      },
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/base-yoyo-r02/receipt.json",
+          "length": 1797,
+          "sha256": "454ABCE4CB7675D9831B9D48FEC8BCCBADCBECD3ED2D0B6D226DF4683D688289"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-yoyo-r02/out/main-loop-frames.csv",
+          "length": 978172,
+          "sha256": "9FE4580FD38F8096DC4CDB02B4771E8C3520064BC42634724828C6C19356D171"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-yoyo-r02/out/main-window-process-cpu.csv",
+          "length": 144,
+          "sha256": "2D5370489DBF2D9389132938EFC3C0F31793B75BC3A5B041990A118344DB47DD"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-yoyo-r02/out/world-smoke-frames.csv",
+          "length": 90189,
+          "sha256": "8E61E3ACC82DAD6B0562932F244CCD76FC93DE84260FC472A254DF2F8339F320"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-yoyo-r02/out/native-birth-inputs.csv",
+          "length": 9163,
+          "sha256": "B722E6A368F1CBEF2276E41FDDB9F160218EB7B2DC63E9F75C2C8FF1F04AE718"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-yoyo-r02/out/native-hit-events.csv",
+          "length": 1403,
+          "sha256": "563B2FC89B941992CF2142E55C27A320F534F22031F5FA4D5CB2CBB85192D18C"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-yoyo-r02/out/main-draw-presentation.csv",
+          "length": 249662,
+          "sha256": "5C0CE2A0CFA488770B87C17DBA9613E59A77CF7B6FADD599B61AC4D79B4D9B05"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-yoyo-r02/out/world-smoke-summary.txt",
+          "length": 790,
+          "sha256": "88EBE7A970B2AD7986970998B89B84DB267BC80CFFFC4CD0AA484FD60DB45BCF"
+        }
+      ]
+    },
+    {
+      "name": "new-yoyo-r03",
+      "driverSha": "FE8893C37A948923F56A9CA3EE104C253BE157E6746EA9CF91DA6E858153B97D",
+      "hostSha": "135AA995190886700B8240D11B88BDB76EC817FEBF761D59D14E4466E23841FE",
+      "guc": 600,
+      "presents": 3369,
+      "qualityByType": {
+        "534": {
+          "births": 90,
+          "enhanced": 89,
+          "basic": 1,
+          "unbound": 0,
+          "hits": 0,
+          "firstBirth": 121,
+          "firstHit": null,
+          "intervals": [
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4
+          ],
+          "lastBirth": 477
+        }
+      },
+      "presentation": {
+        "draws": 3368,
+        "selected": 3368,
+        "pathPublished": 3312,
+        "pathDrawn": 3311,
+        "maxDisplayCount": 121
+      },
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/new-yoyo-r03/receipt.json",
+          "length": 1803,
+          "sha256": "FB98700FB8B19A61B67E91A3ED6AFFCEB58FE52E61350C851752D6199225AF2F"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-yoyo-r03/out/main-loop-frames.csv",
+          "length": 1102192,
+          "sha256": "6B75AADDDC87FE9AFB6EAF5C4137356A24C17724C742ECB9600FEF811C538D9F"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-yoyo-r03/out/main-window-process-cpu.csv",
+          "length": 140,
+          "sha256": "BDE99F1737DF6E1A4C4DAC93F0690DABFCDB83154E84B8CA325B9A67B290825F"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-yoyo-r03/out/world-smoke-frames.csv",
+          "length": 90190,
+          "sha256": "E6DBC8689D7F43593BB2F0F998786C0AB22DFF29A4C88C960DCBB119870EF367"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-yoyo-r03/out/native-birth-inputs.csv",
+          "length": 9163,
+          "sha256": "B722E6A368F1CBEF2276E41FDDB9F160218EB7B2DC63E9F75C2C8FF1F04AE718"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-yoyo-r03/out/native-hit-events.csv",
+          "length": 1403,
+          "sha256": "563B2FC89B941992CF2142E55C27A320F534F22031F5FA4D5CB2CBB85192D18C"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-yoyo-r03/out/main-draw-presentation.csv",
+          "length": 265603,
+          "sha256": "98E939DF4476F9EC23B32BD67C48741E292F4EDA81090520DBA6E35C7E8EF0FF"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-yoyo-r03/out/world-smoke-summary.txt",
+          "length": 790,
+          "sha256": "35C5F6298310F722A146BA81BB7F24637BB3A5084B49BEC17DAFB6A7FC1018C1"
+        }
+      ]
+    },
+    {
+      "name": "new-path-r04",
+      "driverSha": "D8B2F500C78E38AECB87018571BC9C77D6F9474D5320E8A750D01EB2F7E3DAEF",
+      "hostSha": "135AA995190886700B8240D11B88BDB76EC817FEBF761D59D14E4466E23841FE",
+      "guc": 600,
+      "presents": 3474,
+      "qualityByType": {
+        "720": {
+          "births": 1,
+          "enhanced": 0,
+          "basic": 0,
+          "unbound": 1,
+          "hits": 0,
+          "firstBirth": 434,
+          "firstHit": null,
+          "intervals": [],
+          "lastBirth": 434
+        }
+      },
+      "presentation": {
+        "draws": 3473,
+        "selected": 3473,
+        "pathPublished": 3462,
+        "pathDrawn": 3462,
+        "maxDisplayCount": 112
+      },
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/new-path-r04/receipt.json",
+          "length": 1828,
+          "sha256": "9D2BB78F6D02D02C2F2548A0E5FDB2DA1D90AFA8287520629EB2101C4E2994DC"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-path-r04/out/main-loop-frames.csv",
+          "length": 1035096,
+          "sha256": "C9A89A74114036D7B042DF40075DAE9CA277A329D6C733A4BB8099A55B22FCAB"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-path-r04/out/main-window-process-cpu.csv",
+          "length": 144,
+          "sha256": "394AECFC8DCA218479AD9E5D6C47E85777E136C8B7E18F9C581C0CFA1DA8D0FB"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-path-r04/out/world-smoke-frames.csv",
+          "length": 87718,
+          "sha256": "AD7FCE86ED26BBC666758BEE9DC973F870F0AA855D67A5AE20029C16044DA7F0"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-path-r04/out/native-birth-inputs.csv",
+          "length": 241,
+          "sha256": "64A2E7676923E84B70AF7473BDD53C6787DDDAD7066F59B629BB0A8CE26B6700"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-path-r04/out/native-hit-events.csv",
+          "length": 92,
+          "sha256": "93B543AE03C2C68004B1B4056429F3C21F8D3B8399E2E2B30E48A1781FD9D868"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-path-r04/out/main-draw-presentation.csv",
+          "length": 273001,
+          "sha256": "9A18FFE307E43317C24DFFB703EE207C6399D0A02F1054B9A85F4B07AB351F84"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-path-r04/out/world-smoke-summary.txt",
+          "length": 784,
+          "sha256": "AD375F965E5D7D371CB9977BA0B33333DCD87B5DB77E006F64CA09C2BEEE180D"
+        }
+      ]
+    },
+    {
+      "name": "new-off-r04",
+      "driverSha": "D8B2F500C78E38AECB87018571BC9C77D6F9474D5320E8A750D01EB2F7E3DAEF",
+      "hostSha": "135AA995190886700B8240D11B88BDB76EC817FEBF761D59D14E4466E23841FE",
+      "guc": 600,
+      "presents": 4078,
+      "qualityByType": {
+        "720": {
+          "births": 1,
+          "enhanced": 0,
+          "basic": 0,
+          "unbound": 1,
+          "hits": 0,
+          "firstBirth": 434,
+          "firstHit": null,
+          "intervals": [],
+          "lastBirth": 434
+        }
+      },
+      "presentation": {
+        "draws": 4077,
+        "selected": 0,
+        "pathPublished": 0,
+        "pathDrawn": 0,
+        "maxDisplayCount": 0
+      },
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/new-off-r04/receipt.json",
+          "length": 1825,
+          "sha256": "8441EEB76E769169E240433B0FF8EB0B3FDB1B1B7DA3AEF59A0CD445E74DF6C1"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-off-r04/out/main-loop-frames.csv",
+          "length": 1292462,
+          "sha256": "8F6027625057C70F3C19DB8637718F4707652F7EEEC5E955442885EC47C7B66A"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-off-r04/out/main-window-process-cpu.csv",
+          "length": 144,
+          "sha256": "A745638D8C4D6BD2663B9E25F6BADED1FA5550F5F8AA55ED3E6838B89E43AE4C"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-off-r04/out/world-smoke-frames.csv",
+          "length": 87137,
+          "sha256": "F74C40BCE1D9AA9AFA8698E4A4BF3B9C414DBFEDD0356856B429CFFCE5E697BD"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-off-r04/out/native-birth-inputs.csv",
+          "length": 241,
+          "sha256": "64A2E7676923E84B70AF7473BDD53C6787DDDAD7066F59B629BB0A8CE26B6700"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-off-r04/out/native-hit-events.csv",
+          "length": 92,
+          "sha256": "93B543AE03C2C68004B1B4056429F3C21F8D3B8399E2E2B30E48A1781FD9D868"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-off-r04/out/main-draw-presentation.csv",
+          "length": 296211,
+          "sha256": "67221DFFF09596BB2F9977C56063D25BE0E8E8745D9454A1C0C36021A4205371"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-off-r04/out/world-smoke-summary.txt",
+          "length": 782,
+          "sha256": "DA4A2310BDF5D119834432BA92AF9B20906F6D21AEC89A2DABD903EC950887A5"
+        }
+      ]
+    }
+  ],
+  "diagnosticWork": [
+    {
+      "name": "base-3475-work-r04",
+      "driverSha": "ABAA7B578131FDC952844132394CD3B0BFE513F4322076E4C6982D3AE5FF795F",
+      "rows": [
+        {
+          "window": "firstAttack",
+          "method": "HostAttackAim.PrepareCore/1",
+          "calls": "38",
+          "inclusiveMs": "4.2262",
+          "observedExclusiveMs": "4.2262",
+          "generatedElements": "0"
+        },
+        {
+          "window": "firstAttack",
+          "method": "HostHeldAmmoFamilyAttack.CaptureForSolve/3",
+          "calls": "19",
+          "inclusiveMs": "4.9219",
+          "observedExclusiveMs": "4.9219",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostAttackAim.PrepareCore/1",
+          "calls": "104",
+          "inclusiveMs": "1.6976",
+          "observedExclusiveMs": "1.6976",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostHeldAmmoFamilyAttack.CaptureForSolve/3",
+          "calls": "52",
+          "inclusiveMs": "1.7956",
+          "observedExclusiveMs": "1.7956",
+          "generatedElements": "0"
+        },
+        {
+          "window": "released",
+          "method": "HostAttackAim.PrepareCore/1",
+          "calls": "2",
+          "inclusiveMs": "0.033",
+          "observedExclusiveMs": "0.033",
+          "generatedElements": "0"
+        }
+      ],
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-work-r04/receipt.json",
+          "length": 1738,
+          "sha256": "83D6EC9AE934D93D38AF928613AB4456DD30C554F109495471AC92788AC20B34"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-work-r04/out/balanced-work-probe.csv",
+          "length": 14079,
+          "sha256": "375E84398445C97F9E73414764138CE862839FFD92F4A974D27A2D2747DF7E66"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-work-r04/out/work-probe-boundaries.txt",
+          "length": 2400,
+          "sha256": "8DCF825C2A435A82BE09BACED470C4673D8E19D9883165300FE9A7A24C033146"
+        }
+      ]
+    },
+    {
+      "name": "new-3475-work-r04",
+      "driverSha": "ABAA7B578131FDC952844132394CD3B0BFE513F4322076E4C6982D3AE5FF795F",
+      "rows": [
+        {
+          "window": "firstAttack",
+          "method": "HostArrowFamilyAttack.StepMotor/7",
+          "calls": "726",
+          "inclusiveMs": "7.2789",
+          "observedExclusiveMs": "7.2789",
+          "generatedElements": "0"
+        },
+        {
+          "window": "firstAttack",
+          "method": "HostAttackAim.PrepareCore/1",
+          "calls": "38",
+          "inclusiveMs": "4.4816",
+          "observedExclusiveMs": "4.4816",
+          "generatedElements": "0"
+        },
+        {
+          "window": "firstAttack",
+          "method": "HostMotionAttackInputs.Generate/4",
+          "calls": "19",
+          "inclusiveMs": "5.3933",
+          "observedExclusiveMs": "5.3933",
+          "generatedElements": "54"
+        },
+        {
+          "window": "firstAttack",
+          "method": "HostRepresentativeAttack.PrepareMotion/8",
+          "calls": "19",
+          "inclusiveMs": "15.0171",
+          "observedExclusiveMs": "0.339",
+          "generatedElements": "0"
+        },
+        {
+          "window": "firstAttack",
+          "method": "HostRepresentativeAttack.Replay/9",
+          "calls": "18",
+          "inclusiveMs": "9.2848",
+          "observedExclusiveMs": "2.0059",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostArrowFamilyAttack.StepMotor/7",
+          "calls": "2184",
+          "inclusiveMs": "15.7535",
+          "observedExclusiveMs": "15.7535",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostAttackAim.PrepareCore/1",
+          "calls": "104",
+          "inclusiveMs": "1.1403",
+          "observedExclusiveMs": "1.1403",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostMotionAttackInputs.Generate/4",
+          "calls": "52",
+          "inclusiveMs": "5.324",
+          "observedExclusiveMs": "5.324",
+          "generatedElements": "156"
+        },
+        {
+          "window": "steady",
+          "method": "HostRepresentativeAttack.PrepareMotion/8",
+          "calls": "52",
+          "inclusiveMs": "23.1788",
+          "observedExclusiveMs": "0.4502",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostRepresentativeAttack.Replay/9",
+          "calls": "52",
+          "inclusiveMs": "17.4046",
+          "observedExclusiveMs": "1.6511",
+          "generatedElements": "0"
+        },
+        {
+          "window": "released",
+          "method": "HostAttackAim.PrepareCore/1",
+          "calls": "2",
+          "inclusiveMs": "0.0169",
+          "observedExclusiveMs": "0.0169",
+          "generatedElements": "0"
+        }
+      ],
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/new-3475-work-r04/receipt.json",
+          "length": 1744,
+          "sha256": "9E494BBE104B2941B6D524FE1D309374430A54783D9C0A4B7B00B48A300963AD"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-3475-work-r04/out/balanced-work-probe.csv",
+          "length": 14593,
+          "sha256": "7C899341E6C4D2BD88480B584A83D90075627A2AA9B0568E9699057C4C297531"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-3475-work-r04/out/work-probe-boundaries.txt",
+          "length": 2477,
+          "sha256": "1D49B0ED2C0111BFC771A1860477F8828BB46A99B6343DC02D03E6043EDA070A"
+        }
+      ]
+    },
+    {
+      "name": "base-1229-work-r04",
+      "driverSha": "ABAA7B578131FDC952844132394CD3B0BFE513F4322076E4C6982D3AE5FF795F",
+      "rows": [
+        {
+          "window": "firstAttack",
+          "method": "HostAttackAim.PrepareCore/1",
+          "calls": "10",
+          "inclusiveMs": "71.563",
+          "observedExclusiveMs": "66.8286",
+          "generatedElements": "0"
+        },
+        {
+          "window": "firstAttack",
+          "method": "HostHeldAmmoFamilyAttack.CaptureForSolve/3",
+          "calls": "10",
+          "inclusiveMs": "4.7344",
+          "observedExclusiveMs": "4.7344",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostAttackAim.PrepareCore/1",
+          "calls": "26",
+          "inclusiveMs": "146.6052",
+          "observedExclusiveMs": "146.0723",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostHeldAmmoFamilyAttack.CaptureForSolve/3",
+          "calls": "26",
+          "inclusiveMs": "0.5329",
+          "observedExclusiveMs": "0.5329",
+          "generatedElements": "0"
+        }
+      ],
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/base-1229-work-r04/receipt.json",
+          "length": 1738,
+          "sha256": "F868FA8C09C084E33C7AA001A7D9C57DD8F0351E4D2C56C2BF2A1566E55618F3"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-1229-work-r04/out/balanced-work-probe.csv",
+          "length": 14075,
+          "sha256": "485D2FAD608646E9654554825B2CF12411AF2F6BFDFBF0884CDBDE6C1F59EB99"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-1229-work-r04/out/work-probe-boundaries.txt",
+          "length": 2400,
+          "sha256": "8DCF825C2A435A82BE09BACED470C4673D8E19D9883165300FE9A7A24C033146"
+        }
+      ]
+    },
+    {
+      "name": "new-1229-work-r04",
+      "driverSha": "ABAA7B578131FDC952844132394CD3B0BFE513F4322076E4C6982D3AE5FF795F",
+      "rows": [
+        {
+          "window": "firstAttack",
+          "method": "HostArrowFamilyAttack.StepMotor/7",
+          "calls": "368",
+          "inclusiveMs": "3.6776",
+          "observedExclusiveMs": "3.6776",
+          "generatedElements": "0"
+        },
+        {
+          "window": "firstAttack",
+          "method": "HostAttackAim.PrepareCore/1",
+          "calls": "10",
+          "inclusiveMs": "20.4441",
+          "observedExclusiveMs": "12.0493",
+          "generatedElements": "0"
+        },
+        {
+          "window": "firstAttack",
+          "method": "HostMotionAttackInputs.Generate/4",
+          "calls": "9",
+          "inclusiveMs": "3.9605",
+          "observedExclusiveMs": "3.9605",
+          "generatedElements": "24"
+        },
+        {
+          "window": "firstAttack",
+          "method": "HostRepresentativeAttack.PrepareMotion/8",
+          "calls": "9",
+          "inclusiveMs": "8.3948",
+          "observedExclusiveMs": "0.1798",
+          "generatedElements": "0"
+        },
+        {
+          "window": "firstAttack",
+          "method": "HostRepresentativeAttack.Replay/9",
+          "calls": "8",
+          "inclusiveMs": "4.2545",
+          "observedExclusiveMs": "0.5769",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostArrowFamilyAttack.StepMotor/7",
+          "calls": "1196",
+          "inclusiveMs": "7.3731",
+          "observedExclusiveMs": "7.3731",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostAttackAim.PrepareCore/1",
+          "calls": "26",
+          "inclusiveMs": "10.1852",
+          "observedExclusiveMs": "1.1064",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostMotionAttackInputs.Generate/4",
+          "calls": "26",
+          "inclusiveMs": "0.5908",
+          "observedExclusiveMs": "0.5908",
+          "generatedElements": "78"
+        },
+        {
+          "window": "steady",
+          "method": "HostRepresentativeAttack.PrepareMotion/8",
+          "calls": "26",
+          "inclusiveMs": "9.0788",
+          "observedExclusiveMs": "0.1774",
+          "generatedElements": "0"
+        },
+        {
+          "window": "steady",
+          "method": "HostRepresentativeAttack.Replay/9",
+          "calls": "26",
+          "inclusiveMs": "8.3106",
+          "observedExclusiveMs": "0.9375",
+          "generatedElements": "0"
+        }
+      ],
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-work-r04/receipt.json",
+          "length": 1744,
+          "sha256": "78D678828CE975B6C1C329038A9185C3CD1BBE59C1EAE71719F9E8DAD3433F2A"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-work-r04/out/balanced-work-probe.csv",
+          "length": 14579,
+          "sha256": "5A2FE873A9CDAF84DAC54DAC8FD6C0F7F80AECD22CBDD0B8865BE2D28A8528E4"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-work-r04/out/work-probe-boundaries.txt",
+          "length": 2477,
+          "sha256": "1D49B0ED2C0111BFC771A1860477F8828BB46A99B6343DC02D03E6043EDA070A"
+        }
+      ]
+    }
+  ],
+  "failureDispositions": [
+    {
+      "name": "prepare-debug-r01",
+      "disposition": "PRODUCT_FIXED",
+      "cause": "new production partial files lacked Platform.Combat using",
+      "resolution": "B added namespace import; r02 compile succeeded",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/prepare-debug-r01.log",
+          "length": 4094,
+          "sha256": "BB59467B4714872163CADDB227808DFCAB17E056E2A78778DBD2B8A329A28FAB"
+        }
+      ]
+    },
+    {
+      "name": "slice-1229-r01",
+      "disposition": "TEST_CORRECTED",
+      "cause": "A/B production changed during run; end fingerprint rejected despite successful behavior",
+      "resolution": "r06 immutable-source window",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/slice-1229-r01.log",
+          "length": 4729,
+          "sha256": "5C0AE8EA0098CF6FE668969CEE09E7E66A7DB3C9993062FE5528E4E021547AC2"
+        }
+      ]
+    },
+    {
+      "name": "balanced-r03",
+      "disposition": "TEST_CORRECTED",
+      "cause": "manual Projectile.Update loop omitted real BeforeProjectileWorld hook",
+      "resolution": "use original Main.UpdateWorld_Projectiles",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/balanced-r03.log",
+          "length": 50945,
+          "sha256": "452461B14B7C2BFA84F7EF20BEE493C3AB9C169F5932F9E008261833F6718CC7"
+        }
+      ]
+    },
+    {
+      "name": "balanced-r04",
+      "disposition": "PRODUCT_FIXED",
+      "cause": "old spear PreferredRange returned16 for343/1107",
+      "resolution": "real birth delay/distance bounded range plus legal representative branch",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/balanced-r04.log",
+          "length": 84749,
+          "sha256": "CAC9DC78035451D7356D943CE4291CC97FC50C163895575AE1A7452778469BB0"
+        }
+      ]
+    },
+    {
+      "name": "balanced-r05",
+      "disposition": "TEST_CORRECTED",
+      "cause": "main counter omitted native1108/1109 variants",
+      "resolution": "count full1107..1109 major shard family; r06",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/balanced-r05.log",
+          "length": 133023,
+          "sha256": "0E40E69DC42F55982CFD6C802541B7798F0D18547B706D296EA5907BB8DF23E4"
+        }
+      ]
+    },
+    {
+      "name": "modes-r07",
+      "disposition": "TEST_CORRECTED",
+      "cause": "artificial NPC AI combination not a valid path-positive oracle; unique production cause unresolved",
+      "resolution": "legal original placed AI92 dummy scene; no product claim from r07",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/modes-r07.log",
+          "length": 4490,
+          "sha256": "0D1476398292A891393A580EB5CF90EB99A485D76FA8E275AA8688E871978E96"
+        }
+      ]
+    },
+    {
+      "name": "modes-r08",
+      "disposition": "TEST_CORRECTED",
+      "cause": "empty NpcIdentity slot assumed minus1",
+      "resolution": "use selection.HasTarget",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/modes-r08.log",
+          "length": 2493,
+          "sha256": "E53A980B486532F5A52A829D9AB859D60708E4F77B86E261155D7DC3E0975AA4"
+        }
+      ]
+    },
+    {
+      "name": "modes-r09",
+      "disposition": "TEST_CORRECTED",
+      "cause": "idle unknown future incorrectly treated as positive clear-line solution",
+      "resolution": "real natural attack builds meaningful publication",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/modes-r09.log",
+          "length": 2679,
+          "sha256": "59F6562883A89C25DBEE79E336B370A92A34574303E561EE70798B0C8DA8BD31"
+        }
+      ]
+    },
+    {
+      "name": "safety-r11",
+      "disposition": "TEST_CORRECTED",
+      "cause": "prior MagicString equipment/effect leaked into ordinary yoyo oracle",
+      "resolution": "explicit ordinary equipment/ResetEffects",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/safety-r11.log",
+          "length": 40543,
+          "sha256": "8C1C6E63D287CC60E90F697AB7C5404ADA18614541B25A8E2B10F93A1030ABA2"
+        }
+      ]
+    },
+    {
+      "name": "safety-r12",
+      "disposition": "TEST_CORRECTED",
+      "cause": "baseline protected test reflects3 args; helper had4 optional parameters",
+      "resolution": "unique3arg bridge and separately named4arg core; protected bytes unchanged",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/safety-r12.log",
+          "length": 62133,
+          "sha256": "052658B7120A116087FE4D179776E9AF8410A24B2393905B8D3896B723F32790"
+        }
+      ]
+    },
+    {
+      "name": "motion-r13",
+      "disposition": "TEST_CORRECTED",
+      "cause": "old earliest-edge contact expectation conflicts with accepted center priority",
+      "resolution": "keep independent native motion oracle/local35-update receiver witness",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/motion-r13.log",
+          "length": 4768,
+          "sha256": "D9E598447375DBDF03FC2A3EFAC968CF19A7C57639B4CBF76B96D6903ADD12CE"
+        }
+      ]
+    },
+    {
+      "name": "new-1229-r02",
+      "disposition": "TEST_CORRECTED",
+      "cause": "measurement packageId prefix selected minimal runtime, not complete product",
+      "resolution": "fixed carrier/driver only; original failure retained, successor explicit identity",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-r02/receipt.json",
+          "length": 1617,
+          "sha256": "D717316506CF2665C747BF07E31F22BC4921D36A68732722DC6A2A824D338C36"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-1229-r02/stderr.log",
+          "length": 1313,
+          "sha256": "C7A018732FE2B1DD42E36B24250FB4DD6D3CAFC06940786F930F2AC9EAB0F146"
+        }
+      ]
+    },
+    {
+      "name": "new-path-r03",
+      "disposition": "TEST_CORRECTED",
+      "cause": "noAttack guard counted unbound original background720 as weapon birth",
+      "resolution": "fixed carrier/driver only; original failure retained, successor explicit identity",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/new-path-r03/receipt.json",
+          "length": 1802,
+          "sha256": "80D62B660C7D424A3E7422354EABB56DF546BDA475A5BCE216237B071F8A6116"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/new-path-r03/stderr.log",
+          "length": 244,
+          "sha256": "6D10EC6C42E6812EB0047C822B4B1810938CA99F7C6C3FE98869AE4D2D2E45D0"
+        }
+      ]
+    },
+    {
+      "name": "base-3475-work",
+      "disposition": "TEST_CORRECTED",
+      "cause": "driver-only Bind missed idempotence; duplicate method key",
+      "resolution": "fixed carrier/driver only; original failure retained, successor explicit identity",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-work/receipt.json",
+          "length": 1734,
+          "sha256": "8B72AF46414174280067D982109DAB84AB5DE3D70AB67AF2FF0E2CA3B5C9714A"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/main/base-3475-work/stderr.log",
+          "length": 1743,
+          "sha256": "701813A17F049F0E1998195ADF1E18569CB8102B86FADCA40EA7A244F6B86137"
+        }
+      ]
+    }
+  ],
+  "release": {
+    "path": ".local/aim-balanced-20261017/candidate-7a8f18a/identity.json",
+    "length": 1093,
+    "sha256": "5CFA0ADD423B738CC54FCA2D2FCA3D59A3F24C07A408BD2DC5A7622A88E2A0AD"
+  },
+  "limits": [
+    "Not FPS/multiplayer/owner acceptance or full release qualification",
+    "r06 precedes narrow timer/Shoot scheduling/shared-dependency corrections; explicit phase/5382/reviewed applicability covers those changes; no unrelated19 rerun",
+    "Present totals use bounded OS process window; per-phase CSV uses row worldStep1..599 and excludes boundary0",
+    "sameFrameCpuMs is paired inclusive elapsed, never CPU; accountedCombatElapsed is existing budget elapsed; separate processCpuMs is all threads",
+    "Diagnostic observedExclusiveMs subtracts only instrumented child intervals; unobserved children stay in parent. Never sum nested inclusive intervals",
+    "Sword450 exterior low receive is accepted random main shard approximation, not guaranteed hit",
+    "Main carrier and three driver identities are finite local observations, never deliverable packages"
+  ]
+}

@@ -22,7 +22,7 @@ namespace NativeWorldTextProbe
         private static NPC receiver;
         private static Projectile damageSource;
         private static Vector2 physical;
-        private static int item,frame,births,enhanced,basic,hits,firstHit,primaryHits,primaryEnhanced,handStarts,oldHeavyCalls,primaryType,sideChecks;
+        private static int item,frame,births,enhanced,basic,hits,firstHit,primaryHits,primaryEnhanced,handStarts,oldHeavyCalls,primaryType,sideChecks,swappedPrimary;
         private static readonly Dictionary<int,int> hitTypes=new Dictionary<int,int>();
         private static readonly List<string> facts=new List<string>();
         private static void Heavy(){oldHeavyCalls++;}
@@ -36,6 +36,7 @@ namespace NativeWorldTextProbe
             bool current=(bool)Get(attack,"hasConsumedInput") && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount;
             var packet=Get(attack,"consumedInput");string kind=current?Get(packet,"Kind").ToString():"Unbound";
             if(kind=="Enhanced")enhanced++;else if(kind=="Basic")basic++;
+            if(kind=="Enhanced" && item==3475 && shot.type==981)swappedPrimary++;
             if(kind=="Enhanced" && shot.type!=615 && shot.type!=630 && shot.type!=705 && (item!=3475 || shot.type==14))primaryEnhanced++;
             // A held parent's emission can legitimately follow its earlier AI
             // read. Record it rather than inventing a same-tick hand receipt.
@@ -76,6 +77,12 @@ namespace NativeWorldTextProbe
                 if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="modes"){Modes(context);return;}
                 if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="motion"){NativeCombatBallisticMotionChecks.Run(context);return;}
                 if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="phase"){NativeCombatBalancedPhaseChecks.Run(context);return;}
+                if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="boundaries")
+                {
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,false,false,false,50,true,true));
+                    string output=Environment.GetEnvironmentVariable("JUEMINGR_MAGIC_STRING_EVIDENCE");
+                    System.IO.Directory.CreateDirectory(output);NativeYoyoBoundaryHitChecks.Run(context,output);return;
+                }
                 if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="safety")
                 {
                     NativeCombatPlacementChecks.Run(context);NativeCombatMagicStringAimChecks.Run(context);
@@ -152,10 +159,16 @@ namespace NativeWorldTextProbe
             receiver.Center=player.Center+new Vector2(distance,height);receiver.aiStyle=-1;receiver.noGravity=receiver.noTileCollide=true;receiver.velocity=moving?new Vector2(-1,-.15f):Vector2.Zero;
             receiver.life=receiver.lifeMax=100000;receiver.knockBackResist=0;receiver.dontTakeDamage=receiver.friendly=receiver.immortal=false;Array.Clear(receiver.immune,0,receiver.immune.Length);
             Main.screenPosition=new Vector2(480.25f,400.75f);Main.GameViewMatrix.Zoom=Vector2.One;Main.rand=new Terraria.Utilities.UnifiedRandom(7193);Main.windPhysics=false;
-            physical=player.Center+new Vector2(-240,-100);item=weapon;births=enhanced=basic=hits=primaryHits=primaryEnhanced=handStarts=oldHeavyCalls=sideChecks=0;firstHit=-1;facts.Clear();hitTypes.Clear();
+            physical=player.Center+new Vector2(-240,-100);item=weapon;births=enhanced=basic=hits=primaryHits=primaryEnhanced=handStarts=oldHeavyCalls=sideChecks=swappedPrimary=0;firstHit=-1;facts.Clear();hitTypes.Clear();
             primaryType=item==3475?14:item==3540?1:item==1947?(distance>100?343:342):item==2331?(distance>100?1107:367):0;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,50,true,true));
-            for(frame=0;frame<210;frame++)Step(context,frame>=6 && frame<170 && (item!=1947 && item!=2331 || (frame-6)%40<30));
+            for(frame=0;frame<210;frame++)
+            {
+                // A real release separates two admitted native holders. The
+                // second press must choose changed ammo through PickAmmo.
+                if(modifier==4 && frame==90){player.inventory[54].SetDefaults(278);player.inventory[54].stack=999;}
+                Step(context,frame>=6 && frame<170 && (modifier!=4 || frame<90 || frame>=110) && (item!=1947 && item!=2331 || (frame-6)%40<30));
+            }
             foreach(string fact in facts)Console.WriteLine("BALANCED item="+item+" "+fact);
             Console.WriteLine("BALANCED summary item="+item+" ammo="+ammo+" dx="+distance+" dy="+height+" moving="+moving+" handStarts="+handStarts+" births="+births+" enhanced="+enhanced+" primaryEnhanced="+primaryEnhanced+" basic="+basic+" hits="+hits+" primaryHits="+primaryHits+" firstHit="+firstHit+" oldHeavy="+oldHeavyCalls+" types="+string.Join(";",hitTypes.Select(p=>p.Key+":"+p.Value)));
             Require(handStarts>0 && births>0,"balanced scenario must really attack through original ItemCheck");
@@ -163,6 +176,12 @@ namespace NativeWorldTextProbe
             Require(primaryHits>0,"ordinary original primary motion must effectively receive the selected target");
             Require(oldHeavyCalls==0,"migrated primary mechanism must not fall back to the old full ammo world");
             if(modifier==3)Require(sideChecks>0,"blocked central Tsunami channel must receive a bounded side-lane check");
+            if(modifier==4)
+            {
+                int silverHits;hitTypes.TryGetValue(981,out silverHits);
+                Console.WriteLine("BALANCED actual release/changed-ammo restored primary981 enhanced="+swappedPrimary+" hits="+silverHits);
+                Require(swappedPrimary>0 && silverHits>0 && handStarts>=2,"changed native ammo and new holder recover useful primary input and actual receive after release");
+            }
             Require(!(bool)Get(attack,"hasConsumedInput") || (uint)Get(attack,"consumedInputStep")<Main.GameUpdateCount,"released native input must have no current consumption receipt");
         }
         private static void Step(object context,bool left)
