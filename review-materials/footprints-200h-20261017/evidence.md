@@ -32,8 +32,14 @@ InvalidDataException在.NET Framework不继承IOException，已显式纳入worke
 
 原始日志、完整合成档案及PNG留本地 `.local/footprints-200h-20261017/`，不上传原版资产、用户数据或大测试集。受控原版进程在初始化前音乐/音效/环境声全静音，不修改所有者或系统音量；本轮未启动/操作所有者游戏。
 
+正式WinPS5正向包门首次拒绝合法范围：包reader原为UTF8无BOM，中文白名单按ANSI读成乱码；仅补前三字节BOM，余下字节完全相同。负向八守卫、实际中文解码和同环境身份经窄独审确认，保留拒绝原件。最初pwsh7辅助身份侧记与正式WinPS5的中文排序/环境不同，未互相改署；最终门全程使用正式WinPS5锁。
+
 ## 交付边界
 
-产品链及必要专项已接通；八项包入口身份/失败/资格拒绝守卫通过，正常正向完整候选仍须实际独立Sol审查及主调度准入后由正规Release/包调用核验。随后只按08一次正式完整包/受控备份/正常换装/一次读回；不做装后全套重测、回装演练或第二套包消费者。保持INCOMPLETE/releaseEligible=false，不merge/close/Tag/Release/推进产品版本。
+产品链及必要专项已接通。固定全审候选`36a3daf7187f5a5aebca67bef0b0a350a3e8cb62`通过独立Sol/High全范围审查；最终仅编码修正候选`81057c6accf240b9c12f2946c51fbc16e627eea8`通过窄补审查，主调度更新READY_FOR_PACKAGE。两份报告SHA256分别为`C300918CAE0725660BE0B31059C4FBA06508EE586DAA1D0F69B40E0E56D56276`、`3E353B90B9AEBA4D98A0D7E04895D6DD809FACC6D82E248B86754997DB140F14`；原执行、失败和原包身份均保留。
 
-本轮工程验证不是所有者日常正常加载、体验接受、多人或量化FPS。安装完成和实际包/源码身份将单独记入#118，文档提交或未来squash SHA不重写原包身份。
+正式WinPS5最终source锁`1F39B0A2C0134DE464D7DB1C4B789787100151F8EE6EE2F6151CC8B7E20AC171`，input锁`CFADB3ECCE8E393469D9397B663B80B97F26AD250BCF660378D6EE668E82F5C6`。真实正向stage reader通过后，现有完整ContinuousProcessing Release/包入口一次成功，输出`outputs/footprints-200h-20261017-81057c6/`。ZIP为`JueMingR-Continuous-Processing-81057c6accf240b9c12f2946c51fbc16e627eea8.zip`，2,279,760 bytes，SHA256：`8FBD3EAD5A228DB7BE2DF5C8E7E5CF08D98A9BB3142C49C5642CBED0BA80455B`。受控产品源码已提交，外来工作区脏资产按声明保留；资格仍为STAGE_DEVELOPMENT/INCOMPLETE/releaseEligible=false。
+
+按08完成唯一轻量换装窗口：现场回执确认旧来源`f399f761552b7caf5d62cc0e43c9fc1df8eeb0bd`及目标`F:\games\gameplats\steam\steamapps\common\Terraria`，无游戏/预测worker进程；只备份10静态payload及安装回执、归属日志共12文件至`.local/footprints-200h-20261017/installed-backup-f399f76-before-81057c6/`。旧原包正规Restore返回RESTORE_COMPLETE，新完整包正规Install返回INSTALL_COMPLETE；一次读回回执与新包逐字节相同、10载荷长度符合清单，复用安装器的哈希/归属验证。现装来源为`81057c6`，备份及`installation-result.json`保留。不遍历用户数据，不由安装器创建新记录根，不做装后全套重测、回装演练或第二套包消费者。
+
+本轮工程验证及安装完成不是所有者日常正常加载、体验接受、多人或量化FPS；这些仍未执行。Draft PR和Issue保持开放，不merge/close/Tag/Release/推进产品版本。本页随后纯文档提交或未来squash SHA不重写原包/安装身份，也不触发第二次构建安装。
