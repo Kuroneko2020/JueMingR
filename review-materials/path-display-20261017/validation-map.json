@@ -183,7 +183,7 @@
       "name": "baseline-path-matched",
       "receipt": {
         "name": "baseline-path-matched",
-        "startUtc": "2026-10-17T09:35:11.6080410Z",
+        "startUtc": "2026-10-17T09:35:11.608041Z",
         "endUtc": "2026-10-17T09:35:32.9326434Z",
         "exit": 0,
         "pid": 47548,
@@ -445,7 +445,7 @@
       "name": "baseline-both-600",
       "receipt": {
         "name": "baseline-both-600",
-        "startUtc": "2026-10-17T09:45:46.2154980Z",
+        "startUtc": "2026-10-17T09:45:46.215498Z",
         "endUtc": "2026-10-17T09:46:12.6456899Z",
         "exit": 0,
         "pid": 20728,
@@ -792,7 +792,7 @@
       "receipt": {
         "name": "baseline-off-240",
         "startUtc": "2026-10-17T09:46:13.1892938Z",
-        "endUtc": "2026-10-17T09:46:33.5142850Z",
+        "endUtc": "2026-10-17T09:46:33.514285Z",
         "exit": 0,
         "pid": 29284,
         "mode": "off",
@@ -1053,7 +1053,7 @@
       "name": "baseline-yoyo-600",
       "receipt": {
         "name": "baseline-yoyo-600",
-        "startUtc": "2026-10-17T09:47:43.7994750Z",
+        "startUtc": "2026-10-17T09:47:43.799475Z",
         "endUtc": "2026-10-17T09:48:10.2088129Z",
         "exit": 0,
         "pid": 73460,
@@ -1620,5 +1620,16 @@
     "Natural cold first visibility is measured, not promised at2/3GUC; finite warm retry oracle is separate",
     "Whole Update elapsed, prediction elapsed, Present and diagnostic guard costs have separate denominators"
   ],
-  "delivery": "PENDING_INDEPENDENT_REVIEW_AND_ROOT_STAGE_ADMISSION"
+  "delivery": "PENDING_INDEPENDENT_REVIEW_AND_ROOT_STAGE_ADMISSION",
+  "stageReaderEncoding": {
+    "retainedFailure": {
+      "length": 521,
+      "sha256": "52380DCBDD3ACB2F555BD87396B37537F0957DD835709C733A73868C3D82D1AA",
+      "path": ".local/path-display-20261017/stage-encoding-rejected.log"
+    },
+    "encoding": "UTF-8 BOM",
+    "actualParser": "Windows PowerShell5.1",
+    "readerSha256": "BA20C3505B75CEA436E276FE946B51A40CB0D73E238F55BC0F9D5F0AA6C84950",
+    "boundary": "Same intended source characters/tokens, actual5.1 ANSI misdecode fixed; not unconditional executable equivalence"
+  }
 }

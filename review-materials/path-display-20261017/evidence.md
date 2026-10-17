@@ -39,4 +39,6 @@ Path均值增加0.075ms、p95增加0.244ms，球均值增加0.024ms；本轮窗�
 
 原失败均保留：测试的合法null误用Get、只读generation赋值、64×64格坐标越出120×120 fixture、重复TileObjectData初始化、最初硬写冷首T+2/T+3，以及旧Main脚本固定前后各120空闲却选240的空攻击窗，分别改测试取值/真实对象替换/边界内格子/一次初始化/调度判定/600攻击窗；不以改生产、加额度或改时钟让它们过关。未执行真实存档、所有者物理键鼠、多人、FPS或全NPC资格；全项目资格 INCOMPLETE，releaseEligible=false。
 
+阶段reader另修一个真实Windows PowerShell5.1解码问题：无BOM UTF-8脚本内的中文精确路径被按ANSI解码，先前阶段草稿因此拒绝。仅为此脚本加UTF-8 BOM，源字符/token意图不改，但5.1的实际解码行为得到修正；拒绝原件保留，按真实5.1 reader验证完整正反控，不能作为可无条件忽略的执行差异。业务二进制及上述运行身份不变。
+
 最终交付将由同一整合者经独审与阶段准入后，正式完整 ContinuousProcessing Release/net472/x86、旧受控文件备份、官方 Restore/Install 各一次及一次载荷/拥有权读回完成。届时追加实际回执，不为纯文字HEAD重打包重装。
