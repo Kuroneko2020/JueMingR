@@ -1524,9 +1524,9 @@
     "boundary": "Build-Driver historical source array omits new PathDisplayProbe; this supplement explicitly binds the actual additional source. r01 compile succeeded but MVID-sidecar read failed; actual exe34C was kept. r02/r03 source inputs and compile identities retain separate hashes. Ordinary diagnostics disabled; default silent marker required."
   },
   "reusedCancellation": {
-    "status": "REVIEWED_REUSE_PENDING_INDEPENDENT_REVIEW",
-    "source": "prior a283747/earlier exact source, not rerun by current candidate",
-    "scope": "release/off/replacement/focus/ui/session, four same-update entries each. Actual unchanged source hashes cross-checked by implementation A; main independent review must verify applicability.",
+    "status": "INDEPENDENT_REVIEW_APPROVED_REUSE",
+    "source": "boundaries-r15 at7a8f18a dirty; original independent-final-review plus existing a283747 R1; not rerun on f399",
+    "scope": "Six release/off/replacement/focus/ui/session assertions directly exercise unchanged Use/Input/Basic/control permission seams. Old fixture ClearLine=false exits before EvaluateCandidate. Selection differs by preexisting a283747 R1 null/short Source and budget plan.Clear; a283747..f399 has no Selection diff. This is semantic applicability plus actual relevant seam matches, not all old372 src hashes equal.",
     "artifacts": [
       {
         "path": ".local/aim-balanced-20261017/boundaries-r15.log",
@@ -1537,6 +1537,11 @@
         "path": ".local/aim-balanced-20261017/boundaries-r15/source-inputs.json",
         "length": 205767,
         "sha256": "11DD3B4CB8B1F7BF0573C20D2053C036673FE79C82F841804E003864DC661337"
+      },
+      {
+        "path": ".local/aim-balanced-20261017/independent-final-review.md",
+        "length": 4742,
+        "sha256": "E905F1825F9FE1A7A45C1A76E5CB00F3AD62C9CA81551AA6C7852F456CEFAD8E"
       }
     ]
   },
@@ -1620,7 +1625,36 @@
     "Natural cold first visibility is measured, not promised at2/3GUC; finite warm retry oracle is separate",
     "Whole Update elapsed, prediction elapsed, Present and diagnostic guard costs have separate denominators"
   ],
-  "delivery": "PENDING_INDEPENDENT_REVIEW_AND_ROOT_STAGE_ADMISSION",
+  "delivery": {
+    "status": "INSTALLED_VERIFIED_READY_FOR_OWNER_TEST",
+    "sourceCommit": "f399f761552b7caf5d62cc0e43c9fc1df8eeb0bd",
+    "receipt": {
+      "path": "review-materials/path-display-20261017/delivery-receipt.json",
+      "length": 9679,
+      "sha256": "01C278865213DD288FF1E8F689FC24C8C43450D1B4A628261AF71E4392273143"
+    },
+    "independentReview": {
+      "path": ".local/path-display-20261017/independent-review.md",
+      "length": 11190,
+      "sha256": "819E52E04A87949E8F96161055F2DE305A6D676810D510C1679924ACC5F531D0"
+    },
+    "stageReaderReview": {
+      "path": ".local/path-display-20261017/stage-reader-review.md",
+      "length": 3097,
+      "sha256": "6A5CEACAF1332B6735C7D21427CEDE72F9D850A7817E17CB38C3C68F23DA511F"
+    },
+    "stage": {
+      "path": ".local/path-display-20261017/stage-reviewed.json",
+      "length": 23475,
+      "sha256": "B055A00B6A90E8F7AF137B1364EBCF6C0CEFD3D7DD7D8334D419C9386C2811DB"
+    },
+    "stageReaderControls": {
+      "path": ".local/path-display-20261017/stage-reader-controls.json",
+      "length": 3937,
+      "sha256": "94A1441017308F5B8A55B13567266FBB610ED29C147B17E4ADEF86AB8E4FC7F5"
+    },
+    "metadataOnlySuccessor": true
+  },
   "stageReaderEncoding": {
     "retainedFailure": {
       "length": 521,
