@@ -6,9 +6,9 @@
 
 B 只在本次无有效前缀或预算中断时清旧计划，保留 FaultGate、Unknown 和 changed ticket，不触独立 NPC 显示/缓存；有效前缀复用不变。`candidate-recovery-r19-fixture` 三组平衡／旧 Contact／真实一点 publication 均撤旧正、排队重试，恢复输入后均重新得到实际正解；两次真实排名都选当次可达远者。中间 r17/r18 的排名组件漏掉调用者 Selection.Update，远者也只在缺格前被证明，原失败保留；补真实调用顺序并在缺失仍在时先证远者可达后通过。`modes-r19-after` 16组、architecture combat及新测试入口路由通过。该组件没有注入轨迹、角度、Contact或Source返回，不是Main成本测量。
 
-后继生产只有这一清线候选交接变化。原八个普通 Main 窗口实际均设置 ClearLine=false，ResolveSelection 在该处之前早退；代表弹、出生/真实消费、NPC motor、悠悠球及绘制均未修改，因此原 Main 和相关专项按真实身份有效复用，没有重跑或改署新候选成绩。R1后继及独审待复核身份另列[验证索引](validation-map.json)。
+后继生产只有这一清线候选交接变化。原八个普通 Main 窗口实际均设置 ClearLine=false，ResolveSelection 在该处之前早退；代表弹、出生/真实消费、NPC motor、悠悠球及绘制均未修改，因此原 Main 和相关专项按真实身份有效复用，没有重跑或改署新候选成绩。R1后继及独审已完成的身份与复核结果另列[验证索引](validation-map.json)。
 
-[机制去向](mechanism-coverage.md)连接旧 2944 输入组合与当前生产分派；[玩家实测卡](owner-test-card.md)用于最终候选。原始运行、失败及身份留在 `.local/aim-balanced-20261017/`，现装保持旧 `4c7ac5c`。
+[机制去向](mechanism-coverage.md)连接旧 2944 输入组合与当前生产分派；[玩家实测卡](owner-test-card.md)用于最终候选。原始运行、失败及身份留在 `.local/aim-balanced-20261017/`，现装已为 `a283747`，旧 `4c7ac5c` 的受控文件及必要回执备份保留。
 
 已运行的实际边界：
 
