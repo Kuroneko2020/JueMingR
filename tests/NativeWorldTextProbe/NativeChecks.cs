@@ -243,10 +243,10 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-path-continuity-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content)){if(Environment.GetEnvironmentVariable("JMR_PATH_DISPLAY_CHECK")=="1")NativeCombatPathDisplayChecks.Run(context,graphics,output);else NativeCombatPathContinuityChecks.Run(context,graphics,output);}},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
-            if(scope=="CombatAimUi" || scope=="CombatAimUiReload")
+            if(scope=="CombatAimUi" || scope=="CombatAimUiReload" || scope=="CombatHints")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{if(scope=="CombatAimUiReload")NativeCombatAimUiChecks.Reload(context);else using(var graphics=new ProbeGraphics(content)){NativeCombatAimChecks.Initialize();NativeCombatAimUiChecks.Run(context,graphics,output);}},processing:true,shortFeedback:true);return 0;
+                NativeQuickItemChecks.Run(context=>{if(scope=="CombatAimUiReload")NativeCombatAimUiChecks.Reload(context);else using(var graphics=new ProbeGraphics(content)){if(scope=="CombatHints")NativeCombatAimUiChecks.RunHints(context,graphics,output);else{NativeCombatAimChecks.Initialize();NativeCombatAimUiChecks.Run(context,graphics,output);}}},processing:true,shortFeedback:true);return 0;
             }
             if(scope=="CombatImpactVisual")
             {

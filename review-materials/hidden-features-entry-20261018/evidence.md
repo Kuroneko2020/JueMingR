@@ -1,5 +1,22 @@
 # HIDE 有限工程证据
 
+## 本次接受与文案收尾（2026-10-18，不打包／不安装）
+
+所有者已实测本批隐藏功能无问题并接受；网页复审基于 TASK_BASE `66870f3` → `b67a846b15c16f9297977b21eaf2a6c37d2bb76b` 完整28文件，未发现明确合并阻塞。按追加指令先在 #120／PR121登记12项战斗名称／悬停、直接旧测试期待和 About/Guidance 接受状态／链接最终化。本次仅普通名称与提示元数据变化：路径名称及对应故障名称同步；辅助瞄准名称／设置标题无说明，人偶／标记／半径明确返回null，四个模式按当前状态给定原文。真实Aim故障反馈、其它滑条提示及所有动作ID、设置／算法／半径语义保持。
+
+原完整Sol独审与唯一R1复核按下方原始身份复用；网页复审为本次所有者提供的审查结论，不改署成本地新运行。相对b67a846新增提示与旧期待由独立Sol做一次窄审后交主调度集中准入；准入前PR保持Draft、任务开放。本次接受不接受ADR-0018/0019候选，不启动下一批。
+
+验证使用现有 `NativeCombatAimUiChecks.RunHints` 及原正规专项入口 `scripts/test-world-object-text.ps1 -Scope CombatHints -ContentDirectory <匹配原版Content> -OutputDirectory .local/hide-copy-closeout-20261018/combat-hints-02 -ApprovedRetainedAssets .local/hidden-entry/retained-assets.json`。该叶仅初始化隔离完整Host并执行真实Shell布局/DrawLayer→ResolveHint→PrepareHints，不调用原CombatAimUi的绑定／攻击／NPC／世界绘制或Reload。普通Debug PrepareOnly及probe编译0警告0错误、结构0失败；专项exit0。实际覆盖路径名称、U+2193单字符、四种当前模式逐字输出、两态人偶/标记、名称/标题及半径文字/轨道/滑块从有提示区域移入后隐藏旧框；卡片命令唯一、原鼠标中心按钮名、三个绑定ID、半径25和玩家/鼠标编辑门保持；注入现有真实Aim局部失败后两开关仍显示原故障原因。其它战斗/预测/半径算法代码未变，不重跑其业务矩阵。
+
+原件在 `.local/hide-copy-closeout-20261018/`：`combat-hints-01.log` 是首个PASS；随后仅补箭头截图输出，在 `combat-hints-02.log` 与同名目录保存最终窄叶、`source-inputs.json` 和原 `source-build-record.json`。`mouse-center-hint.png`、`collision-arrow-hint.png` 使用原版XNB和真实renderer；局部目视核对完整长句无溢出及单向下箭头。隔离入口启动及初始化即音乐/音效/环境声0，不启动完整游戏、不使用真实角色/世界/配置。构建metadata保留执行时HEAD/dirty身份，后续仅证据/接受文字和提交身份变化不重签旧成绩。
+
+About/Guidance只最终化本批接受状态和直接链接；工程设计保留显式旧 `隐藏入口的进程资格hide-候选` 锚点，当前引用转到 `隐藏入口的进程资格hide-已接受`。#95旧安装说明明确保留历史身份，当前实际现装仍 `b4a48f7140450f6423cf0116aa04ad73dae153d3`。此次新文案以后获准换装才进游戏；不打包、核旧ZIP、安装／Restore／卸载或扫描安装载荷/真实用户数据。保留原包、回执、备份与恢复材料。`INCOMPLETE / releaseEligible=false`；所有者本批接受不补造全部设备／字体／多人／量化FPS。
+
+本次自查：7份受影响正式文档共175处本地路径／锚点有效；`git diff --check`通过。四项既登记外来资产的长度／SHA-256与原保留声明一致，前后原件为 `retained-before.json`／`retained-after.json`；外来脏文档与未跟踪资产未提交。相关就地注释、Hint空值顺序、真实故障分支、旧方法/叶入口说明及最终玩家文案同次核对，没有公共提示框架或行为算法改动。
+
+下方原执行、失败、审查、包／安装和“等待体验／不合并”均保留当轮历史身份；当前追加授权以 #120／PR121顶部为准。
+
+---
 任务 [#120](https://github.com/Kuroneko2020/JueMingR/issues/120)，[Draft PR #121](https://github.com/Kuroneko2020/JueMingR/pull/121)。授权原件 `JMR-HIDDEN-ENTRY-20261018-v1` 的00—06；TASK_BASE `66870f3cdb25d5f653fbe67b6235d65a5d8df51e`。具体实施/测试/Git由实际已核 GPT-6.1 Sol / High 完成；主调度只读，独审不由实施者替代。
 
 ## 候选与范围

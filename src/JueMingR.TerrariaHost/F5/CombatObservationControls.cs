@@ -15,7 +15,7 @@ namespace JueMingR.TerrariaHost.F5
     }
     internal sealed class CombatObservationControls
     {
-        internal static readonly string[] Names={"碰撞箱显示","NPC寻路预测"};
+        internal static readonly string[] Names={"碰撞箱显示","寻路预测"};
         internal static readonly string[] Actions={"combat.collision-display","combat.npc-path"};
         private readonly ICombatObservationControls host;
         internal ObservationOptions Options {get{return host.Options;}}
@@ -23,8 +23,7 @@ namespace JueMingR.TerrariaHost.F5
         internal static void AddRows(List<F5Element> elements,Func<string,float,F5Size> measure,ObservationOptions options,ref float y)
         {
             var aimRows=new F5RowLayout(elements,measure);
-            aimRows.Row(ref y,0,522,"辅助瞄准",new[]{"开启","关闭","键"},label=>label=="开启"?F5Command.ObservationAimOn:label=="关闭"?F5Command.ObservationAimOff:F5Command.None,
-                new F5RowDescription("combat.aim","在原版攻击读方向时辅助瞄准共享目标；仍由你发起攻击。适用机制采用提前量，随机或未知阶段不保证命中。"));
+            aimRows.Row(ref y,0,522,"辅助瞄准",new[]{"开启","关闭","键"},label=>label=="开启"?F5Command.ObservationAimOn:label=="关闭"?F5Command.ObservationAimOff:F5Command.None);
             var aimKey=elements[elements.Count-1];elements[elements.Count-1]=new F5Element(aimKey.Kind,aimKey.Rect,aimKey.Text,aimKey.TextSize,aimKey.TextScale,aimKey.Command,"combat.aim");
             if(options.Aim)
             {
@@ -40,8 +39,7 @@ namespace JueMingR.TerrariaHost.F5
             for(int i=0;i<labels.Length;i++)sizes[i]=measure(labels[i],buttonScale);
             row=Math.Max(row,title.Height+8);foreach(var size in sizes)row=Math.Max(row,size.Height+10);
             float titleY=y+(row-title.Height)*.5f;
-            elements.Add(new F5Element(F5ElementKind.Text,new F5Rect(12,titleY,title.Width,title.Height),"辅助瞄准设置",title,titleScale,F5Command.None,
-                description:new F5RowDescription("combat.selection","当前设置用于 NPC寻路预测与目标标记的共享选敌；无需持有武器或开始攻击。"),hintRect:new F5Rect(10,titleY,title.Width+4,title.Height+4)));
+            elements.Add(new F5Element(F5ElementKind.Text,new F5Rect(12,titleY,title.Width,title.Height),"辅助瞄准设置",title,titleScale,F5Command.None));
             x+=title.Width+8;
             for(int i=0;i<labels.Length;i++)
             {
@@ -58,7 +56,7 @@ namespace JueMingR.TerrariaHost.F5
             for(int i=0;i<2;i++)
             {
                 int field=i;rows.Row(ref y,0,522,Names[i],new[]{"开启","关闭","键"},labelText=>labelText=="开启"?(F5Command)((int)F5Command.ObservationCollisionOn+field*2):labelText=="关闭"?(F5Command)((int)F5Command.ObservationCollisionOn+field*2+1):F5Command.None,
-                    new F5RowDescription(Actions[i],i==0?"五色表示当前伤害或受击区域；虚线为近似。显示本机观察，不保证实际扣血。":"只显示共享选中敌怪的一条短期可能路线；断点、虚线与末端提示表示瞬移、近似或未知。"));
+                    new F5RowDescription(Actions[i],i==0?"↓":"显示NPC可能的未来路径"));
                 var key=elements[elements.Count-1];elements[elements.Count-1]=new F5Element(key.Kind,key.Rect,key.Text,key.TextSize,key.TextScale,key.Command,Actions[i]);
             }
         }
@@ -89,12 +87,12 @@ namespace JueMingR.TerrariaHost.F5
         {
             if(!Owns(c))return null;
             if(c==F5Command.ObservationAimOn || c==F5Command.ObservationAimOff)return host.Unavailable(6);
-            if(c==F5Command.ObservationMarker)return host.Unavailable(5)??"围绕当前共享选中的可攻击部位显示标记；没有预测路线也可显示。";
+            // These surfaces intentionally have no hint, including while saving;
+            // return before the generic status fallback so an old box is hidden.
+            if(c==F5Command.ObservationDummy || c==F5Command.ObservationMarker || c==F5Command.ObservationRadius)return null;
             if(c>=F5Command.ObservationCollisionOn){var reason=host.Unavailable(((int)c-(int)F5Command.ObservationCollisionOn)/2);if(reason!=null)return reason;}
-            if(c==F5Command.ObservationRadius)return host.Options.MouseCenter?"鼠标范围：0—50 格。0 只选择受击区域触及光标的目标；不关闭显示。":"玩家中心使用屏幕范围；切换鼠标中心后可调半径。";
-            if(c==F5Command.ObservationPolicy)return host.Options.ClearLine?"点击切换最近优先。当前优先选择这把武器可命中的目标；同档按范围中心距离排序，未求得解时保留正常目标。":"点击切换清线优先。当前优先选择距离范围中心最近的可攻击目标。";
-            if(c==F5Command.ObservationCenter)return "点击切换玩家中心或真实鼠标中心；玩家中心保留屏幕范围。";
-            if(c==F5Command.ObservationDummy)return "允许把训练人偶选为路径目标。";
+            if(c==F5Command.ObservationPolicy)return host.Options.ClearLine?"考虑攻击可达性，适合复杂地形":"忽略遮挡，瞄准最新的";
+            if(c==F5Command.ObservationCenter)return host.Options.MouseCenter?"瞄准距离光标最近的敌怪，下面滑条改半径":"瞄准距离玩家最近的敌怪";
             return host.CanConfigure?null:"设置正在保存或当前暂不可用。";
         }
     }
