@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.Items
             Patch(harmony, typeof(Player), "PickupItem", new[] { typeof(WorldItem) }, nameof(PickupBefore), nameof(OriginAfter), nameof(OriginFinalizer));
             Patch(harmony, typeof(ItemSlot), "TryOpenContainer", new[] { typeof(Item[]), typeof(int), typeof(int), typeof(Player) }, nameof(OpenBefore), nameof(OriginAfter), nameof(OriginFinalizer));
             Patch(harmony, typeof(ItemSlot), "TryOpenContainer_GrantItems", new[] { typeof(Item), typeof(Player) }, null, nameof(GrantAfter));
+            Patch(harmony, typeof(ItemSlot), "OverrideLeftClick", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(CreativeBefore), nameof(CreativeAfter), nameof(OriginFinalizer));
             Patch(harmony, typeof(Player), "GetItem", new[] { typeof(Item), typeof(GetItemSettings) }, nameof(GetBefore), nameof(GetAfter));
             Patch(harmony, typeof(MessageBuffer), "GetData", new[] { typeof(int), typeof(int), typeof(int).MakeByRefType() }, nameof(MessageBefore), nameof(MessageAfter));
             Patch(harmony, typeof(Player), "DropItems", new[] { typeof(bool) }, nameof(PlayerBoundary));
@@ -50,6 +51,19 @@ namespace JueMingR.TerrariaHost.Items
         }
         private static void GrantAfter(Item __0, Player __1, bool __result)
         { if (current != null && current.WorldItem == null && ReferenceEquals(current.Item, __0) && ReferenceEquals(current.Player, __1)) current.Opened = __result; }
+        private static void CreativeBefore(Item[] __0, int __1, int __2, out Origin __state)
+        {
+            __state = null;
+            // Context 29 + native transfer cursor is the exact Shift-copy
+            // branch. GetItem below must independently prove an actual gain;
+            // merely opening a catalog never marks existing inventory as new.
+            if (__1 != 29 || Main.cursorOverride != 7 || current != null || !host.CanCapture ||
+                __0 == null || __2 < 0 || __2 >= __0.Length || __0[__2] == null || __0[__2].IsAir) return;
+            __state = new Origin(host.World.Player, __0[__2], null) { CreativeDuplicate = true };
+            current = __state; host.World.CausalDepth++;
+        }
+        private static void CreativeAfter(Origin __state, bool __result)
+        { if (__state != null) { __state.Opened = __result; Finish(__state, true); } }
         // The fishing owner proves the full projectile and consumed pull token.
         // GetItem inside this one original Give call supplies actual product and
         // receipt facts. Later pickup cannot extend or replay this scope.
@@ -103,7 +117,7 @@ namespace JueMingR.TerrariaHost.Items
                 if(host.World.TryObserveAcquisition(out fishInventory))host.Feature.RegisterFishingAcquisitions(origin.FishingToken,origin.Produced,fishInventory,host.Tick);
                 return;
             }
-            bool completed = returned && (origin.WorldItem != null ? origin.WorldItem.stack < origin.Before :
+            bool completed = returned && (origin.CreativeDuplicate ? origin.Opened : origin.WorldItem != null ? origin.WorldItem.stack < origin.Before :
                 origin.Opened && (origin.Before==1 ? origin.Item.IsAir : origin.Item.stack == origin.Before - 1));
             if (!completed || !host.CanCapture || origin.Gained.Count == 0) return;
             ItemInventoryObservation inventory;
@@ -161,7 +175,7 @@ namespace JueMingR.TerrariaHost.Items
             internal readonly int Before;
             internal readonly HashSet<ItemIdentity> Gained = new HashSet<ItemIdentity>();
             internal readonly HashSet<ItemIdentity> Touched = new HashSet<ItemIdentity>();
-            internal bool Opened, Cancelled;
+            internal bool Opened, Cancelled, CreativeDuplicate;
             internal long FishingToken;
             internal int FishingType;
             internal HashSet<ItemIdentity> Produced;

@@ -79,6 +79,8 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 writer.Write(Main.maxTilesX);writer.Write(Main.maxTilesY);writer.Write(Main.worldSurface);writer.Write(Main.rockLayer);
                 writer.Write(Main.dayTime);writer.Write(Main.time);writer.Write(Main.GameMode);writer.Write(Main.myPlayer);
                 writer.Write(Main.bloodMoon);writer.Write(Main.eclipse);writer.Write(Main.windSpeedCurrent);
+                // Includes the nullable effective difficulty independently of
+                // persistent GameMode; receiver native rules consume both.
                 NativeWorldSnapshot.Write(writer);
                 NativeEntityContext.WriteShared(writer);
                 if(assets==null)NativeAssetSnapshot.WriteFixture(writer);else NativeAssetSnapshot.WriteKeys(writer,assets);
