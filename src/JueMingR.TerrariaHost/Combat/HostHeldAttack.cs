@@ -49,8 +49,8 @@ namespace JueMingR.TerrariaHost.Combat
             if(shot.type==460)return null;
             float baseSpeed=shot.type==705?12:shot.type==714?8:14;
             ammo=AttackAmmoSnapshot.CaptureController(player,player.HeldItem,baseSpeed);if(ammo==null)return null;
-            if(shot.type==705 && player.phantomPhoneixCounter+1>=3)return HostPhoenixAttack.SolvePrepared(player,shot,ammo,timeline,clock,terrain,frame,out point,out obstacles);
-            if(shot.type==615 || shot.type==630 || shot.type==705)return HostHeldAmmoFamilyAttack.SolvePrepared(player,shot,ammo,timeline,clock,terrain,frame,out point,out obstacles);
+            if(shot.type==615 || shot.type==630 || shot.type==705)
+            {var solution=PrepareRepresentative(player,shot,ammo,timeline,clock,terrain,frame);if(solution.HasPoint)point=solution.Point;return solution.Contact;}
             int projectile=ammo.Projectile;float speed=ammo.Speed;
             if(shot.type==705 && projectile==1)projectile=2;
             AttackMotion motion;if(!HostAttackModels.TryResolved(projectile,speed,player.HeldItem.type,out motion))return null;
@@ -69,6 +69,26 @@ namespace JueMingR.TerrariaHost.Combat
             var receivers=obstacles;
             var contact=HostProjectileEnvironment.Solve(sample,terrain,origin,motion,timeline,age,delay,clock.FirstTick-age,t=>receive.Allows(clock.LaunchDelay+t),out environment,(k,t,x,y)=>receivers.PassOuter(k,t,clock.LaunchDelay+delay+motion.OuterAtSubupdate(k),x,y),(k,t,x,y)=>motion.SubupdateInOuter(k)!=0 || receivers.BeforeNpc(t,clock.LaunchDelay+delay+motion.OuterAtSubupdate(k),x,y));
             if(contact!=null)point=new Vector2(contact.AimX,contact.AimY);return contact;
+        }
+        internal static HostAttackSolution PrepareRepresentative(Player player,Projectile parent,AttackAmmoSnapshot ammo,NpcTrajectory path,HostAttackClock clock,PredictionTerrain terrain,HostAttackPlayerFrame frame)
+        {
+            if(ammo==null || path==null)return default(HostAttackSolution);
+            int delay=Math.Max(0,(int)Math.Ceiling(parent.ai[1])-1);var motion=frame.Motion;
+            for(int i=0;i<delay+(clock.NextWorld?1:0);i++)
+            {PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,frame.Environment,terrain,out stop))return default(HostAttackSolution);}
+            var pose=(Player)copy.Invoke(player,null);HostAttackPlayerFrame.ApplyPose(pose,motion);var origin=pose.RotatedRelativePoint(pose.MountedCenter);
+            bool phoenix=parent.type==705 && player.phantomPhoneixCounter+1>=3;
+            int type=phoenix?706:parent.type==705 && ammo.Projectile==1?2:ammo.Projectile;
+            // Only the selected main shot is privately advanced. Native AI
+            // retains its fan, echo, rocket, RNG, resource and firing schedule.
+            return HostRepresentativeAttack.Prepare(player,ammo,path,origin,clock,terrain,aim=>
+            {
+                var shot=new Projectile();shot.SetDefaults(type);shot.active=true;shot.owner=player.whoAmI;shot.Center=origin;shot.damage=ammo.Damage*(phoenix?2:1);
+                shot.velocity=phoenix?HostPhoenixAttack.BirthVelocity(pose,parent,origin,aim):HostHeldAmmoFamilyAttack.BirthVelocity(pose,parent,origin,aim,ammo.Speed);
+                if(phoenix)shot.timeLeft=120;
+                else if(ammo.ExtraArrowUpdates && shot.arrow && shot.extraUpdates<1)shot.extraUpdates=1;
+                return shot;
+            },delay);
         }
     }
 }

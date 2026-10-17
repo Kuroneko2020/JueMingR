@@ -64,7 +64,16 @@ namespace JueMingR.TerrariaHost.Combat
             input=default(HostAttackInput);
             if(player==null || item==null || !ReferenceEquals(player,combat.Player) || !ReferenceEquals(item,player.HeldItem) || !BasicPermission || !CurrentReceiver)return false;
             if(ReferenceEquals(item,weapon) && Valid(true))
-            {input=ContactInput(Main.GameUpdateCount==prepared?current:next,item,null,phase);return true;}
+            {
+                if(balancedOrdinary)
+                {
+                    var solution=Main.GameUpdateCount==prepared?currentSolution:nextSolution;
+                    bool reverse=!HostSkyAttack.RawCursor(item.type) && !HostMeleeAttack.RawCursor(item.type) && !HostCloudAttack.RawCursor(item.type);
+                    input=new HostAttackInput(this,HostAttackInputKind.Enhanced,solution.Point,solution.Timeline.Identity,item,null,phase,reverse,ammo.Projectile==442 || ammo.Projectile==80);
+                }
+                else input=ContactInput(Main.GameUpdateCount==prepared?current:next,item,null,phase);
+                return true;
+            }
             return TryBasicInput(player,item,null,phase,out input);
         }
         internal HostAttackInput ContactInput(AttackContact contact,Item item,Projectile source,HostAttackPhase phase)

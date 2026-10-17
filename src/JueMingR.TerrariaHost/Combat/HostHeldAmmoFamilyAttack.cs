@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -337,72 +337,11 @@ namespace JueMingR.TerrariaHost.Combat
             var velocity=Vector2.Normalize(held)*speed;if(parent.type==615)velocity=velocity.RotatedBy(rocket?draw*.39269909262657166-.19634954631328583:draw*.19634954631328583-.09817477315664291);
             if(float.IsNaN(velocity.X) || float.IsNaN(velocity.Y))velocity=-Vector2.UnitY;while(velocity.X>=16 || velocity.X<=-16 || velocity.Y>=16 || velocity.Y< -16)velocity*=.97f;return velocity;
         }
-        private struct Proposal
-        {internal Vector2 Direction;internal int Tick;}
-        private static Vector2[] Proposals(Player pose,Projectile parent,AttackAmmoSnapshot ammo,int type,Vector2 origin,NpcTrajectory path,HostAttackClock clock,int delay)
-        {
-            AttackMotion motion;if(!HostAttackModels.TryResolved(type,ammo.Speed,ammo.WeaponType,out motion))return new Vector2[0];
-            var sample=ContentSamples.ProjectilesByType[type];if(ammo.ExtraArrowUpdates && sample.arrow && sample.extraUpdates<1)motion=motion.WithUpdates(2,1);
-            var rows=new List<Proposal>();float speed=motion.Speed;
-            // Native AI001 limits components, not length. Each finite .97
-            // branch can propose a different legal angle; keep diagonal full
-            // speed and verify the actual cursor/representative birth below.
-            for(;;)
-            {
-                CombatPredictionWork.Check();
-                var candidate=new AttackMotion(speed,motion.Gravity,motion.GravityStart,motion.Updates,motion.Width,motion.Height,motion.Lifetime,motion.Confidence,motion.Acceleration,motion.MaxSpeed,false,motion.ComponentAccelerationLimit,motion.DragAfterGravity,motion.StopSmallVelocity,motion.MoveScale,motion.WindX,motion.MaxFallSpeed,motion.GravityClockUsesLaunchX,motion.MaxRiseSpeed,motion.AccelerationStart,motion.HorizontalAccelerationOnly,motion.PreMotorWindX,motion.FirstUpdates);
-                // Generate's first receive is age+1. A lower newborn slot
-                // waits one world; both proposals retain the exact NPC sample
-                // indices, and neither supplies a Contact or a miss proof.
-                for(int lower=0;AttackMotionCandidates.Supports(candidate) && lower<2;lower++)
-                {
-                    int first=clock.FirstTick+delay+lower;if(first<1)continue;
-                    foreach(var proposal in AttackMotionCandidates.Generate(path,first-1,origin.X,origin.Y,candidate))
-                    {
-                        var direction=new Vector2(proposal.X,proposal.Y);
-                        if(parent.type==615)
-                        {const double draw=1073741823*(1.0/int.MaxValue);direction=direction.RotatedBy(-(draw*.13089969754219055-.06544984877109528+draw*.19634954631328583-.09817477315664291));}
-                        var actual=BirthVelocity(pose,parent,origin,origin+direction*10000,ammo.Speed);
-                        if(Math.Abs(actual.Length()-speed)>.001f || Vector2.Dot(actual.SafeNormalize(Vector2.UnitX),new Vector2(proposal.X,proposal.Y))<.99999f)continue;
-                        rows.Add(new Proposal{Direction=direction,Tick=proposal.Tick});
-                    }
-                }
-                if(!motion.ComponentBirthLimit || speed<16)break;speed*=.97f;
-            }
-            // Bound extra full-scene work even for a blocked receiver. Preserve
-            // separate early and late proposals across ALL speed/slot classes;
-            // the old complete angular fallback below is never removed.
-            rows.Sort((a,b)=>a.Tick.CompareTo(b.Tick));var selected=new List<Proposal>(8);
-            for(int i=0;i<rows.Count && selected.Count<4;i++)if(!selected.Any(p=>p.Direction==rows[i].Direction))selected.Add(rows[i]);
-            for(int i=rows.Count-1;i>=0 && selected.Count<8;i--)if(!selected.Any(p=>p.Direction==rows[i].Direction))selected.Add(rows[i]);
-            selected.Sort((a,b)=>a.Tick.CompareTo(b.Tick));return selected.Select(p=>p.Direction).ToArray();
-        }
         internal static AttackContact SolvePrepared(Player player,Projectile parent,AttackAmmoSnapshot ammo,NpcTrajectory path,HostAttackClock clock,PredictionTerrain terrain,HostAttackPlayerFrame frame,out Vector2 point,out HostAttackObstacles root)
         {
-            point=HostHeldAttack.DirectionPoint(player,path,clock.FirstTick);root=null;if(ammo==null || ammo.Damage<=0)return null;int delay=Math.Max(0,(int)Math.Ceiling(parent.ai[1])-1);var motion=frame.Motion;var world=frame.Environment;
-            for(int i=0;i<delay+(clock.NextWorld?1:0);i++){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,world,terrain,out stop))return null;}var pose=(Player)clone.Invoke(player,null);HostAttackPlayerFrame.ApplyPose(pose,motion);var origin=pose.RotatedRelativePoint(pose.MountedCenter);
-            int type=parent.type==705 && ammo.Projectile==1?2:ammo.Projectile;var sample=new Projectile();sample.SetDefaults(type);sample.owner=player.whoAmI;sample.damage=ammo.Damage;root=new HostAttackObstacles(player,sample,path,clock.LaunchDelay+delay,clock.BeforeNpc,clock.NextWorld);root.CaptureHeldAmmoInputs(player);root.CaptureHomingInputs(player,false,true);root.CaptureShotFacing(player);if(parent.type==705)root.CapturePhoenixOwner(player);
-            bool rocket=HostVortexRocketAttack.Due(parent,delay);var kinds=rocket?new[]{type,616}:new[]{type};var captured=CaptureForSolve(player,root,kinds);var directions=new List<Vector2>();
-            Projectile rocketPrototype=null;if(rocket){rocketPrototype=new Projectile();rocketPrototype.SetDefaults(616);}
-            // Every direction observes this solve's same real player/path/world.
-            // Share only immutable value-motion prefixes, including a stopped
-            // tail; shorter completed actions remain readable after a stop.
-            // Scene bodies, slots, receive history and Harpy cooldown are still
-            // reset independently inside each candidate. Never retain across GUCs.
-            var owners=new HostAttackPlayerPrefix(HostAttackPlayerFrame.Capture(Main.player[player.whoAmI],path),terrain,clock.LaunchDelay+121);
-            // Keep the established centre shot first: an earlier rectangle-
-            // edge representative can lose its native random-spread margin.
-            // Only a failed centre replay pays for extra inverse proposals.
-            Vector2[] proposals=null;
-            for(int input=-1;input<(proposals==null?0:proposals.Length)+40;input++)
-            {
-                if(input>=0 && proposals==null)proposals=Proposals(pose,parent,ammo,type,origin,path,clock,delay);
-                int seed=input<0?0:input-proposals.Length+1;var b=path[Math.Min(path.Count-1,clock.FirstTick+delay+Math.Max(0,Math.Min(seed,8))*4)].ProjectileReceiveBounds;var direction=input>=0 && input<proposals.Length?proposals[input]:seed<9?(new Vector2(b.CenterX,b.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction):((seed-9)*MathHelper.TwoPi/32).ToRotationVector2();if(directions.Contains(direction))continue;directions.Add(direction);var aim=origin+direction*10000;int count=parent.type==630?4:parent.type==705?2:1;var born=new List<Projectile>();
-                for(int i=0;i<count;i++){var p=Copy(sample);p.owner=player.whoAmI;p.Center=origin;p.velocity=BirthVelocity(pose,parent,origin,aim,ammo.Speed);p.damage=ammo.Damage;p.knockBack=player.HeldItem.knockBack;born.Add(p);}
-                if(rocket){var p=Copy(rocketPrototype);p.owner=player.whoAmI;p.Center=origin;p.velocity=BirthVelocity(pose,parent,origin,aim,8,true);p.damage=ammo.Damage+20;p.knockBack=player.HeldItem.knockBack*1.25f;born.Add(p);}
-                var contact=ExplicitBirthBatchCore(player,born.ToArray(),path,clock,terrain,root,aim,delay,parent,captured,true,owners);if(contact!=null){point=aim;return contact;}
-            }
-            return null;
+            var solution=HostHeldAttack.PrepareRepresentative(player,parent,ammo,path,clock,terrain,frame);
+            point=solution.HasPoint?solution.Point:HostHeldAttack.DirectionPoint(player,path,clock.FirstTick);root=null;
+            return solution.Contact;
         }
     }
 }

@@ -73,7 +73,12 @@ namespace NativeWorldTextProbe
                     if(newFirst>0){received=true;break;}
                 }
                 Require(received,"shared proposal reaches the receiver under unmodified original projectile Update: "+type+"/"+elevation);
-                Require(oldFirst==0 || newFirst<=oldFirst,"first feasible inverse proposal retains the earlier low-arc receive type="+type+" old="+oldFirst+" new="+newFirst);
+                // The owner now prefers a stable central representative over
+                // the old earliest edge graze. The receiver center was placed
+                // by the real original source at outer35 above; retaining a
+                // contact by that witnessed local window rejects a late high
+                // arc without making the replaced edge solution the oracle.
+                Require(newFirst<=35,"central inverse proposal retains the witnessed native local receive window type="+type+" witnessed=35 new="+newFirst);
                 Console.WriteLine("BALLISTIC-MOTION-QUALITY type="+type+" elevation="+elevation+" oldNative="+oldFirst+" newNative="+newFirst);
                 cases++;contacts++;
             }

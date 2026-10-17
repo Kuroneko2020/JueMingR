@@ -274,11 +274,16 @@ namespace NativeWorldTextProbe
         {
             // A fixture inside the actual pre-NPC Shoot entry still observes
             // T-1 NPCs. Match that real phase instead of moving native clocks.
-            PublishFixture(host,body,vx,phaseName=="BeforeNpc"?(long)Main.GameUpdateCount-1:(long)Main.GameUpdateCount);
+            PublishFixtureAt(host,body,vx,phaseName=="BeforeNpc"?(long)Main.GameUpdateCount-1:(long)Main.GameUpdateCount);
             var phase=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);
             using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(attack,"PrepareCore",Enum.Parse(phase,phaseName??(projectilePhase?"Projectiles":"CompletedWorld")));
         }
-        private static void PublishFixture(object host,NPC body,float vx,long? sampleTick=null)
+        // Retain the unique three-argument reflection boundary used by the
+        // existing navigation oracle; MethodInfo.Invoke does not fill C#
+        // optional parameters. The explicit phase caller uses a named core.
+        private static void PublishFixture(object host,NPC body,float vx)
+        {PublishFixtureAt(host,body,vx,null);}
+        private static void PublishFixtureAt(object host,NPC body,float vx,long? sampleTick)
         {
             var selection=Get(host,"Selection");Call(selection,"Update",((ObservationSettings)Get(host,"Settings")).Value,(long)Get(host,"Session"),true,null);
             var id=(NpcIdentity)Get(selection,"Target");Require(id.Slot==body.whoAmI,"single shared final target is selected");

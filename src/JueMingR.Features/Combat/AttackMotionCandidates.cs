@@ -19,11 +19,11 @@ namespace JueMingR.Features.Combat
         }
         private sealed class Proposal
         {
-            internal double X,Y;internal int Tick;
+            internal double X,Y;internal int Tick;internal bool Center;
         }
         public static AttackBallisticCandidates.Direction[] Generate(NpcTrajectory path,int age,float originX,float originY,AttackMotion motion)
         {
-            if(path==null || age<0 || age+1>=path.Count || !Supports(motion))return new AttackBallisticCandidates.Direction[0];
+            if(path==null || age< -1 || age+1>=path.Count || !Supports(motion))return new AttackBallisticCandidates.Direction[0];
             int limit=Math.Min(motion.Lifetime,motion.SubupdatesForOuters(path.Count-age-1));
             var rows=new Dictionary<int,Proposal>();
             double factor=1,vx=0,response=0,drift=0;
@@ -44,7 +44,7 @@ namespace JueMingR.Features.Combat
                 double low=InverseY(motion,step,bottom),high=InverseY(motion,step,top);
                 double cx=(box.CenterX-originX-drift)/response,cy=InverseY(motion,step,box.CenterY-originY);
                 double length=Math.Sqrt(cx*cx+cy*cy);
-                if(length>0)Add(rows,cx/length*motion.Speed,cy/length*motion.Speed,tick,left,right,low,high,motion.Speed);
+                if(length>0)Add(rows,cx/length*motion.Speed,cy/length*motion.Speed,tick,left,right,low,high,motion.Speed,true);
                 for(int edge=0;edge<4;edge++)
                 {
                     bool vertical=edge<2;double value=vertical?(edge==0?left:right):(edge==2?low:high);
@@ -61,7 +61,7 @@ namespace JueMingR.Features.Combat
             Select(rows,result,false,4);Select(rows,result,true,8);
             return result.ToArray();
         }
-        private static void Add(Dictionary<int,Proposal> rows,double vx,double vy,int tick,double left,double right,double low,double high,float speed)
+        private static void Add(Dictionary<int,Proposal> rows,double vx,double vy,int tick,double left,double right,double low,double high,float speed,bool center=false)
         {
             const double epsilon=.00001;
             if(vx<left-epsilon || vx>right+epsilon || vy<low-epsilon || vy>high+epsilon)return;
@@ -72,9 +72,10 @@ namespace JueMingR.Features.Combat
                 Proposal row;if(!rows.TryGetValue((bucket+offset+buckets)%buckets,out row) || row.X*x+row.Y*y<=.99999)continue;
                 // A direction is replayed over the complete finite horizon,
                 // so one copy covers every later contact for that direction.
-                if(tick<row.Tick)row.Tick=tick;return;
+                if(center && !row.Center){row.X=x;row.Y=y;row.Tick=tick;row.Center=true;}
+                else if(center==row.Center && tick<row.Tick)row.Tick=tick;return;
             }
-            Proposal previous;if(!rows.TryGetValue(bucket,out previous) || tick<previous.Tick)rows[bucket]=new Proposal{X=x,Y=y,Tick=tick};
+            Proposal previous;if(!rows.TryGetValue(bucket,out previous) || center && !previous.Center || center==previous.Center && tick<previous.Tick)rows[bucket]=new Proposal{X=x,Y=y,Tick=tick,Center=center};
         }
         private static void Select(Dictionary<int,Proposal> rows,List<AttackBallisticCandidates.Direction> result,bool latest,int count)
         {
@@ -83,7 +84,10 @@ namespace JueMingR.Features.Combat
                 Proposal best=null;
                 foreach(var row in rows.Values)
                 {
-                    if(best!=null && (latest?row.Tick<=best.Tick:row.Tick>=best.Tick))continue;
+                    // Body-centre solutions keep native spread margin. Early
+                    // rectangle-edge solutions must not consume every slot
+                    // before a central low/high arc has even been replayed.
+                    if(best!=null && (!row.Center && best.Center || row.Center==best.Center && (latest?row.Tick<=best.Tick:row.Tick>=best.Tick)))continue;
                     bool duplicate=false;foreach(var prior in result)if(row.X*prior.X+row.Y*prior.Y>.9998){duplicate=true;break;}
                     if(!duplicate)best=row;
                 }

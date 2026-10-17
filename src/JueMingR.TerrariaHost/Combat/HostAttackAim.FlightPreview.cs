@@ -41,7 +41,8 @@ namespace JueMingR.TerrariaHost.Combat
         // or grant any cursor consumer authority over that existing attack.
         private FlightPreview ReadFlightCore(Player player,NpcTrajectory timeline,HostAttackPhase phase,out bool live)
         {
-            live=false;bool phaseblade=HostPhasebladeAttack.Handles(player.HeldItem.shoot);
+            live=false;if(BalancedWeapon)return null;
+            bool phaseblade=HostPhasebladeAttack.Handles(player.HeldItem.shoot);
             bool gem=HostGemStaffAttack.Handles(player.HeldItem.shoot);
             bool attached=HostAttachedShotAttack.Handles(player.HeldItem.shoot);
             bool arc=HostArcSwingAttack.Weapon(player.HeldItem.type);

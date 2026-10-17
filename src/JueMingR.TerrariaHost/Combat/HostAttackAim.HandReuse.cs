@@ -12,8 +12,8 @@ namespace JueMingR.TerrariaHost.Combat
             var player=combat.Player;var item=player.HeldItem;
             // Book previews advance their animation; native Shoot refreshes
             // the burst/mode separately. They are not this same hand solve.
-            return plan?.Prepared==true && plan.PreparedTick==Main.GameUpdateCount && plan.Phase==HostAttackPhase.BeforeNpc && plan.Contact!=null && plan.Ammo!=null && !plan.Controlled && !plan.HadFlight && plan.Flight==null && plan.Delay==0 &&
-                HostAttackWindow.Ordinary(item) && !HostSwingAttack.Handles(item) && !HostPhasebladeAttack.Handles(item.shoot) && !HostHarpyAttack.Handles(player,plan.Ammo) && !HostBookStaffAttack.Handles(plan.Ammo.Projectile);
+            return plan?.Prepared==true && plan.PreparedTick==Main.GameUpdateCount && plan.Phase==HostAttackPhase.BeforeNpc && (plan.Balanced?plan.Solution.HasPoint:plan.Contact!=null) && plan.Ammo!=null && !plan.Controlled && !plan.HadFlight && plan.Flight==null && plan.Delay==0 &&
+                HostAttackWindow.Ordinary(item) && !HostSwingAttack.Handles(item) && !HostPhasebladeAttack.Handles(item.shoot) && (plan.Balanced || !HostHarpyAttack.Handles(player,plan.Ammo)) && !HostBookStaffAttack.Handles(plan.Ammo.Projectile);
         }
         private bool TryCandidateHand(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,HostAttackPhase phase,int age)
         {

@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal HostAttackControl Owner;internal Source Source;internal ShotReceipt Previous;internal CombatCursorScope Cursor;internal bool Ended;internal HostAttackPhase Phase;internal ulong BirthCutoff;
         }
         private sealed class Controlled
-        {internal Projectile Shot;internal int Key,Type,SelectedLife,RequiredRange=16;internal Source Source;internal AttackContact Contact,NextKillContact,AlternateKillContact,AlternateNextKillContact;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint,BornNext,ManagedYoyo,YoyoEnhanced;internal Vector2 YoyoPoint;internal AttackAmmoSnapshot Ammo;internal HostAttackObstacles Obstacles,AlternateKillObstacles;internal uint Prepared,Born;internal ulong BirthOrdinal;internal NpcIdentity Target,RangeTarget;internal HostYoyoNavigation Navigation,PreviewNavigation;internal HostBeamAttack.Child ContactChild;internal List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
+        {internal Projectile Shot;internal int Key,Type,SelectedLife,RequiredRange=16,PhoenixCounter;internal Source Source;internal AttackContact Contact,NextKillContact,AlternateKillContact,AlternateNextKillContact;internal HostAttackSolution Solution;internal Vector2 HeldOwnerCenter;internal float HeldScale,HeldRotation,HeldGravity;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint,BornNext,ManagedYoyo,YoyoEnhanced;internal Vector2 YoyoPoint;internal AttackAmmoSnapshot Ammo;internal HostAttackObstacles Obstacles,AlternateKillObstacles;internal uint Prepared,Born;internal ulong BirthOrdinal;internal NpcIdentity Target,RangeTarget;internal HostYoyoNavigation Navigation,PreviewNavigation;internal HostBeamAttack.Child ContactChild;internal List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
         private readonly HostCombat combat;private readonly HostCombatObservation observation;
         private readonly Dictionary<int,Controlled> shots=new Dictionary<int,Controlled>();
         private readonly List<int> retired=new List<int>(64);
@@ -149,19 +149,11 @@ namespace JueMingR.TerrariaHost.Combat
                 try{SolveEntry(entry,timeline,HostAttackPhase.Projectiles,terrain,combat.Player,beforeProjectilePass:true);}
                 finally
                 {
-                    // Unknown within a complete SHORT prefix is not a miss
-                    // over the full finite horizon. Budget interruption also
-                    // leaves it unknown. Ask the existing Source producer for
-                    // the next larger range on its NEXT real input epoch;
-                    // never resample/replay here or refresh this GUC's 6ms.
-                    // This also covers steering/derived kernels without a
-                    // separable arrival hint. Paused/terminal NPC paths retain
-                    // their existing recovery/stop owner instead.
-                    int covered=timeline.Count-1;
-                    if(entry.Contact==null && !timeline.BudgetPaused && timeline.Stop==PredictionStop.None && covered<NpcPredictionCache.Horizon)
-                        entry.RequiredRange=Math.Min(NpcPredictionCache.Horizon,Math.Max(covered+8,covered*2));
-                    else if(entry.Contact!=null)
-                        entry.RequiredRange=Math.Max(16,Math.Min(NpcPredictionCache.Horizon,entry.Contact.Tick+8));
+                    // A missing full Contact is normal for this input model.
+                    // Schedule its observed arrival, never double the NPC tail
+                    // merely because the old family proof was not produced.
+                    if(entry.Solution.ReceiveTick>=0)
+                        entry.RequiredRange=Math.Max(16,Math.Min(NpcPredictionCache.Horizon,entry.Solution.ReceiveTick+8));
                     finiteHeldDemandRaised|=entry.RequiredRange>16;
                 }
             }
@@ -241,7 +233,7 @@ namespace JueMingR.TerrariaHost.Combat
         // capability. Source/registry lifetime belongs to Prepare/Reset; an
         // unrelated or repeated projectile callback must never walk that pool.
         private static void Retire(Controlled entry)
-        {entry.Contact=entry.NextKillContact=entry.AlternateKillContact=entry.AlternateNextKillContact=null;entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=entry.AlternateKillObstacles=null;}
+        {entry.Contact=entry.NextKillContact=entry.AlternateKillContact=entry.AlternateNextKillContact=null;entry.Solution=default(HostAttackSolution);entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=entry.AlternateKillObstacles=null;}
         // Execution retirement alone leaves a read-only fact intact. Only an
         // actual consumer's failed dependency check revokes its bound fact;
         // no other source is searched and Draw never checks terrain here.
@@ -287,7 +279,8 @@ namespace JueMingR.TerrariaHost.Combat
             // A CompletedWorld replay cannot be consumed on the next GUC and
             // is retired by that pass anyway. Read-only Preview uses its own
             // private view and calls SolveEntry directly, including future delay.
-            if(FiniteHeld(entry.Type)){Retire(entry);return;}
+            if(FiniteHeld(entry.Type))
+            {Retire(entry);if(phase==HostAttackPhase.Projectiles && HostHeldAttack.Consumes(combat.Player,entry.Shot))SolveEntry(entry,timeline,phase,terrain,combat.Player);return;}
             if(entry.ManagedYoyo && !combat.Use.ManagedAttackIntent(combat.Player))entry.ManagedYoyo=false;if(entry.ManagedYoyo){entry.Prepared=Main.GameUpdateCount;entry.Target=timeline.Identity;return;}SolveEntry(entry,timeline,phase,terrain,combat.Player,yoyoGroup:yoyoGroup);
         }
         private static void SolveEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase,PredictionTerrain terrain,Player player,int delay=0,HostAttackPlayerFrame? preparedPlayer=null,HostYoyoNavigation.GroupFacts yoyoGroup=null,bool beforeProjectilePass=false)
@@ -314,7 +307,14 @@ namespace JueMingR.TerrariaHost.Combat
                 entry.Contact=HostGuidedAttack.SolvePrepared(player,entry.Shot,timeline,clock,terrain,playerFrame);
             if(HostHeldAttack.Handles(entry.Type) && (player.channel || HostFlailAttack.Handles(entry.Type)))
             {
-                entry.Contact=HostHeldAttack.SolvePrepared(player,entry.Shot,timeline,clock,terrain,out entry.Point,out entry.Ammo,out entry.Obstacles,playerFrame);entry.HasPoint=!HostFlailAttack.Handles(entry.Type) || player.channel || entry.Contact!=null;
+                if(FiniteHeld(entry.Type))
+                {
+                    entry.Ammo=AttackAmmoSnapshot.CaptureController(player,player.HeldItem,entry.Type==705?12:14);
+                    entry.Solution=HostHeldAttack.PrepareRepresentative(player,entry.Shot,entry.Ammo,timeline,clock,terrain,playerFrame);
+                    entry.Contact=entry.Solution.Contact;entry.Point=entry.Solution.Point;entry.HasPoint=entry.Solution.HasPoint;entry.Obstacles=null;entry.PhoenixCounter=player.phantomPhoneixCounter;
+                    entry.HeldOwnerCenter=player.RotatedRelativePoint(player.MountedCenter);entry.HeldScale=entry.Shot.scale;entry.HeldRotation=player.fullRotation;entry.HeldGravity=player.gravDir;
+                }
+                else {entry.Contact=HostHeldAttack.SolvePrepared(player,entry.Shot,timeline,clock,terrain,out entry.Point,out entry.Ammo,out entry.Obstacles,playerFrame);entry.HasPoint=!HostFlailAttack.Handles(entry.Type) || player.channel || entry.Contact!=null;}
                 if(entry.Type==633 || entry.Type==460)entry.Contact=HostBeamAttack.SolvePrepared(player,entry.Shot,entry.Children,entry.Point,timeline,clock,terrain,out entry.ContactChild,playerFrame);
             }
             if(entry.Type==444)
@@ -491,10 +491,11 @@ namespace JueMingR.TerrariaHost.Combat
             if(!combat.Attack.CurrentReceiver){Retire(entry);return false;}
             if(!Valid(entry) || entry.Prepared!=Main.GameUpdateCount || entry.Contact==null && !entry.HasPoint || !observation.Selection.HasTarget || !entry.Target.Equals(observation.Selection.Target) || !combat.Attack.TimelineCurrent(preparedTimeline))
             {Retire(entry);return false;}
-            // Earlier projectile slots may genuinely hit/knock this selected
-            // actor after the world-pass preparation. Even a non-homing single
-            // bullet must not consume a stale NoNewHits/position hypothesis.
-            if(FiniteHeld(entry.Type) && (Main.npc[entry.Target.Slot].life!=entry.SelectedLife || !ProjectileTimelineCurrent(preparedTimeline)))
+            // A real knock/teleport or firing-stage change invalidates this
+            // point. A life/immune-only change does not invalidate direction;
+            // this model never leased the complete future damage history.
+            if(FiniteHeld(entry.Type) && (!ProjectileTimelineCurrent(preparedTimeline) || entry.Type==705 && entry.PhoenixCounter!=combat.Player.phantomPhoneixCounter ||
+                entry.HeldOwnerCenter!=combat.Player.RotatedRelativePoint(combat.Player.MountedCenter) || entry.HeldScale!=entry.Shot.scale || entry.HeldRotation!=combat.Player.fullRotation || entry.HeldGravity!=combat.Player.gravDir))
             {RejectDependencies(entry);return false;}
             // Direct navigation already proves a bounded executable point; its
             // later family Contact is a separate observation. Native NPC motion

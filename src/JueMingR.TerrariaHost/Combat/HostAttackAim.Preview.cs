@@ -82,7 +82,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool TryCandidateDisplay(long tick,out NpcTrajectory path,out PredictionTerrain.CellLease terrain)
         {
             path=null;terrain=null;var plan=candidatePresentationPlan;
-            if(!observation.Path || BasicPermission || plan==null || !plan.Prepared || plan.Controlled || plan.Phase!=HostAttackPhase.CompletedWorld || plan.Contact==null || plan.MotionTerrain==null || plan.Timeline==null || plan.Timeline.SampleTick!=tick || plan.Timeline.CaptureTick!=tick || !plan.Timeline.Identity.Equals(observation.Selection.Target))return false;
+            if(!observation.Path || BasicPermission || plan==null || !plan.Prepared || plan.Controlled || plan.Phase!=HostAttackPhase.CompletedWorld || !PlanPositive(plan) || plan.MotionTerrain==null || plan.Timeline==null || plan.Timeline.SampleTick!=tick || plan.Timeline.CaptureTick!=tick || !plan.Timeline.Identity.Equals(observation.Selection.Target))return false;
             path=plan.Timeline;terrain=plan.MotionTerrain;return true;
         }
         internal void PublishCandidatePreview(NpcTrajectory path)
@@ -228,7 +228,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(candidate==null || timeline==null || !candidate.Identity.Equals(timeline.Identity) || candidate.SampleTick!=timeline.SampleTick || candidate.CaptureTick!=timeline.CaptureTick)return false;
             if(timeline.Count<candidate.Count)return false;
             int count=candidate.Count;
-            if(plan.Contact==null || plan.Contact.ReceiveTick>=count)return false;
+            if(!PlanPositive(plan) || PlanReceiveTick(plan)>=count)return false;
             NpcTrajectory candidatePrefix=candidate,presentationPrefix=timeline;
             // Both owners have just sampled this same native phase, but the
             // selected display may keep more tail than the admitted candidate.
@@ -257,6 +257,9 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var player=combat.Player;var item=player.HeldItem;
             if(HostPlacementAttack.Handles(item)){plan.Clear();return null;}
+            // Representative candidates exit before ReadFlight and receive
+            // capture. Path-only ranking must not resurrect an ammo world.
+            if(PrepareBalancedPlan(plan,timeline,phase))return plan.Contact;
             int delay=HostAttackWindow.PreviewDelay(player,item);var clock=new HostAttackClock(timeline,phase);
             if(clock.Age<0 || clock.Age>1){plan.Clear();return null;}
             bool hasFlight;var flight=ReadFlight(player,timeline,phase,out hasFlight);
@@ -393,6 +396,7 @@ namespace JueMingR.TerrariaHost.Combat
         {return a!=null && b!=null && a.RelationVersion==b.RelationVersion && Equals(a.GravitySources,b.GravitySources) && Equals(a.WallSources,b.WallSources);}
         private bool CandidateMissCurrent(PreviewPlan plan,NpcIdentity target,long sampleTick,HostAttackPhase phase,int required)
         {
+            if(plan!=null && plan.Balanced)return false;
             if(plan==null || !plan.Prepared || plan.Controlled || plan.Contact!=null || plan.Timeline==null || !plan.Timeline.Identity.Equals(target))return false;
             // A display window has a newer start and an older capture. Its
             // shorter miss cannot authorize a Source proof for a fresh full
@@ -423,6 +427,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal readonly FaultGate Faults=new FaultGate();
             internal readonly PredictionTerrain Terrain=new PredictionTerrain();
             internal AttackContact Contact;internal NpcTrajectory Timeline;internal AttackAmmoSnapshot Ammo;
+            internal HostAttackSolution Solution;internal bool Balanced;
             internal HostProjectileEnvironment Environment;internal HostProjectileEnvironment.State EnvironmentState;internal HostAttackObstacles Obstacles;
             internal HostHarpyAttack.State HarpyState;
             internal FlightPreview Flight;
@@ -466,7 +471,7 @@ namespace JueMingR.TerrariaHost.Combat
                 item=source.item;slot=source.slot;type=source.type;prefix=source.prefix;scale=source.scale;
                 Phase=source.Phase;Immune=source.Immune;AttackCooldown=source.AttackCooldown;MeleeCooldown=source.MeleeCooldown;
             }
-            internal void Clear(){Contact=null;Timeline=null;MotionTerrain=null;MotionSource=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;HandOwner=null;Prepared=Controlled=HadFlight=false;}
+            internal void Clear(){Contact=null;Solution=default(HostAttackSolution);Balanced=false;Timeline=null;MotionTerrain=null;MotionSource=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;HandOwner=null;Prepared=Controlled=HadFlight=false;}
         }
     }
 }

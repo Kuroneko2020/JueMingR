@@ -120,7 +120,7 @@ namespace JueMingR.TerrariaHost.Combat
                     actionHint=default(NpcIdentity);actionHintRequired=0;
                     using(CombatPredictionWork.Limit(3))
                     if(EvaluateCandidate(identity,sampleTick,false,phase,key,CandidateProgressRequired(identity,key,false)))
-                    {actionHint=identity;actionHintRequired=Math.Min(NpcPredictionCache.Horizon,Math.Max(1,candidatePlans[key].Contact.ReceiveTick+1));}
+                    {actionHint=identity;actionHintRequired=Math.Min(NpcPredictionCache.Horizon,Math.Max(1,PlanReceiveTick(candidatePlans[key])+1));}
                 }
                 return;
             }
@@ -309,7 +309,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // uses only fresh results after consuming that work opportunity;
                 // its new best is never limited by the old World hint's rank.
                 if(beforeNpc || actionHint.Token==null || hint<0 || best<=hint)
-                {actionHint=identity;actionHintRequired=plan?.Contact==null?0:Math.Min(NpcPredictionCache.Horizon,Math.Max(1,plan.Contact.ReceiveTick+1));}
+                {actionHint=identity;actionHintRequired=!PlanPositive(plan)?0:Math.Min(NpcPredictionCache.Horizon,Math.Max(1,PlanReceiveTick(plan)+1));}
             }
             if(!beforeNpc && best>=0)
             {
@@ -324,16 +324,16 @@ namespace JueMingR.TerrariaHost.Combat
             // A previous positive supplies a work range, never a current proof.
             // Keep enough of the fresh sample to retry that receive instead of
             // replacing a late complex contact with the initial short prefix.
-            if(plan?.Contact!=null && path!=null && path.Identity.Equals(identity))
+            if(PlanPositive(plan) && path!=null && path.Identity.Equals(identity))
             {
-                long sample=(long)Main.GameUpdateCount-(beforeNpc?1:0),remaining=plan.Contact.ReceiveTick-(sample-path.SampleTick);
+                long sample=(long)Main.GameUpdateCount-(beforeNpc?1:0),remaining=PlanReceiveTick(plan)-(sample-path.SampleTick);
                 if(remaining>=0)preferred=Math.Max(preferred,(int)Math.Min(NpcPredictionCache.Horizon,remaining+1));
             }
             // A newly observed discontinuity clears requested once above.
             // The significant queue ticket may survive a complete short miss;
             // it is priority, not permission to restart at the same short range
             // forever. Normal movement retains progress and its fair stamp.
-            if(requested==0 || !candidateUnknown[key])return preferred;
+            if(requested==0 || !candidateUnknown[key] || plan!=null && plan.Balanced)return preferred;
             // Source completion is not solve completion. Repeating a budget-
             // interrupted Plan at twice the range pays more Source work before
             // retrying the missing solve and can starve an otherwise reachable
@@ -388,7 +388,8 @@ namespace JueMingR.TerrariaHost.Combat
                 // explosion can reach this receiver after another body is hit.
                 // Keep that causal stage unresolved until its family solver
                 // provides a contact; a genuine despawn still closes the tail.
-                candidateUnknown[key]=contact==null && (timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && (timeline.Count<=NpcPredictionCache.Horizon || HasOwnMeleeHitFamily(combat.Player.HeldItem)));
+                bool positive=PlanPositive(plan);
+                candidateUnknown[key]=plan.Balanced?plan.Solution.Reachability==HostAttackReachability.Unknown:contact==null && (timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && (timeline.Count<=NpcPredictionCache.Horizon || HasOwnMeleeHitFamily(combat.Player.HeldItem)));
                 plan.MotionTerrain=null;plan.MotionSource=null;
                 // Seal only a completed positive before another candidate can
                 // replace the producing owner's cells. This bounded copy ends
@@ -397,12 +398,12 @@ namespace JueMingR.TerrariaHost.Combat
                 // Its cost still belongs to the same optional slice. Host must
                 // separately admit/validate display under the unchanged shared
                 // allowance; this snapshot grants no display or actual input.
-                if(contact!=null && (beforeNpc && CandidateHandPrepared(plan) || !beforeNpc && observation.Path && !BasicPermission))
+                if(positive && (beforeNpc && CandidateHandPrepared(plan) || !beforeNpc && observation.Path && !BasicPermission))
                 {
                     plan.MotionSource=observation.Prediction.CandidateTerrainOwner(publication);
                     plan.MotionTerrain=plan.MotionSource?.Terrain.FreezeCells();
                 }
-                return contact!=null;
+                return positive;
             }
             catch(CombatPredictionBudgetExceededException){return false;}
             catch(Exception error){PropagateFatal(error);plan.Faults.Record(context);plan.Clear();candidateUnknown[key]=false;return false;}
@@ -415,6 +416,10 @@ namespace JueMingR.TerrariaHost.Combat
                 {candidateChanges[identity.Slot]=++candidateChangeTicket;candidateSignificant[identity.Slot]=significantAdmission;}
             }
         }
+        private static bool PlanPositive(PreviewPlan plan)
+        {return plan!=null && (plan.Balanced?plan.Solution.Reachability==HostAttackReachability.Reachable:plan.Contact!=null);}
+        private static int PlanReceiveTick(PreviewPlan plan)
+        {return plan.Balanced?plan.Solution.ReceiveTick:plan.Contact.ReceiveTick;}
         private void ClearCandidateProgress()
         {
             Array.Clear(candidateIdentities,0,candidateIdentities.Length);Array.Clear(candidateDepths,0,candidateDepths.Length);Array.Clear(candidateRequests,0,candidateRequests.Length);Array.Clear(candidateUnknown,0,candidateUnknown.Length);Array.Clear(candidateAttempt,0,candidateAttempt.Length);Array.Clear(candidateMembership,0,candidateMembership.Length);

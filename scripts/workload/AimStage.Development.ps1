@@ -33,9 +33,11 @@ function Read-AimStageDevelopment {
     $weaponCompat=$null -ne $record -and $record.schema -ceq 'aim-weapon-compat-development-20261015-1'
     $targetPerf=$null -ne $record -and $record.schema -ceq 'aim-target-perf-development-20261014-1'
     $algorithm=$null -ne $record -and $record.schema -ceq 'aim-algorithm-rework-development-20261015-1'
+    $balanced=$null -ne $record -and $record.schema -ceq 'aim-balanced-development-20261017-1'
     $base=if($algorithm){'97ceecf7c8706779bc2cf9acfff795830eb449da'}elseif($costNav){'69ffc7bfd5223069081c848f1646b49e958b2eea'}elseif($weaponCompat){'0f93019526aa334877b4cfb4b5d38c3d1c0c55c4'}elseif($targetPerf){'72970569c11dd09e3e210894c25cc06e4cfc1a7f'}elseif($dedup){'c38b1f941d64b73971a3380aff5d7c75fff24cb7'}elseif($continuation){'569668aa9f4eb75d525709b20652eefd1d8e0e23'}elseif($priority){'01b03386cc288fe8f8a773cecd3a0de564182472'}elseif($successor){'3504c963949d87d6a88ada5a3f5cd9c189f1f0c2'}else{'472dea0955b6c9274d8c55fc48dbc7fc44ba108e'}
     $schema=if($algorithm){'aim-algorithm-rework-development-20261015-1'}elseif($costNav){'aim-cost-nav-development-20261015-1'}elseif($weaponCompat){'aim-weapon-compat-development-20261015-1'}elseif($targetPerf){'aim-target-perf-development-20261014-1'}elseif($dedup){'aim-dedup-repair-development-20261014-1'}elseif($continuation){'aim-continuation-development-20261013-1'}elseif($priority){'aim-priority-recovery-development-20261013-1'}elseif($successor){'aim-root-fix-development-20261012-1'}else{'aim-stage-development-20261011-1'}
     $authorization=if($algorithm){'owner-issue114-algorithm-rework-20261015'}elseif($costNav){'owner-issue114-cost-nav-20261015'}elseif($weaponCompat){'owner-issue114-weapon-compat-20261015'}elseif($targetPerf){'owner-issue114-target-perf-20261014'}elseif($dedup){'owner-issue114-dedup-repair-20261014'}elseif($continuation){'owner-issue114-continuation-20261013'}elseif($priority){'owner-issue114-priority-recovery-20261013'}elseif($successor){'owner-issue114-root-fix-20261012'}else{'owner-issue114-stage-package-20261011'}
+    if($balanced){$base='112e9d629e3caf75c5d2ed9d021ac9c255b68e34';$schema='aim-balanced-development-20261017-1';$authorization='owner-issue114-balanced-20261017'}
     if($null -eq $record -or $record.schema -cne $schema -or
         $record.authorization -cne $authorization -or $record.productBase -cne $base -or
         $record.candidateCommit -cne $Identity.commit -or $record.sourceFingerprint -cne $Identity.fingerprint -or
@@ -539,6 +541,31 @@ function Read-AimStageDevelopment {
             'tests/NativeWorldTextProbe/NativeCombatYoyoFamilyChecks.cs',
             'tests/NativeWorldTextProbe/NativeCombatYoyoFamilyConsumerChecks.cs')
     }
+    if($balanced){
+        # Fixed successor authorized by the owner's 00/01/05 package. Its
+        # representative-input duties replace general full-lifecycle gates;
+        # committed bytes, all input identities and independent review remain.
+        $allowed=@(
+            'docs/功能介绍/战斗辅助行为合同.md','docs/计划/辅助瞄准阶段文档.md',
+            'docs/设计/战斗辅助实现设计.md','docs/设计/可重复构建与项目骨架.md',
+            'src/JueMingR.Features/Combat/AttackMotion.cs','src/JueMingR.Features/Combat/AttackMotionCandidates.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackSolution.cs','src/JueMingR.TerrariaHost/Combat/HostRepresentativeAttack.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostMotionAttackInputs.cs','src/JueMingR.TerrariaHost/Combat/HostNativeArrowBirthAttack.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostNorthPoleAttack.cs','src/JueMingR.TerrariaHost/Combat/HostSpearShardAttack.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.cs','src/JueMingR.TerrariaHost/Combat/HostAttackAim.Balanced.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.Basic.cs','src/JueMingR.TerrariaHost/Combat/HostAttackAim.Preview.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.FlightPreview.cs','src/JueMingR.TerrariaHost/Combat/HostAttackAim.HandReuse.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackAim.Selection.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackControl.Balanced.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostCadenceAim.cs','src/JueMingR.TerrariaHost/Combat/HostHeldAttack.cs',
+            'src/JueMingR.TerrariaHost/Combat/HostHeldAmmoFamilyAttack.cs',
+            'tests/NativeWorldTextProbe/NativeCombatBalancedAimChecks.cs','tests/NativeWorldTextProbe/NativeCombatBalancedPhaseChecks.cs','tests/NativeWorldTextProbe/NativeCombatAimChecks.cs','tests/NativeWorldTextProbe/NativeCombatBallisticMotionChecks.cs','tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs',
+            'scripts/workload/AimStage.Development.ps1','scripts/workload/Workload.Definitions.ps1',
+            'scripts/phase0s/Continuous-Processing-Owner-Test-Card.zh-CN.md',
+            'review-materials/aim-balanced-20261017/evidence.md','review-materials/aim-balanced-20261017/validation-map.json',
+            'review-materials/aim-balanced-20261017/mechanism-coverage.md','review-materials/aim-balanced-20261017/main-summary.csv',
+            'review-materials/aim-balanced-20261017/owner-test-card.md')
+    }
     $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)
     if(@($changed | Where-Object {$allowed -cnotcontains $_}).Count -ne 0 -or
         (@($record.revisions | ForEach-Object {$_.path} | Sort-Object) -join '|') -cne ($changed -join '|')) {throw 'Stage revision scope differs from the approved closing delta.'}
@@ -572,6 +599,8 @@ function Read-AimStageDevelopment {
     if($algorithm){$required=@('architecture-combat','weapon-mechanisms','npc-mechanisms','control-input',
         'selection-modes','source-retirement','impact-draw','path-continuity','main-performance',
         'representative-opportunities','full-coverage','workload-routing')}
+    if($balanced){$required=@('architecture-combat','balanced-native-input','mechanism-coverage',
+        'selection-modes','npc-yoyo-safety','main-performance','workload-routing')}
     if((@($record.checks | ForEach-Object {$_.name} | Sort-Object) -join '|') -cne (@($required | Sort-Object) -join '|')) {throw 'Stage necessary checks are incomplete/duplicated.'}
     foreach($check in $record.checks){
         if($check.exit -ne 0 -or $check.disposition -cnotin @('CURRENT','REVIEWED_REUSE') -or
@@ -621,7 +650,7 @@ function Read-AimStageDevelopment {
             [string]$assembly.path -match '(^|/)\.\.(/|$)|[\\:]' -or
             (Get-WorkloadFileHash -LiteralPath (Join-Path $Root $assembly.path)).Hash -cne $assembly.sha256){throw 'Stage detection consumer changed.'}
     }
-    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($algorithm){'ExplicitAimAlgorithmRework20261015'}elseif($costNav){'ExplicitAimCostNav20261015'}elseif($weaponCompat){'ExplicitAimWeaponCompat20261015'}elseif($targetPerf){'ExplicitAimTargetPerf20261014'}elseif($dedup){'ExplicitAimDedupRepair20261014'}elseif($continuation){'ExplicitAimContinuation20261013'}elseif($priority){'ExplicitAimPriorityRecovery20261013'}elseif($successor){'ExplicitAimRootFix20261012'}else{'ExplicitAimStage20261011'});fullQualification='INCOMPLETE';releaseEligible=$false;
+    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($balanced){'ExplicitAimBalanced20261017'}elseif($algorithm){'ExplicitAimAlgorithmRework20261015'}elseif($costNav){'ExplicitAimCostNav20261015'}elseif($weaponCompat){'ExplicitAimWeaponCompat20261015'}elseif($targetPerf){'ExplicitAimTargetPerf20261014'}elseif($dedup){'ExplicitAimDedupRepair20261014'}elseif($continuation){'ExplicitAimContinuation20261013'}elseif($priority){'ExplicitAimPriorityRecovery20261013'}elseif($successor){'ExplicitAimRootFix20261012'}else{'ExplicitAimStage20261011'});fullQualification='INCOMPLETE';releaseEligible=$false;
         productBase=$base;recordPath=$relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;
         necessaryScopes=$required;limits=@($record.limits);checkCount=$required.Count}
 }

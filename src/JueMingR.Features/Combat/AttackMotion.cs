@@ -34,6 +34,11 @@ namespace JueMingR.Features.Combat
         {return outers<=0?0:(FirstUpdates==0?Updates:FirstUpdates)+(outers-1)*Updates;}
         public AttackMotion WithUpdates(int updates,int firstUpdates=0)
         {return new AttackMotion(Speed,Gravity,GravityStart,updates,Width,Height,Lifetime,Confidence,Acceleration,MaxSpeed,ComponentBirthLimit,ComponentAccelerationLimit,DragAfterGravity,StopSmallVelocity,MoveScale,WindX,MaxFallSpeed,GravityClockUsesLaunchX,MaxRiseSpeed,AccelerationStart,HorizontalAccelerationOnly,PreMotorWindX,firstUpdates);}
+        // A component-limited birth has a finite set of .97 speed classes.
+        // Inversion uses each class without limiting it a second time; the
+        // host must still verify the actual cursor-dependent birth velocity.
+        public AttackMotion WithSpeed(float speed,bool componentBirthLimit=false)
+        {return new AttackMotion(speed,Gravity,GravityStart,Updates,Width,Height,Lifetime,Confidence,Acceleration,MaxSpeed,componentBirthLimit,ComponentAccelerationLimit,DragAfterGravity,StopSmallVelocity,MoveScale,WindX,MaxFallSpeed,GravityClockUsesLaunchX,MaxRiseSpeed,AccelerationStart,HorizontalAccelerationOnly,PreMotorWindX,FirstUpdates);}
         public void Launch(ref float vx,ref float vy)
         {
             // NewProjectile limits AI_001 components together, repeatedly.

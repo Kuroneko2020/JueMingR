@@ -123,6 +123,8 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var player=combat.Player;var item=player.HeldItem;
             var captured=AttackAmmoSnapshot.Capture(player,item);Projectile body;AttackMotion motion;int finiteRange=16;
+            if((BalancedHeld(item) || BalancedHand(player,item,captured)) && CombatSelection.Valid(target,observation.Session))
+                return BalancedPreferred(player,item,captured,Main.npc[target.Slot],futureLaunch);
             // The sealed primary whip ends at its native animation clock.
             // Request that finite hand once instead of replaying 16 -> 32.
             // This schedules NPC work only; actual rope/receive/input checks
@@ -179,6 +181,8 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var player=combat.Player;var item=player.HeldItem;
             if(!CombatSelection.Valid(target,observation.Session))return 4;
+            var balancedAmmo=AttackAmmoSnapshot.Capture(player,item);
+            if(BalancedHeld(item) || BalancedHand(player,item,balancedAmmo))return BalancedPreferred(player,item,balancedAmmo,Main.npc[target.Slot],false);
             if(HostPhasebladeAttack.Handles(item.shoot))return NpcPredictionCache.Horizon;
             if(HasOwnMeleeHitFamily(item))return NpcPredictionCache.Horizon;
             if(HostSwingAttack.Handles(item) && (item.shoot<=0 || HostGrassCurveAttack.Family(item.shoot) || HostLightsBaneAttack.Family(item.shoot)))return Math.Min(120,Math.Max(4,player.itemAnimation>0?player.itemAnimation+1:item.useAnimation+1));
@@ -195,7 +199,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return NpcPredictionCache.Horizon;
         }
-        internal void ClearExecution(){presentation=null;weapon=null;ammo=null;current=next=null;environment=null;obstacles=null;harpyState=null;handTerrain=handMotionTerrain=null;sharedHandOwner=null;preparedOrdinary=false;cadence.Clear();Control.Clear();}
+        internal void ClearExecution(){presentation=null;weapon=null;ammo=null;current=next=null;currentSolution=nextSolution=default(HostAttackSolution);balancedOrdinary=false;environment=null;obstacles=null;harpyState=null;handTerrain=handMotionTerrain=null;sharedHandOwner=null;preparedOrdinary=false;cadence.Clear();Control.Clear();}
         internal void Clear(){ClearExecution();ClearPreview();}
         internal void Reset(){demandActive=false;releaseHand=null;Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.Reset();hasConsumedInput=false;}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
@@ -285,6 +289,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Reuse only an unconsumed action with identical current premises;
             // BeginShot clears both contacts, so it cannot mint a second lease.
             var held=combat.Player;
+            if(balancedOrdinary && preparedOrdinaryPhase==phase && prepared==Main.GameUpdateCount && held!=null && BalancedInputCurrent(true))return;
             if(preparedOrdinary && preparedOrdinaryPhase==phase && prepared==Main.GameUpdateCount && held!=null && current!=null && CurrentReceiver &&
                 preparedDirection==held.direction && preparedAnimation==held.itemAnimation && preparedAnimationMax==held.itemAnimationMax && preparedTime==held.itemTime && preparedReuse==held.reuseDelay &&
                 preparedAttackCooldown==held.attackCD && preparedMeleeCooldown==held.meleeNPCHitCooldown[observation.Selection.Target.Slot] && preparedMeleeSpeed==held.meleeSpeed && preparedScale==held.GetAdjustedItemScale(held.HeldItem) &&
@@ -317,6 +322,8 @@ namespace JueMingR.TerrariaHost.Combat
             // missing ordinary shot model must not hide the independent hand.
             if(HostSwingAttack.Handles(item) && (item.shoot<=0 || HostGrassCurveAttack.Family(item.shoot) || HostLightsBaneAttack.Family(item.shoot))){PrepareSwing(player,item,timeline,phase,false);if(beforeNpc && current==null && observation.ExpandActionPrediction())PrepareCore(phase);return;}
             var captured=AttackAmmoSnapshot.Capture(player,item);if(captured==null)return;
+            if(BalancedHand(player,item,captured))
+            {PrepareBalancedOrdinary(player,item,captured,timeline,phase);return;}
             cadence.Prepare(player,item,captured,timeline,phase,null);
             if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item) || HostDirectionalControl.Weapon(player,item))
             {
@@ -375,7 +382,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             environment=null;obstacles=null;
             if(HostNativeArrowBirthAttack.Weapon(item.type))
-            {var native=ContentSamples.ProjectilesByType[captured.Projectile];obstacles=new HostAttackObstacles(player,native,timeline,delay,beforeNpc,!beforeNpc);return HostNativeArrowBirthAttack.Solve(player,captured,timeline,start,new HostAttackClock(timeline,beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld,delay),terrain,obstacles,launchOriginAdvanced || preparedPlayer.HasValue);}
+            {return HostNativeArrowBirthAttack.Prepare(player,captured,timeline,start,new HostAttackClock(timeline,beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld,delay),terrain,null,launchOriginAdvanced || preparedPlayer.HasValue).Contact;}
             if(HostSkyAttack.Handles(item.type))
             {var sky=ContentSamples.ProjectilesByType[captured.Projectile];obstacles=new HostAttackObstacles(player,sky,timeline,delay,beforeNpc,!beforeNpc);return HostSkyAttack.Solve(player,item,captured,timeline,start,age,terrain,beforeNpc,obstacles,delay);}
             if(HostAttachedShotAttack.Handles(captured.Projectile))
@@ -406,7 +413,7 @@ namespace JueMingR.TerrariaHost.Combat
             return HostProjectileEnvironment.Solve(sample,terrain,start,motion,timeline,age,0,1,t=>receive.Allows(t+delay),out environment,(k,t,x,y)=>receivers.PassOuter(k,t,delay+motion.OuterAtSubupdate(k),x,y),(k,t,x,y)=>motion.SubupdateInOuter(k)!=0 || receivers.BeforeNpc(t,delay+motion.OuterAtSubupdate(k),x,y));
         }
         private bool Valid(bool checkAmmo)
-        {return ValidCore(checkAmmo,false);}
+        {return balancedOrdinary?BalancedInputCurrent(checkAmmo):ValidCore(checkAmmo,false);}
         // Pure melee families consume a prepared facing only at their real
         // native hand boundary. Their absence of ammunition is intentional,
         // not permission for other null-ammo ordinary cursor inputs.
@@ -465,7 +472,7 @@ namespace JueMingR.TerrariaHost.Combat
             // One prepared ordinary attack is a capability, not a reusable
             // cursor value. Native consumption retires it even if a later
             // refill happens to recreate the same ammo bytes in this step.
-            current=next=null;
+            current=next=null;currentSolution=nextSolution=default(HostAttackSolution);
             candidateHandPlan=null;
             return input.Begin();
         }

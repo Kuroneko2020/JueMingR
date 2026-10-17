@@ -17,6 +17,12 @@ namespace JueMingR.TerrariaHost.Combat
         private uint step;private long operation;private Vector2 origin,point;private CombatAimStage stage;
         internal HostCadenceAim(HostCombat combat,HostCombatObservation observation){this.combat=combat;this.observation=observation;}
         internal void Clear(){weapon=null;timeline=null;ammo=null;}
+        internal void Prepare(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory future,HostAttackPhase phase,HostAttackSolution solution)
+        {
+            if(!solution.HasPoint){Prepare(player,item,captured,future,phase,(AttackContact)null);return;}
+            Clear();if(!combat.Use.Active || captured==null || !WeaponCatalog.Switchable(item))return;
+            stage=CombatAimStage.ItemRelease;origin=player.RotatedRelativePoint(player.MountedCenter);point=solution.Point;Stamp(item,captured,future);
+        }
         internal void Prepare(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory future,HostAttackPhase phase,AttackContact contact)
         {
             Clear();if(!combat.Use.Active || captured==null || !WeaponCatalog.Switchable(item))return;

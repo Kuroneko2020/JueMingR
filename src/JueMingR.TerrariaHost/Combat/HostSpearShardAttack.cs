@@ -75,28 +75,9 @@ namespace JueMingR.TerrariaHost.Combat
         private static bool Pose(Player body,HostAttackPlayerFrame frame,ref PredictionPlayerMotion motion,PredictionTerrain terrain,int step,bool advance)
         {if(advance){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,frame.Environment,terrain,out stop))return false;}HostAttackPlayerFrame.ApplyPose(body,motion);return true;}
         internal static AttackContact SolvePrepared(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory path,int age,bool beforeNpc,PredictionTerrain terrain,int delay,HostAttackObstacles root,HostAttackPlayerFrame frame)
-        {
-            if(ammo.Projectile!=367 || age-delay<0 || age+1>=path.Count)return null;root=root??new HostAttackObstacles(player,Terraria.ID.ContentSamples.ProjectilesByType[367],path,delay,beforeNpc,!beforeNpc);root.CaptureShotFacing(player);var scene=Capture(player,root);var pool=root.CaptureBirthSlots();var inputs=new List<Vector2>();
-            int maximum=player.itemAnimation>0?player.itemAnimationMax:HostMeleeAttack.AnimationDuration(player,item),animation=player.itemAnimation>0?player.itemAnimation:maximum;
-            for(int seed=0;seed<41;seed++)
-            {
-                var b=path[Math.Min(path.Count-1,age+1+Math.Min(seed,8)*4)].ProjectileReceiveBounds;var unit=seed<9?(new Vector2(b.CenterX,b.CenterY)-player.MountedCenter).SafeNormalize(Vector2.UnitX*player.direction):((seed-9)*MathHelper.TwoPi/32).ToRotationVector2();if(inputs.Contains(unit))continue;inputs.Add(unit);var aim=player.MountedCenter+unit*10000;
-                root.BeginCandidate();var rows=Copy(scene,null,root);var slots=pool.Copy();var body=HostMeleeAttack.PlayerCopy(player);var motion=frame.Motion;body.itemAnimationMax=maximum;bool valid=true;
-                // Preview passes its already advanced future hand. Existing
-                // members' pre-launch frames instead start at the real owner.
-                if(delay>0)
-                {
-                    var live=Main.player[player.whoAmI];var prior=HostAttackPlayerFrame.Capture(live,path);var priorMotion=prior.Motion;var priorBody=HostMeleeAttack.PlayerCopy(live);
-                    for(int wait=1;wait<=delay;wait++){if(!Pose(priorBody,prior,ref priorMotion,terrain,wait,!beforeNpc || wait>1)){valid=false;break;}priorBody.itemAnimation=Math.Max(0,live.itemAnimation-wait+1-(!beforeNpc?1:0));AttackContact ignored;if(!Outer(rows,slots,priorBody,path,age-delay+wait,wait,terrain,root,aim,out ignored)){valid=false;break;}}
-                }
-                if(!valid)continue;int slot;if(!slots.TryAllocate(out slot))return null;var parent=new Projectile();parent.SetDefaults(367);parent.active=true;parent.owner=player.whoAmI;parent.whoAmI=slot;parent.Center=player.RotatedRelativePoint(player.MountedCenter);parent.velocity=HostThornAttack.BirthVelocity(player,parent.Center,aim,ammo.Speed);parent.damage=ammo.Damage;parent.knockBack=item.knockBack;rows.Add(Make(parent,root,true,false));
-                for(int step=0;age+step+1<path.Count;step++)
-                {
-                    bool hand=rows.Exists(row=>row.Shot.active && row.Shot.type==367);if(hand && !Pose(body,frame,ref motion,terrain,step,!beforeNpc || step>0))break;body.itemAnimation=Math.Max(0,animation-step-(!beforeNpc?1:0));AttackContact contact;if(!Outer(rows,slots,body,path,age+step+1,delay+step+1,terrain,root,aim,out contact))break;if(contact!=null)return contact;
-                }
-            }
-            return null;
-        }
+        {return Prepare(player,item,ammo,path,new HostAttackClock(path,beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld,delay),terrain,frame).Contact;}
+        internal static HostAttackSolution Prepare(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory path,HostAttackClock clock,PredictionTerrain terrain,HostAttackPlayerFrame frame)
+        {return HostRepresentativeAttack.PrepareSpear(player,item,ammo,path,clock,terrain,frame,false);}
         internal static AttackContact KnownFamily(Player player,Projectile[] sources,NpcTrajectory path,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles root)
         {
             if(sources==null || sources.Length==0 || clock.Phase==HostAttackPhase.Projectiles || clock.LaunchDelay!=0)return null;var scene=Capture(player,root);root.BeginCandidate();var rows=Copy(scene,sources,root);var slots=root.CaptureBirthSlots().Copy();var body=HostMeleeAttack.PlayerCopy(player);var frame=HostAttackPlayerFrame.Capture(player,path);var motion=frame.Motion;var aim=sources[0].Center+sources[0].velocity*1000;
