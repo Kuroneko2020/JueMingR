@@ -10,8 +10,10 @@ using static NativeWorldTextProbe.NativeInformationChecks;
 namespace NativeWorldTextProbe
 {
     // Natural native consumers retain the actual input/damage oracle. Separate
-    // private stage readers only borrow the actual published path; they never
-    // feed Source, prepare input, or recreate the retired display capability.
+    // private stage readers borrow the actual published path. StaticDummyComponent
+    // is a component-only exception: it builds an unpublished stationary dummy
+    // timeline, never Source publication. Readers do not feed Source, prepare
+    // input, or recreate the retired display capability.
     internal static class NativeCombatOriginalFeedbackChecks
     {
         private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic;

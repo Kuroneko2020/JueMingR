@@ -42,6 +42,9 @@ namespace JueMingR.Features.Notes
         public int Y { get; }
         public int Opacity { get; }
         public NoteReading Reading { get; }
+        // Process-local pin generation, distinct from persisted Id. Ordinary
+        // snapshots retain it; unpin retires it and repin replaces it, rejecting
+        // late reading updates from the old pin while accepting current snapshots.
         internal object PinIdentity { get; }
         public bool EmptyBody { get; }
         public IReadOnlyList<int> TitleBoundaries { get; }

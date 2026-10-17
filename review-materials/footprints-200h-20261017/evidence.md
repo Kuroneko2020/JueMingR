@@ -1,6 +1,8 @@
 # 足迹200小时候选：工程证据
 
-任务与权限见 [#118](https://github.com/Kuroneko2020/JueMingR/issues/118)，候选为 [Draft PR #119](https://github.com/Kuroneko2020/JueMingR/pull/119)，BASE为已接受main `f50646b083b27248731dbf7afdc53a3876ff4309`。本页记录本批证据边界，固定源码与最终准入见Issue；不把旧 #87 接受、已有完整包或本轮编译代证新体验。
+任务与权限见 [#118](https://github.com/Kuroneko2020/JueMingR/issues/118)，对应 [PR #119](https://github.com/Kuroneko2020/JueMingR/pull/119)，BASE为已接受main `f50646b083b27248731dbf7afdc53a3876ff4309`。本页保留本批原工程证据边界，固定源码与最终准入见Issue；不把旧 #87 接受、已有完整包或编译代证新体验。
+
+所有者2026-10-18已实测足迹功能与外观无问题，性能暂接受但未量化 FPS。随后授权的注释定点维护、现有同步责任补充和左下角战斗文字撤除及收尾见[本次短证据](../comment-hud-closeout-20261018/evidence.md)；不重跑本页200小时数据、不打包或换装，原包/现装身份 `81057c6` 保留，本页原失败、测试和安装回执不改写。
 
 本轮采用现实游玩TimeSpan ticks，记录SED误差0.125 tile；显示层DP误差0.375屏幕像素、重复覆盖端点量化0.25像素，总显示误差另加记录误差投影。绿线保持LimeGreen/地图Alpha，居中2屏幕像素，1×/0.25×真实XNB像素检查成立。旧格式未接入，新根footprints-v2；旧文件、已有偏好和其它功能数据保留。
 

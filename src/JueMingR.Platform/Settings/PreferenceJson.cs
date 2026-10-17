@@ -8,7 +8,8 @@ using System.Xml.Linq;
 
 namespace JueMingR.Platform.Settings
 {
-    // A bounded reader for the two real preference documents, not a schema registry.
+    // Shared bounded structural reader, not a schema registry; each calling codec
+    // owns its document's business semantics.
     public static class PreferenceJson
     {
         public const int MaximumBytes = 65536;

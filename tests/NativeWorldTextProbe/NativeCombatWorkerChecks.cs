@@ -14,8 +14,9 @@ using Terraria.Utilities;
 
 namespace NativeWorldTextProbe
 {
-    // Independent original-update oracle: no product Composition Root or
-    // Harmony patches, and the whole future is received before time advances.
+    // Frozen original-update comparisons receive the whole future before time
+    // advances, without product Composition Root or Harmony patches. Production
+    // and menu branches below instead exercise actual product initialization/patches.
     internal static class NativeCombatWorkerChecks
     {
 #if JMR_CONDITIONAL_RESEARCH
@@ -337,7 +338,9 @@ namespace NativeWorldTextProbe
                 // Original x86 Release methods and the explicit continuation
                 // can round intermediate floats differently. Bound the complete
                 // frozen dependency drift to 0.002px, far below a game pixel;
-                // NPC state/branch comparisons above remain exact.
+                // NPC position/velocity use motionTolerance (zero by default);
+                // identity, life, AI/phase, frame and size checks remain exact.
+                // This player-dependency tolerance is separate from NPC motion.
                 float dependencyError=0;
                 using(var dependencyLog=new StreamWriter(Path.Combine(output,name+"-players.csv")))
                 for(int at=0;at<playerFuture.Length;at++){float value=reader.ReadSingle();float difference=Math.Abs(value-playerFuture[at]);dependencyError=Math.Max(dependencyError,difference);dependencyLog.WriteLine(at+","+value.ToString("R")+","+playerFuture[at].ToString("R"));Require(difference<=0.002f,name+" player dependency mismatch tick="+(at/(playerSlots.Length*4))+" component="+(at%4)+" predicted="+value.ToString("R")+" native="+playerFuture[at].ToString("R"));}

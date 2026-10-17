@@ -203,8 +203,8 @@ namespace JueMingR.Features.Footprints
                 lock (gate) { finished = true; state = new FootprintStoreState(state.Loaded, state.Generation, state.Count, state.End, state.Segment, state.Clearing, true, state.Error, state.Protected); wake.Dispose(); }
             }
         }
-        // Called only while holding gate. These are bounded accepted facts,
-        // published once per handoff, not copied or inspected by every Draw.
+        // Under gate, publish a bounded immutable snapshot at handoff.
+        // Draw reuses and inspects it without rebuilding or copying the handoff.
         private void RefreshPending()
         {
             int length = pending == null ? 0 : pending.Length; foreach (var batch in recent) length += batch.Length; foreach (var batch in queue) length += batch.Length;

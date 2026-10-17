@@ -121,7 +121,8 @@ namespace JueMingR.TerrariaHost.Information
                 catch (Exception error)
                 {
                     // A failed block stops retrying on this font, without
-                    // disabling its peers, native observations or game actions.
+                    // disabling its peers or game actions. Biomes are the exception:
+                    // that instance also stops observing and ordinary toggles cannot recover it.
                     block.Fail(font);
                     if (placeholder) { host.DisplayFailed(error); return; }
                     host.DisplayFailed((InformationKind)i, error);

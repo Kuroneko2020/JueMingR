@@ -74,9 +74,10 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             }
             cursor = count = 0; invalid = false; bounds = area; Array.Clear(building, 0, 4);
         }
-        // Only called when protection has no remaining positive witness. All
-        // 7,241 possible entries are observed in this synchronous phase; failure
-        // retains protection. Unlike periodic background work this is an edge.
+        // Complete current discovery both for protection's final negative proof
+        // and native bank ordering before a real commit; the caller rate-limits
+        // commits. All 7,241 entries are observed synchronously. Failure is not
+        // proof of absence and cannot release protection.
         internal bool TryComplete(Player p, bool voidClosed, out bool any)
         {
 #if DEBUG

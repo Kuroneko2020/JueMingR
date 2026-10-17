@@ -61,6 +61,9 @@ namespace JueMingR.Features.WorldTime
             session.Worker.BeginStop(value =>
             { double final = known ? Math.Max(value.Total, total) : value.Total + delta; return final == value.Total ? value : new WorldTimeValue(final); });
         }
+        // Actual native Main.time += Main.dayRate contributions: 86,400 advance
+        // units per day, not real seconds or footprint TimeSpan ticks. Sleep/rate
+        // can change contributions; direct clock assignments are not this source.
         public void Advance(double contribution)
         {
             var session = current; if (session == null || stopping || contribution == 0) return;

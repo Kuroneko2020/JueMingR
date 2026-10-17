@@ -94,7 +94,7 @@ namespace JueMingR.Infrastructure.Footprints
             Guard(generationDirectory); string directory = Path.Combine(generationDirectory, "blocks");
             if (!namesStarted)
             {
-                // Only five known entries can occur directly in a generation.
+                // A fixed name whitelist bounds entries directly in a generation.
                 int direct = 0;
                 foreach (string entry in Directory.EnumerateFileSystemEntries(generationDirectory))
                 {

@@ -67,6 +67,10 @@ namespace JueMingR.Features.Footprints
             if (!dirty) { dirtyAt = milliseconds(); dirty = true; }
             return true;
         }
+        // Bounds intersect admissible velocities from the fixed interval origin.
+        // Each axis receives epsilon / sqrt(2), bounding the 2-D timed error.
+        // Test the actual endpoint velocity against prior bounds before tightening;
+        // a nonempty intersection alone does not certify that endpoint's line.
         private bool Fits(FootprintSample anchor, long end, float x, float y)
         {
             double dt = end - anchor.Start;

@@ -87,7 +87,9 @@ namespace JueMingR.TerrariaHost.Combat
                 ordered[at]=n;distances[at]=distance;CandidateCount++;
             }
             // The unproved fallback is always the nearest receiver. Clear-line
-            // mode may replace it only after a bounded actual attack proof.
+            // mode may replace it after a fresh bounded model-positive:
+            // representative Reachable or specialized Contact. Consumers
+            // separately validate permission before applying actual input.
             if(CandidateCount>0)Choose(ordered[0],session,false);else ClearLine=false;
         }
         internal static float PlayerRadius(Vector2 center)

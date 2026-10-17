@@ -253,6 +253,11 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-impact-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content)){NativeCombatAimChecks.Initialize();NativeCombatImpactVisualChecks.Run(context,graphics,output);}},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
+            if(scope=="CombatHudVisual")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-hud-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCombatVisualChecks.RunHud(context,graphics,output);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if(scope=="CombatVisual")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-visual-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);

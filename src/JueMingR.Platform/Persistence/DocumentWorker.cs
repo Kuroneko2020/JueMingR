@@ -17,7 +17,9 @@ namespace JueMingR.Platform.Persistence
     }
 
     // One consistency unit, one worker, one accepted immutable command. The slot
-    // remains occupied until its result is collected; commands are never merged.
+    // normally remains occupied until its result is collected; commands are never
+    // merged. Stop may finalUpdate the last reliable content and replace an older
+    // success receipt with the final result; a failed write suppresses that update.
     // IPreferenceStorage is the existing opaque-byte lease port, despite its name.
     public sealed class DocumentWorker<T> : IDisposable
     {

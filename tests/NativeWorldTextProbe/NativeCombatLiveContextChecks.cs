@@ -231,7 +231,7 @@ namespace NativeWorldTextProbe
                         publishedInInput=true;
                         shown++;Require(path.Identity.Slot==slot && ReferenceEquals(path.Identity.Token,npc) && path.Identity.NetId==netId && path.SampleTick==Main.GameUpdateCount,"Actual selected variant owns the current displayed window: netId="+netId+" mounted="+mounted+" frame="+frame+" expected-slot="+slot+" actual-slot="+path.Identity.Slot+" actual-netId="+path.Identity.NetId+" same-instance="+ReferenceEquals(path.Identity.Token,npc)+" sample="+path.SampleTick+" current="+Main.GameUpdateCount);
                         NativeCombatPresentationChecks.Project(world);
-                        Require((int)Get(world,"StrokeCount")>0 && Get(world,"pathText")!=null,"Cache reaches prepared line geometry and current path feedback.");
+                        Require((int)Get(world,"StrokeCount")>0 && ReferenceEquals(Get(world,"preparedPath"),path),"Cache reaches prepared line geometry from the current path.");
                     }
                     int draws=ratio<0?(frame%3==0?1:0):ratio;
                     for(int draw=0;draw<draws;draw++)

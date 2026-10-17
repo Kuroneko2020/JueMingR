@@ -54,9 +54,9 @@ namespace NativeWorldTextProbe
                     Input(i+30);long bytes=allocated==null?0:allocated(),start=Stopwatch.GetTimestamp();Damage();damageTime[i]=(Stopwatch.GetTimestamp()-start)*1000000.0/Stopwatch.Frequency;if(allocated!=null)damageBytes+=allocated()-bytes;
                     bytes=allocated==null?0:allocated();start=Stopwatch.GetTimestamp();update();prepare();hostTime[i]=(Stopwatch.GetTimestamp()-start)*1000000.0/Stopwatch.Frequency;if(allocated!=null)hostBytes+=allocated()-bytes;
                 }
-                int strokes=(int)Get(layer,"StrokeCount");bool limited=(bool)Get(layer,"limited");object path=Call(cache,"Read",0);
+                int strokes=(int)Get(layer,"StrokeCount");bool strokeCapReached=strokes==(int)Get(layer,"strokeLimit");object path=Call(cache,"Read",0);
                 if(scenario=="off" || none)Require(strokes==0 && path==null,"cost fixture off/empty output remains empty");
-                if(scenario=="dense")Require(strokes==4800 && !limited && path==null,"cost comparison requires identical complete ordinary dense output, not lower work through omissions");
+                if(scenario=="dense")Require(strokes==4800 && !strokeCapReached && path==null,"cost comparison requires identical complete ordinary dense output, not lower work through omissions");
                 if(marker)
                 {
                     var prediction=Get(host,"Prediction");Require(GetOptional(prediction,"Native")==null,"Marker costs cannot start exact worker.");
@@ -65,7 +65,7 @@ namespace NativeWorldTextProbe
                     if(!pathEnabled)Require(strokes==0 && path==null,"Marker-only costs contain selection/commands without path work.");
                     else Require(path!=null && (int)Get(path,"Count")==121,"Dual cost includes the full unchanged selected path.");
                 }
-                string detail="nativeDamageInputs="+shots+";activeNPC="+npcs+";strokes="+strokes+";limited="+limited+";pathCount="+(path==null?"0":Get(path,"Count").ToString())+";pathStop="+(path==null?"NA":Get(path,"Stop").ToString());
+                string detail="nativeDamageInputs="+shots+";activeNPC="+npcs+";strokes="+strokes+";strokeCapReached="+strokeCapReached+";pathCount="+(path==null?"0":Get(path,"Count").ToString())+";pathStop="+(path==null?"NA":Get(path,"Stop").ToString());
                 for(int i=0;i<before.Length;i++){var after=Counter(cache,counterNames[i]);detail+=";"+counterNames[i]+"="+(before[i].HasValue && after.HasValue?(after.Value-before[i].Value).ToString():"NA");}
                 var sampled=Counter(geometry,"ProjectileSamples");detail+=";capture="+(captured.HasValue && sampled.HasValue?(sampled.Value-captured.Value).ToString():"NA");
                 Array.Sort(damageTime);Array.Sort(hostTime);rows.Add(string.Join("\t",scenario,"120",F(damageTime[60]),F(damageTime[113]),F(hostTime[60]),F(hostTime[113]),allocated==null?"NA":F(damageBytes/120.0),allocated==null?"NA":F(hostBytes/120.0),(GC.CollectionCount(0)-gc[0])+"/"+(GC.CollectionCount(1)-gc[1])+"/"+(GC.CollectionCount(2)-gc[2]),detail));

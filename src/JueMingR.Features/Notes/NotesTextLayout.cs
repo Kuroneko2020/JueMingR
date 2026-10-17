@@ -12,9 +12,9 @@ namespace JueMingR.Features.Notes
         public int Start { get; }
         public int End { get; }
     }
-    // A layout shares the immutable, already validated text index. Construction
-    // does no full-text scan. Host advances all visible layouts under one budget;
-    // only finished lines can answer caret/navigation queries while it catches up.
+    // The indexed entry shares an immutable, validated text index; Host advances
+    // visible layouts under one budget. Only finished lines answer caret/navigation
+    // queries while it catches up. The convenience entry below completes synchronously.
     public sealed class NotesTextLayout
     {
         private const int BlockSize = 1024;
@@ -25,6 +25,8 @@ namespace JueMingR.Features.Notes
         private readonly float width;
         private int processed, first;
         private float x;
+        // For short bounded text: build the full index and finish here.
+        // Long bodies use the indexed entry and incremental Continue instead.
         public NotesTextLayout(string text, float width, Func<string, float> measure)
             : this(text, width, measure, Array.AsReadOnly(TextElements.Boundaries(text)))
         { while (!Complete) Continue(8192); }

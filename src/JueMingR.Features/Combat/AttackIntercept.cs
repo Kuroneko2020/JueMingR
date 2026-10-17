@@ -148,8 +148,10 @@ namespace JueMingR.Features.Combat
             }
             return null;
         }
-        // One selected timeline and a finite <=120*16 candidate search. No NPC
-        // sampling, native AI, resource consumption or random calls occur here.
+        // One selected timeline, finite horizon and candidate seeds, with replay
+        // from birth and launch-X clock variants where required. Cooperative work
+        // checks bound execution; time indices alone are not the total work count.
+        // No NPC sampling, native AI, resource consumption or random calls occur here.
         public static AttackContact Solve(float originX,float originY,AttackMotion motion,NpcTrajectory timeline,int age,int delay,AttackPassage passage=null,int firstTickOffset=1,Func<int,bool> receive=null,Func<int,int,float,float,bool> damagePassage=null,Func<int,int,float,float,bool> beforeMotion=null)
         {
             if(!motion.GravityClockUsesLaunchX)return SolveCore(originX,originY,motion,timeline,age,delay,passage,firstTickOffset,receive,damagePassage,null,beforeMotion);

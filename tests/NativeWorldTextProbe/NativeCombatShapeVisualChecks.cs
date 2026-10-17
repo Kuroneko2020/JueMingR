@@ -52,7 +52,7 @@ namespace NativeWorldTextProbe
             NativeCombatObservationChecks.Fresh(context,host);
             // Fresh advances the sample tick; resample each natural attack in
             // that same update, as the real Damage hooks do before world Draw.
-            foreach(var p in Main.projectile)if(p.active)p.Damage();Call(layer,"Prepare");NativeCombatPresentationChecks.Project(layer);Require((int)Get(layer,"StrokeCount")==4800 && !(bool)Get(layer,"limited"),"1000 ordinary projectiles plus 200 receivers fit actual world stroke capacity: "+Get(layer,"StrokeCount"));
+            foreach(var p in Main.projectile)if(p.active)p.Damage();Call(layer,"Prepare");NativeCombatPresentationChecks.Project(layer);Require((int)Get(layer,"StrokeCount")==4800 && (int)Get(layer,"StrokeCount")<(int)Get(layer,"strokeLimit"),"1000 ordinary projectiles plus 200 receivers fit actual world stroke capacity: "+Get(layer,"StrokeCount"));
             int samplesBefore=samples.ProjectileSamples;for(int i=0;i<3;i++){Call(layer,"Prepare");Draw();}Require(samples.ProjectileSamples==samplesBefore,"repeated real prepare/draw never resamples native attacks");Image("dense-world");
             Reset();NativeCombatObservationChecks.Save(host,new ObservationOptions());Call(layer,"Prepare");
             Console.WriteLine("PASS actual world pixels: offscreen/inverted beam, circle dash gaps, discrete points, event presentation, zero-length clipping and dense 1200-object capacity.");
