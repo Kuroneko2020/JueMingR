@@ -25,6 +25,7 @@ namespace JueMingR.ArchitectureTests
             Add("FootprintCoreChecks", "footprints-host", (root, failures) => FootprintCoreChecks.Check(failures));
             Add("FootprintFileChecks", "footprints-host", (root, failures) => FootprintFileChecks.Check(failures));
             Add("FootprintWorkerChecks", "footprints-host", (root, failures) => FootprintWorkerChecks.Check(failures));
+            Add("FootprintOverviewChecks", "footprints-host", (root, failures) => FootprintOverviewChecks.Check(failures));
             Add("MapAssetChecks", "map-host", (root, failures) => MapAssetChecks.Check(failures));
             Add("ExplorationChecks", "map-host", (root, failures) => ExplorationChecks.Check(failures));
             Add("MapPersistenceChecks", "map-host", (root, failures) => MapPersistenceChecks.Check(failures));

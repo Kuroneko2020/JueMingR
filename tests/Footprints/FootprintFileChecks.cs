@@ -26,9 +26,9 @@ namespace JueMingR.ArchitectureTests
             {
                 var archive = new FootprintArchive(files, pair, 8400, 2400); archive.Load();
                 var recorder = new FootprintRecorder(archive.Count, archive.End, archive.Segment, (items, count) => { archive.Append(items, count); return true; }, () => 0);
-                for (int i = 0; i < 2050; i++) recorder.Observe(100 + i / 1000f, 200, FootprintPosition.Valid, i == 1024);
-                recorder.Observe(102.049f, 200, FootprintPosition.Valid, false, 43416000); recorder.Flush();
-                FootprintCoreChecks.Require(archive.Count == 2050 && archive.End == 43418050, "all movements and 201h stay persisted");
+                for (int i = 0; i < 2050; i++) recorder.Observe(100 + i % 2, 200, FootprintPosition.Valid, i == 1024);
+                recorder.Observe(101, 200, FootprintPosition.Valid, false, 201L * 3600 * FootprintSample.TicksPerSecond); recorder.Flush();
+                FootprintCoreChecks.Require(archive.Count == 2051 && archive.End == 2050 + 201L * 3600 * FootprintSample.TicksPerSecond, "all reversals and fixed-unit stay persisted");
                 var points = archive.Query(512, 520).Samples;
                 FootprintCoreChecks.Require(points.Any(p => p.Sequence == 256) && points.Any(p => p.Sequence == 257), "cross-block adjacency is available");
                 for (int i = 1; i < points.Length; i++) FootprintCoreChecks.Require(points[i].Follows(points[i - 1]), "block boundaries never cut or invent adjacency");
@@ -39,7 +39,7 @@ namespace JueMingR.ArchitectureTests
             using (var files = new CountedFiles(path, pair))
             {
                 var archive = new FootprintArchive(files, pair, 8400, 2400); archive.Load();
-                FootprintCoreChecks.Require(archive.Count == 2050 && archive.End == 43418050, "reopen retains full simulation time");
+                FootprintCoreChecks.Require(archive.Count == 2051 && archive.End == 2050 + 201L * 3600 * FootprintSample.TicksPerSecond, "reopen retains full fixed-unit time");
                 FootprintCoreChecks.Require(archive.Query(1, 20).Samples[0].Sequence == 1, "oldest time remains reachable");
                 var late = archive.Query(archive.End, 20).Samples;
                 FootprintCoreChecks.Require(late[late.Length - 1].End == archive.End, "long stay remains reachable at latest");
@@ -91,7 +91,7 @@ namespace JueMingR.ArchitectureTests
                 for (int n = 0; n < 129; n++)
                 {
                     var batch = new FootprintSample[256];
-                    for (int i = 0; i < batch.Length; i++) { long p = n * 256 + i + 1; batch[i] = new FootprintSample(p, p - 1, p, 1, i % 90, n % 90, FootprintPosition.Valid); }
+                    for (int i = 0; i < batch.Length; i++) { long p = n * 256 + i + 1; batch[i] = new FootprintSample(p, p - 1, p, p, i % 90, n % 90, FootprintPosition.Valid); }
                     archive.Append(batch, batch.Length);
                     if (n > 0) FootprintCoreChecks.Require(files.BlockBytesSubmitted - priorBytes <= 16384, "append submits one bounded block regardless of total N");
                     priorBytes = files.BlockBytesSubmitted;
@@ -104,8 +104,8 @@ namespace JueMingR.ArchitectureTests
             using (var files = new CountedFiles(path, pair))
             {
                 var archive = new FootprintArchive(files, pair, 100, 100); long previous = 0; int steps = 0;
-                while (!archive.LoadStep()) { FootprintCoreChecks.Require(files.BlockReads - previous <= 8, "first recovery decodes at most eight blocks per step"); previous = files.BlockReads; steps++; }
-                FootprintCoreChecks.Require(steps > 16 && archive.Count == 33024, "large first recovery is cancellable and complete");
+                while (!archive.LoadStep()) { FootprintCoreChecks.Require(files.BlockReads - previous <= 2, "recovery reads only the final committed block and its predecessor"); previous = files.BlockReads; steps++; }
+                FootprintCoreChecks.Require(steps < 10 && archive.Count == 33024 && files.BlockReads == 2, "large recovery validates names/root/tail without decoding the full history");
             }
             string catalog = Path.Combine(path, pair, "catalog.json"), before = File.ReadAllText(catalog); string future = before.Replace("\"version\":1", "\"version\":2"); File.WriteAllText(catalog, future);
             bool rejected = false; using (var files = new CountedFiles(path, pair)) { try { new FootprintArchive(files, pair, 100, 100).Load(); } catch (InvalidDataException) { rejected = true; } }

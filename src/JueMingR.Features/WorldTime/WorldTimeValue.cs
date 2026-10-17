@@ -9,6 +9,8 @@ namespace JueMingR.Features.WorldTime
     {
         internal WorldTimeValue(double total)
         { if (Double.IsNaN(total) || Double.IsInfinity(total) || total < 0 || total > 86400d * 1000000000) throw new ArgumentException("invalid-world-time-total"); Total = total; }
+        // Persist native day-advance units unchanged: 86,400 per day, not seconds
+        // or TimeSpan ticks. The source records actual time-addition operands.
         internal double Total { get; }
         internal static WorldTimeValue Decode(byte[] bytes, string pair)
         {

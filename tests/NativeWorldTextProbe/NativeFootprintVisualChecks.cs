@@ -49,13 +49,13 @@ namespace NativeWorldTextProbe
                 var recorder = (FootprintRecorder)Get(host, "Recorder");
                 recorder.Observe(100.25f, 100.25f, FootprintPosition.Valid, true); recorder.Observe(300.25f, 100.25f, FootprintPosition.Valid, false);
                 recorder.Observe(300.25f, 250.25f, FootprintPosition.Valid, false); recorder.Observe(450.25f, 250.25f, FootprintPosition.Valid, true);
-                recorder.Observe(550.25f, 350.25f, FootprintPosition.Valid, false, 43416000);
+                recorder.Observe(550.25f, 350.25f, FootprintPosition.Valid, false, 201L * 3600 * FootprintSample.TicksPerSecond);
                 var layer = Get(host, "Layer"); Call(layer, "Update");
                 var frameType = assembly.GetType("JueMingR.TerrariaHost.Map.MapView");
                 object frame = Activator.CreateInstance(frameType, Flags, null, new object[] { Vector2.Zero, Vector2.Zero, 1f, 1f, 255 }, null);
                 var pixels = graphics.Pixels(() => Call(layer, "DrawRoutes", frame), Matrix.Identity);
                 int greenRows = 0; for (int y = 0; y < 640; y++) if (pixels[y * 960 + 200].G > 100) greenRows++;
-                Require(greenRows == 1, "actual MagicPixel draws horizontal route at exactly one screen pixel");
+                Require(greenRows == 2, "actual MagicPixel draws horizontal route at exactly two screen pixels");
                 Require(pixels[150 * 960 + 200].A == 0 && pixels[250 * 960 + 400].A == 0, "no full-texture rectangle or cross-segment chord");
                 long projections = (long)Get(layer, "ProjectedPoints");
                 for (int i = 0; i < 20; i++) graphics.Pixels(() => Call(layer, "DrawRoutes", frame), Matrix.Identity);
@@ -63,7 +63,9 @@ namespace NativeWorldTextProbe
                 graphics.Image(Path.Combine(output, "footprints-map-201h.png"), () => { Call(layer, "DrawRoutes", frame); Main.spriteBatch.End(); Call(layer, "DrawBar", frame); Main.spriteBatch.Begin(); }, Matrix.Identity);
                 var playback = (FootprintPlayback)Get(layer, "Playback"); playback.Seek(2, recorder.End);
                 graphics.Image(Path.Combine(output, "footprints-paused.png"), () => { Call(layer, "DrawRoutes", frame); Main.spriteBatch.End(); Call(layer, "DrawBar", frame); Main.spriteBatch.Begin(); }, Matrix.Identity);
-                Console.WriteLine("PASS: original XNB footprint config/three-stage labels/compact viewport, 201h timeline and real one-pixel route pixels; inspect PNG layout separately.");
+                NativeFootprint200HourVisualChecks.Run(graphics, host, assembly, output);
+                string generated = Environment.GetEnvironmentVariable("JUEMINGR_FOOTPRINTS_200H_ARCHIVE"); if (!String.IsNullOrEmpty(generated)) NativeFootprint200HourVisualChecks.RunLongArchive(graphics, host, assembly, output, generated, context);
+                Console.WriteLine("PASS: original XNB footprint config/three-stage labels/compact viewport, 201h timeline and real two-pixel route pixels; inspect PNG layout separately.");
             }
             finally { Main.gameMenu = true; Call(context, "UpdateRuntime"); StopContext(context); Main.gameMenu = false; }
         }

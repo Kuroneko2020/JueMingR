@@ -20,7 +20,7 @@ namespace NativeWorldTextProbe
         internal static void Run(object context,NpcPredictionCache cache,Action step,string output,List<double> hostCosts,List<double> worldCosts)
         {
             var host=Get(context,"CombatObservation");
-            var rows=new List<string>{"scene,frame,tick,slot,generation,type,netId,x,y,vx,vy,ai0,ai1,ai2,ai3,wet,selected,published,count,stop,strokes,text"};
+            var rows=new List<string>{"scene,frame,tick,slot,generation,type,netId,x,y,vx,vy,ai0,ai1,ai2,ai3,wet,selected,published,count,stop,strokes"};
             try
             {
                 string phases=Environment.GetEnvironmentVariable("JUEMINGR_ROLLING_PHASES");
@@ -50,7 +50,7 @@ namespace NativeWorldTextProbe
                 var path=cache.Read(0);var layer=Get(host,"World");NativeCombatPresentationChecks.Project(layer);
                 if(selected){selectedCount++;if(path!=null)shown++;if(n.ai[3]>0){positive++;if(path==null)missing++;}}
                 if(path!=null && (!selected || !path.Identity.Equals(key) || path.CaptureTick!=Main.GameUpdateCount))throw new InvalidOperationException("Basic motion consumed a stale or different instance.");
-                rows.Add(Csv("armored-block-recover",frame,Main.GameUpdateCount,slot,n.generation,n.type,n.netID,n.position.X,n.position.Y,n.velocity.X,n.velocity.Y,n.ai[0],n.ai[1],n.ai[2],n.ai[3],n.wet,selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",Get(layer,"StrokeCount"),Get(layer,"pathText")));
+                rows.Add(Csv("armored-block-recover",frame,Main.GameUpdateCount,slot,n.generation,n.type,n.netID,n.position.X,n.position.Y,n.velocity.X,n.velocity.Y,n.ai[0],n.ai[1],n.ai[2],n.ai[3],n.wet,selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",Get(layer,"StrokeCount")));
                 movedAfter|=frame>60 && n.position.X>1920;
                 if(!n.active || n.life<=0 || p.dead)throw new InvalidOperationException("Ground scenario ended before its planned original recovery.");
             }
@@ -66,12 +66,14 @@ namespace NativeWorldTextProbe
             NativeCombatModeledImpactChecks.SampleMouse(context,n.Center);step();
             Require(cache.Read(0)!=null,"Locked NPC non-motion Slow does not cancel a modeled body path.");
             n.buffImmune[198]=false;n.AddBuff(198,2);NativeCombatModeledImpactChecks.SampleMouse(context,n.Center);step();
-            string text=(string)Get(Get(host,"World"),"pathText");
-            Console.WriteLine("BASIC-REASON cacheEmpty="+(cache.Read(0)==null)+" text="+(text??"<null>"));
+            var source=Get(host,"Prediction");key=(NpcIdentity)Get(selection,"Target");
+            object[] reason={key,(long)Main.GameUpdateCount,PredictionStop.None,PredictionFailureLayer.None};
+            bool hasReason=(bool)source.GetType().GetMethod("EmptyFutureReason",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(source,reason);
+            Console.WriteLine("BASIC-REASON cacheEmpty="+(cache.Read(0)==null)+" reason="+reason[2]+" layer="+reason[3]);
             Require(cache.Read(0)==null,"An unmodeled current motion state supplies no invented future.");
-            Require(!string.IsNullOrEmpty(text) && text.Contains("状态"),"An exact selected target retains a player-readable first-step motion stop reason.");
+            Require(hasReason && (PredictionStop)reason[2]==PredictionStop.BuffTransition,"An exact selected target retains its real first-step motion stop reason without an HUD string.");
             NativeCombatObservationChecks.Save(host,new ObservationOptions(path:false,mouseCenter:true,clearLine:false,radius:25));step();
-            Require(Get(Get(host,"World"),"pathText")==null,"Disabling path display clears its empty-future reason.");
+            Require(Get(host,"DisplayPath")==null,"Disabling path display leaves no displayed future.");
         }
         private struct MotionRow
         {

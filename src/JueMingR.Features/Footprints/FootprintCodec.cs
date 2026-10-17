@@ -15,13 +15,13 @@ namespace JueMingR.Features.Footprints
         internal const int MaximumBytes = 16384;
         internal static byte[] Catalog(string pair, string generation, string operation, int width, int height)
         {
-            return Encoding.UTF8.GetBytes("{\"format\":\"JueMingR.FootprintCatalog\",\"version\":1,\"pair\":\"" + pair + "\",\"generation\":\"" + generation + "\",\"operation\":\"" + operation + "\",\"width\":" + width.ToString(CultureInfo.InvariantCulture) + ",\"height\":" + height.ToString(CultureInfo.InvariantCulture) + "}");
+            return Encoding.UTF8.GetBytes("{\"format\":\"JueMingR.FootprintCatalog2\",\"version\":1,\"pair\":\"" + pair + "\",\"generation\":\"" + generation + "\",\"operation\":\"" + operation + "\",\"width\":" + width.ToString(CultureInfo.InvariantCulture) + ",\"height\":" + height.ToString(CultureInfo.InvariantCulture) + "}");
         }
         internal static void ReadCatalog(byte[] bytes, string pair, int width, int height, out string generation, out string operation)
         {
             try
             {
-                var root = PreferenceJson.Read(bytes, "JueMingR.FootprintCatalog", "format", "version", "pair", "generation", "operation", "width", "height");
+                var root = PreferenceJson.Read(bytes, "JueMingR.FootprintCatalog2", "format", "version", "pair", "generation", "operation", "width", "height");
                 generation = PreferenceJson.Required(root, "generation", "string").Value;
                 operation = PreferenceJson.Required(root, "operation", "string").Value;
                 if (PreferenceJson.Required(root, "pair", "string").Value != pair || !GuidText(generation) || operation != "" && !GuidText(operation) ||
@@ -36,10 +36,10 @@ namespace JueMingR.Features.Footprints
             {
                 using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
                 {
-                    writer.Write(root ? 0x3152464A : 0x3142464A); writer.Write(1); writer.Write(pair); writer.Write(generation); writer.Write(width); writer.Write(height); writer.Write(blocks); writer.Write(count);
+                    writer.Write(root ? 0x3252464A : 0x3242464A); writer.Write(2); writer.Write(FootprintSample.TicksPerSecond); writer.Write(pair); writer.Write(generation); writer.Write(width); writer.Write(height); writer.Write(blocks); writer.Write(count);
                     for (int i = 0; i < count; i++)
                     {
-                        var p = samples[i]; writer.Write(p.Sequence); writer.Write(p.Start); writer.Write(p.End); writer.Write(p.Segment); writer.Write(p.X); writer.Write(p.Y); writer.Write((byte)p.Position);
+                        var p = samples[i]; writer.Write(p.Sequence); writer.Write(p.Start); writer.Write(p.End); writer.Write(p.Segment); writer.Write(p.FromX); writer.Write(p.FromY); writer.Write(p.X); writer.Write(p.Y); writer.Write((byte)p.Position);
                     }
                 }
                 byte[] body = stream.ToArray(); using (var sha = SHA256.Create()) { byte[] digest = sha.ComputeHash(body); stream.Write(digest, 0, digest.Length); } return stream.ToArray();
@@ -54,17 +54,17 @@ namespace JueMingR.Features.Footprints
                 using (var stream = new MemoryStream(bytes, 0, bytes.Length - 32, false))
                 using (var reader = new BinaryReader(stream, new UTF8Encoding(false, true)))
                 {
-                    if (reader.ReadInt32() != (root ? 0x3152464A : 0x3142464A) || reader.ReadInt32() != 1 || reader.ReadString() != pair || reader.ReadString() != generation || reader.ReadInt32() != width || reader.ReadInt32() != height) throw Invalid();
+                    if (reader.ReadInt32() != (root ? 0x3252464A : 0x3242464A) || reader.ReadInt32() != 2 || reader.ReadInt64() != FootprintSample.TicksPerSecond || reader.ReadString() != pair || reader.ReadString() != generation || reader.ReadInt32() != width || reader.ReadInt32() != height) throw Invalid();
                     blocks = reader.ReadInt64(); int count = reader.ReadInt32();
                     if (blocks < 0 || blocks > (Int64.MaxValue - 256) / 256 || count < 1 || count > 256 || !root && count != 256) throw Invalid();
                     var result = new FootprintSample[count];
                     for (int i = 0; i < count; i++)
                     {
                         long sequence = reader.ReadInt64(), start = reader.ReadInt64(), end = reader.ReadInt64(), segment = reader.ReadInt64();
-                        float x = reader.ReadSingle(), y = reader.ReadSingle(); byte kind = reader.ReadByte();
-                        if (sequence != blocks * 256 + i + 1 || start < 0 || end <= start || segment <= 0 || kind > 3 || !FootprintSample.Finite(x) || !FootprintSample.Finite(y) ||
-                            kind == 0 && (x < 0 || y < 0 || x >= width || y >= height) || kind != 0 && (x != 0 || y != 0)) throw Invalid();
-                        result[i] = new FootprintSample(sequence, start, end, segment, x, y, (FootprintPosition)kind);
+                        float fromX = reader.ReadSingle(), fromY = reader.ReadSingle(), x = reader.ReadSingle(), y = reader.ReadSingle(); byte kind = reader.ReadByte();
+                        if (sequence != blocks * 256 + i + 1 || start < 0 || end <= start || segment <= 0 || kind > 3 || !FootprintSample.Finite(x) || !FootprintSample.Finite(y) || !FootprintSample.Finite(fromX) || !FootprintSample.Finite(fromY) ||
+                            kind == 0 && (x < 0 || y < 0 || x >= width || y >= height || fromX < 0 || fromY < 0 || fromX >= width || fromY >= height) || kind != 0 && (x != 0 || y != 0 || fromX != 0 || fromY != 0)) throw Invalid();
+                        result[i] = new FootprintSample(sequence, start, end, segment, fromX, fromY, x, y, (FootprintPosition)kind);
                         if (i > 0) Adjacent(result[i - 1], result[i]); else if (sequence == 1 && start != 0) throw Invalid();
                     }
                     if (stream.Position != stream.Length) throw Invalid(); return result;
@@ -75,7 +75,10 @@ namespace JueMingR.Features.Footprints
             catch (FormatException) { throw Invalid(); }
         }
         internal static void Adjacent(FootprintSample previous, FootprintSample next)
-        { if (next.Sequence != previous.Sequence + 1 || next.Start != previous.End || next.Segment < previous.Segment || next.Position != previous.Position && next.Segment == previous.Segment) throw Invalid(); }
+        {
+            if (next.Sequence != previous.Sequence + 1 || next.Start != previous.End || next.Segment < previous.Segment || next.Position != previous.Position && next.Segment == previous.Segment ||
+                next.HasPosition && previous.HasPosition && next.Segment == previous.Segment && (next.FromX != previous.X || next.FromY != previous.Y)) throw Invalid();
+        }
         internal static InvalidDataException Invalid() { return new InvalidDataException("footprint-format-or-identity-invalid"); }
     }
 }

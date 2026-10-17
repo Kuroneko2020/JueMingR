@@ -193,7 +193,9 @@ namespace JueMingR.TerrariaHost.Combat
                 playerAnchor=player.Center;targetAnchor=goal;progressAnchor=shot.Center;progressStep=Main.GameUpdateCount;
             }
             // Replayed steering may fail a geometric route because a fast ball
-            // cannot make its corner. Rejection restores the physical cursor.
+            // cannot make its corner. The caller can still use a safe prefix
+            // or legal Basic point without a final Contact; otherwise no aid
+            // is supplied. CursorScope restores coordinates after consumption.
             float dead=5+speed/2+(secondary?20:0);
             while(path.Count>1 && Vector2.Distance(shot.Center,path[0])<=dead && (!motorRoute || Clear(shot.Center,path[1],shot.width,shot.height)))path.RemoveAt(0);
             var contact=Replay(player,shot,timeline,clock,secondary,range,speed,remaining,out point,out usable,playerFrame);

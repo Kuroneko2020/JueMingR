@@ -25,9 +25,10 @@ namespace JueMingR.TerrariaHost.Footprints
             {
                 if (current != null || typeof(Main).Module.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083")) throw new InvalidOperationException("footprint-source-identity");
                 var step = typeof(Main).GetMethod("DoUpdateInWorld_Inner", Flags, null, Type.EmptyTypes, null);
+                var update = typeof(Main).GetMethod("Update", Flags, null, new[] { typeof(GameTime) }, null);
                 var teleport = typeof(Player).GetMethod("Teleport", Flags, null, new[] { typeof(Vector2), typeof(int), typeof(int) }, null);
                 var spawn = typeof(Player).GetMethods(Flags).SingleOrDefault(m => m.Name == "Spawn" && m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType.Name == "PlayerSpawnContext");
-                current = this; Patch(step, nameof(Before), nameof(Completed)); Patch(teleport, nameof(Discontinuity), null); Patch(spawn, nameof(Discontinuity), null); Ready = true;
+                current = this; Patch(update, nameof(OuterBefore), nameof(OuterCompleted)); Patch(step, nameof(Before), nameof(Completed)); Patch(teleport, nameof(Discontinuity), null); Patch(spawn, nameof(Discontinuity), null); Ready = true;
             }
             catch (Exception e) { Error = e.GetType().Name + ": " + e.Message; Dispose(); }
         }
@@ -41,6 +42,14 @@ namespace JueMingR.TerrariaHost.Footprints
         {
             __state = false; var owner = current; if (owner == null || !owner.Ready) return;
             try { __state = owner.host.BeforeSimulation(); } catch (Exception e) { owner.Fault(e); }
+        }
+        private static void OuterBefore()
+        { var owner = current; if (owner == null || !owner.Ready) return; try { owner.host.BeforeOuterUpdate(); } catch (Exception e) { owner.Fault(e); } }
+        private static Exception OuterCompleted(Exception __exception)
+        {
+            var owner = current;
+            if (owner != null && owner.Ready) try { owner.host.AfterOuterUpdate(__exception == null); } catch (Exception e) { owner.Fault(e); }
+            return __exception;
         }
         private static Exception Completed(Exception __exception, bool __state, bool __runOriginal)
         {

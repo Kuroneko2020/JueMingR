@@ -23,9 +23,17 @@ namespace JueMingR.TerrariaHost.Footprints
         internal Func<bool> UiOwnsInput;
         private MapView visible, projectedView;
         private FootprintQuery query, requestedPrevious;
-        private FootprintSample[] saved = new FootprintSample[0];
+        private FootprintOverviewSnapshot overview;
+        private FootprintOverviewEdge[] saved = new FootprintOverviewEdge[0];
         private Vector2[] projected = new Vector2[0];
-        private readonly Vector2[] activeProjected = new Vector2[256];
+        private FootprintSample[] pendingSamples;
+        private Vector2[] pendingProjected = new Vector2[0];
+        private readonly Vector2[] activeProjected = new Vector2[512];
+        private MapView requestedView;
+        private long overviewSerial, requestedOverviewSerial, overviewCommitted = -1, overviewUntil = -1;
+        private double nextOverview;
+        private bool overviewPending;
+        internal const float TrailWidthPixels = 2f;
         private long activeVersion = -1, visibleSession = -1, requestGeometry = -1;
         private long requestCommitted = -1;
         private string visibleArchive;
@@ -62,7 +70,10 @@ namespace JueMingR.TerrariaHost.Footprints
         }
         internal void Invalidate()
         {
-            visible = projectedView = null; saved = new FootprintSample[0]; projected = new Vector2[0]; query = requestedPrevious = null;
+            visible = projectedView = requestedView = null; saved = new FootprintOverviewEdge[0]; projected = new Vector2[0]; query = requestedPrevious = null; overview = null;
+            pendingSamples = null; pendingProjected = new Vector2[0];
+            requestedOverviewSerial = ++overviewSerial; overviewCommitted = overviewUntil = -1;
+            overviewPending = false;
             pressed = -1; dragging = pending = shown = false; activeVersion = requestGeometry = -1; Playback.Hide(); host.CancelQuery();
             // HostInputState still owns any physical tail. Hiding never gives an
             // already-consumed mouse gesture back to vanilla or another feature.
@@ -89,6 +100,27 @@ namespace JueMingR.TerrariaHost.Footprints
 #endif
             }
             if (pending && received != null && !ReferenceEquals(received, requestedPrevious)) pending = false;
+            var prepared = host.Overview;
+            if (prepared != null && prepared.Generation == host.Generation && prepared.RequestSerial == requestedOverviewSerial)
+            {
+                // A later request starts by publishing a prefix. Keep an already
+                // complete history while that prefix catches up, then swap once.
+                // Draw still filters its certified times against the real cursor.
+                if (prepared.Complete || overview == null || !overview.Complete) overview = prepared;
+                if (prepared.Complete) overviewPending = false;
+            }
+            // Drawing supplies the actual native view. Disk/index work is queued
+            // through Store, never performed by DrawRoutes. Latest views reuse one
+            // full-history request; playback changes only its temporal boundary.
+            if (requestedView != null)
+            {
+                long until = Playback.Latest ? Int64.MaxValue : (long)Playback.Cursor;
+                // A real preparation can exceed the UI cadence. Forward motion
+                // must not cancel it every 250ms and starve complete publication.
+                // Rewinding changes the temporal safety boundary immediately.
+                if ((now >= nextOverview || until < overviewUntil) && (!overviewPending || until < overviewUntil) && (overviewCommitted != host.CommittedCount || overviewUntil != until))
+                    RequestOverview(requestedView, until, now);
+            }
         }
         internal void ProcessInput()
         {
@@ -127,54 +159,110 @@ namespace JueMingR.TerrariaHost.Footprints
         { visible = Active && drewBar ? frame : null; visibleSession = host.Session; visibleArchive = host.Generation; if (visible == null) { pressed = -1; dragging = false; } }
         private static bool SameView(MapView a, MapView b)
         { return a != null && a.Position == b.Position && a.Offset == b.Offset && a.Zoom == b.Zoom && a.Width == b.Width && a.Height == b.Height; }
+        private void RequestOverview(MapView frame, long until, double now)
+        {
+            float margin = (TrailWidthPixels + 1f) / frame.Zoom;
+            float x = frame.Position.X - frame.Offset.X / frame.Zoom, y = frame.Position.Y - frame.Offset.Y / frame.Zoom;
+            long serial = ++overviewSerial;
+            var request = new FootprintOverviewRequest(host.Generation, serial, x - margin, y - margin, x + frame.Width / frame.Zoom + margin, y + frame.Height / frame.Zoom + margin, frame.Zoom, until);
+            if (!host.RequestOverview(request)) return;
+            requestedOverviewSerial = serial; requestedView = frame; overviewCommitted = host.CommittedCount; overviewUntil = until; nextOverview = now + .25; overviewPending = true;
+        }
         private void DrawRoutes(MapView frame)
         {
             if (!Active || !shown) return;
             var pixel = TextureAssets.MagicPixel?.Value; if (pixel == null || pixel.IsDisposed) return;
-            var points = query?.Samples ?? saved; bool changedView = !SameView(projectedView, frame);
-            if (!ReferenceEquals(saved, points)) { saved = points; projected = new Vector2[points.Length]; changedView = true; }
-            if (changedView) for (int i = 0; i < saved.Length; i++) { projected[i] = frame.Project(saved[i].X, saved[i].Y);
+            if (!SameView(requestedView, frame)) RequestOverview(frame, Playback.Latest ? Int64.MaxValue : (long)Playback.Cursor, host.UiSeconds);
+            var points = overview?.Edges ?? saved; bool changedView = !SameView(projectedView, frame);
+            bool changedOverview = !ReferenceEquals(saved, points); var previousProjected = projected;
+            if (projected.Length != points.Length * 2) projected = new Vector2[points.Length * 2];
+            if (changedView || changedOverview) for (int i = 0; i < points.Length; i++)
+            {
+                // A published append creates a new flat snapshot, but stable
+                // history keeps its screen coordinates. Reuse equal geometry
+                // at the same output slot instead of reprojecting all old edges.
+                if (!changedView && i < saved.Length && SameGeometry(saved[i], points[i]))
+                { projected[i * 2] = previousProjected[i * 2]; projected[i * 2 + 1] = previousProjected[i * 2 + 1]; continue; }
+                projected[i * 2] = frame.Project(points[i].X1, points[i].Y1); projected[i * 2 + 1] = frame.Project(points[i].X2, points[i].Y2);
 #if DEBUG
-                ProjectedPoints++;
+                ProjectedPoints += 2;
 #endif
             }
+            saved = points;
             var recorder = host.Recorder;
             bool activeVisible = recorder != null && recorder.ActiveCount > 0 && Playback.Cursor >= recorder.At(0).Start;
             if (activeVisible && (changedView || activeVersion != recorder.BufferVersion))
             {
-                for (int i = 0; i < recorder.ActiveCount; i++) { var p = recorder.At(i); activeProjected[i] = frame.Project(p.X, p.Y);
+                for (int i = 0; i < recorder.ActiveCount; i++) { var p = recorder.At(i); activeProjected[i * 2] = frame.Project(p.FromX, p.FromY); activeProjected[i * 2 + 1] = frame.Project(p.X, p.Y);
 #if DEBUG
-                    ProjectedPoints++;
+                    ProjectedPoints += 2;
 #endif
                 }
                 activeVersion = recorder.BufferVersion;
             }
-            projectedView = frame; double cursor = Playback.Cursor; Vector2? marker = null;
+            projectedView = frame; double cursor = Playback.Cursor; Vector2? marker = null; long boundarySequence = Int64.MaxValue;
             for (int i = 0; i < saved.Length; i++)
             {
-                if (saved[i].HasPosition && cursor >= saved[i].Start && cursor <= saved[i].End) marker = projected[i];
-                if (i > 0) DrawEdge(pixel, saved[i - 1], saved[i], projected[i - 1], projected[i], cursor, frame, ref marker);
+                var edge = saved[i];
+                // Overview edges may span many source sequences. Their source
+                // interval certifies continuity; raw Follows is inapplicable.
+                if (edge.End <= cursor) DrawScreenEdge(pixel, projected[i * 2], projected[i * 2 + 1], frame);
+                else if (edge.Start < cursor) boundarySequence = Math.Min(boundarySequence, edge.FirstSequence);
             }
-            long savedEnd = saved.Length == 0 ? 0 : saved[saved.Length - 1].Sequence;
+            var precise = query?.Samples;
+            if (precise != null) for (int i = 0; i < precise.Length; i++)
+            {
+                var sample = precise[i];
+                bool boundary = sample.Sequence >= boundarySequence || overview == null || sample.End > overview.Until;
+                if (sample.HasPosition && sample.Start <= cursor && (boundary || sample.End >= cursor))
+                    DrawSample(pixel, sample, frame.Project(sample.FromX, sample.FromY), frame.Project(sample.X, sample.Y), cursor, frame, boundary, ref marker);
+            }
+            long savedEnd = overview?.SourceSequence ?? 0;
+            var pendingTail = host.PendingSamples;
+            bool changedPending = !ReferenceEquals(pendingSamples, pendingTail);
+            if (changedPending) { pendingSamples = pendingTail; pendingProjected = new Vector2[(pendingTail?.Length ?? 0) * 2]; }
+            if (pendingTail != null)
+            {
+                long activeFirst = recorder != null && recorder.ActiveCount > 0 ? recorder.At(0).Sequence : Int64.MaxValue;
+                for (int i = 0; i < pendingTail.Length; i++)
+                {
+                    var sample = pendingTail[i];
+                    if (i + 1 < pendingTail.Length && pendingTail[i + 1].Sequence == sample.Sequence) continue;
+                    if (changedView || changedPending) { pendingProjected[i * 2] = frame.Project(sample.FromX, sample.FromY); pendingProjected[i * 2 + 1] = frame.Project(sample.X, sample.Y); }
+                    if (sample.Sequence >= activeFirst) continue; // Current recorder owns revisions of its boundary sample.
+                    bool uncovered = sample.Sequence > savedEnd || sample.Sequence == savedEnd && sample.End > (overview?.CoveredEnd ?? 0);
+                    DrawSample(pixel, sample, pendingProjected[i * 2], pendingProjected[i * 2 + 1], cursor, frame, uncovered, ref marker);
+                }
+            }
             if (activeVisible) for (int i = 0; i < recorder.ActiveCount; i++)
             {
                 var p = recorder.At(i);
-                if (p.HasPosition && cursor >= p.Start && cursor <= p.End) marker = activeProjected[i];
-                if (i > 0 && p.Sequence > savedEnd) DrawEdge(pixel, recorder.At(i - 1), p, activeProjected[i - 1], activeProjected[i], cursor, frame, ref marker);
+                bool uncovered = p.Sequence > savedEnd || p.Sequence == savedEnd && p.End > (overview?.CoveredEnd ?? 0);
+                DrawSample(pixel, p, activeProjected[i * 2], activeProjected[i * 2 + 1], cursor, frame, uncovered, ref marker);
             }
             if (marker.HasValue && marker.Value.X >= 0 && marker.Value.Y >= 0 && marker.Value.X < frame.Width && marker.Value.Y < frame.Height)
                 Main.spriteBatch.Draw(pixel, marker.Value - new Vector2(2, 2), new Rectangle(0, 0, 1, 1), Color.LimeGreen, 0, Vector2.Zero, new Vector2(4, 4), SpriteEffects.None, 0);
         }
-        private void DrawEdge(Texture2D pixel, FootprintSample previous, FootprintSample next, Vector2 a, Vector2 b, double cursor, MapView frame, ref Vector2? marker)
+        private static bool SameGeometry(FootprintOverviewEdge a, FootprintOverviewEdge b)
+        { return a.X1 == b.X1 && a.Y1 == b.Y1 && a.X2 == b.X2 && a.Y2 == b.Y2; }
+        private void DrawSample(Texture2D pixel, FootprintSample sample, Vector2 a, Vector2 b, double cursor, MapView frame, bool draw, ref Vector2? marker)
         {
-            if (!next.Follows(previous) || cursor <= next.Start) return;
-            // Each moving sample is the position at its first completed step;
-            // later merged duration is a stay, never slower movement along a chord.
-            double fraction = Math.Max(0, Math.Min(1, cursor - next.Start));
-            if (fraction < 1) { b = Vector2.Lerp(a, b, (float)fraction); marker = b; }
-            if (!Clip(ref a, ref b, frame.Width, frame.Height)) return;
+            if (!sample.HasPosition || cursor < sample.Start) return;
+            double fraction = sample.End <= sample.Start ? 1 : Math.Max(0, Math.Min(1, (cursor - sample.Start) / (sample.End - sample.Start)));
+            if (fraction < 1) b = Vector2.Lerp(a, b, (float)fraction);
+            if (cursor <= sample.End) marker = b;
+            if (draw) DrawScreenEdge(pixel, a, b, frame);
+        }
+        private void DrawScreenEdge(Texture2D pixel, Vector2 a, Vector2 b, MapView frame)
+        {
+            // Clip the centerline with a half-stroke margin so edge pixels are
+            // retained. Width is already in screen space and never scales down.
+            float margin = TrailWidthPixels * .5f;
+            a += new Vector2(margin); b += new Vector2(margin);
+            if (!Clip(ref a, ref b, frame.Width + margin * 2, frame.Height + margin * 2)) return;
+            a -= new Vector2(margin); b -= new Vector2(margin);
             Vector2 edge = b - a; float length = edge.Length(); if (length <= 0) return;
-            Main.spriteBatch.Draw(pixel, a, new Rectangle(0, 0, 1, 1), Color.LimeGreen * (frame.Alpha / 255f), (float)Math.Atan2(edge.Y, edge.X), new Vector2(0, .5f), new Vector2(length, 1), SpriteEffects.None, 0);
+            Main.spriteBatch.Draw(pixel, a, new Rectangle(0, 0, 1, 1), Color.LimeGreen * (frame.Alpha / 255f), (float)Math.Atan2(edge.Y, edge.X), new Vector2(0, .5f), new Vector2(length, TrailWidthPixels), SpriteEffects.None, 0);
 #if DEBUG
             DrawnEdges++;
 #endif
@@ -215,10 +303,10 @@ namespace JueMingR.TerrariaHost.Footprints
                 batch.Draw(pixel, new Vector2(track.X, center), new Rectangle(0, 0, 1, 1), Color.Gray, 0, Vector2.Zero, new Vector2(track.Width, 2), SpriteEffects.None, 0);
                 float portion = Playback.DisplayEnd == 0 ? 0 : (float)Math.Max(0, Math.Min(1, Playback.Cursor / Playback.DisplayEnd));
                 batch.Draw(pixel, new Vector2(track.X + portion * track.Width - 2, center - 6), new Rectangle(0, 0, 1, 1), Color.LimeGreen, 0, Vector2.Zero, new Vector2(4, 14), SpriteEffects.None, 0);
-                long second = (long)Playback.Cursor / 60, total = Playback.DisplayEnd / 60;
+                long second = (long)Playback.Cursor / TimeSpan.TicksPerSecond, total = Playback.DisplayEnd / TimeSpan.TicksPerSecond;
                 if (second != shownSecond || total != totalSecond) { shownSecond = second; totalSecond = total; timeText = FootprintPlayback.FormatTime((long)Playback.Cursor) + " / " + FootprintPlayback.FormatTime(Playback.DisplayEnd); }
                 float y = play.Bottom + 5; batch.DrawString(font, timeText, new Vector2(panel.X + 12, y), Color.White, 0, Vector2.Zero, .70f, SpriteEffects.None, 0);
-                string hint = host.HasFailure ? host.StatusMessage : host.End == 0 ? "暂无足迹" : query == null ? "读取中…" : query.Partial ? "局部显示，拖动查看其他时段" : "拖动时间轴回看；最新会暂停播放";
+                string hint = host.HasFailure ? host.StatusMessage : host.End == 0 ? "暂无足迹" : overview == null || !overview.Complete || overview.RequestSerial != requestedOverviewSerial ? "正在准备历史路线…" : "拖动时间轴回看；最新会暂停播放";
                 if (shownHint != hint) { shownHint = hint; hintWidth = font.MeasureString(hint).X * .65f; }
                 float hintScale = hintWidth > panel.Width - 24 ? .65f * (panel.Width - 24) / hintWidth : .65f;
                 batch.DrawString(font, hint, new Vector2(panel.X + 12, y + play.Height), host.HasFailure ? Color.Orange : Color.LightGray, 0, Vector2.Zero, hintScale, SpriteEffects.None, 0);

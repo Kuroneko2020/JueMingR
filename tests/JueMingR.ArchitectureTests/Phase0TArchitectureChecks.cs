@@ -50,6 +50,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Footprints.FootprintArchive", "JueMingR.Features.Footprints.FootprintRecorder",
                 "JueMingR.Features.Footprints.FootprintPlayback", "JueMingR.Features.Footprints.FootprintClearConfirmation",
                 "JueMingR.Features.Footprints.FootprintStore", "JueMingR.Features.Footprints.FootprintStoreState",
+                "JueMingR.Features.Footprints.FootprintOverviewIndex",
                 "JueMingR.Features.Footprints.FootprintPreferences", "JueMingR.Features.Footprints.FootprintPreferenceCodec",
                 "JueMingR.Features.DeathHistory.DeathArchive", "JueMingR.Features.DeathHistory.DeathHistory",
                 "JueMingR.Features.DeathHistory.DeathDisplayPreferences", "JueMingR.Features.DeathHistory.DeathDisplayCodec",

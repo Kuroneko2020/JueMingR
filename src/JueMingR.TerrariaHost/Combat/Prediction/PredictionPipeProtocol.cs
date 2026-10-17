@@ -3,8 +3,9 @@ using System.IO;
 
 namespace JueMingR.TerrariaHost.Combat.Prediction
 {
-    // BCL-only source shared with the thin executable. Background transport
-    // must not initialize PredictionWire's Terraria snapshot schemas.
+    // BCL-only source shared with the thin executable; protocol operations must
+    // not implicitly sample live state. Host transport may explicitly prewarm
+    // allowed metadata/layouts/methods without reading Main, live actors or assets.
     internal static class PredictionPipeProtocol
     {
 #if JMR_CONDITIONAL_RESEARCH

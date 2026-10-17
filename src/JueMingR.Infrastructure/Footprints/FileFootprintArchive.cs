@@ -10,7 +10,7 @@ namespace JueMingR.Infrastructure.Footprints
 {
     // Mechanical files only. The pair lease stays held across generation changes.
     // No recursive delete, parent deletion, recovery promotion, or arbitrary paths.
-    public sealed class FileFootprintArchive : IFootprintArchiveFiles
+    public sealed class FileFootprintArchive : IFootprintArchiveFiles, IFootprintOverviewFiles
     {
         private const int MaximumBytes = 16384;
         private readonly string pairDirectory;
@@ -68,6 +68,25 @@ namespace JueMingR.Infrastructure.Footprints
             using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
             { stream.Write(bytes, 0, bytes.Length); stream.Flush(true); }
         }
+        public byte[] ReadOverviewCache(long number)
+        {
+            Alive(); string path = OverviewPath(number); Guard(path);
+            if (!File.Exists(path)) return null;
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                if (stream.Length < 1 || stream.Length > 65536) return null;
+                var bytes = new byte[(int)stream.Length]; int at = 0;
+                while (at < bytes.Length) { int n = stream.Read(bytes, at, bytes.Length - at); if (n == 0) return null; at += n; } return bytes;
+            }
+        }
+        public void WriteOverviewCache(long number, byte[] bytes)
+        {
+            Alive(); if (bytes == null || bytes.Length < 1 || bytes.Length > 65536) throw new InvalidDataException("footprint-overview-size");
+            string path = OverviewPath(number); Guard(path); Directory.CreateDirectory(Path.GetDirectoryName(path)); Guard(path);
+            // Derived bytes are replaceable and never a source commit. A failed
+            // write may leave a bad cache, which the index checks and rebuilds.
+            using (var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None)) stream.Write(bytes, 0, bytes.Length);
+        }
         public bool ValidateBlockNamesStep(long blockCount, int budget)
         {
             Alive(); if (budget < 1 || budget > 256) throw new ArgumentOutOfRangeException(nameof(budget));
@@ -75,12 +94,12 @@ namespace JueMingR.Infrastructure.Footprints
             Guard(generationDirectory); string directory = Path.Combine(generationDirectory, "blocks");
             if (!namesStarted)
             {
-                // Only five known entries can occur directly in a generation.
+                // A fixed name whitelist bounds entries directly in a generation.
                 int direct = 0;
                 foreach (string entry in Directory.EnumerateFileSystemEntries(generationDirectory))
                 {
-                    Guard(entry); string name = Path.GetFileName(entry); if (++direct > 5) throw new InvalidDataException("footprint-unknown-generation-entry");
-                    if (name == "blocks" && Directory.Exists(entry)) continue;
+                    Guard(entry); string name = Path.GetFileName(entry); if (++direct > 6) throw new InvalidDataException("footprint-unknown-generation-entry");
+                    if ((name == "blocks" || name == "overview") && Directory.Exists(entry)) continue;
                     if (!RootName(name) || Directory.Exists(entry)) throw new InvalidDataException("footprint-unknown-generation-entry");
                 }
                 namesStarted = true;
@@ -106,6 +125,18 @@ namespace JueMingR.Infrastructure.Footprints
             if (root != null) { root.Dispose(); root = null; }
             if (!Directory.Exists(target)) { if (File.Exists(target)) throw new InvalidDataException("footprint-generation-is-file"); return true; }
             int deleted = 0; string blocksPath = Path.Combine(target, "blocks"); Guard(blocksPath);
+            string overviewPath = Path.Combine(target, "overview"); Guard(overviewPath);
+            if (File.Exists(overviewPath)) throw new InvalidDataException("footprint-overview-is-file");
+            if (Directory.Exists(overviewPath))
+            {
+                foreach (string entry in Directory.EnumerateFileSystemEntries(overviewPath))
+                {
+                    Guard(entry); long number;
+                    if (Directory.Exists(entry) || !BlockNumber(Path.GetFileName(entry), out number)) throw new InvalidDataException("footprint-clear-unknown-overview");
+                    File.Delete(entry); if (++deleted >= budget) return false;
+                }
+                Directory.Delete(overviewPath, false);
+            }
             if (File.Exists(blocksPath)) throw new InvalidDataException("footprint-blocks-is-file");
             if (Directory.Exists(blocksPath))
             {
@@ -131,6 +162,7 @@ namespace JueMingR.Infrastructure.Footprints
             return Path.Combine(pairDirectory, generation);
         }
         private string BlockPath(long number) { if (generationDirectory == null || number < 0) throw new InvalidOperationException("footprint-block-target"); return Path.Combine(generationDirectory, "blocks", number.ToString("D20", CultureInfo.InvariantCulture) + ".bin"); }
+        private string OverviewPath(long number) { if (generationDirectory == null || number < 0) throw new InvalidOperationException("footprint-overview-target"); return Path.Combine(generationDirectory, "overview", number.ToString("D20", CultureInfo.InvariantCulture) + ".bin"); }
         private static bool BlockNumber(string name, out long number)
         { number = -1; return name.Length == 24 && name.EndsWith(".bin", StringComparison.Ordinal) && Int64.TryParse(name.Substring(0, 20), NumberStyles.None, CultureInfo.InvariantCulture, out number) && number >= 0 && name == number.ToString("D20", CultureInfo.InvariantCulture) + ".bin"; }
         private static bool RootName(string name) { return name == "root.bin" || name == "root.bin.bak" || name == "root.bin.tmp" || name == "root.bin.lock"; }

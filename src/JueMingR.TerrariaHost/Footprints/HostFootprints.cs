@@ -24,6 +24,7 @@ namespace JueMingR.TerrariaHost.Footprints
         private readonly string directory;
         private readonly PreferenceDocument<FootprintPreferences> preferences;
         private readonly Stopwatch clock = Stopwatch.StartNew();
+        private readonly FootprintPlayingClock playingClock = new FootprintPlayingClock();
         private readonly FootprintSourceHooks hooks;
         private readonly List<Retired> retired = new List<Retired>();
         private object token, stepToken;
@@ -39,7 +40,7 @@ namespace JueMingR.TerrariaHost.Footprints
         internal readonly FootprintMapLayer Layer;
         internal HostFootprints(string gameDirectory, SingleFeatureRuntime runtime, Items.ItemSessionProbe probe, HostInputState input)
         {
-            this.runtime = runtime; this.probe = probe; directory = Path.Combine(gameDirectory, "JueMingRData", "footprints");
+            this.runtime = runtime; this.probe = probe; directory = Path.Combine(gameDirectory, "JueMingRData", "footprints-v2");
             preferences = new PreferenceDocument<FootprintPreferences>(new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "features", "footprints.json"), 65536, true), new FootprintPreferenceCodec(), new FootprintPreferences(true, false));
             hooks = new FootprintSourceHooks(this); hooks.Install(); Layer = new FootprintMapLayer(this, input); AppDomain.CurrentDomain.ProcessExit += OnExit;
         }
@@ -68,6 +69,8 @@ namespace JueMingR.TerrariaHost.Footprints
         }
         internal long End { get { return Recorder?.End ?? store?.Snapshot.End ?? 0; } }
         internal FootprintQuery Query { get { return store?.QueryResult; } }
+        internal FootprintOverviewSnapshot Overview { get { return store?.OverviewResult; } }
+        internal FootprintSample[] PendingSamples { get { return store?.PendingSamples; } }
         internal long CommittedCount { get { return store?.Snapshot.Count ?? 0; } }
         internal double UiSeconds { get { return clock.ElapsedTicks / (double)Stopwatch.Frequency; } }
         public string StatusMessage
@@ -96,18 +99,19 @@ namespace JueMingR.TerrariaHost.Footprints
             // An explicit current-session choice is still usable without changing
             // protected bytes, including a choice equal to the codec default.
             recordingOverride = value; preferences.Set(new FootprintPreferences(value, Display));
-            Recorder?.Flush(); BreakContinuity(); return true;
+            Recorder?.Flush(); playingClock.Suspend(); BreakContinuity(); return true;
         }
         public bool Clear(string generation)
         {
             if (!CanClear || !store.Clear(generation, Guid.NewGuid().ToString("N"))) return false;
-            clearAccepted = true; recorderGeneration = generation; Recorder = null; previousValid = false; Layer.Invalidate(); return true;
+            clearAccepted = true; recorderGeneration = generation; Recorder = null; previousValid = false; playingClock.Suspend(); Layer.Invalidate(); return true;
         }
         public void PrepareConfiguration() { archiveRequested = true; }
         public void RetryClear() { if (CanRetryClear) RelevantStore.RetryClear(); }
-        public void OnSessionStarted() { token = probe.SessionIdentity; width = Main.maxTilesX; height = Main.maxTilesY; pair = null; previousValid = false; discontinuity = true; }
+        public void OnSessionStarted() { token = probe.SessionIdentity; width = Main.maxTilesX; height = Main.maxTilesY; pair = null; previousValid = false; discontinuity = true; playingClock.Suspend(); }
         public void OnSessionEnded()
         {
+            playingClock.Suspend();
             if (store != null) { retired.Add(new Retired(pair, store, Recorder)); store = null; Recorder = null; }
             token = stepToken = null; pair = recorderGeneration = null; clearAccepted = archiveRequested = false; step = previousValid = false; Layer.Invalidate(); PumpRetired();
         }
@@ -144,29 +148,47 @@ namespace JueMingR.TerrariaHost.Footprints
             Layer.Update();
         }
         internal bool RequestQuery(long cursor) { if (store == null) return false; store.RequestQuery(cursor); return true; }
-        internal void CancelQuery() { store?.CancelQuery(); }
+        internal bool RequestOverview(FootprintOverviewRequest request)
+        {
+            var state = store?.Snapshot;
+            if (state == null || !state.Loaded || state.Generation == null || state.Stopped || state.Clearing || request.Generation != state.Generation) return false;
+            store.RequestOverview(request); return true;
+        }
+        internal void CancelQuery() { store?.CancelQuery(); store?.CancelOverview(); }
         internal void BreakContinuity() { discontinuity = true; Recorder?.Break(); }
         internal bool BeforeSimulation()
         {
             step = false;
-            if (Session < 0 || !preferences.Snapshot.IsLoaded || !Recording || Clearing || Recorder == null || store.Snapshot.Error != null) { BreakContinuity(); return false; }
-            var player = Main.LocalPlayer; if (player == null || !player.active) { BreakContinuity(); return false; }
+            if (Session < 0 || !preferences.Snapshot.IsLoaded || !Recording || Clearing || Recorder == null || store.Snapshot.Error != null) { playingClock.Suspend(); BreakContinuity(); return false; }
+            var player = Main.LocalPlayer; if (player == null || !player.active) { playingClock.Suspend(); BreakContinuity(); return false; }
             var position = player.Center;
             if (previousValid && position != previousPosition) BreakContinuity();
-            stepToken = token; step = true; return true;
+            playingClock.Begin(); stepToken = token; step = true; return true;
         }
         internal void AfterSimulation(bool completed)
         {
             if (!step) return; step = false;
-            if (!completed || Session < 0 || !ReferenceEquals(stepToken, token) || !Recording || Clearing || Recorder == null) { previousValid = false; BreakContinuity(); return; }
-            var player = Main.LocalPlayer; if (player == null) { previousValid = false; BreakContinuity(); return; }
+            if (!completed || Session < 0 || !ReferenceEquals(stepToken, token) || !Recording || Clearing || Recorder == null) { playingClock.Suspend(); previousValid = false; BreakContinuity(); return; }
+            var player = Main.LocalPlayer; if (player == null) { playingClock.Suspend(); previousValid = false; BreakContinuity(); return; }
             Vector2 position = player.Center; float x = position.X / 16f, y = position.Y / 16f;
             bool valid = FootprintSample.Finite(x) && FootprintSample.Finite(y) && x >= 0 && y >= 0 && x < width && y < height;
             var kind = player.dead ? FootprintPosition.Dead : player.ghost ? FootprintPosition.Ghost : !valid ? FootprintPosition.Unavailable : FootprintPosition.Valid;
-            // One completed native world step is one unit. No Draw, UTC, dayRate,
-            // outer Update count, or skipped paused interval can enter this clock.
-            bool accepted = Recorder.Observe(valid ? x : 0, valid ? y : 0, kind, discontinuity);
+            // Consume each real interval once, including ordinary frame waits.
+            // Native simulation completion admits facts; it does not define seconds.
+            bool accepted = Recorder.Observe(valid ? x : 0, valid ? y : 0, kind, discontinuity, playingClock.Completed());
             previousPosition = position; previousValid = valid && accepted; discontinuity = !accepted;
+        }
+        internal void BeforeOuterUpdate()
+        {
+            // A skipped/throttled native Update may leave the world running.
+            // Pause/menu/preparation gates, rather than F5/map/focus itself,
+            // decide whether the anchor may span the next frame wait.
+            if (Main.gameMenu || !Main.CanUpdateGameplay || Main.instance == null || !Main.instance.ShouldUpdateEntities()) playingClock.Suspend();
+        }
+        internal void AfterOuterUpdate(bool completed)
+        {
+            if (completed && !Main.gameMenu && !Main.gamePaused && Main.CanUpdateGameplay && Main.instance != null && Main.instance.ShouldUpdateEntities()) return;
+            playingClock.Suspend(); Recorder?.Flush();
         }
         private void PumpRetired()
         {

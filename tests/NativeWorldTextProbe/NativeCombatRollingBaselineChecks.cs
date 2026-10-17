@@ -75,12 +75,12 @@ namespace NativeWorldTextProbe
             Births.Clear();Births.Add("phase,frame,tick,sourceType,projectileType,slot,key,npcSlot,npcType,npcAi1,intendedBSource,heldItem");
             var allocation=typeof(GC).GetMethod("GetAllocatedBytesForCurrentThread",BindingFlags.Public|BindingFlags.Static);
             allocated=allocation==null?null:(Func<long>)Delegate.CreateDelegate(typeof(Func<long>),allocation);
-            var rows=new List<string>{"phase,frame,tick,legal,selectedB,identityOk,published,count,capture,strokes,pathStrokes,text,life,playerLife,playerDead,activeNPC,activeProjectile,hitCount,requests,received,hostMs,shellMs,renderMs,stepWallMs,hostBytes,drawBytes,gc0,gc1,gc2,intendedBEligible,actualSlot,sceneRestart,cacheRequired,nativeFailed,nativeReason,workerState,readyMs,npcAi0,npcAi1,npcAi2,npcAi3,hostPathFailed,"+string.Join(",",Names.SelectMany(n=>new[]{n+"Ms",n+"Calls"}))};
+            var rows=new List<string>{"phase,frame,tick,legal,selectedB,identityOk,published,count,capture,strokes,pathStrokes,life,playerLife,playerDead,activeNPC,activeProjectile,hitCount,requests,received,hostMs,shellMs,renderMs,stepWallMs,hostBytes,drawBytes,gc0,gc1,gc2,intendedBEligible,actualSlot,sceneRestart,cacheRequired,nativeFailed,nativeReason,workerState,readyMs,npcAi0,npcAi1,npcAi2,npcAi3,hostPathFailed,"+string.Join(",",Names.SelectMany(n=>new[]{n+"Ms",n+"Calls"}))};
             rows[0]+=",sourceBytes,sourceGc0,sourceGc1,sourceGc2";
             var errors=new List<string>();var summary=new List<string>{"phase,executed,legal,selected,published,longestBlank,firstShown,future60,future120,naturalEnd,unexecuted,firstLegal,responseUpdates"};
-            var actors=new List<string>{"phase,frame,tick,aToken,aSlot,aGeneration,aType,aNetId,aMatches,aActive,aLife,bToken,bSlot,bGeneration,bType,bNetId,bMatches,bActive,bLife,selectedToken,selectedSlot,selectedGeneration,selectedType,selectedNetId,selectedB,published,pathTick,pathCount,worldLayerText,pathStrokes,sourceCalls,publishCalls"};
+            var actors=new List<string>{"phase,frame,tick,aToken,aSlot,aGeneration,aType,aNetId,aMatches,aActive,aLife,bToken,bSlot,bGeneration,bType,bNetId,bMatches,bActive,bLife,selectedToken,selectedSlot,selectedGeneration,selectedType,selectedNetId,selectedB,published,pathTick,pathCount,pathStrokes,sourceCalls,publishCalls"};
             NpcTrajectory fixedPath=null;Vector2 fixedCamera=Vector2.Zero;
-            var fixedCosts=new List<string>{"repetition,frame,count,strokes,text,prepareMs,layerDrawMs,renderWrapperMs,prepareBytes,drawBytes"};
+            var fixedCosts=new List<string>{"repetition,frame,count,strokes,prepareMs,layerDrawMs,renderWrapperMs,prepareBytes,drawBytes"};
             var helperCosts=new List<string>{"phase,cpuMs,executed"};
             bool evidenceComplete=false,requireHornetBirth=false;int sceneCount=0;
             using(var timing=new NativeCombatRollingTimingChecks(source,output))
@@ -198,7 +198,7 @@ namespace NativeWorldTextProbe
                             bool published=path!=null;int strokes=light?lightStrokes():(int)Get(layer,"StrokeCount"),events=light?lightEvents():(int)Get(layer,"eventEnd");
                             var a=aSlot<0?null:Main.npc[aSlot];
                             if(!light)actors.Add(Csv(phase,frame,Main.GameUpdateCount,Token(aActor.Token),aActor.Slot,aActor.Generation,aActor.Type,aActor.NetId,Matches(aActor,a),a?.active,a?.life,
-                                Token(bActor.Token),bActor.Slot,bActor.Generation,bActor.Type,bActor.NetId,Matches(bActor,target),target.active,target.life,Token(key.Token),key.Slot,key.Generation,key.Type,key.NetId,picked,published,path?.CaptureTick??-1,path?.Count??0,Get(layer,"pathText")!=null,strokes-events,Calls[1],Calls[4]));
+                                Token(bActor.Token),bActor.Slot,bActor.Generation,bActor.Type,bActor.NetId,Matches(bActor,target),target.active,target.life,Token(key.Token),key.Slot,key.Generation,key.Type,key.NetId,picked,published,path?.CaptureTick??-1,path?.Count??0,strokes-events,Calls[1],Calls[4]));
                             if(fixedPath==null && picked && path!=null && path.Count==121){fixedPath=path;fixedCamera=Main.screenPosition;}
                             executed++;if(eligible)
                             {
@@ -207,12 +207,12 @@ namespace NativeWorldTextProbe
                                 else longest=Math.Max(longest,++blank);
                             }
                             else blank=0;
-                            if(light)LightRecord(target,expected,key,eligible,picked,path,strokes-events,lightText()!=null,wall,drawMs,GC.CollectionCount(0)-g0,GC.CollectionCount(1)-g1,GC.CollectionCount(2)-g2,lightHitCount-hitBefore);
+                            if(light)LightRecord(target,expected,key,eligible,picked,path,strokes-events,wall,drawMs,GC.CollectionCount(0)-g0,GC.CollectionCount(1)-g1,GC.CollectionCount(2)-g2,lightHitCount-hitBefore);
                             else
                             {
                             string costs=string.Join(",",Enumerable.Range(0,Names.Length).SelectMany(i=>new[]{Times[i].ToString("R",CultureInfo.InvariantCulture),Calls[i].ToString(CultureInfo.InvariantCulture)}));
                             var worker=native==null?null:Get(native,"Worker");
-                            rows.Add(Csv(phase,frame,Main.GameUpdateCount,valid,picked,identity,published,path?.Count??0,path?.CaptureTick??-1,strokes,strokes-events,Get(layer,"pathText")!=null,target.life,player.statLife,player.dead,Main.npc.Count(n=>n.active),Main.projectile.Count(p=>p.active),Hits.Count-hitBefore,native==null?0:Get(native,"Requests"),NativeCombatProductionPredictionChecks.LastReceived,Times[8],Times[9],drawMs,wall,allocated==null?(object)"NA":Bytes[8],allocated==null?(object)"NA":drawBytes,GC.CollectionCount(0)-g0,GC.CollectionCount(1)-g1,GC.CollectionCount(2)-g2,eligible,valid?key.Slot:-1,restart,cache.Required,native==null?false:Get(native,"Failed"),native==null?"rolling":Get(native,"Reason"),worker==null?-1:Get(worker,"State"),worker==null?0:Get(worker,"ReadyMilliseconds"),target.ai[0],target.ai[1],target.ai[2],target.ai[3],Get(host,"pathFailed"))+","+costs);
+                            rows.Add(Csv(phase,frame,Main.GameUpdateCount,valid,picked,identity,published,path?.Count??0,path?.CaptureTick??-1,strokes,strokes-events,target.life,player.statLife,player.dead,Main.npc.Count(n=>n.active),Main.projectile.Count(p=>p.active),Hits.Count-hitBefore,native==null?0:Get(native,"Requests"),NativeCombatProductionPredictionChecks.LastReceived,Times[8],Times[9],drawMs,wall,allocated==null?(object)"NA":Bytes[8],allocated==null?(object)"NA":drawBytes,GC.CollectionCount(0)-g0,GC.CollectionCount(1)-g1,GC.CollectionCount(2)-g2,eligible,valid?key.Slot:-1,restart,cache.Required,native==null?false:Get(native,"Failed"),native==null?"rolling":Get(native,"Reason"),worker==null?-1:Get(worker,"State"),worker==null?0:Get(worker,"ReadyMilliseconds"),target.ai[0],target.ai[1],target.ai[2],target.ai[3],Get(host,"pathFailed"))+","+costs);
                             rows[rows.Count-1]+=","+Bytes[1]+","+sourceGc[0]+","+sourceGc[1]+","+sourceGc[2];
                             }
                             quality?.Observe();if(picked)quality?.Capture(phase,frame,path);
@@ -260,10 +260,10 @@ namespace NativeWorldTextProbe
                     {
                         Array.Clear(Times,0,Times.Length);Array.Clear(Bytes,0,Bytes.Length);Array.Clear(Calls,0,Calls.Length);
                         Call(layer,"Prepare");long begin=Stopwatch.GetTimestamp();graphics.Render(()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);double render=Ms(Stopwatch.GetTimestamp()-begin);
-                        if(replay!=null && ((int)Get(layer,"StrokeCount")!=128 || (string)Get(layer,"pathText")!="NPC 路径：近似 · 未来约 2.0 秒 · 随机代表路线 · 假设玩家延续当前输入"))throw new InvalidOperationException("Frozen presentation mismatch: strokes="+Get(layer,"StrokeCount")+" text="+Get(layer,"pathText")+" camera="+fixedCamera+" viewport="+Main.screenWidth+"x"+Main.screenHeight);
-                        if(i>=0)fixedCosts.Add(Csv(repetition,i,fixedPath.Count,Get(layer,"StrokeCount"),Get(layer,"pathText")!=null,Times[5],Times[6],render,allocated==null?(object)"NA":Bytes[5],allocated==null?(object)"NA":Bytes[6]));
+                        if(replay!=null && ((int)Get(layer,"StrokeCount")!=128 || (fixedPath.Assumptions&(PredictionAssumption.RandomRepresentative|PredictionAssumption.HeldPlayerControls))!=(PredictionAssumption.RandomRepresentative|PredictionAssumption.HeldPlayerControls)))throw new InvalidOperationException("Frozen presentation mismatch: strokes="+Get(layer,"StrokeCount")+" assumptions="+fixedPath.Assumptions+" camera="+fixedCamera+" viewport="+Main.screenWidth+"x"+Main.screenHeight);
+                        if(i>=0)fixedCosts.Add(Csv(repetition,i,fixedPath.Count,Get(layer,"StrokeCount"),Times[5],Times[6],render,allocated==null?(object)"NA":Bytes[5],allocated==null?(object)"NA":Bytes[6]));
                     }
-                    File.WriteAllText(Path.Combine(output,"rolling-fixed-identity.txt"),"source="+(replay??"current real output")+"\ncamera="+fixedCamera+"\ntext="+Get(layer,"pathText")+"\ncount="+fixedPath.Count+"\nstrokes="+Get(layer,"StrokeCount"));
+                    File.WriteAllText(Path.Combine(output,"rolling-fixed-identity.txt"),"source="+(replay??"current real output")+"\ncamera="+fixedCamera+"\nassumptions="+fixedPath.Assumptions+"\ncount="+fixedPath.Count+"\nstrokes="+Get(layer,"StrokeCount"));
                     evidenceComplete=true;
                     }
                 }
@@ -305,7 +305,8 @@ namespace NativeWorldTextProbe
                 points[i]=new NpcTrajectoryPoint(i,n);
             }
             // NativePredictionResult at f8 supplies these presentation flags;
-            // retain the same text and dashed geometry for equal output cost.
+            // retain the same path premises and dashed geometry. The withdrawn
+            // corner text is no longer part of this presentation workload.
             return new NpcTrajectory(identity,(long)Main.GameUpdateCount,1,PredictionAssumption.NoNewHits|PredictionAssumption.RandomRepresentative|PredictionAssumption.LocalTerrain|PredictionAssumption.HeldPlayerControls,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
         }
         private static void Watch(Harmony h,Type type,string name,int index){foreach(var m in type.GetMethods(Flags).Where(m=>m.Name==name))Watch(h,m,index);}

@@ -291,7 +291,7 @@ namespace NativeWorldTextProbe
                     Console.WriteLine("MEMORY final-steady-private="+Private(pid)+" delta="+(Private(pid)-privateBefore));
                     if(graphics==null)NativeCombatPresentationChecks.Project(Get(host,"World"));
                     Require((int)Get(Get(host,"World"),"StrokeCount")>0,"actual world layer has projected path strokes");
-                    string shown=(string)Get(Get(host,"World"),"pathText");Require(shown.Contains("延续当前输入") && shown.Contains("随机代表路线"),"rendered premise matches continuation");
+                    var shown=(NpcTrajectory)Get(Get(host,"World"),"preparedPath");var premise=PredictionAssumption.HeldPlayerControls|PredictionAssumption.RandomRepresentative;Require(shown!=null && (shown.Assumptions&premise)==premise,"displayed path premise matches the real continuation without an HUD string");
                     if(continuousSeconds>0)
                     {
                         phase="first-zombie";Main.npc[1].active=false;Scene(3,2);

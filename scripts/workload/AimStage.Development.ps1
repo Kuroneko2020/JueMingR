@@ -1,4 +1,4 @@
-﻿# Explicitly authorized #114 stage candidates. This does not write the
+﻿# Explicit owner-authorized finite #114 / #118 stage candidates. This does not write the
 # formal workload cache, grant release qualification, or authorize installation.
 function Read-AimStageArtifact {
     param([string] $Root,$Entry)
@@ -23,6 +23,7 @@ function Read-AimStageDevelopment {
     $relative=$full.Substring($repository.Length).Replace('\','/')
     $null=Read-AimStageArtifact $Root ([pscustomobject]@{path=$relative;length=(Get-Item -LiteralPath $full).Length;sha256=(Get-WorkloadFileHash -LiteralPath $full).Hash})
     $record=Read-WorkloadJson $Path
+    if($null -ne $record -and $record.schema -ceq 'footprints-200h-development-20261017-1'){return Read-Footprints200HourDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     # Each owner-authorized successor has its own base and evidence contract;
     # the old qualification cannot be relabelled as a new candidate record.
     $successor=$null -ne $record -and $record.schema -ceq 'aim-root-fix-development-20261012-1'
@@ -687,4 +688,68 @@ function Test-AimStageDevelopmentBuild {
         $stage=Read-AimStageDevelopment $Root $Path $identity $inputs
         return ($Record.workload | ConvertTo-Json -Depth 6 -Compress) -ceq ($stage | ConvertTo-Json -Depth 6 -Compress)
     } catch {return $false}
+}
+
+# One owner-authorized #118 candidate contract. This preserves the formal
+# default and cannot be reused as #114 qualification or a generic skip mode.
+function Read-Footprints200HourDevelopment {
+    param([string] $Root,[string] $Path,$Identity,$InputIdentity,$Record,[string] $Relative)
+    $base='f50646b083b27248731dbf7afdc53a3876ff4309'
+    if($Record.authorization -cne 'owner-issue118-footprints-200h-20261017' -or $Record.productBase -cne $base -or
+        $Record.candidateCommit -cne $Identity.commit -or $Record.sourceFingerprint -cne $Identity.fingerprint -or
+        $Record.inputFingerprint -cne $InputIdentity.fingerprint -or $Record.fullQualification -cne 'INCOMPLETE' -or
+        $Record.releaseEligible -ne $false -or $null -eq $Record.PSObject.Properties['openFailures'] -or @($Record.openFailures).Count){throw 'Footprint candidate/evidence lock mismatch or unresolved failure.'}
+    $retained=if($null -ne $script:WorkloadRetainedAssets){@($script:WorkloadRetainedAssets.files.path)}else{@()}
+    if(@((Get-WorkloadChanges $Root 'HEAD').paths | Where-Object {$_ -cnotin $retained}).Count){throw 'Footprint candidate has uncommitted inputs.'}
+    & git -C $Root merge-base --is-ancestor $base $Identity.commit
+    if($LASTEXITCODE -ne 0){throw 'Footprint candidate lost its accepted base.'}
+    $allowed=@(
+        'src/JueMingR.Platform/Footprints/FootprintSample.cs','src/JueMingR.Platform/Footprints/FootprintOverview.cs',
+        'src/JueMingR.Features/Footprints/FootprintRecorder.cs','src/JueMingR.Features/Footprints/FootprintArchive.cs',
+        'src/JueMingR.Features/Footprints/FootprintCodec.cs','src/JueMingR.Features/Footprints/FootprintStore.cs',
+        'src/JueMingR.Features/Footprints/FootprintPlayback.cs','src/JueMingR.Features/Footprints/FootprintOverviewGeometry.cs',
+        'src/JueMingR.Features/Footprints/FootprintOverviewIndex.cs','src/JueMingR.Infrastructure/Footprints/FileFootprintArchive.cs',
+        'src/JueMingR.TerrariaHost/Footprints/HostFootprints.cs','src/JueMingR.TerrariaHost/Footprints/FootprintSourceHooks.cs',
+        'src/JueMingR.TerrariaHost/Footprints/FootprintPlayingClock.cs','src/JueMingR.TerrariaHost/Footprints/FootprintMapLayer.cs',
+        'src/JueMingR.TerrariaHost/F5/FootprintPopup.cs',
+        'tests/Footprints/FootprintCoreChecks.cs','tests/Footprints/FootprintFileChecks.cs','tests/Footprints/FootprintWorkerChecks.cs',
+        'tests/Footprints/FootprintOverviewChecks.cs','tests/Footprints/FootprintLongHistoryChecks.cs',
+        'tests/NativeWorldTextProbe/NativeFootprintChecks.cs','tests/NativeWorldTextProbe/NativeFootprintVisualChecks.cs',
+        'tests/NativeWorldTextProbe/NativeFootprintTimingChecks.cs','tests/NativeWorldTextProbe/NativeFootprint200HourVisualChecks.cs',
+        'tests/NativeWorldTextProbe/NativeFootprintPathCoexistenceChecks.cs','tests/NativeWorldTextProbe/NativeChecks.cs',
+        'tests/JueMingR.ArchitectureTests/JueMingR.ArchitectureTests.csproj','tests/JueMingR.ArchitectureTests/Program.cs',
+        'tests/JueMingR.ArchitectureTests/CheckCatalog.cs','tests/JueMingR.ArchitectureTests/OperationContractChecks.cs',
+        'tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs',
+        'docs/功能介绍/足迹记录路线与回放行为合同.md','docs/设计/足迹记录路线与回放实现设计.md',
+        'docs/功能介绍/功能索引.md','docs/功能介绍/玩家使用指南.md','docs/设计/配置持久化与用户数据布局.md',
+        'docs/设计/可重复构建与项目骨架.md','docs/AI经验笔记/信息地图与持久状态.md','docs/AI经验笔记/索引.md',
+        'scripts/workload/AimStage.Development.ps1','review-materials/footprints-200h-20261017/evidence.md')
+    $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)
+    if(@($changed | Where-Object {$_ -cnotin $allowed}).Count -or
+        (@($Record.revisions.path | Sort-Object) -join '|') -cne ($changed -join '|')){throw 'Footprint revision scope mismatch.'}
+    foreach($entry in $Record.revisions){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'Footprint revision bytes changed.'}}
+    $required=@('build-structure','footprints-core','footprints-overview','rich-200h','native-host-time-input','native-xna-200h','map-path-coexistence','package-entry-contract')
+    if((@($Record.checks.name | Sort-Object) -join '|') -cne (@($required | Sort-Object) -join '|')){throw 'Footprint necessary scopes missing/duplicated.'}
+    foreach($check in $Record.checks){
+        if($check.exit -ne 0 -or $check.disposition -cnotin @('CURRENT','REVIEWED_REUSE') -or -not $check.scope -or -not $check.applicability -or @($check.artifacts).Count -eq 0){throw 'Invalid footprint scoped evidence.'}
+        foreach($artifact in $check.artifacts){$null=Read-AimStageArtifact $Root $artifact}
+    }
+    if(@($Record.failureDispositions).Count -eq 0 -or @($Record.reviews).Count -eq 0 -or @($Record.limits).Count -eq 0){throw 'Footprint failures, independent review or limits missing.'}
+    foreach($failure in $Record.failureDispositions){
+        if($failure.disposition -cnotin @('PRODUCT_FIXED','TEST_CORRECTED','ENVIRONMENT_LIMITATION') -or -not $failure.cause -or -not $failure.resolution -or @($failure.artifacts).Count -eq 0){throw 'Unresolved footprint failure.'}
+        foreach($artifact in $failure.artifacts){$null=Read-AimStageArtifact $Root $artifact}
+    }
+    foreach($review in $Record.reviews){
+        if($review.result -cne 'APPROVED_FOR_STAGE' -or $review.sourceFingerprint -cne $Identity.fingerprint -or -not $review.coverage){throw 'Footprint independent review identity mismatch.'}
+        $null=Read-AimStageArtifact $Root $review.artifact
+    }
+    if($Record.admission.result -cne 'READY_FOR_PACKAGE' -or $Record.admission.sourceFingerprint -cne $Identity.fingerprint){throw 'Footprint coordinator admission missing.'}
+    $null=Read-AimStageArtifact $Root $Record.admission.artifact
+    $debug=Read-WorkloadJson (Join-Path $Root 'artifacts/build/Debug/build-record.json')
+    if(-not (Test-WorkloadBuildMatch $Root $debug $Identity $InputIdentity)){throw 'Footprint Debug detection build changed.'}
+    $consumers=@('artifacts/build/Debug/checks/bin/NativeWorldTextProbe/x86/Debug/net472/NativeWorldTextProbe.exe')
+    foreach($project in @('Platform','Features','Infrastructure','TerrariaHost','ArchitectureTests')){$consumers+=('artifacts/build/Debug/work/bin/JueMingR.'+$project+'/x86/Debug/net472/JueMingR.'+$project+'.'+$(if($project -ceq 'ArchitectureTests'){'exe'}else{'dll'}))}
+    if((@($Record.detectionFiles.path | Sort-Object) -join '|') -cne (@($consumers | Sort-Object) -join '|')){throw 'Footprint detection consumer set mismatch.'}
+    foreach($entry in $Record.detectionFiles){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'Footprint detection bytes changed.'}}
+    return [ordered]@{status='STAGE_DEVELOPMENT';mode='ExplicitFootprints200Hour20261017';fullQualification='INCOMPLETE';releaseEligible=$false;productBase=$base;recordPath=$Relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;necessaryScopes=$required;limits=@($Record.limits);checkCount=$required.Count}
 }

@@ -21,22 +21,22 @@ namespace JueMingR.TerrariaHost.Combat
         // red display has no prepare/project/draw or resource polling entry.
         internal readonly CombatImpactMarker Impact;
         private int strokeLimit=16384;
-        private int count,eventStart,eventEnd;private long presentation;private bool eventsDrawn;private Matrix zoom,inverse;private NpcTrajectory preparedPath;private string pathText;private bool legend,limited;
+        private int count,eventStart,eventEnd;private long presentation;private bool eventsDrawn;private Matrix zoom,inverse;private NpcTrajectory preparedPath;
         internal CombatObservationWorldLayer(HostCombatObservation host){this.host=host;Marker=new CombatTargetMarker(host);Impact=new CombatImpactMarker(host);}
         internal int StrokeCount {get{return count;}}
         internal bool Failed {get;private set;}
-        private object failedPixel,failedFont,failedBatch;
+        private object failedPixel,failedBatch;
         // Presentation owns its latch, never prediction/operation state. Only
         // an explicit retry, replaced borrowed resources or a new session
         // clears it; clearing a frame does not. Never read Asset.Value to retry.
-        internal void DisplayFailed(){Clear();Failed=true;failedPixel=TextureAssets.MagicPixel;failedFont=FontAssets.MouseText;failedBatch=Main.spriteBatch;}
-        internal void Recover(){Clear();Failed=false;failedPixel=failedFont=failedBatch=null;Impact.Reset();}
+        internal void DisplayFailed(){Clear();Failed=true;failedPixel=TextureAssets.MagicPixel;failedBatch=Main.spriteBatch;}
+        internal void Recover(){Clear();Failed=false;failedPixel=failedBatch=null;Impact.Reset();}
         internal void PollResources()
         {
-            if(Failed && (!ReferenceEquals(failedPixel,TextureAssets.MagicPixel) || !ReferenceEquals(failedFont,FontAssets.MouseText) || !ReferenceEquals(failedBatch,Main.spriteBatch)))Recover();
+            if(Failed && (!ReferenceEquals(failedPixel,TextureAssets.MagicPixel) || !ReferenceEquals(failedBatch,Main.spriteBatch)))Recover();
             Marker.PollResources();
         }
-        internal void Clear(){count=eventStart=eventEnd=0;eventsDrawn=false;preparedPath=null;pathText=null;legend=limited=false;Marker.Clear();}
+        internal void Clear(){count=eventStart=eventEnd=0;eventsDrawn=false;preparedPath=null;Marker.Clear();}
         internal void Prepare()
         {
             if(Failed){Clear();return;}
@@ -58,33 +58,15 @@ namespace JueMingR.TerrariaHost.Combat
 #endif
             Clear();if(!host.Enabled || !host.CanDraw || !WorldPresentation.CanDraw || Main.GameViewMatrix==null){Prediction.AimLightTrace.Presentation(!host.Enabled?"prepare-disabled":!host.CanDraw?"prepare-host-gate":!WorldPresentation.CanDraw?"prepare-world-gate":"prepare-no-matrix",null,0,0,false);return;}
             Marker.Capture();
-            if(host.Collision){host.Geometry.PrepareEvents();legend=true;limited=host.Geometry.EventOverflow;}
+            if(host.Collision)host.Geometry.PrepareEvents();
             var path=host.DisplayPath;
             Prediction.AimLightTrace.Presentation("cache-consume",path,0,eventEnd,false);
             if(path==null)
             {
-                if(host.Path && host.TargetPredictionFailed){pathText="NPC 路径：当前目标观察失败，可点击开启重试。";return;}
-                PredictionStop reason;PredictionFailureLayer layer;
-                if(host.Path && host.Selection.HasTarget && host.Prediction.EmptyFutureReason(host.Selection.Target,(long)Main.GameUpdateCount,out reason,out layer))
-                    pathText=EmptyText(reason,layer);
-                Prediction.AimLightTrace.Presentation(host.Path?"prepare-cache-empty":"prepare-path-gate",null,0,eventEnd,pathText!=null);return;
+                Prediction.AimLightTrace.Presentation(host.Path?"prepare-cache-empty":"prepare-path-gate",null,0,eventEnd,false);return;
             }
             preparedPath=path;
-            bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
-            var color=approximate?new Color(255,210,110):new Color(235,235,255);
-            pathText=path.Stop==PredictionStop.None?(approximate?"NPC 路径：近似":"NPC 路径：条件预测"):StopText(path.Stop);
-            int future=Math.Max(0,path.Count-1-host.DisplayAge);
-            pathText+=" · 未来约 "+(future/60f).ToString(future<6?"0.00":"0.0",System.Globalization.CultureInfo.InvariantCulture)+" 秒";
-            if((path.Assumptions&PredictionAssumption.RandomRepresentative)!=0)pathText+=" · 随机代表路线";
-            if((path.Assumptions&PredictionAssumption.NetworkObservation)!=0)pathText+=" · 依据本机网络观察";
-            if((path.Assumptions&PredictionAssumption.UnmodeledDamageEffects)!=0)pathText+=" · 未估计部分持续伤害";
-            if((path.Assumptions&PredictionAssumption.UnmodeledStatusEffects)!=0)pathText+=" · 部分状态后续影响待确认";
-            if(path.Quality==PredictionQuality.StructuredApproximation)pathText+=" · 依据运动约束";
-            if(path.Strategy==PredictionStrategy.SegmentedTrend)
-                pathText+=path.Quality==PredictionQuality.LimitedObservation?" · 运动观察较少":" · 依据近期移动，远端仅供参考";
-            else if((path.Assumptions&PredictionAssumption.NoPlayerMotionNeeded)==0)pathText+=(path.Assumptions&PredictionAssumption.CurrentPlayerObservation)!=0?" · 依据玩家当前位置":(path.Assumptions&PredictionAssumption.HeldPlayerControls)!=0?" · 假设玩家延续当前输入":" · 假设玩家保持当前位置";
-            if((path.Assumptions&PredictionAssumption.ObservedTrackingMotion)!=0)pathText+=" · 追踪对象按当前运动延续";
-            Prediction.AimLightTrace.Presentation("prepared",path,count-eventEnd,eventEnd,pathText!=null);
+            Prediction.AimLightTrace.Presentation("prepared",path,count-eventEnd,eventEnd,false);
 #if JMR_AIM_LIGHT
             }
             catch(Exception error){Prediction.AimLightTrace.Fault("prepare",error,(long)Main.GameUpdateCount);throw;}
@@ -95,13 +77,13 @@ namespace JueMingR.TerrariaHost.Combat
             // Only bounded geometry from completed observations is traversed.
             // The final camera decides visibility before the physical-stroke
             // cap, so offscreen facts cannot starve later visible strokes.
-            count=eventStart=eventEnd=0;eventsDrawn=false;limited=host.Collision && host.Geometry.EventOverflow;
+            count=eventStart=eventEnd=0;eventsDrawn=false;
             strokeLimit=host.Path?strokes.Length/2:strokes.Length;
             if(host.Collision)
             {Samples(host.Geometry.Attacks,0);Samples(host.Geometry.Npcs,1);Samples(host.Geometry.Bodies,3);eventStart=count;presentation++;Samples(host.Geometry.Events,2);eventEnd=count;}
             projectedEvent=null;strokeLimit=strokes.Length;var path=preparedPath;
             if(path==null)return;
-            if(!host.Path || !host.Selection.HasTarget || !host.Selection.Target.Equals(path.Identity) || !ReferenceEquals(host.DisplayPath,path) || !CombatSelection.Valid(path.Identity,host.Session)){pathText=null;return;}
+            if(!host.Path || !host.Selection.HasTarget || !host.Selection.Target.Equals(path.Identity) || !ReferenceEquals(host.DisplayPath,path) || !CombatSelection.Valid(path.Identity,host.Session))return;
             bool approximate=(path.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;
             var color=approximate?new Color(255,210,110):new Color(235,235,255);
             for(int i=host.DisplayAge+1;i<path.Count;i++)
@@ -113,36 +95,6 @@ namespace JueMingR.TerrariaHost.Combat
                 // not move the same future marker every refresh.
                 if(point.NewSegment || (path.SampleTick+point.TickOffset)%30==0 || i==path.Count-1)
                 {Line(b-new Vector2(3,0),b+new Vector2(3,0),color,false,2);Line(b-new Vector2(0,3),b+new Vector2(0,3),color,false,2);}
-            }
-        }
-        private static string StopText(PredictionStop reason)
-        {
-            switch(reason)
-            {
-                case PredictionStop.UnsupportedMechanism:return "NPC 路径：仅短段近似 · 后续机制未知";
-                case PredictionStop.RandomDestination:return "NPC 路径：已截断 · 瞬移目的地尚未确定";
-                case PredictionStop.RandomDecision:return "NPC 路径：已截断 · 随机行为尚未确定";
-                case PredictionStop.MissingDependency:return "NPC 路径：已截断 · 关联部位缺失";
-                case PredictionStop.Slope:return "NPC 路径：已截断 · 斜坡后续反应未建模";
-                case PredictionStop.LiquidEffect:return "NPC 路径：已截断 · 特殊液体反应未建模";
-                case PredictionStop.Despawn:return "NPC 路径：预计结束或失活";
-                case PredictionStop.PhaseBoundary:return "NPC 路径：已截断 · 后续阶段待确认";
-                case PredictionStop.BuffTransition:return "NPC 路径：已截断 · 状态变化待确认";
-                default:return "NPC 路径：已截断 · 局部信息不足";
-            }
-        }
-        private static string EmptyText(PredictionStop reason,PredictionFailureLayer layer)
-        {
-            if(layer==PredictionFailureLayer.PlayerPremise)return reason==PredictionStop.TerrainUnavailable || reason==PredictionStop.TerrainLimit?"NPC 路径：暂无法预测 · 玩家附近信息不足":"NPC 路径：暂无法预测 · 玩家移动状态待确认";
-            switch(reason)
-            {
-                case PredictionStop.BuffTransition:return "NPC 路径：暂无法预测 · 目标状态变化待确认";
-                case PredictionStop.TerrainUnavailable:case PredictionStop.TerrainLimit:return "NPC 路径：暂无法预测 · 目标附近信息不足";
-                case PredictionStop.RandomDecision:case PredictionStop.RandomDestination:return "NPC 路径：暂无法预测 · 目标随机行为待确认";
-                case PredictionStop.MissingDependency:return "NPC 路径：暂无法预测 · 关联部位缺失";
-                case PredictionStop.UnsupportedMechanism:case PredictionStop.PhaseBoundary:return "NPC 路径：暂无法预测 · 目标后续行为待确认";
-                case PredictionStop.LiquidEffect:return "NPC 路径：暂无法预测 · 特殊液体反应待确认";
-                default:return "NPC 路径：暂无法预测 · 当前信息不足";
             }
         }
         private void Samples(CombatShapeSample[] samples,int kind)
@@ -160,10 +112,10 @@ namespace JueMingR.TerrariaHost.Combat
                 {var n=Main.npc[i];if(n==null || !n.active || !ReferenceEquals(n,sample.Token) || n.type!=sample.Type || n.generation!=sample.Identity)continue;}
                 else if(kind==3)
                 {var p=Main.player[i];if(p==null || !p.active || p.dead || !ReferenceEquals(p,sample.Token))continue;}
-                projectedEvent=kind==2?sample:null;limited|=sample.Overflow;
+                projectedEvent=kind==2?sample:null;
                 for(int j=0;j<sample.Count;j++)
                 {
-                    if(count==strokeLimit){limited=true;return;}
+                    if(count==strokeLimit){return;}
                     var shape=sample.Shapes[j];var color=colors[shape.Category];
                     bool dashed=shape.Approximate || shape.Condition!=0 || shape.Kind==3 || shape.Kind==4 || shape.HasBounds;
                     if(shape.Kind==5)
@@ -173,7 +125,7 @@ namespace JueMingR.TerrariaHost.Combat
                         var pairBounds=sample.PointBounds;pairBounds.Inflate(sample.PointSize.X/2,sample.PointSize.Y/2);
                         if(!Visible(pairBounds.TopLeft(),pairBounds.BottomRight()))continue;
                         for(int k=0;k<sample.PointCount;k++)
-                        {if(count==strokeLimit){limited=true;return;}var p=sample.Points[k].ToPoint();var box=new Rectangle(p.X-sample.PointSize.X/2,p.Y-sample.PointSize.Y/2,sample.PointSize.X/2*2+1,sample.PointSize.Y/2*2+1);box=Rectangle.Intersect(box,pairBounds);if(box.Width>0 && box.Height>0 && Visible(box.TopLeft(),box.BottomRight()))Box(box.TopLeft(),box.BottomRight(),color,dashed);}
+                        {if(count==strokeLimit){return;}var p=sample.Points[k].ToPoint();var box=new Rectangle(p.X-sample.PointSize.X/2,p.Y-sample.PointSize.Y/2,sample.PointSize.X/2*2+1,sample.PointSize.Y/2*2+1);box=Rectangle.Intersect(box,pairBounds);if(box.Width>0 && box.Height>0 && Visible(box.TopLeft(),box.BottomRight()))Box(box.TopLeft(),box.BottomRight(),color,dashed);}
                         continue;
                     }
                     if(shape.Kind==7)
@@ -239,7 +191,7 @@ namespace JueMingR.TerrariaHost.Combat
             else Add(a,b,color,width);
         }
         private void Add(Vector2 a,Vector2 b,Color color,float width)
-        {if(!Finite(a) || !Finite(b))return;if(count==strokeLimit){limited=true;return;}if(projectedEvent!=null)projectedEvent.Presentation=presentation;strokes[count++]=new Stroke{A=Vector2.Transform(a,inverse),B=Vector2.Transform(b,inverse),Color=color,Width=width*inverse.M11};}
+        {if(!Finite(a) || !Finite(b))return;if(count==strokeLimit){return;}if(projectedEvent!=null)projectedEvent.Presentation=presentation;strokes[count++]=new Stroke{A=Vector2.Transform(a,inverse),B=Vector2.Transform(b,inverse),Color=color,Width=width*inverse.M11};}
         private static bool Finite(Vector2 p){return !float.IsNaN(p.X) && !float.IsNaN(p.Y) && !float.IsInfinity(p.X) && !float.IsInfinity(p.Y);}
         internal static bool Clip(ref Vector2 a,ref Vector2 b)
         {
@@ -278,16 +230,8 @@ namespace JueMingR.TerrariaHost.Combat
                 if(i>=eventEnd)pathCompleted++;else otherCompleted++;
 #endif
             }
-            float y=Main.screenHeight-125;
-            if(legend)
-            {
-                Text("碰撞：蓝·玩家攻击  绿·敌怪受击  黄·伤害专属",y,Color.White);y+=22;
-                Text("红·不可破坏攻击  紫·可破坏攻击  虚线·有条件或近似",y,Color.White);y+=22;
-            }
-            if(pathText!=null){Text(pathText,y,new Color(235,220,160));y+=22;}
-            if(limited)Text("显示数量已达上限，部分区域未绘出",y,Color.Orange);
             if(!eventsDrawn && host.Collision){host.Geometry.PresentedEvents(presentation);eventsDrawn=true;}
-            Prediction.AimLightTrace.Presentation("draw-complete",null,count-eventEnd,eventEnd,pathText!=null);
+            Prediction.AimLightTrace.Presentation("draw-complete",null,count-eventEnd,eventEnd,false);
             return true;
 #if JMR_AIM_LIGHT
             }
@@ -295,7 +239,5 @@ namespace JueMingR.TerrariaHost.Combat
             finally{Prediction.AimLightTrace.DrawCounts(pathIssued,pathCompleted,otherIssued,otherCompleted);}
 #endif
         }
-        private void Text(string value,float y,Color color)
-        {if(FontAssets.MouseText?.Value!=null){Prediction.AimLightTrace.Presentation("text-issued",null,0,0,ReferenceEquals(value,pathText));Utils.DrawBorderString(Main.spriteBatch,value,Vector2.Transform(new Vector2(16,Math.Max(16,y)),inverse),color,.72f*inverse.M11);Prediction.AimLightTrace.Presentation("text-completed",null,0,0,ReferenceEquals(value,pathText));}else Prediction.AimLightTrace.Presentation("text-no-font",null,0,0,ReferenceEquals(value,pathText));}
     }
 }

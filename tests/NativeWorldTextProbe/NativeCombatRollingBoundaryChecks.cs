@@ -73,8 +73,8 @@ namespace NativeWorldTextProbe
                 rows.Add("known-DOT-death,"+n.life+","+n.active+","+path.Count+","+path.Stop+","+cache.MinimumRequired+","+(cache.Read(0)!=null)+","+(cache.Read(1)!=null));
                 Require(cache.Read(0)==path && cache.Read(1)==null,"Display consumes the true short endpoint; strict120 still refuses it.");
                 Main.screenPosition=n.Center-new Vector2(Main.screenWidth/2,Main.screenHeight/2);Call(Get(host,"World"),"Prepare");NativeCombatPresentationChecks.Project(Get(host,"World"));
-                Console.WriteLine("SHORT-PRESENT identity="+identity.Equals((NpcIdentity)Get(Get(host,"Selection"),"Target"))+" strokes="+Get(Get(host,"World"),"StrokeCount")+" text="+Get(Get(host,"World"),"pathText"));
-                Require((int)Get(Get(host,"World"),"StrokeCount")>0 && ((string)Get(Get(host,"World"),"pathText")).Contains("0.2 秒"),"WorldLayer actually projects the short endpoint and its real duration.");
+                Console.WriteLine("SHORT-PRESENT identity="+identity.Equals((NpcIdentity)Get(Get(host,"Selection"),"Target"))+" strokes="+Get(Get(host,"World"),"StrokeCount")+" future="+(path.Count-1));
+                Require((int)Get(Get(host,"World"),"StrokeCount")>0 && ReferenceEquals(Get(Get(host,"World"),"preparedPath"),path),"WorldLayer actually projects the true short endpoint from the published path.");
                 n.life=life;n.lifeRegenCount=regen;for(int i=0;i<n.buffType.Length;i++)if(n.buffType[i]==BuffID.OnFire)n.DelBuff(i);
                 n.position.X=15;n.velocity.X=-4;
                 Call(source,"Prepare",identity,(long)Main.GameUpdateCount+1);path=(NpcTrajectory)Get(cache,"result");
@@ -82,7 +82,7 @@ namespace NativeWorldTextProbe
                 rows.Add("world-border,"+n.life+","+n.active+","+path.Count+","+path.Stop+","+cache.MinimumRequired+","+(cache.Read(0)!=null)+","+(cache.Read(1)!=null));
                 Require(path.Count==1 && cache.Read(0)==null,"A current point without a computed future remains invisible.");
                 n.life=0;Call(source,"Prepare",identity,(long)Main.GameUpdateCount+2);Call(Get(host,"World"),"Prepare");
-                Require(cache.Read(0)==null && Get(Get(host,"World"),"pathText")==null,"Actual observed death immediately retires display output.");
+                Require(cache.Read(0)==null && Get(Get(host,"World"),"preparedPath")==null,"Actual observed death immediately retires display output.");
             }
             finally
             {

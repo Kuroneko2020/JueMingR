@@ -14,7 +14,9 @@ namespace JueMingR.TerrariaHost.F5
         { Width = width; Height = height; OffsetX = offsetX; OffsetY = offsetY; }
     }
 
-    // Shared CPU glyph geometry; no texture ownership, readback or Draw-time work.
+    // Shared CPU glyph geometry; no texture ownership, GPU readback or glyph draw.
+    // Callers choose timing: changed hints/fonts/regions may measure in the Draw
+    // chain, while stable prepared geometry is reused.
     internal sealed class UiTextMetrics
     {
         private readonly DynamicSpriteFont.DrawCharacter collect;

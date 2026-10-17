@@ -164,8 +164,8 @@ namespace JueMingR.TerrariaHost.Fishing
                 Admitted=()=>{Snapshot();Phase=FishingPhase.PullRequested;used=pullConsumed=false;entered=Tools.Tick;},Used=()=>used=true,
                 Completed=(started,unknown)=>{if(operation==pull && Active && (unknown || !pullConsumed)){Stop();if(unknown)host.Report("本次收竿结果未确认，已停止自动钓鱼。");}}};
         }
-        // This is called only after the real original pull consumer returned.
-        // A use receipt alone cannot create storage qualification.
+        // Before the native pull, freeze eligible bobbers for this operation.
+        // This snapshot alone grants neither pull confirmation nor product ownership.
         internal long BeforeNativePull(Player p,Item item)
         {
             if(ReferenceEquals(p,player) && item!=null && item.fishingPole>0 && !Tools.Use.InNativeUse && PlayerInput.Triggers.Current.MouseLeft && AnyCurrent())
@@ -176,6 +176,8 @@ namespace JueMingR.TerrariaHost.Fishing
         }
         internal void NativePulled(Player p,long token)
         {
+            // Called after the original pull returns; a use receipt alone
+            // cannot create storage qualification without this transition.
             // Native TryStartUse pulls first and returns false when bobbers
             // exist, so an ordinary successful pull never calls StartActualUse.
             // Confirm its own original consumer transition, not animation/use.

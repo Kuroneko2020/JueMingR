@@ -2,6 +2,8 @@ using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using HarmonyLib;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Hotkeys;
 using JueMingR.Platform.Combat;
@@ -16,6 +18,15 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCombatVisualChecks
     {
+        private static int worldTextCalls,weaponSolveCalls;
+        private static void CountWorldText(){worldTextCalls++;}
+        private static void CountWeaponSolve(){weaponSolveCalls++;}
+        internal static void RunHud(object context,ProbeGraphics graphics,string output)
+        {
+            Directory.CreateDirectory(output);NativeCombatAimChecks.Initialize();World(context,graphics,output);
+            NativeCombatEventRetirementChecks.Run(context,graphics);
+            Console.WriteLine("PASS HUD closeout: no corner text, real path/collision pixels, truncated/empty paths, repeated Draw without prediction/weapon solving, OFF and actual event receipts.");
+        }
         internal static void Run(object context,ProbeGraphics graphics,string output)
         {
             Directory.CreateDirectory(output);Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");
@@ -99,30 +110,48 @@ namespace NativeWorldTextProbe
         private static float CenterY(object element){var rect=Get(element,"Rect");return (float)Get(rect,"Y")+(float)Get(rect,"Height")/2;}
         private static void World(object context,ProbeGraphics graphics,string output)
         {
+            var audit=new Harmony("JueMingR.Tests.CombatHudCloseout");
             using(var futureSteps=NativeCombatUsageChecks.ObserveDrawSteps())
+            try
             {
             var host=Get(context,"CombatObservation");var layer=Get(host,"World");Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
+            var flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
+            foreach(var method in typeof(Utils).GetMethods(flags).Where(m=>m.Name=="DrawBorderString"))audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatVisualChecks),nameof(CountWorldText)));
+            var solvers=host.GetType().Assembly.GetTypes().Where(t=>t.Namespace=="JueMingR.TerrariaHost.Combat" && t.Name.StartsWith("Host",StringComparison.Ordinal)).SelectMany(t=>t.GetMethods(flags|BindingFlags.DeclaredOnly)).Where(m=>m.Name=="Solve" || m.Name=="SolvePrepared" || m.Name=="PreparePlan").ToArray();
+            Require(solvers.Length>0,"loaded candidate exposes the actual weapon preparation/solve observers");
+            foreach(var method in solvers.Concat(typeof(AttackIntercept).GetMethods(flags).Where(m=>m.Name=="SolveCore")))audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatVisualChecks),nameof(CountWeaponSolve)));
             Main.screenWidth=960;Main.screenHeight=640;Main.UIScale=1;PlayerInput.CacheOriginalScreenDimensions();Main.screenPosition=new Vector2(300,300);Main.hideUI=false;Main.mapFullscreen=false;Main.dayTime=false;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(collision:true,path:true));
             foreach(var n in Main.npc)n.active=false;var npc=Main.npc[0];npc.SetDefaults(2);npc.whoAmI=0;npc.active=true;npc.target=0;npc.position=new Vector2(480,440);npc.velocity=new Vector2(2,-1);npc.timeLeft=750;
             Main.LocalPlayer.position=new Vector2(650,640);UiFrame(context,Vector2.Zero,false);NativeCombatObservationChecks.Fresh(context,host);
             AwaitPath();
             var shot=Main.projectile[10];shot.SetDefaults(632);shot.whoAmI=10;shot.active=true;shot.owner=0;shot.friendly=true;shot.damage=10;shot.position=new Vector2(-300,550);shot.velocity=Vector2.UnitX;shot.localAI[1]=1500;shot.scale=1;shot.Damage();
-            var cache=(JueMingR.Features.Combat.NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");int steps=NativeCombatUsageChecks.ObservedNpcSteps;Call(layer,"Prepare");NativeCombatPresentationChecks.Project(layer);Require((int)Get(layer,"StrokeCount")>10,"actual world preparation keeps offscreen-origin beam and selected future path; strokes="+Get(layer,"StrokeCount")+" canDraw="+Get(host,"CanDraw")+" enabled="+Get(host,"Enabled")+" path="+(cache.Read(0)?.Count.ToString()??"none")+" failed="+Call(host,"Unavailable",0));
+            int steps=NativeCombatUsageChecks.ObservedNpcSteps,solves=weaponSolveCalls,texts=worldTextCalls;Call(layer,"Prepare");
+            var pixels=graphics.Pixels(()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+            Require((int)Get(layer,"eventEnd")>0 && (int)Get(layer,"StrokeCount")>(int)Get(layer,"eventEnd"),"actual Draw submits both collision and selected future path strokes");
+            var prepared=(NpcTrajectory)Get(layer,"preparedPath");bool approximate=(prepared.Assumptions&(PredictionAssumption.ApproximateMechanism|PredictionAssumption.RandomRepresentative))!=0;var pathColor=approximate?new Color(255,210,110):new Color(235,235,255);
+            Require(pixels.Any(p=>p.A>0 && p.B>p.R+30) && pixels.Any(p=>p.A>0 && Math.Abs(p.R-pathColor.R)<2 && Math.Abs(p.G-pathColor.G)<2 && Math.Abs(p.B-pathColor.B)<2),"actual collision blue and the path's published-condition color pixels survive the text removal");
             for(int i=0;i<100;i++)graphics.Pixels(()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
-            Require(NativeCombatUsageChecks.ObservedNpcSteps==steps,"repeated actual draw cannot run NPC prediction");
+            Require(NativeCombatUsageChecks.ObservedNpcSteps==steps && weaponSolveCalls==solves,"repeated actual draw cannot run NPC prediction or weapon preparation/solving");
+            Require(worldTextCalls==texts,"normal Path+Collision Draw issues no former corner text calls");
             graphics.Image(Path.Combine(output,"observation-world.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
             Main.LocalPlayer.gravDir=-1;Main.screenPosition+=new Vector2(70,30);Call(layer,"Prepare");graphics.Image(Path.Combine(output,"observation-world-inverted.png"),()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);Main.LocalPlayer.gravDir=1;
             npc.SetDefaults(371);npc.whoAmI=0;npc.active=true;npc.position=new Vector2(700,650);npc.target=0;npc.ai[3]=1;
-            int priorMode=Main.netMode;try{Main.netMode=1;NativeCombatObservationChecks.Fresh(context,host);AwaitPath();Call(layer,"Prepare");string shown=(string)Get(layer,"pathText");var path=cache.Read(0);Console.WriteLine("VISUAL world text="+shown+" target="+Get(Get(host,"Selection"),"HasTarget")+" path="+Get(host,"Path")+" sample="+path?.SampleTick+" assumptions="+path?.Assumptions+" strategy="+path?.Strategy+" count="+path?.Count+" npc="+npc.type+" camera="+Main.screenPosition+" mouse="+Main.MouseWorld+" player="+Main.LocalPlayer.position);
-                // Fresh uses the production continuation model, not a fixed
-                // player fixture. Assert the published assumption's real text;
-                // substituting the old stationary phrase would mislabel it.
-                Require(path!=null && (path.Assumptions&PredictionAssumption.HeldPlayerControls)!=0 && shown.Contains("随机代表路线") && shown.Contains("依据本机网络观察") && shown.Contains("假设玩家延续当前输入"),"actual rendered path text retains random, network and published player-continuation assumptions");}finally{Main.netMode=priorMode;}
-            NativeCombatObservationChecks.Save(host,new ObservationOptions());Call(layer,"Prepare");Require((int)Get(layer,"StrokeCount")==0,"display off retires prepared geometry");
+            int priorMode=Main.netMode;try{Main.netMode=1;NativeCombatObservationChecks.Fresh(context,host);AwaitPath();Call(layer,"Prepare");var path=(NpcTrajectory)Get(host,"DisplayPath");
+                var assumptions=PredictionAssumption.HeldPlayerControls|PredictionAssumption.RandomRepresentative|PredictionAssumption.NetworkObservation;
+                Require(path!=null && path.Count>1 && (path.Assumptions&assumptions)==assumptions,"published real path retains random, network and player-continuation assumptions without an HUD string");
+                // A two-point stopped prefix isolates the display boundary;
+                // it does not claim a new NPC prediction or mutate the cache.
+                var stopped=new NpcTrajectory(path.Identity,path.SampleTick,path.Version,path.Assumptions,PredictionStop.RandomDecision,new[]{path[0],path[1]},2,path.Strategy,path.RelationVersion,path.Quality);
+                Set(host,"displayPath",stopped);try{Call(layer,"Prepare");texts=worldTextCalls;pixels=graphics.Pixels(()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);Require(stopped.Stop==PredictionStop.RandomDecision && (int)Get(layer,"StrokeCount")>(int)Get(layer,"eventEnd") && pixels.Any(p=>p.A>0) && worldTextCalls==texts,"truncated prefix keeps its true geometry/stop and issues no replacement text");}finally{Set(host,"displayPath",path);}
+            }finally{Main.netMode=priorMode;}
+            npc.active=false;NativeCombatObservationChecks.Fresh(context,host);Require(GetOptional(host,"DisplayPath")==null,"empty-route fixture has no display path");
+            var geometry=Get(host,"Geometry");Call(geometry,"Clear");var pending=Call(geometry,"Event");Call(pending,"Rectangle",new Rectangle(500,500,30,30),0,false);Call(layer,"Prepare");texts=worldTextCalls;pixels=graphics.Pixels(()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+            Require((bool)Get(pending,"Presented") && pixels.Any(p=>p.A>0) && worldTextCalls==texts,"no-route Draw retains real collision pixels/event receipt and issues no replacement text");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());Call(layer,"Prepare");texts=worldTextCalls;steps=NativeCombatUsageChecks.ObservedNpcSteps;solves=weaponSolveCalls;pixels=graphics.Pixels(()=>Call(layer,"Draw"),Main.GameViewMatrix.ZoomMatrix);
+            Require((int)Get(layer,"StrokeCount")==0 && pixels.All(p=>p.A==0) && worldTextCalls==texts && NativeCombatUsageChecks.ObservedNpcSteps==steps && weaponSolveCalls==solves,"display OFF clears actual geometry/text and Draw starts no prediction/weapon solve");
             void AwaitPath()
             {
-                var actualCache=(JueMingR.Features.Combat.NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
                 // A cold optional2ms admission may publish no path. Rendering
                 // starts only after an actual later normal five-GUC admission;
                 // this bounds recovery, without a larger budget or fake path.
@@ -130,6 +159,7 @@ namespace NativeWorldTextProbe
                 {npc.UpdateNPC(npc.whoAmI);NativeCombatObservationChecks.Fresh(context,host);}
             }
             }
+            finally{audit.UnpatchAll(audit.Id);}
         }
         private static void ScrollTo(object context,object state,object element)
         {

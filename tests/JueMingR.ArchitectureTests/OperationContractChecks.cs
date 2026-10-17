@@ -53,6 +53,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.ItemCatalog.RelationKind", "JueMingR.Platform.ItemCatalog.RelationIngredient", "JueMingR.Platform.ItemCatalog.ItemRelation",
                 "JueMingR.Platform.Footprints.FootprintPosition", "JueMingR.Platform.Footprints.FootprintSample",
                 "JueMingR.Platform.Footprints.IFootprintArchiveFiles", "JueMingR.Platform.Footprints.FootprintQuery",
+                "JueMingR.Platform.Footprints.FootprintOverviewRequest", "JueMingR.Platform.Footprints.FootprintOverviewEdge", "JueMingR.Platform.Footprints.FootprintOverviewSnapshot", "JueMingR.Platform.Footprints.IFootprintOverviewFiles",
                 "JueMingR.Platform.DeathHistory.DeathEventId", "JueMingR.Platform.DeathHistory.DeathFact", "JueMingR.Platform.DeathHistory.DeathMarker",
                 "JueMingR.Platform.DeathHistory.IDeathArchiveFiles", "JueMingR.Platform.DeathHistory.DeathHistorySnapshot", "JueMingR.Platform.DeathHistory.DeathReadText",
                 "JueMingR.Platform.Guidance.NpcDemand", "JueMingR.Platform.Guidance.GuidanceNpc", "JueMingR.Platform.Guidance.IGuidanceNpcSource",

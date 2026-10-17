@@ -115,18 +115,25 @@ namespace JueMingR.ArchitectureTests
             Until(() => worker.Snapshot.Error != null, "query read failure surfaced");
             FootprintCoreChecks.Require(worker.Snapshot.Protected && !worker.Snapshot.RetryableSave && !worker.RetrySave() && !worker.Offer(new[] { Sample(16897) }, 1), "historical read failure cannot be dismissed as a save retry");
             worker.Dispose(); Until(() => worker.Finished, "query failure cleanup");
+            worker.CancelOverview(); // Late UI retirement must not signal a disposed wake handle.
+            var corrupt = new FaultFiles(new FileFootprintArchive(path, pair)); var damaged = new FootprintStore(() => corrupt, pair, 100, 100);
+            Until(() => damaged.Snapshot.Loaded, "format failure load"); corrupt.FailFormatRead = true;
+            damaged.RequestOverview(new FootprintOverviewRequest(damaged.Snapshot.Generation, 1, 0, 0, 100, 100, 1, Int64.MaxValue));
+            Until(() => damaged.Snapshot.Error != null, "format corruption reaches protected worker state");
+            FootprintCoreChecks.Require(damaged.Snapshot.Protected && !damaged.RetrySave() && !damaged.Finished, "InvalidDataException from source is protected instead of escaping the worker");
+            damaged.Dispose(); Until(() => damaged.Finished, "format failure cleanup"); damaged.CancelOverview();
         }
         private sealed class FaultFiles : IFootprintArchiveFiles
         {
             private readonly IFootprintArchiveFiles inner;
-            internal volatile bool FailWrites, Unknown, FailOpen, ScanForever, FailCatalog, FailRead;
+            internal volatile bool FailWrites, Unknown, FailOpen, ScanForever, FailCatalog, FailRead, FailFormatRead;
             internal volatile int Writes, Scans, LargestBudget;
             internal FaultFiles(IFootprintArchiveFiles inner) { this.inner = inner; }
             public PreferenceReadResult ReadCatalog() { return inner.ReadCatalog(); }
             public PreferenceWriteResult WriteCatalog(string i, byte[] b) { return FailCatalog ? new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, i, "injected-intent-write") : inner.WriteCatalog(i, b); }
             public PreferenceReadResult OpenRoot(string g) { if (FailOpen) throw new IOException("injected-new-root-open"); return inner.OpenRoot(g); }
             public PreferenceWriteResult WriteRoot(string i, byte[] b) { Writes++; return FailWrites || Unknown ? new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, i, "injected-root-write", Unknown) : inner.WriteRoot(i, b); }
-            public byte[] ReadBlock(long n) { if (FailRead) throw new IOException("injected-history-read"); return inner.ReadBlock(n); }
+            public byte[] ReadBlock(long n) { if (FailRead) throw new IOException("injected-history-read"); if (FailFormatRead) throw new InvalidDataException("injected-history-corruption"); return inner.ReadBlock(n); }
             public void CreateBlock(long n, byte[] b) { inner.CreateBlock(n, b); }
             public bool ValidateBlockNamesStep(long n, int budget) { Scans++; LargestBudget = Math.Max(LargestBudget, budget); if (ScanForever) { Thread.Sleep(1); return false; } return inner.ValidateBlockNamesStep(n, budget); }
             public bool DeleteGenerationStep(string g, int n) { return inner.DeleteGenerationStep(g, n); }

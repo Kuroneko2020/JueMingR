@@ -273,7 +273,8 @@ namespace JueMingR.TerrariaHost.Combat
                             candidateAttempt[nextKey]=pass;
                     }
                 }
-                // Positives are only this pass's freshly validated contacts.
+                // Positives are fresh in this pass under the selected model:
+                // Balanced uses representative Reachable, specialized plans Contact.
                 // Visit the nearer prefix in the original receive-box distance
                 // order, so the progress slot does not create a new target rank.
                 for(int index=distanceStart;beforeNpc && index<selection.CandidateCount && (best<0 || index<best);index++)
@@ -415,7 +416,7 @@ namespace JueMingR.TerrariaHost.Combat
             finally
             {
                 // A paused prefix or interrupted solve is still work owed to
-                // this changed fact. Only a Contact, complete miss or modeled
+                // this changed fact. A fresh model-positive, complete miss or modeled
                 // terminal/fault retires it; retry goes behind other tickets.
                 if(changedAdmission && candidateUnknown[key])
                 {candidateChanges[identity.Slot]=++candidateChangeTicket;candidateSignificant[identity.Slot]=significantAdmission;}
