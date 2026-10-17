@@ -40,6 +40,7 @@ namespace JueMingR.TerrariaHost.Combat
         private NpcTrajectory displayPath;
         private PredictionTerrain.CellLease displayTerrain;
         private PredictionPlayerMotion displayPlayer;
+        private PredictionPlayerMotion displayLeasePlayer;
         private int displayLife;
         // previewOptionalTick is retained only for old read-only probe compatibility; no producer advances it.
         private long displayLeaseTick=-1,optionalTick=-1,previewOptionalTick=-1,displayShortTick=-1;
@@ -125,7 +126,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // Retire only our two consumers and state on the final edge;
                 // independently registered prediction consumers remain intact.
                 Attack?.Reset();Prediction.Cache.Release(0);Prediction.Cache.Release(1);
-                displayPath=null;displayTerrain=null;displayLeaseTick=optionalTick=previewOptionalTick=displayShortTick=-1;OptionalPreparation=false;
+                displayPath=null;displayTerrain=null;displayLeasePlayer=default(PredictionPlayerMotion);displayLeaseTick=optionalTick=previewOptionalTick=displayShortTick=-1;OptionalPreparation=false;
                 World.Marker.Clear();World.Impact.Clear();
             }
             hadTargetDemand=targetDemand;
@@ -144,7 +145,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal void CollisionFailed(){collisionFailed=true;Geometry.Clear();}
         public void OnSessionStarted(){Clear();Geometry.Session=runtime.Generation;}
         public void OnSessionEnded(){Clear();}
-        private void Clear(){actionFrame=optionalTick=displayLeaseTick=previewOptionalTick=displayShortTick=-1;displayPath=null;displayTerrain=null;OptionalPreparation=false;Attack?.Reset();Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Recover();World.Marker.Reset();Array.Clear(failedTargets,0,failedTargets.Length);selectionFailed=collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
+        private void Clear(){actionFrame=optionalTick=displayLeaseTick=previewOptionalTick=displayShortTick=-1;displayPath=null;displayTerrain=null;displayLeasePlayer=default(PredictionPlayerMotion);OptionalPreparation=false;Attack?.Reset();Geometry.Clear();Prediction.Cache.EndSession();Prediction.EndWorld();Selection.Clear();World.Recover();World.Marker.Reset();Array.Clear(failedTargets,0,failedTargets.Length);selectionFailed=collisionFailed=pathFailed=reportedCollision=reportedPath=reportedMarker=false;}
         public void FailClosed(){Clear();Prediction.Stop();selectionFailed=collisionFailed=pathFailed=true;}
         public void Update(ulong tick)
         {
@@ -183,10 +184,6 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private void UpdateSampleCore(long sampleTick,bool beforeNpc,ulong tick)
         {
-            // A repeated real entry may follow native work in this same GUC.
-            // Withdraw the old publication before any budgeted producer can
-            // exit early; only the final consumer validation grants it again.
-            if(!beforeNpc)displayLeaseTick=-1;
             try
             {
             Attack?.Demand(beforeNpc);
@@ -204,6 +201,11 @@ namespace JueMingR.TerrariaHost.Combat
             // their unavailable selected publication normally.
             if(!Selection.HasTarget){if(Prediction.Cache.Required>0)Prediction.Clear();return;}
             if(!beforeNpc)Attack?.RestorePresentationSelection(sampleTick);
+            // Validate the existing publication before optional producers can
+            // spend this update's remainder. A repeat checks live premises;
+            // an unavailable replacement is not evidence against this lease.
+            if(!beforeNpc)using(CombatPredictionWork.Optional(3))
+                try{ValidateDisplay(sampleTick);}catch(CombatPredictionBudgetExceededException){ }
             bool displayValidated=false;
             NpcTrajectory coreDisplayPrefix=null;
             // Invalidating a lease is immediate; granting production is a
@@ -248,8 +250,8 @@ namespace JueMingR.TerrariaHost.Combat
                 using(CombatPredictionWork.Optional(3))
                 {
                     int full=Prediction.Cache.Required;
-                    int prefix=full;
-                    bool admitted=false;
+                    int prefix=Math.Min(full,DisplayShortPrefix);
+                    bool admitted=false,preparedPrefix=false;
                     NpcTrajectory candidatePath;PredictionTerrain.CellLease candidateTerrain;
                     if(Attack!=null && Attack.TryCandidateDisplay(sampleTick,out candidatePath,out candidateTerrain) && CombatPredictionWork.TryContinue())
                     {
@@ -272,24 +274,28 @@ namespace JueMingR.TerrariaHost.Combat
                     {
                         admitted=true;
                         optionalTick=displayShortTick=sampleTick;optionalTarget=Selection.Target;
-                        // Red impact preview was withdrawn by the owner. Path
-                        // alone requests its normal tail; actual attack demand
-                        // was already prepared above under its separate owner.
+                        // First display and refresh both earn a useful short
+                        // future without attack/Contact or an old path pointer.
+                        // Only a validated prefix may be followed by a tail.
+                        var priorPublication=Prediction.Cache.Read(0);
                         PrepareSelectedPrediction(sampleTick,false,tick,prefix);
-                        CaptureDisplay(sampleTick);
+                        preparedPrefix=!ReferenceEquals(priorPublication,Prediction.Cache.Read(0));
 
                     }
+                    // Validation uses the existing reserved remainder after
+                    // the lower producer scope has ended, including a prefix
+                    // completed exactly as the producer slice ran out.
+                    if(preparedPrefix && CombatPredictionWork.TryContinue())CaptureDisplay(sampleTick);
                     if(admitted && CombatPredictionWork.TryContinue())
                     {
                         // No world or producer action follows candidate publication. Reuse
                         // only this call's completed checks; a later tail checks its new lease.
                         if(!displayValidated)ValidateDisplay(sampleTick);
                         displayValidated=true;
-                        var prefixPath=displayPath;var prefixTerrain=displayTerrain;
-                        long prefixLease=displayLeaseTick;
+                        var prefixPath=displayPath;
                         bool extended=false;
                         using(CombatPredictionWork.Optional(2))
-                        if(full>prefix && CombatPredictionWork.TryContinue())
+                        if(full>prefix && displayLeaseTick==sampleTick && CombatPredictionWork.TryContinue())
                         {
                             PrepareSelectedPrediction(sampleTick,false,tick,full);
                             extended=true;
@@ -308,7 +314,7 @@ namespace JueMingR.TerrariaHost.Combat
                                     // Extending private scratch performs no
                                     // world action. Its exhausted new lease
                                     // cannot revoke the just-validated prefix.
-                                    displayPath=prefixPath;displayTerrain=prefixTerrain;displayLeaseTick=prefixLease;
+                                    // CaptureDisplay commits only after validation.
                                 }
 
                             }
@@ -319,23 +325,23 @@ namespace JueMingR.TerrariaHost.Combat
             }
             if(!beforeNpc)
             {
-                // Validation is optional work too, after actual attack owners.
-                // Each real entry checks one current lease once; exhaustion
-                // withdraws display and cannot skip a legal core preparation.
+                // Production/first validation remain optional. Repeated leases
+                // retain their permit only while live facts still agree.
                 using(CombatPredictionWork.Optional(3))
                 {
                     try
                     {
-                        if(!displayValidated)
+                        // Selection and real native premises can change inside
+                        // this GUC. Recheck them even after a producer completed.
                         {
-                            bool displayCurrent=ValidateDisplay(sampleTick);
+                            bool displayCurrent=ValidatePreparedDisplay(sampleTick);
                             // Preserve an already valid long display. When a
                             // real hit/control change retired it, consume the
                             // fresh core prefix without another Source sample
                             // or waiting for the optional tail's due cycle.
                             if(!displayCurrent && coreDisplayPrefix!=null && ReferenceEquals(coreDisplayPrefix,Prediction.Cache.Read(0)))
                             {CaptureDisplay(sampleTick);displayCurrent=ValidateDisplay(sampleTick);if(displayCurrent)displayShortTick=sampleTick;}
-                            if(!displayCurrent && Path && !TargetPredictionFailed && !OptionalPreparation && displayPath!=null && displayPath.Count>1 &&
+                            if(!displayCurrent && Path && !TargetPredictionFailed &&
                                 (displayShortTick<0 || sampleTick-displayShortTick>=DisplayShortRefreshUpdates))
                             {
                                 bool shortCaptured=false;
@@ -351,19 +357,26 @@ namespace JueMingR.TerrariaHost.Combat
                                     var publication=Prediction.Cache.Read(0);
                                     if(publication!=null && publication.SampleTick==sampleTick && !ReferenceEquals(publication,priorPublication))
                                     {
-                                        CaptureDisplay(sampleTick);shortCaptured=true;
+                                        shortCaptured=true;
                                     }
                                 }
-                                if(shortCaptured)ValidateDisplay(sampleTick);
+                                if(shortCaptured){CaptureDisplay(sampleTick);ValidatePreparedDisplay(sampleTick);}
                             }
                         }
 
                     }
-                    catch(CombatPredictionBudgetExceededException){displayLeaseTick=-1;}
+                    catch(CombatPredictionBudgetExceededException){ /* The last completed validation retains its real clock. */ }
                 }
             }
             }
-            finally{Attack?.EndPreparation();AimTrace.Host(this,pathFailed,"update-exit",true);}
+            finally
+            {
+                // ResolveSelection may replace the target before a budgeted
+                // producer exits. Even that exit must retire a changed lease.
+                if(!beforeNpc && displayLeaseTick==sampleTick)
+                    try{ValidatePreparedDisplay(sampleTick);}catch(CombatPredictionBudgetExceededException){ }
+                Attack?.EndPreparation();AimTrace.Host(this,pathFailed,"update-exit",true);
+            }
         }
         private void PrepareSelectedPrediction(long sampleTick,bool beforeNpc,ulong tick,int advanceTo)
         {
@@ -410,16 +423,45 @@ namespace JueMingR.TerrariaHost.Combat
             return ValidateDisplay(tick);
         }
         private void CaptureDisplay(NpcTrajectory path,PredictionTerrain.CellLease terrain)
-        {displayPath=path;displayLeaseTick=-1;displayTerrain=terrain;displayPlayer=NpcPredictionSource.ReadPlayer(Main.LocalPlayer);displayLife=Main.npc[path.Identity.Slot].life;}
-        private bool ValidateDisplay(long tick)
         {
-            displayLeaseTick=-1;
-            if(!Path || displayPath==null || !Selection.HasTarget || !Selection.Target.Equals(displayPath.Identity) || !CombatSelection.Valid(displayPath.Identity,Session))return false;
-            long age=tick-displayPath.SampleTick;if(age<0 || age>DisplayMaximumAge || age>=displayPath.Count)return false;
-            var npc=Main.npc[displayPath.Identity.Slot];var point=displayPath[(int)age];
-            if(npc.life!=displayLife || npc.ai[0]!=point.Phase || npc.wet!=point.Wet || npc.noTileCollide!=point.NoTileCollide || Vector2.DistanceSquared(npc.position,new Vector2(point.Bounds.X,point.Bounds.Y))>4 || Vector2.DistanceSquared(npc.velocity,new Vector2(point.Vx,point.Vy))>.01f ||
-                !DisplayInputCurrent(displayPlayer,NpcPredictionSource.ReadPlayer(Main.LocalPlayer)) || displayTerrain==null || !displayTerrain.Current)return false;
-            displayLeaseTick=tick;return true;
+            if(path==null || terrain==null || !Selection.HasTarget || !path.Identity.Equals(Selection.Target) || !CombatSelection.Valid(path.Identity,Session))return;
+            var player=NpcPredictionSource.ReadPlayer(Main.LocalPlayer);int life=Main.npc[path.Identity.Slot].life;
+            long tick=(long)Main.GameUpdateCount;
+            // A candidate owns no presentation state until ALL its premises
+            // pass. Paused validation cannot replace a previously valid path,
+            // its original player/life sample or its current visibility lease.
+            if(!DisplayFactsCurrent(path,player,life,tick,player) || !terrain.Current)return;
+            displayPath=path;displayTerrain=terrain;displayPlayer=displayLeasePlayer=player;displayLife=life;displayLeaseTick=tick;
+        }
+        private bool ValidateDisplay(long tick)
+        {return RevalidateDisplay(tick,true);}
+        private bool ValidatePreparedDisplay(long tick)
+        {
+            // Source and attack preparation touch private forecast state only.
+            // The entry already checked these tiles; no native action occurs
+            // before this final facts check. A new real entry uses the full
+            // terrain guard again, even when GUC has not advanced.
+            return RevalidateDisplay(tick,displayLeaseTick!=tick);
+        }
+        private bool RevalidateDisplay(long tick,bool terrain)
+        {
+            if(!Path || displayPath==null || !Selection.HasTarget || TargetPredictionFailed){displayLeaseTick=-1;return false;}
+            var nativePlayer=Main.LocalPlayer;
+            if(nativePlayer==null || !nativePlayer.active || nativePlayer.dead || nativePlayer.ghost){displayLeaseTick=-1;return false;}
+            var player=NpcPredictionSource.ReadPlayer(nativePlayer);bool repeated=displayLeaseTick==tick;
+            bool changedDuringUpdate=repeated && (displayLeasePlayer.X!=player.X || displayLeasePlayer.Y!=player.Y || displayLeasePlayer.Vx!=player.Vx || displayLeasePlayer.Vy!=player.Vy);
+            if(changedDuringUpdate || !DisplayFactsCurrent(displayPath,displayPlayer,displayLife,tick,player) || displayTerrain==null)
+            {displayLeaseTick=-1;return false;}
+            if(terrain && !displayTerrain.DisplayCurrent(repeated)){displayLeaseTick=-1;return false;}
+            displayLeasePlayer=player;displayLeaseTick=tick;return true;
+        }
+        private bool DisplayFactsCurrent(NpcTrajectory path,PredictionPlayerMotion player,int life,long tick,PredictionPlayerMotion currentPlayer)
+        {
+            if(!Path || path==null || !Selection.HasTarget || TargetPredictionFailed || !Selection.Target.Equals(path.Identity) || !CombatSelection.Valid(path.Identity,Session))return false;
+            long age=tick-path.SampleTick;if(age<0 || age>DisplayMaximumAge || age>=path.Count-1)return false;
+            var npc=Main.npc[path.Identity.Slot];var point=path[(int)age];
+            return npc.life==life && npc.ai[0]==point.Phase && npc.wet==point.Wet && npc.noTileCollide==point.NoTileCollide && Vector2.DistanceSquared(npc.position,new Vector2(point.Bounds.X,point.Bounds.Y))<=4 && Vector2.DistanceSquared(npc.velocity,new Vector2(point.Vx,point.Vy))<=.01f &&
+                DisplayInputCurrent(player,currentPlayer);
         }
         private static bool DisplayInputCurrent(PredictionPlayerMotion a,PredictionPlayerMotion b)
         {

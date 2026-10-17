@@ -90,6 +90,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatCostNavigationChecks.cs'=@('native-CombatControlCpu','native-CombatNavigationCpu','native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/Fixtures/MagicReleaseBeforeNpc.bits'=@('native-CombatControlCpu','native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatPathContinuityChecks.cs'=@('native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatPathDisplayChecks.cs'=@('native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatPlacementChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatCadenceAimChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatResourceChecks.cs'=@('native-CombatIntegrationCpu')

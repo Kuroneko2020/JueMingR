@@ -57,6 +57,19 @@ namespace JueMingR.TerrariaHost.Combat
                     return true;
                 }
             }
+            internal bool DisplayCurrent(bool alreadyValidated)
+            {
+                if(!alreadyValidated)return Current;
+                // A repeated presentation entry still checks EVERY dependency:
+                // GUC is not a tile revision. This bounded mandatory guard has
+                // no producer/clock checks that can turn quota into a terrain
+                // change; its time stays charged to the enclosing work owner.
+                // Acquisition caps this set at 4096 cells. New-update and
+                // candidate validation continue through ordinary budget checks.
+                if(width<=0 || width!=Main.maxTilesX || height!=Main.maxTilesY)return false;
+                foreach(var pair in values){Cell current;if(!ReadCell(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}
+                return true;
+            }
             internal static CellLease Capture(PredictionTerrain terrain)
             {return new CellLease(terrain.width,terrain.height,terrain.cells);}
             internal void Restore(PredictionTerrain terrain)
@@ -76,6 +89,10 @@ namespace JueMingR.TerrariaHost.Combat
         private static bool Read(int x,int y,out Cell value)
         {
             CombatPredictionWork.Check();
+            return ReadCell(x,y,out value);
+        }
+        private static bool ReadCell(int x,int y,out Cell value)
+        {
             value=default(Cell);if(Main.tile==null || x<0 || y<0 || x>=Main.maxTilesX || y>=Main.maxTilesY)return false;
             var tile=Main.tile[x,y];if(tile==null)return false;
             bool active=tile.active() && !tile.inActive();
