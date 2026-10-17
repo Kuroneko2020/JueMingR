@@ -77,6 +77,7 @@ namespace NativeWorldTextProbe
                 if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="modes"){Modes(context);return;}
                 if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="motion"){NativeCombatBallisticMotionChecks.Run(context);return;}
                 if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="phase"){NativeCombatBalancedPhaseChecks.Run(context);return;}
+                if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="candidate-recovery"){NativeCombatBalancedCandidateChecks.Run(context);return;}
                 if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="boundaries")
                 {
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,false,false,false,50,true,true));

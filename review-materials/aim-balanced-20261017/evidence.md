@@ -1,6 +1,12 @@
 # 提前量与平衡瞄准候选
 
-完整行为与普通 Release/Main 候选已完成，待集中独审及主调度准入，尚未安装。本轮继续 #114 / Draft PR #115，固定基底 `112e9d6`、受测生产提交 `7a8f18a`，默认代表主弹与必要少量补查；完整 Contact 不再是一般预瞄前置。
+首候选 `d5cfe16` 整包独审为 **NEEDS_FIX**，唯一阻塞 R1 已窄修并通过定向回归；后继等待原独审复核及主调度准入，尚未安装。本轮继续 #114 / Draft PR #115，固定基底 `112e9d6`、原普通 Release/Main 受测生产 `7a8f18a`，默认代表主弹与必要少量补查；完整 Contact 不再是一般预瞄前置。
+
+独审抓到 `EvaluateCandidate` 在本次 Source 返回 null／不足两点、没有执行 PreparePlan 时仍读旧计划的 Reachable/Contact，可能把未知近者当成当前正解并关闭重试。此前模式保护只有有效未来，没有覆盖“旧正→本次无未来”的交接。原生产 `candidate-recovery-r16-before` 已真实复现：Source 自身读取故障返回 null，以及 AI18 必要格缺失产生一点真实 publication 后被 Cache 拒读，均错误返回正解；平衡路径还把 Unknown ticket 退休。旧独审与失败身份保留。
+
+B 只在本次无有效前缀或预算中断时清旧计划，保留 FaultGate、Unknown 和 changed ticket，不触独立 NPC 显示/缓存；有效前缀复用不变。`candidate-recovery-r19-fixture` 三组平衡／旧 Contact／真实一点 publication 均撤旧正、排队重试，恢复输入后均重新得到实际正解；两次真实排名都选当次可达远者。中间 r17/r18 的排名组件漏掉调用者 Selection.Update，远者也只在缺格前被证明，原失败保留；补真实调用顺序并在缺失仍在时先证远者可达后通过。`modes-r19-after` 16组、architecture combat及新测试入口路由通过。该组件没有注入轨迹、角度、Contact或Source返回，不是Main成本测量。
+
+后继生产只有这一清线候选交接变化。原八个普通 Main 窗口实际均设置 ClearLine=false，ResolveSelection 在该处之前早退；代表弹、出生/真实消费、NPC motor、悠悠球及绘制均未修改，因此原 Main 和相关专项按真实身份有效复用，没有重跑或改署新候选成绩。R1后继及独审待复核身份另列[验证索引](validation-map.json)。
 
 [机制去向](mechanism-coverage.md)连接旧 2944 输入组合与当前生产分派；[玩家实测卡](owner-test-card.md)用于最终候选。原始运行、失败及身份留在 `.local/aim-balanced-20261017/`，现装保持旧 `4c7ac5c`。
 
@@ -27,8 +33,8 @@
 
 细诊断与普通成本分开：两新场景分别生成102/210个数学候选方向、执行34/70次单代表 Replay、1564/2910次实际代表 motor 子更新；旧整组 `CaptureForSolve` 为36/71次，新均零；其他被观察旧整组入口新均零。连弩相同36次 `PrepareCore` inclusive elapsed218.168→30.629ms；独立 recorded exclusive212.901→13.156ms，不能把父子 inclusive 相加。漩涡 hand PrepareCore非主要AI链，不冒称这5.957→5.639ms代表整条链；普通预算记账已单列。诊断首个冷请求未完成Generate/Replay的边界保留，其后不是按降低实际出手频率换成本。
 
-Path-only 和 Off 各600GUC：无武器出生/输入，仅一个原版背景720；路径单开3462次实际Draw绘线、最长112，关闭0选敌/0路径。推进Update平均1.419/.900ms、记账elapsed有界；不把NPC路线成本说成武器整组成本。停止后相关弹体仍在场，1229最多5个、漩涡28个，记账均约.20ms而未继续整组重演。
+Path-only 和 Off 各600GUC：无武器出生/输入，仅一个原版背景720；此事实由独审逐行核对两份完整出生CSV成立（各仅type720/inputKind=-1，241字节、SHA `64A2E767…`），不是由 `nativeBirths-unboundBirths` 宽松守卫单独证明；该守卫不足以作为未来无武器判据。路径单开3462次实际Draw绘线、最长112，关闭0选敌/0路径。推进Update平均1.419/.900ms、记账elapsed有界；不把NPC路线成本说成武器整组成本。停止后相关弹体仍在场，1229最多5个、漩涡28个，记账均约.20ms而未继续整组重演。
 
 新增载体失败也保留：首次新Main包标识前缀选成最小Runtime（加载五步完成、测量窗未开始）；修回生产 `continuous-processing-` 前缀后原DLL/同驱动通过。Path首窗误把新增全出生观察的背景720算作武器，守卫修正后新身份通过；细计数首窗重复Bind异常也只修隔离驱动。统计曾把 `endDraw` 大小写写错，按原CSV重算，没有重跑挑数。
 
-当前没有已证核心未闭合问题。剑鱼450外沿低命中、有意不精算的随机附加/次要效果保留；真实多人、所有者物理键鼠/体验、FPS及全项目资格未测。新独审、root准入与一次07交付回执尚待执行；现装仍旧4c7ac5c。
+R1作者修复与定向回归完成，仍需原独审复核，不能用作者PASS覆盖旧NEEDS_FIX。剑鱼450外沿低命中、有意不精算的随机附加/次要效果保留；真实多人、所有者物理键鼠/体验、FPS及全项目资格未测。root准入与一次07交付回执尚待执行；现装仍旧4c7ac5c。

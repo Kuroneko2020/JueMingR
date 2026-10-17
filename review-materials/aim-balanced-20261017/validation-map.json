@@ -1823,6 +1823,47 @@
           "sha256": "701813A17F049F0E1998195ADF1E18569CB8102B86FADCA40EA7A244F6B86137"
         }
       ]
+    },
+    {
+      "name": "independent-d5-R1",
+      "disposition": "PRODUCT_FIXED",
+      "cause": "Fresh Source null/terminal one-point publication skipped PreparePlan but PlanPositive inspected previous Reachable/Contact; balanced Unknown ticket incorrectly retired",
+      "resolution": "B narrow current-attempt retirement, C actual Source failure/Count1/rank/retry recovery tests; original independent NEEDS_FIX retained; successor independent recheck pending",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/candidate-recovery-r16-before.log",
+          "length": 5764,
+          "sha256": "9377F46981120F038AE569F9D746524C43FF43F07E6BC888E8DD45E43564FB4E"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/candidate-recovery-r19-fixture.log",
+          "length": 2605,
+          "sha256": "1FE570FA127D8D7EF9D6CADBEDA7C54DB8BD62499550EE546CA6C7695852C7CD"
+        }
+      ]
+    },
+    {
+      "name": "candidate-recovery-r17-r18",
+      "disposition": "TEST_CORRECTED",
+      "cause": "Rank-only component omitted production caller selection refresh; prior far positive preceded missing terrain input",
+      "resolution": "Real Selection.Update then independently fresh far solve while near input remains absent; same rank/Unknown expectations pass",
+      "artifacts": [
+        {
+          "path": ".local/aim-balanced-20261017/candidate-recovery-r17-after.log",
+          "length": 5349,
+          "sha256": "2A52E7FF59BDB509FD344784E8266DEC8E40596E186D5241420A6C6C23725464"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/candidate-recovery-r18-trace.log",
+          "length": 3988,
+          "sha256": "0E18F75E38F149E80637863FD18BEF04D4259B4588A40E78CA1687797BBC9DFD"
+        },
+        {
+          "path": ".local/aim-balanced-20261017/candidate-recovery-r19-fixture.log",
+          "length": 2605,
+          "sha256": "1FE570FA127D8D7EF9D6CADBEDA7C54DB8BD62499550EE546CA6C7695852C7CD"
+        }
+      ]
     }
   ],
   "release": {
@@ -1838,5 +1879,138 @@
     "Diagnostic observedExclusiveMs subtracts only instrumented child intervals; unobserved children stay in parent. Never sum nested inclusive intervals",
     "Sword450 exterior low receive is accepted random main shard approximation, not guaranteed hit",
     "Main carrier and three driver identities are finite local observations, never deliverable packages"
-  ]
+  ],
+  "successorR1": {
+    "initialReview": {
+      "candidate": "d5cfe16fe289f7ba91bc953e9bf73af9acf41b1c",
+      "result": "NEEDS_FIX",
+      "onlyBlocker": "P2 R1: previous Reachable/Contact treated as current after Source null/short publication",
+      "reviewer": "balanced_independent_review",
+      "actualModel": "gpt-6.1-sol",
+      "actualEffort": "high",
+      "session": "01a1479e-ee84-7771-9a3e-f9d0f82effb7",
+      "provenance": "Trusted root relay of original independent final report; original verdict retained, not replaced by author tests"
+    },
+    "productionDelta": [
+      "HostAttackAim.Selection.cs only: retire old plan on current null/Count<2 and budget interruption; preserve Unknown retry and FaultGate; valid-prefix plan reuse unchanged"
+    ],
+    "actualEvidence": [
+      {
+        "name": "candidate-recovery-r16-before",
+        "result": "EXPECTED_PRODUCT_FAILURE",
+        "provenance": "Failed wrapper exits before writing source/build receipts. Raw failure log retained. r16 ran before B release with production src diff empty against d5; r17/r18 use B frozen narrow fix. No exact historical failed-run binary hash reconstructed or claimed.",
+        "artifacts": [
+          {
+            "path": ".local/aim-balanced-20261017/candidate-recovery-r16-before.log",
+            "length": 5764,
+            "sha256": "9377F46981120F038AE569F9D746524C43FF43F07E6BC888E8DD45E43564FB4E"
+          }
+        ]
+      },
+      {
+        "name": "candidate-recovery-r17-after",
+        "result": "FIXTURE_FAILURE",
+        "provenance": "Failed wrapper exits before writing source/build receipts. Raw failure log retained. r16 ran before B release with production src diff empty against d5; r17/r18 use B frozen narrow fix. No exact historical failed-run binary hash reconstructed or claimed.",
+        "artifacts": [
+          {
+            "path": ".local/aim-balanced-20261017/candidate-recovery-r17-after.log",
+            "length": 5349,
+            "sha256": "2A52E7FF59BDB509FD344784E8266DEC8E40596E186D5241420A6C6C23725464"
+          }
+        ]
+      },
+      {
+        "name": "candidate-recovery-r18-trace",
+        "result": "FIXTURE_FAILURE",
+        "provenance": "Failed wrapper exits before writing source/build receipts. Raw failure log retained. r16 ran before B release with production src diff empty against d5; r17/r18 use B frozen narrow fix. No exact historical failed-run binary hash reconstructed or claimed.",
+        "artifacts": [
+          {
+            "path": ".local/aim-balanced-20261017/candidate-recovery-r18-trace.log",
+            "length": 3988,
+            "sha256": "0E18F75E38F149E80637863FD18BEF04D4259B4588A40E78CA1687797BBC9DFD"
+          }
+        ]
+      },
+      {
+        "name": "candidate-recovery-r19-fixture",
+        "result": "PASS_DECLARED_SCOPE",
+        "sourceFingerprint": "22782D9C92CD71E433A913FC642516E4F5A95E283B34ABC14BF9FB7690718921",
+        "compileFingerprint": "8F05F20F436F28C8176DA5ADFF6D46B48B902394F7F8ADE3D0C4C105D048ECED",
+        "artifacts": [
+          {
+            "path": ".local/aim-balanced-20261017/candidate-recovery-r19-fixture.log",
+            "length": 2605,
+            "sha256": "1FE570FA127D8D7EF9D6CADBEDA7C54DB8BD62499550EE546CA6C7695852C7CD"
+          },
+          {
+            "path": ".local/aim-balanced-20261017/candidate-recovery-r19-fixture/source-build-record.json",
+            "length": 117755,
+            "sha256": "206A75FD88AAC751EA5E51044EE404C55355A952E9AFF50E7BEE7C12BCB3AABF"
+          },
+          {
+            "path": ".local/aim-balanced-20261017/candidate-recovery-r19-fixture/source-inputs.json",
+            "length": 205767,
+            "sha256": "BBF0E2B5F95FCF8FD54B96074AB33C7AC131D61B270065DF0874FF5FDAD2494F"
+          }
+        ]
+      },
+      {
+        "name": "modes-r19-after",
+        "result": "PASS_DECLARED_SCOPE",
+        "sourceFingerprint": "22782D9C92CD71E433A913FC642516E4F5A95E283B34ABC14BF9FB7690718921",
+        "compileFingerprint": "8F05F20F436F28C8176DA5ADFF6D46B48B902394F7F8ADE3D0C4C105D048ECED",
+        "artifacts": [
+          {
+            "path": ".local/aim-balanced-20261017/modes-r19-after.log",
+            "length": 2266,
+            "sha256": "501CE45E9341BECE5A72783671440BFCF11BB95394E6EFDC438D0802F8F427BB"
+          },
+          {
+            "path": ".local/aim-balanced-20261017/modes-r19-after/source-build-record.json",
+            "length": 117755,
+            "sha256": "206A75FD88AAC751EA5E51044EE404C55355A952E9AFF50E7BEE7C12BCB3AABF"
+          },
+          {
+            "path": ".local/aim-balanced-20261017/modes-r19-after/source-inputs.json",
+            "length": 205767,
+            "sha256": "BBF0E2B5F95FCF8FD54B96074AB33C7AC131D61B270065DF0874FF5FDAD2494F"
+          }
+        ]
+      }
+    ],
+    "successorTest": {
+      "path": "tests/NativeWorldTextProbe/NativeCombatBalancedCandidateChecks.cs",
+      "length": 10121,
+      "sha256": "9C5B631D3F23AAECA41E097AC14D47B2F08E6CC8F364A204690201A6586E227D"
+    },
+    "actualFrozenProbe": {
+      "path": "artifacts/build/Debug/checks/bin/NativeWorldTextProbe/x86/Debug/net472/NativeWorldTextProbe.exe",
+      "length": 5853184,
+      "sha256": "8E8582B8CB8C89E9ED8A0DEB4B07D630FDA0FD610746A7630F706D36AB107458"
+    },
+    "fixtureDisposition": "r17/r18 direct no-prefix/Unknown/recovery checks passed. Their AI18 rank assertion omitted caller Selection.Update and only proved far reachable before the missing tile. r19 calls real Selection.Update and asserts a real far-positive with missing input still present before ResolveSelection; expectations remain current reachability, never an injected Source result.",
+    "narrowProtection": [
+      {
+        "path": ".local/aim-balanced-20261017/architecture-combat-r19.log",
+        "length": 126,
+        "sha256": "1A61DD9ED16DCF68918C3D0D42949A589D0B14CBDD8E71B1E009D18DA9E96724"
+      },
+      {
+        "path": ".local/aim-balanced-20261017/routing-r19-narrow.log",
+        "length": 78,
+        "sha256": "F1F793F28FA7CC79D59AFA2E95228C1C3253F149C89CD5C80D7D4216E6A0320C"
+      }
+    ],
+    "reuse": {
+      "ordinaryMain": "All8 original windows retained, not rerun. Their actual driver sets ClearLine=false, so ResolveSelection exits before the only changed EvaluateCandidate path. No birth/solver/cursor/NPC/yoyo code changed.",
+      "nativeInputs": "19/phase/5382/motion/ammo/safety original identities retained: new code affects missing clear-line candidate publication only. Current16 mode suite and3 no-prefix state-handoff cases cover this seam.",
+      "unchangedDiagnostics": "Old work counters/elapsed remain measured7a8f18a evidence, no claim they were rerun under successor"
+    },
+    "nonblockingO1": {
+      "fact": "Path/Off CSV independently audited in full: each exactly one720/-1 row,241bytes",
+      "sha256": "64A2E7676923E84B70AF7473BDD53C6787DDDAD7066F59B629BB0A8CE26B6700",
+      "limit": "The broad nativeBirths-unboundBirths guard is not independently sufficient to prove no weapon birth. Existing facts rely on complete raw-row audit, not that guard."
+    },
+    "next": "Original independent reviewer must review R1/new impact/source identity; no author approval or07 admission claimed"
+  }
 }

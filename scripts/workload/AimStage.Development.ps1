@@ -559,7 +559,7 @@ function Read-AimStageDevelopment {
             'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackControl.Balanced.cs',
             'src/JueMingR.TerrariaHost/Combat/HostCadenceAim.cs','src/JueMingR.TerrariaHost/Combat/HostHeldAttack.cs',
             'src/JueMingR.TerrariaHost/Combat/HostHeldAmmoFamilyAttack.cs',
-            'tests/NativeWorldTextProbe/NativeCombatBalancedAimChecks.cs','tests/NativeWorldTextProbe/NativeCombatBalancedPhaseChecks.cs','tests/NativeWorldTextProbe/NativeCombatAimChecks.cs','tests/NativeWorldTextProbe/NativeCombatBallisticMotionChecks.cs','tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs',
+            'tests/NativeWorldTextProbe/NativeCombatBalancedAimChecks.cs','tests/NativeWorldTextProbe/NativeCombatBalancedPhaseChecks.cs','tests/NativeWorldTextProbe/NativeCombatBalancedCandidateChecks.cs','tests/NativeWorldTextProbe/NativeCombatAimChecks.cs','tests/NativeWorldTextProbe/NativeCombatBallisticMotionChecks.cs','tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs',
             'scripts/workload/AimStage.Development.ps1','scripts/workload/Workload.Definitions.ps1',
             'scripts/phase0s/Continuous-Processing-Owner-Test-Card.zh-CN.md',
             'review-materials/aim-balanced-20261017/evidence.md','review-materials/aim-balanced-20261017/validation-map.json',

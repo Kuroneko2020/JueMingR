@@ -382,7 +382,12 @@ namespace JueMingR.TerrariaHost.Combat
                 // A request is not completed work. Only a published prefix grows
                 // this candidate's future search; pauses remain unresolved.
                 if(timeline!=null)candidateDepths[key]=Math.Max(candidateDepths[key],timeline.Count-1);
-                var contact=timeline!=null && timeline.Count>=2?PreparePlan(plan,timeline,phase):null;
+                // A prior positive is only a scheduling hint until THIS attempt
+                // obtains a usable future and prepares its plan. Source failure
+                // or point-zero-only publication must retire the old fact;
+                // otherwise its Reachable/Contact also falsely closes retry.
+                if(timeline==null || timeline.Count<2){plan.Clear();return false;}
+                var contact=PreparePlan(plan,timeline,phase);
                 // A complete primary-hand miss does not disprove its own
                 // not-yet-born OnHit family. In particular Volcano's finite
                 // explosion can reach this receiver after another body is hit.
@@ -405,7 +410,7 @@ namespace JueMingR.TerrariaHost.Combat
                 }
                 return positive;
             }
-            catch(CombatPredictionBudgetExceededException){return false;}
+            catch(CombatPredictionBudgetExceededException){plan.Clear();candidateUnknown[key]=true;return false;}
             catch(Exception error){PropagateFatal(error);plan.Faults.Record(context);plan.Clear();candidateUnknown[key]=false;return false;}
             finally
             {
