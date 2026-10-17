@@ -46,6 +46,8 @@ namespace NativeWorldTextProbe
             Main.CreativeMenu.Initialize();
             NativeToolsUiChecks.Prepare(context, 1, 960, 640, 1);
             h.Ui();
+            h.HoverShell("EnableJourney");
+            graphics.Image(Path.Combine(output, "journey-f5-row.png"), () => Call(shell, "DrawLayer"), Main.UIScaleMatrix);
             var failure = new Harmony("JueMingR.Tests.JourneyUi.OpenFailure");
             var toggle = typeof(Player).GetMethod("ToggleCreativeMenu");
             try
@@ -58,10 +60,12 @@ namespace NativeWorldTextProbe
                     "failed open publishes a real failure instead of clearing it during rollback or claiming success");
             }
             finally { failure.Unpatch(toggle, HarmonyPatchType.Prefix, failure.Id); }
-            Call(display, "Clear"); h.ClickShell("EnableJourney");
+            Call(display, "Clear");
+            var firstOpen = Stopwatch.StartNew(); h.ClickShell("EnableJourney"); firstOpen.Stop();
             Require((bool)Get(journey, "IsActive") && (bool)Get(journey, "IsMenuOpen") && !(bool)Get(state, "Visible"), "real standard Enable opens the confirmed native window before F5 yields");
             Require(!NativeShortFeedbackChecks.Has(display, "旅行菜单 已开启"), "ordinary F5 enable does not pretend to be a hotkey result");
             Require(!Main.mouseLeft && !PlayerInput.Triggers.Current.MouseLeft, "opening release reaches neither copy nor attack consumer");
+            Console.WriteLine("JOURNEY UI first-successful-open-ms=" + firstOpen.Elapsed.TotalMilliseconds.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " scope=real-Shell-click/native-open; prior-rejected-open-already-warmed-shared-path");
             for (int i = 0; i < 16; i++) h.Native(Vector2.Zero);
 
             object nativeState = Get(Main.CreativeMenu, "_uiState");
@@ -119,20 +123,19 @@ namespace NativeWorldTextProbe
             h.ClickShell("OpenJourney");
             Require((bool)Get(journey, "IsMenuOpen") && freeze.Enabled == chosen && !(bool)Get(state, "Visible"), "Open only re-expands the same active session");
             for (int i = 0; i < 3; i++) h.Native(Vector2.Zero);
-            long revision = registry.Revision;
-            var timer = Stopwatch.StartNew();
-            for (int i = 0; i < 100; i++) h.Native(Vector2.Zero);
-            timer.Stop();
-            Require(registry.Revision == revision, "100 active menu frames never rebuild the hotkey registry");
-            Console.WriteLine("JOURNEY UI stable-menu-100-ms=" + timer.Elapsed.TotalMilliseconds.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+            MeasureFrames(h, registry, "active-menu-open");
             graphics.Image(Path.Combine(output, "journey-native-menu.png"), () => Main.CreativeMenu.Draw(Main.spriteBatch), Main.UIScaleMatrix);
             Call(journey, "CloseMenu"); h.Native(Vector2.Zero);
             Require((bool)Get(journey, "IsActive") && !(bool)Get(journey, "IsMenuOpen") && (bool)Get(shell, "CanAutomaticProcessingInput") && (bool)Get(shell, "CanAutomaticTargetInput"),
                 "active session with closed native window leaves ordinary automatic gates available");
+            MeasureFrames(h, registry, "active-menu-closed");
             Coexist(context, h, graphics, journey, categories, output);
             h.Key(Keys.F5); h.Key(); Call(state, "Navigate", 1); Call(context, "UpdateShell");
             h.ClickShell("DisableJourney");
             Require(!(bool)Get(journey, "IsActive") && freeze.Enabled == before, "real F5 close restores the original continuous power");
+            Call(shell, "CloseAndSubmitPosition"); h.Native(Vector2.Zero);
+            MeasureFrames(h, registry, "off-after-close");
+            h.Key(Keys.F5); h.Key(); Call(state, "Navigate", 1); Call(context, "UpdateShell");
             SetBindingThroughPopup(context, h, bindings);
             Call(shell, "CloseAndSubmitPosition"); Call(display, "Clear");
             h.Key(Keys.LeftControl, Keys.F13); h.Key(Keys.LeftControl, Keys.F13);
@@ -140,6 +143,28 @@ namespace NativeWorldTextProbe
             h.Key(); h.Key(Keys.LeftControl, Keys.F13); h.Key();
             Require(!(bool)Get(journey, "IsActive") && NativeShortFeedbackChecks.Has(display, "旅行菜单 已关闭"), "same binding closes active native owner and reports the confirmed reverse result");
             Console.WriteLine("PASS Journey actual Shell reveal/standard commands/binding recorder, native search/right-left copy/backpack, native power button, retained power, menu reopen and real hotkey feedback.");
+        }
+
+        private static void MeasureFrames(Frames h, HotkeyRegistry registry, string scenario)
+        {
+            // This bounded probe interval includes reflection-driven Host input,
+            // runtime/layout work and original CreativeUI.Draw. It is neither a
+            // production-only overhead benchmark nor a complete game FPS test.
+            const int count = 100;
+            long revision = registry.Revision, total = 0, slowest = 0;
+            var watch = new Stopwatch();
+            for (int i = 0; i < count; i++)
+            {
+                watch.Restart(); h.Native(Vector2.Zero); watch.Stop();
+                long ticks = watch.ElapsedTicks; total += ticks; slowest = Math.Max(slowest, ticks);
+            }
+            Require(registry.Revision == revision, scenario + " stable interval never rebuilds the hotkey registry");
+            double scale = 1000.0 / Stopwatch.Frequency;
+            Console.WriteLine("JOURNEY UI interval=" + scenario + " frames=" + count +
+                " total-ms=" + (total * scale).ToString("R", System.Globalization.CultureInfo.InvariantCulture) +
+                " mean-ms=" + (total * scale / count).ToString("R", System.Globalization.CultureInfo.InvariantCulture) +
+                " slowest-ms=" + (slowest * scale).ToString("R", System.Globalization.CultureInfo.InvariantCulture) +
+                " registry-revision=" + revision + " scope=probe-reflection/Host-input-runtime-layout/native-CreativeUI-draw; F5-closed");
         }
 
         private static void FocusBoundary(object context, Frames h, UIElement button, CreativePowers.FreezeTime freeze)
@@ -305,6 +330,11 @@ namespace NativeWorldTextProbe
             {
                 var layout = Get(state, "Layout"); var element = ((IEnumerable)Get(layout, "Elements")).Cast<object>().Single(e => Get(e, "Command").ToString() == command);
                 NativeToolsUiChecks.Click(context, ShellPoint(element));
+            }
+            internal void HoverShell(string command)
+            {
+                var layout = Get(state, "Layout"); var element = ((IEnumerable)Get(layout, "Elements")).Cast<object>().Single(e => Get(e, "Command").ToString() == command);
+                NativeToolsUiChecks.UiFrame(context, ShellPoint(element), false);
             }
             internal void ClickNative(UIElement element)
             { Vector2 point = Center(element) * Main.UIScale; Native(point); Native(point, left: true); Native(point); Native(point); }

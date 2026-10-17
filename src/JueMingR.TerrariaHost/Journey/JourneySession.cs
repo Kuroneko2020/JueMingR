@@ -77,7 +77,10 @@ namespace JueMingR.TerrariaHost.Journey
             }
             catch (Exception)
             {
-                Stop(true); LastFailure = "旅行菜单未能开启。"; return false;
+                // A failed restoration is the remaining user-visible duty;
+                // do not replace it with the less specific opening failure.
+                if (Stop(true)) LastFailure = "旅行菜单未能开启。";
+                return false;
             }
         }
         public bool Toggle() { return SetEnabled(!state.Active); }
@@ -143,7 +146,15 @@ namespace JueMingR.TerrariaHost.Journey
         internal JourneyResearch Research { get { return research; } }
         internal bool CanUseNativeInput { get { return IsActive && nativeInput(); } }
         internal JourneyPowers Persistence { get { return Volatile.Read(ref baseline); } }
-        internal void BeforeNativeReset() { Stop(false); research = null; }
+        internal void BeforeNativeReset(bool playerOnly)
+        {
+            // ResetDataForNewPlayer (also used by vanilla Deserialize/clone)
+            // does not reset world powers. Return those borrowed controls before
+            // retiring their baseline, while the old object still owns them.
+            // Full world Reset replaces all powers itself; writing an old world
+            // baseline across that load boundary would be the wrong lifetime.
+            Stop(playerOnly); research = null;
+        }
         public void OnSessionStarted() { }
         public void OnSessionEnded() { Stop(true); research = null; }
         public void Update(ulong updateTick) { if (state.Active && !MatchesCurrent()) Stop(true); }

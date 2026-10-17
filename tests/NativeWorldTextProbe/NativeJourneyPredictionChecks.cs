@@ -36,7 +36,14 @@ namespace NativeWorldTextProbe
                         float expected = values[i] ?? 1f;
                         Require(Main.Difficulty == expected, "native source exposes effective difficulty independently of base mode");
                         using (var stream = File.Create(Path.Combine(output, "world-" + i + ".bin")))
-                        using (var writer = new BinaryWriter(stream)) snapshot.GetMethod("Write", Flags).Invoke(null, new object[] { writer });
+                        using (var writer = new BinaryWriter(stream))
+                        {
+                            // PredictionWire writes the persistent mode before
+                            // this world substream. Retain that real envelope
+                            // boundary: GameMode is not a snapshot scalar field.
+                            writer.Write(Main.GameMode);
+                            snapshot.GetMethod("Write", Flags).Invoke(null, new object[] { writer });
+                        }
                     }
                     var npc = new NPC(); npc.SetDefaults(NPCID.Zombie); npc.active = true; npc.whoAmI = 0; Main.npc[0] = npc;
                     var alignment = host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePredictionAlignment", true);
@@ -83,8 +90,12 @@ namespace NativeWorldTextProbe
                 {
                     field.SetValue(null, 3f); Main.GameMode = 2;
                     using (var stream = File.OpenRead(Path.Combine(output, "world-" + i + ".bin")))
-                    using (var reader = new BinaryReader(stream)) snapshot.GetMethod("Read", Flags).Invoke(null, new object[] { reader });
-                    Require(Main.GameMode == 0 && Equals(field.GetValue(null), values[i]), "receiver restores exact nullable override with source base mode");
+                    using (var reader = new BinaryReader(stream))
+                    {
+                        Main.GameMode = reader.ReadInt32();
+                        snapshot.GetMethod("Read", Flags).Invoke(null, new object[] { reader });
+                    }
+                    Require(Main.GameMode == 0 && Equals(field.GetValue(null), values[i]), "receiver restores exact nullable override with source base mode; case=" + i + " mode=" + Main.GameMode + " override=" + field.GetValue(null));
                     Require(Main.Difficulty == (values[i] ?? 1f), "original Main.Difficulty consumes the received override");
                     var received = new NPC(); received.SetDefaults(NPCID.Zombie);
                     int actualLife = received.lifeMax, actualDamage = received.damage;

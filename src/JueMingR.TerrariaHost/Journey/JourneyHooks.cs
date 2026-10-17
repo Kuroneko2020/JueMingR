@@ -56,8 +56,8 @@ namespace JueMingR.TerrariaHost.Journey
                 Patch(harmony, Method(typeof(WorldFile), "SaveWorld_Version2", typeof(BinaryWriter)), "BeginWorldSave", "EndSave");
                 Patch(harmony, Method(typeof(CreativePowerManager), "SaveToPlayer", typeof(Player), typeof(BinaryWriter)), "SavePlayerPowers");
                 Patch(harmony, Method(typeof(CreativePowerManager), "SaveToWorld", typeof(BinaryWriter)), "SaveWorldPowers");
-                Patch(harmony, Method(typeof(CreativePowerManager), "Reset"), "BeforeReset");
-                Patch(harmony, Method(typeof(CreativePowerManager), "ResetDataForNewPlayer", typeof(Player)), "BeforeReset");
+                Patch(harmony, Method(typeof(CreativePowerManager), "Reset"), "BeforeWorldReset");
+                Patch(harmony, Method(typeof(CreativePowerManager), "ResetDataForNewPlayer", typeof(Player)), "BeforePlayerReset");
                 // Publish only after all required patches and IL read counts
                 // have succeeded. A partial install cannot grant eligibility.
                 owner = value;
@@ -243,6 +243,7 @@ namespace JueMingR.TerrariaHost.Journey
             if (context?.Powers == null || !context.World) return true;
             writer.Write(context.Powers.WorldBytes); return false;
         }
-        private static void BeforeReset() { owner?.BeforeNativeReset(); }
+        private static void BeforeWorldReset() { owner?.BeforeNativeReset(false); }
+        private static void BeforePlayerReset() { owner?.BeforeNativeReset(true); }
     }
 }

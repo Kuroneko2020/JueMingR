@@ -47,9 +47,10 @@ namespace NativeWorldTextProbe
                     UseDuplicatedItem(context);
                     ConsumerChecks(context);
                     SaveMatrix(context, output);
+                    RenameWhileActive(context, output);
                     SaveException(context);
                     SaveInterleave(context, output);
-                    AdmissionAndReset(context);
+                    AdmissionAndReset(context, output);
                 }
             }, processing: true, shortFeedback: true);
             ReadInNewProcess(content, output);
@@ -111,11 +112,27 @@ namespace NativeWorldTextProbe
         internal static int ReadChild(string output)
         {
             output = Path.GetFullPath(output);
-            Check(!AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name.StartsWith("JueMingR.", StringComparison.Ordinal)), "reader has no loaded R runtime assembly");
+            Console.OutputEncoding = new System.Text.UTF8Encoding(false);
             Terraria.Program.SavePath = Path.Combine(output, "reader-empty-root"); Directory.CreateDirectory(Terraria.Program.SavePath);
             NativeTestAudio.Install(typeof(Main).Assembly);
+            return ReadOriginal(output);
+        }
+
+        // Main is beforefieldinit. This must be a separate non-inlined native
+        // stage, after the caller has installed its owned Program.SavePath.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static int ReadOriginal(string output)
+        {
+            Check(!AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name.StartsWith("JueMingR.", StringComparison.Ordinal)), "reader has no loaded R runtime assembly");
             LanguageManager.Instance.SetLanguage("en-US"); Lang.InitializeLegacyLocalization();
             Main.myPlayer = Main.netMode = 0; Main.rand = new UnifiedRandom(123); Main.gameMenu = true;
+            // Original Item.GetDrawHitbox explicitly supports the original
+            // headless reader: dedServ returns Rectangle.Empty before GPU work.
+            // LoadPlayer/Deserialize and their acceptance rules remain original.
+            Main.dedServ = true;
+            // Original item samples include the local player's clothing colors
+            // (Item.SetDefaults1 IDs269..271); supply a genuine native Player.
+            Main.player[0] = new Player { whoAmI = 0 };
             ContentSamples.Initialize(); CreativePowerManager.Initialize(); CreativeItemSacrificesCatalog.Instance.Initialize();
             string[] manifests = Directory.GetFiles(output, "journey-save-*.txt"); Check(manifests.Length > 0, "native reader receives exact writer manifests");
             foreach (string manifest in manifests)
@@ -123,16 +140,21 @@ namespace NativeWorldTextProbe
                 string[] rows = File.ReadAllLines(manifest); string playerPath = rows[0], worldPath = rows[1];
                 Check(IsWithin(playerPath, output) && IsWithin(worldPath, output), "reader only accepts invocation-owned save paths");
                 int playerMode = Int32.Parse(rows[2]), worldMode = Int32.Parse(rows[3]);
+                // Deserialize directly first so an original load exception is
+                // retained rather than reduced by LoadPlayer's empty catch.
+                Player parsedPlayer;
+                byte[] rawPlayerPowers = ExtractPlayerPowers(playerPath, out parsedPlayer);
+                parsedPlayer.PlayerFrame();
                 PlayerFileData loaded = Player.LoadPlayer(playerPath, false); Player p = loaded.Player;
-                Check(p != null && p.loadStatus == StatusID.Ok && p.difficulty == playerMode, "unmodified native Player.LoadPlayer retains identity " + Path.GetFileName(manifest));
-                Check(p.inventory[12].type == ItemID.Torch && p.inventory[12].stack == Int32.Parse(rows[6]), "ordinary new real item progress survives Active save");
-                Check(p.inventory[10].type == Int32.Parse(rows[8]) && p.inventory[10].stack == Int32.Parse(rows[9]), "the real native UI duplication result survives serialization");
-                Check(Convert.ToBase64String(CaptureTracker(p)) == rows[7], "virtual full research never enters native tracker save");
+                Check(p != null && p.loadStatus == StatusID.Ok && p.difficulty == playerMode, "unmodified native Player.LoadPlayer retains identity " + Path.GetFileName(manifest) + " status=" + p?.loadStatus + " difficulty=" + p?.difficulty);
+                Check(p.inventory[12].type == ItemID.Torch && p.inventory[12].stack == Int32.Parse(rows[6]), "saved item progress matches the writer's actual inventory manifest");
+                Check(p.inventory[10].type == Int32.Parse(rows[8]) && p.inventory[10].stack == Int32.Parse(rows[9]), "saved inventory slot matches the writer's recorded item and stack");
+                if (rows.Length > 10) Check(p.name == rows[10], "saved player name matches the writer's manifest");
+                Check(Convert.ToBase64String(CaptureTracker(p)) == rows[7], "saved native research tracker matches the writer's actual tracker manifest");
                 byte[] expectedPlayer = Convert.FromBase64String(rows[5]);
                 // LoadPlayer stores these three values on the loaded Player;
                 // non-Journey native loading resets them to native defaults.
                 // Exact output bytes below independently verify both modes.
-                byte[] rawPlayerPowers = ExtractPlayerPowers(playerPath);
                 Check(rawPlayerPowers.SequenceEqual(expectedPlayer), "encrypted player creative substream is the original baseline");
                 WorldFileData metadata = WorldFile.GetAllMetadata(worldPath, false);
                 Check(metadata != null && metadata.LoadStatus == StatusID.Ok && metadata.GameMode == worldMode, "unmodified native world metadata retains base GameMode");
@@ -333,11 +355,31 @@ namespace NativeWorldTextProbe
             {
                 thread.Start(); Check(saveEntered.WaitOne(15000), "real background serializer reached creative output after SaveView capture");
                 Check((bool)Call(journey, "SetEnabled", false), "close while native save is in flight restores runtime values");
+                CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().SetPowerInfo(true);
+                byte[] nextWorldBaseline = CaptureWorld();
+                Check(!nextWorldBaseline.SequenceEqual(world) && (bool)Call(journey, "SetEnabled", true), "a new Active session captures a distinct original baseline B while old save owns A");
                 saveContinue.Set(); Check(thread.Join(15000) && error == null, "old background serializer completes after session ended: " + error);
+                Check((bool)Get(journey, "IsActive") && CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().Enabled, "old save completion neither retires new Active nor borrows its baseline");
                 Player.SavePlayer(Main.ActivePlayerFileData, skipMapSave: true);
                 WriteManifest(output, "interleave", 0, 1, world, player);
+                Check((bool)Call(journey, "SetEnabled", false) && CaptureWorld().SequenceEqual(nextWorldBaseline), "closing new session returns B independently of the old immutable A save");
             }
             finally { pauseWorldSave = false; saveContinue.Set(); thread.Join(15000); h.Unpatch(target, HarmonyPatchType.All, h.Id); saveEntered.Dispose(); saveContinue.Dispose(); }
+        }
+
+        private static void RenameWhileActive(object context, string output)
+        {
+            ConfigureFiles(0, 1, "active-rename"); CreativePowerManager.Instance.Reset(); Call(context, "UpdateRuntime");
+            object journey = Get(context, "Journey"); byte[] world = CaptureWorld(), player = CapturePlayer(Main.LocalPlayer);
+            Check((bool)Call(journey, "SetEnabled", true), "native rename scenario starts Active");
+            CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().SetPowerInfo(true);
+            CreativePowerManager.Instance.GetPower<CreativePowers.GodmodePower>().SetEnabledState(0, true);
+            Main.LocalPlayer.inventory[12].SetDefaults(ItemID.Torch); Main.LocalPlayer.inventory[12].stack = 29;
+            PlayerFileData file = Main.ActivePlayerFileData; string path = file.Path;
+            file.Rename("Journey renamed");
+            Check(ReferenceEquals(Main.ActivePlayerFileData, file) && file.Path == path && Main.LocalPlayer.name == "Journey renamed" && (bool)Get(journey, "IsActive"), "real PlayerFileData.Rename keeps the same native file/session and writes its changed name");
+            WorldFile.SaveWorld(); WriteManifest(output, "active-rename", 0, 1, world, player);
+            Check((bool)Call(journey, "SetEnabled", false), "native rename scenario restores all borrowed powers");
         }
         private sealed class SaveBoundaryFailure : Exception { }
         private static void SaveException(object context)
@@ -363,7 +405,7 @@ namespace NativeWorldTextProbe
             if (pauseWorldSave) { saveEntered.Set(); if (!saveContinue.WaitOne(15000)) throw new TimeoutException("Journey save interleave timeout"); }
         }
 
-        private static void AdmissionAndReset(object context)
+        private static void AdmissionAndReset(object context, string output)
         {
             object journey = Get(context, "Journey"); PlayerFileData old = Main.ActivePlayerFileData;
             Main.ActivePlayerFileData = new PlayerFileData("test-only-cloud.plr", true) { Player = Main.LocalPlayer };
@@ -371,6 +413,15 @@ namespace NativeWorldTextProbe
             Check((bool)Call(journey, "SetEnabled", true), "reset boundary starts active");
             CreativePowerManager.Instance.Reset(); Check(!(bool)Get(journey, "IsActive"), "native world reset retires old owner before replacing singleton state");
             Call(context, "UpdateRuntime"); Check(!CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().Enabled, "later tick does not write old world powers into reset singleton");
+            ConfigureFiles(0, 1, "player-reset"); Call(context, "UpdateRuntime");
+            byte[] world = CaptureWorld(), player = CapturePlayer(Main.LocalPlayer);
+            Check((bool)Call(journey, "SetEnabled", true), "per-player reset scenario starts Active");
+            CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>().SetPowerInfo(true);
+            Shared(CreativePowerManager.Instance.GetPower<CreativePowers.ModifyTimeRate>(), .8f);
+            CreativePowerManager.Instance.ResetDataForNewPlayer(new Player());
+            Check(!(bool)Get(journey, "IsActive") && CaptureWorld().SequenceEqual(world), "actual per-player native reset returns borrowed world powers before retiring the old owner");
+            Main.LocalPlayer.inventory[12].SetDefaults(ItemID.Torch); Main.LocalPlayer.inventory[12].stack = 37;
+            SaveCurrent(output, "player-reset", 0, 1, world, player);
         }
 
         private static void ConfigureFiles(int playerMode, int worldMode, string name)
@@ -390,21 +441,21 @@ namespace NativeWorldTextProbe
         }
         private static void WriteManifest(string output, string name, int playerMode, int worldMode, byte[] world, byte[] player)
         {
-            File.WriteAllLines(Path.Combine(output, "journey-save-" + name + ".txt"), new[] { Main.ActivePlayerFileData.Path, Main.ActiveWorldFileData.Path, playerMode.ToString(), worldMode.ToString(), Convert.ToBase64String(world), Convert.ToBase64String(player), Main.LocalPlayer.inventory[12].stack.ToString(), Convert.ToBase64String(CaptureTracker(Main.LocalPlayer)), Main.LocalPlayer.inventory[10].type.ToString(), Main.LocalPlayer.inventory[10].stack.ToString() });
+            File.WriteAllLines(Path.Combine(output, "journey-save-" + name + ".txt"), new[] { Main.ActivePlayerFileData.Path, Main.ActiveWorldFileData.Path, playerMode.ToString(), worldMode.ToString(), Convert.ToBase64String(world), Convert.ToBase64String(player), Main.LocalPlayer.inventory[12].stack.ToString(), Convert.ToBase64String(CaptureTracker(Main.LocalPlayer)), Main.LocalPlayer.inventory[10].type.ToString(), Main.LocalPlayer.inventory[10].stack.ToString(), Main.LocalPlayer.name });
         }
-        private static byte[] ExtractPlayerPowers(string path)
+        private static byte[] ExtractPlayerPowers(string path, out Player parsedPlayer)
         {
             // Deserialize itself owns the exact variable-length player layout.
             // Observe only its native power reader's input offset; no R patch
             // or replacement parser is used in this independent process.
-            byte[] result = null; currentPowerRead = bytes => result = bytes;
+            byte[] result = null; currentPowerRead = bytes => result = bytes; parsedPlayer = null;
             var h = new Harmony("NativeJourneyReader.RecordPowerBytes"); var method = typeof(CreativePowerManager).GetMethod("LoadToPlayer", Flags);
             h.Patch(method, prefix: new HarmonyMethod(typeof(NativeJourneyChecks), nameof(ReadPlayerPowerBytes)));
             try
             {
-                // The native LoadPlayer path above already proved full original
-                // file acceptance. Decrypt the same bytes into a seekable stream
-                // solely to observe the original Deserialize reader's section.
+                // Run original Deserialize first on seekable plaintext so its
+                // exceptions retain details that LoadPlayer would swallow. The
+                // caller subsequently requires original LoadPlayer acceptance.
                 byte[] key = (byte[])typeof(Player).GetField("ENCRYPTION_KEY", Flags).GetValue(null);
                 using (var encrypted = File.OpenRead(path)) using (var aes = new RijndaelManaged { Padding = PaddingMode.None })
                 using (var crypto = new CryptoStream(encrypted, aes.CreateDecryptor(key, key), CryptoStreamMode.Read))
@@ -414,7 +465,7 @@ namespace NativeWorldTextProbe
                     using (var reader = new BinaryReader(plain))
                     {
                         int version = reader.ReadInt32(); var file = new PlayerFileData(path, false) { Metadata = FileMetadata.Read(reader, FileType.Player) };
-                        object[] args = { file, new Player(), reader, version, false };
+                        parsedPlayer = new Player(); object[] args = { file, parsedPlayer, reader, version, false };
                         typeof(Player).GetMethod("Deserialize", Flags).Invoke(null, args);
                     }
                 }

@@ -23,6 +23,8 @@ namespace JueMingR.TerrariaHost.Journey
         private readonly Slider[] sliders;
         private static readonly Action UpdateDifficulty = (Action)Delegate.CreateDelegate(typeof(Action),
             AccessTools.Method(typeof(Main), "UpdateCreativeGameModeOverride"));
+        private static readonly MethodInfo ApplyDifficultySlider = AccessTools.Method(
+            typeof(CreativePowers.DifficultySliderPower), "UpdateInfoFromSliderValueCache");
 
         internal JourneyPowers(Player player, PlayerFileData playerFile, WorldFileData worldFile)
         {
@@ -46,7 +48,7 @@ namespace JueMingR.TerrariaHost.Journey
                 // range until the player explicitly chooses it.
                 Power<CreativePowers.FarPlacementRangePower>().SetEnabledState(Player.whoAmI, false);
                 float value = Main.GameMode == 2 ? 1f : Main.GameMode == 1 ? 0.665f : 0.33f;
-                SetShared(Power<CreativePowers.DifficultySliderPower>(), value);
+                SetDifficulty(Power<CreativePowers.DifficultySliderPower>(), value);
             }
             UpdateDifficulty();
         }
@@ -68,10 +70,10 @@ namespace JueMingR.TerrariaHost.Journey
         { return CreativePowerManager.Instance.GetPower<T>() ?? throw new InvalidOperationException("Missing native Journey power: " + typeof(T).Name); }
         private static byte[] Capture(Action<BinaryWriter> write)
         { using (var stream = new MemoryStream()) { using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, true)) write(writer); return stream.ToArray(); } }
-        private static void SetShared(CreativePowers.ASharedSliderPower power, float value)
+        private static void SetDifficulty(CreativePowers.DifficultySliderPower power, float value)
         {
             Slider.SharedCache.SetValue(power, value); Slider.SharedTarget.SetValue(power, value); Slider.SharedPending.SetValue(power, false);
-            AccessTools.Method(power.GetType(), "UpdateInfoFromSliderValueCache").Invoke(power, null);
+            ApplyDifficultySlider.Invoke(power, null);
         }
 
         private sealed class Slider
