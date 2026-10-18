@@ -36,7 +36,7 @@ namespace NativeWorldTextProbe
         private static int checks;
         private static bool saveTraceInstalled;
 
-        internal static int Run(string content, string output)
+        internal static int Run(string content, string output, bool reopenOnly = false)
         {
             output = Path.GetFullPath(output); Directory.CreateDirectory(output);
             string root = NewRoot(output, "run");
@@ -45,9 +45,12 @@ namespace NativeWorldTextProbe
                 using (var graphics = new ProbeGraphics(content))
                 {
                     Prepare(context);
-                    NativeJourneyUiChecks.Run(context, graphics, output);
+                    NativeJourneyUiChecks.Run(context, graphics, output, reopenOnly);
                     object journey = Get(context, "Journey");
                     Check((bool)Call(journey, "SetEnabled", false), "UI completion returns the borrowed state");
+                    // The closeout scope reuses original preparation/UI input,
+                    // then stops before any copy/save/consumer/kill matrix.
+                    if (reopenOnly) return;
                     UseDuplicatedItem(context);
                     VerticalSave(context, content, output);
                     ConsumerChecks(context);
@@ -58,6 +61,11 @@ namespace NativeWorldTextProbe
                     AdmissionAndReset(context, output);
                 }
             }, processing: true, shortFeedback: true);
+            if (reopenOnly)
+            {
+                Console.WriteLine("PASS JOURNEY REOPEN: real Shell Enable/reopen/Disable/binding, stable Persistence and selected power; no save/reader/kill/coexist matrix.");
+                return 0;
+            }
             ReadInNewProcess(content, output);
             KillOwnWriter(content, output);
             Console.WriteLine("PASS JOURNEY core checks=" + checks + " root=" + root + "; native consumers, real save/independent native reads, owned writer killed without cleanup.");

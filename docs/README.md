@@ -64,7 +64,7 @@
 | 笔记 | [合同](功能介绍/笔记功能行为合同.md#已接受实现与验证边界)、[设计](设计/笔记功能实现设计.md)、[#42](https://github.com/Kuroneko2020/JueMingR/issues/42)；[原实机卡](../scripts/phase0s/Phase0W-Notes-Owner-Test-Card.zh-CN.md)是历史交付材料，不是逐项通过记录 |
 | 关于、帮助与反馈 | [合同](功能介绍/关于帮助与反馈行为合同.md)、[设计](设计/关于帮助与反馈实现设计.md)、[#95](https://github.com/Kuroneko2020/JueMingR/issues/95) |
 
-旅行菜单的单人临时能力、保存隔离与输入共存查[行为合同](功能介绍/旅行菜单行为合同.md)、[实现设计](设计/旅行菜单实现设计.md)及 [#122](https://github.com/Kuroneko2020/JueMingR/issues/122)。候选/安装/接受分别核对。
+旅行菜单的单人临时能力、保存隔离与输入共存查[行为合同](功能介绍/旅行菜单行为合同.md)、[实现设计](设计/旅行菜单实现设计.md)及 [#122](https://github.com/Kuroneko2020/JueMingR/issues/122)。本批已获所有者功能体验接受，随 PR #123 合并生效；按钮收尾与现装分别核对。
 
 ## 网页交流参考（非开发必读）
 

@@ -1,8 +1,29 @@
 # 旅行菜单候选证据
 
-授权以 [#122](https://github.com/Kuroneko2020/JueMingR/issues/122) 为准，完整差异见 [Draft PR #123](https://github.com/Kuroneko2020/JueMingR/pull/123)。固定基底 `0ef3c62dcf0c365aee5d5cfcfbb5492b70b841f3`；原始委托 `JMR-JOURNEY-MENU-20261018-v1` 的00—08保留在本地 references。候选完整SHA由Issue/PR交付记录承载，避免本文件自包含提交身份。
+授权以 [#122](https://github.com/Kuroneko2020/JueMingR/issues/122) 为准，完整差异见 [PR #123](https://github.com/Kuroneko2020/JueMingR/pull/123)。固定基底 `0ef3c62dcf0c365aee5d5cfcfbb5492b70b841f3`；原始委托 `JMR-JOURNEY-MENU-20261018-v1` 的00—08保留在本地 references。候选完整SHA由Issue/PR交付记录承载，避免本文件自包含提交身份。
 
-## 结论与准入
+## 按钮收尾与接受边界
+
+本轮所有者明确委托 `JMR-JOURNEY-CLOSEOUT-20261018-v1`：本人反馈除冗余“打开”外功能实测未发现问题，网页已只读复审 `096da6b8575cb87825b0959f24aacadd8e050223` 相对基底的39文件和关键链。本轮保留这两种来源，不将网页阅读或总体体验写成新的力量/保存/物理断电、全部设备、真人多人或量化FPS实测。
+
+共同标准行撤除“打开”及 OpenJourney 枚举/专属分派，只保留开启、关闭与原 `journey.toggle` 绑键。Enable 仍交给 `SetEnabled(true)`，原 Active 早返回 Open 和底层 Open 方法保持；没有改旅行核心、保存、预测、Runtime 或输入状态所有者。F5Command 为内部瞬态命令，后继战斗命令仅使用相对枚举算术，没有持久化数值身份。关键方法头、接口、直接调用者和测试说明已集中自查；在实际分派处说明重复开启不得 Stop/Activate 重捕基线，安全离页、失败反馈、F5让出和输入尾部保持原职责。
+
+本轮实际执行原件在 `.local/journey-menu-20261018/closeout/`：
+
+| 检查 | 实际执行及边界 |
+| --- | --- |
+| Debug生产/结构与窄原版UI | `powershell -NoProfile -File scripts/test-world-object-text.ps1 -ContentDirectory <匹配原版Content> -OutputDirectory .local/journey-menu-20261018/closeout/native-reopen-01 -Scope JourneyReopen -ApprovedRetainedAssets .local/journey-menu-20261018/retained-assets.json`，exit0；PrepareOnly及probe均0警告/错误，结构0fail。`native-reopen-01.log` 保留完整日志；不是累计交付资格 |
+| 原版重开增量 | 复用同一原版准备/NativeJourneyUiChecks片段：真实首次开启与失败反馈、原冻结按钮选择、F5收窗后真实点击Enable、Active/同一Persistence引用/所选冻结保持、已可见重复Enable不关窗、Disable恢复、原绑键录入及开关、按放尾部均通过。`JourneyReopen` 在现有Run里明确停止于UI后，未调用复制/完整力量/共存/保存/独立reader/强杀矩阵 |
+| 既有F5 CPU | `dotnet build tests/Phase0SFixtureTerraria/Phase0SFixtureTerraria.csproj --configuration Debug --nologo -p:Platform=x86 -p:JueMingRBuildRoot=<repo>/.local/journey-menu-20261018/closeout/f5-cpu-build`，随后其 `Terraria.exe f5-cpu`，均exit0，0警告/错误。`f5-build.log`、`f5-cpu.log`：两条建页、两个业务按钮/原绑定、隐藏无占位、滚动底边、100次稳定布局复用及既有输入/绑键断言通过；替身不证明原版恢复安全 |
+| 实际呈现 | 已实看 `native-reopen-01/journey-f5-row.png`、`journey-native-menu.png`：旅行行仅开启/关闭/键，未留下旧按钮矩形，同行/相邻间距与底边完整；真实原版时间窗口打开。物理OS键鼠/IME及所有者本人新按钮实测未执行 |
+
+新执行Host SHA-256为 `8F96181E7A6DD0328B5732A6F62FFF1263B19070B3A77B2AEA5B047CD2837763`，probe为 `C05C270F20324994BA4E19BD07482F2397370D68CB9E7ED8A6C559429B38AF0E`，CPU fixture为 `549AC5D27B225BC9BA1F3AB4E0797DA4A1452BB661E19E46B4D568EE0F2261CC`。原版仍为下方锁定1.4.5.8，Content只读。新scope仅自造隔离根，日志记录启动及原生初始化音乐/音效/环境声均0，不操作所有者游戏/真实存档；隔离材料保留便于审查。
+
+旧完整独审 `independent-review-982fdb9.md`、full-resume-26完整工程、保存/强杀/共存和预测接缝继续按下方原身份复用。本轮完整源码增量核对确认核心Journey、保存、预测、Hotkeys/输入实现及其相关依赖未变；直接UI期待和选择分支改动由本轮窄原版与CPU覆盖，不把旧Host执行改签为新Host全矩阵PASS，也不迁成正式缓存成绩。合同/指南/设计/索引/入口同步本批接受与重复开启职责，接受随 PR #123 合并生效，实际合并状态与SHA回到Issue/PR。本轮候选固定后交另一Sol/High窄审与主调度集中审核，原全审不重开。
+
+本轮不打包、不核旧ZIP、不安装/恢复/扫描安装载荷，也不更改旧manifest或回执。现装/原完整包仍为 `982fdb997c2ac43595d8907d6c74f448d630ae16`，现装仍含旧按钮；按钮收尾随仓库合并生效，待以后明确获准的完整包带入。外来四项指纹在 `closeout/retained-before.json` 保留并排除提交。下面全部原工程、失败、原包及安装记录保持历史身份。
+
+## 原982fdb9交付结论与准入
 
 实现者完整专项、自查、未参与实现/期待编写者的独审及主调度集中准入均通过。已按07完成一个普通完整开发包及一次轻量备份换装，停止待所有者实测。发布资格仍为 `INCOMPLETE / releaseEligible=false`，外来保留资产使真实 `clean=false`；不清除它们来取得表面clean。本文件后继纯交付记录不改变实际包/安装来源。
 

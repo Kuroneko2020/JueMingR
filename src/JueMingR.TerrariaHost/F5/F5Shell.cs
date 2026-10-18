@@ -40,7 +40,7 @@ namespace JueMingR.TerrariaHost.F5
         private void RequestJourneyCommand(F5Command command, bool hotkey)
         {
             if (journey == null || hiddenAccess == null || !hiddenAccess.IsUnlocked || journeyLeavePending) return;
-            bool opens = command == F5Command.OpenJourney || command == F5Command.EnableJourney || command == F5Command.None && !journey.IsActive;
+            bool opens = command == F5Command.EnableJourney || command == F5Command.None && !journey.IsActive;
             if (opens && !journey.CanEnable) return;
             // Own the accepted gesture now, including when Notes must await a
             // save. Delayed navigation must not leak its original native key.
@@ -73,7 +73,9 @@ namespace JueMingR.TerrariaHost.F5
                 // Retain the full opening chord/release. This is an explicit UI
                 // handoff, never a blanket native CreativeUI input filter.
                 inputState.Hotkeys.SuppressHeld(); inputState.ConsumeHotkeyActions();
-                succeeded = command == F5Command.OpenJourney ? journey.Open() : command == F5Command.None ? journey.Toggle() : journey.SetEnabled(command == F5Command.EnableJourney);
+                // Repeated Enable delegates to the same owner's Open path;
+                // it must not stop/reactivate and replace the captured baseline.
+                succeeded = command == F5Command.None ? journey.Toggle() : journey.SetEnabled(command == F5Command.EnableJourney);
             };
             if (hotkey && hotkeys?.Feedback != null)
                 hotkeys.Feedback.Immediate(JourneyControls.ActionId, "旅行菜单", execute, () => journey.IsActive ? 1 : 0,

@@ -11,12 +11,12 @@ namespace Terraria
         {
             CheckLayout(false); CheckLayout(true);
             var owner = new JourneyUiOwner(); var controls = new JourneyControls(owner);
-            Require(controls.Available(F5Command.EnableJourney) && !controls.Available(F5Command.OpenJourney), "OFF can enable but cannot reopen");
+            Require(controls.Available(F5Command.EnableJourney) && !controls.Available(F5Command.DisableJourney), "OFF can enable but cannot disable");
             Require(controls.Selected(F5Command.DisableJourney).HasValue && !controls.Selected(F5Command.EnableJourney).HasValue, "OFF projects one red state line");
             owner.Active = true;
-            Require(controls.Available(F5Command.OpenJourney) && controls.Available(F5Command.DisableJourney), "active window can reopen or end its session");
+            Require(controls.Available(F5Command.EnableJourney) && controls.Available(F5Command.DisableJourney), "active Enable can reopen or Disable can end its session");
             owner.Ready = false;
-            Require(!controls.Available(F5Command.EnableJourney) && !controls.Available(F5Command.OpenJourney) && controls.Available(F5Command.DisableJourney), "enable readiness cannot trap active close");
+            Require(!controls.Available(F5Command.EnableJourney) && controls.Available(F5Command.DisableJourney), "enable readiness cannot trap active close");
             Require(controls.Selected(F5Command.EnableJourney).HasValue && !controls.Selected(F5Command.DisableJourney).HasValue, "actual activation remains the sole green projection");
             Require(owner.ToggleCalls == 0 && owner.EnableCalls == 0 && owner.OpenCalls == 0, "layout/status/hints never submit commands");
             Console.WriteLine("PASS: Journey hidden standard rows, both layout paths, stable reflow and actual-state projection.");
@@ -44,7 +44,8 @@ namespace Terraria
                 if (JourneyControls.Owns(element.Command)) buttons++;
                 Require(element.Rect.Y >= 0 && element.Rect.Bottom <= layout.ContentHeight + .01f, "hidden row remains in scrollable content");
             }
-            Require(buttons == 3 && journeyName != null && merchantName != null && journeyName.Rect.Y > merchantName.Rect.Y, "three real commands form the row next to merchant test");
+            Require(buttons == 2 && journeyName != null && merchantName != null && journeyName.Rect.Y > merchantName.Rect.Y, "two real commands form the row next to merchant test");
+            Require(Has(layout, "开启") && Has(layout, "关闭") && !Has(layout, "打开"), "both layout paths retain Enable/Disable without an Open element or hitbox");
             Require(journeyName.Description != null && journeyName.Description.Text == "单人临时使用原版旅行菜单", "name hover carries exact product description");
             var binding = Find(layout, JourneyControls.ActionId);
             Require(binding != null && binding.Kind == F5ElementKind.Hotkey && binding.Command == F5Command.None, "shared binding slot does not execute business");
@@ -74,7 +75,7 @@ namespace Terraria
         public bool CanEnable { get { return Ready; } }
         public string UnavailableReason { get { return Ready ? null : "当前暂不可用。"; } }
         public string LastFailure { get { return null; } }
-        public bool SetEnabled(bool enabled) { EnableCalls++; Active = enabled; Menu = enabled; return true; }
+        public bool SetEnabled(bool enabled) { EnableCalls++; if (enabled && Active) return Open(); Active = enabled; Menu = enabled; return true; }
         public bool Toggle() { ToggleCalls++; Active = !Active; Menu = Active; return true; }
         public bool Open() { OpenCalls++; Menu = true; return true; }
         public bool CloseMenu() { Menu = false; return true; }

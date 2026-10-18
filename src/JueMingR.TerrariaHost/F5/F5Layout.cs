@@ -33,7 +33,7 @@ namespace JueMingR.TerrariaHost.F5
         ConfigureRare, ConfigureMerchant, DeathDetails, DeathConfigure, DeathEnable, DeathDisable,
         MarkerManage, MarkerEnable, MarkerDisable, ExplorationDetails, ExplorationValue,
         FootprintConfigure, FootprintEnable, FootprintDisable, AnnouncementEnable, AnnouncementDisable,
-        AboutCopyGroup, AboutRevealHidden, EnableJourney, DisableJourney, OpenJourney,
+        AboutCopyGroup, AboutRevealHidden, EnableJourney, DisableJourney,
         CombatAutoClickOn, CombatAutoClickOff, CombatFlailOn, CombatFlailOff, CombatSwitchOn, CombatSwitchOff,
         CombatRevolverOn, CombatRevolverOff, CombatStringOn, CombatStringOff, CombatFacingOn, CombatFacingOff,
         CombatReportOn, CombatReportOff, CombatGoblinOn, CombatGoblinOff, CombatInterval,

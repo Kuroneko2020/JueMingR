@@ -27,17 +27,17 @@ namespace JueMingR.TerrariaHost.F5
         private readonly IJourneyControls owner;
         internal JourneyControls(IJourneyControls owner) { this.owner = owner; }
         internal static bool Owns(F5Command command)
-        { return command == F5Command.EnableJourney || command == F5Command.DisableJourney || command == F5Command.OpenJourney; }
+        { return command == F5Command.EnableJourney || command == F5Command.DisableJourney; }
         internal static void AddRows(List<F5Element> elements, Func<string, float, F5Size> measure, ref float y, bool visible)
         {
             if (!visible) return;
-            new F5RowLayout(elements, measure).Row(ref y, 0, 522, "旅行菜单", new[] { "开启", "关闭", "打开", "键" },
-                text => text == "开启" ? F5Command.EnableJourney : text == "关闭" ? F5Command.DisableJourney : text == "打开" ? F5Command.OpenJourney : F5Command.None, description);
+            new F5RowLayout(elements, measure).Row(ref y, 0, 522, "旅行菜单", new[] { "开启", "关闭", "键" },
+                text => text == "开启" ? F5Command.EnableJourney : text == "关闭" ? F5Command.DisableJourney : F5Command.None, description);
             var key = elements[elements.Count - 1];
             elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, ActionId);
         }
         internal bool Available(F5Command command)
-        { return Owns(command) && (command == F5Command.DisableJourney ? owner.IsActive : command == F5Command.OpenJourney ? owner.IsActive && owner.CanEnable : owner.CanEnable); }
+        { return Owns(command) && (command == F5Command.DisableJourney ? owner.IsActive : owner.CanEnable); }
         internal Color? Selected(F5Command command)
         {
             if (command == F5Command.EnableJourney && owner.IsActive) return Color.LightGreen;

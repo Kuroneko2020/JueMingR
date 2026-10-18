@@ -28,7 +28,7 @@ namespace NativeWorldTextProbe
     // supplied by the probe. No business button handlers create the copy/power.
     internal static class NativeJourneyUiChecks
     {
-        internal static void Run(object context, ProbeGraphics graphics, string output)
+        internal static void Run(object context, ProbeGraphics graphics, string output, bool reopenOnly = false)
         {
             var h = new Frames(context, graphics);
             object shell = Get(context, "Shell"), state = Get(shell, "State"), journey = Get(shell, "journey"), display = Get(context, "ShortFeedback");
@@ -45,7 +45,7 @@ namespace NativeWorldTextProbe
             h.Ui();
             h.HoverShell("EnableJourney");
             graphics.Image(Path.Combine(output, "journey-f5-row.png"), () => Call(shell, "DrawLayer"), Main.UIScaleMatrix);
-            RunInputChecks(context, graphics, output, h, shell, state, journey, display, registry, bindings);
+            RunInputChecks(context, graphics, output, h, shell, state, journey, display, registry, bindings, reopenOnly);
         }
 
         internal static void PrepareNativeMenu(ProbeGraphics graphics)
@@ -96,7 +96,7 @@ namespace NativeWorldTextProbe
         }
 
         private static void RunInputChecks(object context, ProbeGraphics graphics, string output, Frames h, object shell, object state,
-            object journey, object display, HotkeyRegistry registry, HotkeyBindings bindings)
+            object journey, object display, HotkeyRegistry registry, HotkeyBindings bindings, bool reopenOnly)
         {
             var failure = new Harmony("JueMingR.Tests.JourneyUi.OpenFailure");
             var toggle = typeof(Player).GetMethod("ToggleCreativeMenu");
@@ -120,6 +120,8 @@ namespace NativeWorldTextProbe
 
             object nativeState = Get(Main.CreativeMenu, "_uiState");
             var categories = (IDictionary)Get(Get(nativeState, "_mainCategory"), "Buttons");
+            if (!reopenOnly)
+            {
             h.ClickNative((UIElement)categories[1]);
             var infinite = (UIElement)Get(nativeState, "_infiniteItemsWindow");
             UISearchBar search = Walk(infinite).OfType<UISearchBar>().Single();
@@ -159,36 +161,47 @@ namespace NativeWorldTextProbe
             Require(Main.mouseItem.IsAir && Main.LocalPlayer.inventory[10].type == ItemID.DirtBlock && Main.LocalPlayer.inventory[10].stack > 0,
                 "original inventory slot consumer transfers the real copied stack into the backpack");
             CopySourceChecks(context, h, point);
+            }
 
             h.ClickNative((UIElement)categories[3]);
-            DetachedCatalogBoundary(h, journey, nativeState, infinite, categories);
+            if (!reopenOnly) DetachedCatalogBoundary(h, journey, nativeState, (UIElement)Get(nativeState, "_infiniteItemsWindow"), categories);
             var strip = (UIElement)Get(nativeState, "_timePowersStrip");
             UIElement freezeButton = ((IEnumerable)Get(strip, "_buttonsBySorting")).Cast<UIElement>().First();
             var freeze = CreativePowerManager.Instance.GetPower<CreativePowers.FreezeTime>();
             bool before = freeze.Enabled;
-            FocusBoundary(context, h, freezeButton, freeze);
+            if (!reopenOnly) FocusBoundary(context, h, freezeButton, freeze);
             h.ClickNative(freezeButton);
             Require(freeze.Enabled != before, "actual native power button sends and consumes its real creative command");
             bool chosen = freeze.Enabled;
+            object persistence = Get(journey, "Persistence");
+            Require(persistence != null, "active native session owns its captured persistence baseline");
             h.Key(Keys.F5); h.Key();
             Require((bool)Get(state, "Visible") && !(bool)Get(journey, "IsMenuOpen") && (bool)Get(journey, "IsActive") && freeze.Enabled == chosen,
                 "F5 reopens its own layer, closes native window and retains continuous powers");
             Call(state, "Navigate", 1); Call(context, "UpdateShell");
-            h.ClickShell("OpenJourney");
-            Require((bool)Get(journey, "IsMenuOpen") && freeze.Enabled == chosen && !(bool)Get(state, "Visible"), "Open only re-expands the same active session");
+            h.ClickShell("EnableJourney");
+            Require((bool)Get(journey, "IsActive") && (bool)Get(journey, "IsMenuOpen") && freeze.Enabled == chosen &&
+                ReferenceEquals(persistence, Get(journey, "Persistence")) && !(bool)Get(state, "Visible"),
+                "repeated real Enable reopens the same active session, persistence baseline and selected power before F5 yields");
+            Require(!Main.mouseLeft && !PlayerInput.Triggers.Current.MouseLeft, "reopen consumes its release before native input");
+            Require((bool)Call(journey, "SetEnabled", true) && (bool)Get(journey, "IsMenuOpen") && freeze.Enabled == chosen &&
+                ReferenceEquals(persistence, Get(journey, "Persistence")), "legal Enable while visible preserves the window and original baseline");
             for (int i = 0; i < 3; i++) h.Native(Vector2.Zero);
-            MeasureFrames(h, registry, "active-menu-open");
+            if (!reopenOnly) MeasureFrames(h, registry, "active-menu-open");
             graphics.Image(Path.Combine(output, "journey-native-menu.png"), () => Main.CreativeMenu.Draw(Main.spriteBatch), Main.UIScaleMatrix);
             Call(journey, "CloseMenu"); h.Native(Vector2.Zero);
             Require((bool)Get(journey, "IsActive") && !(bool)Get(journey, "IsMenuOpen") && (bool)Get(shell, "CanAutomaticProcessingInput") && (bool)Get(shell, "CanAutomaticTargetInput"),
                 "active session with closed native window leaves ordinary automatic gates available");
-            MeasureFrames(h, registry, "active-menu-closed");
-            Coexist(context, h, graphics, journey, categories, output);
+            if (!reopenOnly)
+            {
+                MeasureFrames(h, registry, "active-menu-closed");
+                Coexist(context, h, graphics, journey, categories, output);
+            }
             h.Key(Keys.F5); h.Key(); Call(state, "Navigate", 1); Call(context, "UpdateShell");
             h.ClickShell("DisableJourney");
             Require(!(bool)Get(journey, "IsActive") && freeze.Enabled == before, "real F5 close restores the original continuous power");
             Call(shell, "CloseAndSubmitPosition"); h.Native(Vector2.Zero);
-            MeasureFrames(h, registry, "off-after-close");
+            if (!reopenOnly) MeasureFrames(h, registry, "off-after-close");
             h.Key(Keys.F5); h.Key(); Call(state, "Navigate", 1); Call(context, "UpdateShell");
             SetBindingThroughPopup(context, h, bindings);
             Call(shell, "CloseAndSubmitPosition"); Call(display, "Clear");
@@ -196,7 +209,8 @@ namespace NativeWorldTextProbe
             Require((bool)Get(journey, "IsActive") && NativeShortFeedbackChecks.Has(display, "旅行菜单 已开启"), "saved physical binding reaches full owner and existing actual-state feedback exactly once");
             h.Key(); h.Key(Keys.LeftControl, Keys.F13); h.Key();
             Require(!(bool)Get(journey, "IsActive") && NativeShortFeedbackChecks.Has(display, "旅行菜单 已关闭"), "same binding closes active native owner and reports the confirmed reverse result");
-            Console.WriteLine("PASS Journey actual Shell reveal/standard commands/binding recorder, native search/right-left copy/backpack, native power button, retained power, menu reopen and real hotkey feedback.");
+            Console.WriteLine(reopenOnly ? "PASS Journey narrow actual Shell Enable/reopen/Disable, same Persistence/selected native power, input tail and original binding toggle." :
+                "PASS Journey actual Shell reveal/standard commands/binding recorder, native search/right-left copy/backpack, native power button, retained power, menu reopen and real hotkey feedback.");
         }
 
 
