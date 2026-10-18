@@ -2,7 +2,32 @@
 
 任务为 [#124](https://github.com/Kuroneko2020/JueMingR/issues/124)，Draft PR 为 [#125](https://github.com/Kuroneko2020/JueMingR/pull/125)，分支 `codex/view-distance-unlock`，接受基底 `8bba8ffd2d24591e9efb1258ae0eac1e1d7d60df`。本文件所在提交是源码候选；正式检测、独审、准入和普通包身份分别绑定在 `.local/view-unlock` 的原件，不能用本文件代替这些结果。尚未合并，保留 `INCOMPLETE / releaseEligible=false`。
 
-## 产品与实现
+## CACHE-RANGE续办（本提交）
+
+授权为`JMR-VIEW-CACHE-RANGE-20261018-v1`，freeze起点3ea1ba69，同#124/#125继续。基础目标.3—10、每Mapping±.02、双端OFF仅向[1,2]内回，原版选项只显示夹取、真正拖动才写回；实际低端38/128=.296875。现有512/1024观察与未知区、原武器权限、50格最小玩家半径保持。新输入事故只记录，未定位/未定责/未修复、重启后暂不复现且调查暂停。
+
+当前产品有条件使用k=z的tile/tile2/wall三层，保留正确Direct反控：Reach cap2048、HiDef保守4096；不改所有者profile或画质。首选七层1:1扩展RT在当前Reach50/30均超轴，本轮没有实施该扩展组，静态模型不称GPU通过。原生普通七层足够时仍Native；不足时Direct。语义扩展、渲染不足、实际route分别记录。
+
+开发原件统一在`.local/view-cache-range-20261018`；以下是各自真实执行身份，最终正常源码/输入/Host/Probe身份由新的candidate记录另锁，独审与主调度准入仍待完成，不能以开发PASS代替准入。
+
+| 窄责任 | 原件及实际结论 |
+|---|---|
+| 同环境A/B/缓存 | baseline-01旧3ea50% Draw均值15.915ms；range-direct-01新direct50%15.91、30%31.965ms。full-range-01同进程交错direct/auto各两段30Draw：50%静止14.65/14.60→11.82/11.61ms，30%32.91/32.21→25.25/24.77ms；50%每段约121.4MB→36.3MB，30%199.1MB→46.7MB累计分配。原始CSV含全部慢帧，缓存并非每帧都更快，不称FPS。 |
+| 移动/调整/Update | full-range-01保留移动与单向.02调整全CSV/route/alloc/GC/private；30%移动主要Direct，均值与direct约33ms同量级，不外推静止收益。1/2普通OFF/ON分别测量。HostView.Update六态×100000次零分配、约12.46—12.72ms，仅owner回调，不是完整游戏Update。 |
+| 点样本/内容/模式 | full-range-01的.5/.3/.32三层普通、1world像素移动和反重力冻结叶：alpha一致；.3仅个别wall RGB相差1码，其余精确，不使用全图差异率掩盖细线。真实放置像素改变及早renderNow快照一次消费，fullmap/menu/noncache清理；White/Retro/Trippy实际.296875、legacy516×340与真实GetColor/Draw。 |
+| 水/scene/资源 | full-range-01真实.3 Water Apply四态、已知双水池、冻结shader叶；quality0淡出physicalmask0/原前景1，quality1/tail mask1/前景0；queued3→2一次。1280↔1920设备reset、实际Invert/UI边界与资源计数。活跃水30%Draw成本含全部max与进程内存，不用旧e213数值重签。 |
+| 原生容量真反例/足够反控 | forced-old-01加载旧3ea Host84D64D…，实际2560×1172/.75/raw1，原2304宽RT导致两端ROI全黑；test-only强制原direct相同相机/图格后恢复两端像素。native-route-06新Host在合法2560×1080：.75不足走Direct；.9足够保Native；60world移动与.9→.85同Draw，6个实际原生层全部覆盖最终相机。 |
+| Native/Direct水路由 | native-route-06中b=P/0换域12次、双重力，双buffer身份/冻结波纹/精确world-origin不变；Native真实液体层兼mask、quality0也刷新。两路四态实际Apply及独立已知水池shader采样14277/15114、11032/11702像素变化。有限活跃水Native z1.203125均值2.75ms/max5.69，Direct z1均值6.28/max7.35，倍率不同，仅分别报告责任成本、不算收益。 |
+| 失败与后续真Draw | full-range-01实际preResize queued2/cap1 IO/OOM+次级Dispose、外部lease/shared pending；新RT第二申请失败；owned copy真实End IO/OOM。native-route-06原版吞RenderWater IO被保留、Native scope借值/共享batch/XNA归还；optional batch OOM同Draw direct后20Draw不重试。后续3/20必须fpsCount实际递增。 |
+| 关联 | range-consumers-01实际原版量化/MouseWorld/Shoot/CPU marker、512/513查询正反、section几何；最终正常专项另锁。CPU marker不是GPU像素，section几何不是新TCP；原3ea真实TCP/decoder已收区Draw按源相等与实际影响明示复用。 |
+
+Native scope和新copy异常追加一处原版责任：Main.Draw无finally，DoDraw首异常后其guard不归还会短路后续Draw。仅本轮owned scope精确首异常归还进入guard/计时间隔，未知异常仍原对象传播；不处理其它原版异常。copy-01..04、native-route-02的早期后续仅调用记录，不冒称已真实执行。copy-05/full-range-01与native-route-06新增fpsCount增长反控。native-route-01请求1440受桌面窗口限高反复reset；03漏FilterManager.Update及04冻结checker重复反翻转是测试前提错误，原件保留；固定1080、真实manager步骤和正确unflipped shader输入后通过，未改产品采样期待。
+
+prototype-01..12保留第二次linear过滤/相位/反重力等失败及修复；content早期真实renderNow失效反例保留。未知异常不吞，可选cache失败保持倍率/Lighting/map且记住资格，仅必要direct资源失败沿既有一次反馈安全状态。既有R1—R5/旅途/完整TCP未受影响部分按blob/tree与输入证明复用，旧96锁和交付身份不改。
+
+冻结记录使用新路径`.local/view-cache-range-20261018/candidate-review.json`，后续审批必须独立admitted副本并由普通包引用实际路径/hash。当前未执行新普通包/安装；项目仍INCOMPLETE/releaseEligible=false，Draft/open，不合并、不关闭、不基础移动。
+
+## 3ea及此前交付的历史记录
 
 - 地图页公开标准行“视距解锁”，提示逐字“可以调整到更大的视野范围”；没有新快捷键、滑条或额外按钮。原版重绑后的 ViewZoomIn/Out 是唯一缩放来源。
 - ON 不跳；OFF 保留超范围目标与外围绘制，只允许逐步回普通。原版目标仍是唯一目标，实际相机矩阵决定绘制和关联。50% 是当前基础下限，仍服从原版强制倍率和观察容量；没有任意分辨率、设备或无限视野承诺。

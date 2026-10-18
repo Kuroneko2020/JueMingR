@@ -17,7 +17,7 @@ namespace JueMingR.TerrariaHost.View
     // In particular disabling permission must leave a selected wide view intact.
     internal sealed class HostView : IRuntimeFeature, IViewControls
     {
-        internal const float MinimumZoom = .5f;
+        internal const float MinimumZoom = ViewZoom.Minimum;
         private readonly SingleFeatureRuntime runtime;
         private readonly HostInputState input;
         private readonly PreferenceDocument<bool> preference;
@@ -27,6 +27,8 @@ namespace JueMingR.TerrariaHost.View
         private readonly ViewSectionRequests sections;
         internal readonly ViewSceneCapture Scene = new ViewSceneCapture();
         internal readonly ViewWaterResources Water = new ViewWaterResources();
+        internal readonly ViewTileCache Cache = new ViewTileCache();
+        internal readonly ViewNativeCoverage Native = new ViewNativeCoverage();
         private long consumedMapping = -1;
         internal Exception SetupError { get; private set; }
         internal string Failure { get; private set; }
@@ -44,20 +46,18 @@ namespace JueMingR.TerrariaHost.View
         public bool UnlockEnabled { get { return preference.Snapshot.Value; } }
         public bool SetUnlockEnabled(bool value) { return ControlsEnabled && preference.Set(value); }
         internal bool HasWorld { get { return ready && !failed && !stopping && runtime.IsSessionActive && !Main.gameMenu && !Main.dedServ && Main.netMode != 2; } }
-        internal bool NeedsExpandedRendering { get { return HasWorld && Main.GameViewMatrix.RenderZoom.X < .9999f; } }
-        internal bool RetainsTarget { get { return HasWorld && Main.GameZoomTarget < 1f; } }
-        internal bool RequiresDirectDraw { get { return HasWorld && Main.GameZoomTarget * Main.ForcedMinimumZoom < .9999f; } }
+        internal bool HasExtendedView { get { return HasWorld && ViewZoom.IsExpanded(Main.GameViewMatrix.RenderZoom.X,Main.ForcedMinimumZoom); } }
+        // Section visibility follows the final semantic view. Renderer repair
+        // additionally accounts for the native group's real capped capacity;
+        // neither fact is the permission switch or a temporary cache leaf.
+        internal bool NeedsExpandedRendering { get { return HasWorld && !Cache.Rendering && !Native.Rendering && ViewZoom.RequiresRenderer(Main.GameViewMatrix.RenderZoom.X,Main.Camera.ScaledSize,ViewZoom.NativeCapacity(Main.screenWidth,Main.screenHeight),Lighting.NotRetro); } }
+        internal bool RetainsTarget { get { return HasWorld && (Main.GameZoomTarget < 1f || Main.GameZoomTarget > 2f); } }
+        internal ViewRenderPlan Plan { get; set; }
         internal float MinimumTarget
         {
             get
             {
-                // Keep the shared 512-tile discovery contract after its 92px
-                // halo. Native render zoom rounds to 1/128, so reserve one step
-                // before a large/widescreen viewport can cross that boundary.
-                float forced = Main.ForcedMinimumZoom;
-                if (forced <= 0 || float.IsNaN(forced) || float.IsInfinity(forced)) forced = 1f;
-                float geometry = Math.Max(Main.screenWidth, Main.screenHeight) / (496f * 16f) + 1f / 128f;
-                return Math.Min(1f, Math.Max(MinimumZoom, geometry / forced));
+                return ViewZoom.MinimumTarget(Main.screenWidth, Main.screenHeight, Main.ForcedMinimumZoom);
             }
         }
         internal bool CanZoom
@@ -79,18 +79,16 @@ namespace JueMingR.TerrariaHost.View
             if (direction == 0) return;
             float current = Main.GameZoomTarget;
             if (float.IsNaN(current) || float.IsInfinity(current) || current <= 0f) return;
-            // OFF-Retained only moves toward normal, one native .02 step at a
-            // time. No input and both keys held leave the exact target alone.
-            if (!UnlockEnabled && current < 1f)
-            { if (direction > 0) { float next = Math.Min(1f, current + .02f); Main.GameZoomTarget = next > .9999f ? 1f : next; } return; }
-            Main.GameZoomTarget = Math.Max(UnlockEnabled ? MinimumTarget : 1f, Math.Min(2f, current + direction * .02f));
+            // Both retained ends move inward one original .02 mapping step.
+            // Permission never resets the target or supplies a new key source.
+            Main.GameZoomTarget = ViewZoom.Step(current, direction, UnlockEnabled, MinimumTarget);
         }
         public void OnSessionStarted() { consumedMapping = -1; sections.Clear(); }
-        public void OnSessionEnded() { consumedMapping = -1; sections.Clear(); Scene.Dispose(); Water.Dispose(); }
+        public void OnSessionEnded() { consumedMapping = -1; sections.Clear(); Native.Dispose(); Cache.Dispose(); Scene.Dispose(); Water.Dispose(); }
         public void Update(ulong tick)
         {
             if (!preference.Snapshot.IsLoaded && startup.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad();
-            sections.Update(tick, NeedsExpandedRendering);
+            sections.Update(tick, HasExtendedView);
         }
         public void FailClosed() { failed = true; }
         internal void RenderingFailed()
@@ -99,7 +97,7 @@ namespace JueMingR.TerrariaHost.View
             // A resource failure is an exceptional recovery, distinct from a
             // normal OFF click. Stop further wider preparation for this owner;
             // intact native lighting/resources can draw the ordinary view.
-            failed = true; sections.Clear(); Scene.Dispose(); Water.Dispose(); Main.GameZoomTarget = Math.Max(1f, Main.GameZoomTarget); Main.renderNow = true;
+            failed = true; sections.Clear(); Native.Dispose(); Cache.Dispose(); Scene.Dispose(); Water.Dispose(); Main.GameZoomTarget = Math.Max(1f, Main.GameZoomTarget); Main.renderNow = true;
             Failure = "视距绘制暂不可用，已恢复普通视野；本次已停用，请重启游戏后再试。";
         }
         public void TakeFeedback(Action<string> display)
@@ -124,7 +122,7 @@ namespace JueMingR.TerrariaHost.View
         {
             if (stopping) return; stopping = true;
             AppDomain.CurrentDomain.ProcessExit -= OnExit;
-            ViewHooks.Uninstall(this); Scene.Dispose(); Water.Dispose(); preference.Stop(750);
+            ViewHooks.Uninstall(this); Native.Dispose(); Cache.Dispose(); Scene.Dispose(); Water.Dispose(); preference.Stop(750);
         }
     }
 }

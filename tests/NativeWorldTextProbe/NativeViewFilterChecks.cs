@@ -17,7 +17,7 @@ namespace NativeWorldTextProbe
         private static Filter witness;
         private static int applied;
         private static void Apply(Filter __instance) { if(ReferenceEquals(__instance,witness))applied++; }
-        internal static void Run(Main game,object view,Action draw,Func<RenderTarget2D> final,Action<int,int> resize,string output)
+        internal static void Run(Main game,object view,Action draw,Func<RenderTarget2D> final,Action<int,int> resize,string output,bool cacheCheck=false)
         {
             var audit=new Harmony("JueMingR.Tests.View.Filters");var filters=Filters.Scene;
             witness=filters["testInvert"];Require(witness!=null,"original initialized invert scene filter");
@@ -45,9 +45,10 @@ namespace NativeWorldTextProbe
                 }
                 foreach(var size in new[]{new Point(1280,720),new Point(1920,1080)})
                 {
-                    int before=(int)Get(Get(view,"Scene"),"Generation");resize(size.X,size.Y);for(int i=0;i<6;i++)draw();
+                    int before=(int)Get(Get(view,"Scene"),"Generation"),cacheBefore=cacheCheck?(int)Get(Get(view,"Cache"),"Generation"):0;resize(size.X,size.Y);for(int i=0;i<6;i++)draw();
                     Require((int)Get(Get(view,"Scene"),"Generation")==before+1,"native device/size change replaces scene buffers once");
                     Console.WriteLine("VIEW FILTER resize="+Main.screenWidth+"x"+Main.screenHeight+" generation="+Get(Get(view,"Scene"),"Generation"));
+                    if(cacheCheck){Require((int)Get(Get(view,"Cache"),"Generation")==cacheBefore+1,"actual native resize/reset invalidates tile cache and admits one complete replacement group");Console.WriteLine("CACHE RESIZE physical="+Main.screenWidth+"x"+Main.screenHeight+" generation="+cacheBefore+"->"+Get(Get(view,"Cache"),"Generation"));}
                 }
                 Console.WriteLine("PASS VIEW original active filter ordinary/wide/Retained Apply and physical-edge pixels, UI exclusion, stable reuse and actual native device resize.");
             }

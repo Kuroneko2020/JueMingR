@@ -22,6 +22,8 @@ namespace JueMingR.TerrariaHost.View
         private static HostView owner;
         internal static bool Expanded { get { return owner != null && owner.NeedsExpandedRendering; } }
         [ThreadStatic] private static ViewBackgroundScope background;
+        [ThreadStatic] private static Exception ownedDrawFailure;
+        private static readonly FieldInfo drawGuard=AccessTools.Field(typeof(Main),"_isDrawingOrUpdating");
         private static readonly List<MethodBase> targets = new List<MethodBase>();
         internal static void Install(HostView value)
         {
@@ -30,7 +32,19 @@ namespace JueMingR.TerrariaHost.View
             try
             {
                 Apply(harmony, AccessTools.Method(typeof(Main), "UpdateViewZoomKeys"), prefix: "ZoomKeys");
+                Apply(harmony, AccessTools.Method(typeof(IngameOptions), "Draw"), transpiler: "Display", patchType: typeof(ViewOptions));
+                foreach(string method in new[]{"DoDraw_Tiles_Solid","DoDraw_Tiles_NonSolid","DoDraw_WallsAndBlacks"})
+                    Apply(harmony,AccessTools.Method(typeof(Main),method),transpiler:"TileComposite");
+                foreach(string method in new[]{"DrawTiles","DrawWalls","DrawBlack"})
+                    Apply(harmony,AccessTools.Method(typeof(Main),method),transpiler:"TileLeaf");
+                Apply(harmony,AccessTools.Method(typeof(TileDrawingBase),"Begin"),transpiler:"TileLeafSampler");
+                Apply(harmony,AccessTools.Method(typeof(TileBatch),"GetNewSpriteBufferSlice"),finalizer:"CacheLeafFailure");
+                Apply(harmony,AccessTools.Method(typeof(TileBatch),"End"),finalizer:"CacheLeafFailure");
+                Apply(harmony,AccessTools.Method(typeof(Main),"RenderToTargets"),prefix:"BeginNativeCoverage",finalizer:"EndNativeCoverage");
+                foreach(string leaf in new[]{"DrawTiles","DrawWalls","DrawBlack","DrawWaters"})Apply(harmony,AccessTools.Method(typeof(Main),leaf),finalizer:"CacheLeafFailure");
+                Apply(harmony,AccessTools.Method(typeof(Main),"ApplyPendingBackgroundTargetSwap"),prefix:"BackgroundSwap");
                 Apply(harmony, AccessTools.Method(typeof(Main), "DoDraw", new[] { typeof(GameTime) }), transpiler: "WorldDraw", finalizer: "EndWorldDraw");
+                Apply(harmony, AccessTools.Method(typeof(Main), "Draw", new[] { typeof(GameTime) }),prefix:"BeginOriginalDraw",finalizer:"EndOriginalDraw");
                 Apply(harmony, AccessTools.Method(typeof(Main), "DrawNPCs", new[] { typeof(bool) }), transpiler: "Expand", patchType: typeof(ViewNpcCulling));
                 Apply(harmony, AccessTools.Method(typeof(Main), "GetAreaToLight"), postfix: "LightArea");
                 Apply(harmony, AccessTools.Method(typeof(Main), "DrawBackground"), prefix: "BeginBackground", transpiler: "BackgroundLayer", finalizer: "EndBackground");
@@ -44,6 +58,8 @@ namespace JueMingR.TerrariaHost.View
                 Apply(harmony, AccessTools.Method(typeof(Main), "DrawWaters"), prefix: "PrepareLiquids");
                 Apply(harmony, AccessTools.Method(typeof(WaterShaderData), "PreDraw"), prefix: "WaterPreDraw");
                 Apply(harmony, AccessTools.Method(typeof(WaterShaderData), "ValidateRenderTargets"), prefix: "WaterValidate");
+                Apply(harmony, AccessTools.Method(typeof(WaterShaderData), "InitRenderTargets"), prefix: "WaterNativeTargets");
+                Apply(harmony, AccessTools.Method(typeof(WaterShaderData), "ReleaseRenderTargets"), prefix: "WaterNativeTargets");
                 Apply(harmony, AccessTools.Method(typeof(WaterShaderData), "Apply"), prefix: "WaterApply", finalizer: "WaterApplied");
                 Apply(harmony, AccessTools.Method(typeof(WaterShaderData), "QueueRipple", new[]{typeof(Vector2),typeof(Color),typeof(Vector2),typeof(RippleShape),typeof(float)}), transpiler: "WaterQueue");
                 Apply(harmony, AccessTools.Method(typeof(Main), "oldDrawWater"), prefix: "WaterBounds", transpiler: "OldWaterArea");
@@ -90,8 +106,12 @@ namespace JueMingR.TerrariaHost.View
             var unscaled = AccessTools.PropertyGetter(typeof(Camera), "UnscaledSize");
             var canCapture = AccessTools.Method(typeof(Terraria.Graphics.Effects.FilterManager), "CanCapture");
             var directField = AccessTools.Field(typeof(Main), "drawToScreen");
+            var worldLayers=AccessTools.Method(typeof(Main),"DoDraw_WallsTilesNPCs");int cachedErrors=0,displays=0;
+            var display=AccessTools.Method(typeof(Main),"UpdateDisplaySettings");
             for (int i = 0; i < code.Count; i++)
             {
+                if(code[i].Calls(worldLayers)){code.Insert(i+1,new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(ViewHooks),"CacheDrawComplete")));cachedErrors++;}
+                if(code[i].Calls(display)){code.Insert(i+1,new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(ViewHooks),"DisplayReady")));displays++;}
                 if (i >= 3 && code[i].Calls(clamp) && code[i - 3].LoadsField(zoom) && code[i - 2].opcode == OpCodes.Ldc_R4 && Equals(code[i - 2].operand, 1f) && code[i - 1].opcode == OpCodes.Ldc_R4 && Equals(code[i - 1].operand, 2f))
                 { code[i].operand = AccessTools.Method(typeof(ViewHooks), "ClampTarget"); clamps++; }
                 if (code[i].Calls(update)) { code[i].operand = AccessTools.Method(typeof(ViewHooks), "DirectDraw"); direct++; }
@@ -108,33 +128,108 @@ namespace JueMingR.TerrariaHost.View
                     if (sizeReads == 2) { code[i].opcode = OpCodes.Call; code[i].operand = AccessTools.Method(typeof(ViewHooks), "ShimmerFill"); shimmer++; }
                 }
             }
-            if (clamps != 1 || direct != 1 || shimmer != 1 || captures != 1 || captureGuard != 1) throw new InvalidOperationException(".8 view draw shape mismatch: clamp=" + clamps + ", direct=" + direct + ", shimmer=" + shimmer + ", capture=" + captures + "/" + captureGuard);
+            if (clamps != 1 || direct != 1 || shimmer != 1 || captures != 1 || captureGuard != 1 || cachedErrors!=1||displays!=1) throw new InvalidOperationException(".8 view draw shape mismatch: clamp=" + clamps + ", direct=" + direct + ", shimmer=" + shimmer + ", capture=" + captures + "/" + captureGuard+",cache="+cachedErrors+",display="+displays);
             return code;
         }
         private static float ClampTarget(float value, float minimum, float maximum)
-        { return MathHelper.Clamp(value, owner != null && owner.HasWorld && (owner.UnlockEnabled || owner.RetainsTarget) ? owner.MinimumTarget : minimum, maximum); }
+        { return owner != null && owner.HasWorld ? ViewZoom.Clamp(value, owner.UnlockEnabled, owner.MinimumTarget) : MathHelper.Clamp(value, minimum, maximum); }
+        private static IEnumerable<CodeInstruction> TileLeaf(IEnumerable<CodeInstruction> source)
+        {
+            var identity=AccessTools.PropertyGetter(typeof(Matrix),"Identity");var raster=AccessTools.Field(typeof(RasterizerState),"CullCounterClockwise");int count=0,rasters=0;
+            foreach(var item in source){if(item.Calls(identity)){item.operand=AccessTools.Method(typeof(ViewHooks),"LeafMatrix");count++;}if(item.LoadsField(raster)){item.opcode=OpCodes.Call;item.operand=AccessTools.Method(typeof(ViewHooks),"LeafRaster");rasters++;}yield return item;}
+            if(count!=1||rasters!=1)throw new InvalidOperationException(".8 cached leaf Identity/raster shape="+count+"/"+rasters);
+        }
+        private static Matrix LeafMatrix(){return owner!=null&&owner.Cache.Rendering?owner.Cache.LeafMatrix:Matrix.Identity;}
+        private static RasterizerState LeafRaster(){return owner!=null&&owner.Cache.Rendering&&owner.Cache.Inverted?RasterizerState.CullClockwise:RasterizerState.CullCounterClockwise;}
+        private static IEnumerable<CodeInstruction> TileLeafSampler(IEnumerable<CodeInstruction> source)
+        {
+            var sampler=AccessTools.PropertyGetter(typeof(Main),"DefaultSamplerState");int count=0;
+            foreach(var item in source){if(item.Calls(sampler)){item.operand=AccessTools.Method(typeof(ViewHooks),"LeafSampler");count++;}yield return item;}
+            if(count!=1)throw new InvalidOperationException(".8 tile leaf sampler shape="+count);
+        }
+        private static SamplerState LeafSampler(){return owner!=null&&owner.Cache.Rendering?SamplerState.LinearClamp:Main.DefaultSamplerState;}
+        private static IEnumerable<CodeInstruction> TileComposite(IEnumerable<CodeInstruction> source)
+        {
+            var direct=AccessTools.Field(typeof(Main),"drawToScreen");
+            var draw=AccessTools.Method(typeof(SpriteBatch),"Draw",new[]{typeof(Texture2D),typeof(Vector2),typeof(Color)});int choices=0,draws=0;
+            foreach(var item in source)
+            {
+                if(item.LoadsField(direct)){item.opcode=OpCodes.Call;item.operand=AccessTools.Method(typeof(ViewHooks),"TileDirect");choices++;}
+                if(item.Calls(draw)){item.opcode=OpCodes.Call;item.operand=AccessTools.Method(typeof(ViewHooks),"DrawTileCache");draws++;}
+                yield return item;
+            }
+            if(choices!=1||draws!=1)throw new InvalidOperationException(".8 tile composite shape="+choices+"/"+draws);
+        }
+        private static bool TileDirect(){return Main.drawToScreen&&!(owner!=null&&owner.Cache.Attached);}
+        private static void DrawTileCache(SpriteBatch batch,Texture2D texture,Vector2 position,Color color)
+        {try{if(owner!=null)owner.Cache.Composite(batch,texture,position,color);else batch.Draw(texture,position,color);}catch(Exception error){owner?.Cache.NoteCompositeFailure(error);throw;}}
+        private static Exception CacheLeafFailure(Exception __exception){owner?.Cache.NoteLeafFailure(__exception);owner?.Native.NoteFailure(__exception);return __exception;}
+        private static bool BeginNativeCoverage(out bool __state)
+        {
+            __state=false;
+            if(owner==null||owner.Plan==null||!owner.Plan.Expanded||Main.drawToScreen||!Lighting.NotRetro)return true;
+            if(owner.Native.Begin(owner.Plan)){__state=true;return true;}
+            // No native liquid/tile leaf has run yet. An optional private-batch
+            // admission failure can use correct Direct in this same Draw.
+            Main.drawToScreen=true;owner.Plan=owner.Plan.WithRoute(ViewRenderRoute.Direct);return false;
+        }
+        private static Exception EndNativeCoverage(Exception __exception,bool __state)
+        {if(!__state)return __exception;var error=owner.Native.End(__exception,owner.Plan);if(error!=null)ownedDrawFailure=error;return error;}
+        // The partial cache owns only tile/tile2/wall. RenderWallsAndBlacks
+        // normally consumes a background swap; preserve that separate native
+        // owner while borrowing its tile leaf in our temporary logical domain.
+        private static bool BackgroundSwap(){return owner==null||!owner.Cache.Rendering;}
+        private static void CacheDrawComplete(){try{owner?.Cache.ThrowCompositeFailure(true);}catch(Exception error){ownedDrawFailure=error;throw;}}
+        private static void BeginOriginalDraw(Main __instance,out bool __state){__state=(bool)drawGuard.GetValue(__instance);ownedDrawFailure=null;}
+        private static Exception EndOriginalDraw(Main __instance,Exception __exception,bool __state)
+        {
+            // Locked Main.Draw has no finally around DoDraw. Only an exact
+            // first exception observed in these new owned scopes closes its
+            // entered Draw guard/timing interval; unrelated native exceptions
+            // retain their original behavior and are never swallowed here.
+            if(__exception!=null&&ReferenceEquals(__exception,ownedDrawFailure))
+            {drawGuard.SetValue(__instance,__state);try{Terraria.Testing.DetailedFPS.End();}catch{}}
+            ownedDrawFailure=null;return __exception;
+        }
         private static bool DirectDraw()
         {
-            // This native choice occurs before this frame publishes its zoom.
-            // Target below 1 predicts wider coverage without touching the real
-            // screen dimensions, UI scale, or any server simulation rectangle.
-            return Lighting.UpdateEveryFrame || owner != null && owner.RequiresDirectDraw;
+            // This native choice precedes this Draw's zoom publication. The
+            // narrow plan predicts that publication without changing the UI,
+            // physical dimensions, original target or simulation rectangle.
+            if (owner != null && owner.HasWorld){owner.Water.BeginFrame();owner.Cache.NativeRefreshRequested=Main.renderNow;if(owner.Plan==null||!owner.Plan.MatchesRequest(Main.GameZoomTarget,owner.UnlockEnabled))owner.Plan=new ViewRenderPlan(Main.GameZoomTarget,owner.UnlockEnabled);else owner.Plan=owner.Plan.WithRoute(owner.Plan.Wide?ViewRenderRoute.Direct:ViewRenderRoute.Native);if(owner.Plan.Expanded&&owner.Native.Rejected(owner.Plan))owner.Plan=owner.Plan.WithRoute(ViewRenderRoute.Direct);if(owner.Plan.Route==ViewRenderRoute.Direct&&Lighting.NotRetro)owner.Water.AdoptNative();}
+            else if (owner != null) {owner.Plan = null;owner.Cache.NativeRefreshRequested=false;}
+            return Lighting.UpdateEveryFrame || owner != null && owner.Plan != null && owner.Plan.Route!=ViewRenderRoute.Native;
+        }
+        private static void DisplayReady()
+        {
+            if(owner==null||!owner.HasWorld)return;
+            if(owner.Plan==null||!owner.Plan.MatchesRequest(Main.GameZoomTarget,owner.UnlockEnabled))owner.Plan=new ViewRenderPlan(Main.GameZoomTarget,owner.UnlockEnabled);
+            if(owner.Plan.Wide||owner.Plan.Expanded&&owner.Native.Rejected(owner.Plan))Main.drawToScreen=true;
+            // The early native choice may already have released its group.
+            // Keep Direct for this one changed-display Draw, never sample an
+            // absent group; the next Draw re-evaluates the native route.
+            if(Main.drawToScreen)owner.Plan=owner.Plan.WithRoute(ViewRenderRoute.Direct);
         }
         private static bool PrepareSceneCapture(Terraria.Graphics.Effects.FilterManager filters)
         {
             bool active = filters.CanCapture();
             if (owner == null) return active;
-            if (Expanded && Main.drawToScreen && !Main.mapFullscreen && !Main.onlyDrawFancyUI && Lighting.NotRetro && (active || Main.ForegroundSunlightEffects))
+            owner.Cache.Prepare(owner.Plan);
+            if(owner.Plan!=null)owner.Plan=owner.Plan.WithRoute(Main.drawToScreen?(owner.Cache.Attached?ViewRenderRoute.TileCache:ViewRenderRoute.Direct):ViewRenderRoute.Native);
+            if (owner.Plan!=null && owner.Plan.Route!=ViewRenderRoute.Native && !Main.mapFullscreen && !Main.onlyDrawFancyUI && Lighting.NotRetro)
             {
-                try { owner.Scene.Attach(); owner.Water.Prepare(); }
+                try { if(active || Main.ForegroundSunlightEffects)owner.Scene.Attach();else owner.Scene.Dispose(); owner.Water.Prepare(); }
                 catch (OutOfMemoryException error) { throw new ViewRenderFailure(error); }
             }
-            else { owner.Scene.Dispose(); owner.Water.Dispose(); }
+            else { owner.Scene.Dispose();if(owner.Plan!=null&&owner.Plan.Expanded&&!Main.mapFullscreen&&!Main.onlyDrawFancyUI&&Lighting.NotRetro)owner.Water.PrepareNative();else owner.Water.Dispose(); }
             return active;
         }
         private static bool SceneDirectDraw() { return Main.drawToScreen && !(owner != null && owner.Scene.Attached); }
         private static Exception EndWorldDraw(Exception __exception)
         {
+            if(owner!=null)owner.Cache.NativeRefreshRequested=false;
+            if(owner!=null){bool copied=owner.Cache.HasCompositeFailure;__exception=owner.Cache.TakeCompositeFailure(__exception);if(copied)ownedDrawFailure=__exception;}
+            owner?.Cache.Detach();
             owner?.Water.Detach();
             owner?.Scene.Detach(__exception != null);
             if (!(__exception is ViewRenderFailure)) return __exception;
@@ -183,7 +278,7 @@ namespace JueMingR.TerrariaHost.View
         private static void BeginBackground(MethodBase __originalMethod, out ViewBackgroundScope __state)
         {
             __state = null;
-            if (owner == null || !owner.NeedsExpandedRendering || !Main.drawToScreen) return;
+            if (owner == null || owner.Cache.Rendering || !owner.NeedsExpandedRendering || !Main.drawToScreen) return;
             if (__originalMethod.DeclaringType == typeof(ScreenObstruction) && ScreenObstruction.screenObstruction == 0f ||
                 __originalMethod.DeclaringType == typeof(ScreenDarkness) && ScreenDarkness.screenObstruction == 0f ||
                 __originalMethod.DeclaringType == typeof(MoonlordDeathDrama) && (float)moonWhitening.GetValue(null) == 0f) return;
@@ -191,6 +286,7 @@ namespace JueMingR.TerrariaHost.View
         }
         private static Exception EndBackground(Exception __exception, ViewBackgroundScope __state, MethodBase __originalMethod)
         {
+            owner?.Native.NoteFailure(__exception);
             try
             {
                 // Native cave tiles normally flush before returning. If a
@@ -238,11 +334,12 @@ namespace JueMingR.TerrariaHost.View
         {
             if(owner==null)return true;
             if(owner.Water.Running)return true;
-            if(owner.RequiresDirectDraw && Lighting.NotRetro && !Main.mapFullscreen && !Main.onlyDrawFancyUI)
-            {owner.Water.Defer(__instance,gameTime);return false;}
-            owner.Water.Dispose();return true;
+            if(owner.Plan!=null && (owner.Plan.Expanded||owner.Plan.Route!=ViewRenderRoute.Native) && Lighting.NotRetro && !Main.mapFullscreen && !Main.onlyDrawFancyUI)
+            {owner.Water.AdoptNative();owner.Water.Defer(__instance,gameTime);return false;}
+            owner.Water.Dispose();owner.Water.NativePreDraw();return true;
         }
         private static bool WaterValidate() {return owner==null || !owner.Water.Running;}
+        private static bool WaterNativeTargets(WaterShaderData __instance){return owner==null||!owner.Water.OwnsBuffers(__instance);}
         private static readonly FieldInfo imageScales=AccessTools.Field(typeof(ScreenShaderData),"_imageScales");
         private static void WaterApply(WaterShaderData __instance,out Vector2? __state)
         {
@@ -252,7 +349,7 @@ namespace JueMingR.TerrariaHost.View
         }
         private static void WaterApplied(WaterShaderData __instance,Vector2? __state)
         {if(__state.HasValue)__instance.UseImageScale(__state.Value,2);}
-        private static bool WaterQueueDirect() {return Main.drawToScreen && !(owner!=null && owner.RequiresDirectDraw && Lighting.NotRetro);}
+        private static bool WaterQueueDirect() {return Main.drawToScreen && !(owner!=null && owner.NeedsExpandedRendering && Lighting.NotRetro);}
         private static IEnumerable<CodeInstruction> WaterQueue(IEnumerable<CodeInstruction> source)
         {
             int count=0;var field=AccessTools.Field(typeof(Main),"drawToScreen");

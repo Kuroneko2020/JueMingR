@@ -7,6 +7,7 @@ function Get-WorkloadLeafChecks {
     $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
     $leaves = @{
         'tests/NativeWorldTextProbe/NativeViewCombatChecks.cs'=@('native-ViewCombatCpu')
+        'tests/NativeWorldTextProbe/NativeViewRangeConsumerChecks.cs'=@('native-ViewRangeConsumerCpu')
         'tests/NativeWorldTextProbe/NativeJourneyChecks.cs'=@('native-JourneyCpu','native-Journey')
         'tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs'=@('native-Journey')
         'tests/NativeWorldTextProbe/NativeJourneyPredictionChecks.cs'=@('native-JourneyPredictionCpu')
@@ -265,6 +266,7 @@ function Get-WorkloadNativeScopes {
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
         'ViewCombatCpu'=@('view-host');
+        'ViewRangeConsumerCpu'=@('view-host');
         'JourneyCpu'=@('journey-host');
         'JourneyPredictionCpu'=@('journey-host');
         'NpcRollingCpu'=@('combat-host');

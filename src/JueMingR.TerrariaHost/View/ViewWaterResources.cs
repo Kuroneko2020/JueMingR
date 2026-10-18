@@ -8,6 +8,7 @@ using Terraria.GameContent.Drawing;
 using Terraria.GameContent.Liquid;
 using Terraria.GameContent.Shaders;
 using Terraria.Graphics;
+using Terraria.Graphics.Effects;
 
 namespace JueMingR.TerrariaHost.View
 {
@@ -41,33 +42,64 @@ namespace JueMingR.TerrariaHost.View
         internal bool RenderingMask { get; private set; }
         internal bool Active { get { return attached; } }
         internal int Generation { get; private set; }
+        private static readonly FieldInfo lastOffset=Field("_lastDistortionDrawOffset");
+        private int margin;
+        private bool marginKnown,nativeStepped;
+        internal bool HasBuffers { get { return first!=null&&!first.IsDisposed&&Owned(distortion.GetValue(shader)); } }
+        internal void BeginFrame(){nativeStepped=false;}
+        internal void NativePreDraw(){nativeStepped=true;}
+        internal bool OwnsBuffers(WaterShaderData value){return ReferenceEquals(value,shader)&&first!=null&&(Owned(distortion.GetValue(value))||Owned(swap.GetValue(value)));}
+        internal void AdoptNative()
+        {
+            if(first!=null)return;
+            var value=(WaterShaderData)Filters.Scene["WaterDistortion"].GetShader();
+            var a=(RenderTarget2D)distortion.GetValue(value);var b=(RenderTarget2D)swap.GetValue(value);
+            if(a==null||b==null||a.IsDisposed||b.IsDisposed)return;
+            Defer(value,null);device=Main.instance.GraphicsDevice;device.DeviceResetting+=Reset;device.Disposing+=Reset;
+            first=a;second=b;empty=(Texture2D)neutral.GetValue(value);savedEmpty=null;
+            margin=Main.drawToScreen?0:Main.offScreenRange;marginKnown=true;
+            // The pair's ownership transfers before Main.ReleaseTargets fires
+            // its native water callback. No copy/clear occurs on this transfer.
+        }
         internal void Defer(WaterShaderData value,GameTime gameTime) { if(!ReferenceEquals(shader,value)){Dispose();shader=value;step=(Action<GameTime>)Delegate.CreateDelegate(typeof(Action<GameTime>),value,preDraw);}time=gameTime; }
-        internal void Prepare()
+        internal void Prepare(){PrepareCore(false);}
+        internal void PrepareNative(){PrepareCore(true);}
+        private void PrepareCore(bool native)
         {
             if(shader==null)return;
             try
             {
-                Ensure();
-                savedMask=Main.waterTarget;Main.waterTarget=mask;attached=true;
-                RenderMask();
-                // StepLiquids/DrawWaves are purely visual leaves. Their original
-                // identity tile batch consumes world pixels at 1/4 scale. Use
-                // the actual scaled origin here, then restore before any UI or
-                // world consumer. drawToScreen stays true in Step and Apply so
-                // both use the same zero offscreen margin and 4px phase.
+                // WaveQuality alone is not the consumer: quality1 and the
+                // opacity tail still use the original shader. Only a fully
+                // inactive/faded water filter permits omitting the extra mask.
+                // In that case DrawForeground remains the one native liquid
+                // draw; a sunlight/other-filter scene capture does not need it.
+                bool needsMask=!native&&Filters.Scene["WaterDistortion"].IsInUse();
+                Ensure(needsMask,native);
+                if(needsMask){savedMask=Main.waterTarget;Main.waterTarget=mask;attached=true;RenderMask();}
+                // Native uses its real liquid layer as mask (scale1), Direct
+                // uses the physical mask (scale1/z). Keep their original b=P/0
+                // Step/Apply domains, converting old L by delta-b/4 exactly
+                // once so a sufficient retained pair keeps its wave positions.
+                int nextMargin=native?Main.offScreenRange:0;
+                if(marginKnown&&margin!=nextMargin)lastOffset.SetValue(shader,(Vector2)lastOffset.GetValue(shader)+new Vector2((nextMargin-margin)/4f));
+                margin=nextMargin;marginKnown=true;
                 var position=Main.screenPosition;int width=Main.screenWidth,height=Main.screenHeight;
                 try
                 {
                     Main.screenPosition=Main.Camera.ScaledPosition;
                     var size=Main.Camera.ScaledSize;
                     Main.screenWidth=(int)Math.Ceiling(size.X);Main.screenHeight=(int)Math.Ceiling(size.Y);
-                    Running=true;step(time);
+                    // A late optional native-batch allocation fallback can
+                    // follow the original PreDraw. Never consume queued steps
+                    // twice in that Draw; the adopted pair is already current.
+                    if(!nativeStepped){Running=true;step(time);}
                 }
                 finally {Running=false;Main.screenPosition=position;Main.screenWidth=width;Main.screenHeight=height;}
             }
             catch(OutOfMemoryException error) { throw new ViewRenderFailure(error); }
         }
-        private void Ensure()
+        private void Ensure(bool needsMask,bool native)
         {
             var current=Main.instance.GraphicsDevice;
             if(!ReferenceEquals(device,current))
@@ -76,7 +108,8 @@ namespace JueMingR.TerrariaHost.View
                 device=current;device.DeviceResetting+=Reset;device.Disposing+=Reset;
             }
             var p=current.PresentationParameters;var world=Main.Camera.ScaledSize;
-            int width=(int)Math.Ceiling(world.X/256f)*64,height=(int)Math.Ceiling(world.Y/256f)*64;
+            int border=native?Main.offScreenRange*2:0;
+            int width=(int)Math.Ceiling((world.X+border)/256f)*64,height=(int)Math.Ceiling((world.Y+border)/256f)*64;
             bool waves=first==null || first.IsDisposed || second.IsDisposed || first.IsContentLost || second.IsContentLost || first.Width<width || first.Height<height;
             // The quarter-buffer dimensions are capacity, not the exact
             // current viewport. Native StepLiquids copies/reprojects that full
@@ -84,7 +117,7 @@ namespace JueMingR.TerrariaHost.View
             // Retaining slack is the same domain as the existing rounded bucket.
             // Do not clear waves when narrowing or oscillating across a bucket.
             if(first!=null && !first.IsDisposed){width=Math.Max(width,first.Width);height=Math.Max(height,first.Height);}
-            bool surface=mask==null || mask.Texture.IsDisposed || mask.IsContentLost || mask.Texture.Width!=p.BackBufferWidth || mask.Texture.Height!=p.BackBufferHeight;
+            bool surface=needsMask && (mask==null || mask.Texture.IsDisposed || mask.IsContentLost || mask.Texture.Width!=p.BackBufferWidth || mask.Texture.Height!=p.BackBufferHeight);
             bool blank=empty==null || empty.IsDisposed;
             if(!waves && !surface && !blank)return;
             RenderTarget2D a=null,b=null;Texture2D no=null;WorldSceneLayerTarget layer=null;
@@ -105,7 +138,7 @@ namespace JueMingR.TerrariaHost.View
             if(waves){second?.Dispose();first?.Dispose();first=a;second=b;distortion.SetValue(shader,first);swap.SetValue(shader,second);}
             if(surface){mask?.Dispose();mask=layer;}
             if(blank){savedEmpty=(Texture2D)neutral.GetValue(shader);empty?.Dispose();empty=no;neutral.SetValue(shader,empty);}
-            usingTargets.SetValue(shader,true);clear.SetValue(shader,true);Generation++;
+            usingTargets.SetValue(shader,true);if(waves||blank)clear.SetValue(shader,true);Generation++;
         }
         private void RenderMask()
         {
@@ -214,6 +247,6 @@ namespace JueMingR.TerrariaHost.View
             mask?.Dispose();empty?.Dispose();second?.Dispose();first?.Dispose();mask=null;empty=null;first=second=null;savedEmpty=null;
         }
         public void Dispose()
-        {Release();if(device!=null){device.DeviceResetting-=Reset;device.Disposing-=Reset;device=null;}shader=null;time=null;step=null;}
+        {Release();if(device!=null){device.DeviceResetting-=Reset;device.Disposing-=Reset;device=null;}shader=null;time=null;step=null;marginKnown=false;nativeStepped=false;}
     }
 }

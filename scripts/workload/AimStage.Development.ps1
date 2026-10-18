@@ -23,7 +23,7 @@ function Read-AimStageDevelopment {
     $relative=$full.Substring($repository.Length).Replace('\','/')
     $null=Read-AimStageArtifact $Root ([pscustomobject]@{path=$relative;length=(Get-Item -LiteralPath $full).Length;sha256=(Get-WorkloadFileHash -LiteralPath $full).Hash})
     $record=Read-WorkloadJson $Path
-    if($null -ne $record -and $record.schema -ceq 'view-unlock-development-20261018-1'){return Read-ViewUnlockDevelopment $Root $Path $Identity $InputIdentity $record $relative}
+    if($null -ne $record -and $record.schema -cin @('view-unlock-development-20261018-1','view-cache-range-development-20261018-1')){return Read-ViewUnlockDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -ceq 'journey-menu-development-20261018-1'){return Read-JourneyMenuDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -ceq 'hidden-entry-development-20261018-1'){return Read-HiddenEntryDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -ceq 'footprints-200h-development-20261017-1'){return Read-Footprints200HourDevelopment $Root $Path $Identity $InputIdentity $record $relative}
@@ -890,7 +890,9 @@ function Read-JourneyMenuDevelopment {
 function Read-ViewUnlockDevelopment {
     param([string] $Root,[string] $Path,$Identity,$InputIdentity,$Record,[string] $Relative)
     $base='8bba8ffd2d24591e9efb1258ae0eac1e1d7d60df'
-    if($Record.authorization -cne 'owner-issue124-view-unlock-20261018' -or $Record.productBase -cne $base -or
+    $range=$Record.schema -ceq 'view-cache-range-development-20261018-1'
+    $authorization=if($range){'owner-issue124-view-cache-range-20261018'}else{'owner-issue124-view-unlock-20261018'}
+    if($Record.authorization -cne $authorization -or $Record.productBase -cne $base -or
         $Record.candidateCommit -cne $Identity.commit -or $Record.sourceFingerprint -cne $Identity.fingerprint -or
         $Record.inputFingerprint -cne $InputIdentity.fingerprint -or $Record.fullQualification -cne 'INCOMPLETE' -or
         $Record.releaseEligible -ne $false -or $null -eq $Record.PSObject.Properties['openFailures'] -or @($Record.openFailures).Count){throw 'View unlock candidate/evidence lock mismatch or unresolved failure.'}
@@ -898,6 +900,12 @@ function Read-ViewUnlockDevelopment {
     if(@((Get-WorkloadChanges $Root 'HEAD').paths | Where-Object {$_ -cnotin $retained}).Count){throw 'View unlock candidate has uncommitted inputs.'}
     & git -C $Root merge-base --is-ancestor $base $Identity.commit
     if($LASTEXITCODE -ne 0){throw 'View unlock candidate lost its accepted base.'}
+    if($range){
+        $continuation='3ea1ba69a89b7c075d874fb395fdf7b82daff640'
+        if($Record.continuationBase -cne $continuation){throw 'View range continuation base mismatch.'}
+        & git -C $Root merge-base --is-ancestor $continuation $Identity.commit
+        if($LASTEXITCODE -ne 0){throw 'View range candidate lost its delivered VIEW base.'}
+    }
     $allowed=@(
         'src/JueMingR.Features/View/ViewPreferenceCodec.cs',
         'src/JueMingR.Features/WorldObjectText/WorldObjectDiscovery.cs','src/JueMingR.Features/WorldTargets/WorldTargetFeature.cs',
@@ -922,6 +930,17 @@ function Read-ViewUnlockDevelopment {
         'docs/README.md','docs/功能介绍/功能索引.md','docs/功能介绍/玩家使用指南.md',
         'docs/功能介绍/视距解锁行为合同.md','docs/设计/视距解锁实现设计.md',
         'docs/设计/可重复构建与项目骨架.md','review-materials/view-unlock-20261018/evidence.md')
+    if($range){$allowed+=@(
+        'src/JueMingR.TerrariaHost/View/ViewZoom.cs','src/JueMingR.TerrariaHost/View/ViewOptions.cs',
+        'src/JueMingR.TerrariaHost/View/ViewTileCache.cs','src/JueMingR.TerrariaHost/View/ViewCacheMemory.cs',
+        'src/JueMingR.TerrariaHost/View/ViewNativeCoverage.cs',
+        'tests/NativeWorldTextProbe/NativeViewCacheRangeChecks.cs','tests/NativeWorldTextProbe/NativeViewRangeConsumerChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewRangeOptionsChecks.cs','tests/NativeWorldTextProbe/NativeViewCacheLifecycleChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewCacheCostChecks.cs','tests/NativeWorldTextProbe/NativeViewWaterRouteChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewForcedViewportChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewNativeRouteChecks.cs','tests/NativeWorldTextProbe/NativeViewCacheCopyChecks.cs',
+        'scripts/build-phase0s-validation-package.ps1','scripts/phase0s/Continuous-Processing-Owner-Test-Card.zh-CN.md',
+        'docs/AI经验笔记/输入捕获与坐标域.md')}
     $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)
     if(@($changed | Where-Object {$_ -cnotin $allowed}).Count -or
         (@($Record.revisions.path | Sort-Object) -join '|') -cne ($changed -join '|')){throw 'View unlock revision scope mismatch.'}
@@ -949,5 +968,5 @@ function Read-ViewUnlockDevelopment {
     foreach($project in @('Platform','Features','Infrastructure','TerrariaHost','ArchitectureTests')){$consumers+=('artifacts/build/Debug/work/bin/JueMingR.'+$project+'/x86/Debug/net472/JueMingR.'+$project+'.'+$(if($project -ceq 'ArchitectureTests'){'exe'}else{'dll'}))}
     if((@($Record.detectionFiles.path | Sort-Object) -join '|') -cne (@($consumers | Sort-Object) -join '|')){throw 'View unlock detection consumer set mismatch.'}
     foreach($entry in $Record.detectionFiles){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'View unlock detection bytes changed.'}}
-    return [ordered]@{status='STAGE_DEVELOPMENT';mode='ExplicitViewUnlock20261018';fullQualification='INCOMPLETE';releaseEligible=$false;productBase=$base;recordPath=$Relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;necessaryScopes=$required;limits=@($Record.limits);checkCount=$required.Count}
+    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($range){'ExplicitViewCacheRange20261018'}else{'ExplicitViewUnlock20261018'});fullQualification='INCOMPLETE';releaseEligible=$false;productBase=$base;recordPath=$Relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;necessaryScopes=$required;limits=@($Record.limits);checkCount=$required.Count}
 }

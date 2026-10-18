@@ -28,7 +28,7 @@ namespace NativeWorldTextProbe
         private static WorldSceneLayerTarget appliedMask;
         private static void Applied(WaterShaderData __instance)
         {if(!leaf && ReferenceEquals(__instance,witness)){appliedScale=((Vector2[])scalesField.GetValue(__instance))[2];appliedMask=Main.waterTarget;Require((bool)Get(__instance,"_usingRenderTargets"),"actual water Apply owns valid buffers");applies++;}}
-        internal static void Run(Main game,object view,Action draw,Func<RenderTarget2D> final,string output,bool capacity=false)
+        internal static void Run(Main game,object view,Action draw,Func<RenderTarget2D> final,string output,bool capacity=false,float wideTarget=.5f)
         {
             var audit=new Harmony("JueMingR.Tests.View.Water");var filter=Filters.Scene["WaterDistortion"];
             witness=(WaterShaderData)filter.GetShader();int quality=Main.WaveQuality;float gravity=Main.LocalPlayer.gravDir;
@@ -40,7 +40,7 @@ namespace NativeWorldTextProbe
                 var sharedTiles=Main.tileBatch;var sharedSprites=Main.spriteBatch;
                 foreach(string phase in capacity?new[]{"ordinary","wide","narrow","reexpanded","supported","retained","inverted"}:new[]{"ordinary","wide","retained","inverted"})
                 {
-                    Call(view,"SetUnlockEnabled",phase=="wide"||phase=="narrow"||phase=="reexpanded"||phase=="supported");Main.GameZoomTarget=phase=="ordinary"?1f:capacity?(phase=="wide"?.5390625f:phase=="narrow"?.75f:phase=="reexpanded"?.53125f:.5f):.5f;
+                    Call(view,"SetUnlockEnabled",phase=="wide"||phase=="narrow"||phase=="reexpanded"||phase=="supported");Main.GameZoomTarget=phase=="ordinary"?1f:capacity?(phase=="wide"?.5390625f:phase=="narrow"?.75f:phase=="reexpanded"?.53125f:.5f):wideTarget;
                     Main.LocalPlayer.gravDir=phase=="inverted"?-1:1;draw();
                     Vector2 start=Main.Camera.ScaledPosition;float z=Main.GameViewMatrix.RenderZoom.X;
                     var centers=new[]{start+new Vector2(Main.screenWidth*.18f,Main.screenHeight*.48f)/z,start+new Vector2(Main.screenWidth*.82f,Main.screenHeight*.48f)/z};

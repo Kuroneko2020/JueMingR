@@ -119,11 +119,24 @@ namespace NativeWorldTextProbe
                     NativeViewNetworkChecks.RunOnInitializedMain(content, output, NetworkDraw);
                     Complete = true; Exit(); return;
                 }
-                if (!prepared) { Prepare(); prepared = true; }
+                if (!prepared)
+                {
+                    if(Environment.GetEnvironmentVariable("JUEMINGR_VIEW_CACHE_PROFILE")=="HiDef")
+                    {
+                        // Select the native profile before composing the owned
+                        // world/sink/context. Mid-scene switching also retires
+                        // native map/capture resources unrelated to VIEW, and
+                        // cannot validate a newly initialized profile fairly.
+                        Require(GraphicsDevice.Adapter.IsProfileSupported(GraphicsProfile.HiDef),"isolated native HiDef profile supported by actual adapter");
+                        Main.SetGraphicsProfile(GraphicsProfile.HiDef,false);
+                        Require(GraphicsDevice.GraphicsProfile==GraphicsProfile.HiDef,"native profile switch actually remained HiDef");
+                    }
+                    Prepare(); prepared = true;
+                }
                 frame++;
                 FocusHelper.IsSelectedApplication = true;
                 Call(input, "BeginUpdate");
-                keyboard = new KeyboardState(frame >= 140 && frame < 170 || frame >= 260 && frame < 270 || frame >= 475 && frame < 505 ? new[] { Keys.Z } : frame >= 350 && frame < 375 ? new[] { Keys.X } : frame >= 130 && frame < 139 ? new[] { Keys.Z, Keys.X } : new Keys[0]);
+                keyboard = new KeyboardState(frame >= 140 && frame < 165 || frame >= 260 && frame < 270 || frame >= 475 && frame < 500 ? new[] { Keys.Z } : frame >= 350 && frame < 375 ? new[] { Keys.X } : frame >= 130 && frame < 139 ? new[] { Keys.Z, Keys.X } : new Keys[0]);
                 // Execute the original input stage, including mapping, zoom-key
                 // consumption, native world mouse conversion and final sample.
                 typeof(Main).GetMethod("DoUpdate_HandleInput", F).Invoke(this, null);
@@ -135,6 +148,10 @@ namespace NativeWorldTextProbe
                     NativeViewWaterChecks.Run(this,view,()=>Draw(new GameTime()),()=>capture,output,true);
                     NativeViewWaterFailureChecks.Run(view,()=>Draw(new GameTime()));
                     Console.WriteLine("PASS VIEW WATER REPAIR exact R4/R5 scope; unrelated accepted matrices reviewed separately.");Complete=true;Exit();return;
+                }
+                if(frame==70 && Environment.GetEnvironmentVariable("JUEMINGR_VIEW_CACHE_PROBE")=="1")
+                {
+                    NativeViewCacheRangeChecks.Run(this,view,()=>Draw(new GameTime()),PrepareCave,()=>capture,output,CheckRangeInput,ResizeCapture);Complete=true;Exit();return;
                 }
                 if(frame==70 && Environment.GetEnvironmentVariable("JUEMINGR_VIEW_REPAIR_FOCUS")=="Water")
                 { NativeViewWaterChecks.Run(this,view,()=>Draw(new GameTime()),()=>capture,output);Complete=true;Exit();return; }
@@ -337,6 +354,25 @@ namespace NativeWorldTextProbe
                 float once=GameZoomTarget;Call(view,"ConsumeZoom");Require(GameZoomTarget==once,"one mapped opportunity consumes at most once");
                 InputStep();InputStep(Keys.Z);InputStep();
                 Console.WriteLine("PASS VIEW shared input map/chat/fancy/capture/focus/held-release and one native mapping opportunity.");
+            }
+            private void CheckRangeInput()
+            {
+                foreach(bool enabled in new[]{true,false})
+                foreach(float target in new[]{.3f,10f})
+                foreach(int direction in new[]{-1,0,1})
+                {
+                    InputStep();InputStep();Call(view,"SetUnlockEnabled",enabled);GameZoomTarget=target;
+                    Keys[] keys=direction==0?new[]{Keys.X,Keys.Z}:new[]{direction>0?Keys.X:Keys.Z};
+                    InputStep(keys);InputStep(keys);
+                    float expected=target;
+                    if(direction>0&&target<1)expected=.32f;
+                    if(direction<0&&target>2)expected=9.98f;
+                    Require(Math.Abs(GameZoomTarget-expected)<.00001f,"actual remapped native range input owns one .02 opportunity at both ON/OFF ends");
+                    float once=GameZoomTarget;Call(view,"ConsumeZoom");Require(GameZoomTarget==once,"range mapping cannot be consumed twice");
+                }
+                InputStep();InputStep();Call(view,"SetUnlockEnabled",true);GameZoomTarget=1.5f;CheckInputOwnership();
+                InputStep();InputStep();Main.GameZoomTarget=1f;
+                Console.WriteLine("PASS VIEW RANGE actual remapped keys .3/10 ON/OFF, dual-key0, .02 perMapping, duplicate consumption and existing UI/focus gates.");
             }
             private void CheckGate(Action<bool> gate,string name)
             {

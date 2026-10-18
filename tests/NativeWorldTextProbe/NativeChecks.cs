@@ -14,6 +14,12 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="ViewCacheRange") { Environment.SetEnvironmentVariable("JUEMINGR_VIEW_CACHE_PROBE","1");return NativeViewOriginalChecks.Run(content,output); }
+            if(scope=="ViewRangeConsumerCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(NativeViewRangeConsumerChecks.Run,processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if (scope == "ViewWaterRepair") return NativeViewOriginalChecks.Run(content, output,true);
             if (scope == "ViewOriginal") return NativeViewOriginalChecks.Run(content, output);
             if (scope == "ViewNetwork") return NativeViewNetworkChecks.Run(content, output);
