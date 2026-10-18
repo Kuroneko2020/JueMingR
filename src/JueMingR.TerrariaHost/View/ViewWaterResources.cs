@@ -29,6 +29,11 @@ namespace JueMingR.TerrariaHost.View
         private Texture2D empty, savedEmpty;
         private WorldSceneLayerTarget mask, savedMask;
         private Action<bool> drawWater;
+        private TileBatch maskTiles;
+        private SpriteBatch maskSprites;
+        private static readonly FieldInfo tileSprites=AccessTools.Field(typeof(TileBatch),"_spriteBatch");
+        internal int MaskBatchGeneration { get; private set; }
+        private static readonly FieldInfo spriteBegun=AccessTools.Field(typeof(SpriteBatch),"inBeginEndPair"),deviceBegins=AccessTools.Field(typeof(GraphicsDevice),"spriteBeginCount"),deviceImmediateBegins=AccessTools.Field(typeof(GraphicsDevice),"spriteImmediateBeginCount");
         private bool attached;
         internal bool Running { get; private set; }
         internal bool RenderingMask { get; private set; }
@@ -70,7 +75,13 @@ namespace JueMingR.TerrariaHost.View
             }
             var p=current.PresentationParameters;var world=Main.Camera.ScaledSize;
             int width=(int)Math.Ceiling(world.X/256f)*64,height=(int)Math.Ceiling(world.Y/256f)*64;
-            bool waves=first==null || first.IsDisposed || second.IsDisposed || first.IsContentLost || second.IsContentLost || first.Width!=width || first.Height!=height;
+            bool waves=first==null || first.IsDisposed || second.IsDisposed || first.IsContentLost || second.IsContentLost || first.Width<width || first.Height<height;
+            // The quarter-buffer dimensions are capacity, not the exact
+            // current viewport. Native StepLiquids copies/reprojects that full
+            // texture; Apply samples using its real image size and world offset.
+            // Retaining slack is the same domain as the existing rounded bucket.
+            // Do not clear waves when narrowing or oscillating across a bucket.
+            if(first!=null && !first.IsDisposed){width=Math.Max(width,first.Width);height=Math.Max(height,first.Height);}
             bool surface=mask==null || mask.Texture.IsDisposed || mask.IsContentLost || mask.Texture.Width!=p.BackBufferWidth || mask.Texture.Height!=p.BackBufferHeight;
             bool blank=empty==null || empty.IsDisposed;
             if(!waves && !surface && !blank)return;
@@ -98,9 +109,17 @@ namespace JueMingR.TerrariaHost.View
         {
             TileDrawing.GetScreenDrawArea(false,out var _,out int left,out int right,out int top,out int bottom);
             LiquidRenderer.Instance.PrepareDraw(new Rectangle(left,top,right-left,bottom-top));
-            var targets=device.GetRenderTargets();bool batch=false;
+            EnsureMaskBatches();
+            var targets=device.GetRenderTargets();
+            ushort begins=(ushort)deviceBegins.GetValue(device),immediateBegins=(ushort)deviceImmediateBegins.GetValue(device);
+            var priorTiles=Main.tileBatch;var priorSprites=Main.spriteBatch;
+            Exception failure=null;
             try
             {
+                // Only this synchronous native liquid leaf sees these owned
+                // batches. A partially published queue belongs to VIEW alone;
+                // the original shared batch and its pending work stay untouched.
+                Main.tileBatch=maskTiles;Main.spriteBatch=maskSprites;
                 device.SetRenderTarget((RenderTarget2D)mask.Texture);device.Clear(Color.Transparent);
                 maskPosition.SetValue(mask,Main.Camera.ScaledPosition);
                 // Original liquid coordinates subtract the unscaled origin.
@@ -111,13 +130,65 @@ namespace JueMingR.TerrariaHost.View
                 // SpriteBatch alone would leave the prior quarter-buffer
                 // projection active and produce an empty physical mask.
                 Main.tileBatch.Begin(RasterizerState.CullCounterClockwise,Main.GameViewMatrix.ZoomMatrix);
-                Main.spriteBatch.Begin(SpriteSortMode.Deferred,BlendState.AlphaBlend,Main.DefaultSamplerState,DepthStencilState.None,RasterizerState.CullCounterClockwise,null,Main.GameViewMatrix.ZoomMatrix);batch=true;
+                Main.spriteBatch.Begin(SpriteSortMode.Deferred,BlendState.AlphaBlend,Main.DefaultSamplerState,DepthStencilState.None,RasterizerState.CullCounterClockwise,null,Main.GameViewMatrix.ZoomMatrix);
                 RenderingMask=true;
                 if(drawWater==null)drawWater=(Action<bool>)Delegate.CreateDelegate(typeof(Action<bool>),Main.instance,AccessTools.Method(typeof(Main),"DrawWaters"));
                 drawWater(false);
-                Main.spriteBatch.End();batch=false;
+                Main.spriteBatch.End();
             }
-            finally {RenderingMask=false;if(batch)Main.spriteBatch.End();device.SetRenderTargets(targets);}
+            catch(Exception error){failure=error;throw;}
+            finally
+            {
+                RenderingMask=false;
+                Main.tileBatch=priorTiles;Main.spriteBatch=priorSprites;
+                // Native GetNewSpriteBufferSlice can advance queued count
+                // before Array.Resize succeeds. End is not an abort operation:
+                // do not flush or index a failed queue, including on submission
+                // failures. Retire only our batches; preserve the first error
+                // even if their disposal or target restoration also fails.
+                if(failure!=null)
+                {
+                    // Locked XNA End decrements device-wide Begin counts only
+                    // after submission; Dispose does not decrement them at all.
+                    // Do not submit damaged queues to obtain that bookkeeping.
+                    // Close only our retired instances and restore the device
+                    // lease snapshot; unrelated entry-time batches stay open.
+                    try{spriteBegun.SetValue(maskSprites,false);}catch{}
+                    try{spriteBegun.SetValue(tileSprites.GetValue(maskTiles),false);}catch{}
+                    try{deviceBegins.SetValue(device,begins);}catch{}
+                    try{deviceImmediateBegins.SetValue(device,immediateBegins);}catch{}
+                    // Each return is independent: a secondary cleanup error
+                    // must neither skip later returns nor replace the primary.
+                    DropMaskBatches(failure);
+                }
+                try{device.SetRenderTargets(targets);}catch when(failure!=null){}
+            }
+        }
+        private void EnsureMaskBatches()
+        {
+            if(maskTiles!=null && maskSprites!=null)return;
+            TileBatch tiles=null;SpriteBatch sprites=null;
+            try{tiles=new TileBatch(device);sprites=new SpriteBatch(device);}
+            catch(Exception error){DisposeBatches(tiles,sprites,error);throw;}
+            maskTiles=tiles;maskSprites=sprites;MaskBatchGeneration++;
+        }
+        private void DropMaskBatches(Exception primary)
+        {
+            var tiles=maskTiles;var sprites=maskSprites;maskTiles=null;maskSprites=null;
+            DisposeBatches(tiles,sprites,primary);
+        }
+        private static void DisposeBatches(TileBatch tiles,SpriteBatch sprites,Exception primary)
+        {
+            // Native TileBatch.Dispose releases its vertex/index buffers but
+            // not the private SpriteBatch it constructed. This extra owner
+            // explicitly disposes both, plus its foreground SpriteBatch.
+            Exception cleanup=null;
+            SpriteBatch internalSprites=null;
+            try{if(tiles!=null)internalSprites=(SpriteBatch)tileSprites.GetValue(tiles);}catch(Exception error){cleanup=error;}
+            try{tiles?.Dispose();}catch(Exception error){if(cleanup==null)cleanup=error;}
+            try{internalSprites?.Dispose();}catch(Exception error){if(cleanup==null)cleanup=error;}
+            try{sprites?.Dispose();}catch(Exception error){if(cleanup==null)cleanup=error;}
+            if(primary==null && cleanup!=null)System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(cleanup).Throw();
         }
         internal bool DrawForeground(bool background)
         {
@@ -137,6 +208,7 @@ namespace JueMingR.TerrariaHost.View
             if(shader!=null && (Owned(distortion.GetValue(shader))||Owned(swap.GetValue(shader))))
             {distortion.SetValue(shader,null);swap.SetValue(shader,null);usingTargets.SetValue(shader,false);}
             if(shader!=null && ReferenceEquals(neutral.GetValue(shader),empty))neutral.SetValue(shader,savedEmpty);
+            DropMaskBatches(null);
             mask?.Dispose();empty?.Dispose();second?.Dispose();first?.Dispose();mask=null;empty=null;first=second=null;savedEmpty=null;
         }
         public void Dispose()

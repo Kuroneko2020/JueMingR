@@ -916,6 +916,7 @@ function Read-ViewUnlockDevelopment {
         'tests/NativeWorldTextProbe/NativeViewNetworkChecks.cs','tests/NativeWorldTextProbe/NativeViewOriginalChecks.cs',
         'tests/NativeWorldTextProbe/NativeViewNpcChecks.cs','tests/NativeWorldTextProbe/NativeViewFilterChecks.cs',
         'tests/NativeWorldTextProbe/NativeViewFailureChecks.cs','tests/NativeWorldTextProbe/NativeViewWaterChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewWaterFailureChecks.cs',
         'scripts/test-world-object-text.ps1','scripts/workload/AimStage.Development.ps1',
         'scripts/workload/Workload.Definitions.ps1','scripts/workload/Workload.Support.ps1',
         'docs/README.md','docs/功能介绍/功能索引.md','docs/功能介绍/玩家使用指南.md',

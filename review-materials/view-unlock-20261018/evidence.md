@@ -51,3 +51,9 @@
 开发证据：`repair-r1-red/run.log`为旧Host实际原版NPC拒绘RED；`repair-full-09/run.log`记录新Host09F3A15C…/MVID f4955c0f及probe7B46E00D…，真实普通/宽/Retained NPC，Invert Apply与物理像素/设备尺寸，水波四态完整Draw与冻结shader叶、资源/成本，候选Rebuild部分发布后的实际OOM和后20次native consumer均通过。水波mask为空的首个分歧保留在repair-04，补TileBatch立即变换后05起有真实mask与shader像素；07的基类私有字段反射测试错误保持原件，08及09已按声明类型读取。01的幂等Set(true)测试期待错误修后02已进入真实注入。开发早轮未单独保存所选临时Host哈希，只作为定位过程，不代替最终正式输入锁定。
 
 旧正式GPU实际Host D89F36…的MVID为31277aae；其probe中性017941…、执行LAA B775…。随后CPU准备因临时JUEMINGR_COMBAT_GEOMETRY_CANDIDATE进入编译输入且SourceRevisionId变化，公共Host变为3F4D3C…/MVID8cfb9c16，probe801C88…。827源行相同不能把旧GPU改签成后者CURRENT；只读对照为`.local/view-unlock/identity-chain-analysis.json`。旧candidate-review.json是未准入草稿，八项CURRENT表述已撤回；修复源冻结后在当前子进程清除临时selector的一次PrepareOnly建立正常输入匹配，正式新记录逐项列CURRENT或明确REVIEWED_REUSE，旧GPU/Network不改写。
+
+## 水波复审R4／R5返修
+
+e213086仍未准入，旧阶段记录独立保存在`.local/view-unlock/candidate-review-e213086-unapproved.json`。本次仅改wave容量为足够即保留，以及自有mask批次与XNA设备Begin租约的正常／异常归还。未知异常及第二清理异常保留第一对象；原版共享pending工作不清改，实际OOM后的普通Draw不继承坏队列。
+
+`water-r45-03/run.log`是开发首个完整闭环：真实相邻桶100次往返及.75收窄／再扩展，额外增长仅1次、已有685非中性wave像素保持、RT引用／代际不变；原版shader窄／再扩展／50%／Retained／反重力真实采样、自有batch稳定复用、原共享引用归还、可达Resize前queued>capacity的IO/OOM及第二Dispose异常、后20次普通Draw都通过。01/02的XNA设备Begin租约未归还真实失败原件保留。新正式入口为既有`test-world-object-text.ps1 -Scope ViewWaterRepair`，不把这个有限scope标成完整ViewOriginal/联网已重新执行；未受影响项只明示复用。

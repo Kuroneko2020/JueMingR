@@ -14,6 +14,7 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "ViewWaterRepair") return NativeViewOriginalChecks.Run(content, output,true);
             if (scope == "ViewOriginal") return NativeViewOriginalChecks.Run(content, output);
             if (scope == "ViewNetwork") return NativeViewNetworkChecks.Run(content, output);
             if (scope == "ViewCombatCpu")

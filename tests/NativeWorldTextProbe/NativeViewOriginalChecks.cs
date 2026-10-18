@@ -21,14 +21,14 @@ namespace NativeWorldTextProbe
     internal static class NativeViewOriginalChecks
     {
         private const BindingFlags F = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
-        internal static int Run(string content, string output)
+        internal static int Run(string content, string output,bool waterRepair=false)
         {
             output = Path.GetFullPath(output); Directory.CreateDirectory(output);
             Terraria.Program.SavePath = Path.Combine(output, "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath);
-            return RunNative(content, output);
+            return RunNative(content, output,waterRepair);
         }
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        private static int RunNative(string content, string output)
+        private static int RunNative(string content, string output,bool waterRepair)
         {
             NativeTestAudio.Install(typeof(Main).Assembly);
             AppDomain.MonitoringIsEnabled = true;
@@ -46,7 +46,7 @@ namespace NativeWorldTextProbe
             try
             {
                 Environment.CurrentDirectory = output;
-                using (var game = new ViewGame(content, output))
+                using (var game = new ViewGame(content, output,waterRepair))
                 {
                     // XNA's nonblocking entry performs CreateDevice and the
                     // complete native Initialize first. Explicit Tick then
@@ -67,6 +67,7 @@ namespace NativeWorldTextProbe
             private object context, input, view;
             private int frame;
             private bool prepared;
+            private readonly bool waterRepair;
             private bool ordinaryImage, wideImage, retainedImage;
             private readonly HashSet<string> images = new HashSet<string>();
             private readonly Dictionary<string, int> stableRebuilds = new Dictionary<string, int>();
@@ -81,9 +82,9 @@ namespace NativeWorldTextProbe
             private static KeyboardState keyboard;
             private static RenderTarget2D capture;
             private static bool redirectOutput;
-            internal ViewGame(string content, string output)
+            internal ViewGame(string content, string output,bool waterRepair)
             {
-                this.output = output; this.content = content;
+                this.output = output; this.content = content;this.waterRepair=waterRepair;
                 // Caller supplies a local Content directory alias rooted in the
                 // test output because native XnaContentSource takes relative URI.
                 Content.RootDirectory = "Content";
@@ -128,6 +129,13 @@ namespace NativeWorldTextProbe
                 typeof(Main).GetMethod("DoUpdate_HandleInput", F).Invoke(this, null);
                 Call(context, "UpdateRuntime");
                 if (frame == 70) { Require((bool)Call(view, "SetUnlockEnabled", true), "Native view enabled after document load"); Require(GameZoomTarget == 1f, "ON does not jump target"); }
+                if(frame==70 && waterRepair)
+                {
+                    PrepareCave();Draw(new GameTime());waterfallManager.FindWaterfalls(true);
+                    NativeViewWaterChecks.Run(this,view,()=>Draw(new GameTime()),()=>capture,output,true);
+                    NativeViewWaterFailureChecks.Run(view,()=>Draw(new GameTime()));
+                    Console.WriteLine("PASS VIEW WATER REPAIR exact R4/R5 scope; unrelated accepted matrices reviewed separately.");Complete=true;Exit();return;
+                }
                 if(frame==70 && Environment.GetEnvironmentVariable("JUEMINGR_VIEW_REPAIR_FOCUS")=="Water")
                 { NativeViewWaterChecks.Run(this,view,()=>Draw(new GameTime()),()=>capture,output);Complete=true;Exit();return; }
                 if (frame == 139) Require(GameZoomTarget == 1f, "both native mapped keys have zero net movement");
@@ -413,7 +421,7 @@ namespace NativeWorldTextProbe
                     using (var image = new Texture2D(GraphicsDevice,screenWidth,screenHeight))
                     { image.SetData(pixels); using (var file = File.Create(Path.Combine(output,"view-"+imageName+".png"))) image.SaveAsPng(file,screenWidth,screenHeight); }
                     Console.WriteLine("VIEW DRAW frame="+frame+" target="+GameZoomTarget+" render="+GameViewMatrix.RenderZoom+" visible="+Camera.ScaledSize+" direct="+drawToScreen+" ms="+watch.Elapsed.TotalMilliseconds);
-                    if(imageName=="ordinary"||imageName=="wide"||imageName=="retained") NativeViewNpcChecks.Run(this,view,imageName=="ordinary"?"normal":imageName=="wide"?"on":"retained",output);
+                    if(!waterRepair && (imageName=="ordinary"||imageName=="wide"||imageName=="retained")) NativeViewNpcChecks.Run(this,view,imageName=="ordinary"?"normal":imageName=="wide"?"on":"retained",output);
                     if (imageName == "ordinary") ordinaryImage = true;
                     else { if(imageName == "wide") wideImage = true; else retainedImage = true; Require(GameViewMatrix.RenderZoom.X < .55f,"Actual original DoDraw publishes wide final matrix"); }
                 }
