@@ -9,12 +9,15 @@ using Microsoft.Xna.Framework.Graphics;
 using Terraria;
 using Terraria.Graphics;
 using Terraria.Graphics.Light;
+using Terraria.Graphics.Effects;
+using Terraria.Testing;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
 {
-    // R6/R7/R8 finite counterexamples use the original initialized Main and
-    // actual Draw. The same test assembly may load the preserved c439 Host.
+    // Finite repair counterexamples use original initialized Main/real Draw.
+    // R9 observes the actual DebugVisualizer and UI entrances, not frame end;
+    // the same probe can load preserved c439/600 hosts for their own RED.
     internal static class NativeViewCacheRepairChecks
     {
         private static object cache;
@@ -24,6 +27,47 @@ namespace NativeWorldTextProbe
         private static int attempts,tiles;
         private static SpriteBatch foreign;
         private static Texture2D pixel;
+        private static object joinOwner;
+        private static SpriteBatch expectedShared;
+        private static bool observeJoin,joinShared,joinEnded,joinHealthy,uiShared;
+        private static int joinCalls,uiCalls,captures;
+        private static void Capture(){if(observeJoin)captures++;}
+        private static object JoinField(string name){return joinOwner.GetType().GetField(name,BindingFlags.Instance|BindingFlags.NonPublic).GetValue(joinOwner);}
+        private static void BeforeDebug(DebugVisualizer __instance,SpriteBatch __0)
+        {
+            if(!observeJoin||!ReferenceEquals(__instance,DebugVisualizer.World))return;
+            joinCalls++;joinShared=ReferenceEquals(Main.spriteBatch,expectedShared)&&ReferenceEquals(__0,expectedShared);joinEnded=JoinField("sharedWorldSprites")==null;
+            var world=(SpriteBatch)JoinField("worldSprites");joinHealthy=world!=null&&!world.IsDisposed&&!(bool)Get(world,"inBeginEndPair")&&(int)Get(world,"spriteQueueCount")==0;
+        }
+        private static void BeforeUi()
+        {if(observeJoin){uiCalls++;uiShared=ReferenceEquals(Main.spriteBatch,expectedShared)&&JoinField("sharedWorldSprites")==null;}}
+        internal static void Join(Main game,object view,Action draw)
+        {
+            var audit=new Harmony("JueMingR.Tests.View.R9Join");joinOwner=Get(view,"Cache");bool foreground=Main.ForegroundSunlightEffects,hide=Main.hideUI;int quality=Main.WaveQuality;
+            audit.Patch(AccessTools.Method(typeof(DebugVisualizer),"Draw",new[]{typeof(SpriteBatch)}),prefix:new HarmonyMethod(typeof(NativeViewCacheRepairChecks),nameof(BeforeDebug)));
+            audit.Patch(AccessTools.Method(typeof(Main),"DrawInterface",new[]{typeof(GameTime)}),prefix:new HarmonyMethod(typeof(NativeViewCacheRepairChecks),nameof(BeforeUi)));
+            audit.Patch(AccessTools.Method(typeof(FilterManager),"BeginCapture"),prefix:new HarmonyMethod(typeof(NativeViewCacheRepairChecks),nameof(Capture)));
+            try
+            {
+                Main.hideUI=false;Main.WaveQuality=0;Filters.Scene.Deactivate("WaterDistortion");Filters.Scene.Deactivate("testInvert");Filters.Scene.Update(new GameTime(TimeSpan.Zero,TimeSpan.FromSeconds(2)));
+                Require(!Filters.Scene.CanCapture(),"R9 no active scene filter before controlled foreground capture choice");
+                Main.GameZoomTarget=.5f;Call(view,"SetUnlockEnabled",true);Set(joinOwner,"ForceDirect",false);for(int i=0;i<3;i++)draw();
+                var stable=(SpriteBatch)JoinField("worldSprites");int bad=0;
+                foreach(bool capture in new[]{true,false,true,false})
+                {
+                    Main.ForegroundSunlightEffects=capture;expectedShared=Main.spriteBatch;joinCalls=uiCalls=captures=0;joinShared=joinEnded=joinHealthy=uiShared=false;observeJoin=true;draw();observeJoin=false;
+                    bool good=Get(Get(view,"Plan"),"Route").ToString()=="TileCache"&&captures==(capture?1:0)&&joinCalls==1&&uiCalls==1&&joinShared&&joinEnded&&joinHealthy&&uiShared&&ReferenceEquals(stable,JoinField("worldSprites"))&&!stable.IsDisposed;
+                    if(!good)bad++;
+                    Console.WriteLine("R9 before-debug/UI capture="+capture+" actual-captures="+captures+" join="+joinCalls+"/"+uiCalls+" original-shared="+joinShared+"/"+uiShared+" borrow-ended="+joinEnded+" healthy="+joinHealthy+" stable="+ReferenceEquals(stable,JoinField("worldSprites"))+" route="+Get(Get(view,"Plan"),"Route"));
+                }
+                var original=PatchProcessor.GetOriginalInstructions(AccessTools.Method(typeof(Main),"DoDraw",new[]{typeof(GameTime)}));var field=AccessTools.Field(typeof(DebugVisualizer),"World");var nativeJoin=original.Single(c=>c.LoadsField(field));
+                Console.WriteLine("R9 locked native join labels="+nativeJoin.labels.Count+" exception-boundary-blocks="+nativeJoin.blocks.Count);
+                Require(nativeJoin.blocks.Count==0,"R9 exact native join is outside EH boundaries; no exception block is moved across the inserted cleanup");
+                Require(bad==0,"R9 both normal capture branches restore original shared batch and end borrow before actual DebugVisualizer and DrawInterface, without relying on frame finalizer");
+                Console.WriteLine("PASS R9 true/false normal TileCache join before DebugVisualizer and actual UI; stable healthy world batch, exact shared identity/borrow ended in all four Draw.");
+            }
+            finally{observeJoin=false;Main.ForegroundSunlightEffects=foreground;Main.hideUI=hide;Main.WaveQuality=quality;audit.UnpatchAll(audit.Id);joinOwner=null;expectedShared=null;}
+        }
         private static void Optional(OutOfMemoryException __0){optional=__0;}
         private static void Tiles(bool __runOriginal){if(__runOriginal)tiles++;}
         private static void Submit(SpriteBatch __instance)

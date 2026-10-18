@@ -35,6 +35,12 @@ R6原c439的真实caller End／SetRenderState单次IO使lease1→2，原只测pr
 
 以上开发结果保留其实际输入；最终正常源码／输入／Host／Probe、窄CURRENT与准确复用由新冻结记录承担，独审／主调度准入仍PENDING，未新包或安装。旧事故仍暂停，不把此三缺口归因所有者输入或FPS反馈。
 
+## CACHE-RANGE R9正常UI前归还
+
+600集中复审关闭R6／R7／R8，但整体因R9保持NEEDS_FIX：原版无capture分支跳到DebugVisualizer.World的原标签，绕过新归还call。旧600 candidate／377锁／报告不改字节，实际Host／probe／34输出已在换公共构建前精确保留；新包证据使用`.local/view-cache-range-20261018/repair-r9`独立目录。
+
+同一原版Main中的直接检查在DebugVisualizer.World.Draw和真正DrawInterface入口完成，未以帧末身份代替。旧600真实RED为capture=true两点均shared／borrow已结束，而capture=false两点均非shared／borrow仍在；两路world实例都健康稳定，说明单看帧末或资源复用不足。新join将原标签迁到归还call，capture true／false交错四次均在两个时点恢复原shared、borrow结束、world健康稳定。锁定原版join有1标签、0异常块边界；保留原block位置，对新边界形状拒绝猜移。其余R6—R8、水／成本／范围结论按准确原身份复用，最终正常源码／输入／实际Host／probe与新记录另锁；不新包／安装，等待独立复审与根准入。
+
 ## 3ea及此前交付的历史记录
 
 - 地图页公开标准行“视距解锁”，提示逐字“可以调整到更大的视野范围”；没有新快捷键、滑条或额外按钮。原版重绑后的 ViewZoomIn/Out 是唯一缩放来源。

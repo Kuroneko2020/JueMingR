@@ -114,7 +114,17 @@ namespace JueMingR.TerrariaHost.View
             var debugWorld=AccessTools.Field(typeof(Terraria.Testing.DebugVisualizer),"World");
             for (int i = 0; i < code.Count; i++)
             {
-                if(code[i].LoadsField(debugWorld)){code.Insert(i,new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(ViewHooks),"ReturnCachedWorld")));i++;worldReturns++;}
+                if(code[i].LoadsField(debugWorld))
+                {
+                    // This locked .8 join is the no-capture branch target.
+                    // Redirect every incoming label to cleanup, not merely the
+                    // capture fallthrough. The join has no EH boundary; leave
+                    // original block metadata untouched and reject a new shape.
+                    if(code[i].blocks.Count!=0)throw new InvalidOperationException(".8 world/UI join exception boundary changed");
+                    var restore=new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(ViewHooks),"ReturnCachedWorld"));
+                    restore.labels.AddRange(code[i].labels);code[i].labels.Clear();
+                    code.Insert(i,restore);i++;worldReturns++;
+                }
                 if(code[i].Calls(worldLayers)){code.Insert(i+1,new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(ViewHooks),"CacheDrawComplete")));cachedErrors++;}
                 if(code[i].Calls(display)){code.Insert(i+1,new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(ViewHooks),"DisplayReady")));displays++;}
                 if (i >= 3 && code[i].Calls(clamp) && code[i - 3].LoadsField(zoom) && code[i - 2].opcode == OpCodes.Ldc_R4 && Equals(code[i - 2].operand, 1f) && code[i - 1].opcode == OpCodes.Ldc_R4 && Equals(code[i - 1].operand, 2f))

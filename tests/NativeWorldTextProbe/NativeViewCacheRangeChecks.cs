@@ -23,6 +23,7 @@ namespace NativeWorldTextProbe
             cave();Lighting.Mode=LightMode.Color;Call(view,"SetUnlockEnabled",true);
             bool baseline=Environment.GetEnvironmentVariable("JUEMINGR_VIEW_CACHE_BASELINE")=="1";
             string repair=Environment.GetEnvironmentVariable("JUEMINGR_VIEW_CACHE_FOCUS");
+            if(repair=="RepairJoin"){NativeViewCacheRepairChecks.Join(game,view,draw);return;}
             if(repair=="RepairCaller"){NativeViewCacheRepairChecks.Caller(game,view,draw);NativeViewCacheCopyChecks.Run(game,view,draw);return;}
             if(repair=="RepairDirty"){NativeViewCacheRepairChecks.Dirty(game,view,draw,output);NativeViewCacheRepairChecks.Motion(view,draw,output);return;}
             if(repair=="RepairExit"){NativeViewCacheRepairChecks.Exit(game,view,draw,resize);return;}
