@@ -33,6 +33,8 @@ namespace JueMingR.TerrariaHost.View
         private SpriteBatch maskSprites;
         private static readonly FieldInfo tileSprites=AccessTools.Field(typeof(TileBatch),"_spriteBatch");
         internal int MaskBatchGeneration { get; private set; }
+        // Locked XNA bookkeeping: a lease snapshot for this synchronous mask
+        // scope, never a request to reset shared batches or global counters.
         private static readonly FieldInfo spriteBegun=AccessTools.Field(typeof(SpriteBatch),"inBeginEndPair"),deviceBegins=AccessTools.Field(typeof(GraphicsDevice),"spriteBeginCount"),deviceImmediateBegins=AccessTools.Field(typeof(GraphicsDevice),"spriteImmediateBeginCount");
         private bool attached;
         internal bool Running { get; private set; }

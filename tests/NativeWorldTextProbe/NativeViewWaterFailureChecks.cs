@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
 using Terraria.GameContent;
+using Terraria.GameContent.Drawing;
 using Terraria.Graphics;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
@@ -21,8 +22,9 @@ namespace NativeWorldTextProbe
         private static bool armed;
         private static SpriteBatch foreignFailureLease;
         private static bool foreignOpened;
+        private static object ownWater;
         private static void BeforeMask()
-        {if(armed && injected is IOException && foreignFailureLease!=null){foreignFailureLease.Begin(SpriteSortMode.Deferred,BlendState.AlphaBlend);foreignOpened=true;}}
+        {if(armed && injected is IOException && foreignFailureLease!=null && !foreignOpened && ownWater!=null && (bool)Get(ownWater,"Active") && !(bool)Get(ownWater,"RenderingMask")){foreignFailureLease.Begin(SpriteSortMode.Deferred,BlendState.AlphaBlend);foreignOpened=true;}}
         private static int attempts,secondary;
         private static readonly FieldInfo deviceBegins=typeof(GraphicsDevice).GetField("spriteBeginCount",F),deviceImmediate=typeof(GraphicsDevice).GetField("spriteImmediateBeginCount",F);
         private static readonly FieldInfo queue=typeof(TileBatch).GetField("_spriteDataQueue",F),queued=typeof(TileBatch).GetField("_queuedSpriteCount",F);
@@ -67,7 +69,7 @@ namespace NativeWorldTextProbe
             try
             {
                 Call(view,"SetUnlockEnabled",true);Main.GameZoomTarget=.5f;draw();
-                var water=Get(view,"Water");
+                var water=Get(view,"Water");ownWater=water;
                 var device=Main.instance.GraphicsDevice;
                 ushort originalBegin=(ushort)deviceBegins.GetValue(device),originalImmediate=(ushort)deviceImmediate.GetValue(device);
                 // A normal leaf may be called inside another module's deferred
@@ -82,7 +84,7 @@ namespace NativeWorldTextProbe
                 originalTiles.Begin();originalTiles.Draw(TextureAssets.MagicPixel.Value,Vector2.Zero,new VertexColors(Color.Transparent));
                 int pending=(int)queued.GetValue(originalTiles);Require(pending>0,"shared original batch has controlled unrelated pending work");
                 foreignFailureLease=new SpriteBatch(device);
-                audit.Patch(water.GetType().GetMethod("RenderMask",F),prefix:new HarmonyMethod(typeof(NativeViewWaterFailureChecks),nameof(BeforeMask)));
+                audit.Patch(typeof(TileDrawing).GetMethod("GetScreenDrawArea",F),prefix:new HarmonyMethod(typeof(NativeViewWaterFailureChecks),nameof(BeforeMask)));
                 var unknown=new IOException("Controlled unknown native liquid error at real partial queue publication");Arm(water,unknown);
                 var raw=(Action<GameTime>)Delegate.CreateDelegate(typeof(Action<GameTime>),Main.instance,typeof(Main).GetMethod("DoDraw",F));
                 bool propagated=false;
@@ -106,7 +108,7 @@ namespace NativeWorldTextProbe
                 Require(Main.GameViewMatrix.RenderZoom.X==1 && (int)queued.GetValue(originalTiles)==0 && attempts==1 && messages.Count==1 && !(bool)typeof(Main).GetField("_isDrawingOrUpdating",F).GetValue(Main.instance),"next20 actual native ordinary Draw complete without pending-queue Begin failure, retry or feedback loop");
                 Console.WriteLine("PASS VIEW WATER OOM after real queued increment/before Array.Resize, secondary disposal error preserved primary; exact original batches intact, next20 ordinary Draw, attempt1/message1.");
             }
-            finally{armed=false;audit.UnpatchAll(audit.Id);if(foreignOpened){foreignFailureLease.End();foreignOpened=false;}foreignFailureLease?.Dispose();foreignFailureLease=null;selected=null;injected=null;}
+            finally{armed=false;audit.UnpatchAll(audit.Id);if(foreignOpened){foreignFailureLease.End();foreignOpened=false;}foreignFailureLease?.Dispose();foreignFailureLease=null;ownWater=null;selected=null;injected=null;}
         }
     }
 }
