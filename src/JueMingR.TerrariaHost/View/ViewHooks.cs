@@ -168,7 +168,8 @@ namespace JueMingR.TerrariaHost.View
         {
             __state=false;
             if(owner==null||owner.Plan==null||!owner.Plan.Expanded||Main.drawToScreen||!Lighting.NotRetro)return true;
-            if(owner.Native.Begin(owner.Plan)){__state=true;return true;}
+            try{if(owner.Native.Begin(owner.Plan)){__state=true;return true;}}
+            catch(Exception error){ownedDrawFailure=error;throw;}
             // No native liquid/tile leaf has run yet. An optional private-batch
             // admission failure can use correct Direct in this same Draw.
             Main.drawToScreen=true;owner.Plan=owner.Plan.WithRoute(ViewRenderRoute.Direct);return false;
@@ -214,6 +215,8 @@ namespace JueMingR.TerrariaHost.View
         {
             bool active = filters.CanCapture();
             if (owner == null) return active;
+            try
+            {
             owner.Cache.Prepare(owner.Plan);
             if(owner.Plan!=null)owner.Plan=owner.Plan.WithRoute(Main.drawToScreen?(owner.Cache.Attached?ViewRenderRoute.TileCache:ViewRenderRoute.Direct):ViewRenderRoute.Native);
             if (owner.Plan!=null && owner.Plan.Route!=ViewRenderRoute.Native && !Main.mapFullscreen && !Main.onlyDrawFancyUI && Lighting.NotRetro)
@@ -223,6 +226,14 @@ namespace JueMingR.TerrariaHost.View
             }
             else { owner.Scene.Dispose();if(owner.Plan!=null&&owner.Plan.Expanded&&!Main.mapFullscreen&&!Main.onlyDrawFancyUI&&Lighting.NotRetro)owner.Water.PrepareNative();else owner.Water.Dispose(); }
             return active;
+            }
+            catch(Exception error)
+            {
+                // A Fill or owned mask can fail before composition. Its own
+                // scope has already returned the drawing domain/batches; also
+                // identify this precise exception for Main.Draw's guard finally.
+                ownedDrawFailure=error;throw;
+            }
         }
         private static bool SceneDirectDraw() { return Main.drawToScreen && !(owner != null && owner.Scene.Attached); }
         private static Exception EndWorldDraw(Exception __exception)

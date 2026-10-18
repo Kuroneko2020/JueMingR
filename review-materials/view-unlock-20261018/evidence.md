@@ -21,7 +21,7 @@
 | 失败与后续真Draw | full-range-01实际preResize queued2/cap1 IO/OOM+次级Dispose、外部lease/shared pending；新RT第二申请失败；owned copy真实End IO/OOM。native-route-06原版吞RenderWater IO被保留、Native scope借值/共享batch/XNA归还；optional batch OOM同Draw direct后20Draw不重试。后续3/20必须fpsCount实际递增。 |
 | 关联 | range-consumers-01实际原版量化/MouseWorld/Shoot/CPU marker、512/513查询正反、section几何；最终正常专项另锁。CPU marker不是GPU像素，section几何不是新TCP；原3ea真实TCP/decoder已收区Draw按源相等与实际影响明示复用。 |
 
-Native scope和新copy异常追加一处原版责任：Main.Draw无finally，DoDraw首异常后其guard不归还会短路后续Draw。仅本轮owned scope精确首异常归还进入guard/计时间隔，未知异常仍原对象传播；不处理其它原版异常。copy-01..04、native-route-02的早期后续仅调用记录，不冒称已真实执行。copy-05/full-range-01与native-route-06新增fpsCount增长反控。native-route-01请求1440受桌面窗口限高反复reset；03漏FilterManager.Update及04冻结checker重复反翻转是测试前提错误，原件保留；固定1080、真实manager步骤和正确unflipped shader输入后通过，未改产品采样期待。
+Native scope和新copy异常追加一处原版责任：Main.Draw无finally，DoDraw首异常后其guard不归还会短路后续Draw。仅本轮owned scope精确首异常归还进入guard/计时间隔，未知异常仍原对象传播；不处理其它原版异常。copy-01..04、native-route-02的早期后续仅调用记录，不冒称已真实执行。copy-05/full-range-01与native-route-06新增fpsCount增长反控。额外actual-fill-guard-red以旧81BF Host证明：反射直接Prepare的foreign-lease测试未覆盖实际Main.Draw入口，未知Fill异常仍会使guard短路；新同场景actual-fill-guard-green在Prepare owned scope记录精确首异常后，真实preResize IO及3个后续帧递增通过，不改变其它原版异常。native-route-01请求1440受桌面窗口限高反复reset；03漏FilterManager.Update及04冻结checker重复反翻转是测试前提错误，原件保留；固定1080、真实manager步骤和正确unflipped shader输入后通过，未改产品采样期待。
 
 prototype-01..12保留第二次linear过滤/相位/反重力等失败及修复；content早期真实renderNow失效反例保留。未知异常不吞，可选cache失败保持倍率/Lighting/map且记住资格，仅必要direct资源失败沿既有一次反馈安全状态。既有R1—R5/旅途/完整TCP未受影响部分按blob/tree与输入证明复用，旧96锁和交付身份不改。
 

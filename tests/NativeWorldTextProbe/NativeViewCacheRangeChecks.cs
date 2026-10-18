@@ -29,6 +29,7 @@ namespace NativeWorldTextProbe
             string focus=Environment.GetEnvironmentVariable("JUEMINGR_VIEW_CACHE_FOCUS");
             if(focus=="Lifecycle"){NativeViewCacheLifecycleChecks.Run(game,view,draw);NativeViewCacheCopyChecks.Run(game,view,draw);return;}
             if(focus=="Copy"){NativeViewCacheCopyChecks.Run(game,view,draw);return;}
+            if(focus=="Costs"){NativeViewCacheCostChecks.Run(view,draw,output);return;}
             if(focus=="Content"){Content(game,view,draw,output);return;}
             if(focus=="Modes"){Modes(game,view,draw,final,output);return;}
             if(focus=="Water"){NativeViewWaterRouteChecks.Run(game,view,draw,final,output);NativeViewFilterChecks.Run(game,view,draw,final,resize,output,true);return;}

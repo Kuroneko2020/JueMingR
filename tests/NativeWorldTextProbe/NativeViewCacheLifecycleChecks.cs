@@ -106,6 +106,15 @@ namespace NativeWorldTextProbe
                 Require(attempts==1&&Main.GameZoomTarget==target&&Main.GameViewMatrix.RenderZoom.X==.296875f&&(bool)Get(view,"ControlsEnabled"),"same failed qualification is not retried and20 actual direct Draw preserve wide camera");
                 for(int i=0;i<3;i++)Require(ReferenceEquals(AccessTools.Field(typeof(Main),names[i]).GetValue(null),native[i]),"all three native aliases restored after normal/exception/fallback routes");
                 Require((ushort)begins.GetValue(device)==begin&&(ushort)immediate.GetValue(device)==imm,"no cache batch lease escapes20 subsequent native Draw");
+                // Unlike the foreign-lease case above, enter through actual
+                // Main.Draw too: its own missing finally must not turn later
+                // calls into guard-short-circuited no-ops after our new Fill.
+                Call(cache,"Dispose");Main.GameZoomTarget=.3f;draw();draw();
+                var actualError=new IOException("controlled unknown cached Fill through actual Main.Draw");Arm(cache,actualError);bool actualPropagated=false;
+                try{draw();}catch(Exception error){while(error is TargetInvocationException)error=error.InnerException;actualPropagated=ReferenceEquals(error,actualError);}
+                Require(actualPropagated&&attempts==1,"actual Main.Draw cached Fill preserves its first otherwise swallowed native leaf error");
+                Main.GameZoomTarget=1;int frames=Main.fpsCount;for(int i=0;i<3;i++)draw();
+                Require(Main.fpsCount==frames+3,"unknown Fill recovery permits three real subsequent native Draw rather than a stuck outer guard");
                 Console.WriteLine("PASS CACHE LIFECYCLE capacity reused; native partial-queue IO propagated with secondary dispose, foreign lease/shared pending preserved;3 ordinary Draw;optional OOM unchanged target/settings then20 direct Draw/no retry.");
             }
             finally{armed=false;audit.UnpatchAll(audit.Id);selected=null;injected=null;}
