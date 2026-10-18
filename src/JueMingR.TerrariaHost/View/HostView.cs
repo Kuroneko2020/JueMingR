@@ -79,8 +79,9 @@ namespace JueMingR.TerrariaHost.View
             if (direction == 0) return;
             float current = Main.GameZoomTarget;
             if (float.IsNaN(current) || float.IsInfinity(current) || current <= 0f) return;
-            // Both retained ends move inward one original .02 mapping step.
-            // Permission never resets the target or supplies a new key source.
+            // ON and retained inward travel use a reciprocal relative step;
+            // ordinary OFF keeps the native absolute step. This consumes only
+            // the current original Mapping, without a new key source or clock.
             Main.GameZoomTarget = ViewZoom.Step(current, direction, UnlockEnabled, MinimumTarget);
         }
         public void OnSessionStarted() { consumedMapping = -1; sections.Clear(); }

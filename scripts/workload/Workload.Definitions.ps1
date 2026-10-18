@@ -8,6 +8,7 @@ function Get-WorkloadLeafChecks {
     $leaves = @{
         'tests/NativeWorldTextProbe/NativeViewCombatChecks.cs'=@('native-ViewCombatCpu')
         'tests/NativeWorldTextProbe/NativeViewRangeConsumerChecks.cs'=@('native-ViewRangeConsumerCpu')
+        'tests/NativeWorldTextProbe/NativeViewZoomSpeedChecks.cs'=@('native-ViewCacheRange')
         'tests/NativeWorldTextProbe/NativeJourneyChecks.cs'=@('native-JourneyCpu','native-Journey')
         'tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs'=@('native-Journey')
         'tests/NativeWorldTextProbe/NativeJourneyPredictionChecks.cs'=@('native-JourneyPredictionCpu')

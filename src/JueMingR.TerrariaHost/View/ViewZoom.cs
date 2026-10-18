@@ -11,6 +11,7 @@ namespace JueMingR.TerrariaHost.View
     internal static class ViewZoom
     {
         internal const float Minimum = .3f, Maximum = 10f;
+        private const float InputRatio = 1.02f;
         internal static float MinimumTarget(int width, int height, float forced)
         {
             if (!Finite(forced) || forced <= 0) forced = 1f;
@@ -60,11 +61,18 @@ namespace JueMingR.TerrariaHost.View
         internal static float Step(float current, int direction, bool permission, float minimum)
         {
             if (direction == 0 || !Finite(current) || current <= 0) return current;
+            // Equal relative scale travel needs equal Mapping counts, not equal
+            // percentage points. Keep the unrounded native target as the only
+            // accumulator: small low-end steps must cross later1/128 plateaus.
+            // Multiply/divide the same float ratio; clipping deliberately ends
+            // reciprocity at a bound, never creates direction/timing state.
             if (!permission && current < 1f)
-            { if (direction < 0) return current; float next = Math.Min(1f, current + .02f); return next > .9999f ? 1f : next; }
+            { return direction < 0 ? current : Math.Min(1f, current * InputRatio); }
             if (!permission && current > 2f)
-            { if (direction > 0) return current; float next = Math.Max(2f, current - .02f); return next < 2.0001f ? 2f : next; }
-            return MathHelper.Clamp(current + direction * .02f, permission ? minimum : 1f, permission ? Maximum : 2f);
+            { return direction > 0 ? current : Math.Max(2f, current / InputRatio); }
+            // Ordinary OFF is still Terraria's original two-point operation.
+            float next = permission ? (direction > 0 ? current * InputRatio : current / InputRatio) : current + direction * .02f;
+            return MathHelper.Clamp(next, permission ? minimum : 1f, permission ? Maximum : 2f);
         }
         internal static bool Finite(float value) { return !float.IsNaN(value) && !float.IsInfinity(value); }
     }

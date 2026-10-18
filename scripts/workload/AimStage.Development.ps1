@@ -940,6 +940,7 @@ function Read-ViewUnlockDevelopment {
         'tests/NativeWorldTextProbe/NativeViewForcedViewportChecks.cs',
         'tests/NativeWorldTextProbe/NativeViewNativeRouteChecks.cs','tests/NativeWorldTextProbe/NativeViewCacheCopyChecks.cs',
         'tests/NativeWorldTextProbe/NativeViewCacheRepairChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewZoomSpeedChecks.cs',
         'scripts/build-phase0s-validation-package.ps1','scripts/phase0s/Continuous-Processing-Owner-Test-Card.zh-CN.md',
         'docs/AI经验笔记/输入捕获与坐标域.md')}
     $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)

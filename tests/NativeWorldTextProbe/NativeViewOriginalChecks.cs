@@ -136,7 +136,7 @@ namespace NativeWorldTextProbe
                 frame++;
                 FocusHelper.IsSelectedApplication = true;
                 Call(input, "BeginUpdate");
-                keyboard = new KeyboardState(frame >= 140 && frame < 165 || frame >= 260 && frame < 270 || frame >= 475 && frame < 500 ? new[] { Keys.Z } : frame >= 350 && frame < 375 ? new[] { Keys.X } : frame >= 130 && frame < 139 ? new[] { Keys.Z, Keys.X } : new Keys[0]);
+                keyboard = new KeyboardState(frame >= 140 && frame < 165 || frame >= 260 && frame < 270 || frame >= 475 && frame < 500 ? new[] { Keys.Z } : frame >= 350 && frame < 390 ? new[] { Keys.X } : frame >= 130 && frame < 139 ? new[] { Keys.Z, Keys.X } : new Keys[0]);
                 // Execute the original input stage, including mapping, zoom-key
                 // consumption, native world mouse conversion and final sample.
                 typeof(Main).GetMethod("DoUpdate_HandleInput", F).Invoke(this, null);
@@ -151,11 +151,16 @@ namespace NativeWorldTextProbe
                 }
                 if(frame==70 && Environment.GetEnvironmentVariable("JUEMINGR_VIEW_CACHE_PROBE")=="1")
                 {
+                    if(Environment.GetEnvironmentVariable("JUEMINGR_VIEW_CACHE_FOCUS")=="ZoomSpeed")
+                    {PrepareCave();NativeViewZoomSpeedChecks.Run(this,view,k=>InputStep(k),()=>Draw(new GameTime()),()=>capture,output);CheckInputOwnership();Complete=true;Exit();return;}
                     NativeViewCacheRangeChecks.Run(this,view,()=>Draw(new GameTime()),PrepareCave,()=>capture,output,CheckRangeInput,ResizeCapture);Complete=true;Exit();return;
                 }
                 if(frame==70 && Environment.GetEnvironmentVariable("JUEMINGR_VIEW_REPAIR_FOCUS")=="Water")
                 { NativeViewWaterChecks.Run(this,view,()=>Draw(new GameTime()),()=>capture,output);Complete=true;Exit();return; }
                 if (frame == 139) Require(GameZoomTarget == 1f, "both native mapped keys have zero net movement");
+                // Render comparison below is a controlled .5 scene, separate
+                // from the new dedicated equal-ratio Mapping travel proof.
+                if (frame == 200) GameZoomTarget=.5f;
                 if (frame == 260) { Call(view, "SetUnlockEnabled", false); Console.WriteLine("VIEW OFF target=" + GameZoomTarget); }
                 if (frame == 340) Require(Math.Abs(GameZoomTarget - .5f) < .0001f, "OFF keeps .5 with no input and blocks further outward hold");
                 if (frame == 355) Require(GameZoomTarget > .5f && GameZoomTarget < 1f, "OFF adjusts inward gradually");
@@ -365,14 +370,14 @@ namespace NativeWorldTextProbe
                     Keys[] keys=direction==0?new[]{Keys.X,Keys.Z}:new[]{direction>0?Keys.X:Keys.Z};
                     InputStep(keys);InputStep(keys);
                     float expected=target;
-                    if(direction>0&&target<1)expected=.32f;
-                    if(direction<0&&target>2)expected=9.98f;
-                    Require(Math.Abs(GameZoomTarget-expected)<.00001f,"actual remapped native range input owns one .02 opportunity at both ON/OFF ends");
+                    if(direction>0&&target<1)expected=.306f;
+                    if(direction<0&&target>2)expected=10f/1.02f;
+                    Require(Math.Abs(GameZoomTarget-expected)<.00001f,"actual remapped native range input owns one relative opportunity at both ON/OFF ends");
                     float once=GameZoomTarget;Call(view,"ConsumeZoom");Require(GameZoomTarget==once,"range mapping cannot be consumed twice");
                 }
                 InputStep();InputStep();Call(view,"SetUnlockEnabled",true);GameZoomTarget=1.5f;CheckInputOwnership();
                 InputStep();InputStep();Main.GameZoomTarget=1f;
-                Console.WriteLine("PASS VIEW RANGE actual remapped keys .3/10 ON/OFF, dual-key0, .02 perMapping, duplicate consumption and existing UI/focus gates.");
+                Console.WriteLine("PASS VIEW RANGE actual remapped keys .3/10 ON/OFF, dual-key0, relative perMapping, duplicate consumption and existing UI/focus gates.");
             }
             private void CheckGate(Action<bool> gate,string name)
             {

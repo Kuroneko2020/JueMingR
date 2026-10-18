@@ -106,7 +106,7 @@ namespace NativeWorldTextProbe
             Func<float,int,bool,float> next=(v,d,on)=>(float)step.Invoke(null,new object[]{v,d,on,.3f});
             Require(next(.3f,-1,true)==.3f&&next(10f,1,true)==10f,"both enabled ends clamp");
             Require(next(.5f,-1,false)==.5f&&next(5f,1,false)==5f,"OFF outward leaves both ends exact");
-            Require(Math.Abs(next(.5f,1,false)-.52f)<.00001f&&Math.Abs(next(5f,-1,false)-4.98f)<.00001f,"OFF both ends inward native step");
+            Require(Math.Abs(next(.5f,1,false)-.51f)<.00001f&&Math.Abs(next(5f,-1,false)-5f/1.02f)<.00001f,"OFF both ends inward relative step");
             Require(next(.99f,1,false)==1f&&next(2.01f,-1,false)==2f,"OFF enters normal range without crossing");
             Require(next(10f,0,false)==10f&&next(.3f,0,false)==.3f,"dual-key zero retains exact target");
         }
