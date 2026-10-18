@@ -33,7 +33,7 @@ namespace JueMingR.TerrariaHost.F5
         ConfigureRare, ConfigureMerchant, DeathDetails, DeathConfigure, DeathEnable, DeathDisable,
         MarkerManage, MarkerEnable, MarkerDisable, ExplorationDetails, ExplorationValue,
         FootprintConfigure, FootprintEnable, FootprintDisable, AnnouncementEnable, AnnouncementDisable,
-        AboutCopyGroup, AboutRevealHidden,
+        AboutCopyGroup, AboutRevealHidden, EnableJourney, DisableJourney,
         CombatAutoClickOn, CombatAutoClickOff, CombatFlailOn, CombatFlailOff, CombatSwitchOn, CombatSwitchOff,
         CombatRevolverOn, CombatRevolverOff, CombatStringOn, CombatStringOff, CombatFacingOn, CombatFacingOff,
         CombatReportOn, CombatReportOff, CombatGoblinOn, CombatGoblinOff, CombatInterval,
@@ -122,6 +122,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 elements.Clear();float y=start;
                 GuidanceControls.AddRows(elements,TextSize,ref y,1,hiddenVisible);
+                JourneyControls.AddRows(elements,TextSize,ref y,hiddenVisible);
                 ContentHeight=Math.Max(0,y-6);miscFooterStart=start;footerHiddenVisible=hiddenVisible;builtHiddenVisible=hiddenVisible;Generation++;
             }
         }
@@ -190,6 +191,7 @@ namespace JueMingR.TerrariaHost.F5
             else if (currentPage == 8)
             {CombatObservationControls.AddRows(elements,TextSize,observation,ref y);CombatControls.AddRows(elements,TextSize,ref y,0,6);GuidanceControls.AddRows(elements,TextSize,ref y,8);CombatControls.AddRows(elements,TextSize,ref y,6,2);}
             else if (currentPage == 1 || currentPage == 2) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage, hiddenVisible);
+            if (currentPage == 1) JourneyControls.AddRows(elements, TextSize, ref y, hiddenVisible);
             if (currentPage == 2) DeathControls.AddRows(elements, DynamicTextSize, ref y, deathCount, worldDays);
             if (currentPage == 2) MapControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) FootprintControls.AddRows(elements, TextSize, ref y);

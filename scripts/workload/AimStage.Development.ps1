@@ -23,6 +23,7 @@ function Read-AimStageDevelopment {
     $relative=$full.Substring($repository.Length).Replace('\','/')
     $null=Read-AimStageArtifact $Root ([pscustomobject]@{path=$relative;length=(Get-Item -LiteralPath $full).Length;sha256=(Get-WorkloadFileHash -LiteralPath $full).Hash})
     $record=Read-WorkloadJson $Path
+    if($null -ne $record -and $record.schema -ceq 'journey-menu-development-20261018-1'){return Read-JourneyMenuDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -ceq 'hidden-entry-development-20261018-1'){return Read-HiddenEntryDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -ceq 'footprints-200h-development-20261017-1'){return Read-Footprints200HourDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     # Each owner-authorized successor has its own base and evidence contract;
@@ -814,4 +815,69 @@ function Read-HiddenEntryDevelopment {
     if((@($Record.detectionFiles.path | Sort-Object) -join '|') -cne (@($consumers | Sort-Object) -join '|')){throw 'Hidden entry detection consumer set mismatch.'}
     foreach($entry in $Record.detectionFiles){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'Hidden entry detection bytes changed.'}}
     return [ordered]@{status='STAGE_DEVELOPMENT';mode='ExplicitHiddenEntry20261018';fullQualification='INCOMPLETE';releaseEligible=$false;productBase=$base;recordPath=$Relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;necessaryScopes=$required;limits=@($Record.limits);checkCount=$required.Count}
+}
+
+function Read-JourneyMenuDevelopment {
+    param([string] $Root,[string] $Path,$Identity,$InputIdentity,$Record,[string] $Relative)
+    $base='0ef3c62dcf0c365aee5d5cfcfbb5492b70b841f3'
+    if($Record.authorization -cne 'owner-issue122-journey-menu-20261018' -or $Record.productBase -cne $base -or
+        $Record.candidateCommit -cne $Identity.commit -or $Record.sourceFingerprint -cne $Identity.fingerprint -or
+        $Record.inputFingerprint -cne $InputIdentity.fingerprint -or $Record.fullQualification -cne 'INCOMPLETE' -or
+        $Record.releaseEligible -ne $false -or $null -eq $Record.PSObject.Properties['openFailures'] -or @($Record.openFailures).Count){throw 'Journey menu candidate/evidence lock mismatch or unresolved failure.'}
+    $retained=if($null -ne $script:WorkloadRetainedAssets){@($script:WorkloadRetainedAssets.files.path)}else{@()}
+    if(@((Get-WorkloadChanges $Root 'HEAD').paths | Where-Object {$_ -cnotin $retained}).Count){throw 'Journey menu candidate has uncommitted inputs.'}
+    & git -C $Root merge-base --is-ancestor $base $Identity.commit
+    if($LASTEXITCODE -ne 0){throw 'Journey menu candidate lost its accepted base.'}
+    $allowed=@(
+        'src/JueMingR.TerrariaHost/Combat/Prediction/NativeValueSnapshot.cs',
+        'src/JueMingR.TerrariaHost/Combat/Prediction/NativePredictionAlignment.cs',
+        'src/JueMingR.TerrariaHost/Combat/Prediction/PredictionPipeProtocol.cs',
+        'src/JueMingR.TerrariaHost/Combat/Prediction/PredictionWire.cs',
+        'src/JueMingR.TerrariaHost/Items/ItemSourceHooks.cs',
+        'src/JueMingR.Features/Journey/JourneyActivation.cs',
+        'src/JueMingR.TerrariaHost/Journey/JourneySession.cs','src/JueMingR.TerrariaHost/Journey/JourneyHooks.cs',
+        'src/JueMingR.TerrariaHost/Journey/JourneyPowers.cs','src/JueMingR.TerrariaHost/Journey/JourneyResearch.cs',
+        'src/JueMingR.TerrariaHost/F5/JourneyControls.cs','src/JueMingR.TerrariaHost/F5/GuidanceControls.cs','src/JueMingR.TerrariaHost/F5/F5Layout.cs',
+        'src/JueMingR.TerrariaHost/F5/F5Renderer.cs','src/JueMingR.TerrariaHost/F5/F5Shell.cs',
+        'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs','src/JueMingR.TerrariaHost/Hotkeys/JourneyHotkeys.cs',
+        'src/JueMingR.TerrariaHost/Phase0SLoadChainHost.cs',
+        'tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs',
+        'tests/Phase0U/JourneyUiChecks.cs','tests/Hotkeys/JourneyHotkeyChecks.cs',
+        'tests/Phase0SFixtureTerraria/Phase0SFixtureTerraria.csproj','tests/Phase0SFixtureTerraria/Program.cs',
+        'tests/NativeWorldTextProbe/NativeJourneyChecks.cs','tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs',
+        'tests/NativeWorldTextProbe/NativeJourneyPredictionChecks.cs',
+        'tests/NativeWorldTextProbe/Program.cs','tests/NativeWorldTextProbe/NativeChecks.cs',
+        'scripts/test-world-object-text.ps1','scripts/workload/AimStage.Development.ps1',
+        'scripts/workload/Workload.Definitions.ps1','scripts/workload/Workload.Support.ps1',
+        'docs/功能介绍/旅行菜单行为合同.md','docs/功能介绍/功能索引.md','docs/功能介绍/玩家使用指南.md',
+        'docs/设计/旅行菜单实现设计.md','docs/设计/可重复构建与项目骨架.md','docs/README.md',
+        'review-materials/journey-menu-20261018/evidence.md')
+    $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)
+    if(@($changed | Where-Object {$_ -cnotin $allowed}).Count -or
+        (@($Record.revisions.path | Sort-Object) -join '|') -cne ($changed -join '|')){throw 'Journey menu revision scope mismatch.'}
+    foreach($entry in $Record.revisions){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'Journey menu revision bytes changed.'}}
+    $required=@('build-structure','journey-state-input','native-journey-capabilities','native-journey-ui-coexistence','native-journey-save-read-kill','native-journey-prediction','journey-costs','package-entry-contract')
+    if((@($Record.checks.name | Sort-Object) -join '|') -cne (@($required | Sort-Object) -join '|')){throw 'Journey menu necessary scopes missing/duplicated.'}
+    foreach($check in $Record.checks){
+        if($check.exit -ne 0 -or $check.disposition -cnotin @('CURRENT','REVIEWED_REUSE') -or -not $check.scope -or -not $check.applicability -or @($check.artifacts).Count -eq 0){throw 'Invalid journey menu scoped evidence.'}
+        foreach($artifact in $check.artifacts){$null=Read-AimStageArtifact $Root $artifact}
+    }
+    if(@($Record.reviews).Count -eq 0 -or @($Record.limits).Count -eq 0 -or $null -eq $Record.PSObject.Properties['failureDispositions']){throw 'Journey menu independent review, failure dispositions or limits missing.'}
+    foreach($failure in $Record.failureDispositions){
+        if($failure.disposition -cnotin @('PRODUCT_FIXED','TEST_CORRECTED','ENVIRONMENT_LIMITATION') -or -not $failure.cause -or -not $failure.resolution -or @($failure.artifacts).Count -eq 0){throw 'Unresolved journey menu failure.'}
+        foreach($artifact in $failure.artifacts){$null=Read-AimStageArtifact $Root $artifact}
+    }
+    foreach($review in $Record.reviews){
+        if($review.result -cne 'APPROVED_FOR_STAGE' -or $review.sourceFingerprint -cne $Identity.fingerprint -or -not $review.coverage){throw 'Journey menu independent review identity mismatch.'}
+        $null=Read-AimStageArtifact $Root $review.artifact
+    }
+    if($Record.admission.result -cne 'READY_FOR_PACKAGE' -or $Record.admission.sourceFingerprint -cne $Identity.fingerprint){throw 'Journey menu coordinator admission missing.'}
+    $null=Read-AimStageArtifact $Root $Record.admission.artifact
+    $debug=Read-WorkloadJson (Join-Path $Root 'artifacts/build/Debug/build-record.json')
+    if(-not (Test-WorkloadBuildMatch $Root $debug $Identity $InputIdentity)){throw 'Journey menu Debug detection build changed.'}
+    $consumers=@('artifacts/build/Debug/checks/bin/NativeWorldTextProbe/x86/Debug/net472/NativeWorldTextProbe.exe')
+    foreach($project in @('Platform','Features','Infrastructure','TerrariaHost','ArchitectureTests')){$consumers+=('artifacts/build/Debug/work/bin/JueMingR.'+$project+'/x86/Debug/net472/JueMingR.'+$project+'.'+$(if($project -ceq 'ArchitectureTests'){'exe'}else{'dll'}))}
+    if((@($Record.detectionFiles.path | Sort-Object) -join '|') -cne (@($consumers | Sort-Object) -join '|')){throw 'Journey menu detection consumer set mismatch.'}
+    foreach($entry in $Record.detectionFiles){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'Journey menu detection bytes changed.'}}
+    return [ordered]@{status='STAGE_DEVELOPMENT';mode='ExplicitJourneyMenu20261018';fullQualification='INCOMPLETE';releaseEligible=$false;productBase=$base;recordPath=$Relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;necessaryScopes=$required;limits=@($Record.limits);checkCount=$required.Count}
 }

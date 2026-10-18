@@ -849,6 +849,7 @@ namespace JueMingR.TerrariaHost
             internal Processing.HostProcessing Processing { get; private set; }
             internal Tools.HostTools Tools {get;private set;}
             internal Fishing.HostFishing Fishing {get;private set;}
+            internal Journey.JourneySession Journey { get; private set; }
             internal Combat.HostCombat Combat {get;private set;}
             internal Combat.HostCombatObservation CombatObservation {get;private set;}
             internal Feedback.LocalShortFeedback ShortFeedback { get; private set; }
@@ -910,7 +911,8 @@ namespace JueMingR.TerrariaHost
                     Phase0TBiomeRuntime.Create(enabled, preferences.BiomeLoaded && preferences.BiomeEnabled);
                 if (itemPackage)
                 {
-                    items = new Items.HostItems(gameDirectory, runtime.SharedRuntime, () => Input.CanRunAutomaticActions, () => Input.CanStartActions);
+                    items = new Items.HostItems(gameDirectory, runtime.SharedRuntime,
+                        () => Input.CanRunAutomaticActions && (Shell == null || Shell.CanStartJourneyItemOperation), () => Input.CanStartActions);
                     if (quickPackage)
                     {
                         QuickItems = new QuickItems.HostQuickItems(gameDirectory,runtime.SharedRuntime,items,Input);
@@ -952,10 +954,16 @@ namespace JueMingR.TerrariaHost
                 notes = new Notes.HostNotes(gameDirectory);
                 if (PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage) Browser = new ItemBrowser.HostItemBrowser(gameDirectory, worldTiles, Input);
                 if (hotkeyPackage) ShortFeedback = new Feedback.LocalShortFeedback(runtime.SharedRuntime, Input);
+                if (PackageId.StartsWith("continuous-processing-", StringComparison.Ordinal))
+                {
+                    Journey = new Journey.JourneySession(runtime.SharedRuntime, hiddenAccess, () => Input.CanPrepareText);
+                    runtime.SharedRuntime.AddFeature(Journey);
+                }
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation) : null;
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation, Journey, hiddenAccess, () => Shell?.ToggleJourneyFromHotkey()) : null;
                 hotkeyFeedback = hotkeys?.Feedback;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements, hiddenAccess) { LayersReady = f5LayersReady };
+                if (Journey != null) Shell.AttachJourney(Journey);
                 Browser?.Attach(Shell, hotkeys);
                 if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanAutomaticProcessingInput;Tools.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Tools.Feedback=ShortFeedback;}
                 if(Combat!=null){Shell.AttachCombat(Combat);Combat.CanInterface=()=>Shell.CanTargetInput && !Shell.OwnsPointer && Shell.CanAutomaticMouseInterface;}

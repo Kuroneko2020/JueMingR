@@ -250,7 +250,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static void WorldPremise(BinaryWriter w)
         {
-            w.Write(Main.dayTime);w.Write(Main.time);w.Write(Main.dayRate);w.Write(Main.GameMode);w.Write(Main.bloodMoon);w.Write(Main.eclipse);w.Write(Main.windSpeedCurrent);w.Write(Main.windSpeedTarget);w.Write(Main.maxRaining);
+            // Runtime Journey strength may change without changing saved
+            // GameMode. Such a change retires a future using the old rules.
+            w.Write(Main.dayTime);w.Write(Main.time);w.Write(Main.dayRate);w.Write(Main.GameMode);w.Write(Main.Difficulty);w.Write(Main.bloodMoon);w.Write(Main.eclipse);w.Write(Main.windSpeedCurrent);w.Write(Main.windSpeedTarget);w.Write(Main.maxRaining);
             w.Write(Main.maxTilesX);w.Write(Main.maxTilesY);w.Write(Main.worldSurface);w.Write(Main.rockLayer);w.Write(Main.remixWorld);w.Write(Main.getGoodWorld);w.Write(Main.slimeRain);w.Write(Main.invasionType);
             w.Write(Terraria.Testing.DebugOptions.Shared_RandomizeProjectileSlots);w.Write(Terraria.Testing.DebugOptions.noLimits);
             // Equal NPC pages do not imply the same gravity source: the
