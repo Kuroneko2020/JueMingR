@@ -174,7 +174,6 @@ namespace JueMingR.TerrariaHost.View
             __state=false;
             try
             {
-                if(owner!=null&&owner.Plan!=null&&!owner.Plan.Expanded)owner.Native.ExitOrdinary();
                 if(owner==null||owner.Plan==null||!owner.Plan.Expanded||Main.drawToScreen||!Lighting.NotRetro)return true;
                 if(owner.Native.Begin(owner.Plan)){__state=true;return true;}
             }
@@ -233,6 +232,10 @@ namespace JueMingR.TerrariaHost.View
         {
             if(owner==null||!owner.HasWorld)return;
             if(owner.Plan==null||!owner.Plan.MatchesRequest(Main.GameZoomTarget,owner.UnlockEnabled))owner.Plan=new ViewRenderPlan(Main.GameZoomTarget,owner.UnlockEnabled);
+            // RenderToTargets is skipped in Direct/Retro. Confirm ordinary
+            // here so that resource exit does not depend on entering Native.
+            try{if(!owner.Plan.Expanded)owner.Native.ExitOrdinary();}
+            catch(Exception error){MarkDrawFailure(error);throw;}
             if(owner.Plan.Wide||owner.Plan.Expanded&&owner.Native.Rejected(owner.Plan))Main.drawToScreen=true;
             // The early native choice may already have released its group.
             // Keep Direct for this one changed-display Draw, never sample an
