@@ -18,8 +18,13 @@ namespace NativeWorldTextProbe
             if(scope=="ViewZoomSpeedCpu")
             {
                 AppDomain.MonitoringIsEnabled=true;
-                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>NativeViewZoomSpeedChecks.Model(context.GetType().Assembly),processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+                // Pure target arithmetic needs the actual compiled Host only.
+                // Do not start unrelated preference/feature workers inside an
+                // AppDomain allocation assertion or require an XNA device.
+                var assembly=System.Reflection.Assembly.LoadFrom(Path.Combine(Program.Repository,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
+                using(var stream=File.OpenRead(assembly.Location))using(var sha=SHA256.Create())
+                    Console.WriteLine("VIEW declared ViewZoomSpeedCpu dispatch Host="+assembly.Location+" MVID="+assembly.ManifestModule.ModuleVersionId+" SHA256="+BitConverter.ToString(sha.ComputeHash(stream)).Replace("-",""));
+                NativeViewZoomSpeedChecks.Model(assembly);return 0;
             }
             if(scope=="ViewCacheRange") { Environment.SetEnvironmentVariable("JUEMINGR_VIEW_CACHE_PROBE","1");return NativeViewOriginalChecks.Run(content,output); }
             if(scope=="ViewRangeConsumerCpu")
