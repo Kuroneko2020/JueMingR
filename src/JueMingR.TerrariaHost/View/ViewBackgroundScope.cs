@@ -19,7 +19,7 @@ namespace JueMingR.TerrariaHost.View
             width = Main.screenWidth; height = Main.screenHeight; position = Main.screenPosition;
             Vector2 start = Main.Camera.ScaledPosition, size = Main.Camera.ScaledSize;
             Matrix = Microsoft.Xna.Framework.Matrix.CreateTranslation(new Vector3(start - position, 0)) * Main.GameViewMatrix.TransformationMatrix;
-            Main.spriteBatch.End();
+            End();
             try
             {
                 Main.screenPosition = start; Main.screenWidth = (int)Math.Ceiling(size.X); Main.screenHeight = (int)Math.Ceiling(size.Y);
@@ -32,11 +32,16 @@ namespace JueMingR.TerrariaHost.View
             }
         }
         private static void Begin(Matrix matrix)
-        { Main.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, Main.DefaultSamplerState, DepthStencilState.None, Main.Rasterizer, null, matrix); }
+        {
+            try { Main.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, Main.DefaultSamplerState, DepthStencilState.None, Main.Rasterizer, null, matrix); }
+            catch (OutOfMemoryException error) { throw new ViewRenderFailure(error); }
+        }
+        private static void End()
+        { try { Main.spriteBatch.End(); } catch (OutOfMemoryException error) { throw new ViewRenderFailure(error); } }
         public void Dispose()
         {
             if (disposed) return; disposed = true;
-            try { Main.spriteBatch.End(); }
+            try { End(); }
             finally
             {
                 Main.screenPosition = position; Main.screenWidth = width; Main.screenHeight = height;

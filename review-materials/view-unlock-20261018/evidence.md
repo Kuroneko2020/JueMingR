@@ -43,3 +43,11 @@
 四项外来资产保留：本地参考资料说明的既有修改、`.workbuddy/`、`issue112.txt`、`pr113.json`。`.local/view-unlock/retained-assets.json` 固定原字节；不夹带提交，不声称raw工作区干净。
 
 源码/必要检测/注释/文档固定后一次集中独审；实际独审通过与协调准入后才执行07的一次普通完整ContinuousProcessing Release/net472/x86包和一次轻量备份换装/读回。源码、包、实际安装、恢复路径和所有者实测分开；未接受合并前不合并、不关闭、不开始基础移动。
+
+## 集中独审后的修复包
+
+56d955c集中独审结论为NEEDS_FIX，未执行包或安装。R1普通NPC粗筛已改实际camera局部矩形；R2在直绘中恢复真实scene capture与WaterDistortion消费，物理scene/sky/swap和mask、world/4波纹对均按需复用；R3额外旧光照容量先在独立原版引擎完整准备，受控OOM不污染活数组并一次反馈/停止解锁/回安全目标。详见正式设计的集中独审修复边界。
+
+开发证据：`repair-r1-red/run.log`为旧Host实际原版NPC拒绘RED；`repair-full-09/run.log`记录新Host09F3A15C…/MVID f4955c0f及probe7B46E00D…，真实普通/宽/Retained NPC，Invert Apply与物理像素/设备尺寸，水波四态完整Draw与冻结shader叶、资源/成本，候选Rebuild部分发布后的实际OOM和后20次native consumer均通过。水波mask为空的首个分歧保留在repair-04，补TileBatch立即变换后05起有真实mask与shader像素；07的基类私有字段反射测试错误保持原件，08及09已按声明类型读取。01的幂等Set(true)测试期待错误修后02已进入真实注入。开发早轮未单独保存所选临时Host哈希，只作为定位过程，不代替最终正式输入锁定。
+
+旧正式GPU实际Host D89F36…的MVID为31277aae；其probe中性017941…、执行LAA B775…。随后CPU准备因临时JUEMINGR_COMBAT_GEOMETRY_CANDIDATE进入编译输入且SourceRevisionId变化，公共Host变为3F4D3C…/MVID8cfb9c16，probe801C88…。827源行相同不能把旧GPU改签成后者CURRENT；只读对照为`.local/view-unlock/identity-chain-analysis.json`。旧candidate-review.json是未准入草稿，八项CURRENT表述已撤回；修复源冻结后在当前子进程清除临时selector的一次PrepareOnly建立正常输入匹配，正式新记录逐项列CURRENT或明确REVIEWED_REUSE，旧GPU/Network不改写。

@@ -25,6 +25,8 @@ namespace JueMingR.TerrariaHost.View
         private readonly Stopwatch startup = Stopwatch.StartNew();
         private PreferenceStatus? seenPreference;
         private readonly ViewSectionRequests sections;
+        internal readonly ViewSceneCapture Scene = new ViewSceneCapture();
+        internal readonly ViewWaterResources Water = new ViewWaterResources();
         private long consumedMapping = -1;
         internal Exception SetupError { get; private set; }
         internal string Failure { get; private set; }
@@ -84,13 +86,22 @@ namespace JueMingR.TerrariaHost.View
             Main.GameZoomTarget = Math.Max(UnlockEnabled ? MinimumTarget : 1f, Math.Min(2f, current + direction * .02f));
         }
         public void OnSessionStarted() { consumedMapping = -1; sections.Clear(); }
-        public void OnSessionEnded() { consumedMapping = -1; sections.Clear(); }
+        public void OnSessionEnded() { consumedMapping = -1; sections.Clear(); Scene.Dispose(); Water.Dispose(); }
         public void Update(ulong tick)
         {
             if (!preference.Snapshot.IsLoaded && startup.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad();
             sections.Update(tick, NeedsExpandedRendering);
         }
         public void FailClosed() { failed = true; }
+        internal void RenderingFailed()
+        {
+            if (failed) return;
+            // A resource failure is an exceptional recovery, distinct from a
+            // normal OFF click. Stop further wider preparation for this owner;
+            // intact native lighting/resources can draw the ordinary view.
+            failed = true; sections.Clear(); Scene.Dispose(); Water.Dispose(); Main.GameZoomTarget = Math.Max(1f, Main.GameZoomTarget); Main.renderNow = true;
+            Failure = "视距绘制暂不可用，已恢复普通视野；本次已停用，请重启游戏后再试。";
+        }
         public void TakeFeedback(Action<string> display)
         {
             if (Failure != null) { string value = Failure; display(value); Failure = null; return; }
@@ -113,7 +124,7 @@ namespace JueMingR.TerrariaHost.View
         {
             if (stopping) return; stopping = true;
             AppDomain.CurrentDomain.ProcessExit -= OnExit;
-            ViewHooks.Uninstall(this); preference.Stop(750);
+            ViewHooks.Uninstall(this); Scene.Dispose(); Water.Dispose(); preference.Stop(750);
         }
     }
 }

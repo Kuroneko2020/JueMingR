@@ -71,6 +71,7 @@ namespace NativeWorldTextProbe
             private readonly HashSet<string> images = new HashSet<string>();
             private readonly Dictionary<string, int> stableRebuilds = new Dictionary<string, int>();
             private readonly Dictionary<string, int> stableTargets = new Dictionary<string, int>();
+            private readonly Dictionary<string,int> stableScenes=new Dictionary<string,int>(),stableWaters=new Dictionary<string,int>();
             private bool throwBackgroundEnd;
             private bool caveWaterfalls;
             private readonly Dictionary<string,List<double>> drawTimes = new Dictionary<string,List<double>>();
@@ -127,6 +128,8 @@ namespace NativeWorldTextProbe
                 typeof(Main).GetMethod("DoUpdate_HandleInput", F).Invoke(this, null);
                 Call(context, "UpdateRuntime");
                 if (frame == 70) { Require((bool)Call(view, "SetUnlockEnabled", true), "Native view enabled after document load"); Require(GameZoomTarget == 1f, "ON does not jump target"); }
+                if(frame==70 && Environment.GetEnvironmentVariable("JUEMINGR_VIEW_REPAIR_FOCUS")=="Water")
+                { NativeViewWaterChecks.Run(this,view,()=>Draw(new GameTime()),()=>capture,output);Complete=true;Exit();return; }
                 if (frame == 139) Require(GameZoomTarget == 1f, "both native mapped keys have zero net movement");
                 if (frame == 260) { Call(view, "SetUnlockEnabled", false); Console.WriteLine("VIEW OFF target=" + GameZoomTarget); }
                 if (frame == 340) Require(Math.Abs(GameZoomTarget - .5f) < .0001f, "OFF keeps .5 with no input and blocks further outward hold");
@@ -147,7 +150,10 @@ namespace NativeWorldTextProbe
                 if (frame >= 860)
                 {
                     CheckLifecycle();
+                    NativeViewFilterChecks.Run(this,view,()=>Draw(new GameTime()),()=>capture,ResizeCapture,output);
+                    NativeViewWaterChecks.Run(this,view,()=>Draw(new GameTime()),()=>capture,output);
                     CheckCosts();
+                    NativeViewFailureChecks.Run(view,()=>Draw(new GameTime()));
                     foreach (var pair in drawTimes)
                     { var sorted=pair.Value.OrderBy(v=>v).ToArray();Console.WriteLine("VIEW COST group="+pair.Key+" n="+sorted.Length+" mean-ms="+sorted.Average()+" p95-ms="+sorted[(int)((sorted.Length-1)*.95)]+" max-ms="+sorted.Last()+" native-draw-appdomain-allocated-bytes="+drawAllocations[pair.Key]); }
                     Console.WriteLine("VIEW RESOURCES legacy-rebuilds="+legacyRebuilds+" target-inits="+targetInitializations);
@@ -204,6 +210,12 @@ namespace NativeWorldTextProbe
                 // physical-sized final destination, leaving native temporary
                 // targets and every original Draw consumer unchanged.
                 capture = new RenderTarget2D(GraphicsDevice, screenWidth, screenHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents);
+                foreach(var loaded in AppDomain.CurrentDomain.GetAssemblies().Where(a=>a.GetName().Name.StartsWith("JueMingR.")||a==typeof(NativeViewOriginalChecks).Assembly))
+                {
+                    if(String.IsNullOrEmpty(loaded.Location))continue;
+                    using(var stream=File.OpenRead(loaded.Location))using(var hash=System.Security.Cryptography.SHA256.Create())
+                        Console.WriteLine("VIEW ACTUAL ASSEMBLY name="+loaded.GetName().Name+" MVID="+loaded.ManifestModule.ModuleVersionId+" SHA256="+BitConverter.ToString(hash.ComputeHash(stream)).Replace("-","")+" path="+loaded.Location);
+                }
                 Console.WriteLine("VIEW prepared original initialized scene; Hook error="+GetOptional(view,"SetupError"));
                 Require(GetOptional(view,"SetupError") == null,"complete .8 view hook installation");
             }
@@ -282,7 +294,7 @@ namespace NativeWorldTextProbe
                 finally{Main.BackgroundEnabled=true;}
                 foreach(var size in new[]{new Point(1280,720),new Point(width,height)})
                 {
-                    Main.SetResolution(size.X,size.Y);capture.Dispose();capture=new RenderTarget2D(GraphicsDevice,screenWidth,screenHeight,false,SurfaceFormat.Color,DepthFormat.None,0,RenderTargetUsage.PreserveContents);
+                    ResizeCapture(size.X,size.Y);
                     for(int i=0;i<4;i++)Draw(new GameTime());
                     Require(screenWidth==size.X && screenHeight==size.Y && Camera.ScaledSize.X/16+12<=512 && Camera.ScaledSize.Y/16+12<=512,"actual resized expanded viewport stays within shared discovery bounds");
                     Console.WriteLine("VIEW RESIZE physical="+screenWidth+"x"+screenHeight+" scaled="+Camera.ScaledSize+" target="+GameZoomTarget+" render="+GameViewMatrix.RenderZoom);
@@ -291,6 +303,8 @@ namespace NativeWorldTextProbe
                 Main.gameMenu=false;Call(context,"UpdateRuntime");Require((bool)Get(view,"ControlsEnabled"),"reentry restores loaded permission owner");
                 Console.WriteLine("PASS VIEW lifecycle native cave exception/next draw, actual1280x720->1920x1080 reset, menu/reentry.");
             }
+            private void ResizeCapture(int width,int height)
+            { Main.SetResolution(width,height);capture.Dispose();capture=new RenderTarget2D(GraphicsDevice,screenWidth,screenHeight,false,SurfaceFormat.Color,DepthFormat.None,0,RenderTargetUsage.PreserveContents); }
             private void InputStep(params Keys[] keys)
             {
                 bool chat=Main.drawingPlayerChat;float before=GameZoomTarget;
@@ -350,15 +364,15 @@ namespace NativeWorldTextProbe
                         GameZoomTarget=zoom;player[myPlayer].position=origin;
                         for(int i=0;i<12;i++)Draw(new GameTime());
                         var memory=Process.GetCurrentProcess();memory.Refresh();long beforePrivate=memory.PrivateMemorySize64,beforeManaged=GC.GetTotalMemory(false),allocated=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;
-                        int rebuilds=legacyRebuilds,targets=targetInitializations;var samples=new List<double>();
+                        int rebuilds=legacyRebuilds,targets=targetInitializations,scenes=(int)Get(Get(view,"Scene"),"Generation"),waters=(int)Get(Get(view,"Water"),"Generation");var samples=new List<double>();
                         for(int i=0;i<30;i++)
                         {
                             if(moving)player[myPlayer].position+=new Vector2(8,0);
                             var clock=Stopwatch.StartNew();Draw(new GameTime());clock.Stop();samples.Add(clock.Elapsed.TotalMilliseconds);
                         }
                         memory.Refresh();var sorted=samples.OrderBy(x=>x).ToArray();
-                        Console.WriteLine("VIEW REFERENCE target="+zoom+" actual="+GameViewMatrix.RenderZoom.X+" moving="+moving+" n=30 mean-ms="+sorted.Average()+" p95-ms="+sorted[27]+" max-ms="+sorted.Last()+" visible="+Camera.ScaledSize+" appdomain-allocated-bytes="+(AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize-allocated)+" managed-delta="+(GC.GetTotalMemory(false)-beforeManaged)+" private-delta="+(memory.PrivateMemorySize64-beforePrivate)+" private-total="+memory.PrivateMemorySize64+" rebuilds="+(legacyRebuilds-rebuilds)+" target-inits="+(targetInitializations-targets));
-                        Require(legacyRebuilds==rebuilds && targetInitializations==targets,"stationary/moving stable reference does not recreate lighting or targets");
+                        Console.WriteLine("VIEW REFERENCE target="+zoom+" actual="+GameViewMatrix.RenderZoom.X+" moving="+moving+" n=30 mean-ms="+sorted.Average()+" p95-ms="+sorted[27]+" max-ms="+sorted.Last()+" visible="+Camera.ScaledSize+" appdomain-allocated-bytes="+(AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize-allocated)+" managed-delta="+(GC.GetTotalMemory(false)-beforeManaged)+" private-delta="+(memory.PrivateMemorySize64-beforePrivate)+" private-total="+memory.PrivateMemorySize64+" rebuilds="+(legacyRebuilds-rebuilds)+" target-inits="+(targetInitializations-targets)+" scene-rebuilds="+((int)Get(Get(view,"Scene"),"Generation")-scenes)+" water-rebuilds="+((int)Get(Get(view,"Water"),"Generation")-waters)+" foreground-sun="+Main.ForegroundSunlightEffects);
+                        Require(legacyRebuilds==rebuilds && targetInitializations==targets && (int)Get(Get(view,"Scene"),"Generation")==scenes && (int)Get(Get(view,"Water"),"Generation")==waters,"stationary/moving stable reference does not recreate lighting, native targets or owned scene/water buffers");
                         if(!moving)SaveImage("reference-"+(int)(zoom*100));
                     }
                 }
@@ -389,7 +403,7 @@ namespace NativeWorldTextProbe
                 if (!prepared) return;
                 if(frame>=700 && !caveWaterfalls){waterfallManager.FindWaterfalls(true);Require((int)Get(waterfallManager,"currentMax")>0,"native FindWaterfalls sees real peripheral half-brick/liquid source");caveWaterfalls=true;}
                 string group=frame>=25 && frame<65?"normal-off":frame>=90&&frame<125?"normal-on":frame>=200&&frame<250?"wide-on":frame>=285&&frame<335?"wide-retained":frame>=410&&frame<455?"returned-off":frame>=525&&frame<555?"white-wide":frame>=590&&frame<625?"retro-wide":frame>=655&&frame<685?"trippy-wide":frame>=720&&frame<745?"cave-color":null;
-                if(group!=null){if(!drawTimes.TryGetValue(group,out var samples)){drawTimes.Add(group,samples=new List<double>());drawAllocations.Add(group,0);stableRebuilds.Add(group,legacyRebuilds);stableTargets.Add(group,targetInitializations);}else Require(stableRebuilds[group]==legacyRebuilds && stableTargets[group]==targetInitializations,"stable view/mode does not rebuild lighting/targets per draw: "+group);samples.Add(watch.Elapsed.TotalMilliseconds);drawAllocations[group]+=allocated;}
+                if(group!=null){if(!drawTimes.TryGetValue(group,out var samples)){drawTimes.Add(group,samples=new List<double>());drawAllocations.Add(group,0);stableRebuilds.Add(group,legacyRebuilds);stableTargets.Add(group,targetInitializations);stableScenes.Add(group,(int)Get(Get(view,"Scene"),"Generation"));stableWaters.Add(group,(int)Get(Get(view,"Water"),"Generation"));}else Require(stableRebuilds[group]==legacyRebuilds && stableTargets[group]==targetInitializations && stableScenes[group]==(int)Get(Get(view,"Scene"),"Generation") && stableWaters[group]==(int)Get(Get(view,"Water"),"Generation"),"stable view/mode does not rebuild lighting/targets per draw: "+group);samples.Add(watch.Elapsed.TotalMilliseconds);drawAllocations[group]+=allocated;}
                 string imageName = !ordinaryImage && frame >= 25 && frame < 65 ? "ordinary" : !wideImage && frame >= 200 && frame < 250 ? "wide" : !retainedImage && frame >= 285 && frame < 335 ? "retained" : frame>=535&&frame<550?"white":frame>=605&&frame<620?"retro":frame>=665&&frame<680?"trippy":frame>=730&&frame<745?"cave":frame>=752&&frame<765?"obstruction":frame>=782&&frame<795?"shimmer":frame>=805&&frame<825?"darkness":frame>=835&&frame<855?"moon-white":null;
                 if(imageName!=null && !images.Add(imageName)) imageName=null;
                 if (imageName != null)
@@ -399,6 +413,7 @@ namespace NativeWorldTextProbe
                     using (var image = new Texture2D(GraphicsDevice,screenWidth,screenHeight))
                     { image.SetData(pixels); using (var file = File.Create(Path.Combine(output,"view-"+imageName+".png"))) image.SaveAsPng(file,screenWidth,screenHeight); }
                     Console.WriteLine("VIEW DRAW frame="+frame+" target="+GameZoomTarget+" render="+GameViewMatrix.RenderZoom+" visible="+Camera.ScaledSize+" direct="+drawToScreen+" ms="+watch.Elapsed.TotalMilliseconds);
+                    if(imageName=="ordinary"||imageName=="wide"||imageName=="retained") NativeViewNpcChecks.Run(this,view,imageName=="ordinary"?"normal":imageName=="wide"?"on":"retained",output);
                     if (imageName == "ordinary") ordinaryImage = true;
                     else { if(imageName == "wide") wideImage = true; else retainedImage = true; Require(GameViewMatrix.RenderZoom.X < .55f,"Actual original DoDraw publishes wide final matrix"); }
                 }

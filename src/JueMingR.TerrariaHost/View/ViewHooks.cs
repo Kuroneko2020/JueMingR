@@ -11,6 +11,8 @@ using Terraria.Graphics.Light;
 using Terraria.GameContent.Drawing;
 using Terraria.GameContent.Liquid;
 using Terraria.GameContent.Events;
+using Terraria.GameContent.Shaders;
+using Terraria.Graphics.Shaders;
 
 namespace JueMingR.TerrariaHost.View
 {
@@ -18,6 +20,7 @@ namespace JueMingR.TerrariaHost.View
     {
         private const string OwnerId = "JueMingR.View.Native1458";
         private static HostView owner;
+        internal static bool Expanded { get { return owner != null && owner.NeedsExpandedRendering; } }
         [ThreadStatic] private static ViewBackgroundScope background;
         private static readonly List<MethodBase> targets = new List<MethodBase>();
         internal static void Install(HostView value)
@@ -27,7 +30,8 @@ namespace JueMingR.TerrariaHost.View
             try
             {
                 Apply(harmony, AccessTools.Method(typeof(Main), "UpdateViewZoomKeys"), prefix: "ZoomKeys");
-                Apply(harmony, AccessTools.Method(typeof(Main), "DoDraw", new[] { typeof(GameTime) }), transpiler: "WorldDraw");
+                Apply(harmony, AccessTools.Method(typeof(Main), "DoDraw", new[] { typeof(GameTime) }), transpiler: "WorldDraw", finalizer: "EndWorldDraw");
+                Apply(harmony, AccessTools.Method(typeof(Main), "DrawNPCs", new[] { typeof(bool) }), transpiler: "Expand", patchType: typeof(ViewNpcCulling));
                 Apply(harmony, AccessTools.Method(typeof(Main), "GetAreaToLight"), postfix: "LightArea");
                 Apply(harmony, AccessTools.Method(typeof(Main), "DrawBackground"), prefix: "BeginBackground", transpiler: "BackgroundLayer", finalizer: "EndBackground");
                 Apply(harmony, AccessTools.Method(typeof(Main), "OldDrawBackground"), transpiler: "BackgroundLayer");
@@ -38,6 +42,10 @@ namespace JueMingR.TerrariaHost.View
                 Apply(harmony, AccessTools.Method(typeof(MoonlordDeathDrama), "DrawWhite"), prefix: "BeginBackground", finalizer: "EndBackground");
                 Apply(harmony, AccessTools.Method(typeof(Main), "DrawBackgroundBlackFill"), prefix: "BeginBackground", finalizer: "EndBackground");
                 Apply(harmony, AccessTools.Method(typeof(Main), "DrawWaters"), prefix: "PrepareLiquids");
+                Apply(harmony, AccessTools.Method(typeof(WaterShaderData), "PreDraw"), prefix: "WaterPreDraw");
+                Apply(harmony, AccessTools.Method(typeof(WaterShaderData), "ValidateRenderTargets"), prefix: "WaterValidate");
+                Apply(harmony, AccessTools.Method(typeof(WaterShaderData), "Apply"), prefix: "WaterApply", finalizer: "WaterApplied");
+                Apply(harmony, AccessTools.Method(typeof(WaterShaderData), "QueueRipple", new[]{typeof(Vector2),typeof(Color),typeof(Vector2),typeof(RippleShape),typeof(float)}), transpiler: "WaterQueue");
                 Apply(harmony, AccessTools.Method(typeof(Main), "oldDrawWater"), prefix: "WaterBounds", transpiler: "OldWaterArea");
                 Apply(harmony, AccessTools.Method(typeof(WaterfallManager), "FindWaterfalls"), prefix: "WaterBounds", transpiler: "OldWaterArea");
                 Apply(harmony, AccessTools.Method(typeof(WaterfallManager), "DrawWaterfall", new[] { typeof(int), typeof(float) }), prefix: "WaterBounds", transpiler: "OldWaterArea");
@@ -57,13 +65,13 @@ namespace JueMingR.TerrariaHost.View
             foreach (var target in targets) harmony.Unpatch(target, HarmonyPatchType.All, OwnerId);
             targets.Clear();
         }
-        private static void Apply(Harmony harmony, MethodInfo target, string prefix = null, string postfix = null, string transpiler = null, string finalizer = null)
+        private static void Apply(Harmony harmony, MethodInfo target, string prefix = null, string postfix = null, string transpiler = null, string finalizer = null, Type patchType = null)
         {
             if (target == null) throw new MissingMethodException("Required .8 view method.");
             targets.Add(target);
             harmony.Patch(target, prefix: prefix == null ? null : new HarmonyMethod(typeof(ViewHooks), prefix),
                 postfix: postfix == null ? null : new HarmonyMethod(typeof(ViewHooks), postfix),
-                transpiler: transpiler == null ? null : new HarmonyMethod(typeof(ViewHooks), transpiler),
+                transpiler: transpiler == null ? null : new HarmonyMethod(patchType ?? typeof(ViewHooks), transpiler),
                 finalizer: finalizer == null ? null : new HarmonyMethod(typeof(ViewHooks), finalizer));
         }
         private static bool ZoomKeys()
@@ -77,14 +85,22 @@ namespace JueMingR.TerrariaHost.View
             var zoom = AccessTools.Field(typeof(Main), "GameZoomTarget");
             var clamp = AccessTools.Method(typeof(MathHelper), "Clamp", new[] { typeof(float), typeof(float), typeof(float) });
             var update = AccessTools.PropertyGetter(typeof(Lighting), "UpdateEveryFrame");
-            int clamps = 0, direct = 0, shimmer = 0;
+            int clamps = 0, direct = 0, shimmer = 0, captures = 0, captureGuard = 0;
             var draw = AccessTools.Method(typeof(SpriteBatch), "Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(Vector2), typeof(SpriteEffects), typeof(float) });
             var unscaled = AccessTools.PropertyGetter(typeof(Camera), "UnscaledSize");
+            var canCapture = AccessTools.Method(typeof(Terraria.Graphics.Effects.FilterManager), "CanCapture");
+            var directField = AccessTools.Field(typeof(Main), "drawToScreen");
             for (int i = 0; i < code.Count; i++)
             {
                 if (i >= 3 && code[i].Calls(clamp) && code[i - 3].LoadsField(zoom) && code[i - 2].opcode == OpCodes.Ldc_R4 && Equals(code[i - 2].operand, 1f) && code[i - 1].opcode == OpCodes.Ldc_R4 && Equals(code[i - 1].operand, 2f))
                 { code[i].operand = AccessTools.Method(typeof(ViewHooks), "ClampTarget"); clamps++; }
                 if (code[i].Calls(update)) { code[i].operand = AccessTools.Method(typeof(ViewHooks), "DirectDraw"); direct++; }
+                if (code[i].Calls(canCapture))
+                {
+                    code[i].opcode = OpCodes.Call; code[i].operand = AccessTools.Method(typeof(ViewHooks), "PrepareSceneCapture"); captures++;
+                    for (int p = i + 1; p < Math.Min(code.Count, i + 18); p++)
+                        if (code[p].LoadsField(directField)) { code[p].opcode = OpCodes.Call; code[p].operand = AccessTools.Method(typeof(ViewHooks), "SceneDirectDraw"); captureGuard++; break; }
+                }
                 if (code[i].Calls(draw))
                 {
                     int sizeReads = 0;
@@ -92,7 +108,7 @@ namespace JueMingR.TerrariaHost.View
                     if (sizeReads == 2) { code[i].opcode = OpCodes.Call; code[i].operand = AccessTools.Method(typeof(ViewHooks), "ShimmerFill"); shimmer++; }
                 }
             }
-            if (clamps != 1 || direct != 1 || shimmer != 1) throw new InvalidOperationException(".8 view draw shape mismatch: clamp=" + clamps + ", direct=" + direct + ", shimmer=" + shimmer);
+            if (clamps != 1 || direct != 1 || shimmer != 1 || captures != 1 || captureGuard != 1) throw new InvalidOperationException(".8 view draw shape mismatch: clamp=" + clamps + ", direct=" + direct + ", shimmer=" + shimmer + ", capture=" + captures + "/" + captureGuard);
             return code;
         }
         private static float ClampTarget(float value, float minimum, float maximum)
@@ -103,6 +119,31 @@ namespace JueMingR.TerrariaHost.View
             // Target below 1 predicts wider coverage without touching the real
             // screen dimensions, UI scale, or any server simulation rectangle.
             return Lighting.UpdateEveryFrame || owner != null && owner.RequiresDirectDraw;
+        }
+        private static bool PrepareSceneCapture(Terraria.Graphics.Effects.FilterManager filters)
+        {
+            bool active = filters.CanCapture();
+            if (owner == null) return active;
+            if (Expanded && Main.drawToScreen && !Main.mapFullscreen && !Main.onlyDrawFancyUI && Lighting.NotRetro && (active || Main.ForegroundSunlightEffects))
+            {
+                try { owner.Scene.Attach(); owner.Water.Prepare(); }
+                catch (OutOfMemoryException error) { throw new ViewRenderFailure(error); }
+            }
+            else { owner.Scene.Dispose(); owner.Water.Dispose(); }
+            return active;
+        }
+        private static bool SceneDirectDraw() { return Main.drawToScreen && !(owner != null && owner.Scene.Attached); }
+        private static Exception EndWorldDraw(Exception __exception)
+        {
+            owner?.Water.Detach();
+            owner?.Scene.Detach(__exception != null);
+            if (!(__exception is ViewRenderFailure)) return __exception;
+            // Only a typed failure from VIEW-owned preparation is contained.
+            // Leave unrelated native exceptions visible. The next original
+            // frame uses the intact ordinary arrays and no repeated growth.
+            try { Main.spriteBatch.End(); } catch (InvalidOperationException) { }
+            Main.instance.GraphicsDevice.SetRenderTarget(null);
+            owner?.RenderingFailed(); return null;
         }
         private static void LightArea(ref Rectangle __result)
         {
@@ -136,15 +177,8 @@ namespace JueMingR.TerrariaHost.View
                 return new Vector2((float)Math.Ceiling(size.X / 256f) * 256f, (float)Math.Ceiling(size.Y / 256f) * 256f);
             return size;
         }
-        private static readonly FieldInfo legacyStates = AccessTools.Field(typeof(LegacyLighting), "_states");
         private static void EnsureLegacyCapacity(LegacyLighting __instance)
-        {
-            if (owner == null || !owner.NeedsExpandedRendering) return;
-            var states = legacyStates.GetValue(__instance) as Array;
-            Vector2 need = LegacySize(Main.Camera);
-            if (states == null || states.Length < (int)need.X / 16 + 100 || ((Array)states.GetValue(0)).Length < (int)need.Y / 16 + 100)
-                __instance.Rebuild();
-        }
+        { ViewLegacyCapacity.Ensure(__instance); }
         private static readonly FieldInfo moonWhitening = AccessTools.Field(typeof(MoonlordDeathDrama), "whitening");
         private static void BeginBackground(MethodBase __originalMethod, out ViewBackgroundScope __state)
         {
@@ -171,7 +205,7 @@ namespace JueMingR.TerrariaHost.View
                 try { __state?.Dispose(); }
                 finally { if (__state != null) background = null; }
             }
-            return __exception;
+            return __state != null && __exception is OutOfMemoryException ? new ViewRenderFailure(__exception) : __exception;
         }
         private static IEnumerable<CodeInstruction> BackgroundLayer(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
         {
@@ -193,11 +227,38 @@ namespace JueMingR.TerrariaHost.View
         private static Vector2 BackgroundPosition(Camera camera) { return background != null ? Main.screenPosition : camera.ScaledPosition; }
         private static void BeginBackgroundTiles(TileBatch batch)
         { if (background != null) batch.Begin(Main.Rasterizer, background.Matrix); else batch.Begin(); }
-        private static void PrepareLiquids(bool isBackground)
+        private static bool PrepareLiquids(bool isBackground)
         {
-            if (!isBackground || owner == null || !owner.NeedsExpandedRendering || !Main.drawToScreen || !Lighting.NotRetro) return;
+            if(owner != null && !owner.Water.DrawForeground(isBackground))return false;
+            if (!isBackground || owner == null || !owner.NeedsExpandedRendering || !Main.drawToScreen || !Lighting.NotRetro || owner.Water.Active) return true;
             TileDrawing.GetScreenDrawArea(false, out var _, out int left, out int right, out int top, out int bottom);
-            LiquidRenderer.Instance.PrepareDraw(new Rectangle(left, top, right - left, bottom - top));
+            LiquidRenderer.Instance.PrepareDraw(new Rectangle(left, top, right - left, bottom - top));return true;
+        }
+        private static bool WaterPreDraw(WaterShaderData __instance,GameTime gameTime)
+        {
+            if(owner==null)return true;
+            if(owner.Water.Running)return true;
+            if(owner.RequiresDirectDraw && Lighting.NotRetro && !Main.mapFullscreen && !Main.onlyDrawFancyUI)
+            {owner.Water.Defer(__instance,gameTime);return false;}
+            owner.Water.Dispose();return true;
+        }
+        private static bool WaterValidate() {return owner==null || !owner.Water.Running;}
+        private static readonly FieldInfo imageScales=AccessTools.Field(typeof(ScreenShaderData),"_imageScales");
+        private static void WaterApply(WaterShaderData __instance,out Vector2? __state)
+        {
+            __state=null;if(owner==null||!owner.Water.Active)return;
+            var scales=(Vector2[])imageScales.GetValue(__instance);__state=scales[2];
+            __instance.UseImageScale(Vector2.One/Main.GameViewMatrix.RenderZoom,2);
+        }
+        private static void WaterApplied(WaterShaderData __instance,Vector2? __state)
+        {if(__state.HasValue)__instance.UseImageScale(__state.Value,2);}
+        private static bool WaterQueueDirect() {return Main.drawToScreen && !(owner!=null && owner.RequiresDirectDraw && Lighting.NotRetro);}
+        private static IEnumerable<CodeInstruction> WaterQueue(IEnumerable<CodeInstruction> source)
+        {
+            int count=0;var field=AccessTools.Field(typeof(Main),"drawToScreen");
+            foreach(var instruction in source)
+            {if(instruction.LoadsField(field)){instruction.opcode=OpCodes.Call;instruction.operand=AccessTools.Method(typeof(ViewHooks),"WaterQueueDirect");count++;}yield return instruction;}
+            if(count!=1)throw new InvalidOperationException(".8 water queue direct guard mismatch.");
         }
         [ThreadStatic] private static Vector2 waterPosition;
         private static void WaterBounds()
