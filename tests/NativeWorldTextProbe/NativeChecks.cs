@@ -14,6 +14,13 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "ViewOriginal") return NativeViewOriginalChecks.Run(content, output);
+            if (scope == "ViewNetwork") return NativeViewNetworkChecks.Run(content, output);
+            if (scope == "ViewCombatCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(NativeViewCombatChecks.Run, processing: true, shortFeedback: true, candidateAssembly: Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE")); return 0;
+            }
             if (scope == "Journey") return NativeJourneyChecks.Run(content, output);
             if (scope == "JourneyReopen") return NativeJourneyChecks.Run(content, output, true);
             if (scope == "JourneyCpu") return NativeJourneyChecks.RunCpu(content, output);

@@ -29,7 +29,9 @@ namespace JueMingR.TerrariaHost.View
                 Apply(harmony, AccessTools.Method(typeof(Main), "UpdateViewZoomKeys"), prefix: "ZoomKeys");
                 Apply(harmony, AccessTools.Method(typeof(Main), "DoDraw", new[] { typeof(GameTime) }), transpiler: "WorldDraw");
                 Apply(harmony, AccessTools.Method(typeof(Main), "GetAreaToLight"), postfix: "LightArea");
-                Apply(harmony, AccessTools.Method(typeof(Main), "DrawBackground"), prefix: "BeginBackground", transpiler: "BackgroundBatch", finalizer: "EndBackground");
+                Apply(harmony, AccessTools.Method(typeof(Main), "DrawBackground"), prefix: "BeginBackground", transpiler: "BackgroundLayer", finalizer: "EndBackground");
+                Apply(harmony, AccessTools.Method(typeof(Main), "OldDrawBackground"), transpiler: "BackgroundLayer");
+                Apply(harmony, AccessTools.Method(typeof(Main), "DrawBackground_DirtBackground"), transpiler: "BackgroundLayer");
                 Apply(harmony, AccessTools.Method(typeof(ScreenObstruction), "Draw"), prefix: "BeginBackground", finalizer: "EndBackground");
                 Apply(harmony, AccessTools.Method(typeof(ScreenDarkness), "DrawBack"), prefix: "BeginBackground", finalizer: "EndBackground");
                 Apply(harmony, AccessTools.Method(typeof(ScreenDarkness), "DrawFront"), prefix: "BeginBackground", finalizer: "EndBackground");
@@ -94,7 +96,7 @@ namespace JueMingR.TerrariaHost.View
             return code;
         }
         private static float ClampTarget(float value, float minimum, float maximum)
-        { return MathHelper.Clamp(value, owner != null && owner.HasWorld && (owner.UnlockEnabled || owner.RetainsTarget) ? HostView.MinimumZoom : minimum, maximum); }
+        { return MathHelper.Clamp(value, owner != null && owner.HasWorld && (owner.UnlockEnabled || owner.RetainsTarget) ? owner.MinimumTarget : minimum, maximum); }
         private static bool DirectDraw()
         {
             // This native choice occurs before this frame publishes its zoom.
@@ -153,22 +155,42 @@ namespace JueMingR.TerrariaHost.View
                 __originalMethod.DeclaringType == typeof(MoonlordDeathDrama) && (float)moonWhitening.GetValue(null) == 0f) return;
             __state = new ViewBackgroundScope(); background = __state;
         }
-        private static Exception EndBackground(Exception __exception, ViewBackgroundScope __state)
+        private static Exception EndBackground(Exception __exception, ViewBackgroundScope __state, MethodBase __originalMethod)
         {
-            try { __state?.Dispose(); }
-            finally { if (__state != null) background = null; }
+            try
+            {
+                // Native cave tiles normally flush before returning. If a
+                // layer throws after queueing, finish that owned partial batch
+                // before restoring its coordinate domain; the next frame must
+                // not inherit sprites transformed for the failed layer.
+                if (__state != null && __exception != null && __originalMethod.DeclaringType == typeof(Main) && __originalMethod.Name == "DrawBackground")
+                    Main.tileBatch.End();
+            }
+            finally
+            {
+                try { __state?.Dispose(); }
+                finally { if (__state != null) background = null; }
+            }
             return __exception;
         }
-        private static IEnumerable<CodeInstruction> BackgroundBatch(IEnumerable<CodeInstruction> instructions)
+        private static IEnumerable<CodeInstruction> BackgroundLayer(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
         {
-            int count = 0; var begin = AccessTools.Method(typeof(TileBatch), "Begin", Type.EmptyTypes);
+            int count = 0, positions = 0; var begin = AccessTools.Method(typeof(TileBatch), "Begin", Type.EmptyTypes);
+            var position = AccessTools.PropertyGetter(typeof(Camera), "ScaledPosition");
             foreach (var instruction in instructions)
             {
                 if (instruction.Calls(begin)) { instruction.opcode = OpCodes.Call; instruction.operand = AccessTools.Method(typeof(ViewHooks), "BeginBackgroundTiles"); count++; }
+                // The enclosing scope already substituted the scaled origin.
+                // These two native leaves mix that origin with a Camera getter;
+                // adding its translation again would shift layer transitions.
+                if (instruction.Calls(position)) { instruction.opcode = OpCodes.Call; instruction.operand = AccessTools.Method(typeof(ViewHooks), "BackgroundPosition"); positions++; }
                 yield return instruction;
             }
-            if (count != 1) throw new InvalidOperationException(".8 background tile batch count=" + count);
+            int expectedBatch = __originalMethod.Name == "DrawBackground_DirtBackground" ? 0 : 1;
+            int expectedPosition = __originalMethod.Name == "DrawBackground" ? 0 : 1;
+            if (count != expectedBatch || positions != expectedPosition) throw new InvalidOperationException(".8 background layer shape=" + __originalMethod.Name);
         }
+        private static Vector2 BackgroundPosition(Camera camera) { return background != null ? Main.screenPosition : camera.ScaledPosition; }
         private static void BeginBackgroundTiles(TileBatch batch)
         { if (background != null) batch.Begin(Main.Rasterizer, background.Matrix); else batch.Begin(); }
         private static void PrepareLiquids(bool isBackground)

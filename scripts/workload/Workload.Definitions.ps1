@@ -6,6 +6,7 @@ function Get-WorkloadLeafChecks {
     # entries still own Navigation/AttackCosts; the children remain specialists.
     $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
     $leaves = @{
+        'tests/NativeWorldTextProbe/NativeViewCombatChecks.cs'=@('native-ViewCombatCpu')
         'tests/NativeWorldTextProbe/NativeJourneyChecks.cs'=@('native-JourneyCpu','native-Journey')
         'tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs'=@('native-Journey')
         'tests/NativeWorldTextProbe/NativeJourneyPredictionChecks.cs'=@('native-JourneyPredictionCpu')
@@ -263,6 +264,7 @@ function Get-WorkloadNativeScopes {
     # in test-world-object-text. Impact/AimUi/Visual need matching real Content
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
+        'ViewCombatCpu'=@('view-host');
         'JourneyCpu'=@('journey-host');
         'JourneyPredictionCpu'=@('journey-host');
         'NpcRollingCpu'=@('combat-host');

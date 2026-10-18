@@ -45,6 +45,19 @@ namespace JueMingR.TerrariaHost.View
         internal bool NeedsExpandedRendering { get { return HasWorld && Main.GameViewMatrix.RenderZoom.X < .9999f; } }
         internal bool RetainsTarget { get { return HasWorld && Main.GameZoomTarget < 1f; } }
         internal bool RequiresDirectDraw { get { return HasWorld && Main.GameZoomTarget * Main.ForcedMinimumZoom < .9999f; } }
+        internal float MinimumTarget
+        {
+            get
+            {
+                // Keep the shared 512-tile discovery contract after its 92px
+                // halo. Native render zoom rounds to 1/128, so reserve one step
+                // before a large/widescreen viewport can cross that boundary.
+                float forced = Main.ForcedMinimumZoom;
+                if (forced <= 0 || float.IsNaN(forced) || float.IsInfinity(forced)) forced = 1f;
+                float geometry = Math.Max(Main.screenWidth, Main.screenHeight) / (496f * 16f) + 1f / 128f;
+                return Math.Min(1f, Math.Max(MinimumZoom, geometry / forced));
+            }
+        }
         internal bool CanZoom
         {
             get
@@ -68,7 +81,7 @@ namespace JueMingR.TerrariaHost.View
             // time. No input and both keys held leave the exact target alone.
             if (!UnlockEnabled && current < 1f)
             { if (direction > 0) { float next = Math.Min(1f, current + .02f); Main.GameZoomTarget = next > .9999f ? 1f : next; } return; }
-            Main.GameZoomTarget = Math.Max(UnlockEnabled ? MinimumZoom : 1f, Math.Min(2f, current + direction * .02f));
+            Main.GameZoomTarget = Math.Max(UnlockEnabled ? MinimumTarget : 1f, Math.Min(2f, current + direction * .02f));
         }
         public void OnSessionStarted() { consumedMapping = -1; sections.Clear(); }
         public void OnSessionEnded() { consumedMapping = -1; sections.Clear(); }

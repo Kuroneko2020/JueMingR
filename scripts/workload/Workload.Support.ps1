@@ -124,6 +124,7 @@ function Get-WorkloadRoute {
             '^src/JueMingR.Infrastructure/Storage/|^src/JueMingR.Platform/(Persistence|Settings)/' { [void]$groups.Add('storage-host'); continue }
             '^src/[^/]+/(DeathHistory|WorldTime)/|^tests/DeathHistory/' { [void]$groups.Add('death-host'); continue }
             '^src/[^/]+/Information/' { [void]$groups.Add('shared-host'); [void]$groups.Add('style-host'); [void]$groups.Add('storage-host'); continue }
+            '^src/[^/]+/View/|^src/JueMingR.TerrariaHost/F5/ViewControls\.cs$|^tests/NativeWorldTextProbe/NativeView|^tests/Phase0U/ViewControlChecks\.cs$|^tests/JueMingR.ArchitectureTests/ViewPreferenceChecks\.cs$' { [void]$groups.Add('view-host'); continue }
             '^src/[^/]+/Journey/|^src/JueMingR.TerrariaHost/F5/JourneyControls\.cs$|^src/JueMingR.TerrariaHost/Hotkeys/JourneyHotkeys\.cs$|^tests/NativeWorldTextProbe/NativeJourney' { [void]$groups.Add('journey-host'); continue }
             '^src/[^/]+/(Guidance|Npcs)/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
             '^src/JueMingR.TerrariaHost/(F5|Input)/|^src/JueMingR.TerrariaHost/Phase0|^src/JueMingR.Platform/Runtime/' { [void]$groups.Add('shared-host'); continue }
@@ -135,7 +136,7 @@ function Get-WorkloadRoute {
             default { $unknown += $path }
         }
     }
-    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('journey-host'); [void]$groups.Add('about-host'); [void]$groups.Add('death-host'); [void]$groups.Add('map-host') }
+    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('view-host'); [void]$groups.Add('journey-host'); [void]$groups.Add('about-host'); [void]$groups.Add('death-host'); [void]$groups.Add('map-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('tools-host') }
     if ($groups.Contains('tools-host')) { [void]$groups.Add('fishing-host'); [void]$groups.Add('quick-items-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); [void]$groups.Add('coin-deposit-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('quick-items-host') }
