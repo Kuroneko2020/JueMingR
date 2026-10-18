@@ -36,6 +36,10 @@ namespace JueMingR.TerrariaHost.F5
         internal void AttachJourney(IJourneyControls owner)
         { journey = owner; renderer.JourneyControls = owner == null ? null : new JourneyControls(owner); }
 
+        private IViewControls view;
+        internal void AttachView(IViewControls owner)
+        { view = owner; renderer.ViewControls = owner == null ? null : new ViewControls(owner); }
+
         internal void ToggleJourneyFromHotkey() { RequestJourneyCommand(F5Command.None, true); }
         private void RequestJourneyCommand(F5Command command, bool hotkey)
         {
@@ -531,7 +535,7 @@ namespace JueMingR.TerrariaHost.F5
                         }
                     }
                     else State.Layout.About.Execute(State.Command);
-                    renderer.DeathControls?.Execute(State.Command); renderer.MapControls?.Execute(State.Command); renderer.FootprintControls?.Execute(State.Command); renderer.AnnouncementControls?.Execute(State.Command);
+                    renderer.ViewControls?.Execute(State.Command); renderer.DeathControls?.Execute(State.Command); renderer.MapControls?.Execute(State.Command); renderer.FootprintControls?.Execute(State.Command); renderer.AnnouncementControls?.Execute(State.Command);
                     if (State.Command != F5Command.EnableBiome && State.Command != F5Command.DisableBiome) renderer.InformationControls?.Execute(State.Command); }
                 bool gameplay = !(TargetGestureBusy?.Invoke() ?? false) && inputActive && !(information != null && information.Adjustment.Active) && !adjustmentPending && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
                     Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !OwnsPointer &&
@@ -603,7 +607,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (!Main.gameMenu && !Main.hideUI)
                 {
                     preferences.TakeFeedback(displayPreferenceFeedback); hostItems?.TakeFeedback(displayPreferenceFeedback); labels?.TakeFeedback(displayPreferenceFeedback); worldTargets?.TakeFeedback(displayPreferenceFeedback); worldObjects?.TakeFeedback(displayPreferenceFeedback); information?.TakeFeedback(displayPreferenceFeedback);
-                    guidance?.TakeFeedback(displayPreferenceFeedback);
+                    guidance?.TakeFeedback(displayPreferenceFeedback); view?.TakeFeedback(displayPreferenceFeedback);
                     deaths?.TakeFeedback(displayPreferenceFeedback); maps?.TakeFeedback(displayPreferenceFeedback); footprints?.TakeFeedback(displayPreferenceFeedback);
                     QuickItems?.TakeFeedback(displayPreferenceFeedback); coinDeposit?.TakeFeedback(displayPreferenceFeedback); recovery?.TakeFeedback(displayPreferenceFeedback); processing?.TakeFeedback(displayPreferenceFeedback);
                     tools?.TakeFeedback(displayPreferenceFeedback);

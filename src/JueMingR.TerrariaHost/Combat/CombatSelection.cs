@@ -94,11 +94,25 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal static float PlayerRadius(Vector2 center)
         {
-            if(Main.GameViewMatrix==null)return 800;
-            var inverse=Matrix.Invert(Main.GameViewMatrix.ZoomMatrix);float far=0;
+            if(Main.GameViewMatrix==null || Main.LocalPlayer==null || Main.screenWidth<=0 || Main.screenHeight<=0 ||
+                !Finite(center.X) || !Finite(center.Y) || !Finite(Main.screenPosition.X) || !Finite(Main.screenPosition.Y))return 800;
+            var inverse=Matrix.Invert(Main.GameViewMatrix.ZoomMatrix);double farSquared=0;
             for(int i=0;i<4;i++)
-            {var p=Vector2.Transform(new Vector2((i&1)==0?0:Main.screenWidth,(i&2)==0?0:Main.screenHeight),inverse);if(Main.LocalPlayer.gravDir<0)p.Y=Main.screenHeight-p.Y;p+=Main.screenPosition;far=Math.Max(far,Vector2.Distance(center,p));}
-            return MathHelper.Clamp((float)Math.Ceiling(far/16)+10,50,140)*16;
+            {
+                var p=Vector2.Transform(new Vector2((i&1)==0?0:Main.screenWidth,(i&2)==0?0:Main.screenHeight),inverse);
+                if(!Finite(p.X) || !Finite(p.Y))return 800;
+                if(Main.LocalPlayer.gravDir<0)p.Y=Main.screenHeight-p.Y;
+                double dx=(double)p.X+Main.screenPosition.X-center.X,dy=(double)p.Y+Main.screenPosition.Y-center.Y;
+                farSquared=Math.Max(farSquared,dx*dx+dy*dy);
+            }
+            // The final camera, including an OFF-retained wide view, owns this
+            // candidate circle. Keep its ten-tile padding and nearest-hitbox
+            // ordering; visibility never grants weapon or interaction reach.
+            double radius=Math.Max(50,Math.Ceiling(Math.Sqrt(farSquared)/16)+10)*16;
+            // Reject invalid/degenerate geometry before Update squares radius.
+            // No fixed tile ceiling may discard a valid visible receiver.
+            return double.IsNaN(radius) || double.IsInfinity(radius) || radius>=Math.Sqrt(float.MaxValue)?800:(float)radius;
         }
+        private static bool Finite(float value){return !float.IsNaN(value) && !float.IsInfinity(value);}
     }
 }

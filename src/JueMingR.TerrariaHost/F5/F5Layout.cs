@@ -38,7 +38,8 @@ namespace JueMingR.TerrariaHost.F5
         CombatRevolverOn, CombatRevolverOff, CombatStringOn, CombatStringOff, CombatFacingOn, CombatFacingOff,
         CombatReportOn, CombatReportOff, CombatGoblinOn, CombatGoblinOff, CombatInterval,
         ObservationPolicy,ObservationCenter,ObservationDummy,ObservationRadius,
-        ObservationCollisionOn,ObservationCollisionOff,ObservationPathOn,ObservationPathOff,ObservationMarker,ObservationAimOn,ObservationAimOff }
+        ObservationCollisionOn,ObservationCollisionOff,ObservationPathOn,ObservationPathOff,ObservationMarker,ObservationAimOn,ObservationAimOff,
+        EnableViewUnlock, DisableViewUnlock }
 
     internal sealed class F5Element
     {
@@ -193,6 +194,7 @@ namespace JueMingR.TerrariaHost.F5
             else if (currentPage == 1 || currentPage == 2) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage, hiddenVisible);
             if (currentPage == 1) JourneyControls.AddRows(elements, TextSize, ref y, hiddenVisible);
             if (currentPage == 2) DeathControls.AddRows(elements, DynamicTextSize, ref y, deathCount, worldDays);
+            if (currentPage == 2) ViewControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) MapControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) FootprintControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) AnnouncementControls.AddRows(elements, TextSize, ref y);

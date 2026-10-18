@@ -52,6 +52,7 @@
 
 | 能力 | 合同、设计与任务来源 |
 | --- | --- |
+| 视距解锁 | [合同](功能介绍/视距解锁行为合同.md)、[设计](设计/视距解锁实现设计.md)、[#124](https://github.com/Kuroneko2020/JueMingR/issues/124)；候选实际支持范围与验证不由入口推定 |
 | 战斗辅助与辅助瞄准 | [战斗合同](功能介绍/战斗辅助行为合同.md)、[战斗设计](设计/战斗辅助实现设计.md)、[阶段恢复](计划/辅助瞄准阶段文档.md)、[#110](https://github.com/Kuroneko2020/JueMingR/issues/110)、[#112](https://github.com/Kuroneko2020/JueMingR/issues/112) |
 | 钓鱼与配装 | [合同](功能介绍/钓鱼与配装行为合同.md)、[设计](设计/钓鱼与配装实现设计.md)、[#107](https://github.com/Kuroneko2020/JueMingR/issues/107) |
 | 持续开袋、提炼、重铸 | [合同](功能介绍/连续加工行为合同.md)、[设计](设计/连续加工实现设计.md)、[#99](https://github.com/Kuroneko2020/JueMingR/issues/99) |

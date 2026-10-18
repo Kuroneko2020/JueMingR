@@ -40,6 +40,7 @@ namespace JueMingR.ArchitectureTests
             Add("FishingStorageChecks", "fishing-host", (root, failures) => FishingStorageChecks.Check(failures));
             Add("OnboardingChecks", "about-host", (root, failures) => OnboardingChecks.Check(failures));
             Add("PreferenceChecks", "preferences", (root, failures) => PreferenceChecks.Check(failures));
+            Add("ViewPreferenceChecks", "view-host", (root, failures) => ViewPreferenceChecks.Check(failures));
             Add("PreferenceConcurrencyChecks", "preferences", (root, failures) => PreferenceConcurrencyChecks.Check(failures));
             Add("PreferenceStorageChecks", "preferences", (root, failures) => PreferenceStorageChecks.Check(failures));
             Add("InformationTests", "information", (root, failures) => InformationTests.Check(failures));

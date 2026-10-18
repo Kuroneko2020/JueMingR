@@ -67,6 +67,10 @@ namespace JueMingR.TerrariaHost.Input
         internal bool SampleFocused { get { return mapped && IsFocused && nativePermission; } }
         internal bool CanUseInput { get { return SampleFocused && finalized && !quarantine; } }
         internal bool CanStartActions { get { return CanUseInput; } }
+        // UpdateViewZoomKeys runs after mapping but before keyboard finalization.
+        // Its only source is the already-filtered native triggers; this grants
+        // no permission to later action consumers or to reread physical keys.
+        internal bool CanUseMappedViewInput { get { return SampleFocused && !quarantine && !rearming && !HotkeyPointerOwned && !HotkeyCapture; } }
         // Automation observes game state, not an OS gesture. A background
         // simulation may continue, but it never proves a physical release or
         // rearms hotkeys. An empty outer Update cannot start work: the native
@@ -81,6 +85,7 @@ namespace JueMingR.TerrariaHost.Input
         // Focus loss/reactivation quarantine still revokes both permissions.
         internal bool CanRetainIntent { get { return IsFocused && !rearming && !quarantine; } }
         internal long Frame { get; private set; }
+        internal long Mapping { get; private set; }
         internal bool CanPrepareText { get { return IsFocused && !rearming && !quarantine; } }
         internal HostInputState() : this(() => Main.instance == null ? IntPtr.Zero : Main.instance.Window.Handle, GetForegroundWindow) { }
         internal HostInputState(Func<IntPtr> gameWindow, Func<IntPtr> foregroundWindow)
@@ -118,6 +123,7 @@ namespace JueMingR.TerrariaHost.Input
 
         internal void AfterMapping()
         {
+            Mapping++;
             // This seam precedes UpdateViewZoomKeys and UILinkPointNavigator.
             // Keep MouseInfo and the absolute wheel owned by Terraria; they are
             // observations, not values to restore after consuming an action.

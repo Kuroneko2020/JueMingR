@@ -83,6 +83,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Biomes.BiomeDisplayFeature",
                 "JueMingR.Features.Biomes.BiomeDisplayViewModel",
                 "JueMingR.Features.Biomes.BiomePreferenceCodec",
+                "JueMingR.Features.View.ViewPreferenceCodec",
                 "JueMingR.Features.Items.ItemAutomationSettings", "JueMingR.Features.Items.ItemAutomationCodec",
                 "JueMingR.Features.Items.ItemActionKind", "JueMingR.Features.Items.ItemListKind",
                 "JueMingR.Features.Items.ItemAutomationFeature",

@@ -38,7 +38,7 @@ namespace JueMingR.Features.WorldTargets
             WorldTargetView view;
             if (!source.TryBegin(out view) || view.Width <= 0 || view.Height <= 0 || view.Width > 512 || view.Height > 512)
             { Clear(); return; }
-            if (hasPass && (pass.ReadRevision != view.ReadRevision || pass.GeometryRevision != view.GeometryRevision || !pass.Intersects(view))) Clear();
+            if (hasPass && (pass.ReadRevision != view.ReadRevision || !pass.Intersects(view))) Clear();
             reads.Clear(); origins.Clear();
             // Recheck current four-cell objects now, independently of discovery.
             // Unknown client data withdraws a marker, never a server-absence claim.
@@ -53,8 +53,10 @@ namespace JueMingR.Features.WorldTargets
             if (kept < targets.Count) targets.RemoveRange(kept, targets.Count - kept);
             if (!hasPass) { pass = view; cursor = 0; hasPass = true; }
             int area = pass.Width * pass.Height, end = Math.Min(area, cursor + (area + 7) / 8);
-            // Small camera motion finishes this bounded pass instead of resetting
-            // to row zero each frame. New view follows within two short passes.
+            // Motion and zoom finish this bounded intersecting pass. Geometry
+            // changes are not a new tile source: resetting on each zoom step
+            // starves late rows. Recheck retained objects against the latest
+            // view above; newly exposed cells follow in the next short pass.
             for (; cursor < end; cursor++)
             {
                 int x = pass.X + cursor % pass.Width, y = pass.Y + cursor / pass.Width;
