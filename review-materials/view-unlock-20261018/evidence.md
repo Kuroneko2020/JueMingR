@@ -14,6 +14,8 @@
 
 开发纵向：旧a0在十组倍增／减半区间需15—250次Mapping，新数学与真实原版DoUpdate_HandleInput十组均36次；OFF .3→1需61次、10→2需82次且准确落边。未夹取互逆1000轮无实质漂移，低端量化最多连续一次不变，100000次暖算术0分配；真实双键／重复消费／地图／录键／focus／chat／fancy门及32次低高端连调Draw通过，低端按实际相位Direct／TileCache、高端Native。首个CPU反射宿主误用64位而不能加载x86 XNA，是测试前提失败，原件保留；明确使用x86后取得旧产品RED。新画面只检查目标／最终矩阵／真实路由，未冒称完整像素等价、全profile／水／网络／Combat／FPS重跑；正式固定身份与适用复用由新阶段记录承担。
 
+d669集中独审只余正式派发P2：声明native-ViewCacheRange却仅私有focus能进速度检查，正常脚本清理focus后会跳过。原GREEN和产品曲线有效性保留，不倒改545锁／报告。后续窄修将自动数学叶登记到真实`native-ViewZoomSpeedCpu`，并提供正式`ViewZoomSpeed`图形scope，通过参数直达原速度Mapping／Draw检查，保持GPU义务不混入CPU计划。新修复原件在`.local/view-zoom-speed-entry-20261019`；正常入口实际执行与当前身份另记，不重跑未改renderer／水／网络／Combat矩阵。
+
 当前产品有条件使用k=z的tile/tile2/wall三层，保留正确Direct反控：Reach cap2048、HiDef保守4096；不改所有者profile或画质。首选七层1:1扩展RT在当前Reach50/30均超轴，本轮没有实施该扩展组，静态模型不称GPU通过。原生普通七层足够时仍Native；不足时Direct。语义扩展、渲染不足、实际route分别记录。
 
 开发原件统一在`.local/view-cache-range-20261018`；以下是各自真实执行身份，最终正常源码/输入/Host/Probe身份由新的candidate记录另锁，独审与主调度准入仍待完成，不能以开发PASS代替准入。

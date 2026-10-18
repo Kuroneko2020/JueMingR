@@ -14,6 +14,13 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="ViewZoomSpeed")return NativeViewOriginalChecks.Run(content,output,zoomSpeed:true);
+            if(scope=="ViewZoomSpeedCpu")
+            {
+                AppDomain.MonitoringIsEnabled=true;
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>NativeViewZoomSpeedChecks.Model(context.GetType().Assembly),processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if(scope=="ViewCacheRange") { Environment.SetEnvironmentVariable("JUEMINGR_VIEW_CACHE_PROBE","1");return NativeViewOriginalChecks.Run(content,output); }
             if(scope=="ViewRangeConsumerCpu")
             {

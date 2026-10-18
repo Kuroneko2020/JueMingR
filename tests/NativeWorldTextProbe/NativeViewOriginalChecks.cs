@@ -21,14 +21,14 @@ namespace NativeWorldTextProbe
     internal static class NativeViewOriginalChecks
     {
         private const BindingFlags F = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
-        internal static int Run(string content, string output,bool waterRepair=false)
+        internal static int Run(string content, string output,bool waterRepair=false,bool zoomSpeed=false)
         {
             output = Path.GetFullPath(output); Directory.CreateDirectory(output);
             Terraria.Program.SavePath = Path.Combine(output, "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath);
-            return RunNative(content, output,waterRepair);
+            return RunNative(content, output,waterRepair,zoomSpeed);
         }
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        private static int RunNative(string content, string output,bool waterRepair)
+        private static int RunNative(string content, string output,bool waterRepair,bool zoomSpeed)
         {
             NativeTestAudio.Install(typeof(Main).Assembly);
             AppDomain.MonitoringIsEnabled = true;
@@ -46,7 +46,7 @@ namespace NativeWorldTextProbe
             try
             {
                 Environment.CurrentDirectory = output;
-                using (var game = new ViewGame(content, output,waterRepair))
+                using (var game = new ViewGame(content, output,waterRepair,zoomSpeed))
                 {
                     // XNA's nonblocking entry performs CreateDevice and the
                     // complete native Initialize first. Explicit Tick then
@@ -67,7 +67,7 @@ namespace NativeWorldTextProbe
             private object context, input, view;
             private int frame;
             private bool prepared;
-            private readonly bool waterRepair;
+            private readonly bool waterRepair,zoomSpeed;
             private bool ordinaryImage, wideImage, retainedImage;
             private readonly HashSet<string> images = new HashSet<string>();
             private readonly Dictionary<string, int> stableRebuilds = new Dictionary<string, int>();
@@ -82,9 +82,9 @@ namespace NativeWorldTextProbe
             private static KeyboardState keyboard;
             private static RenderTarget2D capture;
             private static bool redirectOutput;
-            internal ViewGame(string content, string output,bool waterRepair)
+            internal ViewGame(string content, string output,bool waterRepair,bool zoomSpeed)
             {
-                this.output = output; this.content = content;this.waterRepair=waterRepair;
+                this.output = output; this.content = content;this.waterRepair=waterRepair;this.zoomSpeed=zoomSpeed;
                 // Caller supplies a local Content directory alias rooted in the
                 // test output because native XnaContentSource takes relative URI.
                 Content.RootDirectory = "Content";
@@ -142,6 +142,10 @@ namespace NativeWorldTextProbe
                 typeof(Main).GetMethod("DoUpdate_HandleInput", F).Invoke(this, null);
                 Call(context, "UpdateRuntime");
                 if (frame == 70) { Require((bool)Call(view, "SetUnlockEnabled", true), "Native view enabled after document load"); Require(GameZoomTarget == 1f, "ON does not jump target"); }
+                // The public speed scope owns this finite obligation directly;
+                // private cache focus/profile variables cannot select it away.
+                if(frame==70 && zoomSpeed)
+                {Console.WriteLine("VIEW declared ViewZoomSpeed dispatch");PrepareCave();NativeViewZoomSpeedChecks.Run(this,view,k=>InputStep(k),()=>Draw(new GameTime()),()=>capture,output);CheckInputOwnership();Complete=true;Exit();return;}
                 if(frame==70 && waterRepair)
                 {
                     PrepareCave();Draw(new GameTime());waterfallManager.FindWaterfalls(true);
@@ -151,8 +155,6 @@ namespace NativeWorldTextProbe
                 }
                 if(frame==70 && Environment.GetEnvironmentVariable("JUEMINGR_VIEW_CACHE_PROBE")=="1")
                 {
-                    if(Environment.GetEnvironmentVariable("JUEMINGR_VIEW_CACHE_FOCUS")=="ZoomSpeed")
-                    {PrepareCave();NativeViewZoomSpeedChecks.Run(this,view,k=>InputStep(k),()=>Draw(new GameTime()),()=>capture,output);CheckInputOwnership();Complete=true;Exit();return;}
                     NativeViewCacheRangeChecks.Run(this,view,()=>Draw(new GameTime()),PrepareCave,()=>capture,output,CheckRangeInput,ResizeCapture);Complete=true;Exit();return;
                 }
                 if(frame==70 && Environment.GetEnvironmentVariable("JUEMINGR_VIEW_REPAIR_FOCUS")=="Water")
