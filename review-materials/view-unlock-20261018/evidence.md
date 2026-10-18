@@ -27,6 +27,14 @@ prototype-01..12保留第二次linear过滤/相位/反重力等失败及修复�
 
 冻结记录使用新路径`.local/view-cache-range-20261018/candidate-review.json`，后续审批必须独立admitted副本并由普通包引用实际路径/hash。当前未执行新普通包/安装；项目仍INCOMPLETE/releaseEligible=false，Draft/open，不合并、不关闭、不基础移动。
 
+## CACHE-RANGE集中独审R6／R7／R8返修
+
+c439固定候选的整体独审为NEEDS_FIX，范围独审PASS不代全包准入；原candidate37A0…、529锁642BD…及两报告保持原字节。新工作包原件在`.local/view-cache-range-20261018/repair-r678`，最终候选／锁必须另用该新路径，不覆写c439。
+
+R6原c439的真实caller End／SetRenderState单次IO使lease1→2，原只测private copy End的GREEN不覆盖它。返修将缓存帧的world caller借为稳定自有SpriteBatch，在原版UI前归还共享；首次End也在try内，持续／次级End失败仍退休自己的caller／copy queue、只减自己的Begin贡献，原共享和外来pending／lease不清改。开发GREEN含单次／持续×IO／OOM、首异常对象／内部OOM原对象、RT／共享身份、外来queue及后3／20次真实世界Draw。R7保留native group3在分数Direct帧发生的真实dirty：c439返回旧phase的刷新不增／像素0为RED，新路径成功Fill后变化83像素；renderNow分支同场景也验证。新增运动成本以原生四组值3/0/1/2的有限夹具推进说明相位耦合，不新增产品时钟、不冒称完整Update。R8原c439回普通后设备订阅2→2／device仍在；新实际Expanded Native→OFF-Retained／Direct复用→普通，私有对象释放／订阅2→0，再3真Draw。原wave／七层所有权不改。
+
+以上开发结果保留其实际输入；最终正常源码／输入／Host／Probe、窄CURRENT与准确复用由新冻结记录承担，独审／主调度准入仍PENDING，未新包或安装。旧事故仍暂停，不把此三缺口归因所有者输入或FPS反馈。
+
 ## 3ea及此前交付的历史记录
 
 - 地图页公开标准行“视距解锁”，提示逐字“可以调整到更大的视野范围”；没有新快捷键、滑条或额外按钮。原版重绑后的 ViewZoomIn/Out 是唯一缩放来源。

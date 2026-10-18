@@ -95,6 +95,10 @@ namespace JueMingR.TerrariaHost.View
             if(primary==null&&failure!=null)ExceptionDispatchInfo.Capture(failure).Throw();
         }
         private void Reset(object sender,EventArgs args){var a=tiles;var b=sprites;tiles=null;sprites=null;failedDevice=null;Drop(a,b,null);}
+        // Semantic ordinary context is confirmed by the final frame plan.
+        // Expanded/OFF-Retained and Native<->Direct transitions keep their
+        // reusable batches; ordinary exits only this owner, not native/waves.
+        internal void ExitOrdinary(){if(!Rendering&&device!=null)Dispose();}
         public void Dispose(){if(device!=null){device.DeviceResetting-=Reset;device.Disposing-=Reset;}device=null;Reset(null,EventArgs.Empty);}
     }
 }

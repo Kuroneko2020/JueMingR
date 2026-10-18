@@ -47,12 +47,13 @@ namespace JueMingR.TerrariaHost.View
         private int padding;
         private TileBatch tiles;
         private SpriteBatch sprites;
+        private SpriteBatch worldSprites,sharedWorldSprites;
+        private static readonly FieldInfo queued=AccessTools.Field(typeof(SpriteBatch),"spriteQueueCount");
         private readonly Action[] render = new Action[3];
         private static readonly FieldInfo position=AccessTools.Field(typeof(WorldSceneLayerTarget),"_position"),tileSprites=AccessTools.Field(typeof(TileBatch),"_spriteBatch"),spriteBegun=AccessTools.Field(typeof(SpriteBatch),"inBeginEndPair"),begins=AccessTools.Field(typeof(GraphicsDevice),"spriteBeginCount"),immediates=AccessTools.Field(typeof(GraphicsDevice),"spriteImmediateBeginCount");
         private GraphicsDevice failedDevice;
         private int failedWidth,failedHeight,failedPhysicalWidth,failedPhysicalHeight;
         private Exception leafFailure,compositeFailure;
-        private SpriteBatch compositeCaller;
         private ViewRenderPlan attachedPlan;
         internal long PeakWorldBytes { get; private set; }
         internal ulong AvailableVirtualAtPrepare { get; private set; }
@@ -65,6 +66,10 @@ namespace JueMingR.TerrariaHost.View
             // native route decision snapshots that one frame's request; no
             // new refresh clock substitutes for native renderCount group3.
             bool refresh=NativeRefreshRequested;NativeRefreshRequested=false;
+            // Dirty is content validity, not a one-frame hint. A fractional
+            // phase may choose Direct on the native refresh frame; retain that
+            // invalidity until each corresponding native leaf succeeds.
+            if(refresh||Main.renderCount==3)Invalidate();
             if(ForceDirect || plan==null || !plan.Wide || plan.RenderZoom>=1f || !Lighting.NotRetro){observed=false;Release();return;}
             if(!plan.MatchesNative() || !Main.drawToScreen || Main.mapFullscreen || Main.onlyDrawFancyUI){Detach();return;}
             var current=Main.instance.GraphicsDevice;
@@ -110,7 +115,7 @@ namespace JueMingR.TerrariaHost.View
                     for(int i=0;i<3;i++)layers[i]=group[i];Generation++;
                 }
                 else if(geometry){Scale=k;padding=p;logicalSize=plan.WorldSize;inverted=flip;mode=Lighting.Mode;Invalidate();}
-                if(tiles==null){tiles=new TileBatch(device);sprites=new SpriteBatch(device);}
+                if(tiles==null){tiles=new TileBatch(device);sprites=new SpriteBatch(device);worldSprites=new SpriteBatch(device);}
                 if(render[0]==null)
                 {
                     string[] names={"RenderTiles","RenderTiles2","RenderWallsAndBlacks"};
@@ -142,13 +147,10 @@ namespace JueMingR.TerrariaHost.View
         internal bool HasCompositeFailure { get { return compositeFailure!=null; } }
         internal Exception TakeCompositeFailure(Exception fallback)
         {
-            // Native's second tile wrapper may itself abort while trying to
-            // reopen a still-open caller, before the post-call seam is reached.
-            // This is the exact healthy caller we reopened in Composite, not
-            // an unrelated shared/foreign batch or a failed owned queue.
-            if(compositeFailure!=null&&ReferenceEquals(Main.spriteBatch,compositeCaller)&&(bool)spriteBegun.GetValue(compositeCaller))
-                try{compositeCaller.End();}catch{}
-            var error=compositeFailure;compositeFailure=null;compositeCaller=null;
+            // Either native catch can abort before the post-call seam. The
+            // finalizer must retire this owned world/copy transaction as well.
+            var error=compositeFailure;compositeFailure=null;
+            if(error!=null)EndWorld(error);
             if(error is OutOfMemoryException&&attachedPlan!=null)
             {
                 var plan=attachedPlan;var current=device;
@@ -161,12 +163,46 @@ namespace JueMingR.TerrariaHost.View
         internal void ThrowCompositeFailure(bool closeWorld)
         {
             if(compositeFailure==null)return;
-            // The locked native WallsTilesNPCs wrapper reopens its healthy
-            // caller batch after catching a leaf error. Close that exact batch
-            // at this known abort seam before preserving the first copy error.
-            if(closeWorld&&ReferenceEquals(Main.spriteBatch,compositeCaller)&&(bool)spriteBegun.GetValue(compositeCaller))
-                try{compositeCaller.End();}catch{}
+            // No retry of caller.End is a cleanup guarantee. Retire owned
+            // queues at this known abort seam, retaining the first exception.
             var error=TakeCompositeFailure(null);System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
+        }
+        internal void BeginWorld()
+        {
+            if(!Attached||sharedWorldSprites!=null)return;
+            var shared=Main.spriteBatch;
+            // The locked seam precedes the first world Begin. Never consume
+            // another module's open batch or pending queue to enable caching.
+            if((bool)spriteBegun.GetValue(shared)||(int)queued.GetValue(shared)!=0){Detach();return;}
+            sharedWorldSprites=shared;
+            Main.spriteBatch=worldSprites;
+        }
+        internal void EndWorld(Exception failure)
+        {
+            if(sharedWorldSprites==null)return;
+            Main.spriteBatch=sharedWorldSprites;sharedWorldSprites=null;
+            if(failure!=null)
+            {
+                // End can fail before releasing its Begin/queue. This frame's
+                // caller and copy queues are ours: abandon and retire them,
+                // never retry End or alter the original shared pending work.
+                try{RetireLease(worldSprites);}catch{}
+                try{RetireLease(sprites);}catch{}
+                DropBatches(failure);
+            }
+        }
+        private void RetireLease(SpriteBatch batch)
+        {
+            if(batch==null||!(bool)spriteBegun.GetValue(batch))return;
+            // Cached composite callers are Deferred. A later original world
+            // effect may use Immediate; XNA permits only that one Immediate
+            // lease, and End decrements it before Flush. Remove it only if it
+            // still exists, plus this batch's outstanding Begin. Preserve any
+            // foreign deferred lease acquired after the world scope entered.
+            spriteBegun.SetValue(batch,false);
+            if((SpriteSortMode)sort.GetValue(batch)==SpriteSortMode.Immediate&&(ushort)immediates.GetValue(device)>0)
+                immediates.SetValue(device,(ushort)((ushort)immediates.GetValue(device)-1));
+            begins.SetValue(device,(ushort)((ushort)begins.GetValue(device)-1));
         }
         private static bool SamePixelPhase(Vector2 offset,float scale)
         {
@@ -236,22 +272,18 @@ namespace JueMingR.TerrariaHost.View
                 // caller's own prior work with its original state, use point
                 // only for this copy, then reopen exactly that original state.
                 var oldSort=(SpriteSortMode)sort.GetValue(batch);var oldBlend=(BlendState)blend.GetValue(batch);var oldDepth=(DepthStencilState)depth.GetValue(batch);var oldRaster=(RasterizerState)raster.GetValue(batch);var oldSampler=(SamplerState)sampler.GetValue(batch);var oldEffect=(Effect)effect.GetValue(batch);var oldTransform=(Matrix)transform.GetValue(batch);
-                batch.End();
-                ushort entry=(ushort)begins.GetValue(device),immediate=(ushort)immediates.GetValue(device);Exception failure=null;
+                Exception failure=null;
                 try
                 {
+                    batch.End();
                     sprites.Begin(oldSort,oldBlend,SamplerState.PointClamp,oldDepth,oldRaster,oldEffect,oldTransform);
                     sprites.Draw(texture,at,null,color,0,Vector2.Zero,1f/Scale,inverted?SpriteEffects.FlipVertically:SpriteEffects.None,0);
                     sprites.End();
                 }
                 catch(Exception error)
                 {
-                    compositeCaller=batch;
                     failure=error;
-                    try{spriteBegun.SetValue(sprites,false);}catch{}
-                    try{begins.SetValue(device,entry);}catch{}
-                    try{immediates.SetValue(device,immediate);}catch{}
-                    DropBatches(error);throw;
+                    throw;
                 }
                 finally{try{batch.Begin(oldSort,oldBlend,oldSampler,oldDepth,oldRaster,oldEffect,oldTransform);}catch when(failure!=null){}}
             }
@@ -269,7 +301,8 @@ namespace JueMingR.TerrariaHost.View
             try{tiles?.Dispose();}catch(Exception error){if(secondary==null)secondary=error;}
             try{inside?.Dispose();}catch(Exception error){if(secondary==null)secondary=error;}
             try{sprites?.Dispose();}catch(Exception error){if(secondary==null)secondary=error;}
-            tiles=null;sprites=null;
+            try{worldSprites?.Dispose();}catch(Exception error){if(secondary==null)secondary=error;}
+            tiles=null;sprites=null;worldSprites=null;
             if(primary==null&&secondary!=null)System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(secondary).Throw();
         }
         private static void DisposeGroup(WorldSceneLayerTarget[] group,Exception primary)

@@ -110,9 +110,11 @@ namespace JueMingR.TerrariaHost.View
             var canCapture = AccessTools.Method(typeof(Terraria.Graphics.Effects.FilterManager), "CanCapture");
             var directField = AccessTools.Field(typeof(Main), "drawToScreen");
             var worldLayers=AccessTools.Method(typeof(Main),"DoDraw_WallsTilesNPCs");int cachedErrors=0,displays=0;
-            var display=AccessTools.Method(typeof(Main),"UpdateDisplaySettings");
+            var display=AccessTools.Method(typeof(Main),"UpdateDisplaySettings");int worldReturns=0;
+            var debugWorld=AccessTools.Field(typeof(Terraria.Testing.DebugVisualizer),"World");
             for (int i = 0; i < code.Count; i++)
             {
+                if(code[i].LoadsField(debugWorld)){code.Insert(i,new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(ViewHooks),"ReturnCachedWorld")));i++;worldReturns++;}
                 if(code[i].Calls(worldLayers)){code.Insert(i+1,new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(ViewHooks),"CacheDrawComplete")));cachedErrors++;}
                 if(code[i].Calls(display)){code.Insert(i+1,new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(ViewHooks),"DisplayReady")));displays++;}
                 if (i >= 3 && code[i].Calls(clamp) && code[i - 3].LoadsField(zoom) && code[i - 2].opcode == OpCodes.Ldc_R4 && Equals(code[i - 2].operand, 1f) && code[i - 1].opcode == OpCodes.Ldc_R4 && Equals(code[i - 1].operand, 2f))
@@ -131,7 +133,7 @@ namespace JueMingR.TerrariaHost.View
                     if (sizeReads == 2) { code[i].opcode = OpCodes.Call; code[i].operand = AccessTools.Method(typeof(ViewHooks), "ShimmerFill"); shimmer++; }
                 }
             }
-            if (clamps != 1 || direct != 1 || shimmer != 1 || captures != 1 || captureGuard != 1 || cachedErrors!=1||displays!=1) throw new InvalidOperationException(".8 view draw shape mismatch: clamp=" + clamps + ", direct=" + direct + ", shimmer=" + shimmer + ", capture=" + captures + "/" + captureGuard+",cache="+cachedErrors+",display="+displays);
+            if (clamps != 1 || direct != 1 || shimmer != 1 || captures != 1 || captureGuard != 1 || cachedErrors!=1||displays!=1||worldReturns!=1) throw new InvalidOperationException(".8 view draw shape mismatch: clamp=" + clamps + ", direct=" + direct + ", shimmer=" + shimmer + ", capture=" + captures + "/" + captureGuard+",cache="+cachedErrors+",display="+displays+",worldReturn="+worldReturns);
             return code;
         }
         private static float ClampTarget(float value, float minimum, float maximum)
@@ -170,8 +172,12 @@ namespace JueMingR.TerrariaHost.View
         private static bool BeginNativeCoverage(out bool __state)
         {
             __state=false;
-            if(owner==null||owner.Plan==null||!owner.Plan.Expanded||Main.drawToScreen||!Lighting.NotRetro)return true;
-            try{if(owner.Native.Begin(owner.Plan)){__state=true;return true;}}
+            try
+            {
+                if(owner!=null&&owner.Plan!=null&&!owner.Plan.Expanded)owner.Native.ExitOrdinary();
+                if(owner==null||owner.Plan==null||!owner.Plan.Expanded||Main.drawToScreen||!Lighting.NotRetro)return true;
+                if(owner.Native.Begin(owner.Plan)){__state=true;return true;}
+            }
             catch(Exception error){MarkDrawFailure(error);throw;}
             // No native liquid/tile leaf has run yet. An optional private-batch
             // admission failure can use correct Direct in this same Draw.
@@ -247,6 +253,8 @@ namespace JueMingR.TerrariaHost.View
                 catch (OutOfMemoryException error) { throw new ViewRenderFailure(error); }
             }
             else { owner.Scene.Dispose();if(owner.Plan!=null&&owner.Plan.Expanded&&!Main.mapFullscreen&&!Main.onlyDrawFancyUI&&Lighting.NotRetro)owner.Water.PrepareNative();else owner.Water.Dispose(); }
+            owner.Cache.BeginWorld();
+            if(owner.Plan!=null&&owner.Plan.Route==ViewRenderRoute.TileCache&&!owner.Cache.Attached)owner.Plan=owner.Plan.WithRoute(ViewRenderRoute.Direct);
             return active;
             }
             catch(Exception error)
@@ -258,10 +266,12 @@ namespace JueMingR.TerrariaHost.View
             }
         }
         private static bool SceneDirectDraw() { return Main.drawToScreen && !(owner != null && owner.Scene.Attached); }
+        private static void ReturnCachedWorld(){owner?.Cache.EndWorld(null);}
         private static Exception EndWorldDraw(Exception __exception)
         {
             if(owner!=null)owner.Cache.NativeRefreshRequested=false;
             if(owner!=null){bool copied=owner.Cache.HasCompositeFailure;__exception=owner.Cache.TakeCompositeFailure(__exception);if(copied)MarkDrawFailure(__exception);}
+            owner?.Cache.EndWorld(__exception);
             owner?.Cache.Detach();
             owner?.Water.Detach();
             owner?.Scene.Detach(__exception != null);
