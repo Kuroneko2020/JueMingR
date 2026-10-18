@@ -10,6 +10,7 @@ using Terraria;
 using Terraria.GameContent;
 using Terraria.GameContent.Drawing;
 using Terraria.Graphics;
+using Terraria.Graphics.Effects;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -64,10 +65,17 @@ namespace NativeWorldTextProbe
         {
             var audit=new Harmony("JueMingR.Tests.View.WaterFailure");
             var originalTiles=Main.tileBatch;var originalSprites=Main.spriteBatch;
+            var filter=Filters.Scene["WaterDistortion"];bool active=filter.IsActive();float opacity=filter.Opacity;int quality=Main.WaveQuality;
             audit.Patch(typeof(TileBatch).GetMethod("GetNewSpriteBufferSlice",F),transpiler:new HarmonyMethod(typeof(NativeViewWaterFailureChecks),nameof(BeforeRealResize)));
             audit.Patch(typeof(TileBatch).GetMethod("Dispose"),postfix:new HarmonyMethod(typeof(NativeViewWaterFailureChecks),nameof(Disposed)));
             try
             {
+                // The preceding sampling scope legitimately fades its filter.
+                // This failure belongs to the physical-mask consumer path;
+                // establish that real consumer rather than requiring a mask
+                // which the no-consumer optimization must correctly omit.
+                Main.WaveQuality=3;Filters.Scene.Activate("WaterDistortion",Main.LocalPlayer.Center);filter.Opacity=1;
+                Filters.Scene.Update(new GameTime(TimeSpan.Zero,TimeSpan.Zero));
                 Call(view,"SetUnlockEnabled",true);Main.GameZoomTarget=.5f;draw();
                 var water=Get(view,"Water");ownWater=water;
                 var device=Main.instance.GraphicsDevice;
@@ -94,8 +102,8 @@ namespace NativeWorldTextProbe
                 Require(foreignOpened && (ushort)deviceBegins.GetValue(device)==originalBegin+1 && (ushort)deviceImmediate.GetValue(device)==originalImmediate,"unknown failure preserves the unrelated already-open entry lease while returning only owned Begin counts");
                 foreignFailureLease.Draw(TextureAssets.MagicPixel.Value,Vector2.Zero,Color.Transparent);foreignFailureLease.End();foreignOpened=false;
                 Require(GetOptional(water,"maskTiles")==null && GetOptional(water,"maskSprites")==null,"corrupt owned queues are retired, never flushed as recovery");
-                originalTiles.End();Main.GameZoomTarget=1;for(int i=0;i<3;i++)draw();
-                Require((bool)Get(view,"ControlsEnabled") && Main.GameViewMatrix.RenderZoom.X==1,"unknown original error is not relabeled as VIEW resource failure; following ordinary Draw works");
+                originalTiles.End();Main.GameZoomTarget=1;int count=Main.fpsCount;for(int i=0;i<3;i++)draw();
+                Require(Main.fpsCount==count+3&&(bool)Get(view,"ControlsEnabled") && Main.GameViewMatrix.RenderZoom.X==1,"unknown original error is not relabeled as VIEW resource failure; following ordinary Draw really executes");
                 Console.WriteLine("PASS VIEW WATER unknown native partial queue error propagated exactly with secondary cleanup error, original pending work preserved; following3 real ordinary Draw.");
 
                 Main.GameZoomTarget=.5f;draw();Arm(water,new OutOfMemoryException("Controlled actual native liquid queue resize allocation failure"));
@@ -104,11 +112,11 @@ namespace NativeWorldTextProbe
                 Require(attempts==1 && secondary==1 && ReferenceEquals(Main.tileBatch,originalTiles)&&ReferenceEquals(Main.spriteBatch,originalSprites)&&(int)queued.GetValue(originalTiles)==0,"owned resize OOM is contained without damaged queue or reference escaping into original batch");
                 var messages=new List<string>();Call(view,"TakeFeedback",(Action<string>)messages.Add);Call(view,"TakeFeedback",(Action<string>)messages.Add);
                 Require(messages.Count==1 && !(bool)Get(view,"ControlsEnabled") && Main.GameZoomTarget>=1,"water resource failure reports once and selects safe ordinary state");
-                for(int i=0;i<20;i++)draw();Call(view,"TakeFeedback",(Action<string>)messages.Add);
-                Require(Main.GameViewMatrix.RenderZoom.X==1 && (int)queued.GetValue(originalTiles)==0 && attempts==1 && messages.Count==1 && !(bool)typeof(Main).GetField("_isDrawingOrUpdating",F).GetValue(Main.instance),"next20 actual native ordinary Draw complete without pending-queue Begin failure, retry or feedback loop");
+                count=Main.fpsCount;for(int i=0;i<20;i++)draw();Call(view,"TakeFeedback",(Action<string>)messages.Add);
+                Require(Main.fpsCount==count+20&&Main.GameViewMatrix.RenderZoom.X==1 && (int)queued.GetValue(originalTiles)==0 && attempts==1 && messages.Count==1 && !(bool)typeof(Main).GetField("_isDrawingOrUpdating",F).GetValue(Main.instance),"next20 actual native ordinary Draw complete without pending-queue Begin failure, retry or feedback loop");
                 Console.WriteLine("PASS VIEW WATER OOM after real queued increment/before Array.Resize, secondary disposal error preserved primary; exact original batches intact, next20 ordinary Draw, attempt1/message1.");
             }
-            finally{armed=false;audit.UnpatchAll(audit.Id);if(foreignOpened){foreignFailureLease.End();foreignOpened=false;}foreignFailureLease?.Dispose();foreignFailureLease=null;ownWater=null;selected=null;injected=null;}
+            finally{armed=false;audit.UnpatchAll(audit.Id);if(foreignOpened){foreignFailureLease.End();foreignOpened=false;}foreignFailureLease?.Dispose();foreignFailureLease=null;ownWater=null;selected=null;injected=null;Main.WaveQuality=quality;if(active)Filters.Scene.Activate("WaterDistortion",Main.LocalPlayer.Center);else Filters.Scene.Deactivate("WaterDistortion");filter.Opacity=opacity;}
         }
     }
 }
