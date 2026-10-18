@@ -4,9 +4,24 @@
 
 ## 结论与准入
 
-实现者完整专项及自查通过，等待未参与实现/期待编写者的集中独审。未打包、未安装，不能仅凭本文件进入07。发布资格仍为 `INCOMPLETE / releaseEligible=false`，外来保留资产使真实 `clean=false`；不清除它们来取得表面clean。
+实现者完整专项、自查、未参与实现/期待编写者的独审及主调度集中准入均通过。已按07完成一个普通完整开发包及一次轻量备份换装，停止待所有者实测。发布资格仍为 `INCOMPLETE / releaseEligible=false`，外来保留资产使真实 `clean=false`；不清除它们来取得表面clean。本文件后继纯交付记录不改变实际包/安装来源。
 
 实现保持人物difficulty和世界基础GameMode原值，只在准确原版消费者提供本次资格。持续力量保存采用激活前由原版生成的31/16字节世界/人物子流；真实研究、复制物品和其它进度仍由原版保存，不恢复整份旧文件。详见[行为合同](../../docs/功能介绍/旅行菜单行为合同.md)和[设计](../../docs/设计/旅行菜单实现设计.md)。
+
+## 实际包与一次安装
+
+| 事实 | 实际结果 |
+| --- | --- |
+| 产品、包、安装来源 | `982fdb997c2ac43595d8907d6c74f448d630ae16`；完整ContinuousProcessing / Release / net472 / x86，包含已接受main、HIDE文案收尾和本轮旅行，并非单DLL补丁 |
+| 独审/准入 | `.local/journey-menu-20261018/independent-review-982fdb9.md`，SHA256 `04CF3B9B30C98DB6A4B4EAB23CA123438FE6CAFA3CB5579C9D639F61EDE88DC6`；主调度真实决定为 `coordinator-admission-982fdb9.md`。8项正向reader实际通过，阶段记录SHA `E9EB8CCF551F8D7AED47400033362DDD4CB1DF19E31DFFC2354A723FD4C98403` |
+| 唯一ZIP | `outputs/journey-menu-20261018-982fdb9/JueMingR-Continuous-Processing-982fdb997c2ac43595d8907d6c74f448d630ae16.zip`；2334626字节，SHA256 `B8DA6FDA115220FD96F230662AE0F675F0891140440B2A75FBBEF06FE8F3591E` |
+| 包核验 | 普通完整包入口执行正向准入、Release/结构及载荷/ZIP核验；一次 `verify-existing-package.ps1` exit0，17成员/10载荷，源码/框架/平台/归属吻合。原件 `package-build-982fdb9.log`、`package-verify-982fdb9.log`，包记录 `phase-0-s-build-record.json` |
+| 安装 | 工具确认 `F:/games/gameplats/steam/steamapps/common/Terraria` 的旧 `b4a48f7` 拥有关系及无游戏/Server/worker进程，旧包正规Restore和新包正规Install均exit0；一次新拥有权、回执及10载荷长度读回通过，回执SHA `A6440C6E0D1733AEF1DDF96C281898401ADA372A408E1A635D05545852911598` |
+| 备份/恢复 | 只备份12个将删除/替换的旧受控文件到 `.local/journey-menu-20261018/delivery/backup-b4a48f7-before-982fdb9`，清单 `delivery/backup-and-ownership.json`。旧完整包 `outputs/hidden-entry-20261018-b4a48f7-final/`及旧回执保留；正常回退入口为新包Restore、旧包Install，不手拼DLL |
+
+安装原件为 `.local/journey-menu-20261018/delivery/{restore-old.log,install-new.log,installed-982fdb9.json}`。未启动所有者游戏、未读写其角色/世界/研究/用户配置正文，不全用户目录哈希；未安装后再跑业务矩阵。安装成功不等于新包普通游戏启动或所有者体验接受，Issue保持开放、PR保持Draft，不merge/close/Tag/Release。
+
+独审明确校正归档边界：`fixed-full26-runtime/manifest.json`实际仅9文件，没有旧7D Host DLL/PDB；不能称旧Host或完整旧运行集合已归档。旧运行保留执行hash和完整输入关系，支持本任务经过独审的有限手工行为复用，不用新75C冒充旧7D、不迁成正式workload缓存PASS。候选JSON和Issue/PR说明已更正；不为此重跑玩法或改产品。
 
 ## 完整原版专项
 
