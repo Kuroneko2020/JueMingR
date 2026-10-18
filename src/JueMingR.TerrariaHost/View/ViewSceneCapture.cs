@@ -67,4 +67,10 @@ namespace JueMingR.TerrariaHost.View
     // unrelated original draw exceptions retain their original propagation.
     internal sealed class ViewRenderFailure : Exception
     { internal ViewRenderFailure(Exception inner) : base("VIEW owned rendering preparation failed.", inner) { } }
+    // A known optional cached frame can no longer be completed safely after
+    // partial submission. Preserve its first OOM as InnerException, abandon
+    // only this frame, and let the already rejected qualification draw Direct
+    // next time. This internal control exception never leaves Main.DoDraw.
+    internal sealed class ViewOptionalCacheFailure : Exception
+    { internal ViewOptionalCacheFailure(OutOfMemoryException inner) : base("VIEW optional cached frame aborted.", inner) { } }
 }

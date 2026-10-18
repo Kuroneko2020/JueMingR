@@ -154,6 +154,7 @@ namespace JueMingR.TerrariaHost.View
                 var plan=attachedPlan;var current=device;
                 int width=(int)Math.Ceiling((plan.WorldSize.X+2*padding)*Scale),height=(int)Math.Ceiling((plan.WorldSize.Y+2*padding)*Scale);
                 Release(error);RememberFailure(current,width,height,plan);Rejection="optional tile copy failed; same target uses direct";
+                error=new ViewOptionalCacheFailure((OutOfMemoryException)error);
             }
             return error??fallback;
         }

@@ -23,6 +23,9 @@ namespace JueMingR.TerrariaHost.View
         internal static bool Expanded { get { return owner != null && owner.NeedsExpandedRendering; } }
         [ThreadStatic] private static ViewBackgroundScope background;
         [ThreadStatic] private static Exception ownedDrawFailure;
+        [ThreadStatic] private static int drawDepth;
+        [ThreadStatic] private static RenderTargetBinding[] drawBindings;
+        private struct OriginalDrawState { internal bool Guard;internal Exception PriorFailure;internal RenderTargetBinding[] PriorBindings; }
         private static readonly FieldInfo drawGuard=AccessTools.Field(typeof(Main),"_isDrawingOrUpdating");
         private static readonly List<MethodBase> targets = new List<MethodBase>();
         internal static void Install(HostView value)
@@ -169,28 +172,47 @@ namespace JueMingR.TerrariaHost.View
             __state=false;
             if(owner==null||owner.Plan==null||!owner.Plan.Expanded||Main.drawToScreen||!Lighting.NotRetro)return true;
             try{if(owner.Native.Begin(owner.Plan)){__state=true;return true;}}
-            catch(Exception error){ownedDrawFailure=error;throw;}
+            catch(Exception error){MarkDrawFailure(error);throw;}
             // No native liquid/tile leaf has run yet. An optional private-batch
             // admission failure can use correct Direct in this same Draw.
             Main.drawToScreen=true;owner.Plan=owner.Plan.WithRoute(ViewRenderRoute.Direct);return false;
         }
         private static Exception EndNativeCoverage(Exception __exception,bool __state)
-        {if(!__state)return __exception;var error=owner.Native.End(__exception,owner.Plan);if(error!=null)ownedDrawFailure=error;return error;}
+        {if(!__state)return __exception;var error=owner.Native.End(__exception,owner.Plan);if(error is OutOfMemoryException)error=new ViewOptionalCacheFailure((OutOfMemoryException)error);if(error!=null)MarkDrawFailure(error);return error;}
         // The partial cache owns only tile/tile2/wall. RenderWallsAndBlacks
         // normally consumes a background swap; preserve that separate native
         // owner while borrowing its tile leaf in our temporary logical domain.
         private static bool BackgroundSwap(){return owner==null||!owner.Cache.Rendering;}
-        private static void CacheDrawComplete(){try{owner?.Cache.ThrowCompositeFailure(true);}catch(Exception error){ownedDrawFailure=error;throw;}}
-        private static void BeginOriginalDraw(Main __instance,out bool __state){__state=(bool)drawGuard.GetValue(__instance);ownedDrawFailure=null;}
-        private static Exception EndOriginalDraw(Main __instance,Exception __exception,bool __state)
+        private static void CacheDrawComplete(){try{owner?.Cache.ThrowCompositeFailure(true);}catch(Exception error){MarkDrawFailure(error);throw;}}
+        private static void MarkDrawFailure(Exception error){if(drawDepth>0)ownedDrawFailure=error;}
+        private static void BeginOriginalDraw(Main __instance,out OriginalDrawState __state)
+        {
+            __state=new OriginalDrawState{Guard=(bool)drawGuard.GetValue(__instance),PriorFailure=ownedDrawFailure,PriorBindings=drawBindings};drawDepth++;ownedDrawFailure=null;drawBindings=null;
+            // Only a potentially owned expanded frame needs this abort return.
+            // Stable ordinary Draw does not allocate a target snapshot. A
+            // native-guard-blocked reentry borrows neither GPU targets nor work.
+            if(!__state.Guard&&owner!=null&&owner.HasWorld&&(Main.GameZoomTarget<1||owner.NeedsExpandedRendering||owner.Plan!=null&&owner.Plan.Wide))drawBindings=__instance.GraphicsDevice.GetRenderTargets();
+        }
+        private static void ReturnDrawTargets(){if(drawBindings!=null)Main.instance.GraphicsDevice.SetRenderTargets(drawBindings);else Main.instance.GraphicsDevice.SetRenderTarget(null);}
+        private static Exception EndOriginalDraw(Main __instance,Exception __exception,OriginalDrawState __state)
         {
             // Locked Main.Draw has no finally around DoDraw. Only an exact
             // first exception observed in these new owned scopes closes its
             // entered Draw guard/timing interval; unrelated native exceptions
             // retain their original behavior and are never swallowed here.
-            if(__exception!=null&&ReferenceEquals(__exception,ownedDrawFailure))
-            {drawGuard.SetValue(__instance,__state);try{Terraria.Testing.DetailedFPS.End();}catch{}}
-            ownedDrawFailure=null;return __exception;
+            try
+            {
+                if(!__state.Guard&&__exception!=null&&ReferenceEquals(__exception,ownedDrawFailure))
+                {drawGuard.SetValue(__instance,__state.Guard);try{ReturnDrawTargets();}catch{}try{Terraria.Testing.DetailedFPS.End();}catch{}}
+                return __exception;
+            }
+            finally
+            {
+                // A legitimate reentrant Draw is blocked by the native true
+                // guard. It must return that exact prior value and outer marker,
+                // not erase the failing outer frame's exception ownership.
+                ownedDrawFailure=__state.PriorFailure;drawBindings=__state.PriorBindings;drawDepth--;
+            }
         }
         private static bool DirectDraw()
         {
@@ -232,23 +254,32 @@ namespace JueMingR.TerrariaHost.View
                 // A Fill or owned mask can fail before composition. Its own
                 // scope has already returned the drawing domain/batches; also
                 // identify this precise exception for Main.Draw's guard finally.
-                ownedDrawFailure=error;throw;
+                MarkDrawFailure(error);throw;
             }
         }
         private static bool SceneDirectDraw() { return Main.drawToScreen && !(owner != null && owner.Scene.Attached); }
         private static Exception EndWorldDraw(Exception __exception)
         {
             if(owner!=null)owner.Cache.NativeRefreshRequested=false;
-            if(owner!=null){bool copied=owner.Cache.HasCompositeFailure;__exception=owner.Cache.TakeCompositeFailure(__exception);if(copied)ownedDrawFailure=__exception;}
+            if(owner!=null){bool copied=owner.Cache.HasCompositeFailure;__exception=owner.Cache.TakeCompositeFailure(__exception);if(copied)MarkDrawFailure(__exception);}
             owner?.Cache.Detach();
             owner?.Water.Detach();
             owner?.Scene.Detach(__exception != null);
+            if(__exception is ViewOptionalCacheFailure)
+            {
+                // The private caches already retired/restored their own state
+                // and remembered the failed qualification. Do not redraw a
+                // partially submitted frame (water alpha/steps are not a retry
+                // transaction), reset the user's target, or leak this internal
+                // control exception into ordinary Game.Run. Next Draw is Direct.
+                ReturnDrawTargets();Main.renderNow=true;return null;
+            }
             if (!(__exception is ViewRenderFailure)) return __exception;
             // Only a typed failure from VIEW-owned preparation is contained.
             // Leave unrelated native exceptions visible. The next original
             // frame uses the intact ordinary arrays and no repeated growth.
             try { Main.spriteBatch.End(); } catch (InvalidOperationException) { }
-            Main.instance.GraphicsDevice.SetRenderTarget(null);
+            ReturnDrawTargets();
             owner?.RenderingFailed(); return null;
         }
         private static void LightArea(ref Rectangle __result)

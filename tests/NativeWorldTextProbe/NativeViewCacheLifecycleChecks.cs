@@ -27,6 +27,25 @@ namespace NativeWorldTextProbe
         private static int attempts,secondary;
         private static bool allocationArmed;
         private static int allocationAttempts;
+        private static Action reenter;
+        private static int reentries;
+        private static bool foreignArmed;
+        private static Exception foreignError;
+        private static Type hookOwner;
+        private static void ForeignFailure(){if(foreignArmed){foreignArmed=false;throw foreignError;}}
+        private static Exception Reenter(Exception __exception)
+        {
+            if(reenter!=null&&ReferenceEquals(__exception,injected))
+            {
+                var callback=reenter;reenter=null;int frames=Main.fpsCount;
+                Require((bool)AccessTools.Field(typeof(Main),"_isDrawingOrUpdating").GetValue(Main.instance),"outer failed native Draw still owns its entered guard before final return");
+                var marker=AccessTools.Field(hookOwner,"ownedDrawFailure");var bindings=AccessTools.Field(hookOwner,"drawBindings");var prior=marker.GetValue(null);var priorTargets=bindings?.GetValue(null);
+                callback();reentries++;
+                Require(Main.fpsCount==frames&&(bool)AccessTools.Field(typeof(Main),"_isDrawingOrUpdating").GetValue(Main.instance),"nested original Draw preserves true guard and does not execute another DoDraw");
+                Require(ReferenceEquals(prior,marker.GetValue(null))&&(bindings==null||ReferenceEquals(priorTargets,bindings.GetValue(null))),"blocked nested Draw returns the exact outer exception marker and frame-target snapshot");
+            }
+            return __exception;
+        }
         private static WorldSceneLayerTarget preparedOne;
         private static void Allocate()
         {if(allocationArmed&&++allocationAttempts==2){allocationArmed=false;throw new OutOfMemoryException("controlled second real optional world RT allocation");}}
@@ -62,7 +81,7 @@ namespace NativeWorldTextProbe
         }
         internal static void Run(Main game,object view,Action draw)
         {
-            var cache=Get(view,"Cache");Set(cache,"ForceDirect",false);Call(view,"SetUnlockEnabled",true);Main.GameZoomTarget=.3f;draw();draw();
+            var cache=Get(view,"Cache");hookOwner=view.GetType().Assembly.GetType("JueMingR.TerrariaHost.View.ViewHooks");Set(cache,"ForceDirect",false);Call(view,"SetUnlockEnabled",true);Main.GameZoomTarget=.3f;draw();draw();
             Allocation(view,cache,draw);
             Main.GameZoomTarget=.5f;draw();draw();Main.GameZoomTarget=.3f;draw();draw();
             var device=game.GraphicsDevice;var sharedTiles=Main.tileBatch;var sharedSprites=Main.spriteBatch;
@@ -75,6 +94,11 @@ namespace NativeWorldTextProbe
             var audit=new Harmony("JueMingR.Tests.View.CacheLifecycle");
             audit.Patch(AccessTools.Method(typeof(TileBatch),"GetNewSpriteBufferSlice"),transpiler:new HarmonyMethod(typeof(NativeViewCacheLifecycleChecks),nameof(Resize)));
             audit.Patch(AccessTools.Method(typeof(TileBatch),"Dispose"),postfix:new HarmonyMethod(typeof(NativeViewCacheLifecycleChecks),nameof(Disposed)));
+            var nativeDraw=AccessTools.Method(typeof(Main),"Draw",new[]{typeof(GameTime)});
+            var nested=new DynamicMethod("NativeViewNestedDraw",typeof(void),new[]{typeof(Main),typeof(GameTime)},typeof(NativeViewCacheLifecycleChecks),true);var il=nested.GetILGenerator();il.Emit(OpCodes.Ldarg_0);il.Emit(OpCodes.Ldarg_1);il.Emit(OpCodes.Call,nativeDraw);il.Emit(OpCodes.Ret);
+            var originalDraw=(Action<Main,GameTime>)nested.CreateDelegate(typeof(Action<Main,GameTime>));
+            var reentryHook=new HarmonyMethod(typeof(NativeViewCacheLifecycleChecks),nameof(Reenter)){priority=Priority.Last};
+            audit.Patch(AccessTools.Method(typeof(Main),"DoDraw",new[]{typeof(GameTime)}),prefix:new HarmonyMethod(typeof(NativeViewCacheLifecycleChecks),nameof(ForeignFailure)),finalizer:reentryHook);
             try
             {
                 int width=Main.screenWidth,height=Main.screenHeight,p=Main.offScreenRange;var position=Main.screenPosition;var zoom=Main.GameViewMatrix.Zoom;bool direct=Main.drawToScreen;
@@ -110,14 +134,22 @@ namespace NativeWorldTextProbe
                 // Main.Draw too: its own missing finally must not turn later
                 // calls into guard-short-circuited no-ops after our new Fill.
                 Call(cache,"Dispose");Main.GameZoomTarget=.3f;draw();draw();
-                var actualError=new IOException("controlled unknown cached Fill through actual Main.Draw");Arm(cache,actualError);bool actualPropagated=false;
+                var actualError=new IOException("controlled unknown cached Fill through actual Main.Draw");Arm(cache,actualError);bool actualPropagated=false;reentries=0;reenter=()=>originalDraw(Main.instance,new GameTime());
                 try{draw();}catch(Exception error){while(error is TargetInvocationException)error=error.InnerException;actualPropagated=ReferenceEquals(error,actualError);}
-                Require(actualPropagated&&attempts==1,"actual Main.Draw cached Fill preserves its first otherwise swallowed native leaf error");
+                Require(actualPropagated&&attempts==1&&reentries==1,"actual Main.Draw cached Fill preserves its first error through one real blocked nested Draw");
                 Main.GameZoomTarget=1;int frames=Main.fpsCount;for(int i=0;i<3;i++)draw();
                 Require(Main.fpsCount==frames+3,"unknown Fill recovery permits three real subsequent native Draw rather than a stuck outer guard");
+                var guard=AccessTools.Field(typeof(Main),"_isDrawingOrUpdating");bool priorGuard=(bool)guard.GetValue(Main.instance);foreignError=new IOException("controlled foreign original DoDraw prefix error outside VIEW scopes");foreignArmed=true;bool foreignExact=false;
+                try
+                {
+                    try{draw();}catch(Exception error){while(error is TargetInvocationException)error=error.InnerException;foreignExact=ReferenceEquals(error,foreignError);}
+                    Require(foreignExact&&(bool)guard.GetValue(Main.instance),"unrelated native error stays original and VIEW does not alter its native missing-finally guard behavior");
+                }
+                finally{foreignArmed=false;guard.SetValue(Main.instance,priorGuard);Terraria.Testing.DetailedFPS.End();}
+                Console.WriteLine("PASS CACHE OWNERSHIP one real blocked nested Draw preserves outer first error/true guard; unrelated native error is untouched, fixture manually restores its own baseline guard (no product recovery claim).");
                 Console.WriteLine("PASS CACHE LIFECYCLE capacity reused; native partial-queue IO propagated with secondary dispose, foreign lease/shared pending preserved;3 ordinary Draw;optional OOM unchanged target/settings then20 direct Draw/no retry.");
             }
-            finally{armed=false;audit.UnpatchAll(audit.Id);selected=null;injected=null;}
+            finally{armed=foreignArmed=false;reenter=null;hookOwner=null;audit.UnpatchAll(audit.Id);selected=null;injected=foreignError=null;}
         }
         private static void Allocation(object view,object cache,Action draw)
         {

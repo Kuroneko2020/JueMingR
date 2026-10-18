@@ -19,6 +19,8 @@ namespace NativeWorldTextProbe
         private static bool armed;
         private static bool allocationArmed;
         private static int allocations;
+        private static Exception optionalOriginal;
+        private static void Optional(OutOfMemoryException __0){optionalOriginal=__0;}
         private static void Allocate(){if(allocationArmed){allocationArmed=false;allocations++;throw new OutOfMemoryException("controlled optional native-coverage batch admission");}}
         private static int attempts,steps,waterCalls,applies;
         private static bool leaf;
@@ -37,6 +39,7 @@ namespace NativeWorldTextProbe
             audit.Patch(AccessTools.Method(typeof(WaterShaderData),"StepLiquids"),prefix:new HarmonyMethod(typeof(NativeViewNativeRouteChecks),nameof(Step)));
             audit.Patch(AccessTools.Method(typeof(WaterShaderData),"Apply"),postfix:new HarmonyMethod(typeof(NativeViewNativeRouteChecks),nameof(Applied)));
             audit.Patch(typeof(Terraria.Graphics.TileBatch).GetConstructor(new[]{typeof(GraphicsDevice)}),prefix:new HarmonyMethod(typeof(NativeViewNativeRouteChecks),nameof(Allocate)));
+            audit.Patch(view.GetType().Assembly.GetType("JueMingR.TerrariaHost.View.ViewOptionalCacheFailure").GetConstructor(BindingFlags.Instance|BindingFlags.NonPublic,null,new[]{typeof(OutOfMemoryException)},null),prefix:new HarmonyMethod(typeof(NativeViewNativeRouteChecks),nameof(Optional)));
             try
             {
                 Main.GameZoomTarget=.9f;for(int i=0;i<8;i++)draw();
@@ -79,6 +82,11 @@ namespace NativeWorldTextProbe
                 Require(ReferenceEquals(sharedTiles,Main.tileBatch)&&ReferenceEquals(sharedSprites,Main.spriteBatch)&&Main.screenWidth==width&&Main.screenHeight==height&&Main.screenPosition==screen&&Main.offScreenRange==padding&&Main.GameViewMatrix.Zoom==zoom&&(ushort)begins.GetValue(game.GraphicsDevice)==entry,"native scope restores root domain, exact shared batches and XNA lease after UpdateContent skips its native restoration");
                 Main.GameZoomTarget=1;int count=Main.fpsCount;for(int i=0;i<3;i++)draw();Require(Main.fpsCount==count+3&&(bool)Get(view,"ControlsEnabled"),"three real ordinary Draw execute after native optional scope unknown failure, without a stuck native Draw guard");
                 Console.WriteLine("PASS NATIVE FAILURE real swallowed DrawWaters IO preserved; root/shared leases restored;3 subsequent ordinary Draw valid.");
+                Main.GameZoomTarget=.9f;draw();injected=new OutOfMemoryException("controlled optional native water leaf failure");optionalOriginal=null;armed=true;attempts=0;bool escaped=false;count=Main.fpsCount;bool leafMap=Main.mapEnabled;var leafMode=Lighting.Mode;Main.renderCount=1;Main.renderNow=false;
+                try{draw();}catch{escaped=true;}
+                Require(!escaped&&attempts==1&&ReferenceEquals(optionalOriginal,injected)&&Main.fpsCount==count+1&&Main.GameZoomTarget==.9f&&Main.mapEnabled==leafMap&&Lighting.Mode==leafMode&&(bool)Get(view,"ControlsEnabled"),"known optional native leaf OOM aborts only current frame without leaking internal control exception or resetting user state");
+                count=Main.fpsCount;waterCalls=0;for(int i=0;i<20;i++)draw();Require(Main.fpsCount==count+20&&waterCalls>=20&&Main.drawToScreen&&Main.GameZoomTarget==.9f,"aborted optional native frame is followed by20 real direct world/liquid Draw at unchanged selected target");
+                Console.WriteLine("PASS NATIVE OPTIONAL LEAF controlled original OOM preserved as inner;current frame abandoned/internal-control contained;next20 true Direct/.9 unchanged settings.");
                 Call(native,"Dispose");Main.GameZoomTarget=.9f;bool map=Main.mapEnabled;var mode=Lighting.Mode;allocationArmed=true;allocations=0;count=Main.fpsCount;draw();
                 Require(allocations==1&&Main.fpsCount==count+1&&Main.drawToScreen&&Main.GameZoomTarget==.9f&&Main.mapEnabled==map&&Lighting.Mode==mode,"optional native-coverage batch OOM before leaves falls back to correct direct in the same actual Draw, preserving target/settings");
                 count=Main.fpsCount;for(int i=0;i<20;i++)draw();Require(Main.fpsCount==count+20&&allocations==1&&Main.drawToScreen&&Main.GameZoomTarget==.9f,"same native batch failure qualification uses20 actual direct Draw without retry");
