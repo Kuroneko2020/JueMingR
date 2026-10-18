@@ -143,4 +143,3 @@ namespace JueMingR.TerrariaHost.View
         {Release();if(device!=null){device.DeviceResetting-=Reset;device.Disposing-=Reset;device=null;}shader=null;time=null;step=null;}
     }
 }
-
