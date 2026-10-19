@@ -31,7 +31,7 @@ namespace JueMingR.TerrariaHost.F5
             for (int i = 0; i < 3; i++)
             {
                 int feature = i;
-                rows.Row(ref y, 0, 522, Names[i], i == 1 ? new[] { "开启", "关闭", mode == ContinuousDashMode.Hold ? "按住" : "双击", "键" } : new[] { "开启", "关闭", "键" },
+                rows.Row(ref y, 0, 522, Names[i], i == 1 ? new[] { mode == ContinuousDashMode.Hold ? "按住" : "双击", "开启", "关闭", "键" } : new[] { "开启", "关闭", "键" },
                     text => text == "开启" ? On(feature) : text == "关闭" ? Off(feature) : text == "键" ? F5Command.None : F5Command.MovementDashMode,
                     i == 0 ? jump : i == 2 ? teleport : mode == ContinuousDashMode.Hold ? hold : doubleTap);
                 var key = elements[elements.Count - 1];

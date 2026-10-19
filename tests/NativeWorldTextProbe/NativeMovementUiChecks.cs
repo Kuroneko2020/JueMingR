@@ -60,6 +60,10 @@ namespace NativeWorldTextProbe
                 foreach (float ui in new[] { 1f, 1.5f })
                 {
                     Main.UIScale = ui; PlayerInput.CacheOriginalScreenDimensions(); h.Frame(); h.Frame(); h.Navigate(11);
+                    Columns(h);
+                    h.ClickCommand("MovementDashMode"); Columns(h);
+                    Require(!(bool)Call(movement, "IsEnabled", 1) && Get(movement, "DashMode").ToString() == "Hold", "scaled left-of-ON mode button remains usable while OFF");
+                    h.ClickCommand("MovementDashMode"); Columns(h);
                     foreach (string command in new[] { "MovementJumpOn", "MovementJumpOff", "MovementTeleportOn", "MovementTeleportOff" }) h.ClickCommand(command);
                     h.Hover(h.Elements().Single(e => (string)GetOptional(e, "Text") == "模拟连跳")); Render(game, shell, Path.Combine(output, "movement-page-ui-" + (int)(ui * 100) + ".png"));
                     Require((bool)Get(hint, "Visible") && (string)Get(hint, "text") == "按住跳跃键连跳，类似蛙腿效果", "name hover uses the actual final approved description at UI scale=" + Main.UIScale);
@@ -151,6 +155,18 @@ namespace NativeWorldTextProbe
             Console.WriteLine("MOVEMENT UI OWNER " + label + " allowed=" + allowed + " native-limit-calls=" + calls);
         }
         private static void InWorldJump(Player __instance) { onJump?.Invoke(__instance); }
+        private static void Columns(Frames frames)
+        {
+            object mode = Get(frames.Command("MovementDashMode"), "Rect"), on = Get(frames.Command("MovementDashOn"), "Rect"), off = Get(frames.Command("MovementDashOff"), "Rect");
+            float onX = (float)Get(on, "X"), offX = (float)Get(off, "X");
+            Require((float)Get(mode, "X") + (float)Get(mode, "Width") < onX && onX + (float)Get(on, "Width") < offX, "final dash order is mode, ON, OFF");
+            foreach (string feature in new[] { "Jump", "Teleport" })
+            {
+                Require(Math.Abs((float)Get(Get(frames.Command("Movement" + feature + "On"), "Rect"), "X") - onX) < .01f &&
+                    Math.Abs((float)Get(Get(frames.Command("Movement" + feature + "Off"), "Rect"), "X") - offX) < .01f,
+                    "all three rows share ON/OFF columns at actual UI scale=" + Main.UIScale);
+            }
+        }
         private static void Limited() { limiterCalls++; }
         private static void Render(Main game, object shell, string path)
         {
