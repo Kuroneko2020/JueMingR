@@ -40,6 +40,10 @@ original01夹具将全部角色inactive后等待Session，自阻塞；在等待�
 
 ## 待交付门与现场资产
 
+后续最终UI原件为 `original-09-mode-left.log` 与同名目录：所有者要求模式移到开启左边，09在100/150%及按住/双击两态断言模式/开启/关闭顺序、三行开启/关闭同列，并真实点击关闭状态模式，完整Main/Dash/UI专项再次PASS。实现者已查看最终两张PNG。该次源码 `74511837217522b1af3496bed46abf6082f7c2ca`，Host SHA256 `ADAA0A83F4EA6CC8B4AC68060C6B51BC17A1F486D24CBF344EB07B6EBC2E52BC`，执行Probe `50F8D3E38AE6A691C290476E6FC10E305B25385540F2CF84C7CFC4C8000C2FB8`，日志SHA256 `076BC882E4A48BCABB10738412783EBEA8022902BE0ED8F173D49EF8A48C1749`；最终仅证据导航提交不冒称此旧执行commit。08则证明补充options/fancy/capture预采样取消门后的完整主链，精确身份保留各自目录；窄取消反控与最终累计结果以Issue原回执为准。
+
+09再次记录完整动作/资源配对及8对settled：Update与full均4正4负，update差均值-.048066/中位+.009745ms，full差均值-.168619/中位+.073914ms，离散范围仍大。结合07/08和零分配有限helper，本场景没有可重复稳定额外损失的证据；也不能证明普遍零性能损失、负均值提速或所有者长期FPS。所有尖峰保留。累计01在剪裁F5夹具字段无赋值的警告即错误处停，显式可选attachment=false修复；累计02为所有者新UI决定在准确自有build及artifacts后代边界中断，保留stop回执，无累计PASS。最终整批Related从BASE核对执行/有效复用，不能借旧Stage记录。
+
 真实物理焦点/IME/所有者手感、长期FPS、真实多人客户端/权威结果尚未验；SendData入口不是网络同步闭环。独审、正式普通完整Release候选包、受控一次备份换装待对应准入，当前没有新包/安装成功结论。恢复体验入口见[体验卡](../../scripts/phase0s/Movement-Assists-Owner-Test-Card.zh-CN.md)。
 
 四项外来资产保持：tracked `docs/设计/本地参考资料使用说明.md`，untracked `.workbuddy/memory/2026-10-03.md`、`issue112.txt`、`pr113.json`。哈希声明 `.local/movement-assists-20261019/approved-retained-assets.json`，沿现有合法通道：`clean=false/releaseEligible=false`，提交本任务源码后仅这四项保留，不借旧Stage例外，不伪造clean。禁止合并/关闭/Tag/Release/版本推进。
