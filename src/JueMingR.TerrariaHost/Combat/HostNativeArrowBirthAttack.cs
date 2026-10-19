@@ -130,11 +130,17 @@ namespace JueMingR.TerrariaHost.Combat
             // Iterate only the representative arrival time; native scatter
             // and the other vertical ordinals remain with ItemCheck_Shoot.
             int tick=clock.FirstTick;var initial=path[tick].ProjectileReceiveBounds;var aim=new Vector2(initial.CenterX,initial.CenterY);HostAttackSolution best=new HostAttackSolution(path,aim,false,HostAttackReachability.Unknown);
+            HostProjectileTargets targets=null;
             for(int pass=0;pass<4;pass++)
             {
                 var p=Birth(player,ammo,origin,aim,stage,terrain,0);if(p==null)return best;
+                // Ammo can retain its autonomous steering after a sky birth.
+                // Capture that same finite chase premise as ordinary main
+                // replay once, rather than treating a missing required input
+                // as an unknown trajectory or reading live targets in Replay.
+                if(pass==0 && HostAmmoSteeringAttack.Handles(p.type))targets=HostProjectileTargets.Capture(p,path.Identity.Session);
                 AttackMotion motion;if(!HostRepresentativeAttack.TryMotion(ammo,out motion))return best;
-                int receive;float nearest;var reach=HostRepresentativeAttack.Replay(player,p,path,clock.FirstTick,terrain,motion,out receive,out nearest);
+                int receive;float nearest;var reach=HostRepresentativeAttack.Replay(player,p,path,clock.FirstTick,terrain,motion,out receive,out nearest,targets);
                 if(reach==HostAttackReachability.Reachable)return new HostAttackSolution(path,aim,true,reach,receive);
                 // Closest future centre is supplied by a free flight of this
                 // same legal sky birth. That gives a bounded fixed point for

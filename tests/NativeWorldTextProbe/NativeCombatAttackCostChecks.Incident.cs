@@ -34,12 +34,13 @@ namespace NativeWorldTextProbe
             var expected=(NpcIdentity)Get(Get(Get(incidentContext,"CombatObservation"),"Selection"),"Target");
             var recorded=(NpcIdentity)Get(input,"Target");var cursor=Main.screenPosition+new Vector2(Main.mouseX,Main.mouseY);
             var plans=(Array)Get(attack,"candidatePlans");var farPlan=plans.GetValue(incidentReceiver.whoAmI*2+1);var farPath=farPlan==null?null:GetOptional(farPlan,"Timeline") as NpcTrajectory;var farContact=farPlan==null?null:GetOptional(farPlan,"Contact") as AttackContact;
-            bool farPositive=farContact!=null && (uint)Get(farPlan,"PreparedTick")==Main.GameUpdateCount && Convert.ToString(Get(farPlan,"Phase"))=="BeforeNpc" && farPath!=null && farPath.SampleTick==(long)Main.GameUpdateCount-1;
+            bool farPositive=IncidentPlanPositive(farPlan) && (bool)Get(farPlan,"Prepared") && (uint)Get(farPlan,"PreparedTick")==Main.GameUpdateCount && Convert.ToString(Get(farPlan,"Phase"))=="BeforeNpc" && farPath!=null && farPath.Identity.Token==incidentReceiver && farPath.SampleTick==(long)Main.GameUpdateCount-1;
             bool farUnknown=((bool[])Get(attack,"candidateUnknown"))[incidentReceiver.whoAmI*2+1];
             var work=Get(Get(incidentContext,"CombatObservation"),"PredictionWork");
-            Console.WriteLine("INCIDENT far before-birth frame="+incidentFrame+" prepared="+(farPlan!=null && (bool)Get(farPlan,"Prepared"))+" preparedTick="+(farPlan==null?-1:Convert.ToInt64(Get(farPlan,"PreparedTick")))+" phase="+(farPlan==null?"none":Convert.ToString(Get(farPlan,"Phase")))+" timeline="+(farPath==null?"none":farPath.SampleTick+"/"+farPath.CaptureTick+"/"+farPath.Count+"/paused"+farPath.BudgetPaused+"/"+farPath.Stop)+" contact="+(farContact==null?-1:farContact.Tick)+" unknown="+farUnknown+" positive="+farPositive+" used="+Get(work,"UsedMilliseconds")+" exceeded="+Get(work,"Exceeded")+" fault="+Get(attack,"Failed"));
+            Console.WriteLine("INCIDENT far before-birth frame="+incidentFrame+" prepared="+(farPlan!=null && (bool)Get(farPlan,"Prepared"))+" preparedTick="+(farPlan==null?-1:Convert.ToInt64(Get(farPlan,"PreparedTick")))+" phase="+(farPlan==null?"none":Convert.ToString(Get(farPlan,"Phase")))+" timeline="+(farPath==null?"none":farPath.SampleTick+"/"+farPath.CaptureTick+"/"+farPath.Count+"/paused"+farPath.BudgetPaused+"/"+farPath.Stop)+" contact="+(farContact==null?-1:farContact.Tick)+" solution="+IncidentPlanResult(farPlan)+" unknown="+farUnknown+" positive="+farPositive+" used="+Get(work,"UsedMilliseconds")+" exceeded="+Get(work,"Exceeded")+" fault="+Get(attack,"Failed"));
             Console.WriteLine("INCIDENT birth boundary tick="+Main.GameUpdateCount+" has="+Get(attack,"hasConsumedInput")+" receiptTick="+Get(attack,"consumedInputStep")+" kind="+Get(input,"Kind")+" recorded="+IdentityFact(recorded)+" selected="+IdentityFact(expected)+" receiver="+incidentReceiver.whoAmI+"/"+incidentReceiver.generation+"/"+incidentReceiver.type+"/object"+System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(incidentReceiver)+" cursor="+cursor+" physical="+incidentMouse+" velocity="+shot.velocity+" dot="+Vector2.Dot(shot.velocity.SafeNormalize(Vector2.Zero),(incidentReceiver.Center-shot.Center).SafeNormalize(Vector2.Zero)));
             Require((bool)Get(attack,"hasConsumedInput") && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount && recorded.Equals(expected) && expected.Slot>=0 && ReferenceEquals(expected.Token,Main.npc[expected.Slot]),"real incident birth has a same-GUC full current receiver receipt");
+            if(budgetAttack!=null)Require(forcedTick==Main.GameUpdateCount && !forceBudget && Convert.ToString(Get(input,"Kind"))=="Basic" && Convert.ToString(Get(input,"Phase"))=="BeforeNpc" && ReferenceEquals(Get(input,"Weapon"),incidentPlayer.HeldItem) && GetOptional(input,"Source")==null,"the exhausted real owner still permits this native hand's actual Basic receipt");
             bool far=ReferenceEquals(expected.Token,incidentReceiver);
             if(!far)Require(incidentClearLine && Convert.ToString(Get(input,"Kind"))=="Basic" && farUnknown && !farPositive && !(bool)Get(attack,"Failed"),"an unresolved cold opportunity may consume only its current legal Basic target, never ignore an already proven far contact");
             else if(incidentClearLine){Require(farPositive,"a chosen reachable clear-line receiver has a fresh actual-phase positive proof");if(Convert.ToString(Get(input,"Kind"))=="Enhanced"){incidentFarBirths++;if(incidentFirstFar<0)incidentFirstFar=incidentFrame;}}
@@ -50,13 +51,32 @@ namespace NativeWorldTextProbe
         {return id.Session+"/"+id.Slot+"/"+id.Generation+"/"+id.Type+"/"+id.NetId+"/object"+(id.Token==null?0:System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(id.Token));}
         private static void IncidentHit(NPC __instance,int __result)
         {if(ReferenceEquals(__instance,incidentReceiver) && __result>0)incidentHits++;}
-        private static void AbortPreparedPlan()
+        private static bool IncidentPlanPositive(object plan)
+        {
+            if(plan==null)return false;
+            if(!(bool)Get(plan,"Balanced"))return GetOptional(plan,"Contact")!=null;
+            var solution=Get(plan,"Solution");var path=(NpcTrajectory)GetOptional(solution,"Timeline");int receive=(int)Get(solution,"ReceiveTick");var point=(Vector2)Get(solution,"Point");
+            if(path==null)return false;
+            var attack=Get(Get(incidentContext,"Combat"),"Attack");var clock=NativeCombatAimChecks.PhaseClock(attack,path,Convert.ToString(Get(plan,"Phase")));int first=(int)Get(clock,"FirstTick")+(int)Get(plan,"Delay");
+            return (bool)Get(solution,"HasPoint") && Convert.ToString(Get(solution,"Reachability"))=="Reachable" && ReferenceEquals(path,GetOptional(plan,"Timeline")) && receive>=first && receive<path.Count && !float.IsNaN(point.X) && !float.IsNaN(point.Y) && !float.IsInfinity(point.X) && !float.IsInfinity(point.Y);
+        }
+        private static string IncidentPlanResult(object plan)
+        {
+            if(plan==null)return "none";
+            var value=Get(plan,"Solution");return "balanced"+Get(plan,"Balanced")+"/has"+Get(value,"HasPoint")+"/"+Get(value,"Reachability")+"/receive"+Get(value,"ReceiveTick");
+        }
+        private static void AbortPreparedPlan(object[] __args)
         {
             if(!forceBudget)return;
             var plans=(Array)Get(budgetAttack,"candidatePlans");
             var preview=Get(budgetAttack,"preview");
-            abortedPlan=plans.Cast<object>().Concat(new[]{preview}).FirstOrDefault(p=>p!=null && (bool)Get(p,"Prepared") && (uint)Get(p,"PreparedTick")==Main.GameUpdateCount && GetOptional(p,"Contact")==null);
-            if(abortedPlan==null)return;
+            // PrepareBalancedPlan publishes its scratch before entering this
+            // real representative motor. Completed representative plans also
+            // have null Contact, so bind the exact active path/terrain/phase.
+            var path=(NpcTrajectory)__args[1];var clock=__args[3];var terrain=__args[4];var phase=Get(clock,"Phase");
+            var matching=plans.Cast<object>().Concat(new[]{preview}).Where(p=>p!=null && (bool)Get(p,"Prepared") && (bool)Get(p,"Balanced") && (uint)Get(p,"PreparedTick")==Main.GameUpdateCount && Equals(Get(p,"Phase"),phase) && ReferenceEquals(GetOptional(p,"Timeline"),path) && ReferenceEquals(Get(p,"Terrain"),terrain)).ToArray();
+            Require(matching.Length==1,"forced budget enters exactly one real candidate's already-published representative scratch");abortedPlan=matching[0];
+            Require(!(bool)Get(Get(abortedPlan,"Solution"),"HasPoint") && GetOptional(abortedPlan,"Contact")==null,"forced budget interrupts the active solve before its result is published");
             forceBudget=false;forcedTick=Main.GameUpdateCount;forcedRuntimeTick=(ulong)Get(budgetContext,"updateTick");
             abortedPhase=Get(abortedPlan,"Phase");var abortedTimeline=(NpcTrajectory)Get(abortedPlan,"Timeline");abortedSample=abortedTimeline.SampleTick;abortedRequired=Math.Max(1,abortedTimeline.Count-1);
             var work=Get(budgetHost,"PredictionWork");
@@ -77,7 +97,7 @@ namespace NativeWorldTextProbe
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13),postfix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks),nameof(IncidentBirth)));
             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks),nameof(IncidentHit)));
-            var solve=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostProjectileEnvironment",true).GetMethod("Solve",Flags);
+            var solve=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostRepresentativeAttack",true).GetMethod("PrepareMotion",Flags);
             audit.Patch(solve,prefix:new HarmonyMethod(typeof(NativeCombatAttackCostChecks),nameof(AbortPreparedPlan)));
             try
             {
@@ -117,7 +137,7 @@ namespace NativeWorldTextProbe
                 incidentPlayer.inventory[0]=incidentPlayer.HeldItem.Clone();budgetAttack=attack;budgetHost=host;budgetContext=context;abortedPlan=null;forceBudget=true;incidentBirths=incidentHits=0;
                 NativeCombatSelectionPreviewChecks.Step(context,incidentMouse,true);
                 Require(!forceBudget && abortedPlan!=null && forcedTick==Main.GameUpdateCount && incidentBirths==1,"forced allowance exhaustion happens after a real plan starts, and the same update still emits one native Basic attack");
-                Require(!(bool)Get(abortedPlan,"Prepared") && GetOptional(abortedPlan,"Contact")==null && !(bool)Get(attack,"Failed") && !(bool)Get(host,"pathFailed"),"aborted scratch is retired without recording a persistent attack/path fault");
+                Require(!(bool)Get(abortedPlan,"Prepared") && GetOptional(abortedPlan,"Contact")==null && GetOptional(abortedPlan,"Timeline")==null && !(bool)Get(Get(abortedPlan,"Solution"),"HasPoint") && !(bool)Get(attack,"Failed") && !(bool)Get(host,"pathFailed"),"aborted scratch and its representative result are retired without recording a persistent attack/path fault");
                 var selection=(NpcIdentity)Get(Get(host,"Selection"),"Target");
                 Require(!(bool)Call(attack,"CandidateMissCurrent",abortedPlan,selection,abortedSample,abortedPhase,abortedRequired),"an incomplete budget-aborted plan is not an independently proved candidate miss at its exact captured phase/sample/consumer range");
                 if(checkWorldClock)
@@ -197,7 +217,7 @@ namespace NativeWorldTextProbe
                     var plan=plans.GetValue(key);if(plan==null){Console.WriteLine("PATHOFF plan="+key+" none");continue;}
                     var timeline=(NpcTrajectory)GetOptional(plan,"Timeline");var contact=(AttackContact)GetOptional(plan,"Contact");
                     bool miss=timeline!=null && (bool)Call(attack,"CandidateMissCurrent",plan,timeline.Identity,timeline.SampleTick,Get(plan,"Phase"),Math.Max(1,timeline.Count-1));
-                    Console.WriteLine("PATHOFF plan="+key+" prepared="+Get(plan,"Prepared")+" phase="+Get(plan,"Phase")+" age="+Get(plan,"Age")+" delay="+Get(plan,"Delay")+" timeline="+(timeline==null?"none":timeline.Identity.Slot+"/"+timeline.SampleTick+"/"+timeline.Count)+" contact="+(contact==null?"none":contact.Timeline.Identity.Slot+"/"+contact.Tick+"/aim="+contact.AimX+","+contact.AimY)+" candidateMissCurrent="+miss);
+                    Console.WriteLine("PATHOFF plan="+key+" prepared="+Get(plan,"Prepared")+" phase="+Get(plan,"Phase")+" age="+Get(plan,"Age")+" delay="+Get(plan,"Delay")+" timeline="+(timeline==null?"none":timeline.Identity.Slot+"/"+timeline.SampleTick+"/"+timeline.Count)+" contact="+(contact==null?"none":contact.Timeline.Identity.Slot+"/"+contact.Tick+"/aim="+contact.AimX+","+contact.AimY)+" solution="+IncidentPlanResult(plan)+" candidateMissCurrent="+miss);
                 }
             }
         }
@@ -253,7 +273,7 @@ namespace NativeWorldTextProbe
                 {
                     var plan=plans.GetValue(key);if(plan==null){Console.WriteLine("MOVING PLAYER plan="+key+" none");continue;}
                     var path=(NpcTrajectory)GetOptional(plan,"Timeline");var contact=(AttackContact)GetOptional(plan,"Contact");
-                    Console.WriteLine("MOVING PLAYER plan="+key+" prepared="+Get(plan,"Prepared")+" phase="+Get(plan,"Phase")+" timeline="+(path==null?"none":path.Identity.Slot+"/"+path.SampleTick)+" contact="+(contact==null?"none":contact.Timeline.Identity.Slot+"/"+contact.Tick)+" candidateMissCurrent="+(path!=null && (bool)Call(attack,"CandidateMissCurrent",plan,path.Identity,path.SampleTick,Get(plan,"Phase"),Math.Max(1,path.Count-1))));
+                    Console.WriteLine("MOVING PLAYER plan="+key+" prepared="+Get(plan,"Prepared")+" phase="+Get(plan,"Phase")+" timeline="+(path==null?"none":path.Identity.Slot+"/"+path.SampleTick)+" contact="+(contact==null?"none":contact.Timeline.Identity.Slot+"/"+contact.Tick)+" solution="+IncidentPlanResult(plan)+" candidateMissCurrent="+(path!=null && (bool)Call(attack,"CandidateMissCurrent",plan,path.Identity,path.SampleTick,Get(plan,"Phase"),Math.Max(1,path.Count-1))));
                 }
             }
         }

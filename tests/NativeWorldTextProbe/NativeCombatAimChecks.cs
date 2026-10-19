@@ -313,6 +313,13 @@ namespace NativeWorldTextProbe
         private static bool Equal(object a,object b){if(a is Array && b is Array)return ((Array)a).Cast<object>().SequenceEqual(((Array)b).Cast<object>());return Equals(a,b);}
         internal static void Prepare(object host,object attack,NPC body,float vx,bool projectilePhase=false)
         {PublishFixture(host,body,vx);Call(attack,projectilePhase?"PrepareProjectiles":"Prepare");}
+        internal static void PrepareBeforeNpc(object host,object attack,NPC body,float vx)
+        {
+            // Direct ItemCheck_Shoot observes the pre-NPC epoch. Keep the
+            // ordinary allowance while providing that phase's T-1 sample.
+            PublishFixtureAt(host,body,vx,(long)Main.GameUpdateCount-1);
+            Call(attack,"PrepareAction");
+        }
         // Complete-model/native-outcome components have their own finite work
         // scope. They do not assert that this synthetic121 future can be built
         // during a cold real input allowance. Native Shoot still uses the normal
@@ -379,7 +386,10 @@ namespace NativeWorldTextProbe
             }
             else
             {
-                result.Contact=(AttackContact)(next?GetOptional(attack,"next"):GetOptional(attack,"ExpectedImpact"));
+                // Snapshot the prepared field before any validity/consumer query.
+                // ExpectedImpact may ClearExecution when its live receiver gate
+                // fails; an observation must not erase the cause being tested.
+                result.Contact=(AttackContact)GetOptional(attack,future?"next":"current");
                 if(result.Contact!=null){result.Timeline=result.Contact.Timeline;result.Point=new Vector2(result.Contact.AimX,result.Contact.AimY);result.HasPoint=true;result.ReceiveTick=result.Contact.ReceiveTick;result.Reachability="Reachable";}
             }
             if(result.Timeline!=null)
@@ -403,6 +413,19 @@ namespace NativeWorldTextProbe
                 !float.IsNaN(value.Point.X) && !float.IsNaN(value.Point.Y) && !float.IsInfinity(value.Point.X) && !float.IsInfinity(value.Point.Y) && input.Allowed && input.Kind=="Enhanced" && input.Target.Equals(value.Timeline.Identity) && Vector2.DistanceSquared(input.Point,value.Point)<.0001f,reason);
             if(value.Contact!=null)Require(ReferenceEquals(value.Contact.Timeline,value.Timeline) && value.Contact.ReceiveTick==value.ReceiveTick && Vector2.DistanceSquared(new Vector2(value.Contact.AimX,value.Contact.AimY),value.Point)<.0001f,"Optional dedicated Contact agrees with its actual solution clock/target/point");
             return value;
+        }
+        internal static void RequireConsumedInput(object attack,Player player,SolutionFacts solution,string reason,string phase="BeforeNpc")
+        {
+            // RecordInput is published only by the native cursor scope's Begin,
+            // never by QueryInput. Call after the real hand Shoot, with the
+            // solution sealed before Shoot; the hand has no source projectile.
+            var consumed=Get(attack,"consumedInput");
+            Require((bool)Get(attack,"hasConsumedInput") && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount &&
+                Get(consumed,"Kind").ToString()=="Enhanced" && Get(consumed,"Phase").ToString()==phase &&
+                ReferenceEquals(Get(consumed,"Weapon"),player.HeldItem) && GetOptional(consumed,"Source")==null &&
+                ((NpcIdentity)Get(consumed,"Target")).Equals(solution.Timeline.Identity) &&
+                Vector2.DistanceSquared((Vector2)Get(consumed,"Point"),solution.Point)<.0001f,reason);
+            Console.WriteLine("NATIVE HAND CONSUMED tick="+Main.GameUpdateCount+" phase="+phase+" target="+solution.Timeline.Identity.Slot+" kind="+Get(consumed,"Kind")+" point="+Get(consumed,"Point")+" source=hand route="+solution.Route+" receive="+solution.ReceiveTick+" first="+solution.FirstTick);
         }
         internal static void SolutionCheckpoint(object context,object attack,string stage)
         {

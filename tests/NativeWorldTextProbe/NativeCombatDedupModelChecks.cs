@@ -32,7 +32,22 @@ namespace NativeWorldTextProbe
                     var motionBefore=(PredictionPlayerMotion)assembly.GetType("JueMingR.TerrariaHost.Combat.NpcPredictionSource").GetMethod("ReadPlayer",Flags).Invoke(null,new object[]{p});
                     var ammo=assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot").GetMethod("Capture",Flags).Invoke(null,new object[]{p,p.HeldItem});
                     var origin=(Vector2)assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels").GetMethod("LaunchOrigin",Flags).Invoke(null,new object[]{p,p.HeldItem});
-                    AttackContact result;using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))result=(AttackContact)aim.GetType().GetMethod("SolveOnTerrain",Flags).Invoke(null,new object[]{p,p.HeldItem,ammo,timeline,origin,0,true,terrain,0,null,null,null});
+                    // Live launch origins have not been advanced; reflection must
+                    // supply the optional launchOriginAdvanced=false argument too.
+                    AttackContact result;using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))result=(AttackContact)aim.GetType().GetMethod("SolveOnTerrain",Flags).Invoke(null,new object[]{p,p.HeldItem,ammo,timeline,origin,0,true,terrain,0,null,null,null,false});
+                    if(item==95)
+                    {
+                        // Keep the existing complete-model oracle above. The
+                        // current ordinary route has a separate direction fact;
+                        // neither result is used as the other's input permit.
+                        var cells=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);var phase=Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"BeforeNpc");var clock=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true),Flags,null,new object[]{timeline,phase},null);
+                        var prepare=assembly.GetType("JueMingR.TerrariaHost.Combat.HostRepresentativeAttack",true).GetMethods(Flags).Single(m=>m.Name=="Prepare" && m.GetParameters().Length==6);object value;
+                        using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))value=prepare.Invoke(null,new object[]{p,ammo,timeline,origin,clock,cells});
+                        bool has=(bool)Get(value,"HasPoint");var point=(Vector2)Get(value,"Point");int receive=(int)Get(value,"ReceiveTick");
+                        Require(!has || ReferenceEquals(GetOptional(value,"Timeline"),timeline) && !float.IsNaN(point.X) && !float.IsNaN(point.Y) && !float.IsInfinity(point.X) && !float.IsInfinity(point.Y),"ordinary model owns its actual prefix and a finite representative point");
+                        Require(Convert.ToString(Get(value,"Reachability"))!="Reachable" || has && receive>=1 && receive<timeline.Count,"representative positive uses its own legal BeforeNpc receive clock");
+                        Console.WriteLine("MODEL REPRESENTATIVE item="+item+" moving="+moving+" count="+count+" has="+has+" reach="+Get(value,"Reachability")+" receive="+receive+" optionalContact="+(GetOptional(value,"Contact")!=null));
+                    }
                     var motionAfter=(PredictionPlayerMotion)assembly.GetType("JueMingR.TerrariaHost.Combat.NpcPredictionSource").GetMethod("ReadPlayer",Flags).Invoke(null,new object[]{p});
                     Require(motionBefore.SameSample(motionAfter) && p.inventory[54].stack==999,"pure model preserves full real player premise and ammo");
                     Console.WriteLine("MODEL item="+item+" moving="+moving+" count="+count+" contact="+(result!=null)+" aim="+(result==null?"none":result.AimX+","+result.AimY)+" impact="+(result==null?"none":result.ImpactX+","+result.ImpactY)+" tick="+(result?.Tick??-1)+" receive="+(result?.ReceiveTick??-1)+" sub="+(result?.Subupdate??-1)+" confidence="+result?.Confidence);
@@ -51,7 +66,7 @@ namespace NativeWorldTextProbe
                     {
                         var path=new NpcTrajectory(id,(long)Main.GameUpdateCount-1,1,PredictionAssumption.HeldPlayerControls,PredictionStop.None,values,count);
                         var terrain=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain"),true);
-                        using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))contacts[index++]=(AttackContact)aim.GetType().GetMethod("SolveOnTerrain",Flags).Invoke(null,new object[]{p,p.HeldItem,captured,path,origin,0,true,terrain,0,null,null,null});
+                        using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))contacts[index++]=(AttackContact)aim.GetType().GetMethod("SolveOnTerrain",Flags).Invoke(null,new object[]{p,p.HeldItem,captured,path,origin,0,true,terrain,0,null,null,null,false});
                     }
                     var a=contacts[0];var b=contacts[1];
                     Require(a!=null && b!=null && a.AimX==b.AimX && a.AimY==b.AimY && a.ImpactX==b.ImpactX && a.ImpactY==b.ImpactY && a.Tick==b.Tick && a.ReceiveTick==b.ReceiveTick && a.Subupdate==b.Subupdate && a.Confidence==b.Confidence,"finite whip hand and all-seed prefix equals 120-step positive reference");

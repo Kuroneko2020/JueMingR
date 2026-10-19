@@ -53,7 +53,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             int first=clock.FirstTick+fireDelay;if(path==null || first<0 || first>=path.Count)return default(HostAttackSolution);
             var b=path[first].ProjectileReceiveBounds;var direct=new Vector2(b.CenterX,b.CenterY);var probe=birth(direct);
-            var proposals=probe!=null && (probe.type==710 || probe.type==485 && motion.GravityClockUsesLaunchX)?SpecialDirections(origin,motion,path,first,probe.type):HostMotionAttackInputs.Generate(origin,motion,path,first-1);
+            var proposals=probe!=null && (probe.type==710 || probe.type==485 && motion.GravityClockUsesLaunchX)?SpecialDirections(origin,motion,path,first,probe.type):HostMotionAttackInputs.Generate(origin,ProposalMotion(probe,terrain,motion),path,first-1);
             var inputs=new List<Vector2>(proposals.Length+1);
             // Held/fan births can rotate their main axis. Undo the measured
             // legal representative rotation before handing the point to the
@@ -71,7 +71,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // rather than paying for an entire angular/world replay.
                 if(i<proposals.Length && Vector2.DistanceSquared(p.Center,origin)>1)
                 {
-                    var adjusted=HostMotionAttackInputs.Generate(p.Center,motion.WithSpeed(p.velocity.Length()),path,first-1);
+                    var adjusted=HostMotionAttackInputs.Generate(p.Center,ProposalMotion(p,terrain,motion.WithSpeed(p.velocity.Length())),path,first-1);
                     if(adjusted.Length>0)
                     {
                         var actual=p.velocity.SafeNormalize(Vector2.UnitX);int closest=0;float dot=-2;
@@ -85,6 +85,16 @@ namespace JueMingR.TerrariaHost.Combat
                 blocked|=result==HostAttackReachability.Blocked;unknown|=result==HostAttackReachability.Unknown;
             }
             return new HostAttackSolution(path,best,proposals.Length>0,blocked && !unknown?HostAttackReachability.Blocked:HostAttackReachability.Unknown);
+        }
+        private static AttackMotion ProposalMotion(Projectile birth,PredictionTerrain terrain,AttackMotion motion)
+        {
+            // Uniform liquid scales native translation, not launch velocity.
+            // Invert the existing finite candidates in that same medium; keep
+            // the unscaled motor for Replay, which owns actual transitions,
+            // wind, collision and reachability. An unknown/unsupported birth
+            // medium does not become a new input-permission rejection.
+            float scale;
+            return birth!=null && HostProjectileEnvironment.Factor(birth,terrain,birth.Center.X,birth.Center.Y,out scale)?motion.WithEnvironment(scale,0):motion;
         }
         private sealed class SpecialProposal {internal Vector2 Direction;internal int Tick;internal float Error;}
         private static Vector2[] SpecialDirections(Vector2 origin,AttackMotion motion,NpcTrajectory path,int first,int type)

@@ -15,8 +15,40 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model;private static NPC selected;private static Projectile receiving;private static int step,first,depth,rng;
         private static object Static(Type t,string name,params object[] args){return t.GetMethod(name,Flags).Invoke(null,args);}
+        private static void CandidateIdentity()
+        {
+            string candidate=Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE");if(string.IsNullOrEmpty(candidate))return;
+            string directory=System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(candidate));
+            Func<string,string> hash=path=>{using(var file=System.IO.File.OpenRead(path))using(var sha=System.Security.Cryptography.SHA256.Create())return BitConverter.ToString(sha.ComputeHash(file)).Replace("-","");};
+            foreach(string name in new[]{"JueMingR.Platform","JueMingR.Features","JueMingR.Infrastructure","JueMingR.TerrariaHost"})
+            {
+                var loaded=AppDomain.CurrentDomain.GetAssemblies().SingleOrDefault(a=>a.GetName().Name==name);string expected=System.IO.Path.Combine(directory,name+".dll");
+                Require(loaded!=null && System.IO.File.Exists(expected) && hash(loaded.Location)==hash(expected),"explicit SharpTears candidate binds every actual production component: "+name);
+                Console.WriteLine("EXPLICIT-COMPONENT "+name+" path="+loaded.Location+" MVID="+loaded.ManifestModule.ModuleVersionId+" SHA256="+hash(loaded.Location));
+            }
+        }
         private static void Random(){if(depth>0)rng++;}private static void Damage(Projectile __instance){receiving=__instance;}private static void DamageDone(){receiving=null;}
         private static void Strike(NPC __instance,int __result){if(__result>0 && ReferenceEquals(__instance,selected) && receiving?.type==756 && first==0)first=step;}
+        // Copy each original motor action so any tuple's first strict mismatch
+        // retains both AI boundaries. Output stays at the first tuple's fixed
+        // start/fade windows or a mismatch, after the real Update returns.
+        // Native callbacks never format, assert or alter the measured body.
+        private sealed class MotorState
+        {
+            internal bool Active,OwnerActive;internal Vector2 Position,Velocity;internal float[] Ai,Local;
+            internal int Alpha,Left,Extra,Owner;internal float Scale,Rotation;
+            internal MotorState(Projectile p)
+            {Active=p.active;Position=p.position;Velocity=p.velocity;Ai=(float[])p.ai.Clone();Local=(float[])p.localAI.Clone();Alpha=p.alpha;Scale=p.scale;Rotation=p.rotation;Left=p.timeLeft;Extra=p.extraUpdates;Owner=p.owner;OwnerActive=p.owner>=0 && p.owner<Main.player.Length && Main.player[p.owner]!=null && Main.player[p.owner].active;}
+        }
+        private static Projectile motorObserved;private static MotorState motorAiBefore,motorAiAfter;private static bool motorObserve,motorObserverFault;private static int motorAiEntries,motorAiExits;
+        private static void MotorAiBefore(Projectile __instance)
+        {if(!motorObserve || !ReferenceEquals(__instance,motorObserved))return;try{motorAiBefore=new MotorState(__instance);motorAiEntries++;}catch{motorObserverFault=true;}}
+        private static void MotorAiAfter(Projectile __instance)
+        {if(!motorObserve || !ReferenceEquals(__instance,motorObserved))return;try{motorAiAfter=new MotorState(__instance);motorAiExits++;}catch{motorObserverFault=true;}}
+        private static string MotorFloat(float value)
+        {return value.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+"/0x"+BitConverter.ToInt32(BitConverter.GetBytes(value),0).ToString("X8");}
+        private static string MotorFacts(MotorState value)
+        {return value==null?"not-captured":"active="+value.Active+" position="+MotorFloat(value.Position.X)+","+MotorFloat(value.Position.Y)+" V="+MotorFloat(value.Velocity.X)+","+MotorFloat(value.Velocity.Y)+" ai="+string.Join(",",value.Ai.Select(MotorFloat))+" local="+string.Join(",",value.Local.Select(MotorFloat))+" alpha="+value.Alpha+"/0x"+value.Alpha.ToString("X8")+" opacityFromAlpha="+MotorFloat(1f-value.Alpha/255f)+" scale="+MotorFloat(value.Scale)+" rotation="+MotorFloat(value.Rotation)+" timeLeft="+value.Left+" extra="+value.Extra+" owner="+value.Owner+" ownerActive="+value.OwnerActive;}
         private static Player Reset(object context)
         {NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),4270,0,0);p.position=new Vector2(850,646);p.velocity=Vector2.Zero;p.ResetEffects();p.statMana=p.statManaMax=p.statManaMax2=200;Main.windPhysics=false;foreach(var n in Main.npc)n.active=false;foreach(var q in Main.projectile)q.active=false;for(int x=35;x<115;x++)for(int y=10;y<65;y++)Main.tile[x,y].ClearEverything();for(int x=35;x<115;x++)NativeToolsChecks.Tile(x,43,1);first=step=depth=rng=0;selected=null;return p;}
         private static NPC Target(int slot,Vector2 center)
@@ -30,16 +62,38 @@ namespace NativeWorldTextProbe
         {for(step=1;step<=limit && q.active && first==0;step++){NativeQuickItemChecks.BeginWorldStep();foreach(var n in Main.npc)if(n.active)n.UpdateNPC(n.whoAmI);q.Update(q.whoAmI);}}
         internal static void Run(object context)
         {
-            assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostSharpTearsAttack",true);var audit=new Harmony("JueMingR.Tests.SharpTears");bool wind=Main.windPhysics;
+            assembly=Get(context,"Combat").GetType().Assembly;CandidateIdentity();model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostSharpTearsAttack",true);var audit=new Harmony("JueMingR.Tests.SharpTears");bool wind=Main.windPhysics;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSharpTearsChecks),nameof(Damage)),postfix:new HarmonyMethod(typeof(NativeCombatSharpTearsChecks),nameof(DamageDone)));audit.Patch(typeof(NPC).GetMethod("StrikeNPC",Flags,null,new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)},null),postfix:new HarmonyMethod(typeof(NativeCombatSharpTearsChecks),nameof(Strike)));foreach(var m in typeof(Terraria.Utilities.UnifiedRandom).GetMethods(Flags).Where(m=>m.DeclaringType==typeof(Terraria.Utilities.UnifiedRandom) && (m.Name=="Next" || m.Name=="NextDouble")))audit.Patch(m,prefix:new HarmonyMethod(typeof(NativeCombatSharpTearsChecks),nameof(Random)));
-            try{Motors(context);Spots(context);Receives(context);Hands(context);Consumer(context);Console.WriteLine("PASS SHARP TEARS actual4270 terrain-selected native births, AI157 fixed line, fourth-hit retirement and receive; prediction RNG0.");}finally{depth=0;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);}
+            // This optional inner-AI trace changes only diagnostic capture. The
+            // default matrix calls the original AI through q.Update without this
+            // temporary Harmony wrapper; every strict motor/collision gate stays.
+            bool motorTrace=Environment.GetEnvironmentVariable("JMR_SHARP_MOTOR_TRACE")=="1";
+            if(motorTrace)audit.Patch(typeof(Projectile).GetMethod("AI_157_SharpTears",Flags),prefix:new HarmonyMethod(typeof(NativeCombatSharpTearsChecks),nameof(MotorAiBefore)),postfix:new HarmonyMethod(typeof(NativeCombatSharpTearsChecks),nameof(MotorAiAfter)));
+            Console.WriteLine("SHARP MOTOR inner-AI diagnostic trace="+motorTrace+"; original complete strict matrix unchanged");
+            try{Motors(context);Spots(context);Receives(context);Hands(context);Consumer(context);Console.WriteLine("PASS SHARP TEARS actual4270 terrain-selected native births, AI157 fixed line, fourth-hit retirement and receive; prediction RNG0.");}finally{depth=0;motorObserve=false;motorObserved=null;motorAiBefore=motorAiAfter=null;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);}
         }
         private static void Motors(object context)
         {
             int count=0;foreach(int clock in new[]{-4,0,19,29,35})foreach(float scale in new[]{.8f,1.05f,1.299f})foreach(Vector2 velocity in new[]{Vector2.UnitX*16,-Vector2.UnitY*16})
             {
                 var p=Reset(context);var q=Main.projectile[Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),new Vector2(1100,350),velocity,756,0,0,p.whoAmI,clock,scale)];var copy=(Projectile)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.HostSuperStarAttack",true),"Copy",q);
-                for(int action=0;action<45 && q.active;action++){depth++;try{Static(model,"Ai",copy);}finally{depth--;}if(copy.active)--copy.timeLeft;q.Update(q.whoAmI);Require(q.active==copy.active && q.position==copy.position && q.velocity==copy.velocity && q.ai.SequenceEqual(copy.ai) && q.localAI[0]==copy.localAI[0] && q.alpha==copy.alpha && q.scale==copy.scale && q.timeLeft==copy.timeLeft,"native AI157 negative/start/grow/fade/36th kill is exact, body never moves: "+clock+"/"+scale+"/"+action);for(int x=-20;x<=220;x+=20){var box=new Rectangle((int)q.Center.X+x,(int)q.Center.Y-8,16,16);Require(q.Colliding(q.Hitbox,box)==(bool)Static(model,"Collides",copy,new MotionRect(box.X,box.Y,box.Width,box.Height)),"native SharpTears collision uses its200scale line and negative-clock gate");}}
+                for(int action=0;action<45 && q.active;action++)
+                {
+                    bool firstTuple=clock==-4 && scale==.8f && velocity==Vector2.UnitX*16;var nativeBefore=new MotorState(q);var modelBefore=new MotorState(copy);
+                    depth++;try{Static(model,"Ai",copy);}finally{depth--;}var modelAfterAi=new MotorState(copy);if(copy.active)--copy.timeLeft;var modelAfterTail=new MotorState(copy);
+                    motorAiBefore=motorAiAfter=null;motorAiEntries=motorAiExits=0;motorObserverFault=false;motorObserved=q;motorObserve=true;
+                    try{q.Update(q.whoAmI);}finally{motorObserve=false;motorObserved=null;}
+                    var nativeAfterUpdate=new MotorState(q);bool printed=false;
+                    bool same=q.active==copy.active && q.position==copy.position && q.velocity==copy.velocity && q.ai.SequenceEqual(copy.ai) && q.localAI[0]==copy.localAI[0] && q.alpha==copy.alpha && q.scale==copy.scale && q.timeLeft==copy.timeLeft;
+                    Action print=()=>
+                    {
+                        Console.WriteLine("SHARP MOTOR OBSERVE clock="+clock+" scale="+MotorFloat(scale)+" initialV="+MotorFloat(velocity.X)+","+MotorFloat(velocity.Y)+" action="+action+" GUC="+Main.GameUpdateCount+" same="+same+" aiEntries="+motorAiEntries+" aiExits="+motorAiExits+" fault="+motorObserverFault);
+                        Console.WriteLine("SHARP MOTOR modelBefore "+MotorFacts(modelBefore));Console.WriteLine("SHARP MOTOR modelAfterAi "+MotorFacts(modelAfterAi));Console.WriteLine("SHARP MOTOR modelAfterTail "+MotorFacts(modelAfterTail));
+                        Console.WriteLine("SHARP MOTOR nativeBeforeUpdate "+MotorFacts(nativeBefore));Console.WriteLine("SHARP MOTOR nativeBeforeAi "+MotorFacts(motorAiBefore));Console.WriteLine("SHARP MOTOR nativeAfterAi "+MotorFacts(motorAiAfter));Console.WriteLine("SHARP MOTOR nativeAfterUpdate "+MotorFacts(nativeAfterUpdate));printed=true;
+                    };
+                    if(firstTuple && (action<=6 || action>=32 && action<=38) || !same)print();
+                    Require(same,"native AI157 negative/start/grow/fade/36th kill is exact, body never moves: "+clock+"/"+scale+"/"+action);for(int x=-20;x<=220;x+=20){var box=new Rectangle((int)q.Center.X+x,(int)q.Center.Y-8,16,16);bool nativeCollision=q.Colliding(q.Hitbox,box),modelCollision=(bool)Static(model,"Collides",copy,new MotionRect(box.X,box.Y,box.Width,box.Height));if(nativeCollision!=modelCollision){if(!printed)print();Console.WriteLine("SHARP MOTOR collision firstDifference box="+box+" native="+nativeCollision+" model="+modelCollision);}Require(nativeCollision==modelCollision,"native SharpTears collision uses its200scale line and negative-clock gate");}
+                }
                 Require(rng==0,"private AI157 cannot consume native visual frame/dust randomness");count++;
             }
             Console.WriteLine("PASS SHARP TEARS original motor branches="+count+" and per-action native collider grid");

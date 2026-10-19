@@ -70,7 +70,7 @@ namespace JueMingR.TerrariaHost.Combat
             {var candidate=new HostProjectileEnvironment(sample,terrain,scale,mode==0?0:impulse);var contact=AttackIntercept.Solve(origin.X,origin.Y,motion.WithEnvironment(scale,candidate.WindX),timeline,age,delay,candidate.Passage,firstTick,receives,damagePassage,beforeMotion);if(contact!=null){environment=candidate;return contact;}}
             return null;
         }
-        private static bool Factor(Projectile sample,PredictionTerrain terrain,float x,float y,out float scale)
+        internal static bool Factor(Projectile sample,PredictionTerrain terrain,float x,float y,out float scale)
         {
             scale=1;bool wet;byte kind;if(!terrain.ProjectileWet(x,y,sample.width,sample.height,out wet,out kind) || wet && kind==3 || sample.shimmerWet)return false;
             if(wet && sample.type==1114)return false; // This crystal variant dies in water in AI_024.

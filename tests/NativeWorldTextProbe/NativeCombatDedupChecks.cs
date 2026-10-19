@@ -18,10 +18,11 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatDedupChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
-        private static int solves,births,enhanced,basic,shares,hits,motionSteps,spearSteps,solveDepth,hintDepth,hintOffsets;
+        private static int solves,births,enhanced,basic,shares,hits,motionSteps,spearSteps,solveDepth,hintDepth,hintOffsets,replays;
         private static object attack;
         private static bool scenarioAim=true,scenarioPath=true;
         private static AttackContact proposed,recorded;
+        private static NativeCombatAimChecks.SolutionFacts offeredSolution,recordedSolution;
         private static int nativeFrame,scenarioItem;private static bool scenarioMoving;
         private static int bornRequired,bornSource;private static bool pauseWarm,pausedWarm;
         private static void PauseWarm(object __2)
@@ -33,17 +34,50 @@ namespace NativeWorldTextProbe
         private static void Hint(){hintDepth++;}
         private static Exception Hinted(Exception __exception){hintDepth--;return __exception;}
         private static void Share(bool __result){if(__result)shares++;}
+        private static void Replay(){replays++;}
+        private struct DonationObservation{internal object Donor;internal int Solves,Replays;}
+        private static void BeforeBalanced(object __instance,out DonationObservation __state)
+        {__state=new DonationObservation{Donor=GetOptional(__instance,"candidateHandPlan"),Solves=solves,Replays=replays};}
+        private static void AfterBalanced(object __instance,DonationObservation __state)
+        {if(__state.Donor!=null && solves==__state.Solves && replays==__state.Replays && SharedSolution(__instance,__state.Donor))shares++;}
+        internal static NativeCombatAimChecks.SolutionFacts PlanSolution(object plan)
+        {
+            if((bool)Get(plan,"Balanced")){var value=Get(plan,"Solution");return new NativeCombatAimChecks.SolutionFacts{HasPoint=(bool)Get(value,"HasPoint"),Timeline=(NpcTrajectory)GetOptional(value,"Timeline"),Point=(Vector2)Get(value,"Point"),ReceiveTick=(int)Get(value,"ReceiveTick"),Reachability=Convert.ToString(Get(value,"Reachability")),Contact=(AttackContact)GetOptional(value,"Contact")};}
+            var contact=(AttackContact)GetOptional(plan,"Contact");return contact==null?default(NativeCombatAimChecks.SolutionFacts):new NativeCombatAimChecks.SolutionFacts{HasPoint=true,Timeline=contact.Timeline,Point=new Vector2(contact.AimX,contact.AimY),ReceiveTick=contact.ReceiveTick,Reachability="Reachable",Contact=contact};
+        }
+        private static bool SharedSolution(object aim,object donor)
+        {
+            var value=NativeCombatAimChecks.ReadSolution(aim);var original=PlanSolution(donor);var lease=GetOptional(donor,"MotionTerrain");
+            return original.HasPoint && value.HasPoint && lease!=null && ReferenceEquals(lease,GetOptional(aim,"handMotionTerrain")) && ReferenceEquals(GetOptional(donor,"HandOwner"),GetOptional(aim,"sharedHandOwner")) && value.Point==original.Point && value.ReceiveTick==original.ReceiveTick && value.Timeline!=null && original.Timeline!=null && AttackIntercept.Equivalent(original.Timeline,value.Timeline);
+        }
+        internal static bool TryDonation(object aim,object donor,Player player,object ammo,NpcTrajectory timeline,object phase)
+        {
+            // Frozen component probe of the current dispatch. The real owner
+            // exit retires a synchronous borrow even on an invalid clock.
+            Call(aim,"ClearExecution");aim.GetType().GetField("candidateHandPlan",Flags).SetValue(aim,donor);
+            try
+            {
+                if(!(bool)Get(donor,"Balanced"))return (bool)Call(aim,"TryCandidateHand",player,player.HeldItem,ammo,timeline,phase,0);
+                var ordinary=(bool)aim.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackWindow",true).GetMethod("Ordinary",Flags).Invoke(null,new object[]{player.HeldItem});
+                if(!ordinary){Call(aim,"PrepareAction");return false;}
+                Call(aim,"PrepareBalancedOrdinary",player,player.HeldItem,ammo,timeline,phase);return SharedSolution(aim,donor);
+            }
+            finally{Call(aim,"EndPreparation");}
+        }
+        private static void Offered(object __instance,bool __result,object __3)
+        {if(ReferenceEquals(__instance,attack) && __result && Convert.ToString(Get(__3,"Kind"))=="Enhanced")offeredSolution=NativeCombatAimChecks.ReadSolution(attack);}
         private static void Proposed(AttackContact __0){proposed=__0;}
         private static void Born(Player __instance,Projectile __0)
         {
             if(__instance.whoAmI!=0 || __0.owner!=0 || __0.type!=14 && __0.type!=222 && __0.type!=__instance.HeldItem.shoot)return;births++;
             bornRequired=(int)Get(attack,"ActionRequired");var owner=Get(attack,"observation");bornSource=((NpcTrajectory)Call(Get(Get(owner,"Prediction"),"Cache"),"Read",1))?.Count??0;
             var packet=GetOptional(attack,"consumedInput");bool current=packet!=null && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount;
-            Console.WriteLine("DEDUP birth item="+scenarioItem+" moving="+scenarioMoving+" frame="+nativeFrame+" tick="+Main.GameUpdateCount+" current="+current+" kind="+(current?Get(packet,"Kind"):"Unassisted")+" target="+(current?((NpcIdentity)Get(packet,"Target")).Slot:-1)+" point="+(current?Get(packet,"Point"):null)+" velocity="+__0.velocity+" sample="+(current?recorded?.Timeline.SampleTick??-1:-1)+" capture="+(current?recorded?.Timeline.CaptureTick??-1:-1)+" receive="+(current?recorded?.ReceiveTick??-1:-1));
+            var timeline=recordedSolution.Timeline??recorded?.Timeline;int receive=recordedSolution.HasPoint?recordedSolution.ReceiveTick:recorded?.ReceiveTick??-1;
+            Console.WriteLine("DEDUP birth item="+scenarioItem+" moving="+scenarioMoving+" frame="+nativeFrame+" tick="+Main.GameUpdateCount+" current="+current+" kind="+(current?Get(packet,"Kind"):"Unassisted")+" target="+(current?((NpcIdentity)Get(packet,"Target")).Slot:-1)+" point="+(current?Get(packet,"Point"):null)+" velocity="+__0.velocity+" sample="+(current?timeline?.SampleTick??-1:-1)+" capture="+(current?timeline?.CaptureTick??-1:-1)+" receive="+(current?receive:-1));
         }
         private static void Hit(NPC __instance,int __result){if(__instance.whoAmI==2 && __result>0)hits++;}
         private static void Input(object __instance)
-        {if(!ReferenceEquals(__instance,attack))return;var kind=Get(Get(attack,"consumedInput"),"Kind").ToString();recorded=kind=="Enhanced"?proposed:null;proposed=null;if(kind=="Enhanced")enhanced++;else if(kind=="Basic")basic++;}
+        {if(!ReferenceEquals(__instance,attack))return;var packet=Get(attack,"consumedInput");var kind=Get(packet,"Kind").ToString();recorded=kind=="Enhanced"?proposed:null;recordedSolution=kind=="Enhanced"?offeredSolution:default(NativeCombatAimChecks.SolutionFacts);if(kind=="Enhanced" && scenarioItem==95 && GetOptional(packet,"Source")==null)Require(recordedSolution.HasPoint && recordedSolution.Timeline!=null && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount && ((NpcIdentity)Get(packet,"Target")).Equals(recordedSolution.Timeline.Identity) && (Vector2)Get(packet,"Point")==recordedSolution.Point && Convert.ToString(Get(packet,"Phase"))=="BeforeNpc" && ReferenceEquals(Get(packet,"Weapon"),Main.LocalPlayer.HeldItem),"real ordinary dedup receipt consumes the offered same-GUC representative weapon, phase, target and point");proposed=null;offeredSolution=default(NativeCombatAimChecks.SolutionFacts);if(kind=="Enhanced")enhanced++;else if(kind=="Basic")basic++;}
         internal static void Run(object context)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");attack=Get(combat,"Attack");var input=Get(context,"Input");
@@ -57,6 +91,8 @@ namespace NativeWorldTextProbe
             if(!timing)
             {
                 audit.Patch(attack.GetType().GetMethod("SolveOnTerrain",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Solve)),finalizer:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Solved)));
+                var representative=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostRepresentativeAttack",true);audit.Patch(representative.GetMethod("PrepareMotion",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Solve)),finalizer:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Solved)));audit.Patch(representative.GetMethod("Replay",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Replay)));
+                audit.Patch(attack.GetType().GetMethod("PrepareBalancedOrdinary",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(BeforeBalanced)),postfix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(AfterBalanced)));
                 audit.Patch(typeof(AttackMotion).GetMethod("Advance",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(MotionStep)));
                 audit.Patch(typeof(Projectile).GetMethod("AI_019_Spears_GetSpearOffsetRelativeToPlayer",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(SpearStep)));
                 var hint=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostMeleeAttack").GetMethod("PreferredSpearRange",Flags);if(hint!=null)audit.Patch(hint,prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Hint)),finalizer:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Hinted)));
@@ -64,6 +100,7 @@ namespace NativeWorldTextProbe
             }
             audit.Patch(attack.GetType().GetMethod("RecordInput",Flags),postfix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Input)));
             audit.Patch(attack.GetType().GetMethod("ContactInput",Flags),prefix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Proposed)));
+            audit.Patch(attack.GetType().GetMethod("TryOrdinaryInput",Flags),postfix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Offered)));
             audit.Patch(typeof(Player).GetMethod("TryUpdateChannel",Flags),postfix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Born)));
             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatDedupChecks),nameof(Hit)));
             foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
@@ -86,7 +123,7 @@ namespace NativeWorldTextProbe
                         n.target=0;n.direction=-1;n.velocity=new Vector2(-.7f,0);
                     }
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,scenarioPath,true,false,natural,50,true,scenarioAim));
-                    solves=births=enhanced=basic=shares=hits=motionSteps=spearSteps=solveDepth=hintDepth=hintOffsets=0;var times=new List<double>(360);
+                    solves=births=enhanced=basic=shares=hits=motionSteps=spearSteps=solveDepth=hintDepth=hintOffsets=replays=0;offeredSolution=recordedSolution=default(NativeCombatAimChecks.SolutionFacts);var times=new List<double>(360);
                     for(int frame=0;frame<360;frame++)
                     {
                         // Fixed external transverse track: unlike natural closed
@@ -130,7 +167,7 @@ namespace NativeWorldTextProbe
                     using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(attack,"ResolveSelection",(long)Main.GameUpdateCount,false);
                     int value=(int)Get(attack,"actionHintRequired");if(value>16)return value;
                 }
-                throw new InvalidOperationException("finite real warm pass did not produce the late Contact");
+                throw new InvalidOperationException("finite real warm pass did not produce the late representative receive");
             };
             Action<int,bool> shot=(old,transfer)=>
             {
@@ -153,7 +190,7 @@ namespace NativeWorldTextProbe
             {
                 for(int i=0;i<3;i++)NativeQuickItemChecks.BeginWorldStep();Sample(context,combat,host,input,new Vector2(550,600));
                 using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(attack,"ResolveSelection",(long)Main.GameUpdateCount,false);
-                Require(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token==n && GetOptional(((Array)Get(attack,"candidatePlans")).GetValue(4),"Contact")==null,"actual wall warm miss keeps the same in-range target instance, not a manufactured old Contact");
+                var wallPlan=((Array)Get(attack,"candidatePlans")).GetValue(4);var wall=PlanSolution(wallPlan);Require(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token==n && wall.HasPoint && wall.Reachability=="Blocked" && wall.ReceiveTick<0,"actual wall warm miss keeps its same in-range receiver and blocked representative fact");
             }
             finally{Main.tile[57,41].active(wasActive);Main.tile[57,41].type=wasType;}
             shot(pending,false);
@@ -179,7 +216,7 @@ namespace NativeWorldTextProbe
                 Main.npc[3].active=false;NativeCombatSelectionPreviewChecks.Step(context,new Vector2(550,600),false,true);
                 Require(GetOptional(attack,"candidateHandPlan")==null && !(bool)Get(Get(host,"Selection"),"ClearLine"),"multi to one retires donor and unproved ranking fact");
                 first.active=false;NativeCombatSelectionPreviewChecks.Step(context,new Vector2(550,600),false,true);
-                Require(!(bool)Get(Get(host,"Selection"),"HasTarget") && GetOptional(attack,"ExpectedImpact")==null,"last candidate retirement revokes old input result");
+                Require(!(bool)Get(Get(host,"Selection"),"HasTarget") && !NativeCombatAimChecks.ReadSolution(attack).HasPoint,"last candidate retirement revokes old input result");
                 Console.WriteLine("DEDUP modes Path="+path+" Aim="+aim+" markerSaved=true 1/multi/1/0 lifecycle PASS");
             }
         }
@@ -237,10 +274,10 @@ namespace NativeWorldTextProbe
                 var candidatePath=(NpcTrajectory)Get(((Array)Get(attack,"candidatePlans")).GetValue(selected.Slot*2+1),"Timeline");var selectedPath=((NpcPredictionCache)Get(prediction,"Cache")).Read(1);
                 Require(candidatePath!=null && selectedPath!=null && candidatePath.RelationVersion!=selectedPath.RelationVersion && AttackIntercept.Equivalent(candidatePath,selectedPath),"same real sample and complete future can come from unequal owner-local relation epochs");
                 Console.WriteLine("DEDUP independent Source epochs candidate="+candidatePath.RelationVersion+" selected="+selectedPath.RelationVersion+" sample="+candidatePath.SampleTick+" geometryEquivalent=True");
-                int ranked=solves,rankedSteps=motionSteps;Call(attack,"PrepareAction");
-                Console.WriteLine("DEDUP two candidate ranking="+ranked+" total="+solves+" shares="+shares+" contact="+(GetOptional(attack,"ExpectedImpact")!=null));
-                Require(ranked>0 && shares==1 && solves==ranked && GetOptional(attack,"ExpectedImpact")!=null,"completed same BeforeNpc zero-delay candidate hand is not solved twice");
-                Require(rankedSteps>0 && motionSteps==rankedSteps,"actual simulated projectile advances, not just entry counts, are unchanged by donation");
+                int ranked=solves,rankedSteps=motionSteps,rankedReplays=replays;Call(attack,"PrepareAction");
+                Console.WriteLine("DEDUP two candidate ranking="+ranked+" total="+solves+" shares="+shares+" hasPoint="+NativeCombatAimChecks.ReadSolution(attack).HasPoint+" replays="+replays);
+                NativeCombatAimChecks.RequireSolution(attack,p,"completed candidate supplies its actual reachable representative input");Require(ranked>0 && shares==1 && solves==ranked,"completed same BeforeNpc zero-delay candidate hand is not solved twice");
+                Require(rankedSteps>0 && motionSteps==rankedSteps && rankedReplays>0 && replays==rankedReplays,"actual simulated projectile advances and representative replay, not just entry counts, are unchanged by donation");
                 Console.WriteLine("DEDUP same hand motionSteps="+rankedSteps+" afterExecution="+motionSteps);
                 Call(attack,"PrepareAction");Require(solves==ranked,"same phase repeated preparation reuses unconsumed result");
                 var donor=((Array)Get(attack,"candidatePlans")).GetValue(selected.Slot*2+1);
@@ -255,7 +292,29 @@ namespace NativeWorldTextProbe
                 reject(()=>p.itemAnimation++,()=>p.itemAnimation=animation,"native animation");
                 reject(()=>p.itemTime=2,()=>p.itemTime=time,"native cooldown");
                 reject(()=>p.position.X+=1,()=>p.position=position,"player starting pose");
-                reject(()=>Main.npc[selected.Slot].immune[0]=120,()=>Main.npc[selected.Slot].immune[0]=immune,"native receiver immunity");
+                var oraclePath=(NpcTrajectory)Get(donor,"Timeline");var oracleAmmo=Get(donor,"Ammo");var oracleType=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true);var oracleOrigin=(Vector2)attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels",true).GetMethod("LaunchOrigin",Flags).Invoke(null,new object[]{p,p.HeldItem});var solve=attack.GetType().GetMethod("SolveOnTerrain",Flags);var sample=ContentSamples.ProjectilesByType[(int)Get(oracleAmmo,"Projectile")];
+                // Native HitNPC bypasses owner immunity for maxPenetrate=1
+                // without local/static immunity. The original 97/14 fixture
+                // therefore compares two complete receives, not a fake miss.
+                // Reflection explicitly supplies the unadvanced-origin flag.
+                var baselineArgs=new object[]{p,p.HeldItem,oracleAmmo,oraclePath,oracleOrigin,0,true,Activator.CreateInstance(oracleType,true),0,null,null,null,false};var baseline=(AttackContact)solve.Invoke(null,baselineArgs);var baselineRoot=baselineArgs[10];
+                Require(sample.type==14 && sample.maxPenetrate==1 && !sample.usesLocalNPCImmunity && !sample.usesIDStaticNPCImmunity && baseline!=null && baselineRoot!=null && (bool)Get(baselineRoot,"Unchanged"),"original single-penetration native bullet has a complete baseline and a current independent root");
+                Main.npc[selected.Slot].immune[0]=120;
+                try
+                {
+                    Call(attack,"ClearExecution");attack.GetType().GetField("candidateHandPlan",Flags).SetValue(attack,donor);shares=0;Call(attack,"PrepareAction");Require(shares==1,"receiver immunity does not withdraw a current representative direction");NativeCombatAimChecks.RequireSolution(attack,p,"immune receiver retains the same Enhanced direction");
+                    var oracleArgs=new object[]{p,p.HeldItem,oracleAmmo,oraclePath,oracleOrigin,0,true,Activator.CreateInstance(oracleType,true),0,null,null,null,false};var oracle=(AttackContact)solve.Invoke(null,oracleArgs);
+                    Console.WriteLine("DEDUP immunity nativePolicy type="+sample.type+" maxPen="+sample.maxPenetrate+" local="+sample.usesLocalNPCImmunity+" static="+sample.usesIDStaticNPCImmunity+" owner="+p.whoAmI+" immune="+Main.npc[selected.Slot].immune[p.whoAmI]+" path="+oraclePath.Count+" sample="+oraclePath.SampleTick+" GUC="+Main.GameUpdateCount+" age=0 phase=BeforeNpc delay=0 advanced=False baseline="+baseline.Tick+"/"+baseline.ReceiveTick+" immuneContact="+oracle?.Tick+"/"+oracle?.ReceiveTick);
+                    Require(oracle!=null && ReferenceEquals(baseline.Timeline,oracle.Timeline) && baseline.AimX==oracle.AimX && baseline.AimY==oracle.AimY && baseline.ImpactX==oracle.ImpactX && baseline.ImpactY==oracle.ImpactY && baseline.Tick==oracle.Tick && baseline.ReceiveTick==oracle.ReceiveTick && baseline.Subupdate==oracle.Subupdate && baseline.Delay==oracle.Delay && baseline.Confidence==oracle.Confidence && baseline.ReceiveGeometry==oracle.ReceiveGeometry,"native maxPen1 owner-immunity exception preserves the exact independent complete receive and aim");
+                    Require((bool)Get(baselineRoot,"Unchanged") && oracleArgs[10]!=null && (bool)Get(oracleArgs[10],"Unchanged"),"selected immunity exception leaves the captured effective receive policy current");
+                    // Other receiver rows separately lease their raw history.
+                    // Keep that complete-root rejection on the existing other
+                    // real candidate, without changing the public donor.
+                    var otherReceiver=Main.npc[selected.Slot==2?3:2];int otherImmune=otherReceiver.immune[p.whoAmI];
+                    try{otherReceiver.immune[p.whoAmI]=otherImmune+1;Require(!(bool)Get(baselineRoot,"Unchanged"),"independent complete root still retires for another captured receiver's raw immunity history");}finally{otherReceiver.immune[p.whoAmI]=otherImmune;}
+                    Require((bool)Get(baselineRoot,"Unchanged"),"restored independent receiver history restores the unchanged complete root");
+                }
+                finally{Main.npc[selected.Slot].immune[0]=immune;}
                 var receiver=Main.npc[selected.Slot];var replacement=new NPC();replacement.SetDefaults(receiver.type);replacement.whoAmI=selected.Slot;replacement.active=true;replacement.position=receiver.position;
                 reject(()=>Main.npc[selected.Slot]=replacement,()=>Main.npc[selected.Slot]=receiver,"target slot instance");
                 bool wet=Main.tile[53,41].active();ushort tileType=Main.tile[53,41].type;
@@ -269,7 +328,7 @@ namespace NativeWorldTextProbe
                     Call(prediction,"PrepareActionPrefix",selected,(long)Main.GameUpdateCount-1,(int)Get(attack,"ActionRequired"),NpcPredictionCache.Horizon);
                     var unchanged=((NpcPredictionCache)Get(prediction,"Cache")).Read(1);
                     var beforeNpc=Enum.Parse(attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase"),"BeforeNpc");
-                    Require(unchanged!=null && AttackIntercept.Equivalent(candidatePath,unchanged) && (bool)Call(attack,"TryCandidateHand",p,p.HeldItem,Get(donor,"Ammo"),unchanged,beforeNpc,0),"the exact cross-owner donor still shares before actual NPC movement");
+                    Require(unchanged!=null && AttackIntercept.Equivalent(candidatePath,unchanged) && TryDonation(attack,donor,p,Get(donor,"Ammo"),unchanged,beforeNpc),"the exact cross-owner donor still shares before actual NPC movement");
                     Call(attack,"ClearExecution");attack.GetType().GetField("candidateHandPlan",Flags).SetValue(attack,donor);shares=0;
                     receiver.position.X+=3;
                     Call(prediction,"PrepareActionPrefix",selected,(long)Main.GameUpdateCount-1,(int)Get(attack,"ActionRequired"),NpcPredictionCache.Horizon);
@@ -292,18 +351,22 @@ namespace NativeWorldTextProbe
                 }
                 var phase=Enum.Parse(Get(attack,"preparedOrdinaryPhase").GetType(),"BeforeNpc");var changedReceive=new object[]{p,p.HeldItem,phase,null};
                 NativeCombatDedupPremiseChecks.Run(attack,donor,p,phase,()=>solves);
-                receiver.immune[0]=120;Require((bool)attack.GetType().GetMethod("TryOrdinaryInput",Flags).Invoke(attack,changedReceive) && Get(changedReceive[3],"Kind").ToString()=="Basic","changed receiver immunity after donation cannot consume the old Enhanced result");receiver.immune[0]=immune;
+                // Actual rejection probes retire execution as well as their
+                // synchronous borrow. Reacquire from a real new sample before
+                // testing independent execution leases; never restore fields.
+                NativeQuickItemChecks.BeginWorldStep();Sample(context,combat,host,input,new Vector2(550,600));Call(attack,"BeginActionDemand");Call(attack,"ResolveSelection",(long)Main.GameUpdateCount-1,true);Call(attack,"Demand",true);Call(prediction,"PrepareActionPrefix",selected,(long)Main.GameUpdateCount-1,(int)Get(attack,"ActionRequired"),NpcPredictionCache.Horizon);Call(attack,"PrepareAction");NativeCombatAimChecks.RequireSolution(attack,p,"fresh real sample restores a current execution after destructive donor rejection probes");donor=((Array)Get(attack,"candidatePlans")).GetValue(selected.Slot*2+1);
+                receiver.immune[0]=120;Require((bool)attack.GetType().GetMethod("TryOrdinaryInput",Flags).Invoke(attack,changedReceive) && Get(changedReceive[3],"Kind").ToString()=="Enhanced","receiver immunity after donation retains a direction without granting a full damage proof");receiver.immune[0]=immune;
                 p.position.X+=1;changedReceive=new object[]{p,p.HeldItem,phase,null};Require((bool)attack.GetType().GetMethod("TryOrdinaryInput",Flags).Invoke(attack,changedReceive) && Get(changedReceive[3],"Kind").ToString()=="Basic","even a one-pixel player translation after donation revokes the old hand start");p.position=position;
                 // Source/reset/another candidate cannot erase the execution's
                 // independent weapon and motion read leases.
                 var plans=(Array)Get(attack,"candidatePlans");Call(plans.GetValue(selected.Slot*2+1),"Clear");
-                Require(GetOptional(attack,"ExpectedImpact")!=null,"clearing mutable candidate does not invalidate or rewrite execution result");
+                NativeCombatAimChecks.RequireSolution(attack,p,"clearing mutable candidate does not invalidate or rewrite the independently leased execution result");
                 p.inventory[54].stack--;object supplied;var args=new object[]{p,p.HeldItem,Enum.Parse(Get(attack,"preparedOrdinaryPhase").GetType(),"BeforeNpc"),null};
                 supplied=attack.GetType().GetMethod("TryOrdinaryInput",Flags).Invoke(attack,args);Require((bool)supplied && Get(args[3],"Kind").ToString()=="Basic","changed actual ammo rejects enhanced donor rather than consuming old contact");
                 p.inventory[54].stack++;var scope=Call(attack,"BeginShot",p,p.HeldItem,true);
-                Require(scope!=null && GetOptional(attack,"current")==null && GetOptional(attack,"candidateHandPlan")==null,"ordinary input acquisition retires execution and synchronous donor");Call(scope,"End");
+                Require(scope!=null && !NativeCombatAimChecks.ReadSolution(attack).HasPoint && GetOptional(attack,"current")==null && GetOptional(attack,"candidateHandPlan")==null,"ordinary input acquisition retires execution and synchronous donor");Call(scope,"End");
                 args=new object[]{p,p.HeldItem,Enum.Parse(Get(attack,"preparedOrdinaryPhase").GetType(),"BeforeNpc"),null};
-                Require((bool)attack.GetType().GetMethod("TryOrdinaryInput",Flags).Invoke(attack,args) && Get(args[3],"Kind").ToString()=="Basic","same consumed Contact cannot grant a second Enhanced input; this component does not claim a native birth");
+                Require((bool)attack.GetType().GetMethod("TryOrdinaryInput",Flags).Invoke(attack,args) && Get(args[3],"Kind").ToString()=="Basic","same consumed solution cannot grant a second Enhanced input; this component does not claim a native birth");
             }
             // A fully modeled native Slime needs no observation-trend history
             // after Source.Clear; this isolates same-owner epoch retirement

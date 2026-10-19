@@ -2,13 +2,78 @@
 
 任务 [#126](https://github.com/Kuroneko2020/JueMingR/issues/126)，Draft [#127](https://github.com/Kuroneko2020/JueMingR/pull/127)。整批 BASE `749e86925763f8a5754d6999ea4056b50de58d65`；最终候选 SHA、累计执行/复用回执、独审和包/安装状态以 Issue 对应收口评论为准。本文件是实现者自查和原件导航，不签独审或发布资格。
 
-## 实现和证据边界
+Effects 续办原件为 `references/JMR_MOVEMENT_DELIVERY_UNBLOCK_20261019_v1/`，原三移动包现位于 `references/归档文件/JMR_MOVEMENT_ASSISTS_20261019_v1/`。两者均为已存在的完整只读目录，清单/成员 SHA 已核，不宣称原 ZIP 字节身份或本轮重新解压。续办授权与文件分工见 [Issue 登记](https://github.com/Kuroneko2020/JueMingR/issues/126#issuecomment-6267533460)；下文 `ce91` 收口、Related05 和停止结论保留原执行时态，后继实际状态只由 Issue 记录。
+
+## Effects 续办：合同、原因与固定原件
+
+续办以现行《战斗辅助行为合同》区分代表方向、实际消费和完整接收。共享读者先封存current/next原字段，再读Solution及真实许可，不用可能ClearExecution的ExpectedImpact getter诊断一般准备；实际ItemCheck_Shoot消费须绑定本次GUC/phase/weapon/target/point，手部Source可空。机制1000ms与真实Main普通6ms证据分列，不互相冒签。
+
+移动功能仅把连续代按意图、版本及释放/关闭失效接入既有预测；装备移动物理仍为原版。本次必要检查暴露的旧武器接缝及测试维护，不构成新增装备物理或重写移动预测。
+
+| 原因 | 有限维护与保留责任 | 固定原件入口 |
+| --- | --- | --- |
+| 公共完整Contact旧读者、旧producer计数与代表Solution错位 | 六代表保当前解→真实Enhanced消费；七专用及已出生Known/Replay仍保完整root、原版出生/伤害与精确时钟；不恢复一般完整世界逆算 | `unblock-selfcheck.md`，01/03与各精确Issue登记 |
+| 已证旧生产缺陷，共五文件/四原因 | 蜂蜜候选使用真实有限介质scale；Sky原生225复用必要targets快照；FixedSky最近水平整数光标+唯一回放outer不退化；Sharp内联原Opacity getter算式并保setter/Clamp边界 | 04/05/06、09、37—43对应固定manifest与IL原件 |
+| 本轮维护自身错误 | 撤无合同依据的小样本quota，修Moving本地动作与sample轴比较、反射可选实参及可变出生引用封存；19观察写out整轮作废，23仅编译失败NOT_EXECUTED | R30/R43等独审原件及`.local`固定索引；不归为旧生产缺陷 |
+| 原专用夹具前提与阶段 | Medusa单次命中批仍严格5，更早paid-empty批各严格4；资源/源身份/同步Damage与末态零伤逐批核。Phantasm复用NPC须在夹具建立时清外来buff，保原飞行零伤反例。BeforeNpc首真实动作同准备GUC，CW首Begin保持；不改报表±1 | Medusa46—49固定原件、R47/R50及五叶精确登记 |
+
+四项生产缺口均早于完整移动BASE。Honey/225的原分支引入为`7a8f18a475e43f985cc761295f03a4cfbe844e05`；FixedSky/Sharp为`4c7ac5cddfaa0e79cef2749250086732a0ab09e7`；主线承载均为`f50646b083b27248731dbf7afdc53a3876ff4309`（#115 squash，BASE祖先）。原分支提交与主线承载分别记录，不声称这些分支提交本身是BASE祖先或某更早发布版本已验证通过。
+
+13行原矩阵保全部主伤、指定派生出生/来源及各行既有实伤门。下表为固定50原件的首次受击更新号，不是伤害量；它不等于完整Effects通过。
+
+| 主弹 | 当前路线 | 主弹首次受击更新 | 派生出生数／派生首次受击更新 |
+| --- | --- | ---: | --- |
+| 91 | 代表Solution | 41 | 2／69 |
+| 89 | 代表Solution | 18 | 2／0 |
+| 639 | 代表Solution | 22 | 1／53 |
+| 207 | 代表Solution | 12 | 0／— |
+| 20 | 代表Solution | 14 | 0／— |
+| 955 | 代表Solution | 28 | 0／— |
+| 94 | 专用Contact，随机Representative | 28 | 0／— |
+| 297 | 专用Contact | 33 | 0／— |
+| 15 | 专用Contact | 54 | 0／— |
+| 27 | 专用Contact | 86 | 0／— |
+| 95 | 专用Contact | 39 | 0／— |
+| 253 | 专用Contact | 44 | 0／— |
+| 502 | 专用Contact | 32 | 0／— |
+
+94的未出生代表时刻31与真实随机出生首伤28分别保留，已出生精确Replay承接后者。91→92父子链、首次主伤41和派生首次受击69由真实出生/Strike证明；独立出生后Known的sample/First/Receive与自然执行分别核时钟，不因数字偶合同就互相替代。89两派生真实出生但首次受击记录为0，不补签其派生伤害。原 RNG、实体池、资源、接收历史、有效时钟和双轴cursor归还门保持。
+
+九个直接下游的迁移界面均为公共读者片段，原专用段保留：
+
+| 叶 | 保留的专用/真实责任 |
+| --- | --- |
+| ProjectileEnvironment | dry/water/honey/ignoreWater位移与stored velocity、FireArrow转换、液体边界/风/墙/地表反控 |
+| Obstacle | 真实先前receiver、穿透退休及原8槽精确oracle；目标本体资格仍撤Enhancement |
+| SpecialArrow | 原出生数/AI向量/16 Hellwing种子、Phoenix派生与已出生完整Replay/自然时钟 |
+| NativeArrowBirth | 原完整出生矩阵、pose/origin/ordinal及全批；退休公共Flight与独立Known分责；四公共Blocked零伤不冒称绕墙，四固定Bounce真实正例另列 |
+| AmmoImpact | finite Kill、完整接收/slot/static/crystal/Quiver；Eventide原8非central真实AimOFF出生与Known精确时钟 |
+| AmmoSteering | retarget/Confidence/原版AI及真实消费/Strike；装备资格反控 |
+| OnyxBlast | 实际5出生/4选弹/661倍伤、完整爆破与真实Strike |
+| NorthPole | 343→344后继、原槽位/完整时钟及过期输入反控 |
+| SpearShard | 原合法primitive/type/damage/lifetime/RNG分母；手部BeforeNpc与CW接收分流，已出生Known及自然Damage |
+
+后续传播按真实路由限定：Mixed16仅5382两行、Dart13仅267代表行；Costs预算注入接实际PrepareMotion，SameEpoch原版更新后失效应Basic；Dedup观察当前内联donation而非旧函数计数，单穿透14的selected-owner免疫例外与其他receiver历史分开。Phoenix第三706、Held Births自然42与预定固定42、Consumers21/合法Enhanced6、Moving28=ordinary13/component15、Slot13=4/3/4/2和原窗口均保留。合法随机miss逐行记，完整actual-born Known/null与自然first严格对应，整组保真实Enhanced正伤；物理Born正例不冒充某个注册Enhanced随机样本命中。
+
+FixedSky配对12零/.4姿态的Launch/Update精确首伤与额外真实6ms Shoot消费分别证明；41/42普通机会4.361/5.0997ms均Enhanced36+真实三出生，其追加消费不评自然伤害。40旧fallback候选实际6.1132ms/Basic保RED，39本轮额外Subupdate准入错误也保原件。Sharp真实PE/IL/R4边界与算术重构支持x86中间舍入解释，但未取得JIT机器码；41/42带临时AI157观察，43无该包装的实际Release完整矩阵/后继另封身份。Medusa49默认无临时AI/LOS/Mana包装的两局部同样独立，不改署46—48旧红。
+
+Phantasm52在保留旧阶段的完整前缀中复现原生命不变门失败：selected初有323（OnFire3）12时长，第13动作在NPC.Update中由10000降到9997，631无selected Strike且first为0；victim的189和终止受击另列，不混称飞行伤。原版SetDefaults不清buff数组，最小修正在本专用静态receiver建立时隔离外来buff，原90/1、位置、锁定/终止反例及生命强门不变。52四其他尾叶阶段已变，不冒称与50全输入相同；50无raw的现场不倒填。五叶修正与临时观察默认退出各由固定增量和最终候选审查核定。
+
+固定执行与审查入口：完整Aim41、Costs24及所有局部各保实际输入/Probe/Host/日志身份；默认Effects50到最后Phantasm反例RED，不能由前段或局部PASS签全scope。最终源码增量、五叶修订和默认完整scope的实际资格由Issue固定候选回执及`.local/movement-assists-20261019/delivery-review-package.md`指向的manifest给出。原Related05仍为201必要：88实际STABLE/0复用、Effects失败1、112未运行；最终runner沿完整BASE判执行/复用，不手改原资格或预定仍复用88。
+
+本导航及条件体验卡属于候选冻结输入。最终Related/Release、普通完整ContinuousProcessing、备份Restore/Install及所有者体验分别准入；最终动态结果只写Issue和已排除的`.local`原件，不在累计之后再补tracked提交制造新身份。
+
+## 原 ce91 轮次封存记录
+
+以下各节保留 ce91/d5 原轮次的实施、审查、失败与停止时态；“尚未通过”“不改武器生产”“停止扩张”和旧安装均指该轮次。后续已经取得补充包正式授权，续办范围、生产修复及新原始证据见上节；最终动态资格仍只查 Issue，不能用下列历史停止句覆盖续办授权。
+
+### 实现和证据边界
 
 三项默认关、冲刺默认双击，enabled/mode独立持久化；共享真实输入/Session owner、实际原版消费者、普通完整 ContinuousProcessing 组合及三标准 F5 行。正式行为和实现分别见[合同](../../docs/功能介绍/移动辅助行为合同.md)与[设计](../../docs/设计/移动辅助实现设计.md)。未推进产品版本；跨进程预测协议39/诊断139是实际 AssistedJump 序列化字段变化，旧端拒绝，不是产品版本。
 
 本地原件根 `.local/movement-assists-20261019/`，所有隔离宿主静音，使用自有可丢弃世界/玩家/保存目录；没有操作所有者游戏、真实存档、系统/RDP/驱动/音量。最终图形完整原件 `original-07-solar-earned.log` 与同名目录；`native-inputs.json` 绑定原版/Host/Probe，`source-inputs.json`、`source-build-record.json` 保留执行时源码和准备身份。Host SHA256 `199ED58B399DFFF2C4CF3BCAB0B54779E59FD22AF91E19A446B7355848AAC0D5`；执行 Probe（只补测试副本LAA）SHA256 `4635ED3FA4E4F44ED663125CD493CB3DB1A8F435A17F1FF57B11BA6689A017A5`。源码后续窄改须由 Issue 明确受影响重验/复用，不能把07身份改写为最终提交。
 
-## 已实际执行
+### 已实际执行
 
 | 入口 | 原件 | 实际层级 |
 | --- | --- | --- |
@@ -22,13 +87,13 @@
 
 07截图为 `movement-page-ui-100.png`、`movement-page-ui-150.png`、`movement-mode-off-hold.png`，实现者已逐张查看文字、三行与模式。公共累计尚须以最终 Issue 回执区分本次执行、有效复用和未验。
 
-## 性能原件与限度
+### 性能原件与限度
 
 07保留完整逐帧CSV：关闭/开启闲置、原版人工/辅助地面与复杂组合，两轮反序。每地面窗共240更新/5次地跳，复杂窗共420更新/地跳1+额外5、五族各1/翼142 tick；前40为暖场，计时和分配只取后200/380，动作计数含暖场，因此不将尾窗耗时除全窗动作数声称精确每动作成本。rocketDelta只是实际字段减少量；无装备35包含原版清理/刷新，不能称燃料消费，翼靴组合7含翼转换；独立靴毯场景才证明实际靴燃料消费。持跳段1→0时原版可先处理1tick翼，下一次JumpMovement才接仍剩余的多段族。
 
 `movement-idle-pairs-settled.csv` 包含8对反转顺序的48更新block，先在测量外等真实设置保存完成、固定日时、暖16；数组预分配且日志/CSV在block外。07 update on-minus-off毫秒为 `+.02098,-.08899,-.08728,-.00176,+.01573,+.01199,+.04976,-.00677`，4正4负，差均值-.010792/中位+.005118ms；整链world+Draw差均值-.028181/中位+.012730ms。OFF/ON各384有效样本的AppDomain总分配72190868/72123992B，GC0各16；settled未记录GC1/2。06有6正2负且负均值，不能以负均值宣称提速。本场景增量未能稳定量化；保留均值/中位/p95/max和GC/分配，不丢尖峰、不立统一预算、不宣称字面零耗时或普遍性能接受/FPS。微测查询/owner零分配也不等于整Main零分配。最终有限性能判断和分母分析见 Issue。
 
-## 失败、期待和夹具修正
+### 失败、期待和夹具修正
 
 全部旧日志保留。dash02原期待“太阳发动即耗盾”错误：原SolarDashStart只立solarDashing，首次实际NPC碰撞才ConsumeSolarFlare；05仅发动原期待已纠正，07补真实碰撞和第二次不再耗盾，不能互相冒充。dash03修原版ArmorSetBonuses初始化；dash04移除原版DashMovement未保证的direction写入期待，继续核实际速度。
 
@@ -38,7 +103,7 @@ original01夹具将全部角色inactive后等待Session，自阻塞；在等待�
 
 06太阳新Player预种Buff在setSolar前被原版删除；07用真实装备/180tick自然产盾，不人工恢复盾。路由01/02仅测试期待遗漏：实际路由原已有view/journey公共传播，新Movement传播使精确断言暴露旧遗漏，补期望集合而未改view/journey生产或扩大到无关业务；原精确正反例保留，03通过。
 
-## 待交付门与现场资产
+### 待交付门与现场资产
 
 后续最终UI原件为 `original-09-mode-left.log` 与同名目录：所有者要求模式移到开启左边，09在100/150%及按住/双击两态断言模式/开启/关闭顺序、三行开启/关闭同列，并真实点击关闭状态模式，完整Main/Dash/UI专项再次PASS。实现者已查看最终两张PNG。该次源码 `74511837217522b1af3496bed46abf6082f7c2ca`，Host SHA256 `ADAA0A83F4EA6CC8B4AC68060C6B51BC17A1F486D24CBF344EB07B6EBC2E52BC`，执行Probe `50F8D3E38AE6A691C290476E6FC10E305B25385540F2CF84C7CFC4C8000C2FB8`，日志SHA256 `076BC882E4A48BCABB10738412783EBEA8022902BE0ED8F173D49EF8A48C1749`；最终仅证据导航提交不冒称此旧执行commit。08则证明补充options/fancy/capture预采样取消门后的完整主链，精确身份保留各自目录；窄取消反控与最终累计结果以Issue原回执为准。
 
@@ -48,7 +113,7 @@ original01夹具将全部角色inactive后等待Session，自阻塞；在等待�
 
 四项外来资产保持：tracked `docs/设计/本地参考资料使用说明.md`，untracked `.workbuddy/memory/2026-10-03.md`、`issue112.txt`、`pr113.json`。哈希声明 `.local/movement-assists-20261019/approved-retained-assets.json`，沿现有合法通道：`clean=false/releaseEligible=false`，提交本任务源码后仅这四项保留，不借旧Stage例外，不伪造clean。禁止合并/关闭/Tag/Release/版本推进。
 
-## 独审修复与当前累计阻塞
+### 独审修复与当前累计阻塞
 
 原冻结 `7475454` 的独审原件为 `.local/movement-independent-review-20261019/review-7475454.md`，三项P2和累计失败保持历史身份。R1为精确比较后端恢复Profile后再次编码读取live Jump owner；新增请求/准确Player对象scope、正常/异常清理及仍占用receiver重入拒绝。Complex每帧按当前Mechanism与恢复意图重算，不能冻结初始dashDelay派生结果。`jump-cpu-08-thread-allocation.log`实际通过8组合初/后继完整alignment、直接及A→B→A重入/异常/clone/下一请求反控、348原版stage及4×20000同步helper零分配。`snapshot-review-01.log`与`worker-player-review-01.log`分别通过完整快照/codec/age/前缀以及独立worker玩家推进。c1累计04已准确收录并实际执行跟踪后的新Wire叶，原来源缺口在该执行身份闭合；后继候选按正常累计规则核对新增影响。旧06/11的git-ls-files来源清单不包含当时未跟踪的新叶，不能补签为完整来源清单。
 
@@ -72,7 +137,7 @@ c1增量独审 `.local/movement-independent-review-20261019/increment-c1e97f3-ro
 
 `rolling-cpu-06-current-contract.log`（SHA256 `E80F09FF5CDBE8ED973FA6B4AB1030247AC000CDFEDE91FFFCA1F89E64DFB0BD`）完成11场1478更新并通过当前声明scope，原各统计及历史RED仍落盘。新增有限CPU `rolling-selection-geometry.csv`（SHA256 `6E5518E7E32E48662FB1E43505EDD442FD50F7D838799B4ADE627846A1A64DBF`）见证guardian frame43–53/GUC381–391：A16/B17都具接收资格、各受击框到RealMouse的d²均0，候选数2，实际/独立首位均16，与BASE继承的先RetireTarget再按低slot实现一致，11帧不是World无线。正式战斗合同第97行仍要求平局保留当前目标；当前未找到明确替代该条的更高裁决，因此不能据此称合同正确选择，也不在本批改战斗生产或正式合同。3个B已选而未显示的单帧和其它真实空档仍保留，不泛化为零空档。`rolling-negative-01-current-contract.log`实际两场360更新：gun-B合法180/选中0/显示0/最长180仍被硬拒绝，专项期待此真实拒绝而PASS，不能靠缩小分母变绿。最终提交后的累计与原独审增量尚待完成。
 
-## 既有辅助瞄准累计接缝维护（尚未完整通过）
+### 既有辅助瞄准累计接缝维护（原 ce91 轮次，当时尚未完整通过）
 
 本批不新增自动开火或修改武器瞄准算法。共享输入与玩家预测使必要Related累计进入既有CombatAim；以下仅为旧测试与已接受入口迁移、准确原版阶段的维护。7a8f18a将普通BalancedHand改为代表Point/Reachability/可选ReceiveTick，成功时完整Contact可空；Ammo旧矩阵未同步。`combat-aim-01-current-solutions.log`实际越过19项弹药及其后完整Replay/装备窗口，95/278实consumed Enhanced与保存Point一致、首Damage19严格对应ReceiveTick换算；不是用query或代表结果冒充实伤。其它专用完整Contact和原版结局门保留。
 
@@ -86,7 +151,7 @@ c1增量独审 `.local/movement-independent-review-20261019/increment-c1e97f3-ro
 `combat-aim-03-fixed-window.log`（SHA256 `5F899C0CDCA9A1333EB654F2D19CFCEAF40561DAD6EDBB00E337682E5FE13EE4`）完整原入口实际越过Ammo/全部六种Sky及屋顶阴阳/Scatter七行及16seed/父矩阵与点击/动作阶段/原版跑跳射手。固定9手自然窗口实际9次允许及Shoot、29箭、9弹药、1箭/1事件真伤34、首伤world81，272总更新/每箭最多120不因命中提前结束；合法代表不计自然分母。其后NPC初始横坐标850的严格几何负例通过，847正例首伤9与绝对ReceiveTick等式通过；退出原因是本次适配新增断言误把连续浮点NPC位置与整数伤害框作.15近似比较，不是原伤害或时钟失败。原版Damage先临时加netOffset再读整数Hitbox，NpcTrajectoryPoint同样明确整型截断；后继只改为对应ReceiveTick四条整数边逐项相等，没有增加epsilon。
 
 `combat-aim-parent-05-integer-receive.log`（SHA256 `845DA0385EDD2ED779CAF50B75324980E5F20D2252B397818D51126458EB44F4`）使用BASE已存在的显式ordinary selector，实际通过剩余父族：四矩阵/点击释放/动作发布与退休/跑跳/850几何负例/847真实Damage9及精确接收框/失败锁存与恢复、实例与generation、致命异常、缺格保护和cursor。它是局部反馈，不改签完整Aim。BASE已有ordinary selector保留，最终Related累计明确清除此环境变量并核完整Sky/Scatter执行；最终整批执行/有效复用与资格仍以提交后回执为准。此维护终点不新增瞄准算法、自动开火或生产观察设施，普通包和换装继续等待必要累计与独审准入。
-## 本批交付收口：代码增量通过独审，整体资格失败，未制作包或换装
+### 原 ce91 收口（历史）：代码增量通过独审，整体资格失败，未制作包或换装
 
 移动源码候选固定为 `d5ff6e70c8b18fffe7b08dde084f0adca29b54c6`；后继仅证据文档提交身份见Issue最终回执。原独审的完整BASE与逐次增量，以及 `increment-d5ff6e7-aim.md`，代码/测试增量结论PASS且无新增P0/P1/P2；不等于整批工程准入。
 

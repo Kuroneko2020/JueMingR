@@ -13,15 +13,17 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatGuitarCurveChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
-        private static Assembly assembly;private static Type model;private static Projectile receiving;private static int first,step;
+        private static Assembly assembly;private static Type model;private static Projectile receiving;private static int first,step;private static long firstGuc;
         private static bool traceFirst;private static Projectile traced,tracedBefore;private static Vector2 tracedOwner,tracedCenter;
         private static void CurveBefore(Projectile __0,Vector2 __1){if(traceFirst && __0.localAI[0]==0){traceFirst=false;traced=__0;tracedOwner=__1;tracedBefore=(Projectile)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.HostSuperStarAttack",true),"Copy",__0);}}
         private static void CurveAfter(Projectile __0){if(ReferenceEquals(traced,__0) && __0.localAI[0]==1)tracedCenter=__0.Center;}
         private static object Static(Type t,string name,params object[] args){return t.GetMethod(name,Flags).Invoke(null,args);}
         private static void Damage(Projectile __instance){receiving=__instance;}private static void DamageDone(){receiving=null;}
-        private static void Strike(NPC __instance,int __result){if(__result>0 && __instance.whoAmI==2 && receiving?.type==856 && first==0)first=step;}
+        private static void Strike(NPC __instance,int __result){if(__result>0 && __instance.whoAmI==2 && receiving?.type==856 && first==0){first=step;firstGuc=Main.GameUpdateCount;}}
+        private static void RequireClock(AttackContact contact)
+        {Require(firstGuc>=0 && firstGuc-contact.Timeline.SampleTick==contact.Tick && firstGuc-contact.Timeline.SampleTick==contact.ReceiveTick,"Guitar actual Strike GUC agrees with the dedicated timeline receive index");Console.WriteLine("GUITAR absolute sample="+contact.Timeline.SampleTick+" strike="+firstGuc+" receive="+contact.ReceiveTick);}
         private static Player Reset(object context)
-        {NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),4715,0,0);p.position=new Vector2(850,646);p.velocity=Vector2.Zero;p.ResetEffects();p.itemAnimationMax=p.itemAnimation=p.HeldItem.useAnimation;Main.windPhysics=false;foreach(var n in Main.npc)n.active=false;foreach(var q in Main.projectile)q.active=false;for(int x=35;x<115;x++)for(int y=10;y<65;y++)Main.tile[x,y].ClearEverything();for(int x=35;x<115;x++)NativeToolsChecks.Tile(x,43,1);first=step=0;return p;}
+        {NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),4715,0,0);p.position=new Vector2(850,646);p.velocity=Vector2.Zero;p.ResetEffects();p.itemAnimationMax=p.itemAnimation=p.HeldItem.useAnimation;Main.windPhysics=false;foreach(var n in Main.npc)n.active=false;foreach(var q in Main.projectile)q.active=false;for(int x=35;x<115;x++)for(int y=10;y<65;y++)Main.tile[x,y].ClearEverything();for(int x=35;x<115;x++)NativeToolsChecks.Tile(x,43,1);first=step=0;firstGuc=-1;return p;}
         private static NPC Target(Vector2 center)
         {var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.Center=center;n.life=n.lifeMax=10000;n.defense=0;n.aiStyle=-1;n.noGravity=n.noTileCollide=true;n.velocity=n.netOffset=Vector2.Zero;n.knockBackResist=0;n.realLife=-1;n.friendly=n.immortal=n.dontTakeDamage=false;Array.Clear(n.immune,0,n.immune.Length);return n;}
         private static NpcTrajectory Timeline(NPC n)
@@ -70,12 +72,13 @@ namespace NativeWorldTextProbe
         private static void Receive(object context)
         {
             var p=Reset(context);var n=Target(new Vector2(1200,667));var q=Shoot(p,new Vector2(500,667));object root;var expected=Known(p,q,n,out root);Require(expected!=null,"already born genuine random856 has a useful sealed native receive");Main.mouseX=0;Main.mouseY=0;
-            for(step=1;step<=40 && first==0;step++){NativeQuickItemChecks.BeginWorldStep();n.UpdateNPC(n.whoAmI);q.Update(q.whoAmI);}Require(first==expected.Tick,"original3subupdates/89-action kill/local history match actual first Damage after physical cursor reversal");Console.WriteLine("GUITAR actual born predicted="+expected.Tick+" nativeFirst="+first);
+            // BeforeNpc executes its first NPC/projectile pass at the preparation GUC.
+            for(step=1;step<=40 && first==0;step++){if(step>1)NativeQuickItemChecks.BeginWorldStep();n.UpdateNPC(n.whoAmI);q.Update(q.whoAmI);}RequireClock(expected);Require(first==expected.Tick,"original3subupdates/89-action kill/local history match actual first Damage after physical cursor reversal");Console.WriteLine("GUITAR actual born predicted="+expected.Tick+" nativeFirst="+first);
             p=Reset(context);n=Target(new Vector2(1200,667));q=Shoot(p,new Vector2(500,667));Known(p,q,n,out root);q.ai[0]++;Require(!(bool)Get(root,"Unchanged"),"same-GUC sealed endpoint edit revokes source dependency");
         }
         private static void Terminal(object context)
         {
-            var p=Reset(context);var n=Target(new Vector2(1165,350));var q=Main.projectile[Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),new Vector2(1100,350),Vector2.Zero,856,50,0,p.whoAmI,1300,350)];q.localAI[0]=88;object root;var expected=Known(p,q,n,out root);Require(expected!=null && expected.Tick==1,"native89th-action Kill has a useful128px burst even when the old32px body cannot reach");step=1;NativeQuickItemChecks.BeginWorldStep();n.UpdateNPC(n.whoAmI);q.Update(q.whoAmI);Require(first==1 && q.width==128 && !q.active && n.life<10000,"original Kill synchronously resizes the same856 and performs real Damage before retirement");Console.WriteLine("PASS GUITAR original terminal128px Damage predicted1=native1");
+            var p=Reset(context);var n=Target(new Vector2(1165,350));var q=Main.projectile[Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),new Vector2(1100,350),Vector2.Zero,856,50,0,p.whoAmI,1300,350)];q.localAI[0]=88;object root;var expected=Known(p,q,n,out root);Require(expected!=null && expected.Tick==1,"native89th-action Kill has a useful128px burst even when the old32px body cannot reach");step=1;n.UpdateNPC(n.whoAmI);q.Update(q.whoAmI);RequireClock(expected);Require(first==1 && q.width==128 && !q.active && n.life<10000,"original Kill synchronously resizes the same856 and performs real Damage before retirement");Console.WriteLine("PASS GUITAR original terminal128px Damage predicted1=native1");
         }
         private static void LaunchFrame(object context)
         {

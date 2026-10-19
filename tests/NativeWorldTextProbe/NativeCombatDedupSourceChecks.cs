@@ -30,12 +30,15 @@ namespace NativeWorldTextProbe
                 var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();var path=new NpcTrajectory(id,(long)Main.GameUpdateCount-1,1,PredictionAssumption.HeldPlayerControls,PredictionStop.None,points,121);
                 var phase=Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase"),"BeforeNpc");var plan=Activator.CreateInstance(aim.GetType().GetNestedType("PreviewPlan",Flags),true);
                 using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Call(aim,"PreparePlan",plan,path,phase);
-                Require(GetOptional(plan,"Contact")!=null,"refusal has a useful real production preview: "+kind);
-                Require(kind=="delayed"?(int)Get(plan,"Delay")>0:kind=="controlled"?(bool)Get(plan,"Controlled"):GetOptional(plan,"Flight")!=null || (bool)Get(plan,"HadFlight"),"production preview preserves its actual source/launch clock: "+kind);
+                var solution=NativeCombatDedupChecks.PlanSolution(plan);Require(solution.HasPoint && solution.Reachability=="Reachable" && solution.Timeline!=null,"refusal starts with a useful actual model result: "+kind);
+                bool ordinary=(bool)assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackWindow",true).GetMethod("Ordinary",Flags).Invoke(null,new object[]{p.HeldItem});
+                Require(kind=="delayed"?(int)Get(plan,"Delay")>0:kind=="controlled"?(bool)Get(plan,"Balanced") && !ordinary:GetOptional(plan,"Contact")!=null && (GetOptional(plan,"Flight")!=null || (bool)Get(plan,"HadFlight")),"production plan preserves its actual delayed/held/flight role: "+kind);
+                Require(!(bool)Call(aim,"CandidateHandPrepared",plan),"the actual candidate admission gate rejects this non-current ordinary hand role: "+kind);
                 p.itemTime=0;
                 var ammo=assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot").GetMethod("Capture",Flags).Invoke(null,new object[]{p,p.HeldItem});
                 aim.GetType().GetField("candidateHandPlan",Flags).SetValue(aim,plan);
-                Require(!(bool)Call(aim,"TryCandidateHand",p,p.HeldItem,ammo,path,phase,0) && GetOptional(aim,"candidateHandPlan")==null,"real "+kind+" calculation is not adopted as current ordinary hand and its borrow retires");
+                bool shared;using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))shared=NativeCombatDedupChecks.TryDonation(aim,plan,p,ammo,path,phase);
+                Require(!shared && GetOptional(aim,"candidateHandPlan")==null,"real "+kind+" calculation is not adopted as current ordinary hand and its owner-exit borrow retires");
                 Console.WriteLine("DEDUP real source="+kind+" positivePreview=True handDonation=False");
             }
             NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());Call(aim,"Reset");

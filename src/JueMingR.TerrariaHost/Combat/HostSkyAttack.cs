@@ -89,9 +89,20 @@ namespace JueMingR.TerrariaHost.Combat
             // The actual cursor consumer encodes integral screen pixels. This
             // final replay validates that same launch, including the gate and
             // integer receiver edges; the inverse proposal grants no input.
-            aim=new Vector2((int)(aim.X-Main.screenPosition.X)+Main.screenPosition.X,(int)(aim.Y-Main.screenPosition.Y)+Main.screenPosition.Y);
+            // Choose the nearest horizontal consumer pixel in screen space.
+            // Truncation can move this inner-edge ray outside its first receive;
+            // a symmetric midpoint rule also retains negative-screen direction.
+            // Cursor height and the native collision gate keep their old rule.
+            aim=new Vector2((float)Math.Round(aim.X-Main.screenPosition.X,MidpointRounding.AwayFromZero)+Main.screenPosition.X,(int)(aim.Y-Main.screenPosition.Y)+Main.screenPosition.Y);
             Launch(player,item.type,mounted,aim,motion.Speed,out launch,out velocity);collides=sample.tileCollide;
-            return AttackIntercept.Replay(aim.X,aim.Y,launch.X,launch.Y,velocity.X,velocity.Y,motion,timeline,age,passage,t=>receive.Allows(t+delay),(k,t,x,y)=>obstacles.PassOuter(k,t,delay+motion.OuterAtSubupdate(k),x,y),before);
+            var replay=AttackIntercept.Replay(aim.X,aim.Y,launch.X,launch.Y,velocity.X,velocity.Y,motion,timeline,age,passage,t=>receive.Allows(t+delay),(k,t,x,y)=>obstacles.PassOuter(k,t,delay+motion.OuterAtSubupdate(k),x,y),before);
+            // Integral cursor projection can move an inner-edge ray enough
+            // to delay a still-valid hit. Both contacts use this same timeline,
+            // age and outer-update clock: keep the optimization only if its
+            // real cursor preserves that first outer receive. Its own complete
+            // replay still validates subupdates. Otherwise the caller uses
+            // its existing bounded fallback and unchanged work allowance.
+            return replay!=null && replay.Tick<=contact.Tick?replay:null;
         }
         private static void Launch(Player p,int type,Vector2 mounted,Vector2 aim,float speed,out Vector2 birth,out Vector2 velocity)
         {
