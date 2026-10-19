@@ -86,3 +86,12 @@ c1增量独审 `.local/movement-independent-review-20261019/increment-c1e97f3-ro
 `combat-aim-03-fixed-window.log`（SHA256 `5F899C0CDCA9A1333EB654F2D19CFCEAF40561DAD6EDBB00E337682E5FE13EE4`）完整原入口实际越过Ammo/全部六种Sky及屋顶阴阳/Scatter七行及16seed/父矩阵与点击/动作阶段/原版跑跳射手。固定9手自然窗口实际9次允许及Shoot、29箭、9弹药、1箭/1事件真伤34、首伤world81，272总更新/每箭最多120不因命中提前结束；合法代表不计自然分母。其后NPC初始横坐标850的严格几何负例通过，847正例首伤9与绝对ReceiveTick等式通过；退出原因是本次适配新增断言误把连续浮点NPC位置与整数伤害框作.15近似比较，不是原伤害或时钟失败。原版Damage先临时加netOffset再读整数Hitbox，NpcTrajectoryPoint同样明确整型截断；后继只改为对应ReceiveTick四条整数边逐项相等，没有增加epsilon。
 
 `combat-aim-parent-05-integer-receive.log`（SHA256 `845DA0385EDD2ED779CAF50B75324980E5F20D2252B397818D51126458EB44F4`）使用BASE已存在的显式ordinary selector，实际通过剩余父族：四矩阵/点击释放/动作发布与退休/跑跳/850几何负例/847真实Damage9及精确接收框/失败锁存与恢复、实例与generation、致命异常、缺格保护和cursor。它是局部反馈，不改签完整Aim。BASE已有ordinary selector保留，最终Related累计明确清除此环境变量并核完整Sky/Scatter执行；最终整批执行/有效复用与资格仍以提交后回执为准。此维护终点不新增瞄准算法、自动开火或生产观察设施，普通包和换装继续等待必要累计与独审准入。
+## 本批交付收口：代码增量通过独审，整体资格失败，未制作包或换装
+
+移动源码候选固定为 `d5ff6e70c8b18fffe7b08dde084f0adca29b54c6`；后继仅证据文档提交身份见Issue最终回执。原独审的完整BASE与逐次增量，以及 `increment-d5ff6e7-aim.md`，代码/测试增量结论PASS且无新增P0/P1/P2；不等于整批工程准入。
+
+最终Related05从BASE运行，201必要项实际88项执行通过、0复用，88项sidecar均STABLE；native-CombatEffectsCpu在NativeCombatEffectChecks:134的row91完整Contact非空要求失败，112项未运行。正式整体状态FAILED，完整Aim/Control/Mechanics已实际通过的稳定回执不被抹去。原batch `eb135def78d24bda95f2c5f46b112dcd`、执行/失败日志及资格文件原样保存在 `.local/movement-assists-20261019/cumulative05-checkpoints/`；FAILED顶层构建记录另存 `cumulative05-build-record.json`。逐项失败/未运行表 `cumulative05-failed-summary.json` SHA256 `BE773DFE011A76A623525C83DD01E187A7335B42A19037B0B9C54534D706D59E`；88稳定资格索引 `cumulative05-stability-addendum.json` SHA256 `AA1F3FB45511A06DAB40E6B50CF7BEB99DB135328929112D89694D6C6BDE427E`。05日志SHA256 `FE8D4F0D5D0A45B0975B7E5DE243FA3149703920832611A33CBE39128A4DA0AC`。
+
+Effects完整只读范围原件 `effects-readonly-scope-20261019.md` SHA256 `27FD3E648A9313AC9FA0E09DB171735E95C6AF4B2684378F9A5B616491BB2A84`：本叶13行中6条走可空Contact的代表solution、7条仍专用完整Contact；首91旧门与7a8f18入口结构不相容，但没有该行真实solution/Enhanced/Reachability见证，不能据此称当前准备成功。至少本叶及9个下游叶涉及多机制已退出的一般完整root合同，不能只换getter闭合。默认派发84叶+FiniteTail11与文本84处Contact读取是不同统计，均不等于已证84缺陷。Root裁决停止这批范围扩张：不改Effects期待或武器生产、不加观察设施，保全部RED/稳定单项/未运行事实，另行明确测试合同迁移才可继续。
+
+普通完整Release候选包、本批轻量备份、Restore、Install全部未执行，没有替代窄包或旧Stage借用。既有安装未被本批操作；此前同目标只读回执核到 `01aa9eb8f58aeecdf8a0ec2fffc0f441b4d27aed`，并保留正规原包Restore入口。安装阻塞为必要累计未通过，不是已证明移动代码故障或已通过所有剩余检查。体验卡 `scripts/phase0s/Movement-Assists-Owner-Test-Card.zh-CN.md` 仅供后续合格新包；当前旧安装不能据此体验本批新功能。Issue126与DraftPR127保持OPEN/Draft，无merge、Tag/Release或版本推进。
