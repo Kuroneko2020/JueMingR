@@ -23,6 +23,7 @@ function Read-AimStageDevelopment {
     $relative=$full.Substring($repository.Length).Replace('\','/')
     $null=Read-AimStageArtifact $Root ([pscustomobject]@{path=$relative;length=(Get-Item -LiteralPath $full).Length;sha256=(Get-WorkloadFileHash -LiteralPath $full).Hash})
     $record=Read-WorkloadJson $Path
+    if($null -ne $record -and $record.schema -cin @('view-unlock-development-20261018-1','view-cache-range-development-20261018-1')){return Read-ViewUnlockDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -ceq 'journey-menu-development-20261018-1'){return Read-JourneyMenuDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -ceq 'hidden-entry-development-20261018-1'){return Read-HiddenEntryDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -ceq 'footprints-200h-development-20261017-1'){return Read-Footprints200HourDevelopment $Root $Path $Identity $InputIdentity $record $relative}
@@ -880,4 +881,94 @@ function Read-JourneyMenuDevelopment {
     if((@($Record.detectionFiles.path | Sort-Object) -join '|') -cne (@($consumers | Sort-Object) -join '|')){throw 'Journey menu detection consumer set mismatch.'}
     foreach($entry in $Record.detectionFiles){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'Journey menu detection bytes changed.'}}
     return [ordered]@{status='STAGE_DEVELOPMENT';mode='ExplicitJourneyMenu20261018';fullQualification='INCOMPLETE';releaseEligible=$false;productBase=$base;recordPath=$Relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;necessaryScopes=$required;limits=@($Record.limits);checkCount=$required.Count}
+}
+
+# Only #124's fixed VIEW delta and reviewed evidence may enter the existing
+# complete ContinuousProcessing development package. Default qualification,
+# Release compilation, package members and installation admission stay owned
+# by their existing callers; this reader never signs full qualification.
+function Read-ViewUnlockDevelopment {
+    param([string] $Root,[string] $Path,$Identity,$InputIdentity,$Record,[string] $Relative)
+    $base='8bba8ffd2d24591e9efb1258ae0eac1e1d7d60df'
+    $range=$Record.schema -ceq 'view-cache-range-development-20261018-1'
+    $authorization=if($range){'owner-issue124-view-cache-range-20261018'}else{'owner-issue124-view-unlock-20261018'}
+    if($Record.authorization -cne $authorization -or $Record.productBase -cne $base -or
+        $Record.candidateCommit -cne $Identity.commit -or $Record.sourceFingerprint -cne $Identity.fingerprint -or
+        $Record.inputFingerprint -cne $InputIdentity.fingerprint -or $Record.fullQualification -cne 'INCOMPLETE' -or
+        $Record.releaseEligible -ne $false -or $null -eq $Record.PSObject.Properties['openFailures'] -or @($Record.openFailures).Count){throw 'View unlock candidate/evidence lock mismatch or unresolved failure.'}
+    $retained=if($null -ne $script:WorkloadRetainedAssets){@($script:WorkloadRetainedAssets.files.path)}else{@()}
+    if(@((Get-WorkloadChanges $Root 'HEAD').paths | Where-Object {$_ -cnotin $retained}).Count){throw 'View unlock candidate has uncommitted inputs.'}
+    & git -C $Root merge-base --is-ancestor $base $Identity.commit
+    if($LASTEXITCODE -ne 0){throw 'View unlock candidate lost its accepted base.'}
+    if($range){
+        $continuation='3ea1ba69a89b7c075d874fb395fdf7b82daff640'
+        if($Record.continuationBase -cne $continuation){throw 'View range continuation base mismatch.'}
+        & git -C $Root merge-base --is-ancestor $continuation $Identity.commit
+        if($LASTEXITCODE -ne 0){throw 'View range candidate lost its delivered VIEW base.'}
+    }
+    $allowed=@(
+        'src/JueMingR.Features/View/ViewPreferenceCodec.cs',
+        'src/JueMingR.Features/WorldObjectText/WorldObjectDiscovery.cs','src/JueMingR.Features/WorldTargets/WorldTargetFeature.cs',
+        'src/JueMingR.TerrariaHost/Combat/CombatSelection.cs','src/JueMingR.TerrariaHost/Input/HostInputState.cs',
+        'src/JueMingR.TerrariaHost/F5/F5Layout.cs','src/JueMingR.TerrariaHost/F5/F5Renderer.cs',
+        'src/JueMingR.TerrariaHost/F5/F5Shell.cs','src/JueMingR.TerrariaHost/F5/ViewControls.cs',
+        'src/JueMingR.TerrariaHost/View/HostView.cs','src/JueMingR.TerrariaHost/View/ViewHooks.cs',
+        'src/JueMingR.TerrariaHost/View/ViewBackgroundScope.cs','src/JueMingR.TerrariaHost/View/ViewSectionRequests.cs',
+        'src/JueMingR.TerrariaHost/View/ViewLegacyCapacity.cs','src/JueMingR.TerrariaHost/View/ViewNpcCulling.cs',
+        'src/JueMingR.TerrariaHost/View/ViewSceneCapture.cs','src/JueMingR.TerrariaHost/View/ViewWaterResources.cs',
+        'src/JueMingR.TerrariaHost/Phase0SLoadChainHost.cs',
+        'tests/JueMingR.ArchitectureTests/CheckCatalog.cs','tests/JueMingR.ArchitectureTests/Phase0TArchitectureChecks.cs',
+        'tests/JueMingR.ArchitectureTests/ViewPreferenceChecks.cs','tests/Phase0U/ViewControlChecks.cs',
+        'tests/Phase0SFixtureTerraria/Phase0SFixtureTerraria.csproj','tests/Phase0SFixtureTerraria/Program.cs',
+        'tests/NativeWorldTextProbe/NativeChecks.cs','tests/NativeWorldTextProbe/NativeViewCombatChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewNetworkChecks.cs','tests/NativeWorldTextProbe/NativeViewOriginalChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewNpcChecks.cs','tests/NativeWorldTextProbe/NativeViewFilterChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewFailureChecks.cs','tests/NativeWorldTextProbe/NativeViewWaterChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewWaterFailureChecks.cs',
+        'scripts/test-world-object-text.ps1','scripts/workload/AimStage.Development.ps1',
+        'scripts/workload/Workload.Definitions.ps1','scripts/workload/Workload.Support.ps1',
+        'docs/README.md','docs/功能介绍/功能索引.md','docs/功能介绍/玩家使用指南.md',
+        'docs/功能介绍/视距解锁行为合同.md','docs/设计/视距解锁实现设计.md',
+        'docs/设计/可重复构建与项目骨架.md','review-materials/view-unlock-20261018/evidence.md')
+    if($range){$allowed+=@(
+        'src/JueMingR.TerrariaHost/View/ViewZoom.cs','src/JueMingR.TerrariaHost/View/ViewOptions.cs',
+        'src/JueMingR.TerrariaHost/View/ViewTileCache.cs','src/JueMingR.TerrariaHost/View/ViewCacheMemory.cs',
+        'src/JueMingR.TerrariaHost/View/ViewNativeCoverage.cs',
+        'tests/NativeWorldTextProbe/NativeViewCacheRangeChecks.cs','tests/NativeWorldTextProbe/NativeViewRangeConsumerChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewRangeOptionsChecks.cs','tests/NativeWorldTextProbe/NativeViewCacheLifecycleChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewCacheCostChecks.cs','tests/NativeWorldTextProbe/NativeViewWaterRouteChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewForcedViewportChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewNativeRouteChecks.cs','tests/NativeWorldTextProbe/NativeViewCacheCopyChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewCacheRepairChecks.cs',
+        'tests/NativeWorldTextProbe/NativeViewZoomSpeedChecks.cs',
+        'scripts/build-phase0s-validation-package.ps1','scripts/phase0s/Continuous-Processing-Owner-Test-Card.zh-CN.md',
+        'docs/AI经验笔记/输入捕获与坐标域.md')}
+    $changed=@(Invoke-WorkloadGit $Root @('diff','--name-only','--no-renames',$base,$Identity.commit,'--') | Sort-Object)
+    if(@($changed | Where-Object {$_ -cnotin $allowed}).Count -or
+        (@($Record.revisions.path | Sort-Object) -join '|') -cne ($changed -join '|')){throw 'View unlock revision scope mismatch.'}
+    foreach($entry in $Record.revisions){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'View unlock revision bytes changed.'}}
+    $required=@('build-structure','view-ui-preferences','native-view-input-rendering','native-view-light-effects-lifecycle','view-combat-world-consumers','native-view-network','view-costs','package-entry-contract')
+    if((@($Record.checks.name | Sort-Object) -join '|') -cne (@($required | Sort-Object) -join '|')){throw 'View unlock necessary scopes missing/duplicated.'}
+    foreach($check in $Record.checks){
+        if($check.exit -ne 0 -or $check.disposition -cnotin @('CURRENT','REVIEWED_REUSE') -or -not $check.scope -or -not $check.applicability -or @($check.artifacts).Count -eq 0){throw 'Invalid view unlock scoped evidence.'}
+        foreach($artifact in $check.artifacts){$null=Read-AimStageArtifact $Root $artifact}
+    }
+    if(@($Record.reviews).Count -eq 0 -or @($Record.limits).Count -eq 0 -or $null -eq $Record.PSObject.Properties['failureDispositions']){throw 'View unlock independent review, failure dispositions or limits missing.'}
+    foreach($failure in $Record.failureDispositions){
+        if($failure.disposition -cnotin @('PRODUCT_FIXED','TEST_CORRECTED','ENVIRONMENT_LIMITATION') -or -not $failure.cause -or -not $failure.resolution -or @($failure.artifacts).Count -eq 0){throw 'Unresolved view unlock failure.'}
+        foreach($artifact in $failure.artifacts){$null=Read-AimStageArtifact $Root $artifact}
+    }
+    foreach($review in $Record.reviews){
+        if($review.result -cne 'APPROVED_FOR_STAGE' -or $review.sourceFingerprint -cne $Identity.fingerprint -or -not $review.coverage){throw 'View unlock independent review identity mismatch.'}
+        $null=Read-AimStageArtifact $Root $review.artifact
+    }
+    if($Record.admission.result -cne 'READY_FOR_PACKAGE' -or $Record.admission.sourceFingerprint -cne $Identity.fingerprint){throw 'View unlock coordinator admission missing.'}
+    $null=Read-AimStageArtifact $Root $Record.admission.artifact
+    $debug=Read-WorkloadJson (Join-Path $Root 'artifacts/build/Debug/build-record.json')
+    if(-not (Test-WorkloadBuildMatch $Root $debug $Identity $InputIdentity)){throw 'View unlock Debug detection build changed.'}
+    $consumers=@('artifacts/build/Debug/checks/bin/NativeWorldTextProbe/x86/Debug/net472/NativeWorldTextProbe.exe')
+    foreach($project in @('Platform','Features','Infrastructure','TerrariaHost','ArchitectureTests')){$consumers+=('artifacts/build/Debug/work/bin/JueMingR.'+$project+'/x86/Debug/net472/JueMingR.'+$project+'.'+$(if($project -ceq 'ArchitectureTests'){'exe'}else{'dll'}))}
+    if((@($Record.detectionFiles.path | Sort-Object) -join '|') -cne (@($consumers | Sort-Object) -join '|')){throw 'View unlock detection consumer set mismatch.'}
+    foreach($entry in $Record.detectionFiles){if((Get-WorkloadFileHash -LiteralPath (Join-Path $Root $entry.path)).Hash -cne $entry.sha256){throw 'View unlock detection bytes changed.'}}
+    return [ordered]@{status='STAGE_DEVELOPMENT';mode=$(if($range){'ExplicitViewCacheRange20261018'}else{'ExplicitViewUnlock20261018'});fullQualification='INCOMPLETE';releaseEligible=$false;productBase=$base;recordPath=$Relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;necessaryScopes=$required;limits=@($Record.limits);checkCount=$required.Count}
 }

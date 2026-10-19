@@ -7,8 +7,8 @@ namespace JueMingR.Features.WorldObjectText
 {
     public struct WorldObjectTextCandidate { public WorldObject Value; public string Text; }
 
-    // One frozen tile pass and one spatial-history pass. Small camera motion
-    // changes ranking immediately, but cannot repeatedly restart discovery.
+    // One frozen tile pass and one spatial-history pass. Motion and zoom change
+    // ranking immediately, but cannot repeatedly restart intersecting discovery.
     public sealed class WorldObjectDiscovery
     {
         private readonly IWorldObjectSource source;
@@ -66,8 +66,17 @@ namespace JueMingR.Features.WorldObjectText
             if (!chests && !signs && !tombstones) { Clear(); return; }
             WorldObjectView view;
             if (!source.TryBegin(chests, signs || tombstones, out view) || view.Discovery.Width > 1024 || view.Discovery.Height > 1024) { Clear(); return; }
-            View = view; var area = view.Discovery;
-            bool restart = pass.Width == 0 || pass.ReadRevision != area.ReadRevision || pass.GeometryRevision != area.GeometryRevision || !pass.Intersects(area);
+            var area = view.Discovery;
+            // A different viewport may make formerly inkless constrained text
+            // presentable. Drop only that layout rejection, not scan progress
+            // or already requalified objects in the intersecting view.
+            if (View.Discovery.GeometryRevision != area.GeometryRevision) InvalidateTextLayout();
+            View = view;
+            // A new source or disjoint view invalidates the pass. A changing
+            // camera matrix only changes its viewport; finish useful overlap
+            // with the same budget, then scan the latest exposed area. Current
+            // objects still requalify below, including unknown client cells.
+            bool restart = pass.Width == 0 || pass.ReadRevision != area.ReadRevision || !pass.Intersects(area);
             if (restart) { Clear(); pass = area; }
             foreach (var selection in selections) selection.SetView(view.Visible, view.PlayerX, view.PlayerY);
             // Cold qualification has its own eight slots. A full queue pauses
