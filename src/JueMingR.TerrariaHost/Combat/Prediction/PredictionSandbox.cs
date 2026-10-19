@@ -94,6 +94,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // A malformed request may fail before reading its asset pages.
             // Only metadata discovered by this request may ask for a new page.
             NativeAssetSnapshot.ResetFailure();
+            using(playerMotion.UseRestoredProfiles())
             using(var input=new MemoryStream(bytes,false))using(var reader=new BinaryReader(input,Encoding.UTF8,true))
             {
                 if(reader.ReadInt32()!=PredictionWire.Protocol)throw new InvalidDataException("Protocol mismatch.");

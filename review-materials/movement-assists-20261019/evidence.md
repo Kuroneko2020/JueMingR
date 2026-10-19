@@ -47,3 +47,23 @@ original01夹具将全部角色inactive后等待Session，自阻塞；在等待�
 真实物理焦点/IME/所有者手感、长期FPS、真实多人客户端/权威结果尚未验；SendData入口不是网络同步闭环。独审、正式普通完整Release候选包、受控一次备份换装待对应准入，当前没有新包/安装成功结论。恢复体验入口见[体验卡](../../scripts/phase0s/Movement-Assists-Owner-Test-Card.zh-CN.md)。
 
 四项外来资产保持：tracked `docs/设计/本地参考资料使用说明.md`，untracked `.workbuddy/memory/2026-10-03.md`、`issue112.txt`、`pr113.json`。哈希声明 `.local/movement-assists-20261019/approved-retained-assets.json`，沿现有合法通道：`clean=false/releaseEligible=false`，提交本任务源码后仅这四项保留，不借旧Stage例外，不伪造clean。禁止合并/关闭/Tag/Release/版本推进。
+
+## 独审修复与当前累计阻塞
+
+原冻结 `7475454` 的独审原件为 `.local/movement-independent-review-20261019/review-7475454.md`，三项P2和累计失败保持历史身份。R1为精确比较后端恢复Profile后再次编码读取live Jump owner；新增请求/准确Player对象scope、正常/异常清理及仍占用receiver重入拒绝。Complex每帧按当前Mechanism与恢复意图重算，不能冻结初始dashDelay派生结果。`jump-cpu-08-thread-allocation.log`实际通过8组合初/后继完整alignment、直接及A→B→A重入/异常/clone/下一请求反控、348原版stage及4×20000同步helper零分配。`snapshot-review-01.log`与`worker-player-review-01.log`分别通过完整快照/codec/age/前缀以及独立worker玩家推进。最终累计仍须绑定提交后的新Wire叶；旧06/11的git-ls-files来源清单不包含当时未跟踪的新叶，不能补签为完整来源清单。
+
+Jump07在wire通过后，旧helper把AppDomain全线程分配误称自身同步分配，steady=8192失败。修订以实际CLR一次绑定线程计数、明确64B对象正控（实际76B）、严格steady==0，AppDomain另列且不归因；08实际观察一窗线程0而域级8192。保留07失败，不追填8192的具体线程/调用栈来源，不扩大为整Main零分配。
+
+R2/R3由 `original-11-mode-retirement.log` 完整Main/UI专项证明。Host SHA256 `1A14904328C036EBC4502C6DA14E62E15D911BAA21562A9B53509A4B198B7339`，执行Probe `3A1926844B13D10AA8752502E232104B69CD1CD710C442478FE1765148AF8A92`，日志SHA256 `6BD27126C43665F8398A0F345C85BF47415D497FFFC71A2387F921795AFCEDD7`。两模式真实热键开/关带实际/前态模式；关闭状态F5改模式不Clear旧结果而立即退休旧提示，F5自身静默。后续仅R1占用guard及测试维护，不冒称Main11执行了后来的所有源码。
+
+R3的Main10/11原件均保留：`movement-dash-pairs.csv`每轮4对反序，原生F19人工/辅助各暖32（1次发动）+测240（4次发动），冷却[-1,20]、火箭7/太阳0及速度/位置逐帧相同；每臂总960测量更新/16次实际发动。`movement-fixed-hook-pairs.csv`每臂4×96=384测量更新，暖32、无动作，只撤装三个自有Movement Hook owner，Session/input/prefs/其它Hook仍在，非重建BASE。Main11 Dash update辅助-minus-人工为 `+.069619,-.152039,+.056699,+.031098ms`，Hook安装-minus-撤除为 `+.029664,-.104639,+.027415,-.337573ms`；Main10 Dash四负而Hook四正，不能以均值或负值宣称提速/零成本。每block均值/p50/p95/max、分配与GC0/1/2见原log，逐帧原CSV和原尖峰不删除；有限重算导航 `performance-review-pairs.json`。
+
+累计03在NpcRollingCpu首个旧TerrainBounds期待退出1。准确引入链为917a531统一越界拒绝测试，f50646b/#115生产改原版nativeClip/FreeBody后未同步；BASE→本批相关生产diff为空，f506新增42个free例未盖colliding边缘。Boundary维护实际Derpling177/58×44，10干空气边缘加6实体/水/蜂蜜碰撞oracle，保留player/projectile/非法几何/缺格/重采样/4096限额；Collision scratch及Dust/random实例finally归还。其后ShortPrefix同源迁移缺漏：f506 World改消费Host.DisplayPath当轮租约，旧测试只source.Prepare，66870f3只改引用期待。真实owner修订在rolling04/05实际取得同帧sample/lease、CanDraw true、strokes2，未知格无未来/死亡退休、独立strict reader通过；严格reader使用独立slot2，避免真实Attack合法释放其slot1。旧strokes0具体gate未采到，保持未知。
+
+Rolling05把连续呈现消费接到当前DisplayPath、完整身份/当轮lease/有限age及World同引用；原始Source另列，剩余future扣实际age，quality只在fresh源采样并记录缺源/非当帧跳过和非零样本门。当前候选缺租约ABI拒绝，认证历史f8路线保留其直接Cache合同。CPU不签Draw；当前固定绘制只能在真实121点当帧冻结事实反复Draw，不能cache.Publish或私填租约冒充历史frozen128比较。图形固定绘制新分支尚未执行。
+
+`rolling-cpu-05-display-consumer.log`（SHA256 `6F855233BD8E08AF24768CECD2447B4979846FE928743F5CD4CB27CA7B0B7CF0`）完整执行11场1478更新，原Frozen f8数值门保持后报7场RED：stable180/180可见但剩余60步137；hornet-open360/360可见但60步300；guardian-A-select-B合法90/选中79/可见76/最长11。原summary/actors/updates/red均保留。门的现行适用性正在按正式合同核对，当前不降门、不改生产、不签最终累计。独审增量、普通包和安全换装仍待必要准入。
+
+后继已按现行权威完成维护：正式[战斗合同](../../docs/功能介绍/战斗辅助行为合同.md)的2026-10-17更新接受有用短未来、不以恢复约两秒长尾验收；[阶段当前入口](../../docs/计划/辅助瞄准阶段文档.md)接受保留最新接续、不追所有NPC零空档，且实际普通冷首5/8GUC不承诺T+2/T+3。旧门最初确实适用于普通rolling候选，不能说它只属exact/native；后继替代也不来自单纯取消毫秒预算。当前候选保留全部原数值与预定B分母为 `rolling-historical-f8-reference-red.txt`，真实身份/租约/有限age/World同引用、未知/死亡/OFF/独立需求和整场完全未取得或未显示B继续硬检查；认证历史f8路线仍按其旧拒绝门，不改署旧结果。
+
+`rolling-cpu-06-current-contract.log`（SHA256 `E80F09FF5CDBE8ED973FA6B4AB1030247AC000CDFEDE91FFFCA1F89E64DFB0BD`）完成11场1478更新并通过当前声明scope，原各统计及历史RED仍落盘。新增有限CPU `rolling-selection-geometry.csv`（SHA256 `6E5518E7E32E48662FB1E43505EDD442FD50F7D838799B4ADE627846A1A64DBF`）见证guardian frame43–53/GUC381–391：A16/B17都具接收资格、各受击框到RealMouse的d²均0，候选数2，实际/独立首位均16，符合平局低slot；11帧不是World无线或错误选择。3个B已选而未显示的单帧和其它真实空档仍保留，不泛化为零空档。`rolling-negative-01-current-contract.log`实际两场360更新：gun-B合法180/选中0/显示0/最长180仍被硬拒绝，专项期待此真实拒绝而PASS，不能靠缩小分母变绿。最终提交后的累计与原独审增量尚待完成。

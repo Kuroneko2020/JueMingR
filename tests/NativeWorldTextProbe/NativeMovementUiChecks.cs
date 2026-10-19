@@ -92,7 +92,8 @@ namespace NativeWorldTextProbe
                     h.Frame(Keys.LeftControl, key); h.Frame(Keys.LeftControl, key); h.Frame(); h.Frame();
                     Require((bool)Call(movement, "IsEnabled", feature) != before, "real mapped saved hotkey toggles exact feature " + feature);
                     var feedback = Get(context, "ShortFeedback");
-                    Require(NativeShortFeedbackChecks.Has(feedback, names[feature] + ((bool)Call(movement, "IsEnabled", feature) ? " 已开启" : " 已关闭")), "real toggle has standard state feedback");
+                    Require(NativeShortFeedbackChecks.Has(feedback, names[feature] + (feature == 1 ? "（双击）" : "") + ((bool)Call(movement, "IsEnabled", feature) ? " 已开启" : " 已关闭")), "real toggle has standard state and current-mode feedback");
+                    if (feature == 1) ModeReceipts(h, movement, feedback, key);
                     h.Open(); h.Navigate(11);
                 }
                 if (!(bool)Call(movement, "IsEnabled", 2)) h.ClickCommand("MovementTeleportOn");
@@ -155,6 +156,32 @@ namespace NativeWorldTextProbe
             Console.WriteLine("MOVEMENT UI OWNER " + label + " allowed=" + allowed + " native-limit-calls=" + calls);
         }
         private static void InWorldJump(Player __instance) { onJump?.Invoke(__instance); }
+        private static void ModeReceipts(Frames frames, object movement, object feedback, Keys key)
+        {
+            foreach (string mode in new[] { "Hold", "DoubleTap" })
+            {
+                frames.Open(); frames.Navigate(11); Call(feedback, "Clear");
+                if (Get(movement, "DashMode").ToString() != mode) frames.ClickCommand("MovementDashMode");
+                frames.ClickCommand("MovementDashOn"); frames.ClickCommand("MovementDashOff");
+                Require((int)Get(feedback, "Count") == 0, "ordinary F5 mode/ON/OFF clicks remain silent");
+                Call(Get(frames, "shell"), "CloseAndSubmitPosition"); frames.Frame(); frames.Frame();
+                string detail = mode == "Hold" ? "按住" : "双击";
+                foreach (bool on in new[] { true, false })
+                {
+                    Call(feedback, "Clear");
+                    frames.Frame(Keys.LeftControl, key); frames.Frame(Keys.LeftControl, key); frames.Frame(); frames.Frame();
+                    Require((bool)Call(movement, "IsEnabled", 1) == on && Get(movement, "DashMode").ToString() == mode,
+                        "real shared dash key toggles enabled and retains selected mode " + mode);
+                    Require(NativeShortFeedbackChecks.Has(feedback, "连续冲刺（" + detail + "）" + (on ? " 已开启" : " 已关闭")),
+                        "real enabled/disabled receipt uses effective/prior mode " + mode);
+                }
+                // Do not clear or replace the OFF result: the actual mode
+                // command must retire it through the existing display owner.
+                frames.Open(); frames.Navigate(11); frames.ClickCommand("MovementDashMode");
+                Require(!(bool)Call(movement, "IsEnabled", 1) && (int)Get(feedback, "Count") == 0,
+                    "Changing mode while OFF retires the old mode receipt without publishing an F5 result");
+            }
+        }
         private static void Columns(Frames frames)
         {
             object mode = Get(frames.Command("MovementDashMode"), "Rect"), on = Get(frames.Command("MovementDashOn"), "Rect"), off = Get(frames.Command("MovementDashOff"), "Rect");

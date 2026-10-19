@@ -7,6 +7,7 @@ function Get-WorkloadLeafChecks {
     $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
     $leaves = @{
         'tests/NativeWorldTextProbe/NativeMovementJumpChecks.cs'=@('native-MovementJumpCpu')
+        'tests/NativeWorldTextProbe/NativeMovementJumpWireChecks.cs'=@('native-MovementJumpCpu')
         'tests/NativeWorldTextProbe/NativeMovementDashChecks.cs'=@('native-MovementDashCpu')
         'tests/NativeWorldTextProbe/NativeTeleportMovementChecks.cs'=@('native-MovementTeleportCpu')
         'tests/NativeWorldTextProbe/NativeMovementUiChecks.cs'=@('native-MovementOriginal')

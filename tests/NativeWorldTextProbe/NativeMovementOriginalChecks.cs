@@ -11,6 +11,7 @@ using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Terraria;
 using Terraria.ID;
+using Terraria.GameInput;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -70,6 +71,8 @@ namespace NativeWorldTextProbe
                 Measure(context,movement,input,world,draw,output,"carpet",0);
                 Measure(context,movement,input,world,draw,output,"coexist",0);
                 IdlePairs(context,movement,input,world,draw,output);
+                DashCostPairs(context,movement,input,world,draw,output);
+                FixedHookCostPairs(context,movement,input,world,draw,output);
                 Require(!Main.LocalPlayer.autoJump,"Auxiliary jump never leaves an equipment autoJump attribute behind.");
                 NativeMovementDashChecks.Mapped(context,input,world);
                 NativeMovementUiChecks.Run(game,context,input,draw,output,pointer);
@@ -269,6 +272,116 @@ namespace NativeWorldTextProbe
             // Keep every pair and sign. No fixed percentage threshold or a
             // single favorable mean can turn these scene data into a PASS.
             Console.WriteLine("MOVEMENT SETTLED IDLE on-minus-off update-ms="+String.Join(",",updateDiff)+" full-frame-ms="+String.Join(",",frameDiff)+" status=MEASURED-not-universal-performance-acceptance");
+        }
+        private sealed class CostBlock
+        {
+            internal double[] Update,Frame;
+            internal long[] Bytes;
+            internal int[] Delay,Rocket,Shields;
+            internal float[] Vx,X;
+            internal int Starts,WarmStarts,Gc0,Gc1,Gc2;
+        }
+        private static CostBlock CostSample(object movement,Action<Keys[]> input,Action world,Action draw,bool dash,bool assist,int count)
+        {
+            const int warm=32;
+            SetEnabled(movement,0,false);SetEnabled(movement,1,assist);SetEnabled(movement,2,false);SettlePreferences(movement);
+            Main.dayTime=true;Main.time=24000;
+            foreach(var dust in Main.dust)if(dust!=null)dust.active=false;
+            foreach(var gore in Main.gore)if(gore!=null)gore.active=false;
+            var p=ResetPlayer();if(dash)p.armor[3].SetDefaults(ItemID.Tabi);
+            input(None);input(None);world();world();
+            var right=new[]{Keys.D};var nativeDash=new[]{Keys.D,Keys.F19};
+            var result=new CostBlock{Update=new double[count],Frame=new double[count],Bytes=new long[count],Delay=new int[count],Rocket=new int[count],Shields=new int[count],Vx=new float[count],X=new float[count]};
+            int gc0=0,gc1=0,gc2=0;
+            for(int k=-warm;k<count;k++)
+            {
+                if(k==0){gc0=GC.CollectionCount(0);gc1=GC.CollectionCount(1);gc2=GC.CollectionCount(2);}
+                // The manual comparator uses a real mapped native Dash key,
+                // never a velocity/cooldown/resource write. Two identical
+                // native input opportunities expose the final key state in
+                // BOTH arms; cadence is selected before the measured chain.
+                Keys[] keys=!dash?None:!assist && p.dashDelay==0 && p.releaseDash?nativeDash:right;
+                int beforeDelay=p.dashDelay;
+                long allocated=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize,start=Stopwatch.GetTimestamp();
+                input(keys);input(keys);long before=Stopwatch.GetTimestamp();world();long after=Stopwatch.GetTimestamp();draw();long end=Stopwatch.GetTimestamp();
+                long bytes=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize-allocated;
+                bool launched=beforeDelay==0 && p.dashDelay<0;
+                if(k<0){if(launched)result.WarmStarts++;continue;}
+                if(launched)result.Starts++;
+                result.Update[k]=(after-before)*1000.0/Stopwatch.Frequency;result.Frame[k]=(end-start)*1000.0/Stopwatch.Frequency;result.Bytes[k]=bytes;
+                result.Delay[k]=p.dashDelay;result.Rocket[k]=p.rocketTime;result.Shields[k]=p.solarShields;result.Vx[k]=p.velocity.X;result.X[k]=p.position.X;
+                Require(!p.dead && p.position.X<Main.maxTilesX*16-64,"Owned paired scene remains alive inside native world");
+            }
+            result.Gc0=GC.CollectionCount(0)-gc0;result.Gc1=GC.CollectionCount(1)-gc1;result.Gc2=GC.CollectionCount(2)-gc2;
+            return result;
+        }
+        private static void WriteCost(StreamWriter log,string label,int pair,int order,CostBlock block)
+        {
+            for(int k=0;k<block.Update.Length;k++)log.WriteLine(label+","+pair+","+order+","+k+","+block.Update[k]+","+block.Frame[k]+","+block.Bytes[k]+","+block.Delay[k]+","+block.Vx[k]+","+block.X[k]+","+block.Rocket[k]+","+block.Shields[k]);
+            Console.WriteLine("MOVEMENT PAIRED COST label="+label+" pair="+pair+" order="+order+" warm=32 measured="+block.Update.Length+" warmLaunches="+block.WarmStarts+" measuredLaunches="+block.Starts+" cooldownRange="+block.Delay.Min()+":"+block.Delay.Max()+" rocketRange="+block.Rocket.Min()+":"+block.Rocket.Max()+" solarRange="+block.Shields.Min()+":"+block.Shields.Max()+" allocated="+block.Bytes.Sum()+" gc="+block.Gc0+","+block.Gc1+","+block.Gc2+" update="+Distribution(block.Update)+" two-native-input-world-draw="+Distribution(block.Frame));
+        }
+        private static void DashCostPairs(object context,object movement,Action<Keys[]> input,Action world,Action draw,string output)
+        {
+            var configuration=PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard];var binding=configuration.KeyStatus["Dash"];
+            object oldMode=Get(movement,"DashMode");configuration.KeyStatus["Dash"]=new List<string>{Keys.F19.ToString()};
+            try
+            {
+                Call(movement,"SetDashMode",JueMingR.Features.Movement.ContinuousDashMode.Hold);
+                using(var log=new StreamWriter(Path.Combine(output,"movement-dash-pairs.csv")))
+                {
+                    log.WriteLine("label,pair,order,step,updateMs,twoInputWorldDrawMs,allocated,dashDelay,vx,x,rocketTime,solarShields");
+                    for(int pair=0;pair<4;pair++)
+                    {
+                        var blocks=new CostBlock[2];
+                        for(int order=0;order<2;order++)
+                        {
+                            int index=pair%2==0?order:1-order;
+                            blocks[index]=CostSample(movement,input,world,draw,true,index==1,240);
+                            WriteCost(log,index==1?"assist-dash":"manual-native-dash",pair,order,blocks[index]);
+                        }
+                        var manual=blocks[0];var assisted=blocks[1];
+                        Require(manual.Starts>=2 && manual.Starts==assisted.Starts && manual.WarmStarts==assisted.WarmStarts,"Actual repeated native dash launch denominators match");
+                        Require(manual.Delay.SequenceEqual(assisted.Delay) && manual.Rocket.SequenceEqual(assisted.Rocket) && manual.Shields.SequenceEqual(assisted.Shields),"Real original cooldown/resource traces match at each measured update");
+                        for(int k=0;k<manual.Vx.Length;k++)Require(Math.Abs(manual.Vx[k]-assisted.Vx[k])<.003f && Math.Abs(manual.X[k]-assisted.X[k])<.003f,"Equivalent mapped native/assisted movement trace step="+k);
+                        Console.WriteLine("MOVEMENT DASH PAIR pair="+pair+" actualLaunches="+manual.Starts+" cooldownAndResourceTraceEqual=true update-on-minus-manual="+(assisted.Update.Average()-manual.Update.Average())+" full-on-minus-manual="+(assisted.Frame.Average()-manual.Frame.Average())+" status=MEASURED-not-universal-performance-acceptance");
+                    }
+                }
+            }
+            finally{configuration.KeyStatus["Dash"]=binding;SetEnabled(movement,1,false);Call(movement,"SetDashMode",oldMode);input(None);input(None);}
+        }
+        private static void FixedHookCostPairs(object context,object movement,Action<Keys[]> input,Action world,Action draw,string output)
+        {
+            var assembly=movement.GetType().Assembly;var shared=assembly.GetType("JueMingR.TerrariaHost.Movement.MovementHooks");var teleport=assembly.GetType("JueMingR.TerrariaHost.Movement.TeleportHooks");
+            var dash=Get(movement,"DashHost");object permission=teleport.GetField("canCorrect",F).GetValue(null),report=teleport.GetField("reportFailure",F).GetValue(null);bool installed=true;
+            Action<bool> hooks=enabled=>
+            {
+                if(enabled==installed)return;
+                if(enabled)
+                {
+                    shared.GetMethod("Install",F).Invoke(null,new[]{movement});Call(dash,"Install");
+                    Require((bool)teleport.GetMethod("TryInstall",F).Invoke(null,new[]{permission,report}),"Restore exact owned teleport permission and error delegate");
+                }
+                else{Call(movement,"OnSessionEnded");teleport.GetMethod("Uninstall",F).Invoke(null,null);Call(dash,"Uninstall");shared.GetMethod("Uninstall",F).Invoke(null,new[]{movement});}
+                installed=enabled;
+            };
+            try
+            {
+                SetEnabled(movement,0,false);SetEnabled(movement,1,false);SetEnabled(movement,2,false);SettlePreferences(movement);
+                using(var log=new StreamWriter(Path.Combine(output,"movement-fixed-hook-pairs.csv")))
+                {
+                    log.WriteLine("label,pair,order,step,updateMs,twoInputWorldDrawMs,allocated,dashDelay,vx,x,rocketTime,solarShields");
+                    for(int pair=0;pair<4;pair++)for(int order=0;order<2;order++)
+                    {
+                        bool enabled=(pair%2==0?order:1-order)==1;hooks(enabled);
+                        var patch=Harmony.GetPatchInfo(typeof(Player).GetMethod("Update",F,null,new[]{typeof(int)},null));
+                        Require((patch!=null && patch.Owners.Contains("JueMingR.Movement.Input1458"))==enabled,"Same-byte installed/removed hook arm uses actual owned patch state");
+                        var block=CostSample(movement,input,world,draw,false,false,96);WriteCost(log,enabled?"all-off-hooks-installed":"all-off-movement-hooks-removed",pair,order,block);
+                        Require(block.Starts==0,"Both fixed-hook arms are actually idle");
+                    }
+                }
+                Console.WriteLine("MOVEMENT FIXED HOOK COST same loaded assemblies; only three owned Movement hook owners toggled; Session/input/prefs and all other hooks remain; NOT a rebuilt BASE comparison");
+            }
+            finally{hooks(true);}
         }
         private static string Distribution(double[] values)
         {var sorted=values.OrderBy(x=>x).ToArray();return "mean:"+sorted.Average()+"/p50:"+sorted[sorted.Length/2]+"/p95:"+sorted[(int)((sorted.Length-1)*.95)]+"/max:"+sorted[sorted.Length-1];}

@@ -12,37 +12,83 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     {
         private struct Profile { internal bool Complex,AssistedJump; internal float DefaultGravity; }
         private readonly Profile[] profiles=new Profile[Main.maxPlayers];
+        private readonly Player[] restoredPlayers=new Player[Main.maxPlayers];
+        private int restoring;
+        [ThreadStatic] private static NativePlayerMotion restored;
         internal int Quality { get; private set; }
         internal static int Mechanism(Player p)
         {return (p.mount.Active?1:0)|(p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0?2:0)|(p.pulley?4:0)|(p.sitting.isSitting?8:0)|(p.dashDelay<0?16:0)|(p.wingTime>0 && p.controlJump?32:0)|(p.shimmering?64:0)|(p.tongued?128:0);}
         private static bool SupportedHover(Player p)
         {return p.mount.Active && (p.mount.Type==Terraria.ID.MountID.WitchBroom || p.mount.Type==5) && !p.CCed && !p.pulley && !p.shimmering && !p.tongued && (p.grappling==null || p.grappling.Length==0 || p.grappling[0]<0);}
-        internal static bool Conditional(Player p){return Mechanism(p)!=0 && !SupportedHover(p) || AssistedComplex(p);}
-        private static bool AssistedComplex(Player p)
+        internal static bool Conditional(Player p){var profile=Premise(p);return Mechanism(p)!=0 && !SupportedHover(p) || AssistedComplex(p,profile.AssistedJump);}
+        private static bool AssistedComplex(Player p,bool assisted)
         {
-            long version;
-            return Movement.MovementJumpHost.ReadIntent(p,out version) && (p.mount.Active || p.rocketBoots>0 || p.wingsLogic>0 || p.carpet ||
+            return assisted && (p.mount.Active || p.rocketBoots>0 || p.wingsLogic>0 || p.carpet ||
                 p.hasJumpOption_Cloud || p.hasJumpOption_Sandstorm || p.hasJumpOption_Blizzard || p.hasJumpOption_Fart || p.hasJumpOption_Sail ||
                 p.hasJumpOption_Unicorn || p.hasJumpOption_Santank || p.hasJumpOption_WallOfFleshGoat || p.hasJumpOption_Basilisk);
         }
         internal static void Write(BinaryWriter writer,Player player)
         {
+            var profile=Premise(player);
             // The native sentinel is grappling[0]; unused trailing capacity may
             // contain zero and does not mean projectile slot 0 is attached.
-            writer.Write(Mechanism(player)!=0 || AssistedComplex(player));
+            // Complex in the decoded profile qualifies the motor at capture.
+            // Alignment re-encoding derives it from THIS frame's mechanism;
+            // only intent/default gravity need the restored owning source.
+            writer.Write(Mechanism(player)!=0 || AssistedComplex(player,profile.AssistedJump));
             // jumpSpeed is a shared scratch field last written by whichever
             // player updated last. Never treat it as this player's observation.
-            writer.Write(Player.defaultGravity);
-            long version;writer.Write(Movement.MovementJumpHost.ReadIntent(player,out version));
+            writer.Write(profile.DefaultGravity);
+            writer.Write(profile.AssistedJump);
+        }
+        private static Profile Premise(Player player)
+        {
+            if(restored!=null)
+            {
+                int slot=player.whoAmI;
+                if(slot<0 || slot>=restored.profiles.Length || !ReferenceEquals(restored.restoredPlayers[slot],player))throw new InvalidDataException("Player movement profile identity.");
+                return restored.profiles[slot];
+            }
+            long version;bool assisted=Movement.MovementJumpHost.ReadIntent(player,out version);
+            return new Profile{DefaultGravity=Player.defaultGravity,AssistedJump=assisted};
         }
         internal void Read(BinaryReader reader,int slot)
         {
             var profile=new Profile{Complex=reader.ReadBoolean(),DefaultGravity=reader.ReadSingle(),AssistedJump=reader.ReadBoolean()};
             if(!Finite(profile.DefaultGravity) || profile.DefaultGravity<0 || profile.DefaultGravity>128)throw new InvalidDataException("Player gravity premise.");
             profiles[slot]=profile;
+            restoredPlayers[slot]=Main.player[slot];
+        }
+        // Alignment and native impact proofs re-encode player premises after
+        // restoration. For this request only, their source is the frozen page,
+        // never the live input owner (which does not exist in the worker).
+        // Exact object binding prevents a same-slot clone or later live player
+        // from borrowing that page. Different nested receivers restore the
+        // prior scope. Instance occupancy spans the whole nesting lifetime:
+        // A -> B -> A must refuse before clearing A's still-owned outer page.
+        internal IDisposable UseRestoredProfiles(){return new RestoredScope(this);}
+        private sealed class RestoredScope : IDisposable
+        {
+            private NativePlayerMotion owner;
+            private readonly NativePlayerMotion prior;
+            internal RestoredScope(NativePlayerMotion value)
+            {
+                owner=value;prior=restored;
+                if(System.Threading.Interlocked.CompareExchange(ref owner.restoring,1,0)!=0)throw new InvalidOperationException("Player movement receiver reentry.");
+                try{owner.Clear();restored=owner;}
+                catch{System.Threading.Volatile.Write(ref owner.restoring,0);throw;}
+            }
+            public void Dispose()
+            {
+                if(owner==null)return;
+                if(!ReferenceEquals(restored,owner))throw new InvalidOperationException("Player movement profile scope order.");
+                restored=prior;
+                try{owner.Clear();}
+                finally{System.Threading.Volatile.Write(ref owner.restoring,0);owner=null;}
+            }
         }
         internal void Begin(){Quality=0;}
-        internal void Clear(){Array.Clear(profiles,0,profiles.Length);Quality=0;}
+        internal void Clear(){Array.Clear(profiles,0,profiles.Length);Array.Clear(restoredPlayers,0,restoredPlayers.Length);Quality=0;}
         internal void Advance()
         {
             using(NativeRandomSnapshot.Use("UpdatePlayers"))

@@ -33,6 +33,7 @@ namespace JueMingR.TerrariaHost.Movement
         internal Func<bool> CanMovementInput, CanTeleportPointer;
         internal readonly MovementJumpHost JumpHost = new MovementJumpHost();
         internal readonly ContinuousDashHost DashHost;
+        public event Action DashModeChanged;
         internal MovementOptions Value { get { return preferences.Snapshot.Value; } }
         internal MovementSession(string directory, SingleFeatureRuntime runtime, HostInputState input)
         {
@@ -61,7 +62,15 @@ namespace JueMingR.TerrariaHost.Movement
             return true;
         }
         public bool SetDashMode(ContinuousDashMode value)
-        { if (!ControlsEnabled || !preferences.Set(Value.WithMode(value))) return false; DashHost.Reset(); return true; }
+        {
+            var before = Value.DashMode;
+            if (!ControlsEnabled || !preferences.Set(Value.WithMode(value))) return false;
+            DashHost.Reset();
+            // OFF is still a separately selected mode. Retire an earlier
+            // hotkey result without changing its binary enabled semantics.
+            if (before != value) DashModeChanged?.Invoke();
+            return true;
+        }
         private void ResetIntent() { intentVersion++; DashHost.Reset(); JumpHost.Cancel(); }
         internal bool BeginUpdate(Player value)
         {

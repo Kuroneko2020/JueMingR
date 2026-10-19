@@ -100,6 +100,7 @@ namespace NativeWorldTextProbe
                 Begin(jump,rocket,++cases);Before(jump,rocket);rocket.JumpMovement();Call(jump,"AfterJump",rocket,true,true,false);
                 Require(rocket.rocketRelease && !rocket.canRocket && rocket.rocketTime==7,"Late rocket release does not falsify earlier canRocket or consume fuel.");Call(jump,"EndUpdate",rocket);Require(!rocket.rocketRelease,"Temporary rocket release closes after the full update.");
                 InputTakeover(context,type);cases+=2;
+                NativeMovementJumpWireChecks.Run(context);
                 HelperWorkload(type);
                 Console.WriteLine("PASS MOVEMENT JUMP original JumpMovement family/span/state cases="+cases+"; stage-consumer evidence only");
             }
@@ -153,28 +154,36 @@ namespace NativeWorldTextProbe
             var before=(Action<Player,bool,bool,bool,bool,long>)Delegate.CreateDelegate(typeof(Action<Player,bool,bool,bool,bool,long>),host,type.GetMethod("BeforeJump",Flags));
             var after=(Action<Player,bool,bool,bool>)Delegate.CreateDelegate(typeof(Action<Player,bool,bool,bool>),host,type.GetMethod("AfterJump",Flags));
             var end=(Action<Player>)Delegate.CreateDelegate(typeof(Action<Player>),host,type.GetMethod("EndUpdate",Flags));
+            var allocationMethod=typeof(GC).GetMethod("GetAllocatedBytesForCurrentThread",BindingFlags.Static|BindingFlags.Public);
+            Require(allocationMethod!=null,"The actual CLR must expose the synchronous helper thread's allocation counter.");
+            var threadAllocated=(Func<long>)Delegate.CreateDelegate(typeof(Func<long>),allocationMethod);
+            long controlStart=threadAllocated();var control=new byte[64];long controlBytes=threadAllocated()-controlStart;GC.KeepAlive(control);
+            Require(controlBytes>=64,"Thread allocation counter detects a deliberate managed allocation.");
+            Console.WriteLine("MOVEMENT HELPER allocation-counter=current-thread positive-control-bytes="+controlBytes+" domain-side-counter=retained-not-attributed");
             AppDomain.MonitoringIsEnabled=true;long tick=0;
             foreach(int scenario in new[]{0,1,2,3})
             {
                 var p=Local();p.velocity.Y=scenario==3?0:1;
                 for(int i=0;i<256;i++){begin(p,2,++tick,1);before(p,scenario!=0,true,scenario>=2,false,1);after(p,true,scenario>=2,false);end(p);}
-                long allocated=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;
-                int supplied=0;var clock=System.Diagnostics.Stopwatch.StartNew();
+                int supplied=0;var clock=new System.Diagnostics.Stopwatch();
+                long domainStart=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize,allocated=threadAllocated();clock.Start();
                 for(int i=0;i<20000;i++)
                 {
                     begin(p,2,++tick,1);before(p,scenario!=0,true,scenario>=2,false,1);
                     if(p.releaseJump)supplied++;
                     after(p,true,scenario>=2,false);end(p);
                 }
-                clock.Stop();long bytes=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize-allocated;
-                // Stopwatch is allocated once after the measurement boundary;
-                // remove that harness object by taking a second stable window.
-                allocated=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;
+                clock.Stop();long bytes=threadAllocated()-allocated,domainBytes=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize-domainStart;
+                // Only these synchronous strong-delegate calls belong to this
+                // helper's allocation claim. Preference/UI workers share the
+                // AppDomain: retain that aggregate separately, without assigning
+                // a domain increment to this thread or relaxing its zero gate.
+                domainStart=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;allocated=threadAllocated();
                 for(int i=0;i<20000;i++){begin(p,2,++tick,1);before(p,scenario!=0,true,scenario>=2,false,1);after(p,true,scenario>=2,false);end(p);}
-                long steady=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize-allocated;
-                Require(steady==0,"Steady own helper has no new managed objects scenario="+scenario+" bytes="+steady);
+                long steady=threadAllocated()-allocated,domainSteady=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize-domainStart;
+                Require(steady==0,"Steady synchronous helper thread has no new managed objects scenario="+scenario+" bytes="+steady);
                 Require(supplied==(scenario==3?20000:0),"Only native ground opportunity receives repeated per-update contributions.");
-                Console.WriteLine("MOVEMENT HELPER scenario="+scenario+" iterations=20000 supplied="+supplied+" measured-ms="+clock.Elapsed.TotalMilliseconds+" warm-window-allocated="+bytes+" steady-allocated="+steady+" scope=helper-only-not-FPS");
+                Console.WriteLine("MOVEMENT HELPER scenario="+scenario+" iterations=20000 supplied="+supplied+" measured-ms="+clock.Elapsed.TotalMilliseconds+" warm-window-allocated="+bytes+" steady-allocated="+steady+" allocation=current-thread domain-warm-allocated="+domainBytes+" domain-steady-allocated="+domainSteady+" scope=helper-only-not-FPS");
             }
             Call(host,"ClearSession");
         }

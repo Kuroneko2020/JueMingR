@@ -7,6 +7,7 @@ namespace JueMingR.TerrariaHost.F5
 {
     internal interface IMovementControls
     {
+        event Action DashModeChanged;
         bool ControlsEnabled { get; }
         bool Available(int feature);
         bool IsEnabled(int feature);
