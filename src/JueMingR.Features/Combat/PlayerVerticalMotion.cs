@@ -55,6 +55,9 @@ namespace JueMingR.Features.Combat
             }
             if(p.HoldJump)
             {
+                // The sampled intent adds only the ordinary native release
+                // premise; a forecast never acquires the live Jump writer.
+                if(p.AssistedJump && !p.Down && p.Jump<=0 && (p.Vy==0 || p.Wet && p.Flipper && !p.Cart))p.ReleaseJump=true;
                 if(p.Jump>0)
                 {
                     if(p.Vy==0)p.Jump=0;

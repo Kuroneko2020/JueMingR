@@ -10,26 +10,34 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     // tile destruction or new input edges. Geometry remains the original game.
     internal sealed class NativePlayerMotion
     {
-        private struct Profile { internal bool Complex; internal float DefaultGravity; }
+        private struct Profile { internal bool Complex,AssistedJump; internal float DefaultGravity; }
         private readonly Profile[] profiles=new Profile[Main.maxPlayers];
         internal int Quality { get; private set; }
         internal static int Mechanism(Player p)
         {return (p.mount.Active?1:0)|(p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0?2:0)|(p.pulley?4:0)|(p.sitting.isSitting?8:0)|(p.dashDelay<0?16:0)|(p.wingTime>0 && p.controlJump?32:0)|(p.shimmering?64:0)|(p.tongued?128:0);}
         private static bool SupportedHover(Player p)
         {return p.mount.Active && (p.mount.Type==Terraria.ID.MountID.WitchBroom || p.mount.Type==5) && !p.CCed && !p.pulley && !p.shimmering && !p.tongued && (p.grappling==null || p.grappling.Length==0 || p.grappling[0]<0);}
-        internal static bool Conditional(Player p){return Mechanism(p)!=0 && !SupportedHover(p);}
+        internal static bool Conditional(Player p){return Mechanism(p)!=0 && !SupportedHover(p) || AssistedComplex(p);}
+        private static bool AssistedComplex(Player p)
+        {
+            long version;
+            return Movement.MovementJumpHost.ReadIntent(p,out version) && (p.mount.Active || p.rocketBoots>0 || p.wingsLogic>0 || p.carpet ||
+                p.hasJumpOption_Cloud || p.hasJumpOption_Sandstorm || p.hasJumpOption_Blizzard || p.hasJumpOption_Fart || p.hasJumpOption_Sail ||
+                p.hasJumpOption_Unicorn || p.hasJumpOption_Santank || p.hasJumpOption_WallOfFleshGoat || p.hasJumpOption_Basilisk);
+        }
         internal static void Write(BinaryWriter writer,Player player)
         {
             // The native sentinel is grappling[0]; unused trailing capacity may
             // contain zero and does not mean projectile slot 0 is attached.
-            writer.Write(Mechanism(player)!=0);
+            writer.Write(Mechanism(player)!=0 || AssistedComplex(player));
             // jumpSpeed is a shared scratch field last written by whichever
             // player updated last. Never treat it as this player's observation.
             writer.Write(Player.defaultGravity);
+            long version;writer.Write(Movement.MovementJumpHost.ReadIntent(player,out version));
         }
         internal void Read(BinaryReader reader,int slot)
         {
-            var profile=new Profile{Complex=reader.ReadBoolean(),DefaultGravity=reader.ReadSingle()};
+            var profile=new Profile{Complex=reader.ReadBoolean(),DefaultGravity=reader.ReadSingle(),AssistedJump=reader.ReadBoolean()};
             if(!Finite(profile.DefaultGravity) || profile.DefaultGravity<0 || profile.DefaultGravity>128)throw new InvalidDataException("Player gravity premise.");
             profiles[slot]=profile;
         }
@@ -141,6 +149,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 bool justJumped=false;
                 if(p.controlJump)
                 {
+                    if(profile.AssistedJump && !p.controlDown && p.jump<=0 && (p.velocity.Y==0 || p.wet && p.accFlipper && !cart))p.releaseJump=true;
                     if(p.jump>0){if(p.velocity.Y==0)p.jump=0;else{p.velocity.Y=-jumpSpeed*p.gravDir;if(p.merman && !cart){if(p.swimTime<=10)p.swimTime=30;}else p.jump--;}}
                     else if((p.velocity.Y==0 || p.wet && p.accFlipper && !cart) && (p.releaseJump || p.autoJump && p.velocity.Y==0)){p.velocity.Y=-jumpSpeed*p.gravDir;p.jump=jumpHeight;justJumped=true;if(p.wet && p.accFlipper && p.swimTime==0)p.swimTime=30;}
                     p.releaseJump=false;

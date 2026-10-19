@@ -1,4 +1,4 @@
-﻿# One maintained definition supplies both selection and evidence projection.
+# One maintained definition supplies both selection and evidence projection.
 # Unknown/shared inputs stay conservative; compile identity is separate.
 function Get-WorkloadLeafChecks {
     # Hand-opening/navigation owners are consumed by the attack preparation,
@@ -6,6 +6,11 @@ function Get-WorkloadLeafChecks {
     # entries still own Navigation/AttackCosts; the children remain specialists.
     $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
     $leaves = @{
+        'tests/NativeWorldTextProbe/NativeMovementJumpChecks.cs'=@('native-MovementJumpCpu')
+        'tests/NativeWorldTextProbe/NativeMovementDashChecks.cs'=@('native-MovementDashCpu')
+        'tests/NativeWorldTextProbe/NativeTeleportMovementChecks.cs'=@('native-MovementTeleportCpu')
+        'tests/NativeWorldTextProbe/NativeMovementUiChecks.cs'=@('native-MovementOriginal')
+        'tests/NativeWorldTextProbe/NativeMovementOriginalChecks.cs'=@('native-MovementOriginal')
         'tests/NativeWorldTextProbe/NativeViewCombatChecks.cs'=@('native-ViewCombatCpu')
         'tests/NativeWorldTextProbe/NativeViewRangeConsumerChecks.cs'=@('native-ViewRangeConsumerCpu')
         'tests/NativeWorldTextProbe/NativeViewZoomSpeedChecks.cs'=@('native-ViewZoomSpeedCpu')
@@ -266,6 +271,9 @@ function Get-WorkloadNativeScopes {
     # in test-world-object-text. Impact/AimUi/Visual need matching real Content
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
+        'MovementJumpCpu'=@('movement-host');
+        'MovementDashCpu'=@('movement-host');
+        'MovementTeleportCpu'=@('movement-host');
         'ViewZoomSpeedCpu'=@('view-host');
         'ViewCombatCpu'=@('view-host');
         'ViewRangeConsumerCpu'=@('view-host');

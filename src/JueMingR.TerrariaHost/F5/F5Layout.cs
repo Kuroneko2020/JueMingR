@@ -39,7 +39,8 @@ namespace JueMingR.TerrariaHost.F5
         CombatReportOn, CombatReportOff, CombatGoblinOn, CombatGoblinOff, CombatInterval,
         ObservationPolicy,ObservationCenter,ObservationDummy,ObservationRadius,
         ObservationCollisionOn,ObservationCollisionOff,ObservationPathOn,ObservationPathOff,ObservationMarker,ObservationAimOn,ObservationAimOff,
-        EnableViewUnlock, DisableViewUnlock }
+        EnableViewUnlock, DisableViewUnlock,
+        MovementJumpOn, MovementJumpOff, MovementDashOn, MovementDashOff, MovementTeleportOn, MovementTeleportOff, MovementDashMode }
 
     internal sealed class F5Element
     {
@@ -79,6 +80,9 @@ namespace JueMingR.TerrariaHost.F5
         internal void SetHiddenFeaturesVisible(bool value) { hiddenVisible = value; }
         private Features.Combat.ObservationOptions observation=new Features.Combat.ObservationOptions();
         private int observationRevision,builtObservationRevision;
+        private Features.Movement.ContinuousDashMode movementMode, builtMovementMode;
+        internal bool MovementAttached;
+        internal void SetMovementMode(Features.Movement.ContinuousDashMode value) { movementMode = value; }
         internal void SetObservationOptions(Features.Combat.ObservationOptions value)
         {
             if(observation.ClearLine!=value.ClearLine || observation.MouseCenter!=value.MouseCenter || observation.Dummy!=value.Dummy || observation.Marker!=value.Marker || observation.Aim!=value.Aim)observationRevision++;
@@ -140,7 +144,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal bool Matches(float width, float height, float scale, int currentPage)
-        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 1 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
+        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 11 || builtMovementMode == movementMode) && (currentPage != 1 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
 
         internal void Ensure(float width, float height, float scale, int currentPage,
             object font, Func<string, F5Size> measureText)
@@ -198,6 +202,8 @@ namespace JueMingR.TerrariaHost.F5
             if (currentPage == 2) MapControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) FootprintControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) AnnouncementControls.AddRows(elements, TextSize, ref y);
+            if (currentPage == 11 && MovementAttached) MovementControls.AddRows(elements, TextSize, ref y, movementMode);
+            builtMovementMode = movementMode;
             ContentHeight = Math.Max(0, y - 6);
             screenWidth = width; screenHeight = height; uiScale = scale; page = currentPage;
             builtInformationRevision = informationRevision;
