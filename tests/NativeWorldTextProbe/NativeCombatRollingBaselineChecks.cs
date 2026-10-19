@@ -333,6 +333,10 @@ namespace NativeWorldTextProbe
         {
             // Finite CPU evidence after the real Runtime/Shell selection pass,
             // outside the measured step. No mouse, target or lease is written.
+            // Distance + low-slot ties are the inherited BASE implementation,
+            // not a certification of behavior-contract:97 (which says retain
+            // the current target on ties). Keep that discrepancy explicit;
+            // this movement task does not repair the selection algorithm.
             if(rows.Count>180)throw new InvalidOperationException("Finite nearest-selection witness overflow.");
             var type=selection.GetType();var receives=type.GetMethod("Receives",Flags);var bounds=type.GetMethod("ReceiveBounds",Flags);var candidate=type.GetMethod("Candidate",Flags);
             var options=(ObservationOptions)Get(host,"Options");var mouse=(Vector2)Get(selection,"RealMouse");bool hasMouse=(bool)Get(selection,"HasMouse");
@@ -345,7 +349,7 @@ namespace NativeWorldTextProbe
             var first=ranked.Count==0?null:ranked[0].Item2;var second=ranked.Count<2?null:ranked[1].Item2;
             var actualFirst=(NPC)candidate.Invoke(selection,new object[]{0});var actualSecond=(NPC)candidate.Invoke(selection,new object[]{1});var aNpc=Main.npc[aSlot];var bNpc=Main.npc[bSlot];
             rows.Add(Csv(phase,frame,Main.GameUpdateCount,hasMouse,mouse.X,mouse.Y,hasTarget?actual.Slot:-1,actualFirst?.whoAmI??-1,actualSecond?.whoAmI??-1,Get(selection,"CandidateCount"),aNpc.position,aNpc.netOffset,aNpc.width,aNpc.height,eligible(aNpc),box(aNpc),distance(aNpc),bNpc.position,bNpc.netOffset,bNpc.width,bNpc.height,eligible(bNpc),box(bNpc),distance(bNpc),first?.whoAmI??-1,second?.whoAmI??-1,ranked.Count,"after-real-runtime-and-shell"));
-            if(!options.MouseCenter || options.ClearLine || !hasMouse || !ReferenceEquals(first,actualFirst) || !ReferenceEquals(second,actualSecond) || ranked.Count!=(int)Get(selection,"CandidateCount") || (first==null?hasTarget:!hasTarget || !Matches(Actor(first),actual)))throw new InvalidOperationException("Actual guardian nearest selection disagrees with same-tick receiving geometry/ranking.");
+            if(!options.MouseCenter || options.ClearLine || !hasMouse || !ReferenceEquals(first,actualFirst) || !ReferenceEquals(second,actualSecond) || ranked.Count!=(int)Get(selection,"CandidateCount") || (first==null?hasTarget:!hasTarget || !Matches(Actor(first),actual)))throw new InvalidOperationException("Actual guardian selection changed from inherited BASE same-tick distance/low-slot ranking.");
         }
         private static void FixedLeaseDraw(object layer,ProbeGraphics graphics,NpcTrajectory path,Func<NpcTrajectory> prepared,Func<NpcTrajectory> display,List<string> costs)
         {

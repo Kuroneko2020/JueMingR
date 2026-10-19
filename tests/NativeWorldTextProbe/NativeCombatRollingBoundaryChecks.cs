@@ -26,16 +26,18 @@ namespace NativeWorldTextProbe
             // fixture reader uses its own slot so normal Host updates cannot
             // legitimately release or replace its demand.
             cache.Demand(0,1,120);cache.Demand(2,120);
-            var scratchDust=Main.dust;var scratchRandom=Main.rand;
-            bool scratchUp=Collision.up,scratchDown=Collision.down,scratchHoney=Collision.honey,scratchShimmer=Collision.shimmer;
+            var callerScratch=CollisionScratch.Capture();float callerDustCount=Dust.dCount;
             try
             {
-                Main.dust=new Dust[scratchDust.Length];for(int i=0;i<Main.dust.Length;i++)Main.dust[i]=new Dust();
-                Main.rand=new Terraria.Utilities.UnifiedRandom(917);
-                TerrainBounds(source,n);
+                // Exercise restoration from non-default ingress, rather than
+                // accidentally passing because native slope scratch is false.
+                Collision.up=Collision.down=Collision.honey=Collision.shimmer=Collision.stair=Collision.stairFall=Collision.sloping=true;
+                Dust.dCount=.625f;
+                var nondefault=CollisionScratch.Capture();RunBoundsOracle(source,n);
+                Require(nondefault.Same(CollisionScratch.Capture()) && Dust.dCount==.625f,"Oracle restores every original collision scratch flag and dust count from non-default ingress");
             }
-            finally{Main.dust=scratchDust;Main.rand=scratchRandom;Collision.up=scratchUp;Collision.down=scratchDown;Collision.honey=scratchHoney;Collision.shimmer=scratchShimmer;}
-            Require(ReferenceEquals(Main.dust,scratchDust) && ReferenceEquals(Main.rand,scratchRandom) && Collision.up==scratchUp && Collision.down==scratchDown && Collision.honey==scratchHoney && Collision.shimmer==scratchShimmer,"Native oracle returns owned dust/random and collision scratch");
+            finally{callerScratch.Restore();Dust.dCount=callerDustCount;}
+            Require(callerScratch.Same(CollisionScratch.Capture()) && Dust.dCount==callerDustCount,"Oracle non-default countercheck also returns its caller's exact scratch");
             var identity=new NpcIdentity((long)Get(host,"Session"),n,n.whoAmI,n.generation,n.type,n.netID);
             foreach(int effect in new[]{120,151,169,183,186,189,337,344,362,30,375,395,397})
             {
@@ -70,6 +72,32 @@ namespace NativeWorldTextProbe
             File.WriteAllText(Path.Combine(output,"rolling-boundaries.txt"),"PASS default owner, original AddBuff effects, same-type reset epoch, death, independent consumers");
         }
         private static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
+        private struct CollisionScratch
+        {
+            internal bool Up,Down,Honey,Shimmer,Stair,StairFall,Sloping;
+            internal static CollisionScratch Capture(){return new CollisionScratch{Up=Collision.up,Down=Collision.down,Honey=Collision.honey,Shimmer=Collision.shimmer,Stair=Collision.stair,StairFall=Collision.stairFall,Sloping=Collision.sloping};}
+            internal void Restore(){Collision.up=Up;Collision.down=Down;Collision.honey=Honey;Collision.shimmer=Shimmer;Collision.stair=Stair;Collision.stairFall=StairFall;Collision.sloping=Sloping;}
+            internal bool Same(CollisionScratch b){return Up==b.Up && Down==b.Down && Honey==b.Honey && Shimmer==b.Shimmer && Stair==b.Stair && StairFall==b.StairFall && Sloping==b.Sloping;}
+        }
+        private static void RunBoundsOracle(object source,NPC n)
+        {
+            var dust=Main.dust;var random=Main.rand;var scratch=CollisionScratch.Capture();float dustCount=Dust.dCount;Vector2 camera=Main.screenPosition;
+            try
+            {
+                Main.dust=new Dust[dust.Length];for(int i=0;i<Main.dust.Length;i++)Main.dust[i]=new Dust();
+                Main.rand=new Terraria.Utilities.UnifiedRandom(917);
+                // The controlled liquid-contact cells are visible, so native
+                // splash creation really reaches NewDust's dCount writer.
+                Main.screenPosition=Vector2.Zero;TerrainBounds(source,n);
+                Require(dustCount==.625f && Dust.dCount==0,"Original visible water/honey splash actually overwrites the non-default dust counter");
+            }
+            finally{Main.dust=dust;Main.rand=random;Dust.dCount=dustCount;Main.screenPosition=camera;scratch.Restore();}
+            // Exact Derpling UpdateCollision traverses WalkDownSlope, Tile/
+            // WetCollision and SlopeCollision. The latter additionally writes
+            // stair/stairFall/sloping; no unrelated global snapshot is needed.
+            Require(ReferenceEquals(Main.dust,dust) && ReferenceEquals(Main.rand,random) && Dust.dCount==dustCount && Main.screenPosition==camera && scratch.Same(CollisionScratch.Capture()),"Native oracle returns owned dust/random/count/camera and all seven collision scratch flags");
+            Console.WriteLine("ROLLING ORACLE CLEANUP nondefault-collision-flags=7 dustCount-ingress="+dustCount+" native-splash-write=0 restored=true camera/restored-dust-array/random=true");
+        }
         private static int clears;
         private static void ShortPrefix(object context,object host,object source,NpcPredictionCache cache,NPC n,NpcIdentity identity,Action step,string output)
         {
