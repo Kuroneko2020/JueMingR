@@ -71,19 +71,21 @@ namespace NativeWorldTextProbe
             try
             {
                 interruptRetry=false;retrySolves=0;
-                audit.Patch(attack.GetType().GetMethod("SolveOnTerrain",Flags),prefix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(BeforeRetrySolve)));
+                audit.Patch(attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostRepresentativeAttack",true).GetMethod("PrepareMotion",Flags),prefix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(BeforeRetrySolve)));
                 using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
                 {
-                    Require(Call(attack,"PreparePlan",retryPlan,published,phase) is AttackContact,"The same ordinary scene completes a normal contact before injecting interruption.");
-                    var realContact=(AttackContact)Get(retryPlan,"Contact");NpcTrajectory contactPrefix;
-                    Require(published.TryWindow(published.SampleTick,realContact.ReceiveTick+1,published.Version,out contactPrefix),"A real solved contact has a complete immutable prefix inside its native publication.");
-                    Call(retryPlan,"Clear");Require(Call(attack,"PreparePlan",retryPlan,contactPrefix,phase) is AttackContact,"The same ordinary contact completes on its actual shorter prefix.");
+                    Call(attack,"PreparePlan",retryPlan,published,phase);var real=NativeCombatAimChecks.ReadPlanSolution(attack,retryPlan);
+                    Require((bool)Get(retryPlan,"Prepared") && real.HasPoint && real.Reachability=="Reachable" && real.Timeline!=null && real.ReceiveTick>=real.FirstTick && real.ReceiveTick<real.Timeline.Count,"The same ordinary component completes a finite representative receive before interruption.");
+                    NpcTrajectory contactPrefix;
+                    Require(published.TryWindow(published.SampleTick,real.ReceiveTick+1,published.Version,out contactPrefix),"The actual receive has a complete immutable prefix inside its native publication.");
+                    Call(retryPlan,"Clear");Call(attack,"PreparePlan",retryPlan,contactPrefix,phase);var shorter=NativeCombatAimChecks.ReadPlanSolution(attack,retryPlan);
+                    Require((bool)Get(retryPlan,"Prepared") && shorter.HasPoint && shorter.Reachability=="Reachable" && shorter.ReceiveTick<contactPrefix.Count,"The representative completes on its actual shorter receive prefix.");
                     var borrow=attack.GetType().GetMethod("TryCandidatePresentationPrefix",Flags);var borrowArgs=new object[]{retryPlan,published,null};
-                    Require((bool)borrow.Invoke(null,borrowArgs) && AttackIntercept.Rebind((AttackContact)Get(retryPlan,"Contact"),(NpcTrajectory)borrowArgs[2])!=null,"A completed fresh candidate borrows the entire equal shorter prefix from a longer selected publication without another solve.");
-                    NpcTrajectory insufficient;Require(published.TryWindow(published.SampleTick,0,published.Version,out insufficient),"The selected publication also supplies an independently too-short view.");
-                    borrowArgs=new object[]{retryPlan,insufficient,null};Require(!(bool)borrow.Invoke(null,borrowArgs),"A shorter selected publication cannot borrow a longer candidate plan or its contact.");
-                    NpcTrajectory otherSample;Require(published.TryWindow(published.SampleTick+1,realContact.ReceiveTick,published.Version,out otherSample),"The original immutable publication can expose the next sample without a new capture.");
-                    borrowArgs=new object[]{retryPlan,otherSample,null};Require(!(bool)borrow.Invoke(null,borrowArgs),"A different sample never borrows the old candidate presentation even when its geometry stays equal.");
+                    Require((bool)borrow.Invoke(null,borrowArgs) && AttackIntercept.Equivalent(shorter.Timeline,(NpcTrajectory)borrowArgs[2]),"A completed candidate borrows its entire equal shorter prefix without another solve.");
+                    NpcTrajectory insufficient;Require(published.TryWindow(published.SampleTick,0,published.Version,out insufficient),"The publication supplies an independently too-short view.");
+                    borrowArgs=new object[]{retryPlan,insufficient,null};Require(!(bool)borrow.Invoke(null,borrowArgs),"A shorter selected publication cannot borrow the longer candidate coverage.");
+                    NpcTrajectory otherSample;Require(published.TryWindow(published.SampleTick+1,real.ReceiveTick,published.Version,out otherSample),"The immutable publication can expose the next sample without a new capture.");
+                    borrowArgs=new object[]{retryPlan,otherSample,null};Require(!(bool)borrow.Invoke(null,borrowArgs),"A different sample never borrows the old presentation even with equal geometry.");
                     var source=Get(host,"Prediction");var motionLease=Call(source,"FreezeCandidateTerrain",published);
                     Require(motionLease!=null && Call(source,"FreezeCandidateTerrain",contactPrefix)==null,"Only the exact currently owned Source publication can freeze its NPC-motion terrain; a derived view cannot claim scratch ownership.");
                     var presentationField=attack.GetType().GetField("candidatePresentationPlan",Flags);var priorPresentation=presentationField.GetValue(attack);
@@ -95,7 +97,7 @@ namespace NativeWorldTextProbe
                         int borrowedSolves=retrySolves;
                         host.GetType().GetMethod("CaptureDisplay",Flags,null,new[]{typeof(NpcTrajectory),motionLease.GetType()},null).Invoke(host,new[]{displayArgs[1],motionLease});
                         Call(host,"ValidateDisplay",(long)Main.GameUpdateCount);
-                        Require(ReferenceEquals(GetOptional(host,"DisplayPath"),displayArgs[1]) && retrySolves==borrowedSolves && ReferenceEquals(cache.Read(0),published) && GetOptional(attack,"ExpectedImpact")==null && GetOptional(attack,"ExpectedPreview")==null && !p.controlUseItem,"Publishing the completed NPC path performs zero hand solves, preserves the selected Source publication and grants neither input nor retired preview.");
+                        Require(ReferenceEquals(GetOptional(host,"DisplayPath"),displayArgs[1]) && retrySolves==borrowedSolves && ReferenceEquals(cache.Read(0),published) && !NativeCombatAimChecks.ReadSolution(attack).HasPoint && !(bool)Get(attack,"hasConsumedInput") && GetOptional(attack,"ExpectedPreview")==null && !p.controlUseItem,"Publishing the completed NPC path performs zero hand solves, preserves the selected Source publication and grants neither input nor retired preview.");
                     }
                     finally{presentationField.SetValue(attack,priorPresentation);Call(attack,"ClearPreview");}
                     Call(retryPlan,"Clear");interruptRetry=true;retrySolves=0;
@@ -107,19 +109,28 @@ namespace NativeWorldTextProbe
                     progressPlans.SetValue(retryPlan,progressKey);progressRequests[progressKey]=32;progressUnknown[progressKey]=true;progressSignificant[published.Identity.Slot]=false;
                     Require((int)Call(attack,"CandidateProgressRequired",published.Identity,progressKey,false)==32,"A budget-interrupted Plan retries its admitted request instead of doubling Source work before its missing solve.");
                     Require(ReferenceEquals(cache.Read(0),published) && !(bool)Get(attack,"Failed"),"The isolated plan interruption preserves Source's published prefix and does not record an attack fault.");
-                    Require(Call(attack,"PreparePlan",retryPlan,published,phase) is AttackContact && retrySolves>1,"The identical sample/phase/plan retries the real solve and recovers its contact.");
-                    int before=retrySolves;Require(Call(attack,"PreparePlan",retryPlan,published,phase) is AttackContact && retrySolves==before,"A completed contact still reuses the same legal solve.");
+                    Call(attack,"PreparePlan",retryPlan,published,phase);var recovered=NativeCombatAimChecks.ReadPlanSolution(attack,retryPlan);
+                    Require((bool)Get(retryPlan,"Prepared") && recovered.HasPoint && recovered.Reachability=="Reachable" && recovered.ReceiveTick==real.ReceiveTick && recovered.Point==real.Point && retrySolves>1,"The identical sample/phase retries the real finite preparation and recovers its result.");
+                    int before=retrySolves;Call(attack,"PreparePlan",retryPlan,published,phase);var repeated=NativeCombatAimChecks.ReadPlanSolution(attack,retryPlan);
+                    // The contract permits either a lawful equal-premise reuse or a
+                    // bounded recomputation. Neither zero nor positive work is
+                    // a required result of repeating this explicit component.
+                    Require((bool)Get(retryPlan,"Prepared") && repeated.HasPoint && repeated.Point==recovered.Point && repeated.ReceiveTick==recovered.ReceiveTick && AttackIntercept.Equivalent(repeated.Timeline,recovered.Timeline) && (bool)Get(Get(retryPlan,"Terrain"),"Unchanged") && (bool)Call(retryPlan,"PresentationMembersCurrent",p,0),"A repeated explicit preparation preserves the result and its actual sample/player/terrain premises, independently of lawful reuse.");
+                    Console.WriteLine("CANDIDATE repeated completed sample="+published.SampleTick+" receive="+repeated.ReceiveTick+" samePoint="+(repeated.Point==recovered.Point)+" actualPrepareMotionDelta="+(retrySolves-before)+" workCountIsNotASuccessPredicate=True");
                     Call(retryPlan,"Clear");for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(48,y,1);
-                    Require(Call(attack,"PreparePlan",retryPlan,published,phase)==null && (bool)Get(retryPlan,"Prepared"),"The real complete wall produces a completed ordinary miss.");
-                    before=retrySolves;Require(Call(attack,"PreparePlan",retryPlan,published,phase)==null && retrySolves==before,"A completed null still reuses its legal miss instead of replaying forever.");
+                    Call(attack,"PreparePlan",retryPlan,published,phase);var blocked=NativeCombatAimChecks.ReadPlanSolution(attack,retryPlan);
+                    Require((bool)Get(retryPlan,"Prepared") && blocked.HasPoint && blocked.Reachability=="Blocked" && blocked.ReceiveTick<0 && blocked.Contact==null,"The real complete wall blocks the finite representative without fabricating a complete-world miss.");
+                    Require((bool)Get(Get(retryPlan,"Terrain"),"Unchanged"),"The completed finite result retains its actual unchanged terrain lease.");
                     int fullFuture=published.Count-1;
-                    Require(fullFuture>32 && (bool)Call(attack,"CandidateMissCurrent",retryPlan,published.Identity,published.SampleTick,phase,fullFuture),"A genuine complete null can authorize the exact completed requested prefix.");
-                    NpcTrajectory shortPrefix;Require(published.TryWindow(published.SampleTick,32,published.Version,out shortPrefix),"The naturally published trajectory supplies a real shorter prefix.");
-                    Call(retryPlan,"Clear");Require(Call(attack,"PreparePlan",retryPlan,shortPrefix,phase)==null && (bool)Get(retryPlan,"Prepared"),"The shorter prefix also completes its real wall miss.");
-                    Require((bool)Call(attack,"CandidateMissCurrent",retryPlan,shortPrefix.Identity,shortPrefix.SampleTick,phase,32) && !(bool)Call(attack,"CandidateMissCurrent",retryPlan,shortPrefix.Identity,shortPrefix.SampleTick,phase,fullFuture),"A completed short miss cannot authorize a longer requested future.");
-                    Require((int)Call(attack,"CandidateProgressRequired",published.Identity,progressKey,false)==64,"A complete nonpaused requested-prefix miss may fairly extend its actual future.");
+                    Require(fullFuture>32 && !(bool)Call(attack,"CandidateMissCurrent",retryPlan,published.Identity,published.SampleTick,phase,fullFuture),"A Balanced finite block never authorizes an old complete-world miss lease.");
+                    NpcTrajectory shortPrefix;Require(published.TryWindow(published.SampleTick,32,published.Version,out shortPrefix),"The publication supplies the original shorter prefix.");
+                    Call(retryPlan,"Clear");Call(attack,"PreparePlan",retryPlan,shortPrefix,phase);var shortResult=NativeCombatAimChecks.ReadPlanSolution(attack,retryPlan);
+                    Require((bool)Get(retryPlan,"Prepared") && shortResult.Timeline!=null && shortResult.Timeline.Count==shortPrefix.Count && shortResult.Reachability!="Reachable" && shortResult.Contact==null,"The original shorter prefix completes only its finite blocked/unknown result.");
+                    Require(!(bool)Call(attack,"CandidateMissCurrent",retryPlan,shortPrefix.Identity,shortPrefix.SampleTick,phase,32) && !(bool)Call(attack,"CandidateMissCurrent",retryPlan,shortPrefix.Identity,shortPrefix.SampleTick,phase,fullFuture),"Neither short nor long requests may borrow a Balanced result as a complete-world miss.");
+                    int preferred=(int)Call(attack,"CandidatePreferred",published.Identity);
+                    Require((int)Call(attack,"CandidateProgressRequired",published.Identity,progressKey,false)==preferred && progressAttempts[progressKey]==priorProgressAttempt,"Finite representative progress uses its current preferred range without rewriting the fair attempt stamp.");
                     progressSignificant[published.Identity.Slot]=true;
-                    Require((int)Call(attack,"CandidateProgressRequired",published.Identity,progressKey,false)==64,"An unresolved significant queue ticket retains priority without resetting a completed short miss to its initial range forever.");
+                    Require((int)Call(attack,"CandidateProgressRequired",published.Identity,progressKey,false)==preferred && progressSignificant[published.Identity.Slot] && progressAttempts[progressKey]==priorProgressAttempt,"A significant unresolved queue ticket survives independently of the retired full-miss range rule.");
                     // The live fact-change detector clears the range once;
                     // its queue's significant priority is a separate lifetime.
                     progressRequests[progressKey]=0;progressSignificant[published.Identity.Slot]=true;
@@ -129,19 +140,25 @@ namespace NativeWorldTextProbe
                     // or live Source demand is manufactured for the window.
                     NativeQuickItemChecks.BeginWorldStep();NpcTrajectory agedWindow;
                     Require(published.TryWindow(Main.GameUpdateCount,fullFuture-1,published.Version,out agedWindow) && agedWindow.SampleTick!=agedWindow.CaptureTick,"The display window retains its older capture and has a shorter remaining future.");
-                    Call(retryPlan,"Clear");Require(Call(attack,"PreparePlan",retryPlan,agedWindow,phase)==null && (bool)Get(retryPlan,"Prepared"),"The aged conditional window completes a genuine display miss.");
+                    Call(retryPlan,"Clear");Call(attack,"PreparePlan",retryPlan,agedWindow,phase);var aged=NativeCombatAimChecks.ReadPlanSolution(attack,retryPlan);Require((bool)Get(retryPlan,"Prepared") && aged.Timeline!=null && aged.Timeline.SampleTick==agedWindow.SampleTick && aged.Contact==null && aged.Reachability!="Reachable","The aged conditional window retains only its own finite blocked/unknown result.");
                     Require(!(bool)Call(attack,"CandidateMissCurrent",retryPlan,agedWindow.Identity,agedWindow.SampleTick,phase,32) && !(bool)Call(attack,"CandidateMissCurrent",retryPlan,agedWindow.Identity,agedWindow.SampleTick,phase,fullFuture),"An aged display miss never authorizes a fresh candidate Source request.");
                 }
-                Console.WriteLine("PASS incomplete plan budget signal propagates, preserves Source, retries same sample/phase; complete null memoizes only its completed range, while short/aged display misses cannot authorize a fresh longer Source request.");
+                Console.WriteLine("PASS incomplete plan budget signal propagates, preserves Source, retries same sample/phase; finite Balanced results keep actual coverage/leases and fair range ownership; no full-world miss is fabricated.");
             }
             finally{progressPlans.SetValue(priorProgressPlan,progressKey);progressRequests[progressKey]=priorProgressRequest;progressUnknown[progressKey]=priorProgressUnknown;progressSignificant[published.Identity.Slot]=priorProgressSignificant;foreach(var method in audit.GetPatchedMethods().ToArray())audit.Unpatch(method,HarmonyPatchType.All,audit.Id);retryPlan=null;interruptRetry=false;NativeCombatObservationChecks.Save(host,new ObservationOptions());}
         }
         private static object stressAttack,stressPrediction;
         private static int stressFar,stressBirths,stressEnhanced,stressProjectile,stressLateContacts,stressFrame,stressBlockers,stressHandStarts,stressNearEnhanced;
         private static Player stressPlayer;private static uint stressInputTick,stressProposedTick;
-        private static bool stressPath,stressMoving;private static AttackContact stressOpeningContact,stressProposedContact;
-        private static void StressContactProposed(object __instance,AttackContact __0)
-        {if(ReferenceEquals(stressAttack,__instance)){stressProposedContact=__0;stressProposedTick=Main.GameUpdateCount;}}
+        private static bool stressPath,stressMoving;
+        private static NativeCombatAimChecks.SolutionFacts stressOpeningSolution,stressProposedSolution;
+        private static object stressOfferedWeapon;private static string stressOfferedPhase;
+        private static void StressSolutionOffered(object __instance,bool __result,object __3)
+        {
+            if(!ReferenceEquals(stressAttack,__instance) || !__result || Get(__3,"Kind").ToString()!="Enhanced")return;
+            stressProposedSolution=NativeCombatAimChecks.ReadSolution(__instance);stressProposedTick=Main.GameUpdateCount;
+            stressOfferedWeapon=Get(__3,"Weapon");stressOfferedPhase=Get(__3,"Phase").ToString();
+        }
         private static readonly List<string> stressConsumers=new List<string>();
         private static void StressEvaluated(object __instance,bool __2,int __4,int __5,bool __result)
         {
@@ -154,24 +171,22 @@ namespace NativeWorldTextProbe
         private static void StressRecorded(object __instance)
         {
             if(stressAttack==null || !ReferenceEquals(__instance,stressAttack))return;
-            stressOpeningContact=stressProposedTick==Main.GameUpdateCount?stressProposedContact:null;stressProposedContact=null;stressInputTick=Main.GameUpdateCount;
-            var input=Get(stressAttack,"consumedInput");var point=(Vector2)Get(input,"Point");if(Get(input,"Kind").ToString()!="Enhanced" || stressOpeningContact!=null && (!stressOpeningContact.Timeline.Identity.Equals((NpcIdentity)Get(input,"Target")) || point.X!=stressOpeningContact.AimX || point.Y!=stressOpeningContact.AimY))stressOpeningContact=null;
+            var offer=stressProposedSolution;var input=Get(stressAttack,"consumedInput");
+            bool match=stressProposedTick==Main.GameUpdateCount && (uint)Get(stressAttack,"prepared")==Main.GameUpdateCount && offer.HasPoint && offer.Timeline!=null && Get(input,"Kind").ToString()=="Enhanced" && ((NpcIdentity)Get(input,"Target")).Equals(offer.Timeline.Identity) && (Vector2)Get(input,"Point")==offer.Point && Get(input,"Phase").ToString()==stressOfferedPhase && offer.Phase==stressOfferedPhase && ReferenceEquals(Get(input,"Weapon"),stressOfferedWeapon) && ReferenceEquals(stressOfferedWeapon,stressPlayer.HeldItem) && GetOptional(input,"Source")==null;
+            stressOpeningSolution=match?offer:default(NativeCombatAimChecks.SolutionFacts);stressProposedSolution=default(NativeCombatAimChecks.SolutionFacts);stressInputTick=Main.GameUpdateCount;
         }
         private static void StressOpening(out int __state)
-        {
-            var contact=stressInputTick==Main.GameUpdateCount?stressOpeningContact:null;
-            __state=contact?.Tick??-1;
-        }
+        {__state=stressInputTick==Main.GameUpdateCount && stressOpeningSolution.HasPoint?stressOpeningSolution.NativeTick:-1;}
         private static void StressBorn(int __result,int __state)
         {
             if(stressAttack==null || __result<0 || __result>=Main.maxProjectiles || Main.projectile[__result].owner!=Main.myPlayer || Main.projectile[__result].type!=stressProjectile)return;
-            var input=Get(stressAttack,"consumedInput");var target=(NpcIdentity)Get(input,"Target");
-            var point=(Vector2)Get(input,"Point");bool receiptCurrent=stressInputTick==Main.GameUpdateCount && (bool)Get(stressAttack,"hasConsumedInput") && (uint)Get(stressAttack,"consumedInputStep")==Main.GameUpdateCount;
-            bool contactMatch=stressOpeningContact!=null && stressProposedTick==Main.GameUpdateCount && stressOpeningContact.Timeline.Identity.Equals(target) && point.X==stressOpeningContact.AimX && point.Y==stressOpeningContact.AimY && __state>=0 && __state==stressOpeningContact.Tick;
-            bool enhanced=receiptCurrent && contactMatch && Get(input,"Kind").ToString()=="Enhanced";
-            // Retain invalid observer rows, but a prior receipt or unmatched
-            // proposal never counts as this native birth's enhanced consumer.
-            stressConsumers.Add(string.Join(",",stressBlockers,stressPath,stressFrame,Main.GameUpdateCount,target.Slot,Get(input,"Kind"),Get(input,"Phase"),__state,stressOpeningContact?.Timeline.SampleTick??-1,stressOpeningContact?.Timeline.Count??0,Get(Get(stressPrediction,"rolling"),"resultPlayerAdvanced"),stressMoving,receiptCurrent,contactMatch,enhanced,stressInputTick,stressProposedTick));
+            var input=Get(stressAttack,"consumedInput");var target=(NpcIdentity)Get(input,"Target");var value=stressOpeningSolution;
+            bool receiptCurrent=stressInputTick==Main.GameUpdateCount && (bool)Get(stressAttack,"hasConsumedInput") && (uint)Get(stressAttack,"consumedInputStep")==Main.GameUpdateCount;
+            bool solutionMatch=value.HasPoint && value.Timeline!=null && stressProposedTick==Main.GameUpdateCount && value.Timeline.Identity.Equals(target) && (Vector2)Get(input,"Point")==value.Point && Get(input,"Phase").ToString()==value.Phase && ReferenceEquals(Get(input,"Weapon"),stressPlayer.HeldItem) && GetOptional(input,"Source")==null && __state>0 && __state==value.NativeTick;
+            bool enhanced=receiptCurrent && solutionMatch && Get(input,"Kind").ToString()=="Enhanced";
+            // Every natural birth remains in the denominator. Only the actual
+            // same-epoch offer/receipt pair can credit this Enhanced consumer.
+            stressConsumers.Add(string.Join(",",stressBlockers,stressPath,stressFrame,Main.GameUpdateCount,target.Slot,Get(input,"Kind"),Get(input,"Phase"),__state,value.Timeline?.SampleTick??-1,value.Timeline?.Count??0,Get(Get(stressPrediction,"rolling"),"resultPlayerAdvanced"),stressMoving,receiptCurrent,solutionMatch,enhanced,stressInputTick,stressProposedTick));
             if(stressFrame>=140 && target.Slot==2 && enhanced)stressNearEnhanced++;
             if(target.Slot!=stressFar || !receiptCurrent)return;
             stressBirths++;if(enhanced){stressEnhanced++;if(__state>32)stressLateContacts++;}
@@ -183,12 +198,12 @@ namespace NativeWorldTextProbe
         {
             var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var input=Get(context,"Input");var attack=Get(combat,"Attack");
             var audit=new Harmony("JueMingR.Tests.CandidateProgressNative");var rows=new List<string>{"scenario,frame,tick,selected,actionPass,worldPass,farActionAttempt,farWorldAttempt,farActionDepth,farWorldDepth,lateNearActionDepth,farBirths,farEnhanced,budgetMs,lateContacts,path,weapon,movingCandidates"};
-            stressConsumers.Clear();stressConsumers.Add("blockers,path,frame,tick,target,kind,inputPhase,openingContactTick,sourceSampleTick,sourceCount,firstPlayerStepCompleted,movingCandidates,receiptCurrent,contactMatch,countedEnhanced,recordedTick,proposedTick");
+            stressConsumers.Clear();stressConsumers.Add("blockers,path,frame,tick,target,kind,inputPhase,openingSolutionTick,sourceSampleTick,sourceCount,firstPlayerStepCompleted,movingCandidates,receiptCurrent,solutionMatch,countedEnhanced,recordedTick,proposedTick");
             try
             {
                 audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13),prefix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(StressOpening)),postfix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(StressBorn)));
                 audit.Patch(attack.GetType().GetMethod("RecordInput",Flags),postfix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(StressRecorded)));
-                audit.Patch(attack.GetType().GetMethod("ContactInput",Flags),prefix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(StressContactProposed)));
+                audit.Patch(attack.GetType().GetMethod("TryOrdinaryInput",Flags),postfix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(StressSolutionOffered)));
                 audit.Patch(typeof(Player).GetMethod("ItemCheck_StartActualUse",Flags),postfix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(StressHandStarted)));
                 if(Environment.GetEnvironmentVariable("JMR_CANDIDATE_PROGRESS_DIAGNOSTIC")=="1")audit.Patch(attack.GetType().GetMethod("EvaluateCandidate",Flags),postfix:new HarmonyMethod(typeof(NativeCombatCandidateDemandChecks),nameof(StressEvaluated)));
                 foreach(bool movingCandidates in new[]{false,true})
@@ -212,7 +227,7 @@ namespace NativeWorldTextProbe
                     Require(initial.Slot==2 && (path?ownsA:!ownsA && initialCache.Read(0)==null && initialCache.Read(1)==null && idleFuture==0),"Both owns initial A; Aim-only idle selects A with no Source, publication or future steps.");
                     Console.WriteLine("CANDIDATE-INITIAL blockers="+blockers+" path="+path+" ownsA="+ownsA+" actualIdleFutureSteps="+idleFuture);
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,path,true,false,false,50,true,true));
-                    stressAttack=attack;stressPlayer=p;stressPrediction=Get(host,"Prediction");stressBlockers=blockers;stressPath=path;stressMoving=movingCandidates;stressFar=farSlot;stressProjectile=14;stressBirths=stressEnhanced=stressLateContacts=stressHandStarts=stressNearEnhanced=0;stressOpeningContact=stressProposedContact=null;stressInputTick=stressProposedTick=0;int selectedFar=-1,firstEnhanced=-1,nearRecovered=-1;long firstAction=(long)Get(attack,"candidateActionPass"),firstWorld=(long)Get(attack,"candidateWorldPass"),priorAction=firstAction,priorWorld=firstWorld,maxActionWait=0,maxWorldWait=0;
+                    stressAttack=attack;stressPlayer=p;stressPrediction=Get(host,"Prediction");stressBlockers=blockers;stressPath=path;stressMoving=movingCandidates;stressFar=farSlot;stressProjectile=14;stressBirths=stressEnhanced=stressLateContacts=stressHandStarts=stressNearEnhanced=0;stressOpeningSolution=stressProposedSolution=default(NativeCombatAimChecks.SolutionFacts);stressOfferedWeapon=null;stressOfferedPhase=null;stressInputTick=stressProposedTick=0;int selectedFar=-1,firstEnhanced=-1,nearRecovered=-1;long firstAction=(long)Get(attack,"candidateActionPass"),firstWorld=(long)Get(attack,"candidateWorldPass"),priorAction=firstAction,priorWorld=firstWorld,maxActionWait=0,maxWorldWait=0;
                     for(int frame=0;frame<180;frame++)
                     {
                         // A newly reachable near receiver must replace an old
@@ -243,7 +258,7 @@ namespace NativeWorldTextProbe
             finally
             {
                 foreach(var method in audit.GetPatchedMethods().ToArray())audit.Unpatch(method,HarmonyPatchType.All,audit.Id);
-                stressAttack=null;NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
+                stressAttack=stressPrediction=stressOfferedWeapon=null;stressPlayer=null;stressOfferedPhase=null;stressOpeningSolution=stressProposedSolution=default(NativeCombatAimChecks.SolutionFacts);stressInputTick=stressProposedTick=0;NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
                 string root=Path.Combine(Terraria.Program.SavePath,"candidate-progress");Directory.CreateDirectory(root);File.WriteAllLines(Path.Combine(root,"frames.csv"),rows);File.WriteAllLines(Path.Combine(root,"native-consumers.csv"),stressConsumers);Console.WriteLine("CANDIDATE-PROGRESS raw="+root);
             }
         }
@@ -285,15 +300,15 @@ namespace NativeWorldTextProbe
                     }
                     Require((bool)Get(control,"openingUsable") && (bool)Get(control,"HasPreparedInput"),"The bounded normal-budget navigation component prepares a legal opening before its manual Shoot consumer.");
                 }
-                var plan=GetOptional(attack,"ExpectedImpact");
+                var solution=NativeCombatAimChecks.ReadSolution(attack);
                 var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");Call(Get(Get(host,"World"),"Marker"),"Capture");
                 Require(cache.Read(1).Identity.Equals(identity) && Get(Get(Get(host,"World"),"Marker"),"identity").Equals(identity),"path/attack future and marker capture share the final selected identity");
                 typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});int first=-1;
                 for(int tick=1;tick<=120 && first<0;tick++)
                 {NativeQuickItemChecks.BeginWorldStep();NativeToolExecutionChecks.Sample(context,input,blocked.Center,true);Call(combat,"Sample");blocked.UpdateNPC(2);open.UpdateNPC(3);if(weapon==3278)NativeCombatAimChecks.Prepare(host,attack,target,0,true);int life=target.life;for(int slot=0;slot<Main.maxProjectiles;slot++)if(Main.projectile[slot].active){Main.ProjectileUpdateLoopIndex=slot;Main.projectile[slot].Update(slot);}Main.ProjectileUpdateLoopIndex=-1;if(target.life<life)first=tick;}
-                Console.WriteLine("WALL RESULT weapon="+weapon+" selected="+identity.Slot+" openingContact="+(plan!=null)+" firstDamage="+first+" lifeA="+blocked.life+" lifeB="+open.life);
-                Require(weapon!=95 || plan==null && first<0,"nearest blocked straight target remains selected without fabricating a contact or redirecting to the farther receiver");
-                Require(weapon==95 || (weapon==39?plan==null && first<0:first>0),"same obstacle preserves finite unknown arc and actual useful sky/navigation outcomes without claiming every mechanism reachable");
+                Console.WriteLine("WALL RESULT weapon="+weapon+" selected="+identity.Slot+" openingSolution="+solution.HasPoint+" reachability="+solution.Reachability+" firstDamage="+first+" lifeA="+blocked.life+" lifeB="+open.life);
+                Require(weapon!=95 || solution.Reachability!="Reachable" && solution.Contact==null && first<0,"nearest blocked straight target remains selected without fabricating a contact or redirecting to the farther receiver");
+                Require(weapon==95 || (weapon==39?solution.Reachability!="Reachable" && solution.Contact==null && first<0:first>0),"same obstacle preserves finite unknown arc and actual useful sky/navigation outcomes without claiming every mechanism reachable");
             }
             Console.WriteLine("PASS same-obstacle shared identity matrix; current passage preference is conditional, finite no-Contact is not a physical-impossibility claim.");
         }

@@ -86,16 +86,16 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<cadence*2+1;i++)
                 {
                     Step(context,cursor,false,true);
-                    coldWindowMet|=Selected(host)==4 && RankedContact(host)!=null;
-                    var farPlan=((Array)Get(attack,"candidatePlans")).GetValue(8);var farContact=farPlan==null?null:GetOptional(farPlan,"Contact") as AttackContact;
-                    Console.WriteLine("RANKED POSTSTEP index="+i+" GUC="+Main.GameUpdateCount+" selected="+Selected(host)+" reachable="+Get(Get(host,"Selection"),"ClearLine")+" display="+(((NpcTrajectory)GetOptional(host,"DisplayPath"))?.Count??0)+" optionalTick="+Get(host,"optionalTick")+" farPrepared="+(farPlan!=null && (bool)Get(farPlan,"Prepared"))+" preparedTick="+(farPlan==null?0:Get(farPlan,"PreparedTick"))+" phase="+(farPlan==null?null:Get(farPlan,"Phase"))+" sample="+(farContact==null?-1:farContact.Timeline.SampleTick)+" receive="+(farContact==null?-1:farContact.ReceiveTick)+" work="+Get(Get(host,"PredictionWork"),"UsedMilliseconds")+" exceeded="+Get(Get(host,"PredictionWork"),"Exceeded"));
+                    coldWindowMet|=Selected(host)==4 && RankedSolution(host)!=null;
+                    var farPlan=((Array)Get(attack,"candidatePlans")).GetValue(8);var farFacts=farPlan==null?default(NativeCombatAimChecks.SolutionFacts):NativeCombatAimChecks.ReadPlanSolution(attack,farPlan);
+                    Console.WriteLine("RANKED POSTSTEP index="+i+" GUC="+Main.GameUpdateCount+" selected="+Selected(host)+" reachable="+Get(Get(host,"Selection"),"ClearLine")+" display="+(((NpcTrajectory)GetOptional(host,"DisplayPath"))?.Count??0)+" optionalTick="+Get(host,"optionalTick")+" farPrepared="+(farPlan!=null && (bool)Get(farPlan,"Prepared"))+" preparedTick="+(farPlan==null?0:Get(farPlan,"PreparedTick"))+" phase="+(farPlan==null?null:Get(farPlan,"Phase"))+" sample="+(farFacts.Timeline==null?-1:farFacts.Timeline.SampleTick)+" receive="+farFacts.ReceiveTick+" work="+Get(Get(host,"PredictionWork"),"UsedMilliseconds")+" exceeded="+Get(Get(host,"PredictionWork"),"Exceeded"));
                 }
                 Console.WriteLine("RANKED COLD DIAGNOSTIC updates="+(cadence*2+1)+" originalElevenUpdateSignal="+coldWindowMet+"; observation-only, not a product deadline or warm PASS");
                 int warmProofs=0,recentWarmProofs=0,firstWarmProof=-1,hardWarmExits=0,warmDisplaySteps=0,warmDisplayGap=0,maxWarmDisplayGap=0,minimumDisplayCount=int.MaxValue,maximumDisplayCount=0;double maximumWarmWork=0;
                 for(int i=0;i<60;i++)
                 {
                     Step(context,cursor,false,true);
-                    bool qualified=Selected(host)==4 && RankedContact(host)!=null;
+                    bool qualified=Selected(host)==4 && RankedSolution(host)!=null;
                     if(qualified){warmProofs++;if(firstWarmProof<0)firstWarmProof=i;if(i>=60-cadence)recentWarmProofs++;}
                     var display=GetOptional(host,"DisplayPath") as NpcTrajectory;
                     bool visible=Selected(host)==4 && (bool)Get(Get(host,"Selection"),"ClearLine") && display!=null && display.Identity.Slot==4;
@@ -119,10 +119,10 @@ namespace NativeWorldTextProbe
                 RankedAdvance(context,host,cursor,2,true,"near target wins at the bounded optional refresh when its wall opens even while old far stays reachable: mouse="+mouse,false);
                 for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(47,y,1);
                 RankedAdvance(context,host,cursor,4,true,"closing the same wall retires near proof and restores the farther solution within optional cadence: mouse="+mouse);
-                var ordinary=(AttackContact)RankedContact(host);
+                var ordinary=RankedSolution(host);
                 p.inventory[54].SetDefaults(1302);p.inventory[54].stack=999;
-                RankedAdvance(context,host,cursor,4,true,"high-velocity ammo refreshes the farther solution within optional cadence: mouse="+mouse);var fast=(AttackContact)RankedContact(host);
-                Require(Selected(host)==4 && fast!=null && ordinary!=null && fast.Tick<ordinary.Tick,"actual high-velocity ammunition preserves wall tiers but replaces the receive time: mouse="+mouse);
+                RankedAdvance(context,host,cursor,4,true,"high-velocity ammo refreshes the farther solution within optional cadence: mouse="+mouse);var fast=RankedSolution(host);
+                Require(Selected(host)==4 && fast!=null && ordinary!=null && fast.Value.NativeTick<ordinary.Value.NativeTick,"actual high-velocity ammunition preserves wall tiers but replaces the receive time: mouse="+mouse);
                 p.inventory[54].TurnToAir();RankedAdvance(context,host,cursor,2,false,"no usable ammunition leaves nearest fallback without retaining old proof: mouse="+mouse);
                 p.inventory[54].SetDefaults(3104);p.inventory[54].stack=1;RankedAdvance(context,host,cursor,4,true,"ordinary Endless Pouch restores the actual far solution: mouse="+mouse);
                 middle.Center=new Vector2(600,667);RankedAdvance(context,host,cursor,3,true,"a moved formerly blocked middle candidate outranks old reachable far: mouse="+mouse);
@@ -134,12 +134,12 @@ namespace NativeWorldTextProbe
         }
         private static void RankedAdvance(object context,object host,Vector2 cursor,int expected,bool contactExpected,string reason,bool retirePrior=true)
         {
-            var attack=Get(Get(context,"Combat"),"Attack");var prior=RankedContact(host);
+            var attack=Get(Get(context,"Combat"),"Attack");var prior=RankedSolution(host);
             Step(context,cursor,false,true);
             // Opening the near wall changes distance competition, not the
             // still-reachable far contact's own dependencies. Closing a wall,
             // changing ammo or an intervening receiver invalidates old proof.
-            Require(!retirePrior || prior==null || !ReferenceEquals(prior,RankedContact(host)),"invalidated hand/receiver facts immediately revoke the old candidate proof before optional re-solving");
+            Require(!retirePrior || prior==null || !SameRankedProof(prior,RankedSolution(host)),"invalidated hand/receiver facts immediately revoke the old candidate proof before optional re-solving");
             // One five-update due interval plus one bounded fair cycle of the
             // actual candidate set. A denied final candidate remains unresolved
             // and gets its reserved next-pass turn; an optional refresh is not
@@ -149,34 +149,33 @@ namespace NativeWorldTextProbe
             int candidates=(int)Get(Get(host,"Selection"),"CandidateCount");
             for(int remaining=cadence+Math.Max(0,candidates-1);remaining>0;remaining--)
             {
-                var contact=(AttackContact)RankedContact(host);
-                if(Selected(host)==expected && (contactExpected?contact!=null && contact.Timeline.Identity.Slot==expected:contact==null))return;
+                var contact=RankedSolution(host);
+                if(Selected(host)==expected && (contactExpected?contact!=null && contact.Value.Timeline.Identity.Slot==expected:contact==null))return;
                 Step(context,cursor,false,true);
             }
-            var result=(AttackContact)RankedContact(host);
-            Require(Selected(host)==expected && (contactExpected?result!=null && result.Timeline.Identity.Slot==expected:result==null),reason);
+            var result=RankedSolution(host);
+            Require(Selected(host)==expected && (contactExpected?result!=null && result.Value.Timeline.Identity.Slot==expected:result==null),reason);
         }
-        private static AttackContact RankedContact(object host)
+        private static bool SameRankedProof(NativeCombatAimChecks.SolutionFacts? a,NativeCombatAimChecks.SolutionFacts? b)
+        {return a.HasValue && b.HasValue && ReferenceEquals(a.Value.Timeline,b.Value.Timeline) && a.Value.Point==b.Value.Point && a.Value.ReceiveTick==b.Value.ReceiveTick && a.Value.Delay==b.Value.Delay;}
+        private static NativeCombatAimChecks.SolutionFacts? RankedSolution(object host)
         {
             var attack=Get(host,"Attack");var identity=(NpcIdentity)Get(Get(host,"Selection"),"Target");
-            // A completed result actually admitted by THIS selection call may
-            // reuse an older immutable plan after its real dependencies pass.
-            // This pointer is cleared at every ResolveSelection entry, so it
-            // cannot grant a persistent raw-plan qualification on later calls.
+            var display=GetOptional(host,"DisplayPath") as NpcTrajectory;
+            if(display==null || !display.Identity.Equals(identity))return null;
+            // Admission is cleared by ResolveSelection. An admitted old plan is
+            // usable only after that selection's dependency checks; raw plans
+            // otherwise need this GUC's completed World preparation.
             var admitted=GetOptional(attack,"candidatePresentationPlan");
             if(admitted!=null && (bool)Get(admitted,"Prepared") && Get(admitted,"Phase").ToString()=="CompletedWorld")
-            {
-                var admittedContact=GetOptional(admitted,"Contact") as AttackContact;var admittedDisplay=GetOptional(host,"DisplayPath") as NpcTrajectory;
-                if(admittedContact!=null && admittedContact.Timeline.Identity.Equals(identity) && admittedDisplay!=null && admittedDisplay.Identity.Equals(identity))return admittedContact;
-            }
+            {var facts=NativeCombatAimChecks.ReadPlanSolution(attack,admitted);if(RankedPositive(facts,identity))return facts;}
             var plans=(Array)Get(attack,"candidatePlans");var plan=plans.GetValue(identity.Slot*2);
-            // The temporary publication pointer is cleared by a repeated
-            // outer entry. Inspect only this GUC's actually completed World
-            // plan, never an older raw Contact as a persistent qualification.
             if(plan==null || !(bool)Get(plan,"Prepared") || (uint)Get(plan,"PreparedTick")!=Main.GameUpdateCount || Get(plan,"Phase").ToString()!="CompletedWorld")return null;
-            var contact=GetOptional(plan,"Contact") as AttackContact;
-            return contact!=null && contact.Timeline.SampleTick==(long)Main.GameUpdateCount && contact.Timeline.Identity.Equals(identity) && GetOptional(host,"DisplayPath")!=null?contact:null;
+            var value=NativeCombatAimChecks.ReadPlanSolution(attack,plan);
+            return RankedPositive(value,identity) && value.Timeline.SampleTick==(long)Main.GameUpdateCount?(NativeCombatAimChecks.SolutionFacts?)value:null;
         }
+        private static bool RankedPositive(NativeCombatAimChecks.SolutionFacts value,NpcIdentity identity)
+        {return value.HasPoint && value.Reachability=="Reachable" && value.Timeline!=null && value.Timeline.Identity.Equals(identity) && value.ReceiveTick>=value.FirstTick && value.ReceiveTick<value.Timeline.Count && value.NativeTick>0 && !float.IsNaN(value.Point.X) && !float.IsNaN(value.Point.Y) && !float.IsInfinity(value.Point.X) && !float.IsInfinity(value.Point.Y);}
         private static void Idle(object context,object combat,object host,object input,object attack)
         {
             NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.releaseUseItem=true;p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;Main.screenPosition=new Vector2(600,400);var n=Scene(2,new Vector2(910,667));

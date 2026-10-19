@@ -363,12 +363,61 @@ namespace NativeWorldTextProbe
         {var assembly=attack.GetType().Assembly;var stage=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);var type=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true);return Activator.CreateInstance(type,Flags,null,new object[]{timeline,Enum.Parse(stage,phase)},null);}
         internal struct SolutionFacts
         {
-            internal NpcTrajectory Timeline;internal Vector2 Point;internal int ReceiveTick,NativeTick,FirstTick;
+            internal NpcTrajectory Timeline;internal Vector2 Point;internal int ReceiveTick,NativeTick,FirstTick,Delay;
             internal AttackContact Contact;internal bool HasPoint;internal string Reachability,Route,Phase;
         }
         internal struct InputFacts
         {
             internal bool Allowed;internal string Kind;internal Vector2 Point;internal NpcIdentity Target;
+        }
+        // Facts-only component adapters. Reading a private candidate/controller
+        // is not an Aim permission query and never lends/records input. A caller
+        // separately proves plan freshness and the real consumer's permission.
+        internal static SolutionFacts ReadSolutionValue(object attack,object solution,string phase,int launchDelay=0)
+        {
+            var facts=new SolutionFacts{Route="representative",Phase=phase,Delay=launchDelay,ReceiveTick=-1,NativeTick=-1,FirstTick=-1,Reachability="Unknown"};
+            if(solution==null)return facts;
+            facts.Timeline=(NpcTrajectory)GetOptional(solution,"Timeline");facts.Point=(Vector2)Get(solution,"Point");facts.HasPoint=(bool)Get(solution,"HasPoint");
+            facts.ReceiveTick=(int)Get(solution,"ReceiveTick");facts.Reachability=Get(solution,"Reachability").ToString();facts.Contact=(AttackContact)GetOptional(solution,"Contact");
+            return FinishFacts(attack,facts);
+        }
+        internal static SolutionFacts ReadPlanSolution(object attack,object plan)
+        {
+            if(plan==null)return new SolutionFacts{Route="unprepared-plan",Phase="None",Reachability="Unknown",ReceiveTick=-1,NativeTick=-1,FirstTick=-1};
+            string phase=Get(plan,"Phase").ToString();int delay=(int)Get(plan,"Delay");
+            if((bool)Get(plan,"Balanced"))
+            {
+                // An observed held body supplies its own cooldown to the birth
+                // adapter. PrepareBalancedPreview uses clock delay zero there;
+                // an opening instead uses the plan's future-hand delay.
+                var held=Main.LocalPlayer.HeldItem.shoot==615 || Main.LocalPlayer.HeldItem.shoot==630 || Main.LocalPlayer.HeldItem.shoot==705?ReadObservedHeldSource(attack):null;
+                var value=ReadSolutionValue(attack,Get(plan,"Solution"),phase,held==null?delay:0);
+                value.Delay=held==null?delay:Math.Max(0,(int)Math.Ceiling(((Projectile)Get(held,"Shot")).ai[1])-1);
+                return value;
+            }
+            var contact=(AttackContact)GetOptional(plan,"Contact");
+            var facts=new SolutionFacts{Route="dedicated-contact",Phase=phase,Delay=delay,ReceiveTick=-1,NativeTick=-1,FirstTick=-1,Reachability="Unknown",Contact=contact};
+            if(contact!=null){facts.Delay=contact.Delay;facts.Timeline=contact.Timeline;facts.Point=new Vector2(contact.AimX,contact.AimY);facts.HasPoint=true;facts.ReceiveTick=contact.ReceiveTick;facts.Reachability="Reachable";}
+            return FinishFacts(attack,facts);
+        }
+        internal static object ReadObservedHeldSource(object attack)
+        {
+            var control=Get(attack,"Control");
+            foreach(System.Collections.DictionaryEntry pair in (System.Collections.IDictionary)Get(control,"shots"))
+            {
+                var entry=pair.Value;int kind=(int)Get(entry,"Type");if(kind!=615 && kind!=630 && kind!=705)continue;
+                var observed=control.GetType().GetMethod("Observed",Flags,null,new[]{entry.GetType()},null);
+                if((bool)observed.Invoke(control,new[]{entry}))return entry;
+            }
+            return null;
+        }
+        private static SolutionFacts FinishFacts(object attack,SolutionFacts facts)
+        {
+            if(facts.Timeline==null)return facts;
+            var assembly=attack.GetType().Assembly;var phase=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);var type=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true);
+            var clock=Activator.CreateInstance(type,Flags,null,new object[]{facts.Timeline,Enum.Parse(phase,facts.Phase),facts.Delay},null);
+            facts.FirstTick=(int)Get(clock,"FirstTick");facts.NativeTick=facts.Contact!=null?facts.Contact.Tick:facts.ReceiveTick<facts.FirstTick?-1:facts.ReceiveTick-facts.FirstTick+1;
+            return facts;
         }
         // Read the actual post-7a8f18a ordinary solution. A representative point
         // is not a fabricated full Contact; dedicated solvers retain theirs.

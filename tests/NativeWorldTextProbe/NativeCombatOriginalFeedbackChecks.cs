@@ -34,7 +34,8 @@ namespace NativeWorldTextProbe
         private static int beforeFamilyQueries,worldFamilyQueries;private static long requestedMemberSteps,totalRequestedMemberSteps;
         private static uint familyPassTick;private static int duplicateFamilyPasses;
         private static bool presenting;
-        private static bool componentReading;private static object mechanismPlan;private static JueMingR.Features.Combat.AttackContact mechanismContact;private static uint mechanismTick;
+        private static bool componentReading;private static object mechanismPlan;private static JueMingR.Features.Combat.AttackContact mechanismContact;private static uint mechanismTick;private static NativeCombatAimChecks.SolutionFacts mechanismSolution;
+        private static bool northOracleAttempted;private static long northSample;private static JueMingR.Features.Combat.AttackContact northContact;private static uint? northActual;
         private static int componentMemberSteps,componentPoolScans,componentFamilyCalls,componentFamilyMaximum,componentKernelSteps,northCalls,northMaximum;
         private static FieldInfo familyStepCounter;
         private static JueMingR.Features.Combat.AttackContact CaptureMechanism(object host,object attack,JueMingR.Platform.Combat.NpcTrajectory explicitComponentPath=null)
@@ -42,7 +43,7 @@ namespace NativeWorldTextProbe
             var model=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostMeleeAttack",true);var steps=model.GetField("SpearFlightMemberSteps",Flags);var scans=model.GetField("SpearFlightPoolScans",Flags);
             int beforeSteps=steps==null?0:(int)steps.GetValue(null),beforeScans=scans==null?0:(int)scans.GetValue(null);
             componentReading=true;tracingFamily=tracingFloating;
-            try{mechanismContact=NativeCombatUsageChecks.ReadMechanism(host,attack,receiver,out mechanismPlan,explicitComponentPath);if(mechanismPlan==null)mechanismPlan=Activator.CreateInstance(attack.GetType().GetNestedType("PreviewPlan",Flags),true);mechanismTick=Main.GameUpdateCount;return mechanismContact;}
+            try{mechanismSolution=NativeCombatUsageChecks.ReadMechanismFacts(host,attack,receiver,out mechanismPlan,explicitComponentPath);mechanismContact=mechanismSolution.Contact;if(mechanismPlan==null)mechanismPlan=Activator.CreateInstance(attack.GetType().GetNestedType("PreviewPlan",Flags),true);mechanismTick=Main.GameUpdateCount;return mechanismContact;}
             finally{componentReading=tracingFamily=false;if(steps!=null)componentMemberSteps+=(int)steps.GetValue(null)-beforeSteps;if(scans!=null)componentPoolScans+=(int)scans.GetValue(null)-beforeScans;}
         }
         private static JueMingR.Platform.Combat.NpcTrajectory StaticDummyComponent(object host)
@@ -65,6 +66,39 @@ namespace NativeWorldTextProbe
                 if(mechanismContact==null || mechanismPlan==null || player==null || receiver==null || !ReferenceEquals(mechanismContact.Timeline.Identity.Token,receiver) || !receiver.active || receiver.dontTakeDamage || !player.CanNPCBeHitByPlayerOrPlayerProjectile(receiver))return null;
                 return (bool)Call(mechanismPlan,"PresentationMembersCurrent",player,(int)(Main.GameUpdateCount-mechanismTick))?mechanismContact:null;
             }
+        }
+        private static bool CurrentStage
+        {
+            get
+            {
+                if(mechanismPlan==null || !(bool)Get(mechanismPlan,"Balanced"))return CurrentMechanism!=null;
+                var value=mechanismSolution;
+                return (bool)Get(mechanismPlan,"Prepared") && mechanismTick==Main.GameUpdateCount && (uint)Get(mechanismPlan,"PreparedTick")==Main.GameUpdateCount && value.Phase=="CompletedWorld" && value.HasPoint && value.Reachability=="Reachable" && value.Timeline!=null && value.ReceiveTick>=value.FirstTick && value.ReceiveTick<value.Timeline.Count && value.NativeTick>0 && ReferenceEquals(value.Timeline.Identity.Token,receiver) && receiver.active && !receiver.dontTakeDamage && player.CanNPCBeHitByPlayerOrPlayerProjectile(receiver) && (bool)Call(mechanismPlan,"PresentationMembersCurrent",player,0);
+            }
+        }
+        private static void CaptureNorthFamily(object attack,int remaining)
+        {
+            if(parentType!=342 || northOracleAttempted || remaining<=0 || mechanismSolution.Timeline==null)return;
+            var sources=Main.projectile.Where(q=>q.active && q.owner==player.whoAmI && (q.type==342 || q.type==343 || q.type==344)).OrderBy(q=>q.whoAmI).ToArray();
+            if(sources.Length<2)return;
+            // Public hand preview owns a representative point. This separate
+            // component reads the actual already-born whole family in this
+            // same natural sequence, with no new native action or publication.
+            var path=mechanismSolution.Timeline;JueMingR.Platform.Combat.NpcTrajectory withinWindow;
+            int last=Math.Min(path.Count-1,(int)((long)Main.GameUpdateCount-path.SampleTick)+remaining);
+            Require(path.TryWindow(path.SampleTick,last,path.Version,out withinWindow),"the same original 75-update sequence bounds the independent born-family receive prefix");path=withinWindow;var assembly=attack.GetType().Assembly;
+            var terrain=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);Call(terrain,"Reset");
+            var clock=NativeCombatAimChecks.PhaseClock(attack,path,"CompletedWorld");
+            var root=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{player,sources[0],path,0,false,true},null);
+            var random=Main.rand;var fields=typeof(Terraria.Utilities.UnifiedRandom).GetFields(Flags).Where(f=>!f.IsStatic).ToArray();
+            var values=fields.Select(f=>f.GetValue(random) is Array?((Array)f.GetValue(random)).Clone():f.GetValue(random)).ToArray();
+            var keys=Main.projectile.Where(q=>q.active).Select(q=>q.key).ToArray();uint tick=Main.GameUpdateCount;int x=Main.mouseX,y=Main.mouseY,mana=player.statMana,animation=player.itemAnimation,time=player.itemTime;
+            using(new JueMingR.Features.Combat.CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
+                northContact=(JueMingR.Features.Combat.AttackContact)assembly.GetType("JueMingR.TerrariaHost.Combat.HostNorthPoleAttack",true).GetMethod("KnownFamily",Flags).Invoke(null,new object[]{player,sources,path,clock,terrain,root});
+            Require(Main.GameUpdateCount==tick && x==Main.mouseX && y==Main.mouseY && mana==player.statMana && animation==player.itemAnimation && time==player.itemTime && keys.SequenceEqual(Main.projectile.Where(q=>q.active).Select(q=>q.key)) && ReferenceEquals(random,Main.rand) && fields.Select((f,i)=>values[i] is Array?((Array)values[i]).Cast<object>().SequenceEqual(((Array)f.GetValue(random)).Cast<object>()):Equals(values[i],f.GetValue(random))).All(v=>v) && (bool)Get(root,"Unchanged"),"same-sequence North Pole complete Known preserves the native pool/owner/cursor/clock/RNG and captured dependencies");
+            northOracleAttempted=true;northSample=path.SampleTick;northActual=null;
+            if(northContact!=null)Require(ReferenceEquals(northContact.Timeline,path) && northContact.ReceiveTick>=(int)Get(clock,"FirstTick") && northContact.ReceiveTick<path.Count && northContact.Tick==northContact.ReceiveTick,"already-born North Pole complete receive retains its actual CW clock and immutable target prefix");
+            Console.WriteLine("ORIGINAL north alreadyBorn sources="+sources.Length+" sample="+northSample+" guc="+tick+" first="+Get(clock,"FirstTick")+" receive="+northContact?.ReceiveTick+" contactTick="+northContact?.Tick);
         }
         private static bool tracingFloating,tracingFamily;private static string floatingFirstReject;private static int floatingReports,floatingMotionRefusals;
         private static uint? floatingDetachedHit;
@@ -188,6 +222,7 @@ namespace NativeWorldTextProbe
         {
             if(damageType==841 && sideTargets.Contains(__instance.whoAmI))sideStrikes++;
             if(!ReferenceEquals(__instance,receiver) || __result<=0)return;
+            if(parentType==342 && northOracleAttempted && !northActual.HasValue && Main.projectile[damageSlot].owner==player.whoAmI && (damageType==342 || damageType==343 || damageType==344))northActual=Main.GameUpdateCount;
             if(damageType==parentType){parentHits++;if(!firstParentHit.HasValue){firstParentHit=Main.GameUpdateCount;if(parentType==46){var p=Main.projectile[damageSlot];Rectangle ext;bridgeOnly=p.AI_019_Spears_GetExtensionHitbox(player,out ext) && !p.Hitbox.Intersects(receiver.Hitbox) && !ext.Intersects(receiver.Hitbox) && p.Colliding(p.Hitbox,receiver.Hitbox);Console.WriteLine("ORIGINAL native spear bridge first="+firstParentHit+" onlyBridge="+bridgeOnly+" body="+p.Hitbox+" extension="+ext+" target="+receiver.Hitbox);}}}
             if(damageType==childType){childHits++;if(clockChildren.Contains(damageSlot) && !clockChildHit.HasValue)clockChildHit=Main.GameUpdateCount;if(tracingFloating && !floatingDetachedHit.HasValue && !Main.projectile.Any(p=>p.active && p.owner==player.whoAmI && p.type==parentType))floatingDetachedHit=Main.GameUpdateCount;}
         }
@@ -253,7 +288,7 @@ namespace NativeWorldTextProbe
                         familyMaximum=duplicateFamilyPasses=componentFamilyCalls=componentFamilyMaximum=northCalls=northMaximum=0;familyPasses.Clear();totalRequestedMemberSteps=0;int initialFamilies=familyCalls,initialFlights=flightReads;
                         var meleeType=assembly.GetType("JueMingR.TerrariaHost.Combat.HostMeleeAttack",true);var scansField=meleeType.GetField("SpearFlightPoolScans",Flags);var stepsField=meleeType.GetField("SpearFlightMemberSteps",Flags);
                         int initialComponentSteps=componentMemberSteps,initialComponentScans=componentPoolScans;int initialScans=scansField==null?0:(int)scansField.GetValue(null),initialSteps=stepsField==null?0:(int)stepsField.GetValue(null);
-                        clockChildren.Clear();clockChildHit=null;
+                        clockChildren.Clear();clockChildHit=null;northOracleAttempted=false;northContact=null;northActual=null;
                         NativeCombatObservationChecks.Save(host,new JueMingR.Features.Combat.ObservationOptions(false,true,true,false,true,25,true,assist));
                         for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);
                         Require(familyCalls==initialFamilies,"natural idle source-free preview does not replay a spear family");
@@ -281,24 +316,26 @@ namespace NativeWorldTextProbe
                                 int updateSteps=(int)stepsField.GetValue(null)-beforeMemberSteps;
                                 Require(updateSteps<=requestedMemberSteps,"actual native member substeps stay within distinct finite requests and their original extraUpdates/bounded births");
                             }
-                            var contact=CaptureMechanism(host,attack);
+                            var contact=CaptureMechanism(host,attack);bool stage=(bool)Get(mechanismPlan,"Balanced")?CurrentStage:contact!=null;CaptureNorthFamily(attack,74-i);
                             // Native animation=1 is separately observed while
                             // the next-use timing oracle is being checked.
                             // Preserve every supplied update in the denominator,
                             // including cold/optional omissions. Independent
                             // native input and actual receive oracles follow.
                             bool tail=row[0]==1228 && player.itemAnimation==1;
-                            if(tail)tailFrames++;else{stableFrames++;if(contact!=null)stableShown++;else if(missingRun==0)TraceMechanismOmission(host,attack,row[0],row[3],assist,i);}
-                            if(previousTail && contact!=null)tailRecoveries++;previousTail=tail;
-                            if(contact!=null)missingRun=0;else longestMissing=Math.Max(longestMissing,++missingRun);
-                            if(contact!=null)previewFrames++;else if(previewMisses.Count<3)previewMisses.Add("frame="+i+" animation="+player.itemAnimation+" time="+player.itemTime+" live="+string.Join(",",Main.projectile.Where(q=>q.active && q.owner==player.whoAmI).Select(q=>q.type.ToString())));
+                            if(tail)tailFrames++;else{stableFrames++;if(stage)stableShown++;else if(missingRun==0)TraceMechanismOmission(host,attack,row[0],row[3],assist,i);}
+                            if(previousTail && stage)tailRecoveries++;previousTail=tail;
+                            if(stage)missingRun=0;else longestMissing=Math.Max(longestMissing,++missingRun);
+                            if(stage)previewFrames++;else if(previewMisses.Count<3)previewMisses.Add("frame="+i+" animation="+player.itemAnimation+" time="+player.itemTime+" live="+string.Join(",",Main.projectile.Where(q=>q.active && q.owner==player.whoAmI).Select(q=>q.type.ToString())));
                             bool actual=Present(host,attack,Get(host,"World"),player,receiver,graphics,output,"original-use-"+row[0]+"-"+row[3]+"-"+assist+"-"+i,true,graphics!=null && (i==0 || i==21 || i==22 || i==74),true);
                             if(actual){actualFrames++;actualGap=0;}else actualLongest=Math.Max(actualLongest,++actualGap);
                         }
                         Require(stableShown>0 && stableFrames>=73 && actualFrames==0,"the full original-use window retains mechanism coverage while retired red presentation stays absent");
                         if(!hand)
                         {
-                            Require(row[0]==1947?northCalls>0 && northMaximum>=2:(familyCalls>initialFamilies || componentFamilyCalls>0) && Math.Max(familyMaximum,componentFamilyMaximum)>=2,"actual native source members reach the complete shared parent/derived consumer, independently of whether OFF demands an input prediction");
+                            Require(row[0]==1947?northOracleAttempted && northCalls>0 && northMaximum>=2:(familyCalls>initialFamilies || componentFamilyCalls>0) && Math.Max(familyMaximum,componentFamilyMaximum)>=2,"actual native source members reach the complete shared parent/derived consumer, independently of whether OFF demands an input prediction");
+                            if(row[0]==1947)Console.WriteLine("ORIGINAL north actual absolute sample="+northSample+" receive="+northContact?.ReceiveTick+" contactTick="+northContact?.Tick+" actualStrike="+northActual+" assist="+assist+" parentHits="+parentHits+" childHits="+childHits);
+                            if(row[0]==1947)Require(assist?northContact!=null && northActual.HasValue && northSample+northContact.ReceiveTick==northActual.Value:northContact==null && !northActual.HasValue,"the same naturally born full North Pole family matches the actual absolute first receive, independently of public representative preview and manual OFF");
                             Console.WriteLine("ORIGINAL family consumers native="+(familyCalls-initialFamilies)+" component="+componentFamilyCalls+" maxMembers="+Math.Max(familyMaximum,componentFamilyMaximum)+" north="+northCalls+" northMaxMembers="+northMaximum);
                         }
                         if(!hand && familyCalls>initialFamilies && scansField!=null && stepsField!=null)
@@ -394,7 +431,7 @@ namespace NativeWorldTextProbe
                 {RunPlainSpearCurrent(context,host,combat,input,attack,4672,841,graphics,output);RunNextWhipHand(context,host,combat,input,attack,0,graphics,output);RunFloatingDraw(context,host,combat,input,attack,graphics,output);}
                 Require(failures.Count==0,"original spear feedback failures: "+string.Join(" | ",failures));
             }
-            finally{player=null;receiver=null;observedAttack=null;tracingFloating=tracingFamily=false;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new JueMingR.Features.Combat.ObservationOptions());NativeCombatCadenceChecks.Save(combat,new JueMingR.Features.Combat.CombatOptions());}
+            finally{northOracleAttempted=false;northContact=null;northActual=null;mechanismSolution=default(NativeCombatAimChecks.SolutionFacts);mechanismContact=null;mechanismPlan=null;player=null;receiver=null;observedAttack=null;tracingFloating=tracingFamily=false;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new JueMingR.Features.Combat.ObservationOptions());NativeCombatCadenceChecks.Save(combat,new JueMingR.Features.Combat.CombatOptions());}
         }
         private static void TraceMechanismOmission(object host,object attack,int item,int dummy,bool assist,int frame)
         {
@@ -410,8 +447,8 @@ namespace NativeWorldTextProbe
             foreach(var plan in new[]{mechanismPlan,validSlot?plans.GetValue(selected.Slot*2):null,validSlot?plans.GetValue(selected.Slot*2+1):null})
             {
                 if(plan==null){Console.WriteLine("ORIGINAL MECHANISM plan none");continue;}
-                var timeline=(JueMingR.Platform.Combat.NpcTrajectory)GetOptional(plan,"Timeline");var contact=(JueMingR.Features.Combat.AttackContact)GetOptional(plan,"Contact");
-                Console.WriteLine("ORIGINAL MECHANISM plan prepared="+Get(plan,"Prepared")+" preparedGUC="+Get(plan,"PreparedTick")+" phase="+Get(plan,"Phase")+" delay="+Get(plan,"Delay")+" timeline="+(timeline==null?"none":timeline.Identity.Slot+"/"+timeline.SampleTick)+" contact="+(contact==null?"none":contact.Timeline.Identity.Slot+"/"+contact.Tick));
+                var facts=NativeCombatAimChecks.ReadPlanSolution(attack,plan);var timeline=facts.Timeline;var contact=facts.Contact;
+                Console.WriteLine("ORIGINAL MECHANISM plan prepared="+Get(plan,"Prepared")+" preparedGUC="+Get(plan,"PreparedTick")+" phase="+Get(plan,"Phase")+" delay="+Get(plan,"Delay")+" timeline="+(timeline==null?"none":timeline.Identity.Slot+"/"+timeline.SampleTick)+" solution="+facts.HasPoint+" reachability="+facts.Reachability+" receive="+facts.ReceiveTick+" contact="+(contact==null?"none":contact.Timeline.Identity.Slot+"/"+contact.Tick));
             }
         }
         private static void RunPlainSpearCurrent(object context,object host,object combat,object input,object attack,int weapon,int shotType,ProbeGraphics graphics=null,string output=null)
@@ -659,8 +696,8 @@ namespace NativeWorldTextProbe
                 receiver=NativeCombatControlPreviewChecks.Dummy(2,55,40);physical=new Vector2(550,430);parentType=player.HeldItem.useAmmo==40?278:player.HeldItem.useAmmo>0?14:player.HeldItem.shoot;childType=0;parentBirths=childBirths=firstCopper=0;assistEnabled=naturalPress=false;clockChildren.Clear();clockChildHit=null;born.Clear();
                 NativeCombatObservationChecks.Save(host,new JueMingR.Features.Combat.ObservationOptions(false,true,true,false,true,25,true,false));
                 for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);
-                int idleWait=0;while(CaptureMechanism(host,attack)==null && idleWait<6){idleWait++;NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);}
-                Require(GetOptional(attack,"ExpectedPreview")==null && parentBirths==0 && CurrentMechanism!=null,"bounded actual idle path supplies the private original clock component, without publishing a path or creating a source: item="+row[0]+" waits="+idleWait);
+                int idleWait=0;CaptureMechanism(host,attack);while(!CurrentStage && idleWait<6){idleWait++;NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);CaptureMechanism(host,attack);}
+                Require(GetOptional(attack,"ExpectedPreview")==null && parentBirths==0 && CurrentStage,"bounded actual idle path supplies the private original clock component, without publishing a path or creating a source: item="+row[0]+" waits="+idleWait);
                 naturalPress=true;
                 var cooldownClocks=new List<Tuple<uint,int>>();
                 for(int i=0;i<60 && (i==0 || player.itemAnimation!=1);i++)
