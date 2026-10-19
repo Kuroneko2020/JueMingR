@@ -81,7 +81,7 @@ namespace JueMingR.TerrariaHost.F5
         private Features.Combat.ObservationOptions observation=new Features.Combat.ObservationOptions();
         private int observationRevision,builtObservationRevision;
         private Features.Movement.ContinuousDashMode movementMode, builtMovementMode;
-        internal bool MovementAttached;
+        internal bool MovementAttached = false;
         internal void SetMovementMode(Features.Movement.ContinuousDashMode value) { movementMode = value; }
         internal void SetObservationOptions(Features.Combat.ObservationOptions value)
         {
