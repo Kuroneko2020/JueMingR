@@ -76,7 +76,7 @@ namespace NativeWorldTextProbe
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
         {
             var host=Get(context,"CombatObservation");Require(GetOptional(Get(host,"Prediction"),"Native")==null,"Large mimic uses the default synchronous producer.");
-            var rows=new List<string>{"scene,frame,tick,phase,x,y,vx,vy,noTile,receiving,selected,published,count,stop,matched,longMatches,crossMatches,restored"};var failures=new List<string>();
+            var rows=new List<string>{"scene,frame,tick,phase,x,y,vx,vy,noTile,receiving,selected,published,count,stop,matched,longMatches,crossMatches,restored,actorPublished,directionalDisplays,adjacentDisplays,retainedDisplays,maxMissingRun,minFuture,maxFuture,maxDisplaySpan,curvedError"};var failures=new List<string>();
             int scenes=0,total=0,totalLong=0,totalCross=0;bool oldAnniversary=Main.tenthAnniversaryWorld;
             try
             {
@@ -96,6 +96,9 @@ namespace NativeWorldTextProbe
                         actor.StrikeNPCNoInteraction(variant==2?actor.lifeMax/2+actor.defense+100:1,0,0);Require(actor.active,"Mimic wake hit preserves the natural actor.");
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
                         var freezes=new List<NpcTrajectory>();var phases=new HashSet<float>();int matches=0,longMatches=0,cross=0,selectedCount=0,published=0,restored=0;bool unavailable=false;double maximum=0,tangent=0;
+                        // Display accepts useful short futures; the existing phase/action
+                        // requirements below remain independent of its optional long tail.
+                        int directionalDisplays=0,adjacentDisplays=0,retainedDisplays=0,missingRun=0,maxMissingRun=0,minFuture=int.MaxValue,maxFuture=0;long lastDisplayTick=-2,lastCapture=-1;double maxDisplaySpan=0,curvedError=0;
                         for(int frame=0;frame<1200 && actor.active;frame++)
                         {
                             NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();if(!actor.active)break;phases.Add(actor.ai[0]);
@@ -103,25 +106,34 @@ namespace NativeWorldTextProbe
                             var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor))
                             {
                                 Require(has && path.SampleTick==Main.GameUpdateCount,"Mimic fresh selected publication.");published++;
+                                Require(ReferenceEquals(GetOptional(Get(host,"World"),"preparedPath"),GetOptional(host,"DisplayPath")),"World.Prepare consumes the actual selected Display owner and current lease.");
+                                double span=DisplaySpan(path);maxDisplaySpan=Math.Max(maxDisplaySpan,span);
+                                double markerSpan=Math.Max(Vector2.TransformNormal(new Vector2(6,0),Main.GameViewMatrix.ZoomMatrix).Length(),Vector2.TransformNormal(new Vector2(0,6),Main.GameViewMatrix.ZoomMatrix).Length());
+                                if(span>markerSpan)directionalDisplays++;
+                                if(lastDisplayTick==(long)Main.GameUpdateCount-1){adjacentDisplays++;if(lastCapture==path.CaptureTick)retainedDisplays++;}
+                                lastDisplayTick=Main.GameUpdateCount;lastCapture=path.CaptureTick;minFuture=Math.Min(minFuture,path.Count-1);maxFuture=Math.Max(maxFuture,path.Count-1);
+
                                 if(unavailable && path.Count>30){restored++;unavailable=false;}
                                 if(published==1 || frame%15==0)freezes.Add(path);
                             }
                             else unavailable=true;
+                            if(has && (path==null || !ReferenceEquals(path.Identity.Token,actor))){missingRun++;maxMissingRun=Math.Max(maxMissingRun,missingRun);}else missingRun=0;
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
                                 var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
                                 var point=frozen[offset];double error=Vector2.Distance(actor.position,new Vector2(point.Bounds.X,point.Bounds.Y));maximum=Math.Max(maximum,error);matches++;
+                                curvedError=Math.Max(curvedError,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));
                                 if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}
                                 if(point.Phase!=frozen[0].Phase)cross++;
                                 Require(error<=.08 && point.ReflectsProjectiles==actor.reflectsProjectiles && point.NoTileCollide==actor.noTileCollide && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal),"Frozen native mimic "+scene+" offset="+offset+" error="+error.ToString("R",CultureInfo.InvariantCulture)+" predicted="+point.Bounds.X+","+point.Bounds.Y+" pv="+point.Vx+","+point.Vy+" actual="+actor.position+" av="+actor.velocity+" predictedPhase="+point.Phase+" actualPhase="+actor.ai[0]+","+actor.ai[1]+","+actor.ai[2]+" collision="+point.NoTileCollide+"/"+actor.noTileCollide+" stop="+frozen.Stop);
                             }
-                            rows.Add(string.Join(",",scene,frame,Main.GameUpdateCount,actor.ai[0],actor.position.X,actor.position.Y,actor.velocity.X,actor.velocity.Y,actor.noTileCollide,!actor.dontTakeDamage,has,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matches,longMatches,cross,restored));
+                            rows.Add(string.Join(",",scene,frame,Main.GameUpdateCount,actor.ai[0],actor.position.X,actor.position.Y,actor.velocity.X,actor.velocity.Y,actor.noTileCollide,!actor.dontTakeDamage,has,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matches,longMatches,cross,restored,path!=null && ReferenceEquals(path.Identity.Token,actor),directionalDisplays,adjacentDisplays,retainedDisplays,maxMissingRun,published==0?0:minFuture,maxFuture,maxDisplaySpan.ToString("R",CultureInfo.InvariantCulture),curvedError.ToString("R",CultureInfo.InvariantCulture)));
                         }
-                        Require(selectedCount>0 && published>0 && longMatches>=30 && cross>0,"Same natural mimic must publish long frozen forecasts across actual phase changes "+scene+" matches="+matches+" long="+longMatches+" cross="+cross);
+                        Require(selectedCount>0 && published>0 && directionalDisplays>0 && adjacentDisplays>0 && cross>0,"Same natural mimic must consume directional connected Display futures across actual phase changes "+scene+" matches="+matches+" long="+longMatches+" cross="+cross);
                         Require(phases.Contains(2) && (phases.Contains(3) || phases.Contains(4) || phases.Contains(6)),"Actual random choice must lead into observed receiving/recovery phases "+scene);
-                        Require(tangent>8,"Mimic genuine turns must reject a velocity tangent "+scene);
+                        Require(curvedError>8,"Mimic genuine turns must reject a velocity tangent "+scene);
                         total+=matches;totalLong+=longMatches;totalCross+=cross;
-                        Console.WriteLine("BIG_MIMIC scene="+scene+" selected="+selectedCount+" published="+published+" matched="+matches+" long="+longMatches+" cross="+cross+" restored="+restored+" phases="+string.Join("|",phases)+" maxError="+maximum+" tangentError="+tangent);
+                        Console.WriteLine("BIG_MIMIC scene="+scene+" selected="+selectedCount+" published="+published+" matched="+matches+" long="+longMatches+" cross="+cross+" restored="+restored+" phases="+string.Join("|",phases)+" maxError="+maximum+" tangentError="+tangent+" directionalDisplays="+directionalDisplays+" adjacentDisplays="+adjacentDisplays+" retainedDisplays="+retainedDisplays+" maxMissingRun="+maxMissingRun+" minFuture="+(published==0?0:minFuture)+" maxFuture="+maxFuture+" maxDisplaySpan="+maxDisplaySpan.ToString("R",CultureInfo.InvariantCulture)+" curvedError="+curvedError.ToString("R",CultureInfo.InvariantCulture));
                     }
                     catch(InvalidOperationException failure){failures.Add(scene+": "+failure.Message);Console.WriteLine("BIG_MIMIC FAIL "+scene+": "+failure.Message);}
                 }
@@ -137,6 +149,21 @@ namespace NativeWorldTextProbe
             public bool CanHit(MotionRect a,MotionRect b,out bool clear,out PredictionStop stop){clear=true;stop=PredictionStop.None;return true;}
             public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop){tile=default(PredictionTile);stop=PredictionStop.None;return true;}
             public bool Move(ref NpcMotionState state,PredictionEnvironment e,out PredictionStop stop){stop=PredictionStop.None;return true;}
+        }
+        // Same body-centre segments and zoom as the real Display consumer.
+        // A direction must extend beyond its six-world-unit endpoint cross;
+        // NewSegment is a break, never a fabricated connecting line.
+        private static double DisplaySpan(NpcTrajectory path)
+        {
+            var start=new Vector2(path[0].Bounds.CenterX,path[0].Bounds.CenterY);double maximum=0;
+            for(int i=1;i<path.Count;i++)
+            {
+                var point=path[i];var next=new Vector2(point.Bounds.CenterX,point.Bounds.CenterY);
+                if(point.NewSegment){start=next;continue;}
+                float span=Vector2.TransformNormal(next-start,Main.GameViewMatrix.ZoomMatrix).Length();
+                Require(!float.IsNaN(span) && !float.IsInfinity(span),"Actual Display geometry is finite.");maximum=Math.Max(maximum,span);
+            }
+            return maximum;
         }
     }
 }

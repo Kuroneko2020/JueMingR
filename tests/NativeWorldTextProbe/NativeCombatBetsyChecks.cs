@@ -68,7 +68,7 @@ namespace NativeWorldTextProbe
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");long session=(long)Get(host,"Session");
             Require(GetOptional(source,"Native")==null,"Betsy runs the scalar rolling producer.");
             var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);
-            var rows=new List<string>{"scene,frame,phase,clock,cycle,target,playerX,playerY,playerVx,playerVy,selected,published,count,stop,matched,longMatched,cross,error"};var failures=new List<string>();
+            var rows=new List<string>{"scene,frame,phase,clock,cycle,target,playerX,playerY,playerVx,playerVy,selected,published,count,stop,matched,longMatched,cross,error,actorPublished,directionalDisplays,adjacentDisplays,retainedDisplays,maxMissingRun,minFuture,maxFuture,maxDisplaySpan,curvedError"};var failures=new List<string>();
             var owner=new Harmony("JueMingR.Probe.BetsyOracle");var update=typeof(NPC).GetMethod("UpdateNPC",Flags);owner.Patch(update,prefix:new HarmonyMethod(typeof(NativeCombatBetsyChecks).GetMethod(nameof(Before),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatBetsyChecks).GetMethod(nameof(After),Flags)));
             // Observe the real receive/death tail separately from the scalar
             // motor. These patches preserve the original mutation and failure.
@@ -87,6 +87,9 @@ namespace NativeWorldTextProbe
                         if(scene==2)p.npcTypeNoAggro[551]=true;
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
                         var freezes=new List<NpcTrajectory>();var phases=new Dictionary<NpcTrajectory,int>();var seen=new HashSet<int>();int actions=0,crystal=0,random=0,recovered=0,published=0,selected=0,matched=0,longMatched=0,cross=0;double maxError=0,tangent=0;bool awaitingRecovery=false;
+                        // Display accepts useful short futures; the existing phase/action
+                        // requirements below remain independent of its optional long tail.
+                        int directionalDisplays=0,adjacentDisplays=0,retainedDisplays=0,missingRun=0,maxMissingRun=0,minFuture=int.MaxValue,maxFuture=0;long lastDisplayTick=-2,lastCapture=-1;double maxDisplaySpan=0,curvedError=0;
                         NPC pending=null,receivingCrystal=null;NpcMotionState predicted=default(NpcMotionState),input=default(NpcMotionState);bool valid=false;int nativeFrame=-1,receiving=0,lossSamples=0;float beforeReceivingPhase=0;bool genuineLethalReceiving=false,receivingChangedThisFrame=false,awaitingLossSample=false;long receivingTick=-1;NpcTrajectory publicationBeforeReceiving=null;
                         checkDeadBefore=n=>
                         {
@@ -143,21 +146,30 @@ namespace NativeWorldTextProbe
                                 Console.WriteLine("BETSY RECEIVING-PUBLICATION scene="+scene+" frame="+frame+" tick="+Main.GameUpdateCount+" oldCapture="+(publicationBeforeReceiving?.CaptureTick??-1)+" currentCapture="+(current?.CaptureTick??-1)+" replaced="+!ReferenceEquals(current,publicationBeforeReceiving));receivingChangedThisFrame=false;
                             }
                             seen.Add((int)actor.ai[0]);allPhases.Add((int)actor.ai[0]);bool chosen=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(chosen)selected++;
-                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(chosen && path.SampleTick==Main.GameUpdateCount,"Actual event-created Betsy owns the current production path.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=(int)actor.ai[0];}}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(chosen && path.SampleTick==Main.GameUpdateCount,"Actual event-created Betsy owns the current production path.");published++;
+                                Require(ReferenceEquals(GetOptional(Get(host,"World"),"preparedPath"),GetOptional(host,"DisplayPath")),"World.Prepare consumes the actual selected Display owner and current lease.");
+                                double span=DisplaySpan(path);maxDisplaySpan=Math.Max(maxDisplaySpan,span);
+                                double markerSpan=Math.Max(Vector2.TransformNormal(new Vector2(6,0),Main.GameViewMatrix.ZoomMatrix).Length(),Vector2.TransformNormal(new Vector2(0,6),Main.GameViewMatrix.ZoomMatrix).Length());
+                                if(span>markerSpan)directionalDisplays++;
+                                if(lastDisplayTick==(long)Main.GameUpdateCount-1){adjacentDisplays++;if(lastCapture==path.CaptureTick)retainedDisplays++;}
+                                lastDisplayTick=Main.GameUpdateCount;lastCapture=path.CaptureTick;minFuture=Math.Min(minFuture,path.Count-1);maxFuture=Math.Max(maxFuture,path.Count-1);
+                                if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=(int)actor.ai[0];}}
+                            if(chosen && (path==null || !ReferenceEquals(path.Identity.Token,actor))){missingRun++;maxMissingRun=Math.Max(maxMissingRun,missingRun);}else missingRun=0;
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
                                 var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
                                 var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maxError=Math.Max(maxError,error);matched++;
                                 Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide,"Original frozen Betsy scene="+scene+" frame="+frame+" offset="+offset+" error="+error+" predicted="+point.Bounds.X+","+point.Bounds.Y+" actual="+actor.position+" phase="+string.Join("/",actor.ai)+" target="+actor.target+" player="+p.position+" playerV="+p.velocity+" stop="+frozen.Stop);
+                                curvedError=Math.Max(curvedError,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));
                                 if(offset>=30){longMatched++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}if(phases[frozen]!=(int)actor.ai[0])cross++;
                             }
-                            rows.Add(string.Join(",",scene,frame,actor.ai[0],actor.ai[1],actor.ai[3],actor.target,p.position.X,p.position.Y,p.velocity.X,p.velocity.Y,chosen,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matched,longMatched,cross,maxError.ToString("R",CultureInfo.InvariantCulture)));
+                            rows.Add(string.Join(",",scene,frame,actor.ai[0],actor.ai[1],actor.ai[3],actor.target,p.position.X,p.position.Y,p.velocity.X,p.velocity.Y,chosen,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matched,longMatched,cross,maxError.ToString("R",CultureInfo.InvariantCulture),path!=null && ReferenceEquals(path.Identity.Token,actor),directionalDisplays,adjacentDisplays,retainedDisplays,maxMissingRun,published==0?0:minFuture,maxFuture,maxDisplaySpan.ToString("R",CultureInfo.InvariantCulture),curvedError.ToString("R",CultureInfo.InvariantCulture)));
                             if(frame%600==0)Console.WriteLine("BETSY progress scene="+scene+" frame="+frame+" phase="+string.Join("/",actor.ai)+" actions="+actions+" random="+random+" recovered="+recovered);
                         }
-                        before=after=checkDeadBefore=checkDeadAfter=null;Require(actions>=1000 && crystal>=1000 && selected>0 && published>0 && longMatched>=30 && cross>=30 && tangent>8,"Natural Betsy and crystal preserve long curved, cross-stage original paths: scene="+scene+" actions="+actions+" long="+longMatched+" cross="+cross);
+                        before=after=checkDeadBefore=checkDeadAfter=null;Require(actions>=1000 && crystal>=1000 && selected>0 && published>0 && directionalDisplays>0 && adjacentDisplays>0 && cross>=30 && curvedError>8,"Natural Betsy and crystal preserve directional curved, cross-stage original Display paths: scene="+scene+" actions="+actions+" long="+longMatched+" cross="+cross);
                         Require(seen.Contains(1) && seen.Contains(2) && seen.Contains(3) && seen.Contains(4) && seen.Contains(6) && random>0 && recovered>0,"Native attack cycle reaches charge, breath, fireballs and summon, with capture recovery after the actual optional-circle random choice.");
                         Require(receiving>0 && lossSamples>0 && !awaitingLossSample,"The unchanged natural window includes actual crystal death and a subsequent genuine loss-state sampling recovery.");
-                        totalMatches+=matched;totalActions+=actions;totalCrystal+=crystal;totalRandom+=random;totalRecovered+=recovered;totalReceiving+=receiving;totalLossSamples+=lossSamples;Console.WriteLine("BETSY scene="+scene+" birth="+birth+" matched="+matched+" long="+longMatched+" cross="+cross+" actions="+actions+" crystal="+crystal+" random="+random+" recovered="+recovered+" receiving="+receiving+" lossSamples="+lossSamples+" phases="+string.Join("/",seen)+" error="+maxError);
+                        totalMatches+=matched;totalActions+=actions;totalCrystal+=crystal;totalRandom+=random;totalRecovered+=recovered;totalReceiving+=receiving;totalLossSamples+=lossSamples;Console.WriteLine("BETSY scene="+scene+" birth="+birth+" matched="+matched+" long="+longMatched+" cross="+cross+" actions="+actions+" crystal="+crystal+" random="+random+" recovered="+recovered+" receiving="+receiving+" lossSamples="+lossSamples+" phases="+string.Join("/",seen)+" error="+maxError+" directionalDisplays="+directionalDisplays+" adjacentDisplays="+adjacentDisplays+" retainedDisplays="+retainedDisplays+" maxMissingRun="+maxMissingRun+" minFuture="+(published==0?0:minFuture)+" maxFuture="+maxFuture+" maxDisplaySpan="+maxDisplaySpan.ToString("R",CultureInfo.InvariantCulture)+" curvedError="+curvedError.ToString("R",CultureInfo.InvariantCulture));
                     }
                     catch(Exception failure) when(!(failure is OutOfMemoryException)){before=after=checkDeadBefore=checkDeadAfter=null;failures.Add(scene+": "+failure.Message);Console.WriteLine("BETSY FAIL scene="+scene+": "+failure);}
                 }
@@ -182,6 +194,21 @@ namespace NativeWorldTextProbe
                 Projectile pet=p.tankPet>=0 && p.tankPet<Main.maxProjectiles?Main.projectile[p.tankPet]:null;values.Add(new PredictionInvasionPlayer(i,p,new MotionRect(p.position.X,p.position.Y,p.width,p.height),p.velocity.X,p.velocity.Y,p.aggro,mask,!p.dead && !p.ghost,p.itemAnimation==0 && p.aggro<0,pet,pet==null?default(MotionRect):new MotionRect(pet.position.X,pet.position.Y,pet.width,pet.height)));
             }
             var pc=Main.LocalPlayer;return new PredictionEnvironment{InvasionPlayers=new PredictionInvasionPlayers(values.ToArray(),values.Count),DD2OngoingCaptured=true,DD2Ongoing=DD2Event.Ongoing,PlayerIndex=Main.myPlayer,PlayerX=pc.Center.X,PlayerY=pc.Center.Y,PlayerWidth=pc.width,PlayerHeight=pc.height,PlayerVx=pc.velocity.X,PlayerVy=pc.velocity.Y,PlayerVelocityCaptured=true,PlayerTimelineActive=pc.active && !pc.dead && !pc.ghost,PlayerDead=pc.dead || !pc.active,Expert=Main.expertMode,Multiplayer=Main.netMode==1,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,GravityWorldSurface=Main.worldSurface};
+        }
+        // Same body-centre segments and zoom as the real Display consumer.
+        // A direction must extend beyond its six-world-unit endpoint cross;
+        // NewSegment is a break, never a fabricated connecting line.
+        private static double DisplaySpan(NpcTrajectory path)
+        {
+            var start=new Vector2(path[0].Bounds.CenterX,path[0].Bounds.CenterY);double maximum=0;
+            for(int i=1;i<path.Count;i++)
+            {
+                var point=path[i];var next=new Vector2(point.Bounds.CenterX,point.Bounds.CenterY);
+                if(point.NewSegment){start=next;continue;}
+                float span=Vector2.TransformNormal(next-start,Main.GameViewMatrix.ZoomMatrix).Length();
+                Require(!float.IsNaN(span) && !float.IsInfinity(span),"Actual Display geometry is finite.");maximum=Math.Max(maximum,span);
+            }
+            return maximum;
         }
     }
 }
