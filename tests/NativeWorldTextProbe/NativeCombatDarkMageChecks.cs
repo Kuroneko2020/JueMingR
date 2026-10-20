@@ -69,7 +69,7 @@ namespace NativeWorldTextProbe
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output,ProbeGraphics graphics=null)
         {
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");long session=(long)Get(host,"Session");Require(GetOptional(source,"Native")==null,"Dark Mage uses the scalar producer.");
-            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Get(source,"Terrain");
+            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);
             var owner=new Harmony("JueMingR.Probe.DarkMageOracle");var update=typeof(NPC).GetMethod("UpdateNPC",Flags);var raise=typeof(DD2Event).GetMethod("RaiseGoblins",Flags);var projectileAI=typeof(Projectile).GetMethod("AI",Flags);
             owner.Patch(update,prefix:new HarmonyMethod(typeof(NativeCombatDarkMageChecks).GetMethod(nameof(Before),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatDarkMageChecks).GetMethod(nameof(After),Flags)));
             owner.Patch(raise,prefix:new HarmonyMethod(typeof(NativeCombatDarkMageChecks).GetMethod(nameof(RaiseBefore),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatDarkMageChecks).GetMethod(nameof(RaiseAfter),Flags)));
@@ -124,6 +124,8 @@ namespace NativeWorldTextProbe
                         };
                         before=n=>
                         {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                             pending=n;valid=false;if(!n.active || !(n.aiStyle==109 && (n.type==564 || n.type==565) || n.type==548))return;
                             var group=Capture(read,tracking,terrain,session);int index=-1;for(int i=0;i<group.Length;i++)if(ReferenceEquals(group[i].Identity.Token,n)){index=i;break;}if(index<0)return;predicted=input=group[index];
                             // This is a current native-slot oracle: the whole
@@ -151,10 +153,10 @@ namespace NativeWorldTextProbe
                                 Require(current==null || current.CaptureTick==Main.GameUpdateCount && !ReferenceEquals(current,beforeChange),"The completed health/corpse/newborn input frame retires its old production publication.");Require(prepared==null || ReferenceEquals(prepared,current),"The real consumer never retains the pre-change Dark Mage path.");
                             }
                             string phase=actor.ai[1]+"/"+(actor.ai[0]>0)+"/"+(actor.localAI[3]>=60);bool chosen=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(chosen)selected++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(chosen && path.CaptureTick==Main.GameUpdateCount,"The original event identity owns the current Dark Mage publication.");published++;if(awaitingRecovery && path.Count>30){restored++;awaitingRecovery=false;}if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=phase;}}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(chosen && path.SampleTick==Main.GameUpdateCount,"The original event identity owns the current Dark Mage publication.");published++;if(awaitingRecovery && path.Count>30){restored++;awaitingRecovery=false;}if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=phase;}}
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(i);phases.Remove(frozen);continue;}if(offset<=0)continue;var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maxError=Math.Max(maxError,error);matched++;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);phases.Remove(frozen);continue;}if(offset<=0)continue;var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maxError=Math.Max(maxError,error);matched++;
                                 Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide,"Frozen original Dark Mage scene="+scene+" frame="+frame+" capture="+frozen.CaptureTick+" offset="+offset+" error="+error+" predicted="+point.Bounds.X+","+point.Bounds.Y+" actual="+actor.position+" phase="+string.Join("/",actor.ai)+" V="+actor.velocity+" target="+actor.target+" pc="+p.position+" pcV="+p.velocity+" stop="+frozen.Stop+" latestReceiving="+changedTick);
                                 if(offset>=30){longMatched++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}if(phases[frozen]!=phase)cross++;
                             }

@@ -1,5 +1,6 @@
 ﻿# Explicit owner-authorized finite #114 / #118 / #120 stage candidates. This does not write the
 # formal workload cache, grant release qualification, or authorize installation.
+. (Join-Path $PSScriptRoot 'DevelopmentCandidate.ps1')
 function Read-AimStageArtifact {
     param([string] $Root,$Entry)
     if ($null -eq $Entry -or [string]$Entry.path -notmatch '^\.local/' -or
@@ -23,6 +24,8 @@ function Read-AimStageDevelopment {
     $relative=$full.Substring($repository.Length).Replace('\','/')
     $null=Read-AimStageArtifact $Root ([pscustomobject]@{path=$relative;length=(Get-Item -LiteralPath $full).Length;sha256=(Get-WorkloadFileHash -LiteralPath $full).Hash})
     $record=Read-WorkloadJson $Path
+    # New tasks share this schema; historical date-specific records stay read-only compatible.
+    if($null -ne $record -and $record.schema -ceq 'development-candidate-1'){return Read-DevelopmentCandidate $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -cin @('view-unlock-development-20261018-1','view-cache-range-development-20261018-1')){return Read-ViewUnlockDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -ceq 'journey-menu-development-20261018-1'){return Read-JourneyMenuDevelopment $Root $Path $Identity $InputIdentity $record $relative}
     if($null -ne $record -and $record.schema -ceq 'hidden-entry-development-20261018-1'){return Read-HiddenEntryDevelopment $Root $Path $Identity $InputIdentity $record $relative}

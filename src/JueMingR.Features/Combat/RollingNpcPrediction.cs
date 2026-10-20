@@ -54,7 +54,7 @@ namespace JueMingR.Features.Combat
             // slot, after earlier owners moved. A frame-start predicate can
             // both miss an entering boundary and invent a departing one.
             bool needsPlayer=resume && progress.NeedsPlayer,canObservePlayer=!resume || progress.CanObservePlayer;
-            if(!resume)for(int i=0;i<count;i++)if((i==selected || !NpcWindyBalloonMotion.Known(source[i]) || source[i].Active && NpcWindyBalloonMotion.NeededWriter(source[i],source,count)) && source[i].PositionRelation!=6 && (motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i],environment,plannedHorizon,source,count,terrain)){needsPlayer=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(source[i]);}
+            if(!resume)for(int i=0;i<count;i++)if((i==selected || source[i].Style!=113 || !NpcWindyBalloonMotion.Known(source[i]) || source[i].Active && NpcWindyBalloonMotion.NeededWriter(source[i],source,count)) && source[i].PositionRelation!=6 && (motionRoles==null || i<motionRoles.Length && motionRoles[i]) && NpcMotion.NeedsPlayerMotion(source[i],environment,plannedHorizon,source,count,terrain)){needsPlayer=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(source[i]);}
             // Wet patrol does not read a target vector while currently blocked,
             // but later visibility still reads the player. Use a trustworthy
             // timeline whenever available, including held movement around a
@@ -125,7 +125,7 @@ namespace JueMingR.Features.Combat
             {
             for(int future=length;future<=required;future++)
             {
-                if(!CombatPredictionWork.TryContinue()){budgetPaused=true;break;}
+                if(!(future==1?CombatPredictionWork.TryContinue():CombatPredictionWork.TryContinueTail())){budgetPaused=true;break;}
                 boundaryWall=wallPoints[length-1];boundaryGravity=gravityPoints[length-1];
                 // CheckBossIndexes precedes the player action. Keep its full
                 // identity; an inactive/replaced owner clears the global.
@@ -139,7 +139,7 @@ namespace JueMingR.Features.Combat
                 bool futureNeeds=false;canObservePlayer=true;
                 // Rechecking a future phase must not move the horizon forward:
                 // a home clock beyond the requested endpoint is irrelevant.
-                for(int i=0;i<count;i++)if((i==selected || !NpcWindyBalloonMotion.Known(work[i]) || work[i].Active && NpcWindyBalloonMotion.NeededWriter(work[i],work,count)) && work[i].PositionRelation!=6 && (motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(work[i],environment,plannedHorizon-future+1,work,count,terrain)){futureNeeds=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(work[i]);}
+                for(int i=0;i<count;i++)if((i==selected || work[i].Style!=113 || !NpcWindyBalloonMotion.Known(work[i]) || work[i].Active && NpcWindyBalloonMotion.NeededWriter(work[i],work,count)) && work[i].PositionRelation!=6 && (motionRoles==null || motionRoles[i]) && NpcMotion.NeedsPlayerMotion(work[i],environment,plannedHorizon-future+1,work,count,terrain)){futureNeeds=true;canObservePlayer&=NpcMotion.CurrentPlayerPremise(work[i]);}
                 if(futureNeeds && !needsPlayer)
                 {
                     // A modeled phase acquired a new necessary premise. Start
@@ -218,7 +218,7 @@ namespace JueMingR.Features.Combat
                     CombatPredictionWork.Check();
                     // Released slaves no longer depend on an old balloon's AI.
                     // Keep retired values for raw consumers without replaying death.
-                    if(i!=selected && (!state.Active && (work[selected].WormRelationsCaptured || work[selected].WindyRelationsCaptured || work[selected].EmpressFactsCaptured) || NpcWindyBalloonMotion.Known(state) && !NpcWindyBalloonMotion.NeededWriter(state,work,count)))continue;
+                    if(i!=selected && (!state.Active && (work[selected].WormRelationsCaptured || work[selected].WindyRelationsCaptured || work[selected].EmpressFactsCaptured) || state.Style==113 && NpcWindyBalloonMotion.Known(state) && !NpcWindyBalloonMotion.NeededWriter(state,work,count)))continue;
                     // Inactive raw dependencies have no native actor action.
                     // Keep their identity/status for later original-slot reads,
                     // including Moon Lord's raw part slots and global owners.
@@ -264,7 +264,11 @@ namespace JueMingR.Features.Combat
                     // standard numbered-target motors retain this old gate.
                     // AI83 release validates each actual raw-slot winner in
                     // its model; the tablet's own target is not that consumer.
-                    if(playerNeededThisAction && !(state.EffectiveType==689 && state.Style==24 || NpcMoonLeechMotion.Known(state) || state.EffectiveType==437 && state.Style==83 || NpcWallBossMotion.Known(state) || NpcTownCritterMotion.Known(state) || state.EffectiveType==399 && state.Style==80 || NpcDarkMageMotion.Known(state) || NpcBetsyMotion.Known(state) || NpcInvasionLightningMotion.Known(state) || NpcInvasionFlightMotion.Known(state) || NpcInvasionGroundMotion.Known(state)) && state.TargetCaptured && state.PlayerIndex!=environment.PlayerIndex)
+                    // Most actors keep the already sampled numbered player.
+                    // Check that scalar mismatch BEFORE passing the large state
+                    // by value through unrelated family exception predicates.
+                    // The actual mismatch still uses the original family rules.
+                    if(playerNeededThisAction && state.TargetCaptured && state.PlayerIndex!=environment.PlayerIndex && !(state.EffectiveType==689 && state.Style==24 || NpcMoonLeechMotion.Known(state) || state.EffectiveType==437 && state.Style==83 || NpcWallBossMotion.Known(state) || NpcTownCritterMotion.Known(state) || state.EffectiveType==399 && state.Style==80 || NpcDarkMageMotion.Known(state) || NpcBetsyMotion.Known(state) || NpcInvasionLightningMotion.Known(state) || NpcInvasionFlightMotion.Known(state) || NpcInvasionGroundMotion.Known(state)))
                     {stop=PredictionStop.MissingDependency;advanced=false;break;}
                     work[i]=state;
                     if(writesGravity){gravityEnvironment.GravitySourceCaptured=true;gravityEnvironment.GravitySourceValid=true;gravityEnvironment.GravitySourceIdentity=state.Identity;}
@@ -286,8 +290,8 @@ namespace JueMingR.Features.Combat
             }
             catch(CombatPredictionBudgetExceededException)
             {
-                // Geometry or an actor may exhaust the hard allowance inside
-                // a step. Scratch/read sets/relations can then be half-written.
+                // Hard or enclosing soft allowance can interrupt an actor or
+                // geometry inside a step. Scratch/read sets/relations may be half-written.
                 // Keep only the last complete publication; never resume this
                 // scratch and never checkpoint all 200 actors on every step.
                 budgetPaused=hardPause=true;stop=PredictionStop.None;FailureLayer=PredictionFailureLayer.None;

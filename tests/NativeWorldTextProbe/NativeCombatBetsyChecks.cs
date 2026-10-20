@@ -67,7 +67,7 @@ namespace NativeWorldTextProbe
         {
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");long session=(long)Get(host,"Session");
             Require(GetOptional(source,"Native")==null,"Betsy runs the scalar rolling producer.");
-            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Get(source,"Terrain");
+            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);
             var rows=new List<string>{"scene,frame,phase,clock,cycle,target,playerX,playerY,playerVx,playerVy,selected,published,count,stop,matched,longMatched,cross,error"};var failures=new List<string>();
             var owner=new Harmony("JueMingR.Probe.BetsyOracle");var update=typeof(NPC).GetMethod("UpdateNPC",Flags);owner.Patch(update,prefix:new HarmonyMethod(typeof(NativeCombatBetsyChecks).GetMethod(nameof(Before),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatBetsyChecks).GetMethod(nameof(After),Flags)));
             // Observe the real receive/death tail separately from the scalar
@@ -110,6 +110,8 @@ namespace NativeWorldTextProbe
                         };
                         before=n=>
                         {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                             pending=n;valid=false;if(!n.active || !(n.type==551 || n.type==548))return;
                             var group=Capture(read,tracking,terrain,session);int index=-1;for(int i=0;i<group.Length;i++)if(ReferenceEquals(group[i].Identity.Token,n)){index=i;break;}if(index<0)return;
                             if(awaitingLossSample && ReferenceEquals(n,receivingCrystal) && n.ai[1]==1)
@@ -141,10 +143,10 @@ namespace NativeWorldTextProbe
                                 Console.WriteLine("BETSY RECEIVING-PUBLICATION scene="+scene+" frame="+frame+" tick="+Main.GameUpdateCount+" oldCapture="+(publicationBeforeReceiving?.CaptureTick??-1)+" currentCapture="+(current?.CaptureTick??-1)+" replaced="+!ReferenceEquals(current,publicationBeforeReceiving));receivingChangedThisFrame=false;
                             }
                             seen.Add((int)actor.ai[0]);allPhases.Add((int)actor.ai[0]);bool chosen=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(chosen)selected++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(chosen && path.CaptureTick==Main.GameUpdateCount,"Actual event-created Betsy owns the current production path.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=(int)actor.ai[0];}}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(chosen && path.SampleTick==Main.GameUpdateCount,"Actual event-created Betsy owns the current production path.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=(int)actor.ai[0];}}
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
                                 var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maxError=Math.Max(maxError,error);matched++;
                                 Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide,"Original frozen Betsy scene="+scene+" frame="+frame+" offset="+offset+" error="+error+" predicted="+point.Bounds.X+","+point.Bounds.Y+" actual="+actor.position+" phase="+string.Join("/",actor.ai)+" target="+actor.target+" player="+p.position+" playerV="+p.velocity+" stop="+frozen.Stop);
                                 if(offset>=30){longMatched++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}if(phases[frozen]!=(int)actor.ai[0])cross++;

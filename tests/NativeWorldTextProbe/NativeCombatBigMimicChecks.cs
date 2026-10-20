@@ -100,16 +100,16 @@ namespace NativeWorldTextProbe
                         {
                             NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();if(!actor.active)break;phases.Add(actor.ai[0]);
                             bool has=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(has)selectedCount++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor))
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor))
                             {
-                                Require(has && path.CaptureTick==Main.GameUpdateCount,"Mimic fresh selected publication.");published++;
+                                Require(has && path.SampleTick==Main.GameUpdateCount,"Mimic fresh selected publication.");published++;
                                 if(unavailable && path.Count>30){restored++;unavailable=false;}
                                 if(published==1 || frame%15==0)freezes.Add(path);
                             }
                             else unavailable=true;
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
                                 var point=frozen[offset];double error=Vector2.Distance(actor.position,new Vector2(point.Bounds.X,point.Bounds.Y));maximum=Math.Max(maximum,error);matches++;
                                 if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}
                                 if(point.Phase!=frozen[0].Phase)cross++;

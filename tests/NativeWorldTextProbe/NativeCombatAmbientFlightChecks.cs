@@ -140,15 +140,15 @@ namespace NativeWorldTextProbe
                         }
                         if(!npc.dontTakeDamage && !npc.friendly && !npc.immortal)eligible++;
                         var target=(NpcIdentity)Get(Get(host,"Selection"),"Target");bool selected=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(target.Token,npc);
-                        var path=cache.Read(0);if(selected)selectedCount++;
+                        var path=NativeCombatPresentationChecks.CurrentPath(host);if(selected)selectedCount++;
                         if(path!=null)
                         {
-                            Require(selected && path.Identity.Equals(target) && path.CaptureTick==Main.GameUpdateCount,"Fresh selected same-actor ambient path "+scene);
+                            Require(selected && path.Identity.Equals(target) && path.SampleTick==Main.GameUpdateCount,"Fresh selected same-actor ambient path "+scene);
                             published++;if(published==1 || frame%15==0)captures.Add(path);
                         }
                         for(int c=captures.Count-1;c>=0;c--)
                         {
-                            var frozen=captures[c];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);
+                            var frozen=captures[c];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);
                             if(offset>=frozen.Count){captures.RemoveAt(c);continue;}if(offset<=0)continue;
                             double error=Vector2.Distance(new Vector2(frozen[offset].Bounds.X,frozen[offset].Bounds.Y),npc.position);errorMax=Math.Max(errorMax,error);localMatches++;matched++;
                             Require(frozen[offset].NoTileCollide==npc.noTileCollide,"Frozen ambient future collision gate "+scene+" offset="+offset);
@@ -190,8 +190,8 @@ namespace NativeWorldTextProbe
             int peer=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),(int)actor.Center.X+20,(int)actor.Bottom.Y,472,Start:slot+1,Target:Main.myPlayer);
             Main.npc[peer].position=actor.position+new Vector2(24,10);Main.npc[peer].velocity=new Vector2(2,-1);Main.npc[peer].timeLeft=750;Main.npc[peer].localAI[0]=120;Main.npc[peer].ai[0]=1;Main.npc[peer].ai[1]=-1;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
-            var frozen=new List<NpcTrajectory>();var rows=new List<string>{"frame,tick,playerLife,playerX,playerY,playerVx,playerVy,npcX,npcY,peerX,peerY,firstHit,firstDivergence,maxFrozenError"};
-            int hit=-1,divergence=-1,postHitMatches=0;long hitTick=-1;double postHitError=0;NpcTrajectory recovered=null;
+            var frozen=new List<NpcTrajectory>();var rows=new List<string>{"frame,tick,playerLife,playerX,playerY,playerVx,playerVy,npcX,npcY,peerX,peerY,firstHit,firstDivergence,maxFrozenError,sourceCapture,sourceSample,sourceCount,preHitFrozenCount,oldPremiseComparisons,divergenceCapture,divergenceSample,divergenceOffset,recoveryCapture,recoverySample,postHitMatches"};
+            int hit=-1,divergence=-1,postHitMatches=0,oldPremiseComparisons=0,divergenceOffset=-1;long hitTick=-1,divergenceCapture=-1,divergenceSample=-1;double postHitError=0;NpcTrajectory recovered=null;
             try
             {
                 for(int frame=0;frame<180;frame++)
@@ -207,31 +207,37 @@ namespace NativeWorldTextProbe
                     var path=cache.Read(0);
                     if(path!=null && ReferenceEquals(path.Identity.Token,actor))
                     {
-                        if(hit<0 && (frozen.Count==0 || frame%15==0))frozen.Add(path);
-                        if(hit>=0 && recovered==null && path.Count>30)recovered=path;
+                        // Raw publications need not arrive at frame%15==0.
+                        // Keep the original fifteen-update sampling interval,
+                        // measured from the last actual frozen observation;
+                        // an unrelated clock phase must not erase the old
+                        // NoNewHits window needed by this negative control.
+                        if(hit<0 && path.SampleTick==(long)Main.GameUpdateCount && (frozen.Count==0 || path.SampleTick-frozen[frozen.Count-1].SampleTick>=15))frozen.Add(path);
+                        if(hit>=0 && recovered==null && path.CaptureTick>=hitTick && path.SampleTick==(long)Main.GameUpdateCount && path.Count>30)recovered=path;
                     }
                     double maximum=0;
                     foreach(var prior in frozen)
                     {
-                        int offset=(int)((long)Main.GameUpdateCount-prior.CaptureTick);if(offset<=0 || offset>=prior.Count)continue;
+                        int offset=(int)((long)Main.GameUpdateCount-prior.SampleTick);if(offset<=0 || offset>=prior.Count)continue;
                         double error=Vector2.Distance(new Vector2(prior[offset].Bounds.X,prior[offset].Bounds.Y),actor.position);maximum=Math.Max(maximum,error);
-                        if(error>.08 && divergence<0)divergence=frame;
+                        if(hit>=0 && prior.CaptureTick<hitTick)oldPremiseComparisons++;
+                        if(error>.08 && divergence<0){divergence=frame;divergenceCapture=prior.CaptureTick;divergenceSample=prior.SampleTick;divergenceOffset=offset;}
                         Require(error<=.08 || hit>=0 && Main.GameUpdateCount>=hitTick,"Ambient crowd cannot diverge before the real new-hit premise boundary frame="+frame+" error="+error);
                     }
                     if(recovered!=null)
                     {
-                        int offset=(int)((long)Main.GameUpdateCount-recovered.CaptureTick);
+                        int offset=(int)((long)Main.GameUpdateCount-recovered.SampleTick);
                         if(offset>0 && offset<recovered.Count)
                         {
                             double error=Vector2.Distance(new Vector2(recovered[offset].Bounds.X,recovered[offset].Bounds.Y),actor.position);postHitError=Math.Max(postHitError,error);postHitMatches++;
                             Require(error<=.08,"Ambient crowd re-sampled hit recovery error="+error+" offset="+offset);
                         }
                     }
-                    rows.Add(string.Join(",",frame,Main.GameUpdateCount,player.statLife,player.position.X,player.position.Y,player.velocity.X,player.velocity.Y,actor.position.X,actor.position.Y,Main.npc[peer].position.X,Main.npc[peer].position.Y,hit,divergence,maximum.ToString("R",CultureInfo.InvariantCulture)));
+                    rows.Add(string.Join(",",frame,Main.GameUpdateCount,player.statLife,player.position.X,player.position.Y,player.velocity.X,player.velocity.Y,actor.position.X,actor.position.Y,Main.npc[peer].position.X,Main.npc[peer].position.Y,hit,divergence,maximum.ToString("R",CultureInfo.InvariantCulture),path?.CaptureTick??-1,path?.SampleTick??-1,path?.Count??0,frozen.Count,oldPremiseComparisons,divergenceCapture,divergenceSample,divergenceOffset,recovered?.CaptureTick??-1,recovered?.SampleTick??-1,postHitMatches));
                 }
-                Require(hit>=0 && divergence>=hit,"Original no-immunity crowd must expose real hit then obsolete-premise divergence, hit="+hit+" divergence="+divergence);
-                Require(recovered!=null && recovered.CaptureTick-hitTick<=12 && postHitMatches>=30,"Ambient contact must recover useful frozen forecast, matched="+postHitMatches);
-                Console.WriteLine("PASS ambient contact premise hitFrame="+hit+" firstDivergenceFrame="+divergence+" recoveredMatches="+postHitMatches+" recoveredMaxError="+postHitError);
+                Require(hit>=0 && oldPremiseComparisons>0 && divergence>=hit && divergenceCapture<hitTick,"Original no-immunity crowd must expose real hit then an actually frozen pre-hit premise divergence, hit="+hit+" divergence="+divergence+" oldComparisons="+oldPremiseComparisons+" capture="+divergenceCapture+" sample="+divergenceSample+" offset="+divergenceOffset);
+                Require(recovered!=null && recovered.CaptureTick>=hitTick && recovered.CaptureTick-hitTick<=12 && postHitMatches>=30,"Ambient contact must recover useful frozen forecast, matched="+postHitMatches);
+                Console.WriteLine("PASS ambient contact premise hitFrame="+hit+" firstDivergenceFrame="+divergence+" oldPremiseComparisons="+oldPremiseComparisons+" divergenceCapture="+divergenceCapture+" divergenceSample="+divergenceSample+" divergenceOffset="+divergenceOffset+" recoveryCapture="+recovered.CaptureTick+" recoverySample="+recovered.SampleTick+" recoveredMatches="+postHitMatches+" recoveredMaxError="+postHitError);
             }
             finally{Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"ambient-contact-premise.csv"),rows);}
         }

@@ -207,9 +207,11 @@ namespace NativeWorldTextProbe
                         int nativeRetireMatches=0,deadActions=0;NpcMotionState retireState=default(NpcMotionState);PredictionStop retireStop=PredictionStop.None;bool retirePending=false;
                         if(variant==9)
                         {
-                            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Get(source,"Terrain");long session=(long)Get(host,"Session");
+                            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);long session=(long)Get(host,"Session");
                             beforeRetirement=n=>
                             {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                                 retirePending=false;if(!ReferenceEquals(n,actor) || !Main.LocalPlayer.dead)return;
                                 retireState=(NpcMotionState)read.Invoke(null,new object[]{n,session});object[] args={n,retireState,terrain};tracking.Invoke(null,args);retireState=(NpcMotionState)args[1];var p=Main.LocalPlayer;
                                 var e=new PredictionEnvironment{Players=new PredictionPlayers(new[]{new MotionRect(p.Hitbox.X,p.Hitbox.Y,p.width,p.height)},1,new[]{p.whoAmI}),PlayerIndex=p.whoAmI,PlayerX=p.Center.X,PlayerY=p.Center.Y,PlayerWidth=p.width,PlayerHeight=p.height,PlayerDead=true,Expert=Main.expertMode,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,GravityWorldSurface=Main.worldSurface};
@@ -237,21 +239,21 @@ namespace NativeWorldTextProbe
                             NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();
                             if(!actor.active)
                             {
-                                foreach(var frozen in freezes)if(frozen.Stop==PredictionStop.Despawn && (long)Main.GameUpdateCount-frozen.CaptureTick==frozen.Count)retireMatches++;
+                                foreach(var frozen in freezes)if(frozen.Stop==PredictionStop.Despawn && (long)Main.GameUpdateCount-frozen.SampleTick==frozen.Count)retireMatches++;
                                 break;
                             }
                             if(type==NPCID.MartianProbe && previousDirection!=0 && previousDirection!=actor.direction)wallTurns++;
                             previousDirection=actor.direction;
                             bool selected=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);
-                            var path=cache.Read(0);if(selected)selectedCount++;
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(selected)selectedCount++;
                             if(path!=null && ReferenceEquals(path.Identity.Token,actor))
                             {
-                                Require(selected && path.CaptureTick==Main.GameUpdateCount,"Same-actor completed-update related publication: "+scene);published++;
+                                Require(selected && path.SampleTick==Main.GameUpdateCount,"Same-actor completed-update related publication: "+scene);published++;
                                 if(frame%5==0 && path.Count>1)freezes.Add(path);
                             }
                             for(int c=freezes.Count-1;c>=0;c--)
                             {
-                                var frozen=freezes[c];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);
+                                var frozen=freezes[c];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);
                                 if(offset>=frozen.Count){freezes.RemoveAt(c);continue;}if(offset<=0)continue;
                                 var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maximum=Math.Max(maximum,error);localMatches++;matched++;
                                 Require(point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide,"Future related receiving/collision phase: "+scene+" offset="+offset);

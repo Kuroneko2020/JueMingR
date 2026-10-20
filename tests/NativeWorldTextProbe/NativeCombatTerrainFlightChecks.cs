@@ -131,10 +131,10 @@ namespace NativeWorldTextProbe
                         NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();if(!actor.active)break;
                         if(actor.ai[2]<0 && lastJump>=0)jumps++;if(Math.Sign(actor.ai[0])!=Math.Sign(lastClock))transitions++;lastClock=actor.ai[0];lastJump=actor.ai[2];
                         var selected=(NpcIdentity)Get(Get(host,"Selection"),"Target");bool has=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(selected.Token,actor);if(has)selectedCount++;
-                        var path=cache.Read(0);if(path!=null){Require(has && path.Identity.Equals(selected) && path.CaptureTick==Main.GameUpdateCount,"Fresh selected terrain path "+scene);published++;if(published==1 || frame%15==0)captures.Add(path);}
+                        var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null){Require(has && path.Identity.Equals(selected) && path.SampleTick==Main.GameUpdateCount,"Fresh selected terrain path "+scene);published++;if(published==1 || frame%15==0)captures.Add(path);}
                         for(int i=captures.Count-1;i>=0;i--)
                         {
-                            var frozen=captures[i];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){captures.RemoveAt(i);continue;}if(offset<=0)continue;
+                            var frozen=captures[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){captures.RemoveAt(i);continue;}if(offset<=0)continue;
                             var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maximum=Math.Max(maximum,error);matches++;if(offset>=30)longMatches++;
                             Require(point.NoTileCollide==actor.noTileCollide && error<=.08,"Frozen native terrain motor "+scene+" offset="+offset+" error="+error.ToString("R",CultureInfo.InvariantCulture)+" predicted="+point.Bounds.X+","+point.Bounds.Y+" pv="+point.Vx+","+point.Vy+" actual="+actor.position+" av="+actor.velocity+" ai="+actor.ai[0]+","+actor.ai[1]+","+actor.ai[2]+" player="+p.position+" playerV="+p.velocity+" stop="+frozen.Stop);
                         }
@@ -163,7 +163,7 @@ namespace NativeWorldTextProbe
         }
         internal static void Umbrella(object context,Action step,string output)
         {
-            object source=Get(Get(context,"CombatObservation"),"Prediction");var read=source.GetType().GetMethod("ReadPlayer",Flags);var terrain=(IPredictionTerrain)Get(source,"Terrain");
+            object source=Get(Get(context,"CombatObservation"),"Prediction");var read=source.GetType().GetMethod("ReadPlayer",Flags);var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);
             var rows=new List<string>{"item,case,frame,animation,predictedAnimation,x,y,vx,vy,predictedX,predictedY,predictedVy,error"};int matches=0;
             try
             {

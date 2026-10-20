@@ -77,7 +77,7 @@ namespace NativeWorldTextProbe
         internal static object Call(object value, string name, params object[] args) { return value.GetType().GetMethod(name, Flags).Invoke(value, args); }
         internal static void Set(object value, string name, object data)
         { var field = value.GetType().GetField(name, Flags); if (field != null) field.SetValue(value, data); else value.GetType().GetProperty(name, Flags).SetValue(value, data); }
-        internal static void Require(bool value, string reason) { if (!value) throw new InvalidOperationException(reason); }
+        internal static void Require(bool value, string reason) { if (!value) throw new JueMingR.Testing.BusinessAssertionException(reason); }
         private static bool SkipMessage() { return false; }
         private static int forbiddenCalls;
         private static bool RejectUnexpectedOperation() { forbiddenCalls++; return false; }

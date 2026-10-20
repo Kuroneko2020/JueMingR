@@ -521,6 +521,6 @@ namespace NativeWorldTextProbe
             }
             return 0;
         }
-        private static void Require(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
+        private static void Require(bool value, string message) { if (!value) throw new JueMingR.Testing.BusinessAssertionException(message); }
     }
 }

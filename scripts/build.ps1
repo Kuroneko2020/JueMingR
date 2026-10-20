@@ -265,7 +265,7 @@ if($PrepareOnly){
     if($sourceIdentity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint -or -not (Test-WorkloadOutputs $workRoot $record.outputs)){throw 'Preparation inputs/outputs changed.'}
     $record.workload=[ordered]@{status='PREPARED';mode='PrepareOnly';productChecks='NOT_EXECUTED';deliveryEligible=$false}
     Write-WorkloadJson $recordPath $record
-    Write-Output 'PREPARED: Debug compilation + structure only; product checks NOT_EXECUTED; no delivery qualification.'
+    Write-Output ('PREPARED: '+$Configuration+' compilation + structure only; product checks NOT_EXECUTED; no delivery qualification.')
     return
 }
 if($StageDevelopmentRecord){

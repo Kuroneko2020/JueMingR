@@ -58,7 +58,12 @@ namespace NativeWorldTextProbe
                 if(args.Length==4 && args[3]=="NpcPrivateSafety")return NativeCombatPrivateImageChecks.Run(args[1],args[2],true);
                 return Run(args[1], args[2], args.Length == 4 ? args[3] : "Full");
             }
-            catch (Exception e) { Console.Error.WriteLine(e); return 1; }
+            catch (Exception e)
+            {
+                Console.Error.WriteLine(e);
+                return JueMingR.Testing.BusinessAssertionProtocol.IsAssertion(e)
+                    ? JueMingR.Testing.BusinessAssertionProtocol.Fail() : JueMingR.Testing.BusinessAssertionProtocol.Fault(e);
+            }
         }
         private static Assembly Resolve(object sender, ResolveEventArgs args)
         {

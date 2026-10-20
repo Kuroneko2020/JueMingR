@@ -8,6 +8,45 @@ function Assert-Evidence([bool] $Condition, [string] $Message) {
     if (-not $Condition) { throw ('Evidence contract: ' + $Message) }
 }
 Assert-Evidence (-not (Test-WorkloadReusable $root $null ([pscustomobject]@{inputs=@()}) 'workload-Routing' 'signature')) 'missing retired evidence allows new independent execution without claiming reuse'
+$report='review-materials/movement-assists-20261019/evidence.md'
+$reportOld=[pscustomobject]@{inputs=@('src/Provider.cs:A',($report+':A'))}
+$reportNew=[pscustomobject]@{inputs=@('src/Provider.cs:A',($report+':B'))}
+Assert-Evidence ((Get-WorkloadCheckFingerprint $reportOld 'native-CombatEffectsCpu') -ceq (Get-WorkloadCheckFingerprint $reportNew 'native-CombatEffectsCpu')) 'report bytes do not retire business proof'
+Assert-Evidence ((Get-WorkloadHash $reportOld.inputs) -cne (Get-WorkloadHash $reportNew.inputs)) 'complete source identity still includes report bytes'
+Assert-Evidence ((Get-WorkloadRoute @($report)).groups.Count -eq 1 -and (Test-WorkloadNonExecutableInput $report)) 'selection and projection share non-executable classification'
+foreach($path in @('review-materials/movement-assists-20261019/run.ps1','review-materials/aim-midpoint-20261011-035938-HKT/new.exe','review-materials/unknown/fixture.json')){
+    Assert-Evidence (-not (Test-WorkloadNonExecutableInput $path) -and (Get-WorkloadRoute @($path)).unknown.Count -eq 1) ('unknown evidence execution input remains visible: '+$path)
+}
+foreach($case in @(
+ @{path='tests/NativeWorldTextProbe/NativeCombatAimChecks.cs';consumer='native-CombatAimCpu';independent='native-CombatEffectsCpu'},
+ @{path='tests/NativeWorldTextProbe/NativeCombatAimFixture.cs';consumer='native-JourneyPredictionCpu';independent='native-NpcSnowman'},
+ @{path='tests/NativeWorldTextProbe/NativeCombatAimFixture.cs';consumer='native-CombatEffectsCpu';independent='native-FishingCpu'},
+ @{path='tests/Workload/BusinessAssertionProtocol.cs';consumer='native-NpcEyeBoss';independent='fixture-focus-input'})){
+    $before=[pscustomobject]@{inputs=@($case.path+':A')};$after=[pscustomobject]@{inputs=@($case.path+':B')}
+    Assert-Evidence ((Get-WorkloadCheckFingerprint $before $case.consumer) -cne (Get-WorkloadCheckFingerprint $after $case.consumer)) ('real owner invalidates consumer '+$case.consumer)
+    Assert-Evidence ((Get-WorkloadCheckFingerprint $before $case.independent) -ceq (Get-WorkloadCheckFingerprint $after $case.independent)) ('isolated owner preserves '+$case.independent)
+}
+$recipePath='scripts/workload/Workload.Evidence.ps1'
+$selectionA='function Get-WorkloadPlan { return 1 }; function Invoke-WorkloadProcess { & real.exe --scope A }'
+$selectionB='function Get-WorkloadPlan { return 2 }; function Invoke-WorkloadProcess { & real.exe --scope A }'
+Assert-Evidence ((Get-WorkloadBehaviorRecipeProjection $recipePath $selectionA) -ceq (Get-WorkloadBehaviorRecipeProjection $recipePath $selectionB)) 'pure selection cannot retire actual launch contract'
+$selectionB=$selectionB.Replace('--scope A','--scope B')
+Assert-Evidence ((Get-WorkloadBehaviorRecipeProjection $recipePath $selectionA) -cne (Get-WorkloadBehaviorRecipeProjection $recipePath $selectionB)) 'actual argv semantic change retires launch contract'
+$pureBefore=[pscustomobject]@{inputs=@('scripts/workload/Workload.Planning.ps1:A')};$pureAfter=[pscustomobject]@{inputs=@('scripts/workload/Workload.Planning.ps1:B')}
+Assert-Evidence ((Get-WorkloadCheckFingerprint $pureBefore 'native-CombatEffectsCpu') -ceq (Get-WorkloadCheckFingerprint $pureAfter 'native-CombatEffectsCpu')) 'pure plan/aggregate description cannot retire business inputs'
+Assert-Evidence ((Get-WorkloadAggregateStatus 'Related' @([pscustomobject]@{name='A';result='PASS'},[pscustomobject]@{name='B';result='FAIL'},[pscustomobject]@{name='C';result='BLOCKED'}) @('A','B','C')) -ceq 'FAILED') 'aggregate helper never promotes failed siblings'
+$explanationCheck=[pscustomobject]@{name='native-CombatEffectsCpu';executable='unused';arguments=@('scope')}
+$explanationRows=@(($report+':A'),'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatAimFixture.cs:A')
+$explanationNew=[pscustomobject]@{inputs=@(($report+':B'),'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs:B','tests/NativeWorldTextProbe/NativeCombatAimFixture.cs:B')}
+$explanationCache=[pscustomobject]@{results=@([pscustomobject]@{name=$explanationCheck.name;inputs=$explanationRows;milliseconds=628864;status='PASS';signature=(Get-WorkloadHash (@($explanationCheck.executable)+@($explanationCheck.arguments)))})}
+$explanation=Get-WorkloadCheckExplanation $root $explanationCheck $explanationNew $explanationCache
+Assert-Evidence ($explanation.changedInputs.Count -eq 1 -and $explanation.changedInputs[0] -like 'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs|*' -and $explanation.originalMilliseconds -eq 628864) 'explanation uses exact real projection and retains original cost'
+$explanationNew.inputs[2]='tests/NativeWorldTextProbe/NativeCombatAimFixture.cs:A'
+$explanation=Get-WorkloadCheckExplanation $root $explanationCheck $explanationNew $explanationCache
+Assert-Evidence ($explanation.changedInputs.Count -eq 0) 'explanation difference cache is keyed by complete input identity'
+foreach($check in @('workload-Failure','workload-DevelopmentCandidate')){
+    Assert-Evidence (@(Get-WorkloadPlan $root 'checks' 'architecture.exe' @() @('workload-tools') | Where-Object {$_.name -ceq $check}).Count -eq 1) ('tool actual cumulative registration '+$check)
+}
 # These three attack owners do not implement NPC motion. Historical grouped
 # receipts still bind their original bytes; current reuse compares the actual
 # consumer projection, without rewriting that original fingerprint/identity.

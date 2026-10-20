@@ -6,6 +6,12 @@
 
 ShortDemand仍验证两行真实首发Enhanced及原六步内的真实显示：完整目标实例/代次、原采样与capture、当步owner租约、有限窗口和整个已计算静态NPC前缀内容，路径继续希望120步，关闭后零额外显示工作。完整续接由`CombatChecks`中的`RollingNpcPredictionChecks`（IncrementalPrefix/BudgetPrefix/MultiSlotPrefix）与`NpcTrajectoryWindowChecks`承担，分别核新增工作、不可变旧前缀、半步回滚、软硬预算与独立最低时域；不增加长度/进展配额、预热、等待或预算。实际窄验证及最终资格回到Issue和本地原件。
 
+后续连续NPC路径读者与该短需求专用测试分开核责：普通展示从真实`DisplayPath`/当步租约取已完成前缀，按原`SampleTick`年龄切出实际剩余窗口，保留`CaptureTick`、完整实例及原版几何/速度/阶段；冻结未来比较按窗口起点对齐，地形反例保存该显示本身的独立cell租约。分段Source直调、Pumpking无敌blade纯依赖、完整原生接收、事件后旧publication退休和命中后重新捕获仍保各自更强门，不统一迁成展示窗口。共享质量账本同时记录采样和捕获时间；原fresh机会/缺失/过期分母保留。此成组维护及正式累计失败原件见Issue与`.local`固定回执，不把旧失败或未运行项改签通过。
+
+Basic结构矩阵按原观察窗和全部可选分母区分当前路线、当前原版随机决策边界、已过期且未获租约的前缀及实际随机代表差异后的撤旧。过期分类另取真实Source储存前缀，按自身SampleTick年龄核当前点；它只证明这次暂缺的有限前提，不计为已显示。恢复区间锚首个实际前缀的有限终点，不能随以后raw刷新续延，且须真正新capture、同实例当前内容与Display租约恢复。随机蹦跳分类须有连续原版干态/零竖速观察、原版离散取值范围和既有代表标记，比较原版实际Single存储而非x86扩展中间值；不凭预算暂停或旧outcome理由放过空白。已观测空中动作再与下一原版动作比较；湿态、客户端、鲨鱼阻尼不借干态代表许可，615/688的Common随机边界与已选择动作分别取证。原逐帧显示/最大一帧空白门保为实际统计，不充当现行合同；不增加观察窗、预热、预算或任意配额。
+
+独立原版动作与累计回放oracle使用自己的同类型Terrain缓存，不能Reset生产Source的cells；实际Display反例保存其自身不可变cell租约。Snowman真实PlaceTile及后续原版framing先完成，继而由CompletedWorld的UpdateRuntime/UpdateShell取得首次观察机会；相关格变化分别核原Source publication与原Display对象退休、真正新采样恢复及旧未来分歧，无关格变化只在真实当步许可仍成立时计为保留。Phased已知Transform冻结实际新捕获或已延长的旧形态前缀，保原累计30和真实新形态/尺寸/阶段/受击/新段几何门，distinct未来tick只作证据；Ambient旧前提冻结的原15更新间隔锚上次真采样，命中后恢复仍保新Capture下界和原12更新/30匹配门。
+
 专用Whip的source-free私有组件继续保完整Contact、真实首伤与零伤/时钟反控；其健康撤销前提和精确新手前提统一使用既有真实静止人偶scalar组件，不把正常optional六更新满尾/未暂停作为机制正确性的前提。四次idle、0/1/4前置受击分母、一次自然手部出生及原40更新保留，不发布Source、不授输入许可；原因与旧失败边界见[成组复核](https://github.com/Kuroneko2020/JueMingR/issues/126#issuecomment-6282068197)。CPU只签DisplayPath租约/内容和既有投影几何，真实NPC路径XNA Draw本轮未执行，由当前候选本人体验卡核对呈现。
 
 移动接缝核查另发现原版普通持跳近段被AssistedComplex过早退化；首个多段跳原因/路径见 [因果登记](https://github.com/Kuroneko2020/JueMingR/issues/126#issuecomment-6281782601)，独审补出的未发动飞毯同因遗漏及相邻资格见 [R66-1登记](https://github.com/Kuroneko2020/JueMingR/issues/126#issuecomment-6282323218)，现行边界见移动合同/设计。普通近段资格按当前消费者及资源转换前提冻结，不按五装备白名单；已活动飞毯、火箭推力/可点火门、可用翼时及翼靴燃料转换不借普通许可。近端普通运动与首次未建模接力后的条件预测分开，不能把当前尚未发动等同整个未来时域准确；普通包、实际加载、安装和本人体验仍分别取证。最终冻结前一并维护本导航和体验卡，冻结后动态回执只写Issue/既有本地输出。

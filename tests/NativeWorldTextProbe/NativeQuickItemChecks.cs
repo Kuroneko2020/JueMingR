@@ -27,10 +27,10 @@ namespace NativeWorldTextProbe
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false,string candidateAssembly=null,string predictionHostHash=null,string candidatePackageId=null,bool exactPredictionComparison=false)
         {
-            Require(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
-            Require(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
+            RequireHostIdentity(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
+            RequireHostIdentity(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
             using(var file=File.OpenRead(typeof(Main).Assembly.Location))using(var sha=System.Security.Cryptography.SHA256.Create())
-                Require(BitConverter.ToString(sha.ComputeHash(file)).Replace("-","")=="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3","fixed .8 source");
+                RequireHostIdentity(BitConverter.ToString(sha.ComputeHash(file)).Replace("-","")=="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3","fixed .8 source");
             var assembly=Assembly.LoadFrom(candidateAssembly??Path.Combine(Program.Repository,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
             if(candidateAssembly!=null)Console.WriteLine("Explicit historical candidate: "+assembly.Location+" MVID="+assembly.ManifestModule.ModuleVersionId);
             Initialize();
@@ -186,6 +186,9 @@ namespace NativeWorldTextProbe
         // input sampling and empty outer callbacks deliberately do not do so.
         internal static void BeginWorldStep()
         {typeof(Main).GetField("_gameUpdateCount",Flags).SetValue(null,unchecked(Main.GameUpdateCount+1));}
+        // These establish whether a business check can run at all. They must
+        // remain fatal host faults, never the aggregatable Require assertions.
+        private static void RequireHostIdentity(bool value,string reason){if(!value)throw new InvalidDataException("Native fixture identity: "+reason);}
         internal static void Until(Func<bool> done) {var until=DateTime.UtcNow.AddSeconds(8);while(!done()){if(DateTime.UtcNow>until)throw new Exception("G05 worker timeout");Thread.Sleep(2);}}
         private static void Patch(Harmony harmony,MethodInfo method,string prefix) {Require(method!=null,"native fixture exact outlet exists: "+prefix);harmony.Patch(method,new HarmonyMethod(typeof(NativeQuickItemChecks).GetMethod(prefix,Flags)));}
         private static void BeforePredictionCode(out long __state){__state=System.Diagnostics.Stopwatch.GetTimestamp();}

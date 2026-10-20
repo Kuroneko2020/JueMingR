@@ -19,6 +19,9 @@ namespace NativeWorldTextProbe
         private static Action<Projectile> killing;
         private static Action<Projectile,string,List<int>> explosion;
         private static Action<bool> worldPrepare;
+        private static Action<MethodBase,long> budgetStage;
+        private static void BudgetBefore(out long __state){__state=System.Diagnostics.Stopwatch.GetTimestamp();}
+        private static void BudgetAfter(MethodBase __originalMethod,long __state){budgetStage?.Invoke(__originalMethod,__state);}
         private static void Before(NPC __instance){before?.Invoke(__instance);}
         private static void After(NPC __instance){after?.Invoke(__instance);}
         private static void Killing(Projectile __instance){killing?.Invoke(__instance);}
@@ -53,7 +56,7 @@ namespace NativeWorldTextProbe
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");long session=(long)Get(host,"Session");
             Require(GetOptional(source,"Native")==null,"Eye bosses use the actual scalar rolling producer.");
             var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);
-            var terrain=(IPredictionTerrain)Get(source,"Terrain");var rows=new List<string>{"scene,frame,type,phase,subphase,selected,published,count,stop,matched,longMatched,error,cross,actions,random"};var failures=new List<string>();
+            var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);var rows=new List<string>{"scene,frame,type,phase,subphase,selected,published,count,stop,displayMatched,modelLongMatched,error,modelCross,actions,random,componentCaptures,componentMatched,sourceRetired,displayRetired,displayRecoveries"};var failures=new List<string>();
             bool oldGood=Main.getGoodWorld,oldRemix=Main.remixWorld,oldZenith=Main.zenithWorld;var observer=new Harmony("JueMingR.Probe.EyeBossOracle");var update=typeof(NPC).GetMethod("UpdateNPC",Flags);
             observer.Patch(update,prefix:new HarmonyMethod(typeof(NativeCombatEyeBossChecks).GetMethod(nameof(Before),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatEyeBossChecks).GetMethod(nameof(After),Flags)));
             MethodInfo kill=typeof(Projectile).GetMethod("Kill",Flags),explode=typeof(Projectile).GetMethod("ExplodeTiles",Flags);var world=Get(host,"World");var prepareWorld=world.GetType().GetMethod("Prepare",Flags);
@@ -62,6 +65,13 @@ namespace NativeWorldTextProbe
             observer.Patch(kill,prefix:new HarmonyMethod(typeof(NativeCombatEyeBossChecks).GetMethod(nameof(Killing),Flags)));
             observer.Patch(explode,prefix:new HarmonyMethod(typeof(NativeCombatEyeBossChecks).GetMethod(nameof(ExplodeBefore),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatEyeBossChecks).GetMethod(nameof(ExplodeAfter),Flags)));
             observer.Patch(prepareWorld,prefix:new HarmonyMethod(typeof(NativeCombatEyeBossChecks).GetMethod(nameof(WorldBefore),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatEyeBossChecks).GetMethod(nameof(WorldAfter),Flags)));
+            // Bounded, test-only attribution. No production observer or file I/O
+            // is installed; two existing warm/cold frames answer this question.
+            bool budgetStages=Environment.GetEnvironmentVariable("JUEMINGR_EYE_BUDGET_STAGES")=="1";
+            var budgetMethods=new[]{source.GetType().GetMethod("PrepareSample",Flags),typeof(RollingNpcPrediction).GetMethod("Prepare",Flags),host.GetType().GetMethod("CaptureDisplay",Flags,null,new[]{typeof(NpcTrajectory),Get(source,"Terrain").GetType().GetNestedType("CellLease",Flags)},null)};
+            var stageRows=new List<Tuple<string,double,double,bool,int>>();
+            if(budgetStages)foreach(var method in budgetMethods)
+                observer.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatEyeBossChecks).GetMethod(nameof(BudgetBefore),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatEyeBossChecks).GetMethod(nameof(BudgetAfter),Flags)));
             int totalActions=0,totalMatched=0,totalRandom=0;
             try
             {
@@ -91,8 +101,11 @@ namespace NativeWorldTextProbe
                             if(type==125 || type==126)NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),2100,1700,type==125?126:125,Start:1,Target:Main.myPlayer);
                         }
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
-                        var freezes=new List<NpcTrajectory>();var phases=new Dictionary<NpcTrajectory,string>();var leases=new Dictionary<NpcTrajectory,HashSet<int>>();var changedPremises=new HashSet<NpcTrajectory>();var negativeReported=new HashSet<NpcTrajectory>();var observed=new HashSet<string>();int matched=0,longMatches=0,actions=0,random=0,cross=0,published=0,selectedCount=0,invalidated=0,negativeDifferences=0,recoveredLong=0,mutations=0,publicationRecoveries=0;double maxError=0,tangent=0,negativeMax=0;long lastMutationTick=-1;
-                        bool hit=false;NPC pending=null;NpcMotionState predicted=default(NpcMotionState);bool valid=false;int pendingWormRole=-1;var wormActions=new int[6];
+                        var freezes=new List<NpcTrajectory>();var phases=new Dictionary<NpcTrajectory,string>();var leases=new Dictionary<NpcTrajectory,HashSet<int>>();var components=new HashSet<NpcTrajectory>();var changedPremises=new HashSet<NpcTrajectory>();var negativeReported=new HashSet<NpcTrajectory>();var observed=new HashSet<string>();int matched=0,longMatches=0,actions=0,random=0,cross=0,published=0,selectedCount=0,invalidated=0,negativeDifferences=0,recoveredLong=0,mutations=0,publicationRecoveries=0,componentCaptures=0,componentMatches=0,sourceRetired=0,displayRetired=0,missingRun=0,maxMissingRun=0,displayMinFuture=int.MaxValue,displayMaxFuture=0;double maxError=0,tangent=0,negativeMax=0;long lastMutationTick=-1,recoveredMutation=-1;
+                        object componentSource=combo?Activator.CreateInstance(source.GetType(),Flags,null,new object[]{null,false},null):null;
+                        var componentCache=combo?(NpcPredictionCache)Get(componentSource,"Cache"):null;componentCache?.Demand(0,1,120);
+                        NpcTrajectory sourceSnapshot=null;object sourceSnapshotLease=null,sourceBeforeLease=null,displayBeforeLease=null;NpcTrajectory displayBeforeExplosion=null;
+                        bool hit=false,reportedMissing=false,reportedSteadyMissing=false;NPC pending=null;NpcMotionState predicted=default(NpcMotionState);bool valid=false;int pendingWormRole=-1;var wormActions=new int[6];
                         int diagnosticFrame=-1,replayFrame=-1;long replayCapture=0;NpcMotionState[] replayGroup=null;NpcMotionState replayBefore=default(NpcMotionState),replayAfter=default(NpcMotionState),nativeBefore=default(NpcMotionState);NPC replayPending=null;bool replayValid=false,reportedReplay=false;PredictionStop replayStop=PredictionStop.None;string replayDetail="",actorReplayDetail="";
                         bool diagnostic=combo && (single>=0 || Environment.GetEnvironmentVariable("JUEMINGR_EYE_CUMULATIVE_DIAGNOSTIC")=="1");
                         bool checkExplosionPublication=false;long explosionTick=-1;NpcTrajectory publicationBeforeExplosion=null;
@@ -100,7 +113,12 @@ namespace NativeWorldTextProbe
                         explosion=(p,detail,changedKeys)=>
                         {
                             var current=cache.Read(0);
-                            if(detail.StartsWith("before",StringComparison.Ordinal)){publicationBeforeExplosion=current;explosionTick=(long)Main.GameUpdateCount;}
+                            if(detail.StartsWith("before",StringComparison.Ordinal))
+                            {
+                                publicationBeforeExplosion=current;explosionTick=(long)Main.GameUpdateCount;
+                                sourceBeforeLease=HasFutureAt(current,explosionTick) && ReferenceEquals(current,sourceSnapshot)?sourceSnapshotLease:null;
+                                displayBeforeExplosion=GetOptional(host,"displayPath") as NpcTrajectory;displayBeforeLease=HasFutureAt(displayBeforeExplosion,explosionTick)?GetOptional(host,"displayTerrain"):null;
+                            }
                             else if(changedKeys!=null && changedKeys.Count>0)
                             {
                                 checkExplosionPublication=true;mutations++;lastMutationTick=(long)Main.GameUpdateCount;
@@ -114,9 +132,16 @@ namespace NativeWorldTextProbe
                             Console.WriteLine("EYE POST-EXPLOSION-WORLD-PREPARE completed="+completed+" frame="+diagnosticFrame+" tick="+Main.GameUpdateCount+" explosionTick="+explosionTick+" cachedCapture="+(current?.CaptureTick??-1)+" cachedRelationVersion="+(current?.RelationVersion??-1)+" cachedSameBeforeExplosion="+ReferenceEquals(current,publicationBeforeExplosion)+" terrainUnchanged="+terrain.Unchanged+" preparedCapture="+(prepared?.CaptureTick??-1)+" preparedCurrent="+ReferenceEquals(prepared,current));
                             if(completed)
                             {
-                                Require(current==null || current.CaptureTick==Main.GameUpdateCount && !ReferenceEquals(current,publicationBeforeExplosion),"The completed native explosion frame retires the old production publication.");
-                                Require(prepared==null || ReferenceEquals(prepared,current),"Actual World.Prepare consumes only the current post-explosion publication.");
-                                publicationRecoveries++;checkExplosionPublication=false;
+                                // A real explosion need not intersect either
+                                // owner's dependency set. Raw and Display have
+                                // independent identities and current leases.
+                                bool sourceChanged=LeaseChanged(sourceBeforeLease),displayChanged=LeaseChanged(displayBeforeLease);
+                                var display=GetOptional(host,"DisplayPath") as NpcTrajectory;
+                                if(sourceChanged){Require(current==null || current.CaptureTick>=explosionTick && !ReferenceEquals(current,publicationBeforeExplosion),"A real changed Source dependency retires its actual old publication.");sourceRetired++;}
+                                if(displayChanged){Require(display==null || display.CaptureTick>=explosionTick && !ReferenceEquals(display,displayBeforeExplosion),"A real changed Display dependency retires its actual old lease.");displayRetired++;}
+                                Require(ReferenceEquals(prepared,display),"Actual World.Prepare consumes exactly the current Host Display lease, independently of latest Source raw.");
+                                Console.WriteLine("EYE TERRAIN-OWNERS scene="+scene+" frame="+diagnosticFrame+" sourceKnown="+(sourceBeforeLease!=null)+" sourceAffected="+sourceChanged+" displayKnown="+(displayBeforeLease!=null)+" displayAffected="+displayChanged+" sourceRetired="+sourceRetired+" displayRetired="+displayRetired);
+                                checkExplosionPublication=false;
                             }
                         };
                         MethodInfo readPlayer=source.GetType().GetMethod("ReadPlayer",Flags),advancePlayer=typeof(RollingNpcPrediction).GetMethod("AdvancePlayer",Flags);
@@ -188,6 +213,8 @@ namespace NativeWorldTextProbe
                         };
                         before=n=>
                         {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                             replayBeforeAction(n);
                             pending=n;valid=false;pendingWormRole=combo?DestroyerRole(n):-1;
                             if(!n.active || !(n.type==4 || n.type==125 || n.type==126 || n.type==127 || pendingWormRole>=0))return;
@@ -219,13 +246,44 @@ namespace NativeWorldTextProbe
                             // Stable held-input intervals are actual Player
                             // futures; changing intent retires old freezes.
                             if(frame%240==0){Main.LocalPlayer.controlRight=frame%480==0;Main.LocalPlayer.controlLeft=!Main.LocalPlayer.controlRight;freezes.Clear();leases.Clear();changedPremises.Clear();negativeReported.Clear();}
-                            NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();if(!actor.active)break;
+                            if(budgetStages && combo && (frame==1 || frame==30))budgetStage=(method,begin)=>stageRows.Add(Tuple.Create(method.DeclaringType.Name+"."+method.Name,(System.Diagnostics.Stopwatch.GetTimestamp()-begin)*1000.0/System.Diagnostics.Stopwatch.Frequency,((CombatPredictionWork)Get(host,"PredictionWork")).UsedMilliseconds,((CombatPredictionWork)Get(host,"PredictionWork")).Exceeded,cache.Read(0)?.Count??0));
+                            NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();budgetStage=null;
+                            foreach(var row in stageRows)Console.WriteLine("EYE BUDGET-STAGE scene="+scene+" frame="+frame+" stage="+row.Item1+" ms="+row.Item2.ToString("R",CultureInfo.InvariantCulture)+" ownerMs="+row.Item3.ToString("R",CultureInfo.InvariantCulture)+" hard="+row.Item4+" raw="+row.Item5);stageRows.Clear();if(!actor.active)break;
+                            if(budgetStages && combo && frame==30)MeasureCompleteFirstStep(host,source,actor,scene);
+                            // Freeze a newly published raw owner's exact cells
+                            // before the NEXT real native terrain event. Never
+                            // replace them with a later failed scratch read set.
+                            var currentRaw=cache.Read(0);
+                            if(!ReferenceEquals(currentRaw,sourceSnapshot)){sourceSnapshot=currentRaw;sourceSnapshotLease=currentRaw==null?null:CallResult(Get(source,"Terrain"),"FreezeCells");}
                             string phase=actor.ai[0]+"/"+actor.ai[1];observed.Add(phase);
                             bool selected=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(selected)selectedCount++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.CaptureTick==Main.GameUpdateCount,"Current actual eye identity owns production publication.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=phase;var keys=new HashSet<int>();if(combo)foreach(System.Collections.DictionaryEntry cell in (System.Collections.IDictionary)Get(terrain,"cells"))keys.Add((int)cell.Key);leases[path]=keys;}}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.SampleTick==Main.GameUpdateCount,"Current actual eye identity owns the consumable Display lease.");published++;if(lastMutationTick>=0 && path.CaptureTick>=lastMutationTick && recoveredMutation!=lastMutationTick){publicationRecoveries++;recoveredMutation=lastMutationTick;}if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=phase;var keys=new HashSet<int>();if(combo)foreach(System.Collections.DictionaryEntry cell in NativeCombatPresentationChecks.CurrentCells(host))keys.Add((int)cell.Key);leases[path]=keys;}}
+                            if(selected && path==null){missingRun++;maxMissingRun=Math.Max(maxMissingRun,missingRun);}else missingRun=0;
+                            if(path!=null){displayMinFuture=Math.Min(displayMinFuture,path.Count-1);displayMaxFuture=Math.Max(displayMaxFuture,path.Count-1);}
+                            if(combo && selected && path==null && (!reportedMissing || frame>=30 && !reportedSteadyMissing))
+                            {
+                                MissingDisplay(host,source,cache,actor,scene,frame);reportedMissing=true;if(frame>=30)reportedSteadyMissing=true;
+                            }
+                            // Model quality is independent of the optional
+                            // Display window. Overlap the existing 120-action
+                            // horizon at fixed half-window sample intervals;
+                            // no seed, position or native window is searched.
+                            if(combo && selected && frame%60==0)
+                            {
+                                object liveDisplay=GetOptional(host,"displayPath");long liveLease=(long)Get(host,"displayLeaseTick");var owner=(CombatPredictionWork)Get(host,"PredictionWork");double spent=owner.UsedMilliseconds;
+                                var identity=new NpcIdentity(session,actor,actor.whoAmI,actor.generation,actor.type,actor.netID);
+                                Call(componentSource,"PreparePrefix",identity,(long)Main.GameUpdateCount,120,120);
+                                Require(ReferenceEquals(currentRaw,cache.Read(0)) && ReferenceEquals(liveDisplay,GetOptional(host,"displayPath")) && liveLease==(long)Get(host,"displayLeaseTick") && spent==owner.UsedMilliseconds,"Independent full-model Source cannot publish, renew Display, or spend/reset the live budget.");
+                                var component=componentCache.Read(0);
+                                if(component!=null)
+                                {
+                                    Require(component.Identity.Equals(identity) && component.CaptureTick==(long)Main.GameUpdateCount && component.SampleTick==component.CaptureTick && !component.BudgetPaused && (component.Stop!=PredictionStop.None || component.Count==121),"Independent Eye model preserves the full requested horizon or its real mechanism stop.");
+                                    freezes.Add(component);components.Add(component);phases[component]=phase;leases[component]=LeaseKeys(CallResult(Get(componentSource,"Terrain"),"FreezeCells"));componentCaptures++;
+                                }
+                            }
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(i);leases.Remove(frozen);changedPremises.Remove(frozen);negativeReported.Remove(frozen);phases.Remove(frozen);continue;}if(offset<=0)continue;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);leases.Remove(frozen);components.Remove(frozen);changedPremises.Remove(frozen);negativeReported.Remove(frozen);phases.Remove(frozen);continue;}if(offset<=0)continue;bool component=components.Contains(frozen);
                                 var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);
                                 if(changedPremises.Contains(frozen))
                                 {
@@ -233,32 +291,94 @@ namespace NativeWorldTextProbe
                                     if(error>.08 && negativeReported.Add(frozen)){negativeDifferences++;Console.WriteLine("EYE CHANGED-TERRAIN-NEGATIVE scene="+scene+" frame="+frame+" capture="+frozen.CaptureTick+" offset="+offset+" error="+error+" mutationTick="+lastMutationTick+" predicted="+point.Bounds.X+","+point.Bounds.Y+" actual="+actor.position+" pc="+PlayerRaw()+actorReplayDetail);}
                                     continue;
                                 }
-                                maxError=Math.Max(maxError,error);matched++;if(lastMutationTick>=0 && frozen.CaptureTick>=lastMutationTick && offset>=30)recoveredLong++;
-                                Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide && point.ReflectsProjectiles==actor.reflectsProjectiles && !point.ProjectileReflectionUnknown,"Frozen eye phase motor scene="+scene+" frame="+frame+" capture="+frozen.CaptureTick+" offset="+offset+" phase="+phase+" error="+error+" predicted="+point.Bounds.X+","+point.Bounds.Y+" predictedV="+point.Vx+","+point.Vy+" actual="+actor.position+" actualV="+actor.velocity+" stop="+frozen.Stop+" pc="+PlayerRaw()+actorReplayDetail);
-                                if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}if(phases[frozen]!=phase)cross++;
+                                maxError=Math.Max(maxError,error);if(component)componentMatches++;else matched++;if(lastMutationTick>=0 && frozen.CaptureTick>=lastMutationTick && offset>=30)recoveredLong++;
+                                Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide && point.ReflectsProjectiles==actor.reflectsProjectiles && !point.ProjectileReflectionUnknown,"Frozen eye phase motor component="+component+" scene="+scene+" frame="+frame+" capture="+frozen.CaptureTick+" offset="+offset+" phase="+phase+" error="+error+" predicted="+point.Bounds.X+","+point.Bounds.Y+" predictedV="+point.Vx+","+point.Vy+" actual="+actor.position+" actualV="+actor.velocity+" stop="+frozen.Stop+" pc="+PlayerRaw()+actorReplayDetail);
+                                if((!combo || component) && offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}if((!combo || component) && phases[frozen]!=phase)cross++;
                             }
-                            rows.Add(string.Join(",",scene,frame,type,actor.ai[0],actor.ai[1],selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matched,longMatches,maxError.ToString("R",CultureInfo.InvariantCulture),cross,actions,random));
+                            rows.Add(string.Join(",",scene,frame,type,actor.ai[0],actor.ai[1],selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matched,longMatches,maxError.ToString("R",CultureInfo.InvariantCulture),cross,actions,random,componentCaptures,componentMatches,sourceRetired,displayRetired,publicationRecoveries));
                         }
-                        before=after=null;killing=null;explosion=null;worldPrepare=null;Require(actions>=300,"Hundreds of original scheduled boss actions were compared: "+scene);
-                        Require(selectedCount>0 && published>0 && longMatches>=30 && tangent>8 && cross>=30,"Natural curved long futures cross deterministic eye phases: "+scene+" selected="+selectedCount+" pub="+published+" long="+longMatches+" cross="+cross+" tangent="+tangent);
+                        before=after=null;killing=null;explosion=null;worldPrepare=null;
+                        Console.WriteLine("EYE AVAILABILITY scene="+scene+" selected="+selectedCount+" pub="+published+" displayMatched="+matched+" displayMinFuture="+(published==0?0:displayMinFuture)+" displayMaxFuture="+displayMaxFuture+" maximumMissingRun="+maxMissingRun+" componentCaptures="+componentCaptures+" componentMatched="+componentMatches+" componentLong="+longMatches+" componentCross="+cross+" sourceRetired="+sourceRetired+" displayRetired="+displayRetired+" displayRecoveries="+publicationRecoveries);
+                        Require(actions>=300,"Hundreds of original scheduled boss actions were compared: "+scene);
+                        Require(selectedCount>0 && published>0 && matched>0 && (!combo || componentCaptures>0 && componentMatches>0) && longMatches>=30 && tangent>8 && cross>=30,"Actual Eye Display consumes native futures and independent long models cross deterministic phases: "+scene+" selected="+selectedCount+" pub="+published+" displayMatched="+matched+" componentCaptures="+componentCaptures+" componentMatched="+componentMatches+" componentLong="+longMatches+" cross="+cross+" tangent="+tangent);
                         if(combo)
                         {
-                            Require(mutations>0 && publicationRecoveries>0 && recoveredLong>=30,"Actual combo explosions retire production/presentation publications and recover long paths on new terrain samples.");
+                            Require(mutations>0 && publicationRecoveries>0 && recoveredLong>=30,"Actual combo explosions are followed by real new-capture Display recovery and independently matched long-model futures on new terrain samples.");
                             if(scene==17)Require(invalidated>0 && negativeDifferences>0 && negativeMax>.08,"Scene17 retains the original changed-terrain frozen mismatch as a negative premise case.");
-                            Console.WriteLine("EYE TERRAIN-RECOVERY scene="+scene+" mutations="+mutations+" publications="+publicationRecoveries+" invalidated="+invalidated+" oldNegative="+negativeDifferences+" oldMax="+negativeMax+" recoveredLong="+recoveredLong);
+                            Console.WriteLine("EYE TERRAIN-RECOVERY scene="+scene+" mutations="+mutations+" displayRecoveries="+publicationRecoveries+" sourceRetired="+sourceRetired+" displayRetired="+displayRetired+" invalidated="+invalidated+" oldNegative="+negativeDifferences+" oldMax="+negativeMax+" componentRecoveredLong="+recoveredLong);
                         }
                         if(type!=127)Require(hit && observed.Contains("1/0") && observed.Contains("2/0") && (observed.Contains("3/0") || type==4 && scene>=3),"Actual receiving transform phases and second form were reached: "+scene);
                         if(type==4 && scene>=2 && scene<=5)Require(random>0 && (observed.Contains("3/3") || observed.Contains("3/4")),"Original low-life motor RNG and observed charges were exercised.");
                         if(scene==14)Require(actor.ai[1]==2,"Actual dawn changes Prime to the native daytime chase.");
                         if(combo){for(int i=0;i<wormActions.Length;i++)Require(wormActions[i]>=300,"Genuine whole-chain MechQueen geometry role="+i+" compares hundreds of original slot actions.");Console.WriteLine("EYE destroyer scene="+scene+" head,count1,count9,count10,count11,tail="+string.Join(",",wormActions));}
-                        totalActions+=actions;totalMatched+=matched;totalRandom+=random;Console.WriteLine("EYE scene="+scene+" type="+type+" combo="+combo+" actions="+actions+" pub="+published+" matched="+matched+" long="+longMatches+" cross="+cross+" random="+random+" error="+maxError+" phases="+string.Join(";",observed));
+                        totalActions+=actions;totalMatched+=matched;totalRandom+=random;Console.WriteLine("EYE scene="+scene+" type="+type+" combo="+combo+" actions="+actions+" selected="+selectedCount+" pub="+published+" displayMatched="+matched+" displayMinFuture="+(published==0?0:displayMinFuture)+" displayMaxFuture="+displayMaxFuture+" maximumMissingRun="+maxMissingRun+" componentCaptures="+componentCaptures+" componentMatched="+componentMatches+" componentLong="+longMatches+" componentCross="+cross+" random="+random+" error="+maxError+" phases="+string.Join(";",observed));
                     }
-                    catch(Exception failure) when(!(failure is OutOfMemoryException)){before=after=null;killing=null;explosion=null;worldPrepare=null;failures.Add(scene+": "+failure.Message);Console.WriteLine("EYE FAIL scene="+scene+": "+failure);}
+                    catch(Exception failure) when(!(failure is OutOfMemoryException)){if(!JueMingR.Testing.BusinessAssertionProtocol.IsAssertion(failure))throw;before=after=null;killing=null;explosion=null;worldPrepare=null;failures.Add(scene+": "+failure.Message);Console.WriteLine("EYE FAIL scene="+scene+": "+failure);}
                 }
                 Require(failures.Count==0,"Original eye natural failures="+failures.Count+": "+string.Join(" | ",failures));Console.WriteLine("PASS eye/Prime/MechQueen natural scenes="+(last-first)+" scope="+(single>=0?"existing-combo-scene-"+single:comboOnly?"existing-combo-scenes-15-16-17":"full-default")+" matched="+totalMatched+" originalActions="+totalActions+" random="+totalRandom);
             }
-            finally{before=after=null;killing=null;explosion=null;worldPrepare=null;observer.Unpatch(update,HarmonyPatchType.All,observer.Id);observer.Unpatch(kill,HarmonyPatchType.All,observer.Id);observer.Unpatch(explode,HarmonyPatchType.All,observer.Id);observer.Unpatch(prepareWorld,HarmonyPatchType.All,observer.Id);Main.getGoodWorld=oldGood;Main.remixWorld=oldRemix;Main.zenithWorld=oldZenith;Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"eye-boss-continuous.csv"),rows);}
+            finally{before=after=null;killing=null;explosion=null;worldPrepare=null;budgetStage=null;observer.Unpatch(update,HarmonyPatchType.All,observer.Id);observer.Unpatch(kill,HarmonyPatchType.All,observer.Id);observer.Unpatch(explode,HarmonyPatchType.All,observer.Id);observer.Unpatch(prepareWorld,HarmonyPatchType.All,observer.Id);if(budgetStages)foreach(var method in budgetMethods)observer.Unpatch(method,HarmonyPatchType.All,observer.Id);Main.getGoodWorld=oldGood;Main.remixWorld=oldRemix;Main.zenithWorld=oldZenith;Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"eye-boss-continuous.csv"),rows);}
         }
+        private static object CallResult(object target,string method)
+        {return target.GetType().GetMethod(method,Flags).Invoke(target,null);}
+        private static bool HasFutureAt(NpcTrajectory path,long tick)
+        {return path!=null && tick>=path.SampleTick && tick-path.SampleTick<path.Count-1;}
+        private static HashSet<int> LeaseKeys(object lease)
+        {var keys=new HashSet<int>();if(lease!=null)foreach(object pair in (Array)Get(lease,"values"))keys.Add((int)Get(pair,"Key"));return keys;}
+        private static bool LeaseChanged(object lease)
+        {
+            if(lease==null)return false;
+            int width=(int)Get(lease,"width");if(width!=Main.maxTilesX || (int)Get(lease,"height")!=Main.maxTilesY)return true;
+            var read=lease.GetType().DeclaringType.GetMethod("ReadCell",Flags);
+            foreach(object pair in (Array)Get(lease,"values"))
+            {int key=(int)Get(pair,"Key");object[] args={key%width,key/width,null};if(!(bool)read.Invoke(null,args) || !Get(pair,"Value").Equals(args[2]))return true;}
+            return false;
+        }
+        // A single independent private Source answers whether the COMPLETE
+        // unit can fit, after a timed production attempt stopped mid-unit.
+        // It cannot publish into Host, lend a lease or alter production state.
+        private static void MeasureCompleteFirstStep(object host,object source,NPC actor,int scene)
+        {
+            var liveCache=(NpcPredictionCache)Get(source,"Cache");var liveRaw=liveCache.Read(0);object liveDisplay=GetOptional(host,"displayPath");long liveLease=(long)Get(host,"displayLeaseTick");var work=(CombatPredictionWork)Get(host,"PredictionWork");double liveSpent=work.UsedMilliseconds;
+            object independent=Activator.CreateInstance(source.GetType(),Flags,null,new object[]{null,false},CultureInfo.InvariantCulture);
+            var ownCache=(NpcPredictionCache)Get(independent,"Cache");ownCache.Demand(0,1,120);
+            var identity=new NpcIdentity((long)Get(host,"Session"),actor,actor.whoAmI,actor.generation,actor.type,actor.netID);
+            var clock=System.Diagnostics.Stopwatch.StartNew();source.GetType().GetMethod("PreparePrefix",Flags).Invoke(independent,new object[]{identity,(long)Main.GameUpdateCount,1,120});clock.Stop();
+            double completeMs=clock.Elapsed.TotalMilliseconds;var model=Get(independent,"rolling");var sample=(NpcMotionState[])((NpcMotionState[])Get(independent,"states")).Clone();int count=(int)Get(model,"resultCount"),selected=(int)Get(model,"resultSelected");
+            var environment=(PredictionEnvironment)Get(model,"resultEnvironment");var player=(PredictionPlayerMotion)Get(model,"resultPlayer");var cells=(IPredictionTerrain)Activator.CreateInstance(Get(independent,"Terrain").GetType(),true);
+            var isolated=new RollingNpcPrediction();var roles=(bool[])((bool[])Get(independent,"motionRoles")).Clone();
+            clock.Restart();var raw=isolated.Prepare(sample,count,selected,(long)Main.GameUpdateCount,1,(long)Get(model,"resultEpoch"),environment,player,cells,roles,(bool)Get(model,"resultPlayerAdvanced"),120);clock.Stop();
+            Console.WriteLine("EYE COMPLETE-UNIT scene="+scene+" frame=30 independent=true chargedToProduction=false closure="+count+" sourceAndStepMs="+completeMs.ToString("R",CultureInfo.InvariantCulture)+" isolatedStepMs="+clock.Elapsed.TotalMilliseconds.ToString("R",CultureInfo.InvariantCulture)+" sourceCount="+(ownCache.Read(0)?.Count??0)+" modelCount="+(raw?.Count??0)+" stop="+(raw?.Stop.ToString()??"null"));
+            Require(ReferenceEquals(liveRaw,liveCache.Read(0)) && ReferenceEquals(liveDisplay,GetOptional(host,"displayPath")) && liveLease==(long)Get(host,"displayLeaseTick") && liveSpent==work.UsedMilliseconds,"Independent complete-unit cost measurement cannot change the live publication, display lease or settled budget.");
+        }
+        // One pure-value vector at the first selected miss and first steady
+        // miss. This observes existing owners; it never prepares or renews one.
+        private static void MissingDisplay(object host,object source,NpcPredictionCache cache,NPC actor,int scene,int frame)
+        {
+            var selection=Get(host,"Selection");var work=Get(host,"PredictionWork");var raw=GetOptional(cache,"result") as NpcTrajectory;
+            Console.WriteLine("EYE MISSING-DISPLAY scene="+scene+" frame="+frame+" tick="+Main.GameUpdateCount+" actor="+actor.whoAmI+"/"+actor.generation+"/"+actor.type+" selection="+Identity((NpcIdentity)Get(selection,"Target"))+" host{"+Fields(host,"Path","pathFailed","TargetPredictionFailed","optionalTick","displayShortTick","displayLeaseTick")+"} settings{"+Fields(Get(host,"Settings"),"CanRun")+"} option{"+Fields(Get(host,"Options"),"Path")+"} hooks{"+Fields(Get(host,"Hooks"),"Ready")+"} world{"+Fields(Get(host,"World"),"Failed")+"} demand="+cache.Required+"/"+cache.MinimumRequired+" work{"+Fields(work,"UsedMilliseconds","Exceeded")+"} read="+Trajectory(cache.Read(0))+" raw="+Trajectory(raw)+" display="+Trajectory(GetOptional(host,"displayPath") as NpcTrajectory));
+            long outcome=(long)Get(source,"outcomeTick");var key=(NpcIdentity)Get(selection,"Target");object[] empty={key,(long)Main.GameUpdateCount,PredictionStop.None,PredictionFailureLayer.None};bool emptyValid=(bool)source.GetType().GetMethod("EmptyFutureReason",Flags).Invoke(source,empty);
+            Console.WriteLine("EYE MISSING-SOURCE "+Fields(source,"outcomeTick","outcomeFuture","outcomeStop","outcomeLayer","geometryTick","observedCount")+" outcomeIdentity="+Identity((NpcIdentity)Get(source,"outcomeIdentity"))+" emptyValid="+emptyValid+(emptyValid?" emptyStop="+empty[2]+" emptyLayer="+empty[3]:""));
+            var rolling=Get(source,"rolling");long resultTick=(long)Get(rolling,"resultTick");
+            Console.WriteLine("EYE MISSING-ROLLING current="+(resultTick==(long)Main.GameUpdateCount)+" "+Fields(rolling,"resultTick","resultCount","resultSelected","FailureLayer","resumable")+(resultTick==(long)Main.GameUpdateCount?" result="+Trajectory(GetOptional(rolling,"result") as NpcTrajectory)+" progress{"+Fields(Get(rolling,"progress"),"Length")+"}":""));
+            var states=(NpcMotionState[])Get(source,"states");var roles=(bool[])Get(source,"motionRoles");int count=(int)Get(source,"observedCount");var summary=new Dictionary<string,int>();bool complete=true;string firstBad="none";var details=new List<string>();
+            for(int i=0;i<count;i++)
+            {
+                var n=states[i];string kind=n.EffectiveType+"/"+n.Style+"/motor="+roles[i];int prior;summary.TryGetValue(kind,out prior);summary[kind]=prior+1;
+                bool member=n.EffectiveType==125 || n.EffectiveType==126 || n.EffectiveType==127 || n.Style==37;
+                if(member && (!n.EyeRelationsCaptured || !n.EyeRelationsComplete || !n.MechFactsCaptured)){complete=false;if(firstBad=="none")firstBad=Identity(n.Identity);}
+                if(n.EffectiveType==125 || n.EffectiveType==126 || n.EffectiveType==127)details.Add(Identity(n.Identity)+" eye="+n.EyeRelationsCaptured+"/"+n.EyeRelationsComplete+" mech="+n.MechFactsCaptured+" queen="+Identity(n.MechQueenIdentity)+" link="+Identity(n.MechLinkIdentity)+" destroyer="+n.MechDestroyerCaptured+"/"+n.MechDestroyerPresent);
+            }
+            var kinds=new List<string>();foreach(var item in summary)kinds.Add(item.Key+"="+item.Value);
+            var player=Main.LocalPlayer;
+            Console.WriteLine("EYE MISSING-CLOSURE sourceCurrent="+(outcome==(long)Main.GameUpdateCount)+" count="+count+" kinds="+string.Join(";",kinds)+" relationsComplete="+complete+" firstBad="+firstBad+" members="+string.Join(";",details)+" mechQueen="+NPC.mechQueen+" player="+player.active+"/"+player.dead+"/"+player.ghost+(resultTick==(long)Main.GameUpdateCount?" capturedPlayer{"+Fields(Get(rolling,"resultPlayer"),"InvalidMechanism")+"}":""));
+        }
+        private static string Fields(object owner,params string[] names)
+        {var values=new List<string>();foreach(string name in names)values.Add(name+"="+(GetOptional(owner,name)??"<missing>"));return string.Join(" ",values);}
+        private static string Identity(NpcIdentity n)
+        {return n.Session+"/"+n.Slot+"/"+n.Generation+"/"+n.Type+"/"+n.NetId+"/token="+(n.Token!=null);}
+        private static string Trajectory(NpcTrajectory path)
+        {return path==null?"null":Identity(path.Identity)+" cap="+path.CaptureTick+" sample="+path.SampleTick+" count="+path.Count+" stop="+path.Stop+" quality="+path.Quality+" assumptions="+path.Assumptions+" paused="+path.BudgetPaused+" p0="+path[0].Bounds.X+","+path[0].Bounds.Y+" V="+path[0].Vx+","+path[0].Vy;}
         private static void Setup(object context)
         {
             NativeCombatLiveContextChecks.FlightWorld();Main.Map=new Terraria.Map.WorldMap(Main.maxTilesX,Main.maxTilesY);NPC.ClearAll();Projectile.ClearAll();NPC.mechQueen=-1;Main.netMode=0;Main.dayTime=false;Main.time=1800;Main.getGoodWorld=Main.remixWorld=Main.zenithWorld=false;

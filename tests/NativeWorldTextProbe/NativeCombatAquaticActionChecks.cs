@@ -79,11 +79,11 @@ namespace NativeWorldTextProbe
                             if(actor.ai[2]==1 && member==688)sawFloat=true;if(sawFloat && actor.ai[2]==0)sawRelease=true;
                             if(member==615 && actor.ai[2]!=0)selectedActions.Add((int)actor.ai[2]);
                             bool has=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(has)selected++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor))
-                            {Require(has && path.CaptureTick==Main.GameUpdateCount,"Fresh aquatic selected publication.");published++;if(published==1 || frame%15==0 || freezes.Count==0 && actor.ai[2]!=0)freezes.Add(new Frozen(path,(int)actor.ai[2]));}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor))
+                            {Require(has && path.SampleTick==Main.GameUpdateCount,"Fresh aquatic selected publication.");published++;if(published==1 || frame%15==0 || freezes.Count==0 && actor.ai[2]!=0)freezes.Add(new Frozen(path,(int)actor.ai[2]));}
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.Path.CaptureTick);if(offset>=frozen.Path.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.Path.SampleTick);if(offset>=frozen.Path.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
                                 var point=frozen.Path[offset];double error=Vector2.Distance(actor.position,new Vector2(point.Bounds.X,point.Bounds.Y));maximum=Math.Max(maximum,error);matches++;if(offset>=30)longMatches++;if(frozen.Action!=0)actionMatches++;
                                 Require(error<=.08 && point.NoTileCollide==actor.noTileCollide,"Frozen native aquatic action "+scene+" offset="+offset+" capturedAction="+frozen.Action+" actualAction="+actor.ai[2]+" error="+error.ToString("R",CultureInfo.InvariantCulture)+" predicted="+point.Bounds.X+","+point.Bounds.Y+" pv="+point.Vx+","+point.Vy+" actual="+actor.position+" av="+actor.velocity+" wet="+actor.wet+" clock="+actor.ai[3]+" localClock="+actor.localAI[0]+" stop="+frozen.Path.Stop);
                             }

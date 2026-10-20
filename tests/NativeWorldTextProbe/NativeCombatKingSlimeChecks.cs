@@ -77,7 +77,7 @@ namespace NativeWorldTextProbe
         {
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");long session=(long)Get(host,"Session");
             var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);
-            var terrain=(IPredictionTerrain)Get(source,"Terrain");var rows=new List<string>{"scene,frame,hop,clock,teleport,selected,published,count,stop,matched,longMatched,error,actions,random,timeLeft,playerDead,playerRespawn,playerX,playerY"};var failures=new List<string>();
+            var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);var rows=new List<string>{"scene,frame,hop,clock,teleport,selected,published,count,stop,matched,longMatched,error,actions,random,timeLeft,playerDead,playerRespawn,playerX,playerY"};var failures=new List<string>();
             bool oldGood=Main.getGoodWorld;var observer=new Harmony("JueMingR.Probe.KingSlimeOracle");var update=typeof(NPC).GetMethod("UpdateNPC",Flags);
             observer.Patch(update,prefix:new HarmonyMethod(typeof(NativeCombatKingSlimeChecks).GetMethod(nameof(Before),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatKingSlimeChecks).GetMethod(nameof(After),Flags)));
             var checkActive=typeof(NPC).GetMethod("CheckActive",Flags);var cellAt=terrain.GetType().GetMethod("CellAt",Flags);
@@ -100,6 +100,8 @@ namespace NativeWorldTextProbe
                         checkAfter=n=>{if(scene==4 && ReferenceEquals(n,actor) && (nativeCheckLeft<=10 || !n.active))Console.WriteLine("KING DEAD-NATIVE-CHECK tick="+Main.GameUpdateCount+" calls="+nativeChecks+" active="+nativeCheckActiveBefore+"->"+n.active+" left="+nativeCheckLeft+"->"+n.timeLeft+" pos="+n.position+" size="+n.width+","+n.height+" phase="+string.Join("/",n.ai));};
                         before=n=>
                         {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                             pending=n;valid=false;if(!ReferenceEquals(n,actor) || !n.active)return;
                             predicted=(NpcMotionState)read.Invoke(null,new object[]{n,session});object[] args={n,predicted,terrain};tracking.Invoke(null,args);predicted=(NpcMotionState)args[1];
                             var e=EnvironmentFor(n);terrain.Reset();
@@ -120,10 +122,10 @@ namespace NativeWorldTextProbe
                             if(scene==4 && frame==400){Main.LocalPlayer.KillMe(Terraria.DataStructures.PlayerDeathReason.ByOther(0),1000000,0);Require(Main.LocalPlayer.dead,"Actual player death establishes King retreat.");freezes.Clear();}
                             NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();if(!actor.active)break;
                             observed.Add((int)actor.ai[1]);bool selected=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(selected)selectedCount++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.CaptureTick==Main.GameUpdateCount,"Actual King identity owns a fresh production window.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=(int)actor.ai[1];}}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.SampleTick==Main.GameUpdateCount,"Actual King identity owns a fresh production window.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=(int)actor.ai[1];}}
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
                                 var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maxError=Math.Max(maxError,error);matched++;
                                 Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal),"Frozen original King scene="+scene+" offset="+offset+" error="+error+" phase="+string.Join("/",actor.ai)+" predicted="+point.Bounds.X+","+point.Bounds.Y+" actual="+actor.position+" stop="+frozen.Stop);
                                 if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}if(phases[frozen]!=(int)actor.ai[1])cross++;

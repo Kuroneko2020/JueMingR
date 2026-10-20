@@ -54,7 +54,7 @@ namespace NativeWorldTextProbe
             Require(GetOptional(source,"Native")==null,"Plantera uses the default scalar rolling producer.");
             var read=source.GetType().GetMethod("Read",Flags);
             var capture=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);
-            var terrain=(IPredictionTerrain)Get(source,"Terrain");
+            var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);
             var rows=new List<string>{"scene,frame,type,selected,published,count,stop,matched,longMatched,maxError,tangentError"};
             var failures=new List<string>();bool oldGood=Main.getGoodWorld;var oldPlayers=Main.player;
             Main.player=new Player[oldPlayers.Length];for(int i=0;i<Main.player.Length;i++)Main.player[i]=new Player{whoAmI=i};
@@ -100,6 +100,8 @@ namespace NativeWorldTextProbe
                         NPC pendingActor=null;NpcMotionState predicted=default(NpcMotionState);bool pendingValid=false;
                         beforeAction=n=>
                         {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                             pendingValid=false;pendingActor=n;
                             if(!n.active || n.aiStyle<51 || n.aiStyle>53)return;
                             if(n.aiStyle==52){bool earlier=false;for(int k=0;k<n.whoAmI;k++)if(Main.npc[k].active && Main.npc[k].aiStyle==51){earlier=true;break;}if(!earlier)earlyHookActions++;}
@@ -120,7 +122,7 @@ namespace NativeWorldTextProbe
                         {
                             NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();
                             var selection=Get(host,"Selection");bool selected=(bool)Get(selection,"HasTarget") && ReferenceEquals(((NpcIdentity)Get(selection,"Target")).Token,actor);if(selected)selectedCount++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.CaptureTick==Main.GameUpdateCount,"Actual default producer owns fresh Plantera publication.");published++;if(frame%5==0 && path.Count>1)freezes.Add(path);}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.SampleTick==Main.GameUpdateCount,"Actual default producer owns fresh Plantera publication.");published++;if(frame%5==0 && path.Count>1)freezes.Add(path);}
                             if(path!=null)maxWindow=Math.Max(maxWindow,path.Count);
                             if(variant==7)
                             {
@@ -134,7 +136,7 @@ namespace NativeWorldTextProbe
                             }
                             for(int k=freezes.Count-1;k>=0;k--)
                             {
-                                var frozen=freezes[k];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(k);continue;}if(offset<=0)continue;
+                                var frozen=freezes[k];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(k);continue;}if(offset<=0)continue;
                                 var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maximum=Math.Max(maximum,error);matches++;
                                 if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}
                                 Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide && point.ProjectileReflectionUnknown==(actor.aiStyle==53 && Main.getGoodWorld) && (point.ProjectileReflectionUnknown || point.ReflectsProjectiles==actor.reflectsProjectiles),"Frozen natural Plantera full producer "+scene+" type="+actor.type+" offset="+offset+" error="+error+" stop="+frozen.Stop);

@@ -252,6 +252,6 @@ namespace NativeWorldTextProbe
         private static void ObserveMessage(int msgType) { if (msgType == 65) messages++; }
         private static void ObserveLimit() { limits++; }
         private static HarmonyMethod Patch(string name) => new HarmonyMethod(typeof(NativeTeleportMovementChecks), name);
-        private static void Require(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
+        private static void Require(bool value, string message) { if (!value) throw new JueMingR.Testing.BusinessAssertionException(message); }
     }
 }

@@ -103,7 +103,7 @@ namespace NativeWorldTextProbe
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
         {
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");Require(GetOptional(source,"Native")==null,"AI7 uses default scalar rolling, no isolated native worker.");
-            var terrain=(IPredictionTerrain)Get(source,"Terrain");var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);long session=(long)Get(host,"Session");
+            var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);long session=(long)Get(host,"Session");
             var rows=new List<string>{"type,mode,frame,phase,clock,x,y,vx,vy,selected,published,count,stop,matches,long,changes,actions,random"};var failures=new List<string>();int total=0,totalLong=0;
             var oracle=new Harmony("JueMingR.Tests.TownCritter.NativeAction");oracle.Patch(typeof(NPC).GetMethod("UpdateNPC",Flags),prefix:new HarmonyMethod(typeof(NativeCombatTownCritterChecks),"Before"),postfix:new HarmonyMethod(typeof(NativeCombatTownCritterChecks),"After"));
             try
@@ -117,6 +117,8 @@ namespace NativeWorldTextProbe
                     var frozen=new List<NpcTrajectory>();int selected=0,published=0,matches=0,longMatches=0,changes=0,actions=0,random=0;float phase=n.ai[0];double max=0,tangent=0;NpcMotionState predicted=default(NpcMotionState);bool valid=false;bool sawFish=false;PredictionStop actionStop=PredictionStop.None;
                     before=actor=>
                     {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                         if(!ReferenceEquals(actor,n) || actor.aiStyle!=7){valid=false;return;}
                         predicted=Read(read,tracking,terrain,actor,session);predicted.TownRelationsCaptured=predicted.TownRelationsComplete=true;var group=new[]{predicted};var e=Environment(p);e.PlayerTimelineActive=true;
                         valid=NpcMotion.Step(ref predicted,group,1,e,terrain,1,true,out actionStop);
@@ -145,10 +147,10 @@ namespace NativeWorldTextProbe
                         }
                         sawFish|=n.type==55;if(phase!=n.ai[0]){phase=n.ai[0];changes++;}
                         bool has=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,n);if(has)selected++;
-                        var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,n)){Require(has && path.CaptureTick==Main.GameUpdateCount,"AI7 actual selected publication uses current sample.");published++;if(frame%5==0 && path.Count>1)frozen.Add(path);}
+                        var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,n)){Require(has && path.SampleTick==Main.GameUpdateCount,"AI7 actual selected publication uses current sample.");published++;if(frame%5==0 && path.Count>1)frozen.Add(path);}
                         for(int i=frozen.Count-1;i>=0;i--)
                         {
-                            var item=frozen[i];int offset=(int)((long)Main.GameUpdateCount-item.CaptureTick);if(offset>=item.Count){frozen.RemoveAt(i);continue;}if(offset<=0)continue;
+                            var item=frozen[i];int offset=(int)((long)Main.GameUpdateCount-item.SampleTick);if(offset>=item.Count){frozen.RemoveAt(i);continue;}if(offset<=0)continue;
                             var point=item[offset];double error=Vector2.Distance(n.position,new Vector2(point.Bounds.X,point.Bounds.Y));max=Math.Max(max,error);matches++;
                             if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(n.position,new Vector2(item[0].Bounds.X+item[0].Vx*offset,item[0].Bounds.Y+item[0].Vy*offset)));}
                             Require(error<=.08 && point.NoTileCollide==n.noTileCollide && point.CanReceive==(!n.dontTakeDamage && !n.immortal),"Frozen AI7 type="+type+" mode="+mode+" frame="+frame+" offset="+offset+" error="+error.ToString("R",CultureInfo.InvariantCulture)+" predicted="+point.Bounds.X+","+point.Bounds.Y+" actual="+n.position+" v="+n.velocity+" phase="+n.ai[0]+","+n.ai[1]+" L2/L3="+n.localAI[2]+","+n.localAI[3]+" form="+n.type+" stop="+item.Stop);

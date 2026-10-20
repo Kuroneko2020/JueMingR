@@ -269,6 +269,11 @@ namespace JueMingR.TerrariaHost.Combat
                         optionalTick=displayShortTick=sampleTick;optionalTarget=Selection.Target;
                         prefix=Math.Min(full,candidatePath.Count-1);admitted=true;
                     }
+                    // First usable display earns one complete world step under
+                    // the existing outer 3ms allowance, not a fresh budget. The
+                    // producer's tail still cooperates at 2ms; lease validation
+                    // remains outside that lower scope and must really finish.
+                    using(!admitted && displayLeaseTick!=sampleTick?CombatPredictionWork.FirstPublicationProgress():default(CombatPredictionWork.ProgressScope))
                     using(CombatPredictionWork.Optional(2))
                     if(!admitted && CombatPredictionWork.TryContinue())
                     {
@@ -345,6 +350,7 @@ namespace JueMingR.TerrariaHost.Combat
                                 (displayShortTick<0 || sampleTick-displayShortTick>=DisplayShortRefreshUpdates))
                             {
                                 bool shortCaptured=false;
+                                using(CombatPredictionWork.FirstPublicationProgress())
                                 using(CombatPredictionWork.Optional(2))
                                 if(CombatPredictionWork.TryContinue())
                                 {

@@ -12,7 +12,7 @@ function Get-WorkloadEvidenceInput {
     # Documentation is not compiled; package assets remain in the build identity.
     # This deliberately invalidates more than a semantic dependency analyser.
     $retained=if($null -ne $script:WorkloadRetainedAssets){@($script:WorkloadRetainedAssets.files | ForEach-Object {$_.path})}else{@()}
-    $rows = @($Identity.inputs | Where-Object { ($_ -split ':',2)[0] -cnotin $retained -and $_ -notmatch '^(docs/|scripts/phase0s/[^:]*Owner-Test-Card[^:]*\.md:|AGENTS\.md:|README(?:\.[^/:]+)?:|LICENSE:|THIRD-PARTY-NOTICES\.md:)' })
+    $rows = @($Identity.inputs | Where-Object { $path=($_ -split ':',2)[0]; $path -cnotin $retained -and -not (Test-WorkloadNonExecutableInput $path) })
     foreach ($directory in @('external/TerrariaRefs','external/Harmony')) {
         $location = Join-Path $Root $directory
         if (-not [IO.Directory]::Exists($location)) { throw ('Missing evidence dependency: ' + $directory) }
@@ -47,9 +47,19 @@ function Get-WorkloadCompileFingerprint {
 }
 function Get-WorkloadFixtureRecipeFingerprint {
     param([string]$Root)
-    # This file owns the actual dotnet build arguments below. Binding its bytes
-    # is conservative preparation identity only, not all business conclusions.
-    return (Get-WorkloadFileHash (Join-Path $Root 'scripts/workload/Workload.Evidence.ps1')).Hash
+    # Preparation binds its actual call/validation owners. Plan explanations
+    # and aggregate accounting cannot make an already prepared Probe stale.
+    $path=Join-Path $Root 'scripts/workload/Workload.Evidence.ps1'
+    $text=[IO.File]::ReadAllText($path);$tokens=$null;$errors=$null
+    $ast=[Management.Automation.Language.Parser]::ParseInput($text,[ref]$tokens,[ref]$errors)
+    if($errors.Count){throw 'Unparseable fixture preparation recipe.'}
+    $names=@('Get-WorkloadCompileInputs','Get-WorkloadCompileFingerprint','Get-WorkloadFixtureInputFingerprint','Ensure-WorkloadFixture','Test-WorkloadEvidenceOutputs','Write-WorkloadJson')
+    $functions=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst]},$true) | Where-Object {$names -ccontains $_.Name})
+    # Tiny controlled fixtures used by the lightweight recipe tests contain
+    # statements rather than these owners; keep their complete bytes bound.
+    if($functions.Count -eq 0){return Get-WorkloadHash @($text)}
+    if($functions.Count -ne $names.Count){throw 'Incomplete fixture preparation owners.'}
+    return Get-WorkloadBehaviorRecipeProjection 'scripts/workload/Workload.Evidence.ps1' (($functions | ForEach-Object {$_.Extent.Text}) -join "`n")
 }
 function Test-WorkloadEvidence {
     param($Evidence, [string] $Fingerprint, [string] $Name, [string] $Signature)
@@ -62,15 +72,17 @@ function Test-WorkloadEvidence {
         $Evidence.signature -ceq $Signature -and $Evidence.executionId -match '^[0-9a-f]{32}$' -and
         $Evidence.sourceCommit -match '^[0-9a-f]{40}$' -and $Evidence.sourceFingerprint -match '^[0-9A-F]{64}$' -and @($Evidence.outputs).Count -gt 0
 }
-function Get-WorkloadCheckFingerprint {
+function Get-WorkloadCheckInputs {
     param($InputIdentity, [string] $Name)
     $groups=@(Get-WorkloadCheckGroups $Name)
     $key=(Get-WorkloadHash @($InputIdentity.inputs))+'|'+$Name+'|'+($groups -join ',')
-    if($script:WorkloadProjectionCache.ContainsKey($key)){return $script:WorkloadProjectionCache[$key]}
+    if($script:WorkloadCheckInputCache.ContainsKey($key)){return $script:WorkloadCheckInputCache[$key]}
     $rows=@($InputIdentity.inputs | Where-Object {
         $path=($_ -split ':',2)[0]
+        if (Test-WorkloadNonExecutableInput $path) { return $false }
         $leaves=@(Get-WorkloadPathChecks $path)
         if ($leaves.Count) {$leaves -contains $Name}
+        elseif ($path -ceq 'tests/Workload/BusinessAssertionProtocol.cs') {$Name -notlike 'fixture-*' -and $Name -notlike 'workload-*'}
         elseif ($path -match '^scripts/workload/|^scripts/(build|test-workload-regressions|test-world-object-text)\.ps1$|^tests/Workload/') {$Name.StartsWith('workload-')}
         elseif ($groups -contains '*' -or $path -notmatch '^(src/|tests/|scripts/)') {$true}
         else {
@@ -79,7 +91,16 @@ function Get-WorkloadCheckFingerprint {
             $route.unknown.Count -gt 0 -or @($route.groups | Where-Object {$_ -ne 'core' -and $groups -contains $_}).Count -gt 0
         }
     })
-    $fingerprint=Get-WorkloadHash $rows
+    $script:WorkloadCheckInputCache[$key]=$rows
+    return $rows
+}
+$script:WorkloadCheckInputCache=@{}
+function Get-WorkloadCheckFingerprint {
+    param($InputIdentity,[string] $Name)
+    $groups=@(Get-WorkloadCheckGroups $Name)
+    $key=(Get-WorkloadHash @($InputIdentity.inputs))+'|'+$Name+'|'+($groups -join ',')
+    if($script:WorkloadProjectionCache.ContainsKey($key)){return $script:WorkloadProjectionCache[$key]}
+    $fingerprint=Get-WorkloadHash @(Get-WorkloadCheckInputs $InputIdentity $Name)
     $script:WorkloadProjectionCache[$key]=$fingerprint
     return $fingerprint
 }
@@ -177,6 +198,23 @@ function Ensure-WorkloadFixture {
     if($recipe -cne (Get-WorkloadFixtureRecipeFingerprint $Root)){throw 'Fixture compile recipe changed during preparation.'}
     Write-WorkloadJson $path ([ordered]@{fixtureFingerprint=$before;compileFingerprint=$compile;recipeFingerprint=$recipe;sourceCommit=[string](Invoke-WorkloadGit $Root @('rev-parse','HEAD'));outputs=$outputs})
     return $exe
+}
+function Test-WorkloadDependencyLayout {
+    param([string] $Root,[string] $ChecksRoot)
+    # A reused Integration proof is not the shared files its private child
+    # consumes. A deleted/stale layout must be produced again before that child.
+    $layout=Join-Path $ChecksRoot 'prediction-worker-layout'
+    if(-not [IO.Directory]::Exists((Join-Path $layout 'prediction-materials')) -or @(Get-ChildItem -LiteralPath (Join-Path $layout 'prediction-materials') -Filter '*.image' -File).Count -eq 0){return $false}
+    foreach($name in @('JueMingR.PredictionWorker','JueMingR.TerrariaHost','JueMingR.Platform','JueMingR.Features','JueMingR.Infrastructure')){
+        $suffix=if($name -ceq 'JueMingR.PredictionWorker'){'.exe'}else{'.dll'}
+        foreach($extension in @($suffix)+$(if($suffix -ceq '.exe'){@('.exe.config')}else{@()})){
+            $source=Join-Path $Root ('artifacts/build/Debug/work/bin/'+$name+'/x86/Debug/net472/'+$name+$extension)
+            $target=Join-Path $layout ($name+$extension)
+            if(-not [IO.File]::Exists($source) -or -not [IO.File]::Exists($target) -or (Get-WorkloadFileHash $source).Hash -cne (Get-WorkloadFileHash $target).Hash){return $false}
+        }
+    }
+    $harmony=Join-Path $layout '0Harmony.dll'
+    return [IO.File]::Exists($harmony) -and (Get-WorkloadFileHash $harmony).Hash -ceq (Get-WorkloadFileHash (Join-Path $Root 'external/Harmony/0Harmony.dll')).Hash
 }
 function New-WorkloadCheckpointBatch {
     param([string] $Root, $Identity, $InputIdentity, [string[]] $Required, $Applicability=$null)
@@ -407,6 +445,14 @@ function Test-WorkloadLatestAttempt {
             $receipt.name -ceq $Name -and $receipt.signature -ceq $Signature
     } catch {return $false}
 }
+function Get-WorkloadAssertionHost {
+    param([string] $Name)
+    # Only these current scopes have typed assertions and audited scene
+    # aggregation. Legacy string/catch-all adapters remain unknown on failure.
+    # This is an actual launch/protocol owner, so it stays in the bound recipe.
+    if($Name -cin @('native-MovementJumpCpu','native-MovementDashCpu','native-MovementTeleportCpu','native-NpcEyeBoss','native-NpcSnowman')){return 'NativeWorldTextProbe.exe'}
+    return $null
+}
 function Invoke-WorkloadProcess {
     param([string] $Name, [string] $Executable, [string[]] $Arguments, $Checkpoint=$null)
     if (-not [IO.File]::Exists($Executable)) { throw ('Missing check executable: ' + $Name) }
@@ -414,6 +460,11 @@ function Invoke-WorkloadProcess {
     $exitCode = $null
     $onlyVariables = @(Get-WorkloadClearedEnvironment)
     $writer=$null
+    $assertionContext=[Environment]::GetEnvironmentVariable('JUEMINGR_WORKLOAD_ASSERTION_CONTEXT')
+    $protocolLines=New-Object 'System.Collections.Generic.List[string]'
+    $hostName=[IO.Path]::GetFileName($Executable)
+    $supportsAssertion=$null -ne $Checkpoint -and $hostName -ceq (Get-WorkloadAssertionHost $Name)
+    $expectedContext=if($supportsAssertion){$Name+'|'+$Checkpoint.executionId+'|'+(Get-WorkloadFileHash $Executable).Hash+'|'+(Get-WorkloadHash (@($Executable)+@($Arguments)))}else{$null}
     if ($null -ne $Checkpoint) {
         $Checkpoint.clearedSelectors=@($onlyVariables | ForEach-Object {$_.Name} | Sort-Object)
         $Checkpoint.effectiveEnvironment=@(Get-ChildItem Env: | Where-Object {$_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JUEMINGR|Configuration$|Platform$|DefineConstants$|TargetFramework$)' -and $_.Name -notmatch '^JUEMINGR_.*(ONLY|SCOPE|PHASES?|SINGLE)$'} | Sort-Object Name | ForEach-Object {$_.Name+':'+(Get-WorkloadHash @($_.Value))})
@@ -422,6 +473,7 @@ function Invoke-WorkloadProcess {
         $writer=New-Object IO.StreamWriter($Checkpoint.outputPath,$false,(New-Object Text.UTF8Encoding($false)))
     }
     try {
+        [Environment]::SetEnvironmentVariable('JUEMINGR_WORKLOAD_ASSERTION_CONTEXT',$expectedContext)
         foreach ($variable in $onlyVariables) { Remove-Item -LiteralPath ('Env:'+$variable.Name) }
         # Windows PowerShell can promote ordinary native stderr to an error
         # under the package entry's 2>&1 capture. Keep that output, but decide
@@ -429,19 +481,30 @@ function Invoke-WorkloadProcess {
         $ErrorActionPreference = 'Continue'
         $global:LASTEXITCODE = $null
         & $Executable @Arguments 2>&1 | ForEach-Object {
+            if ([string]$_ -match '^JMR-(ASSERTION|FAULT)-') {$protocolLines.Add([string]$_)}
             if ($null -ne $writer) {$writer.WriteLine([string]$_);$writer.Flush()}
             if ($_ -is [Management.Automation.ErrorRecord]) {Write-Error -ErrorRecord $_ -ErrorAction Continue} else {$_ | Out-Host}
         }
         $exitCode = $global:LASTEXITCODE
-    } finally { if ($null -ne $writer) {$writer.Dispose()};foreach ($variable in $onlyVariables) { Set-Item -LiteralPath ('Env:'+$variable.Name) -Value $variable.Value }; $ErrorActionPreference = $previousPreference }
+    } finally { if ($null -ne $writer) {$writer.Dispose()};[Environment]::SetEnvironmentVariable('JUEMINGR_WORKLOAD_ASSERTION_CONTEXT',$assertionContext);foreach ($variable in $onlyVariables) { Set-Item -LiteralPath ('Env:'+$variable.Name) -Value $variable.Value }; $ErrorActionPreference = $previousPreference }
+    $faultPrefix='JMR-FAULT-V1|'+$expectedContext+'|'
+    $hostExceptionType=if($supportsAssertion -and $exitCode -eq 1 -and $protocolLines.Count -eq 1 -and $protocolLines[0].StartsWith($faultPrefix,[StringComparison]::Ordinal)){$protocolLines[0].Substring($faultPrefix.Length)}else{$null}
+    $hostStable=$supportsAssertion -and (Get-WorkloadFileHash $Executable).Hash -ceq ($expectedContext -split '\|')[2]
+    $failureKind=if($exitCode -eq 3 -and $hostStable -and $protocolLines.Count -eq 1 -and $protocolLines[0] -ceq ('JMR-ASSERTION-V1|'+$expectedContext)){'BusinessAssertion'}elseif($hostStable -and $hostExceptionType -cmatch '^[A-Za-z0-9_.+`]+$'){'HostException'}elseif($protocolLines.Count){'ProtocolFailure'}elseif($null -eq $exitCode){'MissingExit'}else{'UnknownExit'}
     if ($null -ne $Checkpoint) {
         $Checkpoint.endedUtc=[DateTime]::UtcNow.ToString('o');$Checkpoint.exitCode=$exitCode
         $Checkpoint.status=if ($null -ne $exitCode -and $exitCode -eq 0) {'EXECUTED_AWAITING_STABILITY'} else {'FAILED'}
         $Checkpoint.outputSha256=(Get-WorkloadFileHash -LiteralPath $Checkpoint.outputPath -Algorithm SHA256).Hash
+        $Checkpoint | Add-Member -MemberType NoteProperty -Name failureKind -Value $(if($exitCode -eq 0 -and $protocolLines.Count -eq 0){$null}else{$failureKind}) -Force
+        $Checkpoint | Add-Member -MemberType NoteProperty -Name hostExceptionType -Value $(if($failureKind -ceq 'HostException'){$hostExceptionType}else{$null}) -Force
         Write-WorkloadJson $Checkpoint.path $Checkpoint
     }
     if ($null -eq $exitCode) { throw ("Workload check $Name did not produce a process exit code.") }
-    if ($exitCode -ne 0) { throw ("Workload check $Name failed with exit $exitCode.") }
+    if ($exitCode -ne 0 -or $protocolLines.Count) {
+        $failure=New-Object InvalidOperationException("Workload check $Name failed with exit $exitCode ($failureKind).")
+        $failure.Data['WorkloadFailureKind']=$failureKind
+        throw $failure
+    }
 }
 function Get-WorkloadEvidenceOutputs {
     param([string] $Root, $Record, [string] $Executable, [string[]] $Arguments=@())
@@ -665,6 +728,7 @@ function Test-WorkloadReusable {
     }
     if (-not (Test-WorkloadEvidence $Evidence $Evidence.inputFingerprint $Name $Signature) -or
         -not (Test-WorkloadBehaviorRecipes $Root $Evidence $InputIdentity $Name) -or
+        -not (Test-WorkloadOriginalProjection $Evidence $Name) -or
         (Get-WorkloadCheckFingerprint $Evidence $Name) -cne (Get-WorkloadCheckFingerprint $InputIdentity $Name)) {return $false}
     if (-not (Test-WorkloadLatestAttempt $Root $Evidence $Name $Signature)) {return $false}
     if ($null -eq $Evidence.PSObject.Properties['allInputFingerprint'] -or $null -eq $Evidence.PSObject.Properties['inputs'] -or
@@ -719,10 +783,11 @@ function Get-WorkloadPlan {
         # The separate process binds the private image before native fixture JIT.
         $plan.Add(@{name='native-NpcPrivateSafety'; executable=$native; arguments=@($Root,(Join-Path $ChecksRoot 'prediction-worker-layout'),(Join-Path $ChecksRoot 'NpcPrivateSafety'),'NpcPrivateSafety'); project='NativeWorldTextProbe'})
     }
-    if ($Groups -contains 'check:workload-Routing' -or $Groups -contains 'check:workload-Evidence' -or $Groups -contains 'workload-tools' -or $Groups -contains 'shared-host' -or $Groups -contains 'storage-host') {
-        foreach ($name in @('Routing','Evidence')) {
+    if (@($Groups | Where-Object {$_ -in @('check:workload-Routing','check:workload-Evidence','check:workload-Failure','check:workload-DevelopmentCandidate','workload-tools','shared-host','storage-host')}).Count) {
+        foreach ($name in @('Routing','Evidence','Failure','DevelopmentCandidate')) {
             if ($Groups -notcontains 'workload-tools' -and $Groups -notcontains 'shared-host' -and $Groups -notcontains 'storage-host' -and $Groups -notcontains ('check:workload-'+$name)) {continue}
-            $plan.Add(@{name='workload-'+$name; executable=(Get-Command powershell.exe).Source; arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root ('tests/Workload/Invoke-Workload'+$name+'Checks.ps1'))); project=''})
+            $scriptName=if($name -ceq 'DevelopmentCandidate'){'Invoke-DevelopmentCandidateChecks.ps1'}else{'Invoke-Workload'+$name+'Checks.ps1'}
+            $plan.Add(@{name='workload-'+$name; executable=(Get-Command powershell.exe).Source; arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root ('tests/Workload/'+$scriptName))); project=''})
         }
     }
     if ($Groups -contains 'check:workload-PackageVerification' -or $Groups -contains 'package-tools' -or $Groups -contains 'shared-host' -or $Groups -contains 'storage-host') {

@@ -1,5 +1,12 @@
 # One maintained definition supplies both selection and evidence projection.
 # Unknown/shared inputs stay conservative; compile identity is separate.
+function Test-WorkloadNonExecutableInput {
+    param([string] $Path)
+    # Exact archived evidence and existing document classes only. Unknown
+    # executables beside reports remain unclassified and cannot gain a waiver.
+    if($Path -match '\.(exe|dll|ps1|cmd|bat|cs|csproj|props|targets)$'){return $false}
+    return $Path.Replace('\','/') -match '^(docs/|AGENTS\.md$|README(?:\.[^/]+)?$|LICENSE$|THIRD-PARTY-NOTICES\.md$|scripts/phase0s/[^/]*Owner-Test-Card[^/]*\.md$|review-materials/movement-assists-20261019/evidence\.md$|review-materials/aim-midpoint-20261011-035938-HKT/.+\.(md|txt|json|csv)$|review-materials/aim-dedup-repair-20261014/(evidence\.md|(validation-map|failure-dispositions)\.json|(A-birth-directions|A-time-summary|B-model-equivalence|B-natural-births|B-natural-time-summary|B-supplement-summary|F-natural-births|F-natural-consumer-summary|F-natural-time-summary)\.csv)$)'
+}
 function Get-WorkloadLeafChecks {
     # Hand-opening/navigation owners are consumed by the attack preparation,
     # G11 yoyo and presentation chains, not by NPC motion models. Parent CPU
@@ -29,7 +36,11 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
         'tests/NativeWorldTextProbe/NativeYoyoAdoptionChecks.cs'=@('native-CombatCpu','native-CombatYoyoCausal')
-        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual')
+        'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu')
+        # Initialize also serves native Journey and graphical footprint/path
+        # coexistence. The latter remains a separate graphics-risk entry; the
+        # ordinary footprints CPU group cannot claim it executed real Draw.
+        'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual','native-CombatObservationCpu','native-CombatTerrainCpu','native-NpcPlayerPolicy','native-Journey','native-JourneyCpu','native-JourneyPredictionCpu','native-FootprintsCpu')
         'tests/NativeWorldTextProbe/NativeCombatVisualChecks.cs'=@('native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatAimQualificationChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatAimUiChecks.cs'=@('native-CombatAimUi','native-CombatVisual')
@@ -348,8 +359,19 @@ function Get-WorkloadCheckGroups {
 }
 function Get-WorkloadPathChecks {
     param([string] $Path)
-    $leaves=Get-WorkloadLeafChecks
+    # The definition is immutable for this loaded script. Fingerprinting asks
+    # for each path/check pair; rebuilding the full map there adds no evidence.
+    if($null -eq $script:WorkloadLeafLookup){$script:WorkloadLeafLookup=Get-WorkloadLeafChecks}
+    $leaves=$script:WorkloadLeafLookup
     if ($leaves.ContainsKey($Path)) {return $leaves[$Path]}
+    return @()
+}
+$script:WorkloadLeafLookup=$null
+function Get-WorkloadCheckDependencies {
+    param([string] $Name)
+    # The private-image safety child consumes the authenticated layout produced
+    # by Integration. Other registered checks run in fresh processes/outputs.
+    if ($Name -ceq 'native-NpcPrivateSafety') { return @('native-NpcWorkerIntegration') }
     return @()
 }
 $script:WorkloadCheckGroups=@{}
@@ -388,6 +410,16 @@ function Get-WorkloadBehaviorRecipeProjection {
     $ast=[Management.Automation.Language.Parser]::ParseInput($Text,[ref]$tokens,[ref]$errors)
     if($errors.Count){throw ('Unparseable behavior recipe: '+$Path)}
     $ignored=New-Object 'System.Collections.Generic.List[object]'
+    # These functions classify/select immutable inputs or explain a plan. They
+    # do not prepare/launch/qualify a child. Original receipts still have to
+    # satisfy their original projection before the current dependency check.
+    # Every other function/control-flow token remains execution-contract input.
+    if($Path -ieq 'scripts/workload/Workload.Evidence.ps1'){
+        $selectionOnly=@('Get-WorkloadEvidenceInput','Get-WorkloadCheckInputs','Get-WorkloadCheckFingerprint','Get-WorkloadPlan')
+        foreach($function in $ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst]},$true)){
+            if($selectionOnly -ccontains $function.Name){$ignored.Add($function.Extent)}
+        }
+    }
     # Even literal Write-Host resets $?. Only build's appended, top-level
     # reports after its existing final successful record output are exempt;
     # there is no later executable statement to consume their status. Other
@@ -402,7 +434,7 @@ function Get-WorkloadBehaviorRecipeProjection {
         if($constants.Count -eq 0 -or @($constants | Where-Object {$_ -isnot [Management.Automation.Language.StringConstantExpressionAst] -and $_ -isnot [Management.Automation.Language.ConstantExpressionAst]}).Count){break}
         $ignored.Add($pipeline.Extent)
     }
-    if($index -lt 0 -or $statements[$index].Extent.Text -cne 'Write-Output ("Build record: {0}" -f $recordPath)'){$ignored.Clear()}
+    if($Path -ieq 'scripts/build.ps1' -and ($index -lt 0 -or $statements[$index].Extent.Text -cne 'Write-Output ("Build record: {0}" -f $recordPath)')){$ignored.Clear()}
     $events=New-Object 'System.Collections.Generic.List[object]'
     foreach($token in $tokens){
         if($token.Kind -in @('NewLine','LineContinuation','Semi','EndOfInput')){continue}
@@ -471,6 +503,7 @@ function Test-WorkloadBehaviorRecipes {
 }
 function Get-WorkloadLegacyCheckFingerprint {
     param($InputIdentity, [string] $Name)
+    $legacyAimConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual')
     # Before the three attack owners became leaves they were combat-host
     # grouped inputs. Verify that immutable original projection only against
     # its recorded fingerprint; current candidate comparison always uses the
@@ -479,6 +512,7 @@ function Get-WorkloadLegacyCheckFingerprint {
     if($null -ne $InputIdentity.PSObject.Properties['inputFingerprint']){
         $groups=@(Get-WorkloadCheckGroups $Name)
         $groupedLeaves=Get-WorkloadLeafChecks
+        $groupedLeaves['tests/NativeWorldTextProbe/NativeCombatAimChecks.cs']=$legacyAimConsumers
         foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){$groupedLeaves.Remove($path)}
         $groupedRows=@($InputIdentity.inputs | Where-Object {
             $path=($_ -split ':',2)[0]
@@ -502,6 +536,7 @@ function Get-WorkloadLegacyCheckFingerprint {
     # same change (the dispatcher change itself invalidates all old evidence).
     # Page composition is also used by ToolsVisual, outside this CPU cache.
     $leaves=Get-WorkloadLeafChecks
+    $leaves['tests/NativeWorldTextProbe/NativeCombatAimChecks.cs']=$legacyAimConsumers
     foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){$leaves.Remove($path)}
     # Immutable pre-DT projection compatibility: this helper used to omit the
     # vertical assertion shared by the continuous scopes. This does not grant
