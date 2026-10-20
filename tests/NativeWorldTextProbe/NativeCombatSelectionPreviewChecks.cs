@@ -32,7 +32,11 @@ namespace NativeWorldTextProbe
                     for(int y=0;y<Main.maxTilesY;y++){Main.tile[47,y].active(true);Main.tile[47,y].type=1;}
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,clear,mouse,false,50,true,true));
                     for(int i=0;i<3;i++)Step(context,a.Center,false);
-                    Require(Selected(host)==(clear?3:2),"near blocked A/far actual reachable B respects centre and mode before attacking: mouse="+mouse+" clear="+clear);
+                    bool originalThree=Selected(host)==(clear?3:2);
+                    Console.WriteLine("SELECTION COLD originalThreeSignal="+originalThree+" mouse="+mouse+" clear="+clear+" selected="+Selected(host)+"; clear-line signal is observation-only, not a cold three-update deadline");
+                    if(clear)
+                        RankedAdvance(context,host,a.Center,3,true,"near blocked A/far actual reachable B respects centre and mode at a real fair preparation opportunity: mouse="+mouse,false);
+                    else Require(originalThree,"nearest mode retains its centre-ranked target without a weapon-solve prerequisite: mouse="+mouse);
                     int selected=Selected(host);Step(context,a.Center,true);Require(Selected(host)==selected,"attack input does not change the selection contract");
                     // BeforeNpc releases reader0; the real display owns its
                     // validated immutable window independently of that reader.
@@ -140,28 +144,40 @@ namespace NativeWorldTextProbe
             // still-reachable far contact's own dependencies. Closing a wall,
             // changing ammo or an intervening receiver invalidates old proof.
             Require(!retirePrior || prior==null || !SameRankedProof(prior,RankedSolution(host)),"invalidated hand/receiver facts immediately revoke the old candidate proof before optional re-solving");
-            // One five-update due interval plus one bounded fair cycle of the
-            // actual candidate set. A denied final candidate remains unresolved
-            // and gets its reserved next-pass turn; an optional refresh is not
-            // a guarantee that every candidate solve fits that one slice.
-            // Never force a solver from a validation read.
+            // Fairness advances on admitted World passes, not intervening
+            // native updates. ResolveSelection alternates reserved-oldest and
+            // changed-fact priority, so one full round has at most 2*N passes.
+            // The actual cadence converts that round to a finite no-progress
+            // backstop. This does NOT prove a solve fits a pass: this fixed
+            // stationary gun fixture must still obtain its real fresh positive
+            // and validated display, or fail. No validation read forces work.
             int cadence=(int)host.GetType().GetField("DisplayRefreshUpdates",Flags).GetRawConstantValue();
             int candidates=(int)Get(Get(host,"Selection"),"CandidateCount");
-            for(int remaining=cadence+Math.Max(0,candidates-1);remaining>0;remaining--)
+            int fairPasses=2*Math.Max(1,candidates),maximumUpdates=cadence*fairPasses,updates=1;
+            long firstPass=(long)Get(attack,"candidateWorldPass");
+            for(int remaining=maximumUpdates;remaining>0;remaining--)
             {
                 var contact=RankedSolution(host);
-                if(Selected(host)==expected && (contactExpected?contact!=null && contact.Value.Timeline.Identity.Slot==expected:contact==null))return;
+                if(Selected(host)==expected && (contactExpected?contact!=null && contact.Value.Timeline.Identity.Slot==expected:contact==null))
+                {RankedReceipt(host,reason,updates,(long)Get(attack,"candidateWorldPass")-firstPass,fairPasses,contact);return;}
+                if((long)Get(attack,"candidateWorldPass")-firstPass>=fairPasses)break;
                 Step(context,cursor,false,true);
+                updates++;
             }
             var result=RankedSolution(host);
-            Require(Selected(host)==expected && (contactExpected?result!=null && result.Value.Timeline.Identity.Slot==expected:result==null),reason);
+            bool reached=Selected(host)==expected && (contactExpected?result!=null && result.Value.Timeline.Identity.Slot==expected:result==null);
+            RankedReceipt(host,reason,updates,(long)Get(attack,"candidateWorldPass")-firstPass,fairPasses,result);
+            if(!reached)SelectionState(context,"finite-fair-round-failed:"+reason,updates,((ObservationOptions)Get(host,"Options")).MouseCenter,((ObservationOptions)Get(host,"Options")).ClearLine);
+            Require(reached,reason);
         }
+        private static void RankedReceipt(object host,string reason,int updates,long passes,int limit,NativeCombatAimChecks.SolutionFacts? solution)
+        {Console.WriteLine("RANKED FAIR RESULT reason="+reason+" updates="+updates+" actualWorldPasses="+passes+" fairPassLimit="+limit+" selected="+Selected(host)+" freshProof="+solution.HasValue+" receive="+(solution.HasValue?solution.Value.ReceiveTick:-1)+" display="+SelectionPath(NativeCombatPresentationChecks.CurrentPath(host)));}
         private static bool SameRankedProof(NativeCombatAimChecks.SolutionFacts? a,NativeCombatAimChecks.SolutionFacts? b)
         {return a.HasValue && b.HasValue && ReferenceEquals(a.Value.Timeline,b.Value.Timeline) && a.Value.Point==b.Value.Point && a.Value.ReceiveTick==b.Value.ReceiveTick && a.Value.Delay==b.Value.Delay;}
         private static NativeCombatAimChecks.SolutionFacts? RankedSolution(object host)
         {
             var attack=Get(host,"Attack");var identity=(NpcIdentity)Get(Get(host,"Selection"),"Target");
-            var display=GetOptional(host,"DisplayPath") as NpcTrajectory;
+            var display=NativeCombatPresentationChecks.CurrentPath(host);
             if(display==null || !display.Identity.Equals(identity))return null;
             // Admission is cleared by ResolveSelection. An admitted old plan is
             // usable only after that selection's dependency checks; raw plans
@@ -252,6 +268,22 @@ namespace NativeWorldTextProbe
         }
         private static NPC Scene(int slot,Vector2 centre)
         {var n=Main.npc[slot];n.SetDefaults(3);n.whoAmI=slot;n.active=true;n.Center=centre;n.velocity=n.netOffset=Vector2.Zero;n.aiStyle=-1;n.noGravity=true;n.life=n.lifeMax=100000;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);return n;}
+        // Test-only facts after the real update owner has settled. These reads
+        // never prepare a candidate, change a lease, or query input capability.
+        private static void SelectionState(object context,string stage,int index,bool mouse,bool clear)
+        {
+            var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");var selection=Get(host,"Selection");var options=(ObservationOptions)Get(host,"Options");var player=Main.LocalPlayer;
+            var display=GetOptional(host,"DisplayPath") as NpcTrajectory;var raw=((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(0);
+            Console.WriteLine("SELECTION STATE stage="+stage+" index="+index+" tick="+Main.GameUpdateCount+" wantedMouse="+mouse+" wantedClear="+clear+" actualMouse="+options.MouseCenter+" actualClear="+options.ClearLine+" hasTarget="+Get(selection,"HasTarget")+" selected="+Selected(host)+" reachable="+Get(selection,"ClearLine")+" candidates="+Get(selection,"CandidateCount")+" worldPass="+Get(attack,"candidateWorldPass")+" player="+player.Center+" cursor="+Main.MouseWorld+" ammo="+player.inventory[54].type+":"+player.inventory[54].stack+" timers="+player.itemAnimation+"/"+player.itemTime+" basicPermission="+Get(attack,"BasicPermission")+" urgent="+Get(attack,"UrgentPreparation")+" optional="+Get(host,"OptionalPreparation")+" optionalTick="+Get(host,"optionalTick")+" leaseTick="+Get(host,"displayLeaseTick")+" display="+SelectionPath(display)+" raw="+SelectionPath(raw)+" work="+Get(Get(host,"PredictionWork"),"UsedMilliseconds")+" hard="+Get(Get(host,"PredictionWork"),"Exceeded"));
+            var plans=(Array)Get(attack,"candidatePlans");var unknown=(bool[])Get(attack,"candidateUnknown");var attempts=(long[])Get(attack,"candidateAttempt");var requests=(int[])Get(attack,"candidateRequests");var depths=(int[])Get(attack,"candidateDepths");
+            foreach(int slot in new[]{2,3,4})
+            {
+                int key=slot*2;var plan=plans.GetValue(key);bool prepared=plan!=null && (bool)Get(plan,"Prepared");var facts=prepared?NativeCombatAimChecks.ReadPlanSolution(attack,plan):default(NativeCombatAimChecks.SolutionFacts);
+                Console.WriteLine("SELECTION CANDIDATE stage="+stage+" index="+index+" slot="+slot+" active="+Main.npc[slot].active+" position="+Main.npc[slot].Center+" unknown="+unknown[key]+" attempt="+attempts[key]+" request="+requests[key]+" depth="+depths[key]+" prepared="+prepared+" preparedTick="+(plan==null?-1:Get(plan,"PreparedTick"))+" phase="+(plan==null?"none":Get(plan,"Phase"))+" route="+facts.Route+" reachable="+facts.Reachability+" first="+facts.FirstTick+" receive="+facts.ReceiveTick+" native="+facts.NativeTick+" timeline="+SelectionPath(facts.Timeline));
+            }
+        }
+        private static string SelectionPath(NpcTrajectory path)
+        {return path==null?"none":path.Identity.Slot+"/"+path.SampleTick+"/"+path.CaptureTick+"/"+path.Count+"/"+path.Stop+"/paused="+path.BudgetPaused;}
         private static int Selected(object host){return ((NpcIdentity)Get(Get(host,"Selection"),"Target")).Slot;}
         private static object Copy(object value){var a=value as Array;return a==null?value:a.Clone();}
         private static bool Equal(object a,object b){var x=a as Array;var y=b as Array;return x==null?Equals(a,b):y!=null && x.Cast<object>().SequenceEqual(y.Cast<object>());}

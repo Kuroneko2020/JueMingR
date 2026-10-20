@@ -51,7 +51,9 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatBalancedAimChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatBalancedPhaseChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatBalancedCandidateChecks.cs'=@('native-CombatIntegrationCpu')
-        'tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs'=@('native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts')
+        # Step is a shared native update/purity fixture. Bind every actual
+        # caller even when this revision changes only the private ranking tests.
+        'tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatControlPreviewChecks.cs'=@('native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts')
         'tests/NativeWorldTextProbe/NativeCombatUsageChecks.cs'=@('native-CombatIntegrationCpu','native-CombatImpactVisual')
         'tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs'=@('native-CombatIntegrationCpu','native-CombatImpactVisual')
