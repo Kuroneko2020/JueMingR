@@ -13,6 +13,10 @@ function Get-WorkloadLeafChecks {
     # entries still own Navigation/AttackCosts; the children remain specialists.
     $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
     $leaves = @{
+        # This owner authenticates only actual Content consumers; CPU fixtures
+        # keep their original argument and proof projection.
+        'scripts/workload/Workload.NativeContent.ps1'=@('native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
+        'tests/Workload/Invoke-WorkloadContentChecks.ps1'=@('workload-Evidence')
         'tests/NativeWorldTextProbe/NativeMovementJumpChecks.cs'=@('native-MovementJumpCpu')
         'tests/NativeWorldTextProbe/NativeMovementJumpWireChecks.cs'=@('native-MovementJumpCpu')
         'tests/NativeWorldTextProbe/NativeMovementDashChecks.cs'=@('native-MovementDashCpu')

@@ -41,7 +41,7 @@ try {
     # Guard the evidence window; metadata-only checks never turn this into a
     # current-HEAD build, a synthetic load PASS or an owner gameplay result.
     if ((Get-WorkloadFileHash -LiteralPath $zip).Hash -cne $zipHash -or (Get-WorkloadFileHash -LiteralPath $recordPath).Hash -cne $recordHash) {throw 'INPUT_CHANGED_DURING_VERIFICATION'}
-    $tools=@('verify-existing-package.ps1','phase0s/PackageVerification.Support.ps1','phase0s/Phase0S.ScriptSupport.ps1','workload/Workload.Support.ps1','workload/Workload.Evidence.ps1','workload/Workload.Definitions.ps1','workload/Workload.ReadWindow.ps1','workload/Workload.Workspace.ps1','workload/Workload.Cleanup.ps1','workload/AimStage.Development.ps1','workload/DevelopmentCandidate.ps1','workload/Workload.Planning.ps1') | ForEach-Object {
+    $tools=@('verify-existing-package.ps1','phase0s/PackageVerification.Support.ps1','phase0s/Phase0S.ScriptSupport.ps1','workload/Workload.Support.ps1','workload/Workload.Evidence.ps1','workload/Workload.Definitions.ps1','workload/Workload.NativeContent.ps1','workload/Workload.ReadWindow.ps1','workload/Workload.Workspace.ps1','workload/Workload.Cleanup.ps1','workload/AimStage.Development.ps1','workload/DevelopmentCandidate.ps1','workload/Workload.Planning.ps1') | ForEach-Object {
         [ordered]@{path=$_;sha256=(Get-WorkloadFileHash -LiteralPath (Join-Path $PSScriptRoot $_)).Hash}
     }
     [ordered]@{status='PASS';scope='archive-and-package-identity';sourceCommit=$package.sourceCommit;packageId=$package.packageId;

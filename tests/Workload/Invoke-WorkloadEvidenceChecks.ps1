@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
+& powershell -NoProfile -File (Join-Path $PSScriptRoot 'Invoke-WorkloadContentChecks.ps1')
+if($LASTEXITCODE -ne 0){throw 'Native Content dispatch/input checks failed.'}
 Set-StrictMode -Version 2.0
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 . (Join-Path $root 'scripts/workload/Workload.Support.ps1')

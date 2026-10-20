@@ -1,4 +1,5 @@
 . (Join-Path $PSScriptRoot 'Workload.Definitions.ps1')
+. (Join-Path $PSScriptRoot 'Workload.NativeContent.ps1')
 . (Join-Path $PSScriptRoot 'Workload.ReadWindow.ps1')
 # Shared by the existing build and its thin CPU runner. No build/test recursion.
 function Invoke-WorkloadGit {

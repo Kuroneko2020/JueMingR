@@ -30,6 +30,7 @@ function Get-WorkloadEvidenceInput {
     foreach ($item in @(Get-ChildItem Env: | Where-Object { $_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JueMingR|Configuration$|Platform$|DefineConstants$|TargetFramework$)' } | Sort-Object Name)) {
         $rows += 'environment:' + $item.Name + ':' + (Get-WorkloadHash @($item.Value))
     }
+    $rows+=@(Get-WorkloadNativeContentRows $Root)
     return [ordered]@{ fingerprint = Get-WorkloadHash $rows; inputs = $rows }
 }
 function Get-WorkloadCompileInputs {
@@ -80,6 +81,7 @@ function Get-WorkloadCheckInputs {
     $rows=@($InputIdentity.inputs | Where-Object {
         $path=($_ -split ':',2)[0]
         if (Test-WorkloadNonExecutableInput $path) { return $false }
+        if ($path.StartsWith('native-content/',[StringComparison]::Ordinal)) {return Test-WorkloadNativeContentRow $path $Name}
         $leaves=@(Get-WorkloadPathChecks $path)
         if ($leaves.Count) {$leaves -contains $Name}
         elseif ($path -ceq 'tests/Workload/BusinessAssertionProtocol.cs') {$Name -notlike 'fixture-*' -and $Name -notlike 'workload-*'}
@@ -775,7 +777,7 @@ function Get-WorkloadPlan {
     }
     $scopes=Get-WorkloadNativeScopes
     foreach ($scope in $scopes.Keys) {
-        if ($Groups -contains ('check:native-'+$scope) -or @($scopes[$scope] | Where-Object {$Groups -contains $_}).Count -gt 0) { $plan.Add(@{name='native-'+$scope; executable=$native; arguments=@($Root,'--cpu',(Join-Path $ChecksRoot $scope),$scope); project='NativeWorldTextProbe'}) }
+        if ($Groups -contains ('check:native-'+$scope) -or @($scopes[$scope] | Where-Object {$Groups -contains $_}).Count -gt 0) { $plan.Add(@{name='native-'+$scope; executable=$native; arguments=@($Root,(Get-WorkloadNativeContentArgument $Root $scope),(Join-Path $ChecksRoot $scope),$scope); project='NativeWorldTextProbe'}) }
     }
     if($Groups -contains 'check:native-NpcStrategy-rollchoice'){$plan.Add((Get-WorkloadAdditionalCheck $Root 'native-NpcStrategy-rollchoice'))}
     if ($Groups -contains 'legacy-worker') {
