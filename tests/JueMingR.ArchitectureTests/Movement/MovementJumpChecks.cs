@@ -25,6 +25,24 @@ namespace JueMingR.ArchitectureTests
                 var original=new PredictionPlayerMotion{AssistedJump=true,AssistedJumpVersion=7};var changed=original;changed.AssistedJump=false;
                 Require(!original.SameSample(changed),"Released or disabled intent retires an old premise.");changed=original;changed.AssistedJumpVersion++;
                 Require(!original.SameSample(changed),"Owner/session revision retires an old premise even with Jump held.");
+                changed=original;changed.AssistedOrdinarySpan=true;
+                Require(!original.SameSample(changed),"A changed future equipment handoff cannot reuse the old player premise.");
+                var prefix=new PredictionPlayerMotion{Complex=true,AssistedJump=true,AssistedOrdinarySpan=true,HoldJump=true,Jump=4,Vy=-2,JumpSpeed=5,Gravity=.4f,GravityDirection=1,MaxFall=10};
+                Require(PlayerMotionContinuation.OrdinaryStep(prefix),"A future equipment handoff does not erase an already-started ordinary span.");
+                var boundary=prefix;boundary.Jump=1;Require(!PlayerMotionContinuation.OrdinaryStep(boundary),"Last held action retains the conditional future handoff.");
+                boundary=prefix;boundary.Vy=0;Require(!PlayerMotionContinuation.OrdinaryStep(boundary),"Early collision ends the supported prefix.");
+                boundary=prefix;boundary.ObservationMechanism=16;Require(!PlayerMotionContinuation.OrdinaryStep(boundary),"A real dash mechanism cannot borrow the ordinary prefix.");
+                boundary=prefix;boundary.AssistedOrdinarySpan=false;Require(!PlayerMotionContinuation.OrdinaryStep(boundary),"Active thrust or pending fuel consumers cannot borrow an ordinary prefix.");
+                prefix.Width=20;prefix.Height=40;prefix.X=100;prefix.Y=100;
+                prefix.Right=true;prefix.Vx=.25f;prefix.Acceleration=.08f;prefix.MaxSpeed=prefix.FastMaxSpeed=3;prefix.Slowdown=.2f;
+                var terrain=new PrefixTerrain();PredictionStop prefixStop;var origin=prefix;
+                Require(PlayerMotionContinuation.Advance(ref origin,default(PredictionEnvironment),terrain,out prefixStop) && Math.Abs(origin.Vx-.33f)<.0001f && Math.Abs(origin.Vy+4.6f)<.0001f && origin.Jump==3,
+                    "Actual future-origin consumer advances the supported held prefix, not its old sampled velocity.");
+                var enemy=new NpcMotionState{Identity=new NpcIdentity(1,new object(),4,2,2,2),Style=2,X=150,Y=150,Width=20,Height=20,Life=100,LifeMax=100,TimeLeft=750,Active=true,CanReceive=true,NoGravity=true,NoTileCollide=true,Health=new NpcHealthState{RealLife=-1}};
+                var environment=new PredictionEnvironment{PlayerX=110,PlayerY=120,PlayerWidth=20,PlayerHeight=40,WorldWidth=4200,WorldHeight=1200,WorldSurface=400};
+                terrain.Reset();var path=new RollingNpcPrediction().Prepare(new[]{enemy},1,0,100,2,1,environment,prefix,terrain);
+                Require(path!=null && path.Count==3 && terrain.PlayerMoves>0 && Math.Abs(terrain.FirstPlayerVx-.33f)<.0001f && Math.Abs(terrain.FirstPlayerVy+4.6f)<.0001f,
+                    "Actual NPC chase consumer receives the same supported near-player motion.");
                 foreach(float gravity in new[]{1f,-1f})foreach(bool down in new[]{false,true})
                 {
                     var p=new PredictionPlayerMotion{HoldJump=true,AssistedJump=true,Down=down,Jump=0,JumpHeight=15,JumpSpeed=5.01f,GravityDirection=gravity,Gravity=.4f,MaxFall=10};
@@ -37,5 +55,16 @@ namespace JueMingR.ArchitectureTests
             catch(Exception e){failures.Add("Movement jump: "+e);}
         }
         private static void Require(bool condition,string reason){if(!condition)throw new InvalidOperationException(reason);}
+        private sealed class PrefixTerrain : IPredictionTerrain
+        {
+            internal int PlayerMoves;internal float FirstPlayerVx,FirstPlayerVy;
+            public bool Unchanged=>true;
+            public void Reset(){PlayerMoves=0;FirstPlayerVx=FirstPlayerVy=0;}
+            public bool Move(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop)
+            {stop=PredictionStop.None;if(n.Friendly && PlayerMoves++==0){FirstPlayerVx=n.Vx;FirstPlayerVy=n.Vy;}n.X+=n.Vx;n.Y+=n.Vy;return true;}
+            public bool Solid(MotionRect r,out bool solid,out PredictionStop stop){solid=false;stop=PredictionStop.None;return true;}
+            public bool CanHit(MotionRect a,MotionRect b,out bool clear,out PredictionStop stop){clear=true;stop=PredictionStop.None;return true;}
+            public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop){tile=default(PredictionTile);stop=PredictionStop.None;return true;}
+        }
     }
 }

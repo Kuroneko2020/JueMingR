@@ -48,8 +48,8 @@ namespace NativeWorldTextProbe
         }
         private static JueMingR.Platform.Combat.NpcTrajectory StaticDummyComponent(object host)
         {
-            // The exact animation1/time1 clock cannot wait for the next Source
-            // cadence. This isolated scalar premise models the genuinely
+            // An exact native-clock component is independent of optional
+            // Source cadence. This isolated scalar premise models the genuinely
             // placed, unmoving dummy only; no cache publication or new input
             // preparation occurs and the actual use sequence stays untouched.
             Require(receiver.type==488 && receiver.active && receiver.velocity==Vector2.Zero,"exact-clock scalar component is restricted to the actual stationary placed training dummy");
@@ -371,7 +371,10 @@ namespace NativeWorldTextProbe
                             receiver.dontTakeDamage=true;naturalPress=false;NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);
                             Present(host,attack,Get(host,"World"),player,receiver,graphics,output,"original-revoked-"+row[3]+"-"+assist,false,graphics!=null);
                             receiver.dontTakeDamage=false;NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);
-                            for(int wait=0;CaptureMechanism(host,attack)==null && wait<6;wait++)NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);
+                            // Restore the same live native family's private
+                            // qualification against its exact static receiver;
+                            // optional Source cadence is not this oracle.
+                            CaptureMechanism(host,attack,StaticDummyComponent(host));
                             Present(host,attack,Get(host,"World"),player,receiver,graphics,output,"original-restored-"+row[3]+"-"+assist,true,graphics!=null);
                             // Let both sealed children naturally finish. A
                             // spatially straight fading spore is distinct
@@ -468,20 +471,12 @@ namespace NativeWorldTextProbe
             {
                 // This member-revocation seam needs one healthy captured
                 // native family, not a mandatory red box on its cold frame.
-                // Wait only normal updates of this same source, and never
-                // pass its actual first receive to manufacture a later oracle.
-                var work=Get(host,"PredictionWork");int waits=0;
-                for(;;)
-                {
-                    CaptureMechanism(host,attack);bool healthy=CurrentMechanism!=null && GetOptional(mechanismPlan,"Flight")!=null;
-                    Console.WriteLine("ORIGINAL whip-member preparation wait="+waits+" tick="+Main.GameUpdateCount+" missing="+(!healthy)+" budgetMs="+Get(work,"UsedMilliseconds")+" exceeded="+Get(work,"Exceeded")+" firstNativeReceive="+firstParentHit);
-                    if(healthy || waits==6 || firstParentHit.HasValue)break;
-                    NativeCombatSelectionPreviewChecks.Step(context,physical,false);waits++;
-                    Require(parentBirths==1 && originalSource.active && originalSource.type==shotType && originalSource.owner==player.whoAmI,"finite member preparation observes the same single native birth without another press");
-                }
-                Require(!firstParentHit.HasValue && CurrentMechanism!=null && GetOptional(mechanismPlan,"Flight")!=null,"the same native family supplies a healthy preview before its first real receive within six normal updates");
+                // Only its static receiver is a component premise; keep the
+                // current source phase before its genuine first receive.
+                CaptureMechanism(host,attack,StaticDummyComponent(host));
+                Require(parentBirths==1 && originalSource.active && originalSource.type==shotType && originalSource.owner==player.whoAmI && !firstParentHit.HasValue && CurrentMechanism!=null && GetOptional(mechanismPlan,"Flight")!=null,"the same natural native family supplies a complete private hypothesis before its first real receive without another press");
             }
-            var saved=CaptureMechanism(host,attack);uint observed=Main.GameUpdateCount;
+            var saved=weapon==4672?CurrentMechanism:CaptureMechanism(host,attack);uint observed=Main.GameUpdateCount;
             if(weapon==4672)
             {
                 var world=Get(host,"World");Present(host,attack,world,player,receiver,graphics,output,"original-whip-current",true,graphics!=null);
@@ -554,18 +549,13 @@ namespace NativeWorldTextProbe
             parentType=841;childType=0;parentBirths=parentHits=sideStrikes=0;firstParentHit=zeroWhipTick=null;assistEnabled=naturalPress=false;born.Clear();
             NativeCombatObservationChecks.Save(host,new JueMingR.Features.Combat.ObservationOptions(false,true,true,true,true,0,true,false));
             for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);
-            var saved=CaptureMechanism(host,attack);uint observed=Main.GameUpdateCount;
+            var saved=count==0?CaptureMechanism(host,attack,StaticDummyComponent(host)):null;uint observed=Main.GameUpdateCount;
             if(count==0)
             {
-                // A revocation component needs a healthy hypothesis to revoke.
-                // Report the original cold interval, then use only a bounded
-                // normal idle schedule; this is not a first-click timing test.
-                for(int wait=0;saved==null && wait<6;wait++)
-                {
-                    Console.WriteLine("ORIGINAL idle whip cold capture wait="+wait+" tick="+Main.GameUpdateCount+" budgetMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds")+" exceeded="+Get(Get(host,"PredictionWork"),"Exceeded"));
-                    NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);CaptureMechanism(host,attack);saved=CurrentMechanism as JueMingR.Features.Combat.AttackContact;
-                }
-                Require(saved!=null && parentBirths==0,"bounded normal idle capture supplies the original source-free whip revocation hypothesis");
+                // Revocation requires a complete private hypothesis. Its
+                // unchanged stationary dummy is the existing exact scalar
+                // premise, not a six-update optional-completion promise.
+                Require(saved!=null && parentBirths==0,"the private static-dummy component supplies the source-free whip revocation hypothesis without a native birth");
                 if(mechanismTick==Main.GameUpdateCount)
                 {NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);saved=CurrentMechanism;}
                 Require(saved!=null && mechanismTick<Main.GameUpdateCount && GetOptional(mechanismPlan,"Flight")==null,"the idle negative component tests an actually aged healthy source-free hypothesis");
@@ -584,26 +574,20 @@ namespace NativeWorldTextProbe
                 Require(ReferenceEquals(saved,CurrentMechanism),"same-update ordinary whip owner/damage restoration reuses the exact independently prepared idle hypothesis");
                 Console.WriteLine("PASS ORIGINAL idle whip arm/range/sandStorm/damage/duration lease actualDraw="+(graphics!=null));
             }
-            // The aged display above has its own revocation checks. The real
-            // first-receive oracle needs a hypothesis of this exact action
-            // sample, acquired only through a bounded normal idle schedule.
-            // Keep the original initial four updates and their cold facts.
-            int freshWaits=0;
-            while(true)
-            {
-                CaptureMechanism(host,attack);var freshPlan=mechanismPlan;var freshTimeline=GetOptional(freshPlan,"Timeline") as JueMingR.Platform.Combat.NpcTrajectory;
-                var freshContact=CurrentMechanism as JueMingR.Features.Combat.AttackContact;
-                bool fresh=freshTimeline!=null && freshTimeline.SampleTick==(long)Main.GameUpdateCount && freshTimeline.CaptureTick==(long)Main.GameUpdateCount && mechanismTick==Main.GameUpdateCount && !freshTimeline.BudgetPaused && !(bool)Get(attack,"Failed") && !(bool)Get(host,"TargetPredictionFailed") && (count<4?freshContact!=null:(bool)Get(freshPlan,"Prepared") && freshContact==null && freshTimeline.Count==JueMingR.Features.Combat.NpcPredictionCache.Horizon+1);
-                Console.WriteLine("ORIGINAL idle whip fresh hypothesis sides="+count+" wait="+freshWaits+" tick="+Main.GameUpdateCount+" sample="+(freshTimeline==null?-1:freshTimeline.SampleTick)+" capture="+(freshTimeline==null?-1:freshTimeline.CaptureTick)+" healthy="+fresh+" budgetMs="+Get(Get(host,"PredictionWork"),"UsedMilliseconds")+" exceeded="+Get(Get(host,"PredictionWork"),"Exceeded"));
-                if(fresh){saved=freshContact;observed=Main.GameUpdateCount;break;}
-                Require(freshWaits<6,"finite normal idle updates must acquire the current-sample complete whip hypothesis before its real first use");
-                freshWaits++;NativeCombatSelectionPreviewChecks.Step(context,physical,false,true);
-            }
+            // The original four idle actions remain. This is a private
+            // mechanism/clock oracle with Aim OFF, not scheduled first-shot
+            // availability. Use its existing stationary-dummy premise exactly
+            // once at this sample; no Source publication, demand, extra native
+            // action, wait or permission is introduced by ReadMechanism.
+            var freshPath=StaticDummyComponent(host);saved=CaptureMechanism(host,attack,freshPath);observed=Main.GameUpdateCount;
+            var freshPlan=mechanismPlan;var freshTimeline=GetOptional(freshPlan,"Timeline") as JueMingR.Platform.Combat.NpcTrajectory;
+            Require(ReferenceEquals(freshTimeline,freshPath) && freshTimeline.SampleTick==observed && freshTimeline.CaptureTick==observed && mechanismTick==observed && (bool)Get(freshPlan,"Prepared") && !(bool)Get(attack,"Failed") && !(bool)Get(host,"TargetPredictionFailed") && (count<4?saved!=null && saved.Tick<freshTimeline.Count:saved==null),"the exact private complete whip hypothesis retains dedicated Contact or its completed no-receive result at the actual action sample");
+            Console.WriteLine("ORIGINAL idle whip private static hypothesis sides="+count+" tick="+observed+" samples="+freshTimeline.Count+" contact="+(saved!=null)+" receive="+(saved==null?-1:saved.Tick)+" initialNativeIdleActions=4 optionalCompletionIsNotASuccessPredicate=True");
             naturalPress=true;NativeCombatSelectionPreviewChecks.Step(context,physical,true);naturalPress=false;
             for(int i=0;i<40;i++)NativeCombatSelectionPreviewChecks.Step(context,physical,false);
             Console.WriteLine("ORIGINAL idle whip future hand sides="+count+" observed="+observed+" firstSelected="+firstParentHit+" zeroTick="+zeroWhipTick+" preview="+(saved==null?-1:saved.Timeline.SampleTick+saved.ReceiveTick)+" previewDelay="+(saved==null?-1:saved.Delay)+" sideStrikes="+sideStrikes);
             Require(parentBirths==1 && sideStrikes==count,"one natural native whip hand visits the preceding receiver denominator");
-            if(count<4)Require(firstParentHit.HasValue && saved!=null && saved.Delay==0 && saved.Timeline.SampleTick+saved.ReceiveTick==firstParentHit.Value,"the untouched idle hypothesis matches the naturally consumed first whip hand's actual earliest selected receive");
+            if(count<4)Require(firstParentHit.HasValue && saved!=null && saved.Delay==0 && saved.Timeline.SampleTick+saved.ReceiveTick==firstParentHit.Value,"the private static hypothesis matches the naturally consumed first whip hand's actual earliest selected receive");
             else Require(zeroWhipTick.HasValue && !firstParentHit.HasValue && saved==null,"native simple preceding whip hits exhaust damage before the chosen target; the idle hand must not promise that nonexistent receive");
             sideTargets.Clear();
         }

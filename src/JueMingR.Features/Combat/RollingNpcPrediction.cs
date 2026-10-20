@@ -376,7 +376,7 @@ namespace JueMingR.Features.Combat
                 SamePlayerPhysicalInput(playerFixedInput,p))
             {if(!PlayerMotionContinuation.ClampBorders(ref p,out stop)){ClearPlayerFixedPoint();return false;}PlayerMotionContinuation.CompleteItemCheck(ref p);return true;}
             ClearPlayerFixedPoint();
-            if(!p.Complex || p.Hover)
+            if(PlayerMotionContinuation.OrdinaryStep(p) || p.Hover)
             {
                 PlayerHorizontalMotion.Step(ref p);
                 if(p.Hover)

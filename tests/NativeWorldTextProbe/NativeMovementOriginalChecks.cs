@@ -180,6 +180,24 @@ namespace NativeWorldTextProbe
             var old=(PredictionPlayerMotion)read.Invoke(null,new object[]{p});SetEnabled(movement,0,false);var disabled=(PredictionPlayerMotion)read.Invoke(null,new object[]{p});
             Require(!disabled.AssistedJump && !old.SameSample(disabled),"Disable retires the old forecast premise before reuse.");
             Console.WriteLine("MOVEMENT PREDICTION native-updates=180 repeated-ground-starts="+starts+" maximum-error="+maximum);
+            // A real accessory must not erase the already-started ordinary
+            // span merely because its NEXT automatic edge is unmodelled.
+            SetEnabled(movement,0,true);p=ResetPlayer();p.armor[3].SetDefaults(ItemID.CloudinaBottle);
+            input(None);input(None);world();world();input(Jump);input(Jump);world();
+            predicted=(PredictionPlayerMotion)read.Invoke(null,new object[]{p});
+            Require(predicted.Complex && predicted.AssistedOrdinarySpan && predicted.Jump>1,"Real native equipment publishes a conditional handoff and a useful ordinary prefix.");
+            int prefix=0;maximum=0;
+            while(predicted.Jump>1 && predicted.Vy!=0)
+            {
+                terrain.Reset();PredictionStop stop;
+                Require(PlayerMotionContinuation.Advance(ref predicted,environment,terrain,out stop),"Equipped near-player forecast remains available: "+stop);
+                input(Jump);world();prefix++;
+                float error=Vector2.Distance(p.position,new Vector2(predicted.X,predicted.Y));maximum=Math.Max(maximum,error);
+                Require(error<.003f && Math.Abs(p.velocity.Y-predicted.Vy)<.003f && p.jump==predicted.Jump && p.canJumpAgain_Cloud,
+                    "Equipped ordinary prefix matches full original Update without spending the future cloud jump step="+prefix+" error="+error);
+            }
+            Require(prefix>0 && !PlayerMotionContinuation.OrdinaryStep(predicted),"Supported equipped prefix ends before claiming the future equipment edge.");
+            Console.WriteLine("MOVEMENT PREDICTION equipped-cloud-native-prefix="+prefix+" maximum-error="+maximum+" future-handoff=conditional");
         }
         private static void Measure(object context,object movement,Action<Keys[]> input,Action world,Action draw,string output,string label,int round)
         {

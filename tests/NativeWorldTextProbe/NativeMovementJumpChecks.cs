@@ -100,6 +100,7 @@ namespace NativeWorldTextProbe
                 Begin(jump,rocket,++cases);Before(jump,rocket);rocket.JumpMovement();Call(jump,"AfterJump",rocket,true,true,false);
                 Require(rocket.rocketRelease && !rocket.canRocket && rocket.rocketTime==7,"Late rocket release does not falsify earlier canRocket or consume fuel.");Call(jump,"EndUpdate",rocket);Require(!rocket.rocketRelease,"Temporary rocket release closes after the full update.");
                 InputTakeover(context,type);cases+=2;
+                HeldSpanPrediction(context,jump);
                 NativeMovementJumpWireChecks.Run(context);
                 HelperWorkload(type);
                 Console.WriteLine("PASS MOVEMENT JUMP original JumpMovement family/span/state cases="+cases+"; stage-consumer evidence only");
@@ -112,6 +113,106 @@ namespace NativeWorldTextProbe
         }
         private static void Begin(object jump,Player p,long tick){Call(jump,"BeginUpdate",p,1L,tick,1L);}
         private static void Before(object jump,Player p){Call(jump,"BeforeJump",p,true,true,true,false,1L);}
+        private static void HeldSpanPrediction(object context,object jump)
+        {
+            var host=context.GetType().Assembly;
+            var source=host.GetType("JueMingR.TerrariaHost.Combat.NpcPredictionSource",true);
+            var motor=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePlayerMotion",true);
+            var actor=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeActorContext",true);
+            var wire=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionWire",true);
+            object values=wire.GetField("Players",Flags).GetValue(null);
+            double previousSurface=Main.worldSurface;
+            try
+            {
+            // This stage fixture has no loaded world (surface is normally 0).
+            // Native Update always has a real altitude premise; the scalar's
+            // optional-world fallback deliberately omits it. Compare equal
+            // valid world inputs, then return the fixture's original global.
+            Main.worldSurface=Main.maxTilesY*.5;
+            Require(Main.worldSurface>0,"Prediction stage needs a finite loaded-world altitude premise.");
+            var terrain=(IPredictionTerrain)Get(Get(Get(context,"CombatObservation"),"Prediction"),"Terrain");
+            var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,Remix=Main.remixWorld};
+            foreach(string family in new[]{"Cloud","Sandstorm","Blizzard","Fart","Sail","Carpet","CarpetCloud","Boots","BootsCloud","BootsReleaseOnly","WingsEmpty","WingsEmptyBootsEmpty","CarpetBoots"})
+            {
+                var p=Local();PreparePrefix(p,family);
+                Begin(jump,p,1);Before(jump,p);Call(jump,"EndUpdate",p);
+                var scalar=(PredictionPlayerMotion)source.GetMethod("ReadPlayer",Flags).Invoke(null,new object[]{p});
+                Require(scalar.Complex && scalar.AssistedOrdinarySpan && PlayerMotionContinuation.OrdinaryStep(scalar),"Future "+family+" handoff remains conditional while the near held span is ordinary.");
+                byte[] bytes;
+                using(var stream=new System.IO.MemoryStream())using(var writer=new System.IO.BinaryWriter(stream))
+                {values.GetType().GetMethod("Write",Flags).Invoke(values,new object[]{writer,p});actor.GetMethod("WritePlayer",Flags).Invoke(null,new object[]{writer,p});motor.GetMethod("Write",Flags).Invoke(null,new object[]{writer,p});writer.Flush();bytes=stream.ToArray();}
+                Call(jump,"ClearSession");p=new Player();Main.player[Main.myPlayer]=p;
+                object receiver=Activator.CreateInstance(motor,true);
+                using((IDisposable)Call(receiver,"UseRestoredProfiles"))
+                {
+                using(var reader=new System.IO.BinaryReader(new System.IO.MemoryStream(bytes,false)))
+                {
+                    values.GetType().GetMethod("Read",Flags).Invoke(values,new object[]{reader,p});actor.GetMethod("ReadPlayer",Flags).Invoke(null,new object[]{reader,p});Call(receiver,"Read",reader,p.whoAmI);
+                    Require(reader.BaseStream.Position==reader.BaseStream.Length,"Complete player/actor/motion pages restored for "+family);
+                }
+                Require((bool)motor.GetMethod("Conditional",Flags).Invoke(null,new object[]{p}) && (bool)motor.GetMethod("AssistedOrdinarySpan",Flags).Invoke(null,new object[]{p,true}),
+                    "Frozen equipment/clock pages retain the ordinary prefix without a live input owner: "+family);
+                var profile=((Array)motor.GetField("profiles",Flags).GetValue(receiver)).GetValue(p.whoAmI);
+                // Actual original consumers construct the horizontal and jump
+                // answer. The finite fixture has no speed-boosting gear; the
+                // sampled altitude gravity is shared as an input, not a trigger.
+                var manual=Local();PreparePrefix(manual,family);
+                Player.jumpSpeed=5.01f;Player.jumpHeight=15;
+                manual.HorizontalMovement();manual.JumpMovement();manual.CarpetMovement();
+                float expected=manual.velocity.Y+scalar.Gravity*manual.gravDir,expectedX=manual.velocity.X;
+                Main.player[Main.myPlayer]=p;
+                float beforeGravity=p.gravity,sourceGravity=scalar.Gravity;
+                motor.GetMethod("Step",Flags).Invoke(receiver,new[]{(object)p,profile});
+                terrain.Reset();PredictionStop stop;Require(PlayerMotionContinuation.Advance(ref scalar,environment,terrain,out stop),"Actual future-origin consumer accepts supported prefix: "+family+" stop="+stop);
+                Require(Math.Abs(p.velocity.X-expectedX)<.0001f && Math.Abs(scalar.Vx-expectedX)<.0001f && expectedX>.25f && Math.Abs(p.velocity.Y-expected)<.0001f && Math.Abs(scalar.Vy-expected)<.0001f && p.jump==manual.jump && scalar.Jump==manual.jump,
+                    "Native/scalar held prefix matches original Horizontal+Jump+Carpet family="+family+" native="+p.velocity.Y+" scalar="+scalar.Vy+" expected="+expected+
+                    " nativeX="+p.velocity.X+" scalarX="+scalar.Vx+" expectedX="+expectedX+" worldSurface="+Main.worldSurface+" worldWidth="+Main.maxTilesX+" remix="+Main.remixWorld+" beforeGravity="+beforeGravity+" sourceGravity="+sourceGravity+" defaultGravity="+scalar.DefaultGravity+" nativeGravity="+p.gravity);
+                Require(p.canJumpAgain_Cloud==manual.canJumpAgain_Cloud && p.canJumpAgain_Sandstorm==manual.canJumpAgain_Sandstorm && p.canJumpAgain_Blizzard==manual.canJumpAgain_Blizzard && p.canJumpAgain_Fart==manual.canJumpAgain_Fart && p.canJumpAgain_Sail==manual.canJumpAgain_Sail && p.carpetTime==manual.carpetTime && p.carpetFrame==manual.carpetFrame && p.rocketTime==manual.rocketTime && p.rocketDelay==manual.rocketDelay && p.wingTime==manual.wingTime,
+                    "Ordinary prefix preserves original future jump/carpet/boot/wing resources: "+family);
+                Console.WriteLine("MOVEMENT HELD PREFIX family="+family+" vx="+p.velocity.X+" vy="+p.velocity.Y+" jump="+p.jump+" future=conditional resources=unchanged");
+                scalar.Jump=1;Require(!PlayerMotionContinuation.OrdinaryStep(scalar),"No ordinary claim crosses the final action into "+family+".");
+                }
+                Call(jump,"ClearSession");
+            }
+            foreach(string boundary in new[]{"CarpetActive","RocketThrust","ResidualThrust","RocketReadyEdge","RocketEmptyEdge","WingFuel","WingBootTransfer","WingBootRefill"})
+            {
+                var p=Local();PreparePrefix(p,"Cloud");
+                if(boundary=="CarpetActive"){p.carpet=true;p.carpetFrame=0;p.carpetTime=17;}
+                else if(boundary=="RocketThrust"){p.rocketBoots=1;p.rocketDelay=3;p.rocketTime=7;}
+                else if(boundary=="ResidualThrust")p.rocketDelay=3;
+                else if(boundary=="RocketReadyEdge" || boundary=="RocketEmptyEdge"){p.rocketBoots=1;p.canRocket=p.rocketRelease=true;p.rocketTime=boundary=="RocketReadyEdge"?7:0;}
+                else if(boundary=="WingFuel"){p.wingsLogic=1;p.wingTime=7;}
+                else{p.wingsLogic=1;p.rocketBoots=1;p.rocketTime=boundary=="WingBootTransfer"?7:0;p.empressBrooch=boundary=="WingBootRefill";}
+                Begin(jump,p,1);Before(jump,p);Call(jump,"EndUpdate",p);
+                var scalar=(PredictionPlayerMotion)source.GetMethod("ReadPlayer",Flags).Invoke(null,new object[]{p});
+                Require(scalar.Complex && !scalar.AssistedOrdinarySpan && !PlayerMotionContinuation.OrdinaryStep(scalar),"An active or pending native flight consumer cannot borrow the held prefix: "+boundary);
+                if(boundary=="WingFuel")Require(((int)motor.GetMethod("Mechanism",Flags).Invoke(null,new object[]{p})&32)!=0,"Fueled held wings were already conditional in the pre-assistance base.");
+                Call(jump,"ClearSession");
+            }
+            var last=Local();PreparePrefix(last,"Carpet");last.jump=1;Player.jumpSpeed=5.01f;
+            last.JumpMovement();last.CarpetMovement();
+            Require(last.jump==0 && last.carpetFrame>=0 && last.carpetTime==299 && !last.canCarpet,
+                "The unchanged native carpet really starts on the same action that ends the held span; the forecast must stop before jump=1.");
+            var bootEdge=Local();PreparePrefix(bootEdge,"Boots");bootEdge.jump=1;
+            Begin(jump,bootEdge,1);Before(jump,bootEdge);bootEdge.JumpMovement();Call(jump,"AfterJump",bootEdge,true,true,false);
+            Require(bootEdge.jump==0 && bootEdge.rocketRelease && bootEdge.rocketTime==7 && !(bool)motor.GetMethod("AssistedOrdinarySpan",Flags).Invoke(null,new object[]{bootEdge,true}),
+                "Ending the actual held jump can enable the later native rocket consumer without helper fuel writes.");
+            Call(jump,"EndUpdate",bootEdge);Call(jump,"ClearSession");
+            Console.WriteLine("PASS MOVEMENT JUMP held-prefix/native Horizontal+Jump+Carpet oracle; extra/carpet/boots/exhausted-wing and active-consumer boundaries");
+            }
+            finally{Main.worldSurface=previousSurface;Call(jump,"ClearSession");}
+        }
+        private static void PreparePrefix(Player p,string family)
+        {
+            p.jump=4;p.velocity=new Vector2(.25f,-2);p.controlRight=true;p.runAcceleration=.08f;p.runSlowdown=.2f;p.maxRunSpeed=p.accRunSpeed=3;
+            if(family=="Cloud" || family=="Sandstorm" || family=="Blizzard" || family=="Fart" || family=="Sail")
+            {typeof(Player).GetField("hasJumpOption_"+family).SetValue(p,true);typeof(Player).GetField("canJumpAgain_"+family).SetValue(p,true);}
+            if(family.EndsWith("Cloud",StringComparison.Ordinal))p.hasJumpOption_Cloud=p.canJumpAgain_Cloud=true;
+            if(family.StartsWith("Carpet",StringComparison.Ordinal)){p.carpet=p.canCarpet=true;p.carpetTime=17;}
+            if(family.StartsWith("Boots",StringComparison.Ordinal) || family=="CarpetBoots"){p.rocketBoots=1;p.rocketTime=7;p.canRocket=true;p.rocketRelease=false;}
+            if(family=="BootsReleaseOnly"){p.canRocket=false;p.rocketRelease=true;}
+            if(family.StartsWith("WingsEmpty",StringComparison.Ordinal)){p.wingsLogic=1;p.wingTime=0;if(family=="WingsEmptyBootsEmpty")p.rocketBoots=1;}
+        }
         private static void InputTakeover(object context,Type jumpType)
         {
             object movement=Get(context,"Movement"),input=Get(context,"Input");

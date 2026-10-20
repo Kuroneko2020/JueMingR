@@ -27,6 +27,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 p.hasJumpOption_Cloud || p.hasJumpOption_Sandstorm || p.hasJumpOption_Blizzard || p.hasJumpOption_Fart || p.hasJumpOption_Sail ||
                 p.hasJumpOption_Unicorn || p.hasJumpOption_Santank || p.hasJumpOption_WallOfFleshGoat || p.hasJumpOption_Basilisk);
         }
+        internal static bool AssistedOrdinarySpan(Player p,bool assisted)
+        {
+            // Equipment alone does not interrupt an existing held jump. A
+            // carpet waits for jump==0; inactive boots and exhausted wings can
+            // retain this prefix too. Active thrust or a possible rocket edge
+            // and wing/boot fuel transfer already have unmodelled consumers.
+            return assisted && !p.mount.Active && p.wingTime<=0 && p.carpetFrame==-1 && p.rocketDelay==0 &&
+                !(p.rocketBoots>0 && p.canRocket && p.rocketRelease && p.CanUseBootFlyingAbilities) &&
+                !(p.wingsLogic>0 && p.rocketBoots>0 && (p.rocketTime>0 || p.empressBrooch));
+        }
         internal static void Write(BinaryWriter writer,Player player)
         {
             var profile=Premise(player);
@@ -122,7 +132,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             if(p.width<1 || p.height<1 || p.width>512 || p.height>512 || p.gravDir!=1f && p.gravDir!=-1f || !Finite(p.gravity) || !Finite(p.maxFallSpeed) || !Finite(p.runAcceleration) || !Finite(p.runSlowdown) || !Finite(p.maxRunSpeed))throw new InvalidDataException("Player movement premise.");
             float speed;bool ordinaryBuffs=AdvanceBuffClocks(p,out speed);
-            if(!profile.Complex && ordinaryBuffs)AdvanceOrdinarySpeed(p,speed);
+            // The equipment makes the future handoff conditional, not every
+            // already-started held jump. Stop this exact prefix BEFORE jump=1:
+            // the native later flight consumers can run on that same action.
+            bool ordinary=!profile.Complex || AssistedOrdinarySpan(p,profile.AssistedJump) && Mechanism(p)==0 && !p.portableStoolInfo.IsInUse && p.controlJump && !p.controlDown && p.jump>1 && p.velocity.Y!=0;
+            if(ordinary && ordinaryBuffs)AdvanceOrdinarySpeed(p,speed);
             Vector2 old=p.position;
             // ResetEffects decays the observed gravity timer before the
             // original nearby-brain refresh. The brain page is a real player
@@ -136,7 +150,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(hover && p.velocity.Y==0)p.mount.FatigueRecovery();
             if(profile.Complex)Quality|=2;
             int appliedJumpHeight=0;
-            if(!profile.Complex || hover)
+            if(ordinary || hover)
             {
                 int jumpHeight;float jumpSpeed=MovementParameters(p,profile.DefaultGravity,out jumpHeight);
                 if(hover)
@@ -229,7 +243,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             for(int part=0;part<segments;part++)
             {
                 p.velocity=velocity/segments;
-                if(!profile.Complex || hover)
+                if(ordinary || hover)
                 {
                     p.SlopeDownMovement();
                     if(p.velocity.Y==p.gravity)Collision.StepDown(ref p.position,ref p.velocity,p.width,p.height,ref p.stepSpeed,ref p.gfxOffY,(int)p.gravDir,p.waterWalk || p.waterWalk2);

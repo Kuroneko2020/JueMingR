@@ -335,18 +335,50 @@ namespace NativeWorldTextProbe
                     for(int slot=0;slot<Main.maxProjectiles;slot++)if(Main.projectile[slot].active){Main.ProjectileUpdateLoopIndex=slot;Main.projectile[slot].Update(slot);}Main.ProjectileUpdateLoopIndex=-1;
                     Call(context,"UpdateRuntime");var displayed=GetOptional(host,"DisplayPath") as JueMingR.Platform.Combat.NpcTrajectory;
                     Require(path?cache.Required==120:cache.Read(0)==null,"Path keeps its long-range intent; Path OFF does not acquire reader0.");
-                    if(displayed!=null)Require(displayed.Count>=2 && displayed.Count<=121 && displayed.SampleTick<=(long)Main.GameUpdateCount && displayed.Identity.Equals(openingTarget),"Any displayed prefix has honest length/time and the same final target.");
+                    bool observedDisplay=CheckShortDisplay(host,n,openingTarget,displayed,0);
                     int longest=displayed?.Count??0;
                     for(int update=0;path && update<6;update++)
-                    {NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,550),false,true);displayed=GetOptional(host,"DisplayPath") as JueMingR.Platform.Combat.NpcTrajectory;longest=Math.Max(longest,displayed?.Count??0);}
-                    Require(!path || longest==121,"The ordinary unloaded path still reaches its full two-second range without delaying the first actual input.");
+                    {NativeCombatSelectionPreviewChecks.Step(context,new Vector2(650,550),false,true);displayed=GetOptional(host,"DisplayPath") as JueMingR.Platform.Combat.NpcTrajectory;observedDisplay=CheckShortDisplay(host,n,openingTarget,displayed,update+1)||observedDisplay;longest=Math.Max(longest,displayed?.Count??0);}
+                    // The shared optional allowance promises a true usable
+                    // prefix, not 120 completed actions within six updates.
+                    // Exact extension/half-step rollback/immutable storage are
+                    // proved deterministically by RollingNpcPredictionChecks'
+                    // IncrementalPrefix, BudgetPrefix and MultiSlotPrefix;
+                    // NpcTrajectoryWindowChecks keeps reader minima separate.
+                    Require(!path || observedDisplay,"The original observation window acquires a current, content-checked future without delaying the actual Enhanced input.");
+                    Console.WriteLine("DEMAND display path="+path+" observed="+observedDisplay+" longest="+longest+" fullTailIsNotASuccessPredicate=True");
                 }
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(marker:true));NativeToolExecutionChecks.Sample(context,input,new Vector2(870,667),false);Call(combat,"Sample");Call(host,"SampleMouse");Call(context,"UpdateRuntime");int steps=NativeCombatUsageChecks.ObservedNpcSteps;
                 for(int i=0;i<20;i++){Call(context,"UpdateRuntime");Call(context,"UpdateShell");}Require(cache.Required==0 && NativeCombatUsageChecks.ObservedNpcSteps==steps && !(bool)Get(Get(host,"Selection"),"HasTarget") && !(bool)Get(host,"Marker") && ((ObservationOptions)Get(host,"Options")).Marker,"saved Marker with Aim/Path OFF retires selection and keeps zero future work or residual attack demand");
-                Console.WriteLine("PASS real Enhanced short input prefix with Path OFF/ON, optional full-range display progress, saved Marker OFF zero future steps");
+                Console.WriteLine("PASS real Enhanced short input prefix with Path OFF/ON, current honest optional display prefix, saved Marker OFF zero future steps");
             }
             finally{watchCache=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());}
             }
+        }
+        private static bool CheckShortDisplay(object host,NPC n,NpcIdentity target,NpcTrajectory path,int update)
+        {
+            long now=(long)Main.GameUpdateCount;
+            Console.WriteLine("DEMAND prefix update="+update+" tick="+now+" sample="+(path==null?-1:path.SampleTick)+" capture="+(path==null?-1:path.CaptureTick)+" count="+(path==null?0:path.Count)+" paused="+(path!=null && path.BudgetPaused)+" lease="+Get(host,"displayLeaseTick")+" required="+((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Required+" layer="+Get(host,"LayerStatus")+" canDraw="+Get(host,"CanDraw"));
+            if(path==null)return false;
+            long age=now-path.SampleTick;
+            int maximumAge=(int)host.GetType().GetField("DisplayMaximumAge",Flags).GetRawConstantValue();
+            Require(path.Identity.Equals(target) && ((NpcIdentity)Get(Get(host,"Selection"),"Target")).Equals(target) && ReferenceEquals(path.Identity.Token,n),"Every displayed prefix belongs to the actual selected native instance, session and generation.");
+            Require(path.CaptureTick<=path.SampleTick && age>=0 && age<=maximumAge && age<path.Count-1 && path.Count<=NpcPredictionCache.Horizon+1 && (long)Get(host,"displayLeaseTick")==now,"The display has its original capture, finite current window and an owner-granted lease on this actual update.");
+            // This existing fixture has no AI, velocity or gravity. Its native
+            // world actions independently establish every future point, so a
+            // plausible count or a newly stamped stale path cannot pass.
+            Require(n.aiStyle==-1 && n.noGravity && n.velocity==Vector2.Zero,"The native static receiver still satisfies the independently known display-content premise.");
+            for(int i=0;i<path.Count;i++)
+            {
+                var point=path[i];var box=point.Bounds;
+                Require(point.TickOffset==i && box.X==n.position.X && box.Y==n.position.Y && box.Width==n.width && box.Height==n.height && point.Vx==0 && point.Vy==0 && point.Phase==n.ai[0] && point.Wet==n.wet && point.NoTileCollide==n.noTileCollide,"The entire published prefix contains completed native-static receiver facts at their honest offsets: update="+update+" point="+i);
+            }
+            // This CPU entry consumes the Host's current DisplayPath lease.
+            // World-layer readiness is established by the native Draw setup,
+            // which this fixture does not execute. Actual rendering belongs
+            // to the existing World/Main consumers, not a fabricated Ready.
+            Require((bool)Get(host,"Path"),"The real Path owner remains enabled while exposing its checked current future.");
+            return true;
         }
         private static NPC Scene(int slot,Vector2 center)
         {

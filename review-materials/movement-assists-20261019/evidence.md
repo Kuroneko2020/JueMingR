@@ -2,6 +2,14 @@
 
 任务 [#126](https://github.com/Kuroneko2020/JueMingR/issues/126)，Draft [#127](https://github.com/Kuroneko2020/JueMingR/pull/127)。整批 BASE `749e86925763f8a5754d6999ea4056b50de58d65`；最终候选 SHA、累计执行/复用回执、独审和包/安装状态以 Issue 对应收口评论为准。本文件是实现者自查和原件导航，不签独审或发布资格。
 
+当前可靠交付委托原件为 `references/JMR_MOVEMENT_RELIABLE_DELIVERY_20261020_v1/`，生效与分工见 [Issue登记](https://github.com/Kuroneko2020/JueMingR/issues/126#issuecomment-6281758784)。它替代旧历史测试逐项审批及施工顺序，保留全部失败原件、完整功能和安装保护；旧停办段只代表原时点。ShortDemand的六更新满121点门没有当前合同依据：原正式失败未给出longest/预算/lease，58后继观察见过合法118点暂停但未重现原失败，两者不改署。
+
+ShortDemand仍验证两行真实首发Enhanced及原六步内的真实显示：完整目标实例/代次、原采样与capture、当步owner租约、有限窗口和整个已计算静态NPC前缀内容，路径继续希望120步，关闭后零额外显示工作。完整续接由`CombatChecks`中的`RollingNpcPredictionChecks`（IncrementalPrefix/BudgetPrefix/MultiSlotPrefix）与`NpcTrajectoryWindowChecks`承担，分别核新增工作、不可变旧前缀、半步回滚、软硬预算与独立最低时域；不增加长度/进展配额、预热、等待或预算。实际窄验证及最终资格回到Issue和本地原件。
+
+专用Whip的source-free私有组件继续保完整Contact、真实首伤与零伤/时钟反控；其健康撤销前提和精确新手前提统一使用既有真实静止人偶scalar组件，不把正常optional六更新满尾/未暂停作为机制正确性的前提。四次idle、0/1/4前置受击分母、一次自然手部出生及原40更新保留，不发布Source、不授输入许可；原因与旧失败边界见[成组复核](https://github.com/Kuroneko2020/JueMingR/issues/126#issuecomment-6282068197)。CPU只签DisplayPath租约/内容和既有投影几何，真实NPC路径XNA Draw本轮未执行，由当前候选本人体验卡核对呈现。
+
+移动接缝核查另发现原版普通持跳近段被AssistedComplex过早退化；首个多段跳原因/路径见 [因果登记](https://github.com/Kuroneko2020/JueMingR/issues/126#issuecomment-6281782601)，独审补出的未发动飞毯同因遗漏及相邻资格见 [R66-1登记](https://github.com/Kuroneko2020/JueMingR/issues/126#issuecomment-6282323218)，现行边界见移动合同/设计。普通近段资格按当前消费者及资源转换前提冻结，不按五装备白名单；已活动飞毯、火箭推力/可点火门、可用翼时及翼靴燃料转换不借普通许可。近端普通运动与首次未建模接力后的条件预测分开，不能把当前尚未发动等同整个未来时域准确；普通包、实际加载、安装和本人体验仍分别取证。最终冻结前一并维护本导航和体验卡，冻结后动态回执只写Issue/既有本地输出。
+
 Effects 续办原件为 `references/JMR_MOVEMENT_DELIVERY_UNBLOCK_20261019_v1/`，原三移动包现位于 `references/归档文件/JMR_MOVEMENT_ASSISTS_20261019_v1/`。两者均为已存在的完整只读目录，清单/成员 SHA 已核，不宣称原 ZIP 字节身份或本轮重新解压。续办授权与文件分工见 [Issue 登记](https://github.com/Kuroneko2020/JueMingR/issues/126#issuecomment-6267533460)；下文 `ce91` 收口、Related05 和停止结论保留原执行时态，后继实际状态只由 Issue 记录。
 
 ## Effects 续办：合同、原因与固定原件
