@@ -49,6 +49,8 @@ try {
         payloadCount=@($package.payload).Count;tools=@($tools);milliseconds=$watch.ElapsedMilliseconds;
         clean=$record.clean;releaseEligible=($record.clean -eq $true -and -not $stage);workspace=$(if($stage){'explicit-stage-development-artifact'}elseif($record.clean){'clean-source-artifact'}else{'explicit-restricted-development-artifact'});
         fullQualification=$(if($stage){'INCOMPLETE'}else{'UNCHANGED_ORIGINAL_RECORD'});
+        taskAcceptance=$(if($stage -and $null -ne $record.workload.PSObject.Properties['taskAcceptance']){$record.workload.taskAcceptance}else{$null});
+        regressionObservations=$(if($stage -and $null -ne $record.workload.PSObject.Properties['regressionObservations']){@($record.workload.regressionObservations)}else{@()});
         realGameLoad='NOT_EXECUTED';productChecks='NOT_RERUN'} | ConvertTo-Json -Depth 5
 } catch {
     [Console]::Out.WriteLine(([ordered]@{status='FAIL';scope='archive-and-package-identity';error=$_.Exception.Message;milliseconds=$watch.ElapsedMilliseconds}|ConvertTo-Json -Compress))

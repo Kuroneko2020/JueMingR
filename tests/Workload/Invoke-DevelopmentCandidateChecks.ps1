@@ -100,6 +100,64 @@ $script:candidateUnknown=$false;$script:candidateDirty=$true
 Assert-CandidateReject {Read-CandidateFixture $record} 'unknown uncommitted inputs are not authorized by record text'
 $script:candidateDirty=$false
 Write-WorkloadJson $recordPath $record
+# Scoped acceptance preserves the actual full catalogue and historical states;
+# only the reviewed nonempty task subset must have current applicable proof.
+$scoped=Copy-Candidate $record
+$failedName=@($plan.checks.name|Where-Object {$_ -cne $first.name})[0]
+$failedEvidence=New-CandidateArtifact 'historical-failure.json' (([ordered]@{name=$failedName;status='FAILED';exitCode=3;reason='Synthetic historical out-of-task failure'})|ConvertTo-Json)
+$scoped|Add-Member taskAcceptance ([pscustomobject]@{status='PASS';responsibilities=@([pscustomobject]@{name=$first.name;responsibility='Synthetic concrete target behavior'});deliveryFailures=@()})
+$failedItem=@($scoped.checks|Where-Object {$_.name -ceq $failedName})[0]
+$failedItem.status='FAIL';$failedItem|Add-Member evidence $failedEvidence
+$failedItem.reason='Synthetic observed failure retained outside the reviewed task'
+$scoped.openFailures=@($failedName)
+$scoped.unfinishedResponsibilities=@($scoped.checks|Where-Object {$_.status -ceq 'NOT_EXECUTED'}|ForEach-Object {$_.name})
+$pendingItem=@($scoped.checks|Where-Object {$_.status -ceq 'NOT_EXECUTED'})[0]
+$pendingItem.status='NOT_RUN'
+$scopedStage=Read-CandidateFixture $scoped
+Assert-Candidate ($scopedStage.taskAcceptance.status -ceq 'PASS' -and $scopedStage.taskAcceptance.checkCount -eq 1 -and $scopedStage.checkCount -eq $plan.checks.Count) 'task subset passes separately while the full actual catalogue is retained'
+Assert-Candidate (@($scopedStage.regressionObservations|Where-Object {$_.name -ceq $failedName -and $_.status -ceq 'FAIL'}).Count -eq 1 -and $scopedStage.openFailures[0] -ceq $failedName) 'out-of-task failure keeps its original FAIL and bound artifact'
+Assert-Candidate (@($scopedStage.regressionObservations|Where-Object {$_.status -ceq 'NOT_RUN'}).Count -gt 0 -and $scopedStage.fullQualification -ceq 'INCOMPLETE' -and -not $scopedStage.installationAuthorized) 'unrun regression stays NOT_RUN without full qualification or installation authority'
+$bad=Copy-Candidate $scoped;$bad.taskAcceptance.responsibilities=@()
+Assert-CandidateReject {Read-CandidateFixture $bad} 'empty task acceptance subset rejected'
+$bad=Copy-Candidate $scoped;$bad.taskAcceptance.responsibilities[0].name='not-in-catalogue'
+Assert-CandidateReject {Read-CandidateFixture $bad} 'task acceptance unknown catalogue name rejected'
+$bad=Copy-Candidate $scoped;$bad.taskAcceptance.responsibilities+=@($bad.taskAcceptance.responsibilities[0])
+Assert-CandidateReject {Read-CandidateFixture $bad} 'duplicate task acceptance responsibility rejected'
+$bad=Copy-Candidate $scoped;$bad.taskAcceptance.responsibilities[0].responsibility=' '
+Assert-CandidateReject {Read-CandidateFixture $bad} 'task responsibility must describe its concrete behavior'
+$bad=Copy-Candidate $scoped;$bad.taskAcceptance.responsibilities[0].name=$failedName
+Assert-CandidateReject {Read-CandidateFixture $bad} 'actual task failure blocks stage acceptance'
+$bad=Copy-Candidate $scoped;$bad.taskAcceptance.responsibilities[0].name=$pendingItem.name
+Assert-CandidateReject {Read-CandidateFixture $bad} 'unexecuted task responsibility blocks stage acceptance'
+$bad=Copy-Candidate $scoped;$bad.taskAcceptance.deliveryFailures=@('Synthetic startup or payload fault')
+Assert-CandidateReject {Read-CandidateFixture $bad} 'real delivery fault cannot be waived as a regression observation'
+$bad=Copy-Candidate $scoped;$bad.openFailures=@()
+Assert-CandidateReject {Read-CandidateFixture $bad} 'historical FAIL cannot disappear from the open failure list'
+$bad=Copy-Candidate $scoped;$bad.checks=@($bad.checks|Where-Object {$_.name -cne $failedName})
+Assert-CandidateReject {Read-CandidateFixture $bad} 'task subset cannot remove a failing entry from the full catalogue'
+$bad=Copy-Candidate $scoped;@($bad.checks|Where-Object {$_.name -ceq $failedName})[0].evidence.sha256='0'*64
+Assert-CandidateReject {Read-CandidateFixture $bad} 'out-of-task failure artifact identity remains enforced'
+$bad=Copy-Candidate $scoped;@($bad.checks|Where-Object {$_.name -ceq $first.name})[0].evidence.sha256='0'*64
+Assert-CandidateReject {Read-CandidateFixture $bad} 'task passing evidence identity remains enforced'
+$bad=Copy-Candidate $scoped;$bad.package.content='REDUCED'
+Assert-CandidateReject {Read-CandidateFixture $bad} 'task acceptance still requires the ordinary complete payload'
+$bad=Copy-Candidate $scoped;$bad|Add-Member installationAuthorized $true
+Assert-CandidateReject {Read-CandidateFixture $bad} 'candidate cannot create installation permission'
+$bad=Copy-Candidate $scoped;$bad.sourceFingerprint='F'*64
+Assert-CandidateReject {Read-CandidateFixture $bad} 'task acceptance cannot waive source identity'
+$bad=Copy-Candidate $scoped;$bad.inputFingerprint='F'*64
+Assert-CandidateReject {Read-CandidateFixture $bad} 'task acceptance cannot waive input identity'
+$stale=Copy-Candidate $original;$stale.inputs=@('environment:synthetic:B');$stale.inputFingerprint=Get-WorkloadCheckFingerprint ([pscustomobject]@{inputs=$stale.inputs}) $first.name
+$staleArtifact=New-CandidateArtifact 'stale-task-proof.json' ($stale|ConvertTo-Json -Depth 10)
+$bad=Copy-Candidate $scoped;@($bad.checks|Where-Object {$_.name -ceq $first.name})[0].evidence=$staleArtifact
+Assert-CandidateReject {Read-CandidateFixture $bad} 'task proof with a valid artifact but stale actual input is rejected'
+$historical=Copy-Candidate $scoped;$other=Copy-Candidate $stale;$other.name=$failedName
+$other.signature=Get-WorkloadHash (@(@($plan.checks|Where-Object {$_.name -ceq $failedName})[0].executable)+@(@($plan.checks|Where-Object {$_.name -ceq $failedName})[0].arguments))
+$historyArtifact=New-CandidateArtifact 'historical-pass.json' ($other|ConvertTo-Json -Depth 10)
+$historyItem=@($historical.checks|Where-Object {$_.name -ceq $failedName})[0];$historyItem.status='REUSED';$historyItem.evidence=$historyArtifact;$historical.openFailures=@()
+$historyStage=Read-CandidateFixture $historical
+Assert-Candidate (@($historyStage.regressionObservations|Where-Object {$_.name -ceq $failedName -and $_.status -ceq 'REUSED' -and $null -eq $_.applicable -and $_.applicability -ceq 'HISTORICAL_ONLY_NOT_REASSESSED'}).Count -eq 1) 'out-of-task historical pass is preserved without forging current applicability'
+Write-WorkloadJson $recordPath $scoped
 # Exercise the existing package admission function with a real isolated output
 # file. This is an identity/consumer fixture, not a compiler or product build.
 function Get-WorkloadIdentity {param($Root);return $identity}
@@ -109,7 +167,7 @@ $null=New-Item -ItemType Directory -Path (Join-Path $releaseRoot 'bin') -Force
 $releaseFile=Join-Path $releaseRoot 'bin/synthetic.dll'
 [IO.File]::WriteAllText($releaseFile,'Synthetic Release consumer; not a production assembly')
 $release=[pscustomobject][ordered]@{schemaVersion=4;configuration='Release';sdk='10.0.203';clean=$true;commit=$commit;sourceFingerprint=$identity.fingerprint;inputFingerprint=$inputs.fingerprint;
-    outputs=@([pscustomobject]@{path='bin/synthetic.dll';length=(Get-Item -LiteralPath $releaseFile).Length;sha256=(Get-WorkloadFileHash -LiteralPath $releaseFile).Hash});workload=[pscustomobject]$stage}
+    outputs=@([pscustomobject]@{path='bin/synthetic.dll';length=(Get-Item -LiteralPath $releaseFile).Length;sha256=(Get-WorkloadFileHash -LiteralPath $releaseFile).Hash});workload=[pscustomobject]$scopedStage}
 Assert-Candidate (Test-AimStageDevelopmentBuild $testRoot $release $recordPath) 'existing stage Release consumer accepts the stable candidate with exact isolated outputs'
 $packageTokens=$null;$packageErrors=$null
 $packageAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $projectRoot 'scripts/build-phase0s-validation-package.ps1'),[ref]$packageTokens,[ref]$packageErrors)
@@ -118,6 +176,9 @@ Assert-Candidate ($packageErrors.Count -eq 0 -and $admissionFunction.Count -eq 1
 . ([scriptblock]::Create($admissionFunction[0].Extent.Text))
 $repositoryRoot=$testRoot;$StageDevelopmentRecord=$recordPath;$admission=$null;$WorkloadBaseline=$null
 Assert-Candidate (Test-PackageBuildAdmission $release) 'actual package admission forwards stable schema through existing stage validation'
+Assert-Candidate ($release.workload.fullQualification -ceq 'INCOMPLETE' -and (Test-PackageBuildAdmission $release)) 'actual complete-payload package admission accepts scoped stage with retained historical failure'
+$changedWorkload=Copy-Candidate $release;$changedWorkload.workload.taskAcceptance.status='FAIL'
+Assert-Candidate (-not (Test-PackageBuildAdmission $changedWorkload)) 'actual package admission rejects an altered task acceptance result'
 [IO.File]::AppendAllText($releaseFile,'changed')
 Assert-Candidate (-not (Test-PackageBuildAdmission $release)) 'actual package admission rejects changed Release payload'
 [IO.File]::WriteAllText($releaseFile,'Synthetic Release consumer; not a production assembly')
