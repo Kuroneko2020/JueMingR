@@ -157,3 +157,14 @@ social_integrator 是唯一实施作者，独占本包生产/直接检查/合同
 工作量（同Windows/.NET x86隔离CPU环境，与上一轮同入口比较）：OFF、ON-idle、ON-safe、ON-danger-no-capability各20000次，稳定新增来源/计划/tile均0、steady线程分配0；OFF分别约1.96ms、ON无能力约9.36ms，仅helper窗口非FPS。关闭期间原生消费/刷新单独证明来源/geometry扫描0。一次资格/原版恢复按revision有界重开，失败32更新动作重试0；安全制动32实际更新仍1来源扫描/1完整Contact/954tile/0动作，未扩大地形或pool扫描。激活后还装完成无新增持续借用工作。没有真实FPS收益声明。
 
 第一轮失败中的“落地后wingTime必须仍0”是测试误把原版落地恢复当补充；改为落地前正常装备翼时仍0。周期夹具复置相同位置/速度却推进tick违反接触缓存连续性，改为明确新X场景触发现有失效；未改生产缓存。真实失败、旧aggregate/范围外FAIL/NOT_RUN和未完成资格保留。完整Main、图形、物理设备、真实好友主客机、真实FPS及所有者体验仍未测。此处不表示独审/普通完整包/新安装已完成；候选冻结后集中独审，再按已授权流程交付。
+### 社交闭环最终交付：独审、普通完整包与同目标换装（2026-10-22）
+
+本包 `b816b5f → 3cffcbcbfc9144c8d3b9b73f9470838e99d813e0` 的12文件增量及直接传播，经未参与实施/期待起草的 social_reviewer（实际gpt-6.1-sol/high已核）集中独审PASS，主调度准入。原报告 `.local/smart-fall-social-20261022/independent-review.md`，SHA256 `DFAEBCCF224EE3AFF96AF96CB8C38176FAACC17F50A105CB35EEC16A69DC1EAE`。无需要本包返修的确认阻塞或证据缺口，未额外扩验证。
+
+四叶原执行和其STABLE资格保原身份，提交后正式reader四项applicable=true/buildMatch=true；本次普通完整候选记录 `.local/smart-fall-social-20261022/candidate-final-3cffcbc/development-candidate.json`，207项目录中4项必要责任PASS，1范围外历史FAIL及94未执行保持，fullQualification=INCOMPLETE、releaseEligible=false。StageDevelopmentRecord不授予安装权；实际安装权来自所有者社交闭环明确委托及主对固定3cffcbc准入。
+
+普通完整ContinuousProcessing / Release/net472/x86包已生成，全部既有功能及辅助瞄准保留，17文件/10安装载荷。包/Release/本次现装source均为 `3cffcbcbfc9144c8d3b9b73f9470838e99d813e0`；后续纯交付记录HEAD不冒称新载荷。ZIP位于 `outputs/smart-fall-social-20261022-3cffcbc/JueMingR-Continuous-Processing-3cffcbcbfc9144c8d3b9b73f9470838e99d813e0.zip`，2,354,929字节，SHA256 `CACA0E84F5545AC3FB7219B06768A9DDE9157005BCB21DF8868F47B5B772E957`。同目录正式 `phase-0-s-build-record.json` SHA256 `9D682187653B25ABA97E77D7D869DFD717365C488E9A81AC3F01898CD001B3AF`。构建器核匹配来源、完整目录与ZIP成员/字节；clean=false仅四声明外来非执行资产，产品已提交。
+
+同一已确认F盘Terraria目标先核真实旧4a5f8bee receipt、owner/受控载荷、准确游戏身份和无活动游戏/server/worker；12项旧受控文件轻量备份后，官方旧Restore exit0/RESTORE_COMPLETE → 新Install exit0/INSTALL_COMPLETE → 一次正式owner/payload/receipt读回PASS，完成2026-10-22T03:27:15+08:00。旧receipt `7686326849533952D9D9C917C216205067C34C1198C020CC0E62337794B5E3C3`；新receipt `754BDEB8F6B6D5A4D2E063C7FA92C58CDDBB17F114E495F4125696D3C48ECA2F`。备份 `.local/smart-fall-social-20261022/smart-fall-backup-3cffcbc-20261022T032712/backup.json`，SHA256 `3B1897B71CB83A2615E9CC7BC7693294347E70DA75B5DC605AE7ED5612F821A9`；结果 `smart-fall-install-3cffcbc-result.json` 与正式Restore/Install日志在本轮.local根。恢复入口是新完整包的Restore；如所有者后续要求回旧4a，先新Restore再旧4a包Install，本轮未执行回装。
+
+没有启动/操作真实游戏、角色或世界/存档，没有改JueMingRData，没有强杀、回装演练、第二轮独立安装审计或全数据扫描。实际安装读回不等于正常完整Main启动、图形/物理设备/FPS、真实好友房主/客机或所有者体验，这些保持未测；隔离原版消费者和准确引用归还证据已完成。短体验卡保留三步原场景、有限周期与正常恢复；已授权必要工作收口，Draft/OPEN保持，不merge/close/Tag/Release/version bump。
