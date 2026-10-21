@@ -25,6 +25,12 @@ R3稳定带快照的0.0271／0.0317ms p50／p95与11520线程字节含测试反�
 
 配置、布局、Jump和普通传送四份canonical2历史证明不因movement-host粗分组机械重跑。`.local/smart-fall-protection-20261021/review-repair-historical-inputs.json` 保存其原执行ID及直接行为／期待字节未变比对；阶段记录沿现有taskAcceptance取本次三必要叶，其余四标为HISTORICAL_ONLY_NOT_REASSESSED，不改签为新候选重跑通过。
 
+增量复核 `independent-review/repair-review.md` 已接受R1—R5／GetItem及两项原生初态修正，仅单列R1新增来源后的R6重复几何成本。R6修正在同次候选构造内复用shoot／shootSpeed完全相同的成功或失败Find结果，每个真实端点仍独立准备／比较并将Plan.Item重绑最终对象；不跨tick缓存，不恢复不同飞行参数间的名义速度筛选。
+
+R6只执行既有canonical原生叶：PrepareOnly日志 `.local/smart-fall-protection-20261021/prepare-r6.log` 编译／结构零警告错误；批次 `3ef8093f6ca14785a5ce9b839cde6a33`，执行 `beb677ce679f4808a82e1a2b441ca3e1` 实际PASS／EXECUTED，源／输入前后稳定、buildMatch=true。该原始日志SHA256 `1B1F281FE68F914B827D80077C4BDD3B8FC45607EDE580BC4F08072B4AD6228A`，执行标签4ec9加此次待提交修正，sourceFP `924661BD6A152815199ED097B7E0A4F6E7CDBACB83C0CABD732B1D03509CD0DB`／inputFP `EA38DE08F3728AE60C7588EA5FB21BA209E719D84B4F48636ED7DC6F2592550E`。
+
+真实单1／多4端点：及时240px均一次Find、123射线子步／797读格；不及时100px均一次Find、51子步／360读格，失败结果同样共享。不同准备成本的首副本selected0与真正被选17并存，真实临装17、出生8／附着22／保护23、精确归还和保钩／手动解除均通过；既有84／Queen差异不变。四个first-plan计时只含该有限fixture样本，不报告FPS或全程救援收益。两个纯Decision／Platform架构叶及其期待本波未改，保留802b／5643原执行与未变直接SHA，不因Host粗组重跑。最终Stage当前必要入口为该原生叶，另外六份保HISTORICAL_ONLY_NOT_REASSESSED；这不把本任务分阶段的真实执行笼统改签成“最终七叶全新PASS”。
+
 ## 原件、合同与责任
 
 `references/JMR_SMART_FALL_PROTECTION_20261021_v1/` 七份Markdown逐项SHA匹配，本地核验为 `.local/smart-fall-protection-20261021/task-package-integrity.json`。ZIP容器未定位，未补造或改写正文。原件01／03映射Features/Movement及Host风险、动作、几何、抓钩；02映射BorrowOwner、有限ItemOperationOwnership及FishingEquipment同格协调；00／04映射Session、F5／codec、证据及交付。

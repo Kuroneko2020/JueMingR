@@ -56,6 +56,8 @@ namespace NativeWorldTextProbe
                 Independent("Grapple1800Borrowed",()=>GrappleRescue(1800,240,true),ref first);
                 Independent("Grapple4980Teleport",()=>GrappleRescue(4980,240,false),ref first);
                 Independent("GrappleJointQueen",()=>GrappleRescue(4980,100,true),ref first);
+                Independent("GrappleDuplicateGeometry",GrappleDuplicateGeometry,ref first);
+                Independent("GrappleDuplicateNative",()=>GrappleRescue(1800,240,true,false,true),ref first);
                 Independent("GrappleOrdinaryShort",GrappleOrdinaryShort,ref first);
                 Independent("GrappleBusyFallback",()=>GrappleRescue(1800,240,false,true),ref first);
                 Independent("GrappleFailedReturnCache",GrappleFailedReturnCache,ref first);
@@ -433,7 +435,32 @@ namespace NativeWorldTextProbe
             Console.WriteLine("SMART-FALL PAIRED-COST native=rocket first-ignition samples=24 warmups=4 helper-near-probe-plans="+plans+" helper-tile-reads="+reads+" manual-ms-p50="+manualTimes[12]+" manual-ms-p95="+manualTimes[22]+" assisted-ms-p50="+assistedTimes[12]+" assisted-ms-p95="+assistedTimes[22]+" manual-thread-bytes-total="+manualBytes+" assisted-thread-bytes-total="+assistedBytes+" scope=original-motion+production-scope/plan/first-action-finalizer no-render/no-FPS");
             Call(host,"ClearSession");Call(movement,"SetEnabled",3,true);
         }
-        private static void GrappleRescue(int itemType,float gap,bool borrowed,bool busyPassive=false)
+        private static void GrappleDuplicateGeometry()
+        {
+            foreach(bool timely in new[]{true,false})
+            {
+                long singleSamples=0,singleReads=0;
+                foreach(int copies in new[]{1,4})
+                {
+                    Select(SmartFallFamily.Grapple);var p=PlayerAt(timely?240:100);
+                    for(int x=35;x<65;x++)for(int y=40;y<Floor;y++)Main.tile[x,y]=new Tile();
+                    p.inventory[17].SetDefaults(1800);Item chosen=p.inventory[17];
+                    if(copies>1)foreach(int slot in new[]{0,18,19})p.inventory[slot].SetDefaults(1800);
+                    var geometry=Get(host,"grapple");long searches=(long)Get(geometry,"Searches"),samples=(long)Get(geometry,"Samples"),reads=(long)Get(host,"TileReads");
+                    long started=Stopwatch.GetTimestamp();Begin(p);End(p);double milliseconds=(Stopwatch.GetTimestamp()-started)*1000.0/Stopwatch.Frequency;
+                    searches=(long)Get(geometry,"Searches")-searches;samples=(long)Get(geometry,"Samples")-samples;reads=(long)Get(host,"TileReads")-reads;
+                    var plan=Get(host,"grapplePlan");
+                    Require((int)Get(host,"hookCount")==copies && searches==1 && samples>0,"All real same-flight endpoints retain preparation but execute exactly one finite geometric search, including failure copies="+copies+" timely="+timely);
+                    Require((bool)Get(plan,"Found")==timely,"Shared search preserves the original timely/untimely flight result.");
+                    if(timely)Require(ReferenceEquals(Get(plan,"Item"),chosen) && !ReferenceEquals(p.inventory[0],chosen),"Shared geometry rebinds to the actual lower-interference endpoint17 even when endpoint0 was searched first.");
+                    if(copies==1){singleSamples=samples;singleReads=reads;}
+                    else Require(samples==singleSamples && reads==singleReads,"Adding three equivalent real hook objects does not multiply finite ray substeps or terrain reads, for both timely and failed search.");
+                    Require(!(bool)Get(host,"HasPending"),"This first-plan workload observation does not pretend to be an already consumed native rescue.");
+                    Console.WriteLine("SMART-FALL DUPLICATE-GEOMETRY timely="+timely+" real-endpoints="+copies+" finite-searches="+searches+" ray-substeps="+samples+" tile-reads="+reads+" first-plan-with-fixture-ms="+milliseconds+" full-rescue=separate-native-case no-FPS");
+                }
+            }
+        }
+        private static void GrappleRescue(int itemType,float gap,bool borrowed,bool busyPassive=false,bool duplicateSources=false)
         {
             Select(SmartFallFamily.Grapple);var p=PlayerAt(gap);int health=p.statLife;
             for(int x=35;x<65;x++)for(int y=40;y<Floor;y++)Main.tile[x,y]=new Tile();
@@ -441,6 +468,8 @@ namespace NativeWorldTextProbe
             for(int i=0;i<Main.projectile.Length;i++){if(Main.projectile[i]==null)Main.projectile[i]=new Projectile();Main.projectile[i].active=false;}
             p.miscEquips[4].SetDefaults(borrowed?84:itemType);Item originalHook=p.miscEquips[4],selected=p.miscEquips[4];
             if(borrowed){p.inventory[17].SetDefaults(itemType);selected=p.inventory[17];}
+            Item duplicate=null;
+            if(duplicateSources){p.inventory[0].SetDefaults(itemType);p.inventory[18].SetDefaults(itemType);duplicate=p.inventory[0];}
             if(busyPassive)
             {Call(movement,"SetSmartFallPermission",(int)SmartFallFamily.Horseshoe,true);p.inventory[18].SetDefaults(158);p.inventory[0].SetDefaults(3507);p.itemAnimation=p.itemTime=30;}
             int birth=-1,attached=-1,protectedAt=-1,plannedDelay=-1;Projectile owned=null;long plansAtProtection=0,scansAtProtection=0;bool through=false;
@@ -475,7 +504,8 @@ namespace NativeWorldTextProbe
                 for(int slot=0;slot<Main.projectile.Length;slot++)
                 {
                     var q=Main.projectile[slot];if(q==null || !q.active || q.owner!=p.whoAmI || q.aiStyle!=7)continue;
-                    if(birth<0){birth=tick;owned=q;plannedDelay=(int)Get(Get(host,"grapplePlan"),"Delay");Require(q.type==selected.shoot,"Actual native QuickGrapple uses the selected real hook, including temporary faster source item="+itemType);}
+                    if(birth<0){birth=tick;owned=q;plannedDelay=(int)Get(Get(host,"grapplePlan"),"Delay");Require(q.type==selected.shoot,"Actual native QuickGrapple uses the selected real hook, including temporary faster source item="+itemType);
+                        if(duplicateSources)Require(ReferenceEquals(Get(host,"selected"),selected) && ReferenceEquals(p.miscEquips[4],selected) && ReferenceEquals(p.inventory[0],duplicate),"Native birth uses the lower-interference endpoint17, not the first equivalent geometry representative at selected endpoint0.");}
                     q.Update(slot);if(q.active && q.ai[0]==2 && attached<0){attached=tick;Require(p.grapCount>0 && Array.IndexOf(p.grappling,slot)>=0,"Original ai0 attachment immediately registers the hook before ai2's stable branch item="+itemType);}
                 }
                 if(attached>=0 && protectedAt<0)Require((SmartFallResult)Get(host,"Result")!=SmartFallResult.Protected,"Projectile attachment phase is not early success.");
@@ -486,6 +516,7 @@ namespace NativeWorldTextProbe
             Require((long)Get(host,"Plans")==plansAtProtection && (long)Get(host,"SourceScans")==scansAtProtection,"A handed-off live hook creates no further rescue planning/debt item="+itemType);
             if(itemType!=4980)Require(through,"Timely native immunity permits crossing the original platform while hook remains active item="+itemType);
             if(borrowed)Require(ReferenceEquals(p.miscEquips[4],originalHook) && ReferenceEquals(p.inventory[17],selected),"Temporary exact hook returns without making the attached projectile fall off.");
+            if(duplicateSources)Require(ReferenceEquals(p.inventory[0],duplicate) && !ReferenceEquals(selected,duplicate),"Different same-flight objects keep their real endpoint identity after protection and return.");
             p.controlJump=true;p.releaseJump=true;p.GrappleMovement();Require(!owned.active,"Real manual Jump immediately releases the handed-off native hook.");
             Console.WriteLine("SMART-FALL GRAPPLE item="+itemType+" born="+birth+" attached-projectile-phase="+attached+" protected-player-phase="+protectedAt+" platform-through="+through+" manual-release=true life="+p.statLife+" new-plans-after-success=0");
             Call(host,"ClearSession");

@@ -23,9 +23,22 @@ namespace JueMingR.TerrariaHost.Movement
         private readonly int[] substeps = new int[ProjectileID.Count];
         private readonly bool[] ignoreWater = new bool[ProjectileID.Count];
         internal long Samples = 0;
+        internal long Searches = 0;
+
+        // For this bound .8 model, projectile type determines every native
+        // parameter consumed below: substeps, water treatment, range and latch
+        // rules. Item identity/prefix/preparation affect the real endpoint,
+        // not this flight ray; shootSpeed must still match exactly. This is
+        // equality within one player's current Find pass, never speed ordering
+        // across different projectile profiles or a cross-update world cache.
+        internal static bool SameFlight(Item a, Item b)
+        { return a != null && b != null && a.shoot == b.shoot && a.shootSpeed == b.shootSpeed; }
 
         internal SmartFallGrapplePlan Find(Player p, Item item, SmartFallContact contact, ref long reads)
         {
+#if DEBUG
+            Searches++;
+#endif
             var best = default(SmartFallGrapplePlan);
             if (!SmartFallCapabilities.Matches(item, SmartFallFamily.Grapple) || p.controlHook || p.grapCount > 0) return best;
             int updates = Prepare(item);

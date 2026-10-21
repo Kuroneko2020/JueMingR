@@ -25,6 +25,7 @@ namespace JueMingR.TerrariaHost.Movement
         private readonly SmartFallPreparation[] preparations = new SmartFallPreparation[12];
         private readonly Item[] hookSources = new Item[51];
         private readonly SmartFallPreparation[] hookPreparations = new SmartFallPreparation[51];
+        private readonly SmartFallGrapplePlan[] hookGeometry = new SmartFallGrapplePlan[51];
         private readonly ProjectileKey[] blockingHooks = new ProjectileKey[32];
         private readonly bool[] blockingAttached = new bool[32];
         private readonly SmartFallContactBand contactBand = new SmartFallContactBand();
@@ -227,12 +228,21 @@ namespace JueMingR.TerrariaHost.Movement
                             {
                             grapplePlan = default(SmartFallGrapplePlan); int bestCost = int.MaxValue;
                             // Nominal speed does not order native flight:
-                            // Queen uses four discrete sub-updates. Evaluate
-                            // each cached usable endpoint with the real ray.
+                            // Queen uses four discrete sub-updates. Geometry
+                            // is shared only within this search for identical
+                            // native flight parameters; endpoint preparation
+                            // and interference remain independent. Even a
+                            // shared failed search must not be repeated N times.
                             for (int slot = 0; slot < hookCount; slot++)
                             {
                                 Item other = hookSources[slot];
-                                var alternative = grapple.Find(p, other, contact, ref TileReads);
+                                int same = -1;
+                                for (int prior = 0; prior < slot; prior++)
+                                    if (SmartFallGrapple.SameFlight(hookSources[prior], other)) { same = prior; break; }
+                                var alternative = same < 0 ? grapple.Find(p, other, contact, ref TileReads) : hookGeometry[same];
+                                // A shared ray never lends its representative
+                                // Item identity to another inventory endpoint.
+                                alternative.Item = other; hookGeometry[slot] = alternative;
                                 if (!alternative.Found) continue;
                                 int alternativeCost = Interference(p, f, other, hookPreparations[slot], alternative.Target);
                                 if (!grapplePlan.Found || alternativeCost < bestCost || alternativeCost == bestCost && alternative.Delay < grapplePlan.Delay)
@@ -603,6 +613,7 @@ namespace JueMingR.TerrariaHost.Movement
             ownedMount = originalMount = -1; sourceRevision = -1; mask = -1; count = sourceCount = hookCount = blockingCount = 0; blockerStamp = 0; rejected = 0; bandValid = grappleSearched = false; contact = default(SmartFallContact); targetActive = false;
             Array.Clear(sources, 0, sources.Length);
             Array.Clear(observedSources, 0, observedSources.Length);
+            Array.Clear(hookGeometry, 0, hookGeometry.Length);
         }
         internal void Uninstall()
         {
