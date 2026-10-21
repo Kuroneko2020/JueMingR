@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -55,7 +55,13 @@ namespace NativeWorldTextProbe
                 Independent("Grapple84",()=>GrappleRescue(84,480,false),ref first);
                 Independent("Grapple1800Borrowed",()=>GrappleRescue(1800,240,true),ref first);
                 Independent("Grapple4980Teleport",()=>GrappleRescue(4980,240,false),ref first);
+                Independent("GrappleJointQueen",()=>GrappleRescue(4980,100,true),ref first);
+                Independent("GrappleOrdinaryShort",GrappleOrdinaryShort,ref first);
+                Independent("GrappleBusyFallback",()=>GrappleRescue(1800,240,false,true),ref first);
                 Independent("GrappleFailedReturnCache",GrappleFailedReturnCache,ref first);
+                Independent("BusyPreparation",BusyPreparation,ref first);
+                Independent("DynamicInterference",DynamicInterference,ref first);
+                Independent("CursedJump",CursedJump,ref first);
                 Independent("GrappleLateContact",GrappleLateContact,ref first);
                 Independent("DoubleJumpMismatch",DoubleJumpMismatch,ref first);
                 Independent("PairedRocketCosts",PairedRocketCosts,ref first);
@@ -111,6 +117,88 @@ namespace NativeWorldTextProbe
                 }
                 finally{End(p);Call(host,"ClearSession");}
             }
+        }
+        private static void CursedJump()
+        {
+            Vector2 manualVelocity=default(Vector2);int manualJump=0;
+            for(int side=0;side<2;side++)
+            {
+                bool help=side==1;Select(SmartFallFamily.DoubleJump);Call(movement,"SetEnabled",3,help);
+                var p=PlayerAt(5);p.armor[3].SetDefaults(53);p.UpdateEquips(p.whoAmI);p.canJumpAgain_Cloud=true;
+                p.buffType[0]=23;p.buffTime[0]=600;p.UpdateBuffs(p.whoAmI);
+                Require(p.noItems && p.cursed && !p.CCed,"Original cursed buff forbids item use without forbidding movement.");
+                if(help)Begin(p);else{p.controlJump=true;p.releaseJump=true;}
+                try
+                {
+                    Eligibility(p);Motion(p);if(help)Call(host,"BeforeGrapple",p);
+                    Require(p.jump>0 && p.velocity.Y<0 && !p.canJumpAgain_Cloud,"Original JumpMovement spends the worn unused Cloud even under curse; no refill side="+side);
+                    if(!help){manualVelocity=p.velocity;manualJump=p.jump;}
+                    else Require(p.velocity==manualVelocity && p.jump==manualJump && !(bool)Get(host,"HasPending"),"Helper matches the real cursed manual Jump and retires its input.");
+                }
+                finally{if(help)End(p);}
+            }
+            Select(SmartFallFamily.TeleportRod);var rod=PlayerAt(15);rod.inventory[0].SetDefaults(5335);rod.buffType[0]=23;rod.buffTime[0]=600;rod.UpdateBuffs(rod.whoAmI);
+            Vector2 position=rod.position;long actions=(long)Get(host,"NativeActions");Begin(rod);
+            try{rod.controlUseItem=true;rod.releaseUseItem=true;rod.ItemCheck();Require(rod.position==position && rod.itemAnimation==0 && (long)Get(host,"NativeActions")==actions,"Original cursed rod remains unusable and no helper item action bypasses it.");}
+            finally{End(rod);}
+            Console.WriteLine("SMART-FALL CURSED original-buff23 manual-jump=helper native-charge-spent=true rod-use-blocked=true");
+        }
+        private static void BusyPreparation()
+        {
+            Select(SmartFallFamily.Horseshoe);var p=PlayerAt(15);p.inventory[17].SetDefaults(158);p.inventory[0].SetDefaults(3507);p.itemAnimation=p.itemTime=3;
+            Begin(p);End(p);long scans=(long)Get(host,"SourceScans"),plans=(long)Get(host,"Plans"),actions=(long)Get(host,"NativeActions");
+            for(int i=0;i<64;i++){Begin(p);End(p);}
+            Require((long)Get(host,"SourceScans")==scans && (long)Get(host,"Plans")==plans && (long)Get(host,"NativeActions")==actions,"64 unchanged native busy snapshots do not rescan/replan/retry.");
+            // Original ItemCheck counts both actual timers down; no source or
+            // revision mutation is manufactured to notify the Host.
+            for(int i=0;i<8 && (p.UsingOrReusingItem || p.itemTime!=0);i++)p.ItemCheck();
+            Require(!p.UsingOrReusingItem && p.itemTime==0,"Original item consumer actually releases the busy gates.");
+            Begin(p);End(p);Require((long)Get(host,"SourceScans")==scans+1,"Actual busy-to-ready transition requalifies the unchanged source once.");
+            for(int i=0;i<4;i++){Begin(p);try{Damage(p);p.UpdateEquips(p.whoAmI);Motion(p);p.DryCollision(false,false);p.SlopingCollision(false,false);}finally{End(p);}}
+            Require(p.statLife==5000 && (long)Get(host,"NativeActions")==actions && !(bool)Get(host,"HasPending"),"Requalified passive is equipped by its real endpoint and protects original landing, with no synthetic item action.");
+            Console.WriteLine("SMART-FALL BUSY unchanged=64 native-unblock=true refreshes=1 original-landing-life="+p.statLife);
+        }
+        private static SmartFallCandidate Choice()
+        {
+            var array=(SmartFallCandidate[])Get(host,"candidates");int count=(int)Get(host,"count");var contact=(SmartFallContact)Get(host,"contact");
+            int choice=SmartFallDecision.Choose(array,count,contact.Ticks);Require(choice>=0,"Production facts contain a real ready joint plan.");return array[choice];
+        }
+        private static void DynamicInterference()
+        {
+            Select(SmartFallFamily.RocketBoots);Call(movement,"SetSmartFallPermission",(int)SmartFallFamily.Horseshoe,true);
+            var p=PlayerAt(200);p.armor[3].SetDefaults(128);p.UpdateEquips(p.whoAmI);p.rocketTime=7;p.inventory[17].SetDefaults(158);
+            Begin(p);End(p);var plentiful=Choice();Require(plentiful.Family==SmartFallFamily.RocketBoots,"Already-worn plentiful native resource can beat real temporary equipment exchange/return.");
+            p.rocketTime=1;Begin(p);End(p);var scarce=Choice();Require(scarce.Family==SmartFallFamily.Horseshoe,"Real remaining fuel changes the comparison with the same two sources and permissions.");
+            var facts=(Array)Get(host,"preparations");object preparation=facts.GetValue((int)SmartFallFamily.Horseshoe);
+            Require((int)Get(preparation,"BorrowWrites")==2 && ReferenceEquals(Get(preparation,"Source"),p.inventory) && (int)Get(preparation,"SourceSlot")==17,"Dynamic comparison consumes actual borrowing endpoints, not a family rank.");
+            int prior=scarce.Interference;Item moved=p.inventory[17];p.inventory[17]=p.inventory[0];p.inventory[0]=moved;Call(Get(items,"World"),"InvalidateObservation");
+            Begin(p);End(p);var candidates=(SmartFallCandidate[])Get(host,"candidates");int current=Array.FindIndex(candidates,0,(int)Get(host,"count"),c=>c.Family==SmartFallFamily.Horseshoe);
+            Require(current>=0 && candidates[current].Interference>prior,"Exchange of the currently held source has real additional interference without a selection-index write.");
+            Console.WriteLine("SMART-FALL JOINT dynamic-resource="+plentiful.Family+"->"+scarce.Family+" real-selected-source-cost="+prior+"->"+candidates[current].Interference);
+        }
+        private static void GrappleOrdinaryShort()
+        {
+            Select(SmartFallFamily.Grapple);Call(movement,"SetEnabled",3,false);var p=PlayerAt(100);p.miscEquips[4].SetDefaults(84);
+            for(int x=35;x<65;x++)for(int y=40;y<Floor;y++)Main.tile[x,y]=new Tile();
+            for(int x=35;x<65;x++){Main.tile[x,Floor].type=19;Main.tile[x,Floor].frameY=0;}
+            foreach(var projectile in Main.projectile)if(projectile!=null)projectile.active=false;
+            int oldX=Main.mouseX,oldY=Main.mouseY;Projectile q=null;int firstContact=-1,firstProtection=-1,health=p.statLife;
+            try
+            {
+                Main.mouseX=(int)(p.Center.X-Main.screenPosition.X);Main.mouseY=(int)(Floor*16+8-Main.screenPosition.Y);
+                for(int tick=0;tick<20;tick++)
+                {
+                    Damage(p);Motion(p);if(tick==0){p.QuickGrapple();q=Main.projectile.FirstOrDefault(x=>x!=null && x.active && x.owner==p.whoAmI && x.aiStyle==7);Require(q!=null,"Original ordinary short-window control really fires.");}
+                    p.GrappleMovement();if(p.fallStart!=0 && firstProtection<0)firstProtection=tick;
+                    bool ignore=p.GoingDownWithGrapple;p.DryCollision(ignore,ignore);p.SlopingCollision(ignore,ignore);
+                    if(p.position.Y+p.height>=Floor*16-.01f && firstContact<0)firstContact=tick;
+                    Housekeeping(p);if(q.active)q.Update(q.whoAmI);
+                    if(p.statLife<health)break;
+                }
+                Require(firstContact>=0 && (firstProtection<0 || firstProtection>firstContact) && p.statLife<health,"Same legal 100px window cannot be saved by the ordinary 84; first contact/Hurt precedes protection.");
+                Console.WriteLine("SMART-FALL ORDINARY-SHORT first-contact="+firstContact+" first-protection="+firstProtection+" life="+p.statLife+" paired-Queen-uses-same-gap=100");
+            }
+            finally{Main.mouseX=oldX;Main.mouseY=oldY;if(q!=null)q.active=false;Call(movement,"SetEnabled",3,true);}
         }
         private static void Consumer(SmartFallFamily family)
         {
@@ -235,7 +323,38 @@ namespace NativeWorldTextProbe
             Require((long)Get(host,"Plans")==plans+1 && half.HalfBrick && half.Y==before.Y+8,"Same active/slope tile changing to half brick refreshes the actual contact and timing.");
             for(int x=(int)(p.position.X/16);x<=(int)((p.position.X+p.width-1)/16);x++){var changed=Main.tile[x,before.TileY];changed.type=19;changed.frameY=18*49;changed.halfBrick(false);}plans=(long)Get(host,"Plans");Begin(p);End(p);
             var platform=(SmartFallContact)Get(host,"contact");
-            Require((long)Get(host,"Plans")==plans+1 && platform.Platform && platform.SafeSurface,"Type/frame changes refresh platform and safe-surface meaning with only the retained tile read.");
+            Require((long)Get(host,"Plans")==plans+1 && platform.Platform && platform.SafeSurface,"Type/frame changes refresh platform and safe-surface meaning through the finite queried contact band.");
+            int nearY=(int)((p.position.Y+p.height)/16)+1,left=(int)(p.position.X/16),right=(int)((p.position.X+p.width-1)/16);
+            var oldNear=new Tile[right-left+1];for(int x=left;x<=right;x++)oldNear[x-left]=Main.tile[x,nearY];
+            Tile unrelated=Main.tile[60,nearY];
+            try
+            {
+                plans=(long)Get(host,"Plans");scans=(long)Get(host,"SourceScans");long tileReads=(long)Get(host,"TileReads");
+                var samples=new double[8];
+                var allocated=(Func<long>)Delegate.CreateDelegate(typeof(Func<long>),typeof(GC).GetMethod("GetAllocatedBytesForCurrentThread",F));long bytes=allocated();
+                for(int i=0;i<8;i++){long started=Stopwatch.GetTimestamp();Begin(p);End(p);samples[i]=(Stopwatch.GetTimestamp()-started)*1000.0/Stopwatch.Frequency;}
+                bytes=allocated()-bytes;
+                long rereads=(long)Get(host,"TileReads")-tileReads;
+                Require((long)Get(host,"Plans")==plans && (long)Get(host,"SourceScans")==scans && rereads>0 && rereads<=4096*8,"Eight stable dangerous corridor checks perform bounded real tile rereads, without replanning or rescanning sources.");
+                Main.tile[60,nearY]=new Tile();Main.tile[60,nearY].active(true);Main.tile[60,nearY].type=1;
+                Begin(p);End(p);Require((long)Get(host,"Plans")==plans,"Unrelated tile outside the finite queried corridor does not wake planning.");
+                for(int x=left;x<=right;x++){Main.tile[x,nearY]=new Tile();Main.tile[x,nearY].active(true);Main.tile[x,nearY].type=19;Main.tile[x,nearY].frameY=0;}
+                Begin(p);
+                try
+                {
+                    var nearer=(SmartFallContact)Get(host,"contact");Require((long)Get(host,"Plans")==plans+1 && nearer.Found && nearer.TileY==nearY && nearer.Y<platform.Y && !nearer.SafeSurface,"Newly active nearer platform invalidates the old far safe contact before body collision.");
+                    p.UpdateEquips(p.whoAmI);Require(p.noFallDmg && p.position.Y+p.height<nearY*16,"Real passive protection is equipped before first new-platform contact.");
+                    Motion(p);p.DryCollision(false,false);p.SlopingCollision(false,false);
+                }
+                finally{End(p);}
+                for(int i=0;i<4;i++){Begin(p);try{Damage(p);p.UpdateEquips(p.whoAmI);Motion(p);p.DryCollision(false,false);p.SlopingCollision(false,false);}finally{End(p);}}
+                Require(p.statLife==5000 && !(bool)Get(host,"HasPending"),"Original new-platform Hurt and exact return complete without lost health.");
+                Array.Sort(samples);Console.WriteLine("SMART-FALL CORRIDOR stable-snapshots=8 real-tile-rereads="+rereads+" plans=0 source-scans=0 unrelated-wake=0 nearer-wake=1 sample-scope=production-Begin/Capture/End+reflection ms-p50="+samples[4]+" ms-p95="+samples[7]+" thread-bytes-with-fixture="+bytes+" no-render/no-FPS");
+            }
+            finally{for(int x=left;x<=right;x++)Main.tile[x,nearY]=oldNear[x-left];Main.tile[60,nearY]=unrelated;}
+            // Resume a separate genuine dangerous snapshot for the permission
+            // invalidation assertion; the prior near-platform rescue is over.
+            Call(host,"ClearSession");p=PlayerAt(200);p.inventory[17].SetDefaults(158);Begin(p);End(p);
             Call(movement,"SetSmartFallPermission",(int)SmartFallFamily.Horseshoe,false);scans=(long)Get(host,"SourceScans");Begin(p);End(p);
             Require((long)Get(host,"SourceScans")==scans+1 && ((Item[])Get(host,"sources"))[(int)SmartFallFamily.Horseshoe]==null,"Disabling the capability also invalidates only the source cache.");
         }
@@ -314,7 +433,7 @@ namespace NativeWorldTextProbe
             Console.WriteLine("SMART-FALL PAIRED-COST native=rocket first-ignition samples=24 warmups=4 helper-near-probe-plans="+plans+" helper-tile-reads="+reads+" manual-ms-p50="+manualTimes[12]+" manual-ms-p95="+manualTimes[22]+" assisted-ms-p50="+assistedTimes[12]+" assisted-ms-p95="+assistedTimes[22]+" manual-thread-bytes-total="+manualBytes+" assisted-thread-bytes-total="+assistedBytes+" scope=original-motion+production-scope/plan/first-action-finalizer no-render/no-FPS");
             Call(host,"ClearSession");Call(movement,"SetEnabled",3,true);
         }
-        private static void GrappleRescue(int itemType,float gap,bool borrowed)
+        private static void GrappleRescue(int itemType,float gap,bool borrowed,bool busyPassive=false)
         {
             Select(SmartFallFamily.Grapple);var p=PlayerAt(gap);int health=p.statLife;
             for(int x=35;x<65;x++)for(int y=40;y<Floor;y++)Main.tile[x,y]=new Tile();
@@ -322,12 +441,20 @@ namespace NativeWorldTextProbe
             for(int i=0;i<Main.projectile.Length;i++){if(Main.projectile[i]==null)Main.projectile[i]=new Projectile();Main.projectile[i].active=false;}
             p.miscEquips[4].SetDefaults(borrowed?84:itemType);Item originalHook=p.miscEquips[4],selected=p.miscEquips[4];
             if(borrowed){p.inventory[17].SetDefaults(itemType);selected=p.inventory[17];}
+            if(busyPassive)
+            {Call(movement,"SetSmartFallPermission",(int)SmartFallFamily.Horseshoe,true);p.inventory[18].SetDefaults(158);p.inventory[0].SetDefaults(3507);p.itemAnimation=p.itemTime=30;}
             int birth=-1,attached=-1,protectedAt=-1,plannedDelay=-1;Projectile owned=null;long plansAtProtection=0,scansAtProtection=0;bool through=false;
             for(int tick=0;tick<64;tick++)
             {
                 Begin(p);
                 try
                 {
+                    if(busyPassive && tick==0)
+                    {
+                        var prepared=(Array)Get(host,"preparations");
+                        Require(!(bool)Get(prepared.GetValue((int)SmartFallFamily.Horseshoe),"AvailableNow") && p.UsingOrReusingItem,"Real busy passive endpoint is not a ready plan while the worn native hook remains usable.");
+                        Require(Choice().Family==SmartFallFamily.Grapple,"This busy competition starts with an actually timely ready native hook, not merely an existing item.");
+                    }
                     if(itemType==84 && (tick<2 || tick>=12 && tick<=14))
                     {var c=(SmartFallContact)Get(host,"contact");var plan=Get(host,"grapplePlan");Console.WriteLine("SMART-FALL ORDINARY-PREP tick="+tick+" source="+(((Item[])Get(host,"sources"))[(int)SmartFallFamily.Grapple]?.type??0)+" count="+Get(host,"count")+" contact="+c.Found+" ticks="+c.Ticks+" plan="+Get(plan,"Found")+" delay="+Get(plan,"Delay")+" rejected="+Get(host,"rejected")+" pos="+p.position);}
                     Damage(p);p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);p.GrappleMovement();
@@ -368,7 +495,10 @@ namespace NativeWorldTextProbe
             Select(SmartFallFamily.Grapple);var p=PlayerAt(240);p.inventory[17].SetDefaults(1800);
             for(int x=35;x<65;x++)for(int y=40;y<Floor;y++)Main.tile[x,y]=new Tile();
             for(int i=0;i<Main.projectile.Length;i++){if(Main.projectile[i]==null)Main.projectile[i]=new Projectile();Main.projectile[i].active=false;}
-            var q=Main.projectile[0];q.SetDefaults(13);q.active=true;q.owner=p.whoAmI;q.ai[0]=0;q.position=p.Center;q.velocity=Vector2.UnitY;
+            // The already flying hook points into empty upper space. Its
+            // original range/return AI can retire naturally; pointing down
+            // would legitimately latch on this representative's real floor.
+            var q=Main.projectile[0];q.SetDefaults(13);q.active=true;q.owner=p.whoAmI;q.ai[0]=0;q.position=p.Center;q.velocity=-Vector2.UnitY;
             Item anchor=p.miscEquips[4],source=p.inventory[17];long actions=(long)Get(host,"NativeActions");bool failed=false;
             try
             {
@@ -383,6 +513,22 @@ namespace NativeWorldTextProbe
             Begin(p);End(p);long scans=(long)Get(host,"SourceScans"),plans=(long)Get(host,"Plans");actions=(long)Get(host,"NativeActions");
             for(int i=0;i<64;i++){Begin(p);End(p);}
             Require((long)Get(host,"SourceScans")==scans && (long)Get(host,"Plans")==plans && (long)Get(host,"NativeActions")==actions,"Own return revision cannot reopen identical failed borrowing/planning/actions in 64 unchanged dangerous updates.");
+            // Advance only this already known original hook. Its own ai0
+            // range/ai1 return kills it; no auxiliary Kill or pool scan frees
+            // capacity and no unrelated inventory revision is supplied.
+            for(int i=0;i<384 && q.active;i++)q.Update(0);
+            Require(!q.active,"Known original flying hook naturally retires and releases the actual native capacity.");
+            int protectedAt=-1;
+            for(int tick=0;tick<24;tick++)
+            {
+                Begin(p);try{Damage(p);p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);p.GrappleMovement();p.DryCollision(p.GoingDownWithGrapple,p.GoingDownWithGrapple);p.SlopingCollision(p.GoingDownWithGrapple,p.GoingDownWithGrapple);Housekeeping(p);}
+                finally{End(p);}
+                foreach(var projectile in Main.projectile)if(projectile!=null && projectile.active && projectile.owner==p.whoAmI && projectile.aiStyle==7)projectile.Update(projectile.whoAmI);
+                if((SmartFallResult)Get(host,"Result")==SmartFallResult.Protected){protectedAt=tick;break;}
+            }
+            Require(protectedAt>=0 && p.statLife==5000 && (long)Get(host,"NativeActions")==actions+1 && !(bool)Get(host,"HasPending"),"Only the real known-hook capacity release reopens one timely original rescue and finite return.");
+            Require(ReferenceEquals(p.miscEquips[4],anchor) && ReferenceEquals(p.inventory[17],source),"Reopened original action also returns the exact two borrowed references.");
+            Console.WriteLine("SMART-FALL CAPACITY unchanged=64 natural-retirement=true native-retry=1 protected="+protectedAt+" life="+p.statLife);
             }
             finally{q.active=false;}
         }

@@ -1,6 +1,29 @@
 # 智能防摔定向证据入口
 
-任务 [#130](https://github.com/Kuroneko2020/JueMingR/issues/130)，Draft [#131](https://github.com/Kuroneko2020/JueMingR/pull/131)，起点 `62bd6e4ef42eacd7a22b898ee538650a7b920747`。当前完成实现与定向自查，等待集中独审；尚未打包、换装或启动所有者游戏。
+任务 [#130](https://github.com/Kuroneko2020/JueMingR/issues/130)，Draft [#131](https://github.com/Kuroneko2020/JueMingR/pull/131)，起点 `62bd6e4ef42eacd7a22b898ee538650a7b920747`。集中独审对候选 `ba096176269e047a776788a44c527cf632f52077` 给出NEEDS_FIX；下述修正与定向执行已完成，增量复核及后续交付状态回任务Issue。本文证据冻结时尚未打包、换装或启动所有者游戏。
+
+## 集中独审与增量责任
+
+独立报告 `.local/smart-fall-protection-20261021/independent-review/review.md` 覆盖起点到ba096的47文件及直接接缝。五项确定缺口分别为：名义shootSpeed错误排除实际及时的钩、临时拒绝解除后未恢复候选、接触缓存漏掉新增更早接触面、临借不可用被误判ready及未消费实际干扰事实、物品使用门误挡已装备的合法诅咒跳跃。原七叶PASS支持其已执行代表，不覆盖上述组合和变化反例，也不代签独审通过。
+
+返修由原责任作者在原有叶补直接反例。整合者另修本轮新增GetItem hint的真实缺口：原版完整执行但未取得物品不得推进Revision；沿真实满包拒收／空位取得正反例核对。保留原报告与失败，只复审增量及真实传播，不重开全量审计。下列canonical2仍保留其原始执行身份，不冒充返修后的新执行。
+
+返修公共PrepareOnly为 `.local/smart-fall-protection-20261021/prepare-review-repairs1.log`／`prepare-review-repairs2.log`，均编译和结构零警告、零错误。批次 `751611e2936245df8704def8dbb8c8dd` 实际执行Ownership叶 `802b88296fac4b87acedef03a92d370c`、RiskActions叶 `564316a94f844d6696f958af948c1631`，均PASS。原生叶 `f85b663ed07c45c695ef9922e2e5b41f` 保留总FAIL：新增busy后备误用仅Queen及时的100px窗内Bat，以及旧钩向下先附着而不退休。按原生因果将前者改为已证及时的Bat240px窗口，仍保留被动Busy阻塞与真实Grapple ready断言；后者仅改旧钩初始向上，由原版射程／返回自然退休，不放宽成功或无重复期待。生产在该第二次初态修正中未变。
+
+最后只重跑同一canonical原生叶：批次 `36095839b83849fda2ef1c2c3ff6fdb6`，执行 `f6dee964cd9e4e439f2233ad98f51666`，实际PASS／EXECUTED；两次执行源／输入前后一致、buildMatch为true，第一批两个架构叶继续复用。真实原始日志为各批次目录的 `<执行ID>.json.log`，receipt及qualification同目录，失败产物也归档。最后原生日志SHA256 `A7578D2CE0AB4B8D37324DAC892897DBDE6285FB387FCBA9A820B4FD042DE8E7`；执行Git标签是ba096加本次待提交修正，执行源码指纹 `4F661B0BECB42B213E77C2694A68C5C25A4B039867170BC6DFC68C97C575D409`，可执行输入指纹 `3DA7D2DC23F7AA7FF7905288B58F45DA0F2899DFC689112D167EB3A46468A44D`，不将ba096裸提交称为这次新源码。
+
+| 缺口 | 实际修正与直接原生结果 |
+| --- | --- |
+| R1 | 缓存全部有限合法钩来源，按实际离散可行性比较；装备84＋携带Queen100px，Queen出生1／附着8／保护9，物品归还并保钩；普通同窗接触9／保护11且受伤为独立迟到对照 |
+| R2 | 真实busy／buffer／端点布尔变化重核准备；原生容量循环记录已知旧钩key，不额外扫弹幕池。保持64次条件不变无重试；旧钩原生退休后一次重试并保护，原ItemCheck解除busy后一次刷新、真实落地不受伤 |
+| R3 | 保留本次实际有限碰撞走廊的格事实，含原空格；更近新平台使缓存当次失效，无关格不唤醒。8次稳定快照合计256次原格重读、零新计划／来源扫描；非全世界变更扫描 |
+| R4 | 只读GetPreparation与执行TryBorrow共享真实门，比较借还／替换／选择／资源／轨迹等事实。被动Busy不可借时既装Bat仍真实及时保护；真实资源与所选源事实改变共同候选选择／成本 |
+| R5 | 已装合法能力不走库存动作门；原版buff23诅咒下同起态手动Jump与辅助均真实消耗跳段，杖实际use仍被禁止 |
+| 取得hint | 仅真实GetItem接受余量变化推进Revision；满包返回原量保持hint，空位实际取得推进hint；原causal获取逻辑未替换，无额外背包轮询 |
+
+R3稳定带快照的0.0271／0.0317ms p50／p95与11520线程字节含测试反射／夹具，仅是8次有限样本，不能称helper零分配或真实帧时。最后同叶保留四稳定路径各20,000更新与独立分配窗，稳定分配零且来源／计划／tile增量零；危险无能力20,000次合计11.9278ms，包含新增O(1)阻塞门采样。Rocket24＋4首次点火配对manual p50／p95=0.0021／0.0054ms、assisted=0.0158／0.0321ms，两侧分配零。上述与首审前分母各保真实源身份，不扩为完整救援／归还／渲染或FPS。
+
+配置、布局、Jump和普通传送四份canonical2历史证明不因movement-host粗分组机械重跑。`.local/smart-fall-protection-20261021/review-repair-historical-inputs.json` 保存其原执行ID及直接行为／期待字节未变比对；阶段记录沿现有taskAcceptance取本次三必要叶，其余四标为HISTORICAL_ONLY_NOT_REASSESSED，不改签为新候选重跑通过。
 
 ## 原件、合同与责任
 
@@ -8,11 +31,11 @@
 
 正式契约为 `docs/功能介绍/移动辅助行为合同.md`，阶段／状态所有权／失效设计为 `docs/设计/移动辅助实现设计.md`；体验卡为 `scripts/phase0s/Continuous-Processing-Owner-Test-Card.zh-CN.md`。源码、期待与正式合同设计一并冻结后独审，不以作者合同和作者测试相互代签原件。
 
-## 最终定向执行与来源
+## 首审前定向执行与来源
 
 `.local/smart-fall-protection-20261021/prepare-canonical2.log` 记录正式PrepareOnly：Debug编译及结构0警告、0错误。没有执行Related／Full。
 
-最终批次 `artifacts/build/workload-checkpoints/a6f45e92f02748e58ae7668e26132a50/targeted-results.json`：七精确叶全部实际执行PASS。
+首审前批次 `artifacts/build/workload-checkpoints/a6f45e92f02748e58ae7668e26132a50/targeted-results.json`：七精确叶全部实际执行PASS。
 
 | 叶 | 执行ID |
 | --- | --- |
@@ -50,6 +73,6 @@ OFF、ON闲置、ON原本安全、ON危险无能力各20,000次强委托更新�
 
 ## 资格与交付边界
 
-当前待一次集中独审，不先包／安装。完整Main／图形、物理键盘／手柄、真实房主／客机联网、FPS、所有者启动体验均NOT_EXECUTED。普通好友本机作用域与原生同步是生产责任，没有按连接方式禁用；message5编码／发送不是服务器ACK或多人验收。
+修正增量复核通过与主调度准入前不包／安装；动态结论回任务Issue。本文证据冻结时完整Main／图形、物理键盘／手柄、真实房主／客机联网、FPS、所有者启动体验均NOT_EXECUTED。普通好友本机作用域与原生同步是生产责任，没有按连接方式禁用；message5编码／发送不是服务器ACK或多人验收。
 
 普通完整包沿现有ContinuousProcessing StageDevelopmentRecord，保留全部功能及范围外历史FAIL／NOT_RUN，fullQualification仍INCOMPLETE；不Tag／Release／合并／关闭任务。核真实现装b949回执后按本次原目标授权做一次预检、轻量受控备份、正式Restore→Install与必要读回，不启动／操作所有者游戏或存档。实际候选提交、包／换装身份回Issue130及本任务本地交付回执，完成后等待所有者体验与网页复审。

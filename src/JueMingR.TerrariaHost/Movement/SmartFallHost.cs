@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using JueMingR.Features.Movement;
 using JueMingR.TerrariaHost.Fishing;
@@ -22,6 +22,14 @@ namespace JueMingR.TerrariaHost.Movement
         private readonly SmartFallCandidate[] candidates = new SmartFallCandidate[12];
         private readonly Item[] sources = new Item[12];
         private readonly Item[] observedSources = new Item[12];
+        private readonly SmartFallPreparation[] preparations = new SmartFallPreparation[12];
+        private readonly Item[] hookSources = new Item[51];
+        private readonly SmartFallPreparation[] hookPreparations = new SmartFallPreparation[51];
+        private readonly ProjectileKey[] blockingHooks = new ProjectileKey[32];
+        private readonly bool[] blockingAttached = new bool[32];
+        private readonly SmartFallContactBand contactBand = new SmartFallContactBand();
+        private int sourceCount, hookCount, blockingCount;
+        private long blockerStamp;
         private readonly Func<Item, bool> jumpSourceReady;
         private SmartFallProtectionOptions sampledOptions;
         private readonly Action<Item[], int> previousManualSlot;
@@ -80,26 +88,34 @@ namespace JueMingR.TerrariaHost.Movement
             if (HasPending) { Continue(p); if (HasPending) return; }
             if (!canAct || !session.Value.SmartFallProtection.Enabled) return;
             if (takenOver) { if (SmartFallCapabilities.Risk(p)) return; takenOver = false; }
-            if (!SmartFallCapabilities.Risk(p)) { active = false; bandValid = false; rejected = 0; contact = default(SmartFallContact); return; }
+            if (!SmartFallCapabilities.Risk(p)) { active = false; bandValid = false; rejected = blockingCount = 0; contact = default(SmartFallContact); return; }
             int currentMask = SmartFallCapabilities.NativeMask(p);
             long revision = items == null ? 0 : items.World.Revision;
             if (!active || sourceRevision != revision || mask != currentMask || !ReferenceEquals(sampledOptions, session.Value.SmartFallProtection))
             { Refresh(p, revision, currentMask); active = true; }
-            if (count == 0) return;
+            // Native busy/selection gates are O(1) booleans, not countdown
+            // values. Only an actual change re-reads endpoint qualification.
+            long blockers = borrow.BlockerStamp(p);
+            if (blockers != blockerStamp)
+            { rejected &= blockingCount == 0 ? 0 : 1 << (int)SmartFallFamily.Grapple; Refresh(p, revision, currentMask); }
+            if (sourceCount == 0) return;
+            if (blockingCount > 0 && BlockingHookChanged(p))
+            { blockingCount = 0; rejected &= ~(1 << (int)SmartFallFamily.Grapple); grappleSearched = false; bandValid = false; }
+            bool usableEndpoint = false;
+            for (int i = 0; i < 12; i++)
+                if (session.Value.SmartFallProtection.Allows(i) && (rejected & 1 << i) == 0 &&
+                    (preparations[i].AvailableNow || (mask & 1 << i) != 0 || i == (int)SmartFallFamily.Grapple && hookCount > 0)) { usableEndpoint = true; break; }
+            if (!usableEndpoint) return;
             // A retained contact is consumed only while its input and simple
             // local geometry remain current; otherwise query the finite band.
             bool stale = !bandValid || p.controlDown != sampledDown || p.gravDir != originalGravity ||
                 Vector2.DistanceSquared(p.position, sampledPosition) > 128 * 128 ||
                 Math.Abs(p.velocity.X - sampledVelocity.X) > .1f || Math.Abs(p.position.X - (sampledPosition.X + sampledVelocity.X * (tick - sampledTick))) > 8 ||
                 Math.Abs(p.velocity.Y * p.gravDir - Math.Min(p.maxFallSpeed, sampledVelocity.Y * p.gravDir + p.gravity * (tick - sampledTick))) > .5f;
-            if (!stale && contact.Found)
-            {
-                var tile = SmartFallGeometry.Read(contact.TileX, contact.TileY, ref TileReads);
-                stale = tile == null || !tile.nactive() || tile.slope() != contact.Slope || tile.type != contact.Type || tile.halfBrick() != contact.HalfBrick || tile.frameY != contact.FrameY;
-            }
+            if (!stale) stale = contactBand.Changed(p, ref TileReads);
             if (stale)
             {
-                Count(ref Plans); contact = SmartFallGeometry.Contact(p, ref TileReads); contactTick = sampledTick = tick; bandValid = true; grappleSearched = false;
+                Count(ref Plans); contact = SmartFallGeometry.Contact(p, ref TileReads, contactBand); contactTick = sampledTick = tick; bandValid = true; grappleSearched = false;
                 sampledPosition = p.position; sampledVelocity = p.velocity; sampledDown = p.controlDown; originalGravity = p.gravDir;
             }
             else if (contact.Found)
@@ -146,7 +162,8 @@ namespace JueMingR.TerrariaHost.Movement
         }
         private void Refresh(Player p, long revision, int nativeMask)
         {
-            Count(ref SourceScans); sourceRevision = revision; int previousMask = mask; mask = nativeMask; count = 0; grappleSearched = false;
+            Count(ref SourceScans); sourceRevision = revision; int previousMask = mask; mask = nativeMask; sourceCount = 0; grappleSearched = false; hookCount = 0;
+            blockerStamp = borrow.BlockerStamp(p);
             var options = session.Value.SmartFallProtection;
             sampledOptions = options;
             for (int i = 0; i < 12; i++)
@@ -157,50 +174,69 @@ namespace JueMingR.TerrariaHost.Movement
                 // reopen the identical failed transaction every Update.
                 if (!ReferenceEquals(observedSources[i], next) || ((previousMask ^ nativeMask) & 1 << i) != 0 || i == (int)SmartFallFamily.DoubleJump && ((previousMask ^ nativeMask) & (511 << 12)) != 0) rejected &= ~(1 << i);
                 sources[i] = observedSources[i] = next;
+                preparations[i] = next == null ? default(SmartFallPreparation) : borrow.GetPreparation(p, generation, next, (SmartFallFamily)i);
                 // Native ready abilities may belong to a mount rather than an
                 // Item endpoint. They still go through their real consumers.
-                if (options.Allows(i) && (sources[i] != null || (nativeMask & 1 << i) != 0)) count++;
+                if (options.Allows(i) && (sources[i] != null || (nativeMask & 1 << i) != 0)) sourceCount++;
             }
+            if (options.Grapple)
+            {
+                AddHook(p, p.miscEquips[4]);
+                if (items != null) for (int slot = 0; slot < 50; slot++) AddHook(p, p.inventory[slot]);
+            }
+        }
+        private void AddHook(Player p, Item item)
+        {
+            if (!SmartFallCapabilities.Matches(item, SmartFallFamily.Grapple)) return;
+            for (int i = 0; i < hookCount; i++) if (ReferenceEquals(hookSources[i], item)) return;
+            var preparation = borrow.GetPreparation(p, generation, item, SmartFallFamily.Grapple);
+            if (!preparation.AvailableNow) return;
+            hookSources[hookCount] = item; hookPreparations[hookCount++] = preparation;
         }
         private void BuildCandidates(Player p)
         {
-            count = 0; int bestReady = int.MaxValue;
+            count = 0;
             var options = session.Value.SmartFallProtection;
             for (int i = 0; i < 12; i++)
             {
                 if (!options.Allows(i) || (rejected & 1 << i) != 0) continue;
                 var f = (SmartFallFamily)i; Item item = sources[i];
-                bool native = (mask & 1 << i) != 0, ready = false; int delay = 0, cost = 0;
+                bool native = (mask & 1 << i) != 0, ready = false; int delay = 0;
                 if (item == null && !native) continue;
+                var preparation = preparations[i];
+                if (item != null && !preparation.AvailableNow && f != SmartFallFamily.Grapple) continue;
                 switch (f)
                 {
-                    case SmartFallFamily.Horseshoe: ready = item != null && !p.stoned; cost = 10; break;
-                    case SmartFallFamily.Wings: ready = item != null && !p.stoned; cost = 12; break;
-                    case SmartFallFamily.DjinnLegs: ready = item != null && !p.stoned; delay = 1; cost = 14; break;
-                    case SmartFallFamily.DoubleJump: ready = (SmartFallCapabilities.UnusedForItem(p,item) || SmartFallCapabilities.MountJump(p)) && p.grapCount == 0 && (!p.mount.Active || !p.mount.BlockExtraJumps); cost = item == null ? 20 : 25; break;
+                    case SmartFallFamily.Horseshoe: ready = item != null && !p.stoned; break;
+                    case SmartFallFamily.Wings: ready = item != null && !p.stoned; break;
+                    case SmartFallFamily.DjinnLegs: ready = item != null && !p.stoned; delay = 1; break;
+                    case SmartFallFamily.DoubleJump: ready = (SmartFallCapabilities.UnusedForItem(p,item) || SmartFallCapabilities.MountJump(p)) && p.grapCount == 0 && (!p.mount.Active || !p.mount.BlockExtraJumps); break;
                     case SmartFallFamily.RocketBoots:
                         ready = p.rocketTime > 0 && p.CanUseBootFlyingAbilities && p.grapCount == 0 && !p.mount.Active;
                         // Delay is not first ignition: native rocketDelay
                         // resets the baseline only in the NEXT early Update.
                         float first = p.velocity.Y * p.gravDir - .1f;
                         if (first > 0) first -= .5f; else if (first > -Player.jumpSpeed * .5f) first -= .1f;
-                        delay = first + Math.Abs(p.gravity) <= 0 ? 0 : 1; cost = 26; break;
-                    case SmartFallFamily.Carpet: ready = p.gravDir > 0 && (p.canCarpet || p.carpetTime > 0) && !MovementJumpHost.ExtraJump(p) && p.rocketTime == 0 && p.wingTime == 0 && !p.mount.Active && p.grapCount == 0; cost = 28; break;
-                    case SmartFallFamily.Umbrella: ready = item != null && !p.controlDown && p.itemAnimation == 0 && !p.pulley; delay = 1; cost = 32; break;
+                        delay = first + Math.Abs(p.gravity) <= 0 ? 0 : 1; break;
+                    case SmartFallFamily.Carpet: ready = p.gravDir > 0 && (p.canCarpet || p.carpetTime > 0) && !MovementJumpHost.ExtraJump(p) && p.rocketTime == 0 && p.wingTime == 0 && !p.mount.Active && p.grapCount == 0; break;
+                    case SmartFallFamily.Umbrella: ready = item != null && !p.controlDown && p.itemAnimation == 0 && !p.pulley; delay = 1; break;
                     case SmartFallFamily.Grapple:
-                        if (bestReady > 40 && item != null && SmartFallGrappleHooks.Available && !p.controlHook && p.grapCount == 0)
+                        if (hookCount > 0 && SmartFallGrappleHooks.Available && !p.noItems && !p.CCed && !p.controlHook && p.grapCount == 0)
                         {
                             if (!grappleSearched)
                             {
-                            grapplePlan = grapple.Find(p, item, contact, ref TileReads);
-                            // Real selection is part of the plan; a faster
-                            // carried hook can supersede the first native hook.
-                            if (items != null) for (int slot = 0; slot < 50; slot++)
+                            grapplePlan = default(SmartFallGrapplePlan); int bestCost = int.MaxValue;
+                            // Nominal speed does not order native flight:
+                            // Queen uses four discrete sub-updates. Evaluate
+                            // each cached usable endpoint with the real ray.
+                            for (int slot = 0; slot < hookCount; slot++)
                             {
-                                Item other = p.inventory[slot];
-                                if (ReferenceEquals(other, item) || !SmartFallCapabilities.Matches(other, f) || other.shootSpeed <= item.shootSpeed) continue;
+                                Item other = hookSources[slot];
                                 var alternative = grapple.Find(p, other, contact, ref TileReads);
-                                if (alternative.Found && (!grapplePlan.Found || alternative.Delay < grapplePlan.Delay)) grapplePlan = alternative;
+                                if (!alternative.Found) continue;
+                                int alternativeCost = Interference(p, f, other, hookPreparations[slot], alternative.Target);
+                                if (!grapplePlan.Found || alternativeCost < bestCost || alternativeCost == bestCost && alternative.Delay < grapplePlan.Delay)
+                                { grapplePlan = alternative; bestCost = alternativeCost; preparations[i] = hookPreparations[slot]; }
                             }
                             grappleSearched = true;
                             }
@@ -211,31 +247,72 @@ namespace JueMingR.TerrariaHost.Movement
                             }
                             ready = grapplePlan.Found; delay = grapplePlan.Delay; if (ready) sources[i] = grapplePlan.Item;
                         }
-                        cost = 40; break;
+                        break;
                     case SmartFallFamily.SafeMount:
                         // Native CanMount tests the proposed box at the next
                         // velocity offset. Its legal summon window closes one
                         // phase before a short final gap, even though its fall
                         // immunity itself needs no Hover consumer.
-                        ready = CanMount(p, item); delay = 1; cost = 46; break;
+                        ready = CanMount(p, item); delay = 1; break;
                     case SmartFallFamily.FlyingMount:
                         // New mounts enter with frameState=0; PlayerFrame
                         // establishes the airborne frame after collision. The
                         // first timely Hover can therefore be next Update.
-                        ready = CanMount(p, item) && (!contact.Platform || !BypassesPlatform(item.mountType) || SmartFallCapabilities.HoverMount(item.mountType)); delay = 1; cost = 50; break;
+                        ready = CanMount(p, item) && (!contact.Platform || !BypassesPlatform(item.mountType) || SmartFallCapabilities.HoverMount(item.mountType)); delay = 1; break;
                     case SmartFallFamily.GravityGlobe:
-                        ready = bestReady > 60 && item != null && !p.mount.Active && !p.controlUp && p.forcedGravity <= 0 && OppositeClear(p); cost = 60; break;
+                        ready = item != null && !p.mount.Active && !p.controlUp && p.forcedGravity <= 0 && OppositeClear(p); break;
                     case SmartFallFamily.TeleportRod:
-                        ready = bestReady > 70 && item != null && p.itemAnimation == 0 && p.itemTime == 0 && !p.noItems &&
+                        ready = item != null && p.itemAnimation == 0 && p.itemTime == 0 && !p.noItems &&
                             (item.type != 1326 || !p.chaosState || p.statLife > p.statLifeMax2 / 7) && TeleportPoint(p);
-                        delay = 1; cost = item != null && item.type == 5335 ? 70 : 90; break;
+                        delay = 1; break;
                 }
+                int cost = Interference(p, f, sources[i], preparations[i], f == SmartFallFamily.Grapple ? grapplePlan.Target : teleportTarget);
                 candidates[count++] = new SmartFallCandidate { Family = f, Ready = ready, Delay = delay, Interference = cost };
-                if (ready && contact.Ticks > delay) bestReady = Math.Min(bestReady, cost);
             }
         }
+        // Compare complete short plans, rather than assigning a rank to a
+        // family. Endpoint writes include their return, occupied/fishing
+        // endpoints add recovery coupling, and native input/resource/trajectory
+        // effects depend on this player's current state. Units are deliberately
+        // coarse consequences; they are not milliseconds or a native simulator.
+        private int Interference(Player p, SmartFallFamily f, Item item, SmartFallPreparation preparation, Vector2 target)
+        {
+            int cost = preparation.BorrowWrites * 4 + preparation.SelectionWrites * 4;
+            if (preparation.BorrowWrites > 0 && ReferenceEquals(preparation.Source, p.inventory) && preparation.SourceSlot == p.selectedItem) cost += 4;
+            if (preparation.Displaced) cost += 8;
+            if (preparation.FishingEndpoint) cost += 12;
+            if (preparation.ReturnPending) cost += 4;
+            float speed = Math.Abs(p.velocity.Y);
+            switch (f)
+            {
+                case SmartFallFamily.DoubleJump:
+                    int charges = 0, available = SmartFallCapabilities.NativeMask(p) >> 12;
+                    for (int bits = available; bits != 0; bits &= bits - 1) charges++;
+                    cost += (p.controlJump ? 0 : 1) + (p.releaseJump ? 0 : 1) + 8 / Math.Max(1, charges) + (int)Math.Ceiling((speed + Player.jumpSpeed) / 4); break;
+                case SmartFallFamily.RocketBoots:
+                    cost += (p.controlJump ? 0 : 1) + (p.rocketRelease ? 0 : 1) + (int)Math.Ceiling(8 / Math.Max(1f, p.rocketTime)) + (int)Math.Ceiling(Math.Min(speed, .6f) / 4); break;
+                case SmartFallFamily.Carpet:
+                    cost += (p.controlJump ? 0 : 1) + (p.releaseJump ? 0 : 1) + (int)Math.Ceiling(8f / Math.Max(1, p.canCarpet ? 300 : p.carpetTime)) + (int)Math.Ceiling(speed / 4); break;
+                case SmartFallFamily.DjinnLegs: case SmartFallFamily.Umbrella:
+                    cost += (int)Math.Ceiling(Math.Max(0, speed - 2) / 4) + (preparation.HeldSelectionReady ? 0 : f == SmartFallFamily.Umbrella ? 1 : 0); break;
+                case SmartFallFamily.Grapple:
+                    // Native QuickGrapple performs its own one-time capacity
+                    // scan. Latching changes trajectory and leaves a live hook
+                    // under manual ownership after our finite return.
+                    cost += 4 + (int)Math.Ceiling(Vector2.Distance(p.Center, target) / 32) + (p.mount.Active ? 8 : 0); break;
+                case SmartFallFamily.SafeMount: case SmartFallFamily.FlyingMount:
+                    cost += 2 + (p.mount.Active ? 12 : 0);
+                    if (f == SmartFallFamily.FlyingMount) cost += (p.controlJump ? 0 : 1) + (int)Math.Ceiling(speed / 4); break;
+                case SmartFallFamily.GravityGlobe:
+                    cost += (p.controlUp ? 0 : 2) + (int)Math.Ceiling(speed / 2) + 4; break;
+                case SmartFallFamily.TeleportRod:
+                    cost += (p.controlUseItem ? 0 : 1) + Math.Max(item == null ? 0 : item.useAnimation, item == null ? 0 : item.useTime) / 6 + (int)Math.Ceiling(Vector2.Distance(p.position, target) / 16);
+                    if (item != null && item.type == 1326 && p.chaosState) cost += Math.Max(1, p.statLifeMax2 / 7); break;
+            }
+            return cost;
+        }
         private static bool CanMount(Player p, Item item)
-        { return item != null && p.gravDir > 0 && (!p.mount.Active || p.mount.CanDismount(p)) && p.mount.CanMount(item.mountType, p); }
+        { return item != null && !p.noItems && !p.CCed && !p.tongued && p.gravDir > 0 && (!p.mount.Active || p.mount.CanDismount(p)) && p.mount.CanMount(item.mountType, p); }
         private static bool BypassesPlatform(int type)
         { return MountID.Sets.Cart[type] || type == 12 || type == 7 || type == 8 || type == 23 || type == 44 || type == 48; }
         private bool OppositeClear(Player p)
@@ -314,7 +391,7 @@ namespace JueMingR.TerrariaHost.Movement
             {
                 Main.mouseX = (int)(grapplePlan.Target.X - Main.screenPosition.X);
                 Main.mouseY = p.gravDir > 0 ? (int)(grapplePlan.Target.Y - Main.screenPosition.Y) : (int)(Main.screenPosition.Y + Main.screenHeight - grapplePlan.Target.Y);
-                SmartFallGrappleHooks.Launching = this; p.QuickGrapple(); Count(ref NativeActions);
+                blockingCount = 0; SmartFallGrappleHooks.Launching = this; p.QuickGrapple(); Count(ref NativeActions);
             }
             finally { SmartFallGrappleHooks.Launching = null; Main.mouseX = mouseX; Main.mouseY = mouseY; }
             if (shot) Result = SmartFallResult.Consumed; else Fail(p);
@@ -325,6 +402,23 @@ namespace JueMingR.TerrariaHost.Movement
             var projectile = Main.projectile[index];
             if (projectile == null || !projectile.active || projectile.owner != p.whoAmI || projectile.aiStyle != 7) return;
             shotKey = projectile.key; shot = true;
+        }
+        internal void RecordExistingHook(Projectile projectile, Player p)
+        {
+            if (!Current(p) || !action || family != SmartFallFamily.Grapple || projectile == null || !projectile.active || projectile.owner != p.whoAmI || projectile.aiStyle != 7) return;
+            // Observed inside the original capacity loop, never another 1000
+            // scan. Native maximum hook capacity is below this finite bound.
+            if (blockingCount == blockingHooks.Length) return;
+            blockingHooks[blockingCount] = projectile.key; blockingAttached[blockingCount++] = projectile.ai[0] == 2;
+        }
+        private bool BlockingHookChanged(Player p)
+        {
+            for (int i = 0; i < blockingCount; i++)
+            {
+                Projectile existing;
+                if (!blockingHooks[i].TryGetActive(out existing) || existing.owner != p.whoAmI || existing.aiStyle != 7 || (existing.ai[0] == 2) != blockingAttached[i]) return true;
+            }
+            return false;
         }
         internal void AfterGrapple(Player p)
         {
@@ -392,7 +486,7 @@ namespace JueMingR.TerrariaHost.Movement
         }
         private void Protected(Player p, bool immediate)
         {
-            Result = SmartFallResult.Protected; Count(ref Protections); action = false; shot = false; targetActive = false; active = false;
+            Result = SmartFallResult.Protected; Count(ref Protections); action = false; shot = false; targetActive = false; active = false; blockingCount = 0;
             ReturnInputs(p);
             if (ownedMount >= 0 && p.mount.Active && p.mount.Type == ownedMount)
             {
@@ -427,7 +521,7 @@ namespace JueMingR.TerrariaHost.Movement
             Count(ref NativeActions); return p.mount.TryDismount(p);
         }
         private void Fail(Player p)
-        { rejected |= 1 << (int)family; action = false; shot = false; targetActive = false; ReturnInputs(p); Result = SmartFallResult.Failed; borrow.Restore(p, generation); }
+        { rejected |= 1 << (int)family; action = false; shot = false; targetActive = false; ReturnInputs(p); Result = SmartFallResult.Failed; borrow.Restore(p, generation); blockerStamp = borrow.BlockerStamp(p); }
         internal void Pick(Player p, ref int slot, ref bool result) { borrow.Pick(p, ref slot, ref result); }
         internal void BeforeSync(Player p)
         {
@@ -506,7 +600,7 @@ namespace JueMingR.TerrariaHost.Movement
         {
             if (player != null) ReturnInputs(player);
             borrow.EndSession(); player = retained = null; scope = permitted = active = action = landed = shot = returnGravity = takenOver = false;
-            ownedMount = originalMount = -1; sourceRevision = -1; mask = -1; count = 0; rejected = 0; bandValid = grappleSearched = false; contact = default(SmartFallContact); targetActive = false;
+            ownedMount = originalMount = -1; sourceRevision = -1; mask = -1; count = sourceCount = hookCount = blockingCount = 0; blockerStamp = 0; rejected = 0; bandValid = grappleSearched = false; contact = default(SmartFallContact); targetActive = false;
             Array.Clear(sources, 0, sources.Length);
             Array.Clear(observedSources, 0, observedSources.Length);
         }

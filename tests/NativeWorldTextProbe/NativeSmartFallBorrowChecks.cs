@@ -26,7 +26,7 @@ namespace NativeWorldTextProbe
         private static object items;
         private static readonly List<byte[]> packets=new List<byte[]>();
         private static bool Match(Item item,SmartFallFamily family)
-        {return family==SmartFallFamily.Horseshoe?item.type==ItemID.LuckyHorseshoe:family==SmartFallFamily.DjinnLegs?item.type==ItemID.DjinnsCurse:family==SmartFallFamily.Grapple?Main.projHook[item.shoot]:family==SmartFallFamily.Umbrella?item.type==ItemID.Umbrella:family==SmartFallFamily.TeleportRod && item.type==ItemID.RodofDiscord;}
+        {return family==SmartFallFamily.DoubleJump?item.type==ItemID.CloudinaBottle:family==SmartFallFamily.Horseshoe?item.type==ItemID.LuckyHorseshoe:family==SmartFallFamily.DjinnLegs?item.type==ItemID.DjinnsCurse:family==SmartFallFamily.Grapple?Main.projHook[item.shoot]:family==SmartFallFamily.Umbrella?item.type==ItemID.Umbrella:family==SmartFallFamily.TeleportRod && item.type==ItemID.RodofDiscord;}
         internal static void Run(object context)
         {
             items=Get(context,"items");ownership=(ItemOperationOwnership)Get(items,"Ownership");generation=(long)Get(Get(items,"Runtime"),"Generation");
@@ -36,7 +36,7 @@ namespace NativeWorldTextProbe
             patch.Patch(pick,postfix:new HarmonyMethod(typeof(NativeSmartFallBorrowChecks),nameof(Pick)));
             try
             {
-                Conservation();PartialWrite();Takeover();MovedOriginal();BlockedReturn();HeldSelection();GrappleBorrow();Lifecycle();NativeSync();
+                Conservation();PreparationFacts();PartialWrite();Takeover();MovedOriginal();BlockedReturn();HeldSelection();GrappleBorrow();Lifecycle();NativeSync();
                 Main.player[Main.myPlayer]=saved;Call(context,"UpdateRuntime");FishingOverlap(context);
                 Console.WriteLine("PASS SmartFallBorrow real item conservation, second-write failure, same-signature takeover, moved original, native held selection, pulse finalizer and generation boundary.");
             }
@@ -78,6 +78,35 @@ namespace NativeWorldTextProbe
                 Require(!Borrow(p,shoe,SmartFallFamily.Horseshoe) && observed,"fault happens only after source and target ownership exists");
                 Require(ReferenceEquals(p.inventory[12],shoe) && ReferenceEquals(p.armor[3],vacant) && !(bool)Get(owner,"HasPending") && !ownership.IsProtected(12),"failed write safely returns both exact objects, failAt="+failAt);
             }
+        }
+        private static object Preparation(Player p,Item item,SmartFallFamily family)
+        {return Call(owner,"GetPreparation",p,generation,item,family);}
+        private static long Blocker(Player p){return (long)Call(owner,"BlockerStamp",p);}
+        private static void PreparationFacts()
+        {
+            var p=Reset();var shoe=Put(p.inventory,12,ItemID.LuckyHorseshoe);var empty=p.armor[3];
+            var plan=Preparation(p,shoe,SmartFallFamily.Horseshoe);long exchanges=(long)Get(owner,"Exchanges");
+            Require((bool)Get(plan,"AvailableNow") && !(bool)Get(plan,"AlreadyInPlace") && (int)Get(plan,"BorrowWrites")==2 && (int)Get(plan,"SelectionWrites")==0 &&
+                ReferenceEquals(Get(plan,"Source"),p.inventory) && (int)Get(plan,"SourceSlot")==12 && ReferenceEquals(Get(plan,"Target"),p.armor) && (int)Get(plan,"TargetSlot")==3 && !(bool)Get(plan,"Displaced") &&
+                ReferenceEquals(p.inventory[12],shoe) && ReferenceEquals(p.armor[3],empty) && !ownership.HasFallEquipment && !(bool)Get(owner,"HasPending") && (long)Get(owner,"Exchanges")==exchanges,"preparation exposes the two exact legal endpoints without acquiring a token or writing an item");
+            p.itemAnimation=3;long blocked=Blocker(p);plan=Preparation(p,shoe,SmartFallFamily.Horseshoe);
+            Require(!(bool)Get(plan,"AvailableNow") && Get(plan,"Availability").ToString()=="Busy" && !Borrow(p,shoe,SmartFallFamily.Horseshoe),"a carried passive capability is not ready while its actual equipment operation is busy");
+            long reads=(long)Get(owner,"SourceReads");p.itemAnimation=2;
+            for(int i=0;i<64;i++)Require(Blocker(p)==blocked,"unchanged busy qualification does not reopen a rejected borrow");
+            Require((long)Get(owner,"SourceReads")==reads && (long)Get(owner,"Exchanges")==exchanges,"constant-size blocker observation does not scan sources or exchange while busy");
+            p.itemAnimation=0;Require(Blocker(p)!=blocked && (bool)Get(Preparation(p,shoe,SmartFallFamily.Horseshoe),"AvailableNow"),"busy-to-idle qualification alone reopens the same exact source without inventory revision");
+            p.selectedItemState.Select(4);blocked=Blocker(p);Require(Get(Preparation(p,shoe,SmartFallFamily.Horseshoe),"Availability").ToString()=="SelectionBlocked","actual buffered native selection blocks a new equipment loan");
+            p.selectedItemState.Update();Require(Blocker(p)!=blocked && Borrow(p,shoe,SmartFallFamily.Horseshoe),"native SelectedItemState consumes its buffer and the same source becomes borrowable");Return(p);
+            p=Reset();var cloud=Put(p.armor,3,ItemID.CloudinaBottle);p.noItems=p.cursed=true;p.itemAnimation=2;
+            plan=Preparation(p,cloud,SmartFallFamily.DoubleJump);
+            Require((bool)Get(plan,"AlreadyInPlace") && (bool)Get(plan,"AvailableNow") && (int)Get(plan,"BorrowWrites")==0 && Borrow(p,cloud,SmartFallFamily.DoubleJump) && !(bool)Get(owner,"HasPending"),"already equipped jump capability needs no item operation even under cursed/noItems and an unrelated animation; native Jump consumption is checked by the action representative");
+            p=Reset();p.noItems=p.cursed=true;shoe=Put(p.inventory,12,ItemID.LuckyHorseshoe);
+            Require(Borrow(p,shoe,SmartFallFamily.Horseshoe),"cursed/noItems does not invent an armor-exchange restriction absent from native ItemSlot");Return(p);
+            var rod=Put(p.inventory,14,ItemID.RodofDiscord);
+            Require(Get(Preparation(p,rod,SmartFallFamily.TeleportRod),"Availability").ToString()=="ItemUseBlocked" && !Borrow(p,rod,SmartFallFamily.TeleportRod) && !p.controlUseItem,"the same cursed state still rejects the rod's real item-use preparation");
+            p.noItems=p.cursed=false;Require(Borrow(p,rod,SmartFallFamily.TeleportRod),"rod can prepare once its actual item restriction clears");p.selectedItemState.Update();p.noItems=p.cursed=true;Call(owner,"BeforeSync",p,true);
+            Require(!p.controlUseItem,"a newly applied noItems condition cannot receive an old prepared rod use pulse");Return(p);p.selectedItemState.Update();
+            Console.WriteLine("PASS SmartFallBorrow preparation facts: exact read-only endpoints, unchanged busy stamp/no source scans, native selection buffer release, worn cursed capability and separate rod use restriction. Animation values here are component gate states, not a full rescue.");
         }
         private static void Takeover()
         {
@@ -191,6 +220,8 @@ namespace NativeWorldTextProbe
             generation=(long)Get(Get(items,"Runtime"),"Generation");
             owner=Activator.CreateInstance(ownerType,Flags,null,new object[]{items,(Func<long>)(()=>generation),(Func<Item,SmartFallFamily,bool>)Match,equipment},null);
             int journal=(int)Get(equipment,"Count");
+            var preparation=Preparation(p,rescue,SmartFallFamily.DjinnLegs);
+            Require((bool)Get(preparation,"AvailableNow") && (bool)Get(preparation,"Displaced") && (bool)Get(preparation,"FishingEndpoint") && (int)Get(preparation,"BorrowWrites")==2 && ReferenceEquals(Get(preparation,"Target"),p.armor) && (int)Get(preparation,"TargetSlot")==2,"actual A-F-S preparation reports the unique shared fishing endpoint and displaced real F before any exchange");
             Require(Borrow(p,rescue,SmartFallFamily.DjinnLegs) && ReferenceEquals(p.armor[2],rescue) && ReferenceEquals(p.inventory[12],fishingLegs),"legs' unique valid endpoint permits exact F->S temporary overlap");
             NativeFishingChecks.Save(fishing,new FishingOptions());Call(equipment,"Update");
             Require((int)Get(equipment,"Count")==journal && ReferenceEquals(p.armor[2],rescue) && ReferenceEquals(p.inventory[13],original),"fishing OFF preserves its journal and cannot restore A over active S");
@@ -221,6 +252,7 @@ namespace NativeWorldTextProbe
                 Return(p);Require(!(bool)Get(owner,"HasPending") && (SmartFallResult)Get(owner,"ReturnResult")==SmartFallResult.TakenOver && ReferenceEquals(p.armor[2],twin) && ReferenceEquals(p.inventory[19],rescue),"real native same-signature manual exchange is permitted and cannot be replaced by old restoration");
                 Require((long)Get(world,"Revision")>revision,"actual native manual inventory/equipment transfers invalidate source hints even with Items automatic processing off");
                 GamepadBoundary(p);
+                GetItemRevision(p,world);
             }
             finally{Set(world,"BeforeManualFallSlot",prior);Main.mouseLeft=false;}
             Console.WriteLine("PASS SmartFallBorrow real wet-bobber A->F->S, fishing OFF waits, exact S->F then F->A; only the actual shared legs endpoint coordinates.");
@@ -230,6 +262,22 @@ namespace NativeWorldTextProbe
         private static void Click(Item[] array,int context,int slot)
         {Main.mouseLeft=Main.mouseLeftRelease=true;ItemSlot.LeftClick(array,context,slot);Main.mouseLeft=false;}
         private static bool SkipAfsAchievement(){return false;}
+        private static void GetItemRevision(Player p,object world)
+        {
+            var saved=p.inventory.ToArray();
+            try
+            {
+                for(int i=0;i<50;i++){p.inventory[i]=new Item();p.inventory[i].SetDefaults(ItemID.StoneBlock);p.inventory[i].stack=p.inventory[i].maxStack;}
+                var incoming=new Item();incoming.SetDefaults(ItemID.Shackle);int quantity=incoming.stack;long revision=(long)Get(world,"Revision");
+                var settings=new GetItemSettings(LongText:false,NoText:true,CanGoIntoVoidVault:false,NoSound:true);
+                var remainder=p.GetItem(incoming,settings);
+                Require(ReferenceEquals(remainder,incoming) && remainder.stack==quantity && (long)Get(world,"Revision")==revision,"native GetItem with full normal inventory and no actual gain leaves the source revision unchanged");
+                p.inventory[23]=new Item();remainder=p.GetItem(incoming,settings);
+                Require(remainder.IsAir && p.inventory[23].type==ItemID.Shackle && p.inventory[23].stack==quantity && (long)Get(world,"Revision")>revision,"native GetItem with a real empty slot acquires the item and advances the source revision");
+                Console.WriteLine("PASS SmartFallBorrow native GetItem hints: full-inventory no-op retains revision, actual empty-slot gain advances it; no Void, text or sound.");
+            }
+            finally{for(int i=0;i<saved.Length;i++)p.inventory[i]=saved[i];}
+        }
         private static void GamepadBoundary(Player p)
         {
             var guard=ownerType.Assembly.GetType("JueMingR.TerrariaHost.Items.ItemPendingGuards",true).GetMethod("Gamepad",Flags);

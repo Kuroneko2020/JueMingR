@@ -135,8 +135,20 @@ namespace JueMingR.TerrariaHost.Movement
                 code.InsertRange(i + 1, new[] { new CodeInstruction(OpCodes.Dup), new CodeInstruction(OpCodes.Ldarg_0), new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(SmartFallGrappleHooks), nameof(Record))) }); count++;
             }
             if (count != 1) throw new InvalidOperationException("smart-fall-grapple-birth-boundary:" + count);
+            int observed = 0;
+            // The first native projectile-array read is the existing capacity
+            // loop. Duplicate its value once; no extra walk and no observation
+            // outside our synchronous real QuickGrapple action.
+            for (int i = 0; i + 2 < code.Count; i++)
+            {
+                if (!code[i].LoadsField(AccessTools.Field(typeof(Main), "projectile")) || code[i + 2].opcode != OpCodes.Ldelem_Ref) continue;
+                code.InsertRange(i + 3, new[] { new CodeInstruction(OpCodes.Dup), new CodeInstruction(OpCodes.Ldarg_0), new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(SmartFallGrappleHooks), nameof(RecordExisting))) });
+                observed++; break;
+            }
+            if (observed != 1) throw new InvalidOperationException("smart-fall-grapple-capacity-boundary:" + observed);
             return code;
         }
         private static void Record(int index, Player player) { Launching?.RecordGrapple(player, index); }
+        private static void RecordExisting(Projectile projectile, Player player) { Launching?.RecordExistingHook(projectile, player); }
     }
 }

@@ -10,6 +10,14 @@ using Terraria.GameInput;
 
 namespace JueMingR.TerrariaHost.Movement
 {
+    internal enum SmartFallAvailability { Unavailable, InPlace, Borrowable, Held, ActiveLoan, IdentityBlocked, ItemUseBlocked, Busy, SelectionBlocked, Protected, NoSource, NoTarget, OwnershipBlocked, SaveBusy }
+    internal struct SmartFallPreparation
+    {
+        internal SmartFallAvailability Availability;
+        internal bool AvailableNow,AlreadyInPlace,HeldSelectionReady,Displaced,FishingEndpoint,Misc,ReturnPending;
+        internal int BorrowWrites,SelectionWrites,SourceSlot,TargetSlot;
+        internal Item[] Source,Target;
+    }
     // One short rescue owns at most one real exchange or held-item selection.
     // Every item remains in native containers; no clone/private inventory exists.
     internal sealed class SmartFallBorrowOwner
@@ -31,6 +39,11 @@ namespace JueMingR.TerrariaHost.Movement
         private long returnRevision=-1;
         private Item[] returnSource;
         private int returnSlot;
+        private Player blockerPlayer;
+        private Item blockerCursor;
+        private long blockerRevision,blockerGeneration,blockerToken,blockerSession;
+        private ulong blockerFlags,blockerProtected;
+        private int blockerSelection,blockerLoadout;
         internal bool HasPending {get{return player!=null;}}
         internal bool SelectionReady {get{return selection && selected && Identity(player,generation) && player.selectedItem==heldSlot && ReferenceEquals(player.inventory[heldSlot],borrowed);}}
         internal bool AllowsUse(int slot){return slot==heldSlot && SelectionReady && !restoreRequested;}
@@ -58,7 +71,7 @@ namespace JueMingR.TerrariaHost.Movement
         private bool Identity(Player value,long epoch)
         {return (items==null || Thread.CurrentThread.ManagedThreadId==items.ThreadId) && value!=null && ReferenceEquals(value,player) && ReferenceEquals(value,Main.LocalPlayer) && epoch>0 && epoch==generation && epoch==(currentGeneration?.Invoke()??0);}
         private bool Permitted(Player p,long epoch)
-        {return (items==null || Thread.CurrentThread.ManagedThreadId==items.ThreadId) && p!=null && ReferenceEquals(p,Main.LocalPlayer) && epoch>0 && epoch==(currentGeneration?.Invoke()??0) && !p.dead && !p.ghost && !p.CCed && !p.noItems && !p.HasLockedInventory() && !Main.gameMenu && !Main.gamePaused && !Main.ServerSideCharacter && !(Main.ActivePlayerFileData?.ServerSideCharacter??false);}
+        {return (items==null || Thread.CurrentThread.ManagedThreadId==items.ThreadId) && p!=null && ReferenceEquals(p,Main.LocalPlayer) && epoch>0 && epoch==(currentGeneration?.Invoke()??0) && !p.dead && !p.ghost && !p.CCed && !Main.gameMenu && !Main.gamePaused && !Main.ServerSideCharacter && !(Main.ActivePlayerFileData?.ServerSideCharacter??false);}
         private bool ManualUse(Player p)
         {return p.controlUseItem && !ownedUseBit || p.controlUseTile || p.controlTorch || PlayerInput.Triggers.Current.MouseLeft || PlayerInput.Triggers.Current.MouseRight || PlayerInput.Triggers.Current.SmartSelect;}
         private bool Match(Item item,SmartFallFamily family)
@@ -108,26 +121,95 @@ namespace JueMingR.TerrariaHost.Movement
             }
             return false;
         }
-        internal bool TryBorrow(Player p,long epoch,Item item,SmartFallFamily family)
+        private static bool SaveAvailable()
+        {if(!Monitor.TryEnter(SaveLock))return false;Monitor.Exit(SaveLock);return true;}
+        // Only constant-size native operation gates are sampled here. Timers
+        // contribute their busy state, not a new stamp on every countdown tick.
+        // Source/terrain changes keep their existing separate revision owners.
+        internal long BlockerStamp(Player p)
         {
-            if(!Permitted(p,epoch) || item==null || !Match(item,family))return false;
-            if(HasPending)return Identity(p,epoch) && ReferenceEquals(borrowed,item) && !restoreRequested;
-            ReturnResult=SmartFallResult.None;
+            if(p==null || items!=null && Thread.CurrentThread.ManagedThreadId!=items.ThreadId)return 0;
+            ulong flags=0;
+            void Flag(bool value,int bit){if(value)flags|=1UL<<bit;}
+            Flag(p.UsingOrReusingItem || p.itemTime!=0,0);Flag(p.selectedItemState.HasBufferedChange,1);Flag(p.selectedItemState.CanChangeSelectedItemImmediately,2);
+            Flag(p.selectedItemState.HasActiveOverride,3);Flag(p.noItems,4);Flag(p.dead,5);Flag(p.ghost,6);Flag(p.CCed,7);Flag(p.HasLockedInventory(),8);
+            Flag(ManualUse(p),9);Flag(Main.gameMenu,10);Flag(Main.gamePaused,11);Flag(Main.ServerSideCharacter || (Main.ActivePlayerFileData?.ServerSideCharacter??false),12);
+            Flag(HasPending,13);Flag(restoreRequested,14);Flag(items?.Ownership.HasUse??false,15);Flag(items?.Ownership.HasFallEquipment??false,16);
+            Flag(Main.LocalPlayerHasPendingInventoryActions(),17);Flag(SaveAvailable(),18);Flag(ReferenceEquals(p,Main.LocalPlayer),19);Flag(Main.mouseItem.IsAir,20);
+            long epoch=currentGeneration?.Invoke()??0,session=items?.Ownership.Session??0;ulong protection=items?.Ownership.ProtectedSlots??0;
+            Item cursor=Main.mouseItem.IsAir?null:Main.mouseItem;
+            if(!ReferenceEquals(blockerPlayer,p) || !ReferenceEquals(blockerCursor,cursor) || blockerFlags!=flags || blockerProtected!=protection ||
+                blockerGeneration!=epoch || blockerSession!=session || blockerToken!=token || blockerSelection!=p.selectedItem || blockerLoadout!=p.CurrentLoadoutIndex)
+            {blockerPlayer=p;blockerCursor=cursor;blockerFlags=flags;blockerProtected=protection;blockerGeneration=epoch;blockerSession=session;blockerToken=token;blockerSelection=p.selectedItem;blockerLoadout=p.CurrentLoadoutIndex;blockerRevision++;}
+            return blockerRevision;
+        }
+        // Planning and execution share the actual entry gates. This performs no
+        // token acquisition, selection or Item writes. The Host caches it until
+        // a source revision or the O(1) blocker stamp changes.
+        internal SmartFallPreparation GetPreparation(Player p,long epoch,Item item,SmartFallFamily family)
+        {
+            SmartFallPreparation Block(SmartFallAvailability why){return new SmartFallPreparation{Availability=why,SourceSlot=-1,TargetSlot=-1,ReturnPending=HasPending};}
+            if(!Permitted(p,epoch))return Block(SmartFallAvailability.IdentityBlocked);
+            if(item==null || !Match(item,family))return Block(SmartFallAvailability.NoSource);
+            if(family==SmartFallFamily.TeleportRod && p.noItems)return Block(SmartFallAvailability.ItemUseBlocked);
+            if(HasPending)
+            {
+                if(!Identity(p,epoch) || !ReferenceEquals(borrowed,item) || restoreRequested)return Block(SmartFallAvailability.OwnershipBlocked);
+                return new SmartFallPreparation{Availability=SmartFallAvailability.ActiveLoan,AvailableNow=true,HeldSelectionReady=SelectionReady,ReturnPending=true,Source=selection?p.inventory:source,SourceSlot=selection?heldSlot:sourceSlot,Target=selection?p.inventory:target,TargetSlot=selection?heldSlot:targetSlot,Misc=misc,Displaced=original!=null && !original.IsAir};
+            }
+            // Already worn capabilities need no inventory operation. In
+            // particular native cursed/noItems does not forbid JumpMovement.
             int ms=MiscSlot(family);
-            if(ms>=0 && ReferenceEquals(p.miscEquips[ms],item))return true;
-            if(!Held(family) && ms<0)for(int i=0;i<10;i++)if(p.IsItemSlotUnlockedAndUsable(i) && ReferenceEquals(p.GetEffectiveArmor(i),item))return true;
-            if(items==null || p.UsingOrReusingItem || p.selectedItemState.HasBufferedChange)return false;
+            if(ms>=0 && ReferenceEquals(p.miscEquips[ms],item))return new SmartFallPreparation{Availability=SmartFallAvailability.InPlace,AvailableNow=true,AlreadyInPlace=true,Source=p.miscEquips,Target=p.miscEquips,SourceSlot=ms,TargetSlot=ms,Misc=true};
+            if(!Held(family) && ms<0)for(int i=0;i<10;i++)if(p.IsItemSlotUnlockedAndUsable(i) && ReferenceEquals(p.GetEffectiveArmor(i,out var shared),item))
+                return new SmartFallPreparation{Availability=SmartFallAvailability.InPlace,AvailableNow=true,AlreadyInPlace=true,Source=shared.HasValue?p.Loadouts[shared.Value].Armor:p.armor,Target=p.armor,SourceSlot=i,TargetSlot=i};
+            if(items==null)return Block(SmartFallAvailability.NoSource);
+            // noItems is an item-use limit, not a native armor/selection limit.
+            // Umbrella is held passively; the rod must actually start an item.
+            if(p.HasLockedInventory() || Main.LocalPlayerHasPendingInventoryActions())return Block(SmartFallAvailability.OwnershipBlocked);
+            if(p.UsingOrReusingItem || p.itemTime!=0)return Block(SmartFallAvailability.Busy);
+            if(p.selectedItemState.HasBufferedChange)return Block(SmartFallAvailability.SelectionBlocked);
             Item[] array=null;int slot=-1;
             for(int i=0;i<50;i++)if(ReferenceEquals(p.inventory[i],item)){array=p.inventory;slot=i;break;}
             if(array==null && !Held(family) && ms<0)for(int i=10;i<20;i++)if(ReferenceEquals(p.armor[i],item)){array=p.armor;slot=i;break;}
-            if(array==null || !SourceAllowed(p,array,slot) || !CanPlace(p,array,slot,family,out var dest,out var at))return false;
+            if(array==null)return Block(SmartFallAvailability.NoSource);
+            if(!SourceAllowed(p,array,slot))return Block(SmartFallAvailability.Protected);
+            if(!CanPlace(p,array,slot,family,out var dest,out var at))return Block(SmartFallAvailability.NoTarget);
+            if(items.Ownership.Session!=epoch)return Block(SmartFallAvailability.IdentityBlocked);
+            if(Held(family))
+            {
+                if(!Main.mouseItem.IsAir || ManualUse(p) || !p.selectedItemState.CanChangeSelectedItemImmediately || p.selectedItemState.HasActiveOverride)return Block(SmartFallAvailability.SelectionBlocked);
+                if(items.Ownership.HasUse)return Block(SmartFallAvailability.OwnershipBlocked);
+            }
+            else
+            {
+                if(items.Ownership.HasFallEquipment)return Block(SmartFallAvailability.OwnershipBlocked);
+                if(!SaveAvailable())return Block(SmartFallAvailability.SaveBusy);
+            }
+            return new SmartFallPreparation{Availability=Held(family)?SmartFallAvailability.Held:SmartFallAvailability.Borrowable,AvailableNow=true,Source=array,SourceSlot=slot,Target=dest,TargetSlot=at,Misc=ms>=0,
+                BorrowWrites=Held(family)?0:2,SelectionWrites=Held(family) && p.selectedItem!=slot?1:0,HeldSelectionReady=Held(family) && p.selectedItem==slot,Displaced=!Held(family) && !dest[at].IsAir,FishingEndpoint=ReferenceEquals(dest,p.armor) && (fishing?.CanLendFallSlot(p,at,dest[at])??false)};
+        }
+        internal bool TryBorrow(Player p,long epoch,Item item,SmartFallFamily family)
+        {
+            var preparation=GetPreparation(p,epoch,item,family);
+            if(!preparation.AvailableNow)return false;
+            if(HasPending)return true;
+            ReturnResult=SmartFallResult.None;
+            if(preparation.AlreadyInPlace)return true;
+            Item[] array=preparation.Source,dest=preparation.Target;int slot=preparation.SourceSlot,at=preparation.TargetSlot;
             long next=items.Ownership.NewUseToken();
             if(Held(family))
             {
                 if(!Main.mouseItem.IsAir || ManualUse(p) || !p.selectedItemState.CanChangeSelectedItemImmediately || p.selectedItemState.HasActiveOverride || !items.Ownership.TryBeginUse(epoch,slot,next))return false;
                 Bind(p,epoch,next,item);selection=true;selected=p.selectedItem==slot;heldSlot=slot;originalSelection=p.selectedItem;selectionAnchor=p.inventory[originalSelection];return true;
             }
-            if(!Monitor.TryEnter(SaveLock))return false;
+            if(!Monitor.TryEnter(SaveLock))
+            {
+                // Autosave can acquire the lock after the read-only plan was
+                // sampled. Remember that actual unavailable observation so a
+                // release before the next poll is still a qualification change.
+                blockerFlags&=~(1UL<<18);blockerRevision++;return false;
+            }
             try
             {
                 ulong inv=ReferenceEquals(array,p.inventory)?1UL<<slot:0;
@@ -276,7 +358,7 @@ namespace JueMingR.TerrariaHost.Movement
         internal void BeforeSync(Player p,bool useItem)
         {
             if(selection && Identity(p,generation) && ManualUse(p)){ManualSelection();return;}
-            if(!useItem || !SelectionReady || !ReferenceEquals(p,player) || pulsed || restoreRequested)return;
+            if(!useItem || p.noItems || !SelectionReady || !ReferenceEquals(p,player) || pulsed || restoreRequested)return;
             originalUseBit=p.controlUseItem;originalReleaseBit=p.releaseUseItem;ownedUseBit=true;p.controlUseItem=true;p.releaseUseItem=true;pulsed=true;
         }
         internal bool BeginItemCheck(Player p)
