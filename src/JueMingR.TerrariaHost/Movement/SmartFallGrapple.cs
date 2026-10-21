@@ -34,7 +34,7 @@ namespace JueMingR.TerrariaHost.Movement
         internal static bool SameFlight(Item a, Item b)
         { return a != null && b != null && a.shoot == b.shoot && a.shootSpeed == b.shootSpeed; }
 
-        internal SmartFallGrapplePlan Find(Player p, Item item, SmartFallContact contact, ref long reads)
+        internal SmartFallGrapplePlan Find(Player p, Item item, SmartFallContact contact, ref long reads, SmartFallContactBand dependencies = null)
         {
 #if DEBUG
             Searches++;
@@ -50,16 +50,17 @@ namespace JueMingR.TerrariaHost.Movement
                 int tx = (pass == 0 ? contact.TileX : (int)(p.Center.X / 16)) + ox;
                 int ty = (pass == 0 ? contact.TileY : (int)(p.Center.Y / 16) - 3) + oy;
                 var tile = SmartFallGeometry.Read(tx, ty, ref reads);
+                dependencies?.Observe(tx, ty, tile, 0);
                 if (!Latch(tile, item.shoot) || p.IsBlacklistedForGrappling(new Point(tx, ty))) continue;
                 var target = new Vector2(tx * 16 + 8, ty * 16 + 8);
-                int delay = FirstProtection(p, item, target, ref reads);
+                int delay = FirstProtection(p, item, target, ref reads, 0, dependencies);
                 if (delay < 0 || contact.Ticks <= delay) continue;
                 if (!best.Found || delay < best.Delay)
                     best = new SmartFallGrapplePlan { Found = true, Target = target, Delay = delay, Item = item };
             }
             return best;
         }
-        internal int FirstProtection(Player p, Item item, Vector2 target, ref long reads, int lead = 0)
+        internal int FirstProtection(Player p, Item item, Vector2 target, ref long reads, int lead = 0, SmartFallContactBand dependencies = null)
         {
             int updates = Prepare(item);
             if (updates < 1 || updates > 4) return -1;
@@ -84,6 +85,7 @@ namespace JueMingR.TerrariaHost.Movement
                     for (int x = left; x <= right; x++) for (int y = top; y <= bottom; y++)
                     {
                         var t = SmartFallGeometry.Read(x, y, ref reads);
+                        dependencies?.Observe(x, y, t, tick);
                         // Water updates depend on native liquid state. A dry
                         // representative cannot certify a submerged schedule.
                         if (t != null && t.liquid > 0 && !ignoreWater[item.shoot]) return -1;

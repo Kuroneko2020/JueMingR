@@ -25,7 +25,10 @@ namespace JueMingR.ArchitectureTests
                 owner.EndFallEquipment(9,token);Require(!owner.IsProtected(12) && !owner.IsFallEquipmentSlot(false,3),"exact owner retires its masks");
                 owner.SetSession(10);Require(!owner.AnyProtected,"session replacement revokes only interpretation, no item writes");
                 token=owner.NewUseToken();Require(owner.TryBeginFallEquipment(10,0,0,1U<<4,token) && owner.AnyProtected,"grapple-only endpoint remains visible to equipment coordination");
+                Require(owner.OwnsFallEquipment(10,token,true,4) && !owner.OwnsFallEquipment(9,token,true,4) && !owner.OwnsFallEquipment(10,token+1,true,4) &&
+                    !owner.OwnsFallEquipment(10,token,false,4) && !owner.OwnsFallEquipment(10,token,true,3),"native use requires exact current generation, operation and misc endpoint");
                 owner.EndFallEquipment(10,token);
+                Require(!owner.OwnsFallEquipment(10,token,true,4),"retired native equipment token cannot grant use");
                 Require(!owner.TryBeginFallEquipment(10,1UL<<50,0,0,owner.NewUseToken()) && !owner.TryBeginFallEquipment(10,0,1U<<20,0,owner.NewUseToken()) && !owner.TryBeginFallEquipment(10,0,0,1U<<5,owner.NewUseToken()),"no bank, invalid inventory, armor or misc endpoints admitted");
             }
             catch(Exception error){failures.Add("Smart fall borrowing ownership: "+error.Message);}

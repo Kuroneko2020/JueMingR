@@ -93,13 +93,24 @@ namespace JueMingR.TerrariaHost.Movement
         internal static bool HoverMount(int type)
         { var data = readMounts?.Invoke(); return data != null && type >= 0 && type < data.Length && data[type] != null && data[type].usesHover; }
         internal static bool Risk(Player p)
+        { return RiskAt(p, p.position.Y, p.velocity.Y * p.gravDir); }
+        // Only descent that can cross the native threshold within the existing
+        // finite contact horizon admits a source-qualified sweep. Using the
+        // horizon (rather than one next velocity) preserves slow hook travel as
+        // well as equip/Hover/cleanup phases. Actual contact, not this cheap
+        // conservative envelope, decides danger and each candidate's last window.
+        internal static bool CriticalApproach(Player p)
+        { return p.grapCount == 0 && RiskAt(p, p.position.Y + p.gravDir * p.maxFallSpeed * SmartFallGeometry.Horizon, p.velocity.Y * p.gravDir); }
+        internal static bool ContactRisk(Player p, SmartFallContact contact)
+        { return contact.Found && !contact.SafeSurface && contact.Ticks <= SmartFallGeometry.Horizon && RiskAt(p, contact.Y, p.velocity.Y * p.gravDir); }
+        private static bool RiskAt(Player p, float y, float speed)
         {
             float size = Main.maxTilesX / 4200f; size *= size;
             double ratio = (p.position.Y / 16f - (60 + 10 * size)) / (Main.worldSurface / (Main.remixWorld ? 1 : 6));
             bool reset = p.jump > 0 || p.rocketDelay > 0 || p.wet || p.slowFall || ratio < .8 || p.tongued;
             bool safe = p.noFallDmg || p.hasWings || p.mount.CanFly(p) || p.mount.Active && p.mount.Type == 1 || p.isPerformingJump_DownDash;
-            return SmartFallDecision.Risk(p.position.Y, p.fallStart, p.gravDir, p.extraFall, p.mount.Active ? p.mount.ExtraFall : 0,
-                p.velocity.Y * p.gravDir, p.stoned, safe, reset, p.mount.Active ? p.mount.FallDamage : 1);
+            return SmartFallDecision.Risk(y, p.fallStart, p.gravDir, p.extraFall, p.mount.Active ? p.mount.ExtraFall : 0,
+                speed, p.stoned, safe, reset, p.mount.Active ? p.mount.FallDamage : 1);
         }
     }
 }

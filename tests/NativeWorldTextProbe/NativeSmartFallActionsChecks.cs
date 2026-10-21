@@ -9,6 +9,7 @@ using JueMingR.Features.Movement;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
+using Terraria.DataStructures;
 using Terraria.ID;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
@@ -52,7 +53,12 @@ namespace NativeWorldTextProbe
                 Independent("SafeMount",()=>MountRescue(SmartFallFamily.SafeMount,2771,false),ref first);
                 Independent("SafeMountDisabled",()=>MountRescue(SmartFallFamily.SafeMount,2771,false,true),ref first);
                 Independent("FlyingMount",()=>MountRescue(SmartFallFamily.FlyingMount,3367,true),ref first);
+                Independent("FlyingMountSlopeLeft",()=>MountRescue(SmartFallFamily.FlyingMount,3367,true,false,1,25,2),ref first);
+                Independent("FlyingMountSlopeRight",()=>MountRescue(SmartFallFamily.FlyingMount,3367,true,false,2,25,-2),ref first);
+                Independent("FlyingMountLateSlopeControl",FlyingMountLateSlopeControl,ref first);
+                Independent("CriticalLanding",CriticalLanding,ref first);
                 Independent("Grapple84",()=>GrappleRescue(84,480,false),ref first);
+                Independent("GrappleCriticalPreparation",()=>GrappleRescue(84,480,false,false,false,true),ref first);
                 Independent("Grapple1800Borrowed",()=>GrappleRescue(1800,240,true),ref first);
                 Independent("Grapple4980Teleport",()=>GrappleRescue(4980,240,false),ref first);
                 Independent("GrappleJointQueen",()=>GrappleRescue(4980,100,true),ref first);
@@ -61,11 +67,14 @@ namespace NativeWorldTextProbe
                 Independent("GrappleOrdinaryShort",GrappleOrdinaryShort,ref first);
                 Independent("GrappleBusyFallback",()=>GrappleRescue(1800,240,false,true),ref first);
                 Independent("GrappleFailedReturnCache",GrappleFailedReturnCache,ref first);
+                Independent("GrappleNewUpperAnchor",GrappleNewUpperAnchor,ref first);
+                Independent("GrappleOwnFailure",GrappleOwnFailure,ref first);
                 Independent("BusyPreparation",BusyPreparation,ref first);
                 Independent("DynamicInterference",DynamicInterference,ref first);
                 Independent("CursedJump",CursedJump,ref first);
                 Independent("GrappleLateContact",GrappleLateContact,ref first);
                 Independent("DoubleJumpMismatch",DoubleJumpMismatch,ref first);
+                Independent("SocialBottleNoCharge",SocialBottleNoCharge,ref first);
                 Independent("PairedRocketCosts",PairedRocketCosts,ref first);
                 if(first!=null)throw new InvalidOperationException("One or more independent native smart-fall representatives failed; individual raw failures retained.",first);
                 Console.WriteLine("PASS SMART-FALL native representatives selection=canonical-all; independent earlier evidence retains its original identity.");
@@ -74,7 +83,7 @@ namespace NativeWorldTextProbe
             {
                 Call(host,"ClearSession");Call(movement,"EndUpdate",Main.LocalPlayer);
                 foreach(var method in isolation.GetPatchedMethods().ToArray())isolation.Unpatch(method,HarmonyPatchType.All,isolation.Id);
-                Main.player[Main.myPlayer]=original;Call(movement,"SetEnabled",0,jumping);
+                Main.player[Main.myPlayer]=original;Call(Get(items,"World"),"BeginSession");Call(movement,"SetEnabled",0,jumping);
                 ArmorIDs.Wing.Sets.Stats=oldWingStats;for(int i=0;i<Main.gore.Length;i++)Main.gore[i]=oldGore[i];
                 for(int i=0;i<12;i++)Call(movement,"SetSmartFallPermission",i,before.Allows(i));Call(movement,"SetEnabled",3,before.Enabled);
             }
@@ -90,13 +99,15 @@ namespace NativeWorldTextProbe
             var p=new Player{whoAmI=Main.myPlayer,active=true,position=new Vector2(700,Floor*16-42-gap),velocity=new Vector2(0,10),gravDir=1,gravity=.4f,maxFallSpeed=10,fallStart=0,statLife=5000,statLifeMax=5000,statLifeMax2=5000};
             Main.player[Main.myPlayer]=p;Main.mouseItem.TurnToAir();Main.mouseLeft=Main.mouseRight=false;
             for(int x=35;x<65;x++) { var t=Main.tile[x,Floor];t.active(true);t.type=1;t.slope(0);t.halfBrick(false); }
-            Call(Get(items,"World"),"InvalidateObservation");return p;
+            Call(Get(items,"World"),"BeginSession");Call(Get(items,"World"),"InvalidateObservation");return p;
         }
         private static void Select(SmartFallFamily family)
         { for(int i=0;i<12;i++)Call(movement,"SetSmartFallPermission",i,i==(int)family);Call(host,"ClearSession"); }
         private static void Begin(Player p)
         {
             NativeQuickItemChecks.BeginWorldStep();NativeQuickItemChecks.Sample(input,new Keys[0]);
+            if(!ReferenceEquals(Get(Get(items,"World"),"SessionPlayer"),p))Call(Get(items,"World"),"BeginSession");
+            Require(ReferenceEquals(Get(Get(items,"World"),"SessionPlayer"),p),"Production Items session binds this exact native Player.");
             Require((bool)Call(movement,"BeginUpdate",p),"Exact isolated local scope begins.");Call(movement,"CaptureInput",p);frame++;
         }
         private static void End(Player p){Call(movement,"EndUpdate",p);}
@@ -372,11 +383,65 @@ namespace NativeWorldTextProbe
             p.mount.Dismount(p);Call(host,"ReturnOriginalMount",p);
             Require(!p.mount.Active,"Later manual dismount cannot resurrect the retired original mount.");
         }
-        private static void MountRescue(SmartFallFamily family,int itemType,bool platform,bool disable=false)
+        private static void NativeCollision(Player p)
         {
-            Select(family);var p=PlayerAt(15);p.inventory[17].SetDefaults(itemType);int health=p.statLife;
-            if(platform)for(int x=35;x<65;x++){Main.tile[x,Floor].type=19;Main.tile[x,Floor].frameY=0;}
-            for(int tick=0;tick<4;tick++)
+            // Exact Update .8 flags, including last Update's stairFall. The
+            // original SlopingCollision alone consumes and clears that state.
+            bool ignore=p.gravDir<0 || p.mount.Active && (p.mount.Cart || p.mount.Type==12 || p.mount.Type==7 || p.mount.Type==8 || p.mount.Type==23 || p.mount.Type==44 || p.mount.Type==48) || p.GoingDownWithGrapple || p.pulley;
+            bool through=p.controlDown || ignore;
+            p.DryCollision(through,ignore);p.SlopingCollision(through,ignore);
+        }
+        private static void FlyingMountLateSlopeControl()
+        {
+            Select(SmartFallFamily.FlyingMount);Call(movement,"SetEnabled",3,false);
+            var p=PlayerAt(15);p.miscEquips[3].SetDefaults(3367);p.velocity.X=2;
+            for(int x=35;x<65;x++){Main.tile[x,Floor].type=19;Main.tile[x,Floor].frameY=0;Main.tile[x,Floor].slope(1);}
+            p.QuickMount();Require(p.mount.Active,"Independent later-stage control truly summons the native hover mount.");
+            p.UpdateEquips(p.whoAmI);Motion(p);NativeCollision(p);p.PlayerFrame();Require(p.stairFall,"Previous real mounted slope phase leaves native stairFall.");
+            p.UpdateEquips(p.whoAmI);p.controlJump=true;Motion(p);p.controlJump=false;p.mount.TryDismount(p);
+            Require(!p.mount.Active && p.stairFall,"Late real dismount does not itself clean the prior stair flag.");
+            NativeCollision(p);
+            for(int i=0;i<3;i++){Motion(p);NativeCollision(p);}
+            Require(p.position.Y+p.height>Floor*16+16,"Same later native phase misses the original slope, independently of helper readiness/delay.");
+            Console.WriteLine("SMART-FALL LATE-SLOPE original-mount=true prior-stair=true dismount-before-flags=true original-slope-missed=true");
+            Call(movement,"SetEnabled",3,true);
+        }
+        private static void SocialBottleNoCharge()
+        {
+            Select(SmartFallFamily.DoubleJump);var p=PlayerAt(5);p.armor[13].SetDefaults(53);var bottle=p.armor[13];
+            Call(movement,"SetSmartFallPermission",(int)SmartFallFamily.Horseshoe,true);p.inventory[17].SetDefaults(158);
+            Begin(p);try{p.UpdateEquips(p.whoAmI);Eligibility(p);Motion(p);Call(host,"BeforeGrapple",p);}finally{End(p);}
+            Require(!p.canJumpAgain_Cloud && p.jump==0 && p.noFallDmg && ReferenceEquals(p.armor[13],bottle),"A social ordinary bottle with no native charge stays unavailable while a legitimate passive fallback really protects.");
+            Console.WriteLine("SMART-FALL SOCIAL-BOTTLE no-charge=true no-invented-jump=true legal-horseshoe-fallback=true");
+        }
+        private static void CriticalLanding()
+        {
+            foreach(int gap in new[]{7,15,25})foreach(bool help in new[]{false,true})
+            {
+                Select(gap==25?SmartFallFamily.FlyingMount:SmartFallFamily.DoubleJump);Call(movement,"SetEnabled",3,help);
+                var p=PlayerAt(gap);p.fallStart=Floor-(gap==15?28:29);
+                if(gap==25)p.inventory[17].SetDefaults(3367);
+                else{p.armor[3].SetDefaults(53);p.UpdateEquips(p.whoAmI);p.canJumpAgain_Cloud=true;}
+                for(int x=35;x<65;x++){Main.tile[x,Floor].type=19;Main.tile[x,Floor].frameY=0;}
+                long actions=(long)Get(host,"NativeActions");int health=p.statLife;int start=(int)(p.position.Y/16)-p.fallStart;
+                for(int tick=0;tick<6;tick++)
+                {
+                    if(help)Begin(p);try{Damage(p);p.UpdateEquips(p.whoAmI);Motion(p);if(help)Call(host,"BeforeGrapple",p);NativeCollision(p);p.PlayerFrame();}finally{if(help)End(p);}
+                }
+                bool danger=gap!=15;
+                Require(help && danger?p.statLife==health:danger?p.statLife<health:p.statLife==health,"Original damage consumer independently distinguishes critical danger/safe and assisted rescue gap="+gap+" help="+help+" start="+start);
+                if(help && danger && gap==7)Require(!p.canJumpAgain_Cloud,"Critical current-update rescue consumes its real existing charge.");
+                if(gap==15)Require((long)Get(host,"NativeActions")==actions,"Adjacent real safe landing does not submit extra actions.");
+                Console.WriteLine("SMART-FALL CRITICAL gap="+gap+" help="+help+" start-tiles="+start+" final-top="+p.position.Y+" life="+p.statLife+" actions="+((long)Get(host,"NativeActions")-actions));
+            }
+            Call(movement,"SetEnabled",3,true);
+        }
+        private static void MountRescue(SmartFallFamily family,int itemType,bool platform,bool disable=false,byte slope=0,float gap=15,float vx=0)
+        {
+            Select(family);var p=PlayerAt(gap);p.velocity.X=vx;p.inventory[17].SetDefaults(itemType);int health=p.statLife;
+            if(platform)for(int x=35;x<65;x++){Main.tile[x,Floor].type=19;Main.tile[x,Floor].frameY=0;Main.tile[x,Floor].slope(slope);}
+            bool priorStair=false,cleared=false;
+            for(int tick=0;tick<8;tick++)
             {
                 if(disable && tick==1)Call(movement,"SetEnabled",3,false);
                 Begin(p);
@@ -386,13 +451,16 @@ namespace NativeWorldTextProbe
                     if(disable && tick==1)Require(p.mount.Active,"Closing master cannot unload the safe mount's sole protection before real landing Hurt.");
                     if(platform && tick==0)Require(p.mount.Active,"New flying mount waits for its first real airborne frame, before contact.");
                     if(platform && tick==1)Require(!p.mount.Active,"Actual Hover rescue returns before this Update computes platform ignore flags.");
-                    p.DryCollision(false,false);p.SlopingCollision(false,false);p.PlayerFrame();
+                    bool beforeStair=p.stairFall;NativeCollision(p);p.PlayerFrame();
+                    if(tick==0 && platform)priorStair=p.stairFall;
+                    if(platform && slope!=0 && beforeStair && !p.stairFall && !p.mount.Active && p.position.Y+p.height<Floor*16)cleared=true;
                     Console.WriteLine("SMART-FALL MOUNT-STATE family="+family+" tick="+tick+" result="+Get(host,"Result")+" active="+p.mount.Active+" type="+p.mount.Type+" vel="+p.velocity+" pos="+p.position+" start="+p.fallStart);
                 }
                 finally{End(p);}
                 if(disable && tick>0 && !(bool)Get(host,"HasPending"))break;
             }
-            Require(p.velocity.Y==0,"Complete native mount action preserves its original contact platform="+platform);
+            Require(Math.Abs(p.velocity.Y)<.011f && p.position.Y+p.height<=Floor*16+16.01f,"Complete native mount action preserves its original contact platform="+platform+" slope="+slope);
+            if(platform && slope!=0)Require(priorStair && cleared,"Actual prior mounted collision sets stairFall, and a later unmounted native slope pass clears it BEFORE the intended slope contact.");
             Damage(p);Require(p.statLife==health,"Original landing damage sees real mount/previous Hover protection family="+family);
             if(disable)Call(movement,"SetEnabled",3,true);
             Begin(p);try{p.UpdateEquips(p.whoAmI);}finally{End(p);}
@@ -460,9 +528,10 @@ namespace NativeWorldTextProbe
                 }
             }
         }
-        private static void GrappleRescue(int itemType,float gap,bool borrowed,bool busyPassive=false,bool duplicateSources=false)
+        private static void GrappleRescue(int itemType,float gap,bool borrowed,bool busyPassive=false,bool duplicateSources=false,bool critical=false)
         {
             Select(SmartFallFamily.Grapple);var p=PlayerAt(gap);int health=p.statLife;
+            if(critical)p.fallStart=Floor-29;
             for(int x=35;x<65;x++)for(int y=40;y<Floor;y++)Main.tile[x,y]=new Tile();
             for(int x=35;x<65;x++){var t=Main.tile[x,Floor];t.active(true);t.type=19;t.frameY=0;t.slope(0);t.halfBrick(false);}
             for(int i=0;i<Main.projectile.Length;i++){if(Main.projectile[i]==null)Main.projectile[i]=new Projectile();Main.projectile[i].active=false;}
@@ -505,6 +574,7 @@ namespace NativeWorldTextProbe
                 {
                     var q=Main.projectile[slot];if(q==null || !q.active || q.owner!=p.whoAmI || q.aiStyle!=7)continue;
                     if(birth<0){birth=tick;owned=q;plannedDelay=(int)Get(Get(host,"grapplePlan"),"Delay");Require(q.type==selected.shoot,"Actual native QuickGrapple uses the selected real hook, including temporary faster source item="+itemType);
+                        if(critical)Require((int)(p.position.Y/16)-p.fallStart<=25 && plannedDelay>3,"Finite contact risk admits a genuinely slow native preparation before the current-distance gate becomes dangerous.");
                         if(duplicateSources)Require(ReferenceEquals(Get(host,"selected"),selected) && ReferenceEquals(p.miscEquips[4],selected) && ReferenceEquals(p.inventory[0],duplicate),"Native birth uses the lower-interference endpoint17, not the first equivalent geometry representative at selected endpoint0.");}
                     q.Update(slot);if(q.active && q.ai[0]==2 && attached<0){attached=tick;Require(p.grapCount>0 && Array.IndexOf(p.grappling,slot)>=0,"Original ai0 attachment immediately registers the hook before ai2's stable branch item="+itemType);}
                 }
@@ -562,6 +632,73 @@ namespace NativeWorldTextProbe
             Console.WriteLine("SMART-FALL CAPACITY unchanged=64 natural-retirement=true native-retry=1 protected="+protectedAt+" life="+p.statLife);
             }
             finally{q.active=false;}
+        }
+        private static void ClearHooks()
+        { for(int i=0;i<Main.projectile.Length;i++){if(Main.projectile[i]==null)Main.projectile[i]=new Projectile();Main.projectile[i].active=false;} }
+        private static void GrappleStep(Player p)
+        {
+            Begin(p);try{Damage(p);p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);p.GrappleMovement();NativeCollision(p);Housekeeping(p);}finally{End(p);}
+            foreach(var q in Main.projectile)if(q!=null && q.active && q.owner==p.whoAmI && q.aiStyle==7)q.Update(q.whoAmI);
+        }
+        private static void GrappleNewUpperAnchor()
+        {
+            Select(SmartFallFamily.Grapple);var p=PlayerAt(100);p.miscEquips[4].SetDefaults(84);ClearHooks();
+            for(int x=35;x<65;x++)for(int y=40;y<Floor;y++)Main.tile[x,y]=new Tile();
+            var geometry=Get(host,"grapple");Begin(p);End(p);
+            Require(!(bool)Get(Get(host,"grapplePlan"),"Found"),"Ordinary hook has no timely original floor anchor before local edit.");
+            long searches=(long)Get(geometry,"Searches");Vector2 start=p.position;
+            GrappleStep(p);
+            var unrelated=Main.tile[60,60];Main.tile[60,60]=new Tile();Main.tile[60,60].active(true);Main.tile[60,60].type=1;
+            try
+            {
+                GrappleStep(p);Require((long)Get(geometry,"Searches")==searches,"Unchanged dependencies and unrelated tile edit do not repeat a failed Find.");
+                int x=(int)(p.Center.X/16)+2,y=(int)(start.Y/16)-1;
+                // This is an empty side/upper sample read in the actual failed
+                // search, outside its foot corridor. Keep displacement <128.
+                var anchor=Main.tile[x,y];Main.tile[x,y]=new Tile();Main.tile[x,y].active(true);Main.tile[x,y].type=1;
+                try
+                {
+                    bool protectedNative=false;
+                    for(int i=0;i<14;i++){GrappleStep(p);if((SmartFallResult)Get(host,"Result")==SmartFallResult.Protected){protectedNative=true;break;}}
+                    Require((long)Get(geometry,"Searches")==searches+1 && protectedNative && p.statLife==5000 && Vector2.Distance(start,p.position)<128,"Previously observed upper tile changes wake exactly one Find and its real native GrappleMovement rescue.");
+                    Console.WriteLine("SMART-FALL NEW-UPPER-ANCHOR initial-failed=true stable-updates=2 unrelated-wake=0 relevant-searches=1 native-protection=true displacement="+Vector2.Distance(start,p.position));
+                }
+                finally{Main.tile[x,y]=anchor;}
+            }
+            finally{Main.tile[60,60]=unrelated;ClearHooks();}
+        }
+        private static void GrappleOwnFailure()
+        {
+            Select(SmartFallFamily.Grapple);var p=PlayerAt(240);p.miscEquips[4].SetDefaults(1800);ClearHooks();
+            for(int x=35;x<65;x++)for(int y=40;y<Floor;y++)Main.tile[x,y]=new Tile();
+            Projectile own=null;
+            for(int i=0;i<24 && own==null;i++)
+            {
+                Begin(p);try{p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);NativeCollision(p);Housekeeping(p);}finally{End(p);}
+                own=Main.projectile.FirstOrDefault(q=>q!=null && q.active && q.owner==p.whoAmI && q.aiStyle==7);
+            }
+            Require(own!=null && (int)Get(host,"blockingCount")==0,"First real own shot starts with no previous capacity hook.");
+            ProjectileKey id=own.key;var floor=new Tile[30];for(int x=35;x<65;x++){floor[x-35]=Main.tile[x,Floor];Main.tile[x,Floor]=new Tile();}
+            try
+            {
+                // Native flight sees the vanished target and returns naturally.
+                // Stable snapshots intentionally retain one exact Player state;
+                // no auxiliary code writes projectile phase/identity/results.
+                for(int i=0;i<160 && own.active && own.ai[0]!=1;i++)own.Update(own.whoAmI);
+                Require(own.active && own.ai[0]==1,"Own exact native hook really enters its return phase after target loss.");
+                Begin(p);End(p);Require((SmartFallResult)Get(host,"Result")==SmartFallResult.Failed,"Returning own hook ends the action rather than claiming protection.");
+                var geometry=Get(host,"grapple");long searches=(long)Get(geometry,"Searches"),actions=(long)Get(host,"NativeActions");
+                for(int i=0;i<16;i++){Begin(p);End(p);}
+                Require((long)Get(geometry,"Searches")==searches && (long)Get(host,"NativeActions")==actions,"Unchanged failed own hook does not repeatedly search or launch.");
+                for(int i=0;i<384 && own.active;i++)own.Update(own.whoAmI);
+                Require(!own.active,"Exact own hook naturally retires without scanning or clearing live game hooks.");
+                for(int x=35;x<65;x++)Main.tile[x,Floor]=floor[x-35];
+                bool rescued=false;
+                for(int i=0;i<16;i++){GrappleStep(p);if((SmartFallResult)Get(host,"Result")==SmartFallResult.Protected){rescued=true;break;}}
+                Require(rescued && p.statLife==5000 && (long)Get(host,"NativeActions")==actions+1,"Own-hook retirement reopens the rejected family before the endpoint early exit and permits one real later rescue.");
+                Console.WriteLine("SMART-FALL OWN-FAILURE identity="+id+" no-old-hooks=true native-return=true unchanged=16 retired=true second-native-rescue=true");
+            }
+            finally{for(int x=35;x<65;x++)Main.tile[x,Floor]=floor[x-35];ClearHooks();}
         }
         private static void GrappleLateContact()
         {

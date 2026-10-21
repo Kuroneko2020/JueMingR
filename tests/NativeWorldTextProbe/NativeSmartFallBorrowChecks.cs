@@ -25,8 +25,9 @@ namespace NativeWorldTextProbe
         private static long generation;
         private static object items;
         private static readonly List<byte[]> packets=new List<byte[]>();
+        private static bool throwNativeUse;
         private static bool Match(Item item,SmartFallFamily family)
-        {return family==SmartFallFamily.DoubleJump?item.type==ItemID.CloudinaBottle:family==SmartFallFamily.Horseshoe?item.type==ItemID.LuckyHorseshoe:family==SmartFallFamily.DjinnLegs?item.type==ItemID.DjinnsCurse:family==SmartFallFamily.Grapple?Main.projHook[item.shoot]:family==SmartFallFamily.Umbrella?item.type==ItemID.Umbrella:family==SmartFallFamily.TeleportRod && item.type==ItemID.RodofDiscord;}
+        {return family==SmartFallFamily.DoubleJump?item.type==ItemID.CloudinaBottle:family==SmartFallFamily.Horseshoe?item.type==ItemID.LuckyHorseshoe:family==SmartFallFamily.DjinnLegs?item.type==ItemID.DjinnsCurse:family==SmartFallFamily.Grapple?Main.projHook[item.shoot]:family==SmartFallFamily.FlyingMount || family==SmartFallFamily.SafeMount?item.mountType>=0:family==SmartFallFamily.Umbrella?item.type==ItemID.Umbrella:family==SmartFallFamily.TeleportRod && item.type==ItemID.RodofDiscord;}
         internal static void Run(object context)
         {
             items=Get(context,"items");ownership=(ItemOperationOwnership)Get(items,"Ownership");generation=(long)Get(Get(items,"Runtime"),"Generation");
@@ -36,7 +37,7 @@ namespace NativeWorldTextProbe
             patch.Patch(pick,postfix:new HarmonyMethod(typeof(NativeSmartFallBorrowChecks),nameof(Pick)));
             try
             {
-                Conservation();PreparationFacts();PartialWrite();Takeover();MovedOriginal();BlockedReturn();HeldSelection();GrappleBorrow();Lifecycle();NativeSync();
+                Conservation();PreparationFacts();PartialWrite();Takeover();MovedOriginal();BlockedReturn();HeldSelection();GrappleBorrow();Lifecycle();NativeSync();NativeOwnedUse();
                 Main.player[Main.myPlayer]=saved;Call(context,"UpdateRuntime");FishingOverlap(context);
                 Console.WriteLine("PASS SmartFallBorrow real item conservation, second-write failure, same-signature takeover, moved original, native held selection, pulse finalizer and generation boundary.");
             }
@@ -153,6 +154,90 @@ namespace NativeWorldTextProbe
             }
             finally{Main.projectile[42]=saved;}
         }
+        private static void NativeOwnedUse()
+        {
+            var world=Get(items,"World");var prior=GetOptional(world,"AllowsOwnedFallNativeUse");var saved=Main.LocalPlayer;var savedSession=GetOptional(world,"sessionPlayer");
+            var projectiles=(Projectile[])Main.projectile.Clone();int mouseX=Main.mouseX,mouseY=Main.mouseY;
+            long replacementToken=0;
+            var patch=new Harmony("JueMingR.Tests.SmartFallOwnedNativeUse");
+            var inner=typeof(Player).GetMethod("ItemCheck_CheckCanUse_Inner",Flags);
+            patch.Patch(inner,prefix:new HarmonyMethod(typeof(NativeSmartFallBorrowChecks),nameof(ThrowNativeUse)));
+            bool Start(Player p,Item item){return (bool)typeof(Player).GetMethod("ItemCheck_TryStartUse",Flags).Invoke(p,new object[]{item,false});}
+            long Open(Player p,Item item,SmartFallFamily family){return (long)Call(owner,"BeginNativeUse",p,generation,item,family);}
+            void Close(long scope){Call(owner,"EndNativeUse",scope);}
+            Player Fresh()
+            {
+                var p=Reset();p.position=new Microsoft.Xna.Framework.Vector2(800,600);Call(world,"BeginSession");
+                Set(world,"AllowsOwnedFallNativeUse",(Func<Player,Item,bool>)((current,item)=>(bool)Call(owner,"AllowsNativeUse",current,item)));
+                var guard=ownerType.Assembly.GetType("JueMingR.TerrariaHost.Items.ItemPendingGuards",true);
+                Require(ReferenceEquals(Get(world,"SessionPlayer"),p) && (bool)guard.GetProperty("Active",Flags).GetValue(null) && !(bool)Get(world,"AutomaticOperation"),"F1 fixture binds the actual Items SessionPlayer and proves production guard active, without AutomaticOperation");
+                return p;
+            }
+            try
+            {
+                // This responsibility runs before the risk/action leaf. Bind
+                // the original immutable mount definitions independently, not
+                // through a later representative's initialization side effect.
+                NativeCombatLiveContextChecks.InitializeMount();
+                var p=Fresh();var mount=Put(p.inventory,12,2771);mount.favorited=true;var original=p.miscEquips[3];int prefix=mount.prefix;
+                Require(Borrow(p,mount,SmartFallFamily.SafeMount) && ownership.IsProtected(0,12) && ownership.IsProtected(6,3),"F1 exact backpack mount and parked original stay protected");
+                Require(!Start(p,mount),"F1 unlicensed protected misc use is rejected by installed StartUse prefix");
+                long scope=Open(p,mount,SmartFallFamily.SafeMount);Require(scope>0,"F1 exact mount invocation acquires narrow use");
+                try{p.QuickMount();Require((bool)Get(owner,"nativeUseConsumed"),"F1 original QuickMount consumes the StartUse permission");}finally{Close(scope);}
+                Require(p.mount.Active && p.mount.Type==mount.mountType && (bool)Get(owner,"nativeUseConsumed") == false && !Start(p,mount),"F1 original QuickMount really mounts and its finally leaves protected use blocked");
+                Require(ownership.IsProtected(6,3) && ownership.IsProtected(0,12),"F1 use never releases either exchange mask");
+                p.QuickMount();Return(p);
+                Require(ReferenceEquals(p.inventory[12],mount) && ReferenceEquals(p.miscEquips[3],original) && mount.favorited && mount.prefix==prefix && mount.stack==1 && !(bool)Get(owner,"HasPending"),"F1 exact mount, favorite, prefix, singleton and original endpoint return after actual native use");
+
+                p=Fresh();var hook=Put(p.inventory,12,ItemID.BatHook);original=Put(p.miscEquips,4,ItemID.GrapplingHook);
+                for(int i=0;i<Main.projectile.Length;i++)Main.projectile[i]=new Projectile();
+                Main.mouseX=900;Main.mouseY=600;
+                Require(Borrow(p,hook,SmartFallFamily.Grapple) && !Start(p,hook),"F1 backpack hook is guarded before exact invocation");
+                scope=Open(p,hook,SmartFallFamily.Grapple);Require(scope>0,"F1 exact hook invocation acquires narrow use");
+                try{p.QuickGrapple();Require((bool)Get(owner,"nativeUseConsumed"),"F1 original QuickGrapple consumes the StartUse permission");}finally{Close(scope);}
+                var born=Main.projectile.SingleOrDefault(q=>q.active && q.owner==p.whoAmI && q.type==hook.shoot);
+                Require(born!=null && !Start(p,hook),"F1 original QuickGrapple births the exact borrowed hook and closes permission");
+                Return(p);Require(ReferenceEquals(p.inventory[12],hook) && ReferenceEquals(p.miscEquips[4],original) && born.active && !(bool)Get(owner,"HasPending"),"F1 returning exact hook objects leaves the real emitted hook alive");
+                born.active=false;
+
+                p=Fresh();hook=Put(p.inventory,12,ItemID.BatHook);original=Put(p.miscEquips,4,ItemID.GrapplingHook);Require(Borrow(p,hook,SmartFallFamily.Grapple),"F1 scope counterexamples own a real hook loan");
+                Require(Open(p,hook,SmartFallFamily.SafeMount)==0 && Open(p,new Item{type=hook.type,stack=1},SmartFallFamily.Grapple)==0 &&
+                    (long)Call(owner,"BeginNativeUse",p,generation+1,hook,SmartFallFamily.Grapple)==0,"F1 wrong action, same-type replacement and wrong generation cannot open a call");
+                scope=Open(p,hook,SmartFallFamily.Grapple);Require(scope>0 && Open(p,hook,SmartFallFamily.Grapple)==0,"F1 nested invocation cannot replace the current call owner");
+                var clone=new Player{whoAmI=p.whoAmI,active=true};
+                Require(!(bool)Call(owner,"AllowsNativeUse",clone,hook) && !Start(clone,hook) && !(bool)Get(owner,"nativeUseConsumed") && !Start(p,p.inventory[12]),"F1 actual StartUse prefix rejects same-index other Player's alias of the protected item without consuming the real call, and parked original receives no permission");
+                var replacement=new Item();replacement.SetDefaults(hook.type);p.miscEquips[4]=replacement;
+                Require(!(bool)Call(owner,"AllowsNativeUse",p,replacement) && !(bool)Call(owner,"AllowsNativeUse",p,hook),"F1 both wrong reference and removed endpoint are denied");p.miscEquips[4]=hook;
+                Require(Start(p,hook) && !Start(p,hook),"F1 only one exact StartUse consumes the current invocation");Close(scope);
+                long successor=Open(p,hook,SmartFallFamily.Grapple);Close(scope);Require(Start(p,hook),"F1 delayed old finally cannot close a successor call");Close(successor);
+                scope=Open(p,hook,SmartFallFamily.Grapple);p.noItems=true;
+                try{p.QuickGrapple();}finally{Close(scope);p.noItems=false;}
+                Require(!Start(p,hook) && !Main.projectile.Any(q=>q.active && q.owner==p.whoAmI && q.type==hook.shoot),"F1 native rejection closes an unused permission without emitting a hook");
+                scope=Open(p,hook,SmartFallFamily.Grapple);bool threw=false;throwNativeUse=true;
+                try{p.QuickGrapple();}catch(InvalidOperationException error){threw=error.Message=="F1-native-use-fault";}finally{throwNativeUse=false;Close(scope);}
+                Require(threw && !Start(p,hook),"F1 exception inside original native use closes permission and propagates its error");
+                scope=Open(p,hook,SmartFallFamily.Grapple);Return(p);Require(!(bool)Call(owner,"AllowsNativeUse",p,hook),"F1 return revokes an open invocation before any restoration");Close(scope);
+                Require(ReferenceEquals(p.inventory[12],hook) && ReferenceEquals(p.miscEquips[4],original),"F1 exceptional/rejected scopes conserve both original objects");
+                p=Fresh();hook=Put(p.inventory,12,ItemID.BatHook);Require(Borrow(p,hook,SmartFallFamily.Grapple),"F1 lifecycle loan");scope=Open(p,hook,SmartFallFamily.Grapple);
+                Main.player[Main.myPlayer]=new Player{whoAmI=p.whoAmI,active=true};Require(!(bool)Call(owner,"AllowsNativeUse",p,hook),"F1 actual local Player replacement revokes old invocation");Main.player[Main.myPlayer]=p;
+                Call(world,"EndSession");Require(!(bool)Call(owner,"AllowsNativeUse",p,hook),"F1 Items session end denies an open invocation");Call(world,"BeginSession");
+                ownership.SetSession(generation+1);Require(!(bool)Call(owner,"AllowsNativeUse",p,hook),"F1 ownership session replacement revokes old invocation");ownership.SetSession(generation);Call(owner,"EndSession");Close(scope);
+                p=Fresh();hook=Put(p.inventory,12,ItemID.BatHook);Require(Borrow(p,hook,SmartFallFamily.Grapple),"F1 replaced-token loan");scope=Open(p,hook,SmartFallFamily.Grapple);
+                long oldToken=(long)Get(owner,"Operation");ownership.EndFallEquipment(generation,oldToken);replacementToken=ownership.NewUseToken();
+                Require(ownership.TryBeginFallEquipment(generation,1UL<<12,0,1U<<4,replacementToken) && !(bool)Call(owner,"AllowsNativeUse",p,hook),"F1 a successor equipment operation on identical endpoints cannot reuse the stale token");
+                Call(owner,"EndSession");Close(scope);ownership.EndFallEquipment(generation,replacementToken);
+                Console.WriteLine("PASS F1 owned-native-use active production guard: exact original QuickMount and QuickGrapple; unlicensed, action/reference/endpoint/generation/session/Player, once-only, nested/stale finally, native rejection, exception, return and conservation.");
+            }
+            finally
+            {
+                throwNativeUse=false;if(owner!=null)Call(owner,"EndSession");
+                ownership.EndFallEquipment(generation,replacementToken);
+                patch.Unpatch(inner,HarmonyPatchType.All,patch.Id);Set(world,"AllowsOwnedFallNativeUse",prior);
+                Main.player[Main.myPlayer]=saved;Call(world,"EndSession");Set(world,"sessionPlayer",savedSession);Main.mouseX=mouseX;Main.mouseY=mouseY;
+                for(int i=0;i<projectiles.Length;i++)Main.projectile[i]=projectiles[i];
+            }
+        }
+        private static void ThrowNativeUse(){if(throwNativeUse)throw new InvalidOperationException("F1-native-use-fault");}
         private static void BlockedReturn()
         {
             var p=Reset();var shoe=Put(p.inventory,12,ItemID.LuckyHorseshoe);Borrow(p,shoe,SmartFallFamily.Horseshoe);

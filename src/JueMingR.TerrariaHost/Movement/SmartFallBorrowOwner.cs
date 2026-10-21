@@ -32,6 +32,10 @@ namespace JueMingR.TerrariaHost.Movement
         private Item[] source,target;
         private int sourceSlot,targetSlot,loadout,originalSelection,heldSlot;
         private Item borrowed,original,selectionAnchor;
+        private SmartFallFamily borrowedFamily;
+        private long nextNativeUse,nativeUse,nativeUseToken;
+        private SmartFallFamily nativeUseFamily;
+        private bool nativeUseConsumed;
         private bool selection,selected,restoreRequested,pulsed,ownsMouse,ownedUseBit,originalUseBit,originalReleaseBit;
         private bool misc,unknown;
         private bool borrowedFavorite,originalFavorite;
@@ -47,6 +51,32 @@ namespace JueMingR.TerrariaHost.Movement
         internal bool HasPending {get{return player!=null;}}
         internal bool SelectionReady {get{return selection && selected && Identity(player,generation) && player.selectedItem==heldSlot && ReferenceEquals(player.inventory[heldSlot],borrowed);}}
         internal bool AllowsUse(int slot){return slot==heldSlot && SelectionReady && !restoreRequested;}
+        // This is a synchronous QuickMount/QuickGrapple call lease, not a tick
+        // bypass. The native consumer asks StartUse once; every other protected
+        // item/endpoint remains unavailable, including the parked original.
+        internal long BeginNativeUse(Player p,long epoch,Item item,SmartFallFamily family)
+        {
+            if(nativeUse!=0 || !NativeUseIdentity(p,epoch,item,family))return 0;
+            if(nextNativeUse==long.MaxValue)throw new InvalidOperationException("Fall native-use lease exhausted.");
+            nativeUse=++nextNativeUse;nativeUseToken=token;nativeUseFamily=family;nativeUseConsumed=false;return nativeUse;
+        }
+        internal void EndNativeUse(long invocation)
+        {if(invocation>0 && invocation==nativeUse)ClearNativeUse();}
+        internal bool AllowsNativeUse(Player p,Item item)
+        {
+            if(nativeUse==0 || nativeUseConsumed || nativeUseToken!=token || !NativeUseIdentity(p,generation,item,nativeUseFamily))return false;
+            nativeUseConsumed=true;return true;
+        }
+        private bool NativeUseIdentity(Player p,long epoch,Item item,SmartFallFamily family)
+        {
+            int slot=MiscSlot(family);
+            return items!=null && slot>=0 && misc && !selection && !restoreRequested && !unknown && family==borrowedFamily &&
+                Identity(p,epoch) && Permitted(p,epoch) && ReferenceEquals(p,items.World.SessionPlayer) && items.World.SessionGeneration==epoch &&
+                items.Ownership.OwnsFallEquipment(epoch,token,true,slot) && ReferenceEquals(item,borrowed) &&
+                ReferenceEquals(target,p.miscEquips) && targetSlot==slot && ReferenceEquals(p.miscEquips[slot],item) &&
+                ReferenceEquals(source[sourceSlot],original) && item.type==borrowedType && item.prefix==borrowedPrefix && item.stack==borrowedStack && !item.favorited;
+        }
+        private void ClearNativeUse(){nativeUse=nativeUseToken=0;nativeUseConsumed=false;}
         internal long Operation {get{return token;}}
         internal long SourceReads {get;private set;}
         internal long Exchanges {get;private set;}
@@ -201,7 +231,7 @@ namespace JueMingR.TerrariaHost.Movement
             if(Held(family))
             {
                 if(!Main.mouseItem.IsAir || ManualUse(p) || !p.selectedItemState.CanChangeSelectedItemImmediately || p.selectedItemState.HasActiveOverride || !items.Ownership.TryBeginUse(epoch,slot,next))return false;
-                Bind(p,epoch,next,item);selection=true;selected=p.selectedItem==slot;heldSlot=slot;originalSelection=p.selectedItem;selectionAnchor=p.inventory[originalSelection];return true;
+                Bind(p,epoch,next,item,family);selection=true;selected=p.selectedItem==slot;heldSlot=slot;originalSelection=p.selectedItem;selectionAnchor=p.inventory[originalSelection];return true;
             }
             if(!Monitor.TryEnter(SaveLock))
             {
@@ -215,7 +245,7 @@ namespace JueMingR.TerrariaHost.Movement
                 ulong inv=ReferenceEquals(array,p.inventory)?1UL<<slot:0;
                 uint armor=ReferenceEquals(dest,p.armor)?1U<<at:0;if(ReferenceEquals(array,p.armor))armor|=1U<<slot;
                 if(!items.Ownership.TryBeginFallEquipment(epoch,inv,armor,ReferenceEquals(dest,p.miscEquips)?1U<<at:0,next))return false;
-                Bind(p,epoch,next,item);source=array;sourceSlot=slot;target=dest;targetSlot=at;original=dest[at];misc=ReferenceEquals(dest,p.miscEquips);loadout=p.CurrentLoadoutIndex;
+                Bind(p,epoch,next,item,family);source=array;sourceSlot=slot;target=dest;targetSlot=at;original=dest[at];misc=ReferenceEquals(dest,p.miscEquips);loadout=p.CurrentLoadoutIndex;
                 borrowedFavorite=borrowed.favorited;originalFavorite=original.favorited;
                 originalType=original.type;originalPrefix=original.prefix;originalStack=original.stack;
                 try
@@ -236,8 +266,8 @@ namespace JueMingR.TerrariaHost.Movement
             }
             finally{Monitor.Exit(SaveLock);}
         }
-        private void Bind(Player p,long epoch,long operation,Item item)
-        {player=p;generation=epoch;token=operation;borrowed=item;borrowedType=item.type;borrowedPrefix=item.prefix;borrowedStack=item.stack;selection=selected=restoreRequested=pulsed=ownsMouse=ownedUseBit=unknown=false;returnRevision=-1;returnSource=null;ReturnResult=SmartFallResult.None;SyncUnconfirmed=false;}
+        private void Bind(Player p,long epoch,long operation,Item item,SmartFallFamily family)
+        {ClearNativeUse();player=p;generation=epoch;token=operation;borrowed=item;borrowedFamily=family;borrowedType=item.type;borrowedPrefix=item.prefix;borrowedStack=item.stack;selection=selected=restoreRequested=pulsed=ownsMouse=ownedUseBit=unknown=false;returnRevision=-1;returnSource=null;ReturnResult=SmartFallResult.None;SyncUnconfirmed=false;}
         private void Exchange(bool reverse)
         {
             Item a=reverse?borrowed:original,b=reverse?original:borrowed;
@@ -251,6 +281,7 @@ namespace JueMingR.TerrariaHost.Movement
         internal void Restore(Player p,long epoch)
         {
             if(!Identity(p,epoch))return;
+            ClearNativeUse();
             restoreRequested=true;
             ReturnResult=SmartFallResult.Returning;
             if(selection){ReturnSelection();return;}
@@ -387,6 +418,7 @@ namespace JueMingR.TerrariaHost.Movement
         {return HasPending && Identity(player,generation) && (ReferenceEquals(item,borrowed) || ReferenceEquals(item,original));}
         private void Retire(bool release=true)
         {
+            ClearNativeUse();
             if(player==null)return;
             if(release){ReleaseMouse();ReleaseInput();}else{ownsMouse=ownedUseBit=false;}
             if(selection)items?.Ownership.EndUse(generation,token);else items?.Ownership.EndFallEquipment(generation,token);

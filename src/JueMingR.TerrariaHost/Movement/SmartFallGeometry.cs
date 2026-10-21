@@ -111,12 +111,15 @@ namespace JueMingR.TerrariaHost.Movement
         private struct Cell { internal long Key; internal ulong Fact; internal int Stamp; }
         private readonly Cell[] cells=new Cell[4096];
         private readonly int[] occupied=new int[4096];
+        private readonly bool skipPassed, liquid;
         private int stamp,count;
         private bool complete;
         internal bool Complete { get { return complete; } }
+        internal SmartFallContactBand(bool skipPassed = true, bool liquid = false)
+        { this.skipPassed = skipPassed; this.liquid = liquid; }
         internal void Begin(){if(++stamp==0){Array.Clear(cells,0,cells.Length);stamp=1;}count=0;complete=true;}
-        private static ulong Fact(Tile tile)
-        { return tile==null || !tile.nactive()?0:1UL | ((ulong)tile.type<<32) | ((ulong)(ushort)tile.frameY<<8) | ((ulong)tile.slope()<<2) | (tile.halfBrick()?2UL:0); }
+        private ulong Fact(Tile tile)
+        { return tile == null ? 0 : (liquid ? (ulong)tile.liquid << 48 : 0) | (!tile.nactive()?0:1UL | ((ulong)tile.type<<32) | ((ulong)(ushort)tile.frameY<<8) | ((ulong)tile.slope()<<2) | (tile.halfBrick()?2UL:0)); }
         internal void Observe(int x,int y,Tile tile,int tick)
         {
             long key=((long)x<<32)|(uint)y;int slot=(int)(((uint)x*73856093U^(uint)y*19349663U)&4095);
@@ -135,7 +138,7 @@ namespace JueMingR.TerrariaHost.Movement
             {
                 Cell cell=cells[occupied[i]];
                 int x=(int)(cell.Key>>32),y=(int)cell.Key;
-                if(player.gravDir>0?y*16+16<player.position.Y:y*16>player.position.Y+player.height)continue;
+                if(skipPassed && (player.gravDir>0?y*16+16<player.position.Y:y*16>player.position.Y+player.height))continue;
                 if(Fact(SmartFallGeometry.Read(x,y,ref reads))!=cell.Fact)return true;
             }
             return false;

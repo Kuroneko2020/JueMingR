@@ -36,6 +36,9 @@ namespace JueMingR.TerrariaHost.Items
         internal Func<Item, bool> AdditionalProtection { get; set; }
         internal Func<Item, bool> ProcessingProtection { get; set; }
         internal Action<Item[], int> BeforeManualFallSlot { get; set; }
+        // StartUse alone may consume this exact rescue-call permission. Slot
+        // mutation, material, sale and discard guards never consult it.
+        internal Func<Player,Item,bool> AllowsOwnedFallNativeUse { get; set; }
         internal ItemHostObservation(Func<long> generation, ItemOperationOwnership ownership, Func<bool> canStartActions)
             :this(generation,ownership,canStartActions,canStartActions) { }
         internal ItemHostObservation(Func<long> generation, ItemOperationOwnership ownership, Func<bool> canStartActions,Func<bool> canReleaseManualInput)

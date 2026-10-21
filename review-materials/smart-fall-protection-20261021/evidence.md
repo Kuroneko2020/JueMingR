@@ -82,3 +82,34 @@ OFF、ON闲置、ON原本安全、ON危险无能力各20,000次强委托更新�
 修正增量复核通过与主调度准入前不包／安装；动态结论回任务Issue。本文证据冻结时完整Main／图形、物理键盘／手柄、真实房主／客机联网、FPS、所有者启动体验均NOT_EXECUTED。普通好友本机作用域与原生同步是生产责任，没有按连接方式禁用；message5编码／发送不是服务器ACK或多人验收。
 
 普通完整包沿现有ContinuousProcessing StageDevelopmentRecord，保留全部功能及范围外历史FAIL／NOT_RUN，fullQualification仍INCOMPLETE；不Tag／Release／合并／关闭任务。核真实现装b949回执后按本次原目标授权做一次预检、轻量受控备份、正式Restore→Install与必要读回，不启动／操作所有者游戏或存档。实际候选提交、包／换装身份回Issue130及本任务本地交付回执，完成后等待所有者体验与网页复审。
+
+## 2026-10-22 五项返修增量（bff556a 起，旧记录原样保留）
+
+原委托 `references/JMR_SMART_FALL_REPAIR_20261022_v1/` 五 Markdown/SHA256SUMS 已核；延续 #130/Draft #131，原开发包在 `references/归档文件/JMR_SMART_FALL_PROTECTION_20261021_v1/`。本节只覆盖本轮 F1—F5 与直接接缝，不把昨日旧 PASS 改签为修后新执行。
+
+根因追踪：`ba096176269e047a776788a44c527cf632f52077` 引入临借 misc 保护却缺 owned-native-use、FlyingMount Delay1 未纳前更新 stairFall、自己的失败钩整族拒绝及当前距离 Risk 门；原物品 guard 更早已存在。`4ec9cac6` 补准备/旧容量钩与脚下接触带、`bff556a3` 补同飞行参数共享，都未覆盖这五缺口。原 fixture 换 Player 未重绑 Items session，已装备／失活 guard PASS 无法代证受保护背包临借；坐骑固定 false flags 和平平台、旧容量钩、长坠落也分别漏掉前更新斜面、自己的失败钩、临界跨阈。
+
+修复与独立判据：
+
+- F1：准确 Player/session/generation/token/Item/端点/动作族的同步一次使用许可，仅真实 StartUse prefix 消费，try/finally 撤销；保护对象移动／出售等守恒门保持。专属段实证 guard Active=true、AutomaticOperation=false，真实 QuickMount/QuickGrapple 成功及无许可／异Player同保护引用／错误身份、一次消费、拒绝、异常和归还负例。异Player原先提前放行是旧接缝，本轮按同因身份要求补真实prefix阻断，不能只依helper拒绝。
+- F2：斜平台且原版骑乘会穿台时完整 Delay2，平平台仍1。真实原生前更新及flags留下stairFall，Hover→退骑→尚未触坡的真实斜碰撞自然清理；左右斜面有水平速度均保住原平台并无伤。独立 gap15 晚召骑控制确实留下旧stair并漏坡，gap25当前阶段成功；不清字段、不补完整PlayerFrame。
+- F3：第一发前无旧钩；准确自己的 ProjectileKey 自然返回，失败后16个不变危险快照无重复Find／发射，原生自然退休后重开且第二次真实GrappleMovement免伤。快照稳定探测有意不推进Player物理，不声称完整连续Main；恢复阶段执行原生运动/碰撞/投射物消费者。
+- F4：初始普通钩无及时抓点；2次稳定／无关地形变化不重搜，脚下带不变、位移小于128px时在实际读过的上侧空格新增锚点，恰1次Find恢复，真实免摔，位移59.67811px。4096格独立锚点／实际射线依赖含空格与液体，不裁已越过Y的上侧点；已知钩观察不全池扫。
+- F5：gap7初始整数距离25，OFF原生落伤扣10血、ON真实已有Cloud charge消费且免伤；相邻gap15/fallStart+1安全，两边0动作/0伤害。gap25真实坐骑准备OFF扣10、ON免伤。慢84钩另在当前距离仍安全且Delay大于3时取得完整准备，真实及时免摔；入口／最终／发钩门共用预计接触风险，不全面减阈值。保守48更新包络仅准入有限缓存查询，实际接触及各方案窗口决定发动。
+- 社交53瓶无charge保留无跳跃，合法马掌后备真实生效；抓钩成功后仍保活钩穿平台、借还不松钩、模拟连跳不解、玩家真实Jump解除，成功后无继续规划。扩大临界前视曾触发活钩后再规划，真实失败保留并在便宜门排除当前grapCount后关闭。
+
+最终三叶新执行均 PASS/STABLE，批次 `artifacts/build/workload-checkpoints/7163cc28defa4b7697385c5061349726/targeted-results.json`：
+
+| 责任 | executionId |
+| --- | --- |
+| SmartFallBorrowOwnershipChecks | 63deeb0c99a44d4f96a431d2df5a2ee6 |
+| SmartFallRiskActionsChecks | b2abc223f5304c83b87737a7f06207b8 |
+| native-MovementSmartFallCpu（含共享scope、全部本轮代表与既有有限消费者） | c5446b6570994d2898c9c60a16e51883 |
+
+同目录各ID `.json`、`.json.log`、`.json.qualification.json` 保原始命令、产物、失败/原生断言与稳定资格。执行提交标签 bff556a 加本轮明确dirty；源指纹前后 `71DFF57B9EB5E343BE791DA8AFEA3B5164EB8BB8F8A92C4BB69556E24D852420`，可执行输入前后 `0768110381A5115826ED81860206A4612AFA330F487560524395AD6A83B3B9D7`，buildMatch=true。native STABLE 时间 `2026-10-21T17:33:08.2143225Z`，receipt SHA256 `1DF235D3E5AA41A294D78828CFD2975DF3997B7A178DB2A3098CD47C06CA1EA5`；后续提交不改原执行身份。
+
+PrepareOnly 只签编译/结构。开发失败原件在 `.local/smart-fall-repair-20261022/` 与对应checkpoint保留：F1独立入口未初始化MountData、OFF对照误要求enabled scope、测试误读.8已改为key的旧identity字段均修准确fixture；PS7的null环境恢复生成空断言上下文造成输入漂移，改用一致Windows PowerShell宿主，未改全局/工具/产品；e206是补异Player真实prefix前的有效原执行，仍保原身份，c544补齐后不冒签旧覆盖。
+
+成本只签有限方法和分母：OFF、ON闲置、ON原本免摔、ON危险无能力各20,000次更新及另20,000次分配窗，稳定新增来源扫描／计划／tile读均0、稳定线程分配0；自己的不变失败16次与旧容量不变64次无盲发，局部上侧变化1次重搜。Rocket原生等价动作预热4、正式24对，手动p50/p95 0.0012/0.0035ms，辅助0.0097/0.0365ms，线程分配两侧0，辅助24计划/768 tile读；不是FPS收益、完整救援耗时或所有路径零成本。
+
+本轮自查核许可 finally／owner 与准确引用、原生斜面阶段、失败重开前早退、依赖容量/退出及临界事实最终门，评分与资源不改。移动合同／设计和短体验卡同次维护；四外来资产与原哈希一致不提交。集中独审与主准入、普通完整包和一次原目标正常换装尚在后续交付边界，动态实际身份回 #130。Main／图形、物理设备、真实好友房主/客机、FPS与所有者体验仍未测；历史范围外FAIL/NOT_RUN不改签，无Related/Full或全仓审计。

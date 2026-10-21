@@ -46,6 +46,8 @@ namespace JueMingR.Platform.Items
         }
         public bool AnyProtected {get{return (ProtectedSlots|fallArmor|fallMisc|recoverySlots[1]|recoverySlots[2]|recoverySlots[3]|recoverySlots[4]|processingSlots[1]|processingSlots[2]|processingSlots[3]|processingSlots[4])!=0;}}
         public bool HasFallEquipment {get{return fallToken!=0;}}
+        public bool OwnsFallEquipment(long generation,long token,bool misc,int slot)
+        {return generation>0 && generation==Session && token>0 && token==fallToken && IsFallEquipmentSlot(misc,slot);}
         public bool IsProtected(int account,int slot)
         { return account==5?IsFallEquipmentSlot(false,slot):account==6?IsFallEquipmentSlot(true,slot):account>=0 && account<5 && slot>=0 && slot<(account==0?58:40) && (account==0?IsProtected(slot):((recoverySlots[account]|processingSlots[account])&(1UL<<slot))!=0); }
         // A separate owner from recovery: same finite account masks, but no

@@ -189,7 +189,17 @@ namespace JueMingR.TerrariaHost.Items
         private static void Ammo(Item[] __1, ref int[] __2)
         { if (Active && host.Ownership.ProtectedSlots != 0 && ReferenceEquals(__1, host.World.SessionPlayer.inventory)) __2 = __2.Where(i => !host.Ownership.IsProtected(i)).ToArray(); }
         private static bool StartUse(Player __instance, Item __0, ref bool __result)
-        { if (!ReferenceEquals(__instance, host?.World.SessionPlayer) || !Protected(__0) && !PendingDependency(__instance, __0)) return true; __result = false; return false; }
+        {
+            bool current=ReferenceEquals(__instance,host?.World.SessionPlayer);
+            // A rescue keeps both exchange endpoints protected throughout the
+            // native call. Only its exact once-only use may cross this gate;
+            // never relax Protected, which also serves movement/sale consumers.
+            // Other Player objects may not consume an alias of the real owned
+            // item either. Their independent native material searches retain
+            // their own inventory semantics, without borrowing this session.
+            if((!current || !PendingDependency(__instance,__0)) && (!Protected(__0) || current && (host.World.AllowsOwnedFallNativeUse?.Invoke(__instance,__0)??false)))return true;
+            __result=false;return false;
+        }
         private static bool Drop(Player __instance, int __0)
         { return !Protected(__instance.inventory, __0); }
         private static bool QuickStack(Player __0, MethodBase __originalMethod)
