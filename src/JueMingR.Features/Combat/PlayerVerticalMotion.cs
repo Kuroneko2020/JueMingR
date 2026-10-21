@@ -1,5 +1,6 @@
 using System;
 using JueMingR.Platform.Combat;
+using JueMingR.Features.Movement;
 
 namespace JueMingR.Features.Combat
 {
@@ -53,7 +54,13 @@ namespace JueMingR.Features.Combat
                 p.Flipper=p.BaseFlipper || p.Merman || p.Wet && p.FloatInWater;
                 if(p.Merman)p.ReleaseJump=true;
             }
-            if(p.HoldJump)
+            bool water=p.Wet && p.Flipper && !p.Cart;
+            var phase=MovementJumpRules.Before(p.AssistedJumpPhase,p.AssistedJump,p.Down,p.Vy*p.GravityDirection);
+            if(water)phase=MovementJumpPhase.None;
+            bool effectiveJump=MovementJumpRules.Effective(p.HoldJump,phase);
+            int beforeJump=p.Jump;
+            bool candidate=p.AssistedJump && !p.Down && !water && p.Jump<=0 && p.Vy==0 && effectiveJump;
+            if(effectiveJump)
             {
                 // The sampled intent adds only the ordinary native release
                 // premise; a forecast never acquires the live Jump writer.
@@ -67,7 +74,8 @@ namespace JueMingR.Features.Combat
                 {p.Vy=-p.JumpSpeed*p.GravityDirection;p.Jump=p.JumpHeight;if(p.Wet && p.Flipper && p.SwimTime==0)p.SwimTime=30;}
             }
             else p.Jump=0;
-            p.ReleaseJump=!p.HoldJump;
+            p.ReleaseJump=!effectiveJump;
+            p.AssistedJumpPhase=MovementJumpRules.After(phase,candidate,beforeJump,p.Jump,p.Vy*p.GravityDirection);
             float acceleration=p.Gravity;
             if(p.SlowFall && !p.HoverDown && !p.DownDash)acceleration/=p.HoverUp?10:3;
             p.Vy+=acceleration*p.GravityDirection;

@@ -58,6 +58,7 @@ namespace NativeWorldTextProbe
                 Main.LocalPlayer.Update(Main.myPlayer);
                 Require(!Main.LocalPlayer.justJumped,"Isolated Player.Update outside real Main world scope cannot receive an auxiliary edge.");
                 world();Require(Main.LocalPlayer.justJumped && Main.LocalPlayer.jump>0,"Actual Main world -> mapped Player.Update -> original JumpMovement starts held jump.");
+                RelayHeight(context,movement,input,world,output);
                 ResourceAndCleanup(context,movement,input,world);
                 MountedSources(context,movement,input,world);
                 Prediction(context,movement,input,world,output);
@@ -136,6 +137,59 @@ namespace NativeWorldTextProbe
                 "Real Player.Update finalizer preserves original exception and consumed motion while withdrawing only its temporary booleans.");
             Console.WriteLine("PASS MOVEMENT original exhausted-ground-refill/native-frog/remote-intent/post-consumer-exception scope cleanup");
         }
+        private static void RelayHeight(object context,object movement,Action<Keys[]> input,Action world,string output)
+        {
+            foreach(int equipment in new[]{0,ItemID.CloudinaBottle,ItemID.SandstorminaBottle})
+            {
+                var paths=new List<Vector2>[2];int[] second=new int[2];float[] peak=new float[2];
+                for(int mode=0;mode<2;mode++)
+                {
+                    bool assist=mode==1;SetEnabled(movement,0,assist);var p=ResetPlayer();if(equipment!=0)p.armor[3].SetDefaults(equipment);
+                    input(None);input(None);world();world();var path=new List<Vector2>();int starts=0;peak[mode]=p.position.Y;
+                    using(var log=new StreamWriter(Path.Combine(output,"movement-tail-"+equipment+"-"+(assist?"assist":"manual")+".csv")))
+                    {
+                        log.WriteLine("step,y,vy,jump,held,starts");
+                        for(int k=0;k<180;k++)
+                        {
+                            // User-operated reference: hold the complete native
+                            // jump, release while rising after its timer ends,
+                            // then press at the first non-rising boundary.
+                            bool opportunity=p.velocity.Y==0 || p.canJumpAgain_Cloud || p.canJumpAgain_Sandstorm;
+                            bool held=assist || starts==0 || p.jump>0 || p.velocity.Y*p.gravDir>=0 && opportunity;
+                            Keys[] keys=held?Jump:None;input(keys);input(keys);int before=p.jump;world();
+                            if(before<=0 && p.jump>0){starts++;if(starts==2)second[mode]=k;}
+                            path.Add(p.position);peak[mode]=Math.Min(peak[mode],p.position.Y);
+                            log.WriteLine(k+","+p.position.Y+","+p.velocity.Y+","+p.jump+","+held+","+starts);
+                            if(starts==3)break;
+                        }
+                    }
+                    Require(starts==3,"Original-world manual/assisted trajectory completes the extra tail and reaches the next ground jump equipment="+equipment+" assist="+assist);
+                    paths[mode]=path;
+                }
+                Require(second[0]==second[1] && paths[0].Count==paths[1].Count,"No extra wait or early relay versus independent native apex input equipment="+equipment);
+                for(int i=0;i<paths[0].Count;i++)Require(Vector2.Distance(paths[0][i],paths[1][i])<.003f,"Native manual/assisted complete-height path equipment="+equipment+" step="+i);
+                Require(Math.Abs(peak[0]-peak[1])<.003f,"Ordinary and long extra jump retain original full height equipment="+equipment);
+                Console.WriteLine("MOVEMENT MAIN TAIL equipment="+equipment+" manualPeak="+peak[0]+" assistedPeak="+peak[1]+" second="+second[1]+" paths="+paths[1].Count);
+            }
+            // One real cloud -> wing/boot combination exercises the complete
+            // Update consumer sequence; source conversion keeps running while
+            // its jump input is masked. No resources are restored by the test.
+            SetEnabled(movement,0,true);var flight=ResetPlayer();flight.armor[3].SetDefaults(ItemID.CloudinaBottle);flight.armor[4].SetDefaults(ItemID.AngelWings);flight.armor[5].SetDefaults(ItemID.RocketBoots);
+            input(None);input(None);world();world();int last=0,coast=0;bool spent=false,converted=false;
+            for(int k=0;k<150;k++)
+            {
+                int before=flight.jump,rocket=flight.rocketTime;float wing=flight.wingTime;
+                input(Jump);input(Jump);world();
+                if(rocket>0 && flight.rocketTime==0 && flight.wingTime>=wing+rocket*6-1)converted=true;
+                if(before==1)
+                {last++;Require(flight.jump==0 && flight.velocity.Y<0 && flight.wingTime>=wing && flight.rocketDelay==0,"Last complete native tick cannot ignite later wing/boot consumers.");}
+                var state=(PredictionPlayerMotion)context.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcPredictionSource",true).GetMethod("ReadPlayer",F).Invoke(null,new object[]{flight});
+                if(state.AssistedJumpPhase==MovementJumpPhase.Coast){coast++;Require(flight.wingTime>=wing && flight.rocketDelay==0,"Every owned natural tail preserves later native flight start.");}
+                if(flight.wingTime<wing){spent=true;break;}
+            }
+            Require(last>=2 && coast>2 && converted && spent && !flight.canJumpAgain_Cloud,"Actual cloud then wing/boot handoff retains tails and native fuel conversion before eventual flight.");
+            Console.WriteLine("PASS MOVEMENT MAIN TAIL native manual-height oracles; cloud-wing-boots lastTicks="+last+" coast="+coast+" nativeConversion="+converted+" nativeFlight="+spent);
+        }
         private static void MountedSources(object context,object movement,Action<Keys[]> input,Action world)
         {
             SetEnabled(movement,0,true);
@@ -163,6 +217,13 @@ namespace NativeWorldTextProbe
             var source=Get(Get(context,"CombatObservation"),"Prediction");var read=source.GetType().GetMethod("ReadPlayer",F);var terrain=(IPredictionTerrain)Get(source,"Terrain");
             var predicted=(PredictionPlayerMotion)read.Invoke(null,new object[]{p});Require(predicted.AssistedJump && !predicted.Complex,"Ordinary continuous intent is an explicit forecast premise.");
             var environment=new PredictionEnvironment{WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,GravityWorldSurface=Main.worldSurface,WorldSurface=(float)Main.worldSurface};
+            var host=context.GetType().Assembly;var motor=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativePlayerMotion",true);
+            var actor=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.NativeActorContext",true);
+            var wire=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionWire",true);object values=wire.GetField("Players",F).GetValue(null);
+            byte[] sealedPlayer;
+            using(var bytes=new MemoryStream())using(var writer=new BinaryWriter(bytes))
+            {values.GetType().GetMethod("Write",F).Invoke(values,new object[]{writer,p});actor.GetMethod("WritePlayer",F).Invoke(null,new object[]{writer,p});motor.GetMethod("Write",F).Invoke(null,new object[]{writer,p});writer.Flush();sealedPlayer=bytes.ToArray();}
+            var actualStates=new PredictionPlayerMotion[180];
             int starts=0;float maximum=0;
             using(var log=new StreamWriter(Path.Combine(output,"movement-jump-prediction.csv")))
             {
@@ -171,12 +232,35 @@ namespace NativeWorldTextProbe
                 {
                     terrain.Reset();PredictionStop stop;Require(PlayerMotionContinuation.Advance(ref predicted,environment,terrain,out stop),"Continuous ordinary forecast available: "+stop);
                     input(Jump);world();if(p.justJumped)starts++;
+                    actualStates[k]=(PredictionPlayerMotion)read.Invoke(null,new object[]{p});
                     float error=Vector2.Distance(p.position,new Vector2(predicted.X,predicted.Y));maximum=Math.Max(maximum,error);
                     log.WriteLine(k+","+p.position.Y+","+predicted.Y+","+p.velocity.Y+","+predicted.Vy+","+p.jump+","+error);
-                    Require(error<.003f && Math.Abs(p.velocity.Y-predicted.Vy)<.003f && p.jump==predicted.Jump,"Before-action forecast matches actual future held ground jump step="+k+" error="+error);
+                    Require(error<.003f && Math.Abs(p.velocity.Y-predicted.Vy)<.003f && p.jump==predicted.Jump && actualStates[k].AssistedJumpPhase==predicted.AssistedJumpPhase,"Before-action forecast matches actual future held ground jump/phase step="+k+" error="+error);
                 }
             }
             Require(starts>=2,"180 actual original updates include repeated landing/jump events.");
+            // The second ordinary consumer advances only its sealed copy. The
+            // independent original-world answers above were recorded before
+            // entering any restored profile scope; no live owner is consulted.
+            var clone=new Player();object receiver=Activator.CreateInstance(motor,true);Main.player[Main.myPlayer]=clone;
+            try
+            {
+                using((IDisposable)Call(receiver,"UseRestoredProfiles"))
+                {
+                    using(var reader=new BinaryReader(new MemoryStream(sealedPlayer,false)))
+                    {values.GetType().GetMethod("Read",F).Invoke(values,new object[]{reader,clone});actor.GetMethod("ReadPlayer",F).Invoke(null,new object[]{reader,clone});Call(receiver,"Read",reader,Main.myPlayer);}
+                    int coast=0;
+                    for(int k=0;k<actualStates.Length;k++)
+                    {
+                        Call(receiver,"Advance");var expected=actualStates[k];byte[] profile;
+                        using(var bytes=new MemoryStream())using(var writer=new BinaryWriter(bytes)){motor.GetMethod("Write",F).Invoke(null,new object[]{writer,clone});writer.Flush();profile=bytes.ToArray();}
+                        if(profile.Last()==(byte)MovementJumpPhase.Coast)coast++;
+                        Require(Math.Abs(clone.position.Y-expected.Y)<.003f && Math.Abs(clone.velocity.Y-expected.Vy)<.003f && clone.jump==expected.Jump && profile.Last()==(byte)expected.AssistedJumpPhase,"Sealed native ordinary copy advances held/coast/landing/restart step="+k);
+                    }
+                    Require(coast>0,"Native profile phase persists over multiple tail steps.");
+                }
+            }
+            finally{Main.player[Main.myPlayer]=p;}
             var old=(PredictionPlayerMotion)read.Invoke(null,new object[]{p});SetEnabled(movement,0,false);var disabled=(PredictionPlayerMotion)read.Invoke(null,new object[]{p});
             Require(!disabled.AssistedJump && !old.SameSample(disabled),"Disable retires the old forecast premise before reuse.");
             Console.WriteLine("MOVEMENT PREDICTION native-updates=180 repeated-ground-starts="+starts+" maximum-error="+maximum);
@@ -225,7 +309,7 @@ namespace NativeWorldTextProbe
                     {
                         bool edge=p.velocity.Y==0 || p.canJumpAgain_Cloud || p.canJumpAgain_Sandstorm || p.canJumpAgain_Blizzard || p.canJumpAgain_Fart || p.canJumpAgain_Sail ||
                             p.rocketBoots>0 && p.rocketTime>0 && !p.rocketRelease && (p.wingsLogic==0 || p.wingTime<=0);
-                        if(!manualRelease && p.jump==0 && !p.releaseJump && edge){held=false;manualRelease=true;}
+                        if(!manualRelease && p.jump==0 && !p.releaseJump && p.velocity.Y*p.gravDir>=0 && edge){held=false;manualRelease=true;}
                         else if(manualRelease){held=true;manualRelease=false;}
                     }
                     float oldWing=p.wingTime;int oldRocket=p.rocketTime;
@@ -246,7 +330,7 @@ namespace NativeWorldTextProbe
             {
                 Require(observed.Families.All(n=>n>0),"All five actual equipment-produced extra-jump families consumed: "+label+" "+String.Join(",",observed.Families));
                 if(label=="carpet")Require(rocketSpent>0 && carpetTicks>0,"Original rocket then carpet resources really execute.");
-                else Require(wingSpent>0 && observed.WingBoundary>0,"Native jump 1 -> 0 joins held wings without postponing remaining extra jumps.");
+                else Require(wingSpent>0 && observed.WingBoundary>0,"Native jumps retain their complete tails before later original wings consume fuel.");
             }
             Console.WriteLine("MOVEMENT COST label="+label+" round="+round+" warm="+warm+" samples="+updates.Length+" starts="+observed.Starts+" ground="+observed.Ground+" extra="+observed.Extra+" families="+String.Join(",",observed.Families)+" wingSpent="+wingSpent+" rocketDelta="+rocketSpent+" carpetTicks="+carpetTicks+" dashTicks="+dashTicks+" allocated="+allocation+" gc="+(GC.CollectionCount(0)-collections0)+","+(GC.CollectionCount(1)-collections1)+","+(GC.CollectionCount(2)-collections2)+" first-max-frame="+firstSpike+" update="+Distribution(updates)+" full-mapped-world-draw="+Distribution(frames));
             // Sample release after a mapped latency pair; no new intent may be

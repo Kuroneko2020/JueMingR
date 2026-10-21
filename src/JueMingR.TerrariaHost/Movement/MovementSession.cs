@@ -23,10 +23,10 @@ namespace JueMingR.TerrariaHost.Movement
         private readonly PreferenceDocument<MovementOptions> preferences;
         private readonly Stopwatch startup = Stopwatch.StartNew();
         private readonly int thread = Thread.CurrentThread.ManagedThreadId;
-        private Player player;
+        private Player player, intentPlayer;
         private MovementInputFrame frame;
-        private long tick, intentVersion;
-        private bool failed, stopping, permitted;
+        private long tick, intentVersion, intentGeneration, observedMapping = -1;
+        private bool failed, stopping;
         private string failure;
         private PreferenceStatus? reported;
         internal Exception SetupError { get; private set; }
@@ -57,7 +57,7 @@ namespace JueMingR.TerrariaHost.Movement
         public bool SetEnabled(int feature, bool value)
         {
             if (!Available(feature) || !preferences.Set(Value.WithEnabled(feature, value))) return false;
-            if (feature == 0) { intentVersion++; JumpHost.Cancel(); }
+            if (feature == 0) CancelJumpIntent();
             else if (feature == 1) DashHost.Reset();
             return true;
         }
@@ -71,12 +71,14 @@ namespace JueMingR.TerrariaHost.Movement
             if (before != value) DashModeChanged?.Invoke();
             return true;
         }
-        private void ResetIntent() { intentVersion++; DashHost.Reset(); JumpHost.Cancel(); }
+        private void CancelJumpIntent() { if (JumpHost.Cancel()) intentVersion++; }
+        private void ResetIntent() { DashHost.Reset(); CancelJumpIntent(); }
         internal bool BeginUpdate(Player value)
         {
             var options = Value;
             if (!options.SimulatedJumpEnabled && !options.ContinuousDashEnabled && !options.TeleportCorrectionEnabled) return false;
-            if (player != null || !HasWorld(value)) return false;
+            if (player != null) return false;
+            if (!RetainContext(value)) { ResetIntent(); return false; }
             player = value; frame = default(MovementInputFrame); tick++;
             if (options.SimulatedJumpEnabled) JumpHost.BeginUpdate(value, runtime.Generation, tick, input.Mapping);
             return true;
@@ -84,11 +86,14 @@ namespace JueMingR.TerrariaHost.Movement
         internal void CaptureInput(Player value)
         {
             if (!ReferenceEquals(player, value)) return;
+            if (!RetainContext(value)) { ResetIntent(); return; }
+            // A missing mapped/finalized sample is not a release and grants no
+            // native action. Only an actual Capture can lend this epoch's edge.
+            if (!input.CanStartActions) return;
             frame = new MovementInputFrame { Captured = true, Frame = input.Frame, Mapping = input.Mapping, Generation = runtime.Generation, Tick = tick,
                 JumpHeld = value.controlJump, DownHeld = value.controlDown, LeftHeld = value.controlLeft, RightHeld = value.controlRight };
             bool allowed = CanAct(value);
-            if (permitted != allowed) { permitted = allowed; intentVersion++; }
-            if (!allowed) { DashHost.Reset(); JumpHost.Cancel(); }
+            if (!allowed) ResetIntent();
             else DashHost.Sample(value, frame);
         }
         private bool HasWorld(Player value)
@@ -96,51 +101,84 @@ namespace JueMingR.TerrariaHost.Movement
             return !failed && !stopping && runtime.IsSessionActive && Thread.CurrentThread.ManagedThreadId == thread && !Main.dedServ && Main.netMode != 2 && !Main.gameMenu &&
                 Main.myPlayer >= 0 && Main.myPlayer < Main.maxPlayers && ReferenceEquals(value, Main.player[Main.myPlayer]) && value != null && value.active && !value.dead && !value.ghost;
         }
-        internal bool CanAct(Player value)
+        private bool CanRetainMovementContext(Player value)
         {
             var capture = CaptureManager.Instance;
-            return ReferenceEquals(player, value) && HasWorld(value) && frame.Captured && frame.Frame == input.Frame && frame.Mapping == input.Mapping && frame.Generation == runtime.Generation &&
-                input.CanStartActions && !input.HotkeyPointerOwned && !input.HotkeyCapture && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
+            return HasWorld(value) && input.CanRetainIntent && !input.HotkeyPointerOwned && !input.HotkeyCapture && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
                 !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride == null && !Main.mapFullscreen && !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                 (capture == null || !capture.Active) && !value.CCed && !value.isControlledByFilm && value.spectating < 0 && !value.isOperatingAnotherEntity && (CanMovementInput == null || CanMovementInput());
+        }
+        private bool RetainContext(Player value)
+        {
+            if (!CanRetainMovementContext(value)) return false;
+            // Bind retained gestures to the existing Runtime identity; this is
+            // no new session detector. A replacement player cannot inherit them
+            // before the outer Runtime callback has observed its new identity.
+            if (!ReferenceEquals(intentPlayer, value) || intentGeneration != runtime.Generation)
+            { ResetIntent(); intentPlayer = value; intentGeneration = runtime.Generation; }
+            return true;
+        }
+        internal bool CanAct(Player value)
+        {
+            return ReferenceEquals(player, value) && CanRetainMovementContext(value) && frame.Captured && frame.Frame == input.Frame &&
+                frame.Mapping == input.Mapping && frame.Generation == runtime.Generation && input.CanStartActions;
         }
         internal bool CanCorrectTeleport(Player value)
         { return Value.TeleportCorrectionEnabled && CanAct(value) && !input.MapPointerOwned && (CanTeleportPointer == null || CanTeleportPointer()); }
         internal void ObserveInput()
         {
-            // Revoke an old forecast premise before input-stage consumers can
-            // reuse it. This may only cancel: true intent is published later
-            // by the real player's post-takeover JumpMovement boundary.
-            var capture = CaptureManager.Instance;
-            bool allowed = input.CanStartActions && !input.HotkeyPointerOwned && !input.HotkeyCapture && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
-                !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride == null && !Main.mapFullscreen && !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
-                (capture == null || !capture.Active) && (CanMovementInput == null || CanMovementInput());
-            if (!allowed) { DashHost.Reset(); JumpHost.Cancel(); permitted = false; }
-            else if (!Value.SimulatedJumpEnabled || !PlayerInput.Triggers.Current.Jump || PlayerInput.Triggers.Current.Down) JumpHost.Cancel();
+            // Context revocation is valid even on an empty outer Update. Input
+            // edges are meaningful only once per fresh trusted Mapping; absence
+            // of mapping neither releases a key nor advances a gesture clock.
+            Player local = Main.myPlayer >= 0 && Main.myPlayer < Main.maxPlayers ? Main.player[Main.myPlayer] : null;
+            if (!RetainContext(local)) { ResetIntent(); return; }
+            if (!Value.SimulatedJumpEnabled) CancelJumpIntent();
+            if (!input.CanStartActions || observedMapping == input.Mapping) return;
+            observedMapping = input.Mapping;
+            if (!PlayerInput.Triggers.Current.Jump || PlayerInput.Triggers.Current.Down) CancelJumpIntent();
         }
         internal void BeforeJump(Player value)
         {
             if (!ReferenceEquals(player, value)) return;
             bool allowed = CanAct(value);
-            if (!allowed || !Value.SimulatedJumpEnabled) JumpHost.Cancel();
+            if (!allowed)
+            {
+                if (!CanRetainMovementContext(value)) ResetIntent();
+                return;
+            }
+            if (!Value.SimulatedJumpEnabled) CancelJumpIntent();
             JumpHost.BeforeJump(value, Value.SimulatedJumpEnabled, allowed, frame.JumpHeld, frame.DownHeld, intentVersion);
         }
         internal void AfterJump(Player value) { if (ReferenceEquals(player, value)) JumpHost.AfterJump(value, CanAct(value), frame.JumpHeld, frame.DownHeld); }
+        internal void AfterFlight(Player value)
+        {
+            // Native flight already ran. Retiring our span is observation, not
+            // permission to start an action; even an unsampled epoch must not
+            // let a later coast mask take over that existing native flight.
+            if (ReferenceEquals(player, value) && Thread.CurrentThread.ManagedThreadId == thread) JumpHost.AfterFlight(value);
+        }
+        internal bool EffectiveJump(Player value, bool nativeJump)
+        {
+            // Native release and a disabled feature need no movement gate at
+            // the eleven fixed reads; neither can request an assisted mask.
+            if (!nativeJump || !Value.SimulatedJumpEnabled) return nativeJump;
+            return CanAct(value) ? JumpHost.EffectiveJump(value, true) : nativeJump;
+        }
         internal void EndUpdate(Player value)
         {
             if (!ReferenceEquals(player, value)) return;
             try
             {
                 DashHost.EndUpdate(value); JumpHost.EndUpdate(value);
-                // Text and other native takeovers can skip the capture block
-                // entirely. Absence of a trusted sample retires old intent;
-                // it is never interpreted as a neutral release to replay later.
-                if (!frame.Captured || !CanAct(value)) { DashHost.Reset(); JumpHost.Cancel(); permitted = false; }
+                // Returning borrowed inputs is unconditional. Retaining the
+                // historical gesture depends on real context, not on whether
+                // this scope happened to reach the mapped Capture boundary.
+                if (!RetainContext(value)) ResetIntent();
             }
             finally { player = null; frame = default(MovementInputFrame); }
         }
-        public void OnSessionStarted() { ResetIntent(); }
-        public void OnSessionEnded() { if (player != null) EndUpdate(player); ResetIntent(); JumpHost.ClearSession(); }
+        public void OnSessionStarted() { ResetIntent(); intentPlayer = null; observedMapping = -1; }
+        public void OnSessionEnded() { if (player != null) EndUpdate(player); ResetIntent(); intentPlayer = null; observedMapping = -1; JumpHost.ClearSession(); }
         public void Update(ulong updateTick)
         {
             if (!preferences.Snapshot.IsLoaded && startup.ElapsedMilliseconds >= 2000) preferences.AbandonSlowLoad();

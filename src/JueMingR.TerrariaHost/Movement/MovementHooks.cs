@@ -22,7 +22,9 @@ namespace JueMingR.TerrariaHost.Movement
             {
                 Patch(harmony, AccessTools.DeclaredMethod(typeof(Main), "DoUpdateInWorld_Inner"), "BeginWorld", null, null, "EndWorld");
                 Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "Update", new[] { typeof(int) }), "BeginPlayer", null, "InputBoundary", "EndPlayer");
-                Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "JumpMovement"), "BeforeJump", "AfterJump", null, null);
+                Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "JumpMovement"), "BeforeJump", "AfterJump", "JumpReads", null);
+                Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "CarpetMovement"), null, null, "CarpetReads", null);
+                Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "WingMovement"), null, "AfterFlight", null, null);
                 owner = value;
             }
             catch { foreach (var target in targets) harmony.Unpatch(target, HarmonyPatchType.All, Id); targets.Clear(); throw; }
@@ -43,6 +45,7 @@ namespace JueMingR.TerrariaHost.Movement
         { if (__state.Active) owner?.EndUpdate(__instance); return __exception; }
         private static void BeforeJump(Player __instance) { owner?.BeforeJump(__instance); }
         private static void AfterJump(Player __instance) { owner?.AfterJump(__instance); }
+        private static void AfterFlight(Player __instance) { owner?.AfterFlight(__instance); }
         private static void Capture(Player player) { owner?.CaptureInput(player); }
         private static IEnumerable<CodeInstruction> InputBoundary(IEnumerable<CodeInstruction> source)
         {
@@ -62,8 +65,29 @@ namespace JueMingR.TerrariaHost.Movement
                 code.InsertRange(i, new[] { load, new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(MovementHooks), "Capture")) }); i += 13; count++;
             }
             if (count != 1) throw new InvalidOperationException("movement-input-dual-key-boundary:" + count);
+            var jump=AccessTools.DeclaredMethod(typeof(Player),"JumpMovement");var grab=AccessTools.DeclaredMethod(typeof(Player),"GrabItems");
+            int start=-1,end=-1;
+            for(int i=0;i<code.Count;i++){if(code[i].Calls(jump)){if(start>=0)throw new InvalidOperationException("movement-jump-boundary-duplicate");start=i;}if(code[i].Calls(grab)){if(end>=0)throw new InvalidOperationException("movement-grab-boundary-duplicate");end=i;}}
+            if(start<0 || end<=start)throw new InvalidOperationException("movement-flight-boundary-order");
+            return MaskReads(code,start+1,end,8,"update-flight");
+        }
+        private static IEnumerable<CodeInstruction> JumpReads(IEnumerable<CodeInstruction> source)
+        {var code=new List<CodeInstruction>(source);return MaskReads(code,0,code.Count,1,"jump");}
+        private static IEnumerable<CodeInstruction> CarpetReads(IEnumerable<CodeInstruction> source)
+        {var code=new List<CodeInstruction>(source);return MaskReads(code,0,code.Count,2,"carpet");}
+        private static List<CodeInstruction> MaskReads(List<CodeInstruction> code,int start,int end,int expected,string name)
+        {
+            var jump=AccessTools.Field(typeof(Player),"controlJump");int count=0;
+            // Keep each original read (and its labels/exception blocks) in
+            // place. Only its stack value is filtered; no Player field writes,
+            // saved-input restoration, branch rewrites or per-tick discovery.
+            for(int i=end-1;i>=start;i--)if(code[i].LoadsField(jump))
+            {code.InsertRange(i+1,new[]{new CodeInstruction(OpCodes.Ldarg_0),new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(MovementHooks),"EffectiveJump"))});count++;}
+            if(count!=expected)throw new InvalidOperationException("movement-effective-jump-"+name+":"+count);
             return code;
         }
+        private static bool EffectiveJump(bool nativeJump,Player player)
+        {return owner==null?nativeJump:owner.EffectiveJump(player,nativeJump);}
         private static bool BranchFalse(CodeInstruction code) { return code.opcode == OpCodes.Brfalse || code.opcode == OpCodes.Brfalse_S; }
     }
 }

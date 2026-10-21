@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using Microsoft.Xna.Framework;
 using Terraria;
+using JueMingR.Features.Movement;
+using JueMingR.Platform.Combat;
 
 namespace JueMingR.TerrariaHost.Combat.Prediction
 {
@@ -10,7 +12,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     // tile destruction or new input edges. Geometry remains the original game.
     internal sealed class NativePlayerMotion
     {
-        private struct Profile { internal bool Complex,AssistedJump; internal float DefaultGravity; }
+        private struct Profile { internal bool Complex,AssistedJump; internal float DefaultGravity; internal MovementJumpPhase JumpPhase; }
         private readonly Profile[] profiles=new Profile[Main.maxPlayers];
         private readonly Player[] restoredPlayers=new Player[Main.maxPlayers];
         private int restoring;
@@ -50,6 +52,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // player updated last. Never treat it as this player's observation.
             writer.Write(profile.DefaultGravity);
             writer.Write(profile.AssistedJump);
+            writer.Write((byte)profile.JumpPhase);
         }
         private static Profile Premise(Player player)
         {
@@ -59,12 +62,13 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(slot<0 || slot>=restored.profiles.Length || !ReferenceEquals(restored.restoredPlayers[slot],player))throw new InvalidDataException("Player movement profile identity.");
                 return restored.profiles[slot];
             }
-            long version;bool assisted=Movement.MovementJumpHost.ReadIntent(player,out version);
-            return new Profile{DefaultGravity=Player.defaultGravity,AssistedJump=assisted};
+            long version;MovementJumpPhase phase;bool assisted=Movement.MovementJumpHost.ReadState(player,out version,out phase);
+            return new Profile{DefaultGravity=Player.defaultGravity,AssistedJump=assisted,JumpPhase=phase};
         }
         internal void Read(BinaryReader reader,int slot)
         {
-            var profile=new Profile{Complex=reader.ReadBoolean(),DefaultGravity=reader.ReadSingle(),AssistedJump=reader.ReadBoolean()};
+            var profile=new Profile{Complex=reader.ReadBoolean(),DefaultGravity=reader.ReadSingle(),AssistedJump=reader.ReadBoolean(),JumpPhase=(MovementJumpPhase)reader.ReadByte()};
+            if(profile.JumpPhase>MovementJumpPhase.Coast || !profile.AssistedJump && profile.JumpPhase!=MovementJumpPhase.None)throw new InvalidDataException("Player jump phase premise.");
             if(!Finite(profile.DefaultGravity) || profile.DefaultGravity<0 || profile.DefaultGravity>128)throw new InvalidDataException("Player gravity premise.");
             profiles[slot]=profile;
             restoredPlayers[slot]=Main.player[slot];
@@ -118,7 +122,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     // Native UpdateDead clears this aggregate; Ghost returns
                     // earlier and deliberately retains its distinct behavior.
                     if(player.dead){player.numMinions=0;player.slotsMinions=0;continue;}
-                    Step(player,profiles[slot]);
+                    profiles[slot]=Step(player,profiles[slot]);
                 }
         }
         private static bool HasUpdateArea(Player player)
@@ -128,7 +132,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(WorldGen.InWorld(x,y,4) && NativeTileBoundary.Read(x,y)!=null && NativeTileBoundary.Read(x-3,y)!=null && NativeTileBoundary.Read(x+3,y)!=null && NativeTileBoundary.Read(x,y-3)!=null && NativeTileBoundary.Read(x,y+3)!=null)return true;
             player.outOfRange=true;player.numMinions=0;player.slotsMinions=0;player.itemAnimation=0;player.netOffset=Vector2.Zero;return false;
         }
-        private void Step(Player p,Profile profile)
+        private Profile Step(Player p,Profile profile)
         {
             if(p.width<1 || p.height<1 || p.width>512 || p.height>512 || p.gravDir!=1f && p.gravDir!=-1f || !Finite(p.gravity) || !Finite(p.maxFallSpeed) || !Finite(p.runAcceleration) || !Finite(p.runSlowdown) || !Finite(p.maxRunSpeed))throw new InvalidDataException("Player movement premise.");
             float speed;bool ordinaryBuffs=AdvanceBuffClocks(p,out speed);
@@ -207,7 +211,12 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 p.accFlipper=flipper || p.merman || p.wet && p.ShouldFloatInWater;
                 if(p.merman)p.releaseJump=true;
                 bool justJumped=false;
-                if(p.controlJump)
+                var phase=MovementJumpRules.Before(profile.JumpPhase,profile.AssistedJump,p.controlDown,p.velocity.Y*p.gravDir);
+                bool water=p.wet && p.accFlipper && !cart;if(water)phase=MovementJumpPhase.None;
+                bool effectiveJump=MovementJumpRules.Effective(p.controlJump,phase);
+                int beforeJump=p.jump;
+                bool candidate=profile.AssistedJump && !p.controlDown && !water && p.jump<=0 && p.velocity.Y==0 && effectiveJump;
+                if(effectiveJump)
                 {
                     if(profile.AssistedJump && !p.controlDown && p.jump<=0 && (p.velocity.Y==0 || p.wet && p.accFlipper && !cart))p.releaseJump=true;
                     if(p.jump>0){if(p.velocity.Y==0)p.jump=0;else{p.velocity.Y=-jumpSpeed*p.gravDir;if(p.merman && !cart){if(p.swimTime<=10)p.swimTime=30;}else p.jump--;}}
@@ -215,6 +224,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     p.releaseJump=false;
                 }
                 else{p.jump=0;p.releaseJump=true;}
+                profile.JumpPhase=MovementJumpRules.After(phase,candidate,beforeJump,p.jump,p.velocity.Y*p.gravDir);
                 // Flight time resets after jump state, while fatigue recovery
                 // occurs before horizontal parameters. Reordering these loses
                 // the bee's real fatigue-driven speed and landing lifecycle.
@@ -286,6 +296,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             }
             if(p.position!=old || p.controlLeft || p.controlRight || p.controlJump)Quality|=1;
             if(!Finite(p.position.X) || !Finite(p.position.Y) || !Finite(p.velocity.X) || !Finite(p.velocity.Y))throw new InvalidDataException("Nonfinite player continuation.");
+            return profile;
         }
         private static bool AdvanceBuffClocks(Player p,out float speed)
         {

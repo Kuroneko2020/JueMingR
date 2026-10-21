@@ -27,6 +27,15 @@ namespace JueMingR.ArchitectureTests
                 Require(!original.SameSample(changed),"Owner/session revision retires an old premise even with Jump held.");
                 changed=original;changed.AssistedOrdinarySpan=true;
                 Require(!original.SameSample(changed),"A changed future equipment handoff cannot reuse the old player premise.");
+                changed=original;changed.AssistedJumpPhase=MovementJumpPhase.Coast;
+                Require(!original.SameSample(changed),"Owned natural tail is an exact captured premise, independent of physical held input.");
+                Require(MovementJumpRules.Before(MovementJumpPhase.Coast,true,false,.1f)==MovementJumpPhase.None && MovementJumpRules.Before(MovementJumpPhase.Coast,true,false,-.1f)==MovementJumpPhase.Coast,"A tail ends on the gravity-relative sign boundary, without exact-zero waiting.");
+                Require(MovementJumpRules.After(MovementJumpPhase.None,false,1,0,-5)==MovementJumpPhase.None,"An external held ascent cannot acquire an unregistered tail.");
+                var lastTick=new PredictionPlayerMotion{AssistedJump=true,AssistedJumpPhase=MovementJumpPhase.Held,HoldJump=true,Jump=1,Vy=-2,JumpSpeed=5,Gravity=.4f,GravityDirection=1,MaxFall=10};
+                PlayerVerticalMotion.Step(ref lastTick,default(PredictionEnvironment));
+                Require(lastTick.Jump==0 && lastTick.AssistedJumpPhase==MovementJumpPhase.Coast && Math.Abs(lastTick.Vy+4.6f)<.0001f && lastTick.HoldJump,"Last held tick remains native and physical input remains held.");
+                PlayerVerticalMotion.Step(ref lastTick,default(PredictionEnvironment));
+                Require(lastTick.AssistedJumpPhase==MovementJumpPhase.Coast && Math.Abs(lastTick.Vy+4.2f)<.0001f && lastTick.ReleaseJump && lastTick.HoldJump,"Ordinary tail advances gravity under effective release without rewriting sampled hold.");
                 var prefix=new PredictionPlayerMotion{Complex=true,AssistedJump=true,AssistedOrdinarySpan=true,HoldJump=true,Jump=4,Vy=-2,JumpSpeed=5,Gravity=.4f,GravityDirection=1,MaxFall=10};
                 Require(PlayerMotionContinuation.OrdinaryStep(prefix),"A future equipment handoff does not erase an already-started ordinary span.");
                 var boundary=prefix;boundary.Jump=1;Require(!PlayerMotionContinuation.OrdinaryStep(boundary),"Last held action retains the conditional future handoff.");

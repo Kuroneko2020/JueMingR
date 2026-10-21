@@ -38,6 +38,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Combat.NpcIdentity", "JueMingR.Platform.Combat.PredictionAssumption", "JueMingR.Platform.Combat.PredictionStop",
                 "JueMingR.Platform.Combat.PredictionStrategy", "JueMingR.Platform.Combat.PredictionQuality", "JueMingR.Platform.Combat.PredictionFailureLayer",
                 "JueMingR.Platform.Combat.PredictionPlayerMotion",
+                "JueMingR.Platform.Combat.MovementJumpPhase",
                 // DD2's actual target search needs immutable player/pet and
                 // aggro facts shared by Host capture and the pure feature model.
                 "JueMingR.Platform.Combat.PredictionInvasionPlayer", "JueMingR.Platform.Combat.PredictionInvasionPlayers",

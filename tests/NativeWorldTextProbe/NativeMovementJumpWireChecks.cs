@@ -28,16 +28,20 @@ namespace NativeWorldTextProbe
             int cases=0;
             try
             {
-                foreach(bool startingDash in new[]{false,true})foreach(bool assisted in new[]{false,true})foreach(bool complex in new[]{false,true})
+                foreach(bool startingDash in new[]{false,true})foreach(bool assisted in new[]{false,true})foreach(bool complex in new[]{false,true})foreach(int phase in new[]{0,1,2})
                 {
                     var source=new Player{active=true,whoAmI=Main.myPlayer,controlJump=true,releaseJump=false,position=new Vector2(700,900)};
                     source.grappling[0]=-1;source.hasJumpOption_Cloud=complex;source.dashDelay=startingDash?-1:0;Main.player[Main.myPlayer]=source;
                     var npc=new NPC();npc.SetDefaults(NPCID.BlueSlime);npc.active=true;npc.whoAmI=0;npc.target=Main.myPlayer;npc.targetRect=source.Hitbox;Main.npc[0]=npc;
                     Call(jump,"ClearSession");Call(jump,"BeginUpdate",source,1L,++cases,1L);
-                    Call(jump,"BeforeJump",source,assisted,true,true,false,1L);Call(jump,"EndUpdate",source);
+                    Call(jump,"BeforeJump",source,assisted,true,true,false,1L);
+                    if(assisted && phase>0){source.JumpMovement();Call(jump,"AfterJump",source,true,true,false);}
+                    Call(jump,"EndUpdate",source);
+                    if(assisted && phase==2)while(source.jump>0)
+                    {Call(jump,"BeginUpdate",source,1L,++cases,1L);Call(jump,"BeforeJump",source,true,true,true,false,1L);source.JumpMovement();Call(jump,"AfterJump",source,true,true,false);Call(jump,"EndUpdate",source);}
                     var expected=alignment.GetMethod("Observe",F).Invoke(null,new object[]{1000L,new[]{0},new int[0],0});
                     byte[] profile=Write(motion.GetMethod("Write",F),null,source);
-                    Require((profile[0]!=0)==(startingDash || assisted && complex) && (profile[profile.Length-1]!=0)==assisted,"Live writer records true/false intent and its exact complex support source.");
+                    Require((profile[0]!=0)==(startingDash || assisted && complex) && (profile[profile.Length-2]!=0)==assisted && profile[profile.Length-1]==(assisted?phase:0),"Live writer records true/false intent, successful native phase and exact complex support source.");
                     byte[] captured;
                     using(var bytes=new MemoryStream())using(var writer=new BinaryWriter(bytes))
                     {
@@ -90,7 +94,7 @@ namespace NativeWorldTextProbe
                         }
                         // Existing worker code may encode another leaf while a
                         // nested receiver is active. Each scope owns its page.
-                        byte[] neutral=(byte[])profile.Clone();neutral[0]=(byte)(startingDash?1:0);neutral[neutral.Length-1]=0;
+                        byte[] neutral=(byte[])profile.Clone();neutral[0]=(byte)(startingDash?1:0);neutral[neutral.Length-2]=neutral[neutral.Length-1]=0;
                         object nested=Activator.CreateInstance(motion,true);
                         using((IDisposable)Call(nested,"UseRestoredProfiles"))
                         {
@@ -119,7 +123,7 @@ namespace NativeWorldTextProbe
                         Require(profile.SequenceEqual(Write(motion.GetMethod("Write",F),null,copy)),"Receiver also retains the captured default-gravity source.");
                         Player.defaultGravity=gravity;
                     }
-                    Require(Write(motion.GetMethod("Write",F),null,copy).Last()==0,"Normal receiver exit returns to live false intent.");
+                    Require(Write(motion.GetMethod("Write",F),null,copy).Reverse().Skip(1).First()==0,"Normal receiver exit returns to live false intent.");
                     using((IDisposable)Call(receiver,"UseRestoredProfiles"))
                         Refuses(()=>Write(motion.GetMethod("Write",F),null,copy),"A later request cannot reuse an unread prior player page.");
                     bool escaped=false;
@@ -129,7 +133,7 @@ namespace NativeWorldTextProbe
                         {ReadProfile(receiver,profile,copy.whoAmI);throw new InvalidOperationException("owned-root-receiver-failure");}
                     }
                     catch(InvalidOperationException e){escaped=e.Message=="owned-root-receiver-failure";}
-                    Require(escaped && Write(motion.GetMethod("Write",F),null,copy).Last()==0,"Exceptional root exit clears the receiver and restores live sampling.");
+                    Require(escaped && Write(motion.GetMethod("Write",F),null,copy).Reverse().Skip(1).First()==0,"Exceptional root exit clears the receiver and restores live sampling.");
                 }
                 Console.WriteLine("PASS MOVEMENT JUMP wire native player pages/full alignment cases="+cases+"; true/false, ordinary/complex, evolving mechanism, no live owner, nested/reentry/exception/clone/request cleanup");
             }

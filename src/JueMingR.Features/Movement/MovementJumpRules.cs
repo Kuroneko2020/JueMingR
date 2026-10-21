@@ -1,3 +1,5 @@
+using JueMingR.Platform.Combat;
+
 namespace JueMingR.Features.Movement
 {
     // The native held-jump span must finish before any new release edge. Both
@@ -7,6 +9,18 @@ namespace JueMingR.Features.Movement
     {
         public static bool Release(bool intent,bool down,int remaining,bool opportunity)
         {return intent && !down && remaining<=0 && opportunity;}
+        public static MovementJumpPhase Before(MovementJumpPhase phase,bool intent,bool down,float directedVelocity)
+        {return !intent || down || phase==MovementJumpPhase.Coast && directedVelocity>=0?MovementJumpPhase.None:phase;}
+        public static bool Effective(bool nativeJump,MovementJumpPhase phase)
+        {return nativeJump && phase!=MovementJumpPhase.Coast;}
+        // Only a pre-registered native start may establish Held. In particular,
+        // enabling assistance during an external ascent cannot claim its tail.
+        public static MovementJumpPhase After(MovementJumpPhase phase,bool candidate,int before,int remaining,float directedVelocity)
+        {
+            if(candidate && before<=0 && remaining>0 && directedVelocity<0)return MovementJumpPhase.Held;
+            if(phase==MovementJumpPhase.Held && remaining<=0)return directedVelocity<0?MovementJumpPhase.Coast:MovementJumpPhase.None;
+            return phase;
+        }
     }
 
     public enum MovementJumpOwner { None, SimulatedJump, FallProtection }
