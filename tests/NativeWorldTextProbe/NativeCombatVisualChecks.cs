@@ -186,7 +186,7 @@ namespace NativeWorldTextProbe
             var title=elements.Single(e=>(string)GetOptional(e,"Text")=="辅助瞄准设置");var policy=Get(Find("ObservationPolicy"),"Rect");var dummy=Get(Find("ObservationDummy"),"Rect");
             Require(Math.Abs(CenterY(title)-CenterY(Find("ObservationPolicy")))<1 && (float)Get(dummy,"Y")== (float)Get(policy,"Y"),"title and all three cycling controls share one compact row");
             Require(510-(float)Get(dummy,"X")-(float)Get(dummy,"Width")>=(float)Get(dummy,"Width")+8,"first row reserves room for a future fourth real control");
-            Require(CenterY(Find("ObservationCollisionOn"))<CenterY(Find("ObservationPathOn")) && CenterY(Find("ObservationPathOn"))<CenterY(Find("CombatAutoClickOn")),"two independent display rows precede existing controls");
+            Require(CenterY(Find("ObservationCollisionOn"))<CenterY(Find("CombatAutoClickOn")) && !elements.Any(e=>Get(e,"Command").ToString()=="ObservationPathOn"),"public combat page keeps collision row and no hidden Path row");
             Apply("ObservationPolicy");Apply("ObservationCenter");Apply("ObservationDummy");Require(settings.Value.ClearLine && settings.Value.MouseCenter && settings.Value.Dummy,"shared choices actually persisted");
             var field=Find("ObservationRadius");
             foreach(int value in new[]{0,25,50})

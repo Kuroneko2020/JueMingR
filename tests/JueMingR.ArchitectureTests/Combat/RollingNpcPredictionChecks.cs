@@ -11,6 +11,7 @@ namespace JueMingR.ArchitectureTests
             SampleReentry();
             FiniteFlight();
             ImmutableGeometry();
+            PlayerConditionOwnership();
             ArmoredDayPursuit();
             ContinuationPlayerPremise();
             SlimeContinuation();
@@ -439,6 +440,27 @@ namespace JueMingR.ArchitectureTests
             }
         }
         private static void Require(bool value,string text){if(!value)throw new InvalidOperationException(text);}
+        private static void PlayerConditionOwnership()
+        {
+            var token=new object();var p=new PredictionPlayerMotion{PlayerToken=token,PlayerIndex=1,X=500,Y=300,Width=20,Height=40,GravityDirection=1,Gravity=.4f,MaxFall=10,MaxSpeed=3,Acceleration=.08f,Slowdown=.2f};
+            var n=PrefixState();n.Identity=new NpcIdentity(1,new object(),4,1,2,2);n.Style=2;
+            var env=new PredictionEnvironment{PlayerIndex=1,PlayerX=510,PlayerY=320,PlayerWidth=20,PlayerHeight=40,WorldWidth=4200,WorldHeight=1200,WorldSurface=400};
+            var held=new RollingNpcPrediction().Prepare(new[]{n},1,0,10,20,1,env,p,new EmptyTerrain());
+            Require(held!=null && held.PlayerCondition.Kind==PredictionPlayerConditionKind.HeldControls && ReferenceEquals(held.PlayerCondition.Sample.PlayerToken,token) && held.PlayerCondition.Sample.PlayerIndex==1,"Real rolling producer seals the actual held-control player at publication.");
+            p.Grappled=true;p.ObservationMechanism=1;
+            var observed=new RollingNpcPrediction().Prepare(new[]{n},1,0,10,20,1,env,p,new EmptyTerrain());
+            Require(observed!=null && observed.PlayerCondition.Kind==PredictionPlayerConditionKind.CurrentObservation,"Bounded player policy seals observation mode, not entry intent.");
+            n.Style=-1;
+            var independent=new RollingNpcPrediction().Prepare(new[]{n},1,0,10,20,1,env,p,new EmptyTerrain());
+            Require(independent!=null && independent.PlayerCondition.Kind==PredictionPlayerConditionKind.None,"A model without player motion reads seals None independently of source payload absence.");
+            foreach(var path in new[]{held,observed,independent})
+            {
+                NpcTrajectory window;Require(path.TryWindow(11,4,2,out window) && ReferenceEquals(window.PlayerCondition,path.PlayerCondition),"Window retains its own immutable player condition.");
+                var copy=path.PlayerCondition.Sample;copy.Up=!copy.Up;Require(path.PlayerCondition.Sample.Up!=copy.Up,"Returned player sample is a value copy.");
+                var value=new NpcTrajectory(new NpcIdentity(1,null,4,1,2,2),10,1,path.Assumptions,PredictionStop.None,new[]{path[0],path[1]},2,playerCondition:path.PlayerCondition);
+                Require(ReferenceEquals(value.BindIdentity(new NpcIdentity(1,n.Identity.Token,4,1,2,2)).PlayerCondition,path.PlayerCondition) && ReferenceEquals(value.Republish(11,2).PlayerCondition,path.PlayerCondition),"Identity binding and permitted republication retain the original producer condition.");
+            }
+        }
         private static void ImmutableGeometry()
         {
             var points=new NpcTrajectoryPoint[121];

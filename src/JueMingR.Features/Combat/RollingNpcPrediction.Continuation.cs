@@ -93,7 +93,7 @@ namespace JueMingR.Features.Combat
                 // never Republish or a time waiver for an old conditional path.
                 var origin=path.CalculationToken as ContinuationOrigin;
                 var token=new ContinuationOrigin(origin?.OriginalCalculationToken??path.CalculationToken,origin?.OriginalCaptureTick??path.CaptureTick,path.CaptureTick);
-                var result=new NpcTrajectory(current.Identity,tick,++owner.version,path.Assumptions,PredictionStop.None,output,required+1,PredictionStrategy.RollingConditional,epoch,path.Quality,calculationToken:token);
+                var result=new NpcTrajectory(current.Identity,tick,++owner.version,path.Assumptions,PredictionStop.None,output,required+1,PredictionStrategy.RollingConditional,epoch,path.Quality,calculationToken:token,playerCondition:head.PlayerCondition);
                 owner.Continuation=new CandidateContinuation(headProof.next,tailProof.last,e,p,advanced,result);
                 // The tail was computed at a future absolute tick, but it is
                 // not a live observation. Restore history to the independently

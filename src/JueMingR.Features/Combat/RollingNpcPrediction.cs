@@ -36,7 +36,7 @@ namespace JueMingR.Features.Combat
         // it never permits retimestamping a conditional trajectory.
         public bool FixedInputResult {get;private set;}
         public void Clear(){resumable=false;progress=default(Progress);calculationToken=null;Continuation=null;Array.Clear(continuationSample,0,continuationSample.Length);FixedInputResult=false;previous=default(NpcMotionState);previousPlayer=default(PredictionPlayerMotion);previousPlayerAdvanced=resultPlayerAdvanced=false;priorTick=resultTick=-1;result=null;resultTerrain=null;ClearPlayerFixedPoint();Array.Clear(work,0,work.Length);}
-        public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null,bool firstPlayerStepCompleted=false,int plannedHorizon=0)
+        public NpcTrajectory Prepare(NpcMotionState[] source,int count,int selected,long tick,int required,long epoch,PredictionEnvironment environment,PredictionPlayerMotion player,IPredictionTerrain terrain,bool[] motionRoles=null,bool firstPlayerStepCompleted=false,int plannedHorizon=0,object absentPlayerToken=null,int absentPlayerSlot=-1)
         {
             FailureLayer=PredictionFailureLayer.Source;
             if(plannedHorizon==0)plannedHorizon=required;
@@ -315,7 +315,15 @@ namespace JueMingR.Features.Combat
             if(conditionalVisibility && !needsPlayer)quality=PredictionQuality.LimitedObservation;
             FixedInputResult=!budgetPaused && fixedInputs && !observedPlayer && quality==PredictionQuality.StructuredApproximation && stop==PredictionStop.None && length==required+1 &&
                 (assumptions&(PredictionAssumption.RandomRepresentative|PredictionAssumption.CurrentPlayerObservation|PredictionAssumption.UnmodeledDamageEffects|PredictionAssumption.UnmodeledStatusEffects))==0;
-            result=budgetPaused && length==1?null:new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality,gravityNeeded && initialPlayer.PlayerToken!=null?new PredictionGravitySources(gravityPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,firstPlayerStepCompleted,current.Identity,tick):null,wallNeeded && initialPlayer.PlayerToken!=null?new PredictionWallSources(wallPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,current.Identity,tick):null,budgetPaused,calculationToken);resultFailure=FailureLayer;
+            // Seal the FINAL solve premise: a later phase or fallback may have
+            // acquired/changed it after the entry needsPlayer decision.
+            var playerCondition=PredictionPlayerCondition.None;
+            if(needsPlayer)playerCondition=new PredictionPlayerCondition(observedPlayer?PredictionPlayerConditionKind.CurrentObservation:PredictionPlayerConditionKind.HeldControls,initialPlayer);
+            // A dead/missing target still supplied an observed visibility fact;
+            // NoPlayerMotionNeeded cannot erase that distinct condition.
+            else if(conditionalVisibility)playerCondition=new PredictionPlayerCondition(PredictionPlayerConditionKind.CurrentObservation,
+                new PredictionPlayerMotion{PlayerToken=absentPlayerToken,PlayerIndex=absentPlayerSlot},false);
+            result=budgetPaused && length==1?null:new NpcTrajectory(current.Identity,tick,++version,assumptions,stop,points,length,PredictionStrategy.RollingConditional,epoch,quality,gravityNeeded && initialPlayer.PlayerToken!=null?new PredictionGravitySources(gravityPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,firstPlayerStepCompleted,current.Identity,tick):null,wallNeeded && initialPlayer.PlayerToken!=null?new PredictionWallSources(wallPoints,length,initialPlayer.PlayerToken,initialPlayer.PlayerIndex,current.Identity,tick):null,budgetPaused,calculationToken,playerCondition);resultFailure=FailureLayer;
             if(retain && FixedInputResult && SameContinuationPlayer(initialPlayer,firstPlayer) && SameContinuationPlayer(initialPlayer,player))
                 Continuation=new CandidateContinuation(firstState,work[0],environment,initialPlayer,firstPlayerStepCompleted,result);
             return result;

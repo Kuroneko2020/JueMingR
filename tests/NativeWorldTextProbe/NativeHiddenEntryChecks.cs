@@ -159,7 +159,7 @@ namespace NativeWorldTextProbe
             };
         }
 
-        private sealed class Gesture
+        internal sealed class Gesture
         {
             internal readonly object Shell, State, Layout, Page;
             private readonly object input, renderer, oldClock, oldForeground;

@@ -176,6 +176,7 @@ namespace JueMingR.ArchitectureTests
             var shortResult=segmented.Prepare(new[]{plant},1,0,10,2,1,e,player,delayed,null,false,120);
             var extended=segmented.Prepare(new[]{plant},1,0,10,120,1,e,player,delayed,null,false,120);
             Require(shortResult.Count==3 && extended.Count==121 && !ReferenceEquals(shortResult.CalculationToken,extended.CalculationToken),"A later fallback restarts the condition generation instead of appending to the earlier premise.");
+            Require(shortResult.PlayerCondition.Kind==PredictionPlayerConditionKind.HeldControls && extended.PlayerCondition.Kind==PredictionPlayerConditionKind.CurrentObservation && shortResult.PlayerCondition.Sample.SameSample(player) && extended.PlayerCondition.Sample.SameSample(player),"An actual later player-geometry fallback seals the final observation condition without rewriting the old held-control prefix.");
             for(int i=0;i<a.Count;i++)Require(a[i].Bounds.Equals(extended[i].Bounds),"An extension-triggered player fallback keeps the same complete observation premise at "+i);
             var unknown=new LocalTerrain{FailPlayerAt=1,Unknown=true};
             var c=new RollingNpcPrediction().Prepare(new[]{plant},1,0,10,120,1,e,player,unknown);

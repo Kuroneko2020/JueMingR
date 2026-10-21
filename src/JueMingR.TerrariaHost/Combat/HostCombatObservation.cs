@@ -33,13 +33,14 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly SingleFeatureRuntime runtime;
         private readonly HostInputState input;
         private readonly NativeNpcObservation npcs;
+        private readonly Features.HiddenFeatures.HiddenFeatureAccess hiddenAccess;
+        public bool PathAccess {get{return hiddenAccess!=null && hiddenAccess.IsUnlocked;}}
         private bool collisionFailed,pathFailed,reportedCollision,reportedPath,reportedMarker,wasCollision,wasPath,hadTargetDemand;
         private bool selectionFailed;
         // Presentation may keep a short-lived conditional result. It never
         // enters Cache's attack reader and retains the original capture clock.
         private NpcTrajectory displayPath;
         private PredictionTerrain.CellLease displayTerrain;
-        private PredictionPlayerMotion displayPlayer;
         private PredictionPlayerMotion displayLeasePlayer;
         private int displayLife;
         // previewOptionalTick is retained only for old read-only probe compatibility; no producer advances it.
@@ -57,8 +58,9 @@ namespace JueMingR.TerrariaHost.Combat
             :this(directory,runtime,input,npcs,launch,null){}
         internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch,string package)
             :this(directory,runtime,input,npcs,launch,package,false){}
-        internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch,string package,bool exactComparison)
+        internal HostCombatObservation(string directory,SingleFeatureRuntime runtime,HostInputState input,NativeNpcObservation npcs,Prediction.PredictionLaunchIdentity launch,string package,bool exactComparison,Features.HiddenFeatures.HiddenFeatureAccess hiddenAccess=null)
         {
+            this.hiddenAccess=hiddenAccess;
             this.runtime=runtime;this.input=input;this.npcs=npcs;
             AimTrace.Start(directory,launch,package);
             Prediction=new NpcPredictionSource(launch,exactComparison);
@@ -74,7 +76,9 @@ namespace JueMingR.TerrariaHost.Combat
         {return !pathFailed && !failedTargets[identity.Slot].Equals(identity);}
         internal long Session {get{return runtime.IsSessionActive?runtime.Generation:-1;}}
         internal bool Collision {get{return !World.Failed && Settings.CanRun && Options.Collision && Unavailable(0)==null;}}
-        internal bool Path {get{return !World.Failed && Settings.CanRun && Options.Path && Unavailable(1)==null;}}
+        // Hidden qualification gates only this display reader. Aim and independently
+        // registered prediction readers keep their original public demand.
+        internal bool Path {get{return !World.Failed && Settings.CanRun && PathAccess && Options.Path && Unavailable(1)==null;}}
         internal bool Marker {get{return !World.Failed && !World.Marker.Failed && !selectionFailed && Settings.CanRun && Options.Marker && (Path || BasicSelectionDemand) && LayerStatus!=Rendering.WorldLayerStatus.Unavailable;}}
         public string Unavailable(int field)
         {
@@ -96,7 +100,7 @@ namespace JueMingR.TerrariaHost.Combat
         public bool Enabled {get{return !selectionFailed && (Collision || Path || Marker || BasicSelectionDemand || !pathFailed && Prediction.Cache.Required>0);}}
         public void Set(int field,bool value)
         {
-            if(!CanConfigure)return;
+            if(!CanConfigure || field==1 && !PathAccess)return;
             if(field==6 && value)
             {
                 selectionFailed=pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);Attack?.Reset();
@@ -137,7 +141,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Reliable preference intent is available in the safe Main.Update
             // callback even in menus. This does not activate any Gameplay
             // feature, sample a world, or grant input/operation ownership.
-            Prediction.Native?.PollEnvironment(Hooks.Ready && !selectionFailed && !pathFailed && (Settings.CanRun && Options.Path || Prediction.Cache.Required>0),runtime.IsSessionActive);
+            Prediction.Native?.PollEnvironment(Hooks.Ready && !selectionFailed && !pathFailed && (Settings.CanRun && PathAccess && Options.Path || Prediction.Cache.Required>0),runtime.IsSessionActive);
             wasCollision=collision;wasPath=path;
             AimTrace.Host(this,pathFailed,"poll",false);
         }
@@ -431,13 +435,13 @@ namespace JueMingR.TerrariaHost.Combat
         private void CaptureDisplay(NpcTrajectory path,PredictionTerrain.CellLease terrain)
         {
             if(path==null || terrain==null || !Selection.HasTarget || !path.Identity.Equals(Selection.Target) || !CombatSelection.Valid(path.Identity,Session))return;
-            var player=NpcPredictionSource.ReadPlayer(Main.LocalPlayer);int life=Main.npc[path.Identity.Slot].life;
+            PredictionPlayerMotion player;if(!TryDisplayPlayer(path,out player))return;int life=Main.npc[path.Identity.Slot].life;
             long tick=(long)Main.GameUpdateCount;
             // A candidate owns no presentation state until ALL its premises
             // pass. Paused validation cannot replace a previously valid path,
             // its original player/life sample or its current visibility lease.
-            if(!DisplayFactsCurrent(path,player,life,tick,player) || !terrain.Current)return;
-            displayPath=path;displayTerrain=terrain;displayPlayer=displayLeasePlayer=player;displayLife=life;displayLeaseTick=tick;
+            if(!DisplayFactsCurrent(path,life,tick,player) || !terrain.Current)return;
+            displayPath=path;displayTerrain=terrain;displayLeasePlayer=player;displayLife=life;displayLeaseTick=tick;
         }
         private bool ValidateDisplay(long tick)
         {return RevalidateDisplay(tick,true);}
@@ -454,20 +458,34 @@ namespace JueMingR.TerrariaHost.Combat
             if(!Path || displayPath==null || !Selection.HasTarget || TargetPredictionFailed){displayLeaseTick=-1;return false;}
             var nativePlayer=Main.LocalPlayer;
             if(nativePlayer==null || !nativePlayer.active || nativePlayer.dead || nativePlayer.ghost){displayLeaseTick=-1;return false;}
-            var player=NpcPredictionSource.ReadPlayer(nativePlayer);bool repeated=displayLeaseTick==tick;
-            bool changedDuringUpdate=repeated && (displayLeasePlayer.X!=player.X || displayLeasePlayer.Y!=player.Y || displayLeasePlayer.Vx!=player.Vx || displayLeasePlayer.Vy!=player.Vy);
-            if(changedDuringUpdate || !DisplayFactsCurrent(displayPath,displayPlayer,displayLife,tick,player) || displayTerrain==null)
+            PredictionPlayerMotion player;if(!TryDisplayPlayer(displayPath,out player)){displayLeaseTick=-1;return false;}bool repeated=displayLeaseTick==tick;
+            bool changedDuringUpdate=displayPath.PlayerCondition.Kind!=PredictionPlayerConditionKind.None && repeated && (displayLeasePlayer.X!=player.X || displayLeasePlayer.Y!=player.Y || displayLeasePlayer.Vx!=player.Vx || displayLeasePlayer.Vy!=player.Vy);
+            if(changedDuringUpdate || !DisplayFactsCurrent(displayPath,displayLife,tick,player) || displayTerrain==null)
             {displayLeaseTick=-1;return false;}
             if(terrain && !displayTerrain.DisplayCurrent(repeated)){displayLeaseTick=-1;return false;}
             displayLeasePlayer=player;displayLeaseTick=tick;return true;
         }
-        private bool DisplayFactsCurrent(NpcTrajectory path,PredictionPlayerMotion player,int life,long tick,PredictionPlayerMotion currentPlayer)
+        private bool DisplayFactsCurrent(NpcTrajectory path,int life,long tick,PredictionPlayerMotion currentPlayer)
         {
             if(!Path || path==null || !Selection.HasTarget || TargetPredictionFailed || !Selection.Target.Equals(path.Identity) || !CombatSelection.Valid(path.Identity,Session))return false;
             long age=tick-path.SampleTick;if(age<0 || age>DisplayMaximumAge || age>=path.Count-1)return false;
             var npc=Main.npc[path.Identity.Slot];var point=path[(int)age];
             return npc.life==life && npc.ai[0]==point.Phase && npc.wet==point.Wet && npc.noTileCollide==point.NoTileCollide && Vector2.DistanceSquared(npc.position,new Vector2(point.Bounds.X,point.Bounds.Y))<=4 && Vector2.DistanceSquared(npc.velocity,new Vector2(point.Vx,point.Vy))<=.01f &&
-                DisplayInputCurrent(player,currentPlayer);
+                (path.PlayerCondition.Kind==PredictionPlayerConditionKind.None || !path.PlayerCondition.Alive || DisplayInputCurrent(path.PlayerCondition.Sample,currentPlayer));
+        }
+        // Read the declared slot directly, then check reference identity. Neither
+        // the latest Source/candidate sample nor today's npc.target may renew
+        // a retained publication; KeepLonger validates the old path here too.
+        private static bool TryDisplayPlayer(NpcTrajectory path,out PredictionPlayerMotion sample)
+        {
+            sample=default(PredictionPlayerMotion);var condition=path.PlayerCondition;
+            if(condition.Kind==PredictionPlayerConditionKind.None)return true;
+            var prior=condition.Sample;int slot=prior.PlayerIndex;
+            if(slot<0 || slot>=Main.maxPlayers)return !condition.Alive && prior.PlayerToken==null;
+            var player=Main.player[slot];
+            if(!condition.Alive)return ReferenceEquals(player,prior.PlayerToken) && (player==null || !player.active || player.dead || player.ghost);
+            if(player==null || !ReferenceEquals(player,prior.PlayerToken) || !player.active || player.dead || player.ghost)return false;
+            sample=NpcPredictionSource.ReadPlayer(player);return true;
         }
         private static bool DisplayInputCurrent(PredictionPlayerMotion a,PredictionPlayerMotion b)
         {
@@ -488,9 +506,9 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 int field=i;string id=F5.CombatObservationControls.Actions[i],name=F5.CombatObservationControls.Names[i];
                 Action command=()=>Set(field,!(field==0?Options.Collision:Options.Path));
-                if(feedback!=null)command=feedback.Committed(id,name,command,()=>field==0?(Collision?1:0):(Path?1:0),()=>CanConfigure && Unavailable(field)==null,
+                if(feedback!=null)command=feedback.Committed(id,name,command,()=>field==0?(Collision?1:0):(Path?1:0),()=>CanConfigure && (field!=1 || PathAccess) && Unavailable(field)==null,
                     ()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded);
-                registry.Register(new HotkeyAction(id,name,HotkeyContext.Gameplay,()=>CanConfigure,command));
+                registry.Register(new HotkeyAction(id,name,HotkeyContext.Gameplay,()=>CanConfigure && (field!=1 || PathAccess),command,()=>field!=1 || PathAccess));
             }
         }
         internal void TakeFeedback(Action<string> show)
@@ -498,8 +516,8 @@ namespace JueMingR.TerrariaHost.Combat
             Settings.TakeFeedback(show);
             if(Unavailable(5)!=null && Options.Marker && !reportedMarker){reportedMarker=true;show(Unavailable(5));}
             if(Unavailable(0)!=null && Options.Collision && !reportedCollision){reportedCollision=true;show(Unavailable(0));}
-            if(Unavailable(1)!=null && Options.Path && !reportedPath){reportedPath=true;show(Unavailable(1));}
-            else if(Prediction.Native!=null && Prediction.Native.Failed && Options.Path && !reportedPath)
+            if(PathAccess && Unavailable(1)!=null && Options.Path && !reportedPath){reportedPath=true;show(Unavailable(1));}
+            else if(Prediction.Native!=null && Prediction.Native.Failed && PathAccess && Options.Path && !reportedPath)
             {reportedPath=true;show("普通敌怪预测暂不可用，分节预测仍可用；可点击开启重试。");}
         }
         private void Exit(object sender,EventArgs e){AppDomain.CurrentDomain.ProcessExit-=Exit;Clear();Prediction.Stop();Hooks.Dispose();Settings.Stop(750);AimTrace.End("process-exit");}

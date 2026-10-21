@@ -9,6 +9,7 @@ namespace JueMingR.TerrariaHost.F5
     {
         ObservationOptions Options {get;}
         bool CanConfigure {get;}
+        bool PathAccess {get;}
         string Unavailable(int field);
         void Set(int field,bool value);
         void Radius(int value);
@@ -52,17 +53,20 @@ namespace JueMingR.TerrariaHost.F5
             elements.Add(new F5Element(F5ElementKind.Field,new F5Rect(12,y,498,fieldHeight),null,label,.70f,F5Command.ObservationRadius));y+=fieldHeight+8;
             elements[panel]=new F5Element(F5ElementKind.Panel,new F5Rect(0,top,522,y-top),null,default(F5Size),0,F5Command.None);y+=6;
             }
-            var rows=new F5RowLayout(elements,measure);
-            for(int i=0;i<2;i++)
-            {
-                int field=i;rows.Row(ref y,0,522,Names[i],new[]{"开启","关闭","键"},labelText=>labelText=="开启"?(F5Command)((int)F5Command.ObservationCollisionOn+field*2):labelText=="关闭"?(F5Command)((int)F5Command.ObservationCollisionOn+field*2+1):F5Command.None,
-                    new F5RowDescription(Actions[i],i==0?"↓":"显示NPC可能的未来路径"));
-                var key=elements[elements.Count-1];elements[elements.Count-1]=new F5Element(key.Kind,key.Rect,key.Text,key.TextSize,key.TextScale,key.Command,Actions[i]);
-            }
+            AddDisplayRow(elements,measure,ref y,0);
+        }
+        internal static void AddHiddenPathRow(List<F5Element> elements,Func<string,float,F5Size> measure,ref float y,bool visible)
+        {if(visible)AddDisplayRow(elements,measure,ref y,1);}
+        private static void AddDisplayRow(List<F5Element> elements,Func<string,float,F5Size> measure,ref float y,int field)
+        {
+            // Stable command/field identity is independent of its page position.
+            new F5RowLayout(elements,measure).Row(ref y,0,522,Names[field],new[]{"开启","关闭","键"},label=>label=="开启"?(F5Command)((int)F5Command.ObservationCollisionOn+field*2):label=="关闭"?(F5Command)((int)F5Command.ObservationCollisionOn+field*2+1):F5Command.None,
+                new F5RowDescription(Actions[field],field==0?"↓":"显示NPC可能的未来路径"));
+            var key=elements[elements.Count-1];elements[elements.Count-1]=new F5Element(key.Kind,key.Rect,key.Text,key.TextSize,key.TextScale,key.Command,Actions[field]);
         }
         internal static bool Owns(F5Command c){return c>=F5Command.ObservationPolicy && c<=F5Command.ObservationAimOff;}
         private static bool Detail(F5Command c){return c>=F5Command.ObservationPolicy && c<=F5Command.ObservationRadius || c==F5Command.ObservationMarker;}
-        internal bool Available(F5Command c){return Owns(c) && host.CanConfigure && (!Detail(c) || host.Options.Aim);}
+        internal bool Available(F5Command c){return Owns(c) && host.CanConfigure && ((c!=F5Command.ObservationPathOn && c!=F5Command.ObservationPathOff) || host.PathAccess) && (!Detail(c) || host.Options.Aim);}
         internal Color? Selected(F5Command c)
         {
             var o=host.Options;if(c==F5Command.ObservationDummy)return o.Dummy?Color.LightGreen:Color.IndianRed;
