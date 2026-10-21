@@ -45,7 +45,7 @@ namespace NativeWorldTextProbe
             }
             drawStepScopes++;return new DrawStepScope();
         }
-        private static Player player;private static NPC receiver;private static int births,hits,aimedBirths,ordinaryChildren,useFrame,bubbleOrderChanges,bubbleAssistedChanges;private static Vector2 physical;private static uint? solarDue;private static bool solarWaitVerified,observeUse;
+        private static object usageAttack;private static string receiptFailure;private static int enhancedReceipts,basicReceipts;private static Player player;private static NPC receiver;private static int births,hits,aimedBirths,ordinaryChildren,useFrame,bubbleOrderChanges,bubbleAssistedChanges;private static Vector2 physical;private static uint? solarDue;private static bool solarWaitVerified,observeUse;
         private sealed class KillWitness {internal bool Changed;internal string Details;}
         private static void Born(Player __instance,Projectile __0)
         {
@@ -61,6 +61,25 @@ namespace NativeWorldTextProbe
             // ordinary bullet consumes Kill's exact cursor without spread.
             var ray=__0.type==444?__0.ai[0].ToRotationVector2():Vector2.Normalize(__0.velocity);var raw=(physical-__0.Center).SafeNormalize(-Vector2.UnitX);var aim=(receiver.Center-__0.Center).SafeNormalize(Vector2.UnitX);
             Require(Vector2.Dot(ray,aim)>.9f && Vector2.Dot(ray,raw)<.9f,"native consumer gets the assisted direction, distinct from the physical mouse: item="+player.HeldItem.type+" frame="+useFrame+" projectile="+__0.type+" origin="+__0.Center+" target="+receiver.Center+" velocity="+__0.velocity+" aimDot="+Vector2.Dot(ray,aim)+" rawDot="+Vector2.Dot(ray,raw));
+            if(player.HeldItem.type==95 || player.HeldItem.type==1201 || player.HeldItem.type==3475)
+            {
+                // Observe the receipt published by this real native cursor
+                // scope. Reading a private stage or a Query is not consumption.
+                try
+                {
+                    var receipt=Get(usageAttack,"consumedInput");var source=GetOptional(receipt,"Source") as Projectile;
+                    string phase=Get(receipt,"Phase").ToString(),kind=Get(receipt,"Kind").ToString();
+                    var point=(Vector2)Get(receipt,"Point");var identity=(NpcIdentity)Get(receipt,"Target");
+                    bool hand=__0.type==player.HeldItem.shoot || player.HeldItem.type!=3475;
+                    bool epoch=(bool)Get(usageAttack,"hasConsumedInput") && (uint)Get(usageAttack,"consumedInputStep")==Main.GameUpdateCount && ReferenceEquals(Get(receipt,"Weapon"),player.HeldItem) && ReferenceEquals(identity.Token,receiver);
+                    bool role=hand?source==null && phase=="BeforeNpc":source!=null && source.type==615 && source.owner==player.whoAmI && phase=="Projectiles";
+                    var screen=point-Main.screenPosition;if((bool)Get(receipt,"ReverseGravity"))screen=Main.ReverseGravitySupport(screen);
+                    bool cursor=Main.mouseX==(int)screen.X && Main.mouseY==(int)screen.Y;
+                    if(!epoch || !role || !cursor || kind!="Enhanced" && kind!="Basic")receiptFailure="item="+player.HeldItem.type+" frame="+useFrame+" projectile="+__0.type+" epoch="+epoch+" role="+role+" cursor="+cursor+" phase="+phase+" kind="+kind;
+                    if(kind=="Enhanced")enhancedReceipts++;else if(kind=="Basic")basicReceipts++;
+                }
+                catch(Exception error){receiptFailure=error.ToString();}
+            }
             aimedBirths++;
         }
         private static void Damage(NPC __instance,int __result){if(ReferenceEquals(__instance,receiver) && __result>0)hits++;}
@@ -94,7 +113,7 @@ namespace NativeWorldTextProbe
             if(Environment.GetEnvironmentVariable("JMR_USAGE_ORIGINAL_FEEDBACK")=="seams"){NativeCombatOriginalFeedbackChecks.RunSeams(context,graphics,output);return;}
             if(Environment.GetEnvironmentVariable("JMR_USAGE_ORIGINAL_FEEDBACK")=="whip-next"){NativeCombatOriginalFeedbackChecks.RunSpears(context,graphics,output);return;}
             var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");var input=Get(context,"Input");var world=Get(host,"World");
-            var audit=new Harmony("JueMingR.Tests.ActualAttackUsage");
+            usageAttack=attack;var audit=new Harmony("JueMingR.Tests.ActualAttackUsage");
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             audit.Patch(typeof(Player).GetMethod("TryUpdateChannel",Flags),postfix:new HarmonyMethod(typeof(NativeCombatUsageChecks).GetMethod(nameof(Born),Flags)));
             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatUsageChecks).GetMethod(nameof(Damage),Flags)));
@@ -114,7 +133,7 @@ namespace NativeWorldTextProbe
                         player=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,type,0,0);player.position=new Vector2(700,646);player.ResetEffects();player.ResetFallDamage();player.releaseUseItem=true;player.statMana=player.statManaMax=player.statManaMax2=200;
                         player.inventory[54].SetDefaults(player.HeldItem.useAmmo==40?1334:3104);player.inventory[54].stack=player.HeldItem.useAmmo==40?999:1;
                         Main.screenPosition=new Vector2(480,400);Main.GameViewMatrix.Zoom=Vector2.One;Main.rand=new Terraria.Utilities.UnifiedRandom(7193);
-                        receiver=NativeCombatControlPreviewChecks.Dummy(2,55,40);physical=new Vector2(650,430);births=hits=aimedBirths=ordinaryChildren=bubbleOrderChanges=bubbleAssistedChanges=0;solarDue=null;solarWaitVerified=false;observeUse=true;
+                        receiver=NativeCombatControlPreviewChecks.Dummy(2,55,40);physical=new Vector2(650,430);births=hits=aimedBirths=ordinaryChildren=bubbleOrderChanges=bubbleAssistedChanges=enhancedReceipts=basicReceipts=0;solarDue=null;solarWaitVerified=false;receiptFailure=null;observeUse=true;
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,true,false,true,25,true,false));
                         var idleDisplay=new DisplayCoverage();var useDisplay=new DisplayCoverage();
                         for(int i=0;i<4;i++)
@@ -131,8 +150,11 @@ namespace NativeWorldTextProbe
                         {
                             useFrame=frame;
                             NativeCombatSelectionPreviewChecks.Step(context,physical,true);
-                            object boundPlan;var contact=ReadMechanism(host,attack,receiver,out boundPlan);
-                            if(contact!=null){shown++;if(contact.Delay>0)delayed++;}
+                            Require(receiptFailure==null,"native usage receipt observation after actual world: "+receiptFailure);
+                            object boundPlan;var stage=ReadMechanismFacts(host,attack,receiver,out boundPlan);
+                            bool representative=type==95 || type==1201 || type==3475;
+                            bool stageReady=representative?stage.Route=="representative" && stage.HasPoint && stage.Reachability=="Reachable" && stage.Timeline!=null && stage.ReceiveTick>=stage.FirstTick && stage.ReceiveTick<stage.Timeline.Count:stage.Contact!=null;
+                            if(stageReady){shown++;if(stage.Delay>0)delayed++;}
                             if(type==3473 && !solarWaitVerified && !solarDue.HasValue && (bool)Get(Get(attack,"Control"),"HasObservedSolar"))
                             {
                                 // Complete 611/612 replay can now find an old
@@ -141,7 +163,7 @@ namespace NativeWorldTextProbe
                                 // dummy-timer/next-source clock obligation.
                                 int arcDelay=(int)Get(Get(attack,"Control"),"SolarOpeningDelay");
                                 var window=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackWindow",true);int handDelay=(int)window.GetMethod("PreviewDelay",Flags).Invoke(null,new object[]{player,player.HeldItem});
-                                if(arcDelay>0){solarDue=Main.GameUpdateCount+(uint)Math.Max(arcDelay,handDelay)+1;solarClockSamples++;Console.WriteLine("USAGE Solar next-source clock tick="+Main.GameUpdateCount+" arcDelay="+arcDelay+" handDelay="+handDelay+" due="+solarDue+" earliestStageDelay="+contact?.Delay);}
+                                if(arcDelay>0){solarDue=Main.GameUpdateCount+(uint)Math.Max(arcDelay,handDelay)+1;solarClockSamples++;Console.WriteLine("USAGE Solar next-source clock tick="+Main.GameUpdateCount+" arcDelay="+arcDelay+" handDelay="+handDelay+" due="+solarDue+" earliestStageDelay="+stage.Delay);}
                             }
                             if(Main.projectile.Any(q=>q.active && q.owner==0 && (q.type==611 || q.type==615 || q.type==444)))live++;
                             // The original finite interval is the denominator.
@@ -150,7 +172,7 @@ namespace NativeWorldTextProbe
                             useDisplay.Record(Present(host,attack,world,graphics,output,"use-"+type+"-"+frame,true,frame==0 || frame==duration-1));
                             if(frame==0)Require(births>0 && aimedBirths>0,"first real click reaches its original directed source: "+type);
                         }
-                        Require(useDisplay.Present==0 && idleDisplay.Present==0 && shown>0,"complete original use interval retains real stage contacts while retired preview/marker remain absent: "+type);
+                        Require(useDisplay.Present==0 && idleDisplay.Present==0 && shown>0,"complete original use interval retains actual stage solutions/dedicated contacts while retired preview/marker remain absent: "+type);
                         Require(hits>0 && aimedBirths>0,"finite complete use reaches real StrikeNPC on the placed training dummy: "+type);
                         if(type==2797 || type==3475)Require(ordinaryChildren>0 && live>0,"native ongoing parent reaches its real ammunition/second stage: "+type);
                         if(type==2797)Require(bubbleOrderChanges>0 && bubbleAssistedChanges==bubbleOrderChanges,"earlier sibling release changes real child update order and every changed Kill consumes its prepared alternative");
@@ -182,13 +204,14 @@ namespace NativeWorldTextProbe
                             Present(host,attack,world,graphics,output,"restored-use-"+type,true,true);
                             Console.WriteLine("PASS actual controller recovery item="+type+" switchBackDirected="+(aimedBirths-returned)+" repressedDirected="+(aimedBirths-repeated)+" actualAmmo="+(ordinaryChildren-returnedAmmo));
                         }
-                        Console.WriteLine("PASS actual use item="+type+" idleDisplay="+idleDisplay+" useDisplay="+useDisplay+" mechanismComponents="+shown+"/"+duration+" delayed="+delayed+" live="+live+" directedBirths="+aimedBirths+" childAmmo="+ordinaryChildren+" actualDamage="+hits+" bubbleOrderChanges="+bubbleAssistedChanges+"/"+bubbleOrderChanges+" draw="+(graphics!=null));
+                        Require(receiptFailure==null,"native recovery receipt observation after actual world: "+receiptFailure);
+                        Console.WriteLine("PASS actual use item="+type+" idleDisplay="+idleDisplay+" useDisplay="+useDisplay+" mechanismComponents="+shown+"/"+duration+" delayed="+delayed+" live="+live+" directedBirths="+aimedBirths+" childAmmo="+ordinaryChildren+" actualDamage="+hits+" actualEnhancedReceipts="+enhancedReceipts+" actualBasicReceipts="+basicReceipts+" bubbleOrderChanges="+bubbleAssistedChanges+"/"+bubbleOrderChanges+" draw="+(graphics!=null));
                     }
                     catch(Exception error){failures.Add(type+": "+error.Message);Console.WriteLine("FAIL actual use item="+type+": "+error);}
                 }
                 Require(failures.Count==0,"actual usage failures: "+string.Join(" | ",failures));
             }
-            finally{player=null;receiver=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+            finally{usageAttack=null;receiptFailure=null;player=null;receiver=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
             // Default CPU integration consumes every original-feedback leaf.
             // Explicit item/subset entries remain the narrow diagnosis path;
             // actual GPU leaves are dispatched separately to limit repetition.
@@ -231,13 +254,30 @@ namespace NativeWorldTextProbe
             Require(ReferenceEquals(priorAction,cache.Read(1)) && ReferenceEquals(priorPath,cache.Read(0)) && cache.Required==required && selected.Equals(Get(Get(host,"Selection"),"Target")),"private stage reader never publishes a path, changes demand, or selects a receiver");
             return result;
         }
+        // Preserve the old Contact-returning ABI for dedicated callers. The
+        // facts view performs that same one private prepare, with all its
+        // input/resource/path/pool purity checks, then reads the actual plan.
+        internal static NativeCombatAimChecks.SolutionFacts ReadMechanismFacts(object host,object attack,NPC target,out object boundPlan,NpcTrajectory explicitComponentPath=null)
+        {
+            ReadMechanism(host,attack,target,out boundPlan,explicitComponentPath);
+            return NativeCombatAimChecks.ReadPlanSolution(attack,boundPlan);
+        }
         internal static bool PresentNative(object host,object attack,object world,Player observedPlayer,NPC observedReceiver,ProbeGraphics graphics,string output,string name,bool expected,bool save,bool optionalDisplay=false,Action captureCompleted=null)
         {
             var contact=(AttackContact)GetOptional(attack,"ExpectedPreview");
             Require(contact==null,"retired public preview remains absent at "+name);
             var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
-            var execution=GetOptional(attack,"ExpectedImpact") as AttackContact;
-            if(execution!=null)
+            // Raw facts are sufficient for this read-only presentation audit. The
+            // executable getter may retire a lease and is not an observer.
+            var executions=new System.Collections.Generic.List<AttackContact>();
+            var ordinary=NativeCombatAimChecks.ReadSolution(attack).Contact;
+            if(ordinary!=null && (bool)Call(attack,"TimelineCurrent",ordinary.Timeline))executions.Add(ordinary);
+            foreach(System.Collections.DictionaryEntry pair in (System.Collections.IDictionary)Get(Get(attack,"Control"),"shots"))
+            {
+                var entry=pair.Value;var stagedContact=(AttackContact)GetOptional(entry,(int)Get(entry,"Type")==444?"NextKillContact":"Contact");
+                if((uint)Get(entry,"Prepared")==Main.GameUpdateCount && stagedContact!=null && (bool)Call(attack,"TimelineCurrent",stagedContact.Timeline))executions.Add(stagedContact);
+            }
+            foreach(var execution in executions)
             {
                 var published=cache.Read(1);var timeline=execution.Timeline;
                 Require(published!=null && timeline.Identity.Equals(published.Identity) && timeline.SampleTick==published.SampleTick && timeline.CaptureTick==published.CaptureTick && (ReferenceEquals(timeline,published) || timeline.CalculationToken!=null && ReferenceEquals(timeline.CalculationToken,published.CalculationToken)) && execution.ReceiveTick>=0 && execution.ReceiveTick<timeline.Count && execution.ReceiveTick<published.Count && timeline[execution.ReceiveTick].Bounds.Equals(published[execution.ReceiveTick].Bounds),"execution marker has the independent published action identity/sample/calculation and receive geometry: "+name);

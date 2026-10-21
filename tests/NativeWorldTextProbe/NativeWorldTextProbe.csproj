@@ -8,6 +8,7 @@
     <JueMingRProbeBuildRoot Condition="'$(JueMingRProbeBuildRoot)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\build\Debug\work\bin</JueMingRProbeBuildRoot>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Workload/BusinessAssertionProtocol.cs" />
     <Reference Include="JueMingR.Platform"><HintPath>$(JueMingRProbeBuildRoot)\JueMingR.Platform\x86\$(JueMingRProbeReferenceConfiguration)\net472\JueMingR.Platform.dll</HintPath></Reference>
     <Reference Include="JueMingR.Features"><HintPath>$(JueMingRProbeBuildRoot)\JueMingR.Features\x86\$(JueMingRProbeReferenceConfiguration)\net472\JueMingR.Features.dll</HintPath></Reference>
     <Reference Include="JueMingR.Infrastructure"><HintPath>$(JueMingRProbeBuildRoot)\JueMingR.Infrastructure\x86\$(JueMingRProbeReferenceConfiguration)\net472\JueMingR.Infrastructure.dll</HintPath></Reference>

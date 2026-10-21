@@ -14,9 +14,9 @@ using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
 {
-    // Native birth adapters and the selected ammo's complete ordered world
-    // are separate obligations. Components control legal primitive samples;
-    // actual-use opportunities below leave ordinary native RNG untouched.
+    // Public representative input, native birth adapters and sealed ordered
+    // ammo replay are separate obligations. Components control legal primitive
+    // samples; actual-use opportunities leave ordinary native RNG untouched.
     internal static class NativeCombatNativeArrowBirthChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
@@ -109,23 +109,56 @@ namespace NativeWorldTextProbe
             {
                 var p=Scene(weapon,1235,1,harpy);p.gravDir=inverted?-1:1;if(inverted)p.fullRotation=.4f;if(ordinal==1)p.itemAnimation-=4;var n=Target(p.Center+new Vector2(220,0));var physical=p.Center-new Vector2(300,100);NativeCombatObservationChecks.Save(observation,new ObservationOptions(false,true,false,false,true,25,true,true));NativeToolExecutionChecks.Sample(context,Get(context,"Input"),physical,true);Call(combat,"Sample");
                 depth++;try{NativeCombatAimChecks.PrepareMechanismFixture(observation,attack,n,0,phaseName:"BeforeNpc");}finally{depth--;}
-                var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(contact!=null,"special native-birth public preparation supplies actual Contact "+weapon+"/"+harpy);Shoot(p,physical,true);
-                Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","real original Shoot consumes special native-birth Enhanced input "+weapon+"/"+harpy);Advance(p,120);Require(first>0 && first==contact.Tick,"actual Enhanced special native birth firstDamage agrees "+weapon+"/"+harpy+" first="+first+" plan="+contact.Tick);
-                Console.WriteLine("NATIVE ARROW public Enhanced weapon="+weapon+" Harpy="+harpy+" inverted="+inverted+" ordinal="+(ordinal==1?2:0)+" first="+first+" predicted="+contact.Tick+" mechanismScope1000=True");
+                if(weapon==3029 && !harpy)SkySteeringCheckpoint(attack,p);
+                var solution=NativeCombatAimChecks.RequireSolution(attack,p,"special native-birth public preparation supplies its current representative point "+weapon+"/"+harpy);Require(!(bool)Get(attack,"hasConsumedInput"),"native-arrow query does not consume a real hand");Shoot(p,physical,true);
+                NativeCombatAimChecks.RequireConsumedInput(attack,p,solution,"real original Shoot consumes this special native-birth Enhanced input "+weapon+"/"+harpy);
+                var shots=Main.projectile.Where(q=>q.active && q.owner==p.whoAmI).ToArray();object root;var contact=Known(p,shots,Path(n),out root);Require(contact!=null,"sealed actual special-arrow births retain a complete useful replay");Advance(p,120);Require(first>0 && first==contact.Tick,"actual Enhanced special native birth firstDamage equals sealed replay "+weapon+"/"+harpy+" first="+first+" known="+contact.Tick);
+                Console.WriteLine("NATIVE ARROW public Enhanced weapon="+weapon+" Harpy="+harpy+" inverted="+inverted+" ordinal="+(ordinal==1?2:0)+" first="+first+" known="+contact.Tick+" representative="+solution.NativeTick+" mechanismScope1000=True");
             }
+        }
+        private static void SkySteeringCheckpoint(object attack,Player player)
+        {
+            NativeCombatAimChecks.SolutionCheckpoint(context,attack,"native-sky-steering");var solution=NativeCombatAimChecks.ReadSolution(attack);var ammo=Get(attack,"ammo");var origin=(Vector2)Static("HostAttackModels","LaunchOrigin",player,player.HeldItem);
+            var births=Births(player,ammo,solution.Point,0);var shot=births[0];var targets=Static("HostProjectileTargets","Capture",shot,solution.Timeline.Identity.Session);
+            var args=new object[]{ammo,default(AttackMotion)};var representative=host.GetType("JueMingR.TerrariaHost.Combat.HostRepresentativeAttack",true);
+            Require((bool)representative.GetMethods(Flags).Single(m=>m.Name=="TryMotion" && m.GetParameters().Length==2).Invoke(null,args),"sky steering regression has the actual resolved motion");
+            var replay=representative.GetMethod("Replay",Flags);var absent=new object[]{player,shot,solution.Timeline,solution.FirstTick,Terrain(),args[1],0,0f,null};var without=replay.Invoke(null,absent);
+            var present=new object[]{player,Births(player,ammo,solution.Point,0)[0],solution.Timeline,solution.FirstTick,Terrain(),args[1],0,0f,targets};var with=replay.Invoke(null,present);
+            Console.WriteLine("NATIVE SKY STEERING current="+solution.Reachability+" targets="+Get(targets,"Count")+" omitted="+without+" captured="+with+" receive="+present[6]+" rawPoint="+solution.Point+" origin="+origin);
+            Require((int)Get(targets,"Count")>0 && without.ToString()=="Unknown" && with.ToString()=="Reachable","same legal native sky birth needs its captured steering targets, not an unknown-target exemption");
+        }
+        private static NPC WallTarget(int weapon)
+        {
+            var n=Target(weapon==3029?new Vector2(1140,720):new Vector2(990,900));
+            if(weapon==3029){for(int x=53;x<69;x++)NativeToolsChecks.Tile(x,55,1);for(int y=26;y<38;y++)NativeToolsChecks.Tile(68,y,1);}
+            else{for(int y=48;y<73;y++)NativeToolsChecks.Tile(69,y,1);for(int x=53;x<61;x++)NativeToolsChecks.Tile(x,60,1);}
+            return n;
         }
         private static void PublicWallHands()
         {
+            int publicRows=0,dedicatedRows=0;
             foreach(int weapon in new[]{4953,3029})foreach(bool harpy in new[]{false,true})
             {
-                var p=Scene(weapon,1235,1,harpy);var n=Target(weapon==3029?new Vector2(1140,720):new Vector2(990,900));
-                if(weapon==3029){for(int x=53;x<69;x++)NativeToolsChecks.Tile(x,55,1);for(int y=26;y<38;y++)NativeToolsChecks.Tile(68,y,1);}
-                else{for(int y=48;y<73;y++)NativeToolsChecks.Tile(69,y,1);for(int x=53;x<61;x++)NativeToolsChecks.Tile(x,60,1);}
+                var p=Scene(weapon,1235,1,harpy);var n=WallTarget(weapon);
                 var observation=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");var physical=p.Center-new Vector2(300,100);NativeCombatObservationChecks.Save(observation,new ObservationOptions(false,true,false,false,true,25,true,true));NativeToolExecutionChecks.Sample(context,Get(context,"Input"),physical,true);Call(combat,"Sample");
                 depth++;try{NativeCombatAimChecks.PrepareMechanismFixture(observation,attack,n,0,phaseName:"BeforeNpc");}finally{depth--;}
-                var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(contact!=null,"actual special-birth public wall preparation reaches selected after tile/Charm weapon="+weapon+" Harpy="+harpy);Shoot(p,physical,true);Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","composed public wall route consumes real Enhanced input");Advance(p,120);
-                Require(first>0 && first==contact.Tick && (bounceHits>0 || harpy && charmHits>0),"public native special birth -> actual tile/Charm -> selected firstStrike weapon="+weapon+" Harpy="+harpy+" native="+first+" predicted="+contact.Tick+" tile="+bounceHits+" charm="+charmHits);Console.WriteLine("NATIVE ARROW public wall weapon="+weapon+" Harpy="+harpy+" first="+first+" predicted="+contact.Tick+" tile="+bounceHits+" charm="+charmHits+" mechanismScope1000=True");
+                NativeCombatAimChecks.SolutionCheckpoint(context,attack,"native-wall-"+weapon+"/"+harpy);var solution=NativeCombatAimChecks.ReadSolution(attack);var available=NativeCombatAimChecks.QueryInput(attack,p);Require(solution.HasPoint && available.Allowed && available.Kind=="Enhanced" && available.Point==solution.Point && available.Target.Equals(solution.Timeline.Identity),"wall witness consumes the actual representative input before its native-result gate");Require(!(bool)Get(attack,"hasConsumedInput"),"native-arrow wall query does not consume a real hand");Shoot(p,physical,true);NativeCombatAimChecks.RequireConsumedInput(attack,p,solution,"composed public wall route consumes this actual Enhanced input");var shots=Main.projectile.Where(q=>q.active && q.owner==p.whoAmI).ToArray();Require(shots.Length>0,"public wall current input creates real native sources");object root;var contact=Known(p,shots,Path(n),out root);Advance(p,120);
+                Console.WriteLine("NATIVE ARROW public wall weapon="+weapon+" Harpy="+harpy+" first="+first+" known="+contact?.Tick+" representative="+solution.NativeTick+" reach="+solution.Reachability+" tile="+bounceHits+" charm="+charmHits+" mechanismScope1000=True");
+                // Finite public candidates own their actual direction and
+                // receive result; Blocked does not promise a different bounce
+                // route. A zero receive is recorded, never called useful.
+                Require(first==0?contact==null:contact!=null && first==contact.Tick,"public wall actual births preserve exact complete Known/real Damage including a naturally absent receive weapon="+weapon+" Harpy="+harpy);publicRows++;
+
+                // Preserve the separate useful reflection obligation on the
+                // SAME wall/platform. These physical inputs already belong to
+                // Bounce above; no search of current representative outputs.
+                p=Scene(weapon,1235,1,harpy);n=WallTarget(weapon);var aim=weapon==3029?new Vector2(1000,1000):new Vector2(1300,1021);var path=Path(n);var ammo=Capture(p);var declaredRoot=Root(p,ammo,path);var born=Births(p,ammo,aim,0);AttackContact declared;
+                depth++;try{using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))declared=(AttackContact)Static("HostHeldAmmoFamilyAttack","ExplicitBirthBatch",p,born,path,Clock(path),Terrain(),declaredRoot,aim,0,null,null,true);}finally{depth--;}
+                Shoot(p,aim,true);shots=Main.projectile.Where(q=>q.active && q.owner==p.whoAmI).ToArray();Require(shots.Length==born.Length,"AimOFF same-wall physical hand retains its declared native birth count");contact=Known(p,shots,path,out root);Advance(p,120);
+                Console.WriteLine("NATIVE ARROW dedicated same-wall weapon="+weapon+" Harpy="+harpy+" aim="+aim+" actualTargetCenter="+n.Center+" first="+first+" declared="+declared?.Tick+" known="+contact?.Tick+" tile="+bounceHits+" charm="+charmHits+" AimOFF=True");
+                Require(first>0 && declared!=null && contact!=null && first==declared.Tick && first==contact.Tick && (bounceHits>0 || harpy && charmHits>0),"predeclared physical input retains useful same-wall native tile/Charm exact receive weapon="+weapon+" Harpy="+harpy+" native="+first+" declared="+declared?.Tick+" known="+contact?.Tick);dedicatedRows++;
             }
+            Require(publicRows==4 && dedicatedRows==4,"all four public directions and independent dedicated same-wall positives retain their fixed denominators");
         }
         private static object RootShot(Player p,Projectile shot,NpcTrajectory path)
         {return Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{p,shot,path,0,true,false},null);}
@@ -158,26 +191,41 @@ namespace NativeWorldTextProbe
             foreach(bool harpy in new[]{false,true})foreach(bool blocked in new[]{false,true})
             {
                 var p=Scene(4953,40,1,harpy);for(int x=3;x<Main.maxTilesX-3;x++)NativeToolsChecks.Tile(x,70,1);var n=Target(new Vector2(1100,980),!blocked);
-                var old=Spawn(p,14,new Vector2(1070,980),new Vector2(8,0));var q=Spawn(p,932,new Vector2(1000,980),new Vector2(8,0));var path=Path(n);object root;var complete=Known(p,new[]{old,q},path,out root);
+                var old=Spawn(p,14,new Vector2(1070,980),new Vector2(8,0));var q=Spawn(p,932,new Vector2(1000,980),new Vector2(8,0));var path=Path(n);object root;isolatedCalls=completeCalls=0;var complete=Known(p,new[]{old,q},path,out root);
+                Require(isolatedCalls==0 && completeCalls==1,"independent mixed932 oracle executes one complete ordered batch without isolated932 replay");
                 var attack=Get(Get(context,"Combat"),"Attack");var args=new object[]{p,path,Enum.Parse(host.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"BeforeNpc"),false};object flight;isolatedCalls=completeCalls=0;depth++;try{using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))flight=attack.GetType().GetMethod("ReadFlight",Flags).Invoke(attack,args);}finally{depth--;}
-                var contact=flight==null?null:(AttackContact)Get(flight,"Contact");Require(isolatedCalls==0 && completeCalls==1,"mixed932 public reader executes exactly one complete batch and no isolated932 replay");Require(contact?.Tick==complete?.Tick,"public mixed932 Flight cannot prefer an isolated family replay");
-                if(!blocked){Require(contact!=null,"mixed932 positive supplies an actual complete Flight");old.localAI[1]+=1;Require(!(bool)Get(root,"Unchanged"),"ambient sameGUC scalar edit revokes complete mixed family");old.localAI[1]-=1;q.localNPCImmunity[2]++;Require(!(bool)Get(root,"Unchanged"),"live932 sameGUC local history edit revokes complete mixed family");q.localNPCImmunity[2]--;}
-                Advance(p,60);Require(first==0?contact==null:contact!=null && first==contact.Tick,"public mixed932 contact agrees with actual ordered bullet/streak owner history and collider");Console.WriteLine("NATIVE ARROW mixed932 publicFlight Harpy="+harpy+" blocked="+blocked+" native="+first+" plan="+contact?.Tick);
+                // Ordinary representative preparation retires this public
+                // world preview; the independent born-family oracle still
+                // owns ordered immunity, collision and exact native damage.
+                Require((bool)Get(attack,"BalancedWeapon") && flight==null && !(bool)args[3] && isolatedCalls==0 && completeCalls==0,"balanced mixed932 public reader retires Flight without replaying either complete or isolated worlds");
+                if(!blocked){Require(complete!=null,"mixed932 positive has an independent complete receive");float local=old.localAI[1];try{old.localAI[1]=local+1;Require(!(bool)Get(root,"Unchanged"),"ambient sameGUC scalar edit revokes complete mixed family");}finally{old.localAI[1]=local;}int immunity=q.localNPCImmunity[2];try{q.localNPCImmunity[2]=immunity+1;Require(!(bool)Get(root,"Unchanged"),"live932 sameGUC local history edit revokes complete mixed family");}finally{q.localNPCImmunity[2]=immunity;}}
+                Advance(p,60);Require(blocked?first==0 && complete==null:first>0 && complete!=null && first==complete.Tick,"independent mixed932 receive agrees with actual ordered bullet/streak owner history and collider");Console.WriteLine("NATIVE ARROW mixed932 publicRetired=True Harpy="+harpy+" blocked="+blocked+" native="+first+" plan="+complete?.Tick);
             }
         }
         private static void MixedRetirement()
         {
             foreach(bool harpy in new[]{false,true})foreach(bool blocked in new[]{false,true})
             {
-            var p=Scene(4953,516,1,harpy);var n=Target(new Vector2(1005,300),!blocked);var low=Spawn(p,14,new Vector2(800,980),Vector2.Zero,0);low.timeLeft=1;var parent=Spawn(p,91,new Vector2(1000,980),new Vector2(8,0));parent.timeLeft=1;var path=Path(n);object root;var complete=Known(p,new[]{parent},path,out root);low.timeLeft=2;Require(!(bool)Get(root,"Unchanged"),"complete mixed scene retains low nonarrow lifetime dependency");low.timeLeft=1;
+            var p=Scene(4953,516,1,harpy);var n=Target(new Vector2(1005,300),!blocked);var low=Spawn(p,14,new Vector2(800,980),Vector2.Zero,0);low.timeLeft=1;var parent=Spawn(p,91,new Vector2(1000,980),new Vector2(8,0));parent.timeLeft=1;var path=Path(n);object root;isolatedCalls=completeCalls=0;var complete=Known(p,new[]{parent},path,out root);Require(completeCalls==1 && isolatedCalls==0,"independent retirement oracle owns one complete ordered ammo world");try{low.timeLeft=2;Require(!(bool)Get(root,"Unchanged"),"complete mixed scene retains low nonarrow lifetime dependency");}finally{low.timeLeft=1;}
             var singleRoot=RootShot(p,parent,path);var singleArgs=new object[]{p,new[]{parent},path,Clock(path),Terrain(),singleRoot,null};AttackContact isolated;depth++;try{using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))isolated=(AttackContact)Static("HostHarpyAttack","KnownPrepared",singleArgs);}finally{depth--;}
-            var attack=Get(Get(context,"Combat"),"Attack");var args=new object[]{p,path,Enum.Parse(host.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"BeforeNpc"),false};object flight;depth++;try{using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))flight=attack.GetType().GetMethod("ReadFlight",Flags).Invoke(attack,args);}finally{depth--;}
-            var contact=flight==null?null:(AttackContact)Get(flight,"Contact");lottery=true;try{Advance(p,60);}finally{lottery=false;}Console.WriteLine("NATIVE ARROW mixed-no932 Harpy="+harpy+" blocked="+blocked+" lowBulletRetires slot="+low.whoAmI+" parent="+parent.whoAmI+" native="+first+" type="+firstType+" complete="+complete?.Tick+" isolated="+isolated?.Tick+" public="+contact?.Tick);
-            Require(blocked?first==0 && complete==null: first>0 && firstType==92 && complete!=null && first==complete.Tick,"original Holy expiry child respects low nonarrow retirement and parent-occupied allocation");Require(first==0?contact==null:contact!=null && first==contact.Tick,"public complete ammo scene cannot be replaced by earlier isolated Harpy child after a nonarrow retires");
+            var attack=Get(Get(context,"Combat"),"Attack");var args=new object[]{p,path,Enum.Parse(host.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"BeforeNpc"),false};object flight;isolatedCalls=completeCalls=0;depth++;try{using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))flight=attack.GetType().GetMethod("ReadFlight",Flags).Invoke(attack,args);}finally{depth--;}
+            Require((bool)Get(attack,"BalancedWeapon") && flight==null && !(bool)args[3] && isolatedCalls==0 && completeCalls==0,"balanced public preview retires without adopting isolated Harpy or complete ammo world after low nonarrow retirement");
+            lottery=true;try{Advance(p,60);}finally{lottery=false;}Console.WriteLine("NATIVE ARROW mixed-no932 Harpy="+harpy+" blocked="+blocked+" lowBulletRetires slot="+low.whoAmI+" parent="+parent.whoAmI+" native="+first+" type="+firstType+" complete="+complete?.Tick+" isolated="+isolated?.Tick+" publicRetired=True");
+            Require(blocked?first==0 && complete==null: first>0 && firstType==92 && complete!=null && first==complete.Tick,"original Holy expiry child respects low nonarrow retirement and parent-occupied allocation");
             }
         }
         private static void BirthObserved(Player player,Vector2 origin,Vector2 aim,int stage,Projectile[] __result)
-        {if(ordinary)birthCalls++;if(watchBirth){preparedBirth=__result;preparedStage=stage;preparedOrigin=origin;preparedAim=aim;preparedPose=player;}}
+        {if(ordinary)birthCalls++;if(watchBirth){preparedBirth=__result==null?null:__result.Select(PrivateCopy).ToArray();preparedStage=stage;preparedOrigin=origin;preparedAim=aim;preparedPose=player;}}
+        private static void SingleBirthObserved(Player player,Vector2 origin,Vector2 aim,int stage,Projectile __result)
+        {
+            // Current public preparation reads one main birth. These finite
+            // origin/ordinal oracles observe that real adapter, without
+            // restoring the retired full-batch/world Contact requirement.
+            // Replay advances this same private object in place. Snapshot at
+            // the birth exit; retaining its reference would observe flight
+            // state while claiming to compare native birth geometry.
+            if(!watchBirth)return;preparedBirth=__result==null?null:new[]{PrivateCopy(__result)};preparedStage=stage;preparedOrigin=origin;preparedAim=aim;preparedPose=player;
+        }
         private static void SolveObserved(NpcTrajectory path){depth++;if(ordinary){modelCalls++;modelPath=path.Count;modelStop=path.Stop.ToString();modelPaused=path.BudgetPaused;}}
         private static Exception SolveDone(AttackContact __result,Exception __exception){try{if(ordinary){modelContact=__result;modelBudget|=__exception!=null && __exception.GetType().Name.Contains("BudgetExceeded");}return __exception;}finally{depth--;}}
         private static void NativeHandObserved()
@@ -193,8 +241,21 @@ namespace NativeWorldTextProbe
                 var p=Scene(weapon,1235);p.velocity=new Vector2(3,0);p.controlRight=true;var n=Target(new Vector2(1150,1000));var path=Path(n);var terrain=Terrain();var frame=Static("HostAttackPlayerFrame","Capture",p,path);var prefix=Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Combat.HostAttackPlayerPrefix",true),Flags,null,new object[]{frame,terrain,121},null);var args=new object[]{delay+1,null};Require((bool)Call(prefix,"TryRead",args),"future launch motion exists");
                 var future=(Player)typeof(object).GetMethod("MemberwiseClone",Flags).Invoke(p,null);Static("HostAttackPlayerFrame","ApplyPose",future,args[1]);var oldOrigin=(Vector2)Static("HostAttackModels","LaunchOrigin",p,p.HeldItem);var newOrigin=(Vector2)Static("HostAttackModels","LaunchOrigin",future,future.HeldItem);var ammo=Capture(p);var root=Root(p,ammo,path);var clock=Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true),Flags,null,new object[]{path,Enum.Parse(host.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld"),delay},null);
                 watchBirth=true;preparedBirth=null;depth++;try{using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Static("HostNativeArrowBirthAttack","Solve",p,ammo,path,advanced?newOrigin:oldOrigin,clock,terrain,root,advanced);}finally{depth--;watchBirth=false;}
-                Require(preparedBirth!=null && Vector2.Distance(preparedOrigin,newOrigin)<.001f && preparedPose.gravDir==future.gravDir && preparedPose.position==future.position,"CW current/next and delayed preview apply future pose and advance launch exactly once weapon="+weapon+" delay="+delay+" advanced="+advanced);
-                var originalPosition=p.position;var originalVelocity=p.velocity;Static("HostAttackPlayerFrame","ApplyPose",p,args[1]);p.itemAnimation=Math.Max(0,p.itemAnimation-delay-1);Shoot(p,preparedAim,true);var actual=Main.projectile.Where(q=>q.active).OrderBy(q=>q.whoAmI).ToArray();Require(actual.Length==preparedBirth.Length,"future pose native count retained");for(int i=0;i<actual.Length;i++)Require(Vector2.Distance(actual[i].Center,preparedBirth[i].Center)<.002f && Vector2.Distance(actual[i].velocity,preparedBirth[i].velocity)<.002f,"sealed future pose actual native birth formula weapon="+weapon+" delay="+delay+" advanced="+advanced+" native=["+Tuple(actual[i])+"] model=["+Tuple(preparedBirth[i])+"] origin="+preparedOrigin+" futurePosition="+future.position+" aim="+preparedAim);p.position=originalPosition;p.velocity=originalVelocity;count++;
+                Require(preparedBirth!=null && preparedBirth.Length==1 && Vector2.Distance(preparedOrigin,newOrigin)<.001f && preparedPose.gravDir==future.gravDir && preparedPose.position==future.position,"CW current/next and delayed preview read one main birth, apply future pose and advance launch exactly once weapon="+weapon+" delay="+delay+" advanced="+advanced);
+                // The public adapter owns only ordinal zero here. Independently
+                // seal every native ordinal at that exact pose/origin/aim;
+                // watchBirth is closed so this cannot replace the observation.
+                var sealedBatch=Births(preparedPose,ammo,preparedAim,preparedStage);
+                Require(sealedBatch!=null && sealedBatch.Length==(weapon==3029?3:1),"independent future-pose batch retains every native ordinal");
+                Require(preparedBirth[0].type==sealedBatch[0].type && Vector2.Distance(preparedBirth[0].Center,sealedBatch[0].Center)<.002f && Vector2.Distance(preparedBirth[0].velocity,sealedBatch[0].velocity)<.002f,"public main birth equals its exact independent ordinal zero weapon="+weapon+" delay="+delay+" advanced="+advanced+" point="+preparedAim+" public=["+Tuple(preparedBirth[0])+"] sealed=["+Tuple(sealedBatch[0])+"]");
+                var originalPosition=p.position;var originalVelocity=p.velocity;int originalAnimation=p.itemAnimation;
+                try
+                {
+                    Static("HostAttackPlayerFrame","ApplyPose",p,args[1]);p.itemAnimation=Math.Max(0,p.itemAnimation-delay-1);Shoot(p,preparedAim,true);var actual=Main.projectile.Where(q=>q.active).OrderBy(q=>q.whoAmI).ToArray();Console.WriteLine("NATIVE ARROW prefix actual weapon="+weapon+" delay="+delay+" advanced="+advanced+" publicMainBirths="+preparedBirth.Length+" sealedBirths="+sealedBatch.Length+" nativeBirths="+actual.Length+" stage="+preparedStage+" origin="+preparedOrigin+" actualOrigin="+Static("HostAttackModels","LaunchOrigin",p,p.HeldItem));Require(actual.Length==sealedBatch.Length,"future pose native count retained");
+                    for(int i=0;i<actual.Length;i++){var a=actual[i];var b=sealedBatch[i];Require(a.type==b.type && a.owner==b.owner && a.damage==b.damage && a.knockBack==b.knockBack && a.ai[0]==b.ai[0] && a.ai[1]==b.ai[1] && a.extraUpdates==b.extraUpdates && a.noDropItem==b.noDropItem && Vector2.Distance(a.Center,b.Center)<.002f && Vector2.Distance(a.velocity,b.velocity)<.002f,"sealed future pose actual native ordinal and scalar formula weapon="+weapon+" delay="+delay+" advanced="+advanced+" ordinal="+i+" native=["+Tuple(a)+"] model=["+Tuple(b)+"] origin="+preparedOrigin+" futurePosition="+future.position+" aim="+preparedAim);}
+                }
+                finally{p.position=originalPosition;p.velocity=originalVelocity;p.itemAnimation=originalAnimation;}
+                count++;
             }
             Console.WriteLine("NATIVE ARROW CW current/advanced-next/delay0+5 native sealed births="+count+" no synthetic fullPlayer-delay claim");
         }
@@ -209,7 +270,7 @@ namespace NativeWorldTextProbe
         }
         private static void IsolatedObserved(Projectile[] sources){if(sources!=null && sources.Any(p=>p.type==932))isolatedCalls++;}
         private static void CompleteObserved(){completeCalls++;}
-        private static Projectile PrivateCopy(Projectile p){var q=(Projectile)typeof(object).GetMethod("MemberwiseClone",Flags).Invoke(p,null);q.ai=(float[])p.ai.Clone();q.localNPCImmunity=(int[])p.localNPCImmunity.Clone();return q;}
+        private static Projectile PrivateCopy(Projectile p){var q=(Projectile)typeof(object).GetMethod("MemberwiseClone",Flags).Invoke(p,null);q.ai=(float[])p.ai.Clone();q.localAI=(float[])p.localAI.Clone();q.localNPCImmunity=(int[])p.localNPCImmunity.Clone();return q;}
         private static void FanBorn(IEntitySource __0,int __result)
         {var source=__0 as EntitySource_Parent;if(trackFan && source?.Entity is Projectile && ((Projectile)source.Entity).type==710 && __result>=0 && Main.projectile[__result].type==710)actualFan.Add(PrivateCopy(Main.projectile[__result]));}
         private static void FanPrivate(Projectile child){if(trackFan && child.type==710)privateFan.Add(PrivateCopy(child));}
@@ -236,7 +297,7 @@ namespace NativeWorldTextProbe
             foreach(bool harpy in new[]{false,true})
             {
                 var p=Scene(4953,1235,1,harpy);p.itemAnimationMax=10;p.itemAnimation=7;p.itemTime=3;p.controlUseItem=true;p.releaseUseItem=false;for(int x=3;x<Main.maxTilesX-3;x++)NativeToolsChecks.Tile(x,70,1);var n=Target(p.Center+new Vector2(220,0));var path=Path(n);var attack=Get(Get(context,"Combat"),"Attack");object bound;preparedBirth=null;watchBirth=true;depth++;AttackContact contact;try{contact=NativeCombatUsageChecks.ReadMechanism(Get(context,"CombatObservation"),attack,n,out bound,path);}finally{depth--;watchBirth=false;}
-                Require(contact!=null && preparedBirth!=null,"delayed ordinal component owns actual native later hand source");int expectedStage=preparedStage;nativeStageCalls=0;watchNativeStage=true;try{for(int i=0;i<5 && nativeStageCalls==0;i++)NativeCombatSelectionPreviewChecks.Step(context,n.Center,true);}finally{watchNativeStage=false;}
+                var solution=Get(bound,"Solution");Require((bool)Get(bound,"Balanced") && (bool)Get(solution,"HasPoint") && Get(solution,"Reachability").ToString()=="Reachable" && preparedBirth!=null,"delayed ordinal component owns the actual representative later hand source without requiring a world Contact");int expectedStage=preparedStage;nativeStageCalls=0;watchNativeStage=true;try{for(int i=0;i<5 && nativeStageCalls==0;i++)NativeCombatSelectionPreviewChecks.Step(context,n.Center,true);}finally{watchNativeStage=false;}
                 Require(nativeStageCalls==1 && nativeStage==expectedStage,"delayed Eventide private preview ordinal equals actual native ItemCheck after cooldown Harpy="+harpy+" predicted="+expectedStage+" native="+nativeStage+" planDelay="+Get(bound,"Delay"));Console.WriteLine("NATIVE ARROW delayed native ordinal Harpy="+harpy+" stage="+nativeStage+" delay="+Get(bound,"Delay"));
             }
         }
@@ -267,13 +328,22 @@ namespace NativeWorldTextProbe
         }
         private static void InputNegatives()
         {
-            foreach(int edit in new[]{0,1,2,3,4,5})
+            foreach(int edit in new[]{0,1,2,3,4,5,6,7})
             {
                 var p=Scene(4953,1235,1,true);var n=Target(p.Center+new Vector2(220,0));var observation=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");NativeCombatObservationChecks.Save(observation,new ObservationOptions(false,true,false,false,true,25,false,true));var physical=p.Center-new Vector2(250,120);NativeToolExecutionChecks.Sample(context,Get(context,"Input"),physical,true);Call(combat,"Sample");depth++;try{NativeCombatAimChecks.PrepareMechanismFixture(observation,attack,n,0,phaseName:"BeforeNpc");}finally{depth--;}
-                Require(GetOptional(attack,"ExpectedImpact")!=null,"negative begins with an actually prepared special-birth Contact");
+                var solution=NativeCombatAimChecks.RequireSolution(attack,p,"negative begins with an actually prepared special-birth input");uint originalTick=Main.GameUpdateCount;bool originalChat=Main.drawingPlayerChat;var originalVelocity=p.velocity;
                 if(edit==0)NativeCombatObservationChecks.Save(observation,new ObservationOptions(false,true,false,false,true,25,false,false));if(edit==1)Main.drawingPlayerChat=true;if(edit==2)n.dontTakeDamage=true;if(edit==3)p.magicQuiver=!p.magicQuiver;if(edit==4)p.inventory[54].SetDefaults(40);if(edit==5)Spawn(p,14,p.Center-new Vector2(30,0),Vector2.UnitX,0);
-                try{Shoot(p,physical,true);}finally{Main.drawingPlayerChat=false;}
-                bool enhanced=(bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced";Require(!enhanced,"actual special birth cannot consume stale/forbidden Contact edit="+edit);Require(Main.projectile.Any(q=>q.active && q.owner==p.whoAmI && q.damage>0),"negative never suppresses native original hand birth");Console.WriteLine("NATIVE ARROW actual input negative edit="+edit+" EnhancedFalse nativeBirthTrue");
+                if(edit==6)p.velocity+=Vector2.UnitX;if(edit==7)typeof(Main).GetField("_gameUpdateCount",Flags).SetValue(null,unchecked(Main.GameUpdateCount+2));
+                try
+                {
+                    Require(!(bool)Get(attack,"hasConsumedInput"),"native-arrow negative begins before any actual hand consumption");
+                    Shoot(p,physical,true);
+                    bool enhanced=(bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced";
+                    // A foreign zero-damage bullet is no longer an ordinary hand
+                    // dependency. Aim/UI/target/ammo/gear/motion/age still are.
+                    Require(enhanced==(edit==5),"special-birth input follows its actual permission and dependency boundary edit="+edit);if(edit==5)NativeCombatAimChecks.RequireConsumedInput(attack,p,solution,"ambient birth does not withdraw the current representative hand");Require(Main.projectile.Any(q=>q.active && q.owner==p.whoAmI && q.damage>0),"negative never suppresses native original hand birth");Console.WriteLine("NATIVE ARROW actual input edit="+edit+" Enhanced="+enhanced+" nativeBirthTrue");
+                }
+                finally{Main.drawingPlayerChat=originalChat;typeof(Main).GetField("_gameUpdateCount",Flags).SetValue(null,originalTick);p.velocity=originalVelocity;}
             }
         }
         private static string RandomSequence(Terraria.Utilities.UnifiedRandom random)
@@ -295,6 +365,7 @@ namespace NativeWorldTextProbe
                 audit.Patch(typeof(Utils).GetMethod("RotatedByRandom",Flags,null,new[]{typeof(Vector2),typeof(double)},null),transpiler:new HarmonyMethod(typeof(NativeCombatNativeArrowBirthChecks),nameof(Inputs)));
                 audit.Patch(host.GetType("JueMingR.TerrariaHost.Combat.HostNativeArrowBirthAttack",true).GetMethod("Solve",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNativeArrowBirthChecks),nameof(SolveObserved)),finalizer:new HarmonyMethod(typeof(NativeCombatNativeArrowBirthChecks),nameof(SolveDone)));
                 audit.Patch(host.GetType("JueMingR.TerrariaHost.Combat.HostNativeArrowBirthAttack",true).GetMethod("Births",Flags),postfix:new HarmonyMethod(typeof(NativeCombatNativeArrowBirthChecks),nameof(BirthObserved)));
+                audit.Patch(host.GetType("JueMingR.TerrariaHost.Combat.HostNativeArrowBirthAttack",true).GetMethod("Birth",Flags),postfix:new HarmonyMethod(typeof(NativeCombatNativeArrowBirthChecks),nameof(SingleBirthObserved)));
                 audit.Patch(typeof(Player).GetMethod("ItemCheck_Shoot",Flags),postfix:new HarmonyMethod(typeof(NativeCombatNativeArrowBirthChecks),nameof(NativeHandObserved)),transpiler:new HarmonyMethod(typeof(NativeCombatNativeArrowBirthChecks),nameof(Inputs)));
                 audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatNativeArrowBirthChecks),nameof(Damage)),finalizer:new HarmonyMethod(typeof(NativeCombatNativeArrowBirthChecks),nameof(DamageDone)));
                 audit.Patch(typeof(NPC).GetMethod("StrikeNPC",Flags,null,new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)},null),postfix:new HarmonyMethod(typeof(NativeCombatNativeArrowBirthChecks),nameof(Strike)));

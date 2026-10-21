@@ -42,13 +42,13 @@ namespace NativeWorldTextProbe
                 Require(Main.projectile.Any(q=>q.active && q.owner==0),"first actual click creates original source without needing an earlier hit: "+type);
                 var registry=(System.Collections.IDictionary)Get(Get(attack,"Control"),"shots");Require(registry.Count>0,"first natural source is registered for later legal consumers: "+type);
                 if(type==3930)Console.WriteLine("CONTROL component seed17 native parent first ai="+string.Join(";",Main.projectile.Where(q=>q.active && q.owner==p.whoAmI && q.type==714).Select(q=>q.ai[0]+"/"+q.ai[1])));
-                bool opening;var stage=ReadStage(context,n,out opening);int visible=stage!=null?1:0,current=stage!=null && !opening?1:0,future=stage!=null && opening?1:0;bool retiredMissile=false;
+                bool opening;var stage=ReadStageFacts(context,n,out opening);int visible=Feasible(stage)?1:0,current=Feasible(stage) && !opening?1:0,future=Feasible(stage) && opening?1:0;bool retiredMissile=false;
                 if(visible==0)Missing(type,0,p,n);
                 for(int i=0;i<8;i++)
                 {
-                    NativeCombatSelectionPreviewChecks.Step(context,n.Center,true);var result=ReadStage(context,n,out opening);if(result!=null){visible++;if(opening)future++;else current++;}else Missing(type,i+1,p,n);
+                    NativeCombatSelectionPreviewChecks.Step(context,n.Center,true);var result=ReadStageFacts(context,n,out opening);if(Feasible(result)){visible++;if(opening)future++;else current++;}else Missing(type,i+1,p,n);
                     if(type==113 && p.ownedProjectileCounts[p.HeldItem.shoot]>0 && !Main.projectile.Any(q=>q.active && q.owner==p.whoAmI && q.type==p.HeldItem.shoot))
-                    {retiredMissile=true;Require(opening && result!=null && result.Delay>=p.itemTime-1,"naturally retired missile's stale count retains a correctly delayed NEW hand component, not a current AI capability");}
+                    {retiredMissile=true;Require(opening && result.Contact!=null && result.Contact.Delay>=p.itemTime-1,"naturally retired missile's stale count retains a correctly delayed NEW hand component, not a current AI capability");}
                     Require(GetOptional(attack,"ExpectedPreview")==null,"read-only stage component never restores retired idle presentation");
                 }
                 if(type==113)Require(retiredMissile,"natural missile fixture actually crosses the projectile-pass retirement after Player's cached count");
@@ -62,18 +62,37 @@ namespace NativeWorldTextProbe
             Require(failures.Count==0,"natural controller family failures: "+string.Join(" | ",failures));
             NativeCombatCelebrationChecks.Run(context);
         }
+        private static bool Feasible(NativeCombatAimChecks.SolutionFacts facts)
+        {return facts.Contact!=null || facts.Route=="representative" && facts.HasPoint && facts.Reachability=="Reachable" && facts.Timeline!=null && facts.ReceiveTick>=facts.FirstTick && facts.ReceiveTick<facts.Timeline.Count;}
+        // Celebration retains the original dedicated Contact ABI. Held-family
+        // readers consume facts instead; neither adapter grants input permission.
         internal static AttackContact ReadStage(object context,NPC target,out bool opening)
+        {return ReadStageFacts(context,target,out opening).Contact;}
+        private static NativeCombatAimChecks.SolutionFacts ReadStageFacts(object context,NPC target,out bool opening)
         {
             var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");var control=Get(attack,"Control");var p=Main.LocalPlayer;
             var keys=Main.projectile.Where(q=>q.active).Select(q=>q.key).ToArray();bool use=p.controlUseItem,channel=p.channel;int mouseX=Main.mouseX,mouseY=Main.mouseY;
-            AttackContact result;
+            NativeCombatAimChecks.SolutionFacts result;
             using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
             {
                 NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);
                 var path=((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(1);Require(path!=null,"controlled component owns an explicit current shared trajectory");
                 var phase=Enum.Parse(attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"CompletedWorld");
-                result=(AttackContact)Call(control,"Preview",path,phase,0,false);opening=result==null;
-                if(opening)result=(AttackContact)Call(control,"Preview",path,phase,0,true);
+                if(p.HeldItem.shoot==615 || p.HeldItem.shoot==630 || p.HeldItem.shoot==705)
+                {
+                    // The current held adapter returns a representative solution,
+                    // not the retired complete Preview Contact. Determine source
+                    // role with the controller's actual observation predicate.
+                    opening=NativeCombatAimChecks.ReadObservedHeldSource(attack)==null;
+                    object plan;result=NativeCombatUsageChecks.ReadMechanismFacts(host,attack,target,out plan,path);
+                    Require(result.Route=="representative" && ReferenceEquals(result.Timeline,path),"held stage facts retain their private current trajectory and representative route");
+                }
+                else
+                {
+                    var contact=(AttackContact)Call(control,"Preview",path,phase,0,false);opening=contact==null;
+                    if(opening)contact=(AttackContact)Call(control,"Preview",path,phase,0,true);
+                    result=new NativeCombatAimChecks.SolutionFacts{Route="dedicated-contact",Contact=contact,Phase="CompletedWorld",Delay=contact?.Delay??0};
+                }
             }
             Require(use==p.controlUseItem && channel==p.channel && mouseX==Main.mouseX && mouseY==Main.mouseY && keys.SequenceEqual(Main.projectile.Where(q=>q.active).Select(q=>q.key)),"read-only controlled stage never lends cursor, presses input, or creates a live source");
             return result;

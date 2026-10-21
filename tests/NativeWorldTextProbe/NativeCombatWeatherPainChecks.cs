@@ -13,14 +13,16 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatWeatherPainChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
-        private static Assembly assembly;private static Type model;private static Projectile receiving;private static int step,first;
+        private static Assembly assembly;private static Type model;private static Projectile receiving;private static int step,first;private static long firstGuc;
         private static object Static(Type t,string name,params object[] args){return t.GetMethod(name,Flags).Invoke(null,args);}
         private static void Damage(Projectile __instance){receiving=__instance;}private static void DamageDone(){receiving=null;}
-        private static void Strike(NPC __instance,int __result){if(__result>0 && __instance.whoAmI==2 && receiving?.type==969 && first==0)first=step;}
+        private static void Strike(NPC __instance,int __result){if(__result>0 && __instance.whoAmI==2 && receiving?.type==969 && first==0){first=step;firstGuc=Main.GameUpdateCount;}}
+        private static void RequireClock(AttackContact contact)
+        {Require(firstGuc>=0 && firstGuc-contact.Timeline.SampleTick==contact.Tick && firstGuc-contact.Timeline.SampleTick==contact.ReceiveTick,"Weather actual Strike GUC agrees with the dedicated timeline receive index");Console.WriteLine("WEATHER absolute sample="+contact.Timeline.SampleTick+" strike="+firstGuc+" receive="+contact.ReceiveTick);}
         private static Player Reset(object context)
         {
             NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),5118,0,0);p.position=new Vector2(850,646);p.velocity=Vector2.Zero;p.ResetEffects();p.itemAnimationMax=p.itemAnimation=p.HeldItem.useAnimation;Main.windPhysics=false;
-            foreach(var n in Main.npc)n.active=false;foreach(var q in Main.projectile)q.active=false;for(int x=35;x<115;x++)for(int y=10;y<65;y++)Main.tile[x,y].ClearEverything();first=step=0;return p;
+            foreach(var n in Main.npc)n.active=false;foreach(var q in Main.projectile)q.active=false;for(int x=35;x<115;x++)for(int y=10;y<65;y++)Main.tile[x,y].ClearEverything();first=step=0;firstGuc=-1;return p;
         }
         private static NPC Target(int slot,Vector2 center)
         {var n=Main.npc[slot];n.SetDefaults(3);n.whoAmI=slot;n.active=true;n.Center=center;n.life=n.lifeMax=10000;n.defense=0;n.aiStyle=-1;n.noGravity=n.noTileCollide=true;n.velocity=n.netOffset=Vector2.Zero;n.knockBackResist=0;n.realLife=-1;n.friendly=n.immortal=n.dontTakeDamage=false;Array.Clear(n.immune,0,n.immune.Length);return n;}
@@ -34,7 +36,9 @@ namespace NativeWorldTextProbe
         private static Projectile Spawn(Player p,Vector2 center,Vector2 velocity)
         {return Main.projectile[Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),center,velocity,969,30,0,p.whoAmI)];}
         private static void Advance(int limit)
-        {for(step=1;step<=limit && first==0;step++){NativeQuickItemChecks.BeginWorldStep();foreach(var n in Main.npc)if(n.active)n.UpdateNPC(n.whoAmI);for(int slot=0;slot<1000;slot++)if(Main.projectile[slot].active){Main.ProjectileUpdateLoopIndex=slot;try{Main.projectile[slot].Update(slot);}finally{Main.ProjectileUpdateLoopIndex=-1;}}}}
+        {
+            // This BeforeNpc root includes the current GUC; only later worlds advance it.
+            for(step=1;step<=limit && first==0;step++){if(step>1)NativeQuickItemChecks.BeginWorldStep();foreach(var n in Main.npc)if(n.active)n.UpdateNPC(n.whoAmI);for(int slot=0;slot<1000;slot++)if(Main.projectile[slot].active){Main.ProjectileUpdateLoopIndex=slot;try{Main.projectile[slot].Update(slot);}finally{Main.ProjectileUpdateLoopIndex=-1;}}}}
         internal static void Run(object context)
         {
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostWeatherPainAttack",true);var audit=new Harmony("JueMingR.Tests.WeatherPain");bool wind=Main.windPhysics;
@@ -75,12 +79,12 @@ namespace NativeWorldTextProbe
         {
             foreach(int cooldown in new[]{0,45})
             {
-                var p=Reset(context);var n=Target(2,new Vector2(1100,350));var q=Spawn(p,new Vector2(900,350),new Vector2(1,0));Projectile.perIDStaticNPCImmunity[969,2]=(uint)Main.GameUpdateCount+(uint)cooldown;object lease;var expected=Known(p,new[]{q},n,out lease);Require(expected!=null,"native autonomous storm has a real conditional future receiver");Advance(90);Require(first==expected.Tick,"native ID-static expiry and AI177 endpoints preserve exact first Strike");Console.WriteLine("WEATHER receive cooldown="+cooldown+" expected="+expected.Tick+" native="+first);
+                var p=Reset(context);var n=Target(2,new Vector2(1100,350));var q=Spawn(p,new Vector2(900,350),new Vector2(1,0));Projectile.perIDStaticNPCImmunity[969,2]=(uint)Main.GameUpdateCount+(uint)cooldown;object lease;var expected=Known(p,new[]{q},n,out lease);Require(expected!=null,"native autonomous storm has a real conditional future receiver");Advance(90);RequireClock(expected);Require(first==expected.Tick,"native ID-static expiry and AI177 endpoints preserve exact first Strike");Console.WriteLine("WEATHER receive cooldown="+cooldown+" expected="+expected.Tick+" native="+first);
             }
         }
         private static void Hand(object context)
         {
-            var p=Reset(context);var n=Target(2,new Vector2(1150,667));var path=Timeline(n);var sample=new Projectile();sample.SetDefaults(969);sample.owner=p.whoAmI;var ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);var origin=p.RotatedRelativePoint(p.MountedCenter);var expected=(AttackContact)Static(model,"Solve",p,ammo,path,origin,0,true,Terrain(),Root(p,sample,path),0);Require(expected!=null,"5118 captures real magic damage and solves a complete finite storm family");Main.mouseX=(int)(expected.AimX-Main.screenPosition.X);Main.mouseY=(int)(expected.AimY-Main.screenPosition.Y);typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{p.whoAmI,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var born=Main.projectile.Single(q=>q.active && q.type==969);Require(born.damage==(int)Get(ammo,"Damage"),"real native5118 Shoot has the captured damage");Advance(90);Require(first==expected.Tick,"actual5118 Shoot->AI177->Damage matches the prepared first useful receive");Console.WriteLine("WEATHER hand expected="+expected.Tick+" native="+first);
+            var p=Reset(context);var n=Target(2,new Vector2(1150,667));var path=Timeline(n);var sample=new Projectile();sample.SetDefaults(969);sample.owner=p.whoAmI;var ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);var origin=p.RotatedRelativePoint(p.MountedCenter);var expected=(AttackContact)Static(model,"Solve",p,ammo,path,origin,0,true,Terrain(),Root(p,sample,path),0);Require(expected!=null,"5118 captures real magic damage and solves a complete finite storm family");Main.mouseX=(int)(expected.AimX-Main.screenPosition.X);Main.mouseY=(int)(expected.AimY-Main.screenPosition.Y);typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{p.whoAmI,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var born=Main.projectile.Single(q=>q.active && q.type==969);Require(born.damage==(int)Get(ammo,"Damage"),"real native5118 Shoot has the captured damage");Advance(90);RequireClock(expected);Require(first==expected.Tick,"actual5118 Shoot->AI177->Damage matches the prepared first useful receive");Console.WriteLine("WEATHER hand expected="+expected.Tick+" native="+first);
         }
     }
 }

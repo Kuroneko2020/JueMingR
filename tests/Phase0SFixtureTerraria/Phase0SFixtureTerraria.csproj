@@ -63,6 +63,7 @@
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesPins.cs" Link="Production\NotesPins.cs" />
     <Compile Include="..\Phase0U\*.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\ViewControls.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\MovementControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Input\*.cs" Link="Production\Input\%(Filename)%(Extension)" />
     <Compile Include="..\Phase0V\SettingsHostChecks.cs" />
     <Compile Include="..\Phase0V\PreferenceFeedbackChecks.cs" />

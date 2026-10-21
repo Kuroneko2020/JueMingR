@@ -21,37 +21,44 @@ namespace NativeWorldTextProbe
     internal static class NativeViewOriginalChecks
     {
         private const BindingFlags F = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
-        internal static int Run(string content, string output,bool waterRepair=false,bool zoomSpeed=false)
+        internal static int Run(string content, string output,bool waterRepair=false,bool zoomSpeed=false,bool movement=false)
         {
             output = Path.GetFullPath(output); Directory.CreateDirectory(output);
             Terraria.Program.SavePath = Path.Combine(output, "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath);
-            return RunNative(content, output,waterRepair,zoomSpeed);
+            return RunNative(content, output,waterRepair,zoomSpeed,movement);
         }
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        private static int RunNative(string content, string output,bool waterRepair,bool zoomSpeed)
+        private static int RunNative(string content, string output,bool waterRepair,bool zoomSpeed,bool movement)
         {
             NativeTestAudio.Install(typeof(Main).Assembly);
+            if (movement) Console.WriteLine("MOVEMENT startup=audio-installed");
             AppDomain.MonitoringIsEnabled = true;
             // Program.RunGame normally installs its all-assembly JIT preload
             // callback. This specialist skips that unrelated warmup through the
             // original native test flag, otherwise DrawSplash waits forever for
             // Program.LoadedEverything despite completed assets.
             Main.SkipAssemblyLoad = true;
+            if (movement) Console.WriteLine("MOVEMENT startup=graphics-adapters-before");
             Require(GraphicsAdapter.Adapters.Count > 0, "Native view requires an actual XNA device.");
+            if (movement) Console.WriteLine("MOVEMENT startup=graphics-adapters-ready");
             // Explicit native None selects no Steam/cloud modules. This test
             // does not call Program.LaunchGame, whose client default is Steam.
             Terraria.Social.SocialAPI.Initialize(Terraria.Social.SocialMode.None);
+            if (movement) Console.WriteLine("MOVEMENT startup=social-none-ready");
             Terraria.Localization.LanguageManager.Instance.SetLanguage("en-US"); Lang.InitializeLegacyLocalization();
             string old = Environment.CurrentDirectory;
             try
             {
                 Environment.CurrentDirectory = output;
-                using (var game = new ViewGame(content, output,waterRepair,zoomSpeed))
+                using (var game = new ViewGame(content, output,waterRepair,zoomSpeed,movement))
                 {
+                    if (movement) Console.WriteLine("MOVEMENT startup=start-game-loop-before");
                     // XNA's nonblocking entry performs CreateDevice and the
                     // complete native Initialize first. Explicit Tick then
                     // drives its native loop in a disconnected desktop session.
                     typeof(Game).GetMethod("StartGameLoop", F).Invoke(game, null);
+                    if (movement) Console.WriteLine("MOVEMENT startup=start-game-loop-ready");
+                    if (movement) Require(game.NativeInitialized && game.GraphicsDevice != null, "Movement native initialization/device did not complete; do not enter an empty Tick loop.");
                     while (!game.Complete) game.Tick();
                 }
             }
@@ -67,7 +74,7 @@ namespace NativeWorldTextProbe
             private object context, input, view;
             private int frame;
             private bool prepared;
-            private readonly bool waterRepair,zoomSpeed;
+            private readonly bool waterRepair,zoomSpeed,movement;
             private bool ordinaryImage, wideImage, retainedImage;
             private readonly HashSet<string> images = new HashSet<string>();
             private readonly Dictionary<string, int> stableRebuilds = new Dictionary<string, int>();
@@ -79,12 +86,15 @@ namespace NativeWorldTextProbe
             private readonly Dictionary<string,long> drawAllocations = new Dictionary<string,long>();
             private int legacyRebuilds, targetInitializations;
             internal bool Complete { get; private set; }
+            internal bool NativeInitialized { get; private set; }
             private static KeyboardState keyboard;
+            private static int movementMouseX=1400,movementMouseY=540;
+            private static bool movementMouseDown;
             private static RenderTarget2D capture;
             private static bool redirectOutput;
-            internal ViewGame(string content, string output,bool waterRepair,bool zoomSpeed)
+            internal ViewGame(string content, string output,bool waterRepair,bool zoomSpeed,bool movement)
             {
-                this.output = output; this.content = content;this.waterRepair=waterRepair;this.zoomSpeed=zoomSpeed;
+                this.output = output; this.content = content;this.waterRepair=waterRepair;this.zoomSpeed=zoomSpeed;this.movement=movement;
                 // Caller supplies a local Content directory alias rooted in the
                 // test output because native XnaContentSource takes relative URI.
                 Content.RootDirectory = "Content";
@@ -104,12 +114,20 @@ namespace NativeWorldTextProbe
             private static void PhysicalOutput(ref RenderTarget2D __0) { if (__0 == null && redirectOutput && capture != null) __0 = capture; }
             private static bool ReadKeyboard(ref KeyboardState __result) { __result = keyboard; return false; }
             private static bool ReadMouse(ref MouseState __result)
-            { __result = new MouseState(1400, 540, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released); return false; }
-            protected override void Initialize() { Console.WriteLine("VIEW original Initialize begin"); base.Initialize(); Console.WriteLine("VIEW original Initialize complete"); device.Patch(typeof(Terraria.Graphics.Light.LegacyLighting).GetMethod("Rebuild"), postfix: new HarmonyMethod(typeof(ViewGame), nameof(LegacyBuilt))); device.Patch(typeof(Main).GetMethod("InitTargets", F), postfix: new HarmonyMethod(typeof(ViewGame), nameof(TargetsBuilt))); }
+            { __result = new MouseState(movementMouseX, movementMouseY, 0, movementMouseDown ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released); return false; }
+            protected override bool ShowMissingRequirementMessage(Exception exception)
+            {
+                // The default XNA outlet opens a modal message and swallows
+                // CreateDevice/audio failures. Owned tests retain the original
+                // exception instead of later timing out in an empty Tick loop.
+                Console.Error.WriteLine("NATIVE ORIGINAL REQUIREMENT FAILURE: " + exception);
+                return false;
+            }
+            protected override void Initialize() { Console.WriteLine("VIEW original Initialize begin"); base.Initialize(); NativeInitialized = true; Console.WriteLine("VIEW original Initialize complete"); device.Patch(typeof(Terraria.Graphics.Light.LegacyLighting).GetMethod("Rebuild"), postfix: new HarmonyMethod(typeof(ViewGame), nameof(LegacyBuilt))); device.Patch(typeof(Main).GetMethod("InitTargets", F), postfix: new HarmonyMethod(typeof(ViewGame), nameof(TargetsBuilt))); }
             protected override void LoadContent() { Console.WriteLine("VIEW original LoadContent begin"); base.LoadContent(); Console.WriteLine("VIEW original LoadContent complete"); }
             protected override void Update(GameTime time)
             {
-                if (deadline.Elapsed.TotalSeconds > 120) throw new TimeoutException("Native view specialist timed out before completion, frame=" + frame);
+                if (deadline.Elapsed.TotalSeconds > (movement ? 300 : 120)) throw new TimeoutException("Native view specialist timed out before completion, frame=" + frame);
                 // DrawSplash owns the original deferred asset load. This
                 // deterministic render specialist never runs native simulation.
                 if (showSplash) return;
@@ -141,6 +159,8 @@ namespace NativeWorldTextProbe
                 // consumption, native world mouse conversion and final sample.
                 typeof(Main).GetMethod("DoUpdate_HandleInput", F).Invoke(this, null);
                 Call(context, "UpdateRuntime");
+                if(frame==70 && movement)
+                { NativeMovementOriginalChecks.Run(this,context,k=>InputStep(k),()=>Draw(new GameTime()),output,(x,y,down)=>{movementMouseX=x;movementMouseY=y;movementMouseDown=down;});Complete=true;Exit();return; }
                 if (frame == 70) { Require((bool)Call(view, "SetUnlockEnabled", true), "Native view enabled after document load"); Require(GameZoomTarget == 1f, "ON does not jump target"); }
                 // The public speed scope owns this finite obligation directly;
                 // private cache focus/profile variables cannot select it away.

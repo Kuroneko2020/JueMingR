@@ -18,6 +18,23 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+# The selection leaf also owns Step, a native update/purity fixture consumed
+# by actual Effects/Aim/Control/Mechanics and visual callers. A private-test
+# edit still changes this shared file under the current whole-file proof.
+$selectionPath='tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs'
+$selectionConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')
+Assert-Route (((Get-WorkloadPathChecks $selectionPath|Sort-Object)-join '|') -ceq (($selectionConsumers|Sort-Object)-join '|')) 'selection shared Step binds its complete actual consumer union'
+$selectionRoute=Get-WorkloadRoute @($selectionPath)
+$selectionPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $selectionRoute.groups|ForEach-Object {$_.name})
+foreach($consumer in $selectionConsumers){
+    if($consumer -in @('native-CombatImpactVisual','native-CombatVisual','native-CombatAttackCosts')){continue}
+    Assert-Route ($selectionPlan -contains $consumer) ('shared Step actual parent selected '+$consumer)
+    $before=[pscustomobject]@{inputs=@($selectionPath+':'+('A'*64))}
+    $after=[pscustomobject]@{inputs=@($selectionPath+':'+('B'*64))}
+    Assert-Route ((Get-WorkloadCheckFingerprint $before $consumer) -cne (Get-WorkloadCheckFingerprint $after $consumer)) ('shared Step bytes invalidate actual consumer proof '+$consumer)
+}
+Assert-Route ((Get-WorkloadCheckFingerprint $before 'native-NpcEyeBoss') -ceq (Get-WorkloadCheckFingerprint $after 'native-NpcEyeBoss')) 'shared Step edit does not invalidate unrelated NPC motion proof'
+Assert-Route ($selectionPlan -notcontains 'native-NpcEyeBoss' -and $selectionPlan -notcontains 'native-CombatNavigationCpu') 'shared Step has no unrelated NPC or navigation consumer'
 $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
 foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){
     $consumers=@(Get-WorkloadPathChecks $path)
@@ -28,10 +45,20 @@ foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/
     foreach($name in @('native-CombatControlCpu','native-CombatCosts','native-CombatCpu','native-CombatYoyoCausal')){Assert-Route ($plan -contains $name) ('actual attack parent consumer selected '+$name)}
     Assert-Route ($plan -notcontains 'native-CombatNavigationCpu' -and $plan -notcontains 'native-CombatAttackCosts' -and $plan -notcontains 'native-NpcBasicMotion') 'parent plan neither duplicates specialist children nor selects NPC motion'
 }
+foreach($movementPath in @('src/JueMingR.TerrariaHost/Movement/MovementSession.cs','src/JueMingR.TerrariaHost/Input/HostInputState.cs','src/JueMingR.Platform/Settings/PreferenceDocument.cs','@full')){
+    $movementRoute=Get-WorkloadRoute @($movementPath)
+    $movementPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $movementRoute.groups | ForEach-Object {$_.name})
+    foreach($movementScope in @('native-MovementJumpCpu','native-MovementDashCpu','native-MovementTeleportCpu')){Assert-Route ($movementPlan -contains $movementScope) ('movement native cumulative propagation '+$movementPath+' '+$movementScope)}
+    Assert-Route ($movementPlan -notcontains 'native-MovementOriginal') 'actual device/content original specialist is separate from CPU cumulative plan'
+}
 try {
     Invoke-WorkloadGit $fixtureRoot @('init', '--quiet') | Out-Null
     Invoke-WorkloadGit $fixtureRoot @('config', 'core.autocrlf', 'false') | Out-Null
     $cases = [ordered]@{
+        'src/JueMingR.TerrariaHost/Movement/MovementSession.cs' = 'movement-host';
+        'src/JueMingR.Features/Movement/ContinuousDashGesture.cs' = 'movement-host';
+        'src/JueMingR.TerrariaHost/F5/MovementControls.cs' = 'movement-host';
+        'tests/JueMingR.ArchitectureTests/Movement/MovementPreferenceChecks.cs' = 'movement-host';
         'src/JueMingR.TerrariaHost/Feedback/NativePopupText.cs' = 'shared-host';
         'src/JueMingR.TerrariaHost/Feedback/LocalShortFeedback.cs' = 'shared-host';
         'tests/NativeWorldTextProbe/NativeShortFeedbackChecks.cs' = 'shared-host';
@@ -168,7 +195,7 @@ try {
         if ($expected -contains 'shared-host' -or $expected -contains 'storage-host' -or $expected -contains 'tools-host') { $expected += 'combat-host' }
         if ($expected -contains 'shared-host' -or $expected -contains 'storage-host') {
             $expected += 'legacy-worker'
-            $expected += @('notes-host','records','style-host','world-host','hotkeys','preferences','information','guidance','entity','items','biomes','pages-host')
+            $expected += @('notes-host','records','style-host','world-host','hotkeys','preferences','information','guidance','entity','items','biomes','pages-host','movement-host','view-host','journey-host')
         }
         if ($expected -contains 'fishing-host') { $expected += 'information' }
         if ($expected -contains 'quick-items-host' -or $expected -contains 'notes-host') { $expected += 'hotkeys' }

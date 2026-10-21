@@ -87,7 +87,7 @@ namespace NativeWorldTextProbe
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
         {
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");Require(GetOptional(source,"Native")==null,"AI107 remains on the default synchronous scalar producer.");
-            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Get(source,"Terrain");long session=(long)Get(host,"Session");
+            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);long session=(long)Get(host,"Session");
             var oracle=new Harmony("JueMingR.Tests.Ground107NativeAction");oracle.Patch(typeof(NPC).GetMethod("UpdateNPC",Flags),prefix:new HarmonyMethod(typeof(NativeCombatInvasionGroundChecks),nameof(Before)),postfix:new HarmonyMethod(typeof(NativeCombatInvasionGroundChecks),nameof(After)));
             oracle.Patch(typeof(Player).GetMethod("Hurt",Flags,null,new[]{typeof(Terraria.DataStructures.PlayerDeathReason),typeof(int),typeof(int),typeof(bool),typeof(bool),typeof(bool),typeof(int),typeof(bool)},null),prefix:new HarmonyMethod(typeof(NativeCombatInvasionGroundChecks),nameof(BeforeHurt)),postfix:new HarmonyMethod(typeof(NativeCombatInvasionGroundChecks),nameof(Hurt)));
             try
@@ -129,6 +129,8 @@ namespace NativeWorldTextProbe
                     };
                     beforeAction=n=>
                     {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                         actionValid=false;if(!ReferenceEquals(n,actor) || !n.active)return;
                         terrain.Reset();var group=Capture(read,tracking,terrain,session);predictedAction=group[Find(group,actor)];var e=Environment(Main.LocalPlayer,true);PredictionStop stop;
                         actionValid=NpcMotion.Step(ref predictedAction,group,group.Length,e,terrain,1,true,out stop);
@@ -154,10 +156,10 @@ namespace NativeWorldTextProbe
                         string currentClosure="";for(int i=0;i<Main.maxNPCs;i++)if(Main.npc[i].active && Main.npc[i].type==548)currentClosure+=i+":"+Main.npc[i].generation+":"+Main.npc[i].ai[1]+";";
                         if(closure!=null && closure!=currentClosure)frozen.Clear();closure=currentClosure;
                         bool has=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(has)selected++;
-                        var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(has && path.CaptureTick==Main.GameUpdateCount,"AI107 selection and published timeline share the same sample.");published++;if(frame%5==0 && path.Count>1)frozen.Add(new Frozen(path,actor.ai[0],actor.ai[1]));}
+                        var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(has && path.SampleTick==Main.GameUpdateCount,"AI107 selection and published timeline share the same sample.");published++;if(frame%5==0 && path.Count>1)frozen.Add(new Frozen(path,actor.ai[0],actor.ai[1]));}
                         for(int i=frozen.Count-1;i>=0;i--)
                         {
-                            var item=frozen[i];int offset=(int)((long)Main.GameUpdateCount-item.Path.CaptureTick);if(offset>=item.Path.Count){frozen.RemoveAt(i);continue;}if(offset<=0)continue;
+                            var item=frozen[i];int offset=(int)((long)Main.GameUpdateCount-item.Path.SampleTick);if(offset>=item.Path.Count){frozen.RemoveAt(i);continue;}if(offset<=0)continue;
                             var point=item.Path[offset];double error=Vector2.Distance(actor.position,new Vector2(point.Bounds.X,point.Bounds.Y));maximum=Math.Max(maximum,error);matches++;if(offset>=30)longMatches++;if(item.A0!=actor.ai[0] || item.A1!=actor.ai[1])cross++;if((item.A0>0)!=(actor.ai[0]>0))attackCross++;if(hit)afterHit++;
                             var p=Main.LocalPlayer;
                             Require(error<=.08 && point.NoTileCollide==actor.noTileCollide && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal),"Frozen original AI107 "+scene+" offset="+offset+" error="+error.ToString("R",CultureInfo.InvariantCulture)+" predicted="+point.Bounds.X+","+point.Bounds.Y+" actual="+actor.position+" velocity="+actor.velocity+" phases="+actor.ai[0]+","+actor.ai[1]+" facing="+actor.direction+" targetRect="+actor.targetRect+" player="+p.position+" pv="+p.velocity+" aggro="+p.aggro+" itemAnimation="+p.itemAnimation+" noAggro="+p.npcTypeNoAggro[member]+" frozenPhase="+item.A0+","+item.A1+" frozenPC="+item.PlayerArea+" stop="+item.Path.Stop);

@@ -31,22 +31,31 @@ namespace NativeWorldTextProbe
                 // instead of inheriting the preceding piercing shot's cooldown.
                 Array.Clear(n.immune,0,n.immune.Length);
                 NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));
-                // This is the complete-model/native-outcome matrix, not the
-                // natural cold-use supply check. Its immutable121 fixture and
+                // This is the native-outcome matrix, not the natural cold-use
+                // supply check. Its immutable121 fixture and
                 // finite isolated mechanism scope cannot qualify runtime costs;
                 // actual Shoot retains the normal input/operation protection.
                 NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);
-                var contact=(AttackContact)GetOptional(attack,"ExpectedImpact");
-                Require(contact!=null,"complete mechanism component resolves ammo contact: weapon="+row[0]+" ammo="+row[1]);
-                var captured=Get(attack,"ammo");Require((int)Get(captured,"Projectile")==row[2],"deterministic post-ammo shoot conversion order");float raw=(float)Get(captured,"Speed");var delta=new Vector2(contact.AimX,contact.AimY)-(p.RotatedRelativePoint(p.MountedCenter)+(row[0]==281 || row[0]==986?new Vector2(6*p.direction,-6*p.gravDir):Vector2.Zero));delta.Normalize();var expected=delta*raw;
+                if(row[0]==95 && row[1]==278)NativeCombatAimChecks.SolutionCheckpoint(context,attack,"ammo95/278-prepared");
+                // Default representative aiming supplies a real direction and
+                // receive index, without manufacturing a full lifecycle Contact.
+                // This controlled stationary scene still requires its exact
+                // first native Damage after the same legal enhanced input.
+                var plan=NativeCombatAimChecks.RequireSolution(attack,p,"ammo solution admits its actual enhanced input: weapon="+row[0]+" ammo="+row[1]);
+                var captured=Get(attack,"ammo");Require((int)Get(captured,"Projectile")==row[2],"deterministic post-ammo shoot conversion order");float raw=(float)Get(captured,"Speed");var delta=plan.Point-(p.RotatedRelativePoint(p.MountedCenter)+(row[0]==281 || row[0]==986?new Vector2(6*p.direction,-6*p.gravDir):Vector2.Zero));delta.Normalize();var expected=delta*raw;
                 var models=combat.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels");var args=new object[]{captured,default(AttackMotion)};Require((bool)models.GetMethod("TryRead",Flags).Invoke(null,args),"resolved member has an explicit model");var motion=(AttackMotion)args[1];
                 Require((row[2]==117 || row[2]==120 || row[2]==495 || row[2]==2 || row[2]==133 || row[2]==278 || row[2]==51 || row[2]==267)?motion.Gravity>0:motion.Gravity==0,"straight members cannot fall through into a later arrow's gravity branch");
                 if(ContentSamples.ProjectilesByType[row[2]].aiStyle==1)while(expected.X>=16 || expected.X<=-16 || expected.Y>=16 || expected.Y< -16)expected*=.97f;
-                int mouseX=Main.mouseX,mouseY=Main.mouseY;typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shots=Main.projectile.Where(q=>q.active && q.owner==0).ToArray();Require(shots.Length==1 && shots[0].type==row[2],"native final projectile identity agrees with pure snapshot");var shot=shots[0];Require(Vector2.DistanceSquared(shot.velocity,expected)<.0001f,"native component birth limit preserves the modeled velocity");Require(Main.mouseX==mouseX && Main.mouseY==mouseY && shot.damage>0,"natural damage and physical cursor ownership remain valid");
+                int mouseX=Main.mouseX,mouseY=Main.mouseY;typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});
+                if(row[0]==95 && row[1]==278)NativeCombatAimChecks.SolutionCheckpoint(context,attack,"ammo95/278-shot");
+                var shots=Main.projectile.Where(q=>q.active && q.owner==0).ToArray();
+                if(row[0]==95 && row[1]==278)Console.WriteLine("AMMO-CHECKPOINT nativeBirth count="+shots.Length+" shots="+string.Join(";",shots.Select(q=>"type="+q.type+" center="+q.Center+" velocity="+q.velocity+" updates="+(q.extraUpdates+1)+" damage="+q.damage))+" ammoStack="+p.inventory[54].stack);
+                Require(shots.Length==1 && shots[0].type==row[2],"native final projectile identity agrees with pure snapshot");var shot=shots[0];Require(Vector2.DistanceSquared(shot.velocity,expected)<.0001f,"native component birth limit preserves the modeled velocity");Require(Main.mouseX==mouseX && Main.mouseY==mouseY && shot.damage>0,"natural damage and physical cursor ownership remain valid");
                 if(row[0]==905)Require(Math.Abs(raw-(10+row[1]-70))<.0001f && shot.extraUpdates==1,"coin's ammo speed is per subupdate, despite zero weapon damage");
-                int firstDamage=0;for(int tick=1;tick<=contact.Tick && shot.active;tick++){shot.Update(shot.whoAmI);if(n.life<10000){firstDamage=tick;break;}}
-                Require(firstDamage==contact.Tick,"first native Damage matches modeled tick: expected="+contact.Tick+" actual="+firstDamage+" weapon="+row[0]);
-                Console.WriteLine("PASS ammo -> native ShotOutcome/Damage: weapon="+row[0]+" ammo="+row[1]+" projectile="+shot.type+" speed="+raw+" birth="+expected+" updates="+(shot.extraUpdates+1)+" firstDamage="+firstDamage);
+                int firstDamage=0;for(int tick=1;tick<=plan.NativeTick && shot.active;tick++){shot.Update(shot.whoAmI);if(n.life<10000){firstDamage=tick;break;}}
+                if(row[0]==95 && row[1]==278)Console.WriteLine("AMMO-CHECKPOINT firstDamage="+firstDamage+" nativeTick="+plan.NativeTick+" receive="+plan.ReceiveTick+" first="+plan.FirstTick+" shot="+shot.Hitbox+" target="+n.Hitbox+" life="+n.life+" active="+shot.active);
+                Require(firstDamage==plan.NativeTick,"first native Damage matches solution clock: expected="+plan.NativeTick+" actual="+firstDamage+" weapon="+row[0]+" receive="+plan.ReceiveTick+" first="+plan.FirstTick+" phase="+plan.Phase+" route="+plan.Route);
+                Console.WriteLine("PASS ammo -> native ShotOutcome/Damage: weapon="+row[0]+" ammo="+row[1]+" projectile="+shot.type+" speed="+raw+" birth="+expected+" updates="+(shot.extraUpdates+1)+" firstDamage="+firstDamage+" receive="+plan.ReceiveTick+" first="+plan.FirstTick+" phase="+plan.Phase+" route="+plan.Route+" contact="+(plan.Contact!=null));
                 Array.Clear(n.immune,0,n.immune.Length);
             }
             MotionMembers(context);

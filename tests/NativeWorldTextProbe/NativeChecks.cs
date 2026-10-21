@@ -14,6 +14,12 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "MovementOriginal") return NativeViewOriginalChecks.Run(content, output, movement: true);
+            if (scope == "MovementJumpCpu" || scope == "MovementDashCpu" || scope == "MovementTeleportCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context => { if (scope == "MovementJumpCpu") NativeMovementJumpChecks.Run(context); else if (scope == "MovementDashCpu") NativeMovementDashChecks.Run(context); else NativeTeleportMovementChecks.Run(context); }, processing: true, shortFeedback: true); return 0;
+            }
             if(scope=="ViewZoomSpeed")return NativeViewOriginalChecks.Run(content,output,zoomSpeed:true);
             if(scope=="ViewZoomSpeedCpu")
             {
@@ -515,6 +521,6 @@ namespace NativeWorldTextProbe
             }
             return 0;
         }
-        private static void Require(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
+        private static void Require(bool value, string message) { if (!value) throw new JueMingR.Testing.BusinessAssertionException(message); }
     }
 }

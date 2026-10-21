@@ -36,6 +36,12 @@ namespace JueMingR.TerrariaHost.F5
         internal void AttachJourney(IJourneyControls owner)
         { journey = owner; renderer.JourneyControls = owner == null ? null : new JourneyControls(owner); }
 
+        private IMovementControls movement;
+        internal void AttachMovement(IMovementControls owner)
+        { movement = owner; renderer.MovementControls = new MovementControls(owner); State.Layout.MovementAttached = true; }
+        internal bool CanMovementInput { get { return !failed && !NativeJourneyInputBusy && !inputState.HotkeyCapture &&
+            !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(DeathPopup != null && DeathPopup.Visible) &&
+            !(MapPopup != null && MapPopup.Visible) && !(FootprintPopup != null && FootprintPopup.Visible) && !(information != null && information.Adjustment.Active) && !adjustmentPending; } }
         private IViewControls view;
         internal void AttachView(IViewControls owner)
         { view = owner; renderer.ViewControls = owner == null ? null : new ViewControls(owner); }
@@ -535,7 +541,7 @@ namespace JueMingR.TerrariaHost.F5
                         }
                     }
                     else State.Layout.About.Execute(State.Command);
-                    renderer.ViewControls?.Execute(State.Command); renderer.DeathControls?.Execute(State.Command); renderer.MapControls?.Execute(State.Command); renderer.FootprintControls?.Execute(State.Command); renderer.AnnouncementControls?.Execute(State.Command);
+                    renderer.MovementControls?.Execute(State.Command); renderer.ViewControls?.Execute(State.Command); renderer.DeathControls?.Execute(State.Command); renderer.MapControls?.Execute(State.Command); renderer.FootprintControls?.Execute(State.Command); renderer.AnnouncementControls?.Execute(State.Command);
                     if (State.Command != F5Command.EnableBiome && State.Command != F5Command.DisableBiome) renderer.InformationControls?.Execute(State.Command); }
                 bool gameplay = !(TargetGestureBusy?.Invoke() ?? false) && inputActive && !(information != null && information.Adjustment.Active) && !adjustmentPending && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
                     Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !OwnsPointer &&
@@ -607,7 +613,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (!Main.gameMenu && !Main.hideUI)
                 {
                     preferences.TakeFeedback(displayPreferenceFeedback); hostItems?.TakeFeedback(displayPreferenceFeedback); labels?.TakeFeedback(displayPreferenceFeedback); worldTargets?.TakeFeedback(displayPreferenceFeedback); worldObjects?.TakeFeedback(displayPreferenceFeedback); information?.TakeFeedback(displayPreferenceFeedback);
-                    guidance?.TakeFeedback(displayPreferenceFeedback); view?.TakeFeedback(displayPreferenceFeedback);
+                    guidance?.TakeFeedback(displayPreferenceFeedback); view?.TakeFeedback(displayPreferenceFeedback); movement?.TakeFeedback(displayPreferenceFeedback);
                     deaths?.TakeFeedback(displayPreferenceFeedback); maps?.TakeFeedback(displayPreferenceFeedback); footprints?.TakeFeedback(displayPreferenceFeedback);
                     QuickItems?.TakeFeedback(displayPreferenceFeedback); coinDeposit?.TakeFeedback(displayPreferenceFeedback); recovery?.TakeFeedback(displayPreferenceFeedback); processing?.TakeFeedback(displayPreferenceFeedback);
                     tools?.TakeFeedback(displayPreferenceFeedback);
@@ -631,6 +637,7 @@ namespace JueMingR.TerrariaHost.F5
                 { CloseAndSubmitPosition(); notes.Prepare(false, matrix, PlayerInput.OriginalScreenSize); renderer.Dispose(); return; }
                 // Documents finish independently; a protected/failed read still
                 // finishes loading and permits in-memory use of that document.
+                if (movement != null) State.Layout.SetMovementMode(movement.DashMode);
                 if (!preferences.UiLoaded) { State.Ready = false; notes.Prepare(CanPresentNow && LayersReady, matrix, PlayerInput.OriginalScreenSize); return; }
                 if (State.Visible || !State.Ready) State.Ready = LayersReady && renderer.RefreshResources();
                 if (!State.Ready) { CloseAndSubmitPosition(); notes.Prepare(false, matrix, PlayerInput.OriginalScreenSize); return; }

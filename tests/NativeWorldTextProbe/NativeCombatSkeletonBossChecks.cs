@@ -78,7 +78,7 @@ namespace NativeWorldTextProbe
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
         {
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");long session=(long)Get(host,"Session");
-            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Get(source,"Terrain");
+            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);
             var rows=new List<string>{"scene,frame,type,phase,clock,ownHands,globalHands,selected,published,count,stop,matched,longMatched,error,cross,headActions,handActions"};var failures=new List<string>();
             var owner=new Harmony("JueMingR.Probe.SkeletonBossOracle");var update=typeof(NPC).GetMethod("UpdateNPC",Flags);owner.Patch(update,prefix:new HarmonyMethod(typeof(NativeCombatSkeletonBossChecks).GetMethod(nameof(Before),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatSkeletonBossChecks).GetMethod(nameof(After),Flags)));
             bool oldGood=Main.getGoodWorld;int totalMatches=0,totalHeads=0,totalHands=0;
@@ -94,6 +94,8 @@ namespace NativeWorldTextProbe
                         NPC pending=null;NpcMotionState predicted=default(NpcMotionState);bool valid=false;PredictionStop actionStop=PredictionStop.None;
                         before=n=>
                         {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                             pending=n;valid=false;if(!n.active || !(n.aiStyle==11 && (n.type==35 || n.type==68) || n.type==36 && n.aiStyle==12))return;
                             var group=Capture(read,tracking,terrain,session);int index=-1;for(int i=0;i<group.Length;i++)if(ReferenceEquals(group[i].Identity.Token,n)){index=i;break;}if(index<0)return;
                             predicted=group[index];terrain.Reset();valid=NpcMotion.Step(ref predicted,group,group.Length,EnvironmentFor(n),terrain,1,true,out actionStop);
@@ -120,10 +122,10 @@ namespace NativeWorldTextProbe
                             // Two real heads can overlap at the hover/spin change. The
                             // producer may select either full identity; every saved
                             // path must still compare against that actual head.
-                            var path=cache.Read(0);var pathOwner=path?.Identity.Token as NPC;bool jointHead=scene==7 && pathOwner!=null && pathOwner.active && pathOwner.type==35; if(path!=null && (ReferenceEquals(pathOwner,actor) || jointHead)){Require((bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,pathOwner) && path.CaptureTick==Main.GameUpdateCount,"Current selected Skeletron owns the real production window after actual hand birth.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);owners[path]=pathOwner;phases[path]=(int)pathOwner.ai[1];}}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);var pathOwner=path?.Identity.Token as NPC;bool jointHead=scene==7 && pathOwner!=null && pathOwner.active && pathOwner.type==35; if(path!=null && (ReferenceEquals(pathOwner,actor) || jointHead)){Require((bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,pathOwner) && path.SampleTick==Main.GameUpdateCount,"Current selected Skeletron owns the real production window after actual hand birth.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);owners[path]=pathOwner;phases[path]=(int)pathOwner.ai[1];}}
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;var original=owners[frozen];Require(original.active,"Frozen head identity remains alive in the unchanged natural collection.");var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),original.position);maxError=Math.Max(maxError,error);matched++;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;var original=owners[frozen];Require(original.active,"Frozen head identity remains alive in the unchanged natural collection.");var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),original.position);maxError=Math.Max(maxError,error);matched++;
                                 Require(error<=.08 && point.CanReceive==(!original.dontTakeDamage && !original.immortal) && point.ReflectsProjectiles==original.reflectsProjectiles && !point.ProjectileReflectionUnknown,"Frozen original Skeletron scene="+scene+" frame="+frame+" offset="+offset+" error="+error+" phase="+string.Join("/",original.ai)+" predicted="+point.Bounds.X+","+point.Bounds.Y+" actual="+original.position+" identity="+original.whoAmI+" stop="+frozen.Stop);
                                 if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(original.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}if(phases[frozen]!=(int)original.ai[1])cross++;
                             }

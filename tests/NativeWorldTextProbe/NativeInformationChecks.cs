@@ -65,7 +65,7 @@ namespace NativeWorldTextProbe
         {
                 var fishing=GetOptional(context,"Fishing");if(fishing!=null)Call(fishing,"Exit",null,EventArgs.Empty);
                 var hooks = GetOptional(context, "informationHooks"); if (hooks != null) Call(hooks, "Dispose");
-                foreach (string name in new[] { "Footprints", "MapFeatures", "DeathRecords", "Guidance", "Information", "Labels", "WorldTargets", "WorldObjects", "items", "notes", "preferences" })
+                foreach (string name in new[] { "Movement", "Footprints", "MapFeatures", "DeathRecords", "Guidance", "Information", "Labels", "WorldTargets", "WorldObjects", "items", "notes", "preferences" })
                 {
                     var owner = GetOptional(context, name);
                     (owner?.GetType().GetMethod("OnExit", Flags) ?? owner?.GetType().GetMethod("OnProcessExit", Flags))?.Invoke(owner, new object[] { null, EventArgs.Empty });
@@ -77,7 +77,7 @@ namespace NativeWorldTextProbe
         internal static object Call(object value, string name, params object[] args) { return value.GetType().GetMethod(name, Flags).Invoke(value, args); }
         internal static void Set(object value, string name, object data)
         { var field = value.GetType().GetField(name, Flags); if (field != null) field.SetValue(value, data); else value.GetType().GetProperty(name, Flags).SetValue(value, data); }
-        internal static void Require(bool value, string reason) { if (!value) throw new InvalidOperationException(reason); }
+        internal static void Require(bool value, string reason) { if (!value) throw new JueMingR.Testing.BusinessAssertionException(reason); }
         private static bool SkipMessage() { return false; }
         private static int forbiddenCalls;
         private static bool RejectUnexpectedOperation() { forbiddenCalls++; return false; }

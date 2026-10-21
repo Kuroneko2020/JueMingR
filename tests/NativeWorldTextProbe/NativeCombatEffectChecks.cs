@@ -30,6 +30,8 @@ namespace NativeWorldTextProbe
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var input=Get(context,"Input");
             string finiteOracle=Environment.GetEnvironmentVariable("JMR_WEAPON_EFFECT_ORACLE_ONLY");
+            if(finiteOracle=="meteor-homing-boundaries")
+            {Console.WriteLine("LOCAL FEEDBACK ONLY: Meteor open/closed and autonomous homing boundaries; complete Effects not evaluated.");Bounce(context,combat,host,attack,input);Bounce(context,combat,host,attack,input,true);HomingCases(context,combat,host,attack,input);return;}
             if(finiteOracle=="cluster"){NativeCombatClusterChecks.Run(context);return;}
             if(finiteOracle=="cold-bolt"){NativeCombatColdBoltChecks.Run(context);return;}
             if(finiteOracle=="scythe"){NativeCombatScytheChecks.Run(context);return;}
@@ -130,10 +132,28 @@ namespace NativeWorldTextProbe
                 // to compare native birth/derived roles and first Damage.
                 // Its explicit mechanism scope is not a cold Main opportunity;
                 // Shoot still consumes the real permission/input outlet.
-                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);
-                var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(plan!=null,"explicit primary/representative effect family prepares a useful input: "+row[2]);
+                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,phaseName:"BeforeNpc");
+                if(row[2]==91)NativeCombatAimChecks.SolutionCheckpoint(context,attack,"effect91-before-consumer");
+                var solution=NativeCombatAimChecks.RequireSolution(attack,p,"effect solution admits its actual enhanced hand input: "+row[2]);var plan=solution.Contact;
+                bool representative=row[2]==91 || row[2]==89 || row[2]==639 || row[2]==207 || row[2]==20 || row[2]==955;
+                Require(solution.Route==(representative?"representative":"dedicated-contact") && (representative || plan!=null),"six representative / seven dedicated effect routes retain their actual contact contract: "+row[2]);
                 if(row[0]==518)Require(plan.Confidence==AttackConfidence.Representative,"CrystalStorm native random component offsets cannot promise an exact unborn birth");
-                typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var parent=Main.projectile.Single(q=>q.active && q.owner==0);Require(parent.type==row[2],"native effect ammo identity");
+                Require(!(bool)Get(attack,"hasConsumedInput"),"independent effect fixture has no prior hand consumption");int physicalX=Main.mouseX,physicalY=Main.mouseY,ammoBefore=p.inventory[54].stack;
+                typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});
+                NativeCombatAimChecks.RequireConsumedInput(attack,p,solution,"real effect Shoot consumes this row's Enhanced solution: "+row[2]);
+                Require(Main.mouseX==physicalX && Main.mouseY==physicalY,"native effect hand returns the physical cursor");
+                var parent=Main.projectile.Single(q=>q.active && q.owner==0);Require(parent.type==row[2],"native effect ammo identity");
+                // Representative receive geometry is not a general first-Damage
+                // promise. Seal the actual birth and ask the existing independent
+                // known-family/scalar oracle before any native Update. These six
+                // stationary cases have an exact primary outcome to retain.
+                var known=representative?KnownPrimaryContact(attack,p,parent,solution):null;
+                if(representative)
+                {
+                    Require(known!=null && known.ReceiveTick==solution.FirstTick+known.Tick-1,"born effect oracle retains its own receive/native phase equation: "+row[2]);
+                    Console.WriteLine("EFFECT known-birth: primary="+row[2]+" native="+known.Tick+" receive="+known.ReceiveTick+" first="+solution.FirstTick+" confidence="+known.Confidence+" naturalUpdates=not-started");
+                }
+                Console.WriteLine("EFFECT prepared: primary="+row[2]+" phase="+solution.Phase+" route="+solution.Route+" point="+solution.Point+" reach="+solution.Reachability+" receive="+solution.ReceiveTick+" first="+solution.FirstTick+" contact="+(plan!=null)+" sample="+solution.Timeline.SampleTick+" target="+solution.Timeline.Identity.Slot+" ammo="+ammoBefore+"->"+p.inventory[54].stack);
                 string parentKey=parent.key.ToString();var keys=new HashSet<string>();keys.Add(parentKey);int primaryFirst=0,derivedFirst=0,children=0;Vector2 parentBirth=parent.Center,birthVelocity=parent.velocity;
                 for(int tick=1;tick<=180;tick++)
                 {
@@ -146,8 +166,10 @@ namespace NativeWorldTextProbe
                         if(n.life<oldLife){if(q.type==row[2] && primaryFirst==0)primaryFirst=tick;else if(q.type==row[3] && derivedFirst==0)derivedFirst=tick;}
                     }
                 }
-                Console.WriteLine("EFFECT result: primary="+row[2]+" expected="+plan.Tick+" first="+primaryFirst+" children="+children+" derivedDamage="+derivedFirst+" life="+n.life);
-                Require(primaryFirst>0,"natural primary has a useful result");Require(plan.Confidence==AttackConfidence.Representative || primaryFirst==plan.Tick,"deterministic primary first Damage matches Contact.Tick");if(row[3]!=0)Require(children>0,"natural death emits its real derived stage");
+                Console.WriteLine("EFFECT result: primary="+row[2]+" expected="+solution.NativeTick+" first="+primaryFirst+" children="+children+" derivedDamage="+derivedFirst+" life="+n.life);
+                Require(primaryFirst>0,"natural primary has a useful result");Require(plan!=null && plan.Confidence==AttackConfidence.Representative || primaryFirst==solution.NativeTick,"deterministic primary first Damage matches its actual solution clock");
+                if(representative)Require(primaryFirst==known.Tick && known.ReceiveTick==solution.ReceiveTick,"actual stationary primary Damage agrees with independently known birth and representative receive geometry: "+row[2]);
+                if(row[3]!=0)Require(children>0,"natural death emits its real derived stage");
             }
             NativeCombatProjectileEnvironmentChecks.Run(context);
             NativeCombatHarpyChecks.Run(context);
@@ -242,6 +264,44 @@ namespace NativeWorldTextProbe
             NativeCombatMonkStaffChecks.Run(context);
             FiniteTail(context);
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
+        }
+        private static AttackContact KnownPrimaryContact(object attack,Player player,Projectile shot,NativeCombatAimChecks.SolutionFacts solution)
+        {
+            const BindingFlags flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance;
+            var random=Main.rand;var randomFields=random.GetType().GetFields(flags).Where(f=>!f.IsStatic).ToArray();
+            var randomValues=randomFields.Select(f=>f.GetValue(random) is Array a?(object)a.Clone():f.GetValue(random)).ToArray();
+            var players=Main.player;var npcs=Main.npc;var projectiles=Main.projectile;uint tick=Main.GameUpdateCount;int loop=Main.ProjectileUpdateLoopIndex,mx=Main.mouseX,my=Main.mouseY;
+            var dust=Main.dust;float dustCount=Dust.dCount;var camera=Main.screenPosition;var scratch=new[]{Collision.up,Collision.down,Collision.honey,Collision.shimmer,Collision.stair,Collision.stairFall,Collision.sloping};
+            var live=Main.projectile.Where(q=>q.active).ToArray();var keys=live.Select(q=>q.key).ToArray();var target=Main.npc[solution.Timeline.Identity.Slot];
+            var actors=Main.npc.Where(n=>n.active).ToArray();var actorPositions=actors.Select(n=>n.position).ToArray();var actorVelocities=actors.Select(n=>n.velocity).ToArray();var actorLife=actors.Select(n=>n.life).ToArray();var actorImmunity=actors.Select(n=>(int[])n.immune.Clone()).ToArray();
+            var position=target.position;var velocity=target.velocity;int life=target.life;var immunity=(int[])target.immune.Clone();var ownerCounts=(int[])player.ownedProjectileCounts.Clone();
+            var ownerPosition=player.position;var ownerVelocity=player.velocity;int direction=player.direction,animation=player.itemAnimation,time=player.itemTime,stack=player.inventory[54].stack;
+            var birth=shot.Center;var speed=shot.velocity;var ai=(float[])shot.ai.Clone();var localAi=(float[])shot.localAI.Clone();int left=shot.timeLeft,penetrate=shot.penetrate;bool active=shot.active;
+            try{return KnownPrimaryCore(attack,player,shot,solution);}
+            finally
+            {
+                Require(ReferenceEquals(Main.rand,random) && randomFields.Select((f,i)=>{var value=f.GetValue(random);return value is Array a && randomValues[i] is Array b?a.Cast<object>().SequenceEqual(b.Cast<object>()):Equals(value,randomValues[i]);}).All(s=>s) &&
+                    ReferenceEquals(Main.player,players) && ReferenceEquals(Main.npc,npcs) && ReferenceEquals(Main.projectile,projectiles) && Main.GameUpdateCount==tick && Main.ProjectileUpdateLoopIndex==loop && Main.mouseX==mx && Main.mouseY==my &&
+                    ReferenceEquals(Main.dust,dust) && Dust.dCount==dustCount && Main.screenPosition==camera && scratch.SequenceEqual(new[]{Collision.up,Collision.down,Collision.honey,Collision.shimmer,Collision.stair,Collision.stairFall,Collision.sloping}) &&
+                    live.SequenceEqual(Main.projectile.Where(q=>q.active)) && keys.SequenceEqual(live.Select(q=>q.key)) && actors.SequenceEqual(Main.npc.Where(n=>n.active)) && actors.Select((n,i)=>n.position==actorPositions[i] && n.velocity==actorVelocities[i] && n.life==actorLife[i] && actorImmunity[i].SequenceEqual(n.immune)).All(v=>v) && target.position==position && target.velocity==velocity && target.life==life && immunity.SequenceEqual(target.immune) &&
+                    player.position==ownerPosition && player.velocity==ownerVelocity && player.direction==direction && player.itemAnimation==animation && player.itemTime==time && player.inventory[54].stack==stack && ownerCounts.SequenceEqual(player.ownedProjectileCounts) &&
+                    shot.Center==birth && shot.velocity==speed && shot.timeLeft==left && shot.penetrate==penetrate && shot.active==active && ai.SequenceEqual(shot.ai) && localAi.SequenceEqual(shot.localAI),"independent born oracle preserves live RNG state, actor pools, owner/resources, receiver/immunity, born source, clock and cursor");
+                Console.WriteLine("EFFECT known-birth isolation: type="+shot.type+" pools/RNG/actors/clock/cursor=unchanged");
+            }
+        }
+        private static AttackContact KnownPrimaryCore(object attack,Player player,Projectile shot,NativeCombatAimChecks.SolutionFacts solution)
+        {
+            const BindingFlags flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
+            var assembly=attack.GetType().Assembly;var terrain=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);Call(terrain,"Reset");
+            string family=shot.type==91 || shot.type==639?"HostArrowFamilyAttack":shot.type==89?"HostAmmoImpactAttack":shot.type==207 || shot.type==36?"HostAmmoSteeringAttack":null;
+            if(family!=null)
+            {
+                var root=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),flags,null,new object[]{player,shot,solution.Timeline,0,true,false},null);
+                return (AttackContact)assembly.GetType("JueMingR.TerrariaHost.Combat."+family,true).GetMethod("KnownFamily",flags).Invoke(null,new object[]{player,new[]{shot},solution.Timeline,NativeCombatAimChecks.PhaseClock(attack,solution.Timeline,"BeforeNpc"),terrain,root});
+            }
+            var args=new object[]{Get(attack,"ammo"),default(AttackMotion)};
+            Require((bool)assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels",true).GetMethod("TryRead",flags).Invoke(null,args),"born ordinary effect has an explicit scalar motion");
+            return AttackIntercept.Replay(solution.Point.X,solution.Point.Y,shot.Center.X,shot.Center.Y,shot.velocity.X,shot.velocity.Y,(AttackMotion)args[1],solution.Timeline,solution.FirstTick-1);
         }
         private static void FiniteTail(object context)
         {
@@ -386,8 +446,10 @@ namespace NativeWorldTextProbe
                 var n=Main.npc[2];n.SetDefaults(scene==2?488:3);n.whoAmI=2;n.active=true;n.position=new Vector2(1100,646);n.target=0;n.netOffset=Vector2.Zero;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);if(scene!=2)n.life=n.lifeMax=10000;
                 if(scene==0)for(int y=20;y<=43;y++){Main.tile[56,y].active(true);Main.tile[56,y].type=1;}
                 if(scene==1){var other=Main.npc[3];other.SetDefaults(3);other.whoAmI=3;other.active=true;other.position=new Vector2(1000,646);other.life=other.lifeMax=10000;other.target=0;other.netOffset=Vector2.Zero;Array.Clear(other.immune,0,other.immune.Length);}
-                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");Call(Get(host,"Selection"),"SampleMouse",input);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,scene==2,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");dummyHits=0;
-                typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var q=Main.projectile.Single(s=>s.active && s.type==207);int first=0;bool untracked=n.CanBeChasedBy(null);
+                NativeToolExecutionChecks.Sample(context,input,n.Center,true);Call(combat,"Sample");Call(Get(host,"Selection"),"SampleMouse",input);NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,scene==2,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,phaseName:"BeforeNpc");var solution=NativeCombatAimChecks.ReadSolution(attack);var available=NativeCombatAimChecks.QueryInput(attack,p);dummyHits=0;
+                Require(solution.HasPoint && available.Allowed && available.Kind=="Enhanced" && available.Target.Equals(solution.Timeline.Identity) && available.Point==solution.Point,"homing boundary consumes current representative direction without claiming an ambient Damage root");
+                Require(!(bool)Get(attack,"hasConsumedInput"),"homing boundary has no prior actual hand consumption");
+                typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});NativeCombatAimChecks.RequireConsumedInput(attack,p,solution,"homing boundary actual Enhanced hand consumption");var q=Main.projectile.Single(s=>s.active && s.type==207);var plan=KnownPrimaryContact(attack,p,q,solution);int first=0;bool untracked=n.CanBeChasedBy(null);
                 for(int tick=1;tick<=45 && q.active;tick++){q.Update(q.whoAmI);if(scene==2?dummyHits>0:n.life<10000){first=tick;break;}}
                 Console.WriteLine("EFFECT homing boundary: scene="+scene+" contact="+plan?.Tick+" first="+first+" nativeTarget="+q.ai[1]+" chaseable="+untracked+" dummyHits="+dummyHits+" blockerLife="+Main.npc[3].life);
                 Require(scene==2?plan!=null && first>0 && !untracked && n.immortal && q.ai[1]==0:plan==null && first==0,"native autonomous wall/nearer target differs from valid direct immortal-dummy hit");if(scene==1)Require(Main.npc[3].life<10000,"native homing chooses and hits the nearer NPC without product steering");
@@ -395,13 +457,24 @@ namespace NativeWorldTextProbe
         }
         private static void Bounce(object context,object combat,object host,object attack,object input,bool closed=false)
         {
+            var original=Main.rand;var flags=BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
+            var copy=(Terraria.Utilities.UnifiedRandom)typeof(object).GetMethod("MemberwiseClone",flags).Invoke(original,null);
+            foreach(var field in original.GetType().GetFields(flags).Where(f=>!f.IsStatic))if(field.GetValue(original) is Array state)field.SetValue(copy,state.Clone());
+            BounceCase(context,combat,host,attack,input,closed,false);
+            try{Main.rand=copy;BounceCase(context,combat,host,attack,input,closed,true);}finally{Main.rand=original;}
+        }
+        private static void BounceCase(object context,object combat,object host,object attack,object input,bool closed,bool physical)
+        {
             NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);p.position=new Vector2(700,646);p.ResetEffects();Main.screenPosition=new Vector2(600,500);p.inventory[54].SetDefaults(234);p.inventory[54].stack=999;
             var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.position=new Vector2(850,620);n.life=n.lifeMax=10000;n.target=0;n.netOffset=Vector2.Zero;n.knockBackResist=0;Array.Clear(n.immune,0,n.immune.Length);Main.tile[49,40].active(true);Main.tile[49,40].type=1;
             if(closed)for(int y=39;y<=43;y++){Main.tile[51,y].active(true);Main.tile[51,y].type=1;}
-            NativeToolExecutionChecks.Sample(context,input,new Vector2(810,708),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0);var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");
-            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var q=Main.projectile.Single(s=>s.active && s.type==36);int first=0;bool bounced=false;
+            NativeToolExecutionChecks.Sample(context,input,new Vector2(810,708),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,phaseName:"BeforeNpc");var solution=NativeCombatAimChecks.ReadSolution(attack);var available=NativeCombatAimChecks.QueryInput(attack,p);
+            Require(solution.HasPoint && available.Allowed && available.Kind=="Enhanced" && available.Target.Equals(solution.Timeline.Identity) && available.Point==solution.Point,"bounce public direction retains actual input identity without a full family root requirement");
+            Require(!(bool)Get(attack,"hasConsumedInput"),"bounce boundary has no prior actual hand consumption");
+            if(physical){NativeCombatObservationChecks.Save(host,new ObservationOptions());Main.mouseX=(int)(810-Main.screenPosition.X);Main.mouseY=(int)(708-Main.screenPosition.Y);}
+            typeof(Player).GetMethod("ItemCheck_Shoot",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});if(!physical)NativeCombatAimChecks.RequireConsumedInput(attack,p,solution,"bounce actual Enhanced hand consumption");var q=Main.projectile.Single(s=>s.active && s.type==36);var plan=KnownPrimaryContact(attack,p,q,solution);int first=0;bool bounced=false;
             for(int tick=1;tick<=60 && q.active;tick++){var old=q.velocity;q.Update(q.whoAmI);if(old.Y>0 && q.velocity.Y<0)bounced=true;if(n.life<10000){first=tick;break;}}
-            Console.WriteLine("EFFECT bounce: closed="+closed+" expected="+plan?.Tick+" first="+first+" bounce="+bounced+" remaining="+q.penetrate+" center="+q.Center);Require(closed?first==0:first>0 && bounced,"native MeteorShot reflection respects the open/closed passage");Require(closed?plan==null:plan!=null && plan.Tick==first,"finite reflection contact matches first natural Damage without changing native bounce");
+            Console.WriteLine("EFFECT bounce: closed="+closed+" physical="+physical+" expected="+plan?.Tick+" first="+first+" bounce="+bounced+" remaining="+q.penetrate+" center="+q.Center);Require(closed?first==0:first>0 && (!physical || bounced),"native MeteorShot public usefulness and independent fixed-input reflection respect the open/closed passage");Require(closed?plan==null:plan!=null && plan.Tick==first,"finite reflection contact matches first natural Damage without changing native bounce");
         }
         private static void Explosion(object context,object combat,object host,object attack,object input,bool far=false)
         {

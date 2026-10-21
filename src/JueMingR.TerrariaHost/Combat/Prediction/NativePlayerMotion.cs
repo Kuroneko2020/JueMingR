@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using Microsoft.Xna.Framework;
 using Terraria;
+using JueMingR.Features.Movement;
+using JueMingR.Platform.Combat;
 
 namespace JueMingR.TerrariaHost.Combat.Prediction
 {
@@ -10,31 +12,97 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     // tile destruction or new input edges. Geometry remains the original game.
     internal sealed class NativePlayerMotion
     {
-        private struct Profile { internal bool Complex; internal float DefaultGravity; }
+        private struct Profile { internal bool Complex,AssistedJump; internal float DefaultGravity; internal MovementJumpPhase JumpPhase; }
         private readonly Profile[] profiles=new Profile[Main.maxPlayers];
+        private readonly Player[] restoredPlayers=new Player[Main.maxPlayers];
+        private int restoring;
+        [ThreadStatic] private static NativePlayerMotion restored;
         internal int Quality { get; private set; }
         internal static int Mechanism(Player p)
         {return (p.mount.Active?1:0)|(p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0?2:0)|(p.pulley?4:0)|(p.sitting.isSitting?8:0)|(p.dashDelay<0?16:0)|(p.wingTime>0 && p.controlJump?32:0)|(p.shimmering?64:0)|(p.tongued?128:0);}
         private static bool SupportedHover(Player p)
         {return p.mount.Active && (p.mount.Type==Terraria.ID.MountID.WitchBroom || p.mount.Type==5) && !p.CCed && !p.pulley && !p.shimmering && !p.tongued && (p.grappling==null || p.grappling.Length==0 || p.grappling[0]<0);}
-        internal static bool Conditional(Player p){return Mechanism(p)!=0 && !SupportedHover(p);}
+        internal static bool Conditional(Player p){var profile=Premise(p);return Mechanism(p)!=0 && !SupportedHover(p) || AssistedComplex(p,profile.AssistedJump);}
+        private static bool AssistedComplex(Player p,bool assisted)
+        {
+            return assisted && (p.mount.Active || p.rocketBoots>0 || p.wingsLogic>0 || p.carpet ||
+                p.hasJumpOption_Cloud || p.hasJumpOption_Sandstorm || p.hasJumpOption_Blizzard || p.hasJumpOption_Fart || p.hasJumpOption_Sail ||
+                p.hasJumpOption_Unicorn || p.hasJumpOption_Santank || p.hasJumpOption_WallOfFleshGoat || p.hasJumpOption_Basilisk);
+        }
+        internal static bool AssistedOrdinarySpan(Player p,bool assisted)
+        {
+            // Equipment alone does not interrupt an existing held jump. A
+            // carpet waits for jump==0; inactive boots and exhausted wings can
+            // retain this prefix too. Active thrust or a possible rocket edge
+            // and wing/boot fuel transfer already have unmodelled consumers.
+            return assisted && !p.mount.Active && p.wingTime<=0 && p.carpetFrame==-1 && p.rocketDelay==0 &&
+                !(p.rocketBoots>0 && p.canRocket && p.rocketRelease && p.CanUseBootFlyingAbilities) &&
+                !(p.wingsLogic>0 && p.rocketBoots>0 && (p.rocketTime>0 || p.empressBrooch));
+        }
         internal static void Write(BinaryWriter writer,Player player)
         {
+            var profile=Premise(player);
             // The native sentinel is grappling[0]; unused trailing capacity may
             // contain zero and does not mean projectile slot 0 is attached.
-            writer.Write(Mechanism(player)!=0);
+            // Complex in the decoded profile qualifies the motor at capture.
+            // Alignment re-encoding derives it from THIS frame's mechanism;
+            // only intent/phase/default gravity need the restored owning source.
+            writer.Write(Mechanism(player)!=0 || AssistedComplex(player,profile.AssistedJump));
             // jumpSpeed is a shared scratch field last written by whichever
             // player updated last. Never treat it as this player's observation.
-            writer.Write(Player.defaultGravity);
+            writer.Write(profile.DefaultGravity);
+            writer.Write(profile.AssistedJump);
+            writer.Write((byte)profile.JumpPhase);
+        }
+        private static Profile Premise(Player player)
+        {
+            if(restored!=null)
+            {
+                int slot=player.whoAmI;
+                if(slot<0 || slot>=restored.profiles.Length || !ReferenceEquals(restored.restoredPlayers[slot],player))throw new InvalidDataException("Player movement profile identity.");
+                return restored.profiles[slot];
+            }
+            long version;MovementJumpPhase phase;bool assisted=Movement.MovementJumpHost.ReadState(player,out version,out phase);
+            return new Profile{DefaultGravity=Player.defaultGravity,AssistedJump=assisted,JumpPhase=phase};
         }
         internal void Read(BinaryReader reader,int slot)
         {
-            var profile=new Profile{Complex=reader.ReadBoolean(),DefaultGravity=reader.ReadSingle()};
+            var profile=new Profile{Complex=reader.ReadBoolean(),DefaultGravity=reader.ReadSingle(),AssistedJump=reader.ReadBoolean(),JumpPhase=(MovementJumpPhase)reader.ReadByte()};
+            if(profile.JumpPhase>MovementJumpPhase.Coast || !profile.AssistedJump && profile.JumpPhase!=MovementJumpPhase.None)throw new InvalidDataException("Player jump phase premise.");
             if(!Finite(profile.DefaultGravity) || profile.DefaultGravity<0 || profile.DefaultGravity>128)throw new InvalidDataException("Player gravity premise.");
             profiles[slot]=profile;
+            restoredPlayers[slot]=Main.player[slot];
+        }
+        // Alignment and native impact proofs re-encode player premises after
+        // restoration. For this request only, their source is the frozen page,
+        // never the live input owner (which does not exist in the worker).
+        // Exact object binding prevents a same-slot clone or later live player
+        // from borrowing that page. Different nested receivers restore the
+        // prior scope. Instance occupancy spans the whole nesting lifetime:
+        // A -> B -> A must refuse before clearing A's still-owned outer page.
+        internal IDisposable UseRestoredProfiles(){return new RestoredScope(this);}
+        private sealed class RestoredScope : IDisposable
+        {
+            private NativePlayerMotion owner;
+            private readonly NativePlayerMotion prior;
+            internal RestoredScope(NativePlayerMotion value)
+            {
+                owner=value;prior=restored;
+                if(System.Threading.Interlocked.CompareExchange(ref owner.restoring,1,0)!=0)throw new InvalidOperationException("Player movement receiver reentry.");
+                try{owner.Clear();restored=owner;}
+                catch{System.Threading.Volatile.Write(ref owner.restoring,0);throw;}
+            }
+            public void Dispose()
+            {
+                if(owner==null)return;
+                if(!ReferenceEquals(restored,owner))throw new InvalidOperationException("Player movement profile scope order.");
+                restored=prior;
+                try{owner.Clear();}
+                finally{System.Threading.Volatile.Write(ref owner.restoring,0);owner=null;}
+            }
         }
         internal void Begin(){Quality=0;}
-        internal void Clear(){Array.Clear(profiles,0,profiles.Length);Quality=0;}
+        internal void Clear(){Array.Clear(profiles,0,profiles.Length);Array.Clear(restoredPlayers,0,restoredPlayers.Length);Quality=0;}
         internal void Advance()
         {
             using(NativeRandomSnapshot.Use("UpdatePlayers"))
@@ -54,7 +122,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     // Native UpdateDead clears this aggregate; Ghost returns
                     // earlier and deliberately retains its distinct behavior.
                     if(player.dead){player.numMinions=0;player.slotsMinions=0;continue;}
-                    Step(player,profiles[slot]);
+                    profiles[slot]=Step(player,profiles[slot]);
                 }
         }
         private static bool HasUpdateArea(Player player)
@@ -64,11 +132,15 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(WorldGen.InWorld(x,y,4) && NativeTileBoundary.Read(x,y)!=null && NativeTileBoundary.Read(x-3,y)!=null && NativeTileBoundary.Read(x+3,y)!=null && NativeTileBoundary.Read(x,y-3)!=null && NativeTileBoundary.Read(x,y+3)!=null)return true;
             player.outOfRange=true;player.numMinions=0;player.slotsMinions=0;player.itemAnimation=0;player.netOffset=Vector2.Zero;return false;
         }
-        private void Step(Player p,Profile profile)
+        private Profile Step(Player p,Profile profile)
         {
             if(p.width<1 || p.height<1 || p.width>512 || p.height>512 || p.gravDir!=1f && p.gravDir!=-1f || !Finite(p.gravity) || !Finite(p.maxFallSpeed) || !Finite(p.runAcceleration) || !Finite(p.runSlowdown) || !Finite(p.maxRunSpeed))throw new InvalidDataException("Player movement premise.");
             float speed;bool ordinaryBuffs=AdvanceBuffClocks(p,out speed);
-            if(!profile.Complex && ordinaryBuffs)AdvanceOrdinarySpeed(p,speed);
+            // The equipment makes the future handoff conditional, not every
+            // already-started held jump. Stop this exact prefix BEFORE jump=1:
+            // the native later flight consumers can run on that same action.
+            bool ordinary=!profile.Complex || AssistedOrdinarySpan(p,profile.AssistedJump) && Mechanism(p)==0 && !p.portableStoolInfo.IsInUse && p.controlJump && !p.controlDown && p.jump>1 && p.velocity.Y!=0;
+            if(ordinary && ordinaryBuffs)AdvanceOrdinarySpeed(p,speed);
             Vector2 old=p.position;
             // ResetEffects decays the observed gravity timer before the
             // original nearby-brain refresh. The brain page is a real player
@@ -82,7 +154,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(hover && p.velocity.Y==0)p.mount.FatigueRecovery();
             if(profile.Complex)Quality|=2;
             int appliedJumpHeight=0;
-            if(!profile.Complex || hover)
+            if(ordinary || hover)
             {
                 int jumpHeight;float jumpSpeed=MovementParameters(p,profile.DefaultGravity,out jumpHeight);
                 if(hover)
@@ -139,13 +211,20 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 p.accFlipper=flipper || p.merman || p.wet && p.ShouldFloatInWater;
                 if(p.merman)p.releaseJump=true;
                 bool justJumped=false;
-                if(p.controlJump)
+                var phase=MovementJumpRules.Before(profile.JumpPhase,profile.AssistedJump,p.controlDown,p.velocity.Y*p.gravDir);
+                bool water=p.wet && p.accFlipper && !cart;if(water)phase=MovementJumpPhase.None;
+                bool effectiveJump=MovementJumpRules.Effective(p.controlJump,phase);
+                int beforeJump=p.jump;
+                bool candidate=profile.AssistedJump && !p.controlDown && !water && p.jump<=0 && p.velocity.Y==0 && effectiveJump;
+                if(effectiveJump)
                 {
+                    if(profile.AssistedJump && !p.controlDown && p.jump<=0 && (p.velocity.Y==0 || p.wet && p.accFlipper && !cart))p.releaseJump=true;
                     if(p.jump>0){if(p.velocity.Y==0)p.jump=0;else{p.velocity.Y=-jumpSpeed*p.gravDir;if(p.merman && !cart){if(p.swimTime<=10)p.swimTime=30;}else p.jump--;}}
                     else if((p.velocity.Y==0 || p.wet && p.accFlipper && !cart) && (p.releaseJump || p.autoJump && p.velocity.Y==0)){p.velocity.Y=-jumpSpeed*p.gravDir;p.jump=jumpHeight;justJumped=true;if(p.wet && p.accFlipper && p.swimTime==0)p.swimTime=30;}
                     p.releaseJump=false;
                 }
                 else{p.jump=0;p.releaseJump=true;}
+                profile.JumpPhase=MovementJumpRules.After(phase,candidate,beforeJump,p.jump,p.velocity.Y*p.gravDir);
                 // Flight time resets after jump state, while fatigue recovery
                 // occurs before horizontal parameters. Reordering these loses
                 // the bee's real fatigue-driven speed and landing lifecycle.
@@ -174,7 +253,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             for(int part=0;part<segments;part++)
             {
                 p.velocity=velocity/segments;
-                if(!profile.Complex || hover)
+                if(ordinary || hover)
                 {
                     p.SlopeDownMovement();
                     if(p.velocity.Y==p.gravity)Collision.StepDown(ref p.position,ref p.velocity,p.width,p.height,ref p.stepSpeed,ref p.gfxOffY,(int)p.gravDir,p.waterWalk || p.waterWalk2);
@@ -217,6 +296,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             }
             if(p.position!=old || p.controlLeft || p.controlRight || p.controlJump)Quality|=1;
             if(!Finite(p.position.X) || !Finite(p.position.Y) || !Finite(p.velocity.X) || !Finite(p.velocity.Y))throw new InvalidDataException("Nonfinite player continuation.");
+            return profile;
         }
         private static bool AdvanceBuffClocks(Player p,out float speed)
         {

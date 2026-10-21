@@ -207,13 +207,22 @@ namespace NativeWorldTextProbe
                         int nativeRetireMatches=0,deadActions=0;NpcMotionState retireState=default(NpcMotionState);PredictionStop retireStop=PredictionStop.None;bool retirePending=false;
                         if(variant==9)
                         {
-                            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Get(source,"Terrain");long session=(long)Get(host,"Session");
+                            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);var position=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcPositionObservation",true).GetMethod("Capture",Flags);var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);long session=(long)Get(host,"Session");
                             beforeRetirement=n=>
                             {
                                 retirePending=false;if(!ReferenceEquals(n,actor) || !Main.LocalPlayer.dead)return;
-                                retireState=(NpcMotionState)read.Invoke(null,new object[]{n,session});object[] args={n,retireState,terrain};tracking.Invoke(null,args);retireState=(NpcMotionState)args[1];var p=Main.LocalPlayer;
+                                // This full motor uses the actual AI75/76 component
+                                // closure, not the older isolated Related motor.
+                                // Observe it privately without resetting Source.
+                                terrain.Reset();var group=SaucerRetirementGroup(n,read,tracking,position,terrain,session);retireState=group[0];var p=Main.LocalPlayer;
                                 var e=new PredictionEnvironment{Players=new PredictionPlayers(new[]{new MotionRect(p.Hitbox.X,p.Hitbox.Y,p.width,p.height)},1,new[]{p.whoAmI}),PlayerIndex=p.whoAmI,PlayerX=p.Center.X,PlayerY=p.Center.Y,PlayerWidth=p.width,PlayerHeight=p.height,PlayerDead=true,Expert=Main.expertMode,WorldWidth=Main.maxTilesX,WorldHeight=Main.maxTilesY,WorldSurface=(float)Main.worldSurface,GravityWorldSurface=Main.worldSurface};
-                                terrain.Reset();bool advanced=NpcMotion.Step(ref retireState,null,0,e,terrain,1,true,out retireStop);
+                                if(deadActions==0)foreach(bool captured in new[]{false,true})
+                                {
+                                    var incomplete=retireState;incomplete.WeaponRelationsCaptured=captured;incomplete.WeaponRelationsComplete=false;PredictionStop missing;
+                                    terrain.Reset();Require(!NpcMotion.Step(ref incomplete,group,group.Length,e,terrain,1,true,out missing) && missing==PredictionStop.MissingDependency,"Missing or incomplete actual Saucer component observations cannot acquire a retirement motor.");
+                                }
+                                if(deadActions==0)Console.WriteLine("RELATED RETIRE INPUT tick="+Main.GameUpdateCount+" core="+retireState.Identity.Slot+"/"+retireState.Identity.Type+" phase="+retireState.A0+" target="+retireState.Target+" playerDead="+retireState.PlayerNativeDead+" closest="+retireState.HasClosestPlayer+" componentCount="+group.Length+" missingRelationRejections=2");
+                                terrain.Reset();bool advanced=NpcMotion.Step(ref retireState,group,group.Length,e,terrain,1,true,out retireStop);
                                 Require(advanced || retireStop==PredictionStop.Despawn,"Actual dead-target action has a deterministic retirement motor: "+retireStop);retirePending=true;
                             };
                             afterRetirement=n=>
@@ -237,21 +246,21 @@ namespace NativeWorldTextProbe
                             NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();
                             if(!actor.active)
                             {
-                                foreach(var frozen in freezes)if(frozen.Stop==PredictionStop.Despawn && (long)Main.GameUpdateCount-frozen.CaptureTick==frozen.Count)retireMatches++;
+                                foreach(var frozen in freezes)if(frozen.Stop==PredictionStop.Despawn && (long)Main.GameUpdateCount-frozen.SampleTick==frozen.Count)retireMatches++;
                                 break;
                             }
                             if(type==NPCID.MartianProbe && previousDirection!=0 && previousDirection!=actor.direction)wallTurns++;
                             previousDirection=actor.direction;
                             bool selected=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);
-                            var path=cache.Read(0);if(selected)selectedCount++;
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(selected)selectedCount++;
                             if(path!=null && ReferenceEquals(path.Identity.Token,actor))
                             {
-                                Require(selected && path.CaptureTick==Main.GameUpdateCount,"Same-actor completed-update related publication: "+scene);published++;
+                                Require(selected && path.SampleTick==Main.GameUpdateCount,"Same-actor completed-update related publication: "+scene);published++;
                                 if(frame%5==0 && path.Count>1)freezes.Add(path);
                             }
                             for(int c=freezes.Count-1;c>=0;c--)
                             {
-                                var frozen=freezes[c];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);
+                                var frozen=freezes[c];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);
                                 if(offset>=frozen.Count){freezes.RemoveAt(c);continue;}if(offset<=0)continue;
                                 var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maximum=Math.Max(maximum,error);localMatches++;matched++;
                                 Require(point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide,"Future related receiving/collision phase: "+scene+" offset="+offset);
@@ -268,7 +277,7 @@ namespace NativeWorldTextProbe
                         if(type==NPCID.AncientDoom)Require(!actor.active && retireMatches>0,"Natural owner-linked Doom expires on the exact forecast action.");
                         if(variant==5)Require(wallTurns>0,"Probe patrol actually collides with the solid wall and turns.");
                         if(variant==7 || variant==8)Require(crossMatches>=30,"Saucer forecast crosses the actual receiving damping/pursuit/terrain attack phases: "+scene);
-                        if(variant==9)Require(!actor.active && nativeRetireMatches>0 && deadActions>=30,"Actual player death reaches the original edge through matched natural actions: "+scene+" active="+actor.active+" retire="+nativeRetireMatches+" deadActions="+deadActions);
+                        if(variant==9){Require(!actor.active && nativeRetireMatches>0 && deadActions>=30,"Actual player death reaches the original edge through matched natural actions: "+scene+" active="+actor.active+" retire="+nativeRetireMatches+" deadActions="+deadActions);Console.WriteLine("RELATED RETIRE deadActions="+deadActions+" nativeRetireMatches="+nativeRetireMatches+" missingRelationRejections=2");}
                         if(variant==10)Require(!actor.active && retireMatches>0,"Saucer reaches the original world edge and exact forecast retirement: "+scene+" active="+actor.active+" position="+actor.position+" velocity="+actor.velocity+" retireMatches="+retireMatches);
                         if(type!=NPCID.AncientDoom)Require(tangent>8,"The old long tangent must disagree with natural boss steering: "+scene+" tangent="+tangent);
                         if(tangent>8)curved++;if(crossMatches>=30)crossed++;
@@ -282,6 +291,34 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS related full-native default continuous scenes="+scenes+" matched="+matched+" curved="+curved+" crossed="+crossed);
             }
             finally{beforeRetirement=afterRetirement=null;diagnostic.Unpatch(projectileUpdate,HarmonyPatchType.Finalizer,diagnostic.Id);diagnostic.Unpatch(npcUpdate,HarmonyPatchType.All,diagnostic.Id);Main.getGoodWorld=oldGood;Main.invasionType=oldInvasion;Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"related-motion-continuous.csv"),rows);}
+        }
+        // Read the exact current component before this actor's scheduled
+        // native action. No member is advanced ahead of its native slot. The
+        // complete marker is granted only after the full live scan and every
+        // captured part identity have been checked; it is not a bypass for an
+        // unavailable relation. This fixed scene owns one initialized Saucer.
+        private static NpcMotionState[] SaucerRetirementGroup(NPC actor,MethodInfo read,MethodInfo tracking,MethodInfo position,IPredictionTerrain terrain,long session)
+        {
+            Require(actor.type==NPCID.MartianSaucerCore && actor.aiStyle==76 && actor.localAI[3]!=0 && (actor.ai[0]==1 || actor.ai[0]==2 || actor.ai[0]==-2),"Retirement oracle observes the actual initialized receiving Saucer.");
+            Require(Main.npc.Length>=Main.maxNPCs,"Retirement component scan covers all native slots.");
+            var natives=new List<NPC>{actor};
+            for(int slot=0;slot<Main.maxNPCs;slot++)
+            {
+                var part=Main.npc[slot];if(part==null || !part.active || part.aiStyle!=75 || (int)part.ai[0]!=actor.whoAmI)continue;
+                Require(part.type==NPCID.MartianSaucer || part.type==NPCID.MartianSaucerTurret || part.type==NPCID.MartianSaucerCannon,"Actual Saucer closure has a recognized original component.");natives.Add(part);
+            }
+            var states=new NpcMotionState[natives.Count];
+            for(int i=0;i<natives.Count;i++)
+            {
+                var n=natives[i];var state=(NpcMotionState)read.Invoke(null,new object[]{n,session});object[] args={n,state,terrain};tracking.Invoke(null,args);state=(NpcMotionState)args[1];args=new object[]{n,state,session};position.Invoke(null,args);states[i]=(NpcMotionState)args[1];
+            }
+            for(int i=0;i<states.Length;i++)
+            {
+                var state=states[i];foreach(var id in new[]{state.WeaponPart0,state.WeaponPart1,state.WeaponPart2,state.WeaponPart3})
+                {if(id.Token==null)continue;bool found=false;for(int j=0;j<states.Length;j++)if(states[j].Identity.Equals(id))found=true;Require(found,"Every actual live Saucer part identity is present in the retirement closure.");}
+                state.WeaponRelationsCaptured=state.WeaponRelationsComplete=true;states[i]=state;
+            }
+            return states;
         }
         private static void Setup(object context)
         {

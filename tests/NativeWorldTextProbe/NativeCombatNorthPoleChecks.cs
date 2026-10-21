@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -84,9 +84,9 @@ namespace NativeWorldTextProbe
             var audit=new Harmony("JueMingR.Tests.NorthPole");audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatNorthPoleChecks),nameof(Strike)));
             try
             {
-                var p=Scene(context);target=Target(new Vector2(980,660));hits=0;var observation=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");NativeCombatObservationChecks.Save(observation,new ObservationOptions(false,true,false,false,true,50,true,true));NativeToolExecutionChecks.Sample(context,Get(context,"Input"),target.Center-new Vector2(500,0),true);Call(combat,"Sample");NativeCombatAimChecks.PrepareMechanismFixture(observation,attack,target,0);
-                Require(GetOptional(attack,"ExpectedImpact")!=null,"North Pole actual finite hand preparation");var root=GetOptional(attack,"obstacles");Require(root!=null && (bool)Get(root,"Unchanged"),"North Pole public returned root current");
-                typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});Require((bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced","North Pole native hand consumes Enhanced");
+                var p=Scene(context);target=Target(new Vector2(980,660));hits=0;var observation=Get(context,"CombatObservation");var combat=Get(context,"Combat");var attack=Get(combat,"Attack");NativeCombatObservationChecks.Save(observation,new ObservationOptions(false,true,false,false,true,50,true,true));NativeToolExecutionChecks.Sample(context,Get(context,"Input"),target.Center-new Vector2(500,0),true);Call(combat,"Sample");NativeCombatAimChecks.PrepareMechanismFixture(observation,attack,target,0,phaseName:"BeforeNpc");
+                var solution=NativeCombatAimChecks.RequireSolution(attack,p,"North Pole actual hand has a reachable representative body/child point");uint now=Main.GameUpdateCount;typeof(Main).GetField("_gameUpdateCount",Flags).SetValue(null,unchecked(Main.GameUpdateCount+2));try{Require(NativeCombatAimChecks.QueryInput(attack,p).Kind!="Enhanced","North Pole hand enhancement cannot outlive its prepared time window");}finally{typeof(Main).GetField("_gameUpdateCount",Flags).SetValue(null,now);}NativeCombatAimChecks.RequireSolution(attack,p,"current original North Pole clock admits the prepared point");
+                Require(!(bool)Get(attack,"hasConsumedInput"),"North Pole preparation/query has not consumed a native hand");typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});NativeCombatAimChecks.RequireConsumedInput(attack,p,solution,"North Pole native hand consumes its actual Enhanced point");
                 bool born=false;for(int tick=1;tick<=120 && hits==0;tick++)
                 {
                     NativeQuickItemChecks.BeginWorldStep();if(tick>1)p.itemAnimation=Math.Max(0,p.itemAnimation-1);for(int index=0;index<Main.maxProjectiles;index++)if(Main.projectile[index].active){Main.ProjectileUpdateLoopIndex=index;try{Main.projectile[index].Update(index);}finally{Main.ProjectileUpdateLoopIndex=-1;}}

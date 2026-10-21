@@ -84,7 +84,7 @@ namespace JueMingR.Features.Combat
         internal static bool BeginDestroyer(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment e,out PredictionStop stop)
         {
             stop=PredictionStop.None;
-            NpcMotionState queen;bool up;if(!Queen(n,group,count,e,out queen,out up,out stop))return false;
+            int queen;bool up;if(!Queen(n,group,count,e,out queen,out up,out stop))return false;
             if(n.Identity.Type==134){n.Alpha=Math.Max(0,n.Alpha-42);return true;}
             if(n.ParentSlot<=0){stop=PredictionStop.Despawn;return false;}
             int parent=Parent(n,group,count);if(parent<0){stop=PredictionStop.MissingDependency;return false;}
@@ -96,19 +96,22 @@ namespace JueMingR.Features.Combat
         {
             stop=PredictionStop.None;int parent=Parent(n,group,count);
             if(parent<0 || !group[parent].Active || group[parent].Style!=37){stop=PredictionStop.MissingDependency;return false;}
-            NpcMotionState queen;bool up;if(!Queen(n,group,count,e,out queen,out up,out stop))return false;
+            int queen;bool up;if(!Queen(n,group,count,e,out queen,out up,out stop))return false;
             int nearHead=0;
             if(up)
             {
-                var child=n;int slot=n.ParentSlot;
+                // Only the current ancestor's link facts are read here. A
+                // method-local ref keeps the actual slot-ordered state without
+                // copying its unrelated scalar pages at every one of 10 hops.
+                ref NpcMotionState child=ref n;int slot=n.ParentSlot;
                 while(slot>0 && nearHead<10)
                 {
                     int index=Parent(child,group,count);if(index<0){stop=PredictionStop.MissingDependency;return false;}
-                    var ancestor=group[index];
+                    ref NpcMotionState ancestor=ref group[index];
                     if(!ancestor.Active || ancestor.Identity.Type<134 || ancestor.Identity.Type>136){nearHead=0;break;}
                     nearHead++;if(ancestor.Identity.Type==134)break;
                     if(nearHead>=10){nearHead=0;break;}
-                    child=ancestor;slot=ancestor.ParentSlot;
+                    child=ref group[index];slot=ancestor.ParentSlot;
                 }
             }
             int spacing=(int)(44f*n.Scale);
@@ -127,8 +130,9 @@ namespace JueMingR.Features.Combat
         }
         internal static bool AnchorDestroyer(ref NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment e,out PredictionStop stop)
         {
-            NpcMotionState queen;bool up;if(!Queen(n,group,count,e,out queen,out up,out stop))return false;
+            int queenIndex;bool up;if(!Queen(n,group,count,e,out queenIndex,out up,out stop))return false;
             if(!up || n.Identity.Type!=134)return true;
+            ref NpcMotionState queen=ref group[queenIndex];
             float centerX=queen.Bounds.CenterX,centerY=queen.Bounds.CenterY-14f;
             float pointY=centerY+100f,relativeY=pointY-centerY,angle=queen.Vx*.025f;
             // Utils.RotatedBy stores cosine/sine as floats, then rotates the
@@ -138,19 +142,34 @@ namespace JueMingR.Features.Combat
             n.X=x-n.Width*.5f+queen.Vx;n.Y=y-n.Height*.5f+queen.Vy;n.Vx=n.Vy=0;
             return true;
         }
-        private static int Parent(NpcMotionState n,NpcMotionState[] group,int count)
+        // Dense native slot closures avoid searching the same parent/queen
+        // hundreds of times per complete frame. Validate the actual slot AND
+        // full captured identity; sparse/unordered callers keep the original
+        // search. No lookup state is retained between actor actions.
+        private static int SlotCandidate(NpcMotionState[] group,int count,int slot)
+        {
+            if(group==null || count<=0 || count>group.Length)return -1;
+            int index=slot-group[0].Identity.Slot;
+            return index>=0 && index<count && group[index].Identity.Slot==slot?index:-1;
+        }
+        private static int Parent(in NpcMotionState n,NpcMotionState[] group,int count)
         {
             if(group==null)return -1;
+            int candidate=SlotCandidate(group,count,n.ParentSlot);
+            if(candidate>=0 && (n.ParentIdentity.Token==null || group[candidate].Identity.Equals(n.ParentIdentity)))return candidate;
             for(int i=0;i<count;i++)if(group[i].Identity.Slot==n.ParentSlot && (n.ParentIdentity.Token==null || group[i].Identity.Equals(n.ParentIdentity)))return i;
             return -1;
         }
-        private static bool Queen(NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment e,out NpcMotionState queen,out bool up,out PredictionStop stop)
+        private static bool Queen(in NpcMotionState n,NpcMotionState[] group,int count,PredictionEnvironment e,out int queen,out bool up,out PredictionStop stop)
         {
-            queen=default(NpcMotionState);up=false;stop=PredictionStop.None;
+            queen=-1;up=false;stop=PredictionStop.None;
             if(!n.MechFactsCaptured){if(e.MechQueenUp){stop=PredictionStop.MissingDependency;return false;}return true;}
             if(n.MechQueenIdentity.Token==null)return true;
+            int candidate=SlotCandidate(group,count,n.MechQueenIdentity.Slot);
+            if(candidate>=0 && group[candidate].Identity.Equals(n.MechQueenIdentity))
+            {queen=candidate;up=group[candidate].Active && group[candidate].Identity.Type==127;return true;}
             if(group!=null)for(int i=0;i<count;i++)if(group[i].Identity.Equals(n.MechQueenIdentity))
-            {queen=group[i];up=queen.Active && queen.Identity.Type==127;return true;}
+            {queen=i;up=group[i].Active && group[i].Identity.Type==127;return true;}
             stop=PredictionStop.MissingDependency;return false;
         }
         private static bool SameSign(float a,float b){return a>0 && b>0 || a<0 && b<0;}

@@ -64,7 +64,7 @@ namespace NativeWorldTextProbe
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");long session=(long)Get(host,"Session");
             Require(GetOptional(source,"Native")==null,"DD2 uses the scalar rolling producer.");
             var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);
-            var terrain=(IPredictionTerrain)Get(source,"Terrain");var records=new List<string>{"scene,frame,type,selected,published,count,stop,matched,longMatched,error,tangent,playerX,playerY,playerVx,playerVy,playerLife,playerDead,playerImmune,playerImmuneTime,fallStart,fallStart2,respawn"};var failures=new List<string>();
+            var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);var records=new List<string>{"scene,frame,type,selected,published,count,stop,displayMatched,componentLongMatched,error,componentTangent,playerX,playerY,playerVx,playerVy,playerLife,playerDead,playerImmune,playerImmuneTime,fallStart,fallStart2,respawn,componentCaptures,componentMatched,displayLongMatched"};var failures=new List<string>();
             var owner=new Harmony("JueMingR.Probe.InvasionFlightAction");var update=typeof(NPC).GetMethod("UpdateNPC",Flags);
             owner.Patch(update,prefix:new HarmonyMethod(typeof(NativeCombatInvasionFlightChecks).GetMethod(nameof(Before),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatInvasionFlightChecks).GetMethod(nameof(After),Flags)));
             var projectileUpdate=typeof(Projectile).GetMethod("Update",Flags);owner.Patch(projectileUpdate,finalizer:new HarmonyMethod(typeof(NativeCombatInvasionFlightChecks).GetMethod(nameof(ProjectileFailure),Flags)));
@@ -95,10 +95,18 @@ namespace NativeWorldTextProbe
                             crystal.StrikeNPCNoInteraction(crystal.lifeMax+crystal.defense+100,0,0);Require(crystal.active && crystal.ai[1]==1 && crystal.dontTakeDamageFromHostiles,"Original checkDead establishes the actual loss phase.");
                         }
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
-                        var freezes=new List<NpcTrajectory>();var frozenPhases=new Dictionary<NpcTrajectory,int>();int published=0,selectedCount=0,matches=0,longMatches=0,actions=0,crystalActions=0,random=0,crowd=0,cross=0;double maxError=0,tangent=0;
+                        var freezes=new List<NpcTrajectory>();var frozenPhases=new Dictionary<NpcTrajectory,int>();var components=new HashSet<NpcTrajectory>();int published=0,selectedCount=0,matches=0,longMatches=0,actions=0,crystalActions=0,random=0,crowd=0,cross=0,componentCaptures=0,componentMatches=0,displayLong=0;double maxError=0,tangent=0;
+                        // Display owns a budgeted consumable prefix. The
+                        // independent Source fixture owns complete-model
+                        // geometry at the same existing five-action cadence;
+                        // it cannot publish into or extend the live owner.
+                        var componentSource=Activator.CreateInstance(source.GetType(),Flags,null,new object[]{null,false},null);
+                        var componentCache=(NpcPredictionCache)Get(componentSource,"Cache");componentCache.Demand(0,1,120);
                         NPC pending=null;NpcMotionState predicted=default(NpcMotionState),input=default(NpcMotionState);bool valid=false;var observedPhases=new HashSet<int>();int lossSamples=0,lossPursuit=0,protectedTargets=0,wipeBoundaries=0;bool sawOriginal672=false;
                         before=n=>
                         {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                             pending=n;valid=false;if(!n.active || !(n.type==548 || n.aiStyle==108 && Array.IndexOf(types,n.type)>=0))return;
                             var group=Capture(read,tracking,source,terrain,session);int index=-1;for(int i=0;i<group.Length;i++)if(ReferenceEquals(group[i].Identity.Token,n)){index=i;break;}if(index<0)return;
                             input=predicted=group[index];if(variant==5 && n.type==548){Require(input.A1==1 && input.HostileProtected && input.Life==n.lifeMax,"Fresh actual crystal observations preserve the original protected loss state.");lossSamples++;}var players=Players();var choice=Terraria.Utilities.NPCUtils.SearchForTarget(n,Terraria.Utilities.NPCUtils.TargetSearchFlag.All,Terraria.Utilities.NPCUtils.SearchFilters.OnlyPlayersInCertainDistance(n.Center,200),Terraria.Utilities.NPCUtils.SearchFilters.OnlyCrystal);
@@ -139,20 +147,34 @@ namespace NativeWorldTextProbe
                             if(previousClosure!=null && closure!=previousClosure)freezes.Clear();previousClosure=closure;
                             if(!actor.active)break;observedPhases.Add((int)actor.ai[0]);
                             bool selected=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(selected)selectedCount++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.CaptureTick==Main.GameUpdateCount,"Fresh production DD2 identity.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);frozenPhases[path]=(int)actor.ai[0];}}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.SampleTick==Main.GameUpdateCount,"Fresh production DD2 identity.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);frozenPhases[path]=(int)actor.ai[0];}}
+                            if(selected && frame%5==0)
+                            {
+                                var liveRaw=GetOptional(cache,"result");var liveDisplay=GetOptional(host,"displayPath");long liveLease=(long)Get(host,"displayLeaseTick");
+                                var budget=Get(host,"PredictionWork");double used=(double)Get(budget,"UsedMilliseconds");Require((int)Get(budget,"depth")==0,"Independent full-model fixture runs outside the completed production work scope.");
+                                var identity=new NpcIdentity(session,actor,actor.whoAmI,actor.generation,actor.type,actor.netID);
+                                Call(componentSource,"PreparePrefix",identity,(long)Main.GameUpdateCount,120,120);
+                                Require(ReferenceEquals(liveRaw,GetOptional(cache,"result")) && ReferenceEquals(liveDisplay,GetOptional(host,"displayPath")) && liveLease==(long)Get(host,"displayLeaseTick") && used==(double)Get(budget,"UsedMilliseconds"),"Independent component cannot publish, renew a display lease, or spend/reset the live update allowance.");
+                                var component=componentCache.Read(0);
+                                if(component!=null)
+                                {
+                                    Require(component.Identity.Equals(identity) && component.CaptureTick==(long)Main.GameUpdateCount && component.SampleTick==component.CaptureTick && !component.BudgetPaused && (component.Stop!=PredictionStop.None || component.Count==121),"Independent Source preserves fresh identity and the full requested model horizon or its real mechanism boundary.");
+                                    freezes.Add(component);components.Add(component);frozenPhases[component]=(int)actor.ai[0];componentCaptures++;
+                                }
+                            }
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
-                                var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maxError=Math.Max(maxError,error);matches++;
-                                if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}
-                                Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide,"Frozen DD2 motion "+scene+" frame="+frame+" capture="+frozen.CaptureTick+" offset="+offset+" error="+error+" stop="+frozen.Stop+" predicted="+point.Bounds.X+","+point.Bounds.Y+" predictedV="+point.Vx+","+point.Vy+" actual="+actor.position+" actualV="+actor.velocity+" phase="+string.Join("/",actor.ai)+" target="+actor.target+" player="+Main.LocalPlayer.position+" playerV="+Main.LocalPlayer.velocity+" playerSize="+Main.LocalPlayer.width+","+Main.LocalPlayer.height+" world="+Main.maxTilesX+","+Main.maxTilesY);
-                                if(frozenPhases[frozen]!=(int)actor.ai[0])cross++;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
+                                bool component=components.Contains(frozen);var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maxError=Math.Max(maxError,error);if(component)componentMatches++;else matches++;
+                                if(offset>=30){if(component){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}else displayLong++;}
+                                Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide,"Frozen DD2 motion component="+component+" "+scene+" frame="+frame+" capture="+frozen.CaptureTick+" offset="+offset+" error="+error+" stop="+frozen.Stop+" predicted="+point.Bounds.X+","+point.Bounds.Y+" predictedV="+point.Vx+","+point.Vy+" actual="+actor.position+" actualV="+actor.velocity+" phase="+string.Join("/",actor.ai)+" target="+actor.target+" player="+Main.LocalPlayer.position+" playerV="+Main.LocalPlayer.velocity+" playerSize="+Main.LocalPlayer.width+","+Main.LocalPlayer.height+" world="+Main.maxTilesX+","+Main.maxTilesY);
+                                if(component && frozenPhases[frozen]!=(int)actor.ai[0])cross++;
                             }
-                            var pc=Main.LocalPlayer;records.Add(string.Join(",",scene,frame,actor.type,selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matches,longMatches,maxError.ToString("R",CultureInfo.InvariantCulture),tangent.ToString("R",CultureInfo.InvariantCulture),pc.position.X,pc.position.Y,pc.velocity.X,pc.velocity.Y,pc.statLife,pc.dead,pc.immune,pc.immuneTime,pc.fallStart,pc.fallStart2,pc.respawnTimer));
+                            var pc=Main.LocalPlayer;records.Add(string.Join(",",scene,frame,actor.type,selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matches,longMatches,maxError.ToString("R",CultureInfo.InvariantCulture),tangent.ToString("R",CultureInfo.InvariantCulture),pc.position.X,pc.position.Y,pc.velocity.X,pc.velocity.Y,pc.statLife,pc.dead,pc.immune,pc.immuneTime,pc.fallStart,pc.fallStart2,pc.respawnTimer,componentCaptures,componentMatches,displayLong));
                         }
                         before=after=null;
                         Require(actions>=100 && crystalActions>=100,"Genuine event verifies the flying and crystal body motors for hundreds of ordinary actions.");
-                        Require(selectedCount>0 && published>0 && longMatches>=30 && tangent>8,"Actual DD2 producer has curved original paths at thirty or more future actions: "+scene+" pub="+published+" long="+longMatches+" tangent="+tangent);
+                        Require(selectedCount>0 && published>0 && matches>0 && componentCaptures>0 && longMatches>=30 && tangent>8,"Actual DD2 display consumes original prefixes and independent Source preserves curved full-model futures: "+scene+" pub="+published+" displayMatched="+matches+" displayLong="+displayLong+" componentCaptures="+componentCaptures+" componentMatched="+componentMatches+" long="+longMatches+" tangent="+tangent);
                         if(variant==5)
                         {
                             // The real protected/rising loss crystal changes
@@ -166,7 +188,7 @@ namespace NativeWorldTextProbe
                         }
                         else Require(observedPhases.Contains(0) && observedPhases.Contains(1) && observedPhases.Contains(2) && cross>=30,"Actual birth crosses approach, slowdown and observed dive phases.");
                         totalMatches+=matches;totalActions+=actions;totalCrystal+=crystalActions;totalRandom+=random;totalCrowd+=crowd;
-                        Console.WriteLine("INVASION scene="+scene+" birth="+birth+" selected="+selectedCount+" published="+published+" matched="+matches+" long="+longMatches+" error="+maxError+" actions="+actions+" crystal="+crystalActions+" random="+random+" crowd="+crowd+" cross="+cross);
+                        Console.WriteLine("INVASION scene="+scene+" birth="+birth+" selected="+selectedCount+" published="+published+" displayMatched="+matches+" displayLong="+displayLong+" componentCaptures="+componentCaptures+" componentMatched="+componentMatches+" componentLong="+longMatches+" error="+maxError+" actions="+actions+" crystal="+crystalActions+" random="+random+" crowd="+crowd+" componentCross="+cross);
                     }
                     catch(Exception failure) when(!(failure is OutOfMemoryException)){before=after=null;failures.Add(scene+": "+failure.Message);Console.WriteLine("INVASION FAIL "+scene+": "+failure);}
                 }

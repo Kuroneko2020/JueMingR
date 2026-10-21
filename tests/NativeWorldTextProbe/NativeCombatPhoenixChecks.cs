@@ -16,10 +16,11 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model;private static NPC target;private static Projectile receiving,motor,controller,phoenix;
-        private static bool natural,lowerCase,thirdEnhanced;private static int births,arrows,solves,steps,kills,thirdPrepared;private static long first,birthTick;private static AttackContact known;private static Vector2 raw,killCenter;private static object activeContext;
+        private static bool natural,lowerCase,thirdEnhanced;private static int births,arrows,solves,steps,kills,thirdPrepared,representativeSolves,representativeReplays,inputRecords;private static long first,birthTick;private static AttackContact known;private static Vector2 raw,killCenter,thirdPoint;private static NpcIdentity thirdTarget;private static uint thirdTick;private static object activeContext;
         private static readonly List<int> hits=new List<int>();
         private static object Static(Type type,string method,params object[] args){return type.GetMethod(method,Flags).Invoke(null,args);}
         private static void SolveWork(){solves++;}private static void StepWork(){steps++;}
+        private static void RepresentativeWork(){representativeSolves++;}private static void ReplayWork(){representativeReplays++;}
         private static Exception SolveOutcome(Exception __exception)
         {
             if(natural && activeContext!=null)
@@ -32,16 +33,21 @@ namespace NativeWorldTextProbe
             // Main's actual post-NPC prefix has prepared this registered controller.
             // AI only observes and consumes that entry; it never solves.
             var host=Get(activeContext,"CombatObservation");var attack=Get(Get(activeContext,"Combat"),"Attack");
-            var plan=(AttackContact)GetOptional(Get(attack,"Control"),"ExpectedImpact");
+            var control=Get(attack,"Control");var entries=(System.Collections.IDictionary)Get(control,"shots");var entry=entries.Contains((int)__instance.key)?entries[(int)__instance.key]:null;
             if(Main.LocalPlayer.phantomPhoneixCounter==2 && __instance.ai[1]<=1)
-            {var control=Get(attack,"Control");var entries=(System.Collections.IDictionary)Get(control,"shots");var entry=entries.Contains((int)__instance.key)?entries[(int)__instance.key]:null;var stored=entry==null?null:GetOptional(entry,"Contact") as AttackContact;var root=entry==null?null:GetOptional(entry,"Obstacles");var work=(CombatPredictionWork)Get(host,"PredictionWork");Console.WriteLine("PHOENIX READY AI clock="+Main.GameUpdateCount+" ai1="+__instance.ai[1]+" contact="+stored?.Tick+" expected="+plan?.Tick+" root="+(root==null?"none":Convert.ToString(Get(root,"HeldControllerUnchanged")))+" sourceCount="+((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(1)?.Count+" used6ms="+work.UsedMilliseconds+" exceeded="+work.Exceeded+" ambient="+string.Join(",",Main.projectile.Where(q=>q.active && !ReferenceEquals(q,__instance)).Select(q=>q.whoAmI+":"+q.type)));}
-            if(Main.LocalPlayer.phantomPhoneixCounter!=2 || plan==null)return;thirdPrepared++;
-            Call(attack,"BindPresentation",plan);int a=solves,b=steps;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
-            for(int d=0;d<20;d++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require((bool)Call(attack,"PresentationCurrent",plan),"actual ready third-shot presentation retains its registered controller lease");}
-            Require(a==solves && b==steps,"twenty actual third-shot presentation reads perform zero Phoenix solve or motor work");
+            {var work=(CombatPredictionWork)Get(host,"PredictionWork");var value=entry==null?null:Get(entry,"Solution");Console.WriteLine("PHOENIX READY AI clock="+Main.GameUpdateCount+" ai1="+__instance.ai[1]+" has="+(value==null?false:(bool)Get(value,"HasPoint"))+" reach="+(value==null?"none":Convert.ToString(Get(value,"Reachability")))+" receive="+(value==null?-1:(int)Get(value,"ReceiveTick"))+" sourceCount="+((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(1)?.Count+" used6ms="+work.UsedMilliseconds+" exceeded="+work.Exceeded);}
+            if(Main.LocalPlayer.phantomPhoneixCounter!=2 || __instance.ai[1]>1)return;
+            Require(entry!=null && ReferenceEquals(Get(entry,"Shot"),__instance) && (uint)Get(entry,"Prepared")==Main.GameUpdateCount && Convert.ToString(Get(control,"preparedPhase"))=="Projectiles","actual ready third shot observes this registered source's post-NPC preparation");
+            var solution=Get(entry,"Solution");var path=(NpcTrajectory)GetOptional(solution,"Timeline");thirdPoint=(Vector2)Get(solution,"Point");thirdTarget=(NpcIdentity)Get(entry,"Target");thirdTick=Main.GameUpdateCount;
+            Require((bool)Get(entry,"HasPoint") && (bool)Get(solution,"HasPoint") && path!=null && path.Identity.Equals(thirdTarget) && thirdTarget.Equals((NpcIdentity)Get(Get(host,"Selection"),"Target")) && ReferenceEquals(path,Get(control,"preparedTimeline")) && (Vector2)Get(entry,"Point")==thirdPoint && Convert.ToString(Get(solution,"Reachability"))=="Reachable" && (int)Get(solution,"ReceiveTick")>=0 && (int)Get(solution,"ReceiveTick")<path.Count,"actual third controller has a reachable representative direction with its current target and phase");thirdPrepared++;
+            // Red display was withdrawn. Repeated actual capability reads must
+            // neither solve nor publish a cursor receipt before native AI.
+            int a=solves,b=steps,c=representativeSolves,e=representativeReplays,r=inputRecords;
+            for(int d=0;d<20;d++){var args=new object[]{__instance,Vector2.Zero};Require((bool)control.GetType().GetMethod("TryEnhancedPoint",Flags).Invoke(control,args) && (Vector2)args[1]==thirdPoint,"actual ready third-shot source retains its prepared input capability");}
+            Require(a==solves && b==steps && c==representativeSolves && e==representativeReplays && r==inputRecords,"twenty actual third-shot capability reads perform zero solve, replay, motor or input-consumption work");
         }
         private static void InputReceipt(object __0)
-        {if(natural && controller!=null && Main.LocalPlayer.phantomPhoneixCounter==2 && ReferenceEquals(GetOptional(__0,"Source"),controller))thirdEnhanced=Convert.ToString(Get(__0,"Kind"))=="Enhanced";}
+        {if(!natural)return;inputRecords++;if(controller!=null && Main.LocalPlayer.phantomPhoneixCounter==2 && ReferenceEquals(GetOptional(__0,"Source"),controller)){Require(thirdPrepared>0 && thirdTick==Main.GameUpdateCount && Convert.ToString(Get(__0,"Kind"))=="Enhanced" && Convert.ToString(Get(__0,"Phase"))=="Projectiles" && ReferenceEquals(Get(__0,"Weapon"),Main.LocalPlayer.HeldItem) && ((NpcIdentity)Get(__0,"Target")).Equals(thirdTarget) && (Vector2)Get(__0,"Point")==thirdPoint,"native third AI consumes this exact registered source, phase, target and representative point");thirdEnhanced=true;}}
         private static void AfterAI(Projectile __instance){if(ReferenceEquals(controller,__instance))controller=null;}
         private static void BeforeKill(Projectile __instance){if(ReferenceEquals(__instance,motor) && __instance.active){kills++;killCenter=__instance.Center;}}
         private static void BeforeDamage(Projectile __instance){receiving=__instance;}
@@ -82,6 +88,7 @@ namespace NativeWorldTextProbe
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostPhoenixAttack",true);var audit=new Harmony("JueMingR.Tests.Phoenix");bool wind=Main.windPhysics;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             audit.Patch(model.GetMethod("SolvePrepared",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(SolveWork)),finalizer:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(SolveOutcome)));audit.Patch(model.GetMethod("Step",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(StepWork)));
+            var representative=assembly.GetType("JueMingR.TerrariaHost.Combat.HostRepresentativeAttack",true);audit.Patch(representative.GetMethod("PrepareMotion",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(RepresentativeWork)));audit.Patch(representative.GetMethod("Replay",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(ReplayWork)));
             audit.Patch(typeof(Projectile).GetMethod("AI",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(BeforeAI)){priority=Priority.First+1000},postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(AfterAI)));
             audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(Born)));
             audit.Patch(typeof(Projectile).GetMethod("Kill",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(BeforeKill)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(AfterDamage)));audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatPhoenixChecks),nameof(Strike)));

@@ -77,7 +77,7 @@ namespace NativeWorldTextProbe
         {
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");long session=(long)Get(host,"Session");
             var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);
-            var terrain=(IPredictionTerrain)Get(source,"Terrain");var rows=new List<string>{"scene,frame,hop,clock,teleport,selected,published,count,stop,matched,longMatched,error,actions,random,timeLeft,playerDead,playerRespawn,playerX,playerY"};var failures=new List<string>();
+            var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);var rows=new List<string>{"scene,frame,hop,clock,teleport,selected,published,count,stop,matched,longMatched,error,actions,random,timeLeft,playerDead,playerRespawn,playerX,playerY,actorPublished,directionalDisplays,adjacentDisplays,retainedDisplays,maxMissingRun,minFuture,maxFuture,maxDisplaySpan,curvedError"};var failures=new List<string>();
             bool oldGood=Main.getGoodWorld;var observer=new Harmony("JueMingR.Probe.KingSlimeOracle");var update=typeof(NPC).GetMethod("UpdateNPC",Flags);
             observer.Patch(update,prefix:new HarmonyMethod(typeof(NativeCombatKingSlimeChecks).GetMethod(nameof(Before),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatKingSlimeChecks).GetMethod(nameof(After),Flags)));
             var checkActive=typeof(NPC).GetMethod("CheckActive",Flags);var cellAt=terrain.GetType().GetMethod("CellAt",Flags);
@@ -94,12 +94,17 @@ namespace NativeWorldTextProbe
                         Require(actor.active && actor.aiStyle==15,"Genuine King Slime birth enters original AI15.");
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
                         var freezes=new List<NpcTrajectory>();var phases=new Dictionary<NpcTrajectory,int>();var observed=new HashSet<int>();int actions=0,random=0,matched=0,longMatches=0,cross=0,published=0,selectedCount=0,teleports=0,retired=0;double maxError=0,tangent=0;
+                        // Display accepts useful short futures; the existing phase/action
+                        // requirements below remain independent of its optional long tail.
+                        int directionalDisplays=0,adjacentDisplays=0,retainedDisplays=0,missingRun=0,maxMissingRun=0,minFuture=int.MaxValue,maxFuture=0;long lastDisplayTick=-2,lastCapture=-1;double maxDisplaySpan=0,curvedError=0;
                         NPC pending=null;NpcMotionState predicted=default(NpcMotionState);bool valid=false;PredictionStop actionStop=PredictionStop.None;
                         var failedCells=new HashSet<string>();int nativeChecks=0,nativeCheckLeft=0;bool nativeCheckActiveBefore=false;
                         checkBefore=n=>{if(!ReferenceEquals(n,actor))return;nativeChecks++;nativeCheckLeft=n.timeLeft;nativeCheckActiveBefore=n.active;};
                         checkAfter=n=>{if(scene==4 && ReferenceEquals(n,actor) && (nativeCheckLeft<=10 || !n.active))Console.WriteLine("KING DEAD-NATIVE-CHECK tick="+Main.GameUpdateCount+" calls="+nativeChecks+" active="+nativeCheckActiveBefore+"->"+n.active+" left="+nativeCheckLeft+"->"+n.timeLeft+" pos="+n.position+" size="+n.width+","+n.height+" phase="+string.Join("/",n.ai));};
                         before=n=>
                         {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                             pending=n;valid=false;if(!ReferenceEquals(n,actor) || !n.active)return;
                             predicted=(NpcMotionState)read.Invoke(null,new object[]{n,session});object[] args={n,predicted,terrain};tracking.Invoke(null,args);predicted=(NpcMotionState)args[1];
                             var e=EnvironmentFor(n);terrain.Reset();
@@ -120,25 +125,34 @@ namespace NativeWorldTextProbe
                             if(scene==4 && frame==400){Main.LocalPlayer.KillMe(Terraria.DataStructures.PlayerDeathReason.ByOther(0),1000000,0);Require(Main.LocalPlayer.dead,"Actual player death establishes King retreat.");freezes.Clear();}
                             NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();if(!actor.active)break;
                             observed.Add((int)actor.ai[1]);bool selected=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(selected)selectedCount++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.CaptureTick==Main.GameUpdateCount,"Actual King identity owns a fresh production window.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=(int)actor.ai[1];}}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.SampleTick==Main.GameUpdateCount,"Actual King identity owns a fresh production window.");published++;
+                                Require(ReferenceEquals(GetOptional(Get(host,"World"),"preparedPath"),GetOptional(host,"DisplayPath")),"World.Prepare consumes the actual selected Display owner and current lease.");
+                                double span=DisplaySpan(path);maxDisplaySpan=Math.Max(maxDisplaySpan,span);
+                                double markerSpan=Math.Max(Vector2.TransformNormal(new Vector2(6,0),Main.GameViewMatrix.ZoomMatrix).Length(),Vector2.TransformNormal(new Vector2(0,6),Main.GameViewMatrix.ZoomMatrix).Length());
+                                if(span>markerSpan)directionalDisplays++;
+                                if(lastDisplayTick==(long)Main.GameUpdateCount-1){adjacentDisplays++;if(lastCapture==path.CaptureTick)retainedDisplays++;}
+                                lastDisplayTick=Main.GameUpdateCount;lastCapture=path.CaptureTick;minFuture=Math.Min(minFuture,path.Count-1);maxFuture=Math.Max(maxFuture,path.Count-1);
+                                if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=(int)actor.ai[1];}}
+                            if(selected && (path==null || !ReferenceEquals(path.Identity.Token,actor))){missingRun++;maxMissingRun=Math.Max(maxMissingRun,missingRun);}else missingRun=0;
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
                                 var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maxError=Math.Max(maxError,error);matched++;
                                 Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal),"Frozen original King scene="+scene+" offset="+offset+" error="+error+" phase="+string.Join("/",actor.ai)+" predicted="+point.Bounds.X+","+point.Bounds.Y+" actual="+actor.position+" stop="+frozen.Stop);
+                                curvedError=Math.Max(curvedError,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));
                                 if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}if(phases[frozen]!=(int)actor.ai[1])cross++;
                             }
-                            rows.Add(string.Join(",",scene,frame,actor.ai[1],actor.ai[0],actor.ai[2],selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matched,longMatches,maxError.ToString("R",CultureInfo.InvariantCulture),actions,random,actor.timeLeft,Main.LocalPlayer.dead,Main.LocalPlayer.respawnTimer,Main.LocalPlayer.position.X,Main.LocalPlayer.position.Y));
+                            rows.Add(string.Join(",",scene,frame,actor.ai[1],actor.ai[0],actor.ai[2],selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matched,longMatches,maxError.ToString("R",CultureInfo.InvariantCulture),actions,random,actor.timeLeft,Main.LocalPlayer.dead,Main.LocalPlayer.respawnTimer,Main.LocalPlayer.position.X,Main.LocalPlayer.position.Y,path!=null && ReferenceEquals(path.Identity.Token,actor),directionalDisplays,adjacentDisplays,retainedDisplays,maxMissingRun,published==0?0:minFuture,maxFuture,maxDisplaySpan.ToString("R",CultureInfo.InvariantCulture),curvedError.ToString("R",CultureInfo.InvariantCulture)));
                         }
                         before=after=null;
                         if(scene==5)Require(!actor.active && retired>0,"Far target follows the original encourage-despawn and exact retirement action.");
                         else
                         {
-                            Require(actions>=300 && published>0 && selectedCount>0 && longMatches>=30 && tangent>8 && cross>=30,"Native King has long curved full-production futures across real jump or teleport phases: "+scene+" actions="+actions+" pub="+published+" long="+longMatches+" cross="+cross);
+                            Require(actions>=300 && published>0 && directionalDisplays>0 && adjacentDisplays>0 && selectedCount>0 && curvedError>8 && cross>=30,"Native King has directional curved Display futures across real jump or teleport phases: "+scene+" actions="+actions+" pub="+published+" long="+longMatches+" cross="+cross);
                             if(scene==3)Require(observed.Contains(5) && observed.Contains(6) && teleports>0,"High real player platform naturally reaches shrink, teleport and recovery.");
                             if(scene==4)Require(!actor.active && retired>0,"Actual dead player drives the original retreat retirement: active="+actor.active+" retiredOracle="+retired+" nativeChecks="+nativeChecks+" actor="+actor.position+" phase="+string.Join("/",actor.ai)+" timeLeft="+actor.timeLeft+" dead="+Main.LocalPlayer.dead+" respawn="+Main.LocalPlayer.respawnTimer+" player="+Main.LocalPlayer.position);
                         }
-                        totalActions+=actions;totalMatches+=matched;totalRandom+=random;Console.WriteLine("KING scene="+scene+" actions="+actions+" pub="+published+" matched="+matched+" long="+longMatches+" cross="+cross+" random="+random+" teleports="+teleports+" retired="+retired+" error="+maxError+" phases="+string.Join(";",observed));
+                        totalActions+=actions;totalMatches+=matched;totalRandom+=random;Console.WriteLine("KING scene="+scene+" actions="+actions+" pub="+published+" matched="+matched+" long="+longMatches+" cross="+cross+" random="+random+" teleports="+teleports+" retired="+retired+" error="+maxError+" phases="+string.Join(";",observed)+" directionalDisplays="+directionalDisplays+" adjacentDisplays="+adjacentDisplays+" retainedDisplays="+retainedDisplays+" maxMissingRun="+maxMissingRun+" minFuture="+(published==0?0:minFuture)+" maxFuture="+maxFuture+" maxDisplaySpan="+maxDisplaySpan.ToString("R",CultureInfo.InvariantCulture)+" curvedError="+curvedError.ToString("R",CultureInfo.InvariantCulture));
                     }
                     catch(Exception failure) when(!(failure is OutOfMemoryException)){before=after=checkBefore=checkAfter=null;terrainFailure=null;failures.Add(scene+": "+failure.Message);Console.WriteLine("KING FAIL scene="+scene+": "+failure);}
                 }
@@ -162,6 +176,21 @@ namespace NativeWorldTextProbe
             if(scene==3)for(int x=20;x<Main.maxTilesX-20;x++){Main.tile[x,125].active(true);Main.tile[x,125].type=TileID.Platforms;}
             for(int i=0;i<p.hurtCooldowns.Length;i++)p.hurtCooldowns[i]=1000000;
             NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions(path:false,mouseCenter:true,clearLine:false,radius:50));
+        }
+        // Same body-centre segments and zoom as the real Display consumer.
+        // A direction must extend beyond its six-world-unit endpoint cross;
+        // NewSegment is a break, never a fabricated connecting line.
+        private static double DisplaySpan(NpcTrajectory path)
+        {
+            var start=new Vector2(path[0].Bounds.CenterX,path[0].Bounds.CenterY);double maximum=0;
+            for(int i=1;i<path.Count;i++)
+            {
+                var point=path[i];var next=new Vector2(point.Bounds.CenterX,point.Bounds.CenterY);
+                if(point.NewSegment){start=next;continue;}
+                float span=Vector2.TransformNormal(next-start,Main.GameViewMatrix.ZoomMatrix).Length();
+                Require(!float.IsNaN(span) && !float.IsInfinity(span),"Actual Display geometry is finite.");maximum=Math.Max(maximum,span);
+            }
+            return maximum;
         }
     }
 }

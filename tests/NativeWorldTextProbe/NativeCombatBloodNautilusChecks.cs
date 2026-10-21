@@ -49,7 +49,7 @@ namespace NativeWorldTextProbe
         }
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
         {
-            object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");Require(GetOptional(source,"Native")==null,"Blood Nautilus defaults to pure rolling prediction.");var terrain=(IPredictionTerrain)Get(source,"Terrain");var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);long session=(long)Get(host,"Session");
+            object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");Require(GetOptional(source,"Native")==null,"Blood Nautilus defaults to pure rolling prediction.");var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);long session=(long)Get(host,"Session");
             var observer=new Harmony("JueMingR.Tests.BloodNautilus.NativeAction");observer.Patch(typeof(NPC).GetMethod("UpdateNPC",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBloodNautilusChecks),nameof(Before)),postfix:new HarmonyMethod(typeof(NativeCombatBloodNautilusChecks),nameof(After)));
             var rows=new List<string>{"type,mode,frame,slot,generation,phase,clock,x,y,vx,vy,selected,published,count,stop,matched,long,actions,random,retired"};var failures=new List<string>();int total=0,totalLong=0;
             try
@@ -63,6 +63,8 @@ namespace NativeWorldTextProbe
                         NPC actor=null;var freezes=new List<NpcTrajectory>();var phases=new HashSet<int>();int selected=0,published=0,matches=0,longMatches=0,actions=0,random=0,retired=0,births=0;double max=0,tangent=0;NpcMotionState forecast=default(NpcMotionState);bool valid=false;
                         before=n=>
                         {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                             valid=false;if(!ReferenceEquals(n,actor) || !n.active)return;terrain.Reset();forecast=Read(read,tracking,n,terrain,session);PredictionStop stop;var e=Environment(p);e.PlayerTimelineActive=true;valid=NpcMotion.Step(ref forecast,new[]{forecast},1,e,terrain,1,true,out stop);Require(valid || stop==PredictionStop.RandomDecision || stop==PredictionStop.Despawn,"Current AI117 original dependencies type="+type+" mode="+mode+" stop="+stop);if(stop==PredictionStop.RandomDecision)random++;
                         };
                         after=n=>
@@ -75,10 +77,10 @@ namespace NativeWorldTextProbe
                             if(actor==null || !actor.active){if(actor!=null)retired++;int slot=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),2900,1650,type,Start:16,Target:Main.myPlayer);actor=Main.npc[slot];freezes.Clear();births++;}
                             if(frame%240==0){p.controlRight=frame%480==0;p.controlLeft=!p.controlRight;freezes.Clear();}if(mode==2 && frame==1500){Main.dayTime=true;Main.bloodMoon=false;freezes.Clear();}if(mode==2 && frame==1620){Main.dayTime=false;Main.bloodMoon=true;freezes.Clear();}
                             NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();if(!actor.active)continue;phases.Add((int)actor.ai[0]);bool has=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(has)selected++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(has && path.CaptureTick==Main.GameUpdateCount,"Real AI117 selected actor owns this publication.");published++;if(frame%5==0 && path.Count>1)freezes.Add(path);}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(has && path.SampleTick==Main.GameUpdateCount,"Real AI117 selected actor owns this publication.");published++;if(frame%5==0 && path.Count>1)freezes.Add(path);}
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;var point=frozen[offset];double error=Vector2.Distance(actor.position,new Vector2(point.Bounds.X,point.Bounds.Y));max=Math.Max(max,error);matches++;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;var point=frozen[offset];double error=Vector2.Distance(actor.position,new Vector2(point.Bounds.X,point.Bounds.Y));max=Math.Max(max,error);matches++;
                                 Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide && point.ReflectsProjectiles==actor.reflectsProjectiles,"Frozen original AI117 type="+type+" mode="+mode+" frame="+frame+" capture="+frozen.CaptureTick+" offset="+offset+" error="+error+" phase="+actor.ai[0]+","+actor.ai[1]+" predictedV="+point.Vx+","+point.Vy+" actual="+actor.position+" V="+actor.velocity+" PC="+p.position+" PCV="+p.velocity+" stop="+frozen.Stop);
                                 if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}
                             }

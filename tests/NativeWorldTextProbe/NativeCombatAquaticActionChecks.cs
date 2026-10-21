@@ -56,7 +56,7 @@ namespace NativeWorldTextProbe
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
         {
             object host=Get(context,"CombatObservation");Require(GetOptional(Get(host,"Prediction"),"Native")==null,"Aquatic actions keep the default rolling producer.");
-            var rows=new List<string>{"scene,frame,tick,action,clock,localClock,x,y,vx,vy,wet,hit,selected,published,count,stop,matched,longMatches,actionMatches"};var failures=new List<string>();int total=0,totalLong=0,scenes=0;var selectedActions=new HashSet<int>();
+            var rows=new List<string>{"scene,frame,tick,action,clock,localClock,x,y,vx,vy,wet,hit,selected,published,count,stop,matched,longMatches,actionMatches,actorPublished,directionalDisplays,adjacentDisplays,retainedDisplays,maxMissingRun,minFuture,maxFuture,maxDisplaySpan"};var failures=new List<string>();int total=0,totalLong=0,scenes=0;var selectedActions=new HashSet<int>();
             try
             {
                 foreach(int member in new[]{615,688})foreach(int variant in new[]{0,1})
@@ -69,6 +69,9 @@ namespace NativeWorldTextProbe
                         int slot=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1600,2500,member,Start:16,Target:Main.myPlayer);var actor=Main.npc[slot];actor.timeLeft=750;
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
                         var freezes=new List<Frozen>();int matches=0,longMatches=0,actionMatches=0,selected=0,published=0;bool hit=false,sawFloat=false,sawRelease=false;double maximum=0;
+                        // Display accepts useful short futures; the existing phase/action
+                        // requirements below remain independent of its optional long tail.
+                        int directionalDisplays=0,adjacentDisplays=0,retainedDisplays=0,missingRun=0,maxMissingRun=0,minFuture=int.MaxValue,maxFuture=0;long lastDisplayTick=-2,lastCapture=-1;double maxDisplaySpan=0;
                         for(int frame=0;frame<(member==615?2400:360) && actor.active;frame++)
                         {
                             // Only a real isolated Strike drives 688's native
@@ -79,19 +82,27 @@ namespace NativeWorldTextProbe
                             if(actor.ai[2]==1 && member==688)sawFloat=true;if(sawFloat && actor.ai[2]==0)sawRelease=true;
                             if(member==615 && actor.ai[2]!=0)selectedActions.Add((int)actor.ai[2]);
                             bool has=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(has)selected++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor))
-                            {Require(has && path.CaptureTick==Main.GameUpdateCount,"Fresh aquatic selected publication.");published++;if(published==1 || frame%15==0 || freezes.Count==0 && actor.ai[2]!=0)freezes.Add(new Frozen(path,(int)actor.ai[2]));}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor))
+                            {Require(has && path.SampleTick==Main.GameUpdateCount,"Fresh aquatic selected publication.");published++;
+                                Require(ReferenceEquals(GetOptional(Get(host,"World"),"preparedPath"),GetOptional(host,"DisplayPath")),"World.Prepare consumes the actual selected Display owner and current lease.");
+                                double span=DisplaySpan(path);maxDisplaySpan=Math.Max(maxDisplaySpan,span);
+                                double markerSpan=Math.Max(Vector2.TransformNormal(new Vector2(6,0),Main.GameViewMatrix.ZoomMatrix).Length(),Vector2.TransformNormal(new Vector2(0,6),Main.GameViewMatrix.ZoomMatrix).Length());
+                                if(span>markerSpan)directionalDisplays++;
+                                if(lastDisplayTick==(long)Main.GameUpdateCount-1){adjacentDisplays++;if(lastCapture==path.CaptureTick)retainedDisplays++;}
+                                lastDisplayTick=Main.GameUpdateCount;lastCapture=path.CaptureTick;minFuture=Math.Min(minFuture,path.Count-1);maxFuture=Math.Max(maxFuture,path.Count-1);
+                                if(published==1 || frame%15==0 || freezes.Count==0 && actor.ai[2]!=0)freezes.Add(new Frozen(path,(int)actor.ai[2]));}
+                            if(has && (path==null || !ReferenceEquals(path.Identity.Token,actor))){missingRun++;maxMissingRun=Math.Max(maxMissingRun,missingRun);}else missingRun=0;
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.Path.CaptureTick);if(offset>=frozen.Path.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.Path.SampleTick);if(offset>=frozen.Path.Count){freezes.RemoveAt(i);continue;}if(offset<=0)continue;
                                 var point=frozen.Path[offset];double error=Vector2.Distance(actor.position,new Vector2(point.Bounds.X,point.Bounds.Y));maximum=Math.Max(maximum,error);matches++;if(offset>=30)longMatches++;if(frozen.Action!=0)actionMatches++;
                                 Require(error<=.08 && point.NoTileCollide==actor.noTileCollide,"Frozen native aquatic action "+scene+" offset="+offset+" capturedAction="+frozen.Action+" actualAction="+actor.ai[2]+" error="+error.ToString("R",CultureInfo.InvariantCulture)+" predicted="+point.Bounds.X+","+point.Bounds.Y+" pv="+point.Vx+","+point.Vy+" actual="+actor.position+" av="+actor.velocity+" wet="+actor.wet+" clock="+actor.ai[3]+" localClock="+actor.localAI[0]+" stop="+frozen.Path.Stop);
                             }
-                            rows.Add(string.Join(",",scene,frame,Main.GameUpdateCount,actor.ai[2],actor.ai[3],actor.localAI[0],actor.position.X,actor.position.Y,actor.velocity.X,actor.velocity.Y,actor.wet,hit,has,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matches,longMatches,actionMatches));
+                            rows.Add(string.Join(",",scene,frame,Main.GameUpdateCount,actor.ai[2],actor.ai[3],actor.localAI[0],actor.position.X,actor.position.Y,actor.velocity.X,actor.velocity.Y,actor.wet,hit,has,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matches,longMatches,actionMatches,path!=null && ReferenceEquals(path.Identity.Token,actor),directionalDisplays,adjacentDisplays,retainedDisplays,maxMissingRun,published==0?0:minFuture,maxFuture,maxDisplaySpan.ToString("R",CultureInfo.InvariantCulture)));
                         }
-                        Require(selected>0 && published>0 && longMatches>=30 && actionMatches>=30,"Natural already selected aquatic action must publish long continuing geometry "+scene+" selected="+selected+" published="+published+" long="+longMatches+" actionMatched="+actionMatches);
+                        Require(selected>0 && published>0 && directionalDisplays>0 && adjacentDisplays>0 && actionMatches>=30,"Natural already selected aquatic action must consume directional connected Display geometry "+scene+" selected="+selected+" published="+published+" long="+longMatches+" actionMatched="+actionMatches);
                         if(member==688)Require(hit && sawFloat && sawRelease,"Same original hit fish must enter float and return to swim.");
-                        total+=matches;totalLong+=longMatches;Console.WriteLine("AQUATIC_ACTION scene="+scene+" matched="+matches+" long="+longMatches+" actionMatched="+actionMatches+" maxError="+maximum+" naturalActions="+string.Join("|",selectedActions));
+                        total+=matches;totalLong+=longMatches;Console.WriteLine("AQUATIC_ACTION scene="+scene+" matched="+matches+" long="+longMatches+" actionMatched="+actionMatches+" maxError="+maximum+" naturalActions="+string.Join("|",selectedActions)+" directionalDisplays="+directionalDisplays+" adjacentDisplays="+adjacentDisplays+" retainedDisplays="+retainedDisplays+" maxMissingRun="+maxMissingRun+" minFuture="+(published==0?0:minFuture)+" maxFuture="+maxFuture+" maxDisplaySpan="+maxDisplaySpan.ToString("R",CultureInfo.InvariantCulture));
                     }
                     catch(InvalidOperationException failure){failures.Add(scene+": "+failure.Message);Console.WriteLine("AQUATIC_ACTION FAIL "+scene+": "+failure.Message);}
                 }
@@ -107,5 +118,20 @@ namespace NativeWorldTextProbe
         }
         private sealed class Frozen
         {internal readonly NpcTrajectory Path;internal readonly int Action;internal Frozen(NpcTrajectory path,int action){Path=path;Action=action;}}
+        // Same body-centre segments and zoom as the real Display consumer.
+        // A direction must extend beyond its six-world-unit endpoint cross;
+        // NewSegment is a break, never a fabricated connecting line.
+        private static double DisplaySpan(NpcTrajectory path)
+        {
+            var start=new Vector2(path[0].Bounds.CenterX,path[0].Bounds.CenterY);double maximum=0;
+            for(int i=1;i<path.Count;i++)
+            {
+                var point=path[i];var next=new Vector2(point.Bounds.CenterX,point.Bounds.CenterY);
+                if(point.NewSegment){start=next;continue;}
+                float span=Vector2.TransformNormal(next-start,Main.GameViewMatrix.ZoomMatrix).Length();
+                Require(!float.IsNaN(span) && !float.IsInfinity(span),"Actual Display geometry is finite.");maximum=Math.Max(maximum,span);
+            }
+            return maximum;
+        }
     }
 }

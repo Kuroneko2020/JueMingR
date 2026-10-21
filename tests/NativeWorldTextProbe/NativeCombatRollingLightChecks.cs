@@ -30,8 +30,8 @@ namespace NativeWorldTextProbe
         private static readonly List<string> lightMouseErrors=new List<string>();
         private struct LightRow
         {
-            internal string Phase;internal int Frame,Count,Life,PlayerLife,Strokes,G0,G1,G2,Hits,SourceG0,SourceG1,SourceG2,SourceCalls;
-            internal long Tick,CaptureTick,SampleTick,SourceBytes,HostBytes;
+            internal string Phase;internal int Frame,Count,Age,Life,PlayerLife,Strokes,G0,G1,G2,Hits,SourceG0,SourceG1,SourceG2,SourceCalls;
+            internal long Tick,CaptureTick,SampleTick,RawSampleTick,SourceBytes,HostBytes;
             internal NpcIdentity Expected,Selected;
             internal bool Legal,Picked,Shown,Wet,Mounted;
             internal double Host,Shell,Source,Prepare,Draw,Wall;
@@ -101,10 +101,10 @@ namespace NativeWorldTextProbe
         }
         private static bool LightRequiredHit(int start,string role,int projectile)
         {for(int i=start;i<lightHitCount;i++)if(lightHits[i].Role==role && lightHits[i].Projectile==projectile)return true;return false;}
-        private static void LightRecord(NPC target,NpcIdentity expected,NpcIdentity selected,bool legal,bool picked,NpcTrajectory path,int strokes,double wall,double draw,int g0,int g1,int g2,int hits)
+        private static void LightRecord(NPC target,NpcIdentity expected,NpcIdentity selected,bool legal,bool picked,NpcTrajectory path,int age,NpcTrajectory raw,int strokes,double wall,double draw,int g0,int g1,int g2,int hits)
         {
             if(lightRowCount==lightRows.Length)throw new InvalidOperationException("Bounded light update buffer exhausted; retain failed attempt.");
-            lightRows[lightRowCount++]=new LightRow{Phase=phase,Frame=frame,Tick=Main.GameUpdateCount,CaptureTick=path?.CaptureTick??-1,SampleTick=path?.SampleTick??-1,Expected=expected,Selected=selected,Legal=legal,Picked=picked,Shown=path!=null,Count=path?.Count??0,Life=target.life,PlayerLife=Main.LocalPlayer.statLife,Strokes=strokes,Wet=Main.LocalPlayer.wet,Mounted=Main.LocalPlayer.mount.Active,Host=Times[8],Shell=Times[9],Source=Times[1],Prepare=Times[5],Draw=Times[6],Wall=wall,G0=g0,G1=g1,G2=g2,Hits=hits,SourceG0=sourceGc[0],SourceG1=sourceGc[1],SourceG2=sourceGc[2],SourceBytes=Bytes[1],HostBytes=Bytes[8],SourceCalls=Calls[1]};
+            lightRows[lightRowCount++]=new LightRow{Phase=phase,Frame=frame,Tick=Main.GameUpdateCount,CaptureTick=path?.CaptureTick??-1,SampleTick=path?.SampleTick??-1,RawSampleTick=raw?.SampleTick??-1,Age=age,Expected=expected,Selected=selected,Legal=legal,Picked=picked,Shown=path!=null,Count=path?.Count??0,Life=target.life,PlayerLife=Main.LocalPlayer.statLife,Strokes=strokes,Wet=Main.LocalPlayer.wet,Mounted=Main.LocalPlayer.mount.Active,Host=Times[8],Shell=Times[9],Source=Times[1],Prepare=Times[5],Draw=Times[6],Wall=wall,G0=g0,G1=g1,G2=g2,Hits=hits,SourceG0=sourceGc[0],SourceG1=sourceGc[1],SourceG2=sourceGc[2],SourceBytes=Bytes[1],HostBytes=Bytes[8],SourceCalls=Calls[1]};
         }
         private static void LightEnd(object host,NpcPredictionCache cache,Action step)
         {
@@ -116,8 +116,8 @@ namespace NativeWorldTextProbe
         }
         private static void LightWrite(string output,bool completed)
         {
-            var rows=new List<string>{"phase,frame,tick,captureTick,sampleTick,legal,selected,shown,count,expectedToken,expectedSlot,expectedGeneration,expectedType,expectedNetId,selectedToken,selectedSlot,selectedGeneration,selectedType,selectedNetId,life,playerLife,pathStrokes,wet,mounted,hostMs,shellMs,sourceMs,prepareMs,drawMs,wallMs,hostBytes,sourceBytes,sourceCalls,gc0,gc1,gc2,sourceGc0,sourceGc1,sourceGc2,hits"};
-            for(int i=0;i<lightRowCount;i++){var r=lightRows[i];rows.Add(NativeCombatAttackMechanismChecks.Csv(r.Phase,r.Frame,r.Tick,r.CaptureTick,r.SampleTick,r.Legal,r.Picked,r.Shown,r.Count,Token(r.Expected.Token),r.Expected.Slot,r.Expected.Generation,r.Expected.Type,r.Expected.NetId,Token(r.Selected.Token),r.Selected.Slot,r.Selected.Generation,r.Selected.Type,r.Selected.NetId,r.Life,r.PlayerLife,r.Strokes,r.Wet,r.Mounted,r.Host,r.Shell,r.Source,r.Prepare,r.Draw,r.Wall,r.HostBytes,r.SourceBytes,r.SourceCalls,r.G0,r.G1,r.G2,r.SourceG0,r.SourceG1,r.SourceG2,r.Hits));}
+            var rows=new List<string>{"phase,frame,tick,captureTick,sampleTick,legal,selected,shown,count,expectedToken,expectedSlot,expectedGeneration,expectedType,expectedNetId,selectedToken,selectedSlot,selectedGeneration,selectedType,selectedNetId,life,playerLife,pathStrokes,wet,mounted,hostMs,shellMs,sourceMs,prepareMs,drawMs,wallMs,hostBytes,sourceBytes,sourceCalls,gc0,gc1,gc2,sourceGc0,sourceGc1,sourceGc2,hits,rawSourceSampleTick,displayAge,remainingFuture"};
+            for(int i=0;i<lightRowCount;i++){var r=lightRows[i];rows.Add(NativeCombatAttackMechanismChecks.Csv(r.Phase,r.Frame,r.Tick,r.CaptureTick,r.SampleTick,r.Legal,r.Picked,r.Shown,r.Count,Token(r.Expected.Token),r.Expected.Slot,r.Expected.Generation,r.Expected.Type,r.Expected.NetId,Token(r.Selected.Token),r.Selected.Slot,r.Selected.Generation,r.Selected.Type,r.Selected.NetId,r.Life,r.PlayerLife,r.Strokes,r.Wet,r.Mounted,r.Host,r.Shell,r.Source,r.Prepare,r.Draw,r.Wall,r.HostBytes,r.SourceBytes,r.SourceCalls,r.G0,r.G1,r.G2,r.SourceG0,r.SourceG1,r.SourceG2,r.Hits,r.RawSampleTick,r.Age,r.Shown?r.Count-1-r.Age:0));}
             File.WriteAllLines(Path.Combine(output,"light-updates.csv"),rows);
             rows.Clear();rows.Add("phase,frame,tick,projectileType,role,victimToken,victimSlot,victimGeneration,victimType,victimNetId,damage,life");
             for(int i=0;i<lightHitCount;i++){var h=lightHits[i];rows.Add(NativeCombatAttackMechanismChecks.Csv(h.Phase,h.Frame,h.Tick,h.Projectile,h.Role,Token(h.Victim.Token),h.Victim.Slot,h.Victim.Generation,h.Victim.Type,h.Victim.NetId,h.Damage,h.Life));}

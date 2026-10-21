@@ -558,10 +558,19 @@ try {
         # Keep the strict package/runtime manifests and fixed member contract.
         # The ordinary owner card is the compatible in-ZIP disclosure surface.
         $card=Join-Path $packageRoot $ownerTestCardName
+        if($buildRecord.workload.mode -ceq 'DevelopmentCandidate'){
+            # Stable records disclose their own task without inheriting a
+            # historical #114/#124 installation permission from a mode name.
+            [IO.File]::AppendAllText($card,"`r`n本包为本人待测候选；任务：$($buildRecord.workload.taskReference)。普通完整文件与 Release 载荷齐全；全量累计资格 INCOMPLETE、releaseEligible=false。未完成责任见包旁构建记录；候选记录不授予安装权限，实际换装按本次独立授权和现有安全门处理。`r`n",(New-Object Text.UTF8Encoding($false)))
+            if($null -ne $buildRecord.workload.PSObject.Properties['taskAcceptance'] -and $null -ne $buildRecord.workload.taskAcceptance){
+                [IO.File]::AppendAllText($card,"本次任务范围工程验收：$($buildRecord.workload.taskAcceptance.status)。广泛回归的原 FAIL、未运行状态及对应责任保留在包旁构建记录中；任务验收通过不代表广泛回归通过。`r`n",(New-Object Text.UTF8Encoding($false)))
+            }
+        } else {
         $viewStage=$buildRecord.workload.mode -cin @('ExplicitViewUnlock20261018','ExplicitViewCacheRange20261018')
         $installationBoundary=if($viewStage -or $buildRecord.workload.mode -ceq 'ExplicitAimContinuation20261013'){'本轮已授权在准入和载荷身份检查后，核无所有者进程占用、轻量备份并用正式工具换装；回执另行读回，正常游戏启动和体验由所有者操作。'}else{'交包后停止，安装和体验由所有者另行决定。'}
         $taskBoundary=if($viewStage){'视距解锁续办开发测试包；含已接受旅行和既有完整功能。实际范围、证据复用及设备／多人／FPS边界见 Issue #124。'}else{'辅助瞄准阶段开发测试包；未完成机制及实机／多人／FPS边界见 Issue #114。'}
         [IO.File]::AppendAllText($card,"`r`n本包为已授权的$taskBoundary 完整文件与 Release 载荷齐全；全量累计资格 INCOMPLETE、releaseEligible=false，不是正式发布候选。$installationBoundary`r`n",(New-Object Text.UTF8Encoding($false)))
+        }
     }
 
     $validatedPackage = Read-Phase0SPackage -PackageRoot $packageRoot

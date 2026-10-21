@@ -54,8 +54,8 @@ namespace NativeWorldTextProbe
             Require(GetOptional(source,"Native")==null,"Plantera uses the default scalar rolling producer.");
             var read=source.GetType().GetMethod("Read",Flags);
             var capture=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);
-            var terrain=(IPredictionTerrain)Get(source,"Terrain");
-            var rows=new List<string>{"scene,frame,type,selected,published,count,stop,matched,longMatched,maxError,tangentError"};
+            var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);
+            var rows=new List<string>{"scene,frame,type,selected,published,count,stop,matched,longMatched,maxError,tangentError,actorPublished,directionalDisplays,adjacentDisplays,retainedDisplays,maxMissingRun,minFuture,maxFuture,maxDisplaySpan,curvedError"};
             var failures=new List<string>();bool oldGood=Main.getGoodWorld;var oldPlayers=Main.player;
             Main.player=new Player[oldPlayers.Length];for(int i=0;i<Main.player.Length;i++)Main.player[i]=new Player{whoAmI=i};
             var hookOwner=new Harmony("JueMingR.Probe.PlanteraNaturalAction");var update=typeof(NPC).GetMethod("UpdateNPC",Flags);
@@ -96,10 +96,12 @@ namespace NativeWorldTextProbe
                         if(variant==11)Require(Main.LocalPlayer.position.Y>Main.UnderworldLayer*16,"Underworld scene uses the native height predicate.");
                         if(variant==12){Main.LocalPlayer.KillMe(Terraria.DataStructures.PlayerDeathReason.ByCustomReason("isolated Plantera dead target oracle"),10000,0);Require(Main.LocalPlayer.dead,"Original KillMe establishes the dead-player branch.");}
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
-                        var freezes=new List<NpcTrajectory>();int selectedCount=0,published=0,matches=0,longMatches=0,bodyLocal=0,hookLocal=0,tentacleLocal=0,randomLocal=0,phaseBoundaries=0,earlyHookActions=0,maxWindow=0,distinctTargets=0,distinctRefusals=0;double maximum=0,tangent=0;
+                        var freezes=new List<NpcTrajectory>();int selectedCount=0,published=0,matches=0,longMatches=0,bodyLocal=0,hookLocal=0,tentacleLocal=0,randomLocal=0,phaseBoundaries=0,earlyHookActions=0,maxWindow=0,distinctTargets=0,distinctRefusals=0,directionalDisplays=0,adjacentDisplays=0,retainedDisplays=0,missingRun=0,maxMissingRun=0,minFuture=int.MaxValue,maxFuture=0;double maximum=0,tangent=0,curvedError=0,maxDisplaySpan=0;long lastDisplayTick=-2,lastCapture=-1;
                         NPC pendingActor=null;NpcMotionState predicted=default(NpcMotionState);bool pendingValid=false;
                         beforeAction=n=>
                         {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                             pendingValid=false;pendingActor=n;
                             if(!n.active || n.aiStyle<51 || n.aiStyle>53)return;
                             if(n.aiStyle==52){bool earlier=false;for(int k=0;k<n.whoAmI;k++)if(Main.npc[k].active && Main.npc[k].aiStyle==51){earlier=true;break;}if(!earlier)earlyHookActions++;}
@@ -120,7 +122,24 @@ namespace NativeWorldTextProbe
                         {
                             NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();
                             var selection=Get(host,"Selection");bool selected=(bool)Get(selection,"HasTarget") && ReferenceEquals(((NpcIdentity)Get(selection,"Target")).Token,actor);if(selected)selectedCount++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.CaptureTick==Main.GameUpdateCount,"Actual default producer owns fresh Plantera publication.");published++;if(frame%5==0 && path.Count>1)freezes.Add(path);}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);bool actorPublished=path!=null && ReferenceEquals(path.Identity.Token,actor);
+                            if(actorPublished)
+                            {
+                                Require(selected && path.SampleTick==Main.GameUpdateCount,"Actual default producer owns fresh Plantera publication.");
+                                Require(ReferenceEquals(GetOptional(Get(host,"World"),"preparedPath"),GetOptional(host,"DisplayPath")),"World.Prepare consumes the actual Plantera Display owner and its current lease.");
+                                published++;minFuture=Math.Min(minFuture,path.Count-1);maxFuture=Math.Max(maxFuture,path.Count-1);
+                                double span=DisplaySpan(path);maxDisplaySpan=Math.Max(maxDisplaySpan,span);
+                                // The real renderer's endpoint cross spans six
+                                // world units. A connected future exceeding its zoomed
+                                // footprint proves direction beyond a marker;
+                                // it imposes no frame-count or long-tail target.
+                                double markerSpan=Math.Max(Vector2.TransformNormal(new Vector2(6,0),Main.GameViewMatrix.ZoomMatrix).Length(),Vector2.TransformNormal(new Vector2(0,6),Main.GameViewMatrix.ZoomMatrix).Length());
+                                if(span>markerSpan)directionalDisplays++;
+                                if(lastDisplayTick==(long)Main.GameUpdateCount-1){adjacentDisplays++;if(lastCapture==path.CaptureTick)retainedDisplays++;}
+                                lastDisplayTick=Main.GameUpdateCount;lastCapture=path.CaptureTick;
+                                if(frame%5==0 && path.Count>1)freezes.Add(path);
+                            }
+                            if(selected && !actorPublished){missingRun++;maxMissingRun=Math.Max(maxMissingRun,missingRun);}else missingRun=0;
                             if(path!=null)maxWindow=Math.Max(maxWindow,path.Count);
                             if(variant==7)
                             {
@@ -134,21 +153,27 @@ namespace NativeWorldTextProbe
                             }
                             for(int k=freezes.Count-1;k>=0;k--)
                             {
-                                var frozen=freezes[k];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(k);continue;}if(offset<=0)continue;
+                                var frozen=freezes[k];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(k);continue;}if(offset<=0)continue;
                                 var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);maximum=Math.Max(maximum,error);matches++;
+                                // Curvature rejects the former tangent using
+                                // every actually consumed frozen future. The
+                                // historical >=30 sample count remains a metric,
+                                // not a Display minimum or attack permission.
+                                curvedError=Math.Max(curvedError,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));
                                 if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));}
                                 Require(error<=.08 && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal) && point.NoTileCollide==actor.noTileCollide && point.ProjectileReflectionUnknown==(actor.aiStyle==53 && Main.getGoodWorld) && (point.ProjectileReflectionUnknown || point.ReflectsProjectiles==actor.reflectsProjectiles),"Frozen natural Plantera full producer "+scene+" type="+actor.type+" offset="+offset+" error="+error+" stop="+frozen.Stop);
                             }
-                            rows.Add(string.Join(",",scene,frame,actor.type,selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matches,longMatches,maximum.ToString("R",CultureInfo.InvariantCulture),tangent.ToString("R",CultureInfo.InvariantCulture)));
+                            rows.Add(string.Join(",",scene,frame,actor.type,selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matches,longMatches,maximum.ToString("R",CultureInfo.InvariantCulture),tangent.ToString("R",CultureInfo.InvariantCulture),actorPublished,directionalDisplays,adjacentDisplays,retainedDisplays,maxMissingRun,published==0?0:minFuture,maxFuture,maxDisplaySpan.ToString("R",CultureInfo.InvariantCulture),curvedError.ToString("R",CultureInfo.InvariantCulture)));
                         }
                         beforeAction=afterAction=null;
                         Require(bodyLocal>=100 && hookLocal>=100,"Natural original schedule verifies body and chosen-hook motors: "+scene);
                         if(variant==4 || variant==5)Require(tentacleLocal>=100,"Real naturally born tentacles exercise their owner/life motor.");
-                        if(variant!=3 && variant!=7 && variant!=9 && variant!=10 && variant!=11 && variant!=12)Require(selectedCount>0 && published>0 && longMatches>=30 && tangent>8,"Natural Plantera full producer publishes and matches curved paths >=30 frames: "+scene+" published="+published+" long="+longMatches+" tangent="+tangent);
+                        if(variant!=3 && variant!=7 && variant!=9 && variant!=10 && variant!=11 && variant!=12)Require(selectedCount>0 && published>0 && directionalDisplays>0 && adjacentDisplays>0 && matches>0 && curvedError>8,"Natural Plantera Display consumes connected directional futures across actual updates and matches native curvature: "+scene+" published="+published+" directional="+directionalDisplays+" adjacent="+adjacentDisplays+" matched="+matches+" curvedError="+curvedError+" historicalLong="+longMatches);
                         // Enraged hooks deduct eleven per action. Native moving
                         // peers choose delay 60..299, so a full closure often
                         // has fewer than thirty deterministic future actions.
-                        // Keep the normal long-window tests above; here require
+                        // The Display contract accepts useful short futures;
+                        // strict attack demands retain their own minimum. Here require
                         // genuine bounded publication and its original RNG edge.
                         if(variant==3 || variant==10 || variant==11)Require(selectedCount>0 && published>0 && matches>=100 && maxWindow>=10 && randomLocal>0,"Real enrage paths match their chosen windows and stop at original random hook decisions.");
                         if(variant==7)Require(selectedCount>0 && distinctTargets>=30 && distinctRefusals==distinctTargets,"Actual different body queries stop for the uncaptured second future timeline, including later shared-target recovery.");
@@ -156,7 +181,7 @@ namespace NativeWorldTextProbe
                         if(variant==12)Require(published==0 && Main.LocalPlayer.dead,"Dead target actions match the original schedule, while the source does not fabricate an alive future timeline.");
                         if(variant==13)Require(earlyHookActions>=100,"Natural low-slot hooks actually read the observed or previous-action global before any body executes.");
                         allMatches+=matches;bodyActions+=bodyLocal;hookActions+=hookLocal;tentacleActions+=tentacleLocal;randomBoundaries+=randomLocal;
-                        Console.WriteLine("PLANT scene="+scene+" type="+actor.type+" selected="+selectedCount+" published="+published+" matched="+matches+" long="+longMatches+" maxError="+maximum+" bodyActions="+bodyLocal+" hookActions="+hookLocal+" tentacleActions="+tentacleLocal+" random="+randomLocal+" terrainBoundary="+phaseBoundaries+" earlyHookActions="+earlyHookActions+" maxWindow="+maxWindow+" distinctTargets="+distinctTargets+" distinctRefusals="+distinctRefusals);
+                        Console.WriteLine("PLANT scene="+scene+" type="+actor.type+" selected="+selectedCount+" published="+published+" matched="+matches+" long="+longMatches+" maxError="+maximum+" bodyActions="+bodyLocal+" hookActions="+hookLocal+" tentacleActions="+tentacleLocal+" random="+randomLocal+" terrainBoundary="+phaseBoundaries+" earlyHookActions="+earlyHookActions+" maxWindow="+maxWindow+" distinctTargets="+distinctTargets+" distinctRefusals="+distinctRefusals+" directionalDisplays="+directionalDisplays+" adjacentDisplays="+adjacentDisplays+" retainedDisplays="+retainedDisplays+" maxMissingRun="+maxMissingRun+" minFuture="+(published==0?0:minFuture)+" maxFuture="+maxFuture+" maxDisplaySpan="+maxDisplaySpan.ToString("R",CultureInfo.InvariantCulture)+" curvedError="+curvedError.ToString("R",CultureInfo.InvariantCulture));
                     }
                     catch(Exception failure) when(!(failure is OutOfMemoryException)){beforeAction=afterAction=null;failures.Add(scene+": "+failure.Message);Console.WriteLine("PLANT FAIL "+scene+": "+failure);}
                 }
@@ -165,6 +190,18 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS Plantera natural scenes="+scenes+" matched="+allMatches+" bodyActions="+bodyActions+" hookActions="+hookActions+" tentacleActions="+tentacleActions+" randomBoundaries="+randomBoundaries);
             }
             finally{beforeAction=afterAction=null;hookOwner.Unpatch(update,HarmonyPatchType.All,hookOwner.Id);Main.getGoodWorld=oldGood;Main.player=oldPlayers;Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"plantera-motion-continuous.csv"),rows);}
+        }
+        private static double DisplaySpan(NpcTrajectory path)
+        {
+            var start=new Vector2(path[0].Bounds.CenterX,path[0].Bounds.CenterY);double maximum=0;
+            for(int i=1;i<path.Count;i++)
+            {
+                var point=path[i];var next=new Vector2(point.Bounds.CenterX,point.Bounds.CenterY);
+                if(point.NewSegment){start=next;continue;}
+                var delta=Vector2.TransformNormal(next-start,Main.GameViewMatrix.ZoomMatrix);float span=delta.Length();
+                Require(!float.IsNaN(span) && !float.IsInfinity(span),"Actual Plantera Display geometry is finite.");maximum=Math.Max(maximum,span);
+            }
+            return maximum;
         }
         private static NpcMotionState[] Capture(MethodInfo read,MethodInfo tracking,object source,IPredictionTerrain terrain,long session)
         {

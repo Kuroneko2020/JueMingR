@@ -53,18 +53,30 @@ namespace NativeWorldTextProbe
                     if(type==522){n.ai[0]=58;n.ai[1]=.025f;n.ai[2]=-3;n.ai[3]=1;}
                     if(phase==41 || phase==42){n.ai[1]=(int)n.Center.X/16-8;n.ai[2]=(int)n.Center.Y/16+8;}
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
-                    var captures=new List<NpcTrajectory>();double maxError=0,tangent=0;int localMatches=0,selectedCount=0,published=0,formMatches=0;bool ended=false;
+                    var captures=new List<NpcTrajectory>();var formTicks=new HashSet<long>();double maxError=0,tangent=0;int localMatches=0,selectedCount=0,published=0,formMatches=0,formEdges=0;long formCapture=-1,formEnd=-1;bool ended=false;
                     for(int frame=0;frame<180;frame++)
                     {
                         NativeCombatModeledImpactChecks.SampleMouse(context,n.Center);step();
                         if(!n.active || n.life<=0 || p.dead){ended=true;break;}
                         var selected=(NpcIdentity)Get(Get(host,"Selection"),"Target");bool has=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(selected.Token,n);
-                        var path=cache.Read(0);if(has)selectedCount++;
+                        var path=NativeCombatPresentationChecks.CurrentPath(host);if(has)selectedCount++;
                         if(path!=null)
-                        {Require(has && path.Identity.Equals(selected) && path.CaptureTick==Main.GameUpdateCount,"Fresh same-actor default path "+scene);published++;if(published==1 || frame%15==0)captures.Add(path);}
+                        {
+                            Require(has && path.Identity.Equals(selected) && path.SampleTick==Main.GameUpdateCount,"Fresh same-actor default path "+scene);published++;
+                            // The two natural hatches happen before the next
+                            // fifteen-frame sample. Freeze each genuinely new
+                            // pre-hatch observation or actually extended tail,
+                            // not repeated slices of one calculation, so its
+                            // available cross-form future
+                            // is checked independently of publication cadence.
+                            bool beforeForm=(type==406 || type==478) && n.type==type;
+                            long end=path.SampleTick+path.Count-1;
+                            if(beforeForm?path.CaptureTick!=formCapture || end>formEnd:published==1 || frame%15==0)
+                            {captures.Add(path);if(beforeForm){formCapture=path.CaptureTick;formEnd=end;}}
+                        }
                         for(int c=captures.Count-1;c>=0;c--)
                         {
-                            var frozen=captures[c];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);
+                            var frozen=captures[c];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);
                             if(offset>=frozen.Count){captures.RemoveAt(c);continue;}if(offset<=0)continue;
                             var point=frozen[offset];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),n.position);
                             Require(point.NoTileCollide==n.noTileCollide,"Frozen future collision gate "+scene+" offset="+offset);
@@ -72,7 +84,14 @@ namespace NativeWorldTextProbe
                             // interaction/hits/random decisions. Those horizons
                             // end explicitly; deterministic motor/stage prefixes
                             // must agree beyond the former twelve-action trend.
-                            maxError=Math.Max(maxError,error);localMatches++;matched++;if(n.type!=type && frozen.Identity.Type==type)formMatches++;
+                            maxError=Math.Max(maxError,error);localMatches++;matched++;
+                            if(n.type!=type && frozen.Identity.Type==type)
+                            {
+                                Require(n.type==(type==406?405:479) && point.Bounds.Width==n.width && point.Bounds.Height==n.height && point.Phase==n.ai[0] && point.CanReceive==(!n.dontTakeDamage && !n.immortal),"Frozen Transform preserves the actual new form, geometry, phase and receiving state "+scene+" offset="+offset);
+                                if(frozen[offset-1].Bounds.Width!=point.Bounds.Width || frozen[offset-1].Bounds.Height!=point.Bounds.Height)
+                                {Require(point.NewSegment,"The real Transform geometry starts a new frozen segment "+scene);formEdges++;}
+                                formMatches++;formTicks.Add((long)Main.GameUpdateCount);
+                            }
                             if(offset>=30)tangent=Math.Max(tangent,Vector2.Distance(n.position,new Vector2(frozen[0].Bounds.X+frozen[0].Vx*offset,frozen[0].Bounds.Y+frozen[0].Vy*offset)));
                             Require(error<=.08,"Phased full-native frozen prefix "+scene+" offset="+offset+" error="+error.ToString("R",CultureInfo.InvariantCulture)+" stop="+frozen.Stop+
                                 " predicted="+point.Bounds.X.ToString("R",CultureInfo.InvariantCulture)+","+point.Bounds.Y.ToString("R",CultureInfo.InvariantCulture)+" pv="+point.Vx+","+point.Vy+
@@ -81,9 +100,9 @@ namespace NativeWorldTextProbe
                         rows.Add(string.Join(",",scene,frame,type,Main.GameUpdateCount,n.ai[0].ToString("R",CultureInfo.InvariantCulture),n.position.X.ToString("R",CultureInfo.InvariantCulture),n.position.Y.ToString("R",CultureInfo.InvariantCulture),has,path!=null,path?.Count??0,path?.Stop.ToString()??"none",localMatches,maxError.ToString("R",CultureInfo.InvariantCulture),tangent.ToString("R",CultureInfo.InvariantCulture)));
                     }
                     Require(selectedCount>0 && published>0 && localMatches>=30,"Natural mechanism must publish and match continuing actor "+scene+" selected="+selectedCount+" published="+published+" matched="+localMatches+" ended="+ended);
-                    if(type==406 || type==478)Require(formMatches>=30,"Known Transform frozen forecasts must continue into live new form "+scene+" matched="+formMatches);
+                    if(type==406 || type==478)Require(formMatches>=30 && formEdges>0,"Known Transform frozen forecasts must continue through the real form boundary into the live new form "+scene+" matched="+formMatches+" distinct="+formTicks.Count+" edges="+formEdges);
                     if(tangent>8)curved++;
-                    Console.WriteLine("PHASED scene="+scene+" selected="+selectedCount+" published="+published+" matched="+localMatches+" maxError="+maxError.ToString("R",CultureInfo.InvariantCulture)+" tangentError="+tangent.ToString("R",CultureInfo.InvariantCulture));
+                    Console.WriteLine("PHASED scene="+scene+" selected="+selectedCount+" published="+published+" matched="+localMatches+" formMatches="+formMatches+" distinctFormUpdates="+formTicks.Count+" formEdges="+formEdges+" maxError="+maxError.ToString("R",CultureInfo.InvariantCulture)+" tangentError="+tangent.ToString("R",CultureInfo.InvariantCulture));
                     }catch(InvalidOperationException failure){failures.Add(scene+": "+failure.Message);Console.WriteLine("PHASED FAIL "+scene+": "+failure.Message);}
                 }
                 ProbeLifetimeOracle(context);

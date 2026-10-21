@@ -17,6 +17,7 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model;private static Projectile parent,receiving;private static int step,first;private static readonly List<Projectile> births=new List<Projectile>();
         private static bool traceLaunch;private static Vector2 tracedOwner,tracedAfter;private static Projectile launchBefore,launchBody;
+        private static Vector2 parentBeforeUpdate;
         private static void ParentBefore(Projectile __0,Player __1){if(traceLaunch && __0.type==404 && __0.ai[1]==0){traceLaunch=false;tracedOwner=__1.Center;launchBody=__0;launchBefore=(Projectile)Static(assembly.GetType("JueMingR.TerrariaHost.Combat.HostSuperStarAttack",true),"Copy",__0);}}
         private static void ParentAfter(Projectile __0){if(ReferenceEquals(launchBody,__0) && __0.ai[1]==1)tracedAfter=__0.Center;}
         private static object Static(Type t,string name,params object[] args){return t.GetMethod(name,Flags).Invoke(null,args);}
@@ -42,6 +43,8 @@ namespace NativeWorldTextProbe
             assembly=Get(context,"Combat").GetType().Assembly;model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostBubbleFlailFamilyAttack",true);var audit=new Harmony("JueMingR.Tests.BubbleFlailFamily");bool wind=Main.windPhysics,map=Main.mapFullscreen;
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));audit.Patch(typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatBubbleFlailFamilyChecks),nameof(Birth)));audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBubbleFlailFamilyChecks),nameof(Damage)),postfix:new HarmonyMethod(typeof(NativeCombatBubbleFlailFamilyChecks),nameof(DamageDone)));audit.Patch(typeof(NPC).GetMethod("StrikeNPC",Flags,null,new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)},null),postfix:new HarmonyMethod(typeof(NativeCombatBubbleFlailFamilyChecks),nameof(Strike)));
             audit.Patch(model.GetMethod("Parent",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBubbleFlailFamilyChecks),nameof(ParentBefore)),postfix:new HarmonyMethod(typeof(NativeCombatBubbleFlailFamilyChecks),nameof(ParentAfter)));
+            audit.Patch(typeof(Projectile).GetMethod("Update",Flags,null,new[]{typeof(int)},null),prefix:new HarmonyMethod(typeof(NativeCombatBubbleFlailFamilyChecks),nameof(BirthParentUpdate)));
+            audit.Patch(typeof(NativeInformationChecks).GetMethod("Require",Flags),prefix:new HarmonyMethod(typeof(NativeCombatBubbleFlailFamilyChecks),nameof(BirthRequire)));
             try{Parents(context);Bubbles(context);Births(context);Receive(context);Hands(context);LaunchFrame(context);Console.WriteLine("PASS BUBBLE FLAIL native404/1058 complete owner phases, causal405 births, locked/nearest chase and receive.");}finally{traceLaunch=false;launchBody=launchBefore=null;Main.windPhysics=wind;Main.mapFullscreen=map;Main.ProjectileUpdateLoopIndex=-1;audit.UnpatchAll(audit.Id);}
         }
         private static void Parents(object context)
@@ -70,6 +73,23 @@ namespace NativeWorldTextProbe
             foreach(int type in new[]{404,1058})
             {var p=Reset(context,type);parent=Shot(p,type,new Vector2(1100,350),Vector2.UnitX*8,type==404?0:1);if(type==1058)p.controlUseItem=false;for(int action=1;action<=4;action++){var center=parent.Center;parent.Update(parent.whoAmI);if(action<4)Require(births.Count==0,"actual fixed outbound phase has no bubble before fourth action");else{Require(births.Count==1,"actual fixed outbound fourth action creates one causal bubble");var q=births[0];Require(q.Center==center && q.damage==parent.damage && q.knockBack==parent.knockBack && q.ai[0]==-10 && q.timeLeft==120 && q.velocity.Length()>=4.5f && q.velocity.Length()<=6.401f,"real parent source births405 at pre-move center with complete damage/KB/clock/random support");}}}
         }
+        private static void BirthParentUpdate(Projectile __instance)
+        {if(ReferenceEquals(__instance,parent))parentBeforeUpdate=__instance.Center;}
+        private static void BirthRequire(bool __0,string __1)
+        {
+            if(!__0 && __1=="real parent source births405 at pre-move center with complete damage/KB/clock/random support" && parent!=null && births.Count==1)
+            {Console.WriteLine("BUBBLE originalCombined=False observation=after-predicate-before-original-throw");BirthFailure(parent.type,4,parentBeforeUpdate,births[0]);}
+        }
+        // Failure-only test observation after the original conjunction has
+        // already supplied false to Require. Births itself retains its original
+        // expression/locals, including x86 floating-point evaluation behavior.
+        private static void BirthFailure(int type,int action,Vector2 center,Projectile q)
+        {
+            float speed=q.velocity.Length();
+            Console.WriteLine("BUBBLE BIRTH-FAIL parentType="+type+" action="+action+" center="+(q.Center==center)+" damage="+(q.damage==parent.damage)+" knockBack="+(q.knockBack==parent.knockBack)+" ai0="+(q.ai[0]==-10)+" timeLeft="+(q.timeLeft==120)+" speedMinDirect="+(q.velocity.Length()>=4.5f)+" speedMaxDirect="+(q.velocity.Length()<=6.401f)+" speedMinStored="+(speed>=4.5f)+" expectedCenter="+BirthScalar(center.X)+","+BirthScalar(center.Y)+" actualCenter="+BirthScalar(q.Center.X)+","+BirthScalar(q.Center.Y)+" damageActual="+q.damage+" damageExpected="+parent.damage+" knockBackActual="+BirthScalar(q.knockBack)+" knockBackExpected="+BirthScalar(parent.knockBack)+" ai0Actual="+BirthScalar(q.ai[0])+" timeLeftActual="+q.timeLeft+" vx="+BirthScalar(q.velocity.X)+" vy="+BirthScalar(q.velocity.Y)+" speed="+BirthScalar(speed));
+        }
+        private static string BirthScalar(float value)
+        {return value.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+"/0x"+unchecked((uint)BitConverter.ToInt32(BitConverter.GetBytes(value),0)).ToString("X8",System.Globalization.CultureInfo.InvariantCulture);}
         private static void Receive(object context)
         {
             foreach(bool blocked in new[]{false,true})

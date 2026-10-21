@@ -62,7 +62,7 @@ namespace NativeWorldTextProbe
                         p.controlUp=scene.EndsWith("-up",StringComparison.Ordinal);p.controlJump=scene=="ordinary-jump";p.controlDown=false;
                         NativeCombatModeledImpactChecks.SampleMouse(context,n.Center);step();
                         var selection=Get(host,"Selection");var key=(NpcIdentity)Get(selection,"Target");bool selected=(bool)Get(selection,"HasTarget") && ReferenceEquals(key.Token,n);
-                        var path=cache.Read(0);if(path!=null && (!selected || !path.Identity.Equals(key) || path.CaptureTick!=Main.GameUpdateCount))throw new InvalidOperationException("Mechanism ledger consumed a stale/wrong result.");
+                        var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && (!selected || !path.Identity.Equals(key) || path.SampleTick!=Main.GameUpdateCount))throw new InvalidOperationException("Mechanism ledger consumed a stale/wrong result.");
                         quality.Observe();if(selected)quality.Capture(scene,frame,path);
                         rows.Add(Csv(scene,frame,Main.GameUpdateCount,n.type,n.netID,n.type==1?n.ai[1]:-1,n.ai[0],n.ai[1],n.ai[2],n.ai[3],n.wet,n.position.X,n.position.Y,p.position.X,p.position.Y,p.statLife,p.mount.Active,p.mount.Type,p.controlUp,p.controlDown,p.controlJump,selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none"));
                         if(!n.active || n.life<=0 || p.dead)break;

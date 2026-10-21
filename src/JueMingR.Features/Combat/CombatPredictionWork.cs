@@ -14,7 +14,9 @@ namespace JueMingR.Features.Combat
         private bool started,exceeded;
         private long spent,entered;
         private long optionalSpent,optionalEntered;
-        private long softAllowance=long.MaxValue;
+        private long softAllowance=long.MaxValue,optionalAllowance=long.MaxValue;
+        private long progressAllowance;
+        private bool progressClaimed,progressActive;
         private int depth;
         private int optionalDepth;
         private int geometryRemaining;
@@ -24,7 +26,7 @@ namespace JueMingR.Features.Combat
         public double UsedMilliseconds {get{return (spent+(depth==0?0:Stopwatch.GetTimestamp()-entered))*1000.0/Stopwatch.Frequency;}}
         public Scope Enter(ulong update)
         {
-            if(depth==0){if(!started || tick!=update){started=true;tick=update;spent=optionalSpent=0;exceeded=false;geometryRemaining=0;softAllowance=long.MaxValue;}entered=Stopwatch.GetTimestamp();}
+            if(depth==0){if(!started || tick!=update){started=true;tick=update;spent=optionalSpent=0;exceeded=progressClaimed=progressActive=false;geometryRemaining=0;softAllowance=optionalAllowance=long.MaxValue;}entered=Stopwatch.GetTimestamp();}
             var previous=active;active=this;depth++;return new Scope(this,previous);
         }
         public static void Check()
@@ -39,8 +41,23 @@ namespace JueMingR.Features.Combat
             long used=owner.spent+Stopwatch.GetTimestamp()-owner.entered;
             if(owner.exceeded || used>=owner.allowance)
             {owner.exceeded=true;return false;}
-            return used<owner.softAllowance;
+            return used<owner.softAllowance && used<(owner.progressActive?owner.progressAllowance:owner.optionalAllowance);
         }
+        // A real first-publication demand can finish ONE complete progress unit
+        // under the already enclosing optional allowance. Inner Optional scopes
+        // still charge every tick but cooperate at that unit's boundary. Limit
+        // and the hard owner are never widened; repeated entries cannot regrant.
+        public static ProgressScope FirstPublicationProgress()
+        {
+            var owner=active;
+            if(owner==null || owner.progressClaimed || !TryContinue())return default(ProgressScope);
+            owner.progressClaimed=owner.progressActive=true;owner.progressAllowance=owner.optionalAllowance;
+            return new ProgressScope(owner);
+        }
+        // Rolling calls this only after a complete world step. The first unit
+        // cannot turn a long tail into urgent work, including nested consumers.
+        public static bool TryContinueTail()
+        {if(active!=null)active.progressActive=false;return TryContinue();}
         // A candidate has a lower cumulative ceiling inside the SAME real
         // update owner. Nesting can only tighten it; disposing restores the
         // urgent allowance without resetting spent time or geometry checks.
@@ -65,8 +82,8 @@ namespace JueMingR.Features.Combat
             if(owner.optionalDepth==0)owner.optionalEntered=used;
             long charged=owner.optionalSpent+Math.Max(0,used-owner.optionalEntered);
             long available=Math.Max(0,(long)(milliseconds*Stopwatch.Frequency/1000)-charged);
-            long previous=owner.softAllowance;
-            owner.softAllowance=Math.Min(previous,used+available);
+            long previous=owner.optionalAllowance;
+            owner.optionalAllowance=Math.Min(previous,used+available);
             owner.optionalDepth++;
             return new OptionalScope(owner,previous,used);
         }
@@ -118,8 +135,14 @@ namespace JueMingR.Features.Combat
                 // Nested optional consumers tighten the same allowance. Only
                 // their outer owner charges the interval, avoiding double cost.
                 if(--owner.optionalDepth==0)owner.optionalSpent+=Math.Max(0,owner.spent+Stopwatch.GetTimestamp()-owner.entered-begin);
-                owner.softAllowance=previous;
+                owner.optionalAllowance=previous;
             }
+        }
+        public readonly struct ProgressScope:IDisposable
+        {
+            private readonly CombatPredictionWork owner;
+            internal ProgressScope(CombatPredictionWork owner){this.owner=owner;}
+            public void Dispose(){if(owner!=null)owner.progressActive=false;}
         }
     }
     // A temporary unresolved enhancement is not a physical miss or a fault

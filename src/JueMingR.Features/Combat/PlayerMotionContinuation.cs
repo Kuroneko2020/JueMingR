@@ -7,6 +7,11 @@ namespace JueMingR.Features.Combat
     // forecasts and attack-origin preparation. Never Player.Update or item AI.
     public static class PlayerMotionContinuation
     {
+        // Complex describes the whole horizon. The frozen current-consumer
+        // premise admits this already-started ordinary prefix; collision may
+        // end it early. Never carry it into the next automatic equipment edge.
+        public static bool OrdinaryStep(PredictionPlayerMotion p)
+        {return !p.Complex || p.AssistedJump && p.AssistedOrdinarySpan && p.ObservationMechanism==0 && p.HoldJump && !p.Down && p.Jump>1 && p.Vy!=0;}
         // Only the Wall helper consumes these two player regen clocks. A
         // completed fixed-input candidate with no Wall source/buff/flag can
         // compare their value copies without invalidating on every native
@@ -27,7 +32,7 @@ namespace JueMingR.Features.Combat
             if(!BeginWallFall(ref p,e,terrain,out stop))return false;
             if(!BeginGravity(ref p,e,out stop))return false;
             bool wallHandled;if(!BeginWall(ref p,e,terrain,out wallHandled,out stop))return false;if(wallHandled)return true;
-            if(!p.Complex || p.Hover)
+            if(OrdinaryStep(p) || p.Hover)
             {
                 PlayerHorizontalMotion.Step(ref p);
                 if(p.Hover){float target=p.Up || p.HoldJump?-p.MaxSpeed:p.Down?p.MaxSpeed:0;p.Vy=NpcMotion.Approach(p.Vy,target,p.Acceleration);}

@@ -1,4 +1,5 @@
 . (Join-Path $PSScriptRoot 'Workload.Definitions.ps1')
+. (Join-Path $PSScriptRoot 'Workload.NativeContent.ps1')
 . (Join-Path $PSScriptRoot 'Workload.ReadWindow.ps1')
 # Shared by the existing build and its thin CPU runner. No build/test recursion.
 function Invoke-WorkloadGit {
@@ -64,6 +65,7 @@ function Get-WorkloadRoute {
     $unknown = @()
     foreach ($path in $Paths) {
         $path=$path.Replace('\','/')
+        if (Test-WorkloadNonExecutableInput $path) { continue }
         $leaves=@(Get-WorkloadPathChecks $path)
         if ($leaves.Count) {
             if(($leaves -join '|') -ceq 'workload-PackageVerification'){[void]$groups.Add('package-tools')}
@@ -71,18 +73,13 @@ function Get-WorkloadRoute {
             continue
         }
         switch -Regex ($path) {
-            # Frozen review originals are read-only evidence, never compile
-            # inputs. Keep this exact archive boundary, not a generic exemption.
-            '^review-materials/aim-midpoint-20261011-035938-HKT/' { continue }
-            # This task's published data is not executable input. Keep the
-            # exact filenames: scripts/new unknown files still block delivery.
-            '^review-materials/aim-dedup-repair-20261014/(evidence\.md|(validation-map|failure-dispositions)\.json|(A-birth-directions|A-time-summary|B-model-equivalence|B-natural-births|B-natural-time-summary|B-supplement-summary|F-natural-births|F-natural-consumer-summary|F-natural-time-summary)\.csv)$' { continue }
+            '^tests/Workload/BusinessAssertionProtocol\.cs$' { [void]$groups.Add('shared-host'); continue }
             # Shared graphics/asset fixture is consumed by the native host
             # scopes; its changes do not confer graphical execution evidence.
             '^tests/NativeWorldTextProbe/ProbeGraphics\.cs$' { [void]$groups.Add('shared-host'); continue }
             # The stage reader is loaded by build, package and original-ZIP
             # verification; retain both tool consumer groups when it changes.
-            '^scripts/workload/AimStage\.Development\.ps1$' { [void]$groups.Add('workload-tools');[void]$groups.Add('package-tools');continue }
+            '^scripts/workload/(AimStage\.Development|DevelopmentCandidate)\.ps1$' { [void]$groups.Add('workload-tools');[void]$groups.Add('package-tools');continue }
             '^scripts/(build-phase0s-validation-package|test-phase0s)\.ps1$' { [void]$groups.Add('workload-tools');[void]$groups.Add('package-tools');continue }
             '^scripts/workload/|^scripts/(build|test-workload-regressions|test-world-object-text)\.ps1$|^tests/Workload/' { [void]$groups.Add('workload-tools'); continue }
             '^src/JueMingR.TerrariaHost/Combat/Prediction/(SegmentedNpcPrediction|NativePlayerMotion)\.cs$|^src/JueMingR.TerrariaHost/Combat/NpcPredictionSource\.cs$|^src/JueMingR.Platform/Combat/' { [void]$groups.Add('combat-host');[void]$groups.Add('legacy-worker');continue }
@@ -106,7 +103,6 @@ function Get-WorkloadRoute {
             # a change to those providers. Keep reverse dependencies below.
             '^src/[^/]+/(About|Onboarding)/|^tests/(About|Onboarding)/|^tests/Phase0U/AboutChecks\.cs$|^tests/JueMingR.ArchitectureTests/Onboarding|^tests/NativeWorldTextProbe/NativeAbout' { [void]$groups.Add('about-host'); continue }
             '^src/[^/]+/CoinDeposit/|^tests/JueMingR.ArchitectureTests/CoinDeposit/|^tests/CoinDeposit/|^tests/NativeWorldTextProbe/NativeCoin' { [void]$groups.Add('coin-deposit-host'); continue }
-            '^docs/|^AGENTS\.md$|^README(?:\.[^/]+)?$|^LICENSE$|^THIRD-PARTY-NOTICES\.md$' { continue }
             '^src/[^/]+/(QuickItems|KeepFavorited)/|^tests/JueMingR.ArchitectureTests/(QuickItems|KeepFavorited)/|^tests/NativeWorldTextProbe/Native(Quick|Favorite)' { if($path.StartsWith('src/')){[void]$groups.Add('tools-host')}; [void]$groups.Add('quick-items-host'); continue }
             '^src/[^/]+/(ItemCatalog|ItemBrowser|ChestLocator|Announcements)/|^tests/(ItemBrowser|ChestLocator|Announcements)/' { [void]$groups.Add('browser-host'); continue }
             # About copies via NotesClipboard; onboarding consults prepared
@@ -124,6 +120,7 @@ function Get-WorkloadRoute {
             '^src/JueMingR.Infrastructure/Storage/|^src/JueMingR.Platform/(Persistence|Settings)/' { [void]$groups.Add('storage-host'); continue }
             '^src/[^/]+/(DeathHistory|WorldTime)/|^tests/DeathHistory/' { [void]$groups.Add('death-host'); continue }
             '^src/[^/]+/Information/' { [void]$groups.Add('shared-host'); [void]$groups.Add('style-host'); [void]$groups.Add('storage-host'); continue }
+            '^src/[^/]+/Movement/|^src/JueMingR.TerrariaHost/F5/MovementControls\.cs$|^tests/JueMingR.ArchitectureTests/Movement/|^tests/NativeWorldTextProbe/Native(Movement|TeleportMovement)' { [void]$groups.Add('movement-host'); continue }
             '^src/[^/]+/View/|^src/JueMingR.TerrariaHost/F5/ViewControls\.cs$|^tests/NativeWorldTextProbe/NativeView|^tests/Phase0U/ViewControlChecks\.cs$|^tests/JueMingR.ArchitectureTests/ViewPreferenceChecks\.cs$' { [void]$groups.Add('view-host'); continue }
             '^src/[^/]+/Journey/|^src/JueMingR.TerrariaHost/F5/JourneyControls\.cs$|^src/JueMingR.TerrariaHost/Hotkeys/JourneyHotkeys\.cs$|^tests/NativeWorldTextProbe/NativeJourney' { [void]$groups.Add('journey-host'); continue }
             '^src/[^/]+/(Guidance|Npcs)/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
@@ -132,11 +129,11 @@ function Get-WorkloadRoute {
             '^src/JueMingR.TerrariaHost/World/WorldTileObservation\.cs$|^src/JueMingR.Platform/WorldTargets/WorldTargetObservation\.cs$' { [void]$groups.Add('tools-host'); [void]$groups.Add('world-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); continue }
             '^src/[^/]+/(WorldObjectText|WorldTargets|World|Rendering)/|^tests/(WorldObjectText|WorldTargets)/' { [void]$groups.Add('world-host'); continue }
             '^src/[^/]+/(EntityLabels|Hotkeys|Items|Settings|Biomes)/|^tests/(EntityLabels|Hotkeys|Items|Phase0U|Phase0V)/' { [void]$groups.Add('shared-host'); continue }
-            '^tests/NativeWorldTextProbe/(NativeChecks|Program|CheckCatalog|NativeStrategyScopes)\.cs$|^tests/NativeWorldTextProbe/.*\.csproj$|^scripts/phase0s/|^scripts/prepare-|^scripts/build-phase0|^scripts/test-phase0|^tests/Phase0|^tests/JueMingR.ArchitectureTests/|^eng/|^src/.*\.(csproj|props|targets)$|^Directory\.Build\.|^global\.json$|^JueMingR\.sln$|^NuGet\.Config$|^\.github/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
+            '^tests/NativeWorldTextProbe/(NativeChecks|NativeInformationChecks|Program|CheckCatalog|NativeStrategyScopes)\.cs$|^tests/NativeWorldTextProbe/.*\.csproj$|^scripts/phase0s/|^scripts/prepare-|^scripts/build-phase0|^scripts/test-phase0|^tests/Phase0|^tests/JueMingR.ArchitectureTests/|^eng/|^src/.*\.(csproj|props|targets)$|^Directory\.Build\.|^global\.json$|^JueMingR\.sln$|^NuGet\.Config$|^\.github/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
             default { $unknown += $path }
         }
     }
-    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('view-host'); [void]$groups.Add('journey-host'); [void]$groups.Add('about-host'); [void]$groups.Add('death-host'); [void]$groups.Add('map-host') }
+    if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('movement-host'); [void]$groups.Add('view-host'); [void]$groups.Add('journey-host'); [void]$groups.Add('about-host'); [void]$groups.Add('death-host'); [void]$groups.Add('map-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('tools-host') }
     if ($groups.Contains('tools-host')) { [void]$groups.Add('fishing-host'); [void]$groups.Add('quick-items-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); [void]$groups.Add('coin-deposit-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) { [void]$groups.Add('quick-items-host') }
@@ -174,6 +171,7 @@ function Test-WorkloadBuildMatch {
 }
 
 . (Join-Path $PSScriptRoot 'Workload.Evidence.ps1')
+. (Join-Path $PSScriptRoot 'Workload.Planning.ps1')
 . (Join-Path $PSScriptRoot 'Workload.Workspace.ps1')
 . (Join-Path $PSScriptRoot 'Workload.Cleanup.ps1')
 . (Join-Path $PSScriptRoot 'AimStage.Development.ps1')

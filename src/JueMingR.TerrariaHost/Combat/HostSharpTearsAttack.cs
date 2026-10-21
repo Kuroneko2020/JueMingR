@@ -48,7 +48,18 @@ namespace JueMingR.TerrariaHost.Combat
         {
             bool grow=p.ai[0]<20 && p.ai[0]>=0,fade=p.ai[0]>=30,kill=p.ai[0]>=35;p.ai[0]++;
             if(p.ai[0]<0){p.alpha=255;p.scale=.1f*p.ai[1];}if(p.localAI[0]==0 && p.ai[0]>=0){p.localAI[0]=1;p.rotation=p.velocity.ToRotation();}
-            if(grow){p.Opacity+=.1f;p.scale=p.Opacity*p.ai[1];return true;}if(fade)p.Opacity-=.2f;if(kill){p.active=false;p.timeLeft=0;}return p.active;
+            if(grow)
+            {
+                p.Opacity+=.1f;
+                // Keep the native getter's arithmetic in the scale expression.
+                // Returning its float across the Debug assembly boundary adds
+                // an intermediate rounding on x86; scale defines hit geometry.
+                p.scale=(1f-p.alpha/255f)*p.ai[1];return true;
+            }
+            // Inline only the getter here. The real float setter and Clamp
+            // boundary are required: inlining the whole alpha formula changes
+            // earlier, already-matching fade steps as well.
+            if(fade)p.Opacity=(1f-p.alpha/255f)-.2f;if(kill){p.active=false;p.timeLeft=0;}return p.active;
         }
         internal static bool Collides(Projectile p,MotionRect b)
         {if(p.ai[0]<0)return false;float point=0;var box=new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height);return Collision.CheckAABBvLineCollision(box.TopLeft(),box.Size(),p.Center,p.Center+p.velocity.SafeNormalize(-Vector2.UnitY)*200*p.scale,22*p.scale,ref point);}

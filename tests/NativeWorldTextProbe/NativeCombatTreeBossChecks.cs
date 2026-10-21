@@ -71,7 +71,7 @@ namespace NativeWorldTextProbe
             var scenes=new List<int>();for(int scene=sceneStart;scene<8;scene++)scenes.Add(scene);
             Console.WriteLine("TREE57 NATURAL start="+sceneStart+" scenes="+string.Join("/",scenes)+" framesPerScene=3000");
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");Require(GetOptional(source,"Native")==null,"AI57 default prediction is the synchronous scalar producer.");
-            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);long session=(long)Get(host,"Session");var terrain=(IPredictionTerrain)Get(source,"Terrain");
+            var read=source.GetType().GetMethod("Read",Flags);var tracking=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);long session=(long)Get(host,"Session");var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);
             var oracle=new Harmony("JueMingR.Tests.TreeBossNativeSlotAction");oracle.Patch(typeof(NPC).GetMethod("UpdateNPC",Flags),prefix:new HarmonyMethod(typeof(NativeCombatTreeBossChecks),nameof(Before)),postfix:new HarmonyMethod(typeof(NativeCombatTreeBossChecks),nameof(After)));
             oracle.Patch(typeof(Player).GetMethod("Hurt",Flags,null,new[]{typeof(Terraria.DataStructures.PlayerDeathReason),typeof(int),typeof(int),typeof(bool),typeof(bool),typeof(bool),typeof(int),typeof(bool)},null),postfix:new HarmonyMethod(typeof(NativeCombatTreeBossChecks),nameof(Hurt)));
             try
@@ -88,6 +88,8 @@ namespace NativeWorldTextProbe
                     hurt=(player,damage,requested)=>{if(ReferenceEquals(player,p))Console.WriteLine("TREE57 PLAYER_HURT scene="+scene+" tick="+Main.GameUpdateCount+" damage="+damage+" requested="+requested+" hp="+player.statLife+" dead="+player.dead+" position="+player.position+" velocity="+player.velocity+" fall="+player.fallStart+","+player.fallStart2+" immune="+player.immune+","+player.immuneTime);};
                     before=n=>
                     {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                         valid=false;if(!ReferenceEquals(n,actor) || !n.active)return;
                         terrain.Reset();predictedAction=(NpcMotionState)read.Invoke(null,new object[]{n,session});object[] facts={n,predictedAction,terrain};tracking.Invoke(null,facts);predictedAction=(NpcMotionState)facts[1];var group=new[]{predictedAction};var e=Environment(p);e.PlayerTimelineActive=true;PredictionStop stop;
                         beforeAction=predictedAction;valid=NpcMotion.Step(ref predictedAction,group,1,e,terrain,1,true,out stop);if(stop==PredictionStop.RandomDecision)randomBoundaries++;Require(valid || stop==PredictionStop.RandomDecision || stop==PredictionStop.Despawn,"Current original AI57 dependencies scene="+scene+" stop="+stop);
@@ -120,10 +122,10 @@ namespace NativeWorldTextProbe
                         NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();if(!actor.active){retired=true;Console.WriteLine("TREE57 RETIRED scene="+scene+" frame="+frame+" timeLeft="+actor.timeLeft+" centerDistance="+Math.Abs(actor.Center.X-p.Center.X));break;}
                         if(phase!=actor.ai[0]){phase=actor.ai[0];changes++;}
                         bool has=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(has)selected++;
-                        var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(has && path.CaptureTick==Main.GameUpdateCount,"AI57 actual selection and publication share the current sample.");published++;if(frame%5==0 && path.Count>1)frozen.Add(new Frozen(path,actor.ai[0]));}
+                        var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(has && path.SampleTick==Main.GameUpdateCount,"AI57 actual selection and publication share the current sample.");published++;if(frame%5==0 && path.Count>1)frozen.Add(new Frozen(path,actor.ai[0]));}
                         for(int i=frozen.Count-1;i>=0;i--)
                         {
-                            var item=frozen[i];int offset=(int)((long)Main.GameUpdateCount-item.Path.CaptureTick);if(offset>=item.Path.Count){frozen.RemoveAt(i);continue;}if(offset<=0)continue;
+                            var item=frozen[i];int offset=(int)((long)Main.GameUpdateCount-item.Path.SampleTick);if(offset>=item.Path.Count){frozen.RemoveAt(i);continue;}if(offset<=0)continue;
                             var point=item.Path[offset];double error=Vector2.Distance(actor.position,new Vector2(point.Bounds.X,point.Bounds.Y));maxError=Math.Max(maxError,error);matches++;if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(actor.position,new Vector2(item.Path[0].Bounds.X+item.Path[0].Vx*offset,item.Path[0].Bounds.Y+item.Path[0].Vy*offset)));}if(item.Phase!=actor.ai[0])cross++;if(hit)afterHit++;
                             Require(error<=.08 && point.NoTileCollide==actor.noTileCollide && point.CanReceive==(!actor.dontTakeDamage && !actor.immortal),"Frozen original AI57 scene="+scene+" frame="+frame+" offset="+offset+" error="+error.ToString("R",CultureInfo.InvariantCulture)+" predicted="+point.Bounds.X+","+point.Bounds.Y+" actual="+actor.position+" av="+actor.velocity+" phase="+actor.ai[0]+","+actor.ai[1]+" direction="+actor.direction+" target="+actor.target+" targetRect="+actor.targetRect+" player="+p.position+" pv="+p.velocity+" hp="+p.statLife+" dead="+p.dead+" immune="+p.immune+","+p.immuneTime+" fall="+p.fallStart+","+p.fallStart2+" stop="+item.Path.Stop);
                         }

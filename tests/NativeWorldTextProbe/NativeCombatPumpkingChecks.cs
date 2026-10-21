@@ -107,7 +107,7 @@ namespace NativeWorldTextProbe
                         // Native blades stay invulnerable. Their motion/dependency route is
                         // tested by pure slot-ordered dependency continuation, without claiming
                         // default selection or mutating native receiving flags.
-                        NpcTrajectory path=scene==0?cache.Read(0):null;
+                        NpcTrajectory path=scene==0?NativeCombatPresentationChecks.CurrentPath(io.Host):null;
                         if(scene!=0)
                         {
                             Require(selectedActor.dontTakeDamage && !has,"Native blade remains outside the actual receiving selection.");
@@ -118,10 +118,10 @@ namespace NativeWorldTextProbe
                             }
                         }
                         if(path!=null && ReferenceEquals(path.Identity.Token,selectedActor))
-                        {published++;Require((scene!=0 || has) && path.CaptureTick==Main.GameUpdateCount,"Pumpking actual selection or pure dependency forecast uses this sample.");if(path.Stop==PredictionStop.RandomDecision)waiting=true;else if(waiting && path.Count>=30){recovered++;waiting=false;}if(frame%5==0 && path.Count>1)frozen.Add(new Frozen(path,phase));}
+                        {published++;Require((scene!=0 || has) && path.SampleTick==Main.GameUpdateCount && (scene==0 || path.CaptureTick==Main.GameUpdateCount),"Pumpking actual selection or pure dependency forecast uses this sample.");if(path.Stop==PredictionStop.RandomDecision)waiting=true;else if(waiting && path.Count>=30){recovered++;waiting=false;}if(frame%5==0 && path.Count>1)frozen.Add(new Frozen(path,phase));}
                         for(int i=frozen.Count-1;i>=0;i--)
                         {
-                            var item=frozen[i];int offset=(int)((long)Main.GameUpdateCount-item.Path.CaptureTick);if(offset>=item.Path.Count){frozen.RemoveAt(i);continue;}if(offset<=0)continue;var point=item.Path[offset];double error=Vector2.Distance(selectedActor.position,new Vector2(point.Bounds.X,point.Bounds.Y));maxError=Math.Max(maxError,error);matches++;
+                            var item=frozen[i];int offset=(int)((long)Main.GameUpdateCount-item.Path.SampleTick);if(offset>=item.Path.Count){frozen.RemoveAt(i);continue;}if(offset<=0)continue;var point=item.Path[offset];double error=Vector2.Distance(selectedActor.position,new Vector2(point.Bounds.X,point.Bounds.Y));maxError=Math.Max(maxError,error);matches++;
                             if(offset>=30){longMatches++;tangent=Math.Max(tangent,Vector2.Distance(selectedActor.position,new Vector2(item.Path[0].Bounds.X+item.Path[0].Vx*offset,item.Path[0].Bounds.Y+item.Path[0].Vy*offset)));}if(item.Phase!=phase)cross++;
                             Require(error<=.08 && point.NoTileCollide==selectedActor.noTileCollide && point.CanReceive==(!selectedActor.dontTakeDamage && !selectedActor.immortal),"Frozen Pumpking scene="+scene+" frame="+frame+" offset="+offset+" error="+error.ToString("R")+" actual="+selectedActor.position+" V="+selectedActor.velocity+" phase="+string.Join("/",selectedActor.ai)+" owner="+body.position+" ownerPhase="+string.Join("/",body.ai)+" player="+p.position+" pv="+p.velocity+" stop="+item.Path.Stop);
                         }
@@ -168,7 +168,7 @@ namespace NativeWorldTextProbe
         private sealed class Inputs
         {
             internal readonly object Host,Source;internal readonly IPredictionTerrain Terrain;private readonly long session;private readonly MethodInfo read,tracking,position;
-            internal Inputs(object context){Host=Get(context,"CombatObservation");Source=Get(Host,"Prediction");Terrain=(IPredictionTerrain)Get(Source,"Terrain");session=(long)Get(Host,"Session");read=Source.GetType().GetMethod("Read",Flags);var hostAssembly=Source.GetType().Assembly;tracking=hostAssembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);position=hostAssembly.GetType("JueMingR.TerrariaHost.Combat.NpcPositionObservation",true).GetMethod("Capture",Flags);}
+            internal Inputs(object context){Host=Get(context,"CombatObservation");Source=Get(Host,"Prediction");Terrain=(IPredictionTerrain)Activator.CreateInstance(Get(Source,"Terrain").GetType(),true);session=(long)Get(Host,"Session");read=Source.GetType().GetMethod("Read",Flags);var hostAssembly=Source.GetType().Assembly;tracking=hostAssembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);position=hostAssembly.GetType("JueMingR.TerrariaHost.Combat.NpcPositionObservation",true).GetMethod("Capture",Flags);}
             internal NpcMotionState Capture(NPC n){var state=(NpcMotionState)read.Invoke(null,new object[]{n,session});object[] a={n,state,Terrain};tracking.Invoke(null,a);state=(NpcMotionState)a[1];a=new object[]{n,state,session};position.Invoke(null,a);return (NpcMotionState)a[1];}
         }
         private static NPC Actor(int slot,int type,Vector2 pos){var n=Main.npc[slot]=new NPC{whoAmI=slot};n.SetDefaults(type);n.active=true;n.target=Main.myPlayer;n.position=pos;return n;}

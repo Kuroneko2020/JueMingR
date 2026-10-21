@@ -18,7 +18,7 @@ namespace NativeWorldTextProbe
         private static void CountReceiver(){receivers++;}
         internal static void Run(object context)
         {
-            // These counterexamples revoke an already prepared contact. Their
+            // These counterexamples revoke an already prepared receive capability. Their
             // synthetic121-point path is a finite component, not an assertion
             // that every cold native input budget must finish that preparation.
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var control=Get(attack,"Control");var input=Get(context,"Input");
@@ -30,20 +30,39 @@ namespace NativeWorldTextProbe
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,25,true,true));NativeToolExecutionChecks.Sample(context,input,new Vector2(650,550),true);Call(combat,"Sample");Call(host,"SampleMouse");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,true);
                 Projectile shot=null;
                 if(weapon!=95){typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{0,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});shot=Main.projectile.First(q=>q.active && q.owner==0);if(weapon==2797)shot.timeLeft=2;NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,true);}
-                var plan=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(plan!=null,"qualification fixture starts with a real prepared contact: "+weapon);Call(attack,"BindPresentation",plan);Require((bool)Call(attack,"PresentationCurrent",plan),"healthy same-frame presentation lease");
-                // Pose changes are not qualification changes. The published
-                // conditional future remains the same object in this check.
-                n.position+=new Vector2(.25f,0);Require((bool)Call(attack,"PresentationCurrent",plan),"ordinary stage displacement does not revoke receive eligibility");
+                // Ordinary 95 owns a representative solution, whose Contact
+                // may be empty. Presentation belongs only to the three dedicated
+                // routes below; the real hand outlet is BeforeNpc even when this
+                // explicit preparation occurred at Projectiles.
+                bool representative=weapon==95;AttackContact plan=null;
+                if(representative)HealthyRepresentative("healthy prepared ordinary receiver");
+                else
+                {
+                    plan=(AttackContact)GetOptional(attack,"ExpectedImpact");Require(plan!=null,"qualification fixture starts with a real dedicated contact: "+weapon);
+                    Call(attack,"BindPresentation",plan);Require((bool)Call(attack,"PresentationCurrent",plan),"healthy same-frame presentation lease");
+                }
+                n.position+=new Vector2(.25f,0);
+                if(representative)HealthyRepresentative("ordinary stage displacement preserves current receive eligibility");
+                else Require((bool)Call(attack,"PresentationCurrent",plan),"ordinary stage displacement does not revoke receive eligibility");
                 Reject();
-                Require(!(bool)Call(attack,"PresentationCurrent",plan),"current receive refusal retires bound red presentation without a pool scan");
+                if(representative)Require(!NativeCombatAimChecks.QueryInput(attack,p,"BeforeNpc").Allowed,"current receive refusal rejects the actual hand outlet");
+                else Require(!(bool)Call(attack,"PresentationCurrent",plan),"current receive refusal retires bound red presentation without a pool scan");
                 Restore();NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,true);Reject();
                 object scope=weapon==95?Call(attack,"BeginShot",p,p.HeldItem,true):weapon==2797?Call(control,"BeginKill",shot):Call(control,"BeginAI",shot);Require(scope==null,"invalid current receiver cannot borrow natural consumer input");
                 if(weapon!=95){Restore();NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,true);Reject();Require(Call(control,"BeginOpening",p,p.HeldItem)==null,"invalid current receiver cannot borrow the next native birth point");}
                 Restore();NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,true);Reject();Require(GetOptional(attack,"ExpectedImpact")==null,"same identity's current receive refusal retires contact: weapon="+weapon+" change="+change);
+                if(representative){var retired=NativeCombatAimChecks.ReadSolution(attack);Require(!retired.HasPoint && retired.Timeline==null,"receiver refusal retires ordinary execution fields, not merely its optional Contact");}
                 if(shot!=null)Require(shot.active,"receive revocation never kills the original controlled projectile");
-                n.dontTakeDamage=n.friendly=false;n.life=n.lifeMax=1;NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,true);Require(GetOptional(attack,"ExpectedImpact")!=null,"1HP receiver remains eligible after fresh prepare");
-                n.SetDefaults(488);n.whoAmI=2;n.active=true;n.Center=p.Center+new Vector2(75,0);n.aiStyle=-1;n.noGravity=true;Array.Clear(n.immune,0,n.immune.Length);Require(n.immortal,"dummy keeps actual immortal distinction");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,true);Require(GetOptional(attack,"ExpectedImpact")!=null,"opt-in dummy remains an actual receiver, not a homing filter");
+                n.dontTakeDamage=n.friendly=false;n.life=n.lifeMax=1;NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,true);if(representative)HealthyRepresentative("1HP receiver remains eligible after fresh prepare");else Require(GetOptional(attack,"ExpectedImpact")!=null,"1HP receiver remains eligible after fresh prepare");
+                n.SetDefaults(488);n.whoAmI=2;n.active=true;n.Center=p.Center+new Vector2(75,0);n.aiStyle=-1;n.noGravity=true;Array.Clear(n.immune,0,n.immune.Length);Require(n.immortal,"dummy keeps actual immortal distinction");NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,0,true);if(representative)HealthyRepresentative("opt-in dummy remains an actual receiver, not a homing filter");else Require(GetOptional(attack,"ExpectedImpact")!=null,"opt-in dummy remains an actual receiver, not a homing filter");
                 Console.WriteLine("PASS receive lease weapon="+weapon+" change="+change+" sourceStillActive="+(shot==null || shot.active)+" dummyImmortal="+n.immortal);
+                void HealthyRepresentative(string reason)
+                {
+                    var facts=NativeCombatAimChecks.ReadSolution(attack);var permitted=NativeCombatAimChecks.QueryInput(attack,p,"BeforeNpc");
+                    Require((uint)Get(attack,"prepared")==Main.GameUpdateCount && facts.HasPoint && facts.Timeline!=null && ReferenceEquals(facts.Timeline.Identity.Token,n) && facts.Reachability=="Reachable" && facts.ReceiveTick>=facts.FirstTick && facts.ReceiveTick<facts.Timeline.Count,"current representative geometry/epoch: "+reason);
+                    Require(permitted.Allowed && permitted.Kind=="Enhanced" && permitted.Target.Equals(facts.Timeline.Identity) && permitted.Point==facts.Point,"actual BeforeNpc hand query matches representative facts (not a consumption receipt): "+reason);
+                    Require(GetOptional(attack,"ExpectedPreview")==null,"ordinary qualification cannot restore retired presentation");
+                }
                 void Reject(){if(change==0)n.dontTakeDamage=true;else if(change==1)n.friendly=true;else n.life=0;}
                 void Restore(){n.dontTakeDamage=n.friendly=false;n.life=n.lifeMax=10000;}
             }

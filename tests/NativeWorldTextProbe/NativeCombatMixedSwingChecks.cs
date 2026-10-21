@@ -25,11 +25,24 @@ namespace NativeWorldTextProbe
         {internal Projectile Shot;internal string Key,Last;internal AttackContact Plan;internal long Born,Hit=-1;internal bool Missing;internal float Gap=float.MaxValue;}
         private static readonly List<StarTrace> stars=new List<StarTrace>();
         private static object starAttack,componentContext;private static bool componentStar;private static AttackContact starTimeline,actualStarPlan;private static Assembly starAssembly;private static Projectile damageShot;
+        private static NativeCombatAimChecks.SolutionFacts expectedRepresentative,actualRepresentative;
+        private static int representativeInputs;private static AttackContact bornRepresentative;private static long representativeHit=-1;
         private static void PreviewWork(){handPreviews++;}
         private static void Born(int __result)
         {
             if(!recordBirth || __result<0 || __result>=Main.maxProjectiles)return;var shot=Main.projectile[__result];if(shot.owner!=Main.myPlayer || shot.type!=birthType)return;
             births++;birthFacts.Add(shot.whoAmI+":"+shot.Center+"/"+shot.velocity+" ai="+string.Join(",",shot.ai)+" life="+shot.timeLeft);
+            if(shot.type==1012)
+            {
+                // BeginShot retires the public solution before NewProjectile.
+                // Seal it at the real Shoot prefix; the birth must carry that
+                // invocation's receipt, not a previous-world preparation.
+                var owner=Main.LocalPlayer;Require(representativeInputs==1,"one actual Waffle hand reaches this native birth");NativeCombatAimChecks.RequireConsumedInput(starAttack,owner,actualRepresentative,"Waffle actual birth consumes this hand's current Enhanced point");
+                var assistedCursor=Main.MouseWorld;Require(Math.Abs(assistedCursor.X-actualRepresentative.Point.X)<1.01f && Math.Abs(assistedCursor.Y-actualRepresentative.Point.Y)<1.01f,"Waffle native birth reads the assisted cursor with original integer pixel encoding");
+                var args=new object[]{Get(starAttack,"ammo"),default(AttackMotion)};Require((bool)starAssembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels",true).GetMethod("TryRead",Flags).Invoke(null,args),"born1012 retains its audited AI002 scalar motor");
+                bornRepresentative=AttackIntercept.Replay(actualRepresentative.Point.X,actualRepresentative.Point.Y,shot.Center.X,shot.Center.Y,shot.velocity.X,shot.velocity.Y,(AttackMotion)args[1],actualRepresentative.Timeline,actualRepresentative.FirstTick-1);
+                return;
+            }
             if(shot.type!=503 || starTimeline==null)return;
             var p=Main.LocalPlayer;var cursor=Main.screenPosition+new Vector2(Main.mouseX,Main.mouseY);var receipt=Get(starAttack,"consumedInput");var planned=(Vector2)Get(receipt,"Point");
             Require((bool)Get(starAttack,"hasConsumedInput") && Convert.ToString(Get(receipt,"Kind"))=="Enhanced","Star Wrath actual birth carries a real enhanced input receipt");
@@ -40,6 +53,13 @@ namespace NativeWorldTextProbe
         }
         private static void PrepareActualStar(Player __instance)
         {
+            if(recordBirth && __instance.whoAmI==Main.myPlayer && __instance.HeldItem.type==5382)
+            {
+                // Observe existing natural preparation only. This branch neither
+                // prepares again nor fabricates a Contact from a representative point.
+                Require(!(bool)Get(starAttack,"hasConsumedInput"),"Waffle actual Shoot starts before any native input consumption");actualRepresentative=NativeCombatAimChecks.RequireSolution(starAttack,__instance,"Waffle actual Shoot owns a reachable current representative point");representativeInputs++;
+                Require(actualRepresentative.Timeline.Identity.Equals(expectedRepresentative.Timeline.Identity) && Vector2.DistanceSquared(actualRepresentative.Point,expectedRepresentative.Point)<.0001f,"the actual Waffle consumer retains the component's selected identity and representative point");return;
+            }
             if(!recordBirth || !componentStar || __instance.whoAmI!=Main.myPlayer || __instance.HeldItem.type!=3065)return;
             // This is an explicit native Shoot component. The previous-world
             // preparation can be replaced by the real Player entry's ordinary
@@ -51,7 +71,7 @@ namespace NativeWorldTextProbe
         private static void BeforeDamage(Projectile __instance){projectile=__instance.type;damageShot=__instance;}
         private static void AfterDamage(){projectile=0;damageShot=null;}
         private static void Strike(NPC __instance,int __result)
-        {if(ReferenceEquals(target,__instance) && __result>0){if(first<0){first=Main.GameUpdateCount;firstType=projectile;}foreach(var trace in stars)if(ReferenceEquals(trace.Shot,damageShot) && trace.Key==damageShot.key.ToString() && trace.Hit<0)trace.Hit=Main.GameUpdateCount;}}
+        {if(ReferenceEquals(target,__instance) && __result>0){if(first<0){first=Main.GameUpdateCount;firstType=projectile;}if(projectile==1012 && representativeHit<0)representativeHit=Main.GameUpdateCount;foreach(var trace in stars)if(ReferenceEquals(trace.Shot,damageShot) && trace.Key==damageShot.key.ToString() && trace.Hit<0)trace.Hit=Main.GameUpdateCount;}}
         private static void Shape(Player __instance,Item __0,Rectangle __1)
         {if(calibrating && __instance.whoAmI==Main.myPlayer && __0.type==weapon && firstBox==Rectangle.Empty)firstBox=__1;}
         internal static void Run(object context)
@@ -95,11 +115,11 @@ namespace NativeWorldTextProbe
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));
                         NativeToolExecutionChecks.Sample(context,Get(context,"Input"),target.Center,true);Call(combat,"Sample");
                         NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);
-                        var shotPlan=(AttackContact)GetOptional(attack,"ExpectedImpact");
-                        if(shotPlan==null)Console.WriteLine("MIXED missing actual component item="+item+" near="+near+" guc="+Main.GameUpdateCount+" current="+((AttackContact)GetOptional(attack,"current"))?.Tick+" next="+((AttackContact)GetOptional(attack,"next"))?.Tick+" failed="+Get(attack,"Failed")+" permission="+Get(attack,"Permission")+" animation/time="+p.itemAnimation+"/"+p.itemTime+" velocity="+p.velocity+" receiver="+target.Hitbox+" immune="+target.immune[p.whoAmI]);
+                        bool representative=item==5382;var shotSolution=representative?NativeCombatAimChecks.RequireSolution(attack,p,"Waffle public preparation supplies its real representative projectile point"):default(NativeCombatAimChecks.SolutionFacts);var shotPlan=representative?shotSolution.Contact:(AttackContact)GetOptional(attack,"ExpectedImpact");
+                        if(!representative && shotPlan==null)Console.WriteLine("MIXED missing actual component item="+item+" near="+near+" guc="+Main.GameUpdateCount+" current="+((AttackContact)GetOptional(attack,"current"))?.Tick+" next="+((AttackContact)GetOptional(attack,"next"))?.Tick+" failed="+Get(attack,"Failed")+" permission="+Get(attack,"Permission")+" animation/time="+p.itemAnimation+"/"+p.itemTime+" velocity="+p.velocity+" receiver="+target.Hitbox+" immune="+target.immune[p.whoAmI]);
                         bool randomStar=!near && item==3065;
-                        Require(shotPlan!=null || randomStar,"the real mixed hand keeps its native shot preparation: "+item+"/"+near);
-                        var componentPath=shotPlan?.Timeline??(NpcTrajectory)Call(Get(Get(host,"Prediction"),"Cache"),"Read",1);Require(componentPath!=null,"mixed source component owns its full immutable receiver path");
+                        Require(representative || shotPlan!=null || randomStar,"the real mixed hand keeps its native shot preparation: "+item+"/"+near);
+                        var componentPath=(representative?shotSolution.Timeline:shotPlan?.Timeline)??(NpcTrajectory)Call(Get(Get(host,"Prediction"),"Cache"),"Read",1);Require(componentPath!=null,"mixed source component owns its full immutable receiver path");
                         // The product's current input belongs to the projectile.
                         // Compare the adjacent native sword's finite geometry
                         // separately, using its observed Animate frame. This
@@ -111,16 +131,25 @@ namespace NativeWorldTextProbe
                         var clock=NativeCombatAimChecks.PhaseClock(attack,componentPath,"CompletedWorld");AttackContact hand;
                         using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))hand=(AttackContact)swing.GetMethod("PreviewPrepared",Flags).Invoke(Get(attack,"swing"),new object[]{p,p.HeldItem,componentPath,clock,handTerrain,frame,120});
                         preview=hand!=null && (shotPlan==null || hand.Tick<shotPlan.Tick)?hand:shotPlan;
+                        // A public representative point is not a full family Contact.
+                        // This deterministic single-body fixture still compares its
+                        // phase clock against the independently modeled native hand.
+                        int expectedTick=representative?(hand!=null?Math.Min(hand.Tick,shotSolution.NativeTick):shotSolution.NativeTick):preview?.Tick??-1;
                         int prepared=handPreviews;var marker=Get(Get(host,"World"),"Impact");var zoom=Main.GameViewMatrix.ZoomMatrix;
                         for(int draw=0;draw<20;draw++){Call(marker,"Capture");Call(marker,"Project",zoom,Matrix.Invert(zoom));Require(GetOptional(attack,"ExpectedPreview")==null,"mixed presentation cannot revive the withdrawn idle impact");}
                         Require(handPreviews==prepared,"twenty same-update mixed presentations do not solve a hand");
-                        long start=Main.GameUpdateCount;int shotType=p.HeldItem.shoot;birthType=shotType;births=0;birthFacts.Clear();stars.Clear();starTimeline=null;actualStarPlan=null;componentStar=randomStar;recordBirth=true;
+                        long start=Main.GameUpdateCount;int shotType=p.HeldItem.shoot;birthType=shotType;births=0;birthFacts.Clear();stars.Clear();starTimeline=null;actualStarPlan=null;componentStar=randomStar;representativeInputs=0;bornRepresentative=null;representativeHit=-1;expectedRepresentative=shotSolution;actualRepresentative=default(NativeCombatAimChecks.SolutionFacts);recordBirth=true;
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));
                         int actionLimit=randomStar?Math.Max(90,componentPath.Count):90;
                         for(int i=1;i<=actionLimit && first<0;i++)
                         {NativeCombatSelectionPreviewChecks.Step(context,target.Center,i==1);StarPositions();}
                         recordBirth=false;componentStar=false;
-                        if(randomStar){Require(actualStarPlan!=null,"Star Wrath cannot pass on an absent actual-source plan");preview=actualStarPlan;}
+                        if(randomStar){Require(actualStarPlan!=null,"Star Wrath cannot pass on an absent actual-source plan");preview=actualStarPlan;expectedTick=preview.Tick;}
+                        if(representative)
+                        {
+                            Require(representativeInputs==1 && births==1,"Waffle has one real hand consumption and one original1012 birth");
+                            if(!near)Require(bornRepresentative!=null && representativeHit==bornRepresentative.Timeline.SampleTick+bornRepresentative.Tick,"distant real1012 first Damage exactly matches its sealed born scalar replay");
+                        }
                         if(starTimeline!=null){Console.WriteLine("MIXED STAR actual births="+string.Join(";",birthFacts));StarResults(first<0);Require(stars.Count==3,"native Star Wrath consumer emits all three observed legal births");starTimeline=null;}
                         if(first<0)Console.WriteLine("MIXED first missing item="+item+" near="+near+" target="+target.Hitbox+" life="+target.life+" ownerImmune="+target.immune[p.whoAmI]+" births="+string.Join(";",birthFacts)+" remaining="+string.Join(";",Main.projectile.Where(q=>q.active && q.owner==p.whoAmI && q.type==shotType).Select(q=>q.whoAmI+":"+q.Center+"/"+q.velocity+" ai="+string.Join(",",q.ai)+" pen="+q.penetrate+" tile="+q.tileCollide)));
                         // Only the two future sky births have random source
@@ -133,7 +162,7 @@ namespace NativeWorldTextProbe
                         // random use; its actual births above must still agree
                         // with their own deterministic replay over the horizon.
                         Require(randomStar?preview.Confidence==AttackConfidence.Representative:first>=0,"deterministic mixed stages require useful native Damage; Star Wrath retains its explicit representative source boundary");
-                        Require(first<0 && randomStar || first>=0 && (randomSky && preview.Confidence==AttackConfidence.Representative || first-start==preview.Tick),"mixed earliest hand/shot contact matches actual native first Damage: "+item+"/"+near+" first="+(first-start)+" type="+firstType+" plan="+preview.Tick+" confidence="+preview.Confidence+" player="+p.position+" nativeFirstBox="+firstBox);
+                        Require(first<0 && randomStar || first>=0 && (randomSky && preview.Confidence==AttackConfidence.Representative || first-start==expectedTick),"mixed earliest hand/shot clock matches actual native first Damage: "+item+"/"+near+" first="+(first-start)+" type="+firstType+" plan="+expectedTick+" route="+(representative?"representative-point":preview.Confidence.ToString())+" player="+p.position+" nativeFirstBox="+firstBox);
                         Require(first<0 && randomStar || (near?firstType==0:firstType==shotType),"real first receiver distinguishes close hand and distant projectile: "+item+"/"+near+" type="+firstType);
                         // A near one-penetration shot can be born and killed
                         // by native Damage before the outer update returns.
@@ -141,13 +170,13 @@ namespace NativeWorldTextProbe
                         // remain active after that valid receive.
                         Require(births>0,"native mixed use preserves its independently launched projectile");
                         if(near)handHits++;else shotStages++;if(first<0)randomMisses++;cases++;
-                        Console.WriteLine("MIXED HAND item="+item+" near="+near+" first="+(first<0?-1:first-start)+" damageType="+firstType+" preview="+preview.Tick+" actualBirths="+births);
+                        Console.WriteLine("MIXED HAND item="+item+" near="+near+" first="+(first<0?-1:first-start)+" damageType="+firstType+" predicted="+expectedTick+" actualBirths="+births);
                     }
                 }
                 Require(string.IsNullOrEmpty(only)?cases==16 && handHits==8 && shotStages==8:cases==1,"mixed stage oracle executes every requested real hand/shot stage");
                 Console.WriteLine("PASS native mixed sword actual-use component: deterministic first Damage and observed representative Star Wrath outcomes, withdrawn idle impact remains absent; randomMisses="+randomMisses);
             }
-            finally{calibrating=recordBirth=componentStar=false;componentContext=null;actualStarPlan=null;target=null;projectile=0;damageShot=null;starTimeline=null;starAttack=null;stars.Clear();audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());}
+            finally{calibrating=recordBirth=componentStar=false;componentContext=null;actualStarPlan=bornRepresentative=null;representativeInputs=0;representativeHit=-1;expectedRepresentative=actualRepresentative=default(NativeCombatAimChecks.SolutionFacts);target=null;projectile=0;damageShot=null;starTimeline=null;starAttack=null;stars.Clear();audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());}
         }
         private static void StarPositions()
         {

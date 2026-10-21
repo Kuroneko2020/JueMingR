@@ -30,6 +30,10 @@ if($null -ne $admission){$selectedPaths=@($selectedPaths | Where-Object {$_ -cno
 $route = Get-WorkloadRoute $selectedPaths
 if ($changes.reason -or $route.unknown.Count -gt 0) { throw ($changes.reason + ' Unclassified paths: ' + ($route.unknown -join ', ')) }
 if ($Mode -ceq 'Full') { $route = Get-WorkloadRoute @('@full') }
+if ($PlanOnly -and -not (Test-WorkloadBuildMatch $repositoryRoot $record $identity $inputIdentity)) {
+    [ordered]@{status='GROUP_PREVIEW';mode=$Mode;baseline=$changes.baseline;paths=$selectedPaths;groups=$route.groups;reasons=@(Get-WorkloadRouteExplanation $selectedPaths);required=$null;qualification='NOT_EVALUATED';reason='Matching Debug catalogue not prepared; preview has no exact check list.'} | ConvertTo-Json -Depth 8
+    return
+}
 $checksRoot = Join-Path $repositoryRoot 'artifacts/build/Debug/checks'
 $architecture = Join-Path $repositoryRoot 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
 $toolOnly=@($route.groups | Where-Object {$_ -notmatch '^(core|workload-tools|package-tools|check:workload-.*)$'}).Count -eq 0
@@ -48,7 +52,8 @@ $recordPath=if($toolOnly){Join-Path $repositoryRoot 'artifacts/build/tool-worklo
 $plan = @(Get-WorkloadPlan $repositoryRoot $checksRoot $architecture $catalog $route.groups)
 $required = @($plan | ForEach-Object { $_.name })
 if($PlanOnly){
-    [ordered]@{status='PLAN_ONLY';mode=$Mode;baseline=$changes.baseline;paths=$selectedPaths;groups=$route.groups;required=$required;productDelivery='NOT_EVALUATED'} | ConvertTo-Json -Depth 6
+    $previewCache=Read-WorkloadJson (Join-Path $repositoryRoot 'artifacts/build/workload-evidence.json')
+    [ordered]@{status='PLAN_ONLY';mode=$Mode;baseline=$changes.baseline;paths=$selectedPaths;groups=$route.groups;reasons=@(Get-WorkloadRouteExplanation $selectedPaths);required=$required;checks=@($plan | ForEach-Object {Get-WorkloadCheckExplanation $repositoryRoot $_ $inputIdentity $previewCache});productDelivery='NOT_EVALUATED'} | ConvertTo-Json -Depth 10
     return
 }
 # The ordinary Release/package path may consume the same already locked Debug
@@ -93,6 +98,8 @@ $pending = @{}
 $liveChecks = @{}
 $built = @{}
 $currentCheck = 'planning'
+$attempt=$null
+$aggregateWritten=$false
 $batch=New-WorkloadCheckpointBatch $repositoryRoot $identity $inputIdentity $required $applicability
 $completedReceipts=New-Object 'System.Collections.Generic.List[object]'
 function Save-Evidence {
@@ -130,13 +137,22 @@ try {
     Assert-StableInputs
     foreach ($check in $plan) {
         $currentCheck = $check.name
+        $attempt=$null
+        Assert-StableInputs
+        $blockers=@(Get-WorkloadCheckDependencies $check.name | Where-Object { $dependency=$_; @($results | Where-Object {$_.name -ceq $dependency -and $_.result -in @('PASS','AWAITING_STABILITY')}).Count -ne 1 })
+        if($blockers.Count){
+            $results.Add([ordered]@{name=$check.name;result='BLOCKED';disposition='BLOCKED';requires=@($blockers);milliseconds=0})
+            Write-Host ('BLOCKED '+$check.name+' by '+($blockers -join ','))
+            continue
+        }
         $signature = Get-WorkloadHash (@($check.executable) + @($check.arguments))
         $old = if ($entries.ContainsKey($check.name)) { $entries[$check.name] } else { $null }
+        $preparationMissing=$check.name -ceq 'native-NpcWorkerIntegration' -and $required -ccontains 'native-NpcPrivateSafety' -and -not (Test-WorkloadDependencyLayout $repositoryRoot $checksRoot)
         if (-not $Rerun) {
             $restored=Restore-WorkloadCheckpointEvidence $repositoryRoot $identity $inputIdentity $check.name $signature $record.commit
             if ($null -ne $restored) {$old=$restored;$entries[$check.name]=$restored}
         }
-        $reuse = -not $Rerun -and (Test-WorkloadReusable $repositoryRoot $old $inputIdentity $check.name $signature)
+        $reuse = -not $Rerun -and -not $preparationMissing -and (Test-WorkloadReusable $repositoryRoot $old $inputIdentity $check.name $signature)
         if ($reuse) {
             $absent=@($old.outputs | ForEach-Object {Split-Path -Parent $_.livePath} | Sort-Object -Unique | Where-Object {-not [IO.Directory]::Exists($_)})
             $liveChecks[$check.name]=@{outputs=$old.outputs;absent=$absent;exact=($old.detectionCommit -ceq $record.commit -and $old.allInputFingerprint -ceq $inputIdentity.fingerprint)}
@@ -144,7 +160,7 @@ try {
             $results.Add([ordered]@{name=$check.name; result='PASS'; disposition='REUSED'; milliseconds=0; originalMilliseconds=$old.milliseconds; executionId=$old.executionId; sourceCommit=$old.sourceCommit})
             continue
         }
-        if (-not $Rerun -and $null -ne $applicability) {
+        if (-not $Rerun -and -not $preparationMissing -and $null -ne $applicability) {
             $decision=@($applicability.record.decisions | Where-Object {$_.name -ceq $check.name})
             if ($decision.Count -eq 1 -and $decision[0].action -ceq 'QUALIFIED') {
                 $qualified=Get-WorkloadQualifiedOriginal $repositoryRoot $applicability $check $inputIdentity
@@ -161,6 +177,7 @@ try {
         # Retire an old success before starting; failure/cancellation cannot fall
         # back to it on the next invocation. Other valid successes stay usable.
         if($ClosureOnly){throw ('Closure refuses execution fallback; missing current evidence: '+$check.name)}
+        if($check.name -ceq 'native-NpcPrivateSafety' -and -not (Test-WorkloadDependencyLayout $repositoryRoot $checksRoot)){throw 'Integration dependent shared layout is missing or does not match the current runtime.'}
         $attempt=Start-WorkloadCheckpoint $repositoryRoot $batch $check $signature
         $entries.Remove($check.name)
         Stop-WorkloadReadWindow
@@ -174,7 +191,20 @@ try {
         $liveChecks[$check.name]=@{outputs=$liveOutputs;absent=@();exact=$true}
         $attempt.beforeOutputs=$liveOutputs
         $clock = [Diagnostics.Stopwatch]::StartNew()
-        Invoke-WorkloadProcess $check.name $check.executable $check.arguments -Checkpoint $attempt
+        try { Invoke-WorkloadProcess $check.name $check.executable $check.arguments -Checkpoint $attempt }
+        catch {
+            if($_.Exception.Data['WorkloadFailureKind'] -cne 'BusinessAssertion'){throw}
+            # A dedicated host assertion is a failed proof, never a PASS. Only
+            # independent processes may proceed, after confirming live inputs.
+            if (-not (Test-WorkloadLiveArtifacts $liveOutputs $true)) {throw ('Execution artifacts changed during failed check: '+$check.name)}
+            $attempt.outputs=@(Save-WorkloadArtifacts $repositoryRoot $outputs);$attempt.milliseconds=$clock.ElapsedMilliseconds
+            Write-WorkloadJson $attempt.path $attempt
+            $results.Add([ordered]@{name=$check.name;result='FAIL';disposition='EXECUTED';failureKind='BusinessAssertion';milliseconds=$attempt.milliseconds;executionId=$attempt.executionId;checkpointPath=$attempt.path})
+            Assert-StableInputs
+            if($Mode -ceq 'Feedback'){throw}
+            Write-Host ('FAIL '+$check.name+' BusinessAssertion; collecting independent checks.')
+            continue
+        }
         if (-not (Test-WorkloadLiveArtifacts $liveOutputs $true)) {throw ('Execution artifacts changed during check: '+$check.name)}
         $outputs = @(Save-WorkloadArtifacts $repositoryRoot $outputs)
         $attempt.outputs=$outputs;$attempt.milliseconds=$clock.ElapsedMilliseconds
@@ -192,38 +222,47 @@ try {
     Start-WorkloadReadWindow
     Assert-StableInputs
     Complete-WorkloadCheckpointQualification $repositoryRoot @($completedReceipts.ToArray()) $batch
-    foreach ($item in $results) {if ($item.disposition -ceq 'EXECUTED') {$item.result='PASS'}}
+    foreach ($item in $results) {if ($item.result -ceq 'AWAITING_STABILITY' -and $item.disposition -ceq 'EXECUTED') {$item.result='PASS'}}
     foreach ($item in $results) {
         if ($item.disposition -ceq 'QUALIFIED') {
             foreach ($dependency in $item.requiresCurrent) {
                 $proof=@($results | Where-Object {$_.name -ceq $dependency -and $_.result -ceq 'PASS' -and $_.disposition -in @('EXECUTED','REUSED')})
-                if ($proof.Count -ne 1) {throw ('Current qualification proof not completed: '+$dependency)}
+                if ($proof.Count -ne 1) {$item.result='BLOCKED';break}
             }
-            $item.result='PASS'
+            if($item.result -cne 'BLOCKED'){$item.result='PASS'}
         }
     }
     foreach ($name in $pending.Keys) { $entries[$name]=$pending[$name] }
     foreach ($item in $results) {
+        if($item.result -cne 'PASS'){continue}
         if (-not (Test-WorkloadEvidenceOutputs $repositoryRoot $entries[$item.name].outputs)) { throw ('Check artifacts changed: ' + $item.name) }
     }
     Save-Evidence
     Remove-UnusedWorkloadArtifacts $repositoryRoot @($entries.Values)
-    $result = [ordered]@{ status=$(if ($Mode -ceq 'Feedback') {'FEEDBACK'} else {'PASS'}); mode=$Mode; commit=$identity.commit; sourceFingerprint=$identity.fingerprint;
+    $hasFailures=@($results | Where-Object {$_.result -ne 'PASS'}).Count -gt 0
+    $result = [ordered]@{ status=(Get-WorkloadAggregateStatus $Mode @($results.ToArray()) $required); mode=$Mode; commit=$identity.commit; sourceFingerprint=$identity.fingerprint;
         inputFingerprint=$inputIdentity.fingerprint; baseline=$changes.baseline; requestedBaseline=$Baseline; changedPaths=$changes.paths; groups=$route.groups;
         runtime='.NET Framework 4.7.2 target / x86'; requiredChecks=$required; checkCount=$results.Count; results=@($results.ToArray());
         notSelected=@(@($knownNames)+@($entries.Keys) | Sort-Object -Unique | Where-Object {$required -notcontains $_});
         evidenceFile='artifacts/build/workload-evidence.json'; evidenceSha256=(Get-FileHash -LiteralPath $cachePath -Algorithm SHA256).Hash;
         slowGraphics='separate-risk-triggered-entry' }
     if ($null -ne $applicability) {$result.applicabilityRecord=$applicability.path;$result.applicabilitySha256=$applicability.sha256;$result.qualificationId=$applicability.record.qualificationId}
-    if ($Mode -cne 'Feedback' -and -not (Test-WorkloadCoverage ($result | ConvertTo-Json -Depth 10 | ConvertFrom-Json) $required $inputIdentity.fingerprint)) { throw 'Incomplete final coverage.' }
+    if (-not $hasFailures -and $Mode -cne 'Feedback' -and -not (Test-WorkloadCoverage ($result | ConvertTo-Json -Depth 10 | ConvertFrom-Json) $required $inputIdentity.fingerprint)) { throw 'Incomplete final coverage.' }
     $record.workload=$result; Write-WorkloadJson $recordPath $record
+    $aggregateWritten=$true
     Write-Host ('Coverage: executed=' + @($results | Where-Object {$_.disposition -ceq 'EXECUTED'}).Count + '; reused=' + @($results | Where-Object {$_.disposition -ceq 'REUSED'}).Count + '; qualified=' + @($results | Where-Object {$_.disposition -ceq 'QUALIFIED'}).Count + '; not-selected=' + $result.notSelected.Count + '; status=' + $result.status)
     Write-Output $result
+    if($hasFailures){throw 'Final workload contains failed or blocked necessary checks.'}
 } catch {
+    if($aggregateWritten){throw}
+    if($null -ne $attempt -and @($results | Where-Object {$_.name -ceq $currentCheck}).Count -eq 0){
+        $results.Add([ordered]@{name=$currentCheck;result='FAIL';disposition='EXECUTED';failureKind=$(if($_.Exception.Data['WorkloadFailureKind']){$_.Exception.Data['WorkloadFailureKind']}else{'InfrastructureOrUnknown'});executionId=$attempt.executionId;checkpointPath=$attempt.path})
+    }
     # Successful siblings are useful only if the entire observed input set
     # stayed fixed. An input race discards this invocation's pending evidence.
-    try { Assert-StableInputs; Complete-WorkloadCheckpointQualification $repositoryRoot @($completedReceipts.ToArray()) $batch; foreach ($name in $pending.Keys) {$entries[$name]=$pending[$name]}; foreach ($item in $results) {if ($item.disposition -ceq 'EXECUTED') {$item.result='PASS'}}; Save-Evidence } catch { }
-    $failure=[ordered]@{status='FAILED'; mode=$Mode; commit=$identity.commit; sourceFingerprint=$identity.fingerprint; failedCheck=$currentCheck; reason=$_.Exception.Message; completedResults=@($results.ToArray()); remaining='not covered after failure'}
+    try { Assert-StableInputs; Complete-WorkloadCheckpointQualification $repositoryRoot @($completedReceipts.ToArray()) $batch; foreach ($name in $pending.Keys) {$entries[$name]=$pending[$name]}; foreach ($item in $results) {if ($item.result -ceq 'AWAITING_STABILITY' -and $item.disposition -ceq 'EXECUTED') {$item.result='PASS'}}; Save-Evidence } catch { }
+    foreach($name in $required){if(@($results | Where-Object {$_.name -ceq $name}).Count -eq 0){$results.Add([ordered]@{name=$name;result='NOT_RUN';disposition='NOT_RUN';reason='Fatal failure or interruption before trustworthy completion'})}}
+    $failure=[ordered]@{status='FAILED'; mode=$Mode; commit=$identity.commit; sourceFingerprint=$identity.fingerprint; inputFingerprint=$inputIdentity.fingerprint;requiredChecks=$required;checkCount=$results.Count; failedCheck=$currentCheck; reason=$_.Exception.Message; results=@($results.ToArray());completedResults=@($results.ToArray()); remaining='not covered after failure'}
     if ($null -ne $applicability) {$failure.applicabilityRecord=$applicability.path;$failure.applicabilitySha256=$applicability.sha256}
     $record.workload=$failure; Write-WorkloadJson $recordPath $record
     $_.Exception.Data['workload']=$failure

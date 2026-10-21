@@ -18,10 +18,12 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Static|BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
         private static Action<NPC> before,after;
         private static Action<int,int,int,bool> placed;
+        private static Action placing;
         private static Action<Projectile> killing;
         private static void Before(NPC __instance){before?.Invoke(__instance);}
         private static void After(NPC __instance){after?.Invoke(__instance);}
         private static void Placed(int i,int j,int Type,bool __result){placed?.Invoke(i,j,Type,__result);}
+        private static void Placing(){placing?.Invoke();}
         private static void Killing(Projectile __instance){killing?.Invoke(__instance);}
         internal static void Boundaries()
         {
@@ -50,28 +52,55 @@ namespace NativeWorldTextProbe
         {
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");long session=(long)Get(host,"Session");
             var read=source.GetType().GetMethod("Read",Flags);var capture=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);
-            var terrain=(IPredictionTerrain)Get(source,"Terrain");var rows=new List<string>{"scene,frame,type,hop,cycle,pause,turn,selected,published,count,stop,matched,longMatched,error,cross,actions"};var failures=new List<string>();
+            var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);var rows=new List<string>{"scene,frame,type,hop,cycle,pause,turn,selected,published,count,stop,matched,longMatched,error,cross,actions"};var failures=new List<string>();
             var observer=new Harmony("JueMingR.Probe.FrostLegionOracle");var update=typeof(NPC).GetMethod("UpdateNPC",Flags);
             observer.Patch(update,prefix:new HarmonyMethod(typeof(NativeCombatSnowmanChecks).GetMethod(nameof(Before),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatSnowmanChecks).GetMethod(nameof(After),Flags)));
             var placeTile=typeof(WorldGen).GetMethod("PlaceTile",Flags,null,new[]{typeof(int),typeof(int),typeof(int),typeof(bool),typeof(bool),typeof(int),typeof(int)},null);
             var kill=typeof(Projectile).GetMethod("Kill",Flags);
             // Observe the actual emitted snowball's terrain effect. Neither
             // original Kill nor PlaceTile is suppressed or called twice.
-            observer.Patch(placeTile,postfix:new HarmonyMethod(typeof(NativeCombatSnowmanChecks).GetMethod(nameof(Placed),Flags)));
+            observer.Patch(placeTile,prefix:new HarmonyMethod(typeof(NativeCombatSnowmanChecks).GetMethod(nameof(Placing),Flags)),postfix:new HarmonyMethod(typeof(NativeCombatSnowmanChecks).GetMethod(nameof(Placed),Flags)));
             observer.Patch(kill,prefix:new HarmonyMethod(typeof(NativeCombatSnowmanChecks).GetMethod(nameof(Killing),Flags)));
             int totalMatches=0,totalActions=0;
             try
             {
-                for(int scene=0;scene<12;scene++)
+                bool terrainOnly=Environment.GetEnvironmentVariable("JUEMINGR_SNOWMAN_TERRAIN_ONLY")=="1";
+                // Scene9 has two fixed legal initial states, each retaining its
+                // original 900-update window. Neither responsibility requires
+                // a lucky related/unrelated interleave in one natural run.
+                for(int scenario=terrainOnly?9:0;scenario<13;scenario++)
                 {
+                    if(terrainOnly && scenario!=9 && scenario!=12)continue;
+                    int scene=scenario==12?9:scenario;bool unrelatedScene=scenario==12;
                     try
                     {
                         int type=143+scene/4,mode=scene%4;Setup(context,mode);int slot=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1800,2400,type,Start:16,Target:Main.myPlayer);var actor=Main.npc[slot];
                         Require(actor.active && actor.aiStyle==38,"Real Frost Legion birth uses the native shared AI.");
+                        if(scene==9)
+                        {
+                            // A legal completed third-hop pause, still inside
+                            // the native 910px firing half-width. The first
+                            // straight shot arrives while the actor's finite
+                            // hop corridor is remote (the fixed 78 initial
+                            // state). The original near 77 state is x1600 at
+                            // the SAME legal completed third-hop pause.
+                            actor.position=new Vector2(unrelatedScene?2000:1600,2400-actor.height);actor.velocity=Vector2.Zero;actor.ai[0]=0;actor.ai[1]=3;actor.ai[2]=0;
+                        }
                         if(mode==2){actor.AddBuff(BuffID.Confused,1200);Require(actor.FindBuffIndex(BuffID.Confused)>=0,"Actual accepted native confusion buff establishes the confused counterexample.");}
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
                         var freezes=new List<NpcTrajectory>();var phases=new Dictionary<NpcTrajectory,string>();int actions=0,matched=0,longMatches=0,cross=0,selectedCount=0,published=0,pauses=0,resumed=0,turns=0;double maxError=0,tangent=0;
-                        var cumulative=new Dictionary<NpcTrajectory,NpcMotionState>();var frozenCells=new Dictionary<NpcTrajectory,System.Collections.IDictionary>();var firstDifferences=new HashSet<NpcTrajectory>();var changedPremises=new HashSet<NpcTrajectory>();var negativeReported=new HashSet<NpcTrajectory>();NpcMotionState originalBefore=default(NpcMotionState);int nativeFrame=-1,invalidated=0,negativeDifferences=0,recoveredLong=0;long mutationTick=-1;bool mutationPending=false;NpcTrajectory publicationBeforeMutation=null;double negativeMax=0;
+                        var cumulative=new Dictionary<NpcTrajectory,NpcMotionState>();var frozenCells=new Dictionary<NpcTrajectory,System.Collections.IDictionary>();var firstDifferences=new HashSet<NpcTrajectory>();var changedPremises=new HashSet<NpcTrajectory>();var negativeReported=new HashSet<NpcTrajectory>();var ownedNegatives=new List<NpcTrajectory>();NpcMotionState originalBefore=default(NpcMotionState);int nativeFrame=-1,invalidated=0,negativeDifferences=0,recoveredLong=0,sourceRetired=0,displayRetired=0,unrelatedPreserved=0,ownedInvalidated=0,terrainRecoveryMatches=0;long mutationTick=-1,relatedMutationTick=-1;bool mutationPending=false,sourceAffected=false,displayAffected=false,unrelatedLease=false;object sourceLeaseBefore=null,displayLeaseBefore=null;NpcTrajectory publicationBeforeMutation=null,displayBeforeMutation=null,terrainRecovery=null;double negativeMax=0;
+                        placing=()=>
+                        {
+                            if(scene!=9)return;
+                            // Save the actual owners BEFORE native PlaceTile.
+                            // Immutable cells keep their old values across all
+                            // native framing changes, even outside this xy.
+                            publicationBeforeMutation=cache.Read(0);displayBeforeMutation=GetOptional(host,"displayPath") as NpcTrajectory;
+                            displayLeaseBefore=GetOptional(host,"displayTerrain");sourceLeaseBefore=null;
+                            if(publicationBeforeMutation!=null && ReferenceEquals(publicationBeforeMutation,displayBeforeMutation))sourceLeaseBefore=displayLeaseBefore;
+                            else foreach(object continuation in (Array)Get(source,"selectedContinuations"))if(continuation!=null && ReferenceEquals(Get(continuation,"Path"),publicationBeforeMutation)){sourceLeaseBefore=Get(continuation,"Terrain");break;}
+                        };
                         placed=(x,y,t,result)=>
                         {
                             if(scene!=9)return;var tile=Main.tile[x,y];Console.WriteLine("SNOWMAN ORIGINAL-PLACE scene="+scene+" frame="+nativeFrame+" tick="+Main.GameUpdateCount+" xy="+x+","+y+" requested="+t+" result="+result+" actual="+TileState(tile));
@@ -79,14 +108,25 @@ namespace NativeWorldTextProbe
                             foreach(var frozen in freezes)
                             {
                                 object captured=frozenCells[frozen][y*Main.maxTilesX+x];
-                                if(captured!=null && (!(bool)Get(captured,"Active") || (ushort)Get(captured,"Type")!=tile.type) && changedPremises.Add(frozen))invalidated++;
+                                if(CellChanged(terrain,captured,x,y) && changedPremises.Add(frozen))invalidated++;
                             }
-                            publicationBeforeMutation=cache.Read(0);mutationTick=(long)Main.GameUpdateCount;mutationPending=true;
+                            object displayLease=displayLeaseBefore,sourceLease=sourceLeaseBefore;
+                            sourceAffected=sourceLease!=null && CellChanged(terrain,LeaseCell(sourceLease,x,y),x,y);
+                            displayAffected=displayLease!=null && CellChanged(terrain,LeaseCell(displayLease,x,y),x,y);
+                            sourceLeaseBefore=sourceLease;displayLeaseBefore=displayLease;
+                            unrelatedLease=displayBeforeMutation!=null && displayLease!=null && !displayAffected;
+                            mutationTick=(long)Main.GameUpdateCount;mutationPending=true;
+                            // Retain the actual owner objects before the next
+                            // completed-world observation. A sliced consumer
+                            // is never substituted for Source object identity.
+                            Console.WriteLine("SNOWMAN TERRAIN-OWNERS tick="+mutationTick+" sourceLeaseKnown="+(sourceLease!=null)+" sourceAffected="+sourceAffected+" displayAffected="+displayAffected+" unrelatedLeaseCurrent="+unrelatedLease+" frozenAffected="+invalidated);
                         };
                         killing=p=>{if(scene==9 && p.type==109)Console.WriteLine("SNOWMAN ORIGINAL-SNOWBALL-KILL frame="+nativeFrame+" tick="+Main.GameUpdateCount+" slot="+p.whoAmI+" key="+(int)p.key+" position="+p.position+" velocity="+p.velocity+" size="+p.width+","+p.height+" ai="+string.Join("/",p.ai)+" noDrop="+p.noDropItem+" owner="+p.owner);};
                         bool wasPaused=false;int previousDirection=actor.direction,confusedHops=0;float beforeVy=0;var flightPhases=new HashSet<int>();NPC pending=null;NpcMotionState predicted=default(NpcMotionState);bool valid=false;
                         before=n=>
                         {
+                            // The independent action oracle must not reset Source's live cells.
+                            terrain.Reset();
                             pending=n;valid=false;if(!ReferenceEquals(n,actor) || !n.active)return;
                             beforeVy=n.velocity.Y;predicted=(NpcMotionState)read.Invoke(null,new object[]{n,session});object[] args={n,predicted,terrain};capture.Invoke(null,args);predicted=(NpcMotionState)args[1];
                             originalBefore=predicted;
@@ -107,10 +147,28 @@ namespace NativeWorldTextProbe
                             NativeCombatModeledImpactChecks.SampleMouse(context,actor.Center);step();if(!actor.active)break;
                             if(mutationPending)
                             {
+                                // Include original framing/neighbor changes
+                                // completed after PlaceTile returned. These
+                                // immutable leases still belong to the exact
+                                // pre-mutation owner objects saved above.
+                                sourceAffected=LeaseChanged(terrain,sourceLeaseBefore);displayAffected=LeaseChanged(terrain,displayLeaseBefore);
+                                unrelatedLease=displayBeforeMutation!=null && displayLeaseBefore!=null && !displayAffected;
+                                foreach(var old in freezes)if(CellsChanged(terrain,frozenCells[old]) && changedPremises.Add(old))invalidated++;
+                                if(sourceAffected && publicationBeforeMutation!=null){ownedNegatives.Add(publicationBeforeMutation);ownedInvalidated++;}
+                                if(displayAffected && displayBeforeMutation!=null && !ReferenceEquals(displayBeforeMutation,publicationBeforeMutation)){ownedNegatives.Add(displayBeforeMutation);ownedInvalidated++;}
+                                if(sourceAffected || displayAffected){relatedMutationTick=mutationTick;terrainRecovery=null;terrainRecoveryMatches=0;}
                                 var current=cache.Read(0);var prepared=GetOptional(Get(host,"World"),"preparedPath") as NpcTrajectory;
-                                Require(current==null || current.CaptureTick==Main.GameUpdateCount && !ReferenceEquals(current,publicationBeforeMutation),"Actual snow placement retires the preceding production publication.");
-                                Require(prepared==null || ReferenceEquals(prepared,current),"The actual completed presentation consumes only the replacement publication.");
-                                Console.WriteLine("SNOWMAN TERRAIN-PUBLICATION frame="+frame+" tick="+Main.GameUpdateCount+" oldCapture="+(publicationBeforeMutation?.CaptureTick??-1)+" currentCapture="+(current?.CaptureTick??-1)+" preparedCurrent="+ReferenceEquals(prepared,current)+" affectedFrozen="+invalidated);mutationPending=false;
+                                var display=GetOptional(host,"DisplayPath") as NpcTrajectory;var retained=GetOptional(host,"displayPath") as NpcTrajectory;
+                                Console.WriteLine("SNOWMAN TERRAIN-PREDICATE frame="+frame+" now="+Main.GameUpdateCount+" mutation="+mutationTick+" oldCapture="+(publicationBeforeMutation?.CaptureTick??-1)+" oldSample="+(publicationBeforeMutation?.SampleTick??-1)+" oldCount="+(publicationBeforeMutation?.Count??0)+" currentCapture="+(current?.CaptureTick??-1)+" currentSample="+(current?.SampleTick??-1)+" currentCount="+(current?.Count??0)+" sameRaw="+ReferenceEquals(current,publicationBeforeMutation)+" preparedCapture="+(prepared?.CaptureTick??-1)+" preparedSample="+(prepared?.SampleTick??-1)+" preparedRaw="+ReferenceEquals(prepared,current)+" preparedDisplay="+ReferenceEquals(prepared,display)+" retainedCapture="+(retained?.CaptureTick??-1)+" retainedSample="+(retained?.SampleTick??-1)+" lease="+Get(host,"displayLeaseTick")+" affectedFrozen="+invalidated);
+                                // RollingStep advances projectiles (including
+                                // this actual PlaceTile) before UpdateRuntime
+                                // and UpdateShell. This is the first completed
+                                // owner opportunity to observe the changed cell.
+                                if(sourceAffected){Require(current==null || current.CaptureTick>=mutationTick && !ReferenceEquals(current,publicationBeforeMutation),"A changed captured cell retires its actual preceding Source publication.");sourceRetired++;}
+                                if(displayAffected){Require(display==null || !ReferenceEquals(display,displayBeforeMutation) && display.CaptureTick>=mutationTick,"A changed captured cell retires the old display lease.");displayRetired++;}
+                                Require(ReferenceEquals(prepared,display),"The completed presentation consumes exactly the actual Host display lease, independently of the latest Source publication.");
+                                if(unrelatedLease && ReferenceEquals(display,displayBeforeMutation)){Require((long)Get(host,"displayLeaseTick")==Main.GameUpdateCount,"An unrelated tile placement preserves only a genuinely current owner lease.");unrelatedPreserved++;}
+                                Console.WriteLine("SNOWMAN TERRAIN-PUBLICATION frame="+frame+" tick="+Main.GameUpdateCount+" oldCapture="+(publicationBeforeMutation?.CaptureTick??-1)+" currentCapture="+(current?.CaptureTick??-1)+" sourceAffected="+sourceAffected+" displayAffected="+displayAffected+" unrelatedPreserved="+unrelatedPreserved+" preparedCurrent="+ReferenceEquals(prepared,current)+" affectedFrozen="+invalidated);mutationPending=false;
                             }
                             // Confused still jumps, but native resets ai0/ai1
                             // after EVERY grounded hop. Its genuine phase
@@ -119,10 +177,16 @@ namespace NativeWorldTextProbe
                             string phase=actor.ai[0]+"/"+actor.ai[1]+"/"+(actor.ai[1]>=3 && type!=143)+(mode==2?"/flight="+Math.Sign(actor.velocity.Y):"");bool paused=type!=143 && actor.ai[1]>=3;if(paused)pauses++;if(wasPaused && !paused)resumed++;wasPaused=paused;
                             if(actor.direction!=previousDirection){turns++;previousDirection=actor.direction;}
                             bool selected=(bool)Get(Get(host,"Selection"),"HasTarget") && ReferenceEquals(((NpcIdentity)Get(Get(host,"Selection"),"Target")).Token,actor);if(selected)selectedCount++;
-                            var path=cache.Read(0);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.CaptureTick==Main.GameUpdateCount,"Current actual Frost Legion actor owns the full production publication.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=phase;if(scene==9){var sampled=(NpcMotionState)read.Invoke(null,new object[]{actor,session});object[] captured={actor,sampled,terrain};capture.Invoke(null,captured);cumulative[path]=(NpcMotionState)captured[1];var copy=new System.Collections.Hashtable();foreach(System.Collections.DictionaryEntry cell in (System.Collections.IDictionary)Get(terrain,"cells"))copy.Add(cell.Key,cell.Value);frozenCells[path]=copy;}}}
+                            var path=NativeCombatPresentationChecks.CurrentPath(host);if(path!=null && ReferenceEquals(path.Identity.Token,actor)){Require(selected && path.SampleTick==Main.GameUpdateCount,"Current actual Frost Legion actor owns the full production publication.");published++;if(frame%5==0 && path.Count>1){freezes.Add(path);phases[path]=phase;if(scene==9){var sampled=(NpcMotionState)read.Invoke(null,new object[]{actor,session});object[] captured={actor,sampled,terrain};capture.Invoke(null,captured);cumulative[path]=(NpcMotionState)captured[1];frozenCells[path]=NativeCombatPresentationChecks.CurrentCells(host);}}}
+                            if(scene==9)
+                            {
+                                if(terrainRecovery==null && relatedMutationTick>=0 && path!=null && path.CaptureTick>=relatedMutationTick && path.Count>30)terrainRecovery=path;
+                                if(terrainRecovery!=null){long age=(long)Main.GameUpdateCount-terrainRecovery.SampleTick;if(age>0 && age<terrainRecovery.Count){var point=terrainRecovery[(int)age];Require(Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position)<=.08 && point.NoTileCollide==actor.noTileCollide,"The genuinely new terrain observation retains its native recovery geometry.");terrainRecoveryMatches++;}}
+                                for(int i=ownedNegatives.Count-1;i>=0;i--){var old=ownedNegatives[i];long age=(long)Main.GameUpdateCount-old.SampleTick;if(age>=old.Count){ownedNegatives.RemoveAt(i);continue;}if(age<=0)continue;var point=old[(int)age];double error=Vector2.Distance(new Vector2(point.Bounds.X,point.Bounds.Y),actor.position);negativeMax=Math.Max(negativeMax,error);if(error>.08 && negativeReported.Add(old)){negativeDifferences++;Console.WriteLine("SNOWMAN OWNED-TERRAIN-NEGATIVE tick="+Main.GameUpdateCount+" capture="+old.CaptureTick+" sample="+old.SampleTick+" age="+age+" error="+error+" relatedMutation="+relatedMutationTick);}}
+                            }
                             for(int i=freezes.Count-1;i>=0;i--)
                             {
-                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(offset>=frozen.Count){freezes.RemoveAt(i);cumulative.Remove(frozen);frozenCells.Remove(frozen);firstDifferences.Remove(frozen);changedPremises.Remove(frozen);negativeReported.Remove(frozen);phases.Remove(frozen);continue;}if(offset<=0)continue;
+                                var frozen=freezes[i];int offset=(int)((long)Main.GameUpdateCount-frozen.SampleTick);if(offset>=frozen.Count){freezes.RemoveAt(i);cumulative.Remove(frozen);frozenCells.Remove(frozen);firstDifferences.Remove(frozen);changedPremises.Remove(frozen);negativeReported.Remove(frozen);phases.Remove(frozen);continue;}if(offset<=0)continue;
                                 string replayDetail="";
                                 if(scene==9)
                                 {
@@ -150,18 +214,23 @@ namespace NativeWorldTextProbe
                             }
                             rows.Add(string.Join(",",scene,frame,type,actor.ai[0],actor.ai[1],actor.ai[2],actor.ai[3],selected,path!=null,path?.Count??0,path?.Stop.ToString()??"none",matched,longMatches,maxError.ToString("R",CultureInfo.InvariantCulture),cross,actions));
                         }
-                        before=after=null;placed=null;killing=null;Require(actions>=500 && selectedCount>0 && published>0 && longMatches>=30 && tangent>8 && cross>=30,"Natural full Frost Legion paths curve and cross actual hop phases over long windows: "+scene+" actions="+actions+" pub="+published+" long="+longMatches+" cross="+cross);
+                        before=after=null;placing=null;placed=null;killing=null;Require(actions>=500 && selectedCount>0 && published>0 && longMatches>=30 && tangent>8 && cross>=30,"Natural full Frost Legion paths curve and cross actual hop phases over long windows: "+scene+" actions="+actions+" pub="+published+" long="+longMatches+" cross="+cross);
                         if(type!=143 && mode!=2)Require(pauses>=16 && resumed>0,"Real third hop enters and completes the native pause: "+scene+" paused="+pauses+" resumed="+resumed);
                         if(mode==2)Require(pauses==0 && confusedHops>=5 && flightPhases.Contains(-1) && flightPhases.Contains(1),"Actual confusion resets counters and pauses while natural repeated hops cross ascent and descent: hops="+confusedHops);
                         if(mode==1)Require(turns>0,"Real wall contact exercises native same-position turn recovery.");
-                        if(scene==9){Require(invalidated>0 && negativeDifferences>0 && negativeMax>.08 && recoveredLong>=30,"The real terrain mutation retains the old frozen disagreement as a negative case and recovers long qualified paths on new samples.");Console.WriteLine("SNOWMAN TERRAIN-RECOVERY invalidated="+invalidated+" negativeDifferences="+negativeDifferences+" negativeMax="+negativeMax+" recoveredLong="+recoveredLong);}
+                        if(scene==9)
+                        {
+                            Console.WriteLine("SNOWMAN TERRAIN-RECOVERY responsibility="+(unrelatedScene?"unrelated":"related")+" invalidated="+invalidated+" ownedInvalidated="+ownedInvalidated+" sourceRetired="+sourceRetired+" displayRetired="+displayRetired+" unrelatedPreserved="+unrelatedPreserved+" negativeDifferences="+negativeDifferences+" negativeMax="+negativeMax+" recoveredLong="+recoveredLong+" recoveryCapture="+(terrainRecovery?.CaptureTick??-1)+" relatedMutation="+relatedMutationTick+" recoveryMatches="+terrainRecoveryMatches);
+                            if(unrelatedScene)Require(unrelatedPreserved>0,"A real unrelated tile mutation preserves the same actual Display object and its current update lease.");
+                            else Require(ownedInvalidated>0 && sourceRetired>0 && displayRetired>0 && negativeDifferences>0 && negativeMax>.08 && recoveredLong>=30 && terrainRecovery!=null && terrainRecoveryMatches>=30,"A real related tile mutation retires actual Source/Display owners, retains their old-future disagreement and matches thirty native recovery actions from a genuinely new sample.");
+                        }
                         totalActions+=actions;totalMatches+=matched;Console.WriteLine("SNOWMAN scene="+scene+" type="+type+" actions="+actions+" matched="+matched+" long="+longMatches+" cross="+cross+" pauses="+pauses+" resumed="+resumed+" turns="+turns+" error="+maxError);
                     }
-                    catch(Exception failure) when(!(failure is OutOfMemoryException)){before=after=null;placed=null;killing=null;failures.Add(scene+": "+failure.Message);Console.WriteLine("SNOWMAN FAIL scene="+scene+": "+failure);}
+                    catch(Exception failure) when(!(failure is OutOfMemoryException)){if(!JueMingR.Testing.BusinessAssertionProtocol.IsAssertion(failure))throw;before=after=null;placing=null;placed=null;killing=null;failures.Add(scene+"/"+(unrelatedScene?"unrelated":"related")+": "+failure.Message);Console.WriteLine("SNOWMAN FAIL scene="+scene+" responsibility="+(unrelatedScene?"unrelated":"related")+": "+failure);}
                 }
-                Require(failures.Count==0,"Native Frost Legion scene failures="+failures.Count+": "+string.Join(" | ",failures));Console.WriteLine("PASS native Frost Legion scenes=12 matched="+totalMatches+" actions="+totalActions);
+                Require(failures.Count==0,"Native Frost Legion scene failures="+failures.Count+": "+string.Join(" | ",failures));Console.WriteLine("PASS native Frost Legion scenes="+(terrainOnly?2:13)+" matched="+totalMatches+" actions="+totalActions);
             }
-            finally{before=after=null;placed=null;killing=null;observer.Unpatch(update,HarmonyPatchType.All,observer.Id);observer.Unpatch(placeTile,HarmonyPatchType.All,observer.Id);observer.Unpatch(kill,HarmonyPatchType.All,observer.Id);Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"snowman-continuous.csv"),rows);}
+            finally{before=after=null;placing=null;placed=null;killing=null;observer.Unpatch(update,HarmonyPatchType.All,observer.Id);observer.Unpatch(placeTile,HarmonyPatchType.All,observer.Id);observer.Unpatch(kill,HarmonyPatchType.All,observer.Id);Directory.CreateDirectory(output);File.WriteAllLines(Path.Combine(output,"snowman-continuous.csv"),rows);}
         }
         private static void Setup(object context,int mode)
         {
@@ -174,6 +243,18 @@ namespace NativeWorldTextProbe
             for(int i=0;i<p.hurtCooldowns.Length;i++)p.hurtCooldowns[i]=1000000;
             NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions(path:false,mouseCenter:true,clearLine:false,radius:50));
         }
+        private static object LeaseCell(object lease,int x,int y)
+        {foreach(object pair in (Array)Get(lease,"values"))if((int)Get(pair,"Key")==y*Main.maxTilesX+x)return Get(pair,"Value");return null;}
+        private static bool CellChanged(IPredictionTerrain terrain,object captured,int x,int y)
+        {
+            if(captured==null)return false;
+            object[] args={x,y,null};bool read=(bool)terrain.GetType().GetMethod("ReadCell",Flags).Invoke(null,args);
+            return !read || !captured.Equals(args[2]);
+        }
+        private static bool LeaseChanged(IPredictionTerrain terrain,object lease)
+        {if(lease==null)return false;foreach(object pair in (Array)Get(lease,"values")){int key=(int)Get(pair,"Key");if(CellChanged(terrain,Get(pair,"Value"),key%Main.maxTilesX,key/Main.maxTilesX))return true;}return false;}
+        private static bool CellsChanged(IPredictionTerrain terrain,System.Collections.IDictionary cells)
+        {foreach(System.Collections.DictionaryEntry pair in cells){int key=(int)pair.Key;if(CellChanged(terrain,pair.Value,key%Main.maxTilesX,key/Main.maxTilesX))return true;}return false;}
         private static string State(NpcMotionState n)
         {return n.X.ToString("R",CultureInfo.InvariantCulture)+","+n.Y.ToString("R",CultureInfo.InvariantCulture)+" bits="+Bits(n.X)+","+Bits(n.Y)+" size="+n.Width+","+n.Height+" V="+n.Vx.ToString("R",CultureInfo.InvariantCulture)+","+n.Vy.ToString("R",CultureInfo.InvariantCulture)+" Vbits="+Bits(n.Vx)+","+Bits(n.Vy)+" ai="+n.A0+"/"+n.A1+"/"+n.A2+"/"+n.A3+" local2="+n.L2.ToString("R",CultureInfo.InvariantCulture)+" collide="+n.CollideX+","+n.CollideY+" dir="+n.Direction+" oldV="+n.OldVx.ToString("R",CultureInfo.InvariantCulture)+","+n.OldVy.ToString("R",CultureInfo.InvariantCulture);}
         private static string Bits(float value){return BitConverter.ToInt32(BitConverter.GetBytes(value),0).ToString("X8");}

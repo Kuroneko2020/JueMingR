@@ -16,6 +16,8 @@ namespace JueMingR.ArchitectureTests
             SlimeContinuation();
             IncrementalPrefix();
             BudgetPrefix();
+            FirstPublicationBudget();
+            WormSlotLookup();
             SegmentedObservationHistory();
             MultiSlotPrefix();
             TowerFrameEndPrefix();
@@ -105,10 +107,11 @@ namespace JueMingR.ArchitectureTests
             internal int BudgetNpcSlot=-1,BudgetNpcAction;private int npcActions;
             internal bool Changed;
             internal bool BadPlayer,CliffSupport,UnknownCliff,PeriodicPlayer;private int playerMoves;
+            internal Action OnMove;
             public bool Unchanged=>!Changed;
             public void Reset(){Resets++;Moves=0;playerMoves=0;npcActions=0;}
             public bool Move(ref NpcMotionState n,PredictionEnvironment e,out PredictionStop stop)
-            {stop=PredictionStop.None;TotalMoves++;if(++Moves>Limit){stop=PredictionStop.TerrainUnavailable;return false;}n.X+=n.Vx;n.Y+=n.Vy;if(BudgetThrowAt>0 && Moves==BudgetThrowAt || BudgetNpcAction>0 && !n.Friendly && n.Identity.Slot==BudgetNpcSlot && ++npcActions==BudgetNpcAction){n.X+=10000;throw new CombatPredictionBudgetExceededException();}if(BadPlayer && n.Friendly)n.Y=float.NaN;if(PeriodicPlayer && n.Friendly)n.X+=(++playerMoves%7==0?-6:1);return true;}
+            {stop=PredictionStop.None;TotalMoves++;OnMove?.Invoke();if(++Moves>Limit){stop=PredictionStop.TerrainUnavailable;return false;}n.X+=n.Vx;n.Y+=n.Vy;if(BudgetThrowAt>0 && Moves==BudgetThrowAt || BudgetNpcAction>0 && !n.Friendly && n.Identity.Slot==BudgetNpcSlot && ++npcActions==BudgetNpcAction){n.X+=10000;throw new CombatPredictionBudgetExceededException();}if(BadPlayer && n.Friendly)n.Y=float.NaN;if(PeriodicPlayer && n.Friendly)n.X+=(++playerMoves%7==0?-6:1);return true;}
             public bool Solid(MotionRect area,out bool solid,out PredictionStop stop){solid=false;stop=PredictionStop.None;return true;}
             public bool CanHit(MotionRect a,MotionRect b,out bool clear,out PredictionStop stop){clear=true;stop=PredictionStop.None;return true;}
             public bool Tile(int x,int y,out PredictionTile tile,out PredictionStop stop)
@@ -155,6 +158,65 @@ namespace JueMingR.ArchitectureTests
             terrain.Changed=false;n.Identity=new NpcIdentity(1,new object(),1,2,999,999);
             var replaced=model.Prepare(new[]{n},1,0,100,20,1,e,p,terrain,null,true,40);
             Require(!ReferenceEquals(changedCells.CalculationToken,replaced.CalculationToken) && replaced.Identity.Equals(n.Identity),"Slot reuse never extends the former target's calculation.");
+        }
+        // Advance the test owner's charged clock at a real actor/geometry
+        // boundary. Large separated ceilings avoid scheduler/sleep timing as
+        // the oracle; this does not alter any production clock or allowance.
+        private static void Charge(CombatPredictionWork work,double milliseconds)
+        {typeof(CombatPredictionWork).GetField("spent",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(work,(long)(milliseconds*System.Diagnostics.Stopwatch.Frequency/1000));}
+        private static void FirstPublicationBudget()
+        {
+            var a=PrefixState();var b=a;b.Identity=new NpcIdentity(1,new object(),5,2,999,999);b.X+=100;
+            var group=new[]{a,b};var env=new PredictionEnvironment{WorldWidth=4200,WorldHeight=1200,WorldSurface=400};var player=new PredictionPlayerMotion{Width=20,Height=40,GravityDirection=1};
+            var oracle=new RollingNpcPrediction().Prepare(group,2,1,10,8,1,env,player,new EmptyTerrain());
+            var work=new CombatPredictionWork(1000);var terrain=new EmptyTerrain();terrain.OnMove=()=>{Charge(work,150);CombatPredictionWork.CheckGeometry();};
+            using(work.Enter(700))using(CombatPredictionWork.Optional(500))
+            {
+                NpcTrajectory result;
+                using(CombatPredictionWork.FirstPublicationProgress())using(CombatPredictionWork.Optional(100))
+                    result=new RollingNpcPrediction().Prepare(group,2,1,10,8,1,env,player,terrain);
+                Require(result!=null && result.Count==2 && result.BudgetPaused && terrain.TotalMoves==2 && !work.Exceeded,"Inner optional exhaustion completes exactly the first whole two-actor frame; the tail pauses at its original ceiling.");
+                SamePrefix(result,oracle,1,"First-publication admission preserves original actor order and complete motion");
+                CombatPredictionWork.Check();
+                using(CombatPredictionWork.FirstPublicationProgress())using(CombatPredictionWork.Optional(100))
+                    Require(!CombatPredictionWork.TryContinue(),"Another entry cannot reacquire the first unit or reset charged optional time.");
+                using(work.Enter(700))using(CombatPredictionWork.FirstPublicationProgress())using(CombatPredictionWork.Optional(100))
+                    Require(!CombatPredictionWork.TryContinue(),"Nested same-update owners retain the exhausted slice and consumed admission.");
+            }
+            using(work.Enter(700))using(CombatPredictionWork.Optional(500))using(CombatPredictionWork.FirstPublicationProgress())using(CombatPredictionWork.Optional(100))
+                Require(!CombatPredictionWork.TryContinue(),"Leaving and reopening the real owner in the same update cannot grant progress again.");
+            using(work.Enter(701))using(CombatPredictionWork.Optional(500))using(CombatPredictionWork.FirstPublicationProgress())using(CombatPredictionWork.Optional(100))
+            {
+                Charge(work,150);Require(CombatPredictionWork.TryContinue(),"Only the next real update receives a new complete-unit admission.");
+                using(CombatPredictionWork.Limit(125))Require(!CombatPredictionWork.TryContinue() && !work.Exceeded,"First progress cannot widen an explicit enclosing or inner Limit.");
+                Charge(work,550);Require(!CombatPredictionWork.TryContinue() && !work.Exceeded,"The outer optional ceiling remains effective inside the unit.");
+                Charge(work,1100);Require(!CombatPredictionWork.TryContinue() && work.Exceeded,"The original hard limit remains effective inside the unit.");
+            }
+            work=new CombatPredictionWork(1000);terrain=new EmptyTerrain();var hardModel=new RollingNpcPrediction();terrain.OnMove=()=>{Charge(work,1100);CombatPredictionWork.Check();};
+            using(work.Enter(702))using(CombatPredictionWork.Optional(500))using(CombatPredictionWork.FirstPublicationProgress())using(CombatPredictionWork.Optional(100))
+                Require(hardModel.Prepare(group,2,1,10,8,1,env,player,terrain)==null,"Hard exhaustion inside the admitted first actor never publishes half a world step.");
+            terrain.OnMove=null;
+            var recovered=hardModel.Prepare(group,2,1,10,8,1,env,player,terrain);
+            SamePrefix(recovered,oracle,8,"A later unbudgeted solve cannot inherit the failed actor's scratch");
+        }
+        private static void WormSlotLookup()
+        {
+            var method=typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcWormMotion",true).GetMethod("LinkDestroyer",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
+            var head=new NpcMotionState{Identity=new NpcIdentity(1,new object(),10,1,134,134),Style=37,Active=true,Life=100,X=100,Y=100,Width=44,Height=44};
+            var queen=new NpcMotionState{Identity=new NpcIdentity(1,new object(),11,1,127,127),Style=32,Active=true,Life=100,X=200,Y=40,Width=88,Height=112};
+            var body=new NpcMotionState{Identity=new NpcIdentity(1,new object(),12,1,135,135),Style=37,Active=true,Life=100,X=160,Y=180,Width=44,Height=44,Scale=1,ParentSlot=10,ParentIdentity=head.Identity,MechFactsCaptured=true,MechQueenIdentity=queen.Identity};
+            var env=new PredictionEnvironment{MechQueenUp=true};object[] dense={body,new[]{head,queen,body},3,env,PredictionStop.None};
+            Require((bool)method.Invoke(null,dense),"A dense actual native-slot closure resolves the full parent and Queen identities.");var expected=(NpcMotionState)dense[0];
+            queen.Identity=new NpcIdentity(1,queen.Identity.Token,50,1,127,127);body.Identity=new NpcIdentity(1,body.Identity.Token,80,1,135,135);body.MechQueenIdentity=queen.Identity;
+            foreach(var group in new[]{new[]{head,queen,body},new[]{body,queen,head}})
+            {
+                object[] sparse={body,group,3,env,PredictionStop.None};Require((bool)method.Invoke(null,sparse),"Sparse and unordered raw callers retain their original identity scan.");var actual=(NpcMotionState)sparse[0];
+                Require(actual.X==expected.X && actual.Y==expected.Y && actual.Vx==expected.Vx && actual.Vy==expected.Vy,"Slot layout changes cannot alter the native parent/Queen link geometry.");
+            }
+            body.ParentIdentity=new NpcIdentity(1,new object(),10,2,134,134);object[] replaced={body,new[]{head,queen,body},3,env,PredictionStop.None};
+            Require(!(bool)method.Invoke(null,replaced) && (PredictionStop)replaced[4]==PredictionStop.MissingDependency,"A matching parent slot never authenticates a replaced token/generation.");
+            body.ParentIdentity=head.Identity;body.MechQueenIdentity=new NpcIdentity(1,new object(),50,2,127,127);replaced[0]=body;
+            Require(!(bool)method.Invoke(null,replaced) && (PredictionStop)replaced[4]==PredictionStop.MissingDependency,"A matching Queen slot never authenticates a replaced token/generation.");
         }
         private static void BudgetPrefix()
         {

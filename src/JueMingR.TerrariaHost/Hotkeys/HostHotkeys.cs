@@ -15,9 +15,11 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal readonly HotkeyBindings Bindings;
         internal readonly HotkeyStateFeedback Feedback;
         private readonly JourneyHotkeys journey;
+        private readonly F5.IMovementControls movementOwner;
+        private readonly Action movementModeChanged;
         internal void PollJourneyRegistration() { journey?.Refresh(); }
         internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null, WorldObjectText.HostWorldObjectText worldObjects = null,
-            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null, F5.IMapControls maps = null, F5.IFootprintControls footprints = null, Func<bool> canAnnounce = null, Action announce = null, Func<bool> canQuery = null, Action query = null, F5.IAnnouncementControls announcements = null, QuickItems.HostQuickItems quickItems = null, CoinDeposit.HostCoinDeposit coinDeposit = null, Recovery.HostRecovery recovery = null, Processing.HostProcessing processing = null, Feedback.LocalShortFeedback display = null, Tools.HostTools tools = null, Fishing.HostFishing fishing = null, Combat.HostCombat combat = null, Combat.HostCombatObservation combatObservation=null, F5.IJourneyControls journey = null, Features.HiddenFeatures.HiddenFeatureAccess hiddenAccess = null, Action journeyToggle = null)
+            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null, F5.IMapControls maps = null, F5.IFootprintControls footprints = null, Func<bool> canAnnounce = null, Action announce = null, Func<bool> canQuery = null, Action query = null, F5.IAnnouncementControls announcements = null, QuickItems.HostQuickItems quickItems = null, CoinDeposit.HostCoinDeposit coinDeposit = null, Recovery.HostRecovery recovery = null, Processing.HostProcessing processing = null, Feedback.LocalShortFeedback display = null, Tools.HostTools tools = null, Fishing.HostFishing fishing = null, Combat.HostCombat combat = null, Combat.HostCombatObservation combatObservation=null, F5.IJourneyControls journey = null, Features.HiddenFeatures.HiddenFeatureAccess hiddenAccess = null, Action journeyToggle = null, F5.IMovementControls movement = null)
         {
             if (display != null) Feedback = new HotkeyStateFeedback(display);
             RegisterSwitch(HotkeyActionIds.Biome, "群系显示",
@@ -84,6 +86,22 @@ namespace JueMingR.TerrariaHost.Hotkeys
             // action and must remain available while announcements are disabled.
             if (announcements != null) RegisterSwitch(F5.AnnouncementControls.ToggleActionId, "快捷宣告", () => announcements.CanConfigure, () => announcements.SetEnabled(!announcements.Enabled), () => announcements.Enabled ? 1 : 0, registryName: "快捷宣告开关");
             if (canQuery != null && query != null) Registry.Register(new HotkeyAction("item-browser.query", "查询悬停物品", HotkeyContext.Gameplay, canQuery, query));
+            if (movement != null)
+            {
+                movementOwner = movement;
+                if (display != null)
+                {
+                    movementModeChanged = () => { try { display.Remove(F5.MovementControls.ActionIds[1]); } catch { } };
+                    movement.DashModeChanged += movementModeChanged;
+                }
+                for (int i = 0; i < 3; i++)
+                {
+                    int feature = i;
+                    RegisterSwitch(F5.MovementControls.ActionIds[i], F5.MovementControls.Names[i], () => movement.Available(feature), () => movement.SetEnabled(feature, !movement.IsEnabled(feature)),
+                        () => !movement.IsEnabled(feature) ? 0 : feature == 1 && movement.DashMode == Features.Movement.ContinuousDashMode.DoubleTap ? 2 : 1,
+                        mode: feature == 1 ? (Func<int, string>)(value => value == 1 ? "按住" : "双击") : null);
+                }
+            }
             quickItems?.Register(Registry, Feedback);
             coinDeposit?.Register(Registry, Feedback);
             recovery?.Register(Registry, Feedback);
@@ -100,6 +118,6 @@ namespace JueMingR.TerrariaHost.Hotkeys
         private void RegisterSwitch(string id, string name, Func<bool> available, Action command, Func<int> state, Action apply = null, Func<int, string> mode = null, string registryName = null)
         { Registry.Register(new HotkeyAction(id, registryName ?? name, HotkeyContext.Gameplay, available, Feedback == null ? command : Feedback.Immediate(id, name, command, state, available, apply, mode))); }
         private void OnExit(object sender, EventArgs args)
-        { AppDomain.CurrentDomain.ProcessExit -= OnExit; Bindings.Stop(750); }
+        { AppDomain.CurrentDomain.ProcessExit -= OnExit; if (movementOwner != null && movementModeChanged != null) movementOwner.DashModeChanged -= movementModeChanged; Bindings.Stop(750); }
     }
 }
