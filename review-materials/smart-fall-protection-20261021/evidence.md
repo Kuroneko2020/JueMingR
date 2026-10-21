@@ -125,3 +125,13 @@ PrepareOnly 只签编译/结构。开发失败原件在 `.local/smart-fall-repai
 R1最终仅新执行 `native-MovementSmartFallCpu`，批次 `artifacts/build/workload-checkpoints/ee4ba25604e04d3081bb99edc123646e/targeted-results.json`，execution `df297ceb7547442ab6adcf4390f2ca2a`，PASS/STABLE；同目录原receipt/log/qualification保留。实际执行为a07bb238加R1明确dirty；源指纹前后 `471855FD10AF0FAEE6832E88C664FCCDF254C0449AF0462E3C23E7BF0FD2D0E6`，输入前后 `60F0781BE9C34C1B0F21FF2696E3B63374ECCF53E76CA9652CFD47B8CCB82946`，buildMatch=true。STABLE时间 `2026-10-21T17:55:36.2602112Z`，receipt SHA256 `D493CB624A2EE4D79AD4EEB9C4134521ED744452CC9AB1302577727C3BA4BA05`。PrepareOnly仍只签编译/结构；两项未改纯层检查保留7163批次原执行和已成立审查，不改签为本轮重跑。首轮R1运行及补失效负例的运行均保原身份，最终普通步行适用边界冻结后沿本次原件签结果；无新范围或全PR重审。
 
 自查覆盖新增支撑证明独立于旧精确X曲线的原因、最多64格/48标量步边界、真实支撑失效出口和危险慢钩正例；R1修订只涉及Host/Geometry/专属原生代表及本设计/证据。四外来资产长度/hash匹配，等待同一审查者R1增量复核与主准入，尚未最终包/安装，既有Main/FPS/联网/所有者未测边界保持。
+
+## 五项修复最终普通包与一次同目标换装
+
+初审有效结论、R1修订及E1身份机械校正的最终独审PASS，组合覆盖 `bff556a→4a5f8bee21b739fe3d0d3eb0edeaa10637ab5101`；主调度准入后，包与本机现装均来自该固定源码。本文随后追加交付记录，不改变该包的source commit，也不因此重测／重包／重装。普通完整ContinuousProcessing/Release/net472/x86保留全部现有功能及辅助瞄准；不是诊断包，`clean=false`只因已声明四外来非执行资产，产品变更已提交，资格仍INCOMPLETE/releaseEligible=false。
+
+普通完整ZIP：`outputs/smart-fall-repair-20261022-4a5f8be/JueMingR-Continuous-Processing-4a5f8bee21b739fe3d0d3eb0edeaa10637ab5101.zip`，2,351,886字节，SHA256 `2386B9E2827E7A3BDE6E784C014701FB7BEC3F57384B9D08519E8EC12D475504`。同目录 `phase-0-s-build-record.json` SHA256 `3C84FDE1791FBEE0AD88068A5D8134D1A43FE094DC08A589A335BC4B3D2F6C90`；正式构建器已核完整17文件包树/ZIP及10载荷、源码/Release身份。PrepareOnly和当前native原执行有效复用后，经现有候选职责记录／StageDevelopmentRecord打包；207项目录保留范围外 `native-NpcSkeletonBoss` 原FAIL与94项未执行，不裸跑Related/Full，不补历史测试树。最终必要native仍为df297原身份，另两项本轮纯层检查及其它历史原件不改签新SHA实跑。
+
+同一已确认目标：先核旧bff556a source、原receipt SHA256 `65BE87971AE7E6C8B489E177F3473CF790295985B043451150F795B71FBC1B43`、准确受控owner及无活动游戏/server/worker；备份12项（10载荷、旧receipt、已有evidence日志）。旧包正式Restore exit0/RESTORE_COMPLETE，新包Install exit0/INSTALL_COMPLETE，一次正式owner/payload/receipt读回PASS，完成时间2026-10-22T02:08:46+08:00。新receipt SHA256 `7686326849533952D9D9C917C216205067C34C1198C020CC0E62337794B5E3C3`；本地结果 `.local/smart-fall-repair-20261022/smart-fall-install-4a5f8be-result.json`，轻量备份 `smart-fall-backup-4a5f8be-20261022T020843/backup.json` SHA256 `ED0C669D91BC8C5659CA9411F3DE29CC5B51A3346F09B6629420004B9C6DF256`。原bff包、旧受控备份、正式Restore/Install恢复材料保留，没有回装演练或第二轮安装审计。
+
+回执的 `installationAuthorized=false` 沿用候选资格字段，表示候选记录本身不自动授予安装权；本次实际安装依据所有者20261022同目标明确委托及主调度准入，与回执 `installationAuthority` 分列，不改原工具回执。没有启动／操作真实游戏、角色、世界、存档或强杀进程，JueMingRData未触碰；包、文件安装不代签完整Main／图形／物理设备／FPS／真实好友房主客机或所有者体验。当前停止自主开发，等待所有者按包内短卡体验及网页复审；Draft/open保持，不合并／关闭／Tag／Release／版本推进。
