@@ -135,3 +135,25 @@ R1最终仅新执行 `native-MovementSmartFallCpu`，批次 `artifacts/build/wor
 同一已确认目标：先核旧bff556a source、原receipt SHA256 `65BE87971AE7E6C8B489E177F3473CF790295985B043451150F795B71FBC1B43`、准确受控owner及无活动游戏/server/worker；备份12项（10载荷、旧receipt、已有evidence日志）。旧包正式Restore exit0/RESTORE_COMPLETE，新包Install exit0/INSTALL_COMPLETE，一次正式owner/payload/receipt读回PASS，完成时间2026-10-22T02:08:46+08:00。新receipt SHA256 `7686326849533952D9D9C917C216205067C34C1198C020CC0E62337794B5E3C3`；本地结果 `.local/smart-fall-repair-20261022/smart-fall-install-4a5f8be-result.json`，轻量备份 `smart-fall-backup-4a5f8be-20261022T020843/backup.json` SHA256 `ED0C669D91BC8C5659CA9411F3DE29CC5B51A3346F09B6629420004B9C6DF256`。原bff包、旧受控备份、正式Restore/Install恢复材料保留，没有回装演练或第二轮安装审计。
 
 回执的 `installationAuthorized=false` 沿用候选资格字段，表示候选记录本身不自动授予安装权；本次实际安装依据所有者20261022同目标明确委托及主调度准入，与回执 `installationAuthority` 分列，不改原工具回执。没有启动／操作真实游戏、角色、世界、存档或强杀进程，JueMingRData未触碰；包、文件安装不代签完整Main／图形／物理设备／FPS／真实好友房主客机或所有者体验。当前停止自主开发，等待所有者按包内短卡体验及网页复审；Draft/open保持，不合并／关闭／Tag／Release／版本推进。
+## 2026-10-22 社交装备闭环纠正 checkpoint
+
+起点 b816b5f346fa5869f32bd5acb3e8bed60d240ead；同分支 codex/smart-fall-protection。本次完整委托为 references/JMR_SMART_FALL_SOCIAL_ACCESSORY_FIX_v1/ 四份原件，有限替代旧 C1 对真实临借三类激活的绝对禁止；模拟连跳不补资源。
+
+social_integrator 是唯一实施作者，独占本包生产/直接检查/合同设计/evidence、公共构建、Git/GitHub 及准入后的完整包/同目标安装。四项既有外来资产保持且不提交。实际子会话 rollout-2026-10-22T02-48-56-01a15fcb-870e-7392-90ba-8753a1440a88.jsonl 已由主核 gpt-6.1-sol/high。
+
+当前已确认选材→真实临借→原版装备选项与资源脱节；尚未签发修复PASS。下一步固定七bit自然周期账本、真实loan/token绑定激活、七机制真实消费者与反滥用验证；候选冻结后集中独审，准入前不正式打包安装。既有4a5f8bee包/安装及历史FAIL/NOT_RUN保原身份。
+### 社交闭环本轮实现与冻结证据（2026-10-22）
+
+本轮起点 b816b5f346fa5869f32bd5acb3e8bed60d240ead；原生产/现装4a5f8bee不回滚。旧C1“普通社交瓶永远不补能力”由所有者最新完整委托有限替代。根因是候选仅接收已有unused、火箭/飞毯资源门在真实临借前拒绝自然空资源；原版换装只建立能力option，不在空中补起动机会，旧SocialBottleNoCharge又以背包马掌代救接受错误结果。
+
+实现将五族静态映射独立，优先使用真实原版余量，再在真实合法借用后激活一族二跳、一个原生火箭点火单位或一次canCarpet起动。BorrowOwner冻结交换前有效装备族；消费者前复核准确Player/generation/token、两端引用/关键值及合法有效槽。七bit账本记录真实消费/授予，以原版RefreshDoubleJumps只读事件清周期；归还、开关、配装、短暂安全均不清，OFF/首次开启保留原生消费事实。未消费异常仅撤同周期且仍有所有权的贡献，保留原异常和已耗额度。没有主动全刷新、手写option/翼时/carpetTime/运动/fallStart/生命/免伤。
+
+独立原版社交换装反例确认Restore直接逆交换的互斥风险：功能Hermes临借后停放到背包，玩家通过原版SwapVanityEquip在另一未管功能槽合法穿上另一Hermes，旧Restore会再装回互斥原装。原始FAIL见本轮targeted4.log与其checkpoint，未改署。现直接归还也核CanSwap，冲突则保留真实三件对象和favorite、保住玩家合法新装备并以TakenOver退owner；未改共享CanSwap。普通归还仍精确回端点。
+
+最终精确执行batch `e354104a27d34b1b9e891c129f799db0`：SmartFallBorrowOwnershipChecks `5c88b07520964c8282c51dbed60a1a8d`、SmartFallRiskActionsChecks `c38c839319974d639fa83813fc697004`、native-MovementSmartFallCpu `c5e2ee53f8f848c2aca3d6f0dbc418e9`、native-MovementJumpCpu `f7f234c6f80f40b2b004d0d037f4a096`，四叶实际PASS。原件在 `artifacts/build/workload-checkpoints/e354104a27d34b1b9e891c129f799db0/`；日志 `.local/smart-fall-social-20261022/targeted-final.log`。源码前后 `F5F1A474ABF9081CB065F73977FB83036BD6EB483BA94A968E498B117CFD8561`、输入前后 `E3F5A59AE254B1F5F8989D4A7DA693E2B3E45EF59DEACE4B0797987EAF2072FA`一致，buildMatch=true。仅后续本段证据说明改变时沿正式reader复核适用，不重签上述原件。
+
+真实消费者覆盖：三不同族普通社交瓶（无其他救援装备代救）、背包瓶；空燃料社交火箭、空起动社交飞毯；零翼时翅膀、马掌组合5331、重力球去回、神灯腿12→2。均选中真实源、登记/交换、正常UpdateEquips、原版消费者、实际接触无伤、精确所有引用及prefix/stack/favorite归还；独立关闭帮助原版Hurt对照真实掉血。五族及升级/组合全映射表；耗尽功能Cloud和已记账社交Cloud不遮后方Sand，Bundle只消费剩余一族且不重开已用族；真实自然恢复、全部关闭时原生消费/刷新、首次开启保留历史、clone隔离；原消费者异常可见、未用贡献撤销和32个稳定更新不重开。原三功能Jump相邻消费者1037案例及84个wire案例保持通过。原飞骑/背包钩/左右斜平台/失败钩代表在同叶保持。
+
+工作量（同Windows/.NET x86隔离CPU环境，与上一轮同入口比较）：OFF、ON-idle、ON-safe、ON-danger-no-capability各20000次，稳定新增来源/计划/tile均0、steady线程分配0；OFF分别约1.96ms、ON无能力约9.36ms，仅helper窗口非FPS。关闭期间原生消费/刷新单独证明来源/geometry扫描0。一次资格/原版恢复按revision有界重开，失败32更新动作重试0；安全制动32实际更新仍1来源扫描/1完整Contact/954tile/0动作，未扩大地形或pool扫描。激活后还装完成无新增持续借用工作。没有真实FPS收益声明。
+
+第一轮失败中的“落地后wingTime必须仍0”是测试误把原版落地恢复当补充；改为落地前正常装备翼时仍0。周期夹具复置相同位置/速度却推进tick违反接触缓存连续性，改为明确新X场景触发现有失效；未改生产缓存。真实失败、旧aggregate/范围外FAIL/NOT_RUN和未完成资格保留。完整Main、图形、物理设备、真实好友主客机、真实FPS及所有者体验仍未测。此处不表示独审/普通完整包/新安装已完成；候选冻结后集中独审，再按已授权流程交付。

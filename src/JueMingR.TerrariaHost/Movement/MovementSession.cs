@@ -150,6 +150,11 @@ namespace JueMingR.TerrariaHost.Movement
             return ReferenceEquals(player, value) && CanRetainMovementContext(value) && frame.Captured && frame.Frame == input.Frame &&
                 frame.Mapping == input.Mapping && frame.Generation == runtime.Generation && input.CanStartActions;
         }
+        // These constant-size observations also run when BeginUpdate takes the
+        // all-features-OFF exit. They never enable Capture, geometry or loans.
+        internal void ObserveResourcesBefore(Player value) { if(CanCleanUp(value))FallHost.Resources.Before(value,runtime.Generation); }
+        internal void ObserveResourcesAfter(Player value) { if(CanCleanUp(value))FallHost.Resources.After(value,runtime.Generation); }
+        internal void ObserveResourcesRefresh(Player value) { if(CanCleanUp(value))FallHost.Resources.Refresh(value,runtime.Generation); }
         internal bool CanCorrectTeleport(Player value)
         { return Value.TeleportCorrectionEnabled && CanAct(value) && !input.MapPointerOwned && (CanTeleportPointer == null || CanTeleportPointer()); }
         internal void ObserveInput()

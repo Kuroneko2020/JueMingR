@@ -28,7 +28,7 @@ namespace JueMingR.TerrariaHost.Movement
                 // These sets are the exact UpdateAccessory branches in locked
                 // .8, including combined accessories, rather than Z fallbacks.
                 case SmartFallFamily.DoubleJump:
-                    switch (t) { case 53: case 399: case 857: case 983: case 987: case 1163: case 1164: case 1724: case 1863: case 3201: case 3241: case 1250: case 1251: case 1252: case 3250: case 3252: case 5331: return true; default: return false; }
+                    return JumpFamilies(item) != 0;
                 case SmartFallFamily.RocketBoots: return t == 128 || t == 405 || t == 898 || t == 1862 || t == 5000 || t == 4874;
                 case SmartFallFamily.Carpet: return t == 934;
                 case SmartFallFamily.Wings: return item.wingSlot > 0;
@@ -66,23 +66,38 @@ namespace JueMingR.TerrariaHost.Movement
         internal static int UnusedJumps(Player p)
         { return (p.canJumpAgain_Cloud?1:0) | (p.canJumpAgain_Sandstorm?2:0) | (p.canJumpAgain_Blizzard?4:0) | (p.canJumpAgain_Fart?8:0) | (p.canJumpAgain_Sail?16:0) | (p.canJumpAgain_Unicorn?32:0) | (p.canJumpAgain_Santank?64:0) | (p.canJumpAgain_WallOfFleshGoat?128:0) | (p.canJumpAgain_Basilisk?256:0); }
         internal static bool UnusedForItem(Player p, Item item)
+        { return (UnusedJumps(p) & JumpFamilies(item)) != 0; }
+        internal static int JumpFamilies(Item item)
         {
-            if (item == null) return false;
-            int provided;
+            if (item == null) return 0;
             // Exact ApplyEquipFunctional hasJumpOption branches. Merely
             // carrying Cloud cannot preserve an unused Fart charge through
             // Update's pre-Jump eligibility clearing, and vice versa.
             switch (item.type)
             {
-                case 53: case 399: case 1250: provided=1; break;
-                case 857: case 983: case 1252: provided=2; break;
-                case 987: case 1163: case 1251: provided=4; break;
-                case 1724: case 1863: case 3250: provided=8; break;
-                case 3201: case 3241: case 3252: provided=16; break;
-                case 1164: case 5331: provided=7; break;
-                default: return false;
+                case 53: case 399: case 1250: return 1;
+                case 857: case 983: case 1252: return 2;
+                case 987: case 1163: case 1251: return 4;
+                case 1724: case 1863: case 3250: return 8;
+                case 3201: case 3241: case 3252: return 16;
+                case 1164: case 5331: return 7;
+                default: return 0;
             }
-            return (UnusedJumps(p) & provided) != 0;
+        }
+        internal static int JumpOptions(Player p)
+        { return (p.hasJumpOption_Cloud?1:0) | (p.hasJumpOption_Sandstorm?2:0) | (p.hasJumpOption_Blizzard?4:0) | (p.hasJumpOption_Fart?8:0) | (p.hasJumpOption_Sail?16:0); }
+        internal static void SetJump(Player p, int bit, bool value)
+        {
+            switch(bit) { case 1:p.canJumpAgain_Cloud=value;break;case 2:p.canJumpAgain_Sandstorm=value;break;case 4:p.canJumpAgain_Blizzard=value;break;case 8:p.canJumpAgain_Fart=value;break;case 16:p.canJumpAgain_Sail=value;break; }
+        }
+        // Called only when preparing sources or freezing a real loan. Shared
+        // loadout equipment counts as already functional, never a new grant.
+        internal static int EffectiveResources(Player p)
+        {
+            int mask=0;
+            for(int i=0;i<10;i++) if(p.IsItemSlotUnlockedAndUsable(i))
+            { Item item=p.GetEffectiveArmor(i); mask|=JumpFamilies(item); if(Matches(item,SmartFallFamily.RocketBoots))mask|=32;if(Matches(item,SmartFallFamily.Carpet))mask|=64; }
+            return mask;
         }
         internal static bool MountJump(Player p)
         {

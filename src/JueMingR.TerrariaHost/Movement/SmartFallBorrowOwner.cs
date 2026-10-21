@@ -33,6 +33,7 @@ namespace JueMingR.TerrariaHost.Movement
         private int sourceSlot,targetSlot,loadout,originalSelection,heldSlot;
         private Item borrowed,original,selectionAnchor;
         private SmartFallFamily borrowedFamily;
+        private int originalResources;
         private long nextNativeUse,nativeUse,nativeUseToken;
         private SmartFallFamily nativeUseFamily;
         private bool nativeUseConsumed;
@@ -78,6 +79,23 @@ namespace JueMingR.TerrariaHost.Movement
         }
         private void ClearNativeUse(){nativeUse=nativeUseToken=0;nativeUseConsumed=false;}
         internal long Operation {get{return token;}}
+        internal int OriginalResources {get{return originalResources;}}
+        // Activation is a privilege of this live exchange, not of an item ID.
+        // Recheck both physical endpoints, token, epoch and native legal slot
+        // after UpdateEquips and immediately before its resource consumer.
+        internal bool AllowsActivation(Player p,long epoch,Item item,SmartFallFamily family)
+        {
+            return items!=null && !misc && !selection && !restoreRequested && !unknown && family==borrowedFamily &&
+                Identity(p,epoch) && Permitted(p,epoch) && ReferenceEquals(p,items.World.SessionPlayer) && items.World.SessionGeneration==epoch &&
+                items.Ownership.OwnsFallEquipment(epoch,token,false,targetSlot) && ReferenceEquals(target,p.armor) &&
+                p.CurrentLoadoutIndex==loadout && p.IsItemSlotUnlockedAndUsable(targetSlot) && ReferenceEquals(p.GetEffectiveArmor(targetSlot),item) &&
+                ReferenceEquals(item,borrowed) && ReferenceEquals(source[sourceSlot],original) &&
+                item.type==borrowedType && item.prefix==borrowedPrefix && item.stack==borrowedStack && !item.favorited &&
+                original.type==originalType && original.prefix==originalPrefix && original.stack==originalStack && !original.favorited &&
+                FishingEquipmentPlan.CanSwap(p,source,sourceSlot,targetSlot);
+        }
+        internal bool OwnsEndpoint(Item[] array,int slot)
+        { return HasPending && !selection && (ReferenceEquals(array,source) && slot==sourceSlot || ReferenceEquals(array,target) && slot==targetSlot); }
         internal long SourceReads {get;private set;}
         internal long Exchanges {get;private set;}
         internal long ReturnSearches {get;private set;}
@@ -245,7 +263,7 @@ namespace JueMingR.TerrariaHost.Movement
                 ulong inv=ReferenceEquals(array,p.inventory)?1UL<<slot:0;
                 uint armor=ReferenceEquals(dest,p.armor)?1U<<at:0;if(ReferenceEquals(array,p.armor))armor|=1U<<slot;
                 if(!items.Ownership.TryBeginFallEquipment(epoch,inv,armor,ReferenceEquals(dest,p.miscEquips)?1U<<at:0,next))return false;
-                Bind(p,epoch,next,item,family);source=array;sourceSlot=slot;target=dest;targetSlot=at;original=dest[at];misc=ReferenceEquals(dest,p.miscEquips);loadout=p.CurrentLoadoutIndex;
+                Bind(p,epoch,next,item,family);originalResources=SmartFallCapabilities.EffectiveResources(p);source=array;sourceSlot=slot;target=dest;targetSlot=at;original=dest[at];misc=ReferenceEquals(dest,p.miscEquips);loadout=p.CurrentLoadoutIndex;
                 borrowedFavorite=borrowed.favorited;originalFavorite=original.favorited;
                 originalType=original.type;originalPrefix=original.prefix;originalStack=original.stack;
                 try
@@ -308,6 +326,11 @@ namespace JueMingR.TerrariaHost.Movement
                     if(!items.Ownership.TryMoveFallEquipment(epoch,inv,armor,misc?1U<<targetSlot:0,token))return;
                     source=returnSource;sourceSlot=returnSlot;
                 }
+                // A legal edit to another functional slot can make the parked
+                // original incompatible. Both objects already live in native
+                // containers: hand over this layout rather than force a swap.
+                if(!misc && !FishingEquipmentPlan.CanSwap(p,source,sourceSlot,targetSlot))
+                {borrowed.favorited=borrowedFavorite;original.favorited=originalFavorite;TakeOver();return;}
                 try{Exchange(true);borrowed.favorited=borrowedFavorite;original.favorited=originalFavorite;Exchanges++;items.World.InvalidateObservation();SyncEndpoints();ReturnResult=SmartFallResult.Returned;Retire();}
                 catch
                 {

@@ -37,7 +37,7 @@ namespace NativeWorldTextProbe
             patch.Patch(pick,postfix:new HarmonyMethod(typeof(NativeSmartFallBorrowChecks),nameof(Pick)));
             try
             {
-                Conservation();PreparationFacts();PartialWrite();Takeover();MovedOriginal();BlockedReturn();HeldSelection();GrappleBorrow();Lifecycle();NativeSync();NativeOwnedUse();
+                Conservation();PreparationFacts();PartialWrite();Takeover();MovedOriginal();BlockedReturn();ReturnConflict();HeldSelection();GrappleBorrow();Lifecycle();NativeSync();NativeOwnedUse();
                 Main.player[Main.myPlayer]=saved;Call(context,"UpdateRuntime");FishingOverlap(context);
                 Console.WriteLine("PASS SmartFallBorrow real item conservation, second-write failure, same-signature takeover, moved original, native held selection, pulse finalizer and generation boundary.");
             }
@@ -247,6 +247,21 @@ namespace NativeWorldTextProbe
             Require((long)Get(owner,"ReturnSearches")==searches && (bool)Get(owner,"HasPending"),"100 unchanged blocked returns perform no repeat full inventory search or exchange");
             p.inventory[18]=new Item();Call(Get(items,"World"),"InvalidateObservation");Return(p);
             Require((long)Get(owner,"ReturnSearches")==searches+1 && ReferenceEquals(p.inventory[18],shoe) && !(bool)Get(owner,"HasPending"),"actual empty-space change enables one exact recovery and retires debt");
+        }
+        private static void ReturnConflict()
+        {
+            var p=Reset();int[] equipped={54,15,156,211,285};
+            for(int i=0;i<equipped.Length;i++)Put(p.armor,i+3,equipped[i]);
+            Item original=p.armor[3],shoe=Put(p.inventory,12,158),successor=Put(p.armor,14,54);
+            original.favorited=shoe.favorited=true;
+            Require(Borrow(p,shoe,SmartFallFamily.Horseshoe) && Target(p,shoe)==3,"Occupied functional endpoint is a real legal loan.");
+            // A legal original vanity swap changes a disjoint, unowned slot.
+            // The parked Hermes item is now incompatible with that successor.
+            typeof(ItemSlot).GetMethod("SwapVanityEquip",Flags).Invoke(null,new object[]{p.armor,11,14,p});
+            Require(ReferenceEquals(p.armor[4],successor),"Exact native social swap equips the disjoint successor.");
+            Return(p);
+            Require(ReferenceEquals(p.armor[3],shoe) && ReferenceEquals(p.armor[4],successor) && ReferenceEquals(p.inventory[12],original) && shoe.favorited && original.favorited && !(bool)Get(owner,"HasPending") && (SmartFallResult)Get(owner,"ReturnResult")==SmartFallResult.TakenOver,"Return never re-equips an incompatible parked original or overwrites the player's legal successor; both real items and favorites remain owned by the player.");
+            Console.WriteLine("PASS SmartFallBorrow native disjoint vanity swap creates return conflict; exact original/shoe/successor conserved, owner retired as TakenOver.");
         }
         private static void Lifecycle()
         {

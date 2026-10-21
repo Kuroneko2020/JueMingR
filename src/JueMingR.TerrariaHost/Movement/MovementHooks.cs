@@ -27,6 +27,7 @@ namespace JueMingR.TerrariaHost.Movement
                 Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "CarpetMovement"), null, null, "CarpetReads", null);
                 Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "WingMovement"), null, "AfterFlight", null, null);
                 Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "UpdateEquips", new[] { typeof(int) }), null, "AfterEquips", null, null);
+                Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "RefreshDoubleJumps", Type.EmptyTypes), null, "ResourcesRefreshed", null, null);
                 Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "GrappleMovement"), null, "AfterGrapple", null, null);
                 Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "ItemCheck", Type.EmptyTypes), "BeforeItemCheck", null, null, "EndItemCheck");
                 Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "PickItemSelectionOverride", new[] { typeof(int).MakeByRefType() }), null, "PickSelection", null, null);
@@ -53,12 +54,13 @@ namespace JueMingR.TerrariaHost.Movement
         { __state = new UpdateScope { Active = owner != null && worldDepth == 1 && owner.BeginUpdate(__instance) }; }
         private static Exception EndPlayer(Player __instance, UpdateScope __state, Exception __exception)
         {
-            try { if (__state.Active) owner?.EndUpdate(__instance); }
+            try { if(worldDepth==1)owner?.ObserveResourcesAfter(__instance);if (__state.Active) owner?.EndUpdate(__instance); }
             catch when (__exception != null) { /* Preserve the native failure after attempting owned cleanup. */ }
             return __exception;
         }
-        private static void BeforeJump(Player __instance) { owner?.BeforeJump(__instance); }
-        private static void AfterJump(Player __instance) { owner?.AfterJump(__instance); }
+        private static void BeforeJump(Player __instance) { if(worldDepth==1)owner?.ObserveResourcesBefore(__instance);owner?.BeforeJump(__instance); }
+        private static void AfterJump(Player __instance) { if(worldDepth==1)owner?.ObserveResourcesAfter(__instance);owner?.AfterJump(__instance); }
+        private static void ResourcesRefreshed(Player __instance) { if(worldDepth==1)owner?.ObserveResourcesRefresh(__instance); }
         private static void AfterFlight(Player __instance) { owner?.AfterFlight(__instance); }
         private static void Capture(Player player) { owner?.CaptureInput(player); }
         private static void AfterEquips(Player __instance) { owner?.FallHost.AfterEquips(__instance); }
