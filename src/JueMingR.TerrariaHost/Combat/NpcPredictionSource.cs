@@ -790,7 +790,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             rolling.CaptureContinuation=true;
             var result=candidateOnly?ContinueCandidate(identity,tick,firstPlayerStepCompleted,playerAdvanced,count,selected,advanceTo,env,playerMotion):ContinueSelected(tick,firstPlayerStepCompleted,playerAdvanced,count,selected,advanceTo,env,playerMotion);
-            if(result==null)result=rolling.Prepare(states,count,selected,tick,advanceTo,epoch,env,playerMotion,Terrain,motionRoles,playerAdvanced,sampleHorizon);
+            if(result==null)result=rolling.Prepare(states,count,selected,tick,advanceTo,epoch,env,playerMotion,Terrain,motionRoles,playerAdvanced,sampleHorizon,!playerAlive?player:null,target);
             RememberSelected(firstPlayerStepCompleted,playerAdvanced,count,selected,env,playerMotion,result);
             if(candidateOnly && result!=null && result.Stop==PredictionStop.None && !result.BudgetPaused && result.Count==advanceTo+1 && rolling.FixedInputResult)
                 RememberCandidateInputs(identity,firstPlayerStepCompleted,playerAdvanced,count,selected,advanceTo,env,playerMotion);

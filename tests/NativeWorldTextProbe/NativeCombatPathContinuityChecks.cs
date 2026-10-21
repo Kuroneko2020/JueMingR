@@ -17,7 +17,7 @@ namespace NativeWorldTextProbe
         internal static void Run(object context,ProbeGraphics graphics,string output,bool initialized=false)
         {
             Directory.CreateDirectory(output);
-            var host=Get(context,"CombatObservation");var world=Get(host,"World");var source=Get(host,"Prediction");
+            var host=Get(context,"CombatObservation");if(!(bool)Get(host,"PathAccess"))NativeHiddenEntryChecks.RevealForComposition(context);var world=Get(host,"World");var source=Get(host,"Prediction");
             var cache=(NpcPredictionCache)Get(source,"Cache");var input=Get(context,"Input");
             if(!initialized)NativeCombatAimChecks.Initialize();
             var player=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,95,0,0);

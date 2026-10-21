@@ -277,7 +277,7 @@ namespace NativeWorldTextProbe
             if(scope=="CombatPathContinuity")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-path-continuity-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content)){if(Environment.GetEnvironmentVariable("JMR_PATH_DISPLAY_CHECK")=="1")NativeCombatPathDisplayChecks.Run(context,graphics,output);else NativeCombatPathContinuityChecks.Run(context,graphics,output);}},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+                NativeQuickItemChecks.Run(context=>{if(Environment.GetEnvironmentVariable("JMR_PATH_PREMISES_CPU")=="1"){NativeCombatPathDisplayChecks.RunPlayerPremisesCpu(context);return;}using(var graphics=new ProbeGraphics(content)){if(Environment.GetEnvironmentVariable("JMR_PATH_DISPLAY_CHECK")=="1")NativeCombatPathDisplayChecks.Run(context,graphics,output);else NativeCombatPathContinuityChecks.Run(context,graphics,output);}},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="CombatAimUi" || scope=="CombatAimUiReload" || scope=="CombatHints")
             {

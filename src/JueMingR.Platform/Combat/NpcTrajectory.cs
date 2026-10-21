@@ -636,9 +636,10 @@ namespace JueMingR.Platform.Combat
         public int Count {get{return count;}}
         public PredictionGravitySources GravitySources {get;}
         public PredictionWallSources WallSources {get;}
+        public PredictionPlayerCondition PlayerCondition {get;}
         public NpcTrajectoryPoint this[int index]
         {get{if((uint)index>=(uint)count)throw new IndexOutOfRangeException();return compact!=null?compact[first+index].AtOffset(index):points[first+index].AtOffset(index);}}
-        public NpcTrajectory(NpcIdentity identity,long sampleTick,long version,PredictionAssumption assumptions,PredictionStop stop,NpcTrajectoryPoint[] source,int count,PredictionStrategy strategy=PredictionStrategy.Model,long relationVersion=0,PredictionQuality quality=PredictionQuality.Conditional,PredictionGravitySources gravitySources=null,PredictionWallSources wallSources=null,bool budgetPaused=false,object calculationToken=null)
+        public NpcTrajectory(NpcIdentity identity,long sampleTick,long version,PredictionAssumption assumptions,PredictionStop stop,NpcTrajectoryPoint[] source,int count,PredictionStrategy strategy=PredictionStrategy.Model,long relationVersion=0,PredictionQuality quality=PredictionQuality.Conditional,PredictionGravitySources gravitySources=null,PredictionWallSources wallSources=null,bool budgetPaused=false,object calculationToken=null,PredictionPlayerCondition playerCondition=null)
         {
             if(source==null)throw new ArgumentNullException(nameof(source));
             if(sampleTick<0 || count<1 || count>source.Length)throw new ArgumentOutOfRangeException();
@@ -648,7 +649,7 @@ namespace JueMingR.Platform.Combat
             if(strategy==PredictionStrategy.RollingConditional)
             {compact=new PackedPoint[count];for(int i=0;i<count;i++)compact[i]=new PackedPoint(source[i]);}
             else{points=new NpcTrajectoryPoint[count];Array.Copy(source,points,count);}
-            this.count=count;GravitySources=gravitySources;WallSources=wallSources;
+            this.count=count;GravitySources=gravitySources;WallSources=wallSources;PlayerCondition=playerCondition??PredictionPlayerCondition.None;
             if(wallSources!=null && (strategy!=PredictionStrategy.RollingConditional || wallSources.Count!=count || !wallSources.TargetIdentity.Equals(identity) || wallSources.CaptureTick!=sampleTick))throw new ArgumentException("Wall source prefix must match trajectory.",nameof(wallSources));
             if(gravitySources!=null && (strategy!=PredictionStrategy.RollingConditional || gravitySources.Count!=count || !gravitySources.TargetIdentity.Equals(identity) || gravitySources.CaptureTick!=sampleTick))throw new ArgumentException("Gravity source prefix must match trajectory.",nameof(gravitySources));
         }
@@ -656,7 +657,7 @@ namespace JueMingR.Platform.Combat
         {
             Identity=prior.Identity;SampleTick=sampleTick;CaptureTick=republish?sampleTick:prior.CaptureTick;Version=version;Assumptions=prior.Assumptions;
             Strategy=prior.Strategy;RelationVersion=prior.RelationVersion;Quality=prior.Quality;
-            BudgetPaused=prior.BudgetPaused;CalculationToken=prior.CalculationToken;
+            BudgetPaused=prior.BudgetPaused;CalculationToken=prior.CalculationToken;PlayerCondition=prior.PlayerCondition;
             sourceStop=prior.sourceStop;points=prior.points;compact=prior.compact;this.first=first;this.count=count;isWindow=!republish;
             Stop=first+count==StorageCount?sourceStop:PredictionStop.None;
             GravitySources=prior.GravitySources==null?null:prior.GravitySources.Window(first-prior.first,count);
@@ -666,7 +667,7 @@ namespace JueMingR.Platform.Combat
         {
             Identity=identity;SampleTick=prior.SampleTick;CaptureTick=prior.CaptureTick;Version=prior.Version;Assumptions=prior.Assumptions;
             Strategy=prior.Strategy;RelationVersion=prior.RelationVersion;Quality=prior.Quality;
-            BudgetPaused=prior.BudgetPaused;CalculationToken=prior.CalculationToken;
+            BudgetPaused=prior.BudgetPaused;CalculationToken=prior.CalculationToken;PlayerCondition=prior.PlayerCondition;
             GravitySources=prior.GravitySources;WallSources=prior.WallSources;Stop=prior.Stop;sourceStop=prior.sourceStop;points=prior.points;compact=prior.compact;first=prior.first;count=prior.count;isWindow=prior.isWindow;
         }
         // Background decoding owns only a value identity, never the game's

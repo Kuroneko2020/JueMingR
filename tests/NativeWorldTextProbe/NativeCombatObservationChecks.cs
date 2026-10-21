@@ -55,6 +55,7 @@ namespace NativeWorldTextProbe
         private static void RunCore(object context)
         {
             var host=GetOptional(context,"CombatObservation");Require(host!=null,"full candidate has an independent observation owner");
+            if(!(bool)Get(host,"PathAccess"))NativeHiddenEntryChecks.RevealForComposition(context);
             Require((bool)Get(Get(host,"Hooks"),"Ready"),"native collision observation ABI installed: "+GetOptional(Get(host,"Hooks"),"Error"));
             Save(host,new ObservationOptions());
             var selection=Get(host,"Selection");var geometry=Get(host,"Geometry");var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");
