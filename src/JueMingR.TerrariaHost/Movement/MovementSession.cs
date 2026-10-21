@@ -75,6 +75,11 @@ namespace JueMingR.TerrariaHost.Movement
         private void ResetIntent() { DashHost.Reset(); CancelJumpIntent(); }
         internal bool BeginUpdate(Player value)
         {
+            // An unowned call is not invalidation of the local context. Reject
+            // remote players/clones before touching retained intent or scope.
+            int local = Main.myPlayer;
+            if (value == null || local < 0 || local >= Main.maxPlayers || Main.player == null ||
+                local >= Main.player.Length || !ReferenceEquals(value, Main.player[local])) return false;
             var options = Value;
             if (!options.SimulatedJumpEnabled && !options.ContinuousDashEnabled && !options.TeleportCorrectionEnabled) return false;
             if (player != null) return false;

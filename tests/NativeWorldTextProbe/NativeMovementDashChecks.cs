@@ -91,6 +91,7 @@ namespace NativeWorldTextProbe
                 finally { throwConsumer = false; errorScope.UnpatchAll(errorScope.Id); }
                 var standalone = Local(); standalone.dashType = 2; standalone.DashMovement(); Require(standalone.velocity.X == 0, "isolated consumer without an admitted scope is not injected");
                 Lifecycle(context, movement, input);
+                RemoteAdmission(context, movement, input);
                 NativeMappedDeath(context, movement, input);
                 Console.WriteLine("PASS MOVEMENT DASH native capability/input/consumer cases=" + cases + "; native DashMovement/DoCommonDashHandle; full Main mapping separate");
             }
@@ -207,6 +208,93 @@ namespace NativeWorldTextProbe
             }
             Call(movement, "SetEnabled", 0, false);
             Console.WriteLine("PASS MOVEMENT lifecycle D1-D6/D8 producer seams; exact native mapped/death sequence follows separately");
+        }
+        private static object[] AdmissionState(object movement, object input, Player local, Player other)
+        {
+            var dash = Get(movement, "DashHost"); var jump = Get(movement, "JumpHost");
+            return new[] { Get(dash, "gesture"), Get(dash, "direction"), Get(dash, "sampledTick"),
+                GetOptional(movement, "player"), Get(movement, "frame"), Get(movement, "tick"), Get(movement, "intentVersion"),
+                Get(movement, "intentPlayer"), Get(movement, "intentGeneration"), Get(movement, "observedMapping"),
+                Get(jump, "intent"), Get(jump, "phase"), Get(jump, "version"), Get(jump, "active"), GetOptional(jump, "player"),
+                Get(input, "Frame"), Get(input, "Mapping"), Get(input, "CanStartActions"),
+                local.controlJump, local.controlDown, local.controlLeft, local.controlRight, local.releaseJump,
+                other == null ? null : (object)other.controlJump, other == null ? null : (object)other.controlDash };
+        }
+        private static void UnownedAdmission(object movement, object input, Player local, Player other, string label)
+        {
+            // Compare immediately around the production admission, without a
+            // local sample/update in between; native local transitions may advance.
+            var before = AdmissionState(movement, input, local, other);
+            Require(!(bool)Call(movement, "BeginUpdate", other), "unowned admission refused " + label);
+            var after = AdmissionState(movement, input, local, other);
+            for (int i = 0; i < before.Length; i++) Require(Equals(before[i], after[i]), "unowned admission leaves local state/input unchanged " + label + " field=" + i);
+            Require(!(bool)Call(movement, "CanAct", other), "unowned admission lends no action " + label);
+            Console.WriteLine("PASS MOVEMENT remote admission " + label + "; immediate state/version/input unchanged; no scope/action");
+        }
+        private static void RemoteAdmission(object context, object movement, object input)
+        {
+            Call(movement, "SetDashMode", ContinuousDashMode.DoubleTap);
+            var p = Local(); p.dashType = 2; Call(context, "UpdateRuntime");
+            var remote = new Player { whoAmI = (Main.myPlayer + 1) % Main.maxPlayers, active = true, controlJump = true };
+            var sameNumber = new Player { whoAmI = Main.myPlayer, active = true, controlJump = true };
+            Stage(movement, input, p, false, true);
+            Require((int)Get(Get(Get(movement, "DashHost"), "gesture"), "firstDirection") == 1, "real first press retained after normal End");
+            UnownedAdmission(movement, input, p, remote, "dash-first/remote");
+            UnownedAdmission(movement, input, p, sameNumber, "dash-first/same-whoAmI-different-reference");
+            Stage(movement, input, p, false, false); Stage(movement, input, p, false, true);
+            Require(Selected(movement) == 1 && p.dashDelay < 0, "first press survives remote admission and second press launches natively");
+            Require((int)Get(Get(Get(movement, "DashHost"), "gesture"), "armed") == 1, "real double tap produced armed state");
+            UnownedAdmission(movement, input, p, remote, "dash-armed/remote");
+            UnownedAdmission(movement, input, p, sameNumber, "dash-armed/same-whoAmI-different-reference");
+            int me = Main.myPlayer; Player slot = Main.player[me];
+            try
+            {
+                Main.myPlayer = -1; UnownedAdmission(movement, input, p, remote, "invalid-negative-index");
+                Main.myPlayer = Main.player.Length; UnownedAdmission(movement, input, p, remote, "index-at-array-length");
+                Main.myPlayer = me; Main.player[me] = null; UnownedAdmission(movement, input, p, remote, "empty-local-slot");
+                UnownedAdmission(movement, input, p, null, "null-value-and-slot");
+            }
+            finally { Main.myPlayer = me; Main.player[me] = slot; }
+            Stage(movement, input, p, false, true); Require(Selected(movement) == 1, "armed local continues after unowned/unknown-local admissions");
+            Call(movement, "SetEnabled", 0, true);
+            var jump = Get(movement, "JumpHost");
+            float speed = Player.jumpSpeed; int height = Player.jumpHeight;
+            try
+            {
+                Player.jumpSpeed = 5.01f; Player.jumpHeight = 15;
+                p = Local(); Call(context, "UpdateRuntime");
+                JumpStage(movement, input, p);
+                Require((bool)Get(jump, "intent") && Get(jump, "phase").ToString() == "Held" && p.jump > 0, "real scoped JumpMovement produces intent/Held");
+                UnownedAdmission(movement, input, p, remote, "jump-intent-Held/remote");
+                UnownedAdmission(movement, input, p, sameNumber, "jump-intent-Held/same-whoAmI-different-reference");
+                int held = p.jump;
+                for (int k = 0; k < held; k++) JumpStage(movement, input, p);
+                Require(p.jump == 0 && p.velocity.Y < 0 && Get(jump, "phase").ToString() == "Coast", "native held countdown produces Coast without assigning phase");
+                UnownedAdmission(movement, input, p, remote, "jump-Coast/remote");
+                UnownedAdmission(movement, input, p, sameNumber, "jump-Coast/same-whoAmI-different-reference");
+                JumpStage(movement, input, p);
+                Require((bool)Get(jump, "intent") && Get(jump, "phase").ToString() == "Coast", "local Coast continues after remote admission");
+                p.ghost = true;
+                Require(!(bool)Call(movement, "BeginUpdate", p) && !(bool)Get(jump, "intent") && Get(jump, "phase").ToString() == "None", "current local ghost still cancels actual published state");
+                p.ghost = false; JumpStage(movement, input, p);
+                Require(Get(jump, "phase").ToString() == "None", "same local recovery cannot inherit old Coast");
+                p.velocity.Y = 0; p.jump = 0; JumpStage(movement, input, p);
+                Require(Get(jump, "phase").ToString() == "Held", "fresh native jump establishes state before Runtime edge");
+                var runtime = Get(movement, "runtime"); long generation = (long)Get(runtime, "Generation");
+                Call(runtime, "InvalidateSession"); Call(context, "UpdateRuntime");
+                Require((long)Get(runtime, "Generation") > generation && !(bool)Get(jump, "intent") && Get(jump, "phase").ToString() == "None",
+                    "actual Runtime generation transition clears same-player published intent/phase");
+            }
+            finally { Player.jumpSpeed = speed; Player.jumpHeight = height; Call(movement, "SetEnabled", 0, false); }
+        }
+        private static void JumpStage(object movement, object input, Player p)
+        {
+            NativeQuickItemChecks.Sample(input, new[] { Keys.Space });
+            Terraria.GameInput.PlayerInput.Triggers.Current.Jump = true;
+            p.controlJump = true; p.controlDown = false;
+            Require((bool)Call(movement, "BeginUpdate", p), "real local jump scope admitted");
+            try { Call(movement, "CaptureInput", p); Call(movement, "BeforeJump", p); p.JumpMovement(); Call(movement, "AfterJump", p); }
+            finally { Call(movement, "EndUpdate", p); }
         }
         private static void Arm(object movement, object input, Player p)
         {
