@@ -18,6 +18,7 @@ namespace Terraria
         public static Player[] player = new Player[256];
         public static Main instance;
         public static bool dedServ, mouseLeft, mouseRight, mouseText, blockMouse, HoveringOverAnNPC;
+        public static bool mouseLeftRelease;
         public static bool mapFullscreen, hideUI, onlyDrawFancyUI, ingameOptionsWindow, inFancyUI;
         public static int netMode;
         public static bool CanUpdateGameplay { get; set; } = true;
@@ -213,6 +214,7 @@ namespace Terraria.GameInput
     public static partial class PlayerInput
     {
         public static TriggersPack Triggers = new TriggersPack();
+        public static bool AllowExecutionOfGamepadInstructions;
         public static MouseState MouseInfo;
         public static List<string> MouseKeys = new List<string>();
         [MethodImpl(MethodImplOptions.NoInlining)]

@@ -90,6 +90,9 @@ namespace JueMingR.TerrariaHost.Items
         {
             try
             {
+                // Ordinary pickups also wake a finite no-capability rescue.
+                // This native grant event is not a per-update inventory poll.
+                if (__runOriginal && ReferenceEquals(__instance, host?.World.SessionPlayer)) host.World.InvalidateObservation();
                 if(__runOriginal && __state.Origin!=null && ReferenceEquals(current,__state.Origin) && current.FishingToken!=0)current.Produced.Add(__state.Identity);
                 if (__state.Origin != null && ReferenceEquals(current, __state.Origin) && Quantity(__instance, __state.Identity) > __state.Before)
                     current.Gained.Add(__state.Identity);

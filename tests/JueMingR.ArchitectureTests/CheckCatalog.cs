@@ -41,6 +41,8 @@ namespace JueMingR.ArchitectureTests
             Add("OnboardingChecks", "about-host", (root, failures) => OnboardingChecks.Check(failures));
             Add("PreferenceChecks", "preferences", (root, failures) => PreferenceChecks.Check(failures));
             Add("MovementPreferenceChecks", "movement-host", (root, failures) => MovementPreferenceChecks.Check(failures));
+            Add("SmartFallBorrowOwnershipChecks", "movement-host", (root, failures) => SmartFallBorrowOwnershipChecks.Check(failures));
+            Add("SmartFallRiskActionsChecks", "movement-host", (root, failures) => SmartFallRiskActionsChecks.Check(failures));
             Add("ContinuousDashGestureChecks", "movement-host", (root, failures) => ContinuousDashGestureChecks.Check(failures));
             Add("MovementJumpChecks", "movement-host", (root, failures) => MovementJumpChecks.Check(failures));
             Add("TeleportSearchChecks", "movement-host", (root, failures) => TeleportSearchChecks.Check(failures));

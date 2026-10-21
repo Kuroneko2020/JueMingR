@@ -9,6 +9,9 @@ namespace JueMingR.Platform.Items
         private const ulong AllInventorySlots = (1UL << 58) - 1;
         private ulong saleSlots, discardSlots, storeSlots, interruptedSourceSlots, useSlots, coinSlots;
         private long useToken, coinToken, nextUseToken;
+        private ulong fallInventory;
+        private uint fallArmor, fallMisc;
+        private long fallToken;
         // Shared by QuickItems, extraction, tools and combat. A delayed native finalizer
         // cannot match a successor from another owner's local counter.
         public long NewUseToken(){if(nextUseToken==long.MaxValue)throw new InvalidOperationException("Use lease exhausted.");return ++nextUseToken;}
@@ -20,10 +23,31 @@ namespace JueMingR.Platform.Items
         public ItemOperationResult SaleResult { get; private set; }
         public ItemOperationResult DiscardResult { get; private set; }
         public ItemOperationResult StoreResult { get; private set; }
-        public ulong ProtectedSlots { get { return saleSlots | discardSlots | storeSlots | interruptedSourceSlots | useSlots | coinSlots | recoverySlots[0] | processingSlots[0]; } }
-        public bool AnyProtected {get{return (ProtectedSlots|recoverySlots[1]|recoverySlots[2]|recoverySlots[3]|recoverySlots[4]|processingSlots[1]|processingSlots[2]|processingSlots[3]|processingSlots[4])!=0;}}
+        public ulong ProtectedSlots { get { return saleSlots | discardSlots | storeSlots | interruptedSourceSlots | useSlots | coinSlots | recoverySlots[0] | processingSlots[0] | fallInventory; } }
+        // Only the real fall equipment endpoints live here. This does not own
+        // loadouts, schedule actions, or block unrelated inventory/UI work.
+        public bool IsFallEquipmentSlot(bool misc, int slot)
+        { return slot>=0 && slot<(misc?5:20) && (((misc?fallMisc:fallArmor) & (1U<<slot))!=0); }
+        public bool TryBeginFallEquipment(long generation, ulong inventory, uint armor, uint misc, long token)
+        {
+            if(generation<=0 || generation!=Session || token<=0 || fallToken!=0 ||
+                (inventory&~((1UL<<50)-1))!=0 || (armor&~((1U<<20)-1))!=0 || (misc&~31U)!=0 ||
+                (inventory|armor|misc)==0 || (ProtectedSlots&inventory)!=0)return false;
+            fallInventory=inventory;fallArmor=armor;fallMisc=misc;fallToken=token;return true;
+        }
+        public void EndFallEquipment(long generation,long token)
+        { if(generation==Session && token==fallToken){fallInventory=0;fallArmor=fallMisc=0;fallToken=0;} }
+        public bool TryMoveFallEquipment(long generation,ulong inventory,uint armor,uint misc,long token)
+        {
+            if(generation<=0 || generation!=Session || token!=fallToken || token<=0 ||
+                (inventory&~((1UL<<50)-1))!=0 || (armor&~((1U<<20)-1))!=0 || (misc&~31U)!=0 ||
+                (inventory|armor|misc)==0 || ((ProtectedSlots&~fallInventory)&inventory)!=0)return false;
+            fallInventory=inventory;fallArmor=armor;fallMisc=misc;return true;
+        }
+        public bool AnyProtected {get{return (ProtectedSlots|fallArmor|fallMisc|recoverySlots[1]|recoverySlots[2]|recoverySlots[3]|recoverySlots[4]|processingSlots[1]|processingSlots[2]|processingSlots[3]|processingSlots[4])!=0;}}
+        public bool HasFallEquipment {get{return fallToken!=0;}}
         public bool IsProtected(int account,int slot)
-        { return account>=0 && account<5 && slot>=0 && slot<(account==0?58:40) && (account==0?IsProtected(slot):((recoverySlots[account]|processingSlots[account])&(1UL<<slot))!=0); }
+        { return account==5?IsFallEquipmentSlot(false,slot):account==6?IsFallEquipmentSlot(true,slot):account>=0 && account<5 && slot>=0 && slot<(account==0?58:40) && (account==0?IsProtected(slot):((recoverySlots[account]|processingSlots[account])&(1UL<<slot))!=0); }
         // A separate owner from recovery: same finite account masks, but no
         // shared payment bypass, token, cancellation or unknown-result release.
         public bool TryBeginProcessing(long generation,ulong[] slots,long token)
@@ -102,6 +126,7 @@ namespace JueMingR.Platform.Items
             if (discardSlots != 0) DiscardResult = Unknown();
             if (storeSlots != 0) StoreResult = Unknown();
             saleSlots = discardSlots = storeSlots = interruptedSourceSlots = useSlots = coinSlots = 0; useToken = coinToken = 0;
+            fallInventory=0;fallArmor=fallMisc=0;fallToken=0;
             Session = generation;
             Array.Clear(recoverySlots,0,recoverySlots.Length);recoveryToken=0;
             Array.Clear(processingSlots,0,processingSlots.Length);processingToken=0;

@@ -17,9 +17,24 @@ namespace JueMingR.ArchitectureTests
         {
             var codec = new MovementPreferenceCodec(); var initial = new MovementOptions();
             Require(!initial.SimulatedJumpEnabled && !initial.ContinuousDashEnabled && !initial.TeleportCorrectionEnabled && initial.DashMode == ContinuousDashMode.DoubleTap, "first defaults all off/double tap");
+            Require(!initial.SmartFallProtection.Enabled, "first rescue main OFF");
+            for (int i = 0; i < 12; i++) Require(initial.SmartFallProtection.Allows(i), "all twelve first permissions true");
             for (int bits = 0; bits < 8; bits++) foreach (ContinuousDashMode mode in new[] { ContinuousDashMode.Hold, ContinuousDashMode.DoubleTap })
             { var value = new MovementOptions((bits & 1) != 0, (bits & 2) != 0, (bits & 4) != 0, mode); Require(codec.Decode(codec.Encode(value)).Equals(value), "independent settings round trip"); }
             string valid = Encoding.UTF8.GetString(codec.Encode(initial));
+            const string legacy = "{\"format\":\"JueMingR.Movement\",\"version\":1,\"simulatedJump\":true,\"continuousDash\":false,\"teleportCorrection\":true,\"dashMode\":\"hold\"}";
+            var migrated = codec.Decode(Encoding.UTF8.GetBytes(legacy));
+            Require(migrated.SimulatedJumpEnabled && migrated.TeleportCorrectionEnabled && migrated.DashMode == ContinuousDashMode.Hold && !migrated.SmartFallProtection.Enabled, "old v1 preserves original settings and leaves rescue OFF");
+            for (int i = 0; i < 12; i++)
+            {
+                var selected = initial.WithSmartFallProtection(initial.SmartFallProtection.WithPermission(i, false)).WithEnabled(3, true).WithEnabled(3, false);
+                var restored = codec.Decode(codec.Encode(selected));
+                Require(!restored.SmartFallProtection.Enabled && !restored.SmartFallProtection.Allows(i), "disabled main preserves this independently saved permission");
+                for (int j = 0; j < 12; j++) Require(restored.SmartFallProtection.Allows(j) == (j != i), "no neighbouring permission changed");
+            }
+            Reject(codec, valid.Replace("\"grapple\":true", "\"grapple\":true,\"grapple\":false"), PreferenceStatus.Invalid);
+            Reject(codec, valid.Replace("\"grapple\":true", "\"grapple\":true,\"future\":true"), PreferenceStatus.UnknownFields);
+            Reject(codec, valid.Replace("\"horseshoe\":true", "\"horseshoe\":1"), PreferenceStatus.Invalid);
             Reject(codec, valid.Replace("\"doubleTap\"", "\"off\""), PreferenceStatus.Invalid);
             Reject(codec, valid.Replace("\"version\":1", "\"version\":2"), PreferenceStatus.UnsupportedVersion);
             Reject(codec, valid.Replace("\"simulatedJump\":false,", ""), PreferenceStatus.Invalid);

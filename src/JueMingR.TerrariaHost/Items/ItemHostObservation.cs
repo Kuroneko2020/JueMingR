@@ -20,6 +20,10 @@ namespace JueMingR.TerrariaHost.Items
         private ItemSlotObservation[] previous;
         private ItemInventoryObservation cached;
         private long nextInstance, revision, shopIdentity;
+        // Mutation hint for finite borrowers. Reading it never samples inventory;
+        // native item/slot events and an already-requested observation advance
+        // it, so a rejected rescue need not rescan unchanged carried items.
+        internal long Revision { get; private set; }
         private Chest previousShop;
         private NPC previousNpc;
         private Player sessionPlayer;
@@ -31,6 +35,7 @@ namespace JueMingR.TerrariaHost.Items
         internal bool AutomaticOperation { get; set; }
         internal Func<Item, bool> AdditionalProtection { get; set; }
         internal Func<Item, bool> ProcessingProtection { get; set; }
+        internal Action<Item[], int> BeforeManualFallSlot { get; set; }
         internal ItemHostObservation(Func<long> generation, ItemOperationOwnership ownership, Func<bool> canStartActions)
             :this(generation,ownership,canStartActions,canStartActions) { }
         internal ItemHostObservation(Func<long> generation, ItemOperationOwnership ownership, Func<bool> canStartActions,Func<bool> canReleaseManualInput)
@@ -63,7 +68,7 @@ namespace JueMingR.TerrariaHost.Items
                 PlayerInput.MouseInfo.LeftButton == ButtonState.Released && PlayerInput.MouseInfo.RightButton == ButtonState.Released) ClearManual();
         }
         internal bool HasManualOperation { get { return ManualSlot >= 0 || ManualMaterials.Count != 0; } }
-        internal void InvalidateObservation() { cached = null; }
+        internal void InvalidateObservation() { cached = null; Revision++; }
         internal void DiscardUnsubmittedObservation() { cached = null; previous = null; ClearManual(); }
         internal bool Busy
         { get { return CausalDepth != 0 || AutomaticOperation || Main.LocalPlayerHasPendingInventoryActions(); } }
@@ -105,7 +110,7 @@ namespace JueMingR.TerrariaHost.Items
             // without inventing a business revision from reference churn alone.
             // The proved synchronous rejection restoration is accepted separately.
             if (changed || referencesChanged)
-            { if (changed) revision++; previous = current; cached = new ItemInventoryObservation(SessionGeneration, revision, available, shopIdentity, current); }
+            { if (changed) revision++; Revision++; previous = current; cached = new ItemInventoryObservation(SessionGeneration, revision, available, shopIdentity, current); }
             previousAdmissionGates = admissionGates; observation = cached; return true;
         }
         internal bool Matches(ItemSlotObservation observed)

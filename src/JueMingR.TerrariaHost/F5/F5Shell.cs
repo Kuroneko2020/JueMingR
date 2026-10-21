@@ -637,7 +637,7 @@ namespace JueMingR.TerrariaHost.F5
                 { CloseAndSubmitPosition(); notes.Prepare(false, matrix, PlayerInput.OriginalScreenSize); renderer.Dispose(); return; }
                 // Documents finish independently; a protected/failed read still
                 // finishes loading and permits in-memory use of that document.
-                if (movement != null) State.Layout.SetMovementMode(movement.DashMode);
+                if (movement != null) { State.Layout.SetMovementMode(movement.DashMode); State.Layout.SetMovementConfiguration(renderer.MovementControls.ConfigurationExpanded); }
                 if (!preferences.UiLoaded) { State.Ready = false; notes.Prepare(CanPresentNow && LayersReady, matrix, PlayerInput.OriginalScreenSize); return; }
                 if (State.Visible || !State.Ready) State.Ready = LayersReady && renderer.RefreshResources();
                 if (!State.Ready) { CloseAndSubmitPosition(); notes.Prepare(false, matrix, PlayerInput.OriginalScreenSize); return; }

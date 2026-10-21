@@ -50,6 +50,16 @@ namespace JueMingR.TerrariaHost.Fishing
         {return player!=null && ReferenceEquals(player,Main.LocalPlayer) && ReferenceEquals(world,Main.ActiveWorldFileData) && networkMode==Main.netMode && ReferenceEquals(socket,Main.netMode==1?Netplay.Connection.Socket:null) && generation==host.Tools.Runtime.Generation;}
         internal bool Protect(Item item)
         {if(!Identity())return false;foreach(var e in entries)if(ReferenceEquals(item,e.Borrowed) || ReferenceEquals(item,e.Original))return true;return false;}
+        // S temporarily replaces this exact F endpoint; the A->F journal stays
+        // intact. Its return cannot run until S has returned F to the same slot.
+        internal bool CanLendFallSlot(Player current,int slot,Item expected)
+        {
+            if(!Identity() || !ReferenceEquals(current,player) || loadoutOwned || depth!=0)return false;
+            foreach(var e in entries)if(e.Target==slot && e.Loadout==player.CurrentLoadoutIndex && e.Applied && !e.Unknown &&
+                ReferenceEquals(player.armor[slot],expected) && ReferenceEquals(e.Borrowed,expected))return true;
+            return false;
+        }
+        internal void FallReturned(){dirty=true;haveFingerprint=false;}
         private int Desired()
         {
             if(failed || !host.Ready || !host.Session.Active || suppressed==host.Session.Token)return 0;
@@ -96,6 +106,7 @@ namespace JueMingR.TerrariaHost.Fishing
             if(player.CurrentLoadoutIndex!=originalLoadout && mode==2)return;
             if(mode==1)
             {
+                if(host.Tools.Items.Ownership.HasFallEquipment)return;
                 Plans++;int best=FishingEquipmentPlan.BestLoadout(player);
                 if(best!=player.CurrentLoadoutIndex)Switch(best,false);
             }
@@ -125,6 +136,7 @@ namespace JueMingR.TerrariaHost.Fishing
         }
         private bool Allowed(Item[] array,int slot)
         {
+            if(ReferenceEquals(array,player.armor) && host.Tools.Items.Ownership.IsFallEquipmentSlot(false,slot))return false;
             Item item=array[slot];if(item==null || host.Tools.Items.World.ManualMaterials.Contains(item) || (priorProtection?.Invoke(item)??false) || Protect(item))return false;
             if(ReferenceEquals(array,player.inventory))return slot<50 && !player.inventoryChestStack[slot] && !host.Tools.Items.Ownership.IsProtected(slot);
             if(ReferenceEquals(array,player.bank4.item))return player.useVoidBag() && !host.Tools.Items.Ownership.IsProtected(4,slot);
@@ -132,6 +144,7 @@ namespace JueMingR.TerrariaHost.Fishing
         }
         private bool Apply(FishingEquipmentPlan.Move move)
         {
+            if(host.Tools.Items.Ownership.IsFallEquipmentSlot(false,move.Target))return false;
             if(move.Item.stack>1 && !Split(move))return false;
             if(!ApplyGate() || !Allowed(move.Source,move.Slot) || !ReferenceEquals(move.Source[move.Slot],move.Item) || !FishingEquipmentPlan.CanSwap(player,move.Source,move.Slot,move.Target))return false;
             var original=player.armor[move.Target];
@@ -235,12 +248,14 @@ namespace JueMingR.TerrariaHost.Fishing
             if(!ReturnGate(boundary))return;
             if(loadoutOwned)
             {
+                if(host.Tools.Items.Ownership.HasFallEquipment)return;
                 if(player.CurrentLoadoutIndex!=appliedLoadout)loadoutOwned=false;
                 else if(!player.dead && !player.CCed)Switch(originalLoadout,true);
             }
             for(int i=entries.Count-1;i>=0;i--)
             {
                 var e=entries[i];if(player.CurrentLoadoutIndex!=e.Loadout)continue;
+                if(host.Tools.Items.Ownership.IsFallEquipmentSlot(false,e.Target))continue;
                 Item[] source;int slot;if(!FindReturn(e,boundary,out source,out slot))continue;
                 Item returningOriginal=source[slot];
                 // Restoration is an inverse of this exact exchange. Native
@@ -289,16 +304,19 @@ namespace JueMingR.TerrariaHost.Fishing
         internal void ManualLoadout(Player current,int before)
         {
             if(depth!=0 || !Identity() || !ReferenceEquals(current,player) || before==player.CurrentLoadoutIndex)return;
+            host.Tools.Items.World.InvalidateObservation();
             if(mode==1){loadoutOwned=false;suppressed=host.Session.Token;ClearStatus();ClearOwner();}
             else{dirty=true;haveFingerprint=false;if(Active)Say("已切换装备组；原钓鱼配装记录等待回到原组后处理。");}
         }
         internal void ManualSlots()
         {
+            host.Tools.Items.World.InvalidateObservation();
             if(depth!=0 || !Identity() || entries.Count==0)return;
             int visited=0,taken=0;
             for(int i=entries.Count-1;i>=0;i--)
             {
                 var e=entries[i];if(player.CurrentLoadoutIndex!=e.Loadout || (visited&(1<<e.Target))!=0)continue;
+                if(host.Tools.Items.Ownership.IsFallEquipmentSlot(false,e.Target))continue;
                 visited|=1<<e.Target;if(!ReferenceEquals(player.armor[e.Target],e.Borrowed))taken|=1<<e.Target;
             }
             for(int target=0;target<10;target++)if((taken&(1<<target))!=0)YieldTarget(target);

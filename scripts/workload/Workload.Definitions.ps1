@@ -5,7 +5,7 @@ function Test-WorkloadNonExecutableInput {
     # Exact archived evidence and existing document classes only. Unknown
     # executables beside reports remain unclassified and cannot gain a waiver.
     if($Path -match '\.(exe|dll|ps1|cmd|bat|cs|csproj|props|targets)$'){return $false}
-    return $Path.Replace('\','/') -match '^(docs/|AGENTS\.md$|README(?:\.[^/]+)?$|LICENSE$|THIRD-PARTY-NOTICES\.md$|scripts/phase0s/[^/]*Owner-Test-Card[^/]*\.md$|review-materials/movement-assists-20261019/evidence\.md$|review-materials/aim-midpoint-20261011-035938-HKT/.+\.(md|txt|json|csv)$|review-materials/aim-dedup-repair-20261014/(evidence\.md|(validation-map|failure-dispositions)\.json|(A-birth-directions|A-time-summary|B-model-equivalence|B-natural-births|B-natural-time-summary|B-supplement-summary|F-natural-births|F-natural-consumer-summary|F-natural-time-summary)\.csv)$)'
+    return $Path.Replace('\','/') -match '^(docs/|AGENTS\.md$|README(?:\.[^/]+)?$|LICENSE$|THIRD-PARTY-NOTICES\.md$|scripts/phase0s/[^/]*Owner-Test-Card[^/]*\.md$|review-materials/(movement-assists-20261019|smart-fall-protection-20261021)/evidence\.md$|review-materials/aim-midpoint-20261011-035938-HKT/.+\.(md|txt|json|csv)$|review-materials/aim-dedup-repair-20261014/(evidence\.md|(validation-map|failure-dispositions)\.json|(A-birth-directions|A-time-summary|B-model-equivalence|B-natural-births|B-natural-time-summary|B-supplement-summary|F-natural-births|F-natural-consumer-summary|F-natural-time-summary)\.csv)$)'
 }
 function Get-WorkloadLeafChecks {
     # Hand-opening/navigation owners are consumed by the attack preparation,
@@ -18,6 +18,11 @@ function Get-WorkloadLeafChecks {
         'scripts/workload/Workload.NativeContent.ps1'=@('native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
         'tests/Workload/Invoke-WorkloadContentChecks.ps1'=@('workload-Evidence')
         'tests/NativeWorldTextProbe/NativeMovementJumpChecks.cs'=@('native-MovementJumpCpu')
+        'tests/NativeWorldTextProbe/NativeSmartFallRiskActionsChecks.cs'=@('native-MovementSmartFallCpu')
+        'tests/NativeWorldTextProbe/NativeSmartFallActionsChecks.cs'=@('native-MovementSmartFallCpu')
+        'tests/NativeWorldTextProbe/NativeSmartFallBorrowChecks.cs'=@('native-MovementSmartFallCpu')
+        'tests/NativeWorldTextProbe/NativeSmartFallScopeChecks.cs'=@('native-MovementSmartFallCpu')
+        'tests/Phase0U/MovementConfigurationChecks.cs'=@('fixture-movement-layout')
         'tests/NativeWorldTextProbe/NativeMovementJumpWireChecks.cs'=@('native-MovementJumpCpu')
         'tests/NativeWorldTextProbe/NativeMovementDashChecks.cs'=@('native-MovementDashCpu')
         'tests/NativeWorldTextProbe/NativeTeleportMovementChecks.cs'=@('native-MovementTeleportCpu')
@@ -290,6 +295,10 @@ function Get-WorkloadNativeScopes {
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
         'MovementJumpCpu'=@('movement-host');
+        # The rescue leaf directly consumes the fishing overlap owner and its
+        # existing native tool/fishing fixture initialization. Bind those inputs
+        # for reuse; this adds no execution of either parent feature matrix.
+        'MovementSmartFallCpu'=@('movement-host','fishing-host','tools-host');
         'MovementDashCpu'=@('movement-host');
         'MovementTeleportCpu'=@('movement-host');
         'ViewZoomSpeedCpu'=@('view-host');

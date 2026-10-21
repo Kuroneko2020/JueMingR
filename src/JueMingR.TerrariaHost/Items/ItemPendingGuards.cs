@@ -17,15 +17,37 @@ namespace JueMingR.TerrariaHost.Items
         private static readonly Item unavailable = new Item();
         private static ulong materialTick = ulong.MaxValue;
         private static readonly HashSet<int> projectileMaterials = new HashSet<int>();
+        private struct SlotMutation
+        {
+            internal ItemHostObservation World;
+            internal ItemValue Slot, Cursor;
+        }
+        private readonly struct ItemValue
+        {
+            private readonly Item item;
+            private readonly int type, stack, prefix;
+            private readonly bool favorite;
+            internal ItemValue(Item value)
+            { item = value; type = value?.type ?? 0; stack = value?.stack ?? 0; prefix = value?.prefix ?? 0; favorite = value?.favorited ?? false; }
+            internal bool Matches(Item value)
+            { return ReferenceEquals(item, value) && type == (value?.type ?? 0) && stack == (value?.stack ?? 0) && prefix == (value?.prefix ?? 0) && favorite == (value?.favorited ?? false); }
+        }
         internal static void Install(HostItems owner, Harmony harmony)
         {
             host = owner;
             Type[] slot = { typeof(Item[]), typeof(int), typeof(int) };
             Patch(harmony, typeof(ItemSlot), "Handle", new[] { typeof(Item[]), typeof(int), typeof(int), typeof(bool) }, nameof(Handle));
-            Patch(harmony, typeof(ItemSlot), "LeftClick", slot, nameof(ManualSlot));
-            Patch(harmony, typeof(ItemSlot), "RightClick", slot, nameof(ManualSlot));
+            Patch(harmony, typeof(ItemSlot), "LeftClick", slot, nameof(ManualLeftSlot));
+            Patch(harmony, typeof(ItemSlot), "RightClick", slot, nameof(ManualRightSlot));
             Patch(harmony, typeof(ItemSlot), "OverrideLeftClick", slot, nameof(OverrideClick));
             Patch(harmony, typeof(ItemSlot), "GetGamepadInstructions", slot, nameof(Gamepad));
+            // These existing UI consumers can move a carried capability without
+            // GetItem or an automation snapshot. Observe only their two touched
+            // endpoints on an actual command edge; idle/hover does no sampling.
+            foreach (string name in new[] { "LeftClick", "RightClick", "OverrideLeftClick", "GetGamepadInstructions" })
+                harmony.Patch(AccessTools.DeclaredMethod(typeof(ItemSlot), name, slot),
+                    prefix: new HarmonyMethod(typeof(ItemPendingGuards), name == "GetGamepadInstructions" ? nameof(BeforeGamepadSlotMutation) : nameof(BeforeSlotMutation)),
+                    finalizer: new HarmonyMethod(typeof(ItemPendingGuards), nameof(AfterSlotMutation)));
             Patch(harmony, typeof(ItemSlot), "TryOpenContainer", new[] { typeof(Item[]), typeof(int), typeof(int), typeof(Player) }, nameof(ManualSlot));
             Type[] fill = { typeof(Item), typeof(GetItemSettings), typeof(Item), typeof(int) };
             Patch(harmony, typeof(Player), "GetItem_FillIntoOccupiedSlot", fill, nameof(Fill));
@@ -68,13 +90,20 @@ namespace JueMingR.TerrariaHost.Items
                 !(account==0 && host.Ownership.IsUseSlot(slot) && host.AllowsOwnedUse!=null && host.AllowsOwnedUse(slot));
         }
         private static int Account(Player p,Item[] array)
-        {return ReferenceEquals(p.inventory,array)?0:ReferenceEquals(p.bank.item,array)?1:ReferenceEquals(p.bank2.item,array)?2:ReferenceEquals(p.bank3.item,array)?3:ReferenceEquals(p.bank4.item,array)?4:-1;}
+        {return ReferenceEquals(p.inventory,array)?0:ReferenceEquals(p.bank.item,array)?1:ReferenceEquals(p.bank2.item,array)?2:ReferenceEquals(p.bank3.item,array)?3:ReferenceEquals(p.bank4.item,array)?4:ReferenceEquals(p.armor,array)?5:ReferenceEquals(p.miscEquips,array)?6:-1;}
         private static bool Protected(Item item)
         {
             if (host == null || !host.Ownership.AnyProtected || item == null || !Active) return false;
             Item[] inv = host.World.SessionPlayer.inventory;
             for (int i = 0; i < 58; i++) if (ReferenceEquals(item, inv[i]) && Protected(inv, i)) return true;
             Player p=host.World.SessionPlayer;
+            if(host.Ownership.HasFallEquipment)
+            {
+                // Only a live rescue has these two small real equipment ranges.
+                // Other item operations retain their original five accounts.
+                for(int i=0;i<Math.Min(20,p.armor.Length);i++)if(ReferenceEquals(item,p.armor[i]) && Protected(p.armor,i))return true;
+                for(int i=0;i<Math.Min(5,p.miscEquips.Length);i++)if(ReferenceEquals(item,p.miscEquips[i]) && Protected(p.miscEquips,i))return true;
+            }
             for(int a=1;a<5;a++){Item[] bank=a==1?p.bank.item:a==2?p.bank2.item:a==3?p.bank3.item:p.bank4.item;for(int i=0;i<40;i++)if(host.Ownership.IsProtected(a,i) && ReferenceEquals(item,bank[i]) && Protected(bank,i))return true;}
             return false;
         }
@@ -86,12 +115,55 @@ namespace JueMingR.TerrariaHost.Items
         { Remember(__0, __2); if (Protected(__0, __2) || TrashRange(__0, __2)) __3 = false; }
         private static bool ManualSlot(Item[] __0, int __1, int __2)
         { Remember(__0, __2); return !Protected(__0, __2) && !TrashRange(__0, __2); }
+        private static void NotifyManualMutation(Item[] array, int slot)
+        {
+            // Explicit physical click intent hands control to the player even
+            // if a later vanilla animation gate declines the write. Hover is
+            // neither takeover nor an inventory-mutation notification.
+            if (Active) host.World.BeforeManualFallSlot?.Invoke(array, slot);
+        }
+        private static bool GamepadEdge()
+        {
+            var pressed = Terraria.GameInput.PlayerInput.Triggers.JustPressed;
+            bool grapple, smart;
+            return Terraria.GameInput.PlayerInput.AllowExecutionOfGamepadInstructions &&
+                (pressed.KeyStatus.TryGetValue("Grapple", out grapple) && grapple || pressed.KeyStatus.TryGetValue("SmartCursor", out smart) && smart);
+        }
+        private static void BeforeSlotMutation(Item[] __0, int __2, out SlotMutation __state)
+        { CaptureSlotMutation(__0, __2, Main.mouseLeft && Main.mouseLeftRelease || Main.mouseRight, out __state); }
+        private static void BeforeGamepadSlotMutation(Item[] __0, int __2, out SlotMutation __state)
+        { CaptureSlotMutation(__0, __2, Active && GamepadEdge(), out __state); }
+        private static void CaptureSlotMutation(Item[] array, int slot, bool commandEdge, out SlotMutation state)
+        {
+            state = default(SlotMutation);
+            if (!commandEdge || !Active || array == null || slot < 0 || slot >= array.Length) return;
+            int account = Account(host.World.SessionPlayer, array);
+            if (account != 0 && account != 5 && account != 6) return;
+            state = new SlotMutation { World = host.World, Slot = new ItemValue(array[slot]), Cursor = new ItemValue(Main.mouseItem) };
+        }
+        private static Exception AfterSlotMutation(Item[] __0, int __2, SlotMutation __state, Exception __exception)
+        {
+            if (__state.World != null && (!__state.Slot.Matches(__0[__2]) || !__state.Cursor.Matches(Main.mouseItem)))
+                __state.World.InvalidateObservation();
+            return __exception;
+        }
+        private static bool ManualLeftSlot(Item[] __0, int __1, int __2)
+        { if (Main.mouseLeft && Main.mouseLeftRelease) NotifyManualMutation(__0, __2); return ManualSlot(__0, __1, __2); }
+        private static bool ManualRightSlot(Item[] __0, int __1, int __2)
+        { if (Main.mouseRight) NotifyManualMutation(__0, __2); return ManualSlot(__0, __1, __2); }
         private static bool Gamepad(Item[] __0, int __1, int __2, ref string __result)
-        { if (ManualSlot(__0, __1, __2)) return true; __result = string.Empty; return false; }
+        {
+            // GetGamepadInstructions is also the native command consumer. Its
+            // locked-.8 CanExecuteCommand gate is this flag; only actual UI
+            // command edges may hand an intersecting rescue slot to the player.
+            if (GamepadEdge()) NotifyManualMutation(__0, __2);
+            if (ManualSlot(__0, __1, __2)) return true; __result = string.Empty; return false;
+        }
         private static bool TrashRange(Item[] array, int slot)
         { return Active && host.Ownership.DiscardBlocked && slot >= 0 && slot < array.Length && ReferenceEquals(array[slot], host.World.SessionPlayer.trashItem); }
         private static bool OverrideClick(Item[] __0, int __1, int __2, ref bool __result)
         {
+            if (Main.mouseLeft && Main.mouseLeftRelease) NotifyManualMutation(__0, __2);
             bool blocked = !ManualSlot(__0, __1, __2) || Active &&
                 (Main.cursorOverride == 10 && host.Ownership.SaleBlocked || Main.cursorOverride == 6 && host.Ownership.DiscardBlocked);
             if (!blocked) return true;

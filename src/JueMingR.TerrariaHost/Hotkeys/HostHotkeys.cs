@@ -94,7 +94,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
                     movementModeChanged = () => { try { display.Remove(F5.MovementControls.ActionIds[1]); } catch { } };
                     movement.DashModeChanged += movementModeChanged;
                 }
-                for (int i = 0; i < 3; i++)
+                for (int i = 0; i < F5.MovementControls.ActionIds.Length; i++)
                 {
                     int feature = i;
                     RegisterSwitch(F5.MovementControls.ActionIds[i], F5.MovementControls.Names[i], () => movement.Available(feature), () => movement.SetEnabled(feature, !movement.IsEnabled(feature)),

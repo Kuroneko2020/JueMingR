@@ -250,6 +250,8 @@ namespace Terraria
                     AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;
                     NotesHostChecks.Run(false); return 0;
                 }
+                if (args.Length == 1 && args[0] == "movement-layout")
+                { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; MovementConfigurationChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "phase0u-layout")
                 {
                     AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly;

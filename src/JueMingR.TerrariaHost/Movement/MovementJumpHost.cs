@@ -43,7 +43,14 @@ namespace JueMingR.TerrariaHost.Movement
             if(!holding){SetPhase(MovementJumpPhase.None);return;}
             if(!ownership.TryAcquire(MovementJumpOwner.SimulatedJump))return;
             bool water=value.wet && value.accFlipper && (!value.mount.Active || !value.mount.Cart) || value.mount.Active && value.mount.IsConsideredASlimeMount && value.wetSlime>0;
-            if(water || TakenOver(value))SetPhase(MovementJumpPhase.None);
+            if(TakenOver(value))
+            {
+                // A real grapple owns subsequent Jump semantics. Never lend a
+                // synthetic release edge (or rocket release) that would retract
+                // it; the player's actual controlJump still reaches vanilla.
+                SetPhase(MovementJumpPhase.None);masked=candidate=false;return;
+            }
+            if(water)SetPhase(MovementJumpPhase.None);
             else SetPhase(MovementJumpRules.Before(phase,holding,value.controlDown,value.velocity.Y*value.gravDir));
             masked=phase==MovementJumpPhase.Coast;
             if(masked)ownership.MarkWritten(MovementJumpOwner.SimulatedJump);
@@ -74,7 +81,7 @@ namespace JueMingR.TerrariaHost.Movement
             masked=phase==MovementJumpPhase.Coast;
             if(masked && !ownership.Written)ownership.MarkWritten(MovementJumpOwner.SimulatedJump);
             if(masked)return;
-            if(ownership.Owner!=MovementJumpOwner.SimulatedJump || value.jump!=0 || ExtraJump(value) || value.rocketBoots==0 || value.rocketTime<=0 || value.rocketRelease)return;
+            if(ownership.Owner!=MovementJumpOwner.SimulatedJump || TakenOver(value) || value.jump!=0 || ExtraJump(value) || value.rocketBoots==0 || value.rocketTime<=0 || value.rocketRelease)return;
             // canRocket is deliberately NOT sampled here: Update establishes
             // it after CarpetMovement. Its full later gate still owns wings,
             // cooldown, CanUseBootFlyingAbilities, fuel and actual movement.

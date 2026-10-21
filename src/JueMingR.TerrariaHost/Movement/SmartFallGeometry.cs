@@ -1,0 +1,94 @@
+using System;
+using JueMingR.Features.Movement;
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.ID;
+
+namespace JueMingR.TerrariaHost.Movement
+{
+    internal static class SmartFallGeometry
+    {
+        internal const int Horizon = 48;
+        // Read-only contact band: no Collision static flags, missing Tile
+        // creation, live clone, or complete Player.Update simulation.
+        internal static SmartFallContact Contact(Player p, ref long reads)
+        { return Contact(p.position, p.velocity, p.width, p.height, p.gravity, p.maxFallSpeed, p.gravDir, p.controlDown, ref reads); }
+
+        internal static SmartFallContact Contact(Vector2 position, Vector2 velocity, int width, int height,
+            float gravity, float maxFall, float direction, bool down, ref long reads)
+        {
+            var contact = default(SmartFallContact);
+            float x = position.X, y = position.Y, vy = velocity.Y, vx = velocity.X;
+            for (int tick = 0; tick < Horizon; tick++)
+            {
+                vy = direction * Math.Min(maxFall, vy * direction + Math.Abs(gravity));
+                int steps = Math.Max(1, (int)Math.Ceiling(Math.Max(Math.Abs(vx), Math.Abs(vy)) / 4));
+                if (steps > 32) return contact; // unmodelled portal/high-speed motion
+                float dx = vx / steps, dy = vy / steps;
+                for (int step = 0; step < steps; step++)
+                {
+                    float nx = x + dx, ny = y + dy;
+                    if (dx != 0)
+                    {
+                        int side = (int)Math.Floor((dx > 0 ? nx + width - .001f : nx) / 16);
+                        for (int row = (int)Math.Floor((y + .001f) / 16); row <= (int)Math.Floor((y + height - .001f) / 16); row++)
+                        {
+                            var wall = Read(side, row, ref reads);
+                            if (wall == null || !wall.nactive() || !Main.tileSolid[wall.type] || Main.tileSolidTop[wall.type] || wall.slope() != 0) continue;
+                            float top = row * 16 + (wall.halfBrick() ? 8 : 0);
+                            if (y + height <= top || y >= row * 16 + 16) continue;
+                            nx = dx > 0 ? side * 16 - width : side * 16 + 16;
+                            vx = dx = 0; break;
+                        }
+                    }
+                    float oldEdge = direction > 0 ? y + height : y;
+                    float edge = direction > 0 ? ny + height : ny;
+                    int minX = (int)Math.Floor(Math.Min(x, nx) / 16), maxX = (int)Math.Floor((Math.Max(x, nx) + width - .001f) / 16);
+                    int minY = (int)Math.Floor(Math.Min(oldEdge, edge) / 16) - 1, maxY = (int)Math.Floor(Math.Max(oldEdge, edge) / 16) + 1;
+                    float nearest = direction > 0 ? float.MaxValue : float.MinValue;
+                    for (int tx = minX; tx <= maxX; tx++) for (int ty = minY; ty <= maxY; ty++)
+                    {
+                        Tile tile = Read(tx, ty, ref reads);
+                        if (tile == null || !tile.nactive()) continue;
+                        bool platform = Main.tileSolidTop[tile.type];
+                        if (!Main.tileSolid[tile.type] && (!platform || tile.frameY != 0) || platform && (down || direction < 0)) continue;
+                        if (nx + width <= tx * 16 || nx >= tx * 16 + 16) continue;
+                        byte slope = tile.slope();
+                        float surface = SmartFallDecision.Surface(tx, ty, slope, tile.halfBrick(), nx, nx + width, direction);
+                        // Width-leading crossing is also tested at the old X:
+                        // an uphill front foot can contact before the centre.
+                        float previous = SmartFallDecision.Surface(tx, ty, slope, tile.halfBrick(), x, x + width, direction);
+                        if ((oldEdge - previous) * direction > 4.01f || (edge - surface) * direction < 0) continue;
+                        if (direction > 0 ? surface >= nearest : surface <= nearest) continue;
+                        nearest = surface;
+                        contact = new SmartFallContact { Found = true, Platform = platform,
+                            SafeSurface = TileID.Sets.Clouds[tile.type] || tile.type == 666 || tile.type == 19 && tile.frameY / 18 == 49,
+                            X = nx, Y = direction > 0 ? surface - height : surface,
+                            Ticks = tick + (step + 1f) / steps, TileX = tx, TileY = ty, Slope = slope,
+                            Type = tile.type, FrameY = tile.frameY, HalfBrick = tile.halfBrick() };
+                    }
+                    if (contact.Found) return contact;
+                    x = nx; y = ny;
+                }
+            }
+            return contact;
+        }
+        internal static Tile Read(int x, int y, ref long reads)
+        {
+#if DEBUG
+            reads++;
+#endif
+            if (Main.tile == null || x < 1 || y < 1 || x >= Main.maxTilesX - 1 || y >= Main.maxTilesY - 40) return null;
+            return Main.tile[x, y];
+        }
+        internal static bool Empty(Vector2 position, int width, int height, ref long reads)
+        {
+            int left = (int)Math.Floor(position.X / 16), right = (int)Math.Floor((position.X + width - .001f) / 16);
+            int top = (int)Math.Floor(position.Y / 16), bottom = (int)Math.Floor((position.Y + height - .001f) / 16);
+            if (left < 1 || top < 1 || right >= Main.maxTilesX - 1 || bottom >= Main.maxTilesY - 40) return false;
+            for (int x = left; x <= right; x++) for (int y = top; y <= bottom; y++)
+            { var t = Read(x, y, ref reads); if (t == null || t.liquid > 0 || t.nactive() && Main.tileSolid[t.type] && !Main.tileSolidTop[t.type]) return false; }
+            return true;
+        }
+    }
+}
