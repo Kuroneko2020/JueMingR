@@ -23,6 +23,42 @@ namespace JueMingR.TerrariaHost.Movement
             return band.Complete ? contact : default(SmartFallContact);
         }
 
+        // A full-width, level support strip certifies a short safe landing
+        // independently of the exact horizontal braking curve. Earlier body
+        // contacts can only shorten this already safe fall. Re-read the finite
+        // reachable strip so a hole/Down/new reach cannot preserve stale safety;
+        // slopes, half bricks and a wider/unmodelled reach use the normal sweep.
+        internal static bool SafeSupport(Player p, SmartFallContact contact, ref long reads)
+        {
+            if (!contact.Found || contact.SafeSurface || contact.Slope != 0 || contact.HalfBrick) return false;
+            // Only ordinary running is bounded by the native run-speed fields;
+            // mounts, a possible dash, pulley and hooks keep exact-path timing.
+            if (p.mount.Active || p.dashType != 0 || p.pulley || p.grapCount > 0) return false;
+            if (contact.Platform && (p.controlDown || p.gravDir < 0 || p.mount.Active || p.pulley || p.grapCount > 0)) return false;
+            float plane = p.gravDir > 0 ? contact.Y + p.height : contact.Y;
+            float remaining = (plane - (p.gravDir > 0 ? p.position.Y + p.height : p.position.Y)) * p.gravDir;
+            if (remaining < -.01f) return false;
+            float speed = p.velocity.Y * p.gravDir; int ticks = 0;
+            do
+            {
+                speed = Math.Min(p.maxFallSpeed, speed + Math.Abs(p.gravity));
+                if (speed <= 0) return false;
+                remaining -= speed; ticks++;
+            } while (remaining > 0 && ticks < Horizon);
+            if (remaining > 0) return false;
+            float reach = Math.Max(Math.Abs(p.velocity.X), Math.Max(p.maxRunSpeed, p.accRunSpeed)) * ticks;
+            int left = (int)Math.Floor((p.position.X - reach) / 16);
+            int right = (int)Math.Floor((p.position.X + p.width + reach - .001f) / 16);
+            if (right - left >= 64) return false;
+            for (int x = left; x <= right; x++)
+            {
+                Tile tile = Read(x, contact.TileY, ref reads);
+                if (tile == null || !tile.nactive() || !Main.tileSolid[tile.type] || tile.slope() != 0 || tile.halfBrick()) return false;
+                if (Main.tileSolidTop[tile.type] && (p.gravDir < 0 || p.controlDown || p.mount.Active || p.pulley || p.grapCount > 0 || tile.frameY != 0)) return false;
+            }
+            return true;
+        }
+
         internal static SmartFallContact Contact(Vector2 position, Vector2 velocity, int width, int height,
             float gravity, float maxFall, float direction, bool down, ref long reads, SmartFallContactBand band = null)
         {

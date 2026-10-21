@@ -32,7 +32,7 @@ namespace JueMingR.TerrariaHost.Movement
         // Separate bounded read set: upper anchors/rays remain relevant even
         // after the player has passed their Y; liquid also affects native flight.
         private readonly SmartFallContactBand grappleDependencies = new SmartFallContactBand(false, true);
-        private int sourceCount, hookCount, blockingCount;
+        private int sourceCount, hookCount, blockingCount, sampledWidth, sampledHeight;
         private long blockerStamp;
         private readonly Func<Item, bool> jumpSourceReady;
         private SmartFallProtectionOptions sampledOptions;
@@ -116,6 +116,13 @@ namespace JueMingR.TerrariaHost.Movement
             Projectile failed;
             if (failedShot && (!shotKey.TryGetActive(out failed) || failed.owner != p.whoAmI || failed.aiStyle != 7))
             { failedShot = false; ReopenGrapple(); }
+            // Ordinary braking changes velocity every Update, but does not
+            // invalidate a level, continuously supported SAFE landing. Its
+            // bounded reachable support strip is checked before exact-path
+            // staleness; dangerous contacts keep the full original timing path.
+            if (!currentRisk && bandValid && p.width == sampledWidth && p.height == sampledHeight &&
+                p.controlDown == sampledDown && p.gravDir == originalGravity &&
+                !SmartFallCapabilities.ContactRisk(p, contact) && SmartFallGeometry.SafeSupport(p, contact, ref TileReads)) return;
             // A retained contact is consumed only while its input and simple
             // local geometry remain current; otherwise query the finite band.
             bool stale = !bandValid || p.controlDown != sampledDown || p.gravDir != originalGravity ||
@@ -129,6 +136,7 @@ namespace JueMingR.TerrariaHost.Movement
                 if (failedShot || grappleSearched) ReopenGrapple();
                 Count(ref Plans); contact = SmartFallGeometry.Contact(p, ref TileReads, contactBand); contactTick = sampledTick = tick; bandValid = true; grappleSearched = false;
                 sampledPosition = p.position; sampledVelocity = p.velocity; sampledDown = p.controlDown; originalGravity = p.gravDir;
+                sampledWidth = p.width; sampledHeight = p.height;
             }
             else if (contact.Found)
             {

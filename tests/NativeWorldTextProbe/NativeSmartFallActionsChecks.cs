@@ -57,6 +57,7 @@ namespace NativeWorldTextProbe
                 Independent("FlyingMountSlopeRight",()=>MountRescue(SmartFallFamily.FlyingMount,3367,true,false,2,25,-2),ref first);
                 Independent("FlyingMountLateSlopeControl",FlyingMountLateSlopeControl,ref first);
                 Independent("CriticalLanding",CriticalLanding,ref first);
+                Independent("SafeShortFallBraking",SafeShortFallBraking,ref first);
                 Independent("Grapple84",()=>GrappleRescue(84,480,false),ref first);
                 Independent("GrappleCriticalPreparation",()=>GrappleRescue(84,480,false,false,false,true),ref first);
                 Independent("Grapple1800Borrowed",()=>GrappleRescue(1800,240,true),ref first);
@@ -435,6 +436,50 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("SMART-FALL CRITICAL gap="+gap+" help="+help+" start-tiles="+start+" final-top="+p.position.Y+" life="+p.statLife+" actions="+((long)Get(host,"NativeActions")-actions));
             }
             Call(movement,"SetEnabled",3,true);
+        }
+        private static void SafeShortFallBraking()
+        {
+            Select(SmartFallFamily.Horseshoe);var p=PlayerAt(12*16);p.velocity=new Vector2(3,.4f);p.fallStart=(int)(p.position.Y/16);
+            p.inventory[17].SetDefaults(158);Item source=p.inventory[17];
+            long scans=(long)Get(host,"SourceScans"),plans=(long)Get(host,"Plans"),reads=(long)Get(host,"TileReads"),actions=(long)Get(host,"NativeActions");
+            int updates=0,braking=0;bool landed=false;
+            for(int tick=0;tick<64;tick++)
+            {
+                p.controlLeft=true;p.controlRight=false;float before=p.velocity.X;
+                Begin(p);try{Damage(p);p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);NativeCollision(p);}finally{End(p);}
+                updates++;if(before>0 && before-p.velocity.X>.1f)braking++;
+                if(p.velocity.Y==0){landed=true;Damage(p);break;}
+            }
+            long probes=(long)Get(host,"Plans")-plans,tiles=(long)Get(host,"TileReads")-reads;
+            Require(landed && braking>=6 && p.statLife==5000 && !p.noFallDmg && ReferenceEquals(p.inventory[17],source),"Real ordinary twelve-tile fall brakes through native HorizontalMovement and lands safely without equipping its legitimate backpack source.");
+            Require((long)Get(host,"NativeActions")==actions && probes<braking && (long)Get(host,"SourceScans")==scans+1,"Normal horizontal braking cannot repeatedly perform a complete Contact while the actual support strip still certifies this short safe fall.");
+            Console.WriteLine("SMART-FALL SAFE-SHORT-BRAKING updates="+updates+" native-positive-braking="+braking+" source-scans="+((long)Get(host,"SourceScans")-scans)+" complete-contacts="+probes+" tile-reads="+tiles+" actions="+((long)Get(host,"NativeActions")-actions)+" original-safe-life="+p.statLife);
+            SafeShortSupportRemoved();
+        }
+        private static void SafeShortSupportRemoved()
+        {
+            Select(SmartFallFamily.Horseshoe);var p=PlayerAt(12*16);p.velocity=new Vector2(3,.4f);p.fallStart=(int)(p.position.Y/16);p.inventory[17].SetDefaults(158);
+            Begin(p);End(p);var first=(SmartFallContact)Get(host,"contact");long plans=(long)Get(host,"Plans");
+            Require(first.Found && first.TileY==Floor,"Negative control begins with a real safe upper support contact.");
+            const int lower=Floor+22;var upperTiles=new Tile[30];var lowerTiles=new Tile[30];
+            for(int x=35;x<65;x++)
+            {
+                upperTiles[x-35]=Main.tile[x,Floor];lowerTiles[x-35]=Main.tile[x,lower];Main.tile[x,Floor]=new Tile();
+                Main.tile[x,lower]=new Tile();Main.tile[x,lower].active(true);Main.tile[x,lower].type=1;
+            }
+            try
+            {
+                Begin(p);try{Require((long)Get(host,"Plans")>plans,"A removed support strip invalidates cached safety immediately, even while current integer distance is still safe.");}finally{End(p);}
+                bool protectedNative=false,landed=false;
+                for(int tick=0;tick<96;tick++)
+                {
+                    Begin(p);try{Damage(p);p.UpdateEquips(p.whoAmI);protectedNative|=p.noFallDmg;Motion(p);Call(host,"BeforeGrapple",p);NativeCollision(p);}finally{End(p);}
+                    if(p.velocity.Y==0){landed=true;Damage(p);break;}
+                }
+                Require(landed && protectedNative && p.statLife==5000,"Changed unsafe lower landing still receives real timely passive protection; safe-contact reuse cannot conceal the new danger.");
+                Console.WriteLine("SMART-FALL SAFE-SUPPORT-REMOVED immediate-reprobe=true actual-lower-landing-protected=true life="+p.statLife);
+            }
+            finally{for(int x=35;x<65;x++){Main.tile[x,Floor]=upperTiles[x-35];Main.tile[x,lower]=lowerTiles[x-35];}}
         }
         private static void MountRescue(SmartFallFamily family,int itemType,bool platform,bool disable=false,byte slope=0,float gap=15,float vx=0)
         {
