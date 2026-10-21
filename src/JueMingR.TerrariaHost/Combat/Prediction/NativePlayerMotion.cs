@@ -46,7 +46,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // contain zero and does not mean projectile slot 0 is attached.
             // Complex in the decoded profile qualifies the motor at capture.
             // Alignment re-encoding derives it from THIS frame's mechanism;
-            // only intent/default gravity need the restored owning source.
+            // only intent/phase/default gravity need the restored owning source.
             writer.Write(Mechanism(player)!=0 || AssistedComplex(player,profile.AssistedJump));
             // jumpSpeed is a shared scratch field last written by whichever
             // player updated last. Never treat it as this player's observation.
