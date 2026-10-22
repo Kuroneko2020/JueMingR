@@ -168,3 +168,37 @@ social_integrator 是唯一实施作者，独占本包生产/直接检查/合同
 同一已确认F盘Terraria目标先核真实旧4a5f8bee receipt、owner/受控载荷、准确游戏身份和无活动游戏/server/worker；12项旧受控文件轻量备份后，官方旧Restore exit0/RESTORE_COMPLETE → 新Install exit0/INSTALL_COMPLETE → 一次正式owner/payload/receipt读回PASS，完成2026-10-22T03:27:15+08:00。旧receipt `7686326849533952D9D9C917C216205067C34C1198C020CC0E62337794B5E3C3`；新receipt `754BDEB8F6B6D5A4D2E063C7FA92C58CDDBB17F114E495F4125696D3C48ECA2F`。备份 `.local/smart-fall-social-20261022/smart-fall-backup-3cffcbc-20261022T032712/backup.json`，SHA256 `3B1897B71CB83A2615E9CC7BC7693294347E70DA75B5DC605AE7ED5612F821A9`；结果 `smart-fall-install-3cffcbc-result.json` 与正式Restore/Install日志在本轮.local根。恢复入口是新完整包的Restore；如所有者后续要求回旧4a，先新Restore再旧4a包Install，本轮未执行回装。
 
 没有启动/操作真实游戏、角色或世界/存档，没有改JueMingRData，没有强杀、回装演练、第二轮独立安装审计或全数据扫描。实际安装读回不等于正常完整Main启动、图形/物理设备/FPS、真实好友房主/客机或所有者体验，这些保持未测；隔离原版消费者和准确引用归还证据已完成。短体验卡保留三步原场景、有限周期与正常恢复；已授权必要工作收口，Draft/OPEN保持，不merge/close/Tag/Release/version bump。
+
+
+## 2026-10-22 原版能力与合法操作修复候选
+
+本次唯一任务仍为 #130 / Draft #131，同分支起点 `5df866f7a8040d047d3f1b2e2ee54a2ad5c8e1c7`；完整产品 BASE 仍为 `62bd6e4ef42eacd7a22b898ee538650a7b920747`。所有者原件 `references/JMR_SMART_FALL_VANILLA_ACTION_FIX_20261022_v1.zip`（ZIP SHA256 `BEC582454AC83F3748F63CF8E4B43FFB4F88F29AEEEE975134BE212992A4351A`）已检查全部成员无根路径／父目录越界，在新的 `.local/smart-fall-vanilla-action-fix-20261022-154207/JMR_SMART_FALL_VANILLA_ACTION_FIX_20261022_v1/` 解压，README 与00／01／02全文读取，原件不改。主核实施会话 `01a1628d-395e-7763-9792-48bea90363a0` 为 gpt-6.1-sol / high；一个实施者承担所有本轮写入，独审尚待未参与实现／期待的上下文。
+
+本次明确纠正：自动化只能获得相同初态下原版手动合法操作能够取得的能力。前节“有限激活一次／周期账本／OFF观察”与其 PASS 期待是已撤销政策的历史；不是本次 PASS，不再解释为用户曾批准造资源。`3cffcbc` 引入 PrepareResource 三条授予、CanGrant 候选兜底及七bit账本，测试又以“无预充社交瓶必须救人”为成功，因而未对照原版空中换装本身不产生资格。更早 `ba096176` 已引入 Jump／Rocket／Up release 字段直接置真，以及原坐骑按类型 CanMount→SetMount；旧检查覆盖消费或新坐骑接管，却没有同初态持续按住必须先真实 Release 的对照，也没有 CCed／物品缺失等完整重新激活门禁。当前按行为删除与修复，保留3cff中正反向CanSwap归还冲突修复，不整提交回退。
+
+实现：移除 SmartFallResourceCycle、专属 RefreshDoubleJumps hook／reader、AllowsActivation／OriginalResources、SetJump／EffectiveResources、虚拟候选额度及贡献撤回。二跳只认真实 unused 匹配族；火箭认真实 fuel 或真正 empressBrooch 原生补给；飞毯认 canCarpet 或实际残余 carpetTime。资源消费不因取消／还物恢复，未消费资格不被撤销。固定 readiness 布尔使一次真实余量出现重新核来源，倒计时／release／pending 不逐帧扫库存。马掌组合、零时间翼被动免摔、腿12→2及原有真实借还／guard lease 保留。
+
+Jump／Rocket 需要重武装时，动作局部 Release 预留共享 owner，既有十一处有效 Jump 读取保持到整更新结束；原版消费者自己写 release，再在下一合法 Press 消费。已经 rearm 直接 Press；Carpet 原版只需 held Jump，未人为增加 release 门；上升／jump tail 不截断。Up 两次 Press 中间经历完整 UpdateControlHolds 释放更新，forcedGravity／手动 Up 退出旧意图。原坐骑借入前记录真实原物与选择，精确还物后再做一次真实 QuickMount，完整原生条件继续决定结果；无空间、权限、缺物、同type新物、选槽／新骑乘接管都不会反复复活。默认矿车只使用原生 rail-hook fallback，不直接 SetMount。
+
+### 实际执行与可判别证据
+
+最终必要叶以 Windows PowerShell 5 正式准备和既有精确 runner 执行，batch `7166c71d87f9490dbf995796576dfd31`，原结果 `artifacts/build/workload-checkpoints/7166c71d87f9490dbf995796576dfd31/targeted-results.json`，日志 `.local/smart-fall-vanilla-20261022/targeted-freeze.log`。这批运行发生于起点 HEAD 加当前未提交修复，原执行身份不改署后继提交；提交后须由正式 reader 再核适用，不重签实跑。
+
+| 责任 | 原 executionId | 实际耗时 | 结论 |
+| --- | --- | --- | --- |
+| SmartFallBorrowOwnershipChecks | 28739f047fb24287bad149ec5947ea1a | 467 ms | EXECUTED / PASS |
+| SmartFallRiskActionsChecks | fb56b74d626d4a719eb5550ef32d3b80 | 321 ms | EXECUTED / PASS |
+| native-MovementSmartFallCpu | b3a3d4fe407f471bb603ed31f866740e | 13360 ms | EXECUTED / PASS |
+| native-MovementJumpCpu | 902ed0a4b6164b4485f3ce231a49433e | 12803 ms | EXECUTED / PASS |
+
+判别内容：社交／背包的普通Cloud、空火箭、空飞毯六反例均不借物、不额外动作；独立 ItemSlot 原生手动换装→装备／eligibility／motion也不能产生机会。真实 fuel 与 `canCarpet=false/carpetTime>0` 从稳定无解缓存变化后，各只重核一次来源并被原生消费；真实 empressBrooch 补给仍可用。原功能装备unused跳、正资源翼靴／毯、无次数马掌组合及零翼时翼走原有真实伤害／保护链与精确还物；关闭帮助的原版落地确实损血。Jump与Rocket未rearm的手动 Release→Press和辅助二更新轨迹一致，Release更新无早跳／无下游点火；已rearm同一合法更新消费，无统一等待。另核Carpet不需release、上升tail不断、OFF取消真实loan不补／撤fuel。球首翻后完整松Up更新、第三更新返回；forcedGravity／手动Up退出旧意图。普通原坐骑合法QuickMount有正例，CCed／tongued／反重力／dead／noItems／缺物／同type新物／手动选槽／无空间拒绝且后续不复活；默认矿车产真实403 rail-hook、不伪称已挂载。真实借还的引用／prefix／stack／favorite、第二写故障、反向CanSwap冲突、一次native-use lease、背包钩及飞骑左右斜平台均仍由同native叶覆盖。nativeJump的1037个原版Jump／flight阶段代表及84个wire状态保原窄结论，不代签全面连跳重审。
+
+没有对旧包另跑同一新fixture；旧实现会被无资源原生状态、Release首更新无动作及坐骑门禁断言击穿，依据当前新增断言、旧静态赋值与旧交付“空资源被激活”的原始记录，不虚称实际A/B重跑。
+
+### 工作量、原始失败与边界
+
+上一稳定批 `2b78ae7d8f96480e9198e11b4f718a3f` 四路径各20,000次：OFF／ON-idle／ON-safe／ON-danger-no-capability耗时1.7676／3.5867／4.7148／9.7429ms，稳态当前线程分配0、新source／plan／tile工作0；最终冻结批原始日志另保对应实际数值；以上是有限helper工作量和该机局部计时，非完整Hook、FPS或速度提升声明。Rocket首点火24对加4预热：manual p50/p95=.0012/.003ms、assisted=.010/.019ms，两侧测量线程分配总0；真实动作／资源匹配。稳定空资源八更新每初态只一次source scan；释放／按下不重新规划来源。原生正常短落32更新／10制动、source1／complete Contact1／tile954／动作0及支撑移除恢复保留。源码删除OFF账本工作是窄结构事实，不外推整机性能。
+
+早期 `prepare1.log` 编译通过但结构读取已删除、尚在Git索引的旧Cycle路径失败，已准确暂存本任务删除；未修改结构检查。`targeted1.log` 新fixture给只读selectedItem赋值导致Probe编译失败，已改真实SelectedItemState.Select。`targeted2.log` 保留三个新反例FAIL：真fuel正例选到原生来不及的5px窗口、DoubleJump释放例初25px尚未到发动窗口、选槽事件未立即退休原坐骑意图；前两项按原生Delay／Due校准为及时窗口，后一项修生产事件收尾。PowerShell7该次source稳定但input／buildMatch漂移，不可用作资格；沿仓库前轮已用WindowsPS5后最终source/input前后相等、buildMatch=true，原失败不改签。后续`targeted3/4.log`及最终原记录保留，不弱化原生断言。
+
+完整Main／图形／物理设备输入／真实好友房主客机／FPS／owner体验均未测，clone身份和message5编码／发送只证明其自身隔离，不是服务器ACK。未Related／Full、全仓／全功能／全NPC扩扫；外来四资产未改未提交。当前仅源码候选／定向证据；尚未完成本轮独审准入、普通完整新包或实际安装。下一步一次集中独审；通过及主准入后由原整合者完成普通完整Release/net472/x86 ContinuousProcessing包、原F盘目标受控备份／官方Restore→Install／一次必要读回，分别回填真实包和安装身份。Draft保持，不merge／close／Tag／Release／升版，INCOMPLETE／releaseEligible=false。

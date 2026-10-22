@@ -150,11 +150,6 @@ namespace JueMingR.TerrariaHost.Movement
             return ReferenceEquals(player, value) && CanRetainMovementContext(value) && frame.Captured && frame.Frame == input.Frame &&
                 frame.Mapping == input.Mapping && frame.Generation == runtime.Generation && input.CanStartActions;
         }
-        // These constant-size observations also run when BeginUpdate takes the
-        // all-features-OFF exit. They never enable Capture, geometry or loans.
-        internal void ObserveResourcesBefore(Player value) { if(CanCleanUp(value))FallHost.Resources.Before(value,runtime.Generation); }
-        internal void ObserveResourcesAfter(Player value) { if(CanCleanUp(value))FallHost.Resources.After(value,runtime.Generation); }
-        internal void ObserveResourcesRefresh(Player value) { if(CanCleanUp(value))FallHost.Resources.Refresh(value,runtime.Generation); }
         internal bool CanCorrectTeleport(Player value)
         { return Value.TeleportCorrectionEnabled && CanAct(value) && !input.MapPointerOwned && (CanTeleportPointer == null || CanTeleportPointer()); }
         internal void ObserveInput()
@@ -192,9 +187,9 @@ namespace JueMingR.TerrariaHost.Movement
         }
         internal bool EffectiveJump(Player value, bool nativeJump)
         {
-            // Native release and a disabled feature need no movement gate at
-            // the eleven fixed reads; neither can request an assisted mask.
-            if (!nativeJump || !Value.SimulatedJumpEnabled) return nativeJump;
+            // Native false needs no filter. A pending fall action can own a
+            // full-update release even when simulated jumping itself is OFF.
+            if (!nativeJump || !Value.SimulatedJumpEnabled && !FallHost.HasPending) return nativeJump;
             return CanAct(value) ? JumpHost.EffectiveJump(value, true) : nativeJump;
         }
         internal void EndUpdate(Player value)

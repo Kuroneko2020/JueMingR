@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -76,8 +76,10 @@ namespace NativeWorldTextProbe
                 Independent("GrappleLateContact",GrappleLateContact,ref first);
                 Independent("DoubleJumpMismatch",DoubleJumpMismatch,ref first);
                 Independent("SocialEquipmentConsumers",SocialEquipmentConsumers,ref first);
-                Independent("SocialResourceCycles",SocialResourceCycles,ref first);
-                Independent("SocialActivationFailure",SocialActivationFailure,ref first);
+                Independent("VanillaResourceBoundaries",VanillaResourceBoundaries,ref first);
+                Independent("LegalInputStages",LegalInputStages,ref first);
+                Independent("MountReturnGates",MountReturnGates,ref first);
+                Independent("NativeConsumerFailure",NativeConsumerFailure,ref first);
                 Independent("PairedRocketCosts",PairedRocketCosts,ref first);
                 if(first!=null)throw new InvalidOperationException("One or more independent native smart-fall representatives failed; individual raw failures retained.",first);
                 Console.WriteLine("PASS SMART-FALL native representatives selection=canonical-all; independent earlier evidence retains its original identity.");
@@ -99,7 +101,7 @@ namespace NativeWorldTextProbe
         }
         private static Player PlayerAt(float gap)
         {
-            var p=new Player{whoAmI=Main.myPlayer,active=true,position=new Vector2(700,Floor*16-42-gap),velocity=new Vector2(0,10),gravDir=1,gravity=.4f,maxFallSpeed=10,fallStart=0,statLife=5000,statLifeMax=5000,statLifeMax2=5000};
+            var p=new Player{whoAmI=Main.myPlayer,active=true,position=new Vector2(700,Floor*16-42-gap),velocity=new Vector2(0,10),releaseJump=true,rocketRelease=true,releaseUp=true,gravDir=1,gravity=.4f,maxFallSpeed=10,fallStart=0,statLife=5000,statLifeMax=5000,statLifeMax2=5000};
             Main.player[Main.myPlayer]=p;Main.mouseItem.TurnToAir();Main.mouseLeft=Main.mouseRight=false;
             for(int x=35;x<65;x++) { var t=Main.tile[x,Floor];t.active(true);t.type=1;t.slope(0);t.halfBrick(false); }
             Call(Get(items,"World"),"BeginSession");Call(Get(items,"World"),"InvalidateObservation");return p;
@@ -129,7 +131,7 @@ namespace NativeWorldTextProbe
                 {
                     p.ResetEffects();p.UpdateEquips(p.whoAmI);Eligibility(p);Motion(p);Call(host,"BeforeGrapple",p);
                     if(matching)Require(p.jump>0 && p.velocity.Y<0 && !p.canJumpAgain_Fart && p.inventory[17].type==53 && ReferenceEquals(p.inventory[18],prior),"Actual matching Fart source behind Cloud preserves and consumes only its own original unused charge, then returns the exact item.");
-                    else Require((long)Get(host,"NativeActions")==actions+1 && p.jump>0 && p.velocity.Y<0 && !p.canJumpAgain_Fart && !p.canJumpAgain_Cloud,"A real Cloud loan receives only its own finite activation after stale Fart eligibility clears; the unrelated Fart charge is not preserved.");
+                    else Require((long)Get(host,"NativeActions")==actions && p.jump==0 && !p.canJumpAgain_Fart && !p.canJumpAgain_Cloud && p.inventory[17].type==53,"A mismatched Cloud cannot preserve stale Fart or create a new Cloud charge; no loan/action occurs.");
                 }
                 finally{End(p);Call(host,"ClearSession");}
             }
@@ -321,8 +323,17 @@ namespace NativeWorldTextProbe
         private static void GravityReturn()
         {
             Select(SmartFallFamily.GravityGlobe);var p=PlayerAt(5);p.inventory[17].SetDefaults(1131);
-            for(int tick=0;tick<2;tick++){Begin(p);try{p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);}finally{End(p);}}
-            Require(p.gravDir==1 && !(bool)Get(host,"HasPending") && !p.controlUp,"Second legal native Up restores original gravity and retires borrowing/input.");
+            for(int tick=0;tick<3;tick++){Begin(p);try{p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);if(tick==1)Require(p.gravDir==-1 && p.releaseUp,"Whole second native update sees Up released and rearms before return.");}finally{End(p);}}
+            Require(p.gravDir==1 && !(bool)Get(host,"HasPending") && !p.controlUp,"After a full release update, second legal native Up restores original gravity and retires borrowing/input.");
+            foreach(bool forced in new[]{false,true})
+            {
+                Select(SmartFallFamily.GravityGlobe);p=PlayerAt(5);p.armor[13].SetDefaults(1131);Item globe=p.armor[13];
+                Begin(p);try{p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);}finally{End(p);}
+                Require(p.gravDir==-1,"First exact native Up has reversed gravity before takeover.");
+                long actions=(long)Get(host,"NativeActions");if(forced)p.forcedGravity=1;else p.controlUp=true;
+                Begin(p);try{p.ResetEffects();p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);}finally{End(p);}
+                Require(!(bool)Get(host,"HasPending") && (long)Get(host,"NativeActions")==actions && ReferenceEquals(p.armor[13],globe),"Forced gravity or manual Up ends old return; no synthetic reversal and exact item returns forced="+forced);
+            }
         }
         private static void CacheFacts()
         {
@@ -414,10 +425,6 @@ namespace NativeWorldTextProbe
             var capabilities=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Movement.SmartFallCapabilities",true);
             int[][] mapping={new[]{1,53,399,1250},new[]{2,857,983,1252},new[]{4,987,1163,1251},new[]{8,1724,1863,3250},new[]{16,3201,3241,3252},new[]{7,1164,5331}};
             foreach(var row in mapping)foreach(int id in row.Skip(1)){var item=new Item();item.SetDefaults(id);Require((int)capabilities.GetMethod("JumpFamilies",F).Invoke(null,new object[]{item})==row[0],"Exact five-family/upgrade/bundle mapping id="+id);}
-            SocialConsumer(SmartFallFamily.DoubleJump,53,13,false,true);
-            SocialConsumer(SmartFallFamily.DoubleJump,53,17,true,false);
-            SocialConsumer(SmartFallFamily.RocketBoots,128,13,false,false);
-            SocialConsumer(SmartFallFamily.Carpet,934,13,false,false);
             SocialConsumer(SmartFallFamily.Wings,493,13,false,false);
             SocialConsumer(SmartFallFamily.Horseshoe,5331,13,false,false);
             SocialConsumer(SmartFallFamily.GravityGlobe,1131,13,false,false);
@@ -460,69 +467,143 @@ namespace NativeWorldTextProbe
             if(family==SmartFallFamily.GravityGlobe)Require(p.gravDir==1,"Gravity returns before exact item return.");
             Console.WriteLine("SMART-FALL SOCIAL family="+family+" source="+(inventory?"inventory":"armor")+slot+" type="+type+" triple="+triple+" loan/equip/consumer/protection/contact/return=true life="+p.statLife+" exact-references=true natural-empty-resources=true");
         }
-        private static void SocialResourceCycles()
+        // The old social ledger tests required an extra charge. These cases
+        // deliberately start empty and compare the actual native equip path.
+        private static void VanillaResourceBoundaries()
         {
-            Select(SmartFallFamily.DoubleJump);var p=PlayerAt(5);p.armor[13].SetDefaults(53);
-            Begin(p);try{p.ResetEffects();p.UpdateEquips(p.whoAmI);Eligibility(p);Motion(p);}finally{End(p);}
-            var cycle=Get(host,"Resources");Require(((int)Get(cycle,"Spent")&1)!=0,"First real loan consumes the Cloud cycle allowance.");
-            // Returning, switching, upgrading, loadouts and OFF do not reset it.
-            p.armor[13].SetDefaults(399);Call(Get(items,"World"),"InvalidateObservation");Call(movement,"SetEnabled",3,false);Call(movement,"SetEnabled",3,true);
-            Require((int)Call(cycle,"Available",1,0)==0 && (int)Call(cycle,"Available",7,0)==6,"Same-family upgrade/bundle cannot reopen Cloud; different families remain finite.");
-            p.armor[14].SetDefaults(857);p.armor[3].SetDefaults(53);Call(Get(items,"World"),"InvalidateObservation");
-            p.jump=0;p.velocity.Y=10;p.fallStart=0;p.position.Y=Floor*16-42-5;p.position.X+=16;p.ResetEffects();p.UpdateEquips(p.whoAmI);
-            Begin(p);try{Console.WriteLine("SMART-FALL CYCLE-CANDIDATE selected="+((Item)Get(host,"selected"))?.type+" action="+Get(host,"action")+" source="+((Item[])Get(host,"sources"))[0]?.type+" unused="+p.canJumpAgain_Cloud+","+p.canJumpAgain_Sandstorm+" spent="+Get(cycle,"Spent")+" start="+p.fallStart+" jump="+p.jump+" result="+Get(host,"Result"));Require(((Item)Get(host,"selected")).type==857,"Exhausted functional Cloud and spent first social Cloud do not conceal later Sand loan.");p.ResetEffects();p.UpdateEquips(p.whoAmI);Eligibility(p);Motion(p);}finally{End(p);}
-            Require(((int)Get(cycle,"Spent")&3)==3,"Different social family consumes its own finite cycle bit.");
-            Item worn=p.armor[3];p.armor[3]=new Item();p.inventory[18]=worn;p.armor[13].SetDefaults(1164);
-            p.jump=0;p.velocity.Y=10;p.fallStart=0;p.position.Y=Floor*16-42-5;p.position.X+=16;p.ResetEffects();p.UpdateEquips(p.whoAmI);Call(Get(items,"World"),"InvalidateObservation");
-            Begin(p);try{Require(((Item)Get(host,"selected")).type==1164,"Bundle shares spent Cloud/Sand and still offers its different remaining family.");p.ResetEffects();p.UpdateEquips(p.whoAmI);Eligibility(p);Motion(p);}finally{End(p);}
-            Require(((int)Get(cycle,"Spent")&7)==7 && !p.canJumpAgain_Cloud && !p.canJumpAgain_Sandstorm && !p.canJumpAgain_Blizzard,"Bundle grants and natively consumes one remaining family, never recharges its spent families.");
-            p.armor[3]=worn;p.inventory[18]=new Item();
-            // Exact original refresh is observed even when all features are OFF;
-            // remote/clone refresh cannot change this player's ledger.
-            Call(movement,"SetEnabled",3,false);
-            p.ResetEffects();p.UpdateEquips(p.whoAmI);
-            var hooks=movement.GetType().Assembly.GetType("JueMingR.TerrariaHost.Movement.MovementHooks",true);
-            long scans=(long)Get(host,"SourceScans"),plans=(long)Get(host,"Plans");
-            hooks.GetMethod("BeginWorld",F).Invoke(null,null);
+            foreach(var family in new[]{SmartFallFamily.DoubleJump,SmartFallFamily.RocketBoots,SmartFallFamily.Carpet})
+            foreach(bool inventory in new[]{false,true})
+            {
+                Select(family);var p=PlayerAt(40);int type=family==SmartFallFamily.DoubleJump?53:family==SmartFallFamily.RocketBoots?128:934;
+                Item[] source=inventory?p.inventory:p.armor;int slot=inventory?17:13;source[slot].SetDefaults(type);Item item=source[slot];
+                long scans=(long)Get(host,"SourceScans"),actions=(long)Get(host,"NativeActions");
+                for(int t=0;t<8;t++){Begin(p);try{p.ResetEffects();p.UpdateEquips(p.whoAmI);Eligibility(p);Motion(p);Call(host,"BeforeGrapple",p);}finally{End(p);}}
+                Require(ReferenceEquals(source[slot],item) && !(bool)Get(host,"HasPending") && (long)Get(host,"NativeActions")==actions && !p.canJumpAgain_Cloud && p.rocketTime==0 && !p.canCarpet && p.carpetTime==0 && p.jump==0,"Natural empty source never creates ability, borrows or consumes family="+family+" inventory="+inventory);
+                Require((long)Get(host,"SourceScans")==scans+1,"Stable empty-source readiness does not repeat inventory scans.");
+                Call(movement,"SetEnabled",3,false);
+                // Exact native player right-click equip or vanity swap, then
+                // the original eligibility and motion consumers.
+                if(inventory)Terraria.UI.ItemSlot.SwapEquip(source,0,slot);
+                else typeof(Terraria.UI.ItemSlot).GetMethod("SwapVanityEquip",F).Invoke(null,new object[]{source,11,slot,p});
+                Require(Enumerable.Range(0,10).Any(i=>ReferenceEquals(p.GetEffectiveArmor(i),item)),"Independent manual native swap equips the same exact item.");
+                p.ResetEffects();p.UpdateEquips(p.whoAmI);Eligibility(p);p.controlJump=true;Motion(p);
+                Require(!p.canJumpAgain_Cloud && p.jump==0 && p.rocketTime==0 && p.rocketDelay==0 && !p.canCarpet && p.carpetTime==0,"Same empty initial resources remain empty after native manual air equip/press family="+family);
+                Call(movement,"SetEnabled",3,true);
+                Console.WriteLine("SMART-FALL VANILLA-EMPTY family="+family+" source="+(inventory?"inventory":"social")+" assisted-loans/actions=0 manual-native-equip-no-new-opportunity=true stable-scans=1");
+            }
+            foreach(var family in new[]{SmartFallFamily.RocketBoots,SmartFallFamily.Carpet})
+            {
+                Select(family);var p=PlayerAt(40);p.armor[13].SetDefaults(family==SmartFallFamily.RocketBoots?128:934);
+                Begin(p);End(p);long scans=(long)Get(host,"SourceScans");
+                if(family==SmartFallFamily.RocketBoots)p.rocketTime=3;else p.carpetTime=25;
+                p.position.Y=Floor*16-p.height-(family==SmartFallFamily.RocketBoots?15:5);
+                Begin(p);try{p.ResetEffects();p.UpdateEquips(p.whoAmI);Eligibility(p);Motion(p);Call(host,"BeforeGrapple",p);}finally{End(p);}
+                Require((long)Get(host,"SourceScans")==scans+1 && (family==SmartFallFamily.RocketBoots?p.rocketTime==2 && p.rocketDelay>0:p.carpetTime==24 && p.carpetFrame>=0),"A single real readiness transition reopens the unchanged social source; residual is natively consumed family="+family);
+            }
+            // Native brooch refill is a legal producer, with no helper write.
+            Select(SmartFallFamily.RocketBoots);var brooch=PlayerAt(15);brooch.armor[3].SetDefaults(128);brooch.armor[4].SetDefaults(4989);brooch.UpdateEquips(brooch.whoAmI);
+            Require(brooch.empressBrooch && brooch.rocketTime==0,"Real equipped brooch starts empty before native refill.");
+            Begin(brooch);try{Motion(brooch);Call(host,"BeforeGrapple",brooch);}finally{End(brooch);}
+            Require(brooch.rocketDelay>0 && brooch.rocketTime==brooch.rocketTimeMax-1,"Original brooch consumer refills then spends real fuel.");
+        }
+        private static void LegalInputStages()
+        {
+            foreach(bool rocket in new[]{false,true})foreach(bool rearmed in new[]{false,true})
+            {
+                Player manual=null,assisted=null;
+                for(int side=0;side<2;side++)
+                {
+                    bool help=side==1;Select(rocket?SmartFallFamily.RocketBoots:SmartFallFamily.DoubleJump);Call(movement,"SetEnabled",3,help);
+                    var p=PlayerAt(rearmed?15:rocket?25:15);p.armor[3].SetDefaults(rocket?128:53);p.UpdateEquips(p.whoAmI);if(rocket)p.rocketTime=7;else p.canJumpAgain_Cloud=true;
+                    p.controlJump=true;p.releaseJump=p.rocketRelease=rearmed;
+                    for(int t=0;t<(rearmed?1:2);t++)
+                    {
+                        if(help)Begin(p);else p.controlJump=rearmed || t>0;
+                        try
+                        {
+                            Motion(p);if(help)Call(host,"BeforeGrapple",p);
+                            if(!rearmed && t==0)Require(p.jump==0 && p.velocity.Y>0 && p.releaseJump && p.rocketRelease && (!rocket || p.rocketTime==7 && p.rocketDelay==0),"Release reaches native Jump and all downstream flight consumers; no premature action side="+side+" rocket="+rocket);
+                        }
+                        finally{if(help)End(p);}
+                    }
+                    Require(rocket?p.rocketTime==6 && p.rocketDelay>0:p.jump>0 && !p.canJumpAgain_Cloud,"Existing native resource is consumed after legal Press side="+side);
+                    if(help)assisted=p;else manual=p;
+                }
+                Require(assisted.velocity==manual.velocity && assisted.jump==manual.jump && assisted.rocketTime==manual.rocketTime && assisted.rocketDelay==manual.rocketDelay && assisted.releaseJump==manual.releaseJump && assisted.rocketRelease==manual.rocketRelease,"Equal initial state and manual Release/Press trajectory match native helper results.");
+                Console.WriteLine("SMART-FALL LEGAL-INPUT rocket="+rocket+" initially-rearmed="+rearmed+" updates="+(rearmed?1:2)+" native-manual-trajectory-equal=true");
+            }
+            Call(movement,"SetEnabled",3,true);
+            Select(SmartFallFamily.Carpet);var carpet=PlayerAt(5);carpet.armor[3].SetDefaults(934);carpet.UpdateEquips(carpet.whoAmI);carpet.canCarpet=true;carpet.releaseJump=false;carpet.controlJump=true;
+            Begin(carpet);try{Motion(carpet);Call(host,"BeforeGrapple",carpet);}finally{End(carpet);}
+            Require(carpet.carpetTime==299 && carpet.carpetFrame>=0,"Native Carpet needs held Jump, not a releaseJump qualification; do not add an artificial release delay.");
+            Select(SmartFallFamily.DoubleJump);var tail=PlayerAt(15);tail.armor[3].SetDefaults(53);tail.UpdateEquips(tail.whoAmI);tail.canJumpAgain_Cloud=true;
+            tail.controlJump=true;tail.releaseJump=false;tail.jump=5;tail.velocity.Y=-4;
+            long before=(long)Get(host,"NativeActions");Begin(tail);try{Motion(tail);}finally{End(tail);}
+            Require(tail.jump==4 && tail.velocity.Y<0 && tail.canJumpAgain_Cloud && (long)Get(host,"NativeActions")==before,"A legitimate rising held jump tail is neither released nor consumed by fall preparation.");
+            // Turning OFF during a completed release update returns all owned
+            // inputs/items; no future Press or resource rollback is retained.
+            Select(SmartFallFamily.RocketBoots);var cancel=PlayerAt(25);cancel.armor[13].SetDefaults(128);Item boot=cancel.armor[13];cancel.rocketTime=3;cancel.controlJump=true;cancel.rocketRelease=false;
+            Begin(cancel);try{cancel.UpdateEquips(cancel.whoAmI);Motion(cancel);}finally{End(cancel);}
+            Require((bool)Get(host,"HasPending") && cancel.rocketTime==3,"A real unconsumed release plan is pending before explicit cancellation.");
+            Call(movement,"SetEnabled",3,false);Begin(cancel);End(cancel);
+            Require(!(bool)Get(host,"HasPending") && ReferenceEquals(cancel.armor[13],boot) && cancel.rocketTime==3 && cancel.controlJump,"OFF cancels finite preparation, returns exact item, and preserves real user held input and fuel.");
+            Call(movement,"SetEnabled",3,true);
+        }
+        private static void MountReturnGates()
+        {
+            // Build the exact pending intention with a real original item and
+            // real native QuickMount; no rescue success is fabricated here.
+            foreach(string gate in new[]{"legal","CCed","tongued","gravity","dead","noItems","missing","same-type-new","selection","wet","space"})
+            {
+                Select(SmartFallFamily.SafeMount);var p=PlayerAt(100);p.miscEquips[3].SetDefaults(2428);Item original=p.miscEquips[3];
+                p.QuickMount();Require(p.mount.Active,"Native initial ordinary mount activates.");p.mount.Dismount(p);
+                int blockX=(int)(p.Center.X/16),blockY=(int)((p.Center.Y+p.velocity.Y)/16);Tile oldTile=Main.tile[blockX,blockY];
+                Begin(p);
+                try
+                {
+                    Set(host,"originalMount",original.mountType);Set(host,"originalMountItem",original);Set(host,"mountSelection",p.selectedItem);Set(host,"originalSelectionItem",p.HeldItem);
+                    if(gate=="CCed")p.webbed=true;if(gate=="tongued")p.tongued=true;if(gate=="gravity")p.gravDir=-1;if(gate=="dead")p.dead=true;if(gate=="noItems")p.noItems=true;
+                    if(gate=="missing")p.miscEquips[3]=new Item();if(gate=="same-type-new"){p.miscEquips[3]=new Item();p.miscEquips[3].SetDefaults(2428);}if(gate=="selection")p.selectedItemState.Select(1);
+                    if(gate=="wet")p.wet=true;
+                    if(gate=="space"){Main.tile[blockX,blockY]=new Tile();Main.tile[blockX,blockY].active(true);Main.tile[blockX,blockY].type=1;Require(!p.mount.CanMount(original.mountType,p),"Original CanMount independently rejects the occupied box.");}
+                    Call(host,"ReturnOriginalMount",p);
+                    bool allowed=gate=="legal" || gate=="wet";
+                    Require(p.mount.Active==allowed && (int)Get(host,"originalMount")==-1,"Complete native mount gate/identity ends finite restore gate="+gate);
+                    if(p.mount.Active)p.mount.Dismount(p);
+                    p.webbed=p.tongued=p.dead=p.noItems=p.wet=false;p.gravDir=1;
+                    Call(host,"ReturnOriginalMount",p);Require(!p.mount.Active,"A denied/completed intention cannot resurrect on later condition changes gate="+gate);
+                }
+                finally{End(p);Main.tile[blockX,blockY]=oldTile;}
+            }
+            DefaultCartReturn();
+            Console.WriteLine("SMART-FALL MOUNT-RETURN native-entry-positive=true current-item/reference-and-use-gates=true denial-no-retry=true");
+        }
+        private static void DefaultCartReturn()
+        {
+            Select(SmartFallFamily.SafeMount);var p=PlayerAt(100);p.velocity=Vector2.Zero;
+            int x=(int)(p.Center.X/16),y=(int)(p.Center.Y/16);Tile old=Main.tile[x,y];
+            for(int i=0;i<Main.projectile.Length;i++)if(Main.projectile[i]!=null)Main.projectile[i].active=false;
+            Main.tile[x,y]=new Tile();Main.tile[x,y].active(true);Main.tile[x,y].type=314;Main.tile[x,y].frameX=0;Main.tile[x,y].frameY=-1;
+            Begin(p);
             try
             {
-                Call(new Player{whoAmI=Main.myPlayer,active=true},"RefreshDoubleJumps");Require(((int)Get(cycle,"Spent")&3)==3,"Clone refresh is ignored.");
-                Call(p,"RefreshDoubleJumps");Require((int)Get(cycle,"Spent")==0,"Original refresh event renews the natural cycle while OFF.");
-                Require(!(bool)Call(movement,"BeginUpdate",p),"All-OFF observer does not admit full movement scope.");
-                p.controlJump=true;p.releaseJump=true;p.jump=0;p.velocity.Y=10;Call(p,"JumpMovement");
-                Require(((int)Get(cycle,"Spent")&1)!=0,"Real native functional Cloud consumption remains observed while all features are OFF.");
+                Set(host,"originalMount",13);Set(host,"originalMountItem",p.miscEquips[2]);Set(host,"mountSelection",p.selectedItem);Set(host,"originalSelectionItem",p.HeldItem);
+                Call(host,"ReturnOriginalMount",p);
+                var hook=Main.projectile.FirstOrDefault(q=>q!=null && q.active && q.owner==p.whoAmI && q.type==403);
+                Require(hook!=null && !p.mount.Active && (int)Get(host,"originalMount")==-1,"Default cart uses native QuickMinecart fallback/real rail-hook; it never directly invents a mounted result.");
+                hook.active=false;
             }
-            finally{hooks.GetMethod("EndWorld",F).Invoke(null,new object[]{null});Call(movement,"SetEnabled",3,true);}
-            Require((long)Get(host,"SourceScans")==scans && (long)Get(host,"Plans")==plans,"OFF consumption/refresh observation performs no source or geometry scan.");
-            Console.WriteLine("SMART-FALL RESOURCE-CYCLE original-consumption=true same-family-no-refill=true later-family=true bundle-shares=true natural-refresh=true all-off-observation=true clone-isolated=true off-source/geometry-scans=0");
-            Call(host,"ClearSession");Call(movement,"SetEnabled",3,false);p=PlayerAt(5);p.armor[3].SetDefaults(53);p.UpdateEquips(p.whoAmI);
-            hooks.GetMethod("BeginWorld",F).Invoke(null,null);
-            try{Call(p,"RefreshDoubleJumps");p.controlJump=true;p.releaseJump=true;Call(p,"JumpMovement");}
-            finally{hooks.GetMethod("EndWorld",F).Invoke(null,new object[]{null});}
-            Require(((int)Get(cycle,"Spent")&1)!=0,"Native consumption before the first enabled scope is observed.");
-            typeof(Terraria.UI.ItemSlot).GetMethod("SwapVanityEquip",F).Invoke(null,new object[]{p.armor,11,13,p});
-            p.controlJump=false;p.jump=0;p.velocity.Y=10;p.fallStart=0;p.ResetEffects();p.UpdateEquips(p.whoAmI);Call(movement,"SetEnabled",3,true);
-            Begin(p);try{Require(((Item[])Get(host,"sources"))[0]==null && ((int)Get(cycle,"Spent")&1)!=0,"First enabled scope preserves OFF history; used functional Cloud moved to social cannot gain another chance.");}finally{End(p);}
+            finally{End(p);Main.tile[x,y]=old;}
         }
-        private static void SocialActivationFailure()
+        private static void NativeConsumerFailure()
         {
-            Select(SmartFallFamily.DoubleJump);var p=PlayerAt(5);p.armor[13].SetDefaults(53);var item=p.armor[13];Item original=p.armor[3];
+            Select(SmartFallFamily.RocketBoots);var p=PlayerAt(15);p.armor[13].SetDefaults(128);p.rocketTime=3;var item=p.armor[13];Item original=p.armor[3];
             var patch=new Harmony("JueMingR.Tests.SmartFall.ConsumerFailure");var jump=AccessTools.Method(typeof(Player),"JumpMovement");
             patch.Patch(jump,prefix:new HarmonyMethod(typeof(NativeSmartFallActionsChecks),nameof(RejectSocialJump)){priority=Priority.Last});
             bool visible=false;
-            try
-            {
-                Begin(p);try{p.ResetEffects();p.UpdateEquips(p.whoAmI);Eligibility(p);Motion(p);}
-                catch(InvalidOperationException error){visible=error.Message=="social-native-consumer-fault";}
-                finally{End(p);}
-            }
+            try{Begin(p);try{p.ResetEffects();p.UpdateEquips(p.whoAmI);Eligibility(p);Motion(p);}catch(InvalidOperationException error){visible=error.Message=="social-native-consumer-fault";}finally{End(p);}}
             finally{patch.Unpatch(jump,HarmonyPatchType.All,patch.Id);}
-            Require(visible && (SmartFallResult)Get(host,"Result")==SmartFallResult.Failed && !p.canJumpAgain_Cloud && !p.controlJump && !p.releaseJump && !(bool)Get(host,"HasPending") && ReferenceEquals(p.armor[13],item) && ReferenceEquals(p.armor[3],original),"Throwing native consumer remains visible; only owned unused activation/input/token return with both exact objects.");
-            long scans=(long)Get(host,"SourceScans"),actions=(long)Get(host,"NativeActions");
-            Begin(p);End(p);scans=(long)Get(host,"SourceScans");
-            for(int i=0;i<32;i++){Begin(p);End(p);}
-            Require((long)Get(host,"SourceScans")==scans && (long)Get(host,"NativeActions")==actions && ((int)Get(Get(host,"Resources"),"Spent")&1)!=0,"Failed grant remains spent and unchanged failure never reopens per frame.");
-            Console.WriteLine("SMART-FALL SOCIAL-FAILURE native-exception-visible=true own-grant-revoked=true input/token/objects-returned=true unchanged-updates=32 retry-actions=0");
+            Require(visible && p.rocketTime==3 && !p.controlJump && !(bool)Get(host,"HasPending") && ReferenceEquals(p.armor[13],item) && ReferenceEquals(p.armor[3],original),"Native exception stays visible; exact items/input return and real unconsumed fuel is neither granted nor revoked.");
         }
         private static void RejectSocialJump(){throw new InvalidOperationException("social-native-consumer-fault");}
         private static void CriticalLanding()
@@ -638,7 +719,7 @@ namespace NativeWorldTextProbe
                 {
                     bool help=side==1;Call(movement,"SetEnabled",3,help);Call(host,"ClearSession");
                     var p=PlayerAt(15);p.armor[3].SetDefaults(128);p.UpdateEquips(p.whoAmI);p.rocketTime=7;
-                    p.controlJump=!help;p.releaseJump=!help;p.rocketRelease=!help;
+                    p.controlJump=!help;p.releaseJump=p.rocketRelease=true;
                     NativeQuickItemChecks.BeginWorldStep();NativeQuickItemChecks.Sample(input,new Keys[0]);stage=2;
                     long tiles=(long)Get(host,"TileReads"),built=(long)Get(host,"Plans"),bytes=allocated(),start=Stopwatch.GetTimestamp();
                     bool entered=begin(p);if(entered)capture(p);

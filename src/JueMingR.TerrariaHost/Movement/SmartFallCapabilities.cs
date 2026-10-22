@@ -55,8 +55,12 @@ namespace JueMingR.TerrariaHost.Movement
             // Cloud->Fart changes even while "any extra jump" stays true.
             result |= UnusedJumps(p) << 12;
             if (MountJump(p)) result |= 1;
-            if (p.rocketBoots > 0 && p.rocketTime > 0 && p.CanUseBootFlyingAbilities) result |= 2;
+            if (p.rocketBoots > 0 && (p.rocketTime > 0 || p.empressBrooch) && p.CanUseBootFlyingAbilities) result |= 2;
             if (p.carpet && (p.canCarpet || p.carpetTime > 0) && p.gravDir > 0) result |= 4;
+            // Readiness transitions reopen source qualification even when the
+            // item is currently social. Countdown/release changes do not scan.
+            if (p.rocketTime > 0 || p.empressBrooch) result |= 1 << 21;
+            if (p.canCarpet || p.carpetTime > 0) result |= 1 << 22;
             if (p.hasWings || p.wingsLogic > 0) result |= 8;
             if (p.noFallDmg) result |= 16;
             if (p.slowFall) result |= 256;
@@ -83,21 +87,6 @@ namespace JueMingR.TerrariaHost.Movement
                 case 1164: case 5331: return 7;
                 default: return 0;
             }
-        }
-        internal static int JumpOptions(Player p)
-        { return (p.hasJumpOption_Cloud?1:0) | (p.hasJumpOption_Sandstorm?2:0) | (p.hasJumpOption_Blizzard?4:0) | (p.hasJumpOption_Fart?8:0) | (p.hasJumpOption_Sail?16:0); }
-        internal static void SetJump(Player p, int bit, bool value)
-        {
-            switch(bit) { case 1:p.canJumpAgain_Cloud=value;break;case 2:p.canJumpAgain_Sandstorm=value;break;case 4:p.canJumpAgain_Blizzard=value;break;case 8:p.canJumpAgain_Fart=value;break;case 16:p.canJumpAgain_Sail=value;break; }
-        }
-        // Called only when preparing sources or freezing a real loan. Shared
-        // loadout equipment counts as already functional, never a new grant.
-        internal static int EffectiveResources(Player p)
-        {
-            int mask=0;
-            for(int i=0;i<10;i++) if(p.IsItemSlotUnlockedAndUsable(i))
-            { Item item=p.GetEffectiveArmor(i); mask|=JumpFamilies(item); if(Matches(item,SmartFallFamily.RocketBoots))mask|=32;if(Matches(item,SmartFallFamily.Carpet))mask|=64; }
-            return mask;
         }
         internal static bool MountJump(Player p)
         {
