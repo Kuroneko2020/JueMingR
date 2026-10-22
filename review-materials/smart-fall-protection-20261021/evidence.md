@@ -298,3 +298,13 @@ SmartFall实际危险、有球尚未Due的Capture每pass96次：原horizon48反�
 本轮最小体验卡 `.local/fall-perf-reforge-20261022/owner-test-card.md`：本人先确认能进入／F5能开／正常退出；再看关闭跳帧时重铸按住持续且命中停、初始匹配单次不多费；开袋／提炼不因空更新停住且主动接管及时交还；临骑低顶或CCed恢复后及时退骑还物，配置入口暂隐藏／旧许可保留。原版隔离与文件安装PASS不等于此卡已测；完整普通包正常Main启动、物理设备输入、好友房主／客机、FPS／帧时、长期与所有者接受仍未验证。MovementOriginal重图形新UI断言准确未跑，ProcessingVisual本次真实Draw专项实际已跑，不能把两者混为均未测或完整实机。
 
 本轮已授权修复与交付工作完成，停止自主开发，等待所有者短卡体验／具体反馈；此状态取代上节待独审／未包未装。Issue130／Draft131保持OPEN／Draft，#7保持INCOMPLETE／releaseEligible=false，不merge／close／Tag／Release／升版或自行扩展下一功能。四外来资产和六份原件保原样，原FAIL／NOT_RUN继续保留。
+
+## 2026-10-22 所有者接受与合并收口依据
+
+所有者反馈“测试没发现什么问题，你再检查一下，没问题就给我合并指令吧”，并在本次明确授权必要接受记录及文档收尾、PR #131 正常 Ready／squash merge、以 completed 关闭 #130、更新仍保持 OPEN 的 #7，以及安全同步原工作区 main。本次授权取代上节及旧 Issue／PR 记录的等待本人体验、保持 Draft、不合并／不关闭状态；实际合并提交与动态收口结果由 [#130](https://github.com/Kuroneko2020/JueMingR/issues/130)、[PR #131](https://github.com/Kuroneko2020/JueMingR/pull/131) 和 [#7](https://github.com/Kuroneko2020/JueMingR/issues/7) 承担。合法操作／TAS 原则及提醒责任沿已审语义接受，不因此接受其他候选 ADR。
+
+本次所有者总体体验未发现问题作为本任务接受依据，没有逐项卡记录，不倒签每项 PASS，也不扩大为真实好友房主／客机、FPS／帧时或长期运行的已测结论。用户转达网页 Chat 本轮源码、Processing／SmartFall／UI 文档三个专项独立复核均无阻塞；此处仅记录用户转达的已完成复核，不虚构本地报告、时间或执行身份。
+
+沿此前防摔整批独审与各轮有效增量复核组合覆盖当前 PR；最新 13107fb→628890a 的24文件集中独审仅代表该次增量。六项必要检查、ProcessingVisual、构建与交付证据按上节原始执行身份复用，本次没有重跑。628890a→eab012a 仅已有交付记录，本次只追加接受依据并明确本 PR 新增规则的合并生效边界；未改生产实现、测试期待、构建／治理工具或历史原件。新增文字在最终提交推送后交未参与起草者进行一次独立窄核。
+
+本次只读核对原审查、候选记录、安装结果、普通完整包及 build record 的 SHA-256 与上节一致，原目标当前 receipt 仍为 B0E39900AF7A609210A1EBCBABC08F5D689100DA2E9897B556EDEAC55AE58EE1。产品／已测普通完整包／原目标现装 source 保持 628890a5782bee46c2bfb58478643fa6614e7f9a；文档最终化与 squash 身份分别记录，不改原回执，不重测、构建、重包或重装。原 FAIL／NOT_RUN、fullQualification=INCOMPLETE、releaseEligible=false 及候选 installationAuthorized=false 保留；本功能收口不授予正式发布资格，不启动下一功能。
