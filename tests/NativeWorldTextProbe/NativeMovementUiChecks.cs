@@ -30,8 +30,8 @@ namespace NativeWorldTextProbe
             var bindings = (HotkeyBindings)Get(Get(shell, "hotkeys"), "Bindings");
             var registry = (HotkeyRegistry)Get(Get(shell, "hotkeys"), "Registry");
             var popup = Get(shell, "HotkeyPopup");
-            string[] ids = { "movement.simulated-jump", "movement.continuous-dash", "movement.teleport-correction" };
-            string[] names = { "模拟连跳", "连续冲刺", "传送修正" };
+            string[] ids = { "movement.simulated-jump", "movement.continuous-dash", "movement.teleport-correction", "movement.smart-fall-protection" };
+            string[] names = { "模拟连跳", "连续冲刺", "传送修正", "智能防摔" };
             var observer = new Harmony("JueMingR.Tests.Movement.UiOwners");
             observer.Patch(typeof(Player).GetMethod("JumpMovement", F), postfix: new HarmonyMethod(typeof(NativeMovementUiChecks), nameof(InWorldJump)));
             observer.Patch(typeof(Player).GetMethod("LimitPointToPlayerReachableArea", F), prefix: new HarmonyMethod(typeof(NativeMovementUiChecks), nameof(Limited)));
@@ -39,14 +39,18 @@ namespace NativeWorldTextProbe
             try
             {
                 NativeQuickItemChecks.Until(() => { h.Frame(); return (bool)Get(movement, "ControlsEnabled") && bindings.Loaded; });
-                for (int i = 0; i < 3; i++) if ((bool)Call(movement, "IsEnabled", i)) Require((bool)Call(movement, "SetEnabled", i, false), "prepare isolated OFF state");
+                for (int i = 0; i < ids.Length; i++) if ((bool)Call(movement, "IsEnabled", i)) Require((bool)Call(movement, "SetEnabled", i, false), "prepare isolated OFF state");
                 Type mode = movement.GetType().Assembly.GetType("JueMingR.Features.Movement.ContinuousDashMode", false) ?? Get(movement, "DashMode").GetType();
                 Call(movement, "SetDashMode", Enum.Parse(mode, "DoubleTap"));
                 h.Open(); h.Navigate(11);
                 var rows = h.Elements().Where(e => names.Contains((string)GetOptional(e, "Text"))).ToArray();
-                Require(rows.Select(e => (string)Get(e, "Text")).SequenceEqual(names), "real movement page has three ordered names");
-                Require(h.Elements().Count(e => ids.Contains((string)GetOptional(e, "HotkeyTarget"))) == 3, "three standard row-end binding slots");
-                for (int i = 0; i < 3; i++) Require(registry.Find(ids[i]) != null, "real shared registry owns action " + ids[i]);
+                Require(rows.Select(e => (string)Get(e, "Text")).SequenceEqual(names), "real movement page has four ordered names");
+                Require(h.Elements().Count(e => ids.Contains((string)GetOptional(e, "HotkeyTarget"))) == ids.Length, "four standard row-end binding slots");
+                Require(!h.Elements().Any(e => GetOptional(e, "Command")?.ToString() == "MovementFallConfigure"), "Temporary hidden fall configuration entry leaves no layout or hitbox.");
+                var controls=Get(Get(shell,"renderer"),"MovementControls");
+                Require(!(bool)Get(controls,"ConfigurationExpanded"), "Fall permission configuration remains initially collapsed.");
+                var savedPermissions=Get(movement,"SmartFallProtection");
+                for (int i = 0; i < ids.Length; i++) Require(registry.Find(ids[i]) != null, "real shared registry owns action " + ids[i]);
                 Require(Get(movement, "DashMode").ToString() == "DoubleTap", "OFF presentation begins with the specified mode");
                 h.ClickCommand("MovementDashMode");
                 Require(!(bool)Call(movement, "IsEnabled", 1) && Get(movement, "DashMode").ToString() == "Hold", "actual mode click changes preference while main switch remains OFF");
@@ -64,12 +68,14 @@ namespace NativeWorldTextProbe
                     h.ClickCommand("MovementDashMode"); Columns(h);
                     Require(!(bool)Call(movement, "IsEnabled", 1) && Get(movement, "DashMode").ToString() == "Hold", "scaled left-of-ON mode button remains usable while OFF");
                     h.ClickCommand("MovementDashMode"); Columns(h);
-                    foreach (string command in new[] { "MovementJumpOn", "MovementJumpOff", "MovementTeleportOn", "MovementTeleportOff" }) h.ClickCommand(command);
+                    foreach (string command in new[] { "MovementJumpOn", "MovementJumpOff", "MovementTeleportOn", "MovementTeleportOff", "MovementFallOn", "MovementFallOff" }) h.ClickCommand(command);
                     h.Hover(h.Elements().Single(e => (string)GetOptional(e, "Text") == "模拟连跳")); Render(game, shell, Path.Combine(output, "movement-page-ui-" + (int)(ui * 100) + ".png"));
                     Require((bool)Get(hint, "Visible") && (string)Get(hint, "text") == "按住跳跃键连跳，类似蛙腿效果", "name hover uses the actual final approved description at UI scale=" + Main.UIScale);
                     Require(!(bool)Call(movement, "IsEnabled", 0) && !(bool)Call(movement, "IsEnabled", 2), "scaled clicks reach exact owning settings");
                 }
                 Main.UIScale = 1; h.Frame(); h.Frame();
+                for(int capability=0;capability<12;capability++)
+                    Require((bool)Call(Get(movement,"SmartFallProtection"),"Allows",capability)==(bool)Call(savedPermissions,"Allows",capability), "Hidden entry and real main-switch clicks preserve the loaded permission bit "+capability);
                 for (int feature = 0; feature < ids.Length; feature++)
                 {
                     string id = ids[feature]; object icon = h.Elements().Single(e => (string)GetOptional(e, "HotkeyTarget") == id);
@@ -82,7 +88,7 @@ namespace NativeWorldTextProbe
                         Require((bool)Call(movement, "SetEnabled", 2, true), "prepare gated teleport preference");
                         Gate(game, context, false, "actual-recording-owner");
                     }
-                    Keys key = feature == 0 ? Keys.F20 : feature == 1 ? Keys.F21 : Keys.F22;
+                    Keys key = feature == 0 ? Keys.F20 : feature == 1 ? Keys.F21 : feature == 2 ? Keys.F22 : Keys.F23;
                     h.Frame(Keys.LeftControl); h.Frame(Keys.LeftControl, key); h.Frame(Keys.LeftControl, key); h.Frame(); h.Frame();
                     NativeQuickItemChecks.Until(() => { h.Frame(); return !bindings.Busy; });
                     Require(bindings.CompletionSucceeded && bindings.Get(id) != null && bindings.Get(id).MainKey == (int)key, "actual shared recorder saved " + id);
@@ -118,7 +124,7 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(popup, "Visible") && !(bool)Get(popup, "Capturing"), "real non-recording modal remains open");
                 Gate(game, context, false, "actual-binding-modal-outside");
                 h.ClickPopup("Close"); h.Frame(); h.Frame();
-                Console.WriteLine("PASS MOVEMENT UI actual native input/F5 navigation/three rows,OFF mode/owning settings,100/150% renderer+hitboxes,three shared record/save/toggle feedback,real world Session and F5/backpack/text/record/modal pointer gates; physical focus/IME/owner-experience=NOT_EVALUATED");
+                Console.WriteLine("PASS MOVEMENT UI actual native input/F5 navigation/four rows,OFF mode/owning settings,100/150% renderer+hitboxes,four shared record/save/toggle feedback,real world Session and F5/backpack/text/record/modal pointer gates; physical focus/IME/owner-experience=NOT_EVALUATED");
             }
             finally
             {
@@ -187,11 +193,11 @@ namespace NativeWorldTextProbe
             object mode = Get(frames.Command("MovementDashMode"), "Rect"), on = Get(frames.Command("MovementDashOn"), "Rect"), off = Get(frames.Command("MovementDashOff"), "Rect");
             float onX = (float)Get(on, "X"), offX = (float)Get(off, "X");
             Require((float)Get(mode, "X") + (float)Get(mode, "Width") < onX && onX + (float)Get(on, "Width") < offX, "final dash order is mode, ON, OFF");
-            foreach (string feature in new[] { "Jump", "Teleport" })
+            foreach (string feature in new[] { "Jump", "Teleport", "Fall" })
             {
                 Require(Math.Abs((float)Get(Get(frames.Command("Movement" + feature + "On"), "Rect"), "X") - onX) < .01f &&
                     Math.Abs((float)Get(Get(frames.Command("Movement" + feature + "Off"), "Rect"), "X") - offX) < .01f,
-                    "all three rows share ON/OFF columns at actual UI scale=" + Main.UIScale);
+                    "all four rows share ON/OFF columns at actual UI scale=" + Main.UIScale);
             }
         }
         private static void Limited() { limiterCalls++; }

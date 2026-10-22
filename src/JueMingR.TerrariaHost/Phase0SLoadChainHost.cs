@@ -960,7 +960,7 @@ namespace JueMingR.TerrariaHost
                 {
                     Journey = new Journey.JourneySession(runtime.SharedRuntime, hiddenAccess, () => Input.CanPrepareText);
                     runtime.SharedRuntime.AddFeature(Journey);
-                    Movement = new Movement.MovementSession(gameDirectory, runtime.SharedRuntime, Input);
+                    Movement = new Movement.MovementSession(gameDirectory, runtime.SharedRuntime, Input, items, Fishing?.Equipment);
                     runtime.SharedRuntime.AddFeature(Movement);
                     View = new View.HostView(gameDirectory, runtime.SharedRuntime, Input);
                     runtime.SharedRuntime.AddFeature(View);

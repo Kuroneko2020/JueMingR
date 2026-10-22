@@ -42,6 +42,7 @@ namespace NativeWorldTextProbe
             Require(before-Total(p)==quote && !(bool)Call(owner,"NativePayment",p,quote,-1),"manual exception is one paid roll, not a new auto tail");
             Sample(input,false);Call(owner,"Update");Main.InReforgeMenu=false;p.SetTalkNPC(-1);Main.playerInventory=false;
             NativeReforgeBoundaryChecks.Run(context,host,input);
+            NativeReforgeEmptyEpochChecks.Run(host,input);
             Console.WriteLine("PASS G08 reforge: complete target list, real BuyItem/inner roll, exact fee, auto-hit tail and fresh manual exception. This CPU case supplies the quote/hit observation; it does not exercise outer DrawInventory.");
         }
         internal static long Total(Player p){long total=NativeCoinChecks.Total(p.inventory,54);for(int a=0;a<4;a++)total+=NativeCoinChecks.Total(NativeCoinChecks.Bank(p,a).item,40);return total;}

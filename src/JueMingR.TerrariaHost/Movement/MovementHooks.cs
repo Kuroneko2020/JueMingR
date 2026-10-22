@@ -14,6 +14,7 @@ namespace JueMingR.TerrariaHost.Movement
         private static readonly List<MethodBase> targets = new List<MethodBase>();
         [ThreadStatic] private static int worldDepth;
         private struct UpdateScope { internal bool Active; }
+        private struct ItemScope { internal long Operation; internal bool Entered; }
         internal static void Install(MovementSession value)
         {
             if (owner != null) throw new InvalidOperationException("movement-already-installed");
@@ -25,6 +26,15 @@ namespace JueMingR.TerrariaHost.Movement
                 Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "JumpMovement"), "BeforeJump", "AfterJump", "JumpReads", null);
                 Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "CarpetMovement"), null, null, "CarpetReads", null);
                 Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "WingMovement"), null, "AfterFlight", null, null);
+                Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "UpdateEquips", new[] { typeof(int) }), null, "AfterEquips", null, null);
+                Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "GrappleMovement"), null, "AfterGrapple", null, null);
+                Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "ItemCheck", Type.EmptyTypes), "BeforeItemCheck", null, null, "EndItemCheck");
+                Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "PickItemSelectionOverride", new[] { typeof(int).MakeByRefType() }), null, "PickSelection", null, null);
+                Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "TrySyncingInput", Type.EmptyTypes), "BeforeSync", null, null, null);
+                Patch(harmony, AccessTools.DeclaredMethod(typeof(Player), "TrySwitchingLoadout", new[] { typeof(int) }), "BeforeLoadout", null, null, "AfterLoadout");
+                var selection = typeof(Player).GetNestedType("SelectedItemState", BindingFlags.Public | BindingFlags.NonPublic);
+                if (selection == null) throw new MissingMemberException("movement-selected-item-state");
+                Patch(harmony, AccessTools.DeclaredMethod(selection, "Select", new[] { typeof(int) }), "ManualSelection", null, null, null);
                 owner = value;
             }
             catch { foreach (var target in targets) harmony.Unpatch(target, HarmonyPatchType.All, Id); targets.Clear(); throw; }
@@ -42,11 +52,36 @@ namespace JueMingR.TerrariaHost.Movement
         private static void BeginPlayer(Player __instance, out UpdateScope __state)
         { __state = new UpdateScope { Active = owner != null && worldDepth == 1 && owner.BeginUpdate(__instance) }; }
         private static Exception EndPlayer(Player __instance, UpdateScope __state, Exception __exception)
-        { if (__state.Active) owner?.EndUpdate(__instance); return __exception; }
+        {
+            try { if (__state.Active) owner?.EndUpdateAfterNative(__instance,__exception); }
+            catch when (__exception != null) { /* Preserve the native failure after attempting owned cleanup. */ }
+            return __exception;
+        }
         private static void BeforeJump(Player __instance) { owner?.BeforeJump(__instance); }
         private static void AfterJump(Player __instance) { owner?.AfterJump(__instance); }
         private static void AfterFlight(Player __instance) { owner?.AfterFlight(__instance); }
         private static void Capture(Player player) { owner?.CaptureInput(player); }
+        private static void AfterEquips(Player __instance) { owner?.FallHost.AfterEquips(__instance); }
+        private static void BeforeGrapple(Player player) { owner?.FallHost.BeforeGrapple(player); }
+        private static void AfterGrapple(Player __instance) { owner?.FallHost.AfterGrapple(__instance); }
+        private static void BeforeItemCheck(Player __instance, out ItemScope __state)
+        { long operation = 0; bool entered = owner != null && owner.FallHost.BeginItemCheck(__instance, out operation); __state = new ItemScope { Operation = operation, Entered = entered }; }
+        private static Exception EndItemCheck(Player __instance, ItemScope __state, Exception __exception)
+        {
+            try { owner?.FallHost.EndItemCheck(__instance, __state.Operation, __state.Entered, __exception); }
+            catch when (__exception != null) { /* The original ItemCheck exception remains authoritative. */ }
+            return __exception;
+        }
+        private static void PickSelection(Player __instance, ref int __0, ref bool __result) { owner?.FallHost.Pick(__instance, ref __0, ref __result); }
+        private static void BeforeSync(Player __instance) { owner?.FallHost.BeforeSync(__instance); }
+        private static void ManualSelection(Player ___player) { owner?.FallHost.ManualSelection(___player); }
+        private static void BeforeLoadout(Player __instance, out int __state) { __state = __instance.CurrentLoadoutIndex; }
+        private static Exception AfterLoadout(Player __instance, int __state, Exception __exception)
+        {
+            try { if (__instance.CurrentLoadoutIndex != __state) owner?.FallHost.ManualLoadout(__instance); }
+            catch when (__exception != null) { /* Keep native partial-loadout failure primary. */ }
+            return __exception;
+        }
         private static IEnumerable<CodeInstruction> InputBoundary(IEnumerable<CodeInstruction> source)
         {
             var code = new List<CodeInstruction>(source);
@@ -65,6 +100,15 @@ namespace JueMingR.TerrariaHost.Movement
                 code.InsertRange(i, new[] { load, new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(MovementHooks), "Capture")) }); i += 13; count++;
             }
             if (count != 1) throw new InvalidOperationException("movement-input-dual-key-boundary:" + count);
+            // The unique native WOFTongue call immediately precedes the local
+            // controlHook/releaseHook branch. Insert before its whole branch,
+            // not inside the player's already-pressed QuickGrapple path.
+            var tongue = AccessTools.DeclaredMethod(typeof(Player), "WOFTongue");
+            int grappleBoundaries = 0;
+            for (int i = 0; i < code.Count; i++)
+                if (code[i].Calls(tongue))
+                { code.InsertRange(i + 1, new[] { new CodeInstruction(OpCodes.Ldarg_0), new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(MovementHooks), "BeforeGrapple")) }); i += 2; grappleBoundaries++; }
+            if (grappleBoundaries != 1) throw new InvalidOperationException("movement-grapple-boundary:" + grappleBoundaries);
             var jump=AccessTools.DeclaredMethod(typeof(Player),"JumpMovement");var grab=AccessTools.DeclaredMethod(typeof(Player),"GrabItems");
             int start=-1,end=-1;
             for(int i=0;i<code.Count;i++){if(code[i].Calls(jump)){if(start>=0)throw new InvalidOperationException("movement-jump-boundary-duplicate");start=i;}if(code[i].Calls(grab)){if(end>=0)throw new InvalidOperationException("movement-grab-boundary-duplicate");end=i;}}

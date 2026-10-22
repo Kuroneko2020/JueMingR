@@ -15,7 +15,7 @@ namespace JueMingR.TerrariaHost.Movement
         private long session,tick,version,lastInputVersion;
         private int thread;
         private bool active,intent,releaseOwned,autoOwned,rocketOwned,jumpEntered;
-        private bool masked,candidate;
+        private bool masked,candidate,fallRelease;
         private int beforeJump;
         private MovementJumpPhase phase;
         private MovementJumpOwnership ownership;
@@ -28,7 +28,7 @@ namespace JueMingR.TerrariaHost.Movement
             if(!ReferenceEquals(intentPlayer,value) || session!=generation){Cancel();Publish(value,false);version++;}
             player=value;session=generation;tick=updateTick;
             thread=Thread.CurrentThread.ManagedThreadId;active=true;jumpEntered=false;masked=candidate=false;
-            ownership.Reset();published=this;
+            fallRelease=false;ownership.Reset();published=this;
         }
         private bool Current(Player value)
         {return active && ReferenceEquals(value,player) && Thread.CurrentThread.ManagedThreadId==thread && Main.myPlayer>=0 && Main.myPlayer<Main.maxPlayers && ReferenceEquals(value,Main.player[Main.myPlayer]);}
@@ -43,7 +43,14 @@ namespace JueMingR.TerrariaHost.Movement
             if(!holding){SetPhase(MovementJumpPhase.None);return;}
             if(!ownership.TryAcquire(MovementJumpOwner.SimulatedJump))return;
             bool water=value.wet && value.accFlipper && (!value.mount.Active || !value.mount.Cart) || value.mount.Active && value.mount.IsConsideredASlimeMount && value.wetSlime>0;
-            if(water || TakenOver(value))SetPhase(MovementJumpPhase.None);
+            if(TakenOver(value))
+            {
+                // A real grapple owns subsequent Jump semantics. Never lend a
+                // synthetic release edge (or rocket release) that would retract
+                // it; the player's actual controlJump still reaches vanilla.
+                SetPhase(MovementJumpPhase.None);masked=candidate=false;return;
+            }
+            if(water)SetPhase(MovementJumpPhase.None);
             else SetPhase(MovementJumpRules.Before(phase,holding,value.controlDown,value.velocity.Y*value.gravDir));
             masked=phase==MovementJumpPhase.Coast;
             if(masked)ownership.MarkWritten(MovementJumpOwner.SimulatedJump);
@@ -74,7 +81,7 @@ namespace JueMingR.TerrariaHost.Movement
             masked=phase==MovementJumpPhase.Coast;
             if(masked && !ownership.Written)ownership.MarkWritten(MovementJumpOwner.SimulatedJump);
             if(masked)return;
-            if(ownership.Owner!=MovementJumpOwner.SimulatedJump || value.jump!=0 || ExtraJump(value) || value.rocketBoots==0 || value.rocketTime<=0 || value.rocketRelease)return;
+            if(ownership.Owner!=MovementJumpOwner.SimulatedJump || TakenOver(value) || value.jump!=0 || ExtraJump(value) || value.rocketBoots==0 || value.rocketTime<=0 || value.rocketRelease)return;
             // canRocket is deliberately NOT sampled here: Update establishes
             // it after CarpetMovement. Its full later gate still owns wings,
             // cooldown, CanUseBootFlyingAbilities, fuel and actual movement.
@@ -112,16 +119,19 @@ namespace JueMingR.TerrariaHost.Movement
             Cancel();intentPlayer=null;player=null;version++;
             if(ReferenceEquals(published,this))published=null;
         }
-        internal bool ReserveFallProtection(Player value)
+        internal bool ReserveFallProtection(Player value) { return ReserveFallInput(value,false); }
+        // Fall release shares the already verified native read boundaries.
+        // It lasts through downstream flight, not merely JumpMovement's postfix.
+        internal bool ReserveFallInput(Player value,bool release)
         {
             if(!Current(value) || !ownership.TryAcquire(MovementJumpOwner.FallProtection))return false;
-            Publish(value,false);SetPhase(MovementJumpPhase.None);masked=false;return true;
+            Publish(value,false);SetPhase(MovementJumpPhase.None);masked=false;fallRelease=release;return true;
         }
         private void SetPhase(MovementJumpPhase value){if(phase!=value){phase=value;version++;}}
         private static bool TakenOver(Player p)
         {return p.pulley || p.tongued || p.CCed || p.carpetFrame>=0 || p.rocketDelay>0 || p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0;}
         internal bool EffectiveJump(Player value,bool nativeJump)
-        {return nativeJump && !(Current(value) && masked && intent && ownership.Owner==MovementJumpOwner.SimulatedJump && !value.dead && !value.ghost && !value.controlDown);}
+        {return nativeJump && !(Current(value) && (ownership.Owner==MovementJumpOwner.FallProtection && fallRelease || masked && intent && ownership.Owner==MovementJumpOwner.SimulatedJump && !value.dead && !value.ghost && !value.controlDown));}
         internal void AfterFlight(Player value)
         {
             // Hover wings can start while jump is still positive. Once the

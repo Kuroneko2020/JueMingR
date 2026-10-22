@@ -26,6 +26,9 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Value",0);});
             Sample(input,true);for(int i=0;i<8;i++)Call(context,"UpdateRuntime");
             Require(p.inventory[12].stack==12 && (bool)Get(Get(host,"Bags"),"Holding"),"held bag intent survives empty sampled updates without consumption");
+            object bags=Get(host,"Bags");
+            EmptyOuterUpdate(host,input);EmptyOuterUpdate(host,input);
+            Require(p.inventory[12].stack==12 && !(bool)Get(bags,"claimed") && GetOptional(bags,"bag")==null,"bag group 1: true empty epoch cannot claim a new source or open one");
             Main.gamePaused=true;SampleWorld(input,true);Call(context,"UpdateRuntime");
             Require(p.inventory[12].stack==12,"true pause cannot open bags");Main.gamePaused=false;
             for(int frame=0;frame<5;frame++)
@@ -37,7 +40,14 @@ namespace NativeWorldTextProbe
                 // A second Draw within one update must not create a second chain.
                 for(int draw=0;draw<2;draw++){Main.mouseRight=true;Main.mouseRightRelease=true;ItemSlot.Handle(p.inventory,0,12);}
                 Require(p.inventory[12].stack==before-1,"native Handle cannot double-open the claimed gesture");
+                if(frame==0)
+                {
+                    EmptyOuterUpdate(host,input);EmptyOuterUpdate(host,input);
+                    Require(p.inventory[12].stack==before-1 && (bool)Get(bags,"Holding") && (bool)Call(bags,"ProtectIntent",p.inventory[12]) && (bool)Call(bags,"Controls",p.inventory,12),"bag group 1: existing source/protection and claimed tail survive true empty epochs without opening");
+                }
             }
+            Main.blockInput=true;EmptyOuterUpdate(host,input);Main.blockInput=false;
+            Require(GetOptional(bags,"bag")==null && !(bool)Call(bags,"ProtectIntent",p.inventory[12]),"bag group 2: higher input owner in empty epoch revokes source protection");
             Sample(input,false);int remaining=p.inventory[12].stack;Call(context,"UpdateRuntime");
             Require(p.inventory[12].stack==remaining,"physical release stops without a pending burst");
             var items=Get(host,"Items");
@@ -64,6 +74,16 @@ namespace NativeWorldTextProbe
         }
         internal static void SampleWorld(object input,bool held)
         {Sample(input,held);NativeQuickItemChecks.BeginWorldStep();}
+        // Main.DoUpdate can return before native mouse/mapping/keyboard and
+        // world entry. Unlike Sample, this must not fabricate any of them.
+        internal static void EmptyOuterUpdate(object host,object input,bool focused=true)
+        {
+            long mapping=(long)Get(input,"Mapping");uint world=Main.GameUpdateCount;
+            Call(input,"BeginUpdate");
+            Require((long)Get(input,"Mapping")==mapping && Main.GameUpdateCount==world && !(bool)Get(input,"CanStartActions") && !(bool)Get(input,"CanRunAutomaticActions"),"true empty epoch has no mapping, trusted start or world action");
+            if(focused)Require((bool)Get(input,"CanRetainIntent"),"valid foreground empty epoch retains existing intent");
+            Call(host,"Update",(ulong)0);
+        }
         internal static void Sample(object input,bool held)
         {
             Main.keyState=held?new KeyboardState(Keys.LeftShift):new KeyboardState();

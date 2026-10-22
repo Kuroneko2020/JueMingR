@@ -75,21 +75,31 @@ namespace JueMingR.TerrariaHost.Items
         internal static void FinishFishing(Origin origin,bool returned){Finish(origin,returned);}
         private static void GetBefore(Player __instance, Item __0, out Gain __state)
         {
-            __state = default(Gain);
+            // The native return is the unaccepted remainder, including the same
+            // object on a full inventory/uniqueStack no-op. Keep its input count
+            // without sampling inventory so a rejected pickup cannot wake caches.
+            int incoming = ReferenceEquals(__instance, host?.World.SessionPlayer) && __0 != null && __0.type > 0 && __0.stack > 0 ? __0.stack : 0;
+            __state = new Gain(null, default(ItemIdentity), 0, incoming);
             try
             {
             if (current == null || !ReferenceEquals(current.Player, __instance) || __0 == null || __0.type <= 0 || __0.type >= 71 && __0.type <= 74) return;
             if(current.FishingToken!=0 && (__0.type!=current.FishingType || __0.stack<=0))return;
             var identity = new ItemIdentity(__0.type, __0.prefix);
             current.Touched.Add(identity);
-            __state = new Gain(current, identity, Quantity(__instance, identity));
+            __state = new Gain(current, identity, Quantity(__instance, identity), incoming);
             }
             catch { host.FailClosed(); }
         }
-        private static void GetAfter(Player __instance, Gain __state,bool __runOriginal)
+        private static void GetAfter(Player __instance, Gain __state,bool __runOriginal, Item __result)
         {
             try
             {
+                // Only an actual accepted quantity advances the hint. The
+                // original returns Air on complete receipt and reduced stack on
+                // partial receipt; no-op calls preserve the original count.
+                if (__runOriginal && __state.IncomingStack > 0 && __result != null &&
+                    (__result.IsAir || __result.stack < __state.IncomingStack) &&
+                    ReferenceEquals(__instance, host?.World.SessionPlayer)) host.World.InvalidateObservation();
                 if(__runOriginal && __state.Origin!=null && ReferenceEquals(current,__state.Origin) && current.FishingToken!=0)current.Produced.Add(__state.Identity);
                 if (__state.Origin != null && ReferenceEquals(current, __state.Origin) && Quantity(__instance, __state.Identity) > __state.Before)
                     current.Gained.Add(__state.Identity);
@@ -186,7 +196,8 @@ namespace JueMingR.TerrariaHost.Items
             internal readonly Origin Origin;
             internal readonly ItemIdentity Identity;
             internal readonly int Before;
-            internal Gain(Origin origin, ItemIdentity identity, int before) { Origin = origin; Identity = identity; Before = before; }
+            internal readonly int IncomingStack;
+            internal Gain(Origin origin, ItemIdentity identity, int before, int incomingStack) { Origin = origin; Identity = identity; Before = before; IncomingStack = incomingStack; }
         }
     }
 }

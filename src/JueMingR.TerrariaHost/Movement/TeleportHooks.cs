@@ -16,6 +16,7 @@ namespace JueMingR.TerrariaHost.Movement
         private static Harmony harmony;
         private static Func<Player, bool> canCorrect;
         private static Action<string> reportFailure;
+        internal static Func<Player, Item, Vector2, Vector2?> RescueTarget;
         internal static bool Available { get; private set; }
 
         internal static bool TryInstall(Func<Player, bool> permission, Action<string> report)
@@ -50,7 +51,7 @@ namespace JueMingR.TerrariaHost.Movement
             if (harmony != null)
                 foreach (MethodBase method in harmony.GetPatchedMethods().ToArray())
                     harmony.Unpatch(method, HarmonyPatchType.All, harmony.Id);
-            harmony = null; canCorrect = null; reportFailure = null;
+            harmony = null; canCorrect = null; reportFailure = null; RescueTarget = null;
         }
 
         private static IEnumerable<CodeInstruction> Target(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
@@ -97,7 +98,13 @@ namespace JueMingR.TerrariaHost.Movement
             {
                 if (player == null || item == null || (item.type != 1326 && item.type != 5335) ||
                     Main.myPlayer < 0 || Main.myPlayer >= Main.player.Length ||
-                    !ReferenceEquals(Main.player[Main.myPlayer], player) || !canCorrect(player)) return;
+                    !ReferenceEquals(Main.player[Main.myPlayer], player)) return;
+                // A rescue owns only this one native Vector2 local and its
+                // exact selected item. Its target is independent of the user's
+                // ordinary teleport-correction switch; no global mouse lease.
+                var rescue = RescueTarget?.Invoke(player, item, point);
+                if (rescue.HasValue) { point = rescue.Value; return; }
+                if (!canCorrect(player)) return;
                 int enumerated;
                 TeleportTargetCorrection.TryCorrect(player, ref point, out enumerated);
             }

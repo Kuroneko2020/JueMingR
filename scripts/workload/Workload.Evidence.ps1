@@ -452,7 +452,7 @@ function Get-WorkloadAssertionHost {
     # Only these current scopes have typed assertions and audited scene
     # aggregation. Legacy string/catch-all adapters remain unknown on failure.
     # This is an actual launch/protocol owner, so it stays in the bound recipe.
-    if($Name -cin @('native-MovementJumpCpu','native-MovementDashCpu','native-MovementTeleportCpu','native-NpcEyeBoss','native-NpcSnowman')){return 'NativeWorldTextProbe.exe'}
+    if($Name -cin @('native-MovementJumpCpu','native-MovementSmartFallCpu','native-MovementDashCpu','native-MovementTeleportCpu','native-NpcEyeBoss','native-NpcSnowman')){return 'NativeWorldTextProbe.exe'}
     return $null
 }
 function Invoke-WorkloadProcess {
@@ -765,6 +765,7 @@ function Get-WorkloadPlan {
         'notes-input'=@('notes-host'); 'entity-style'=@('style-host'); 'world-targets-style'=@('style-host');
         'focus-input'=@('notes-host','shared-host','pages-host'); 'hotkeys-popup'=@('notes-host','shared-host','pages-host');
         'f5-cpu'=@('about-host','shared-host','pages-host'); 'death-popup'=@('death-host');
+        'movement-layout'=@('movement-host');
         'footprints-popup'=@('footprints-host'); 'map-popup'=@('map-host');
         'world-targets-observation'=@('world-host','shared-host'); 'world-targets-projection'=@('world-host','shared-host');
         'entity-observation'=@('world-host','shared-host'); 'entity-projection'=@('shared-host');
