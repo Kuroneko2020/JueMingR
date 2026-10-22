@@ -32,7 +32,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             Patch(typeof(Main), "DrawInterface", new[] { typeof(GameTime) }, nameof(Begin), nameof(End), nameof(Final));
             Patch(typeof(Main), "DrawInterface_39_MouseOver", Type.EmptyTypes, nameof(Boundary)
                 );
-            // Terraria prepares DrawMouseOver before this late installation.
+            // DrawMouseOver can be prepared before this late installation.
             // Its tiny manager wrapper can already be inlined in that caller;
             // patching the wrapper then observes no calls. The interface dispatch
             // reaches these three actual resource implementations. Observe their

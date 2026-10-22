@@ -23,8 +23,8 @@ namespace NativeWorldTextProbe
         private static int resourceReturns, resourceErrors, wrapperReturns, resourceMode;
         internal static void PrepareCallerBeforeHost()
         {
-            // Normal Terraria preloads its caller before our late host patches.
-            // Preserve that order in this specialist. These observers count real
+            // Explicitly exercise the reachable caller-first preparation order
+            // before late host patches. These observers count real
             // native returns/errors only; they never supply a pointer certificate.
             var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
             var caller = typeof(Main).GetMethod("DrawMouseOver", flags);
