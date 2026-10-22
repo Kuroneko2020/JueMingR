@@ -226,3 +226,20 @@ R2原因：手动Up接管原只位于 returnGravity 分支，尚未首次Press�
 R1新回归通过真实 BeginWorld、Player.Update BeginPlayer/EndPlayer 自动最终器状态：只在既有Motion片段省略的输入／装备接点补真实CaptureInput／ResetEffects／UpdateEquips，再在JumpMovement最后优先级抛原异常。Press和未rearm Release均保同一异常对象、动作／输入／真实loan精确收尾、fuel保持3，引用回原槽，下一scope不推进旧意图。R2新回归含真实借入社交球和已原装球：首次releaseUp=false→原生松开rearm→用户Up即TakenOver、借球准确归还；通过真实vanity swap保持同一球持续功能装备后，玩家原生翻转保持-1，后续三个正常松键更新无辅助Up／强翻回。既有正常三更新往返、翻后手动／forced接管、合法Jump/Rocket Release→Press、原生资源和实际保护／借还／钩／斜平台代表保留PASS。相邻nativeJump原版1037／wire84保持原窄范围。
 
 当前新增仅有限字段／异常参数传递与动作入口O(1)接管检查，无新扫描／框架／资源写入／日志。既有稳定工作量在本native叶继续通过，不外推FPS。源码／定向证据不等于本轮独立增量复核、主准入、新包或安装；尚未包／装。四外来资产保持，Draft／OPEN／INCOMPLETE／releaseEligible=false，不merge／close／Tag／Release／升版或操作真实游戏。下一步仅同一审查上下文增量复核与主准入，通过后原整合者继续已授权完整包和同目标备份换装。
+
+
+## 2026-10-22 原版边界修复最终交付：普通完整包与原目标换装
+
+产品、普通完整包、Release及实际现装source均为 `632b90499a858c791074c686cf2a5113a9f00ece`，后继纯交付记录提交不改变包或现装身份。本轮 `5df866f→632b904` 经初审完整增量＋R1/R2有限返修独立复核组合PASS，主调度固定候选整体准入；最终独审 `.local/smart-fall-vanilla-20261022/independent-review-r1-r2.md` SHA256 `0FD64E2DBB7A65024C41DA612892203AB60EEDE98F3B0986013460F425310FAF`。初审NEEDS_FIX报告、独立失败探针、正式红/绿及所有原执行身份保留。
+
+沿现有 DevelopmentCandidate／StageDevelopmentRecord 正式reader生成 `.local/smart-fall-vanilla-20261022/candidate-final-632b904/development-candidate.json`，完整产品BASE62bd6e4、实际207目录、四必要责任适用；两native来自a6ee9ba0、两纯叶来自d46fb70b，保各sourceCommit/执行ID。207目录范围外原1 FAIL（native-NpcSkeletonBoss）和94 NOT_RUN保留，其余历史成绩不重签当前全绿。任务验收PASS、fullQualification=INCOMPLETE、releaseEligible=false、installationAuthorized=false保持；安装权来自所有者本轮同目标明确授权及主632b904整体准入，记录自身不授予权限。
+
+实际执行普通完整 `scripts/build-phase0s-validation-package.ps1 -Profile ContinuousProcessing -StageDevelopmentRecord <上述record> -ApprovedRetainedAssets .local/smart-fall-protection-20261021/retained-assets.json -OutputDirectory outputs/smart-fall-vanilla-20261022-632b904`，成功生成Release/net472/x86，SDK `10.0.203`，完整17成员／10安装载荷，包含全部既有功能及辅助瞄准，非诊断包或DLL补丁。新ZIP `outputs/smart-fall-vanilla-20261022-632b904/JueMingR-Continuous-Processing-632b90499a858c791074c686cf2a5113a9f00ece.zip`，**2,353,049字节**，SHA256 `5F8BF50B7E5494CB50DAB9F0A78E307838B05882D6252D07DE2826AA3A4622DD`。同目录 `phase-0-s-build-record.json` SHA256 `B50830C7B76233FE78776FF743BF56286EBB7377C5D83289EAB5037A73165DBF`；普通payload、manifest、依赖和实际Release身份沿正式构建／包读取器核验。clean=false仅四声明外来资产，产品已提交；没有Related/Full或无关历史维修。
+
+同一已确认F盘Terraria目标现场核准确旧3cffcbc包、旧receipt SHA256 `754BDEB8F6B6D5A4D2E063C7FA92C58CDDBB17F114E495F4125696D3C48ECA2F`、owner／payload、原版EXE身份及无Terraria／server／PredictionWorker进程。12项旧受控文件轻量备份至 `.local/smart-fall-vanilla-20261022/smart-fall-backup-632b904-20261022T170805/`，每项复制后读回，backup.json SHA256 `D9D52CF24F70519D4DCE30EF84BA155B1A8E872F60D347CF73F9102332BD7E40`。随后官方旧Restore exit0／RESTORE_COMPLETE→新Install exit0／INSTALL_COMPLETE，一次正式owner／10载荷／receipt读回PASS。实际完成 `2026-10-22T17:08:07.7568259+08:00`，新receipt SHA256 `A7E426310E943DD81EE077A23DB341EDE38A94CE9BC0AB1C79CB6FF34786206B`；结果 `.local/smart-fall-vanilla-20261022/smart-fall-install-632b904-result.json`，两原生日志及install-execution.log同目录。
+
+恢复入口为新完整包的 `Restore-Phase0S.ps1`；若明确需要回到前包，先新Restore，再旧 `outputs/smart-fall-social-20261022-3cffcbc/JueMingR-Continuous-Processing-3cffcbcbfc9144c8d3b9b73f9470838e99d813e0/Install-Phase0S.ps1`。本次未回装演练、第二轮独立安装审计或全用户目录哈希；没有启动／操作所有者真实游戏、存档或JueMingRData，没有强杀／修改系统音量。保留新安装供所有者体验，不默认卸载。
+
+源码已撤造资源、保合法能力和真实物品借还；新自动证据为原生组件／输入／身份／有限工作量，不代替普通新包由所有者启动。完整Main／图形／物理设备输入／真实好友房主客机／FPS／owner体验仍未测。包／安装身份与下一次实际体验分别记录，不能因文件安装PASS宣称产品已验收。短体验卡为普通包内及仓库 `scripts/phase0s/Continuous-Processing-Owner-Test-Card.zh-CN.md`：先自行确认能进入/F5打开/正常退出，再用可丢弃角色世界分别看无资源瓶不造次数、明确合法资源或被动保护及归还、球／坐骑原生恢复与手动接管。
+
+本轮已授权交付工作完成，停止自主开发并等待所有者短卡体验／具体反馈。Issue130与Draft131保持OPEN/Draft，#7保持INCOMPLETE/releaseEligible=false；不merge／close／Tag／Release／升版，不启动下一功能，四外来资产原样保留未提交。
