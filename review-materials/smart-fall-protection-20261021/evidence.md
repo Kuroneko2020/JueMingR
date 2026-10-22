@@ -221,7 +221,7 @@ R2原因：手动Up接管原只位于 returnGravity 分支，尚未首次Press�
 | native-MovementSmartFallCpu | 74dcda4008414439a9de6f268594706f | EXECUTED / PASS / STABLE |
 | native-MovementJumpCpu | 645942d30e48404ab6af21fe528f6e35 | EXECUTED / PASS / STABLE |
 
-日志 `.local/smart-fall-vanilla-20261022/r1-r2-final.log` 与该batch/targeted-results.json，source/input前后稳定、buildMatch=true。原执行sourceCommit为cd4be2c加当前未提交返修，不改署后继SHA。Borrow/Risk未改生产／期待，保原 `28739f047fb24287bad149ec5947ea1a`／`fb56b74d626d4a719eb5550ef32d3b80`，提交后再以正式reader核四必要责任的当前适用性；两native是本轮实际重跑，纯叶是按影响复用，未裸Related/Full。
+日志 `.local/smart-fall-vanilla-20261022/r1-r2-final.log` 与该batch/targeted-results.json，source/input前后稳定、buildMatch=true。原执行sourceCommit为cd4be2c加当前未提交返修，不改署后继SHA。生产／期待未改的Borrow/Risk先保原身份并尝试正式复用；提交后reader对共享变化投影实际拒绝（两项applicable=false），因此仅补跑这两个既有精确廉价叶，没有改reader或期待。batch `d46fb70b0eb94a3c88760443a1ad731c` 实际PASS/STABLE：Borrow `7535667961df497dbfef0a23fc06ed11`、Risk `f8eebe06d8a04e0a814eaa96507c9793`，实际sourceCommit `7472fc978295fedb0bb0d5da1bdbce67549c74e4`。机器读回 `r1-r2-proof-final.log`／`proof-applicability.json` 确认当前四项applicable=true、buildMatch=true；原纯叶身份仅留历史，不冒称旧证明当前可复用。两native保上述实际执行ID，未重跑Related/Full。
 
 R1新回归通过真实 BeginWorld、Player.Update BeginPlayer/EndPlayer 自动最终器状态：只在既有Motion片段省略的输入／装备接点补真实CaptureInput／ResetEffects／UpdateEquips，再在JumpMovement最后优先级抛原异常。Press和未rearm Release均保同一异常对象、动作／输入／真实loan精确收尾、fuel保持3，引用回原槽，下一scope不推进旧意图。R2新回归含真实借入社交球和已原装球：首次releaseUp=false→原生松开rearm→用户Up即TakenOver、借球准确归还；通过真实vanity swap保持同一球持续功能装备后，玩家原生翻转保持-1，后续三个正常松键更新无辅助Up／强翻回。既有正常三更新往返、翻后手动／forced接管、合法Jump/Rocket Release→Press、原生资源和实际保护／借还／钩／斜平台代表保留PASS。相邻nativeJump原版1037／wire84保持原窄范围。
 
