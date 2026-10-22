@@ -11,8 +11,9 @@ using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
 {
-    // Finite original-Main regression. Only the OS input provider is replaced;
-    // native input/mapping, UI layers and the production editor all execute.
+    // Initialized native-Main specialist: input/window/focus are controlled,
+    // preload is skipped and Update is simplified by NativeViewOriginalChecks.
+    // Native input/mapping, UI layers and the production editor execute.
     // No pointer certificate callback or success flag is invoked or assigned.
     internal static class NativeBlueprintOriginalChecks
     {
@@ -35,6 +36,18 @@ namespace NativeWorldTextProbe
                 sample(1130,590,true);Require(!state.Dragging&&!state.Selection.HasSelection,"startup click cannot become first stroke");
                 sample(1050,550,false);
                 sample(1050,550,false);
+                // A read-only pointer must survive a legal empty outer Update.
+                // Read actual production-layer pixels while no draft/selection
+                // can hide a missing pointer behind a different blue rectangle.
+                Require(!state.Dragging && !state.Selection.HasSelection && !state.NeedsNeutral, "neutral world input arms the sole editor before pointer-only pixel regression");
+                Require(PointerPixels(game, host) > 0, "current mapped pointer reaches actual world-layer pixels");
+                long pointerMapping = (long)Get(input, "Mapping");
+                Call(input, "BeginUpdate"); Call(context, "UpdateRuntime"); draw();
+                Require(!(bool)Get(input,"CanStartActions") && (bool)Get(host,"CanRetainEdit") && (bool)Get(Get(host,"Pointer"),"HasPoint"), "legal empty update keeps a valid retained point with no action permission");
+                Require(PointerPixels(game, host) > 0, "empty outer Update must not hide actual blue pointer pixels");
+                draw(); draw();
+                Require(PointerPixels(game, host) > 0 && (long)Get(input,"Mapping") == pointerMapping && !state.Dragging && !state.Selection.HasSelection && !state.NeedsNeutral,
+                    "repeated Draw retains actual pointer pixels without new input, fake release, drag or XOR");
                 sample(1050,550,true);
                 sample(1130,590,true);
                 sample(1130,590,true);
@@ -110,9 +123,30 @@ namespace NativeWorldTextProbe
                     Require((bool)Get(Get(toolbar,"hint"),"Visible"),"actual disabled-save hint draws at UI "+scale);
                     image("blueprint-hint-ui-"+scale.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 }
-                Console.WriteLine("PASS BLUEPRINT original input/native UI: startup barrier, held preview, once-only XOR/cancel, empty outer Update, Draw gaps/no replay, focus/UI recovery, actual inventory slot/bar button, attack block/exit restore, native hint screenshots UI100/150. Provider injection is not OS input, ordinary package load, multiplayer, FPS or owner acceptance.");
+                Console.WriteLine("PASS BLUEPRINT initialized-native specialist: actual pointer pixels across empty Update/repeat Draw, startup barrier, held preview, once-only XOR/cancel, Draw gaps/no replay, focus/UI recovery, actual inventory slot/bar button, attack block/exit restore, native hint screenshots UI100/150. SkipAssemblyLoad, simplified Update, manual Runtime and controlled focus/window/input; not ordinary load/pre-JIT, OS input, multiplayer, FPS or owner acceptance.");
             }
             finally { Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(1)));state.Exit();mouse(1050,550,false);Main.playerInventory=false;Main.mouseItem=new Item(); }
+        }
+
+        private static int PointerPixels(Main game, object host)
+        {
+            var device = game.GraphicsDevice;
+            var targets = device.GetRenderTargets();
+            using (var target = new RenderTarget2D(device, Main.screenWidth, Main.screenHeight))
+            {
+                try
+                {
+                    device.SetRenderTarget(target); device.Clear(Color.Transparent);
+                    Main.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp,
+                        DepthStencilState.None, RasterizerState.CullNone, null, Main.GameViewMatrix.ZoomMatrix);
+                    try { Call(Get(host,"World"),"Draw"); }
+                    finally { Main.spriteBatch.End(); }
+                    device.SetRenderTarget(null);
+                    var pixels = new Color[target.Width * target.Height]; target.GetData(pixels);
+                    return pixels.Count(c => c.A > 0 && c.B > c.R && c.B > c.G);
+                }
+                finally { device.SetRenderTargets(targets); }
+            }
         }
     }
 }

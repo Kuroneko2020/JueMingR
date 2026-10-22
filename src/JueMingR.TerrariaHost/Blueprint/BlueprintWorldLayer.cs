@@ -13,6 +13,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintWorldLayer(HostBlueprint host, World.WorldTileObservation geometry) { this.host = host; this.geometry = geometry; }
         internal void Draw()
         {
+#if JMR_BLUEPRINT_INPUT_TRACE
+            host.Trace.Record(16);
+#endif
             if (!host.State.Active || !host.HasSession || !Rendering.WorldPresentation.CanDraw || Main.spriteBatch == null) return;
             Platform.WorldTargets.WorldTargetView view;
             if (!geometry.TryView(0, out view)) return;
@@ -27,10 +30,18 @@ namespace JueMingR.TerrariaHost.Blueprint
                 int l = Math.Max(view.X, preview.Left), t = Math.Max(view.Y, preview.Top), r = Math.Min(right, preview.RightExclusive), b = Math.Min(bottom, preview.BottomExclusive);
                 if (l < r && t < b) Fill(l, t, r, b, Color.FromNonPremultiplied(65, 155, 255, 95));
             }
-            if (host.CanEdit && host.Pointer.HasPoint)
+            // A legal empty outer Update revokes new action permission, while
+            // Draw may continue. Present the retained point without replaying
+            // input; actual focus/UI/session rejection still hides stale points.
+            if (host.CanRetainEdit && host.Pointer.HasPoint)
             {
                 int x = host.Pointer.CellX, y = host.Pointer.CellY;
-                if (x >= 0 && y >= 0 && x < Main.maxTilesX && y < Main.maxTilesY) Fill(x, y, x + 1, y + 1, Color.FromNonPremultiplied(80, 180, 255, 150));
+                if (x >= 0 && y >= 0 && x < Main.maxTilesX && y < Main.maxTilesY) {
+                    Fill(x, y, x + 1, y + 1, Color.FromNonPremultiplied(80, 180, 255, 150));
+#if JMR_BLUEPRINT_INPUT_TRACE
+                    host.Trace.Record(20, 1);
+#endif
+                }
             }
         }
         private static void Fill(int left, int top, int right, int bottom, Color color)

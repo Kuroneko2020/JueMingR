@@ -93,6 +93,10 @@ namespace JueMingR.TerrariaHost.Input
         internal bool CanRetainIntent { get { return IsFocused && !rearming && !quarantine; } }
         internal long Frame { get; private set; }
         internal long Mapping { get; private set; }
+#if JMR_BLUEPRINT_INPUT_TRACE
+        internal int BlueprintDiagnosticFlags { get { return (IsFocused ? 1 : 0) | (SampleFocused ? 2 : 0) | (nativePermission ? 4 : 0) |
+            (mapped ? 8 : 0) | (finalized ? 16 : 0) | (rearming ? 32 : 0) | (quarantine ? 64 : 0) | (CanStartActions ? 128 : 0) | (CanRetainIntent ? 256 : 0); } }
+#endif
         internal bool CanPrepareText { get { return IsFocused && !rearming && !quarantine; } }
         internal HostInputState() : this(() => Main.instance == null ? IntPtr.Zero : Main.instance.Window.Handle, GetForegroundWindow) { }
         internal HostInputState(Func<IntPtr> gameWindow, Func<IntPtr> foregroundWindow)
