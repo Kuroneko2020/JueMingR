@@ -243,6 +243,7 @@ namespace NativeWorldTextProbe
             }
             private void Compose()
             {
+                if (blueprint) NativeBlueprintOriginalChecks.PrepareCallerBeforeHost();
                 string candidate = Environment.GetEnvironmentVariable("JUEMINGR_VIEW_NETWORK_CANDIDATE");
                 var assembly = Assembly.LoadFrom(String.IsNullOrEmpty(candidate) ? Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll") : candidate);
                 var worker = assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker");

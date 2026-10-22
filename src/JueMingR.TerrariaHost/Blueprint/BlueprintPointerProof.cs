@@ -25,25 +25,22 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool HasPoint { get; private set; }
         internal int CellX { get { return x; } }
         internal int CellY { get { return y; } }
-#if JMR_BLUEPRINT_INPUT_TRACE
-        internal int DiagnosticFlags { get { return (pending ? 1 : 0) | (completed ? 2 : 0) | (inPass ? 4 : 0) | (boundary ? 8 : 0) |
-            (resources ? 16 : 0) | (ui ? 32 : 0) | (left ? 64 : 0) | (right ? 128 : 0) | (drawn ? 256 : 0) | (freshLeft ? 512 : 0) | (HasPoint ? 1024 : 0); } }
-        internal int DiagnosticMatches { get { return (pending ? 1 : 0) | (host.CanRetainEdit ? 2 : 0) | (host.Input.Mapping == mapping ? 4 : 0) |
-            (raw == new Vector2(PlayerInput.MouseInfo.X, PlayerInput.MouseInfo.Y) ? 8 : 0) | (screen == PlayerInput.OriginalScreenSize ? 16 : 0) |
-            (scale == PlayerInput.RawMouseScale ? 32 : 0) | (uiMatrix == Main.UIScaleMatrix ? 64 : 0) | (zoom == Main.GameViewMatrix.ZoomMatrix ? 128 : 0) |
-            (gravity == Main.LocalPlayer.gravDir ? 256 : 0); } }
-#endif
         internal BlueprintPointerProof(HostBlueprint host) { this.host = host; }
         internal void Install()
         {
             current = this;
             Patch(typeof(Main), "DrawInterface", new[] { typeof(GameTime) }, nameof(Begin), nameof(End), nameof(Final));
             Patch(typeof(Main), "DrawInterface_39_MouseOver", Type.EmptyTypes, nameof(Boundary)
-#if JMR_BLUEPRINT_INPUT_TRACE
-                , nameof(BoundaryReturned)
-#endif
                 );
-            Patch(typeof(Terraria.GameContent.UI.ResourceSets.PlayerResourceSetsManager), "TryToHoverOverResources", Type.EmptyTypes, null, nameof(Resources));
+            // Terraria prepares DrawMouseOver before this late installation.
+            // Its tiny manager wrapper can already be inlined in that caller;
+            // patching the wrapper then observes no calls. The interface dispatch
+            // reaches these three actual resource implementations. Observe their
+            // normal returns, before later world hover can set mouseText. A skip
+            // or exception still cannot certify the pass; never invent proof.
+            Patch(typeof(Terraria.GameContent.UI.ResourceSets.ClassicPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(Resources));
+            Patch(typeof(Terraria.GameContent.UI.ResourceSets.FancyClassicPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(Resources));
+            Patch(typeof(Terraria.GameContent.UI.ResourceSets.HorizontalBarsPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(Resources));
             Patch(typeof(ItemSlot), "MouseHover", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(Slot));
             Patch(typeof(ItemSlot), "Draw", new[] { typeof(SpriteBatch), typeof(Item[]), typeof(int), typeof(int), typeof(Vector2), typeof(Color) }, nameof(Hotbar));
         }
@@ -56,9 +53,6 @@ namespace JueMingR.TerrariaHost.Blueprint
         private static HarmonyMethod Hook(string name) { return name == null ? null : new HarmonyMethod(typeof(BlueprintPointerProof).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)); }
         internal void Capture()
         {
-#if JMR_BLUEPRINT_INPUT_TRACE
-            host.Trace.Record(6);
-#endif
             if (!host.State.Active) return;
             if (pending && mapping == host.Input.Mapping) return;
             pending = true; completed = inPass = drawn = false; mapping = host.Input.Mapping;
@@ -67,9 +61,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             HasPoint = false;
             if (!Finite(zoom.M11) || !Finite(zoom.M22) || zoom.M11 <= 0 || zoom.M22 <= 0 || Main.screenWidth <= 0 || Main.screenHeight <= 0 ||
                 !Finite(Main.screenPosition.X) || !Finite(Main.screenPosition.Y) || Main.maxTilesX <= 0 || Main.maxTilesY <= 0) {
-#if JMR_BLUEPRINT_INPUT_TRACE
-                host.Trace.Record(17, -4);
-#endif
                 Cancel(); host.State.Interrupt(); return; }
             left = host.Input.RawMouseLeft; right = host.Input.RawMouseRight;
             freshLeft = left && !lastLeft && mapping == lastMapping + 1;
@@ -78,9 +69,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (gravity == -1) point.Y = Main.screenHeight - point.Y;
             point += Main.screenPosition;
             if (float.IsNaN(point.X) || float.IsInfinity(point.X) || float.IsNaN(point.Y) || float.IsInfinity(point.Y)) {
-#if JMR_BLUEPRINT_INPUT_TRACE
-                host.Trace.Record(17, -5);
-#endif
                 Cancel(); host.State.Interrupt(); return; }
             x = (int)Math.Floor(point.X / 16); y = (int)Math.Floor(point.Y / 16); width = Main.maxTilesX; height = Main.maxTilesY;
             HasPoint = true;
@@ -90,10 +78,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!pending || host.Input.Mapping == mapping) return;
             bool valid = canEdit && host.Input.Mapping == mapping + 1;
             bool certified = completed;
-#if JMR_BLUEPRINT_INPUT_TRACE
-            int decision = (valid ? 1 : 0) | (certified ? 2 : 0) | (ui ? 4 : 0) | (drawn ? 8 : 0) | (left ? 16 : 0) | (freshLeft ? 32 : 0);
-            host.Trace.Record(11, !ui && (!valid || drawn && !certified) ? -decision - 1 : decision);
-#endif
             pending = completed = inPass = false;
             // No Draw is not UI ownership. Retain a held draft across skipped
             // draws, but an unobserved release cannot be replayed later. A press
@@ -101,14 +85,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (valid && !drawn && (!host.State.Dragging || left)) return;
             if (valid && certified && !ui && left && !host.State.Dragging && !freshLeft) return;
             host.State.Pointer(valid && certified && !ui, left, right, x, y, width, height);
-#if JMR_BLUEPRINT_INPUT_TRACE
-            host.Trace.Record(21);
-#endif
         }
         internal void Cancel() {
-#if JMR_BLUEPRINT_INPUT_TRACE
-            host.Trace?.Record(18);
-#endif
             pending = completed = inPass = HasPoint = false; lastMapping = -1; lastLeft = true; }
         private static bool Finite(float value) { return !float.IsNaN(value) && !float.IsInfinity(value); }
         private bool Matches()
@@ -119,45 +97,21 @@ namespace JueMingR.TerrariaHost.Blueprint
                 raw == new Vector2(PlayerInput.MouseInfo.X, PlayerInput.MouseInfo.Y) && screen == PlayerInput.OriginalScreenSize && scale == PlayerInput.RawMouseScale &&
                 uiMatrix == Main.UIScaleMatrix && zoom == Main.GameViewMatrix.ZoomMatrix && gravity == Main.LocalPlayer.gravDir;
         }
-        private static void Begin(bool __runOriginal)
+        private static void Begin()
         { var p = current;
-#if JMR_BLUEPRINT_INPUT_TRACE
-            p?.host.Trace.Record(7, __runOriginal ? 1 : 0);
-#endif
             if (p == null || !p.pending || p.completed) return; p.drawn = true; p.inPass = p.Matches(); p.boundary = p.resources = p.ui = false;
-#if JMR_BLUEPRINT_INPUT_TRACE
-            p.host.Trace.Record(12, p.inPass ? 0 : -6);
-#endif
         }
-        private static void Boundary(bool __runOriginal)
+        private static void Boundary()
         {
             var p = current;
-#if JMR_BLUEPRINT_INPUT_TRACE
-            p?.host.Trace.Record(8, __runOriginal ? 1 : 0);
-#endif
             if (p == null || !p.inPass) return;
             p.boundary = true; p.ui |= Main.LocalPlayer.mouseInterface || Main.mouseText || p.host.NativeUiBusy ||
                 p.host.Shell?.State.Visible == true || p.host.Toolbar.HitCurrent();
-#if JMR_BLUEPRINT_INPUT_TRACE
-            p.host.Trace.Record(13);
-#endif
         }
         private static void Resources(bool __runOriginal)
         { var p = current;
-#if JMR_BLUEPRINT_INPUT_TRACE
-            p?.host.Trace.Record(9, __runOriginal ? 1 : 0);
-#endif
             if (p == null || !p.inPass || !p.boundary) return; p.resources = __runOriginal; p.ui |= Main.LocalPlayer.mouseInterface || Main.mouseText;
-#if JMR_BLUEPRINT_INPUT_TRACE
-            p.host.Trace.Record(14, __runOriginal ? 1 : 0);
-#endif
         }
-#if JMR_BLUEPRINT_INPUT_TRACE
-        // Observe completion of the already-patched native boundary. This does
-        // not patch a guessed caller or supply the missing resource certificate.
-        private static void BoundaryReturned(bool __runOriginal)
-        { current?.host.Trace.Record(22, __runOriginal ? 1 : 0); }
-#endif
         private static void Slot()
         { var p = current; if (p != null && p.inPass) p.ui = true; }
         private static void Hotbar(Item[] __1, int __2, int __3, Vector2 __4)
@@ -168,24 +122,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private static void End(bool __runOriginal)
         { var p = current;
-#if JMR_BLUEPRINT_INPUT_TRACE
-            p?.host.Trace.Record(10, __runOriginal ? 1 : 0);
-#endif
             if (p == null || !p.inPass) return; p.completed = __runOriginal && p.boundary && p.resources && p.Matches(); p.inPass = false;
-#if JMR_BLUEPRINT_INPUT_TRACE
-            p.host.Trace.Record(15, !p.completed && !p.ui ? -7 : __runOriginal ? 1 : 0);
-#endif
         }
         private static Exception Final(Exception __exception)
         { if (__exception != null) {
-#if JMR_BLUEPRINT_INPUT_TRACE
-                current?.host.Trace.Record(17, -8);
-#endif
                 current?.Cancel(); } return __exception; }
         public void Dispose() {
-#if JMR_BLUEPRINT_INPUT_TRACE
-            host.Trace?.Record(17, 12);
-#endif
             Cancel(); harmony.UnpatchAll(harmony.Id); if (ReferenceEquals(current, this)) current = null; }
     }
 }

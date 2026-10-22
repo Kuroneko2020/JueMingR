@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using HarmonyLib;
 using Terraria.ID;
 using JueMingR.Features.Blueprint;
 using Microsoft.Xna.Framework;
@@ -17,6 +20,37 @@ namespace NativeWorldTextProbe
     // No pointer certificate callback or success flag is invoked or assigned.
     internal static class NativeBlueprintOriginalChecks
     {
+        private static int resourceReturns, resourceErrors, wrapperReturns, resourceMode;
+        internal static void PrepareCallerBeforeHost()
+        {
+            // Normal Terraria preloads its caller before our late host patches.
+            // Preserve that order in this specialist. These observers count real
+            // native returns/errors only; they never supply a pointer certificate.
+            var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+            var caller = typeof(Main).GetMethod("DrawMouseOver", flags);
+            RuntimeHelpers.PrepareMethod(caller.MethodHandle);
+            var observer = new Harmony("JueMingR.Tests.Blueprint.ResourceObservation");
+            foreach (var type in new[] {
+                typeof(Terraria.GameContent.UI.ResourceSets.ClassicPlayerResourcesDisplaySet),
+                typeof(Terraria.GameContent.UI.ResourceSets.FancyClassicPlayerResourcesDisplaySet),
+                typeof(Terraria.GameContent.UI.ResourceSets.HorizontalBarsPlayerResourcesDisplaySet) })
+                observer.Patch(type.GetMethod("TryToHover", flags),
+                    prefix: new HarmonyMethod(typeof(NativeBlueprintOriginalChecks), nameof(ResourceBefore)),
+                    postfix: new HarmonyMethod(typeof(NativeBlueprintOriginalChecks), nameof(ResourceReturned)),
+                    finalizer: new HarmonyMethod(typeof(NativeBlueprintOriginalChecks), nameof(ResourceFailed)));
+            observer.Patch(typeof(Terraria.GameContent.UI.ResourceSets.PlayerResourceSetsManager).GetMethod("TryToHoverOverResources", flags),
+                postfix: new HarmonyMethod(typeof(NativeBlueprintOriginalChecks), nameof(WrapperReturned)));
+            Console.WriteLine("BLUEPRINT caller DrawMouseOver prepared before host installation; resource observers do not grant business proof");
+        }
+        private static bool ResourceBefore()
+        {
+            if (resourceMode == 2) throw new InvalidOperationException("BLUEPRINT isolated resource-seam exception");
+            return resourceMode != 1;
+        }
+        private static void ResourceReturned(bool __runOriginal) { if (__runOriginal) resourceReturns++; }
+        private static Exception ResourceFailed(Exception __exception) { if (__exception != null) resourceErrors++; return __exception; }
+        private static void WrapperReturned(bool __runOriginal) { if (__runOriginal) wrapperReturns++; }
+
         internal static void Run(Main game, object context, Action inputStep, Action draw, Func<RenderTarget2D> canvas, string output, Action<int,int,bool> mouse)
         {
             var host=Get(context,"Blueprint"); var input=Get(context,"Input"); var shell=Get(context,"Shell");
@@ -36,6 +70,8 @@ namespace NativeWorldTextProbe
                 sample(1130,590,true);Require(!state.Dragging&&!state.Selection.HasSelection,"startup click cannot become first stroke");
                 sample(1050,550,false);
                 sample(1050,550,false);
+                Console.WriteLine("BLUEPRINT native resource returns="+resourceReturns+" exceptions="+resourceErrors+" manager-wrapper returns="+wrapperReturns);
+                Require(resourceReturns > 0 && resourceErrors == 0, "prepared native caller executes resource originals successfully before editor assertion");
                 // A read-only pointer must survive a legal empty outer Update.
                 // Read actual production-layer pixels while no draft/selection
                 // can hide a missing pointer behind a different blue rectangle.
@@ -60,6 +96,57 @@ namespace NativeWorldTextProbe
                 string first=selected();draw();draw();neutral();
                 Require(selected()==first,"repeat Draw and ordinary Draw intervals do not repeat XOR or clear committed selection");
                 drag();release();Require(!state.Selection.HasSelection,"same rectangle selected twice cancels by XOR");
+                // All six native styles share exactly three implementation
+                // families. Cycle real UI state in this owned process only;
+                // do not assign hover flags or invoke proof callbacks.
+                var styles = new System.Collections.Generic.HashSet<string>();
+                for (int style = 0; style < 6; style++)
+                {
+                    string key=Main.ResourceSetsManager.ActiveSetKeyName;styles.Add(key);
+                    drag();Require(state.Dragging,"prepared caller certifies held world drag for resource style "+key);
+                    release();Require(state.Selection.HasSelection,"resource style release commits "+key);
+                    string stable=selected();neutral();
+                    int hx=key.StartsWith("HorizontalBars",StringComparison.Ordinal)?Main.screenWidth-80:Main.screenWidth-220;
+                    int hy=key.StartsWith("HorizontalBars",StringComparison.Ordinal)?24:40;
+                    sample(hx,hy,false);sample(hx,hy,true);sample(hx,hy,true);
+                    Require(Main.mouseText&&!state.Dragging&&selected()==stable,"actual resource tooltip owns pointer without world drag "+key);
+                    sample(1130,590,true);sample(1130,590,true);
+                    Require(!state.Dragging&&selected()==stable,"resource held gesture cannot become world press "+key);
+                    neutral();drag();release();Require(!state.Selection.HasSelection,"resource style preserves XOR repeat "+key);
+                    Console.WriteLine("BLUEPRINT resource style PASS "+key+" world drag/release/XOR and actual resource tooltip/held crossing");
+                    Main.ResourceSetsManager.CycleResourceSet();
+                }
+                Require(styles.Count==6,"all six original resource variants covered across three implementations");
+                foreach (int rejected in new[]{1,2})
+                {
+                    drag();Require(state.Dragging,"resource failure counterexample starts with real draft");
+                    int errorsBefore=resourceErrors;resourceMode=rejected;
+                    try { sample(1130,590,true);sample(1130,590,true); }
+                    finally { resourceMode=0; }
+                    Require(!state.Dragging&&!state.Selection.HasSelection&&state.NeedsNeutral,
+                        "skipped/throwing resource original cannot certify or commit "+rejected);
+                    Require(rejected==1?resourceErrors==errorsBefore:resourceErrors>errorsBefore,
+                        "resource rejection distinguishes skip from swallowed exception "+rejected);
+                    Console.WriteLine("BLUEPRINT resource "+(rejected==1?"skip":"swallowed exception")+" PASS fail closed without commit");
+                    neutral();
+                }
+                var worldItem=Main.item[0];var oldItemPosition=worldItem.position;
+                try
+                {
+                    neutral();
+                    var worldPoint=Vector2.Transform(new Vector2(1050,550)*PlayerInput.RawMouseScale,Matrix.Invert(Main.GameViewMatrix.ZoomMatrix))+Main.screenPosition;
+                    worldItem.Bottom=worldPoint+new Vector2(0,6);
+                    sample(1050,550,false);sample(1050,550,false);
+                    Require(Main.mouseText&&!state.NeedsNeutral,"actual dropped-item world tooltip does not own UI certificate");
+                    sample(1050,550,true);sample(1050,550,true);
+                    Require(Main.mouseText&&state.Dragging,"world hover after resources remains selectable despite final mouseText");
+                    sample(1050,550,false);sample(1050,550,false);
+                    Require(state.Selection.HasSelection,"world hover release commits once");
+                    neutral();sample(1050,550,true);sample(1050,550,true);sample(1050,550,false);sample(1050,550,false);
+                    Require(!state.Selection.HasSelection,"world hover repeat XOR clears once");
+                    Console.WriteLine("BLUEPRINT actual dropped-item world hover PASS selectable with final mouseText");
+                }
+                finally { worldItem.position=oldItemPosition; }
                 sample(1050,550,false);
                 sample(1050,550,false);
                 mouse(1050,550,true);inputStep();
@@ -123,9 +210,9 @@ namespace NativeWorldTextProbe
                     Require((bool)Get(Get(toolbar,"hint"),"Visible"),"actual disabled-save hint draws at UI "+scale);
                     image("blueprint-hint-ui-"+scale.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 }
-                Console.WriteLine("PASS BLUEPRINT initialized-native specialist: actual pointer pixels across empty Update/repeat Draw, startup barrier, held preview, once-only XOR/cancel, Draw gaps/no replay, focus/UI recovery, actual inventory slot/bar button, attack block/exit restore, native hint screenshots UI100/150. SkipAssemblyLoad, simplified Update, manual Runtime and controlled focus/window/input; not ordinary load/pre-JIT, OS input, multiplayer, FPS or owner acceptance.");
+                Console.WriteLine("PASS BLUEPRINT initialized-native specialist: explicit caller-first JIT, six resource variants/three originals, actual resource vs world hover, skip/exception fail closed, actual pointer pixels across empty Update/repeat Draw, startup barrier, held preview, once-only XOR/cancel, Draw gaps/no replay, focus/UI recovery, actual inventory slot/bar button, attack block/exit restore, native hint screenshots UI100/150. SkipAssemblyLoad, simplified Update, manual Runtime and controlled focus/window/input; not complete ordinary load/preload, OS input, multiplayer, FPS or owner acceptance.");
             }
-            finally { Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(1)));state.Exit();mouse(1050,550,false);Main.playerInventory=false;Main.mouseItem=new Item(); }
+            finally { resourceMode=0;Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(1)));state.Exit();mouse(1050,550,false);Main.playerInventory=false;Main.mouseItem=new Item(); }
         }
 
         private static int PointerPixels(Main game, object host)

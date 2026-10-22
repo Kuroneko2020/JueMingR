@@ -472,9 +472,6 @@ namespace JueMingR.TerrariaHost
             context.Input.DiagnosticGameplayActive=context.DiagnosticGameplayActive;
 #endif
             context.Input.BeginUpdate();
-#if JMR_BLUEPRINT_INPUT_TRACE
-            context.Blueprint?.Trace.Record(0);
-#endif
             if (!context.Input.IsFocused && context.Shell != null) context.Shell.CancelForFocusLoss();
         }
 

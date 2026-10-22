@@ -29,13 +29,6 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool ready, failed;
         private PreferenceStatus? reported;
         internal F5Shell Shell;
-#if JMR_BLUEPRINT_INPUT_TRACE
-        internal readonly BlueprintInputTrace Trace;
-        internal int DiagnosticRetainReasons { get { return (!HasSession ? 1 : 0) | (!Input.CanRetainIntent ? 2 : 0) | (NativeUiBusy ? 4 : 0) |
-            (Main.gamePaused ? 8 : 0) | (player?.dead == true ? 16 : 0) | (player?.ghost == true ? 32 : 0) |
-            (Shell?.State.Visible == true ? 64 : 0) | (Shell?.OwnsPointer == true ? 128 : 0) | (Shell?.TargetGestureBusy?.Invoke() == true ? 256 : 0) |
-            (PlayerInput.Triggers.Current.MapFull ? 512 : 0) | (PlayerInput.Triggers.Current.ToggleCameraMode ? 1024 : 0); } }
-#endif
         internal Exception SetupError { get; private set; }
         internal HostBlueprint(string directory, SingleFeatureRuntime runtime, HostInputState input, World.WorldTileObservation geometry)
         {
@@ -43,9 +36,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             preference = new PreferenceDocument<bool>(new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "config", "features", "blueprint.json"), 65536, true), new BlueprintPreferenceCodec(), false);
             World = new BlueprintWorldLayer(this, geometry); Toolbar = new BlueprintToolbar(this);
             Pointer = new BlueprintPointerProof(this);
-#if JMR_BLUEPRINT_INPUT_TRACE
-            Trace = new BlueprintInputTrace(this, directory);
-#endif
             try { BlueprintHooks.Install(this); Pointer.Install(); ready = true; }
             catch (Exception error) { SetupError = error; BlueprintHooks.Uninstall(); Pointer.Dispose(); }
             Input.BlueprintMapping = ObserveMapping;
@@ -74,15 +64,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal void Toggle()
         {
             if (!ControlsEnabled || !Input.CanStartActions) return;
-#if JMR_BLUEPRINT_INPUT_TRACE
-            Trace.Record(State.Active ? 19 : 1);
-#endif
             Pointer.Cancel(); Toolbar.Cancel();
             if (State.Active) State.Exit();
             else { State.Enter(); Shell?.CloseAndSubmitPosition(); }
-#if JMR_BLUEPRINT_INPUT_TRACE
-            Trace.Record(2);
-#endif
         }
         internal bool Save() { return false; }
         internal void Register(HotkeyRegistry registry, Hotkeys.HotkeyStateFeedback feedback = null)
@@ -99,58 +83,34 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ObserveMapping()
         {
-#if JMR_BLUEPRINT_INPUT_TRACE
-            Trace.Record(3, Input.SampleFocused ? 0 : -1);
-#endif
             State.Observe(Input.SampleFocused, Input.RawMouseLeft, Input.RawMouseRight, Input.NativeUseItemRequest, Input.NativeUseTileRequest);
             if (!Input.SampleFocused) { Pointer.Cancel(); Toolbar.Cancel(); }
         }
         internal void ProcessInput()
         {
-#if JMR_BLUEPRINT_INPUT_TRACE
-            Trace.Record(4);
-#endif
             // Consume at most the immediately preceding mapping. Draw gaps
             // retain a held draft, never queue an uncertified click/release.
             Pointer.Consume(CanEdit);
             Toolbar.Process();
             if (!CanEdit) {
-#if JMR_BLUEPRINT_INPUT_TRACE
-                Trace.Record(17, NativeUiBusy || Shell?.State.Visible == true ? 1 : -2);
-#endif
                 State.Interrupt(); Pointer.Cancel(); return; }
             Pointer.Capture();
-#if JMR_BLUEPRINT_INPUT_TRACE
-            Trace.Record(5);
-#endif
         }
         public void OnSessionStarted()
         {
-#if JMR_BLUEPRINT_INPUT_TRACE
-            Trace.Record(17, 9);
-#endif
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); generation = runtime.Generation; player = Main.LocalPlayer; world = Main.ActiveWorldFileData; connection = Netplay.Connection; }
         public void OnSessionEnded()
         {
-#if JMR_BLUEPRINT_INPUT_TRACE
-            Trace.Record(17, 10);
-#endif
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); player = null; world = connection = null; }
         public void Update(ulong updateTick)
         {
             if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad();
             if (State.Active && (!HasSession || !Input.CanRetainIntent || NativeUiBusy || player.dead || player.ghost || Shell?.State.Visible == true))
             {
-#if JMR_BLUEPRINT_INPUT_TRACE
-                Trace.Record(17, NativeUiBusy || Shell?.State.Visible == true || player.dead || player.ghost ? 2 : -3);
-#endif
                 State.Interrupt(); Pointer.Cancel(); }
         }
         internal void Poll() { if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
         public void FailClosed() {
-#if JMR_BLUEPRINT_INPUT_TRACE
-            Trace.Record(17, 11);
-#endif
             failed = true; State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); }
         internal void TakeFeedback(Action<string> display)
         {

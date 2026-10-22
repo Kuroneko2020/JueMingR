@@ -13,9 +13,6 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintWorldLayer(HostBlueprint host, World.WorldTileObservation geometry) { this.host = host; this.geometry = geometry; }
         internal void Draw()
         {
-#if JMR_BLUEPRINT_INPUT_TRACE
-            host.Trace.Record(16);
-#endif
             if (!host.State.Active || !host.HasSession || !Rendering.WorldPresentation.CanDraw || Main.spriteBatch == null) return;
             Platform.WorldTargets.WorldTargetView view;
             if (!geometry.TryView(0, out view)) return;
@@ -38,9 +35,6 @@ namespace JueMingR.TerrariaHost.Blueprint
                 int x = host.Pointer.CellX, y = host.Pointer.CellY;
                 if (x >= 0 && y >= 0 && x < Main.maxTilesX && y < Main.maxTilesY) {
                     Fill(x, y, x + 1, y + 1, Color.FromNonPremultiplied(80, 180, 255, 150));
-#if JMR_BLUEPRINT_INPUT_TRACE
-                    host.Trace.Record(20, 1);
-#endif
                 }
             }
         }
