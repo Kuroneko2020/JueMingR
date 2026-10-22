@@ -79,7 +79,7 @@ namespace NativeWorldTextProbe
             Call(host, "Toggle"); Require(state.Active, "shared action enters current local session");
             state.Selection.ToggleRectangle(1, 2, 3, 4, Main.maxTilesX, Main.maxTilesY);
             Require(!registry.Find("blueprint.save").Invoke(HotkeyContext.SinglePlayer) && !(bool)Call(host, "Save") && state.Selection.HasSelection, "save has no success path and cannot clear selection");
-            PointerFlow(host, input);
+            WorldCoordinates(host, input);
 
             bool inventory = Main.playerInventory; var mouseItem = Main.mouseItem; Item slot = p.inventory[58]; bool mouseLeft = Main.mouseLeft, mouseRight = Main.mouseRight;
             try
@@ -193,46 +193,17 @@ namespace NativeWorldTextProbe
                 Call(context, "UpdateRuntime"); Sample(input, false, false, false, false); Sample(input, false, false, false, false);
             }
         }
-        private static void PointerFlow(object host, object input)
+        // CPU-only coordinate check. Actual pointer admission and UI ownership
+        // are exercised by BlueprintOriginal through native input and Draw.
+        private static void WorldCoordinates(object host, object input)
         {
-            var state = (BlueprintCaptureState)Get(host, "State"); var pointer = Get(host, "Pointer");
-            var type = pointer.GetType(); var p = Main.LocalPlayer;
-            bool mouseInterface = p.mouseInterface, mouseText = Main.mouseText, inventory = Main.playerInventory;
-            var camera = Main.screenPosition; var zoom = Main.GameViewMatrix.Zoom; float ui = Main.UIScale;
+            var pointer = Get(host, "Pointer"); var state = (BlueprintCaptureState)Get(host, "State");
+            var zoom = Main.GameViewMatrix.Zoom; float ui = Main.UIScale;
             int mouseX = Main.mouseX, mouseY = Main.mouseY;
             var cacheNames = new[] { "_originalMouseX", "_originalMouseY", "_originalLastMouseX", "_originalLastMouseY", "_originalScreenWidth", "_originalScreenHeight" };
             var cache = cacheNames.Select(name => typeof(PlayerInput).GetField(name, Flags).GetValue(null)).ToArray();
-            Action<bool> publish = blocked =>
-            {
-                // Drive the same bounded hook endpoints without a GPU. This
-                // proves certificate state/order, not native Draw or pixels.
-                p.mouseInterface = blocked; Main.mouseText = false;
-                type.GetMethod("Begin", Flags).Invoke(null, null);
-                type.GetMethod("Boundary", Flags).Invoke(null, null);
-                type.GetMethod("Resources", Flags).Invoke(null, new object[] { true });
-                type.GetMethod("End", Flags).Invoke(null, new object[] { true });
-                p.mouseInterface = false;
-            };
-            Action<bool, bool> sample = (left, blocked) =>
-            {
-                Sample(input, left, false, left, false); Call(pointer, "Capture"); publish(blocked);
-                Sample(input, left, false, left, false); Call(pointer, "Consume", true);
-            };
             try
             {
-                Main.playerInventory = false; p.mouseInterface = Main.mouseText = false; state.Selection.Clear(); state.Interrupt();
-                sample(false, false); sample(true, false);
-                Require(state.Dragging && !state.Selection.HasSelection, "certified press starts one uncommitted draft");
-                sample(false, false); Require(state.Selection.HasSelection && !state.Dragging, "certified release commits once in Update consumer");
-                Call(pointer, "Consume", true); Require(state.Selection.HasSelection, "repeated Draw/empty consumption cannot XOR again");
-                sample(true, true); Require(!state.Dragging && state.Selection.HasSelection && state.NeedsNeutral, "current native UI ownership cancels draft without touching committed set");
-                sample(true, false); Require(!state.Dragging, "UI drag leaving panel cannot turn held input into a world press");
-                sample(false, false);
-                Sample(input, true, false, true, false); Call(pointer, "Capture");
-                Main.screenPosition += new Microsoft.Xna.Framework.Vector2(16, 8); publish(false);
-                Sample(input, true, false, true, false); Call(pointer, "Consume", true);
-                Require(state.Dragging, "camera travel does not permanently invalidate current UI proof");
-                state.Interrupt();
                 foreach (float factor in new[] { .3f, 1f, 10f })
                 {
                     Main.GameViewMatrix.Zoom = new Microsoft.Xna.Framework.Vector2(factor); NativeBlueprintUiChecks.SetScale(1.5f);
@@ -245,10 +216,10 @@ namespace NativeWorldTextProbe
             }
             finally
             {
-                Main.GameViewMatrix.Zoom = zoom; NativeBlueprintUiChecks.SetScale(ui); Main.screenPosition = camera;
+                Main.GameViewMatrix.Zoom = zoom; NativeBlueprintUiChecks.SetScale(ui);
                 Main.mouseX = mouseX; Main.mouseY = mouseY;
                 for (int i = 0; i < cacheNames.Length; i++) typeof(PlayerInput).GetField(cacheNames[i], Flags).SetValue(null, cache[i]);
-                p.mouseInterface = mouseInterface; Main.mouseText = mouseText; Main.playerInventory = inventory; Call(pointer, "Cancel"); state.Interrupt();
+                Call(pointer, "Cancel"); state.Interrupt();
             }
         }
         private static void Sample(object input, bool left, bool right, bool item, bool tile)

@@ -77,7 +77,7 @@ namespace NativeWorldTextProbe
                     }
                     HintGeometry(assembly, layout, panel, screen.X / ui, font, measure, () => measurements);
                 }
-                Require((Color)toolbar.GetType().GetField("HintColor", F).GetValue(null) == Color.Gold, "toolbar's actual text draw color is gold");
+                Require((Color)toolbar.GetType().GetField("HintColor", F).GetValue(null) == new Color(184,134,11), "toolbar's actual text draw color is dark goldenrod #B8860B");
                 int before = (int)Get(layout, "Generation");
                 Require(!(bool)Call(layout, "Matches", 1920f, 1080f, 2f, new object(), true), "font identity changes retire old hit geometry");
                 Require(!(bool)Call(layout, "Ensure", 1920f, 1080f, 0f, font, measure, true) && before == (int)Get(layout, "Generation"), "invalid UI scale cannot publish replacement geometry");
@@ -104,10 +104,9 @@ namespace NativeWorldTextProbe
             string text = (string)Call(layout, "Hint", 0);
             Call(hint, "Prepare", text, bar, bounds, font, measure);
             Require((bool)Get(hint, "Visible"), "approved start/save hint fits bounded space above bar");
-            object measured = Get(hint, "Panel");
-            object placed = layout.GetType().GetMethod("CenterHint", F).Invoke(null, new[] { bar, measured });
-            Require(Near(X(placed) + W(placed) / 2, X(bar) + W(bar) / 2) && Y(placed) >= 8 &&
-                Y(placed) + H(placed) < Y(bar) && X(placed) >= 8 && X(placed) + W(placed) <= width - 8, "real hint wrapping is explicitly centered above bar within viewport");
+            var lines=((IEnumerable)Get(hint,"Lines")).Cast<object>().ToArray();
+            float contentHeight=Y(Get(lines.Last(),"Rect"))+H(Get(lines.Last(),"Rect"));
+            Require(Y(bar)-contentHeight-2>=8 && lines.All(line=>W(Get(line,"Rect"))<=width-16), "native glyph wrapping fits text-only placement above the bar without panel padding");
             int before = count();
             for (int i = 0; i < 12; i++) Call(hint, "Prepare", text, bar, bounds, font, measure);
             Require(count() == before, "stable hover reuses common hint wrapping without glyph remeasurement");

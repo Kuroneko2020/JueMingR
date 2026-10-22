@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Blueprint
     // selection, world-action tails and preference all remain on HostBlueprint.
     internal sealed class BlueprintToolbar : IDisposable
     {
-        internal static readonly Color HintColor = Color.Gold;
+        internal static readonly Color HintColor = new Color(184, 134, 11);
         private readonly HostBlueprint host;
         internal readonly BlueprintToolbarLayout Layout = new BlueprintToolbarLayout();
         private readonly UiTextMetrics metrics = new UiTextMetrics();
@@ -181,15 +181,20 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (value == null || leftTail || rightTail || !host.Input.CanPrepareText) { hint.Hide(); return; }
             // Reuse the common bounded wrapping and glyph metrics, but place
             // the measured result above the entire bar, explicitly centered.
-            var above = new F5Rect(bounds.X, bounds.Y, bounds.Width, Layout.Panel.Y - 6 - bounds.Y);
+            var above = new F5Rect(bounds.X, bounds.Y, bounds.Width, Layout.Panel.Y - 2 - bounds.Y);
             hint.Prepare(value, Layout.Panel, above, font, measure);
             if (!hint.Visible) return;
-            F5Rect panel = BlueprintToolbarLayout.CenterHint(Layout.Panel, hint.Panel);
-            UiSurface.Panel(batch, pixel, panel, skin, Color.White);
+            // Lines already include their outline and native glyph offsets.
+            // Discard the common hint panel padding: only text is presented,
+            // each measured line centered above the bar. The native font's
+            // transparent glyph rows already leave the visible outline gap;
+            // adding another panel gap would move the actual text too far up.
+            float contentHeight = hint.Lines.Count == 0 ? 0 : hint.Lines[hint.Lines.Count - 1].Rect.Bottom;
+            float textTop = Layout.Panel.Y - contentHeight;
             foreach (var line in hint.Lines)
                 Utils.DrawBorderStringFourWay(batch, font, line.Text,
-                    panel.X + 8 + (panel.Width - 16 - line.Rect.Width) / 2 - line.TextSize.OffsetX,
-                    panel.Y + 8 + line.Rect.Y - line.TextSize.OffsetY,
+                    Layout.Panel.X + (Layout.Panel.Width - line.Rect.Width) / 2 - line.TextSize.OffsetX,
+                    textTop + line.Rect.Y - line.TextSize.OffsetY,
                     HintColor, Color.Black, Vector2.Zero, line.TextScale);
         }
 
@@ -243,8 +248,6 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool Available(int index) { return active ? index == 1 : index == 0; }
         internal string Hint(int index)
         { return index < 0 || index > 1 ? null : active ? index == 0 ? BlueprintControls.SaveHint : BlueprintControls.ExitHint : index == 0 ? BlueprintControls.StartHint : null; }
-        internal static F5Rect CenterHint(F5Rect bar, F5Rect measured)
-        { return new F5Rect(bar.X + (bar.Width - measured.Width) / 2, bar.Y - measured.Height - 6, measured.Width, measured.Height); }
         private static bool Finite(float value) { return !float.IsNaN(value) && !float.IsInfinity(value); }
     }
 }

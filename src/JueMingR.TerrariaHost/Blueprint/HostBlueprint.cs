@@ -52,7 +52,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool NativeUiBusy { get { return Main.playerInventory || Main.mapFullscreen || Main.blockInput || Main.drawingPlayerChat ||
             Main.editSign || Main.editChest || !string.IsNullOrEmpty(Main.npcChatText) || Main.inFancyUI || Main.onlyDrawFancyUI || Main.ingameOptionsWindow ||
             PlayerInput.WritingText || Main.CurrentInputTextTakerOverride != null || Terraria.Graphics.Capture.CaptureManager.Instance?.Active == true; } }
-        internal bool CanEdit { get { return HasSession && Input.CanStartActions && !NativeUiBusy && !Main.gamePaused && !player.dead && !player.ghost &&
+        internal bool CanEdit { get { return Input.CanStartActions && CanRetainEdit; } }
+        // An outer Update can contain no native input stage. It revokes new
+        // execution, but does not invalidate a previously frozen focused sample.
+        internal bool CanRetainEdit { get { return HasSession && Input.CanRetainIntent && !NativeUiBusy && !Main.gamePaused && !player.dead && !player.ghost &&
             !(Shell?.State.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode; } }
         internal bool ShowToolbar { get { return ControlsEnabled && ToolbarEnabled && Input.CanPrepareText && !NativeUiBusy && !Main.hideUI &&
             !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
@@ -85,8 +88,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal void ProcessInput()
         {
-            // Completion belongs to the preceding certified mapping; one
-            // pending sample is enough. Missing Draw cannot queue old presses.
+            // Consume at most the immediately preceding mapping. Draw gaps
+            // retain a held draft, never queue an uncertified click/release.
             Pointer.Consume(CanEdit);
             Toolbar.Process();
             if (!CanEdit) { State.Interrupt(); Pointer.Cancel(); return; }

@@ -16,8 +16,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         private readonly HostBlueprint host;
         private static BlueprintPointerProof current;
         private readonly Harmony harmony = new Harmony("JueMingR.Blueprint.Pointer");
-        private bool pending, completed, inPass, boundary, resources, ui, left, right;
-        private long mapping;
+        private bool pending, completed, inPass, boundary, resources, ui, left, right, drawn, freshLeft, lastLeft = true;
+        private long mapping, lastMapping = -1;
         private int x, y, width, height;
         private Vector2 raw, screen, scale;
         private Matrix uiMatrix, zoom;
@@ -45,39 +45,48 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal void Capture()
         {
             if (!host.State.Active) return;
-            pending = true; completed = inPass = false; mapping = host.Input.Mapping;
+            if (pending && mapping == host.Input.Mapping) return;
+            pending = true; completed = inPass = drawn = false; mapping = host.Input.Mapping;
             raw = new Vector2(PlayerInput.MouseInfo.X, PlayerInput.MouseInfo.Y); screen = PlayerInput.OriginalScreenSize; scale = PlayerInput.RawMouseScale;
             uiMatrix = Main.UIScaleMatrix; zoom = Main.GameViewMatrix.ZoomMatrix; gravity = Main.LocalPlayer.gravDir;
             HasPoint = false;
             if (!Finite(zoom.M11) || !Finite(zoom.M22) || zoom.M11 <= 0 || zoom.M22 <= 0 || Main.screenWidth <= 0 || Main.screenHeight <= 0 ||
-                !Finite(Main.screenPosition.X) || !Finite(Main.screenPosition.Y) || Main.maxTilesX <= 0 || Main.maxTilesY <= 0) { Cancel(); return; }
+                !Finite(Main.screenPosition.X) || !Finite(Main.screenPosition.Y) || Main.maxTilesX <= 0 || Main.maxTilesY <= 0) { Cancel(); host.State.Interrupt(); return; }
             left = host.Input.RawMouseLeft; right = host.Input.RawMouseRight;
+            freshLeft = left && !lastLeft && mapping == lastMapping + 1;
+            lastLeft = left; lastMapping = mapping;
             Vector2 point = Vector2.Transform(raw * scale, Matrix.Invert(zoom));
             if (gravity == -1) point.Y = Main.screenHeight - point.Y;
             point += Main.screenPosition;
-            if (float.IsNaN(point.X) || float.IsInfinity(point.X) || float.IsNaN(point.Y) || float.IsInfinity(point.Y)) { Cancel(); return; }
+            if (float.IsNaN(point.X) || float.IsInfinity(point.X) || float.IsNaN(point.Y) || float.IsInfinity(point.Y)) { Cancel(); host.State.Interrupt(); return; }
             x = (int)Math.Floor(point.X / 16); y = (int)Math.Floor(point.Y / 16); width = Main.maxTilesX; height = Main.maxTilesY;
             HasPoint = true;
         }
         internal void Consume(bool canEdit)
         {
-            if (!pending) return;
-            bool valid = completed && canEdit && host.Input.Mapping == mapping + 1;
+            if (!pending || host.Input.Mapping == mapping) return;
+            bool valid = canEdit && host.Input.Mapping == mapping + 1;
+            bool certified = completed;
             pending = completed = inPass = false;
-            host.State.Pointer(valid && !ui, left, right, x, y, width, height);
+            // No Draw is not UI ownership. Retain a held draft across skipped
+            // draws, but an unobserved release cannot be replayed later. A press
+            // lost in that gap cannot become a new press from a later hold.
+            if (valid && !drawn && (!host.State.Dragging || left)) return;
+            if (valid && certified && !ui && left && !host.State.Dragging && !freshLeft) return;
+            host.State.Pointer(valid && certified && !ui, left, right, x, y, width, height);
         }
-        internal void Cancel() { pending = completed = inPass = HasPoint = false; }
+        internal void Cancel() { pending = completed = inPass = HasPoint = false; lastMapping = -1; lastLeft = true; }
         private static bool Finite(float value) { return !float.IsNaN(value) && !float.IsInfinity(value); }
         private bool Matches()
         {
             // Camera travel is not a UI-geometry change: keep the frozen world
             // point and certify this mapping's raw pointer at the native UI pass.
-            return pending && host.HasSession && host.Input.Mapping == mapping && host.Input.CanStartActions &&
+            return pending && host.CanRetainEdit && host.Input.Mapping == mapping &&
                 raw == new Vector2(PlayerInput.MouseInfo.X, PlayerInput.MouseInfo.Y) && screen == PlayerInput.OriginalScreenSize && scale == PlayerInput.RawMouseScale &&
                 uiMatrix == Main.UIScaleMatrix && zoom == Main.GameViewMatrix.ZoomMatrix && gravity == Main.LocalPlayer.gravDir;
         }
         private static void Begin()
-        { var p = current; if (p == null || !p.pending || p.completed) return; p.inPass = p.Matches(); p.boundary = p.resources = p.ui = false; }
+        { var p = current; if (p == null || !p.pending || p.completed) return; p.drawn = true; p.inPass = p.Matches(); p.boundary = p.resources = p.ui = false; }
         private static void Boundary()
         {
             var p = current; if (p == null || !p.inPass) return;
