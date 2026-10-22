@@ -202,3 +202,27 @@ Jump／Rocket 需要重武装时，动作局部 Release 预留共享 owner，既
 早期 `prepare1.log` 编译通过但结构读取已删除、尚在Git索引的旧Cycle路径失败，已准确暂存本任务删除；未修改结构检查。`targeted1.log` 新fixture给只读selectedItem赋值导致Probe编译失败，已改真实SelectedItemState.Select。`targeted2.log` 保留三个新反例FAIL：真fuel正例选到原生来不及的5px窗口、DoubleJump释放例初25px尚未到发动窗口、选槽事件未立即退休原坐骑意图；前两项按原生Delay／Due校准为及时窗口，后一项修生产事件收尾。PowerShell7该次source稳定但input／buildMatch漂移，不可用作资格；沿仓库前轮已用WindowsPS5后最终source/input前后相等、buildMatch=true，原失败不改签。后续`targeted3/4.log`及最终原记录保留，不弱化原生断言。
 
 完整Main／图形／物理设备输入／真实好友房主客机／FPS／owner体验均未测，clone身份和message5编码／发送只证明其自身隔离，不是服务器ACK。未Related／Full、全仓／全功能／全NPC扩扫；外来四资产未改未提交。当前仅源码候选／定向证据；尚未完成本轮独审准入、普通完整新包或实际安装。下一步一次集中独审；通过及主准入后由原整合者完成普通完整Release/net472/x86 ContinuousProcessing包、原F盘目标受控备份／官方Restore→Install／一次必要读回，分别回填真实包和安装身份。Draft保持，不merge／close／Tag／Release／升版，INCOMPLETE／releaseEligible=false。
+
+
+## 2026-10-22 集中独审 R1／R2 有限返修候选
+
+首次集中独审对 `5df866f→cd4be2c` 完整增量结论 NEEDS_FIX，两项 P2 为当前直接退出／接管边界，原报告 `.local/smart-fall-vanilla-20261022/independent-review.md` SHA256 `3F73C9E10E03E703996C11C4F2824F556A1812BC1130CE41CA04A374BB4E3A28` 及 `reviewer-probe/probe3.log`、前两次独立fixture启动失败均原样保留。本次只修这两项和直接传播，不重新全审。
+
+R1原因：新增的 Release pending 用 releaseTick／jumpPressed 区分正常等待，但 EndPlayer 未把原异常交给该动作，故未完成的异常更新仍可保留真实借用。现在真实 Player.Update 最终器沿 EndUpdateAfterNative 将同一个原异常传给唯一 Session／FallHost；有待收尾动作时先 Failed／撤意图并请求精确还物，再关闭本scope，真实资源不补／不撤。正常 EndUpdate 保原出口；最终器仍归还 Jump／Dash，并以原异常为准。关键就地注释解释异常 Release 不等于已完成等待。
+
+R2原因：手动Up接管原只位于 returnGravity 分支，尚未首次Press的球动作可能把玩家的原生翻转记作自身Consumed。现在整个未结束球动作入口都先识别实际用户Up（区别本scope自己的upOwned）或forcedGravity并退休旧动作／返回意图、准确归还借用，玩家输入与原生结果保留；首次Press前和翻转后遵循同一规则。未采用可选自然归还球优化。
+
+先在生产仍为 cd4be2c、仅加入正式新反例的状态实际运行红例：batch `bdffd446483742b0866aba49a3beb543`，原始 `.local/smart-fall-vanilla-20261022/r1-r2-red.log` 与对应checkpoint保留。Release异常明确断言采到 action=True/pending=True，球首次准备期手动Up未退休；已rearm Press异常通过。该runner原始分类为 HostException，内层两个定向断言／原生状态按上述独立边界确认，不改写成协议BusinessAssertion或成功。不是仅静态推断旧候选会失败。
+
+修后原生绿例 `0d28ec67e3a047cf90563372211da481` 保原身份；最终加入已原装球同初态代表后，仅重跑受本轮传播的两叶，batch `a6ee9ba0a0ab413eb8ef9460063a42e1`：
+
+| 责任 | executionId | 结果 |
+| --- | --- | --- |
+| native-MovementSmartFallCpu | 74dcda4008414439a9de6f268594706f | EXECUTED / PASS / STABLE |
+| native-MovementJumpCpu | 645942d30e48404ab6af21fe528f6e35 | EXECUTED / PASS / STABLE |
+
+日志 `.local/smart-fall-vanilla-20261022/r1-r2-final.log` 与该batch/targeted-results.json，source/input前后稳定、buildMatch=true。原执行sourceCommit为cd4be2c加当前未提交返修，不改署后继SHA。Borrow/Risk未改生产／期待，保原 `28739f047fb24287bad149ec5947ea1a`／`fb56b74d626d4a719eb5550ef32d3b80`，提交后再以正式reader核四必要责任的当前适用性；两native是本轮实际重跑，纯叶是按影响复用，未裸Related/Full。
+
+R1新回归通过真实 BeginWorld、Player.Update BeginPlayer/EndPlayer 自动最终器状态：只在既有Motion片段省略的输入／装备接点补真实CaptureInput／ResetEffects／UpdateEquips，再在JumpMovement最后优先级抛原异常。Press和未rearm Release均保同一异常对象、动作／输入／真实loan精确收尾、fuel保持3，引用回原槽，下一scope不推进旧意图。R2新回归含真实借入社交球和已原装球：首次releaseUp=false→原生松开rearm→用户Up即TakenOver、借球准确归还；通过真实vanity swap保持同一球持续功能装备后，玩家原生翻转保持-1，后续三个正常松键更新无辅助Up／强翻回。既有正常三更新往返、翻后手动／forced接管、合法Jump/Rocket Release→Press、原生资源和实际保护／借还／钩／斜平台代表保留PASS。相邻nativeJump原版1037／wire84保持原窄范围。
+
+当前新增仅有限字段／异常参数传递与动作入口O(1)接管检查，无新扫描／框架／资源写入／日志。既有稳定工作量在本native叶继续通过，不外推FPS。源码／定向证据不等于本轮独立增量复核、主准入、新包或安装；尚未包／装。四外来资产保持，Draft／OPEN／INCOMPLETE／releaseEligible=false，不merge／close／Tag／Release／升版或操作真实游戏。下一步仅同一审查上下文增量复核与主准入，通过后原整合者继续已授权完整包和同目标备份换装。

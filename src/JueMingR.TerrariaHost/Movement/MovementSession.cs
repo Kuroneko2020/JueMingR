@@ -193,11 +193,13 @@ namespace JueMingR.TerrariaHost.Movement
             return CanAct(value) ? JumpHost.EffectiveJump(value, true) : nativeJump;
         }
         internal void EndUpdate(Player value)
+        { EndUpdateAfterNative(value,null); }
+        internal void EndUpdateAfterNative(Player value,Exception error)
         {
             if (!ReferenceEquals(player, value)) return;
             try
             {
-                try { FallHost.EndUpdate(value); }
+                try { FallHost.EndUpdateAfterNative(value,error); }
                 finally { DashHost.EndUpdate(value); JumpHost.EndUpdate(value); }
                 // Returning borrowed inputs is unconditional. Retaining the
                 // historical gesture depends on real context, not on whether

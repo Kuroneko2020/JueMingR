@@ -49,6 +49,7 @@ namespace NativeWorldTextProbe
                 Independent("OriginalMountTakeover",OriginalMountTakeover,ref first);
                 Independent("LateRocketDjinn",LateRocketDjinn,ref first);
                 Independent("GravityReturn",GravityReturn,ref first);
+                Independent("GravityPreparationTakeover",GravityPreparationTakeover,ref first);
                 Independent("CacheFacts",CacheFacts,ref first);
                 Independent("SafeMount",()=>MountRescue(SmartFallFamily.SafeMount,2771,false),ref first);
                 Independent("SafeMountDisabled",()=>MountRescue(SmartFallFamily.SafeMount,2771,false,true),ref first);
@@ -595,17 +596,74 @@ namespace NativeWorldTextProbe
             }
             finally{End(p);Main.tile[x,y]=old;}
         }
+        private static bool captureFaultInput;
         private static void NativeConsumerFailure()
         {
-            Select(SmartFallFamily.RocketBoots);var p=PlayerAt(15);p.armor[13].SetDefaults(128);p.rocketTime=3;var item=p.armor[13];Item original=p.armor[3];
-            var patch=new Harmony("JueMingR.Tests.SmartFall.ConsumerFailure");var jump=AccessTools.Method(typeof(Player),"JumpMovement");
-            patch.Patch(jump,prefix:new HarmonyMethod(typeof(NativeSmartFallActionsChecks),nameof(RejectSocialJump)){priority=Priority.Last});
-            bool visible=false;
-            try{Begin(p);try{p.ResetEffects();p.UpdateEquips(p.whoAmI);Eligibility(p);Motion(p);}catch(InvalidOperationException error){visible=error.Message=="social-native-consumer-fault";}finally{End(p);}}
-            finally{patch.Unpatch(jump,HarmonyPatchType.All,patch.Id);}
-            Require(visible && p.rocketTime==3 && !p.controlJump && !(bool)Get(host,"HasPending") && ReferenceEquals(p.armor[13],item) && ReferenceEquals(p.armor[3],original),"Native exception stays visible; exact items/input return and real unconsumed fuel is neither granted nor revoked.");
+            // Both Press and Release failures go through Player.Update's real
+            // BeginPlayer/EndPlayer state and preserve the original exception.
+            foreach(bool releasing in new[]{false,true})
+            {
+                Select(SmartFallFamily.RocketBoots);var p=PlayerAt(releasing?25:15);p.armor[13].SetDefaults(128);p.rocketTime=3;
+                p.controlJump=releasing;p.rocketRelease=!releasing;
+                Item item=p.armor[13],original=p.armor[3];
+                var patch=new Harmony("JueMingR.Tests.SmartFall.ConsumerFailure");var jump=AccessTools.Method(typeof(Player),"JumpMovement");
+                var horizontal=AccessTools.Method(typeof(Player),"HorizontalMovement");
+                patch.Patch(horizontal,prefix:new HarmonyMethod(typeof(NativeSmartFallActionsChecks),nameof(CaptureConsumerFaultInput)){priority=Priority.First});
+                patch.Patch(jump,prefix:new HarmonyMethod(typeof(NativeSmartFallActionsChecks),nameof(RejectSocialJump)){priority=Priority.Last});
+                var hooks=movement.GetType().Assembly.GetType("JueMingR.TerrariaHost.Movement.MovementHooks",true);
+                Exception observed=null;
+                NativeQuickItemChecks.BeginWorldStep();NativeQuickItemChecks.Sample(input,new Keys[0]);
+                hooks.GetMethod("BeginWorld",F).Invoke(null,null);captureFaultInput=true;
+                try{Motion(p);}catch(InvalidOperationException error){observed=error;}
+                finally{captureFaultInput=false;hooks.GetMethod("EndWorld",F).Invoke(null,new object[]{null});patch.Unpatch(jump,HarmonyPatchType.All,patch.Id);patch.Unpatch(horizontal,HarmonyPatchType.All,patch.Id);}
+                Require(ReferenceEquals(observed,consumerFault) && !(bool)Call(movement,"CanAct",p),"Real EndPlayer preserves the exact original native exception and closes its scope releasing="+releasing);
+                Require((SmartFallResult)Get(host,"Result")==SmartFallResult.Failed && !(bool)Get(host,"action") && !(bool)Get(host,"HasPending") &&
+                    p.rocketTime==3 && p.controlJump==releasing && ReferenceEquals(p.armor[13],item) && ReferenceEquals(p.armor[3],original),
+                    "Native exception retires Release/Press intent and returns exact objects/input without changing real fuel releasing="+releasing+" action="+Get(host,"action")+" pending="+Get(host,"HasPending"));
+                long actions=(long)Get(host,"NativeActions");Begin(p);End(p);
+                Require(!(bool)Get(host,"HasPending") && (long)Get(host,"NativeActions")==actions,"Failed intent cannot advance on the following ordinary scope releasing="+releasing);
+                Console.WriteLine("SMART-FALL CONSUMER-FAULT releasing="+releasing+" real-EndPlayer=true exact-error=true action/input/loan-retired=true real-fuel-preserved=3");
+            }
         }
-        private static void RejectSocialJump(){throw new InvalidOperationException("social-native-consumer-fault");}
+        private static readonly InvalidOperationException consumerFault=new InvalidOperationException("social-native-consumer-fault");
+        private static void CaptureConsumerFaultInput(Player __instance)
+        {
+            if(!captureFaultInput)return;
+            // The existing Motion fragment omits Capture/Equips. Reproduce
+            // those exact production stages before its first motion consumer;
+            // the outer native Update still owns the actual finalizer state.
+            Call(movement,"CaptureInput",__instance);__instance.ResetEffects();__instance.UpdateEquips(__instance.whoAmI);
+        }
+        private static void RejectSocialJump(){throw consumerFault;}
+        private static void GravityPreparationTakeover()
+        { foreach(bool loan in new[]{true,false})GravityPreparationTakeoverCase(loan); }
+        private static void GravityPreparationTakeoverCase(bool loan)
+        {
+            Select(SmartFallFamily.GravityGlobe);var p=PlayerAt(15);int source=loan?13:3;p.armor[source].SetDefaults(1131);Item globe=p.armor[source],original=p.armor[3];p.UpdateEquips(p.whoAmI);
+            p.releaseUp=false;
+            Begin(p);try{p.ResetEffects();p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);}finally{End(p);}
+            Require(p.gravDir==1 && p.releaseUp && (bool)Get(host,"action") && !(bool)Get(host,"returnGravity"),"Initial native release rearms Up while the first Globe press remains pending.");
+            p.controlUp=true;long actions=(long)Get(host,"NativeActions");
+            Begin(p);
+            try
+            {
+                Require(!(bool)Get(host,"action") && !(bool)Get(host,"returnGravity") && !(bool)Get(host,"HasPending") &&
+                    (SmartFallResult)Get(host,"Result")==SmartFallResult.TakenOver && p.controlUp && ReferenceEquals(p.armor[source],globe) && ReferenceEquals(p.armor[3],original),
+                    "Manual Up during first-press preparation immediately retires old intent/loan, preserves real held Up, and returns exact objects.");
+                // Keep the real item equipped through a manual native vanity
+                // swap so later -1 preservation cannot be confused with
+                // automatic restoration after the ability disappears.
+                if(loan)typeof(Terraria.UI.ItemSlot).GetMethod("SwapVanityEquip",F).Invoke(null,new object[]{p.armor,11,13,p});
+                p.ResetEffects();p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);
+                Require(p.gravDir==-1,"The player's own native Up changes gravity with the same real Globe.");
+            }
+            finally{End(p);}
+            p.controlUp=false;
+            for(int t=0;t<3;t++){Begin(p);try{p.ResetEffects();p.UpdateEquips(p.whoAmI);Motion(p);Call(host,"BeforeGrapple",p);}finally{End(p);}}
+            Require(p.gravDir==-1 && p.releaseUp && !p.controlUp && !(bool)Get(host,"HasPending") && (long)Get(host,"NativeActions")==actions,
+                "Preparation takeover cannot schedule a later synthetic reverse after the player releases Up.");
+            Console.WriteLine("SMART-FALL GLOBE-PREPARATION-TAKEOVER borrowed="+loan+" initial-release=true manual-Up-retired-intent=true same-real-globe-kept=true no-later-synthetic-reverse=true");
+        }
         private static void CriticalLanding()
         {
             foreach(int gap in new[]{7,15,25})foreach(bool help in new[]{false,true})

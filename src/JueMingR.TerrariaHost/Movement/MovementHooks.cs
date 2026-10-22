@@ -53,7 +53,7 @@ namespace JueMingR.TerrariaHost.Movement
         { __state = new UpdateScope { Active = owner != null && worldDepth == 1 && owner.BeginUpdate(__instance) }; }
         private static Exception EndPlayer(Player __instance, UpdateScope __state, Exception __exception)
         {
-            try { if (__state.Active) owner?.EndUpdate(__instance); }
+            try { if (__state.Active) owner?.EndUpdateAfterNative(__instance,__exception); }
             catch when (__exception != null) { /* Preserve the native failure after attempting owned cleanup. */ }
             return __exception;
         }

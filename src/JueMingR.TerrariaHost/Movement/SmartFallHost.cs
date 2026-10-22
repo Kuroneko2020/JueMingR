@@ -554,10 +554,15 @@ namespace JueMingR.TerrariaHost.Movement
         private void Continue(Player p)
         {
             if (p.dead || p.ghost) { returnGravity = false; ownedMount = originalMount = -1; action = false; borrow.Restore(p, generation); return; }
+            // A real Up edge owns gravity even before our first legal Press.
+            // Do not adopt the player's native flip as our Consumed result and
+            // schedule a later reverse after that player releases the key.
+            if (family==SmartFallFamily.GravityGlobe && (action || returnGravity) &&
+                (p.controlUp && !upOwned || p.forcedGravity>0))
+            { ReturnInputs(p);returnGravity=action=false;takenOver=true;Result=SmartFallResult.TakenOver;borrow.Restore(p,generation);return; }
             if (returnGravity)
             {
                 if (p.gravDir == originalGravity) { returnGravity = false; Protected(p, true); }
-                else if (p.controlUp) { returnGravity = false; action = false; takenOver = true; Result = SmartFallResult.TakenOver; borrow.Restore(p, generation); }
                 else if (!permitted || !session.CanAct(p) || p.forcedGravity > 0 || !p.gravControl2)
                 { returnGravity=false;action=false;takenOver=true;Result=SmartFallResult.TakenOver;borrow.Restore(p,generation); }
                 else LendUp(p);
@@ -731,10 +736,17 @@ namespace JueMingR.TerrariaHost.Movement
             target = teleportTarget; return true;
         }
         internal void EndUpdate(Player p)
+        { EndUpdateAfterNative(p,null); }
+        internal void EndUpdateAfterNative(Player p,Exception error)
         {
             if (!Current(p)) return;
             try
             {
+                // A thrown native consumer did not complete a Release update.
+                // Retire its finite intent and request exact return before the
+                // scope is cleared; native resource history is never rewound.
+                if (error!=null && HasPending)
+                { returnGravity=false;originalMount=-1;Fail(p); }
                 ObserveMotion(p); ReturnInputs(p);
                 if(action && (family==SmartFallFamily.DoubleJump || family==SmartFallFamily.RocketBoots || family==SmartFallFamily.Carpet) && !resourceConsumed && releaseTick!=tick && jumpPressed)Fail(p);
                 if (action && p.velocity.Y == 0) landed = true;
