@@ -6,7 +6,7 @@ namespace JueMingR.TerrariaHost.F5
 {
     internal sealed class BlueprintControls
     {
-        internal const string CaptureAction = "blueprint.capture", SaveAction = "blueprint.save";
+        internal const string CaptureAction = "blueprint.capture", SaveAction = "blueprint.save", ToolbarAction = "blueprint.toolbar";
         internal const string StartHint = "点击开始键执行选区，反选取消选区。";
         internal const string ExitHint = "退出选区，并清空已有选区";
         internal const string SaveHint = "点击保存键保存世界上已有的蓝图选区。";
@@ -23,8 +23,9 @@ namespace JueMingR.TerrariaHost.F5
             rows.Row(ref y, 0, 522, "保存采集", new[] { "保存", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintSave,
                 new F5RowDescription(SaveAction, SaveHint));
             Key(elements, SaveAction);
-            rows.Row(ref y, 0, 522, "手持凝胶显示快捷栏", new[] { "开启", "关闭" },
-                text => text == "开启" ? F5Command.BlueprintToolbarOn : F5Command.BlueprintToolbarOff);
+            rows.Row(ref y, 0, 522, "手持凝胶显示快捷栏", new[] { "开启", "关闭", "键" },
+                text => text == "键" ? F5Command.None : text == "开启" ? F5Command.BlueprintToolbarOn : F5Command.BlueprintToolbarOff);
+            Key(elements, ToolbarAction);
         }
         private static void Key(List<F5Element> elements, string id)
         {

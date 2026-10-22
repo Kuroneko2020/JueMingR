@@ -66,12 +66,17 @@ namespace JueMingR.TerrariaHost.Blueprint
             else { State.Enter(); Shell?.CloseAndSubmitPosition(); }
         }
         internal bool Save() { return false; }
-        internal void Register(HotkeyRegistry registry)
+        internal void Register(HotkeyRegistry registry, Hotkeys.HotkeyStateFeedback feedback = null)
         {
             registry.Register(new HotkeyAction(BlueprintControls.CaptureAction, "采集蓝图", HotkeyContext.Gameplay, () => ControlsEnabled, Toggle));
             // Save remains configurable through the common binder but has no
             // executable success path, including direct owner callers.
             registry.Register(new HotkeyAction(BlueprintControls.SaveAction, "保存采集", HotkeyContext.Gameplay, () => false, () => Save()));
+            // F5 and the independent display binding share the preference owner;
+            // hiding the toolbar never exits capture or releases its world gate.
+            Action toolbar = () => SetToolbar(!ToolbarEnabled);
+            if (feedback != null) toolbar = feedback.Immediate(BlueprintControls.ToolbarAction, "手持凝胶显示快捷栏", toolbar, () => ToolbarEnabled ? 1 : 0, () => ControlsEnabled);
+            registry.Register(new HotkeyAction(BlueprintControls.ToolbarAction, "手持凝胶显示快捷栏", HotkeyContext.Gameplay, () => ControlsEnabled, toolbar));
         }
         private void ObserveMapping()
         {

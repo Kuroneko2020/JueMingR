@@ -83,8 +83,8 @@ namespace NativeWorldTextProbe
                 Require(!(bool)Call(layout, "Ensure", 1920f, 1080f, 0f, font, measure, true) && before == (int)Get(layout, "Generation"), "invalid UI scale cannot publish replacement geometry");
                 F5Page(assembly, renderer, font);
                 var registry = (HotkeyRegistry)Get(Get(shell, "hotkeys"), "Registry");
-                Require(registry.Find("blueprint.capture").CanConfigure && registry.Find("blueprint.save").CanConfigure &&
-                    !(bool)Call(Get(renderer, "BlueprintControls"), "Available", Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.F5.F5Command", true), "BlueprintSave")), "both real binder targets remain editable while save execution is unavailable");
+                Require(registry.Find("blueprint.capture").CanConfigure && registry.Find("blueprint.save").CanConfigure && registry.Find("blueprint.toolbar").CanConfigure &&
+                    !(bool)Call(Get(renderer, "BlueprintControls"), "Available", Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.F5.F5Command", true), "BlueprintSave")), "all three real binder targets remain editable while save execution is unavailable");
                 Console.WriteLine("PASS Blueprint UI CPU: actual two-button/layout/hint projection, 3 viewports x UI 100/150/200% x world 30/100/1000%, stable metrics, raw UI hit, centered above-bar gold hint contract, F5 mode invalidation and shared binder targets. GPU pixels/OS clicks/owner experience NOT_EXECUTED.");
             }
             finally
@@ -129,7 +129,7 @@ namespace NativeWorldTextProbe
                 Require((string)Get(Get(capture, "Description"), "Text") == (mode ? "退出选区，并清空已有选区" : "点击开始键执行选区，反选取消选区。"), "F5 capture row tracks the current owner mode");
                 var save = elements.Single(e => GetOptional(e, "Text") as string == "保存采集");
                 Require((string)Get(Get(save, "Description"), "Text") == "点击保存键保存世界上已有的蓝图选区。", "F5 save row keeps the exact approved description");
-                Require(elements.Where(e => Get(e, "Kind").ToString() == "Hotkey").Select(e => (string)Get(e, "HotkeyTarget")).SequenceEqual(new[] { "blueprint.capture", "blueprint.save" }), "start/exit share one binder identity and save keeps its independent binder");
+                Require(elements.Where(e => Get(e, "Kind").ToString() == "Hotkey").Select(e => (string)Get(e, "HotkeyTarget")).SequenceEqual(new[] { "blueprint.capture", "blueprint.save", "blueprint.toolbar" }), "capture/save/toolbar have three stable binder targets; start/exit still share one identity");
                 var preference = elements.Single(e => GetOptional(e, "Text") as string == "手持凝胶显示快捷栏");
                 Require(GetOptional(preference, "Description") == null, "gel-toolbar preference adds no hint");
                 int generation = (int)Get(layout, "Generation"), measurements = (int)Get(layout, "MeasurementCount");

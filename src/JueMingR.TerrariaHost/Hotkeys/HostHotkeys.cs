@@ -111,7 +111,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
             combat?.Register(Registry, Feedback);
             combatObservation?.Register(Registry, Feedback);
             if (journey != null) this.journey = new JourneyHotkeys(Registry, hiddenAccess, journey, journeyToggle ?? throw new ArgumentNullException(nameof(journeyToggle)));
-            blueprint?.Register(Registry);
+            blueprint?.Register(Registry, Feedback);
             Bindings = new HotkeyBindings(Registry, new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "hotkeys.json"), 65536, true));
             quickItems?.Attach(this);
             AppDomain.CurrentDomain.ProcessExit += OnExit;
