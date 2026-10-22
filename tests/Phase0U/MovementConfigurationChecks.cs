@@ -16,7 +16,13 @@ namespace Terraria
             layout.Ensure(1280, 720, 1.5f, 11, font, measure);
             Require(layout.Elements.Count(e => e.Kind == F5ElementKind.Hotkey) == 4, "four row-end shared bindings");
             Require(layout.Elements.Count(e => e.Text == "智能防摔") == 1, "one standard rescue row");
-            Require(layout.Elements.Any(e => e.Command == F5Command.MovementFallConfigure), "real configuration hit target");
+            Require(!controls.ConfigurationExpanded && !layout.Elements.Any(e => e.Command == F5Command.MovementFallConfigure), "configuration entry is temporarily hidden and starts collapsed");
+            controls.Execute(F5Command.MovementFallAllow0+1);var retained=owner.SmartFallProtection;
+            layout.Ensure(1280,720,1.5f,11,font,measure);
+            Require(owner.SmartFallProtection.Equals(retained),"hidden entry preserves previously selected permissions");
+            controls.Execute(F5Command.MovementFallAllow0);
+            // The existing implementation remains callable when its source
+            // label is restored; hiding the entry does not delete any handler.
             controls.Execute(F5Command.MovementFallConfigure); layout.SetMovementConfiguration(controls.ConfigurationExpanded);
             int generation = layout.Generation; layout.Ensure(1280, 720, 1.5f, 11, font, measure);
             Require(layout.Generation == generation + 1, "opening configuration invalidates only layout");

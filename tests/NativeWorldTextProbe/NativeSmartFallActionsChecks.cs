@@ -80,6 +80,8 @@ namespace NativeWorldTextProbe
                 Independent("VanillaResourceBoundaries",VanillaResourceBoundaries,ref first);
                 Independent("LegalInputStages",LegalInputStages,ref first);
                 Independent("MountReturnGates",MountReturnGates,ref first);
+                Independent("PendingMountRecovery",PendingMountRecovery,ref first);
+                Independent("OppositeCaptureWork",OppositeCaptureWork,ref first);
                 Independent("NativeConsumerFailure",NativeConsumerFailure,ref first);
                 Independent("PairedRocketCosts",PairedRocketCosts,ref first);
                 if(first!=null)throw new InvalidOperationException("One or more independent native smart-fall representatives failed; individual raw failures retained.",first);
@@ -572,12 +574,150 @@ namespace NativeWorldTextProbe
                     Require(p.mount.Active==allowed && (int)Get(host,"originalMount")==-1,"Complete native mount gate/identity ends finite restore gate="+gate);
                     if(p.mount.Active)p.mount.Dismount(p);
                     p.webbed=p.tongued=p.dead=p.noItems=p.wet=false;p.gravDir=1;
+                    if(gate=="space")
+                    {
+                        Main.tile[blockX,blockY]=new Tile();
+                        Require(p.mount.CanMount(original.mountType,p),"Opening the original mount's space really restores native qualification, without renewing retired permission.");
+                    }
                     Call(host,"ReturnOriginalMount",p);Require(!p.mount.Active,"A denied/completed intention cannot resurrect on later condition changes gate="+gate);
                 }
                 finally{End(p);Main.tile[blockX,blockY]=oldTile;}
             }
             DefaultCartReturn();
             Console.WriteLine("SMART-FALL MOUNT-RETURN native-entry-positive=true current-item/reference-and-use-gates=true denial-no-retry=true");
+        }
+        private static void PendingMountRecovery()
+        {
+            var ceiling=new Tile[30];for(int x=35;x<65;x++)ceiling[x-35]=Main.tile[x,Floor-3];
+            bool stair=Collision.stair,stairFall=Collision.stairFall,sloping=Collision.sloping,up=Collision.up,down=Collision.down;
+            try
+            {
+                foreach(string change in new[]{"space","CCed","takeover","death","generation"})
+                {
+                    Call(movement,"SetEnabled",3,true);
+                    for(int x=35;x<65;x++)Main.tile[x,Floor-3]=new Tile();
+                    Select(SmartFallFamily.FlyingMount);var p=PlayerAt(15);p.inventory[17].SetDefaults(5597);
+                    Item source=p.inventory[17],prior=p.miscEquips[3];byte prefix=source.prefix;int stack=source.stack;
+                    Begin(p);End(p);
+                    Require(p.mount.Active && p.mount.Type==56 && (int)Get(host,"ownedMount")==56,"Real borrowed Bat QuickMount establishes rescue ownership.");
+                    p.position.Y=Floor*16-p.height;p.velocity=Vector2.Zero;
+                    if(change!="CCed")for(int x=35;x<65;x++){Main.tile[x,Floor-3].active(true);Main.tile[x,Floor-3].type=1;}
+                    else p.webbed=true;
+                    Require(!p.mount.CanDismount(p),"Independent original predicate rejects the real small mounted hitbox change="+change);
+                    // The first attempted action remains immediate. Only its
+                    // actual denial creates the later observation obligation.
+                    Begin(p);try{Call(host,"Protected",p,true);}finally{End(p);}
+                    Require((bool)Get(host,"mountReturnPending") && p.mount.Active,"Native first denial enters pending cleanup.");
+                    Call(movement,"SetEnabled",3,false);
+                    long actions=(long)Get(host,"NativeActions"),queries=(long)Get(host,"DismountObservations"),scans=(long)Get(host,"SourceScans"),plans=(long)Get(host,"Plans");
+                    Vector2 position=p.position;long revision=(long)Get(Get(items,"World"),"Revision");
+                    for(int tick=0;tick<8;tick++)
+                    {
+                        Collision.stair=true;Collision.stairFall=false;Collision.sloping=true;Collision.up=false;Collision.down=true;
+                        Begin(p);
+                        try
+                        {
+                            Call(host,"Capture",p,false);Call(host,"Protected",p,true);Call(host,"BeforeGrapple",p);
+                            Require(Collision.stair && !Collision.stairFall && Collision.sloping && !Collision.up && Collision.down,"Extra denied native query restores all five Collision scratch flags.");
+                        }
+                        finally{End(p);}
+                    }
+                    long expected=change=="CCed"?0:8;
+                    Require((long)Get(host,"DismountObservations")==queries+expected && (long)Get(host,"NativeActions")==actions,"OFF pending uses at most one query per real tick, zero failed native actions; native CCed shortcut only on its specified mount.");
+                    Require((long)Get(host,"SourceScans")==scans && (long)Get(host,"Plans")==plans,"Pending cleanup does not scan inventory or run main contact.");
+                    Require(p.position==position && (long)Get(Get(items,"World"),"Revision")==revision,"Stable denial leaves position and inventory revision unchanged.");
+                    if(change=="takeover")p.mount.SetMount(0,p);
+                    else if(change=="death")p.dead=true;
+                    else if(change=="generation")
+                    {
+                        Call(host,"BeginUpdate",p,long.MaxValue,1L);
+                        Require(!(bool)Get(host,"mountReturnPending"),"Successor generation clears old pending query clock.");
+                        Call(host,"EndUpdate",p);continue;
+                    }
+                    else if(change=="CCed")p.webbed=false;
+                    else for(int x=35;x<65;x++)Main.tile[x,Floor-3]=new Tile();
+                    bool[] nativeScratch=null;
+                    if(change=="space")
+                    {
+                        var control=new Player{whoAmI=Main.myPlayer,active=true};control.mount.SetMount(56,control);control.position=p.position;control.velocity=p.velocity;
+                        Collision.stair=true;Collision.stairFall=false;Collision.sloping=true;Collision.up=false;Collision.down=true;
+                        Require(control.mount.TryDismount(control),"Independent real native dismount accepts the newly opened standing space.");
+                        nativeScratch=new[]{Collision.stair,Collision.stairFall,Collision.sloping,Collision.up,Collision.down};
+                        Collision.stair=true;Collision.stairFall=false;Collision.sloping=true;Collision.up=false;Collision.down=true;
+                    }
+                    queries=(long)Get(host,"DismountObservations");
+                    Begin(p);End(p);
+                    if(nativeScratch!=null)Require(nativeScratch.SequenceEqual(new[]{Collision.stair,Collision.stairFall,Collision.sloping,Collision.up,Collision.down}),"Real assisted TryDismount retains the original native scratch side effects after isolated observation.");
+                    bool recovered=change=="space" || change=="CCed";
+                    Require((long)Get(host,"NativeActions")==actions+(recovered?1:0),"Only native-eligible recovery performs one real dismount change="+change);
+                    Require((long)Get(host,"DismountObservations")==queries+(recovered?1:0),"Only still-owned pending mount is observed change="+change);
+                    Require(!(bool)Get(host,"mountReturnPending"),"Recovery or ownership retirement clears the old dismount observation change="+change);
+                    if(change=="death")
+                    {
+                        // The existing loan owner deliberately waits while dead;
+                        // cleanup must not weaken its writable-player boundary.
+                        Require((bool)Get(host,"HasPending"),"Death retires mount observation while preserving exact real item-return responsibility.");
+                        p.dead=false;queries=(long)Get(host,"DismountObservations");
+                        Begin(p);End(p);
+                        Require((long)Get(host,"DismountObservations")==queries,"Becoming writable again returns only the item, never reviving dead rescue ownership.");
+                    }
+                    Require(!(bool)Get(host,"HasPending"),"Owned item responsibility finishes in a writable context change="+change);
+                    Require(ReferenceEquals(p.inventory[17],source) && ReferenceEquals(p.miscEquips[3],prior) && source.prefix==prefix && source.stack==stack,"Exact real borrowed source returns without resource replacement change="+change);
+                    if(change=="takeover")Require(p.mount.Active && p.mount.Type==0,"Player successor mount is never dismounted.");
+                    else if(recovered)Require(!p.mount.Active,"Space-only or CCed-only recovery really dismounts with unchanged input position/revision before recovery.");
+                    queries=(long)Get(host,"DismountObservations");actions=(long)Get(host,"NativeActions");
+                    Call(host,"BeginUpdate",p,1L,10000L);Call(host,"Capture",p,false);Call(host,"BeforeGrapple",p);Call(host,"EndUpdate",p);
+                    Require((long)Get(host,"DismountObservations")==queries && (long)Get(host,"NativeActions")==actions,"No owner/pending means zero observations or actions after completion.");
+                }
+                // Ordinary mounts have no native CCed dismount prohibition.
+                Select(SmartFallFamily.FlyingMount);var ordinary=PlayerAt(100);ordinary.mount.SetMount(12,ordinary);ordinary.webbed=true;
+                Call(host,"BeginUpdate",ordinary,1L,1L);Set(host,"ownedMount",12);Set(host,"mountReturnPending",true);
+                long before=(long)Get(host,"DismountObservations");
+                Require((bool)Call(host,"TryReturnMount",ordinary) && (long)Get(host,"DismountObservations")==before+1 && !ordinary.mount.Active,"CCed ordinary mount still asks and follows its original native qualification.");
+                Call(host,"EndUpdate",ordinary);
+                Console.WriteLine("SMART-FALL PENDING-MOUNT real-loan=true OFF-cleanup=true stable-low-ceiling=8 queries=8 failed-actions=0 same-tick-dedup=true space-only/CCed-only=true manual/death/generation-retire=true scratch-five-restored=true");
+            }
+            finally
+            {
+                Call(movement,"EndUpdate",Main.LocalPlayer);Call(host,"ClearSession");Call(movement,"SetEnabled",3,true);
+                for(int x=35;x<65;x++)Main.tile[x,Floor-3]=ceiling[x-35];
+                Collision.stair=stair;Collision.stairFall=stairFall;Collision.sloping=sloping;Collision.up=up;Collision.down=down;
+            }
+        }
+        private static bool longOpposite;
+        private static void OriginalOppositeHorizon(ref int horizon) { if(longOpposite && horizon==2)horizon=48; }
+        private static void OppositeCaptureWork()
+        {
+            Type geometry=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Movement.SmartFallGeometry",true);
+            MethodInfo contact=geometry.GetMethods(F).Single(m=>m.Name=="Contact" && m.GetParameters().Length==11);
+            var baseline=new Harmony("JueMingR.Tests.SmartFall.OppositeBaseline");
+            baseline.Patch(contact,prefix:new HarmonyMethod(typeof(NativeSmartFallActionsChecks),nameof(OriginalOppositeHorizon)));
+            long[] reads=new long[2];
+            try
+            {
+                for(int pass=0;pass<2;pass++)
+                {
+                    longOpposite=pass==0;long before=(long)Get(host,"OppositeTileReads");
+                    for(int batch=0;batch<8;batch++)
+                    {
+                        Select(SmartFallFamily.GravityGlobe);var p=PlayerAt(300);p.inventory[17].SetDefaults(1131);
+                        for(int step=0;step<12;step++)
+                        {
+                            long actions=(long)Get(host,"NativeActions");Begin(p);
+                            try
+                            {
+                                Require(!(bool)Get(host,"action") && (long)Get(host,"NativeActions")==actions && ((SmartFallContact)Get(host,"contact")).Found,"Measured real dangerous Capture has an available globe/contact and is not yet Due.");
+                                Require(Choice().Family==SmartFallFamily.GravityGlobe,"Repeated measured path actually builds the opposite-globe candidate.");
+                            }
+                            finally{End(p);}
+                        }
+                    }
+                    reads[pass]=(long)Get(host,"OppositeTileReads")-before;
+                }
+                Require(reads[0]>reads[1] && reads[1]>0,"Actual not-Due Capture reduces opposite geometry reads against the original horizon, independently of main Plans.");
+                Console.WriteLine("SMART-FALL OPPOSITE-CAPTURE iterations=96 per-pass original-horizon48-reads="+reads[0]+" horizon2-reads="+reads[1]+" native-actions=0 scope=Debug-tile-visits not FPS");
+            }
+            finally{longOpposite=false;baseline.Unpatch(contact,HarmonyPatchType.All,baseline.Id);Call(host,"ClearSession");}
         }
         private static void DefaultCartReturn()
         {

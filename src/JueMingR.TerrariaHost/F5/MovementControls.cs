@@ -37,7 +37,12 @@ namespace JueMingR.TerrariaHost.F5
             for (int i = 0; i < ActionIds.Length; i++)
             {
                 int feature = i;
-                rows.Row(ref y, 0, 522, Names[i], i == 1 ? new[] { mode == ContinuousDashMode.Hold ? "按住" : "双击", "开启", "关闭", "键" } : i == 3 ? new[] { "配置", "开启", "关闭", "键" } : new[] { "开启", "关闭", "键" },
+                var labels = i == 1 ? new[] { mode == ContinuousDashMode.Hold ? "按住" : "双击", "开启", "关闭", "键" } : i == 3 ? new[]
+                {
+                    // "配置",
+                    "开启", "关闭", "键"
+                } : new[] { "开启", "关闭", "键" };
+                rows.Row(ref y, 0, 522, Names[i], labels,
                     text => text == "开启" ? On(feature) : text == "关闭" ? Off(feature) : text == "键" ? F5Command.None : text == "配置" ? F5Command.MovementFallConfigure : F5Command.MovementDashMode,
                     i == 0 ? jump : i == 2 ? teleport : i == 3 ? fall : mode == ContinuousDashMode.Hold ? hold : doubleTap);
                 var key = elements[elements.Count - 1];

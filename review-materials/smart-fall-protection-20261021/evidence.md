@@ -243,3 +243,42 @@ R1新回归通过真实 BeginWorld、Player.Update BeginPlayer/EndPlayer 自动�
 源码已撤造资源、保合法能力和真实物品借还；新自动证据为原生组件／输入／身份／有限工作量，不代替普通新包由所有者启动。完整Main／图形／物理设备输入／真实好友房主客机／FPS／owner体验仍未测。包／安装身份与下一次实际体验分别记录，不能因文件安装PASS宣称产品已验收。短体验卡为普通包内及仓库 `scripts/phase0s/Continuous-Processing-Owner-Test-Card.zh-CN.md`：先自行确认能进入/F5打开/正常退出，再用可丢弃角色世界分别看无资源瓶不造次数、明确合法资源或被动保护及归还、球／坐骑原生恢复与手动接管。
 
 本轮已授权交付工作完成，停止自主开发并等待所有者短卡体验／具体反馈。Issue130与Draft131保持OPEN/Draft，#7保持INCOMPLETE/releaseEligible=false；不merge／close／Tag／Release／升版，不启动下一功能，四外来资产原样保留未提交。
+
+## 2026-10-22 防摔性能、重铸空epoch与合法操作原则续修候选
+
+本次所有者新委托原件为 `references/JMR_FALL_PERF_REFORGE_FIX_20261022_v1/`，README及00—04全文读取、六份SHA与SHA256SUMS一致，原件只读持久保留，不入Git。本轮明确替代上节等待体验的停止状态，沿同Issue130/Draft131/分支续修；研究锚点与本轮增量基线为 `13107fbd131856dc2c2d9bd21916189efd6e7982`，产品原现装仍为632b904。任务完整产品BASE继续62bd6e4，不把最后记录提交当新的已装产品。
+
+主调度Astra/Max只读；Processing实施整合者Sol/High独占Processing四生产文件、直接检查、共享layout fixture、原则/Processing文档、公共构建/Git/正式证据；SmartFall实施者Sol/High独占SmartFallHost/Geometry、MovementControls、SmartFall/MovementUi检查及移动合同设计。模型均核实际turn_context；整合者01a16321-81ce-7913-85da-290f2c7b7aab、SmartFall01a16322-1295-7eb2-bb5e-32864a0e511f，model=gpt-6.1-sol/effort=high；未改全局配置。最小checkpoint、原SHA核验与文件责任在 `.local/fall-perf-reforge-20261022/`。四既有外来资产原样保留不提交。
+
+重铸同因链：首次实现ed294fa（主线squash b873fbe）已把真实按下/意图与CanStartActions合用，quote及press按outer Frame计龄；后继be72de加自动执行世界步门时未分离存续。原版1.4.5.8 Main.DoUpdate在输入前早退，宿主BeginUpdate仍清mapped/finalized，postfix业务仍到达；空epoch便错误造down或撤销owned/pressReady，OwnPress/手动收费仍被执行门否决，外层Frame又使合法报价/按下老化。旧Sample每次AfterMapping/AfterKeyboardRefresh，只漏Draw的“跳帧”无法覆盖。只定向核当前Main早退、DrawInventory按钮门/移出清cooldown及原Roll，不重做历史调查。
+
+现在HostProcessing将共同真实安全上下文与新手势、前台保留、既有后台意图、自动执行分开；无全局放宽Admit或Runtime早退，无公共Input owner修改。重铸仅可靠样本可建按下/认可松手，报价/原按下改Mapping时钟；空Draw可记报价/确认旧press，原版手动单次在合法按钮release/cooldown内可消费，不套自动world-step/通用paused门。紧贴BuyItem前消费manual/quote防重；自动重复仍世界步、真实BuyItem金额/原Roll/命中tail/unknown/窄Items许可。原版移出Draw清cooldown再合法松开/按下的有限消费者序列保留，不因单一外层cooldown差异推断约定节奏不可达，未写release/cooldown。
+
+开袋Holding/ProtectIntent在空epoch保已有袋/钥匙及claimed尾部，真正新认领/开奖仍可靠Shift右键+世界步；下游实际公平序列与未知范围原检查保留。提炼仅Update存续改保留准入并重验真实材料/已选机器，消费入口不放宽；空epoch保选槽，后台支持保留，新玩家选择/材料机器失效/更高所有者照常收尾，不夺新选择。
+
+SmartFall两根因由ba096176269e047a776788a44c527cf632f52077首次实现引入：OppositeClear只消费前2tick却计算固定48；退骑失败只以位置/库存revision唤醒，漏空间及CCed独立恢复。Contact可选horizon默认48，Opposite显式2，复用原几何，1/2（含恰好2）拒绝、3/20/48空正反边界覆盖。首次真实退骑时机不变；失败后以真实本机Player tick去重原版CanDismount资格，五scratch仅额外观察try/finally隔离，资格通过才一次TryDismount。仅DontDismountWhenCCed集合可CCed常数等待；OFF仍归还，原坐骑一次性恢复不复活，手动/死亡/世代清观察，真实还物仍守现有dead保护。
+
+统一合法操作/TAS原则进入Legacy规则基本原则，AGENTS功能底线和网页Chat第3节只引用/明示提醒责任；移动与Processing合同设计同步。原则当前依用户委托适用，合并main后生效，不另造审批。防摔许可入口仅源码 `// "配置"`，有效按钮开/关/键及原命令、ConfigurationExpanded/十二许可/持久化保留；既有保存值不重置。
+
+### 本轮实际定向证据
+
+PrepareOnly/现有精确叶，不运行裸Related/Full。最终批 `77c68db6a2724b4bb0b7334dc9ab587b` 原始sourceCommit仍13107fb加当时未提交的本轮增量，不改署后继SHA；source/input前后相等、buildMatch=true。六必要叶：
+
+| 检查 | 原 executionId | 结果 |
+| --- | --- | --- |
+| ProcessingChecks | a8bbe53f4c294d0bb090e0d722d6f78e | EXECUTED / PASS / STABLE |
+| native-ProcessingCpu | f9555ee46cc8474ea5b4375335f5f32b | EXECUTED / PASS / STABLE |
+| SmartFallRiskActionsChecks | c78181429cc04fdc8b0d15e144403895 | REUSED / PASS，原731c1149批的真实纯叶 |
+| native-MovementSmartFallCpu | b601f576528a406ba744de25aac53ad6 | EXECUTED / PASS / STABLE |
+| fixture-movement-layout | 01b8bf8cdb144f01a8c50749734c2271 | EXECUTED / PASS / STABLE |
+| SmartFallBorrowOwnershipChecks | a3d8c9a353ff41458e4d49d54c14c0b9 | EXECUTED / PASS / STABLE |
+
+`EmptyOuterUpdate`只真实BeginUpdate，不AfterNativeMouse/Mapping/Keyboard，不推进GUC，先断言新动作/自动执行false、保留true后走HostProcessing.Update。R1首按/空样本不造边沿；R2空Draw首次报价下一world step一次消费；R3已真实付费未命中owned插空保持/零重复收费Roll/下步继续；R4物品prefix/value/stack/discount/adjustment/scale/viewport及真实Mapping超龄反例；R5初始命中可靠按下后空epoch（含paused）单次真实BuyItem/原Roll、同hold零第二次；R6空epoch的菜单/换物/失焦撤销并防旧意图复活。CPU只供应报价/手动接缝，不冒称完整Draw。开袋两组核新来源0、已有来源/保护/claimed保持、实际消费、输入接管/松手撤销与公平；提炼两组核真实消费产物、前后台Active空epoch保持0新消费/产物/归还、新选择优先，既有原生机器失效/16输入双机器/52手动交易反例继续PASS。
+
+现有 `ProcessingVisual` 精确专项实际PASS，日志 `.local/fall-perf-reforge-20261022/processing-visual1.log`、图像/原build/input在同名目录。真实原版DrawInventory覆盖空Update/空Draw首次报价→下一世界步一次自动消费，以及已匹配真实press→多个只BeginUpdate→真实Draw恰好一次手动付款/原Roll、重复Draw零第二次；保留150%报价坐标、top-tier自动与原版手动冷却及F5现有三个视口。隔离XNA/原版组件证据不等于所有者物理输入实机。
+
+SmartFall实际危险、有球尚未Due的Capture每pass96次：原horizon48反向访问88704，短2访问3648，native-actions=0；Plans不是该分母，不称24倍整功能或FPS。真实5597背包借入Bat56、低顶8tick资格观察8/真实失败动作0，同tick3收尾入口合计1；只开空间/只解CCed各下一tick退骑归还一次，非Dont普通12在CCed不一刀拒绝。成功后0观察、OFF无责任0、手动新骑/死亡/世代清理、五scratch保持及原生真实动作scratch正对照、旧原骑空间开放后不复活、旧飞骑斜平台均PASS。正常已实例化场景有界计数，不称null Tile绝对零分配。既有四路径各20000次稳态0新扫描/plan/tile/线程分配保持原窄意义。
+
+原失败保留：targeted1新增fixture误给只读Main.npcShop赋值；targeted2误用FocusHelper命名空间，均仅编译失败并按真实API窄修。targeted3的SmartFall PendingMountRecovery第二case没重新开主功能，Begin正确拒绝OFF无责任；改case前提后targeted4通过，未改生产迎合错误期待。原HostException/编译日志及checkpoint不签PASS。没有重演旧产品红跑；修前失败机制有旧代码/新增强反例依据，实际运行结论只签本候选。
+
+当前源码/期待/正式文档准备冻结，一次集中独审及主准入尚待。准入前未新打正式包/安装。原目标只读preflight确认632b904普通包拥有权/EXE身份/receipt A7E426…与无进程，未备份/恢复/写装。最终taskAcceptance记录沿已有DevelopmentCandidate/schema/全目录观察，保历史FAIL/NOT_RUN/INCOMPLETE/releaseEligible=false；没有为本轮改通用判定、schema或新治理系统。完整Main/真实输入/真实主客机/FPS/owner体验未测；MovementOriginal重图形新增UI断言未跑，仅轻量layout+静态标签/命令/旧十二许可实现核验。Draft保持，不merge/close/tag/release/升版。

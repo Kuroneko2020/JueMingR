@@ -29,9 +29,9 @@ namespace JueMingR.TerrariaHost.Processing
         internal bool Active {get{return player!=null;}}
         internal long Operation {get{return token;}}
         internal AutomaticExtraction(HostProcessing host){this.host=host;}
-        private bool Admitted(Player p)
+        private bool Admitted(Player p,bool retain=false)
         {
-            return host.Value(1) && host.AdmitAutomatic(p) && p.chest==-1 && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 &&
+            return host.Value(1) && (retain?host.RetainAutomatic(p):host.AdmitAutomatic(p)) && p.chest==-1 && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 &&
                 Main.mouseItem!=null && Main.mouseItem.IsAir && !p.selectedItemState.HasBufferedChange &&
                 !PlayerInput.Triggers.Current.SmartSelect && ((host.HeldUsePermit?.Invoke()??false) ||
                 !PlayerInput.Triggers.Current.MouseLeft && !PlayerInput.Triggers.Current.MouseRight &&
@@ -153,7 +153,9 @@ namespace JueMingR.TerrariaHost.Processing
         {
             if(unknown)host.Items.Ownership.HoldProcessing(host.Runtime.Generation,unknownSlots);
             if(!Active)return;
-            if(!Admitted(player))Cancel();
+            // An outer update without input/world entry keeps the existing
+            // selected-item lease, but real context/source changes still end it.
+            if(!Admitted(player,true) || !SameSource() || !ExtractionMachine.Valid(player,material,machine.X,machine.Y))Cancel();
             if(player.selectedItem!=slot || !player.selectedItemState.HasActiveOverride && player.selectedItemState.CanChangeSelectedItemImmediately)Retire(false);
         }
         internal void Reset(bool fresh){Retire(true);nextProbe=0;yieldingTools=false;machineCached=false;machineTiles=null;if(fresh){unknown=false;Failure=null;Array.Clear(unknownSlots,0,5);}}

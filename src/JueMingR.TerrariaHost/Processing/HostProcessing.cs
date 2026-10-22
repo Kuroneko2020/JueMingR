@@ -70,13 +70,19 @@ namespace JueMingR.TerrariaHost.Processing
             }
         }
         internal bool Admit(Player p)
-        {return AdmitCore(p,false);}
+        {return SafeContext(p) && Input.CanStartActions && !Main.gamePaused && (CanInterface?.Invoke()??false);}
         internal bool AdmitAutomatic(Player p)
-        {return AdmitCore(p,true);}
-        private bool AdmitCore(Player p,bool automatic)
+        {return SafeContext(p) && Input.CanRunAutomaticActions && (CanAutomaticInterface?.Invoke()??false);}
+        // Retention observes real context invalidation even when native input
+        // did not run. It grants neither a new gesture nor a world action.
+        internal bool Retain(Player p)
+        {return SafeContext(p) && Input.CanRetainIntent && (CanInterface?.Invoke()??false);}
+        internal bool RetainAutomatic(Player p)
+        {return SafeContext(p) && Input.CanRetainAutomaticIntent && (CanAutomaticInterface?.Invoke()??false);}
+        private bool SafeContext(Player p)
         {
-            return Available && p!=null && ReferenceEquals(p,Player) && (automatic?Input.CanRunAutomaticActions && (CanAutomaticInterface?.Invoke()??false):Input.CanStartActions && (CanInterface?.Invoke()??false)) &&
-                !Main.gamePaused && !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity && !p.HasLockedInventory() &&
+            return Available && p!=null && ReferenceEquals(p,Player) &&
+                !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity && !p.HasLockedInventory() &&
                 !Items.World.Busy && !Main.mapFullscreen && !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText &&
                 Main.CurrentInputTextTakerOverride==null && !Main.ServerSideCharacter && (Main.ActivePlayerFileData==null || !Main.ActivePlayerFileData.ServerSideCharacter) &&

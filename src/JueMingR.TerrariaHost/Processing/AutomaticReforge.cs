@@ -17,11 +17,11 @@ namespace JueMingR.TerrariaHost.Processing
         private Item item;
         private NPC npc;
         private GameCulture culture;
-        private long revision,pressFrame=-1,spentFrame=-1,token,nextToken,session;
+        private long revision,pressMapping=-1,spentFrame=-1,token,nextToken,session;
         private int type,stack,pressPrefix,pressValue,pressX,pressY,pressWidth,pressHeight;
         private float pressScale;
         private bool quoteReady,quoteDiscount;
-        private long quote,quoteFrame;
+        private long quote,quoteMapping;
         private Item quotedItem;
         private int quotedType,quotedPrefix,quotedValue,quotedStack,cx,cy,radius,width,height;
         private float quoteAdjustment,scale;
@@ -29,10 +29,10 @@ namespace JueMingR.TerrariaHost.Processing
         internal Exception Failure {get;private set;}
         internal bool Executing {get{return executing;}}
         internal AutomaticReforge(HostProcessing host){this.host=host;payment=new ReforgePayment(host);Targets=new ReforgeTargets(host);}
-        private bool Valid()
+        private bool Valid(bool retain=false)
         {
             Player p=host.Player;
-            return host.Value(2) && host.Admit(p) && Main.playerInventory && Main.InReforgeMenu && !Main.InGuideCraftMenu && Main.npcShop==0 &&
+            return host.Value(2) && (retain?host.Retain(p):host.Admit(p)) && Main.playerInventory && Main.InReforgeMenu && !Main.InGuideCraftMenu && Main.npcShop==0 &&
                 p.chest==-1 && p.talkNPC>=0 && p.talkNPC<Main.npc.Length && Main.npc[p.talkNPC]!=null && Main.npc[p.talkNPC].active && Main.npc[p.talkNPC].type==107 &&
                 Main.reforgeItem!=null && !Main.reforgeItem.IsAir && Main.mouseItem!=null && Main.mouseItem.IsAir && !PlayerInput.IgnoreMouseInterface && (host.BankGuardsReady?.Invoke()??false);
         }
@@ -43,10 +43,10 @@ namespace JueMingR.TerrariaHost.Processing
             if(unknown)host.Items.Ownership.HoldProcessing(host.Runtime.Generation,unknownSlots);
             bool now=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed;
             // Focus-loss pseudo releases cannot create another manual allowance.
-            if(!now && host.Input.CanStartActions){down=owned=tail=manual=pressReady=false;item=null;npc=null;pressFrame=-1;return;}
-            if(!down)
+            if(!now && host.Input.CanStartActions){down=owned=tail=manual=pressReady=false;item=null;npc=null;pressMapping=-1;return;}
+            if(!down && host.Input.CanStartActions)
             {
-                down=true;pressFrame=host.Input.Frame;pressReady=now && !unknown && Valid();
+                down=true;pressMapping=host.Input.Mapping;pressReady=now && !unknown && Valid();
                 if(pressReady)
                 {
                     // Freeze the press identity before Draw supplies its first
@@ -57,7 +57,7 @@ namespace JueMingR.TerrariaHost.Processing
                     npc=Main.npc[host.Player.talkNPC];culture=Language.ActiveCulture;revision=host.Settings[2].Revision;
                 }
             }
-            if((owned || pressReady) && (!Valid() || !Same())){Stop();pressReady=false;}
+            if((owned || pressReady || manual) && (!Valid(true) || !Same())){Stop();pressReady=manual=false;}
             if(pressReady && !SamePress()){Stop();pressReady=false;}
             // Quotes/manual ownership may arrive from Draw while paused. Only
             // the repeated paid action requires this epoch's actual world step.
@@ -73,9 +73,9 @@ namespace JueMingR.TerrariaHost.Processing
         }
         internal bool Observe(bool hovered,int x,int y,int halfSize,long nativeCost)
         {
-            if(!host.Value(2) || !Valid()){quoteReady=false;return hovered;}
+            if(!Valid(true)){quoteReady=false;return hovered;}
             var p=host.Player;quotedItem=Main.reforgeItem;quotedType=quotedItem.type;quotedPrefix=quotedItem.prefix;quotedValue=quotedItem.value;quotedStack=quotedItem.stack;
-            quote=nativeCost;quoteFrame=host.Input.Frame;quoteDiscount=p.discountAvailable;quoteAdjustment=p.currentShoppingSettings.PriceAdjustment;
+            quote=nativeCost;quoteMapping=host.Input.Mapping;quoteDiscount=p.discountAvailable;quoteAdjustment=p.currentShoppingSettings.PriceAdjustment;
             // Main.screenWidth/Height change domains during native UI Draw.
             // Compare the physical viewport in both Draw and Update instead.
             cx=x;cy=y;radius=halfSize;scale=Main.UIScale;width=(int)PlayerInput.OriginalScreenSize.X;height=(int)PlayerInput.OriginalScreenSize.Y;quoteReady=true;
@@ -86,7 +86,7 @@ namespace JueMingR.TerrariaHost.Processing
         }
         private void OwnPress()
         {
-            if(owned || tail || unknown || !pressReady || !Valid() || PlayerInput.MouseInfo.LeftButton!=ButtonState.Pressed)return;
+            if(owned || tail || unknown || !pressReady || !Valid(true) || PlayerInput.MouseInfo.LeftButton!=ButtonState.Pressed)return;
             if(!Same() || !SamePress()){Stop();pressReady=false;return;}
             if(!FreshQuote() || !Targets.HasTargets(item))return;
             // A later quote may confirm an original press on this button, never
@@ -104,7 +104,7 @@ namespace JueMingR.TerrariaHost.Processing
         private bool FreshQuote()
         {
             var p=host.Player;var current=Main.reforgeItem;
-            if(!quoteReady || host.Input.Frame-quoteFrame>1 || host.Input.Frame<quoteFrame || !ReferenceEquals(quotedItem,current) ||
+            if(!quoteReady || host.Input.Mapping-quoteMapping>1 || host.Input.Mapping<quoteMapping || !ReferenceEquals(quotedItem,current) ||
                 current.type!=quotedType || current.prefix!=quotedPrefix || current.value!=quotedValue || current.stack!=quotedStack ||
                 quoteDiscount!=p.discountAvailable || quoteAdjustment!=p.currentShoppingSettings.PriceAdjustment || scale!=Main.UIScale || width!=(int)PlayerInput.OriginalScreenSize.X || height!=(int)PlayerInput.OriginalScreenSize.Y)return false;
             int x=(int)(host.Input.PhysicalMapX*(1f/scale)),y=(int)(host.Input.PhysicalMapY*(1f/scale));
@@ -114,8 +114,11 @@ namespace JueMingR.TerrariaHost.Processing
         {
             if(manual)
             {
-                manual=false;
-                if(!Valid() || !Same() || !FreshQuote() || cost!=quote || pressFrame!=host.Input.Frame || PlayerInput.MouseInfo.LeftButton!=ButtonState.Pressed)return false;
+                // The native Draw button may consume the original single click
+                // in an empty outer epoch. Only real mappings age that click;
+                // the native release/cooldown gate remains outside this seam.
+                if(!ReferenceEquals(p,host.Player) || !Valid(true) || !Same() || !FreshQuote() || cost!=quote || currency!=-1 || pressMapping!=host.Input.Mapping || PlayerInput.MouseInfo.LeftButton!=ButtonState.Pressed)return false;
+                manual=false;quoteReady=false;
                 return p.BuyItem(cost,currency);
             }
             return !owned && !tail && p.BuyItem(cost,currency);
@@ -150,6 +153,6 @@ namespace JueMingR.TerrariaHost.Processing
         private void Stop(){owned=false;tail=true;}
         private void Fail(Exception error){Failure=error;unknown=true;Stop();for(int a=0;a<5;a++)unknownSlots[a]|=payment.Slots[a];host.Report("重铸扣款或结果未确认，已停止自动重铸；不会重复扣款。");Finish(true);}
         private void Finish(bool unknownResult){host.Items.Ownership.EndProcessing(session,payment.Slots,token,unknownResult);executing=false;paid=false;host.Items.World.InvalidateObservation();}
-        internal void Reset(bool fresh){if(executing)Fail(null);quoteReady=false;owned=pressReady=manual=false;tail=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed;down=tail;pressFrame=-1;if(fresh){unknown=false;Failure=null;Array.Clear(unknownSlots,0,5);}}
+        internal void Reset(bool fresh){if(executing)Fail(null);quoteReady=false;owned=pressReady=manual=false;tail=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed;down=tail;pressMapping=-1;if(fresh){unknown=false;Failure=null;Array.Clear(unknownSlots,0,5);}}
     }
 }

@@ -65,7 +65,7 @@ namespace NativeWorldTextProbe
             owner.GetType().GetField("quoteReady",Flags).SetValue(owner,false);
             long before=NativeReforgeChecks.Total(p);
             NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
-            NativeReforgeChecks.SampleWorld(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");Draw(graphics);Draw(graphics);
+            NativeProcessingChecks.EmptyOuterUpdate(host,input);NativeProcessingChecks.EmptyOuterUpdate(host,input);Draw(graphics);Draw(graphics);
             Require((bool)Get(owner,"quoteReady") && before==NativeReforgeChecks.Total(p),"first actual pressed Draw after skipped rendering supplies its late quote without leaking a native debit");
             long fee=(long)Get(owner,"quote");
             NativeReforgeChecks.SampleWorld(input,true);Main.mouseLeftRelease=false;Call(owner,"Update");Draw(graphics);Draw(graphics);
@@ -73,7 +73,8 @@ namespace NativeWorldTextProbe
             NativeReforgeChecks.Sample(input,false,200,600);Call(owner,"Update");Draw(graphics);Draw(graphics); // Native hover exit ends any top-tier cooldown.
             NativeReforgeChecks.Sample(input,false);Call(owner,"Update");
             owner.GetType().GetField("quoteReady",Flags).SetValue(owner,false);
-            before=NativeReforgeChecks.Total(p);fee=(long)Main.reforgeItem.value/3;NativeReforgeChecks.Sample(input,true);Call(owner,"Update");Draw(graphics);Draw(graphics);
+            before=NativeReforgeChecks.Total(p);fee=(long)Main.reforgeItem.value/3;NativeReforgeChecks.Sample(input,true);Call(owner,"Update");
+            NativeProcessingChecks.EmptyOuterUpdate(host,input);NativeProcessingChecks.EmptyOuterUpdate(host,input);Draw(graphics);Draw(graphics);
             Require(before-NativeReforgeChecks.Total(p)==fee,"already-matched fresh press pays exactly once through complete original DrawInventory; delta="+(before-NativeReforgeChecks.Total(p))+" fee="+fee+" cooldown="+typeof(Main).GetField("reforgeCooldown",Flags).GetValue(null)+" quote="+Get(owner,"quoteReady")+" manual="+Get(owner,"manual"));
             graphics.Image(Path.Combine(output,"processing-native-reforge.png"),()=>Call(Main.instance,"DrawInventory"),Main.UIScaleMatrix,960,760);
             ContinuousTopTier(host,owner,input,p,settings,graphics);

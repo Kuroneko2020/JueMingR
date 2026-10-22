@@ -60,11 +60,11 @@ namespace JueMingR.TerrariaHost.Movement
         }
 
         internal static SmartFallContact Contact(Vector2 position, Vector2 velocity, int width, int height,
-            float gravity, float maxFall, float direction, bool down, ref long reads, SmartFallContactBand band = null)
+            float gravity, float maxFall, float direction, bool down, ref long reads, SmartFallContactBand band = null, int horizon = Horizon)
         {
             var contact = default(SmartFallContact);
             float x = position.X, y = position.Y, vy = velocity.Y, vx = velocity.X;
-            for (int tick = 0; tick < Horizon; tick++)
+            for (int tick = 0; tick < horizon; tick++)
             {
                 vy = direction * Math.Min(maxFall, vy * direction + Math.Abs(gravity));
                 int steps = Math.Max(1, (int)Math.Ceiling(Math.Max(Math.Abs(vx), Math.Abs(vy)) / 4));

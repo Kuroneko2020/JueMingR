@@ -46,6 +46,10 @@ namespace NativeWorldTextProbe
                 var rows = h.Elements().Where(e => names.Contains((string)GetOptional(e, "Text"))).ToArray();
                 Require(rows.Select(e => (string)Get(e, "Text")).SequenceEqual(names), "real movement page has four ordered names");
                 Require(h.Elements().Count(e => ids.Contains((string)GetOptional(e, "HotkeyTarget"))) == ids.Length, "four standard row-end binding slots");
+                Require(!h.Elements().Any(e => GetOptional(e, "Command")?.ToString() == "MovementFallConfigure"), "Temporary hidden fall configuration entry leaves no layout or hitbox.");
+                var controls=Get(Get(shell,"renderer"),"MovementControls");
+                Require(!(bool)Get(controls,"ConfigurationExpanded"), "Fall permission configuration remains initially collapsed.");
+                var savedPermissions=Get(movement,"SmartFallProtection");
                 for (int i = 0; i < ids.Length; i++) Require(registry.Find(ids[i]) != null, "real shared registry owns action " + ids[i]);
                 Require(Get(movement, "DashMode").ToString() == "DoubleTap", "OFF presentation begins with the specified mode");
                 h.ClickCommand("MovementDashMode");
@@ -70,6 +74,8 @@ namespace NativeWorldTextProbe
                     Require(!(bool)Call(movement, "IsEnabled", 0) && !(bool)Call(movement, "IsEnabled", 2), "scaled clicks reach exact owning settings");
                 }
                 Main.UIScale = 1; h.Frame(); h.Frame();
+                for(int capability=0;capability<12;capability++)
+                    Require((bool)Call(Get(movement,"SmartFallProtection"),"Allows",capability)==(bool)Call(savedPermissions,"Allows",capability), "Hidden entry and real main-switch clicks preserve the loaded permission bit "+capability);
                 for (int feature = 0; feature < ids.Length; feature++)
                 {
                     string id = ids[feature]; object icon = h.Elements().Single(e => (string)GetOptional(e, "HotkeyTarget") == id);

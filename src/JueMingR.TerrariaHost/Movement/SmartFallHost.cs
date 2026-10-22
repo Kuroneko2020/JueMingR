@@ -61,12 +61,12 @@ namespace JueMingR.TerrariaHost.Movement
         private ProjectileKey shotKey;
         private bool shot;
         private bool failedShot, grappleDependenciesValid;
-        private Vector2 lastMountReturnPosition;
-        private long lastMountReturnRevision = -1;
-        private bool mountReturnAttempted;
+        private long mountReturnTick = -1;
+        private bool mountReturnPending;
         internal SmartFallResult Result { get; private set; }
         internal SmartFallResult ReturnResult { get { return borrow.ReturnResult; } }
         internal long TileReads = 0, SourceScans = 0, Plans = 0, NativeActions = 0, Protections = 0;
+        internal long OppositeTileReads = 0, DismountObservations = 0;
         internal bool HasPending { get { return action || returnGravity || ownedMount >= 0 || originalMount >= 0 || borrow.HasPending; } }
 
         internal SmartFallHost(MovementSession session, HostItems items = null, Func<long> currentGeneration = null, FishingEquipment fishing = null)
@@ -181,7 +181,7 @@ namespace JueMingR.TerrariaHost.Movement
             originalGravity = p.gravDir; originalMount = family==SmartFallFamily.FlyingMount || family==SmartFallFamily.SafeMount ? priorMountType : -1;
             originalMountItem = priorMount; mountSelection = p.selectedItem;
             originalSelectionItem = p.HeldItem;
-            mountReturnAttempted = false;
+            ClearMountReturn();
             Result = SmartFallResult.Prepared;
             if (family == SmartFallFamily.GravityGlobe) LendUp(p);
             if (family == SmartFallFamily.FlyingMount || family == SmartFallFamily.SafeMount)
@@ -390,7 +390,15 @@ namespace JueMingR.TerrariaHost.Movement
         private bool OppositeClear(Player p)
         {
             Vector2 velocity = new Vector2(p.velocity.X, -p.gravDir * Math.Max(2, Math.Abs(p.velocity.Y)));
-            var other = SmartFallGeometry.Contact(p.position, velocity, p.width, p.height, p.gravity, p.maxFallSpeed, -p.gravDir, false, ref TileReads);
+#if DEBUG
+            long before = TileReads;
+#endif
+            // Only contact through tick 2 can reject this action. Reuse the
+            // identical substeps/surfaces without paying for unused far time.
+            var other = SmartFallGeometry.Contact(p.position, velocity, p.width, p.height, p.gravity, p.maxFallSpeed, -p.gravDir, false, ref TileReads, horizon: 2);
+#if DEBUG
+            OppositeTileReads += TileReads - before;
+#endif
             return !other.Found || other.Ticks > 2;
         }
         private bool TeleportPoint(Player p)
@@ -502,7 +510,7 @@ namespace JueMingR.TerrariaHost.Movement
                 // Hover has acted; dismount before native fallThrough flags.
                 // Waiting until Update's finalizer would already miss a platform.
                 TryReturnMount(p);
-                if (!p.mount.Active) { ownedMount = -1; mountReturnAttempted = false; Protected(p, true); }
+                if (!p.mount.Active) { ownedMount = -1; ClearMountReturn(); Protected(p, true); }
             }
             if (!action || family != SmartFallFamily.Grapple || shot || !permitted || !session.CanAct(p) || !(SmartFallCapabilities.Risk(p) || SmartFallCapabilities.ContactRisk(p, contact))) return;
             if (!ReferenceEquals(p.QuickGrapple_GetItemToUse(), selected)) { Fail(p); return; }
@@ -553,7 +561,7 @@ namespace JueMingR.TerrariaHost.Movement
         }
         private void Continue(Player p)
         {
-            if (p.dead || p.ghost) { returnGravity = false; ownedMount = originalMount = -1; action = false; borrow.Restore(p, generation); return; }
+            if (p.dead || p.ghost) { returnGravity = false; ownedMount = originalMount = -1; ClearMountReturn(); action = false; borrow.Restore(p, generation); return; }
             // A real Up edge owns gravity even before our first legal Press.
             // Do not adopt the player's native flip as our Consumed result and
             // schedule a later reverse after that player releases the key.
@@ -569,13 +577,13 @@ namespace JueMingR.TerrariaHost.Movement
                 return;
             }
             if (ownedMount >= 0 && (!p.mount.Active || p.mount.Type != ownedMount))
-            { ownedMount = originalMount = -1; action = false; takenOver = true; Result = SmartFallResult.TakenOver; borrow.Restore(p, generation); return; }
+            { ownedMount = originalMount = -1; ClearMountReturn(); action = false; takenOver = true; Result = SmartFallResult.TakenOver; borrow.Restore(p, generation); return; }
             if (!action)
             {
                 if (ownedMount >= 0)
                 {
                     if (!TryReturnMount(p)) return;
-                    ownedMount = -1; mountReturnAttempted = false;
+                    ownedMount = -1; ClearMountReturn();
                 }
                 borrow.Restore(p, generation); ReturnOriginalMount(p); return;
             }
@@ -626,7 +634,7 @@ namespace JueMingR.TerrariaHost.Movement
             {
                 if (!immediate || !SmartFallCapabilities.Risk(p)) TryReturnMount(p);
                 if (p.mount.Active) { Result = SmartFallResult.Returning; return; }
-                ownedMount = -1; mountReturnAttempted = false;
+                ownedMount = -1; ClearMountReturn();
             }
             borrow.Restore(p, generation);
             ReturnOriginalMount(p);
@@ -638,7 +646,7 @@ namespace JueMingR.TerrariaHost.Movement
             // a native/manual successor, so the old return permission ends
             // here rather than resurfacing after the player dismounts it.
             if (p.mount.Active)
-            { originalMount = -1; mountReturnAttempted = false; takenOver = true; Result = SmartFallResult.TakenOver; return; }
+            { originalMount = -1; takenOver = true; Result = SmartFallResult.TakenOver; return; }
             if (borrow.HasPending) return;
             int expected=originalMount;Item item=originalMountItem;
             // One finite reactivation attempt after the exact item return. A
@@ -655,16 +663,36 @@ namespace JueMingR.TerrariaHost.Movement
             { p.QuickMount(); Count(ref NativeActions); }
             if (!p.mount.Active || p.mount.Type!=expected) Result=SmartFallResult.Failed;
         }
-        private bool MountReturnChanged(Player p)
-        {
-            long revision = items == null ? 0 : items.World.Revision;
-            if (mountReturnAttempted && p.position == lastMountReturnPosition && revision == lastMountReturnRevision) return false;
-            mountReturnAttempted = true; lastMountReturnPosition = p.position; lastMountReturnRevision = revision; return true;
-        }
+        private void ClearMountReturn() { mountReturnPending = false; mountReturnTick = -1; }
         private bool TryReturnMount(Player p)
         {
-            if (!MountReturnChanged(p)) return false;
-            Count(ref NativeActions); return p.mount.TryDismount(p);
+            if (!Current(p) || p.dead || p.ghost || ownedMount < 0 || !p.mount.Active || p.mount.Type != ownedMount || mountReturnTick == tick) return false;
+            mountReturnTick = tick;
+            if (mountReturnPending)
+            {
+                // A first real denial owns this finite cleanup. Space and CCed
+                // can change without motion/inventory revision; ask the native
+                // local-space predicate once per real Player.Update, including
+                // OFF cleanup. Only mounts with this native rule may skip it.
+                if (MountID.Sets.DontDismountWhenCCed[ownedMount] && p.CCed) return false;
+                bool stair = Collision.stair, stairFall = Collision.stairFall, sloping = Collision.sloping;
+                bool up = Collision.up, down = Collision.down;
+                bool allowed;
+                try { Count(ref DismountObservations); allowed = p.mount.CanDismount(p); }
+                finally
+                {
+                    // The extra query traverses Slope/TileCollision scratch.
+                    // Isolate observation only; the real action below keeps
+                    // every native side effect, including these flags.
+                    Collision.stair = stair; Collision.stairFall = stairFall; Collision.sloping = sloping;
+                    Collision.up = up; Collision.down = down;
+                }
+                if (!allowed) return false;
+            }
+            Count(ref NativeActions);
+            bool returned = p.mount.TryDismount(p);
+            mountReturnPending = !returned;
+            return returned;
         }
         private void Fail(Player p)
         { if (family == SmartFallFamily.Grapple && shot) failedShot = true; rejected |= 1 << (int)family; action = false; shot = false; targetActive = false; ReturnInputs(p); Result = SmartFallResult.Failed; borrow.Restore(p, generation); blockerStamp = borrow.BlockerStamp(p); }
@@ -685,7 +713,7 @@ namespace JueMingR.TerrariaHost.Movement
             { originalMount=-1;originalMountItem=null; }
             bool before = borrow.HasPending; borrow.ManualEquipment(array, slot);
             if (before && !borrow.HasPending)
-            { if (player != null) ReturnInputs(player); action = returnGravity = false; ownedMount = originalMount = -1; takenOver = true; Result = SmartFallResult.TakenOver; }
+            { if (player != null) ReturnInputs(player); action = returnGravity = false; ownedMount = originalMount = -1; ClearMountReturn(); takenOver = true; Result = SmartFallResult.TakenOver; }
         }
         internal void ManualLoadout(Player p)
         {
@@ -697,7 +725,7 @@ namespace JueMingR.TerrariaHost.Movement
             originalMount=-1;originalMountItem=null;
             bool before = borrow.HasPending; borrow.ManualLoadout(p);
             if (before && !borrow.HasPending)
-            { if (player != null) ReturnInputs(player); action = returnGravity = false; ownedMount = originalMount = -1; takenOver = true; Result = SmartFallResult.TakenOver; }
+            { if (player != null) ReturnInputs(player); action = returnGravity = false; ownedMount = originalMount = -1; ClearMountReturn(); takenOver = true; Result = SmartFallResult.TakenOver; }
         }
         private void BeforeManualSlot(Item[] array, int slot) { previousManualSlot?.Invoke(array, slot); ManualEquipment(array, slot); }
         private bool ProtectItem(Item item) { return borrow.Protect(item) || (previousProtection?.Invoke(item) ?? false); }
@@ -762,6 +790,7 @@ namespace JueMingR.TerrariaHost.Movement
             borrow.EndSession(); player = retained = null; scope = permitted = active = action = landed = shot = returnGravity = takenOver = false;
             actionResourceBit=0;resourceConsumed=jumpReleasing=jumpPressed=false;releaseTick=upPressTick=-1;originalMountItem=originalSelectionItem=null;
             ownedMount = originalMount = -1; sourceRevision = -1; mask = -1; count = sourceCount = hookCount = blockingCount = 0; blockerStamp = 0; rejected = 0; bandValid = grappleSearched = failedShot = grappleDependenciesValid = false; contact = default(SmartFallContact); targetActive = false;
+            ClearMountReturn();
             Array.Clear(sources, 0, sources.Length);
             Array.Clear(observedSources, 0, observedSources.Length);
             Array.Clear(hookGeometry, 0, hookGeometry.Length);

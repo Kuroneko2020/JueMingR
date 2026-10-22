@@ -24,7 +24,7 @@ namespace JueMingR.TerrariaHost.Processing
         internal ContinuousBags(HostProcessing host){this.host=host;}
         private bool PhysicalHold {get{return (host.Input.KeyboardSample.IsKeyDown(Keys.LeftShift) || host.Input.KeyboardSample.IsKeyDown(Keys.RightShift)) &&
             PlayerInput.MouseInfo.RightButton==ButtonState.Pressed && PlayerInput.MouseInfo.LeftButton==ButtonState.Released;}}
-        internal bool Holding {get{return host.Value(0) && host.Admit(host.Player) && Main.playerInventory && AllowedContext() && PhysicalHold && Main.mouseItem!=null && Main.mouseItem.IsAir;}}
+        internal bool Holding {get{return host.Value(0) && host.Retain(host.Player) && Main.playerInventory && AllowedContext() && PhysicalHold && Main.mouseItem!=null && Main.mouseItem.IsAir;}}
         private bool AllowedContext()
         {
             // Only an already valid merchant shop relaxes the NPC boundary.
@@ -53,7 +53,7 @@ namespace JueMingR.TerrariaHost.Processing
             if(!Holding || unknown){ReleaseIntent();return;}
             // A held physical gesture does not prove the world advanced. Keep
             // its ownership but never repeat consumption in an empty update.
-            if(!host.Input.CanRunAutomaticActions)return;
+            if(!host.Admit(host.Player) || !host.Input.CanRunAutomaticActions)return;
             var p=host.Player;
             if(p.itemAnimation>0 || p.itemTime>0 || p.chest!=-1 || p.sign>=0 || Main.mouseItem==null || !Main.mouseItem.IsAir || host.Items.World.HasManualOperation)return;
             // Hover chooses a type; native inventory order chooses its first

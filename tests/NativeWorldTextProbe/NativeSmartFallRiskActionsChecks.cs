@@ -91,6 +91,7 @@ namespace NativeWorldTextProbe
         { var p=new Player{whoAmI=Main.myPlayer,active=true,position=new Vector2(700,1000),gravity=.4f,maxFallSpeed=10,gravDir=1};Main.player[Main.myPlayer]=p;return p; }
         private static void Geometry(Type geometry)
         {
+            ShortOppositeBoundary(geometry);
             foreach(byte slope in new byte[]{0,1,2})foreach(float vx in new[]{-6f,6f})
             {
                 for(int x=35;x<65;x++)for(int y=55;y<85;y++)Main.tile[x,y]=new Tile();
@@ -134,6 +135,28 @@ namespace NativeWorldTextProbe
             for(int tick=0;tick<15 && wall.velocity.Y!=0;tick++){wall.velocity.Y=Math.Min(10,wall.velocity.Y+.4f);wall.DryCollision(false,false);wall.SlopingCollision(false,false);}
             Require(wall.velocity.Y==0 && Math.Abs(wall.position.X-w.X)<.01f,"Independent original side wall and floor reach the same finite contact band.");
         }
+        private static void ShortOppositeBoundary(Type geometry)
+        {
+            MethodInfo contact=null;
+            foreach(var method in geometry.GetMethods(F))if(method.Name=="Contact" && method.GetParameters().Length==11)contact=method;
+            Require(contact!=null && (int)contact.GetParameters()[10].DefaultValue==48,"Main contact retains its optional 48-tick default.");
+            foreach(float direction in new[]{-1f,1f})foreach(int ticks in new[]{1,2,3,20,49})
+            {
+                for(int x=35;x<65;x++)for(int y=50;y<90;y++)Main.tile[x,y]=new Tile();
+                int row=direction<0?60:80;
+                if(ticks<49)for(int x=35;x<65;x++){Main.tile[x,row].active(true);Main.tile[x,row].type=1;}
+                float surface=direction<0?row*16+16:row*16;
+                var position=new Vector2(700,direction<0?surface+ticks*8:surface-42-ticks*8);
+                object[] full={position,new Vector2(0,direction*8),20,42,0f,8f,direction,false,0L,null,Type.Missing};
+                object[] shortArgs=(object[])full.Clone();shortArgs[10]=2;
+                var old=(SmartFallContact)contact.Invoke(null,full);var two=(SmartFallContact)contact.Invoke(null,shortArgs);
+                bool oldAllowed=!old.Found || old.Ticks>2,newAllowed=!two.Found || two.Ticks>2;
+                Require(oldAllowed==newAllowed && newAllowed==(ticks>2),"Two-tick query preserves original allow boundary direction="+direction+" ticks="+ticks);
+                if(ticks<=2)Require(two.Found && two.Ticks==ticks,"Exact contact at tick 2 remains included, with unchanged substeps.");
+                if(ticks==3 || ticks==20)Require(old.Found && old.Ticks==ticks && !two.Found,"Third/later tick remains visible to default main contact and is irrelevant to short rejection.");
+                if(ticks==49)Require(!old.Found && !two.Found,"Empty full 48-tick horizon remains allowed.");
+            }
+        }
         private static void GrappleTakeover(object movement,object input,object jump)
         {
             NativeQuickItemChecks.Until(()=>(bool)Get(movement,"ControlsEnabled"));
@@ -173,11 +196,12 @@ namespace NativeWorldTextProbe
                     Call(movement,"SetEnabled",3,path!="OFF");
                     var p=Local();p.velocity.Y=path=="ON-idle"?0:10;p.fallStart=0;p.noFallDmg=path=="ON-safe";
                     for(int i=0;i<256;i++){begin(p,1,++sequence);capture(p,true);end(p);}
-                    long scans=(long)Get(host,"SourceScans"),plans=(long)Get(host,"Plans"),reads=(long)Get(host,"TileReads");
+                    long scans=(long)Get(host,"SourceScans"),plans=(long)Get(host,"Plans"),reads=(long)Get(host,"TileReads"),queries=(long)Get(host,"DismountObservations"),actions=(long)Get(host,"NativeActions");
                     long allocated=bytes();var time=Stopwatch.StartNew();
                     for(int i=0;i<20000;i++){begin(p,1,++sequence);capture(p,true);end(p);}
                     time.Stop();long delta=bytes()-allocated;
                     Require((long)Get(host,"SourceScans")==scans && (long)Get(host,"Plans")==plans && (long)Get(host,"TileReads")==reads,"Stable "+path+" has no repeated scans/plans/geometry.");
+                    Require((long)Get(host,"DismountObservations")==queries && (long)Get(host,"NativeActions")==actions,"No owned mount/pending means no extra dismount query or action path="+path);
                     // Stopwatch itself is measured, so zero is checked in a
                     // separate strong-delegate window without reflection.
                     allocated=bytes();for(int i=0;i<20000;i++){begin(p,1,++sequence);capture(p,true);end(p);}long steady=bytes()-allocated;

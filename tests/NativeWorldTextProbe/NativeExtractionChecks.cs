@@ -22,6 +22,20 @@ namespace NativeWorldTextProbe
             Machine(42,40,219);
             Call(host,"Set",1,true);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Call(host,"Value",1);});
             int before=Main.item.Count(w=>w!=null && w.active);
+            Frame(context,input);
+            object owner=Get(host,"Extraction");int held=p.selectedItem,material=p.inventory[10].stack,products=Main.item.Count(w=>w!=null && w.active);
+            Require((bool)Get(owner,"Active") && held==10,"extraction group 1 starts through real native selection/use");
+            NativeProcessingChecks.EmptyOuterUpdate(host,input);NativeProcessingChecks.EmptyOuterUpdate(host,input);
+            Require((bool)Get(owner,"Active") && p.selectedItem==held && p.selectedItemState.HasActiveOverride && p.inventory[10].stack==material && Main.item.Count(w=>w!=null && w.active)==products,"extraction group 1: true empty epochs retain active selected-item lease without consume/product/return");
+            const BindingFlags flags=BindingFlags.NonPublic|BindingFlags.Public|BindingFlags.Instance;
+            var foreground=input.GetType().GetField("foregroundWindow",flags);object originalForeground=foreground.GetValue(input);
+            try
+            {
+                foreground.SetValue(input,(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;
+                NativeProcessingChecks.EmptyOuterUpdate(host,input,false);NativeProcessingChecks.EmptyOuterUpdate(host,input,false);
+                Require((bool)Get(owner,"Active") && p.selectedItem==held && p.selectedItemState.HasActiveOverride && p.inventory[10].stack==material && Main.item.Count(w=>w!=null && w.active)==products,"extraction group 1: existing background contract retains intent in true empty epochs without consumption");
+            }
+            finally{foreground.SetValue(input,originalForeground);FocusHelper.IsSelectedApplication=true;}
             for(int frame=0;frame<110 && p.inventory[10].stack>0;frame++)Frame(context,input);
             Require(p.inventory[10].IsAir || p.inventory[10].stack==0,"real ItemCheck consumes extraction material without a mouse hold; remaining="+p.inventory[10].stack+" error="+GetOptional(host,"Error"));
             Require(Main.item.Count(w=>w!=null && w.active)>before,"native extraction creates actual local world products");
@@ -33,8 +47,20 @@ namespace NativeWorldTextProbe
             Matrix(context,host,input);
             StableMachine(context,host,input);
             NativeExtractionBoundaryChecks.Run(context,host,input);
+            EmptyCancellation(context,host,input);
             NativeExtractionTradeChecks.Run(context,host,input);
             Console.WriteLine("PASS G08 extraction: actual native ItemCheck, material consumption, world products and own input return.");
+        }
+        private static void EmptyCancellation(object context,object host,object input)
+        {
+            var p=Main.LocalPlayer;foreach(var item in p.inventory)item.TurnToAir();p.position=new Vector2(640,640);p.inventory[10].SetDefaults(424);p.inventory[10].stack=10;
+            p.selectedItemState.Select(0);p.selectedItemState.Update();p.itemAnimation=p.itemTime=0;Machine(42,40,219);NativeExtractionBoundaryChecks.Enable(host,true);
+            Frame(context,input);Require((bool)Get(Get(host,"Extraction"),"Active"),"extraction group 2 has active lease");
+            p.inventory[5].SetDefaults(3507);p.selectedItemState.Select(5);int remaining=p.inventory[10].stack;
+            NativeProcessingChecks.EmptyOuterUpdate(host,input);
+            NativeExtractionBoundaryChecks.Enable(host,false);for(int i=0;i<40;i++)Frame(context,input);
+            Require(p.selectedItem==5 && p.inventory[10].stack==remaining,"extraction group 2: real new selection in an empty epoch cancels without reclaiming it or consuming material");
+            p.selectedItemState.Select(0);p.selectedItemState.Update();
         }
         private static void StableMachine(object context,object host,object input)
         {
