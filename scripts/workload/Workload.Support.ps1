@@ -73,6 +73,7 @@ function Get-WorkloadRoute {
             continue
         }
         switch -Regex ($path) {
+            '^src/[^/]+/Blueprint/|^src/JueMingR.TerrariaHost/F5/BlueprintControls\.cs$|^tests/JueMingR.ArchitectureTests/Blueprint|^tests/NativeWorldTextProbe/NativeBlueprint' { [void]$groups.Add('blueprint-host'); continue }
             '^tests/Workload/BusinessAssertionProtocol\.cs$' { [void]$groups.Add('shared-host'); continue }
             # Shared graphics/asset fixture is consumed by the native host
             # scopes; its changes do not confer graphical execution evidence.
@@ -145,7 +146,7 @@ function Get-WorkloadRoute {
     # paths even when no ItemBrowser file itself changed in the current diff.
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host') -or $groups.Contains('world-host')) { [void]$groups.Add('browser-host') }
     if ($groups.Contains('shared-host') -or $groups.Contains('storage-host')) {
-        foreach ($group in @('notes-host','records','style-host','world-host','hotkeys','preferences','information','guidance','entity','items','biomes','pages-host','legacy-worker')) { [void]$groups.Add($group) }
+        foreach ($group in @('notes-host','records','style-host','world-host','hotkeys','preferences','information','guidance','entity','items','biomes','pages-host','legacy-worker','blueprint-host')) { [void]$groups.Add($group) }
     }
     if ($groups.Contains('fishing-host')) { [void]$groups.Add('information') }
     if ($groups.Contains('quick-items-host') -or $groups.Contains('notes-host') -or $groups.Contains('pages-host')) { [void]$groups.Add('hotkeys') }

@@ -131,13 +131,18 @@ namespace JueMingR.TerrariaHost.Tools
         private static void Boundary(Player __instance){if(ReferenceEquals(__instance,host?.Player))host.Use.Retire();}
         // Reference state exists before Begin; even a Prefix exception midway
         // through temporary input borrowing reaches the same idempotent cleanup.
-        private sealed class Lease {internal long Token;internal Combat.CombatInputScope Combat;internal Combat.HostAttackAim.PlacementUse Placement;}
+        private sealed class Lease {internal long Token;internal Combat.CombatInputScope Combat;internal Combat.HostAttackAim.PlacementUse Placement;internal Blueprint.BlueprintHooks.MouseLease Blueprint;}
         private static void SeedBoundary(Player player){if(ReferenceEquals(player,host?.Player))host.Herbs.InvalidateSeeds();}
         // Select from the captured physical sample before optional Facing and
         // before vanilla builds this action's pose; input leases follow it.
         private static void Before(Player __instance,out Lease __state)
         {
             __state=null;SeedBoundary(__instance);if(host==null)return;
+            // Capture is a local world editor, not a UI owner. Deny new tool /
+            // combat leases before they can inject fresh held-item input, and
+            // mask raw mouse only inside this exact native world consumer.
+            if(Blueprint.BlueprintHooks.Blocks(__instance))
+            {__state=new Lease{Blueprint=Blueprint.BlueprintHooks.BeginHeld(__instance)};return;}
             if(ReferenceEquals(__instance,host.Player))
             {
                 host.Combat?.Attack?.PrepareNatural();host.Combat?.Facing.Apply(__instance);
@@ -148,9 +153,9 @@ namespace JueMingR.TerrariaHost.Tools
             if(!host.Use.Active)return;if(__state==null)__state=new Lease();__state.Token=host.Use.Operation;host.Use.Begin(__instance);
         }
         private static void After(Player __instance,Lease __state)
-        {try{SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}finally{__state?.Placement?.End();}}
+        {try{SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}finally{__state?.Placement?.End();__state?.Blueprint?.End();}}
         private static Exception Final(Player __instance,Lease __state,Exception __exception)
-        {try{if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception);host?.Combat?.Use.End(__state?.Combat,__exception);}}finally{__state?.Placement?.End();}return __exception;}
+        {try{if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception);host?.Combat?.Use.End(__state?.Combat,__exception);}}finally{__state?.Placement?.End();__state?.Blueprint?.End();}return __exception;}
         private static void Select(Player ___player){if(host!=null && (host.Enabled || host.Combat?.Enabled==true) && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.ManualSelection();}}
         private static void SelectionUpdate(Player ___player)
         {

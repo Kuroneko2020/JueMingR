@@ -16,6 +16,8 @@ namespace JueMingR.ArchitectureTests
         private static readonly List<Entry> entries = new List<Entry>();
         static CheckCatalog()
         {
+            Add("BlueprintSelectionChecks", "blueprint-host", (root, failures) => BlueprintSelectionChecks.Check(failures));
+            Add("BlueprintCaptureChecks", "blueprint-host", (root, failures) => BlueprintCaptureChecks.Check(failures));
             Add("CombatChecks", "combat-host", (root, failures) => CombatChecks.Check(failures));
             Add("BrowserCoreChecks", "browser-host", (root, failures) => BrowserCoreChecks.Check(failures));
             Add("RelationChecks", "browser-host", (root, failures) => RelationChecks.Check(failures));

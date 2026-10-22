@@ -63,6 +63,7 @@ namespace NativeWorldTextProbe
         }
         internal static void StopContext(object context)
         {
+                var blueprint = GetOptional(context, "Blueprint"); if (blueprint != null) Call(blueprint, "ExitProcess", null, EventArgs.Empty);
                 var fishing=GetOptional(context,"Fishing");if(fishing!=null)Call(fishing,"Exit",null,EventArgs.Empty);
                 var hooks = GetOptional(context, "informationHooks"); if (hooks != null) Call(hooks, "Dispose");
                 foreach (string name in new[] { "Movement", "Footprints", "MapFeatures", "DeathRecords", "Guidance", "Information", "Labels", "WorldTargets", "WorldObjects", "items", "notes", "preferences" })

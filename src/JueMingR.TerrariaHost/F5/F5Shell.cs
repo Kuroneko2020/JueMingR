@@ -37,6 +37,14 @@ namespace JueMingR.TerrariaHost.F5
         { journey = owner; renderer.JourneyControls = owner == null ? null : new JourneyControls(owner); }
 
         private IMovementControls movement;
+        private Blueprint.HostBlueprint blueprint;
+        internal void AttachBlueprint(Blueprint.HostBlueprint owner)
+        {
+            blueprint = owner;
+            renderer.BlueprintControls = owner == null ? null : new BlueprintControls(owner);
+            State.Layout.BlueprintAttached = owner != null;
+            State.Layout.SetBlueprintMode(owner != null && owner.State.Active);
+        }
         internal void AttachMovement(IMovementControls owner)
         { movement = owner; renderer.MovementControls = new MovementControls(owner); State.Layout.MovementAttached = true; }
         internal bool CanMovementInput { get { return !failed && !NativeJourneyInputBusy && !inputState.HotkeyCapture &&
@@ -378,6 +386,7 @@ namespace JueMingR.TerrariaHost.F5
                 State.Layout.SetHiddenFeaturesVisible(hiddenAccess != null && hiddenAccess.IsUnlocked);
                 if (worldObjects != null) State.Layout.SetWorldObjectSettings(worldObjects.Preferences.Value);
                 if (deaths != null) State.Layout.SetDeathInformation(deaths.CountText, deaths.DaysText);
+                if (blueprint != null) State.Layout.SetBlueprintMode(blueprint.State.Active);
                 matrix = Main.UIScaleMatrix;
                 Vector2 screen = PlayerInput.OriginalScreenSize;
                 Vector2 raw = new Vector2(PlayerInput.MouseInfo.X * PlayerInput.RawMouseScale.X,
@@ -404,7 +413,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (!inputActive && adjustmentPending) CancelInformationAdjustment(false);
                 // Compose the complete page before release dispatch. An upstream
                 // list/font change must retire old targets, including the footer.
-                if (State.Visible && (State.Page==0 || State.Page==1 || State.Page==5 || State.Page==8) && renderer.RefreshResources())
+                if (State.Visible && (State.Page==0 || State.Page==1 || State.Page==5 || State.Page==6 || State.Page==8) && renderer.RefreshResources())
                 {
                     renderer.Prepare(State,screen.X,screen.Y,matrix.M11);
                     if(State.Page==0)items?.Prepare(CanPresentNow && LayersReady,matrix,screen);
@@ -528,6 +537,7 @@ namespace JueMingR.TerrariaHost.F5
                         RequestJourneyCommand(State.Command, false);
                     renderer.CombatControls?.Execute(State.Command);
                     renderer.CombatObservationControls?.Execute(State.Command);
+                    renderer.BlueprintControls?.Execute(State.Command);
                     if (State.Command == F5Command.AboutRevealHidden)
                     {
                         // ConsumeSample above owns the whole fifth release before
@@ -617,6 +627,7 @@ namespace JueMingR.TerrariaHost.F5
                     deaths?.TakeFeedback(displayPreferenceFeedback); maps?.TakeFeedback(displayPreferenceFeedback); footprints?.TakeFeedback(displayPreferenceFeedback);
                     QuickItems?.TakeFeedback(displayPreferenceFeedback); coinDeposit?.TakeFeedback(displayPreferenceFeedback); recovery?.TakeFeedback(displayPreferenceFeedback); processing?.TakeFeedback(displayPreferenceFeedback);
                     tools?.TakeFeedback(displayPreferenceFeedback);
+                    blueprint?.TakeFeedback(displayPreferenceFeedback);
                     fishing?.TakeFeedback(displayPreferenceFeedback);
                     combat?.Settings.TakeFeedback(displayPreferenceFeedback);
                     combatObservation?.TakeFeedback(displayPreferenceFeedback);
@@ -673,7 +684,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 RestoreLeases();
                 if (!CanPresentNow) { CloseAndSubmitPosition(); return true; }
-                if (OwnsPointer)
+                if (OwnsPointer || blueprint?.Toolbar.HitCurrent() == true)
                 {
                     // AfterUpdate already cleared the old bubble before Emote.
                     // Keep this pointer's later NPC hover state clear as well.
@@ -691,7 +702,9 @@ namespace JueMingR.TerrariaHost.F5
 
         internal bool HoverGateLayer()
         {
-            if (!OwnsPointer) return true;
+            // The toolbar contributes only its current visible UI rectangle;
+            // capture mode must never become a shell-wide pointer owner.
+            if (!OwnsPointer && blueprint?.Toolbar.HitCurrent() != true) return true;
             try
             {
                 // Immediately after Mouse Item / NPC Head: its reset must have
@@ -707,7 +720,7 @@ namespace JueMingR.TerrariaHost.F5
 
         internal bool AllowNpcHover()
         {
-            if (!OwnsPointer) return true;
+            if (!OwnsPointer && blueprint?.Toolbar.HitCurrent() != true) return true;
             // DrawMouseOver already resets HoveringOverAnNPC immediately before
             // this call. The skipped body never acquires noThrow or frees the
             // elder slime; do not undo unrelated existing noThrow/interaction.
