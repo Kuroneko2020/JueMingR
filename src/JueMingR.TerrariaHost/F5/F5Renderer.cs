@@ -33,6 +33,7 @@ namespace JueMingR.TerrariaHost.F5
         internal JourneyControls JourneyControls { get; set; }
         internal ViewControls ViewControls { get; set; }
         internal MovementControls MovementControls { get; set; }
+        internal BlueprintControls BlueprintControls { get; set; }
         internal CombatControls CombatControls {get;set;}
         internal CombatObservationControls CombatObservationControls {get;set;}
         internal CombatRadiusDrag CombatRadius {get;set;}
@@ -209,6 +210,7 @@ namespace JueMingR.TerrariaHost.F5
 
         internal void Prepare(F5Interaction state, float width, float height, float scale)
         {
+            if (BlueprintControls != null) state.Layout.SetBlueprintMode(BlueprintControls.Active);
             if(CombatObservationControls!=null)state.Layout.SetObservationOptions(CombatObservationControls.Options);
             state.Layout.Ensure(width, height, scale, state.Page, font, measure);
             if(state.Page==8 && !ReferenceEquals(intervalFont,font))
@@ -308,7 +310,8 @@ namespace JueMingR.TerrariaHost.F5
                         bool journey = F5.JourneyControls.Owns(element.Command);
                         bool combat = F5.CombatControls.Owns(element.Command);
                         bool observation=F5.CombatObservationControls.Owns(element.Command);
-                        bool enabled = F5.MovementControls.Owns(element.Command) ? MovementControls != null && MovementControls.Available(element.Command) : F5.ViewControls.Owns(element.Command) ? ViewControls != null && ViewControls.Available(element.Command) : journey ? JourneyControls != null && JourneyControls.Available(element.Command) : entity ? EntityControls != null && EntityControls.Available(element.Command) : world ? WorldControls != null && WorldControls.Available(element.Command) : objects ? ObjectControls != null && ObjectControls.Available(element.Command) :
+                        bool blueprint = F5.BlueprintControls.Owns(element.Command);
+                        bool enabled = blueprint ? BlueprintControls != null && BlueprintControls.Available(element.Command) : F5.MovementControls.Owns(element.Command) ? MovementControls != null && MovementControls.Available(element.Command) : F5.ViewControls.Owns(element.Command) ? ViewControls != null && ViewControls.Available(element.Command) : journey ? JourneyControls != null && JourneyControls.Available(element.Command) : entity ? EntityControls != null && EntityControls.Available(element.Command) : world ? WorldControls != null && WorldControls.Available(element.Command) : objects ? ObjectControls != null && ObjectControls.Available(element.Command) :
                             observation ? CombatObservationControls!=null && CombatObservationControls.Available(element.Command) : combat ? CombatControls!=null && CombatControls.Available(element.Command) : information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : guidance ? GuidanceControls != null && GuidanceControls.Available(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls != null && FootprintControls.Available(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls != null && MapControls.Available(element.Command) : F5.AnnouncementControls.Owns(element.Command) ? AnnouncementControls != null && AnnouncementControls.Available(element.Command) : DeathControls != null && DeathControls.Available(element.Command);
                         bool hovered = !state.PointerBlocked && rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
                         if (About.AboutPage.Owns(element.Command)) { enabled = true; element = state.Layout.About.Display(element); }
@@ -319,9 +322,9 @@ namespace JueMingR.TerrariaHost.F5
                             continue;
                         }
                         F5ControlRenderer.Button(batch, pixel, button, font, element, hovered, enabled,
-                            F5.MovementControls.Owns(element.Command) ? MovementControls?.Selected(element.Command) : F5.ViewControls.Owns(element.Command) ? ViewControls?.Selected(element.Command) : journey ? JourneyControls?.Selected(element.Command) : entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) :
+                            blueprint ? BlueprintControls?.Selected(element.Command) : F5.MovementControls.Owns(element.Command) ? MovementControls?.Selected(element.Command) : F5.ViewControls.Owns(element.Command) ? ViewControls?.Selected(element.Command) : journey ? JourneyControls?.Selected(element.Command) : entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) :
                             observation ? CombatObservationControls?.Selected(element.Command) : combat ? CombatControls?.Selected(element.Command) : information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls?.Selected(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls?.Selected(element.Command) : F5.AnnouncementControls.Owns(element.Command) ? AnnouncementControls?.Selected(element.Command) : F5.DeathControls.Owns(element.Command) ? DeathControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
-                            view.X, view.Y - state.Scroll);
+                            view.X, view.Y - state.Scroll, subduedWhenDisabled: blueprint);
                     }
                 }
                 batch.End();
@@ -382,12 +385,18 @@ namespace JueMingR.TerrariaHost.F5
             { target = F5HintLayout.Intersect(hover.Rect.Offset(view.X, view.Y - state.Scroll), visible); return state.Layout.About.Hint(hover.Command); }
             target = F5HintLayout.Intersect(hover.Rect.Offset(view.X, view.Y - state.Scroll), visible);
             if (hover.HotkeyTarget == F5.AnnouncementControls.SendActionId) return AnnouncementControls?.SendHint;
+            if (hover.HotkeyTarget == F5.BlueprintControls.SaveAction) return "双击设置保存采集的快捷键";
             if (hover.Kind == F5ElementKind.Hotkey && hover.HotkeyTarget != null)
+            {
+                if (hover.HotkeyTarget == F5.BlueprintControls.SaveAction) return "双击设置保存采集的快捷键";
                 return hover.HotkeyTarget == Hotkeys.HotkeyActionIds.AdjustInformation ? "双击设置调整信息窗位置的快捷键" : "双击设置功能开关快捷键";
+            }
             return ButtonHint(hover, biomeFailed);
         }
         internal string ButtonHint(F5Element hover, bool biomeFailed)
         {
+            if (hover.Command == F5Command.BlueprintCapture) return BlueprintControls != null && BlueprintControls.Active ? F5.BlueprintControls.ExitHint : F5.BlueprintControls.StartHint;
+            if (hover.Command == F5Command.BlueprintSave) return F5.BlueprintControls.SaveHint;
             if (biomeFailed && (hover.Command == F5Command.EnableBiome || hover.Command == F5Command.DisableBiome)) return "群系显示暂不可用";
             return MovementControls?.Hint(hover.Command) ?? ViewControls?.Hint(hover.Command) ?? JourneyControls?.Hint(hover.Command) ?? CombatObservationControls?.Hint(hover.Command) ?? CombatControls?.Hint(hover.Command) ?? EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command) ?? MapControls?.Hint(hover.Command) ?? FootprintControls?.Hint(hover.Command) ?? AnnouncementControls?.Hint(hover.Command);
         }

@@ -486,7 +486,7 @@ namespace JueMingR.TerrariaHost
         {
             PostfixContext context = postfixContext;
             if (Volatile.Read(ref hookCommitted) == 1 && context != null)
-            { context.Input.AfterKeyboardRefresh(); context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.MapFeatures?.Layer.ProcessInput(); context.Movement?.ObserveInput(); context.Combat?.Sample(); context.CombatObservation?.SampleMouse(); }
+            { context.Input.AfterKeyboardRefresh(); context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.MapFeatures?.Layer.ProcessInput(); context.Movement?.ObserveInput(); context.Combat?.Sample(); context.CombatObservation?.SampleMouse(); context.Blueprint?.ProcessInput(); }
 #if JMR_INPUT_DIAGNOSTIC
             if (Volatile.Read(ref hookCommitted) == 1 && context != null) context.Input.ObserveDiagnostics(3);
 #endif
@@ -622,6 +622,7 @@ namespace JueMingR.TerrariaHost
             try { postfixContext?.CombatObservation?.World.Draw(); } catch { postfixContext?.CombatObservation?.World.DisplayFailed(); }
             try { if(entityLayerStatus==Rendering.WorldLayerStatus.Ready)postfixContext?.Tools?.Mining.Draw(); } catch { postfixContext?.Tools?.Mining.DisplayFailed(); }
             try { if (entityLayerStatus == Rendering.WorldLayerStatus.Ready) postfixContext?.Browser?.Locator.Draw(); } catch { postfixContext?.Browser?.Locator.Clear(); }
+            try { if (entityLayerStatus == Rendering.WorldLayerStatus.Ready) postfixContext?.Blueprint?.World.Draw(); } catch { postfixContext?.Blueprint?.State.Interrupt(); }
             return true;
         }
 
@@ -660,7 +661,7 @@ namespace JueMingR.TerrariaHost
         }
 
         private static bool F5PointerBegin() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.BeginPointerLayer(); }
-        private static bool F5Window() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.DrawLayer(); }
+        private static bool F5Window() { try { postfixContext?.Blueprint?.Toolbar.Draw(); } catch { postfixContext?.Blueprint?.Toolbar.Cancel(); } return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.DrawLayer(); }
         private static bool F5HoverGate() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.HoverGateLayer(); }
         private static bool F5PointerEnd() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.EndPointerLayer(); }
 
@@ -847,6 +848,7 @@ namespace JueMingR.TerrariaHost
             internal CoinDeposit.HostCoinDeposit CoinDeposit { get; private set; }
             internal Recovery.HostRecovery Recovery { get; private set; }
             internal Processing.HostProcessing Processing { get; private set; }
+            internal Blueprint.HostBlueprint Blueprint { get; private set; }
             internal Tools.HostTools Tools {get;private set;}
             internal Fishing.HostFishing Fishing {get;private set;}
             internal Journey.JourneySession Journey { get; private set; }
@@ -962,13 +964,16 @@ namespace JueMingR.TerrariaHost
                     runtime.SharedRuntime.AddFeature(Journey);
                     Movement = new Movement.MovementSession(gameDirectory, runtime.SharedRuntime, Input, items, Fishing?.Equipment);
                     runtime.SharedRuntime.AddFeature(Movement);
+                    Blueprint = new Blueprint.HostBlueprint(gameDirectory, runtime.SharedRuntime, Input, worldTiles);
+                    runtime.SharedRuntime.AddFeature(Blueprint);
                     View = new View.HostView(gameDirectory, runtime.SharedRuntime, Input);
                     runtime.SharedRuntime.AddFeature(View);
                 }
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation, Journey, hiddenAccess, () => Shell?.ToggleJourneyFromHotkey(), Movement) : null;
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation, Journey, hiddenAccess, () => Shell?.ToggleJourneyFromHotkey(), Movement, Blueprint) : null;
                 hotkeyFeedback = hotkeys?.Feedback;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements, hiddenAccess) { LayersReady = f5LayersReady };
+                if (Blueprint != null) { Blueprint.Shell = Shell; Shell.AttachBlueprint(Blueprint); }
                 if (Journey != null) Shell.AttachJourney(Journey);
                 if (View != null) Shell.AttachView(View);
                 if (Movement != null) { Shell.AttachMovement(Movement); Movement.CanMovementInput = () => Shell.CanMovementInput; Movement.CanTeleportPointer = () => Shell.CanMovementInput && !Shell.OwnsPointer && !Terraria.Main.LocalPlayer.mouseInterface; }
@@ -990,6 +995,13 @@ namespace JueMingR.TerrariaHost
                 if (QuickItems != null) { Shell.AttachQuickItems(QuickItems); QuickItems.CanGameplay=()=>Shell.CanTargetInput && !Terraria.Main.mapFullscreen && !Terraria.Main.LocalPlayer.mouseInterface; }
                 if (MapFeatures != null) { MapFeatures.Layer.UiOwnsInput = () => Shell.BlocksMapInput || Input.MapPointerOwned; MapFeatures.Layer.CloseForLocate = Shell.CloseForMapLocate; }
                 if (Footprints != null) Footprints.Layer.UiOwnsInput = () => Shell.BlocksMapInput || MapFeatures != null && MapFeatures.Layer.OwnsPointer;
+                if (Blueprint != null)
+                {
+                    // UI pointer ownership is local to the visible toolbar (or
+                    // its release tail), never the capture mode itself.
+                    var previousMapPointer = Input.ClaimsMapPointer;
+                    Input.ClaimsMapPointer = () => (previousMapPointer?.Invoke() ?? false) || Blueprint.Toolbar.HitCurrent();
+                }
             }
 
             internal void UpdateRuntime()
@@ -1008,6 +1020,7 @@ namespace JueMingR.TerrariaHost
                 CoinDeposit?.Poll();
                 Recovery?.Poll();
                 Processing?.Poll();
+                Blueprint?.Poll();
                 Tools?.Poll();
                 Fishing?.Poll();
                 Combat?.Poll();
@@ -1046,6 +1059,7 @@ namespace JueMingR.TerrariaHost
                 Combat?.FailClosed();
                 CombatObservation?.FailClosed();
                 KeepFavorited?.FailClosed();
+                Blueprint?.FailClosed();
                 View?.FailClosed();
                 Movement?.FailClosed();
                 onboarding?.FailClosed();

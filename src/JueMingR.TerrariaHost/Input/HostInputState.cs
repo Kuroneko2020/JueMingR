@@ -34,6 +34,11 @@ namespace JueMingR.TerrariaHost.Input
         internal int MapWheel { get; private set; }
         internal int PhysicalMapX { get; private set; }
         internal int PhysicalMapY { get; private set; }
+        internal bool RawMouseLeft { get; private set; }
+        internal bool RawMouseRight { get; private set; }
+        internal bool NativeUseItemRequest { get; private set; }
+        internal bool NativeUseTileRequest { get; private set; }
+        internal Action BlueprintMapping;
         internal int OwnedMouseMask { get; private set; }
         internal bool MapPointerOwned { get { return OwnedMouseMask != 0 || mapWheelOwned; } }
         private int mouseTail, previousMouse;
@@ -41,6 +46,8 @@ namespace JueMingR.TerrariaHost.Input
         internal void AfterNativeMouse(List<string> mouseKeys)
         {
             RefreshFocus(); MouseState sample = PlayerInput.MouseInfo;
+            RawMouseLeft = sample.LeftButton == ButtonState.Pressed;
+            RawMouseRight = sample.RightButton == ButtonState.Pressed;
             PhysicalMapX = (int)(sample.X * PlayerInput.RawMouseScale.X); PhysicalMapY = (int)(sample.Y * PlayerInput.RawMouseScale.Y);
             int down = (sample.LeftButton == ButtonState.Pressed ? 1 : 0) | (sample.RightButton == ButtonState.Pressed ? 2 : 0) |
                 (sample.MiddleButton == ButtonState.Pressed ? 4 : 0) | (sample.XButton1 == ButtonState.Pressed ? 8 : 0) | (sample.XButton2 == ButtonState.Pressed ? 16 : 0);
@@ -137,6 +144,12 @@ namespace JueMingR.TerrariaHost.Input
             // guarded below; this native field only distinguishes its synthetic
             // mouse sample from a focused physical sample for release proof.
             nativePermission = FocusHelper.IsSelectedApplication;
+            // Blueprint consumes semantic world requests only. Freeze them
+            // before general UI/focus suppression; retain Mouse1/2 and all
+            // native triggers so remapped Jump and inventory clicks still work.
+            NativeUseItemRequest = PlayerInput.Triggers.Current.MouseLeft;
+            NativeUseTileRequest = PlayerInput.Triggers.Current.MouseRight;
+            BlueprintMapping?.Invoke();
             quarantine |= !IsFocused || rearming;
             if (quarantine) { ConsumeMappedInput(); ClearTextActions(); }
             else if (HotkeyCapture || Hotkeys.HasSuppressedKeys || ClaimsHotkeyPointer != null && ClaimsHotkeyPointer()) ConsumeHotkeyActions();
