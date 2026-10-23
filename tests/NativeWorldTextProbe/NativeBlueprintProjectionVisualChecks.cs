@@ -72,11 +72,32 @@ namespace NativeWorldTextProbe
                 Require(Snapshot() == before && Snapshot(ox, oy, sample.Summary.Width, sample.Summary.Height) == drawBefore,
                     "actual Host/worker/world draw leaves sampled local tiles, materials and entity owners unchanged");
                 Main.UIScale = 1; Main.LocalPlayer.gravDir = 1; Main.GameViewMatrix.Zoom = Vector2.One;
+                Call(host,"AcceptWorldPointer",true,false,false,30,30,Main.maxTilesX,Main.maxTilesY);
+                Call(host,"AcceptWorldPointer",true,true,false,30,30,Main.maxTilesX,Main.maxTilesY);
+                NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return Get(host,"ProjectionMode").ToString()=="Fixed";});
+                var original=Get(host,"CurrentProjection");
+                var beforeMask=graphics.Pixels(draw,Main.GameViewMatrix.ZoomMatrix);
+                var cover=Save(library,new BlueprintProjectionWindow(sample.Identity,1,new CaptureSummary{Width=1,Height=1},new BlueprintProjectionBounds(0,0,1,1),new[]{new CaptureCell{X=0,Y=0,Layers=CaptureLayer.Tile,TileType=1}},Array.Empty<CaptureObject>()));
+                NativeQuickItemChecks.Sample(Get(context,"Input"),Array.Empty<Microsoft.Xna.Framework.Input.Keys>());
+                Require((bool)Call(host,"Place",cover),"real masked furniture cover is accepted");
+                NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return Get(host,"ProjectionMode").ToString()=="Following";});
+                Call(host,"AcceptWorldPointer",true,false,false,ox+6,oy+2,Main.maxTilesX,Main.maxTilesY);Call(host,"AcceptWorldPointer",true,true,false,ox+6,oy+2,Main.maxTilesX,Main.maxTilesY);
+                NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return Get(host,"ProjectionMode").ToString()=="Fixed";});
+                graphics.Pixels(draw,Main.GameViewMatrix.ZoomMatrix);
+                NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (int)Get(Get(host,"ProjectionRenderer"),"CommandCount")>0;});
+                var mask=(BlueprintProjectionMask)Get(original,"Mask");
+                Require(sample.Cells.Where(c=>c.ObjectId==2).All(c=>(mask.Apply(c).Layers&CaptureLayer.Tile)==0),"actual Host commit erases whole door Tile across all members");
+                var rendered=((System.Collections.IEnumerable)Get(Get(original,"Renderer"),"commands")).Cast<object>().ToArray();
+                Require(!rendered.Any(c=>Get(c,"Texture").ToString()=="Tile" && (int)Get(c,"Type")==10),"actual masked renderer has no stale door member command");
+                var afterMask=graphics.Pixels(draw,Main.GameViewMatrix.ZoomMatrix);
+                Require(!beforeMask.SequenceEqual(afterMask) && afterMask.Any(c=>c.A>0),"masked multi-instance world consumer reaches changed GPU pixels");
+                graphics.Image(Path.Combine(output,"blueprint-multi-masked-door.png"),draw,Main.GameViewMatrix.ZoomMatrix);
+                Require(Snapshot()==before && Snapshot(ox,oy,sample.Summary.Width,sample.Summary.Height)==drawBefore,"masked commit/draw remains read-only for finite world/material/entity sample");
                 Console.WriteLine("PASS Blueprint projection actual Host.Place/files/window/WorldLayer pixels and local read-only snapshot. Native reference responsibility moved to initialized BlueprintOriginal after visual-1 DrawSingleTile NullReference; this scope does not claim native reference or ready paint shaders, OS actions or multiplayer.");
             }
             finally
             {
-                Call(host, "RemoveProjection"); Main.screenPosition = camera; Main.screenWidth = width; Main.screenHeight = height;
+                Call(host, "ClearProjection"); Main.screenPosition = camera; Main.screenWidth = width; Main.screenHeight = height;
                 Main.LocalPlayer.gravDir = gravity; Main.GameViewMatrix.Zoom = zoom; Main.UIScale = ui;
             }
         }
@@ -184,6 +205,7 @@ namespace NativeWorldTextProbe
                 // placement specialist proves actual native pointer admission.
                 Call(host, "AcceptWorldPointer", true, false, false, mx, my, Main.maxTilesX, Main.maxTilesY);
                 Call(host, "AcceptWorldPointer", true, true, false, mx, my, Main.maxTilesX, Main.maxTilesY);
+                NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return Get(host, "ProjectionMode").ToString() == "Fixed"; });
                 Require(Get(host, "ProjectionMode").ToString() == "Fixed", "comparison projection is fixed without anchor/outline contaminating its pixels");
                 Main.renderNow = false; Main.renderCount = 3; draw(); var renderer = Get(host, "ProjectionRenderer");
                 NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return (int)Get(renderer, "CommandCount") > 0; });
@@ -206,7 +228,7 @@ namespace NativeWorldTextProbe
             }
             finally
             {
-                Call(host, "RemoveProjection");
+                Call(host, "ClearProjection");
                 for (int y = 0; y < saved.GetLength(1); y++) for (int x = 0; x < saved.GetLength(0); x++)
                     if (saved[x, y] != null) Main.tile[sx + x - 2, sy + y - 2] = saved[x, y];
                 Main.LocalPlayer.position = playerPosition; Main.LocalPlayer.gravDir = gravity; Main.GameZoomTarget = zoom; Main.UIScale = ui;

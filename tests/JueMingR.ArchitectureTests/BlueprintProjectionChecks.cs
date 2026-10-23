@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -22,6 +22,11 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "local coordinates and all layers", () => Mixed(Path.Combine(area, "mixed")));
             Run(failures, "X bounded wide rows and stationary reuse", () => Shapes(Path.Combine(area, "shapes")));
             Run(failures, "open fairness latest retirement and failure", () => Scheduling(Path.Combine(area, "scheduling")));
+            Run(failures, "shared instances and atomic layer/object delta", () => Scene(Path.Combine(area, "scene")));
+            Run(failures, "overlap reader retirement rejects late delta", () => CommitRetirement(Path.Combine(area, "commit-retirement")));
+            Run(failures, "shared request saturation and eventual progress", () => Saturation(Path.Combine(area, "saturation")));
+            Run(failures, "sparse overlap spans skip empty rows", () => SparseSpan(Path.Combine(area, "sparse-span")));
+            Run(failures, "65 blocks retain intersection", () => CacheIntersection(Path.Combine(area, "cache-intersection")));
             Run(failures, "delete handle and commit boundaries", () => Deletion(Path.Combine(area, "deletion")));
             if (before == failures.Count)
             {
@@ -162,6 +167,7 @@ namespace JueMingR.ArchitectureTests
                 for (int i = 2; i <= 12; i++) Require(state.RequestProjectionWindow(identity, i, new BlueprintProjectionBounds(i * 10, 0, 10, 1)), "new window replaces prior pending request");
                 counted.BlockRelease.Set(); BlueprintProjectionReceipt latest = Await(state, BlueprintProjectionReceiptKind.Window, 12);
                 Require(latest.Kind == BlueprintProjectionReceiptKind.Window && latest.WindowGeneration == 12 && latest.Window.Cells[0].X == 120, "only latest window publishes after delayed older request");
+                state.CloseProjection(); Until(() => Volatile.Read(ref counted.ActiveIndexes) == 0);
                 identity = Open(state, fixture, 2, 2); counted.FailBlock = 0;
                 Require(state.RequestProjectionWindow(identity, 20, new BlueprintProjectionBounds(0, 0, 10, 1)), "failing halo requested");
                 BlueprintProjectionReceipt failed = Await(state, BlueprintProjectionReceiptKind.Failed);
@@ -209,6 +215,191 @@ namespace JueMingR.ArchitectureTests
                         Require(refused.FailureCode == "blueprint-projection-delete-unconfirmed", "unknown delete blocks further reads of that ID");
                     }
                 }
+            }
+        }
+
+        private static BlueprintProjectionCommitReceipt Commit(LibraryState state, BlueprintProjectionCommitRequest request)
+        {
+            Require(state.RequestProjectionCommit(request), "pure scene computation admitted independently of ordinary library slot");
+            BlueprintProjectionCommitReceipt receipt = null; Until(() => state.TryTakeProjectionCommit(out receipt));
+            Require(receipt.Succeeded, "complete overlap succeeded: " + receipt.Error); return receipt;
+        }
+        private static void Scene(string path)
+        {
+            CaptureCell all = Tile(37, 91); all.Layers |= CaptureLayer.Wall | CaptureLayer.Wire | CaptureLayer.Liquid | CaptureLayer.Actuator; all.WallType = 2; all.Wires = 15; all.LiquidAmount = 40; all.Actuator = true; all.ObjectId = 7;
+            CaptureCell member = Tile(38, 91); member.ObjectId = 7; member.Layers |= CaptureLayer.Wall; member.WallType = 2;
+            Fixture old = Write(path, 2, 1, 2, n => n == 0 ? all : member, new[] { new CaptureObject { Id = 7, X = 37, Y = 91, Width = 2, Height = 1, Type = 1, Reliable = true } });
+            CaptureCell top = Tile(37, 91); top.Layers |= CaptureLayer.Wire; top.Wires = 5;
+            Fixture incoming = Write(path, 1, 1, 1, n => top);
+            using (var counted = new CountedFiles(path)) using (var state = new LibraryState(counted))
+            {
+                BlueprintProjectionIdentity a = Open(state, old, 1), b = Open(state, old, 2), c = Open(state, incoming, 3);
+                Require(counted.ActiveIndexes == 2, "same-template instances share a single retained index; different template has its own immutable reader");
+                BlueprintProjectionWindow aw = Window(state, a, 1, new BlueprintProjectionBounds(0, 0, 1, 1));
+                long reads = counted.Reads;
+                BlueprintProjectionWindow bw = Window(state, b, 2, new BlueprintProjectionBounds(0, 0, 1, 1));
+                Require(aw.Cells.Count == 1 && bw.Cells.Count == 1, "published windows exclude the second object member; complete-object removal must query beyond them");
+                Require(counted.Reads == reads && aw.Identity.ProjectionGeneration != bw.Identity.ProjectionGeneration, "same-template block cache shared without sharing instance identity");
+                CaptureSummary summary = aw.Summary, single = new CaptureSummary { Left = 37, Top = 91, Width = 1, Height = 1, ContentCount = 1 };
+                BlueprintProjectionPlacement pa = new BlueprintProjectionPlacement(a, summary, 100, 100, 1), pb = new BlueprintProjectionPlacement(b, summary, 200, 100, 2);
+                var pc = new BlueprintProjectionPlacement(c, single, 100, 100, 3);
+                BlueprintProjectionCommitReceipt first = Commit(state, new BlueprintProjectionCommitRequest(11, 70, 9, pc, new[] { pa, pb }));
+                Require(first.Request.SceneRevision == 9 && first.Request.TransactionId == 70 && first.Masks.Count == 1 && first.Masks.ContainsKey(1) && !first.Masks.ContainsKey(2), "one immutable qualified delta leaves same object ID in other instance untouched");
+                BlueprintProjectionMask mask = first.Masks[1]; CaptureCell zero = all; zero.X = 0; zero.Y = 0; CaptureCell one = member; one.X = 1; one.Y = 0;
+                CaptureCell left = mask.Apply(zero), right = mask.Apply(one);
+                Require((left.Layers & CaptureLayer.Tile) == 0 && (right.Layers & CaptureLayer.Tile) == 0 && right.Layers == CaptureLayer.Wall, "one-member overlap removes entire off-overlap object Tile, preserving member Wall");
+                Require(left.Wires == 10 && (left.Layers & (CaptureLayer.Wall | CaptureLayer.Liquid | CaptureLayer.Actuator)) == (CaptureLayer.Wall | CaptureLayer.Liquid | CaptureLayer.Actuator), "only same wire colors and Tile removed; missing Wall/Liquid/Actuator transparent");
+                Require(mask.RemovedLayerCount == 4 && pa.Mask.RemovedLayerCount == 0 && pb.Mask.RemovedLayerCount == 0, "source masks remain byte-semantic unchanged until Host chooses atomic commit");
+                var moved = new BlueprintProjectionPlacement(a, summary, 101, 100, 4, mask);
+                BlueprintProjectionCommitReceipt self = Commit(state, new BlueprintProjectionCommitRequest(11, 71, 10, moved, new[] { pa }));
+                Require(self.Masks.Count == 0 && moved.Mask.Apply(one).Layers == CaptureLayer.Wall, "moving self intersection excluded, inherited permanent mask follows origin");
+                var maskedSource = new BlueprintProjectionPlacement(a, summary, 200, 100, 5, mask);
+                BlueprintProjectionCommitReceipt second = Commit(state, new BlueprintProjectionCommitRequest(11, 72, 11, maskedSource, new[] { pb }));
+                CaptureCell remains = second.Masks[2].Apply(zero);
+                Require((remains.Layers & CaptureLayer.Tile) != 0 && remains.Wires == 5 && (remains.Layers & CaptureLayer.Wall) == 0, "already masked Tile/wires are no longer covering sources; visible Wall remains a covering source");
+                Require(mask.Apply(zero).Wires == 10, "moving/removing covering instance cannot mutate or resurrect old mask");
+                var extra = new List<BlueprintProjectionIdentity>();
+                for (int i = 0; i < 40; i++) extra.Add(Open(state, old, 100 + i));
+#if DEBUG
+                BlueprintProjectionStatistics shared = state.DebugProjectionStatistics;
+                Require(shared.ActiveReferences == 43 && shared.ActiveTemplates == 2 && shared.CacheBytes <= 8L * 1024 * 1024 && shared.PendingRequests <= 32 && shared.ReceiptBytes <= 32L * 1024 * 1024, "32 request budget is backpressure rather than an instance cap; more than 32 instances share total bounded worker storage");
+                Console.WriteLine("BlueprintProjection sharedReferences=" + shared.ActiveReferences + " templates=" + shared.ActiveTemplates + " totalCacheBytes=" + shared.CacheBytes + " pendingRequests=" + shared.PendingRequests + " receiptBytes=" + shared.ReceiptBytes + " windowWorkingBytes=" + shared.WindowWorkingBytes);
+#endif
+                foreach (BlueprintProjectionIdentity added in extra) state.ReleaseProjection(added);
+                var duplicate = Open(state, incoming, 4);
+                BlueprintProjectionCommitReceipt full = Commit(state, new BlueprintProjectionCommitRequest(11, 73, 12, new BlueprintProjectionPlacement(duplicate, single, 100, 100, 6), new[] { pc }));
+                Require(full.RetiredInstanceIds.Count == 1 && full.RetiredInstanceIds[0] == 3, "all remaining layer units consumed retires exactly the empty instance");
+                state.ReleaseProjection(duplicate);
+                state.ReleaseProjection(a); Window(state, b, 3, new BlueprintProjectionBounds(0, 0, 2, 1)); Require(counted.ActiveIndexes == 2, "one world removal keeps same-template remaining reference and unrelated template alive");
+                state.ReleaseProjection(b); Until(() => Volatile.Read(ref counted.ActiveIndexes) == 1);
+                state.ReleaseProjection(c); Until(() => Volatile.Read(ref counted.ActiveIndexes) == 0);
+            }
+        }
+
+        private static void CommitRetirement(string path)
+        {
+            Fixture wide = Write(path, 262144, 1, 262144, n => Tile(37 + (int)n, 91));
+            Fixture tiny = Write(path, 1, 1, 1, n => Tile(37, 91));
+            using (var counted = new CountedFiles(path)) using (var state = new LibraryState(counted))
+            {
+                BlueprintProjectionIdentity previous = Open(state, wide, 1), candidate = Open(state, tiny, 2);
+                var old = new BlueprintProjectionPlacement(previous, new CaptureSummary { Left = 37, Top = 91, Width = 262144, Height = 1, ContentCount = 262144 }, 0, 0, 1);
+                var next = new BlueprintProjectionPlacement(candidate, new CaptureSummary { Left = 37, Top = 91, Width = 1, Height = 1, ContentCount = 1 }, 60 * 2048, 0, 2);
+                counted.HoldBlock = 60;
+                Require(state.RequestProjectionCommit(new BlueprintProjectionCommitRequest(11, 800, 80, next, new[] { old })), "overlap starts against a qualified immutable scene");
+                Require(counted.BlockEntered.Wait(5000), "overlap actually reaches old template reader beyond cached tail");
+                state.ReleaseProjection(previous); counted.BlockRelease.Set();
+                Until(() => Volatile.Read(ref counted.ActiveIndexes) == 1);
+                var fresh = new BlueprintProjectionCommitRequest(11, 801, 81, next, Array.Empty<BlueprintProjectionPlacement>());
+                Until(() => state.RequestProjectionCommit(fresh));
+                BlueprintProjectionCommitReceipt receipt = null; Until(() => state.TryTakeProjectionCommit(out receipt));
+                Require(receipt.Succeeded && receipt.Request.TransactionId == 801 && receipt.Request.SceneRevision == 81 && receipt.Masks.Count == 0, "reader retirement drops old delta, releases its compute slot and preserves the next transaction identity");
+                Require(old.Mask.RemovedLayerCount == 0, "retired computation never mutates Host's old immutable mask");
+                state.ReleaseProjection(candidate); Until(() => Volatile.Read(ref counted.ActiveIndexes) == 0);
+            }
+        }
+
+        private static void Saturation(string path)
+        {
+            Fixture fixture = Write(path, 262144, 1, 262144, n => Tile(37 + (int)n, 91));
+            using (var counted = new CountedFiles(path)) using (var state = new LibraryState(counted))
+            {
+                var identities = new List<BlueprintProjectionIdentity>();
+                for (int i = 0; i < 40; i++) identities.Add(Open(state, fixture, 300 + i));
+                Require(counted.ActiveIndexes == 1, "forty references share one immutable template reader");
+                counted.HoldBlock = 0;
+                Require(state.RequestProjectionWindow(identities[0], 1, new BlueprintProjectionBounds(0, 0, 1, 1)), "first viewport request admitted");
+                Require(counted.BlockEntered.Wait(5000), "single worker held at uncached read before mailbox saturation");
+                var admitted = new List<BlueprintProjectionIdentity> { identities[0] }; var refused = new List<BlueprintProjectionIdentity>();
+                for (int i = 1; i < identities.Count; i++)
+                {
+                    if (state.RequestProjectionWindow(identities[i], 1, new BlueprintProjectionBounds(i * 2048, 0, 1, 1))) admitted.Add(identities[i]);
+                    else refused.Add(identities[i]);
+                }
+                Require(admitted.Count == 32 && refused.Count == 8, "active plus pending viewport requests are bounded; saturation returns backpressure without losing instances");
+#if DEBUG
+                Require(state.DebugProjectionStatistics.PendingRequests == 32 && state.DebugProjectionStatistics.ActiveReferences == 40, "real owner counters distinguish request budget from reference count");
+#endif
+                Require(state.TryList(900, 0), "ordinary library request accepted while viewport queue is saturated");
+                counted.BlockRelease.Set(); Require(Library(state, true).Status == LibraryStatus.Completed, "accepted List gets priority at the next cooperative viewport boundary");
+                var received = new HashSet<long>();
+                Until(() =>
+                {
+                    BlueprintProjectionReceipt receipt;
+                    if (state.TryTakeProjectionReceipt(out receipt))
+                    {
+                        Require(receipt.Kind == BlueprintProjectionReceiptKind.Window && receipt.Window.Cells.Count == 1, "only complete bounded windows reach consumer"); received.Add(receipt.Identity.ProjectionGeneration);
+                    }
+                    return received.Count == admitted.Count;
+                });
+                foreach (BlueprintProjectionIdentity identity in refused)
+                {
+                    int at = identities.IndexOf(identity);
+                    Require(state.RequestProjectionWindow(identity, 2, new BlueprintProjectionBounds(at * 2048, 0, 1, 1)), "previously refused reference admitted after progress frees capacity");
+                }
+                Until(() =>
+                {
+                    BlueprintProjectionReceipt receipt;
+                    if (state.TryTakeProjectionReceipt(out receipt)) { Require(receipt.Kind == BlueprintProjectionReceiptKind.Window, "retried demand remains readable"); received.Add(receipt.Identity.ProjectionGeneration); }
+                    return received.Count == identities.Count;
+                });
+#if DEBUG
+                BlueprintProjectionStatistics stats = state.DebugProjectionStatistics;
+                Require(stats.CachePeakBytes <= 8L * 1024 * 1024 && stats.ReceiptBytes <= 32L * 1024 * 1024, "all references consume one global decoded and receipt byte budget");
+                Console.WriteLine("BlueprintProjection saturation references=40 admitted=32 deferred=8 consumed=" + received.Count + " cachePeakBytes=" + stats.CachePeakBytes + " receiptBytes=" + stats.ReceiptBytes);
+#endif
+                long reads = counted.Reads; Thread.Sleep(10); Require(counted.Reads == reads, "no-demand steady state does no new I/O after all saturated requests are consumed");
+                foreach (BlueprintProjectionIdentity identity in identities) state.ReleaseProjection(identity);
+                Until(() => Volatile.Read(ref counted.ActiveIndexes) == 0);
+            }
+        }
+
+        private static void SparseSpan(string path)
+        {
+            for (int variant = 0; variant < 3; variant++)
+            {
+                int kind = variant;
+                long count = kind == 0 ? 2 : kind == 1 ? 4097 : 4098;
+                Fixture fixture = Write(Path.Combine(path, kind.ToString()), kind == 0 ? 1 : 4096, 1000000, count, n =>
+                {
+                    if (kind == 0) return Tile(37, 91 + (n == 0 ? 0 : 999999));
+                    if (kind == 1) return n == 0 ? Tile(37, 91) : Tile(37 + (int)n - 1, 1000090);
+                    if (n < 2048) return Tile(37 + (int)n, 91);
+                    if (n < 4096) return Tile(37 + (int)n - 2048, 500091);
+                    return Tile(n == 4096 ? 37 : 4132, 1000090);
+                });
+                using (var counted = new CountedFiles(Path.Combine(path, kind.ToString()))) using (var state = new LibraryState(counted))
+                {
+                    BlueprintProjectionIdentity identity = Open(state, fixture);
+#if DEBUG
+                    BlueprintProjectionStatistics before = state.DebugProjectionStatistics;
+#endif
+                    var bounds = new BlueprintProjectionBounds(kind == 0 ? 0 : kind == 1 ? 3000 : 2046, 0, kind == 0 ? 1 : 2, 1000000);
+                    BlueprintProjectionWindow window = Window(state, identity, 1, bounds);
+                    if (kind == 0) Require(window.Cells.Count == 2 && window.Cells[0].Y == 0 && window.Cells[1].Y == 999999, "two actual records survive a million-row sparse overlap query");
+                    else if (kind == 1) Require(window.Cells.Count == 2 && window.Cells[0].X == 3000 && window.Cells[1].X == 3001 && window.Cells[0].Y == 999999 && window.Cells[1].Y == 999999, "jumping a spanning block must still query later blocks on its last row");
+                    else Require(window.Cells.Count == 4 && window.Cells[0].Y == 0 && window.Cells[1].Y == 0 && window.Cells[2].Y == 500000 && window.Cells[3].Y == 500000, "empty gaps between disjoint block ranges are skipped without missing selected X endpoints");
+#if DEBUG
+                    BlueprintProjectionStatistics after = state.DebugProjectionStatistics; long comparisons = after.DirectoryComparisons - before.DirectoryComparisons;
+                    Console.WriteLine("BlueprintProjection sparseSpan variant=" + kind + " height=1000000 cells=" + window.Cells.Count + " comparisons=" + comparisons);
+                    Require(comparisons <= 32, "complete sparse overlap must locate actual block spans rather than loop a million empty rows; comparisons=" + comparisons);
+#endif
+                }
+            }
+        }
+
+        private static void CacheIntersection(string path)
+        {
+            Fixture fixture = Write(path, 512, 264, 512L * 264, n => Tile(37 + (int)(n % 512), 91 + (int)(n / 512)));
+            using (var counted = new CountedFiles(path)) using (var state = new LibraryState(counted))
+            {
+                BlueprintProjectionIdentity identity = Open(state, fixture);
+                Window(state, identity, 1, new BlueprintProjectionBounds(0, 0, 512, 260));
+                long before = counted.Reads;
+                Window(state, identity, 2, new BlueprintProjectionBounds(0, 4, 512, 260));
+                long added = counted.Reads - before;
+                Console.WriteLine("BlueprintProjection cache65 capacity=8388608 shiftedBlockReads=" + added);
+                Require(added <= 3, "64 overlapping block demands must survive the 65-block/63-resident LRU cycle; actual reads=" + added);
             }
         }
 

@@ -24,6 +24,7 @@ namespace NativeWorldTextProbe
             sample(1066, 566, true); sample(1066, 566, true);
             Require(Get(host, "ProjectionMode").ToString() == "Following", "startup held click cannot certify placement even after native UI draw");
             sample(1050, 550, false); sample(1050, 550, false); sample(1050, 550, true); sample(1050, 550, true);
+            NativeQuickItemChecks.Until(() => { Call(host,"Poll"); return Get(host,"ProjectionMode").ToString()=="Fixed"; });
             Require(Get(host, "ProjectionMode").ToString() == "Fixed", "new certified native world press fixes projection");
             Func<int> x = () => (int)Get(Get(host, "CurrentProjection"), "OriginX"), y = () => (int)Get(Get(host, "CurrentProjection"), "OriginY");
             int oldX = x(), oldY = y();
@@ -36,10 +37,15 @@ namespace NativeWorldTextProbe
                 sample((int)((float)Get(panel, "X") + (float)Get(rect, "X") + 10), (int)((float)Get(panel, "Y") + (float)Get(rect, "Y") + 10), down);
             };
             move(false); move(true); move(false);
-            Require(Get(host, "ProjectionMode").ToString() == "Moving" && x() == oldX && y() == oldY, "actual native toolbar Move starts without a UI-coordinate jump");
-            sample(1050, 550, false); sample(1050, 550, false);
-            Require(x() == oldX && y() == oldY, "first native neutral world point only establishes move baseline");
-            sample(1066, 566, false); sample(1066, 566, false);
+            Require(Get(host, "ProjectionMode").ToString() == "SelectingMove" && x() == oldX && y() == oldY, "actual native toolbar Move starts target selection without a UI-coordinate jump");
+            var target=Microsoft.Xna.Framework.Vector2.Transform(Main.ReverseGravitySupport(new Microsoft.Xna.Framework.Vector2(oldX*16+8,oldY*16+8)-Main.screenPosition),Main.GameViewMatrix.ZoomMatrix);
+            int tx=(int)target.X,ty=(int)target.Y;
+            NativeQuickItemChecks.Until(()=>{sample(tx,ty,false);return GetOptional(Get(host,"CurrentProjection"),"Window")!=null;});
+            sample(tx,ty,false);sample(tx,ty,true);sample(tx,ty,true);
+            Require(Get(host,"ProjectionMode").ToString()=="Moving" && x()==oldX && y()==oldY,"new certified target press selects visible tile and retains grab offset");
+            sample(tx,ty,false); sample(tx,ty,false);
+            Require(x() == oldX && y() == oldY, "native target release does not confirm or jump");
+            sample(tx+16,ty+16,false); sample(tx+16,ty+16,false);
             Require(x() == oldX + 1 && y() == oldY + 1, "certified native mouse tile delta moves projection one world tile");
             PlayerInput.Triggers.Current.MouseLeft = true; PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);
             Require(!Main.LocalPlayer.controlUseItem, "Moving blocks the actual original world-use consumer");
@@ -47,7 +53,8 @@ namespace NativeWorldTextProbe
             sample(1050, 550, false); sample(1050, 550, false);
             PlayerInput.Triggers.Current.MouseLeft = true; PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);
             Require(Main.LocalPlayer.controlUseItem, "Fixed restores native use after trusted release");
-            Call(host, "RemoveProjection"); sample(1050, 550, false);
+            Call(host, "RemoveProjection");sample(tx,ty,false);sample(tx,ty,false);sample(tx,ty,true);sample(tx,ty,true);
+            Require(GetOptional(host,"CurrentProjection")==null,"new certified selection removes only the chosen world instance");
             Console.WriteLine("PASS Blueprint initialized-native placement: real pointer certificate/startup/new click, gel Move/Remove layout, zero entry jump, one tile delta, world-use gate and cancel restoration. Controlled specialist input; OS/multiplayer/ordinary load NOT_EXECUTED.");
         }
     }

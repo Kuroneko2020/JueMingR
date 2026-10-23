@@ -52,6 +52,10 @@ namespace JueMingR.Features.Blueprint
     }
     public sealed class LibraryReceipt
     {
+        // Protected is a broad durable-data guard, not proof that a delete
+        // reached its metadata commit. Only the mechanical writer can set this
+        // narrower fact before the receipt is published to the Host owner.
+        public bool DeleteProvenUncommitted { get; internal set; }
         internal LibraryReceipt(long commandId, LibraryCommandKind kind, LibraryStatus status, Guid operation, Guid asset, CaptureToken token, long generation, string error = null, bool protect = false, bool cleanup = false, LibraryPage page = null, BlueprintPreviewImage preview = null, LibraryObjectPage objectPage = null, CaptureSummary summary = null, string failureCode = null, string suggestedName = null, bool operationRetired = false)
         { CommandId = commandId; Kind = kind; Status = status; OperationId = operation; AssetId = asset; Token = token; Generation = generation; Error = error; IsProtected = protect; CleanupPending = cleanup; Page = page; Preview = preview; ObjectPage = objectPage; Summary = LibraryState.Copy(summary); FailureCode = failureCode; SuggestedName = suggestedName; OperationRetired = operationRetired; }
         public long CommandId { get; }

@@ -53,6 +53,8 @@ namespace NativeWorldTextProbe
             {
                 ReadCancellation(ui, host, library);
                 EditGeometry(ui, assembly);
+                CapturePage(ui, host, library);
+                BlueprintHints(context);
                 HiddenKeyboardTail(ui, state);
                 LegacyMissingUi(ui, host, library);
                 Guid id = Guid.NewGuid(); Call(ui, "BeginEdit", id, "原名");
@@ -124,6 +126,94 @@ namespace NativeWorldTextProbe
         private static bool ImeToggle(bool enabled) { PlayerInput.WritingText = enabled; return false; }
         private static bool ImeEmpty(ref string __result) { __result = ""; return false; }
         private static bool ImeNoCandidates(ref bool __result) { __result = false; return false; }
+        private static void CapturePage(object ui, object host, LibraryState library)
+        {
+            var flow = (BlueprintCaptureFlow)Get(host, "Flow");
+            var prior = typeof(BlueprintCaptureFlow).GetProperties().ToDictionary(p => p, p => p.GetValue(flow));
+            var snapshot = Get(library, "snapshot"); var assembly = ui.GetType().Assembly;
+            Type rect = assembly.GetType("JueMingR.TerrariaHost.F5.F5Rect", true);
+            var layout = assembly.GetType("JueMingR.TerrariaHost.F5.BlueprintLibraryLayout", true);
+            try
+            {
+                Set(library, "snapshot", Activator.CreateInstance(typeof(LibrarySnapshot), F, null, new object[] { 0L, false, null, null, 0L }, null));
+                flow.Status = BlueprintCaptureStatus.DraftReady; flow.ContentHandle = new ContentHandle(Guid.NewGuid());
+                flow.DraftName = "默认名可以直接保存"; flow.Summary = new CaptureSummary { Width = 300, Height = 200, ContentCount = 60000 };
+                Call(ui, "ShowCapture");
+                foreach (float height in new[] { 581f, 297f, 180f })
+                {
+                    Set(ui, "view", Activator.CreateInstance(rect, F, null, new object[] { 0f, 0f, 522f, height }, null));
+                    Call(ui, "Build");
+                    var parts = ((IEnumerable)Get(ui, "parts")).Cast<object>().ToArray();
+                    var name = parts.Single(p => Get(p, "Command").ToString() == "Name");
+                    var nameElement = Get(name, "Element"); var field = Get(nameElement, "Rect");
+                    var image = parts.Single(p => Get(Get(p, "Element"), "Kind").ToString() == "Image");
+                    var preview = Get(Get(image, "Element"), "Rect");
+                    var save = parts.Single(p => Get(p, "Command").ToString() == "ConfirmDraft");
+                    var saveRect = Get(Get(save, "Element"), "Rect");
+                    Require((float)Get(field, "Width") == 506 && (float)Get(field, "Height") == 32 && (float)Get(nameElement, "TextScale") == .70f,
+                        "production capture name uses the full safe-height normal-size field");
+                    Require((float)Get(preview, "Width") == 506 && (float)Get(preview, "Height") == (height == 581 ? 350 : height == 297 ? 123 : 48),
+                        "production capture gives preview the real remaining viewport, including the low 297 page");
+                    Require((float)Get(saveRect, "Width") == 176 && (float)Get(saveRect, "Height") == 32 && (float)Get(saveRect, "Y") > (float)Get(preview, "Bottom"),
+                        "production save is a dedicated large action below the image and summary");
+                    Require(!parts.Any(p => (bool)Get(p, "Card")) && GetOptional(ui, "Editor") == null,
+                        "capture workspace has no selected library card and default name needs no editing");
+                    Point budget = (Point)layout.GetMethod("CapturePreviewSize", F).Invoke(null, new object[] { 522f, height, Matrix.CreateScale(1.5f) });
+                    Require(budget.X <= 1024 && budget.Y <= 768 && (height != 581 || budget.Y > 128), "actual capture request uses the new purpose's physical container budget");
+                    Call(ui, "Execute", name);
+                    Require(((TextEditBuffer)Get(ui, "Editor")).Text == flow.DraftName, "one actual capture name command enters the shared text editor");
+                    Call(ui, "Build"); Require((float)Get(Get(ui, "editRect"), "Width") == 506, "the real editRect follows the full capture field used by IME");
+                    flow.Status = BlueprintCaptureStatus.Saving; Call(ui, "Build");
+                    parts = ((IEnumerable)Get(ui, "parts")).Cast<object>().ToArray();
+                    Require(!(bool)Get(ui, "Editable") && !(bool)Call(ui, "RequestFinish") &&
+                        !parts.Any(p => Get(p, "Command").ToString() == "Cancel"), "accepted save freezes editing and exposes no cancelling write action");
+                    flow.Status = BlueprintCaptureStatus.DraftReady; Call(ui, "CancelEdit");
+                }
+            }
+            finally { Call(ui, "ReleasePresentation"); foreach (var item in prior) item.Key.SetValue(flow, item.Value); Set(library, "snapshot", snapshot); }
+        }
+        private static void BlueprintHints(object context)
+        {
+            var shell = Get(context, "Shell"); var state = Get(shell, "State"); var renderer = Get(shell, "renderer");
+            var assembly = state.GetType().Assembly;
+            Call(state, "Navigate", 6); Set(state, "Ready", true); Call(state, "RestoreVisible");
+            Call(Get(state, "Layout"), "SetBlueprintLibraryVisible", false);
+            Call(renderer, "Prepare", state, 1280f, 900f, 1f);
+            var layout = Get(state, "Layout"); var view = Get(layout, "Viewport");
+            var elements = ((IEnumerable)Get(layout, "Elements")).Cast<object>().ToArray();
+            Func<object, string> hint = element =>
+            {
+                var area = GetOptional(element, "Description") != null ? Get(element, "HintRect") : Get(element, "Rect");
+                var input = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.F5.F5Input", true));
+                Set(input, "Active", true); Set(input, "Focused", true); Set(input, "Width", 1280f); Set(input, "Height", 900f); Set(input, "Scale", 1f);
+                // Update first establishes this viewport's actual centered
+                // shell position; the prior check used a different viewport.
+                Call(state, "Update", input);
+                Call(state, "ScrollTo", Math.Max(0f, (float)Get(area, "Y") - 20f));
+                Set(input, "X", (float)Get(state, "X") + (float)Get(view, "X") + (float)Get(area, "X") + 3);
+                Set(input, "Y", (float)Get(state, "Y") + (float)Get(view, "Y") + (float)Get(area, "Y") - (float)Get(state, "Scroll") + 3);
+                Call(state, "Update", input);
+                object[] args = { state, null, false, false, null, null };
+                return (string)renderer.GetType().GetMethod("ResolveHint", F).Invoke(renderer, args);
+            };
+            foreach (string label in new[] { elements.Any(e => (string)GetOptional(e, "Text") == "采集蓝图") ? "采集蓝图" : "退出采集", "保存采集", "移动蓝图", "移除蓝图" })
+            {
+                var name = elements.First(e => (string)GetOptional(e, "Text") == label);
+                Require(hint(name) == (string)Get(Get(name, "Description"), "Text"), "actual final F5 consumer resolves static description on " + label);
+            }
+            var controls = Get(renderer, "BlueprintControls");
+            foreach (string command in new[] { "BlueprintCapture", "BlueprintSave", "BlueprintMove", "BlueprintRemove" })
+            {
+                var button = elements.First(e => Get(e, "Command").ToString() == command);
+                bool enabled = (bool)Call(controls, "Available", Get(button, "Command"));
+                Require(enabled ? hint(button) == null : !string.IsNullOrEmpty(hint(button)), "actual F5 text action removes duplicate only while enabled: " + command);
+            }
+            var icon = elements.First(e => (string)GetOptional(e, "HotkeyTarget") == "blueprint.save");
+            Require(hint(icon) == "双击设置保存采集的快捷键", "actual icon consumer retains its purpose hint");
+            Require(GetOptional(elements.First(e => (string)GetOptional(e, "Text") == "手持凝胶显示快捷栏"), "Description") == null,
+                "gel display row retains the owner's no-description choice");
+            Call(state, "Close");
+        }
         private static void LegacyMissingUi(object ui, object host, LibraryState library)
         {
             const string historical = "箱内物品未采集；牌子或墓碑文字未采集；展示物品未采集";
@@ -144,6 +234,12 @@ namespace NativeWorldTextProbe
                 Set(ui, "view", Activator.CreateInstance(rect, F, null, new object[] { 0f, 0f, 522f, 580f }, null)); Call(ui, "Build");
                 Action quiet = () => Require(!((IEnumerable)Get(ui, "parts")).Cast<object>().Any(p => ((string)Get(Get(p, "Element"), "Text")).Contains("未采集")), "actual cards/list/selected-bottom consume historical Missing quietly");
                 quiet();
+                var namePart = ((IEnumerable)Get(ui, "parts")).Cast<object>().Single(p => Get(p, "Command").ToString() == "Name");
+                Set(ui, "lastClickName", false); Call(ui, "Execute", namePart);
+                Require(GetOptional(ui, "Editor") == null, "one actual library name command selects without editing");
+                Call(ui, "Execute", namePart);
+                Require(((TextEditBuffer)Get(ui, "Editor")).Text == "旧合法图", "second actual library name command retains double-click rename");
+                Call(ui, "CancelEdit");
                 flow.Summary = new CaptureSummary { Width = 2, Height = 2, ContentCount = 4, MissingPayloads = historical.Split('；'), UnreliableObjectCount = 1 };
                 flow.ContentHandle = new ContentHandle(Guid.NewGuid()); flow.Status = BlueprintCaptureStatus.DraftReady;
                 Call(ui, "ShowCapture"); Call(ui, "Build"); quiet();

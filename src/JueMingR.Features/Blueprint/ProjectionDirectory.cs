@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace JueMingR.Features.Blueprint
@@ -33,12 +33,27 @@ namespace JueMingR.Features.Blueprint
         }
         internal IEnumerable<long> Query(int left, int top, int right, int bottom, Action comparison = null)
         {
-            var selected = new HashSet<long>();
-            for (int y = top; y < bottom; y++)
+            if (left >= right || top >= bottom) yield break;
+            var selected = new HashSet<long>(); int y = top;
+            while (y < bottom)
             {
                 long start = Key(left, y), end = Key(right - 1, y); int low = 0, high = cells.Count;
                 while (low < high) { if (comparison != null) comparison(); int mid = low + (high - low) / 2; if (cells[mid].Last < start) low = mid + 1; else high = mid; }
-                for (int i = low; i < cells.Count && cells[i].First <= end; i++) if (selected.Add(cells[i].Number)) yield return cells[i].Number;
+                if (low == cells.Count) yield break;
+                int firstY = (int)(cells[low].First >> 32);
+                // A sparse overlap/object footprint may span millions of empty
+                // rows. Binary search proves the gap before the next block empty.
+                if (firstY > y) { y = firstY; continue; }
+                int nextY = y + 1;
+                for (int i = low; i < cells.Count && cells[i].First <= end; i++)
+                {
+                    if (selected.Add(cells[i].Number)) yield return cells[i].Number;
+                    // All records before this selected block's last row are
+                    // already covered by that whole block. Revisit its last row:
+                    // additional X blocks can start there and must not be skipped.
+                    int lastY = (int)(cells[i].Last >> 32); if (lastY > nextY) nextY = lastY;
+                }
+                y = nextY;
             }
         }
         internal long FindObject(int id, Action comparison = null)

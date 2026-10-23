@@ -26,20 +26,35 @@ namespace JueMingR.Features.Blueprint
         }
     }
 
+    // Snapshot limits describe the consumer's purpose, not world/asset bounds.
+    // The worker validates the persisted Stage bit against this same contract.
+    public static class BlueprintPreviewBudget
+    {
+        public const int LibraryWidth = 512, LibraryHeight = 128;
+        public const int DraftWidth = 1024, DraftHeight = 768;
+        public const long DraftBytes = 3L * 1024 * 1024;
+        public static bool IsValid(int width, int height, bool draft)
+        {
+            return width > 0 && height > 0 && width <= (draft ? DraftWidth : LibraryWidth) &&
+                height <= (draft ? DraftHeight : LibraryHeight) && (long)width * height * 4 <= (draft ? DraftBytes : (long)LibraryWidth * LibraryHeight * 4);
+        }
+    }
+
     // A worker feeds every meaningful cell once. Memory depends on the finite
     // output, not source bounds or cell count. OR aggregation is independent of
     // chunk order and retains remote sparse content instead of sampling a prefix.
     public sealed class BlueprintPreviewBuilder
     {
         public const int RendererVersion = 1;
-        public const int MaximumWidth = 512, MaximumHeight = 128;
+        public const int MaximumWidth = BlueprintPreviewBudget.LibraryWidth, MaximumHeight = BlueprintPreviewBudget.LibraryHeight;
         private readonly int sourceWidth, sourceHeight, width, height;
         private byte[] layers;
         private long processed;
         public BlueprintPreviewBuilder(int contentWidth, int contentHeight, int maximumWidth, int maximumHeight)
+            : this(contentWidth, contentHeight, maximumWidth, maximumHeight, false) { }
+        public BlueprintPreviewBuilder(int contentWidth, int contentHeight, int maximumWidth, int maximumHeight, bool draft)
         {
-            if (contentWidth <= 0 || contentHeight <= 0 || maximumWidth <= 0 || maximumHeight <= 0 ||
-                maximumWidth > MaximumWidth || maximumHeight > MaximumHeight) throw new ArgumentOutOfRangeException();
+            if (contentWidth <= 0 || contentHeight <= 0 || !BlueprintPreviewBudget.IsValid(maximumWidth, maximumHeight, draft)) throw new ArgumentOutOfRangeException();
             sourceWidth = contentWidth; sourceHeight = contentHeight;
             if ((long)contentWidth * maximumHeight >= (long)contentHeight * maximumWidth)
             {

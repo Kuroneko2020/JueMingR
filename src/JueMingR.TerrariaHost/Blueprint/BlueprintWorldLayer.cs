@@ -20,16 +20,18 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (host.ProjectionVisible)
             {
                 host.UpdateProjectionWindow(view);
-                var projection = host.CurrentProjection;
-                host.ProjectionRenderer.Draw(projection.OriginX, projection.OriginY);
-                string error;
-                if (host.ProjectionRenderer.TryTakeError(out error)) { host.ProjectionDrawFailed(error); return; }
-                if (host.ProjectionEditing && projection.Summary != null)
+                foreach (var fixedProjection in host.ProjectionScene)
+                    if (!ReferenceEquals(fixedProjection, host.ProjectionMovingSource) && !DrawProjection(fixedProjection)) return;
+                var projection = host.ProjectionCandidate;
+                if (projection?.Positioned == true && !DrawProjection(projection)) return;
+                if (host.ProjectionEditing && projection?.Summary != null)
                 {
                     int x = projection.OriginX + (projection.Summary.Width - 1) / 2, y = projection.OriginY + (projection.Summary.Height - 1) / 2;
                     Cross(x, y);
                     Outline(projection.OriginX, projection.OriginY, projection.Summary.Width, projection.Summary.Height, view, Color.FromNonPremultiplied(100, 200, 255, 90));
                 }
+                var hover = host.ProjectionHover;
+                if (hover != null) Outline(hover.OriginX, hover.OriginY, hover.Summary.Width, hover.Summary.Height, view, Color.FromNonPremultiplied(160, 230, 255, 190));
             }
             if (!host.State.Active) return;
             // Enumerate only visible rows/spans. A solid world-sized selection
@@ -52,6 +54,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                     Fill(x, y, x + 1, y + 1, Color.FromNonPremultiplied(80, 180, 255, 150));
                 }
             }
+        }
+        private bool DrawProjection(BlueprintProjectionPlacement projection)
+        {
+            projection.Renderer.Draw(projection.OriginX, projection.OriginY);
+            string error; if (projection.Renderer.TryTakeError(out error)) { host.ProjectionDrawFailed(projection, error); return false; } return true;
         }
         private static void Cross(int x, int y)
         {

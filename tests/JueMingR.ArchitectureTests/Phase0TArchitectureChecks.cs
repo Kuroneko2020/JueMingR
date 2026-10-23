@@ -97,6 +97,8 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Blueprint.BlueprintPreviewLayer", "JueMingR.Features.Blueprint.BlueprintPreviewBuilder", "JueMingR.Features.Blueprint.BlueprintPreviewImage",
                 "JueMingR.Features.Blueprint.BlueprintProjectionIdentity", "JueMingR.Features.Blueprint.BlueprintProjectionBounds", "JueMingR.Features.Blueprint.BlueprintProjectionWindow",
                 "JueMingR.Features.Blueprint.BlueprintProjectionReceiptKind", "JueMingR.Features.Blueprint.BlueprintProjectionReceipt",
+                "JueMingR.Features.Blueprint.BlueprintTemplateKey", "JueMingR.Features.Blueprint.BlueprintProjectionMask", "JueMingR.Features.Blueprint.BlueprintProjectionPlacement",
+                "JueMingR.Features.Blueprint.BlueprintProjectionCommitRequest", "JueMingR.Features.Blueprint.BlueprintProjectionCommitReceipt", "JueMingR.Features.Blueprint.BlueprintPreviewBudget",
 #if DEBUG
                 "JueMingR.Features.Blueprint.BlueprintProjectionStatistics",
 #endif

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace JueMingR.Features.Blueprint
@@ -10,8 +10,9 @@ namespace JueMingR.Features.Blueprint
         public BlueprintProjectionIdentity(Guid assetId, Guid contentRevision, string contentHash, long sessionGeneration, long projectionGeneration)
         {
             if (assetId == Guid.Empty || contentRevision == Guid.Empty || String.IsNullOrEmpty(contentHash)) throw new ArgumentException("Invalid projection identity.");
-            AssetId = assetId; ContentRevision = contentRevision; ContentHash = contentHash; SessionGeneration = sessionGeneration; ProjectionGeneration = projectionGeneration;
+            TemplateKey = new BlueprintTemplateKey(assetId, contentRevision, contentHash); AssetId = assetId; ContentRevision = contentRevision; ContentHash = contentHash; SessionGeneration = sessionGeneration; ProjectionGeneration = projectionGeneration;
         }
+        public BlueprintTemplateKey TemplateKey { get; }
         public Guid AssetId { get; }
         public Guid ContentRevision { get; }
         public string ContentHash { get; }
@@ -78,8 +79,13 @@ namespace JueMingR.Features.Blueprint
     // sampling, logging, timers, or diagnostic file output is installed.
     public readonly struct BlueprintProjectionStatistics
     {
-        internal BlueprintProjectionStatistics(long reads, long records, long comparisons, long windowBlocks, long slices, long retired, long cachePeak, long directoryBytes, long directoryBlocks, long cacheBytes)
-        { BlockReads = reads; DecodedRecords = records; DirectoryComparisons = comparisons; WindowBlocks = windowBlocks; Slices = slices; RetiredRequests = retired; CachePeakBytes = cachePeak; DirectoryBytes = directoryBytes; DirectoryBlocks = directoryBlocks; CacheBytes = cacheBytes; }
+        internal BlueprintProjectionStatistics(long reads, long records, long comparisons, long windowBlocks, long slices, long retired, long cachePeak, long directoryBytes, long directoryBlocks, long cacheBytes, long templates = 0, long references = 0, long pending = 0, long receipts = 0, long working = 0)
+        { BlockReads = reads; DecodedRecords = records; DirectoryComparisons = comparisons; WindowBlocks = windowBlocks; Slices = slices; RetiredRequests = retired; CachePeakBytes = cachePeak; DirectoryBytes = directoryBytes; DirectoryBlocks = directoryBlocks; CacheBytes = cacheBytes; ActiveTemplates = templates; ActiveReferences = references; PendingRequests = pending; ReceiptBytes = receipts; WindowWorkingBytes = working; }
+        public long ActiveTemplates { get; }
+        public long ActiveReferences { get; }
+        public long PendingRequests { get; }
+        public long ReceiptBytes { get; }
+        public long WindowWorkingBytes { get; }
         public long BlockReads { get; }
         public long DecodedRecords { get; }
         public long DirectoryComparisons { get; }
@@ -94,8 +100,9 @@ namespace JueMingR.Features.Blueprint
 #endif
     public sealed class BlueprintProjectionReceipt
     {
-        internal BlueprintProjectionReceipt(BlueprintProjectionReceiptKind kind, BlueprintProjectionIdentity identity, long windowGeneration = 0, CaptureSummary summary = null, BlueprintProjectionWindow window = null, string error = null, string failureCode = null)
-        { Kind = kind; Identity = identity; WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary); Window = window; Error = error; FailureCode = failureCode; }
+        internal BlueprintProjectionReceipt(BlueprintProjectionReceiptKind kind, BlueprintProjectionIdentity identity, long windowGeneration = 0, CaptureSummary summary = null, BlueprintProjectionWindow window = null, string error = null, string failureCode = null, long totalLayerCount = 0)
+        { TotalLayerCount = totalLayerCount; Kind = kind; Identity = identity; WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary); Window = window; Error = error; FailureCode = failureCode; }
+        public long TotalLayerCount { get; }
         public BlueprintProjectionReceiptKind Kind { get; }
         public BlueprintProjectionIdentity Identity { get; }
         public long WindowGeneration { get; }

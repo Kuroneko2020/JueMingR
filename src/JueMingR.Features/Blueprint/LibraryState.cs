@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using JueMingR.Platform.Blueprint;
 
 namespace JueMingR.Features.Blueprint
@@ -34,6 +34,11 @@ namespace JueMingR.Features.Blueprint
         public bool RequestProjectionOpen(BlueprintProjectionIdentity identity) { return worker.RequestProjectionOpen(identity); }
         public bool RequestProjectionWindow(BlueprintProjectionIdentity identity, long windowGeneration, BlueprintProjectionBounds localBounds) { return worker.RequestProjectionWindow(identity, windowGeneration, localBounds); }
         public void CloseProjection() { worker.CloseProjection(); }
+        public void ReleaseProjection(BlueprintProjectionIdentity identity) { worker.ReleaseProjection(identity); }
+        public void ClearProjectionWindow(BlueprintProjectionIdentity identity) { worker.ClearProjectionWindow(identity); }
+        public bool RequestProjectionCommit(BlueprintProjectionCommitRequest request) { return worker.RequestProjectionCommit(request); }
+        public void CancelProjectionCommit(long sessionGeneration, long transactionId) { worker.CancelProjectionCommit(sessionGeneration, transactionId); }
+        public bool TryTakeProjectionCommit(out BlueprintProjectionCommitReceipt receipt) { return worker.TryTakeProjectionCommit(out receipt); }
         public bool TryTakeProjectionReceipt(out BlueprintProjectionReceipt value) { return worker.TryTakeProjectionReceipt(out value); }
 #if DEBUG
         public BlueprintProjectionStatistics DebugProjectionStatistics { get { return worker.ProjectionStatistics; } }

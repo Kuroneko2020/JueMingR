@@ -398,9 +398,15 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal string ButtonHint(F5Element hover, bool biomeFailed)
         {
+            // Names carry ordinary descriptions. The same controls also serve
+            // icon toolbars, so suppress only enabled F5 text buttons here;
+            // unavailable actions still explain their real current gate.
+            if (hover.Kind == F5ElementKind.Button && BlueprintControls != null && BlueprintControls.Available(hover.Command) &&
+                (hover.Command == F5Command.BlueprintCapture || hover.Command == F5Command.BlueprintSave ||
+                 hover.Command == F5Command.BlueprintMove || hover.Command == F5Command.BlueprintRemove)) return null;
             string blueprintHint = BlueprintControls?.Hint(hover.Command); if (blueprintHint != null) return blueprintHint;
             if (hover.Command == F5Command.BlueprintCapture) return BlueprintControls != null && BlueprintControls.Active ? F5.BlueprintControls.ExitHint : F5.BlueprintControls.StartHint;
-            if (hover.Command == F5Command.BlueprintSave) return F5.BlueprintControls.SaveHint;
+            if (hover.Command == F5Command.BlueprintSave) return BlueprintControls != null && !BlueprintControls.Available(hover.Command) ? "请先完成蓝图选区" : F5.BlueprintControls.SaveHint;
             if (biomeFailed && (hover.Command == F5Command.EnableBiome || hover.Command == F5Command.DisableBiome)) return "群系显示暂不可用";
             return MovementControls?.Hint(hover.Command) ?? ViewControls?.Hint(hover.Command) ?? JourneyControls?.Hint(hover.Command) ?? CombatObservationControls?.Hint(hover.Command) ?? CombatControls?.Hint(hover.Command) ?? EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command) ?? MapControls?.Hint(hover.Command) ?? FootprintControls?.Hint(hover.Command) ?? AnnouncementControls?.Hint(hover.Command);
         }

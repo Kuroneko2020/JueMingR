@@ -30,7 +30,7 @@ namespace NativeWorldTextProbe
                 Require(library.TryCreate(handle, "蓝图库样本 " + (i + 1), token), "visual actual asset created"); Require(Complete(library).Status == LibraryStatus.Saved, "visual asset reliably published");
             }
             ulong tick = (ulong)Get(host, "latestTick") + 100; Capture(context, 51, 31, ref tick);
-            Call(host, "SetDraftName", "箱子外观"); Call(host, "ConfirmSave");
+            CaptureWorkspace(context, graphics, output);
             var flow = (BlueprintCaptureFlow)Get(host, "Flow");
             NativeQuickItemChecks.Until(() => { Call(host, "Update", tick++); Call(host, "Poll"); return flow.Status == BlueprintCaptureStatus.Saved; });
             Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");
@@ -95,6 +95,56 @@ namespace NativeWorldTextProbe
             FinalRendererPixels(context, graphics, output);
             Console.WriteLine("PASS Blueprint actual library cards/content previews/disabled operations/Chinese name buffer at 100/150% and resource exit. Offscreen native assets; OS IME/owner/multiplayer NOT_EXECUTED.");
         }
+        private static void CaptureWorkspace(object context, ProbeGraphics graphics, string output)
+        {
+            var host = Get(context, "Blueprint"); var shell = Get(context, "Shell"); var state = Get(shell, "State");
+            var ui = Get(shell, "BlueprintUi"); var renderer = Get(shell, "renderer"); var layout = Get(state, "Layout");
+            var library = (LibraryState)Get(host, "Library"); var flow = (BlueprintCaptureFlow)Get(host, "Flow");
+            var cache = Get(ui, "previews"); string defaultName = flow.DraftName;
+            foreach (var dimensions in new[] { new[] { 900f, 1f }, new[] { 720f, 1.5f } })
+            {
+                Main.screenWidth = 1280; Main.screenHeight = (int)dimensions[0]; Main.UIScale = dimensions[1]; PlayerInput.CacheOriginalScreenDimensions();
+                Call(layout, "SetBlueprintLibraryVisible", true); Call(renderer, "RefreshResources"); Call(renderer, "Prepare", state, 1280f, dimensions[0], dimensions[1]);
+                Action prepare = () => { Call(host, "Poll"); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, dimensions[0])); };
+                NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && Call(cache, "Summary", Call(ui, "DraftKey")) != null; });
+                var size = (Point)Get(ui, "previewSize");
+                Require(size.Y > 128 && size.X <= 1024 && size.Y <= 768, "real stage request exceeds the old 128 cap while staying inside the actual purpose budget");
+                var texture = Call(cache, "Get", Call(ui, "DraftKey"));
+                Require((int)Get(texture, "Height") > 128 && (long)Get(ui, "PreviewBytes") <= 8L * 1024 * 1024,
+                    "actual worker reply and uploaded draft use the extended resolution under retained byte budget");
+                var parts = ((IEnumerable)Get(ui, "parts")).Cast<object>().ToArray();
+                var name = parts.Single(p => Get(p, "Command").ToString() == "Name");
+                Call(ui, "Execute", name); prepare();
+                var editor = (JueMingR.Features.Text.TextEditBuffer)Get(ui, "Editor");
+                Require(editor.Text == defaultName && (float)Get(Get(ui, "editRect"), "Width") == 506, "one production name command routes to the full shared editor rect");
+                editor.MoveTo(editor.Text.Length);
+                var input = Get(ui, "TextInput"); Set(input, "Composition", "pinyin"); prepare();
+                Require(((string)Get(Get(ui, "editView"), "Text")).EndsWith("pinyin"), "real capture input preview consumes IME composition");
+                long uploads = (long)Get(cache, "Uploads"), command = library.AcceptedCommandId;
+                for (int i = 0; i < 8; i++) { editor.MoveTo(i % 2 == 0 ? 0 : editor.Text.Length); Call(state, "ScrollTo", i % 2); prepare(); }
+                Require((long)Get(cache, "Uploads") == uploads && library.AcceptedCommandId == command,
+                    "name/caret/scroll changes do not queue preview reads or repeat uploads");
+                editor.MoveTo(editor.Text.Length); Call(state, "ScrollTo", 0); prepare();
+                object oldOwner = Main.CurrentInputTextTakerOverride; Set(input, "leased", true); Main.CurrentInputTextTakerOverride = Get(input, "owner");
+                try
+                {
+                    Action draw = () => { Call(renderer, "Draw", state, Main.UIScaleMatrix, false, false); Call(ui, "Draw"); };
+                    graphics.Image(Path.Combine(output, "blueprint-capture-workspace-" + dimensions[1].ToString(System.Globalization.CultureInfo.InvariantCulture) + ".png"), draw, Main.UIScaleMatrix, 1280, (int)dimensions[0]);
+                    Require(GetOptional(Get(ui, "renderer"), "LastImeAnchor") != null, "actual capture Draw publishes the candidate anchor from its full field");
+                }
+                finally { Set(input, "leased", false); Main.CurrentInputTextTakerOverride = oldOwner; Set(input, "Composition", ""); Call(ui, "CancelEdit"); }
+            }
+            // No edit is needed: execute the real enabled action with the
+            // generated default name and let Host own the accepted Create.
+            Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, 720));
+            var save = ((IEnumerable)Get(ui, "parts")).Cast<object>().Single(p => Get(p, "Command").ToString() == "ConfirmDraft");
+            Require((bool)Get(save, "Enabled") && GetOptional(ui, "Editor") == null && flow.DraftName == defaultName, "ready default-name save needs no synthetic editor");
+            Call(ui, "Execute", save);
+            Require(flow.Status == BlueprintCaptureStatus.Saving, "actual dedicated save action reaches Host's accepted write boundary");
+            Call(ui, "Suspend");
+            Require(flow.Status == BlueprintCaptureStatus.Saving, "closing capture presentation cannot revoke the accepted write");
+            Main.UIScale = 1f; PlayerInput.CacheOriginalScreenDimensions();
+        }
         private static void FinalRendererPixels(object context, ProbeGraphics graphics, string output)
         {
             const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
@@ -150,6 +200,21 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < 18; i++) Call(cache, "Upload", "bounded-" + i, one, new CaptureSummary { ContentCount = i }, Get(cache, "Generation"));
                 Require((int)Get(cache, "Count") == 12 && Call(cache, "Summary", "bounded-0") == null,
                     "texture and summary eviction share the twelve-entry bound");
+                var largeBuilder = new BlueprintPreviewBuilder(1024, 768, 1024, 768, true);
+                largeBuilder.Add(1023, 767, BlueprintPreviewLayer.Tile); var large = largeBuilder.Complete();
+                for (int i = 0; i < 3; i++) Call(cache, "Upload", "bytes-" + i, large, new CaptureSummary { ContentCount = i }, Get(cache, "Generation"));
+                Require((long)Get(cache, "PixelBytes") <= 8L * 1024 * 1024 && Call(cache, "Summary", "bytes-0") == null && Call(cache, "Get", "bytes-0") == null,
+                    "large retained textures enforce the independent eight MiB byte bound and evict paired facts together");
+                string owner = "d:" + Guid.NewGuid().ToString("N");
+                string draftA = owner + ":False::1:1024:768:g" + Get(cache, "Generation");
+                string draftB = owner + ":True::1:1024:768:g" + Get(cache, "Generation");
+                string resized = owner + ":False::1:64:64:g" + Get(cache, "Generation");
+                Call(cache, "Upload", draftA, large, new CaptureSummary { ContentCount = 7 }, Get(cache, "Generation"));
+                Call(cache, "Upload", draftB, large, new CaptureSummary { ContentCount = 8 }, Get(cache, "Generation"));
+                Require(Call(cache, "Summary", draftA) != null && Call(cache, "Summary", draftB) != null, "current-size draft exclusion variants retain correctly paired A-B-A facts");
+                Call(cache, "Upload", resized, one, new CaptureSummary { ContentCount = 9 }, Get(cache, "Generation"));
+                Require(Call(cache, "Summary", draftA) == null && Call(cache, "Summary", draftB) == null && Call(cache, "Summary", resized) != null,
+                    "completed resize retires historical large draft image and summary lifetimes together");
                 SpriteBatchRecovery(renderer, ui, cache, viewport, graphics);
             }
             finally { ((IDisposable)ui).Dispose(); }

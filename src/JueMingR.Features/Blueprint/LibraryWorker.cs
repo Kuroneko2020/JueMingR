@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
@@ -198,7 +198,11 @@ namespace JueMingR.Features.Blueprint
             try { written = files.WriteMetadata(read.Identity, tombstone); }
             catch (Exception e) { return Receipt(c, LibraryStatus.CommitUnconfirmed, "无法确认删除是否提交，相关文件已保留", true, failureCode: Code(e)); }
             if (written.Status != PreferenceWriteStatus.Saved)
-                return Receipt(c, written.CommitUnconfirmed ? LibraryStatus.CommitUnconfirmed : LibraryStatus.Protected, written.CommitUnconfirmed ? "无法确认删除是否提交，相关文件已保留" : "删除未完成，恢复材料已保留", true, failureCode: written.Error);
+            {
+                var rejected = Receipt(c, written.CommitUnconfirmed ? LibraryStatus.CommitUnconfirmed : LibraryStatus.Protected, written.CommitUnconfirmed ? "无法确认删除是否提交，相关文件已保留" : "删除未完成，恢复材料已保留", true, failureCode: written.Error);
+                rejected.DeleteProvenUncommitted = !written.CommitUnconfirmed && !written.IsProtected;
+                return rejected;
+            }
             files.CloseMetadata(); bool cleanup = false;
             try { cleanup = !Cleanup(c.Id, false, value.BlockCount, CleanupProof(value, written.Identity)); } catch { cleanup = true; }
             return Receipt(c, LibraryStatus.Deleted, cleanup ? "已删除，部分文件清理尚未完成" : null, cleanup: cleanup);
@@ -259,7 +263,7 @@ namespace JueMingR.Features.Blueprint
         }
         private LibraryReceipt Preview(LibraryCommand c)
         {
-            if (c.Width < 1 || c.Width > 512 || c.Height < 1 || c.Height > 128) return Receipt(c, LibraryStatus.Failed, "预览尺寸无效");
+            if (!BlueprintPreviewBudget.IsValid(c.Width, c.Height, c.Stage)) return Receipt(c, LibraryStatus.Failed, "预览尺寸无效");
             Guid physical; LibraryRoot root; bool isStage = c.Stage;
             if (isStage) { RequireStage(c.Id, true); physical = stage.Physical; root = stage.Root; }
             else
@@ -270,7 +274,7 @@ namespace JueMingR.Features.Blueprint
             }
             CaptureSummary summary = Measure(physical, isStage, root, c, false);
             if (summary.ContentCount == 0) return Receipt(c, LibraryStatus.Failed, "没有可预览的内容", summary: summary);
-            var builder = new BlueprintPreviewBuilder(summary.Width, summary.Height, c.Width, c.Height);
+            var builder = new BlueprintPreviewBuilder(summary.Width, summary.Height, c.Width, c.Height, c.Stage);
             Visit(physical, isStage, root, c, chunk =>
             {
                 for (int i = 0; i < chunk.Count; i++)
@@ -373,9 +377,10 @@ namespace JueMingR.Features.Blueprint
             private readonly bool stage;
             private readonly long blocks;
             private readonly Stream index;
+            private readonly Func<long, CaptureChunk> reader;
             private readonly List<Cache> cache = new List<Cache>(8);
-            internal ObjectLookup(LibraryWorker owner, Guid id, bool stage, long blocks, Stream index)
-            { this.owner = owner; this.id = id; this.stage = stage; this.blocks = blocks; this.index = index; }
+            internal ObjectLookup(LibraryWorker owner, Guid id, bool stage, long blocks, Stream index, Func<long, CaptureChunk> reader = null)
+            { this.owner = owner; this.id = id; this.stage = stage; this.blocks = blocks; this.index = index; this.reader = reader; }
             internal CaptureObject Find(int objectId)
             {
                 long low = 0, high = blocks - 1;
@@ -423,6 +428,9 @@ namespace JueMingR.Features.Blueprint
             }
             private CaptureChunk Get(long number)
             {
+                // Concurrent projection opens borrow the one global block cache;
+                // the ordinary save validator keeps its original private cache.
+                if (reader != null) return reader(number);
                 for (int i = 0; i < cache.Count; i++) if (cache[i].Number == number) { Cache hit = cache[i]; cache.RemoveAt(i); cache.Add(hit); return hit.Chunk; }
                 CaptureChunk chunk = owner.ReadChunk(id, stage, number, index); if (cache.Count == 8) cache.RemoveAt(0); cache.Add(new Cache { Number = number, Chunk = chunk }); return chunk;
             }

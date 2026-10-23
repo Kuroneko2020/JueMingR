@@ -11,6 +11,8 @@ namespace JueMingR.TerrariaHost.F5
         internal const string StartHint = "点击开始键执行选区，反选取消选区。";
         internal const string ExitHint = "退出选区，并清空已有选区";
         internal const string SaveHint = "点击保存键保存世界上已有的蓝图选区。";
+        internal const string MoveHint = "先选择需要移动的世界蓝图，再确认新位置。";
+        internal const string RemoveHint = "选择并移除一份世界蓝图，保留蓝图库中的模板。";
         private readonly Blueprint.HostBlueprint owner;
         internal BlueprintControls(Blueprint.HostBlueprint owner) { this.owner = owner; }
         internal bool Active { get { return owner.State.Active; } }
@@ -27,9 +29,11 @@ namespace JueMingR.TerrariaHost.F5
             Key(elements, SaveAction);
             rows.Row(ref y, 0, 522, "蓝图库", new[] { "打开", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintLibrary);
             Key(elements, LibraryAction);
-            rows.Row(ref y, 0, 522, "移动蓝图", new[] { "移动", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintMove);
+            rows.Row(ref y, 0, 522, "移动蓝图", new[] { "移动", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintMove,
+                new F5RowDescription(MoveAction, MoveHint));
             Key(elements, MoveAction);
-            rows.Row(ref y, 0, 522, "移除蓝图", new[] { "移除", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintRemove);
+            rows.Row(ref y, 0, 522, "移除蓝图", new[] { "移除", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintRemove,
+                new F5RowDescription(RemoveAction, RemoveHint));
             Key(elements, RemoveAction);
             rows.Row(ref y, 0, 522, "手持凝胶显示快捷栏", new[] { "开启", "关闭", "键" },
                 text => text == "键" ? F5Command.None : text == "开启" ? F5Command.BlueprintToolbarOn : F5Command.BlueprintToolbarOff);
@@ -46,8 +50,8 @@ namespace JueMingR.TerrariaHost.F5
             (command != F5Command.BlueprintCapture || owner.State.Active || !owner.ProjectionEditing); }
         internal string Hint(F5Command command)
         {
-            if (command == F5Command.BlueprintMove) return owner.CanMoveProjection ? owner.ProjectionEditing ? "取消移动，恢复原位置" : "移动当前世界蓝图，确认前可以取消" : owner.ProjectionActionHint;
-            if (command == F5Command.BlueprintRemove) return owner.CanRemoveProjection ? "移除世界图纸，保留蓝图库" : owner.ProjectionActionHint;
+            if (command == F5Command.BlueprintMove) return owner.CanMoveProjection ? "点击需要移动的蓝图" : owner.ProjectionActionHint;
+            if (command == F5Command.BlueprintRemove) return owner.CanRemoveProjection ? "点击需要移除的蓝图" : owner.ProjectionActionHint;
             if (command == F5Command.BlueprintCapture && owner.ProjectionEditing) return "请先完成或取消当前摆放";
             return null;
         }

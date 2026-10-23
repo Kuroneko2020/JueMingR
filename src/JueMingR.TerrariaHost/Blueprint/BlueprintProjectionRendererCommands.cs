@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Blueprint
     internal struct BlueprintProjectionCommand
     {
         internal BlueprintProjectionTexture Texture;
-        internal int Type, Paint;
+        internal int Type, Paint, Layer;
         internal Rectangle Source;
         internal Vector2 Position;
         internal Color Color;
@@ -54,6 +54,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             int r = right >= summary.Width ? summary.Width : right - 1;
             int b = bottom >= summary.Height ? summary.Height : bottom - 1;
             for (int pass = 0; pass < 3; pass++)
+            {
+                int first = commands.Count;
                 for (int i = 0; i < cells.Count; i++)
                 {
                     var cell = cells[i];
@@ -66,6 +68,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                         Tile(commands, lookup, cell, obj, summary.Left, summary.Top);
                     }
                 }
+                Tag(commands, first, pass);
+            }
             // Pylons have a separate native crystal sprite above the raw tile
             // base. One body per referenced object, even when its origin is off
             // screen; member tiles are still emitted exactly once above.
@@ -76,12 +80,13 @@ namespace JueMingR.TerrariaHost.Blueprint
                 CaptureCell sample; if (!samples.TryGetValue(obj.Id, out sample)) continue;
                 commands.Add(new BlueprintProjectionCommand { Texture = BlueprintProjectionTexture.Extra, Type = 181,
                     Source = new Rectangle(3 + Math.Max(0, Math.Min(10, obj.Style)), 0, 1, 1), Columns = 14, Rows = 8,
-                    Position = new Vector2(obj.X * 16 + 24, obj.Y * 16 + 24), Centered = true, Color = Ink(sample, false) * .9f });
+                    Position = new Vector2(obj.X * 16 + 24, obj.Y * 16 + 24), Centered = true, Color = Ink(sample, false) * .9f, Layer = 3 });
             }
             // Circuit layers deliberately remain visible without the player's
             // wiring tool. They never alter the real-world wiring visibility.
             for (int i = 0; i < cells.Count; i++)
             {
+                int first = commands.Count;
                 var c = cells[i]; if (c.X < l || c.Y < t || c.X >= r || c.Y >= b) continue;
                 if (Has(c, CaptureLayer.Wire)) Wire(commands, lookup, c);
                 if (Has(c, CaptureLayer.Actuator))
@@ -91,9 +96,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                     Pixel(commands, c.X * 16 + 5, c.Y * 16 + 6, 1, 4, Color.Orange * .8f);
                     Pixel(commands, c.X * 16 + 10, c.Y * 16 + 6, 1, 4, Color.Orange * .8f);
                 }
+                Tag(commands, first, 4);
             }
             return commands;
         }
+        private static void Tag(List<BlueprintProjectionCommand> commands, int first, int layer)
+        { for (int i = first; i < commands.Count; i++) { var value = commands[i]; value.Layer = layer; commands[i] = value; } }
 
         internal static void Shape(List<BlueprintProjectionCommand> output, BlueprintProjectionCommand normal, byte slope, bool half,
             bool platform, bool dontSlope, bool slopeFrames)

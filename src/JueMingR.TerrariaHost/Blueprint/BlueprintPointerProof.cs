@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool pending, completed, inPass, boundary, resources, ui, left, right, drawn, freshLeft, lastLeft = true;
         private long mapping, lastMapping = -1;
         private int x, y, width, height;
+        private float subX, subY;
         private Vector2 raw, screen, scale;
         private Matrix uiMatrix, zoom;
         private float gravity;
@@ -71,6 +72,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (float.IsNaN(point.X) || float.IsInfinity(point.X) || float.IsNaN(point.Y) || float.IsInfinity(point.Y)) {
                 Cancel(); host.State.Interrupt(); return; }
             x = (int)Math.Floor(point.X / 16); y = (int)Math.Floor(point.Y / 16); width = Main.maxTilesX; height = Main.maxTilesY;
+            subX = point.X / 16 - x; subY = point.Y / 16 - y;
             HasPoint = true;
         }
         internal void Consume(bool canEdit)
@@ -84,7 +86,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // lost in that gap cannot become a new press from a later hold.
             if (valid && !drawn && (!host.State.Dragging || left)) return;
             if (valid && certified && !ui && left && !host.State.Dragging && !freshLeft) return;
-            host.AcceptWorldPointer(valid && certified && !ui, left, right, x, y, width, height);
+            host.AcceptProjectionPointer(valid && certified && !ui, left, right, x, y, width, height, subX, subY);
         }
         internal void Cancel() {
             pending = completed = inPass = HasPoint = false; lastMapping = -1; lastLeft = true; }

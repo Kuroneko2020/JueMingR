@@ -88,7 +88,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             CancelRead();
             EndEdit(); mode = View.Capture; selected = Guid.Empty; deleteConfirm = null; validation = null; objectIndex = 0; objects = null;
-            objectsHandle = Guid.Empty; objectFailed = false; failedPreviews.Clear(); failedSummaries.Clear(); Reveal();
+            objectsHandle = Guid.Empty; objectFailed = false; failedPreviews.Clear(); failedSummaries.Clear(); Reveal(); shell.ScrollTo(0);
         }
         private void Reveal() { focusSuspended = false; shell.RestoreVisible(); shell.Navigate(6); dirty = true; armed = null; }
         private void RequestList(int page, Guid? asset = null)
@@ -103,14 +103,16 @@ namespace JueMingR.TerrariaHost.F5
         {
             // A retired capture retains its name buffer until explicit edit
             // cancellation, but its hidden field cannot keep a native IME lease.
-            TextInput.BeforeSample(active && Visible && (mode != View.Capture || !host.Flow.ContentHandle.IsEmpty));
+            TextInput.BeforeSample(active && Visible && Editable);
         }
+        private bool Editable { get { return !editProtected && (mode != View.Capture ||
+            !host.Flow.ContentHandle.IsEmpty && host.Flow.Status == BlueprintCaptureStatus.DraftReady); } }
         public void PreserveUncommittedInput(TextEditBuffer value) { }
         public void CancelEdit() { EndEdit(); deleteConfirm = null; dirty = true; }
         public bool RequestFinish()
         {
             if (editor == null) return true;
-            if (editProtected) return false;
+            if (!Editable) return false;
             TextInput.FinishComposition(false); if (TextInput.HasComposition) return false;
             string error;
             if (!LibraryName.TryValidate(editor.Text, out error)) { validation = error; dirty = true; return false; }
@@ -144,6 +146,7 @@ namespace JueMingR.TerrariaHost.F5
         // writes retain their receipt association and complete in the owner.
         internal void Suspend()
         {
+            host.CancelProjectionOpen();
             if (mode == View.Capture) host.CancelCaptureOrDraft();
             ReleasePresentation(); mode = View.None;
         }
@@ -182,7 +185,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             focusSuspended = false;
             bool wasEditing = editor != null;
-            TextInput.AfterSample(on, null, keys, focused);
+            TextInput.AfterSample(on && Editable, null, keys, focused);
             bool inside = hitClip.Contains(point.X, point.Y);
             OwnsPointer = on && (inside || leftTail || rightTail);
             hovered = on && inside ? Hit(point.X - view.X, point.Y - view.Y + shell.Scroll) : null;
@@ -266,6 +269,8 @@ namespace JueMingR.TerrariaHost.F5
                     deleteConfirm = null; dirty = true; return;
                 case BlueprintLibraryCommand.Name:
                     if (part.Editing) return;
+                    if (mode == View.Capture)
+                    { BeginEdit(Guid.Empty, host.Flow.DraftName); lastClickName = false; return; }
                     int now = Environment.TickCount;
                     bool twice = lastClickName && lastClickId == part.AssetId && unchecked(now - lastClickTime) >= 0 && unchecked(now - lastClickTime) <= 450;
                     lastClickTime = now; lastClickId = part.AssetId; lastClickName = true;
@@ -364,7 +369,7 @@ namespace JueMingR.TerrariaHost.F5
             bool geometry = matrix != transform || screen != dimensions || !Same(view, next) || layoutGeneration != shell.Layout.Generation || resourceGeneration != renderer.Generation || previewCacheGeneration != previews.Generation;
             if (geometry || scroll != shell.Scroll) { projection++; armed = null; }
             matrix = transform; screen = dimensions; view = next; scroll = shell.Scroll; ready = true;
-            previewSize = BlueprintLibraryLayout.PreviewSize(view.Width, matrix);
+            previewSize = mode == View.Capture ? BlueprintLibraryLayout.CapturePreviewSize(view.Width, view.Height, matrix) : BlueprintLibraryLayout.PreviewSize(view.Width, matrix);
             if (geometry) hitClip = F5ControlRenderer.LogicalClip(F5ControlRenderer.ContentClip(view, matrix,
                 new Rectangle(0, 0, (int)dimensions.X, (int)dimensions.Y)), matrix);
             bool shape = dirty || geometry || seenFlow != host.Flow.Revision || seenLibrary != host.Library.Snapshot.Revision || shownMessage != Message;
@@ -489,11 +494,15 @@ namespace JueMingR.TerrariaHost.F5
             if (editing) editRect = nameRect;
             var action = Button(draft ? "保存" : editing ? "保存" : "放置", BlueprintLibraryLayout.Action(card, 0), draft ? BlueprintLibraryCommand.ConfirmDraft : editing ? BlueprintLibraryCommand.Rename : BlueprintLibraryCommand.Place,
                 draft ? enabled : editing ? enabled && !editProtected : enabled && host.CanPlaceProjection, id);
-            if (!draft && !editing && !action.Enabled) { action.Hint = host.ProjectionActionHint; action.HintSize = Measure(action.Hint, .62f); }
+            if (!draft && !editing && !action.Enabled)
+            {
+                var snapshot = host.Library.Snapshot;
+                action.Hint = snapshot.Busy ? "蓝图库正在处理，请稍候" : snapshot.Page?.IsProtected == true ? "蓝图库暂不可修改，原文件已保护" :
+                    Find(id)?.IsProtected == true ? "这个蓝图暂不可修改，原文件已保护" : host.ProjectionActionHint;
+                action.HintSize = Measure(action.Hint, .62f);
+            }
             Button("导出", BlueprintLibraryLayout.Action(card, 1), BlueprintLibraryCommand.None, false, id);
             Button(draft ? "取消" : deleteConfirm == id ? "确认" : "删除", BlueprintLibraryLayout.Action(card, 2), draft ? BlueprintLibraryCommand.Cancel : BlueprintLibraryCommand.Delete, draft || enabled, id);
-            if (!draft && deleteConfirm == id && host.ProjectionReferences(id))
-            { var deletion = parts[parts.Count - 1]; deletion.Hint = "删除后会同时移除当前世界蓝图"; deletion.HintSize = Measure(deletion.Hint, .62f); }
             var preview = BlueprintLibraryLayout.Preview(card);
             var image = TextPart(count == 0 ? "没有可预览的内容" : failedPreviews.Contains(key) ? "预览暂不可用" : "正在生成预览", preview, .62f, F5ElementKind.Image); image.PreviewKey = key;
             var materials = BlueprintLibraryLayout.Materials(card);
@@ -502,14 +511,20 @@ namespace JueMingR.TerrariaHost.F5
             string inlineError = (editing || selected == id) && !string.IsNullOrEmpty(Message) ? Message : null;
             // A compact card shows two readable lines; selected diagnostics are
             // also rendered in full below the cards and count toward scrolling.
-            if (inlineError != null) CardMessage(inlineError, preview, Color.LightSalmon);
+            if (!draft && deleteConfirm == id)
+            {
+                string impact = "同时移除世界蓝图 " + host.ProjectionReferenceCount(id) + " 份";
+                if (host.ProjectionCandidateReferences(id)) impact += "，并取消该模板的编辑";
+                CardMessage(impact, preview, Color.LightGoldenrodYellow);
+            }
+            else if (inlineError != null) CardMessage(inlineError, preview, Color.LightSalmon);
             else if (!string.IsNullOrEmpty(missing)) CardMessage(missing, preview, Color.LightGoldenrodYellow);
         }
         private void BuildCapture()
         {
             var flow = host.Flow; var summary = flow.Summary;
             Panel(new F5Rect(0, 0, view.Width, 42));
-            Label("保存蓝图", new F5Rect(10, 5, view.Width - 90, 20), .76f);
+            Label("保存采集", new F5Rect(10, 5, view.Width - 90, 20), .76f);
             Button("返回", BlueprintLibraryLayout.HeaderButton(view.Width, 3), BlueprintLibraryCommand.Back, true);
             float y = 48;
             if (summary != null && !flow.ContentHandle.IsEmpty)
@@ -519,18 +534,36 @@ namespace JueMingR.TerrariaHost.F5
                 if (projected == null) failedSummaries.TryGetValue(draftPreviewKey, out projected);
                 bool resolved = summary.UnreliableObjectCount == 0 || flow.ExcludeUnreliable || host.Flow.ExcludedObjectIds.LongLength >= summary.UnreliableObjectCount;
                 bool canSave = previews.Get(draftPreviewKey) != null && projected != null && projected.ContentCount > 0 && resolved && flow.Status == BlueprintCaptureStatus.DraftReady && !host.Library.Snapshot.Busy;
-                var display = projected ?? summary;
-                BuildCard(BlueprintLibraryLayout.Card(view.Width, 0), Guid.Empty, flow.DraftName, display.Width, display.Height, display.ContentCount,
-                    null, draftPreviewKey, canSave, true);
-                y = 48 + BlueprintLibraryLayout.CardHeight + 8;
-                if (projected == null) y += AddWrapped(failedPreviews.Contains(draftPreviewKey) ? "预览暂不可用" : "正在准备预览", 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 4;
-                else if (projected.ContentCount == 0) y += AddWrapped("没有可保存的内容", 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 4;
+                bool writable = flow.Status == BlueprintCaptureStatus.DraftReady && !editProtected;
+                Label("蓝图名称", new F5Rect(8, 48, view.Width - 16, 18), .62f);
+                var nameRect = BlueprintLibraryLayout.CaptureName(view.Width);
+                bool editing = editor != null && editId == Guid.Empty;
+                var name = Button(editing ? "" : flow.DraftName, nameRect, BlueprintLibraryCommand.Name, writable, Guid.Empty, .70f);
+                name.Editing = editing;
+                if (editing) editRect = nameRect;
+                var preview = BlueprintLibraryLayout.CapturePreview(view.Width, view.Height);
+                var image = TextPart(failedPreviews.Contains(draftPreviewKey) ? "预览暂不可用" : "正在生成预览", preview, .62f, F5ElementKind.Image);
+                image.PreviewKey = draftPreviewKey;
+                y = preview.Bottom + 6;
+                // Bounds/count and pixels must come from the exact same key.
+                // In particular a resized/excluded draft cannot borrow the old
+                // image's summary to reopen Save before its own receipt arrives.
+                string details = projected != null ? projected.Width + "x" + projected.Height + " / 内容 " + projected.ContentCount.ToString(CultureInfo.InvariantCulture) :
+                    failedPreviews.Contains(draftPreviewKey) ? "预览暂不可用" : "正在准备预览";
+                Label(details, new F5Rect(8, y, view.Width - 16, 18), .62f); y += 24;
+                Button(flow.Status == BlueprintCaptureStatus.Saving ? "正在保存…" : "保存蓝图", new F5Rect(8, y, 176, 32), BlueprintLibraryCommand.ConfirmDraft, canSave && !editProtected, Guid.Empty, .70f);
+                // An accepted Create cannot be cancelled. Returning above only
+                // retires presentation; Host still owns its reliable receipt.
+                if (flow.Status != BlueprintCaptureStatus.Saving && flow.Status != BlueprintCaptureStatus.CommitUnconfirmed)
+                    Button("取消", new F5Rect(196, y, 84, 32), BlueprintLibraryCommand.Cancel, true, Guid.Empty, .70f);
+                y += 40;
+                if (projected != null && projected.ContentCount == 0) y += AddWrapped("没有可保存的内容", 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 4;
                 if (summary.UnreliableObjectCount > 0)
                 {
                     y += AddWrapped("有" + summary.UnreliableObjectCount + "件对象尚未确认，可排除后保存其余内容。", 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 4;
                     Button(flow.ExcludeUnreliable ? "恢复全部" : "排除全部", new F5Rect(8, y, 98, 24), BlueprintLibraryCommand.ExcludeAll, flow.Status == BlueprintCaptureStatus.DraftReady && !host.Library.Snapshot.Busy);
-                    Button("上一组", new F5Rect(view.Width - 172, y, 76, 24), BlueprintLibraryCommand.PreviousObjects, objects != null && objects.PageIndex > 0 && !host.Library.Snapshot.Busy);
-                    Button("下一组", new F5Rect(view.Width - 88, y, 76, 24), BlueprintLibraryCommand.NextObjects, objects != null && objects.PageIndex + 1 < objects.PageCount && !host.Library.Snapshot.Busy); y += 30;
+                    Button("上一组", new F5Rect(view.Width - 172, y, 76, 24), BlueprintLibraryCommand.PreviousObjects, writable && !host.Library.Snapshot.Busy && objects != null && objects.PageIndex > 0);
+                    Button("下一组", new F5Rect(view.Width - 88, y, 76, 24), BlueprintLibraryCommand.NextObjects, writable && !host.Library.Snapshot.Busy && objects != null && objects.PageIndex + 1 < objects.PageCount); y += 30;
                     if (objects == null) { Label(objectFailed ? "对象说明暂不可用" : "正在读取对象说明", new F5Rect(8, y, view.Width - 16, 20), .62f); y += 26; }
                     else foreach (var item in objects.Items)
                     {
@@ -548,18 +581,16 @@ namespace JueMingR.TerrariaHost.F5
                 y += AddWrapped(state, 8, y, view.Width - 16, Color.White) + 8;
                 Button("取消", new F5Rect(8, y, 76, 24), BlueprintLibraryCommand.Cancel, true); y += 32;
             }
-            if (flow.Status == BlueprintCaptureStatus.Saving) { y += AddWrapped("正在保存", 8, y, view.Width - 16, Color.White) + 6; }
-            if (flow.Status == BlueprintCaptureStatus.CommitUnconfirmed) { y += AddWrapped("无法确认是否保存成功，原文件已保护", 8, y, view.Width - 16, Color.LightSalmon) + 6; }
             if (!string.IsNullOrEmpty(Message)) y += AddWrapped(Message, 8, y, view.Width - 16, Color.LightSalmon) + 6;
             shell.Layout.SetBlueprintContentHeight(y + 6);
         }
         private BlueprintLibraryPart Panel(F5Rect rect) { return TextPart("", rect, 1, F5ElementKind.Panel); }
         private BlueprintLibraryPart Label(string text, F5Rect rect, float scale = .70f, Color? ink = null)
         { var part = TextPart(text, rect, scale, F5ElementKind.Text); part.Ink = ink ?? Color.White; return part; }
-        private BlueprintLibraryPart Button(string text, F5Rect rect, BlueprintLibraryCommand command, bool enabled, Guid id = default(Guid))
+        private BlueprintLibraryPart Button(string text, F5Rect rect, BlueprintLibraryCommand command, bool enabled, Guid id = default(Guid), float scale = .62f)
         {
-            if (command == BlueprintLibraryCommand.Name) text = Fit(text ?? "", Math.Max(1, rect.Width - 14), .62f);
-            var part = TextPart(text, rect, .62f, F5ElementKind.Button); part.Command = command; part.Enabled = enabled; part.AssetId = id; return part;
+            if (command == BlueprintLibraryCommand.Name) text = Fit(text ?? "", Math.Max(1, rect.Width - 14), scale);
+            var part = TextPart(text, rect, scale, F5ElementKind.Button); part.Command = command; part.Enabled = enabled; part.AssetId = id; return part;
         }
         private BlueprintLibraryPart TextPart(string text, F5Rect rect, float scale, F5ElementKind kind)
         {

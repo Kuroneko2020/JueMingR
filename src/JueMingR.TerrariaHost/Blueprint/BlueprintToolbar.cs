@@ -57,7 +57,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             return Vector2.Transform(new Vector2(PlayerInput.MouseInfo.X * PlayerInput.RawMouseScale.X,
                 PlayerInput.MouseInfo.Y * PlayerInput.RawMouseScale.Y), Matrix.Invert(Main.UIScaleMatrix));
         }
-        private int ProjectionMode { get { return host.CurrentProjection == null ? 0 : host.ProjectionEditing ? 2 : 1; } }
+        private int ProjectionMode { get { return host.ProjectionEditing ? 2 : host.ProjectionScene.Count == 0 ? 0 : 1; } }
         private bool Available(int index)
         {
             if (!Layout.Available(index)) return false;
@@ -193,8 +193,8 @@ namespace JueMingR.TerrariaHost.Blueprint
 
         private void DrawHint(SpriteBatch batch, F5Rect bounds, int hovered)
         {
-            string value = hovered == 2 ? Available(2) ? host.ProjectionEditing ? "取消摆放，恢复原图" : "移动当前世界蓝图" : host.ProjectionActionHint :
-                hovered == 3 ? "移除世界图纸，保留蓝图库" : hovered == 0 && host.ProjectionEditing ? "请先完成或取消当前摆放" : Layout.Hint(hovered);
+            string value = hovered == 2 ? Available(2) ? host.ProjectionEditing ? "取消当前蓝图操作" : "点击需要移动的蓝图" : host.ProjectionActionHint :
+                hovered == 3 ? Available(3) ? "点击需要移除的蓝图" : host.ProjectionActionHint : hovered == 0 && host.ProjectionEditing ? "请先完成或取消当前蓝图操作" : Layout.Hint(hovered);
             if (value == null || leftTail || rightTail || !host.Input.CanPrepareText) { hint.Hide(); return; }
             // Reuse the common bounded wrapping and glyph metrics, but place
             // the measured result above the entire bar, explicitly centered.

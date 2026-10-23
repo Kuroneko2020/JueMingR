@@ -8,7 +8,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
-            try { LiteralLayersAndHoles(); AllContentAndOrder(); ExtremeBounds(); NameContract(); }
+            try { LiteralLayersAndHoles(); AllContentAndOrder(); ExtremeBounds(); PurposeBudgets(); NameContract(); }
             catch (Exception error) { failures.Add("blueprint preview: " + error.Message); }
         }
         private static void LiteralLayersAndHoles()
@@ -63,6 +63,24 @@ namespace JueMingR.ArchitectureTests
             string pair = char.ConvertFromUtf32(0x1F338);
             Require(LibraryName.TryValidate(string.Concat(System.Linq.Enumerable.Repeat(pair, 48)), out error), "supplementary scalars are complete elements");
             Require(!LibraryName.TryValidate("\ud83c", out error) && !LibraryName.TryValidate(" 名称", out error) && !LibraryName.TryValidate("名称\n", out error), "invalid encoding and boundary whitespace/control names fail explicitly");
+        }
+        private static void PurposeBudgets()
+        {
+            var builder = new BlueprintPreviewBuilder(2048, 1536, 1024, 768, true);
+            builder.Add(2047, 1535, BlueprintPreviewLayer.Object);
+            var image = builder.Complete();
+            Require(image.Width == 1024 && image.Height == 768 && (long)image.CopyPixels().Length * 4 == 3L * 1024 * 1024,
+                "draft purpose admits the independently specified three MiB finite snapshot");
+            Require(image.GetPixel(1023, 767) == 0xDC7EC488u, "draft extension retains remote meaningful content");
+            foreach (var size in new[] { new[] { 1025, 768 }, new[] { 1024, 769 }, new[] { 0, 768 } })
+            {
+                bool rejected = false;
+                try { new BlueprintPreviewBuilder(1, 1, size[0], size[1], true); } catch (ArgumentOutOfRangeException) { rejected = true; }
+                Require(rejected, "draft purpose rejects dimensions outside its finite contract");
+            }
+            bool libraryRejected = false;
+            try { new BlueprintPreviewBuilder(1, 1, 512, 129); } catch (ArgumentOutOfRangeException) { libraryRejected = true; }
+            Require(libraryRejected, "ordinary library constructor keeps its original 512 by 128 purpose limit");
         }
         private static void Require(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
     }

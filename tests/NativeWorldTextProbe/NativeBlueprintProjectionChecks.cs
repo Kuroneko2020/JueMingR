@@ -157,6 +157,13 @@ namespace NativeWorldTextProbe
                 Require((long)Get(instance, "BuildCount") == builds && (int)Get(instance, "CommandCount") == 1,
                     "same immutable local window is interpreted once regardless of origin/frame updates");
                 Call(instance, "Clear"); Require((int)Get(instance, "CommandCount") == 0, "remove/session retirement releases derived commands and borrowed references");
+                var dense = Enumerable.Range(0,64*16).Select(n => new CaptureCell { X=n%64,Y=n/64,Layers=CaptureLayer.Tile,TileType=1 }).ToArray();
+                var denseSummary = new CaptureSummary { Width=64,Height=16 };
+                Call(instance,"SetWindow",new BlueprintProjectionWindow(identity,3,denseSummary,new BlueprintProjectionBounds(-1,-1,34,18),dense.Where(v=>v.X<=32).ToArray(),Array.Empty<CaptureObject>()));
+                long segments=(long)Get(instance,"SegmentBuildCount");
+                Call(instance,"SetWindow",new BlueprintProjectionWindow(identity,4,denseSummary,new BlueprintProjectionBounds(15,-1,34,18),dense.Where(v=>v.X>=15 && v.X<=48).ToArray(),Array.Empty<CaptureObject>()));
+                Require((long)Get(instance,"SegmentBuildCount")==segments+1 && (int)Get(instance,"CommandCount")==512,"shifted source window reuses unchanged interior segment and builds only entering 16-column segment");
+                Call(instance,"Clear");
                 var unsupported = c; unsupported.Layers = CaptureLayer.Tile; unsupported.WallType = 0; unsupported.TileType = ushort.MaxValue;
                 Call(instance, "SetWindow", new BlueprintProjectionWindow(identity, 2, summary, new BlueprintProjectionBounds(0, 0, 20, 20), new[] { unsupported }, Array.Empty<CaptureObject>()));
                 object[] error = { null };

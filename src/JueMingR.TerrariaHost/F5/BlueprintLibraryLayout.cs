@@ -61,6 +61,19 @@ namespace JueMingR.TerrariaHost.F5
             return new F5Rect(card.Right - 8 - width - (2 - index) * (width + 4), card.Y + 8, width, 22);
         }
         internal static F5Rect Preview(F5Rect card) { return new F5Rect(card.X + 8, card.Y + 36, Math.Max(1, card.Width - 16), PreviewHeight); }
+        internal static F5Rect CaptureName(float width) { return new F5Rect(8, 70, Math.Max(1, width - 16), 32); }
+        internal static F5Rect CapturePreview(float width, float height)
+        {
+            // Leave the name, reliable summary and both actions in the first
+            // viewport where possible. Shorter pages use the shell's one scroll.
+            return new F5Rect(8, 110, Math.Max(1, width - 16), Math.Max(48, Math.Min(350, height - 174)));
+        }
+        internal static Point CapturePreviewSize(float width, float height, Matrix matrix)
+        {
+            var rect = CapturePreview(width, height);
+            return new Point(Math.Max(1, Math.Min(BlueprintPreviewBudget.DraftWidth, (int)Math.Floor((rect.Width - 10) * Math.Abs(matrix.M11)))),
+                Math.Max(1, Math.Min(BlueprintPreviewBudget.DraftHeight, (int)Math.Floor((rect.Height - 10) * Math.Abs(matrix.M22)))));
+        }
         // Generate against the final physical drawing budget. Position/scroll do
         // not affect this identity; the renderer snaps a budget of this exact
         // size inside the container and never shrinks an already aggregated image.
