@@ -13,6 +13,7 @@ namespace JueMingR.Features.Blueprint
         private long nextCommand, revision;
         public LibraryState(IBlueprintLibraryFiles files) { worker = new LibraryWorker(files); }
         public LibrarySnapshot Snapshot { get { return snapshot; } }
+        public long AcceptedCommandId { get; private set; }
         public bool TryBeginStage(CaptureToken token) { return Submit(new LibraryCommand { Kind = LibraryCommandKind.BeginStage, Id = token.OperationId, Token = token }); }
         public bool TryAppendChunk(ContentHandle handle, CaptureChunk chunk) { return Submit(new LibraryCommand { Kind = LibraryCommandKind.AppendChunk, Id = handle.Id, Chunk = chunk }); }
         public bool TrySealDraft(ContentHandle handle, CaptureSummary summary) { return Submit(new LibraryCommand { Kind = LibraryCommandKind.SealDraft, Id = handle.Id, Summary = Copy(summary) }); }
@@ -53,6 +54,7 @@ namespace JueMingR.Features.Blueprint
         {
             if (receipt != null) return false; command.CommandId = ++nextCommand;
             if (!worker.TrySubmit(command)) return false;
+            AcceptedCommandId = command.CommandId;
             snapshot = new LibrarySnapshot(++revision, true, snapshot.Page, snapshot.LastReceipt, 0); return true;
         }
         private static int[] Exclusions(int[] ids) { if (ids == null || ids.Length == 0) return Array.Empty<int>(); var result = (int[])ids.Clone(); Array.Sort(result); for (int i = 0; i < result.Length; i++) if (result[i] < 1 || i > 0 && result[i] == result[i - 1]) throw new ArgumentException("Invalid excluded object IDs."); return result; }

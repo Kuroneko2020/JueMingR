@@ -62,6 +62,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
             !(Shell?.State.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !player.dead && !player.ghost && player.HeldItem != null && player.HeldItem.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0; } }
         internal void SetToolbar(bool value) { if (ControlsEnabled) preference.Set(value); }
+        internal void OpenLibrary()
+        {
+            if (!ControlsEnabled || !Input.CanStartActions) return;
+            Pointer.Cancel(); Toolbar.Cancel(); State.Interrupt();
+            Shell?.BlueprintUi?.OpenLibrary();
+        }
         internal void Toggle()
         {
             if (!ControlsEnabled || !Input.CanStartActions) return;
@@ -73,6 +79,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             registry.Register(new HotkeyAction(BlueprintControls.CaptureAction, "采集蓝图", HotkeyContext.Gameplay, () => ControlsEnabled, Toggle));
             registry.Register(new HotkeyAction(BlueprintControls.SaveAction, "保存采集", HotkeyContext.Gameplay, () => CanSave, () => Save()));
+            registry.Register(new HotkeyAction(BlueprintControls.LibraryAction, "打开蓝图库", HotkeyContext.Gameplay, () => ControlsEnabled, OpenLibrary));
             // F5 and the independent display binding share the preference owner;
             // hiding the toolbar never exits capture or releases its world gate.
             Action toolbar = () => SetToolbar(!ToolbarEnabled);

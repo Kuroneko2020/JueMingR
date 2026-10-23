@@ -85,8 +85,9 @@ namespace JueMingR.Features.Blueprint
     public interface IBlueprintCaptureSource
     {
         bool Read(int x, int y, out CaptureCell cell);
-        // Returns null for ordinary tiles. Uncertain frame-important content
-        // returns an explicit unreliable shape rather than pretending to be air.
+        // Null means no fixed rectangular object group: ordinary blocks and
+        // selected natural snapshots still retain their raw tile/frame values.
+        // Describe consumes the immediately preceding successful Read only.
         BlueprintObjectShape Describe(CaptureCell cell);
     }
 
@@ -94,6 +95,9 @@ namespace JueMingR.Features.Blueprint
     {
         public CaptureObject Object;
         public int BaseFrameX, BaseFrameY, ColumnStep;
+        // Some original world generators choose each member's decoration
+        // independently. Describe proves membership; raw frames remain intact.
+        public bool IndependentMemberFrames;
         public int[] RowOffsets = Array.Empty<int>();
         public string Key { get { return Object.Type + ":" + Object.X + ":" + Object.Y; } }
     }

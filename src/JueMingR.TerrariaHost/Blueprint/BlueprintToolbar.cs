@@ -99,7 +99,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (execute >= 0)
             {
                 if (host.State.Active && execute == 0) host.Save();
-                else if (!host.State.Active && execute == 1) host.Shell?.BlueprintUi?.OpenLibrary();
+                else if (!host.State.Active && execute == 1) host.OpenLibrary();
                 else host.Toggle();
             }
         }

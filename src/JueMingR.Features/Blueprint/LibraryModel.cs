@@ -52,8 +52,8 @@ namespace JueMingR.Features.Blueprint
     }
     public sealed class LibraryReceipt
     {
-        internal LibraryReceipt(long commandId, LibraryCommandKind kind, LibraryStatus status, Guid operation, Guid asset, CaptureToken token, long generation, string error = null, bool protect = false, bool cleanup = false, LibraryPage page = null, BlueprintPreviewImage preview = null, LibraryObjectPage objectPage = null, CaptureSummary summary = null, string failureCode = null, string suggestedName = null)
-        { CommandId = commandId; Kind = kind; Status = status; OperationId = operation; AssetId = asset; Token = token; Generation = generation; Error = error; IsProtected = protect; CleanupPending = cleanup; Page = page; Preview = preview; ObjectPage = objectPage; Summary = LibraryState.Copy(summary); FailureCode = failureCode; SuggestedName = suggestedName; }
+        internal LibraryReceipt(long commandId, LibraryCommandKind kind, LibraryStatus status, Guid operation, Guid asset, CaptureToken token, long generation, string error = null, bool protect = false, bool cleanup = false, LibraryPage page = null, BlueprintPreviewImage preview = null, LibraryObjectPage objectPage = null, CaptureSummary summary = null, string failureCode = null, string suggestedName = null, bool operationRetired = false)
+        { CommandId = commandId; Kind = kind; Status = status; OperationId = operation; AssetId = asset; Token = token; Generation = generation; Error = error; IsProtected = protect; CleanupPending = cleanup; Page = page; Preview = preview; ObjectPage = objectPage; Summary = LibraryState.Copy(summary); FailureCode = failureCode; SuggestedName = suggestedName; OperationRetired = operationRetired; }
         public long CommandId { get; }
         public LibraryCommandKind Kind { get; }
         public LibraryStatus Status { get; }
@@ -65,6 +65,9 @@ namespace JueMingR.Features.Blueprint
         public string FailureCode { get; }
         public string SuggestedName { get; }
         public bool IsProtected { get; }
+        // Retirement releases the active slot, not the protected files. It is
+        // independent of whether metadata is known absent or commit is unknown.
+        public bool OperationRetired { get; }
         public bool CleanupPending { get; }
         public LibraryPage Page { get; }
         public BlueprintPreviewImage Preview { get; }

@@ -6,13 +6,14 @@ namespace JueMingR.TerrariaHost.F5
 {
     internal sealed class BlueprintControls
     {
-        internal const string CaptureAction = "blueprint.capture", SaveAction = "blueprint.save", ToolbarAction = "blueprint.toolbar";
+        internal const string CaptureAction = "blueprint.capture", SaveAction = "blueprint.save", ToolbarAction = "blueprint.toolbar", LibraryAction = "blueprint.library";
         internal const string StartHint = "点击开始键执行选区，反选取消选区。";
         internal const string ExitHint = "退出选区，并清空已有选区";
         internal const string SaveHint = "点击保存键保存世界上已有的蓝图选区。";
         private readonly Blueprint.HostBlueprint owner;
         internal BlueprintControls(Blueprint.HostBlueprint owner) { this.owner = owner; }
         internal bool Active { get { return owner.State.Active; } }
+        internal bool LibraryVisible { get { return owner.Shell?.BlueprintUi?.Visible == true; } }
         internal static void AddRows(List<F5Element> elements, Func<string, float, F5Size> measure, ref float y, bool active)
         {
             var rows = new F5RowLayout(elements, measure);
@@ -23,7 +24,8 @@ namespace JueMingR.TerrariaHost.F5
             rows.Row(ref y, 0, 522, "保存采集", new[] { "保存", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintSave,
                 new F5RowDescription(SaveAction, SaveHint));
             Key(elements, SaveAction);
-            rows.Row(ref y, 0, 522, "蓝图库", new[] { "打开" }, text => F5Command.BlueprintLibrary);
+            rows.Row(ref y, 0, 522, "蓝图库", new[] { "打开", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintLibrary);
+            Key(elements, LibraryAction);
             rows.Row(ref y, 0, 522, "手持凝胶显示快捷栏", new[] { "开启", "关闭", "键" },
                 text => text == "键" ? F5Command.None : text == "开启" ? F5Command.BlueprintToolbarOn : F5Command.BlueprintToolbarOff);
             Key(elements, ToolbarAction);
@@ -42,7 +44,7 @@ namespace JueMingR.TerrariaHost.F5
             if (!Owns(command) || !Available(command)) return;
             if (command == F5Command.BlueprintCapture) owner.Toggle();
             else if (command == F5Command.BlueprintSave) owner.Save();
-            else if (command == F5Command.BlueprintLibrary) owner.Shell?.BlueprintUi?.OpenLibrary();
+            else if (command == F5Command.BlueprintLibrary) owner.OpenLibrary();
             else owner.SetToolbar(command == F5Command.BlueprintToolbarOn);
         }
     }

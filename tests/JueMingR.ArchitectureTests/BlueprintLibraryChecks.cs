@@ -12,7 +12,7 @@ using JueMingR.Platform.Settings;
 
 namespace JueMingR.ArchitectureTests
 {
-    internal static class BlueprintLibraryChecks
+    internal static partial class BlueprintLibraryChecks
     {
         internal static void Check(IList<string> failures)
         {
@@ -34,6 +34,12 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "tombstone foreign replacements", () => CleanupReplacements(Path.Combine(area, "cleanup-replacements")));
             Run(failures, "private stage ownership", () => StageOwnership(Path.Combine(area, "stage-ownership")));
             Run(failures, "safe cleanup restart", () => InterruptedCleanup(Path.Combine(area, "cleanup-restart")));
+            Run(failures, "failed stages retire without taking new owner", () => RecoveryRetirement(Path.Combine(area, "retirement")));
+            Run(failures, "promoted precommit certainty", () => PromotedPrecommit(Path.Combine(area, "precommit")));
+            Run(failures, "pinned cleanup and bounded work", () => CleanupWork(Path.Combine(area, "cleanup-work")));
+            Run(failures, "normalize index source reuse", () => NormalizeWork(Path.Combine(area, "normalize-work")));
+            Run(failures, "safe list cancellation and stop", () => CleanupCancellation(Path.Combine(area, "cleanup-cancel")));
+            Run(failures, "legacy v1 literal asset", () => LegacyLiteralAsset(Path.Combine(area, "legacy-v1")));
             // Failure originals remain in this printed, exclusively generated
             // root. Success cleanup cannot target installation/user data.
             if (failures.Count == before)
@@ -316,8 +322,9 @@ namespace JueMingR.ArchitectureTests
                 for (int y = 0; y < 65; y++) { var cells = new CaptureCell[1024]; for (int x = 0; x < cells.Length; x++) cells[x] = Cell(x, y); Command(state, state.TryAppendChunk(handle, new CaptureChunk(cells, cells.Length))); }
                 Require(Command(state, state.TrySealDraft(handle, new CaptureSummary { Left = 0, Top = 0, Width = 1024, Height = 65, ContentCount = 66560 })).Status == LibraryStatus.Completed, "large cleanup fixture seals");
                 Require(Command(state, state.TryCreate(handle, "中断清理", Token(id))).Status == LibraryStatus.Saved, "large cleanup fixture saves"); LibraryEntry entry = List(state).Entries.Single(); files.InterruptCleanup = true;
+                string chunks = Path.Combine(path, id.ToString("N"), "content", "chunks"); int before = Directory.EnumerateFiles(chunks).Count();
                 LibraryReceipt deleted = Command(state, state.TryDelete(id, entry.MetadataIdentity)); Require(deleted.Status == LibraryStatus.Deleted && deleted.CleanupPending, "interruption after a real bounded cleanup batch keeps logical delete");
-                Require(Directory.EnumerateFiles(Path.Combine(path, id.ToString("N"), "content", "chunks")).Any(), "some exact owned blocks remain for restart");
+                int remaining = Directory.EnumerateFiles(chunks).Count(); Require(remaining > 0 && remaining < before, "interruption follows actual deletion and leaves some exact owned blocks for restart");
             }
             using (var state = new LibraryState(new FileBlueprintLibrary(path))) Require(List(state).TotalCount == 0, "restart finishes remaining trusted cleanup without resurrection");
             Require(!Directory.Exists(Path.Combine(path, id.ToString("N"))), "safe interrupted cleanup removes remaining exact known files");
@@ -351,16 +358,33 @@ namespace JueMingR.ArchitectureTests
             private readonly FileBlueprintLibrary inner;
             private readonly string path;
             internal long BlockReads, BlockWrites;
-            internal bool UnknownMetadata, FailBlock, InterruptCleanup;
-            internal Action BeforeBlockRead, BeforeEnumerate;
+            internal bool UnknownMetadata, FailBlock, FailSeal, PrecommitMetadata, InterruptCleanup;
+            internal Action BeforeBlockRead, BeforeEnumerate, AfterCleanupStep;
+            internal readonly Dictionary<Guid, long> IndexBytes = new Dictionary<Guid, long>(), IndexOpens = new Dictionary<Guid, long>();
+            internal PreferenceWriteResult LastMetadataResult;
             internal int Enumerated;
             internal CountedFiles(string path) { this.path = path; inner = new FileBlueprintLibrary(path); }
             public void Open() { inner.Open(); }
             public IEnumerable<Guid> EnumerateAssets() { foreach (Guid id in inner.EnumerateAssets()) { Enumerated++; BeforeEnumerate?.Invoke(); yield return id; } }
             public PreferenceReadResult OpenMetadata(Guid id, bool ownedUnpublishedContent = false) { return inner.OpenMetadata(id, ownedUnpublishedContent); }
-            public PreferenceWriteResult WriteMetadata(string expectedIdentity, byte[] contents) { var result = inner.WriteMetadata(expectedIdentity, contents); return UnknownMetadata && result.Status == PreferenceWriteStatus.Saved ? new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, null, "lost-readback-after-real-commit", true, true) : result; }
+            public PreferenceWriteResult WriteMetadata(string expectedIdentity, byte[] contents)
+            {
+                // Debug-only mechanical injection writes a partial owned .tmp
+                // then takes the original I/O catch and cleanup path. It does
+                // not fabricate a result or change the release write protocol.
+                if (PrecommitMetadata)
+                {
+                    object document = typeof(FileBlueprintLibrary).GetField("metadata", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(inner);
+                    var failure = document.GetType().GetProperty("DebugCandidateWriteFailure", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (failure == null) throw new InvalidOperationException("Debug candidate write injection unavailable");
+                    failure.SetValue(document, true, null);
+                }
+                var result = inner.WriteMetadata(expectedIdentity, contents); LastMetadataResult = result;
+                return UnknownMetadata && result.Status == PreferenceWriteStatus.Saved ? new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, null, "lost-readback-after-real-commit", true, true) : result;
+            }
             public void CloseMetadata() { inner.CloseMetadata(); }
             public void BeginStage(Guid id) { inner.BeginStage(id); }
+            public void CloseStageWriter() { inner.CloseStageWriter(); }
             public void WriteStageBlock(Guid id, long number, byte[] bytes, byte[] hash)
             {
                 BlockWrites++;
@@ -372,13 +396,29 @@ namespace JueMingR.ArchitectureTests
                 else inner.WriteStageBlock(id, number, bytes, hash);
             }
             public byte[] ReadBlock(Guid id, bool stage, long number) { BlockReads++; BeforeBlockRead?.Invoke(); return inner.ReadBlock(id, stage, number); }
-            public Stream OpenIndex(Guid id, bool stage) { return inner.OpenIndex(id, stage); }
-            public void SealStage(Guid id, byte[] root) { inner.SealStage(id, root); }
+            public Stream OpenIndex(Guid id, bool stage) { return new CountedIndex(inner.OpenIndex(id, stage), this, id); }
+            public void SealStage(Guid id, byte[] root)
+            {
+                if (FailSeal)
+                {
+                    string name = Path.Combine(path, ".staging", id.ToString("N"), "root.bin");
+                    using (var occupied = new FileStream(name, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None)) inner.SealStage(id, root);
+                }
+                else inner.SealStage(id, root);
+            }
             public byte[] ReadRoot(Guid id, bool stage) { return inner.ReadRoot(id, stage); }
             public void ValidateLayout(Guid id, bool stage, long count) { inner.ValidateLayout(id, stage, count); }
             public void PromoteStage(Guid stageId, Guid assetId) { inner.PromoteStage(stageId, assetId); }
             public void PrepareCleanup(Guid id, BlueprintCleanupProof proof) { inner.PrepareCleanup(id, proof); }
-            public bool CleanupStep(Guid id, bool stage, long count, int budget, BlueprintCleanupProof proof = null) { bool completed = inner.CleanupStep(id, stage, count, budget, proof); if (!stage && InterruptCleanup && !completed) throw new IOException("test interruption after actual safe cleanup batch"); return completed; }
+            public bool CleanupStep(Guid id, bool stage, long count, int budget, BlueprintCleanupProof proof = null)
+            {
+                string chunks = Path.Combine(path, id.ToString("N"), "content", "chunks");
+                int before = !stage && InterruptCleanup ? Directory.EnumerateFiles(chunks).Count() : 0;
+                bool completed = inner.CleanupStep(id, stage, count, budget, proof); AfterCleanupStep?.Invoke();
+                if (!stage && InterruptCleanup && !completed && Directory.EnumerateFiles(chunks).Count() < before) throw new IOException("test interruption after actual safe deletion batch");
+                return completed;
+            }
+            public void CloseCleanup() { inner.CloseCleanup(); }
             public void Dispose() { inner.Dispose(); }
         }
     }

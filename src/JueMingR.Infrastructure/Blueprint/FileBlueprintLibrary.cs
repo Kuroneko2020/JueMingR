@@ -11,7 +11,7 @@ namespace JueMingR.Infrastructure.Blueprint
 {
     // The stable library lease spans every asset operation, including the final
     // removal of an asset lock. Unknown entries and links are never cleanup work.
-    public sealed class FileBlueprintLibrary : IBlueprintLibraryFiles
+    public sealed partial class FileBlueprintLibrary : IBlueprintLibraryFiles
     {
         public const int MaximumBlockBytes = 1048576;
         private readonly string directory;
@@ -108,7 +108,14 @@ namespace JueMingR.Infrastructure.Blueprint
             if (!Equal(ReadBounded(path, 65536), root)) throw new InvalidDataException("blueprint-root-readback");
             owner.Root = Hash(root); WriteOwner(id, owner, false); if (stageWriter == id) CloseStageWriter();
         }
-        public byte[] ReadRoot(Guid id, bool stage) { Ready(); return ReadBounded(Path.Combine(Content(id, stage), "root.bin"), 65536); }
+        public byte[] ReadRoot(Guid id, bool stage)
+        {
+            Ready(); byte[] bytes = ReadBounded(Path.Combine(Content(id, stage), "root.bin"), 65536);
+            // External-sort roots are trusted through this process's signed
+            // owner, not by hashing whichever root/index pair is found today.
+            if (stage && !Equal(Hash(bytes), ReadOwner(id).Root)) throw new InvalidDataException("blueprint-stage-root-identity");
+            return bytes;
+        }
         public void ValidateLayout(Guid id, bool stage, long blockCount)
         {
             Ready(); if (blockCount < 0 || blockCount > Int64.MaxValue / 32L) throw new InvalidDataException("blueprint-block-count");
@@ -147,77 +154,7 @@ namespace JueMingR.Infrastructure.Blueprint
             using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None)) { stream.Write(bytes, 0, bytes.Length); stream.Flush(true); stream.Position = 0; if (!Equal(Hash(stream), Hash(bytes))) throw new InvalidDataException("blueprint-cleanup-intent-readback"); }
             preparedCleanupIdentity = proof.MetadataIdentity;
         }
-        public bool CleanupStep(Guid id, bool stage, long blockCount, int budget, BlueprintCleanupProof proof = null)
-        {
-            Ready(); if (budget < 1 || budget > 64 || blockCount < 0) throw new ArgumentOutOfRangeException(nameof(budget));
-            string content = Content(id, stage), asset = Asset(id); Guard(content);
-            if (stageWriter == id) CloseStageWriter();
-            StageOwner owner = stage ? ReadOwner(id) : null;
-            if (stage && owner.Blocks != blockCount || !stage && proof == null) throw new InvalidDataException("blueprint-cleanup-proof-required");
-            byte[] intentIdentity = null;
-            if (!stage)
-            {
-                BlueprintCleanupProof intent = ReadCleanupIntent(id);
-                if (!SameProof(intent, proof)) throw new InvalidDataException("blueprint-cleanup-intent-changed");
-                intentIdentity = Hash(CleanupIntentBytes(id, intent));
-            }
-            ValidateCleanupNames(id, stage);
-            byte[] rootHash = stage ? owner.Root : IdentityBytes(proof.RootIdentity);
-            string rootPath = Path.Combine(content, "root.bin"), indexPath = Path.Combine(content, "index.bin");
-            VerifyFile(rootPath, rootHash, true);
-            if (!stage)
-            {
-                VerifyFile(Path.Combine(asset, "metadata.json"), IdentityBytes(proof.MetadataIdentity), false);
-                VerifyFile(Path.Combine(asset, "metadata.json.bak"), IdentityBytes(proof.SourceMetadataIdentity), true);
-            }
-            if (File.Exists(indexPath)) using (Stream index = OpenIndex(id, stage))
-            { if (stage) VerifyStageIndex(index, owner); else if (index.Length != checked(blockCount * 32L) || !Equal(Hash(index), IdentityBytes(proof.IndexIdentity))) throw new InvalidDataException("blueprint-cleanup-index-identity"); }
-            // Only a tombstone-bound index (or authenticated private-stage
-            // owner) authorizes chunk deletion. Current bytes cannot self-authorize.
-            string chunks = Path.Combine(content, "chunks"); Guard(chunks); int deleted = 0;
-            if (Directory.Exists(chunks)) using (Stream index = OpenIndex(id, stage))
-            {
-                if (index.Length != checked(blockCount * 32L)) throw new InvalidDataException("blueprint-cleanup-index");
-                if (stage) VerifyStageIndex(index, owner);
-                else if (!Equal(Hash(index), IdentityBytes(proof.IndexIdentity))) throw new InvalidDataException("blueprint-cleanup-index-identity");
-                foreach (string entry in Directory.EnumerateFileSystemEntries(chunks))
-                {
-                    Guard(entry); long number;
-                    if (Directory.Exists(entry) || !BlockNumber(Path.GetFileName(entry), out number) || number >= blockCount) throw new InvalidDataException("blueprint-cleanup-unknown-chunk");
-                    index.Position = number * 32L; byte[] expected = new byte[32]; ReadExactly(index, expected);
-                    using (var stream = new FileStream(entry, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
-                    {
-                        if (stream.Length > MaximumBlockBytes || !Equal(Hash(stream), expected)) throw new InvalidDataException("blueprint-cleanup-external-chunk");
-                        File.Delete(entry);
-                    }
-                    if (++deleted >= budget) return false;
-                }
-                Directory.Delete(chunks, false);
-            }
-            if (Directory.Exists(content))
-            {
-                // Missing known files can be the tail of an interrupted cleanup;
-                // any surviving replacement still has to match its trusted hash.
-                DeleteVerified(rootPath, rootHash, true);
-                if (File.Exists(indexPath))
-                {
-                    if (stage) { using (var index = new FileStream(indexPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete)) { VerifyStageIndex(index, owner); File.Delete(indexPath); } }
-                    else DeleteVerified(indexPath, IdentityBytes(proof.IndexIdentity), true, Int64.MaxValue);
-                }
-                if (stage) DeleteVerified(Path.Combine(content, ".owner.bin"), owner.OwnerIdentity, false);
-                Directory.Delete(content, false);
-            }
-            if (stage) return true;
-            CloseMetadata(); Guard(asset);
-            ValidateCleanupNames(id, false);
-            DeleteVerified(Path.Combine(asset, "metadata.json.bak"), IdentityBytes(proof.SourceMetadataIdentity), true);
-            DeleteVerified(Path.Combine(asset, "metadata.json"), IdentityBytes(proof.MetadataIdentity), false);
-            string lockPath = Path.Combine(asset, "metadata.json.lock"); Guard(lockPath);
-            if (File.Exists(lockPath)) { using (var stream = new FileStream(lockPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete)) { if (stream.Length != 0) throw new InvalidDataException("blueprint-cleanup-external-lock"); File.Delete(lockPath); } }
-            DeleteVerified(Path.Combine(asset, ".delete.bin"), intentIdentity, false);
-            Directory.Delete(asset, false); return true;
-        }
-        public void Dispose() { if (disposed) return; CloseStageWriter(); CloseMetadata(); if (lease != null) lease.Dispose(); lease = null; Array.Clear(stageKey, 0, stageKey.Length); disposed = true; }
+        public void Dispose() { if (disposed) return; CloseCleanup(); CloseStageWriter(); CloseMetadata(); if (lease != null) lease.Dispose(); lease = null; Array.Clear(stageKey, 0, stageKey.Length); disposed = true; }
         private sealed class StageOwner
         {
             internal Guid Id;
@@ -328,7 +265,7 @@ namespace JueMingR.Infrastructure.Blueprint
         { return a.MetadataIdentity == b.MetadataIdentity && a.SourceMetadataIdentity == b.SourceMetadataIdentity && a.RootIdentity == b.RootIdentity && a.IndexIdentity == b.IndexIdentity; }
         private static byte[] Chain(byte[] previous, byte[] hash) { var bytes = new byte[64]; Array.Copy(previous, bytes, 32); Array.Copy(hash, 0, bytes, 32, 32); return Hash(bytes); }
         private static byte[] Hash(byte[] bytes) { using (var hash = SHA256.Create()) return hash.ComputeHash(bytes); }
-        private void CloseStageWriter() { if (stageIndex != null) stageIndex.Dispose(); stageIndex = null; stageWriter = Guid.Empty; }
+        public void CloseStageWriter() { FileStream writer = stageIndex; stageIndex = null; stageWriter = Guid.Empty; if (writer != null) writer.Dispose(); }
         private string Asset(Guid id) { if (id == Guid.Empty) throw new ArgumentException("blueprint-empty-id"); return Path.Combine(directory, id.ToString("N")); }
         private string Content(Guid id, bool stage) { if (id == Guid.Empty) throw new ArgumentException("blueprint-empty-id"); return stage ? Path.Combine(directory, ".staging", id.ToString("N")) : Path.Combine(Asset(id), "content"); }
         private string Block(Guid id, bool stage, long number) { if (number < 0) throw new ArgumentOutOfRangeException(nameof(number)); return Path.Combine(Content(id, stage), "chunks", number.ToString("D20", CultureInfo.InvariantCulture) + ".bin"); }

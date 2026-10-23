@@ -12,6 +12,7 @@ namespace JueMingR.Features.Blueprint
             internal Guid Id;
             internal long First, Count;
             internal LibraryRoot Root;
+            internal Stream Index;
         }
         // A cursor retains one decoded <=2048-record block. Sixteen inputs plus
         // one output is a fixed memory bound, independent of the selected area.
@@ -28,7 +29,7 @@ namespace JueMingR.Features.Blueprint
             internal CaptureObject Object { get { return chunk.Objects[at]; } }
             internal bool Valid { get; private set; }
             internal RunCursor(LibraryWorker owner, RunSource source, bool objects)
-            { this.owner = owner; this.source = source; this.objects = objects; next = source.First; index = owner.files.OpenIndex(source.Id, true); Load(); }
+            { this.owner = owner; this.source = source; this.objects = objects; next = source.First; index = source.Index; Load(); }
             internal void Advance() { at++; if (at >= (objects ? chunk.ObjectCount : chunk.Count)) Load(); }
             private void Load()
             {
@@ -40,7 +41,7 @@ namespace JueMingR.Features.Blueprint
                 }
                 chunk = null;
             }
-            public void Dispose() { index.Dispose(); chunk = null; }
+            public void Dispose() { chunk = null; }
         }
         private void Normalize(Stage value)
         {
@@ -48,19 +49,28 @@ namespace JueMingR.Features.Blueprint
             while (true)
             {
                 long outputCount = runCount / 16 + (runCount % 16 == 0 ? 0 : 1);
+                // Every first-pass cursor refers to one sealed physical source.
+                // Its locked handle authenticates the complete index once for
+                // all groups; per-block hashes remain checked by ReadChunk.
+                using (Stream original = pass == 0 ? OpenVerifiedIndex(value.Physical, true, value.Root) : null)
                 for (long group = 0; group < outputCount; group++)
                 {
+                    if (IsStopping()) throw new OperationCanceledException();
                     var sources = new List<RunSource>(16);
-                    for (long i = group * 16; i < Math.Min(runCount, group * 16 + 16); i++)
+                    try
                     {
-                        if (pass == 0) sources.Add(new RunSource { Id = value.Physical, First = i, Count = 1, Root = value.Root });
-                        else { Guid id = RunId(value.Id, pass - 1, i); LibraryRoot root = LibraryCodec.DecodeRoot(files.ReadRoot(id, true)); sources.Add(new RunSource { Id = id, First = 0, Count = root.BlockCount, Root = root }); }
+                        for (long i = group * 16; i < Math.Min(runCount, group * 16 + 16); i++)
+                        {
+                            if (pass == 0) sources.Add(new RunSource { Id = value.Physical, First = i, Count = 1, Root = value.Root, Index = original });
+                            else { Guid id = RunId(value.Id, pass - 1, i); LibraryRoot root = LibraryCodec.DecodeRoot(files.ReadRoot(id, true)); sources.Add(new RunSource { Id = id, First = 0, Count = root.BlockCount, Root = root, Index = OpenVerifiedIndex(id, true, root) }); }
+                        }
+                        Guid output = RunId(value.Id, pass, group); files.BeginStage(output); long written = MergeRuns(output, sources);
+                        LibraryRoot outputRoot = NewRoot(output, written, value.Root.Summary, true); files.SealStage(output, LibraryCodec.EncodeRoot(outputRoot)); Validate(output, true, outputRoot, null, true);
                     }
-                    Guid output = RunId(value.Id, pass, group); files.BeginStage(output); long written = MergeRuns(output, sources);
-                    LibraryRoot outputRoot = NewRoot(output, written, value.Root.Summary, true); files.SealStage(output, LibraryCodec.EncodeRoot(outputRoot)); Validate(output, true, outputRoot, null, true);
-                    if (pass != 0) foreach (RunSource source in sources) Cleanup(source.Id, true, source.Count);
+                    finally { if (pass != 0) foreach (RunSource source in sources) source.Index.Dispose(); }
+                    if (pass != 0) foreach (RunSource source in sources) if (!Cleanup(source.Id, true, source.Count)) throw new OperationCanceledException();
                 }
-                if (pass == 0) Cleanup(value.Physical, true, value.Blocks);
+                if (pass == 0 && !Cleanup(value.Physical, true, value.Blocks)) throw new OperationCanceledException();
                 if (outputCount == 1)
                 {
                     value.Physical = RunId(value.Id, pass, 0); value.Root = LibraryCodec.DecodeRoot(files.ReadRoot(value.Physical, true)); value.Blocks = value.Root.BlockCount; return;
@@ -73,7 +83,7 @@ namespace JueMingR.Features.Blueprint
             long blocks = 0; var cursors = new List<RunCursor>(16);
             try
             {
-                foreach (RunSource source in sources) { VerifyIndex(source.Id, true, source.Root); cursors.Add(new RunCursor(this, source, false)); }
+                foreach (RunSource source in sources) cursors.Add(new RunCursor(this, source, false));
                 var cells = new CaptureCell[CaptureChunk.MaximumRecords]; int used = 0; long previous = -1;
                 while (true)
                 {

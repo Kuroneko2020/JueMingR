@@ -15,6 +15,7 @@ namespace JueMingR.Platform.Blueprint
         PreferenceWriteResult WriteMetadata(string expectedIdentity, byte[] contents);
         void CloseMetadata();
         void BeginStage(Guid id);
+        void CloseStageWriter();
         void WriteStageBlock(Guid id, long number, byte[] contents, byte[] hash);
         byte[] ReadBlock(Guid id, bool stage, long number);
         Stream OpenIndex(Guid id, bool stage);
@@ -24,6 +25,9 @@ namespace JueMingR.Platform.Blueprint
         void PromoteStage(Guid stageId, Guid assetId);
         void PrepareCleanup(Guid assetId, BlueprintCleanupProof proof);
         bool CleanupStep(Guid id, bool stage, long blockCount, int budget, BlueprintCleanupProof proof = null);
+        // A single in-flight cleanup owns its pinned proof/index and cursor.
+        // Closing releases them; a later attempt must validate from disk again.
+        void CloseCleanup();
     }
     // These identities come from the reliable tombstone, not from files found
     // during cleanup. Stage proofs are authenticated by their mechanical owner.

@@ -79,7 +79,9 @@ namespace NativeWorldTextProbe
             PlayerInput.Triggers.Current.MouseLeft = true; PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);
             Require(Main.LocalPlayer.controlUseItem, "closed library restores ordinary world action after trusted neutral");
             Require(!library.Snapshot.Busy, "capture leaves no accidental duplicate save queue");
+            NativeBlueprintRepairContentChecks.Run(sourceType);
             NativeBlueprintCaptureBoundaryChecks.Run(context, source);
+            NativeBlueprintRepairRecoveryChecks.Run(context);
             Console.WriteLine("PASS Blueprint real Tile fields, received-section rejection, metadata furniture families, capture UI progress, reliable save and stale revision/mode receipt, library world-input gate, native directional stage/Saved and real 25600-cell Host scale. Isolated fixture only; OS/IME/gameplay/multiplayer NOT_EXECUTED.");
         }
         private static void Furniture(IBlueprintCaptureSource source, int x, int y, ushort type, int width, int height, string name)

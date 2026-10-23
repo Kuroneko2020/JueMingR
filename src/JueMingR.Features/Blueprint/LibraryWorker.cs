@@ -16,10 +16,8 @@ namespace JueMingR.Features.Blueprint
             internal CaptureToken Token;
             internal long Blocks, Cells, Objects;
             internal LibraryRoot Root;
-            internal bool Protected, Promoted;
+            internal bool Promoted;
         }
-        private sealed class ProtectedStageException : InvalidOperationException
-        { internal ProtectedStageException() : base("草稿含恢复材料，已进入保护状态") { } }
         private readonly object gate = new object();
         private readonly IBlueprintLibraryFiles files;
         private readonly Thread thread;
@@ -54,27 +52,34 @@ namespace JueMingR.Features.Blueprint
                         if (rootFailure != null) completed = Receipt(command, LibraryStatus.Protected, rootFailure, true);
                         else completed = Execute(command);
                     }
-                    catch (OperationCanceledException) { completed = Receipt(command, LibraryStatus.Cancelled, "读取已取消"); }
-                    catch (ProtectedStageException e) { completed = Receipt(command, LibraryStatus.Protected, e.Message, true); }
+                    catch (OperationCanceledException)
+                    {
+                        bool retired = RetireFailedStage(command);
+                        completed = Receipt(command, LibraryStatus.Cancelled, retired ? "采集已停止，原选区已保留" : "读取已取消", retired, operationRetired: retired);
+                    }
                     catch (Exception e)
                     {
-                        if (stage != null && stage.Id == command.Id && (command.Kind == LibraryCommandKind.AppendChunk || command.Kind == LibraryCommandKind.SealDraft || command.Kind == LibraryCommandKind.DiscardDraft)) stage.Protected = true;
-                        bool protect = stage != null && stage.Id == command.Id && stage.Protected;
+                        bool retired = RetireFailedStage(command);
+                        bool protect = retired;
                         if (command.Kind == LibraryCommandKind.Preview && !command.Stage) { protectedAssets.Add(command.Id); protect = true; }
-                        completed = Receipt(command, protect && command.Kind == LibraryCommandKind.Preview ? LibraryStatus.Protected : LibraryStatus.Failed, Reason(e), protect, failureCode: Code(e));
+                        completed = Receipt(command, protect && command.Kind == LibraryCommandKind.Preview ? LibraryStatus.Protected : LibraryStatus.Failed, retired ? Reason(e) + "；本次采集已结束，可重新采集" : Reason(e), protect, failureCode: Code(e), operationRetired: retired);
                     }
                     finally { files.CloseMetadata(); }
                     lock (gate) result = completed;
                 }
-                // A normal runtime exit releases only its known uncommitted
-                // draft. Accepted create/rename/delete completed above first.
-                if (stage != null && !stage.Protected && !stage.Promoted)
+                // Accepted create/rename/delete finished before this point.
+                // Stop gives cleanup back at a safe boundary; unfinished private
+                // material keeps its disk proof rather than delaying shutdown.
+                if (stage != null && !stage.Promoted)
                     try { Cleanup(stage.Physical, true, stage.Blocks); } catch { }
             }
             finally { files.Dispose(); }
         }
         private LibraryReceipt Execute(LibraryCommand c)
         {
+            // Capture correlation before any command can retire the old stage.
+            // Old handles never acquire the token or ownership of a newer stage.
+            if (stage != null && stage.Id == c.Id && c.Kind != LibraryCommandKind.Create && c.Kind != LibraryCommandKind.BeginStage) c.Token = stage.Token;
             switch (c.Kind)
             {
                 case LibraryCommandKind.BeginStage:
@@ -91,8 +96,9 @@ namespace JueMingR.Features.Blueprint
                     stage.Root = NewRoot(stage.Physical, stage.Blocks, c.Summary, true); files.SealStage(stage.Physical, LibraryCodec.EncodeRoot(stage.Root));
                     Normalize(stage); Validate(stage.Physical, true, stage.Root, null, false); return Receipt(c, LibraryStatus.Completed, summary: stage.Root.Summary);
                 case LibraryCommandKind.DiscardDraft:
-                    RequireStage(c.Id, null); if (stage.Protected || stage.Promoted) return Receipt(c, LibraryStatus.Protected, "草稿含恢复材料，已保留", true);
-                    Cleanup(stage.Physical, true, stage.Blocks); stage = null; return Receipt(c, LibraryStatus.Completed);
+                    RequireStage(c.Id, null);
+                    bool discarded = Cleanup(stage.Physical, true, stage.Blocks); stage = null;
+                    return Receipt(c, LibraryStatus.Completed, cleanup: !discarded, operationRetired: true);
                 case LibraryCommandKind.Create: return Create(c);
                 case LibraryCommandKind.List: return List(c);
                 case LibraryCommandKind.Objects: return Objects(c);
@@ -104,7 +110,8 @@ namespace JueMingR.Features.Blueprint
         }
         private LibraryReceipt Create(LibraryCommand c)
         {
-            RequireStage(c.Id, true); if (stage.Protected || stage.Promoted || protectedAssets.Contains(c.Id)) return Receipt(c, LibraryStatus.Protected, "该保存已保护，不能再次提交", true);
+            if (protectedAssets.Contains(c.Id)) return Receipt(c, LibraryStatus.Protected, "该保存已保护，不能再次提交", true, operationRetired: true);
+            RequireStage(c.Id, true);
             string error; if (!LibraryName.TryValidate(c.Name, out error)) return Receipt(c, LibraryStatus.Failed, error);
             if (c.Token.OperationId != stage.Token.OperationId || c.Token.SessionGeneration != stage.Token.SessionGeneration || c.Token.ModeGeneration != stage.Token.ModeGeneration || c.Token.SelectionRevision != stage.Token.SelectionRevision) return Receipt(c, LibraryStatus.Failed, "采集身份已失效");
             CaptureSummary filtered = Measure(stage.Physical, true, stage.Root, c, true);
@@ -128,16 +135,35 @@ namespace JueMingR.Features.Blueprint
                 long now = DateTime.UtcNow.Ticks;
                 var metadata = new LibraryMetadata { AssetId = c.Id, Name = c.Name, ContentRevision = output, ContentHash = LibraryCodec.HashString(rootBytes), Width = filtered.Width, Height = filtered.Height, ContentCount = filtered.ContentCount, BlockCount = outputBlocks, MissingSummary = String.Join("；", filtered.MissingPayloads), CreatedTicks = now, UpdatedTicks = now };
                 byte[] encoded = LibraryCodec.EncodeMetadata(metadata); publishedAttempt = true; PreferenceWriteResult written = files.WriteMetadata(read.Identity, encoded);
-                if (written.Status != PreferenceWriteStatus.Saved) { stage.Protected = true; protectedAssets.Add(c.Id); return WriteReceipt(c, written); }
+                if (written.Status != PreferenceWriteStatus.Saved)
+                {
+                    // The promoted payload is retained under this exact ID. A
+                    // precommit failure is still known uncommitted, but this
+                    // operation cannot reuse its handle or promise draft retry.
+                    stage = null; protectedAssets.Add(c.Id);
+                    return Receipt(c, written.CommitUnconfirmed ? LibraryStatus.CommitUnconfirmed : LibraryStatus.Failed,
+                        written.CommitUnconfirmed ? "无法确认是否保存成功，相关文件已保留" : "本次蓝图未保存，原选区已保留，可重新采集",
+                        true, failureCode: written.Error, operationRetired: true);
+                }
                 // Mechanical commit readback covers metadata; this separate
                 // content verification makes Saved cover its immutable payload.
                 Validate(c.Id, false, root, null, false); files.CloseMetadata();
-                bool cleanup = false; try { Cleanup(stage.Physical, true, stage.Blocks); } catch { cleanup = true; }
-                stage = null; return Receipt(c, LibraryStatus.Saved, cleanup: cleanup, summary: filtered);
+                bool cleanup = false; try { cleanup = !Cleanup(stage.Physical, true, stage.Blocks); } catch { cleanup = true; }
+                stage = null; return Receipt(c, LibraryStatus.Saved, cleanup: cleanup, summary: filtered, operationRetired: true);
             }
             catch (Exception e)
             {
-                if (promoted || publishedAttempt) { stage.Protected = true; protectedAssets.Add(c.Id); return Receipt(c, publishedAttempt ? LibraryStatus.CommitUnconfirmed : LibraryStatus.Protected, Reason(e), true, failureCode: Code(e)); }
+                // An output block may have failed before sealing. Releasing
+                // its writer preserves bytes and does not affect the sealed
+                // fixed draft, which may still support a user-requested retry.
+                try { files.CloseStageWriter(); } catch { }
+                if (promoted || publishedAttempt)
+                {
+                    stage = null; protectedAssets.Add(c.Id);
+                    return Receipt(c, publishedAttempt ? LibraryStatus.CommitUnconfirmed : LibraryStatus.Failed,
+                        publishedAttempt ? "无法确认是否保存成功，相关文件已保留" : "本次蓝图未保存，相关文件和原选区已保留，可重新采集",
+                        true, failureCode: Code(e), operationRetired: true);
+                }
                 // A partial immutable block is retained rather than overwritten.
                 // It belongs to this failed output, not the unchanged fixed draft.
                 return Receipt(c, LibraryStatus.Failed, Reason(e), failureCode: Code(e));
@@ -167,7 +193,7 @@ namespace JueMingR.Features.Blueprint
             if (written.Status != PreferenceWriteStatus.Saved)
                 return Receipt(c, written.CommitUnconfirmed ? LibraryStatus.CommitUnconfirmed : LibraryStatus.Protected, written.CommitUnconfirmed ? "无法确认删除是否提交，相关文件已保留" : "删除未完成，恢复材料已保留", true, failureCode: written.Error);
             files.CloseMetadata(); bool cleanup = false;
-            try { Cleanup(c.Id, false, value.BlockCount, CleanupProof(value, written.Identity)); } catch { cleanup = true; }
+            try { cleanup = !Cleanup(c.Id, false, value.BlockCount, CleanupProof(value, written.Identity)); } catch { cleanup = true; }
             return Receipt(c, LibraryStatus.Deleted, cleanup ? "已删除，部分文件清理尚未完成" : null, cleanup: cleanup);
         }
         private bool OpenAsset(LibraryCommand c, out LibraryMetadata value, out PreferenceReadResult read, out LibraryRoot root)
@@ -191,11 +217,19 @@ namespace JueMingR.Features.Blueprint
                     PreferenceReadResult read = files.OpenMetadata(id); if (read.Status == PreferenceReadStatus.Missing) continue;
                     if (read.Status != PreferenceReadStatus.Loaded) { isolated++; continue; }
                     LibraryMetadata metadata = LibraryCodec.DecodeMetadata(read.Contents, id);
-                    if (metadata.Deleted) { files.CloseMetadata(); if (metadata.CleanupSourceIdentity != null && metadata.CleanupIndexIdentity != null) try { Cleanup(id, false, metadata.BlockCount, CleanupProof(metadata, read.Identity)); } catch { } continue; }
+                    if (metadata.Deleted)
+                    {
+                        files.CloseMetadata();
+                        if (metadata.CleanupSourceIdentity != null && metadata.CleanupIndexIdentity != null)
+                            try { Cleanup(id, false, metadata.BlockCount, CleanupProof(metadata, read.Identity), c); }
+                            catch (OperationCanceledException) { throw; } catch { }
+                        continue;
+                    }
                     ReadAssetRoot(metadata, true);
                     if (c.SelectId == id) selectedIndex = count;
                     if (count >= start && items.Count < 6) items.Add(new LibraryEntry(id, read.Identity, metadata, protectedAssets.Contains(id))); count++;
                 }
+                catch (OperationCanceledException) { throw; }
                 catch { isolated++; }
                 finally { files.CloseMetadata(); }
             }
@@ -264,7 +298,19 @@ namespace JueMingR.Features.Blueprint
         private void RequireStage(Guid id, bool? sealedState)
         {
             if (stage == null || stage.Id != id || sealedState.HasValue && (stage.Root != null) != sealedState.Value) throw new InvalidOperationException("blueprint-stage-unavailable");
-            if (stage.Protected) throw new ProtectedStageException();
+        }
+        private bool RetireFailedStage(LibraryCommand command)
+        {
+            bool mutatesDraft = command.Kind == LibraryCommandKind.BeginStage || command.Kind == LibraryCommandKind.AppendChunk || command.Kind == LibraryCommandKind.SealDraft || command.Kind == LibraryCommandKind.DiscardDraft;
+            if (!mutatesDraft) return false;
+            bool ownsWriter = stage != null && stage.Id == command.Id || stage == null && command.Kind == LibraryCommandKind.BeginStage;
+            if (stage != null && stage.Id == command.Id) stage = null;
+            // A stale handle is not the owner of the new append writer. Closing
+            // only this failed operation also makes retained files inspectable.
+            if (ownsWriter) try { files.CloseStageWriter(); } catch { }
+            // No recovery dictionary is needed: unmatched handles can never
+            // reacquire a live stage. Signed disk materials retain their proof.
+            return true;
         }
         private LibraryRoot ReadAssetRoot(LibraryMetadata metadata, bool validateLayout = false)
         {
@@ -275,15 +321,20 @@ namespace JueMingR.Features.Blueprint
         }
         private LibraryRoot NewRoot(Guid id, long blocks, CaptureSummary summary, bool isStage)
         { using (Stream index = files.OpenIndex(id, isStage)) return new LibraryRoot { ContentRevision = id, BlockCount = blocks, Summary = summary, IndexHash = LibraryCodec.Hash(index) }; }
-        private void VerifyIndex(Guid id, bool isStage, LibraryRoot root)
-        { using (Stream index = files.OpenIndex(id, isStage)) if (index.Length != checked(root.BlockCount * 32L) || !LibraryCodec.Equal(LibraryCodec.Hash(index), root.IndexHash)) throw new InvalidDataException("blueprint-index-hash"); }
+        private Stream OpenVerifiedIndex(Guid id, bool isStage, LibraryRoot root)
+        {
+            Stream index = files.OpenIndex(id, isStage);
+            try { if (index.Length != checked(root.BlockCount * 32L) || !LibraryCodec.Equal(LibraryCodec.Hash(index), root.IndexHash)) throw new InvalidDataException("blueprint-index-hash"); index.Position = 0; return index; }
+            catch { index.Dispose(); throw; }
+        }
+        private void VerifyIndex(Guid id, bool isStage, LibraryRoot root) { using (Stream index = OpenVerifiedIndex(id, isStage, root)) { } }
         private void Validate(Guid id, bool isStage, LibraryRoot root, LibraryCommand command, bool allowPartialSummary)
-        { files.ValidateLayout(id, isStage, root.BlockCount); VerifyIndex(id, isStage, root); Visit(id, isStage, root, command, chunk => { }, !allowPartialSummary); }
+        { files.ValidateLayout(id, isStage, root.BlockCount); Visit(id, isStage, root, command, chunk => { }, !allowPartialSummary); }
         private void Visit(Guid id, bool isStage, LibraryRoot root, LibraryCommand command, Action<CaptureChunk> visit, bool checkSummary = true)
         {
-            VerifyIndex(id, isStage, root); long previous = -1, totalCells = 0, unreliable = 0; int previousObject = 0; bool sawObjects = false;
-            using (var objects = new ObjectLookup(this, id, isStage, root.BlockCount))
-            using (Stream index = files.OpenIndex(id, isStage)) for (long number = 0; number < root.BlockCount; number++)
+            long previous = -1, totalCells = 0, unreliable = 0; int previousObject = 0; bool sawObjects = false;
+            using (Stream index = OpenVerifiedIndex(id, isStage, root))
+            using (var objects = new ObjectLookup(this, id, isStage, root.BlockCount, index)) for (long number = 0; number < root.BlockCount; number++)
             {
                 if (command != null) CheckRead(command); CaptureChunk chunk = ReadChunk(id, isStage, number, index);
                 for (int i = 0; i < chunk.Count; i++)
@@ -316,8 +367,8 @@ namespace JueMingR.Features.Blueprint
             private readonly long blocks;
             private readonly Stream index;
             private readonly List<Cache> cache = new List<Cache>(8);
-            internal ObjectLookup(LibraryWorker owner, Guid id, bool stage, long blocks)
-            { this.owner = owner; this.id = id; this.stage = stage; this.blocks = blocks; index = owner.files.OpenIndex(id, stage); }
+            internal ObjectLookup(LibraryWorker owner, Guid id, bool stage, long blocks, Stream index)
+            { this.owner = owner; this.id = id; this.stage = stage; this.blocks = blocks; this.index = index; }
             internal CaptureObject Find(int objectId)
             {
                 long low = 0, high = blocks - 1;
@@ -364,9 +415,25 @@ namespace JueMingR.Features.Blueprint
                 for (int i = 0; i < cache.Count; i++) if (cache[i].Number == number) { Cache hit = cache[i]; cache.RemoveAt(i); cache.Add(hit); return hit.Chunk; }
                 CaptureChunk chunk = owner.ReadChunk(id, stage, number, index); if (cache.Count == 8) cache.RemoveAt(0); cache.Add(new Cache { Number = number, Chunk = chunk }); return chunk;
             }
-            public void Dispose() { index.Dispose(); cache.Clear(); }
+            public void Dispose() { cache.Clear(); }
         }
-        private void Cleanup(Guid id, bool isStage, long blocks, BlueprintCleanupProof proof = null) { while (!files.CleanupStep(id, isStage, blocks, 32, proof)) { } }
+        private bool Cleanup(Guid id, bool isStage, long blocks, BlueprintCleanupProof proof = null, LibraryCommand read = null)
+        {
+            try
+            {
+                while (true)
+                {
+                    if (read != null) CheckRead(read);
+                    lock (gate) if (stopping) return false;
+                    if (files.CleanupStep(id, isStage, blocks, 32, proof)) return true;
+                    // A safe batch is a cancellation/stop boundary, including
+                    // index proof validation; accepted metadata writes finished
+                    // before entering cleanup and cannot be revoked here.
+                    Thread.Yield();
+                }
+            }
+            finally { files.CloseCleanup(); }
+        }
         private static BlueprintCleanupProof CleanupProof(LibraryMetadata value, string identity)
         { return new BlueprintCleanupProof(identity, value.CleanupSourceIdentity, value.ContentHash, value.CleanupIndexIdentity); }
         private string SuggestName()
@@ -405,17 +472,18 @@ namespace JueMingR.Features.Blueprint
             // caller reusing that number cannot turn an accepted write into a
             // cancelled operation halfway through its immutable-content pass.
             if ((command.Kind == LibraryCommandKind.List || command.Kind == LibraryCommandKind.Objects || command.Kind == LibraryCommandKind.Preview) &&
-                Interlocked.Read(ref cancelledRead) == command.Generation) throw new OperationCanceledException();
+                (Interlocked.Read(ref cancelledRead) == command.Generation || IsStopping())) throw new OperationCanceledException();
         }
+        private bool IsStopping() { lock (gate) return stopping; }
         private LibraryReceipt WriteReceipt(LibraryCommand c, PreferenceWriteResult value)
         {
             if (value.IsProtected || value.CommitUnconfirmed) protectedAssets.Add(c.Id);
             LibraryStatus status = value.Status == PreferenceWriteStatus.Saved ? LibraryStatus.Saved : value.CommitUnconfirmed ? LibraryStatus.CommitUnconfirmed : value.IsProtected ? LibraryStatus.Protected : LibraryStatus.Failed;
-            string error = status == LibraryStatus.Saved ? null : value.CommitUnconfirmed ? "无法确认是否保存成功，相关文件已保留" : value.IsProtected ? "蓝图文件被占用或已改变，已进入保护状态" : "蓝图保存失败，草稿和原选区已保留";
+            string error = status == LibraryStatus.Saved ? null : value.CommitUnconfirmed ? "无法确认是否改名成功，相关文件已保留" : value.IsProtected ? "蓝图文件被占用或已改变，原件已保留" : "改名未保存，原名称已保留";
             return Receipt(c, status, error, value.IsProtected, failureCode: value.Error);
         }
-        private LibraryReceipt Receipt(LibraryCommand c, LibraryStatus status, string error = null, bool protect = false, bool cleanup = false, LibraryPage page = null, BlueprintPreviewImage preview = null, LibraryObjectPage objectPage = null, CaptureSummary summary = null, string failureCode = null, string suggestedName = null)
-        { if (protect && !c.Stage && c.Id != Guid.Empty && (c.Kind == LibraryCommandKind.Preview || c.Kind == LibraryCommandKind.Create || c.Kind == LibraryCommandKind.Rename || c.Kind == LibraryCommandKind.Delete)) protectedAssets.Add(c.Id); CaptureToken token = c.Kind == LibraryCommandKind.Create || c.Kind == LibraryCommandKind.BeginStage ? c.Token : stage != null && stage.Id == c.Id ? stage.Token : default(CaptureToken); return new LibraryReceipt(c.CommandId, c.Kind, status, c.Id, c.Id, token, c.Generation, error, protect, cleanup, page, preview, objectPage, summary, failureCode, suggestedName); }
+        private LibraryReceipt Receipt(LibraryCommand c, LibraryStatus status, string error = null, bool protect = false, bool cleanup = false, LibraryPage page = null, BlueprintPreviewImage preview = null, LibraryObjectPage objectPage = null, CaptureSummary summary = null, string failureCode = null, string suggestedName = null, bool operationRetired = false)
+        { if (protect && !c.Stage && c.Id != Guid.Empty && (c.Kind == LibraryCommandKind.Preview || c.Kind == LibraryCommandKind.Create || c.Kind == LibraryCommandKind.Rename || c.Kind == LibraryCommandKind.Delete)) protectedAssets.Add(c.Id); return new LibraryReceipt(c.CommandId, c.Kind, status, c.Id, c.Id, c.Token, c.Generation, error, protect, cleanup, page, preview, objectPage, summary, failureCode, suggestedName, operationRetired); }
         private static bool Excluded(int id, bool unreliable, LibraryCommand c) { return id > 0 && (unreliable && c.Exclude || Array.BinarySearch(c.Excluded, id) >= 0); }
         private static CaptureCell Filter(CaptureCell cell, LibraryCommand c) { return Excluded(cell.ObjectId, cell.UnreliableObject, c) ? cell.WithoutTile() : cell; }
         private static long Key(CaptureCell cell) { return ((long)cell.Y << 32) | (uint)cell.X; }

@@ -1,5 +1,6 @@
 using System;
 using Microsoft.Xna.Framework;
+using JueMingR.Features.Blueprint;
 
 namespace JueMingR.TerrariaHost.F5
 {
@@ -58,6 +59,15 @@ namespace JueMingR.TerrariaHost.F5
             return new F5Rect(card.Right - 8 - width - (2 - index) * (width + 4), card.Y + 8, width, 22);
         }
         internal static F5Rect Preview(F5Rect card) { return new F5Rect(card.X + 8, card.Y + 36, Math.Max(1, card.Width - 16), PreviewHeight); }
+        // Generate against the final physical drawing budget. Position/scroll do
+        // not affect this identity; the renderer snaps a budget of this exact
+        // size inside the container and never shrinks an already aggregated image.
+        internal static Point PreviewSize(float width, Matrix matrix)
+        {
+            var rect = Preview(Card(width, 0));
+            return new Point(Math.Max(1, Math.Min(BlueprintPreviewBuilder.MaximumWidth, (int)Math.Floor((rect.Width - 10) * Math.Abs(matrix.M11)))),
+                Math.Max(1, Math.Min(BlueprintPreviewBuilder.MaximumHeight, (int)Math.Floor((rect.Height - 10) * Math.Abs(matrix.M22)))));
+        }
         internal static F5Rect Materials(F5Rect card)
         {
             var p = Preview(card); float width = Math.Min(58, p.Width);

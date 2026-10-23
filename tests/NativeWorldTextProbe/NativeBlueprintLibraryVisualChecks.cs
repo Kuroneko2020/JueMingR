@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using JueMingR.Features.Blueprint;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -52,10 +53,28 @@ namespace NativeWorldTextProbe
                 var page = library.Snapshot.Page;
                 Call(ui, "BeginEdit", page.Entries[0].AssetId, "中文名称编辑");
                 Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, 900));
-                graphics.Image(Path.Combine(output, "blueprint-library-name-" + suffix + ".png"), draw, Main.UIScaleMatrix, 1280, 900);
+                var textInput = Get(ui, "TextInput"); var editor = (JueMingR.Features.Text.TextEditBuffer)Get(ui, "Editor");
+                editor.MoveTo(editor.Text.Length); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, 900));
+                long revision = editor.Revision, builds = (long)Get(ui, "LayoutBuilds");
+                Set(textInput, "Composition", "pin"); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, 900));
+                string firstComposition = (string)Get(Get(ui, "editView"), "Text");
+                Set(textInput, "Composition", "pinyin"); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, 900));
+                Require(editor.Revision == revision && (long)Get(ui, "LayoutBuilds") == builds && firstComposition != (string)Get(Get(ui, "editView"), "Text") && ((string)Get(Get(ui, "editView"), "Text")).EndsWith("pinyin"),
+                    "actual production Prepare refreshes changed composition without committed revision/layout changes");
+                // Simulate only the existing lease identity. This exercises the
+                // actual Draw anchor consumer without enabling an OS IME service.
+                object priorTextOwner = Main.CurrentInputTextTakerOverride;
+                Set(textInput, "leased", true); Main.CurrentInputTextTakerOverride = Get(textInput, "owner");
+                try
+                {
+                    graphics.Image(Path.Combine(output, "blueprint-library-name-" + suffix + ".png"), draw, Main.UIScaleMatrix, 1280, 900);
+                    Require(GetOptional(Get(ui, "renderer"), "LastImeAnchor") != null, "actual visible editing renderer submits this frame's candidate anchor at " + suffix);
+                }
+                finally { Set(textInput, "leased", false); Main.CurrentInputTextTakerOverride = priorTextOwner; Set(textInput, "Composition", ""); }
                 Call(ui, "CancelEdit"); Call(shell, "CloseAndSubmitPosition");
             }
             Main.UIScale = 1f; PlayerInput.CacheOriginalScreenDimensions();
+            ScrollRecovery(host, shell, state, renderer, ui, library);
             Main.tile[30, 30].active(false); Main.tile[32, 31].wall = 2;
             Capture(context, 32, 31, ref tick, 31);
             Require(flow.Summary.UnreliableObjectCount == 1, "draft visual contains a real incomplete object with confirmed wall");
@@ -73,13 +92,129 @@ namespace NativeWorldTextProbe
             graphics.Image(Path.Combine(output, "blueprint-draft-empty-excluded.png"), () => { Call(renderer, "Draw", state, Main.UIScaleMatrix, false, false); Call(ui, "Draw"); }, Main.UIScaleMatrix, 1280, 900);
             Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });
             Require((int)Get(ui, "PreviewCount") == 0 && (long)Get(ui, "PreviewBytes") == 0, "UI exit disposes its finite preview textures");
+            FinalRendererPixels(context, graphics, output);
             Console.WriteLine("PASS Blueprint actual library cards/content previews/disabled operations/Chinese name buffer at 100/150% and resource exit. Offscreen native assets; OS IME/owner/multiplayer NOT_EXECUTED.");
+        }
+        private static void FinalRendererPixels(object context, ProbeGraphics graphics, string output)
+        {
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+            var host = Get(context, "Blueprint"); var state = Get(Get(context, "Shell"), "State"); var assembly = host.GetType().Assembly;
+            var type = assembly.GetType("JueMingR.TerrariaHost.F5.BlueprintLibraryPresentation", true);
+            var ui = Activator.CreateInstance(type, flags, null, new[] { host, state, null }, null);
+            var cache = Get(ui, "previews"); var renderer = Get(ui, "renderer"); var parts = (IList)Get(ui, "parts");
+            var rectType = assembly.GetType("JueMingR.TerrariaHost.F5.F5Rect", true);
+            Func<float, float, float, float, object> rect = (x, y, w, h) => Activator.CreateInstance(rectType, flags, null, new object[] { x, y, w, h }, null);
+            var kind = Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.F5.F5ElementKind", true), "Image");
+            var viewport = rect(0, 0, 960, 640); var imageRect = rect(100, 100, 241, 68);
+            Call(renderer, "Refresh"); Call(cache, "Observe", graphics.GraphicsDevice);
+            try
+            {
+                // Pick a source column the old 256→231 nearest pass omitted.
+                var oldColumns = new HashSet<int>(Enumerable.Range(0, 231).Select(x => (int)((x + .5) * 256 / 231)));
+                int skipped = Enumerable.Range(1, 254).First(x => !oldColumns.Contains(x));
+                foreach (float scale in new[] { 1f, 1.5f })
+                {
+                    Matrix transform = Matrix.CreateScale(scale);
+                    var budget = (Point)assembly.GetType("JueMingR.TerrariaHost.F5.BlueprintLibraryLayout", true).GetMethod("PreviewSize", flags).Invoke(null, new object[] { 522f, transform });
+                    var builder = new BlueprintPreviewBuilder(256, 58, budget.X, budget.Y);
+                    builder.Add(skipped, 2, BlueprintPreviewLayer.Tile); builder.Add(255, 57, BlueprintPreviewLayer.Object);
+                    for (int y = 4; y < 54; y++) builder.Add(170, y, BlueprintPreviewLayer.Wire);
+                    for (int y = 12; y <= 40; y++) for (int x = 50; x <= 90; x++)
+                        if (x == 50 || x == 90 || y == 12 || y == 40) builder.Add(x, y, BlueprintPreviewLayer.Tile);
+                    var image = builder.Complete(); string key = "final-pixel-" + scale;
+                    Require((bool)Call(cache, "Upload", key, image, new CaptureSummary { Width = 256, Height = 58, ContentCount = image.ProcessedCells }, Get(cache, "Generation")), "finite renderer sample uploaded");
+                    parts.Clear(); var part = Call(ui, "TextPart", "", imageRect, .62f, kind);
+                    Action draw = () => Call(renderer, "Draw", Get(ui, "parts"), viewport, transform, 0f, null, null, cache, Get(ui, "editView"), false);
+                    var baseline = graphics.Pixels(draw, transform);
+                    Set(part, "PreviewKey", key); var actual = graphics.Pixels(draw, transform);
+                    var target = (Rectangle)renderer.GetType().GetMethod("PreviewTarget", flags).Invoke(null, new object[] { imageRect, transform, image.Width, image.Height });
+                    Require(target.Width >= image.Width && target.Height >= image.Height, "final renderer never reduces the already aggregated image");
+                    int occupied = 0, transparent = 0;
+                    for (int y = 0; y < image.Height; y++) for (int x = 0; x < image.Width; x++)
+                    {
+                        int px = target.X + x, py = target.Y + y, offset = py * 960 + px;
+                        bool changed = actual[offset] != baseline[offset];
+                        if (image.GetPixel(x, y) != 0) { occupied++; Require(changed, "actual final pixels retain every finite occupied column, thin line and remote component at " + scale + ": " + x + "," + y); }
+                        else { transparent++; Require(!changed, "actual final pixels retain holes and separation at " + scale + ": " + x + "," + y); }
+                    }
+                    Require(occupied > 50 && transparent > occupied, "sparse final-renderer counterexample contains both meaningful occupied pixels and internal/outer empty pixels");
+                    graphics.Image(Path.Combine(output, "blueprint-final-sparse-" + scale.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".png"), draw, transform);
+                }
+                // The same key owns both facts and pixels; reset invalidates an
+                // accepted old-generation upload before it can become current.
+                int generation = (int)Get(cache, "Generation");
+                var small = new BlueprintPreviewBuilder(1, 1, 1, 1); small.Add(0, 0, BlueprintPreviewLayer.Tile); var one = small.Complete();
+                Call(cache, "Reset", null, EventArgs.Empty);
+                Require((int)Get(cache, "Count") == 0 && (long)Get(cache, "PixelBytes") == 0 && !(bool)Call(cache, "Upload", "late-device", one, new CaptureSummary { ContentCount = 1 }, generation),
+                    "device generation retires all derived resources and rejects late old-generation upload");
+                for (int i = 0; i < 18; i++) Call(cache, "Upload", "bounded-" + i, one, new CaptureSummary { ContentCount = i }, Get(cache, "Generation"));
+                Require((int)Get(cache, "Count") == 12 && Call(cache, "Summary", "bounded-0") == null,
+                    "texture and summary eviction share the twelve-entry bound");
+                SpriteBatchRecovery(renderer, ui, cache, viewport, graphics);
+            }
+            finally { ((IDisposable)ui).Dispose(); }
+            Require((int)Get(cache, "Count") == 0 && (long)Get(cache, "PixelBytes") == 0, "renderer counterexample exit releases every owned texture");
+            Console.WriteLine("PASS Blueprint final production renderer sparse pixels/old skipped column/hole at 100/150%; paired cache cap/reset and actual batch state recovery.");
+        }
+        private static void ScrollRecovery(object host, object shell, object state, object renderer, object ui, LibraryState library)
+        {
+            var layout = Get(state, "Layout"); Main.screenWidth = 1280; Main.screenHeight = 520; PlayerInput.CacheOriginalScreenDimensions();
+            Call(ui, "OpenLibrary"); Call(layout, "SetBlueprintLibraryVisible", true); Call(renderer, "Prepare", state, 1280f, 520f, 1f);
+            Action prepare = () => { Call(host, "Poll"); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, Main.screenHeight)); };
+            NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && library.Snapshot.Page != null && !(bool)Get(ui, "wantList"); });
+            Call(state, "ScrollTo", float.MaxValue); prepare(); float before = (float)Get(state, "Scroll");
+            Require(before > 0, "short viewport has a real nonzero library scroll range");
+            Call(ui, "RequestList", 0, null); prepare();
+            Require((float)Get(state, "Scroll") == before, "temporary loading height retains the last effective content height and exact scroll");
+            NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "wantList"); });
+            var first = ((IEnumerable)Get(ui, "parts")).Cast<object>().First(); Set(ui, "armed", first);
+            Main.screenHeight = 900; PlayerInput.CacheOriginalScreenDimensions(); Call(renderer, "Prepare", state, 1280f, 900f, 1f); prepare();
+            Require((float)Get(state, "Scroll") <= (float)Get(layout, "MaxScroll") && (float)Get(ui, "scroll") == (float)Get(state, "Scroll") && GetOptional(ui, "armed") == null,
+                "larger final viewport clamps once, reprojects the same scroll and retires old press geometry");
+            Call(ui, "CancelRead"); NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });
+            var entries = library.Snapshot.Page.Entries.Take(Math.Max(0, library.Snapshot.Page.Entries.Count - 2)).ToArray();
+            foreach (var entry in entries) { Require(library.TryDelete(entry.AssetId, entry.MetadataIdentity), "isolated actual row-reduction delete accepted"); Complete(library); }
+            Call(ui, "RequestList", 0, null);
+            NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "wantList"); });
+            Require(library.Snapshot.Page.Entries.Count == 2 && (float)Get(state, "Scroll") <= (float)Get(layout, "MaxScroll") && (float)Get(layout, "ContentHeight") < 300,
+                "actual deleted rows reduce final height and clamp the old offset to the new valid range");
+            Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });
+        }
+        private static void SpriteBatchRecovery(object renderer, object ui, object cache, object viewport, ProbeGraphics graphics)
+        {
+            var parts = (IList)Get(ui, "parts"); parts.Clear();
+            var bad = Activator.CreateInstance(renderer.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.BlueprintLibraryPart", true), true); parts.Add(bad);
+            bool failed = false;
+            graphics.Pixels(() =>
+            {
+                var device = graphics.GraphicsDevice;
+                device.ScissorRectangle = new Rectangle(9, 11, 700, 500);
+                device.RasterizerState = Microsoft.Xna.Framework.Graphics.RasterizerState.CullClockwise;
+                device.BlendState = Microsoft.Xna.Framework.Graphics.BlendState.Additive;
+                device.DepthStencilState = Microsoft.Xna.Framework.Graphics.DepthStencilState.DepthRead;
+                device.SamplerStates[0] = Microsoft.Xna.Framework.Graphics.SamplerState.LinearWrap;
+                var scissor = device.ScissorRectangle; var rasterizer = device.RasterizerState;
+                var blend = device.BlendState; var depth = device.DepthStencilState; var sampler = device.SamplerStates[0];
+                try { Call(renderer, "Draw", Get(ui, "parts"), viewport, Matrix.Identity, 0f, null, null, cache, Get(ui, "editView"), false); }
+                catch (TargetInvocationException error) when (error.InnerException is NullReferenceException) { failed = true; }
+                Require(device.ScissorRectangle == scissor && ReferenceEquals(device.RasterizerState, rasterizer) && ReferenceEquals(device.BlendState, blend) && ReferenceEquals(device.DepthStencilState, depth) && ReferenceEquals(device.SamplerStates[0], sampler),
+                    "exceptional library pass returns actual caller scissor/rasterizer/blend/depth/sampler");
+            }, Matrix.Identity);
+            Require(failed, "exceptional path was actually executed"); parts.Clear();
+            graphics.Pixels(() =>
+            {
+                var device = graphics.GraphicsDevice; var scissor = device.ScissorRectangle; var rasterizer = device.RasterizerState;
+                var blend = device.BlendState; var depth = device.DepthStencilState; var sampler = device.SamplerStates[0];
+                Call(renderer, "Draw", Get(ui, "parts"), viewport, Matrix.Identity, 0f, null, null, cache, Get(ui, "editView"), false);
+                Require(device.ScissorRectangle == scissor && ReferenceEquals(device.RasterizerState, rasterizer) && ReferenceEquals(device.BlendState, blend) && ReferenceEquals(device.DepthStencilState, depth) && ReferenceEquals(device.SamplerStates[0], sampler),
+                    "normal library passes also return the actual caller states and a usable begun UI batch");
+            }, Matrix.Identity);
         }
         private static LibraryReceipt Complete(LibraryState library)
         {
             LibraryReceipt result = null;
             NativeQuickItemChecks.Until(() => { library.Pump(); return library.TryTakeReceipt(out result); });
-            Require(result.Status == LibraryStatus.Completed || result.Status == LibraryStatus.Saved, "visual private repository operation: " + result.Error); return result;
+            Require(result.Status == LibraryStatus.Completed || result.Status == LibraryStatus.Saved || result.Status == LibraryStatus.Deleted, "visual private repository operation: " + result.Error); return result;
         }
         private static void PreviewPairing(object host, object ui, LibraryState library, BlueprintCaptureFlow flow)
         {

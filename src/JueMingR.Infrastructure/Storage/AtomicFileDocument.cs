@@ -21,6 +21,11 @@ namespace JueMingR.Infrastructure.Storage
         private bool disposed;
         private readonly string retainedSourcePath;
         private bool retainSource;
+#if DEBUG
+        // Instance-local fault seam: exercises the real owned-candidate failure
+        // path without affecting another document or any Release installation.
+        internal bool DebugCandidateWriteFailure { get; set; }
+#endif
 
         public AtomicFileDocument(string fullDocumentPath, int maximumBytes, bool protectRecovery = false)
             : this(fullDocumentPath, maximumBytes, protectRecovery, null) { }
@@ -126,6 +131,14 @@ namespace JueMingR.Infrastructure.Storage
                     FileAccess.ReadWrite, FileShare.None))
                 {
                     ownsTemporary = true;
+#if DEBUG
+                    if (DebugCandidateWriteFailure)
+                    {
+                        temporary.Write(candidate, 0, Math.Max(1, candidate.Length / 2));
+                        temporary.Flush(true);
+                        throw new IOException("isolated-owned-candidate-write-failure");
+                    }
+#endif
                     temporary.Write(candidate, 0, candidate.Length);
                     temporary.Flush(true);
                     temporary.Position = 0;

@@ -35,7 +35,9 @@ namespace JueMingR.TerrariaHost.F5
         private F5Rect view, hitClip, editRect, pressView;
         private Matrix matrix, pressMatrix;
         private Vector2 screen;
-        private int layoutGeneration = -1, resourceGeneration = -1, projection, pressProjection;
+        private int layoutGeneration = -1, resourceGeneration = -1, previewCacheGeneration = -1, projection, pressProjection;
+        private Point previewSize;
+        private float finalLibraryHeight;
         private bool ready, dirty = true, previousLeft, leftTail, rightTail, wantList, listFailed, objectFailed, editProtected, focusSuspended;
         private int requestedPage, objectIndex;
         private long readGeneration, activeReadGeneration, listGeneration, objectGeneration, previewGeneration, seenReceipt, seenFlow = -1, seenLibrary = -1;
@@ -97,7 +99,12 @@ namespace JueMingR.TerrariaHost.F5
             EndEdit(); mode = View.Library; selected = asset; deleteConfirm = null;
             RequestList(requestedPage, asset); shell.ScrollTo(0);
         }
-        internal void BeforeInput(bool active) { TextInput.BeforeSample(active && Visible); }
+        internal void BeforeInput(bool active)
+        {
+            // A retired capture can retain a name buffer for inspection, but no
+            // hidden/non-executable field may keep the native IME input lease.
+            TextInput.BeforeSample(active && Visible && (mode != View.Capture || !host.Flow.ContentHandle.IsEmpty));
+        }
         public void PreserveUncommittedInput(TextEditBuffer value) { }
         public void CancelEdit() { EndEdit(); deleteConfirm = null; dirty = true; }
         public bool RequestFinish()
@@ -284,7 +291,15 @@ namespace JueMingR.TerrariaHost.F5
                 }
                 if (mode == View.Capture && receipt.Kind == LibraryCommandKind.Create && receipt.OperationId == host.Flow.Token.OperationId &&
                     receipt.Status != LibraryStatus.Saved)
-                { validation = receipt.Status == LibraryStatus.CommitUnconfirmed || receipt.IsProtected ? "无法确认是否保存成功，相关文件已保留" : receipt.Error ?? "保存失败，草稿已保留"; dirty = true; }
+                {
+                    // File protection and commit certainty are separate facts.
+                    // A proven precommit failure must not be called unknown, and
+                    // a retired handle must not leave an invisible retry editor.
+                    validation = receipt.Status == LibraryStatus.CommitUnconfirmed ? "无法确认是否保存成功，相关文件已保留" :
+                        receipt.OperationRetired ? "此次蓝图未保存，相关文件已保留。可重新采集。" : receipt.Error ?? "保存失败，草稿已保留";
+                    if (receipt.OperationRetired) { TextInput.Release(false); editProtected = true; }
+                    dirty = true;
+                }
                 if (pendingMutation == receipt.Kind && pendingAsset == receipt.AssetId && receipt.CommandId > mutationAfter)
                 {
                     bool success = receipt.Status == LibraryStatus.Saved || receipt.Status == LibraryStatus.Deleted;
@@ -320,21 +335,30 @@ namespace JueMingR.TerrariaHost.F5
                 pendingImage = null; pendingSummary = null; pendingPreviewKey = null; dirty = true;
             }
             var next = shell.Layout.Viewport.Offset(shell.X, shell.Y);
-            bool geometry = matrix != transform || screen != dimensions || !Same(view, next) || layoutGeneration != shell.Layout.Generation || resourceGeneration != renderer.Generation;
+            bool geometry = matrix != transform || screen != dimensions || !Same(view, next) || layoutGeneration != shell.Layout.Generation || resourceGeneration != renderer.Generation || previewCacheGeneration != previews.Generation;
             if (geometry || scroll != shell.Scroll) { projection++; armed = null; }
             matrix = transform; screen = dimensions; view = next; scroll = shell.Scroll; ready = true;
+            previewSize = BlueprintLibraryLayout.PreviewSize(view.Width, matrix);
             if (geometry) hitClip = F5ControlRenderer.LogicalClip(F5ControlRenderer.ContentClip(view, matrix,
                 new Rectangle(0, 0, (int)dimensions.X, (int)dimensions.Y)), matrix);
             bool shape = dirty || geometry || seenFlow != host.Flow.Revision || seenLibrary != host.Library.Snapshot.Revision || shownMessage != Message;
             if (shape)
             {
                 Build(); LayoutBuilds++; dirty = false; projection++; armed = null;
+                // Dynamic page heights are complete only here. A loading list
+                // retains its last effective height, so Ensure's temporary empty
+                // page cannot consume the user's scroll before the reply arrives.
+                shell.ClampScroll();
+                if (scroll != shell.Scroll) { scroll = shell.Scroll; projection++; armed = null; }
                 seenFlow = host.Flow.Revision; seenLibrary = host.Library.Snapshot.Revision; shownMessage = Message;
-                layoutGeneration = shell.Layout.Generation; resourceGeneration = renderer.Generation;
+                layoutGeneration = shell.Layout.Generation; resourceGeneration = renderer.Generation; previewCacheGeneration = previews.Generation;
             }
             if (editor != null && editRect.Width > 0 && (shape || editRevision != editor.Revision || caretRevision != editor.CaretRevision || composition != TextInput.Composition))
             {
-                editView.Prepare(editor, TextInput.Composition, editRect.Width - 10, shell.Layout.DynamicTextSize);
+                // Reserve the caret's own pixel, including at the end of a full
+                // field. Composition/caret changes update this view without a
+                // layout rebuild or revoking the text lease.
+                editView.Prepare(editor, TextInput.Composition, editRect.Width - 11, Measure);
                 editRevision = editor.Revision; caretRevision = editor.CaretRevision; composition = TextInput.Composition;
             }
             RequestWork();
@@ -359,7 +383,7 @@ namespace JueMingR.TerrariaHost.F5
                     if (!pageKeys.TryGetValue(entry.AssetId, out key)) return;
                     if (previews.Touch(key) || failedPreviews.Contains(key)) continue;
                     long generation = previewGeneration = ++readGeneration;
-                    if (host.Library.TryPreview(generation, entry.AssetId, entry.ContentHash, 256, 58)) PreviewPending(key, generation);
+                    if (host.Library.TryPreview(generation, entry.AssetId, entry.ContentHash, previewSize.X, previewSize.Y)) PreviewPending(key, generation);
                     return;
                 }
             }
@@ -376,7 +400,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (!previews.Touch(key) && !failedPreviews.Contains(key))
                 {
                     long generation = previewGeneration = ++readGeneration;
-                    if (host.Library.TryPreview(generation, host.Flow.ContentHandle, 256, 58, host.Flow.ExcludeUnreliable, host.Flow.ExcludedObjectIds)) PreviewPending(key, generation);
+                    if (host.Library.TryPreview(generation, host.Flow.ContentHandle, previewSize.X, previewSize.Y, host.Flow.ExcludeUnreliable, host.Flow.ExcludedObjectIds)) PreviewPending(key, generation);
                 }
             }
         }
@@ -390,8 +414,9 @@ namespace JueMingR.TerrariaHost.F5
             failedPreviews.Add(key);
             if (summary != null) failedSummaries[key] = summary;
         }
-        private static string AssetKey(LibraryEntry entry) { return "a:" + entry.ContentHash + ":1:256:58"; }
-        private string DraftKey() { return "d:" + host.Flow.ContentHandle.Id.ToString("N") + ":" + host.Flow.ExcludeUnreliable + ":" + string.Join(",", host.Flow.ExcludedObjectIds) + ":1:256:58"; }
+        private string PreviewIdentity { get { return ":" + BlueprintPreviewBuilder.RendererVersion + ":" + previewSize.X + ":" + previewSize.Y + ":g" + previews.Generation; } }
+        private string AssetKey(LibraryEntry entry) { return "a:" + entry.ContentHash + PreviewIdentity; }
+        private string DraftKey() { return "d:" + host.Flow.ContentHandle.Id.ToString("N") + ":" + host.Flow.ExcludeUnreliable + ":" + string.Join(",", host.Flow.ExcludedObjectIds) + PreviewIdentity; }
         private void Build()
         {
             parts.Clear(); pageKeys.Clear(); draftPreviewKey = null; editRect = default(F5Rect);
@@ -403,7 +428,7 @@ namespace JueMingR.TerrariaHost.F5
             bool current = page != null && page.Generation == listGeneration && !wantList;
             Panel(new F5Rect(0, 0, view.Width, 42));
             Label("蓝图库", new F5Rect(10, 5, 220, 16), .76f);
-            Label("共保存" + (current ? page.TotalCount : 0).ToString(CultureInfo.InvariantCulture) + "个蓝图", new F5Rect(10, 24, 235, 12), .54f);
+            Label("共保存" + (current ? page.TotalCount : 0).ToString(CultureInfo.InvariantCulture) + "个蓝图", new F5Rect(10, 24, 235, 16), .62f);
             Button("导入", BlueprintLibraryLayout.HeaderButton(view.Width, 0), BlueprintLibraryCommand.None, false);
             Button("上一页", BlueprintLibraryLayout.HeaderButton(view.Width, 1), BlueprintLibraryCommand.Previous, current && page.PageIndex > 0 && !snapshot.Busy);
             Button("下一页", BlueprintLibraryLayout.HeaderButton(view.Width, 2), BlueprintLibraryCommand.Next, current && page.PageIndex + 1 < page.PageCount && !snapshot.Busy);
@@ -414,7 +439,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 Panel(new F5Rect(0, 48, view.Width, 58));
                 Label(!current ? listFailed ? "蓝图库读取失败" : "正在读取蓝图库" : page.Error != null ? "蓝图库读取失败" : "暂无蓝图", new F5Rect(12, 58, view.Width - 24, 18));
-                Label(current && page.Error == null ? "采集并保存后，会显示在这里。" : Message ?? "", new F5Rect(12, 82, view.Width - 24, 16), .58f);
+                height = Math.Max(height, 82 + AddWrapped(current && page.Error == null ? "采集并保存后，会显示在这里。" : Message ?? "", 12, 82, view.Width - 24, Color.White) + 8);
             }
             else for (int i = 0; i < count; i++)
             {
@@ -427,7 +452,8 @@ namespace JueMingR.TerrariaHost.F5
             var chosen = selected.HasValue ? Find(selected.Value) : null;
             if (chosen != null && !string.IsNullOrEmpty(chosen.MissingSummary)) height += AddWrapped(chosen.MissingSummary, 8, height, view.Width - 16, Color.LightGoldenrodYellow) + 6;
             if (current && page.IsolatedCount > 0) height += AddWrapped("有" + page.IsolatedCount + "项内容暂不可用，原文件已保留。", 8, height, view.Width - 16, Color.LightGoldenrodYellow) + 6;
-            shell.Layout.SetBlueprintContentHeight(height);
+            if (current || listFailed) finalLibraryHeight = height;
+            shell.Layout.SetBlueprintContentHeight(current || listFailed ? height : Math.Max(height, finalLibraryHeight));
         }
         private void BuildCard(F5Rect card, Guid id, string name, int width, int height, long count, string missing, string key, bool enabled, bool draft)
         {
@@ -447,8 +473,10 @@ namespace JueMingR.TerrariaHost.F5
             Label(width + "x" + height + " / 内容 " + count.ToString(CultureInfo.InvariantCulture), new F5Rect(preview.X, preview.Bottom + 5, Math.Max(1, materials.X - 4 - preview.X), 13), .62f);
             Button("材料", materials, BlueprintLibraryCommand.None, false);
             string inlineError = (editing || selected == id) && !string.IsNullOrEmpty(Message) ? Message : null;
-            if (inlineError != null) Label(inlineError, new F5Rect(preview.X, preview.Bottom + 25, preview.Width, 30), .50f, Color.LightSalmon);
-            else if (!string.IsNullOrEmpty(missing)) Label(missing, new F5Rect(preview.X, preview.Bottom + 25, preview.Width, 30), .50f, Color.LightGoldenrodYellow);
+            // A compact card shows two readable lines; selected diagnostics are
+            // also rendered in full below the cards and count toward scrolling.
+            if (inlineError != null) CardMessage(inlineError, preview, Color.LightSalmon);
+            else if (!string.IsNullOrEmpty(missing)) CardMessage(missing, preview, Color.LightGoldenrodYellow);
         }
         private void BuildCapture()
         {
@@ -511,14 +539,37 @@ namespace JueMingR.TerrariaHost.F5
         {
             text = text ?? "";
             string fitted = Fit(text, Math.Max(1, rect.Width - (kind == F5ElementKind.Button ? 8 : 0)), scale);
-            var size = shell.Layout.DynamicTextSize(fitted, scale);
+            var size = Measure(fitted, scale);
             var part = new BlueprintLibraryPart { Element = new F5Element(kind, rect, fitted, size, scale, F5Command.None) }; parts.Add(part); return part;
+        }
+        private F5Size Measure(string text, float scale)
+        {
+            // Reuse the shared glyph bounds, changing only this renderer's known
+            // outline expansion. Draw, fit, caret and hit rectangles share it.
+            var size = shell.Layout.DynamicTextSize(text, scale);
+            float border = BlueprintLibraryRenderer.Outline(scale);
+            return new F5Size(size.Width - 4 + 2 * border, size.Height - 4 + 2 * border,
+                size.OffsetX + 2 - border, size.OffsetY + 2 - border);
+        }
+        private void CardMessage(string text, F5Rect preview, Color ink)
+        {
+            var boundaries = TextElements.Boundaries(text); int start = 0;
+            float y = preview.Bottom + 25;
+            for (int row = 0; row < 2 && start < boundaries.Length - 1; row++)
+            {
+                int lo = start + 1, hi = boundaries.Length - 1;
+                while (lo < hi) { int mid = (lo + hi + 1) / 2; if (Measure(text.Substring(boundaries[start], boundaries[mid] - boundaries[start]), .62f).Width <= preview.Width) lo = mid; else hi = mid - 1; }
+                string line = text.Substring(boundaries[start], boundaries[lo] - boundaries[start]);
+                if (row == 1 && lo < boundaries.Length - 1) line = Fit(line + "…", preview.Width, .62f);
+                var size = Measure(line, .62f); float height = Math.Max(16, size.Height + 1);
+                Label(line, new F5Rect(preview.X, y, preview.Width, height), .62f, ink); y += height; start = lo;
+            }
         }
         private string Fit(string text, float width, float scale)
         {
-            if (shell.Layout.DynamicTextSize(text, scale).Width <= width) return text;
+            if (Measure(text, scale).Width <= width) return text;
             var boundaries = TextElements.Boundaries(text); int lo = 0, hi = boundaries.Length - 1;
-            while (lo < hi) { int mid = (lo + hi + 1) / 2; if (shell.Layout.DynamicTextSize(text.Substring(0, boundaries[mid]) + "…", scale).Width <= width) lo = mid; else hi = mid - 1; }
+            while (lo < hi) { int mid = (lo + hi + 1) / 2; if (Measure(text.Substring(0, boundaries[mid]) + "…", scale).Width <= width) lo = mid; else hi = mid - 1; }
             return text.Substring(0, boundaries[lo]) + "…";
         }
         private float AddWrapped(string text, float x, float y, float width, Color color)
@@ -527,9 +578,9 @@ namespace JueMingR.TerrariaHost.F5
             while (start < boundaries.Length - 1)
             {
                 int lo = start + 1, hi = boundaries.Length - 1;
-                while (lo < hi) { int mid = (lo + hi + 1) / 2; if (shell.Layout.DynamicTextSize(text.Substring(boundaries[start], boundaries[mid] - boundaries[start]), .62f).Width <= width) lo = mid; else hi = mid - 1; }
+                while (lo < hi) { int mid = (lo + hi + 1) / 2; if (Measure(text.Substring(boundaries[start], boundaries[mid] - boundaries[start]), .62f).Width <= width) lo = mid; else hi = mid - 1; }
                 string line = text.Substring(boundaries[start], boundaries[lo] - boundaries[start]);
-                var size = shell.Layout.DynamicTextSize(line, .62f); float height = Math.Max(18, size.Height + 2);
+                var size = Measure(line, .62f); float height = Math.Max(18, size.Height + 2);
                 Label(line, new F5Rect(x, top, width, height), .62f, color); top += height; start = lo;
             }
             return top - y;
@@ -537,7 +588,8 @@ namespace JueMingR.TerrariaHost.F5
         internal void Draw()
         {
             if (!Visible || !ready) return;
-            renderer.Draw(parts, view, matrix, shell.Scroll, hovered, armed, previews, editView);
+            renderer.Draw(parts, view, matrix, shell.Scroll, hovered, armed, previews, editView,
+                !dirty && TextInput.Owned && TextInput.OwnsTextToken && !TextInput.OtherTextOwner);
             // Retain the final caller scissor, including its fractional-scale
             // rounding. A changed visible region retires any earlier press.
             if (!Same(hitClip, renderer.LastClip)) { hitClip = renderer.LastClip; projection++; armed = null; }

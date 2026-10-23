@@ -1,8 +1,14 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Collections;
 using JueMingR.Features.Blueprint;
 using JueMingR.Features.Text;
+using JueMingR.Platform.Hotkeys;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
+using Terraria;
+using Terraria.GameInput;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -28,6 +34,9 @@ namespace NativeWorldTextProbe
             }
             Require((float)invoke("Height", new object[] { 0 }) == 112 && (float)invoke("Height", new object[] { 6 }) == 568,
                 "empty and six-card content heights use real rows without virtual cards");
+            Require((Point)invoke("PreviewSize", new object[] { 522f, Matrix.Identity }) == new Point(231, 58) &&
+                (Point)invoke("PreviewSize", new object[] { 522f, Matrix.CreateScale(1.5f) }) == new Point(346, 87),
+                "preview worker budget comes from final card pixels at both real UI scales, not a fixed 256-column intermediate");
             float[] headerX = { 272, 342, 400, 458 };
             for (int i = 0; i < 4; i++) Require((float)Get(invoke("HeaderButton", new object[] { 522f, i }), "X") == headerX[i], "import/previous/next/back stay in their original order and positions");
 
@@ -35,12 +44,15 @@ namespace NativeWorldTextProbe
             // BeginEdit does not acquire the native text lease; BeforeSample is
             // deliberately absent, so this does not claim Windows IME coverage.
             var state = Get(Get(context, "Shell"), "State");
+            var shellRenderer = Get(Get(context, "Shell"), "renderer");
+            Call(shellRenderer, "RefreshResources"); Call(shellRenderer, "Prepare", state, 960f, 640f, 1f);
             var uiType = assembly.GetType("JueMingR.TerrariaHost.F5.BlueprintLibraryPresentation", true);
             var ui = Activator.CreateInstance(uiType, F, null, new object[] { host, state, null }, null);
             var library = (LibraryState)Get(host, "Library"); var savedSnapshot = Get(library, "snapshot");
             try
             {
                 ReadCancellation(ui, host, library);
+                EditGeometry(ui, assembly);
                 Guid id = Guid.NewGuid(); Call(ui, "BeginEdit", id, "原名");
                 var editor = (TextEditBuffer)Get(ui, "Editor"); editor.SelectAll(); editor.Insert(" ");
                 Require(!(bool)Call(ui, "RequestFinish") && ReferenceEquals(editor, Get(ui, "Editor")) && editor.Text == " ",
@@ -53,18 +65,146 @@ namespace NativeWorldTextProbe
                 ReceiptFailure(ui, library, editor, id, LibraryStatus.CommitUnconfirmed, 902);
                 Require(ReferenceEquals(editor, Get(ui, "Editor")) && (bool)Get(ui, "editProtected") && !(bool)Call(ui, "RequestFinish"),
                     "unknown commit preserves the draft and closes this editor's retry gate");
+                RetiredCreate(ui, host, library);
                 Call(ui, "CancelEdit"); Require(GetOptional(ui, "Editor") == null, "explicit cancel releases this editor only");
             }
             finally { Set(library, "snapshot", savedSnapshot); ((IDisposable)ui).Dispose(); }
+            OpenAction(context);
         }
         private static void ReceiptFailure(object ui, LibraryState library, TextEditBuffer editor, Guid id, LibraryStatus status, long command)
         {
             Set(ui, "pendingMutation", (LibraryCommandKind?)LibraryCommandKind.Rename); Set(ui, "pendingAsset", id);
             Set(ui, "pendingEditor", editor); Set(ui, "pendingEditRevision", editor.Revision); Set(ui, "mutationAfter", command - 1);
             var receipt = (LibraryReceipt)Activator.CreateInstance(typeof(LibraryReceipt), F, null,
-                new object[] { command, LibraryCommandKind.Rename, status, Guid.Empty, id, default(CaptureToken), 0L, "测试写入失败", status == LibraryStatus.CommitUnconfirmed, false, null, null, null, null, null, null }, null);
+                new object[] { command, LibraryCommandKind.Rename, status, Guid.Empty, id, default(CaptureToken), 0L, "测试写入失败", status == LibraryStatus.CommitUnconfirmed, false, null, null, null, null, null, null, false }, null);
             var snapshot = Activator.CreateInstance(typeof(LibrarySnapshot), F, null, new object[] { command, false, null, receipt, 0L }, null);
             Set(library, "snapshot", snapshot); Call(ui, "PollReceipts");
+        }
+        private static void EditGeometry(object ui, Assembly assembly)
+        {
+            Call(ui, "BeginEdit", Guid.Empty, new string('中', 48));
+            var editor = (TextEditBuffer)Get(ui, "Editor"); editor.MoveTo(editor.Text.Length);
+            var edit = Get(ui, "editView");
+            Type size = assembly.GetType("JueMingR.TerrariaHost.F5.F5Size", true);
+            Type measureType = typeof(Func<,,>).MakeGenericType(typeof(string), typeof(float), size);
+            var measure = Delegate.CreateDelegate(measureType, ui, ui.GetType().GetMethod("Measure", F));
+            long revision = editor.Revision;
+            Call(edit, "Prepare", editor, "pin", 61f, measure);
+            string first = (string)Get(edit, "Text");
+            Call(edit, "Prepare", editor, "pinyin", 61f, measure);
+            Require(editor.Revision == revision && first != (string)Get(edit, "Text") && ((string)Get(edit, "Text")).EndsWith("pinyin"),
+                "same committed revision still projects changed composition at the visible trailing caret");
+            Require((float)Get(edit, "Caret") <= 61 && (float)Get(edit, "Caret") >= 0 && ((string)Get(edit, "Text")).Length < editor.Text.Length,
+                "long complete name uses a bounded whole-element viewport with its trailing caret visible");
+            Type rect = assembly.GetType("JueMingR.TerrariaHost.F5.F5Rect", true);
+            Func<float, float, float, float, object> box = (x, y, w, h) => Activator.CreateInstance(rect, F, null, new object[] { x, y, w, h }, null);
+            Type renderer = assembly.GetType("JueMingR.TerrariaHost.F5.BlueprintLibraryRenderer", true);
+            var anchor = renderer.GetMethod("TryImeAnchor", F);
+            object[] args = { box(10, 20, 80, 22), 60f, 16f, box(0, 0, 200, 100), Matrix.CreateScale(1.5f), Matrix.Identity, Vector2.Zero };
+            Require((bool)anchor.Invoke(null, args) && (Vector2)args[6] == new Vector2(112.5f, 90.5f),
+                "IME anchor follows the frozen UI transform through screen pixels and verified native minus-32 offset");
+            args[3] = box(0, 30, 200, 100);
+            Require(!(bool)anchor.Invoke(null, args), "partially clipped caret has no candidate anchor eligibility");
+            args[3] = box(0, 0, 200, 100); args[1] = 75f;
+            Require(!(bool)anchor.Invoke(null, args), "caret outside the field cannot publish an old candidate anchor");
+            Call(ui, "CancelEdit");
+        }
+        private static void RetiredCreate(object ui, object host, LibraryState library)
+        {
+            object priorMode = Get(ui, "mode");
+            Set(ui, "mode", Enum.Parse(priorMode.GetType(), "Capture"));
+            Call(ui, "BeginEdit", Guid.Empty, "失败时保留的名称"); var editor = Get(ui, "Editor");
+            var token = ((BlueprintCaptureFlow)Get(host, "Flow")).Token;
+            try
+            {
+                foreach (var status in new[] { LibraryStatus.Failed, LibraryStatus.CommitUnconfirmed })
+                {
+                    long command = status == LibraryStatus.Failed ? 903 : 904;
+                    var receipt = (LibraryReceipt)Activator.CreateInstance(typeof(LibraryReceipt), F, null,
+                        new object[] { command, LibraryCommandKind.Create, status, token.OperationId, token.OperationId, token, 0L, "故障材料保留", true, false, null, null, null, null, null, null, true }, null);
+                    var snapshot = Activator.CreateInstance(typeof(LibrarySnapshot), F, null, new object[] { command, false, null, receipt, 0L }, null);
+                    Set(library, "snapshot", snapshot); Call(ui, "PollReceipts");
+                    string message = (string)Get(ui, "validation");
+                    Require(ReferenceEquals(editor, Get(ui, "Editor")) && (bool)Get(ui, "editProtected") && !(bool)Call(ui, "RequestFinish"),
+                        "retired create retains its buffer but has no invalid retry execution gate");
+                    Require(status == LibraryStatus.Failed ? message.Contains("未保存") && !message.Contains("无法确认") : message.Contains("无法确认"),
+                        "actual UI separates definite failed/protected create from unknown commit certainty");
+                }
+            }
+            finally { Set(ui, "mode", priorMode); }
+        }
+        private static void OpenAction(object context)
+        {
+            var host = Get(context, "Blueprint"); var shell = Get(context, "Shell"); var state = Get(shell, "State");
+            var ui = Get(shell, "BlueprintUi"); var input = Get(context, "Input"); var renderer = Get(shell, "renderer");
+            var bindings = (HotkeyBindings)Get(Get(shell, "hotkeys"), "Bindings");
+            var registry = (HotkeyRegistry)Get(Get(shell, "hotkeys"), "Registry");
+            Require(registry.Find("blueprint.library")?.CanConfigure == true && bindings.Get("blueprint.library") == null,
+                "library open is a configurable stable action with no implicit default key");
+            Call(state, "Navigate", 6); Set(state, "Ready", true); Call(state, "RestoreVisible");
+            Call(renderer, "RefreshResources"); Call(renderer, "Prepare", state, 960f, 640f, 1f);
+            Action<int, int, bool, Keys[]> sample = (x, y, left, keys) =>
+            {
+                PlayerInput.MouseInfo = new MouseState(x, y, 0, left ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
+                PlayerInput.Triggers.Reset(); PlayerInput.Triggers.Current.MouseLeft = left; PlayerInput.Triggers.Update(); Main.mouseLeft = left;
+                Call(input, "BeginUpdate"); Call(input, "AfterMapping");
+                // Match Main's actual refresh order: mapping suppression is
+                // allowed to clear the old keyState, then native sampling
+                // supplies this frame before the public recorder consumes it.
+                Main.keyState = new KeyboardState(keys); Call(input, "AfterKeyboardRefresh");
+            };
+            sample(200, 200, false, Array.Empty<Keys>()); Call(shell, "ProcessInput");
+            var layout = Get(state, "Layout");
+            var key = ((IEnumerable)Get(layout, "Elements")).Cast<object>().Single(e => (string)GetOptional(e, "HotkeyTarget") == "blueprint.library");
+            var rect = Get(key, "Rect"); var view = Get(layout, "Viewport");
+            int px = (int)((float)Get(state, "X") + (float)Get(view, "X") + (float)Get(rect, "X") + (float)Get(rect, "Width") / 2);
+            int py = (int)((float)Get(state, "Y") + (float)Get(view, "Y") + (float)Get(rect, "Y") + (float)Get(rect, "Height") / 2 - (float)Get(state, "Scroll"));
+            for (int i = 0; i < 2; i++)
+            { sample(px, py, true, Array.Empty<Keys>()); Call(shell, "ProcessInput"); sample(px, py, false, Array.Empty<Keys>()); Call(shell, "ProcessInput"); }
+            var popup = Get(shell, "HotkeyPopup");
+            Require((bool)Get(popup, "Visible") && (string)Get(popup, "Target") == "blueprint.library", "actual standard row double click opens the public library binding window");
+            // The existing popup owns recording and the reliable hotkeys.json
+            // write; exercise its real capture consumer with the shared sample.
+            var measureType = typeof(Func<,,>).MakeGenericType(typeof(string), typeof(float), host.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.F5Size", true));
+            var measure = Delegate.CreateDelegate(measureType, ui, ui.GetType().GetMethod("Measure", F));
+            Call(popup, "Prepare", 960f, 640f, Get(renderer, "FontIdentity"), measure, 0);
+            var popupLayout = Get(popup, "Layout"); var commands = ((IEnumerable)Get(popupLayout, "Commands")).Cast<object>().ToArray();
+            var button = ((IEnumerable)Get(popupLayout, "Buttons")).Cast<object>().ElementAt(Array.FindIndex(commands, c => c.ToString() == "Record"));
+            var buttonRect = Get(button, "Rect"); var panel = Get(popupLayout, "Panel");
+            float recordX = (float)Get(panel, "X") + (float)Get(buttonRect, "X") + 3, recordY = (float)Get(panel, "Y") + (float)Get(buttonRect, "Y") + 3;
+            sample((int)recordX, (int)recordY, true, Array.Empty<Keys>()); Call(popup, "Process", true, 6, recordX, recordY, true, 0);
+            sample((int)recordX, (int)recordY, false, Array.Empty<Keys>()); Call(popup, "Process", true, 6, recordX, recordY, true, 0);
+            Require((bool)Get(popup, "Capturing"), "real public record button starts shared capture");
+            sample(0, 0, false, new[] { Keys.F8 }); Call(popup, "Process", true, 6, 0f, 0f, true, 0);
+            NativeQuickItemChecks.Until(() => { bindings.Poll(); return !bindings.Busy; });
+            Require(bindings.CompletionSucceeded && bindings.Get("blueprint.library")?.Text == "F8", "public binder reliably saves and activates the open-library chord; feedback=" + Get(popup, "Status") + "; capturing=" + Get(popup, "Capturing") + "; effective=" + bindings.Get("blueprint.library")?.Text);
+            Call(popup, "Close"); Call(shell, "CloseAndSubmitPosition");
+            Action release = () => { sample(0, 0, false, Array.Empty<Keys>()); Call(shell, "ProcessInput"); };
+            Action press = () => { release(); sample(0, 0, false, new[] { Keys.F8 }); Call(shell, "ProcessInput"); };
+            press(); Require((bool)Get(ui, "Visible"), "F5-closed physical new edge executes the actual Host library outlet");
+            Call(shell, "CloseAndSubmitPosition"); sample(0, 0, false, new[] { Keys.F8 }); Call(shell, "ProcessInput");
+            Require(!(bool)Get(ui, "Submenu"), "held open key cannot reopen after close without a new edge");
+            Main.drawingPlayerChat = true; press(); Require(!(bool)Get(ui, "Submenu"), "native text entry blocks library opening"); Main.drawingPlayerChat = false;
+            Main.CurrentInputTextTakerOverride = new object(); press(); Require(!(bool)Get(ui, "Submenu"), "foreign IME/text owner blocks library opening"); Main.CurrentInputTextTakerOverride = null;
+            // A recorder only exists with its public window and F5 visible.
+            // Setting the input bit alone while F5 is closed is an impossible
+            // state: the real shell correctly closes that stale lease first.
+            Call(state, "RestoreVisible");
+            var anchorRect = Call(rect, "Offset", (float)Get(state, "X") + (float)Get(view, "X"), (float)Get(state, "Y") + (float)Get(view, "Y") - (float)Get(state, "Scroll"));
+            Call(shell, "OpenHotkey", "blueprint.library", anchorRect); Call(shell, "OpenHotkey", "blueprint.library", anchorRect);
+            Call(popup, "Prepare", 960f, 640f, Get(renderer, "FontIdentity"), measure, 0);
+            commands = ((IEnumerable)Get(popupLayout, "Commands")).Cast<object>().ToArray();
+            button = ((IEnumerable)Get(popupLayout, "Buttons")).Cast<object>().ElementAt(Array.FindIndex(commands, c => c.ToString() == "Record"));
+            buttonRect = Get(button, "Rect"); panel = Get(popupLayout, "Panel");
+            recordX = (float)Get(panel, "X") + (float)Get(buttonRect, "X") + 3; recordY = (float)Get(panel, "Y") + (float)Get(buttonRect, "Y") + 3;
+            sample((int)recordX, (int)recordY, true, Array.Empty<Keys>()); Call(popup, "Process", true, 6, recordX, recordY, true, 0);
+            sample((int)recordX, (int)recordY, false, Array.Empty<Keys>()); Call(popup, "Process", true, 6, recordX, recordY, true, 0);
+            Require((bool)Get(popup, "Capturing") && (bool)Get(popup, "Visible"), "second public record action establishes an actual capture window");
+            press(); Require(!(bool)Get(ui, "Submenu"), "actual public binding capture consumes the new open key without opening library");
+            Call(popup, "Close"); Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Until(() => { bindings.Poll(); return !bindings.Busy; });
+            Main.ingameOptionsWindow = true; press(); Require(!(bool)Get(ui, "Submenu"), "native modal blocks library opening"); Main.ingameOptionsWindow = false;
+            press(); Require((bool)Get(ui, "Visible"), "new eligible edge recovers opening after text/modal gates");
+            Call(shell, "CloseAndSubmitPosition"); release();
         }
         private static void ReadCancellation(object ui, object host, LibraryState library)
         {

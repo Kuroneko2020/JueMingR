@@ -145,7 +145,7 @@ namespace JueMingR.Features.Blueprint
         private bool Matches(BlueprintObjectShape shape, CaptureCell value, int index)
         {
             if ((value.Layers & CaptureLayer.Tile) == 0 || value.TileType != shape.Object.Type ||
-                value.FrameX != shape.BaseFrameX + index % shape.Object.Width * shape.ColumnStep ||
+                !shape.IndependentMemberFrames && value.FrameX != shape.BaseFrameX + index % shape.Object.Width * shape.ColumnStep ||
                 value.FrameY != shape.BaseFrameY + shape.RowOffsets[index / shape.Object.Width]) return false;
             var member = source.Describe(value);
             return member != null && member.Object.Reliable && member.Object.X == shape.Object.X && member.Object.Y == shape.Object.Y &&
