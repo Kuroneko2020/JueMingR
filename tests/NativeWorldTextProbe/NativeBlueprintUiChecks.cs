@@ -53,7 +53,7 @@ namespace NativeWorldTextProbe
                     Require((bool)Call(layout, "Ensure", screen.X, screen.Y, ui, font, measure, active), "toolbar fits supported viewport/UI scale");
                     var buttons = ((IEnumerable)Get(layout, "Buttons")).Cast<object>().ToArray();
                     Require(buttons.Length == 2 && buttons.Select(b => (string)Get(b, "Text")).SequenceEqual(active ? new[] { "保存蓝图", "退出采集" } : new[] { "采集蓝图", "打开蓝图库" }), "capture replaces the two toolbar buttons instead of appending another pair");
-                    Require((bool)Call(layout, "Available", 0) == !active && (bool)Call(layout, "Available", 1) == active, "only capture or exit can execute; save and library are disabled");
+                    Require((bool)Call(layout, "Available", 0) && (bool)Call(layout, "Available", 1), "capture/save and library/exit share the actual owner command paths");
                     Require((string)Call(layout, "Hint", 0) == (active ? "点击保存键保存世界上已有的蓝图选区。" : "点击开始键执行选区，反选取消选区。") &&
                         (string)Call(layout, "Hint", 1) == (active ? "退出选区，并清空已有选区" : null), "disabled save keeps its approved hint; disabled library has no hint");
                     object panel = Get(layout, "Panel");
@@ -123,7 +123,7 @@ namespace NativeWorldTextProbe
                 Call(layout, "SetBlueprintMode", mode);
                 Call(layout, "Ensure", 1280f, 720f, 1.5f, 6, font, measure);
                 object[] elements = ((IEnumerable)Get(layout, "Elements")).Cast<object>().ToArray();
-                Require(elements.Count(e => Get(e, "Kind").ToString() == "Panel") == 3, "blueprint F5 contains exactly three standard rows");
+                Require(elements.Count(e => Get(e, "Kind").ToString() == "Panel") == 4, "blueprint F5 contains capture/save/library/toolbar standard rows");
                 var capture = elements.Single(e => GetOptional(e, "Text") as string == (mode ? "退出采集" : "采集蓝图"));
                 Require((string)Get(Get(capture, "Description"), "Text") == (mode ? "退出选区，并清空已有选区" : "点击开始键执行选区，反选取消选区。"), "F5 capture row tracks the current owner mode");
                 var save = elements.Single(e => GetOptional(e, "Text") as string == "保存采集");

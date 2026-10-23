@@ -23,6 +23,7 @@ namespace JueMingR.TerrariaHost.F5
             rows.Row(ref y, 0, 522, "保存采集", new[] { "保存", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintSave,
                 new F5RowDescription(SaveAction, SaveHint));
             Key(elements, SaveAction);
+            rows.Row(ref y, 0, 522, "蓝图库", new[] { "打开" }, text => F5Command.BlueprintLibrary);
             rows.Row(ref y, 0, 522, "手持凝胶显示快捷栏", new[] { "开启", "关闭", "键" },
                 text => text == "键" ? F5Command.None : text == "开启" ? F5Command.BlueprintToolbarOn : F5Command.BlueprintToolbarOff);
             Key(elements, ToolbarAction);
@@ -32,14 +33,16 @@ namespace JueMingR.TerrariaHost.F5
             var key = elements[elements.Count - 1];
             elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, id);
         }
-        internal static bool Owns(F5Command command) { return command >= F5Command.BlueprintCapture && command <= F5Command.BlueprintToolbarOff; }
-        internal bool Available(F5Command command) { return command != F5Command.BlueprintSave && owner.ControlsEnabled; }
+        internal static bool Owns(F5Command command) { return command >= F5Command.BlueprintCapture && command <= F5Command.BlueprintLibrary; }
+        internal bool Available(F5Command command) { return owner.ControlsEnabled && (command != F5Command.BlueprintSave || owner.CanSave); }
         internal Color? Selected(F5Command command)
         { return command == F5Command.BlueprintToolbarOn && owner.ToolbarEnabled ? (Color?)Color.LightGreen : command == F5Command.BlueprintToolbarOff && !owner.ToolbarEnabled ? (Color?)Color.IndianRed : null; }
         internal void Execute(F5Command command)
         {
             if (!Owns(command) || !Available(command)) return;
             if (command == F5Command.BlueprintCapture) owner.Toggle();
+            else if (command == F5Command.BlueprintSave) owner.Save();
+            else if (command == F5Command.BlueprintLibrary) owner.Shell?.BlueprintUi?.OpenLibrary();
             else owner.SetToolbar(command == F5Command.BlueprintToolbarOn);
         }
     }

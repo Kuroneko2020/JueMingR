@@ -6,12 +6,20 @@ namespace JueMingR.Features.Blueprint
     {
         public BlueprintSelection Selection { get; } = new BlueprintSelection();
         public bool Active { get; private set; }
+        public long ModeGeneration { get; private set; }
         public bool Dragging { get; private set; }
         public bool NeedsNeutral { get; private set; } = true;
         public BlueprintRectangle Preview { get; private set; }
         private int startX, startY, tails, sampleTails;
         private bool left, right, item, tile, previousLeft;
-        public int BlockedActions { get { return Active ? 3 : tails | sampleTails; } }
+        private bool interactionBlocked;
+        public int BlockedActions { get { return Active || interactionBlocked ? 3 : tails | sampleTails; } }
+        public void SetInteractionBlocked(bool value)
+        {
+            if (interactionBlocked && !value) tails |= (left || item ? 1 : 0) | (right || tile ? 2 : 0);
+            if (interactionBlocked != value) Interrupt();
+            interactionBlocked = value;
+        }
 
         public void Observe(bool trusted, bool leftDown, bool rightDown, bool itemRequest, bool tileRequest)
         {
@@ -25,11 +33,13 @@ namespace JueMingR.Features.Blueprint
         }
         public void Enter()
         {
+            ModeGeneration++;
             Active = true; Selection.Clear(); Interrupt();
             tails |= (left || item ? 1 : 0) | (right || tile ? 2 : 0);
         }
         public void Exit()
         {
+            ModeGeneration++;
             tails |= (left || item ? 1 : 0) | (right || tile ? 2 : 0);
             Active = false; Selection.Clear(); Interrupt();
         }

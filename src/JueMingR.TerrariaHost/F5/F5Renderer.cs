@@ -217,7 +217,7 @@ namespace JueMingR.TerrariaHost.F5
             {for(int i=0;i<=30;i++){intervalLabels[i]="间隔 "+i;intervalSizes[i]=state.Layout.TextSize(intervalLabels[i],.65f);}for(int i=0;i<=50;i++){radiusLabels[i]="鼠标半径："+i+"格";radiusSizes[i]=state.Layout.TextSize(radiusLabels[i],.70f);}intervalFont=font;}
             // Dynamic pages clamp after committing their real content height.
             // Ensure's temporary empty height must not reset their offset.
-            if (state.Page != 0 && state.Page != 1 && state.Page != 4 && !(FishingUi!=null && state.Page==7) && !(RecoveryUi!=null && state.Page==10)) state.ClampScroll();
+            if (state.Page != 0 && state.Page != 1 && state.Page != 4 && state.Page != 6 && !(FishingUi!=null && state.Page==7) && !(RecoveryUi!=null && state.Page==10)) state.ClampScroll();
         }
 
         private F5Size Measure(string text)

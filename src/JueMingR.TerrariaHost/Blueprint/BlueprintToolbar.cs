@@ -96,7 +96,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!right) rightTail = false;
             if (!left && !right) needsNeutral = false;
             previousLeft = left;
-            if (execute >= 0) host.Toggle(); // Both live buttons share one owner action.
+            if (execute >= 0)
+            {
+                if (host.State.Active && execute == 0) host.Save();
+                else if (!host.State.Active && execute == 1) host.Shell?.BlueprintUi?.OpenLibrary();
+                else host.Toggle();
+            }
         }
 
         private void Consume(bool left, bool right)
@@ -245,7 +250,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal int Hit(float x, float y)
         { for (int i = 0; i < Buttons.Length; i++) if (Buttons[i].Rect.Offset(Panel.X, Panel.Y).Contains(x, y)) return i; return -1; }
-        internal bool Available(int index) { return active ? index == 1 : index == 0; }
+        internal bool Available(int index) { return index >= 0 && index < 2; }
         internal string Hint(int index)
         { return index < 0 || index > 1 ? null : active ? index == 0 ? BlueprintControls.SaveHint : BlueprintControls.ExitHint : index == 0 ? BlueprintControls.StartHint : null; }
         private static bool Finite(float value) { return !float.IsNaN(value) && !float.IsInfinity(value); }

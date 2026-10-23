@@ -48,7 +48,7 @@ namespace JueMingR.TerrariaHost.F5
         MovementFallAllow6, MovementFallDeny6, MovementFallAllow7, MovementFallDeny7,
         MovementFallAllow8, MovementFallDeny8, MovementFallAllow9, MovementFallDeny9,
         MovementFallAllow10, MovementFallDeny10, MovementFallAllow11, MovementFallDeny11,
-        BlueprintCapture, BlueprintSave, BlueprintToolbarOn, BlueprintToolbarOff }
+        BlueprintCapture, BlueprintSave, BlueprintToolbarOn, BlueprintToolbarOff, BlueprintLibrary }
 
     internal sealed class F5Element
     {
@@ -91,8 +91,10 @@ namespace JueMingR.TerrariaHost.F5
         private Features.Movement.ContinuousDashMode movementMode, builtMovementMode;
         internal bool MovementAttached = false;
         internal bool BlueprintAttached;
-        private bool blueprintActive, builtBlueprintActive, builtBlueprintAttached;
+        private bool blueprintActive, builtBlueprintActive, builtBlueprintAttached, blueprintLibraryVisible, builtBlueprintLibraryVisible;
         internal void SetBlueprintMode(bool value) { blueprintActive = value; }
+        internal void SetBlueprintLibraryVisible(bool value) { blueprintLibraryVisible = value; }
+        internal void SetBlueprintContentHeight(float height) { if (page == 6) ContentHeight = Math.Max(0, height); }
         internal void SetMovementMode(Features.Movement.ContinuousDashMode value) { movementMode = value; }
         private bool movementConfiguration, builtMovementConfiguration;
         internal void SetMovementConfiguration(bool expanded) { movementConfiguration = expanded; }
@@ -158,7 +160,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal bool Matches(float width, float height, float scale, int currentPage)
-        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 6 || builtBlueprintActive == blueprintActive && builtBlueprintAttached == BlueprintAttached) && (currentPage != 11 || builtMovementMode == movementMode && builtMovementConfiguration == movementConfiguration) && (currentPage != 1 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
+        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 6 || builtBlueprintActive == blueprintActive && builtBlueprintAttached == BlueprintAttached && builtBlueprintLibraryVisible == blueprintLibraryVisible) && (currentPage != 11 || builtMovementMode == movementMode && builtMovementConfiguration == movementConfiguration) && (currentPage != 1 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
 
         internal void Ensure(float width, float height, float scale, int currentPage,
             object font, Func<string, F5Size> measureText)
@@ -206,7 +208,7 @@ namespace JueMingR.TerrariaHost.F5
             float y = 0;
             if (currentPage == 9) BuildInformation(ref y);
             else if (currentPage == 5) About.Build(elements, DynamicTextSize, Viewport.Height, ref y);
-            else if (currentPage == 6 && BlueprintAttached) BlueprintControls.AddRows(elements, TextSize, ref y, blueprintActive);
+            else if (currentPage == 6 && BlueprintAttached && !blueprintLibraryVisible) BlueprintControls.AddRows(elements, TextSize, ref y, blueprintActive);
             else if (currentPage == 7 && !FishingAttached) BuildFishing(ref y);
             else if (currentPage == 8)
             {CombatObservationControls.AddRows(elements,TextSize,observation,ref y);CombatControls.AddRows(elements,TextSize,ref y,0,6);GuidanceControls.AddRows(elements,TextSize,ref y,8);CombatControls.AddRows(elements,TextSize,ref y,6,2);}
@@ -223,6 +225,7 @@ namespace JueMingR.TerrariaHost.F5
             // invalidate page geometry or a binding editor's anchor.
             builtBlueprintActive = blueprintActive;
             builtBlueprintAttached = BlueprintAttached;
+            builtBlueprintLibraryVisible = blueprintLibraryVisible;
             builtMovementConfiguration = movementConfiguration;
             ContentHeight = Math.Max(0, y - 6);
             screenWidth = width; screenHeight = height; uiScale = scale; page = currentPage;
