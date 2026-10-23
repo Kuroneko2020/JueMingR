@@ -24,7 +24,47 @@ namespace NativeWorldTextProbe
         {
             var failures=new List<Exception>();
             foreach(bool published in new[]{false,true}) try { CommitFailure(context,published); } catch(Exception error){failures.Add(error);}
+            foreach(bool cancelBeforeOpen in new[]{false,true}) try { RestoreMoving(context,cancelBeforeOpen); } catch(Exception error){failures.Add(error);}
             if(failures.Count!=0)throw new AggregateException("Host commit failure ordering",failures);
+        }
+        private static void RestoreMoving(object context,bool cancelBeforeOpen)
+        {
+            var host=Get(context,"Blueprint");var input=Get(context,"Input");var field=host.GetType().GetField("<Library>k__BackingField",F);var original=field.GetValue(host);
+            var type=typeof(NativeBlueprintRepairRecoveryChecks).GetNestedType("FaultFiles",BindingFlags.NonPublic);
+            var files=Activator.CreateInstance(type,F,null,new object[]{Path.Combine(Terraria.Program.SavePath,"projection-restore-moving-"+cancelBeforeOpen)},null);
+            Call(host,"ClearProjection");
+            try
+            {
+                using(var library=new LibraryState((IBlueprintLibraryFiles)files))
+                {
+                    field.SetValue(host,library);var worker=Get(library,"worker");var gate=Get(worker,"gate");var asset=NativeBlueprintPlacementChecks.Seed(library,2,2,"恢复移动原图");
+                    NativeQuickItemChecks.Sample(input,Array.Empty<Keys>());Require((bool)Call(host,"Place",asset),"restore-moving original Open accepted");
+                    NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return Mode(host)=="Following";});
+                    Call(host,"AcceptWorldPointer",true,false,false,20,20,120,120);Call(host,"AcceptWorldPointer",true,true,false,20,20,120,120);
+                    NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return Mode(host)=="Fixed";});
+                    NativeQuickItemChecks.Until(()=>{Call(host,"UpdateProjectionWindow",new WorldTargetView(0,0,120,120,0));Call(host,"Poll");return (int)Get(Get(Scene(host).Single(),"Renderer"),"CommandCount")>0;});
+                    var prior=Scene(host).Single();var mask=Get(prior,"Mask");var identity=Get(prior,"Identity");long order=(long)Get(prior,"CommitOrder");var priorCommands=Commands(prior);
+                    Set(files,"Fault","precommit");Require((bool)Call(host,"DeleteAsset",asset),"restore-moving real delete failure admitted");
+                    NativeQuickItemChecks.Until(()=>{lock(gate)return GetOptional(worker,"result")!=null;});
+                    object restored;
+                    lock(gate)
+                    {
+                        for(int i=0;i<4;i++)Call(host,"Poll");restored=Scene(host).Single();
+                        Require(!(bool)Get(restored,"Opened") && (int)Get(Get(restored,"Windows"),"Count")>0 && (int)Get(Get(restored,"Renderer"),"CommandCount")==0,"restore qualification retains windows while actual Open is not ready");
+                        NativeQuickItemChecks.Sample(input,Array.Empty<Keys>());Call(host,"MoveProjection");
+                        Call(host,"AcceptWorldPointer",true,false,false,21,21,120,120);Call(host,"AcceptWorldPointer",true,true,false,21,21,120,120);
+                        Require(Mode(host)=="Moving","retained effective cell selects the unready restore through real Host pointer consumer");
+                        if(cancelBeforeOpen)Call(host,"CancelProjection");
+                    }
+                    NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Get(restored,"Opened");});
+                    if(!cancelBeforeOpen)Call(host,"CancelProjection");
+                    // No camera/window update after selection: unchanged source
+                    // coverage must already have its rollback drawing commands.
+                    Require(Mode(host)=="Fixed" && ReferenceEquals(identity,Get(restored,"Identity")) && ReferenceEquals(mask,Get(restored,"Mask")) && (int)Get(restored,"OriginX")==20 && (int)Get(restored,"OriginY")==20 && (long)Get(restored,"CommitOrder")==order && priorCommands.SequenceEqual(Commands(restored)),"restored Moving rollback keeps original identity/origin/order/mask and exact commands without camera change; cancelBeforeOpen="+cancelBeforeOpen);
+                    Console.WriteLine("PASS Host restore Moving rollback cancelBeforeOpen="+cancelBeforeOpen+" identity/origin/order/mask/commands retained without camera update");Call(host,"ClearProjection");
+                }
+            }
+            finally{Call(host,"ClearProjection");field.SetValue(host,original);}
         }
         private static void CommitFailure(object context,bool published)
         {
@@ -83,6 +123,7 @@ namespace NativeWorldTextProbe
             finally{try{release.Set();}catch(ObjectDisposedException){}Call(host,"ClearProjection");field.SetValue(host,original);}
         }
         private static string Mode(object host){return Get(host,"ProjectionMode").ToString();}
+        private static object[] Commands(object placement){return (GetOptional(Get(placement,"Renderer"),"commands") as IEnumerable)?.Cast<object>().ToArray() ?? Array.Empty<object>();}
         private static object[] Scene(object host){return ((IEnumerable)Get(host,"ProjectionScene")).Cast<object>().ToArray();}
         private static bool Cached(object worker,Guid asset,long block)
         {foreach(var item in ((IEnumerable)Get(worker,"projectionCache")).Cast<object>())if((long)Get(item,"Number")==block && ((BlueprintProjectionIdentity)Get(Get(item,"Owner"),"Identity")).AssetId==asset)return true;return false;}

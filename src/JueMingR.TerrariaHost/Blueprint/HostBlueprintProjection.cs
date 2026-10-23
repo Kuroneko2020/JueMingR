@@ -131,7 +131,13 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (receipt.Kind == BlueprintProjectionReceiptKind.Opened)
                 {
                     item.Summary = receipt.Summary; item.TotalLayerCount = receipt.TotalLayerCount; item.Opened = true;
-                    if (restoreProjection?.Identity.Equals(receipt.Identity) == true) restoreProjection.Opened = true;
+                    if (restoreProjection?.Identity.Equals(receipt.Identity) == true)
+                    {
+                        // FindProjection selects the moving copy first. Its
+                        // retained rollback source must also become drawable
+                        // before cancellation can discard that copy.
+                        restoreProjection.Opened = true; RebuildProjectionMask(restoreProjection);
+                    }
                     if (ReferenceEquals(item, pendingProjection)) { candidateProjection = item; pendingProjection = null; ProjectionMode = BlueprintProjectionMode.Following; InterruptProjection(); Shell?.CloseAndSubmitPosition(); }
                     else RebuildProjectionMask(item);
                 }

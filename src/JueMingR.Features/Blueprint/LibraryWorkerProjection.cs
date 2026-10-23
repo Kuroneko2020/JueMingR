@@ -149,7 +149,10 @@ namespace JueMingR.Features.Blueprint
             }
         }
         private bool ProjectionHasWorkLocked()
-        { return projectionWake || ProjectionCommitHasWorkLocked() || !projectionAwaitingReceiptSpace && (projectionOpenings.Count != 0 || projectionReading != null || projectionRequests.Count != 0 || projectionFailures.Count != 0); }
+        // A release can arrive during the previous disposal batch, before that
+        // step consumes projectionWake. Retirement owns an independent wake
+        // condition so the last reader cannot be stranded until a new action.
+        { return projectionRetireWake || projectionWake || ProjectionCommitHasWorkLocked() || !projectionAwaitingReceiptSpace && (projectionOpenings.Count != 0 || projectionReading != null || projectionRequests.Count != 0 || projectionFailures.Count != 0); }
         private bool ProjectionCurrent(ProjectionOwner owner, ProjectionRequest request = null)
         {
             lock (gate)

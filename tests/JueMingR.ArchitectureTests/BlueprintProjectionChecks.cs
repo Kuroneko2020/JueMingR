@@ -25,6 +25,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "shared instances and atomic layer/object delta", () => Scene(Path.Combine(area, "scene")));
             Run(failures, "overlap reader retirement rejects late delta", () => CommitRetirement(Path.Combine(area, "commit-retirement")));
             Run(failures, "shared request saturation and eventual progress", () => Saturation(Path.Combine(area, "saturation")));
+            Run(failures, "last reference retirement during reader disposal", () => LastReferenceWake(Path.Combine(area, "last-reference-wake")));
             Run(failures, "sparse overlap spans skip empty rows", () => SparseSpan(Path.Combine(area, "sparse-span")));
             Run(failures, "65 blocks retain intersection", () => CacheIntersection(Path.Combine(area, "cache-intersection")));
             Run(failures, "delete handle and commit boundaries", () => Deletion(Path.Combine(area, "deletion")));
@@ -354,6 +355,25 @@ namespace JueMingR.ArchitectureTests
             }
         }
 
+        private static void LastReferenceWake(string path)
+        {
+            Fixture first=Write(path,1,1,1,n=>Tile(37,91)), second=Write(path,1,1,1,n=>Tile(37,91));
+            using(var counted=new CountedFiles(path)) using(var state=new LibraryState(counted))
+            {
+                var a=Open(state,first,601);var b=Open(state,second,602);
+                counted.HoldDispose=true;state.ReleaseProjection(a);
+                Require(counted.DisposeEntered.Wait(5000),"first retired reader reaches actual disposal boundary");
+                // Retire the second template after the worker has selected its
+                // current disposal batch, before it consumes the wake flag.
+                state.ReleaseProjection(b);counted.DisposeRelease.Set();
+                Until(()=>Volatile.Read(ref counted.ActiveIndexes)==0);
+#if DEBUG
+                Require(state.DebugProjectionStatistics.ActiveReferences==0,"both last refs retire with no new request or receipt consumer wake");
+#endif
+                Console.WriteLine("BlueprintProjection lastRefDuringDispose activeReaders=0 references=0 no follow-up work");
+            }
+        }
+
         private static void SparseSpan(string path)
         {
             for (int variant = 0; variant < 3; variant++)
@@ -461,6 +481,8 @@ namespace JueMingR.ArchitectureTests
             private bool disposed;
             internal long Reads, IndexReadBytes; internal int ActiveIndexes, MetadataWhileLayout, IndexesAtMetadataWrite, WritesWhileLayout;
             internal string LastWrittenIdentity;
+            internal bool HoldDispose;
+            internal readonly ManualResetEventSlim DisposeEntered=new ManualResetEventSlim(), DisposeRelease=new ManualResetEventSlim();
             internal int DeleteMode, HoldLayoutBatches; internal long HoldBlock = -1, FailBlock = -1; internal bool LayoutStarted, LayoutCompleted;
             internal readonly ManualResetEventSlim LayoutEntered = new ManualResetEventSlim(), LayoutRelease = new ManualResetEventSlim(), BlockEntered = new ManualResetEventSlim(), BlockRelease = new ManualResetEventSlim();
             internal CountedFiles(string path) { inner = new FileBlueprintLibrary(path); }
@@ -501,7 +523,7 @@ namespace JueMingR.ArchitectureTests
             public void PrepareCleanup(Guid id, BlueprintCleanupProof proof) { inner.PrepareCleanup(id, proof); }
             public bool CleanupStep(Guid id, bool stage, long blockCount, int budget, BlueprintCleanupProof proof = null) { Require(ActiveIndexes == 0, "cleanup cannot run while projection owns index"); return inner.CleanupStep(id, stage, blockCount, budget, proof); }
             public void CloseCleanup() { inner.CloseCleanup(); }
-            public void Dispose() { if (disposed) return; disposed = true; LayoutRelease.Set(); BlockRelease.Set(); inner.Dispose(); LayoutEntered.Dispose(); LayoutRelease.Dispose(); BlockEntered.Dispose(); BlockRelease.Dispose(); }
+            public void Dispose() { if (disposed) return; disposed = true; LayoutRelease.Set(); BlockRelease.Set(); DisposeRelease.Set(); inner.Dispose(); LayoutEntered.Dispose(); LayoutRelease.Dispose(); BlockEntered.Dispose(); BlockRelease.Dispose(); DisposeEntered.Dispose(); DisposeRelease.Dispose(); }
             private sealed class CountedIndex : Stream
             {
                 private readonly Stream inner; private readonly CountedFiles owner;
@@ -516,7 +538,7 @@ namespace JueMingR.ArchitectureTests
                 public override void Flush() { inner.Flush(); }
                 public override void SetLength(long value) { throw new NotSupportedException(); }
                 public override void Write(byte[] bytes, int offset, int count) { throw new NotSupportedException(); }
-                protected override void Dispose(bool disposing) { if (disposing) { inner.Dispose(); Interlocked.Decrement(ref owner.ActiveIndexes); } base.Dispose(disposing); }
+                protected override void Dispose(bool disposing) { if (disposing) { if(owner.HoldDispose){owner.HoldDispose=false;owner.DisposeEntered.Set();if(!owner.DisposeRelease.Wait(5000))throw new TimeoutException("Held reader disposal boundary timed out.");} inner.Dispose(); Interlocked.Decrement(ref owner.ActiveIndexes); } base.Dispose(disposing); }
             }
         }
     }
