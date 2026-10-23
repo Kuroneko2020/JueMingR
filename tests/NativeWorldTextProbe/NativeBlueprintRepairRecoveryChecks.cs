@@ -68,6 +68,9 @@ namespace NativeWorldTextProbe
         private sealed class FaultFiles : IBlueprintLibraryFiles
         {
             private readonly FileBlueprintLibrary inner; private readonly string path; internal string Fault;
+            internal Guid HoldAsset = Guid.Empty;
+            internal long HoldBlock = -1;
+            internal readonly System.Threading.ManualResetEvent ReadEntered = new System.Threading.ManualResetEvent(false), ReadRelease = new System.Threading.ManualResetEvent(true);
             internal FaultFiles(string path) { this.path = path; inner = new FileBlueprintLibrary(path); }
             public void Open() { inner.Open(); }
             public IEnumerable<Guid> EnumerateAssets() { return inner.EnumerateAssets(); }
@@ -91,7 +94,12 @@ namespace NativeWorldTextProbe
                 if (Fault == "append") using (File.Open(Path.Combine(path, ".staging", id.ToString("N"), "chunks", number.ToString("D20") + ".bin"), FileMode.CreateNew)) { }
                 inner.WriteStageBlock(id, number, bytes, hash);
             }
-            public byte[] ReadBlock(Guid id, bool stage, long number) { return inner.ReadBlock(id, stage, number); }
+            public byte[] ReadBlock(Guid id, bool stage, long number)
+            {
+                if (!stage && id == HoldAsset && number == HoldBlock)
+                { HoldBlock = -1; ReadEntered.Set(); if (!ReadRelease.WaitOne(10000)) throw new TimeoutException("isolated projection read gate was not released"); }
+                return inner.ReadBlock(id, stage, number);
+            }
             public Stream OpenIndex(Guid id, bool stage) { return inner.OpenIndex(id, stage); }
             public void SealStage(Guid id, byte[] root)
             { if (Fault == "seal") using (File.Open(Path.Combine(path, ".staging", id.ToString("N"), "root.bin"), FileMode.CreateNew)) { } inner.SealStage(id, root); }
@@ -102,7 +110,7 @@ namespace NativeWorldTextProbe
             public bool CleanupStep(Guid id, bool stage, long blocks, int budget, BlueprintCleanupProof proof = null) { return inner.CleanupStep(id, stage, blocks, budget, proof); }
             public void CloseCleanup() { inner.CloseCleanup(); }
             public void CloseStageWriter() { inner.CloseStageWriter(); }
-            public void Dispose() { inner.Dispose(); }
+            public void Dispose() { ReadRelease.Set(); inner.Dispose(); ReadEntered.Dispose(); ReadRelease.Dispose(); }
         }
     }
 }

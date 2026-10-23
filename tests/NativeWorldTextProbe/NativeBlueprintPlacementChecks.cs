@@ -107,7 +107,10 @@ namespace NativeWorldTextProbe
                 Require(library.DebugProjectionStatistics.BlockReads==reads && (long)Get(Get(current(),"Renderer"),"SegmentBuildCount")==builds,"small view motion within retained coverage performs zero new IO and segment builds");
                 Require((long)Get(host,"ProjectionWindowBytes")<=32L*1024*1024 && (long)Get(host,"ProjectionCommandBytes")<=64L*1024*1024,"actual consumer retained windows/commands respect total scene budgets");
                 Call(host,"CancelProjection");
-                DeleteRecovery(context);
+                var recoveryFailures=new System.Collections.Generic.List<Exception>();
+                try { DeleteRecovery(context); } catch(Exception error) { recoveryFailures.Add(error); }
+                try { NativeBlueprintProjectionRecoveryChecks.Run(context); } catch(Exception error) { recoveryFailures.Add(error); }
+                if(recoveryFailures.Count!=0) throw new AggregateException("Host projection recovery contract",recoveryFailures);
                 var registry=(HotkeyRegistry)Get(Get(shell,"hotkeys"),"Registry"); Require(registry.Find("blueprint.move")?.CanConfigure==true && registry.Find("blueprint.remove")?.CanConfigure==true,"actual configurable entry registry retained");
                 Call(host,"OnSessionEnded"); for(int i=0;i<5;i++)poll(); Require(scene().Length==0 && current()==null && mode()=="None","real session end retires all identities and late receipts"); Call(host,"OnSessionStarted");
                 Console.WriteLine("PASS Blueprint actual Host multi-instance: real Back lateOpen cancellation, startup/select/confirm stages, center/even sparse anchor, independent identity/count, air hole hit, grab offset/takeover/cancel/self move, capture gate including remove, exact world remove/template delete, Fixed native actions/session. OS and certified physical pointer remain separate.");
@@ -127,16 +130,41 @@ namespace NativeWorldTextProbe
                     var files=Activator.CreateInstance(type,binding,null,new object[]{System.IO.Path.Combine(Terraria.Program.SavePath,"projection-delete-"+fault)},null);
                     using(var state=new LibraryState((JueMingR.Platform.Blueprint.IBlueprintLibraryFiles)files))
                     {
-                        libraryField.SetValue(host,state);LibraryEntry asset=Seed(state,2,2,"删除目标"),other=Seed(state,2,2,"独立候选");
+                        libraryField.SetValue(host,state);LibraryEntry asset=Seed(state,2,2,"删除目标");
+                        var other=NativeBlueprintProjectionVisualChecks.Save(state,new BlueprintProjectionWindow(new BlueprintProjectionIdentity(Guid.NewGuid(),Guid.NewGuid(),"restore-cover",1,1),1,new CaptureSummary{Width=1,Height=1},new BlueprintProjectionBounds(0,0,1,1),new[]{new CaptureCell{X=0,Y=0,Layers=CaptureLayer.Tile,TileType=1}},Array.Empty<CaptureObject>()));
                         Action<LibraryEntry,int> fix=(entry,x)=>{NativeQuickItemChecks.Sample(input,Array.Empty<Keys>());Require((bool)Call(host,"Place",entry),"delete fixture instance accepted");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return Get(host,"ProjectionMode").ToString()=="Following";});Call(host,"AcceptWorldPointer",true,false,false,x,20,120,120);Call(host,"AcceptWorldPointer",true,true,false,x,20,120,120);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return Get(host,"ProjectionMode").ToString()=="Fixed";});};
-                        fix(asset,20);fix(asset,30);
+                        int count=fault=="precommit"?40:2;
+                        for(int i=0;i<count;i++)fix(asset,20+i*2);
+                        fix(other,20);
                         NativeQuickItemChecks.Until(()=>{Call(host,"UpdateProjectionWindow",new JueMingR.Platform.WorldTargets.WorldTargetView(0,0,120,120,0));Call(host,"Poll");return ((IEnumerable)Get(host,"ProjectionScene")).Cast<object>().All(p=>GetOptional(p,"Window")!=null);});
                         NativeQuickItemChecks.Sample(input,Array.Empty<Keys>());Require((bool)Call(host,"Place",other),"independent candidate begins before template deletion");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return Get(host,"ProjectionMode").ToString()=="Following";});
+                        var before=((IEnumerable)Get(host,"ProjectionScene")).Cast<object>().Where(p=>((BlueprintProjectionIdentity)Get(p,"Identity")).AssetId==asset.AssetId).ToDictionary(p=>((BlueprintProjectionIdentity)Get(p,"Identity")).ProjectionGeneration,p=>new object[]{Get(p,"OriginX"),Get(p,"OriginY"),Get(p,"CommitOrder"),Get(p,"Mask")});
+                        Require(before.Count==count && before.Values.Any(v=>((BlueprintProjectionMask)v[3]).RemovedLayerCount>0),"restore fixture includes independent original masks, including a real permanent erased layer");
                         Set(files,"Fault",fault);Require((bool)Call(host,"DeleteAsset",asset),"real template delete accepted");
+                        if(fault=="precommit")
+                        {
+                            var worker=Get(state,"worker");var gate=Get(worker,"gate");
+                            NativeQuickItemChecks.Until(()=>{lock(gate)return GetOptional(worker,"result")!=null;});
+                            lock(gate)
+                            {
+                                for(int attempt=0;attempt<16;attempt++)Call(host,"Poll");
+                                Require((int)Call(host,"ProjectionReferenceCount",asset.AssetId)==40,"Open false during real 32-unfinished backpressure cannot drop any of 40 restore qualifications");
+                                int unready=((IEnumerable)Get(worker,"projectionReferences")).Cast<object>().Select(p=>Get(p,"Value")).Count(p=>!(bool)Get(p,"Opened"));
+                                Require(unready==32 && (int)Get(Get(host,"projectionRestoreAdmissions"),"Count")==8,"restoration reaches actual 32 request budget and preserves eight deferred refs");
+                                Call(host,"AcceptWorldPointer",true,false,false,20,20,120,120);Call(host,"AcceptWorldPointer",true,true,false,20,20,120,120);
+                                Require(Get(host,"ProjectionMode").ToString()=="Following","confirmation waits for restored opponent Open without entering an unfulfillable transaction");
+                            }
+                        }
                         NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !state.Snapshot.Busy && !(bool)Get(host,"deletePending");});
                         Require(Get(host,"ProjectionMode").ToString()=="Following" && ((BlueprintProjectionIdentity)Get(Get(host,"ProjectionCandidate"),"Identity")).AssetId==other.AssetId,"deletion result preserves unrelated candidate transaction");
                         if(fault=="precommit")
-                        {NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return ((IEnumerable)Get(host,"ProjectionScene")).Cast<object>().All(p=>(bool)Get(p,"Opened"));});Require((int)Call(host,"ProjectionReferenceCount",asset.AssetId)==2 && ((IEnumerable)Get(host,"ProjectionScene")).Cast<object>().All(p=>(int)Get(Get(p,"Renderer"),"CommandCount")>0),"proven precommit failure restores both fixed instances and their retained rendered windows");}
+                        {
+                            NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return ((IEnumerable)Get(host,"ProjectionScene")).Cast<object>().All(p=>(bool)Get(p,"Opened"));});
+                            var restored=((IEnumerable)Get(host,"ProjectionScene")).Cast<object>().Where(p=>((BlueprintProjectionIdentity)Get(p,"Identity")).AssetId==asset.AssetId).ToArray();
+                            Require(restored.Length==40 && restored.All(p=>{var values=before[((BlueprintProjectionIdentity)Get(p,"Identity")).ProjectionGeneration];return (int)Get(p,"OriginX")== (int)values[0] && (int)Get(p,"OriginY")== (int)values[1] && (long)Get(p,"CommitOrder")== (long)values[2] && ReferenceEquals(Get(p,"Mask"),values[3]) && (int)Get(Get(p,"Renderer"),"CommandCount")>0;}),"all forty original origins/orders/masks and retained rendered windows restore after backpressure");
+                            Require((int)Call(host,"ProjectionReferenceCount",other.AssetId)==1 && state.DebugProjectionStatistics.PendingRequests<=32 && state.DebugProjectionStatistics.ReceiptBytes<=32L*1024*1024 && state.DebugProjectionStatistics.ActiveTemplates==2,"unrelated fixed and independent candidate survive bounded restoration");
+                            Console.WriteLine("PASS Host restore count=40 initialOpen=32 deferred=8 all origins/orders/masks preserved; independent Fixed/Following retained");
+                        }
                         else Require((int)Call(host,"ProjectionReferenceCount",asset.AssetId)==0,"commit unknown does not reopen/restore retired template refs");
                         Call(host,"ClearProjection");
                     }
