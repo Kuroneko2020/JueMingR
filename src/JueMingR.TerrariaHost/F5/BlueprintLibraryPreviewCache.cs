@@ -11,7 +11,7 @@ namespace JueMingR.TerrariaHost.F5
     // pending uploads as well as cached resources. At most twelve finite images.
     internal sealed class BlueprintLibraryPreviewCache : IDisposable
     {
-        private sealed class Entry { internal Texture2D Texture; internal long Used; }
+        private sealed class Entry { internal Texture2D Texture; internal CaptureSummary Summary; internal long Used; }
         private readonly Dictionary<string, Entry> entries = new Dictionary<string, Entry>(StringComparer.Ordinal);
         private GraphicsDevice device;
         private long clock;
@@ -36,7 +36,12 @@ namespace JueMingR.TerrariaHost.F5
             if (key == null || !entries.TryGetValue(key, out entry) || entry.Texture.IsDisposed) return false;
             entry.Used = ++clock; return true;
         }
-        internal bool Upload(string key, BlueprintPreviewImage image, int expectedGeneration)
+        internal CaptureSummary Summary(string key)
+        {
+            Entry entry;
+            return key != null && entries.TryGetValue(key, out entry) && !entry.Texture.IsDisposed ? entry.Summary : null;
+        }
+        internal bool Upload(string key, BlueprintPreviewImage image, CaptureSummary summary, int expectedGeneration)
         {
             if (device == null || device.IsDisposed || image == null || expectedGeneration != Generation) return false;
             if (Touch(key)) return true;
@@ -49,7 +54,9 @@ namespace JueMingR.TerrariaHost.F5
             }
             catch { texture.Dispose(); throw; }
             while (entries.Count >= 12) Evict();
-            entries.Add(key, new Entry { Texture = texture, Used = ++clock });
+            // The finite image and its derived bounds/count/missing facts have
+            // one identity and one eviction lifetime, including cache revisits.
+            entries.Add(key, new Entry { Texture = texture, Summary = summary, Used = ++clock });
             PixelBytes += (long)image.Width * image.Height * 4; Uploads++; return true;
         }
         private void Evict()

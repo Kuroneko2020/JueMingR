@@ -22,6 +22,18 @@ namespace JueMingR.Platform.Blueprint
         byte[] ReadRoot(Guid id, bool stage);
         void ValidateLayout(Guid id, bool stage, long blockCount);
         void PromoteStage(Guid stageId, Guid assetId);
-        bool CleanupStep(Guid id, bool stage, long blockCount, int budget);
+        void PrepareCleanup(Guid assetId, BlueprintCleanupProof proof);
+        bool CleanupStep(Guid id, bool stage, long blockCount, int budget, BlueprintCleanupProof proof = null);
+    }
+    // These identities come from the reliable tombstone, not from files found
+    // during cleanup. Stage proofs are authenticated by their mechanical owner.
+    public sealed class BlueprintCleanupProof
+    {
+        public BlueprintCleanupProof(string metadataIdentity, string sourceMetadataIdentity, string rootIdentity, string indexIdentity)
+        { MetadataIdentity = metadataIdentity; SourceMetadataIdentity = sourceMetadataIdentity; RootIdentity = rootIdentity; IndexIdentity = indexIdentity; }
+        public string MetadataIdentity { get; }
+        public string SourceMetadataIdentity { get; }
+        public string RootIdentity { get; }
+        public string IndexIdentity { get; }
     }
 }

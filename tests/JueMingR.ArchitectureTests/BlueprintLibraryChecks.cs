@@ -28,6 +28,12 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "logical delete cleanup", () => CleanupPending(Path.Combine(area, "cleanup")));
             Run(failures, "bounded normalization and duplicate", () => Normalization(Path.Combine(area, "normalization")));
             Run(failures, "accepted stop", () => AcceptedStop(Path.Combine(area, "stop")));
+            Run(failures, "precise read cancellation", () => ReadCancellation(Path.Combine(area, "read-cancel")));
+            Run(failures, "literal direction codec", () => DirectionFiles(Path.Combine(area, "direction")));
+            Run(failures, "default names", () => DefaultNames(Path.Combine(area, "default-names")));
+            Run(failures, "tombstone foreign replacements", () => CleanupReplacements(Path.Combine(area, "cleanup-replacements")));
+            Run(failures, "private stage ownership", () => StageOwnership(Path.Combine(area, "stage-ownership")));
+            Run(failures, "safe cleanup restart", () => InterruptedCleanup(Path.Combine(area, "cleanup-restart")));
             // Failure originals remain in this printed, exclusively generated
             // root. Success cleanup cannot target installation/user data.
             if (failures.Count == before)
@@ -85,6 +91,7 @@ namespace JueMingR.ArchitectureTests
             {
                 LibraryEntry entry = List(state).Entries.Single(); Require(entry.AssetId == id && entry.Width == 397 && entry.Height == 496 && entry.ContentCount == 2, "restart reads independent literal bounds/count");
                 long reads = counted.BlockReads, writes = counted.BlockWrites;
+                Require(!Directory.EnumerateFiles(Path.Combine(path, id.ToString("N"), "content"), ".owner.bin", SearchOption.AllDirectories).Any(), "published body has no private stage ownership marker");
                 for (int i = 0; i < 100; i++) state.Pump(); Require(counted.BlockReads == reads && counted.BlockWrites == writes, "idle owner does not scan/write");
                 Require(Command(state, state.TryRename(id, entry.MetadataIdentity, "重启改名")).Status == LibraryStatus.Saved, "real rename committed");
                 Require(counted.BlockReads == reads && counted.BlockWrites == writes, "rename only touches small metadata"); SameBody(bytes, Body(path, id));
@@ -209,15 +216,147 @@ namespace JueMingR.ArchitectureTests
             Require(state.Stop(30000), "accepted disk owner completes before releasing lease"); state.Dispose();
             using (var reopened = new LibraryState(new FileBlueprintLibrary(path))) Require(List(reopened).Entries.Single().AssetId == id, "accepted create survives owner stop even without UI collecting receipt");
         }
+        private static void DirectionFiles(string path)
+        {
+            var decode = typeof(LibraryState).Assembly.GetType("JueMingR.Features.Blueprint.LibraryCodec", true).GetMethod("DecodeChunk", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            using (var files = new FileBlueprintLibrary(path))
+            {
+                files.Open();
+                foreach (int direction in new[] { 0, 1, 2, -1, 3, Int32.MaxValue })
+                {
+                    Guid id = Guid.NewGuid(); files.BeginStage(id); byte[] literal = DirectionLiteral(direction); files.WriteStageBlock(id, 0, literal, Digest(literal)); byte[] disk = files.ReadBlock(id, true, 0);
+                    bool rejected = false;
+                    try { var chunk = (CaptureChunk)decode.Invoke(null, new object[] { disk }); Require(chunk.Objects[0].Direction == direction, "literal 0/1/2 direction decoded exactly"); }
+                    catch (System.Reflection.TargetInvocationException e) when (e.InnerException is InvalidDataException) { rejected = true; }
+                    Require(rejected == (direction < 0 || direction > 2), "Terraria enum accepts only None0/PlaceLeft1/PlaceRight2"); Require(literal.SequenceEqual(files.ReadBlock(id, true, 0)), "invalid literal file bytes remain unchanged");
+                }
+            }
+        }
+        private static byte[] DirectionLiteral(int direction)
+        {
+            // Independent format fixture, not a production encoder round trip.
+            using (var stream = new MemoryStream()) using (var w = new BinaryWriter(stream))
+            {
+                w.Write(0x43424D4A); w.Write(1); w.Write(1); w.Write(1);
+                w.Write(1); w.Write(1); w.Write(1); w.Write((byte)1); w.Write((ushort)1); w.Write((ushort)0); w.Write((short)0); w.Write((short)0); for (int i = 0; i < 7; i++) w.Write((byte)0);
+                w.Write(1); w.Write((ushort)1); w.Write(1); w.Write(1); w.Write(1); w.Write(1); w.Write(0); w.Write(0); w.Write(0); w.Write(0); w.Write(direction); w.Write(0); w.Write(0); w.Write(true); w.Write(0); w.Write(0);
+                w.Flush(); return stream.ToArray();
+            }
+        }
+        private static void DefaultNames(string path)
+        {
+            using (var state = new LibraryState(new FileBlueprintLibrary(path)))
+            {
+                Guid empty = Guid.NewGuid(); Require(Command(state, state.TryBeginStage(Token(empty))).SuggestedName == "新蓝图", "empty library suggests original default"); Command(state, state.TryDiscardDraft(new ContentHandle(empty)));
+                for (int i = 0; i < 8; i++) SaveOne(state, "手动 " + i);
+                SaveOne(state, "新蓝图"); SaveOne(state, "新蓝图 9"); SaveOne(state, "新蓝图 009");
+                Guid id = Guid.NewGuid(); LibraryReceipt begin = Command(state, state.TryBeginStage(Token(id))); Require(begin.SuggestedName == "新蓝图 10", "default naming scans all assets beyond six visible items and ignores noncanonical suffix");
+                Command(state, state.TryDiscardDraft(new ContentHandle(id)));
+                SaveOne(state, "新蓝图"); Require(List(state).TotalCount == 12, "manual duplicate name remains allowed");
+            }
+            using (var state = new LibraryState(new FileBlueprintLibrary(path)))
+            {
+                Guid id = Guid.NewGuid(); Require(Command(state, state.TryBeginStage(Token(id))).SuggestedName == "新蓝图 10", "default suggestion survives restart without a cached page"); Command(state, state.TryDiscardDraft(new ContentHandle(id)));
+            }
+        }
+        private static void CleanupReplacements(string area)
+        {
+            foreach (string kind in new[] { "root", "index", "backup", "metadata-temp", "content-recovery", "future-tombstone", "primary-bytes", "intent" })
+            {
+                string path = Path.Combine(area, kind); Guid id;
+                using (var state = new LibraryState(new FileBlueprintLibrary(path))) id = SaveOne(state);
+                string asset = Path.Combine(path, id.ToString("N")), hold = Path.Combine(asset, "hold.keep"); File.WriteAllText(hold, "prevent first cleanup");
+                using (var state = new LibraryState(new FileBlueprintLibrary(path))) { LibraryEntry entry = List(state).Entries.Single(); LibraryReceipt deleted = Command(state, state.TryDelete(id, entry.MetadataIdentity)); Require(deleted.Status == LibraryStatus.Deleted && deleted.CleanupPending, "durable tombstone precedes deliberately paused cleanup"); }
+                File.Delete(hold);
+                if (kind == "root") File.WriteAllText(Path.Combine(asset, "content", "root.bin"), "future root replacement");
+                else if (kind == "index") { string chunk = Directory.EnumerateFiles(Path.Combine(asset, "content", "chunks")).First(); byte[] bytes = File.ReadAllBytes(chunk); bytes[0] ^= 1; File.WriteAllBytes(chunk, bytes); File.WriteAllBytes(Path.Combine(asset, "content", "index.bin"), Digest(bytes)); }
+                else if (kind == "backup") File.WriteAllText(Path.Combine(asset, "metadata.json.bak"), "{\"format\":\"future owner backup\"}");
+                else if (kind == "metadata-temp") File.WriteAllText(Path.Combine(asset, "metadata.json.tmp"), "recovery candidate");
+                else if (kind == "content-recovery") File.WriteAllText(Path.Combine(asset, "content", "root.bin.bak"), "private recovery bytes");
+                else if (kind == "primary-bytes") File.AppendAllText(Metadata(path, id), "\n");
+                else if (kind == "intent") File.WriteAllText(Path.Combine(asset, ".delete.bin"), "future cleanup format");
+                else File.WriteAllText(Metadata(path, id), File.ReadAllText(Metadata(path, id)).Replace("\"version\":1", "\"version\":9"), new UTF8Encoding(false));
+                Dictionary<string, byte[]> before = SnapshotFiles(asset);
+                using (var state = new LibraryState(new FileBlueprintLibrary(path))) Require(List(state).TotalCount == 0, "logical deletion never resurrects when cleanup proof is invalid");
+                SameFiles(before, SnapshotFiles(asset), "restart preserves all foreign root/index/backup/recovery bytes");
+            }
+        }
+        private static void StageOwnership(string area)
+        {
+            foreach (string kind in new[] { "root", "index", "owner", "recovery" })
+            {
+                string path = Path.Combine(area, kind);
+                using (var state = new LibraryState(new FileBlueprintLibrary(path)))
+                {
+                    Guid id = Guid.NewGuid(); ContentHandle handle = Draft(state, id, new[] { Cell(1, 2) }); string folder = Directory.EnumerateDirectories(Path.Combine(path, ".staging")).Single();
+                    if (kind == "root") File.WriteAllText(Path.Combine(folder, "root.bin"), "future stage root");
+                    else if (kind == "index") File.WriteAllBytes(Path.Combine(folder, "index.bin"), new byte[32]);
+                    else if (kind == "owner") { string file = Path.Combine(folder, ".owner.bin"); byte[] bytes = File.ReadAllBytes(file); bytes[0] ^= 1; File.WriteAllBytes(file, bytes); }
+                    else File.WriteAllText(Path.Combine(folder, "root.bin.tmp"), "recovery bytes");
+                    Dictionary<string, byte[]> before = SnapshotFiles(folder); Require(Command(state, state.TryDiscardDraft(handle)).Status != LibraryStatus.Completed, "cancel cannot delete changed private stage"); SameFiles(before, SnapshotFiles(folder), "private stage foreign bytes preserved on cancel");
+                }
+            }
+            string oldPath = Path.Combine(area, "old-process"); Guid physical;
+            using (var state = new LibraryState(new FileBlueprintLibrary(oldPath)))
+            {
+                Guid id = Guid.NewGuid(); Draft(state, id, new[] { Cell(1, 2) }); string folder = Directory.EnumerateDirectories(Path.Combine(oldPath, ".staging")).Single(); physical = Guid.ParseExact(Path.GetFileName(folder), "N");
+                // Simulate a protected exit, so disposal cannot clean this stage.
+                File.WriteAllText(Path.Combine(folder, "root.bin.tmp"), "protected recovery");
+            }
+            string oldFolder = Path.Combine(oldPath, ".staging", physical.ToString("N")); File.Delete(Path.Combine(oldFolder, "root.bin.tmp")); var oldBytes = SnapshotFiles(oldFolder); bool rejected = false;
+            using (var files = new FileBlueprintLibrary(oldPath)) { files.Open(); try { files.CleanupStep(physical, true, 1, 32); } catch (InvalidDataException) { rejected = true; } }
+            Require(rejected, "a restarted worker cannot adopt an old stage owner proof"); SameFiles(oldBytes, SnapshotFiles(oldFolder), "old private stage retained byte for byte");
+        }
+        private static void InterruptedCleanup(string path)
+        {
+            Guid id = Guid.NewGuid();
+            using (var files = new CountedFiles(path)) using (var state = new LibraryState(files))
+            {
+                var handle = new ContentHandle(id); Command(state, state.TryBeginStage(Token(id)));
+                for (int y = 0; y < 65; y++) { var cells = new CaptureCell[1024]; for (int x = 0; x < cells.Length; x++) cells[x] = Cell(x, y); Command(state, state.TryAppendChunk(handle, new CaptureChunk(cells, cells.Length))); }
+                Require(Command(state, state.TrySealDraft(handle, new CaptureSummary { Left = 0, Top = 0, Width = 1024, Height = 65, ContentCount = 66560 })).Status == LibraryStatus.Completed, "large cleanup fixture seals");
+                Require(Command(state, state.TryCreate(handle, "中断清理", Token(id))).Status == LibraryStatus.Saved, "large cleanup fixture saves"); LibraryEntry entry = List(state).Entries.Single(); files.InterruptCleanup = true;
+                LibraryReceipt deleted = Command(state, state.TryDelete(id, entry.MetadataIdentity)); Require(deleted.Status == LibraryStatus.Deleted && deleted.CleanupPending, "interruption after a real bounded cleanup batch keeps logical delete");
+                Require(Directory.EnumerateFiles(Path.Combine(path, id.ToString("N"), "content", "chunks")).Any(), "some exact owned blocks remain for restart");
+            }
+            using (var state = new LibraryState(new FileBlueprintLibrary(path))) Require(List(state).TotalCount == 0, "restart finishes remaining trusted cleanup without resurrection");
+            Require(!Directory.Exists(Path.Combine(path, id.ToString("N"))), "safe interrupted cleanup removes remaining exact known files");
+        }
+        private static Dictionary<string, byte[]> SnapshotFiles(string root) { return Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToDictionary(name => name.Substring(root.Length), File.ReadAllBytes); }
+        private static void SameFiles(Dictionary<string, byte[]> expected, Dictionary<string, byte[]> actual, string message) { Require(expected.Count == actual.Count && expected.All(pair => actual.ContainsKey(pair.Key) && pair.Value.SequenceEqual(actual[pair.Key])), message); }
+        private static byte[] Digest(byte[] bytes) { using (var hash = System.Security.Cryptography.SHA256.Create()) return hash.ComputeHash(bytes); }
+        private static void ReadCancellation(string path)
+        {
+            using (var files = new CountedFiles(path)) using (var state = new LibraryState(files))
+            {
+                Guid id = Guid.NewGuid(); var handle = new ContentHandle(id); Command(state, state.TryBeginStage(Token(id)));
+                for (int y = 0; y < 4; y++) { var cells = Enumerable.Range(0, 2048).Select(x => Cell(x, y)).ToArray(); Command(state, state.TryAppendChunk(handle, new CaptureChunk(cells, cells.Length))); }
+                Require(Command(state, state.TrySealDraft(handle, new CaptureSummary { Width = 2048, Height = 4, ContentCount = 8192 })).Status == LibraryStatus.Completed, "real multi-block draft for cancellation");
+                foreach (long generation in new long[] { 71, 72 })
+                {
+                    files.BlockReads = 0; files.BeforeBlockRead = () => state.CancelRead(generation);
+                    LibraryReceipt receipt = Command(state, generation == 71 ? state.TryPreview(generation, handle, 32, 16) : state.TryObjects(generation, handle, 0));
+                    Require(receipt.Status == LibraryStatus.Cancelled && files.BlockReads == 1, "obsolete preview/object read stops at its next bounded chunk, without protecting or discarding draft");
+                }
+                files.BeforeBlockRead = () => state.CancelRead(0);
+                Require(Command(state, state.TryCreate(handle, "受理写入", Token(id))).Status == LibraryStatus.Saved, "a read cancellation with a write's numeric generation cannot cancel accepted Create");
+                files.BeforeBlockRead = null; files.Enumerated = 0; files.BeforeEnumerate = () => state.CancelRead(73);
+                Require(Command(state, state.TryList(73, 0)).Status == LibraryStatus.Cancelled && files.Enumerated == 1, "obsolete list stops before reading the first yielded asset metadata");
+                files.BeforeEnumerate = null;
+                Require(List(state).TotalCount == 1, "a new read generation proceeds and accepted write remains durable");
+            }
+        }
         private sealed class CountedFiles : IBlueprintLibraryFiles
         {
             private readonly FileBlueprintLibrary inner;
             private readonly string path;
             internal long BlockReads, BlockWrites;
-            internal bool UnknownMetadata, FailBlock;
+            internal bool UnknownMetadata, FailBlock, InterruptCleanup;
+            internal Action BeforeBlockRead, BeforeEnumerate;
+            internal int Enumerated;
             internal CountedFiles(string path) { this.path = path; inner = new FileBlueprintLibrary(path); }
             public void Open() { inner.Open(); }
-            public IEnumerable<Guid> EnumerateAssets() { return inner.EnumerateAssets(); }
+            public IEnumerable<Guid> EnumerateAssets() { foreach (Guid id in inner.EnumerateAssets()) { Enumerated++; BeforeEnumerate?.Invoke(); yield return id; } }
             public PreferenceReadResult OpenMetadata(Guid id, bool ownedUnpublishedContent = false) { return inner.OpenMetadata(id, ownedUnpublishedContent); }
             public PreferenceWriteResult WriteMetadata(string expectedIdentity, byte[] contents) { var result = inner.WriteMetadata(expectedIdentity, contents); return UnknownMetadata && result.Status == PreferenceWriteStatus.Saved ? new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, null, "lost-readback-after-real-commit", true, true) : result; }
             public void CloseMetadata() { inner.CloseMetadata(); }
@@ -232,13 +371,14 @@ namespace JueMingR.ArchitectureTests
                 }
                 else inner.WriteStageBlock(id, number, bytes, hash);
             }
-            public byte[] ReadBlock(Guid id, bool stage, long number) { BlockReads++; return inner.ReadBlock(id, stage, number); }
+            public byte[] ReadBlock(Guid id, bool stage, long number) { BlockReads++; BeforeBlockRead?.Invoke(); return inner.ReadBlock(id, stage, number); }
             public Stream OpenIndex(Guid id, bool stage) { return inner.OpenIndex(id, stage); }
             public void SealStage(Guid id, byte[] root) { inner.SealStage(id, root); }
             public byte[] ReadRoot(Guid id, bool stage) { return inner.ReadRoot(id, stage); }
             public void ValidateLayout(Guid id, bool stage, long count) { inner.ValidateLayout(id, stage, count); }
             public void PromoteStage(Guid stageId, Guid assetId) { inner.PromoteStage(stageId, assetId); }
-            public bool CleanupStep(Guid id, bool stage, long count, int budget) { return inner.CleanupStep(id, stage, count, budget); }
+            public void PrepareCleanup(Guid id, BlueprintCleanupProof proof) { inner.PrepareCleanup(id, proof); }
+            public bool CleanupStep(Guid id, bool stage, long count, int budget, BlueprintCleanupProof proof = null) { bool completed = inner.CleanupStep(id, stage, count, budget, proof); if (!stage && InterruptCleanup && !completed) throw new IOException("test interruption after actual safe cleanup batch"); return completed; }
             public void Dispose() { inner.Dispose(); }
         }
     }

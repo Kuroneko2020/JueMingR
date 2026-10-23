@@ -52,8 +52,8 @@ namespace JueMingR.Features.Blueprint
     }
     public sealed class LibraryReceipt
     {
-        internal LibraryReceipt(long commandId, LibraryCommandKind kind, LibraryStatus status, Guid operation, Guid asset, CaptureToken token, long generation, string error = null, bool protect = false, bool cleanup = false, LibraryPage page = null, BlueprintPreviewImage preview = null, LibraryObjectPage objectPage = null, CaptureSummary summary = null, string failureCode = null)
-        { CommandId = commandId; Kind = kind; Status = status; OperationId = operation; AssetId = asset; Token = token; Generation = generation; Error = error; IsProtected = protect; CleanupPending = cleanup; Page = page; Preview = preview; ObjectPage = objectPage; Summary = LibraryState.Copy(summary); FailureCode = failureCode; }
+        internal LibraryReceipt(long commandId, LibraryCommandKind kind, LibraryStatus status, Guid operation, Guid asset, CaptureToken token, long generation, string error = null, bool protect = false, bool cleanup = false, LibraryPage page = null, BlueprintPreviewImage preview = null, LibraryObjectPage objectPage = null, CaptureSummary summary = null, string failureCode = null, string suggestedName = null)
+        { CommandId = commandId; Kind = kind; Status = status; OperationId = operation; AssetId = asset; Token = token; Generation = generation; Error = error; IsProtected = protect; CleanupPending = cleanup; Page = page; Preview = preview; ObjectPage = objectPage; Summary = LibraryState.Copy(summary); FailureCode = failureCode; SuggestedName = suggestedName; }
         public long CommandId { get; }
         public LibraryCommandKind Kind { get; }
         public LibraryStatus Status { get; }
@@ -63,6 +63,7 @@ namespace JueMingR.Features.Blueprint
         public long Generation { get; }
         public string Error { get; }
         public string FailureCode { get; }
+        public string SuggestedName { get; }
         public bool IsProtected { get; }
         public bool CleanupPending { get; }
         public LibraryPage Page { get; }
@@ -83,7 +84,7 @@ namespace JueMingR.Features.Blueprint
     internal sealed class LibraryMetadata
     {
         internal Guid AssetId, ContentRevision;
-        internal string Name, ContentHash, MissingSummary;
+        internal string Name, ContentHash, MissingSummary, CleanupSourceIdentity, CleanupIndexIdentity;
         internal int Width, Height;
         internal long ContentCount, BlockCount, CreatedTicks, UpdatedTicks;
         internal bool Deleted;

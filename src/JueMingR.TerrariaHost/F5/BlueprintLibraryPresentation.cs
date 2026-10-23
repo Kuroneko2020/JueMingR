@@ -25,6 +25,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly SingleLineEditView editView = new SingleLineEditView();
         private readonly List<BlueprintLibraryPart> parts = new List<BlueprintLibraryPart>();
         private readonly HashSet<string> failedPreviews = new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, CaptureSummary> failedSummaries = new Dictionary<string, CaptureSummary>(StringComparer.Ordinal);
         private readonly Dictionary<Guid, string> pageKeys = new Dictionary<Guid, string>();
         internal readonly TextEditInput TextInput;
         private View mode;
@@ -35,9 +36,9 @@ namespace JueMingR.TerrariaHost.F5
         private Matrix matrix, pressMatrix;
         private Vector2 screen;
         private int layoutGeneration = -1, resourceGeneration = -1, projection, pressProjection;
-        private bool ready, dirty = true, previousLeft, leftTail, rightTail, wantList, listFailed, objectFailed, editProtected;
+        private bool ready, dirty = true, previousLeft, leftTail, rightTail, wantList, listFailed, objectFailed, editProtected, focusSuspended;
         private int requestedPage, objectIndex;
-        private long listGeneration, objectGeneration, previewGeneration, seenReceipt, seenFlow = -1, seenLibrary = -1;
+        private long readGeneration, activeReadGeneration, listGeneration, objectGeneration, previewGeneration, seenReceipt, seenFlow = -1, seenLibrary = -1;
         private float scroll;
         private Guid? selectAfterList;
         private LibraryObjectPage objects;
@@ -46,6 +47,7 @@ namespace JueMingR.TerrariaHost.F5
         private int pendingPreviewDevice;
         private long pendingPreviewGeneration;
         private BlueprintPreviewImage pendingImage;
+        private CaptureSummary pendingSummary;
         private LibraryCommandKind? pendingMutation;
         private Guid pendingAsset;
         private long mutationAfter, pendingEditRevision;
@@ -78,16 +80,17 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (mode == View.Capture) host.CancelCaptureOrDraft();
             EndEdit(); mode = View.Library; deleteConfirm = null; validation = null; objects = null;
-            failedPreviews.Clear(); RequestList(0, host.Flow.SelectedAssetId); Reveal();
+            failedPreviews.Clear(); failedSummaries.Clear(); RequestList(0, host.Flow.SelectedAssetId); Reveal();
         }
         internal void ShowCapture()
         {
+            CancelRead();
             EndEdit(); mode = View.Capture; selected = Guid.Empty; deleteConfirm = null; validation = null; objectIndex = 0; objects = null;
-            objectsHandle = Guid.Empty; objectFailed = false; failedPreviews.Clear(); Reveal();
+            objectsHandle = Guid.Empty; objectFailed = false; failedPreviews.Clear(); failedSummaries.Clear(); Reveal();
         }
-        private void Reveal() { shell.RestoreVisible(); shell.Navigate(6); dirty = true; armed = null; }
+        private void Reveal() { focusSuspended = false; shell.RestoreVisible(); shell.Navigate(6); dirty = true; armed = null; }
         private void RequestList(int page, Guid? asset = null)
-        { requestedPage = Math.Max(0, page); selectAfterList = asset; listGeneration++; wantList = true; listFailed = false; dirty = true; }
+        { CancelRead(); requestedPage = Math.Max(0, page); selectAfterList = asset; listGeneration = ++readGeneration; wantList = true; listFailed = false; dirty = true; }
         internal void ShowSaved(Guid asset)
         {
             if (!Visible) { selectAfterList = asset; return; }
@@ -135,9 +138,24 @@ namespace JueMingR.TerrariaHost.F5
         internal void Suspend()
         {
             if (mode == View.Capture) host.CancelCaptureOrDraft();
-            EndEdit(); mode = View.None; deleteConfirm = null; armed = hovered = null; ready = false;
-            OwnsPointer = false; parts.Clear(); previews.Dispose(); renderer.Dispose(); objects = null;
-            pendingImage = null; pendingPreviewKey = null; failedPreviews.Clear();
+            ReleasePresentation(); mode = View.None;
+        }
+        // Focus is an input/resource boundary, not a capture cancellation.
+        // Preserve the submenu so a valid accepted job can finish and reappear.
+        internal void LoseFocus() { ReleasePresentation(); focusSuspended = true; if (mode == View.Library) RequestList(requestedPage); }
+        private void ReleasePresentation()
+        {
+            CancelRead();
+            EndEdit(); deleteConfirm = null; armed = hovered = null; ready = false;
+            OwnsPointer = false; parts.Clear(); previews.Dispose(); renderer.Dispose(); objects = null; objectsHandle = Guid.Empty;
+            pendingImage = null; pendingPreviewKey = null; failedPreviews.Clear(); failedSummaries.Clear();
+        }
+        private void CancelRead()
+        {
+            // Every accepted read uses this one generation namespace. Writes
+            // never acquire activeReadGeneration and cannot be cancelled here.
+            if (activeReadGeneration != 0) host.Library.CancelRead(activeReadGeneration);
+            activeReadGeneration = 0; pendingPreviewKey = null; pendingImage = null; pendingSummary = null;
         }
         internal bool RequestLeave() { Suspend(); return true; }
         internal void ProcessInput(bool active, KeyboardState keys, Vector2 point, bool geometryCurrent, bool focused, bool blocked)
@@ -148,7 +166,8 @@ namespace JueMingR.TerrariaHost.F5
             bool ownGeometry = Same(view, shell.Layout.Viewport.Offset(shell.X, shell.Y)) && matrix == Main.UIScaleMatrix &&
                 scroll == shell.Scroll && layoutGeneration == shell.Layout.Generation;
             bool on = active && Visible && ready && geometryCurrent && ownGeometry && !dirty && !blocked;
-            if (!Visible) { if (Submenu && !shell.Visible) Suspend(); previousLeft = left; return; }
+            if (!Visible) { if (Submenu && !shell.Visible && !focusSuspended) Suspend(); previousLeft = left; return; }
+            focusSuspended = false;
             bool wasEditing = editor != null;
             TextInput.AfterSample(on, null, keys, focused);
             bool inside = hitClip.Contains(point.X, point.Y);
@@ -192,10 +211,10 @@ namespace JueMingR.TerrariaHost.F5
                 case BlueprintLibraryCommand.Cancel: Back(); return;
                 case BlueprintLibraryCommand.Previous: NavigatePage(-1); return;
                 case BlueprintLibraryCommand.Next: NavigatePage(1); return;
-                case BlueprintLibraryCommand.PreviousObjects: objectIndex = Math.Max(0, objectIndex - 1); objects = null; objectFailed = false; objectGeneration++; deleteConfirm = null; dirty = true; return;
-                case BlueprintLibraryCommand.NextObjects: objectIndex++; objects = null; objectFailed = false; objectGeneration++; deleteConfirm = null; dirty = true; return;
-                case BlueprintLibraryCommand.Exclude: host.ExcludeObject(part.ObjectId, !part.Selected); dirty = true; return;
-                case BlueprintLibraryCommand.ExcludeAll: host.SetExcludeUnreliable(!host.Flow.ExcludeUnreliable); dirty = true; return;
+                case BlueprintLibraryCommand.PreviousObjects: CancelRead(); objectIndex = Math.Max(0, objectIndex - 1); objects = null; objectFailed = false; objectGeneration = ++readGeneration; deleteConfirm = null; dirty = true; return;
+                case BlueprintLibraryCommand.NextObjects: CancelRead(); objectIndex++; objects = null; objectFailed = false; objectGeneration = ++readGeneration; deleteConfirm = null; dirty = true; return;
+                case BlueprintLibraryCommand.Exclude: CancelRead(); host.ExcludeObject(part.ObjectId, !part.Selected); dirty = true; return;
+                case BlueprintLibraryCommand.ExcludeAll: CancelRead(); host.SetExcludeUnreliable(!host.Flow.ExcludeUnreliable); dirty = true; return;
                 case BlueprintLibraryCommand.ConfirmDraft:
                     if (editor != null) { RequestFinish(); return; }
                     validation = null; host.ConfirmSave(); dirty = true; return;
@@ -229,7 +248,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             var page = host.Library.Snapshot.Page; EndEdit(); deleteConfirm = null; lastClickName = false;
             int next = Math.Max(0, (page?.PageIndex ?? requestedPage) + delta);
-            RequestList(next); shell.ScrollTo(0); failedPreviews.Clear();
+            RequestList(next); shell.ScrollTo(0); failedPreviews.Clear(); failedSummaries.Clear();
         }
         private void Back()
         {
@@ -247,10 +266,11 @@ namespace JueMingR.TerrariaHost.F5
             if (receipt != null && receipt.CommandId != seenReceipt)
             {
                 seenReceipt = receipt.CommandId;
+                if (receipt.Generation == activeReadGeneration) activeReadGeneration = 0;
                 if (receipt.Kind == LibraryCommandKind.Preview && receipt.Generation == pendingPreviewGeneration && pendingPreviewKey != null)
                 {
-                    if (receipt.Preview != null) pendingImage = receipt.Preview;
-                    else { RememberPreviewFailure(pendingPreviewKey); pendingPreviewKey = null; }
+                    if (receipt.Preview != null) { pendingImage = receipt.Preview; pendingSummary = receipt.Summary; }
+                    else { RememberPreviewFailure(pendingPreviewKey, receipt.Summary); pendingPreviewKey = null; }
                     dirty = true;
                 }
                 if (receipt.Kind == LibraryCommandKind.Objects && receipt.Generation == objectGeneration)
@@ -295,9 +315,9 @@ namespace JueMingR.TerrariaHost.F5
             previews.Observe(renderer.Device);
             if (pendingImage != null)
             {
-                try { previews.Upload(pendingPreviewKey, pendingImage, pendingPreviewDevice); }
-                catch { RememberPreviewFailure(pendingPreviewKey); }
-                pendingImage = null; pendingPreviewKey = null; dirty = true;
+                try { previews.Upload(pendingPreviewKey, pendingImage, pendingSummary, pendingPreviewDevice); }
+                catch { RememberPreviewFailure(pendingPreviewKey, pendingSummary); }
+                pendingImage = null; pendingSummary = null; pendingPreviewKey = null; dirty = true;
             }
             var next = shell.Layout.Viewport.Offset(shell.X, shell.Y);
             bool geometry = matrix != transform || screen != dimensions || !Same(view, next) || layoutGeneration != shell.Layout.Generation || resourceGeneration != renderer.Generation;
@@ -329,7 +349,7 @@ namespace JueMingR.TerrariaHost.F5
             if (host.Library.Snapshot.Busy || pendingMutation.HasValue || pendingPreviewKey != null || pendingImage != null) return;
             if (mode == View.Library)
             {
-                if (wantList) { if (host.Library.TryList(listGeneration, requestedPage, selectAfterList)) wantList = false; return; }
+                if (wantList) { if (host.Library.TryList(listGeneration, requestedPage, selectAfterList)) { wantList = false; activeReadGeneration = listGeneration; } return; }
                 var page = host.Library.Snapshot.Page; if (page == null || page.Generation != listGeneration) return;
                 for (int i = 0; i < page.Entries.Count; i++)
                 {
@@ -338,7 +358,7 @@ namespace JueMingR.TerrariaHost.F5
                     var entry = page.Entries[i]; string key;
                     if (!pageKeys.TryGetValue(entry.AssetId, out key)) return;
                     if (previews.Touch(key) || failedPreviews.Contains(key)) continue;
-                    long generation = ++previewGeneration;
+                    long generation = previewGeneration = ++readGeneration;
                     if (host.Library.TryPreview(generation, entry.AssetId, entry.ContentHash, 256, 58)) PreviewPending(key, generation);
                     return;
                 }
@@ -348,26 +368,27 @@ namespace JueMingR.TerrariaHost.F5
                 var summary = host.Flow.Summary;
                 if (summary != null && summary.UnreliableObjectCount > 0 && !objectFailed && (objects == null || objectsHandle != host.Flow.ContentHandle.Id))
                 {
-                    if (objectsHandle != host.Flow.ContentHandle.Id) { objectsHandle = host.Flow.ContentHandle.Id; objectGeneration++; }
-                    host.Library.TryObjects(objectGeneration, host.Flow.ContentHandle, objectIndex); return;
+                    if (objectsHandle != host.Flow.ContentHandle.Id) { objectsHandle = host.Flow.ContentHandle.Id; objectGeneration = ++readGeneration; }
+                    if (host.Library.TryObjects(objectGeneration, host.Flow.ContentHandle, objectIndex)) activeReadGeneration = objectGeneration; return;
                 }
                 string key = draftPreviewKey;
                 if (key == null) return;
                 if (!previews.Touch(key) && !failedPreviews.Contains(key))
                 {
-                    long generation = ++previewGeneration;
+                    long generation = previewGeneration = ++readGeneration;
                     if (host.Library.TryPreview(generation, host.Flow.ContentHandle, 256, 58, host.Flow.ExcludeUnreliable, host.Flow.ExcludedObjectIds)) PreviewPending(key, generation);
                 }
             }
         }
         private void PreviewPending(string key, long generation)
-        { pendingPreviewKey = key; pendingPreviewGeneration = generation; pendingPreviewDevice = previews.Generation; }
-        private void RememberPreviewFailure(string key)
+        { pendingPreviewKey = key; pendingPreviewGeneration = generation; activeReadGeneration = generation; pendingPreviewDevice = previews.Generation; }
+        private void RememberPreviewFailure(string key, CaptureSummary summary = null)
         {
             // Failed derived keys also need a bound when an owner repeatedly
             // changes exclusions. This never changes asset or commit state.
-            if (failedPreviews.Count >= 12) failedPreviews.Clear();
+            if (failedPreviews.Count >= 12) { failedPreviews.Clear(); failedSummaries.Clear(); }
             failedPreviews.Add(key);
+            if (summary != null) failedSummaries[key] = summary;
         }
         private static string AssetKey(LibraryEntry entry) { return "a:" + entry.ContentHash + ":1:256:58"; }
         private string DraftKey() { return "d:" + host.Flow.ContentHandle.Id.ToString("N") + ":" + host.Flow.ExcludeUnreliable + ":" + string.Join(",", host.Flow.ExcludedObjectIds) + ":1:256:58"; }
@@ -438,14 +459,18 @@ namespace JueMingR.TerrariaHost.F5
             float y = 48;
             if (summary != null && !flow.ContentHandle.IsEmpty)
             {
-                bool resolved = summary.UnreliableObjectCount == 0 || flow.ExcludeUnreliable || host.Flow.ExcludedObjectIds.LongLength >= summary.UnreliableObjectCount;
-                bool canSave = summary.ContentCount > 0 && resolved && flow.Status == BlueprintCaptureStatus.DraftReady && !host.Library.Snapshot.Busy;
                 draftPreviewKey = DraftKey();
-                BuildCard(BlueprintLibraryLayout.Card(view.Width, 0), Guid.Empty, flow.DraftName, summary.Width, summary.Height, summary.ContentCount,
-                    string.Join("；", summary.MissingPayloads), draftPreviewKey, canSave, true);
+                var projected = previews.Summary(draftPreviewKey);
+                if (projected == null) failedSummaries.TryGetValue(draftPreviewKey, out projected);
+                bool resolved = summary.UnreliableObjectCount == 0 || flow.ExcludeUnreliable || host.Flow.ExcludedObjectIds.LongLength >= summary.UnreliableObjectCount;
+                bool canSave = previews.Get(draftPreviewKey) != null && projected != null && projected.ContentCount > 0 && resolved && flow.Status == BlueprintCaptureStatus.DraftReady && !host.Library.Snapshot.Busy;
+                var display = projected ?? summary;
+                BuildCard(BlueprintLibraryLayout.Card(view.Width, 0), Guid.Empty, flow.DraftName, display.Width, display.Height, display.ContentCount,
+                    string.Join("；", display.MissingPayloads), draftPreviewKey, canSave, true);
                 y = 48 + BlueprintLibraryLayout.CardHeight + 8;
-                if (summary.ContentCount == 0) y += AddWrapped("没有可保存的内容", 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 4;
-                if (summary.MissingPayloads.Length > 0) foreach (string item in summary.MissingPayloads) y += AddWrapped(item, 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 3;
+                if (projected == null) y += AddWrapped(failedPreviews.Contains(draftPreviewKey) ? "预览暂不可用" : "正在准备预览", 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 4;
+                else if (projected.ContentCount == 0) y += AddWrapped("没有可保存的内容", 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 4;
+                if (display.MissingPayloads.Length > 0) foreach (string item in display.MissingPayloads) y += AddWrapped(item, 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 3;
                 if (summary.UnreliableObjectCount > 0)
                 {
                     y += AddWrapped("有" + summary.UnreliableObjectCount + "件对象尚未确认，可排除后保存其余内容。", 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 4;

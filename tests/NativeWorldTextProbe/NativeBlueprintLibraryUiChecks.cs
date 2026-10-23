@@ -40,6 +40,7 @@ namespace NativeWorldTextProbe
             var library = (LibraryState)Get(host, "Library"); var savedSnapshot = Get(library, "snapshot");
             try
             {
+                ReadCancellation(ui, host, library);
                 Guid id = Guid.NewGuid(); Call(ui, "BeginEdit", id, "原名");
                 var editor = (TextEditBuffer)Get(ui, "Editor"); editor.SelectAll(); editor.Insert(" ");
                 Require(!(bool)Call(ui, "RequestFinish") && ReferenceEquals(editor, Get(ui, "Editor")) && editor.Text == " ",
@@ -61,9 +62,23 @@ namespace NativeWorldTextProbe
             Set(ui, "pendingMutation", (LibraryCommandKind?)LibraryCommandKind.Rename); Set(ui, "pendingAsset", id);
             Set(ui, "pendingEditor", editor); Set(ui, "pendingEditRevision", editor.Revision); Set(ui, "mutationAfter", command - 1);
             var receipt = (LibraryReceipt)Activator.CreateInstance(typeof(LibraryReceipt), F, null,
-                new object[] { command, LibraryCommandKind.Rename, status, Guid.Empty, id, default(CaptureToken), 0L, "测试写入失败", status == LibraryStatus.CommitUnconfirmed, false, null, null, null, null, null }, null);
+                new object[] { command, LibraryCommandKind.Rename, status, Guid.Empty, id, default(CaptureToken), 0L, "测试写入失败", status == LibraryStatus.CommitUnconfirmed, false, null, null, null, null, null, null }, null);
             var snapshot = Activator.CreateInstance(typeof(LibrarySnapshot), F, null, new object[] { command, false, null, receipt, 0L }, null);
             Set(library, "snapshot", snapshot); Call(ui, "PollReceipts");
+        }
+        private static void ReadCancellation(object ui, object host, LibraryState library)
+        {
+            Call(ui, "OpenLibrary"); Call(ui, "RequestWork");
+            long first = (long)Get(ui, "activeReadGeneration"); Require(first > 0, "actual presentation accepted its background list read");
+            Call(ui, "RequestList", 1, null);
+            var worker = Get(library, "worker");
+            Require((long)Get(worker, "cancelledRead") == first && (long)Get(ui, "listGeneration") > first, "page change cancels the exact old accepted read and assigns a new shared generation");
+            NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });
+            Call(ui, "RequestWork"); long second = (long)Get(ui, "activeReadGeneration");
+            Require(second > first, "new page read uses a distinct accepted generation");
+            Call(ui, "Suspend");
+            Require((long)Get(worker, "cancelledRead") == second, "return cancels only its current accepted read");
+            NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });
         }
     }
 }

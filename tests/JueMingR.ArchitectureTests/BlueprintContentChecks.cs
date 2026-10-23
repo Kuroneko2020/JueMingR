@@ -38,7 +38,7 @@ namespace JueMingR.ArchitectureTests
                 source.Values[Key(x, y)] = new CaptureCell { X = x, Y = y, Layers = CaptureLayer.Tile | CaptureLayer.Wall | CaptureLayer.Wire | CaptureLayer.Liquid | CaptureLayer.Actuator,
                     TileType = 21, FrameX = (short)((x - 4) * 18), FrameY = (short)((y - 4) * 18), WallType = 3, Wires = 15, LiquidAmount = 90, LiquidKind = 2, Actuator = true };
             source.Shape = cell => cell.TileType != 21 ? null : new BlueprintObjectShape { BaseFrameX = 0, BaseFrameY = 0, ColumnStep = 18, RowOffsets = new[] { 0, 18, 36 },
-                Object = new CaptureObject { X = 4, Y = 4, Width = 2, Height = 3, Type = 21, Style = 3, Alternate = 1, Direction = -1, OriginX = 0, OriginY = 2, Reliable = true, MissingPayload = "箱内物品未采集" } };
+                Object = new CaptureObject { X = 4, Y = 4, Width = 2, Height = 3, Type = 21, Style = 3, Alternate = 1, Direction = 1, OriginX = 0, OriginY = 2, Reliable = true, MissingPayload = "箱内物品未采集" } };
             var selected = new BlueprintSelection(); selected.ToggleRectangle(5, 6, 5, 6, 20, 20);
             var job = new CaptureJob(source, selected.Freeze(), 0); var cells = Drain(job, 1);
             Require(cells.Count == 6 && job.Summary(5).Width == 2 && job.Summary(5).Height == 3, "partial object completes full reliable footprint across read budgets");

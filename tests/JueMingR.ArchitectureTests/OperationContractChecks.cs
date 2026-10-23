@@ -36,6 +36,7 @@ namespace JueMingR.ArchitectureTests
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
                 "JueMingR.Platform.Blueprint.IBlueprintLibraryFiles",
+                "JueMingR.Platform.Blueprint.BlueprintCleanupProof",
                 "JueMingR.Platform.Combat.NpcIdentity", "JueMingR.Platform.Combat.PredictionAssumption", "JueMingR.Platform.Combat.PredictionStop",
                 "JueMingR.Platform.Combat.PredictionStrategy", "JueMingR.Platform.Combat.PredictionQuality", "JueMingR.Platform.Combat.PredictionFailureLayer",
                 "JueMingR.Platform.Combat.PredictionPlayerMotion",

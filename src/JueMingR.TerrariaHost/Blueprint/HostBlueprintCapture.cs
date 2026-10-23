@@ -49,7 +49,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal void CancelCaptureOrDraft()
         {
-            if (Flow.Status == BlueprintCaptureStatus.Saving || Flow.Status == BlueprintCaptureStatus.CommitUnconfirmed) return;
+            // UI teardown can follow an earlier explicit/session cancellation.
+            // Do not enqueue a second discard after that stage was released.
+            if (Flow.Status == BlueprintCaptureStatus.Saving || Flow.Status == BlueprintCaptureStatus.CommitUnconfirmed || Flow.Status == BlueprintCaptureStatus.Cancelled) return;
             capture?.Cancel(); capture = null;
             if (!Flow.ContentHandle.IsEmpty) discardPending = true;
             SetFlow(BlueprintCaptureStatus.Cancelled, "已取消，选区已保留。");
@@ -95,9 +97,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void ApplyReceipt(LibraryReceipt receipt)
         {
             if (receipt.OperationId != Flow.Token.OperationId) return;
-            if (receipt.Kind == LibraryCommandKind.Preview && receipt.Summary != null && Flow.Status == BlueprintCaptureStatus.DraftReady)
-            { Flow.Summary = receipt.Summary; Flow.Revision++; return; }
+            // The sealed capture summary is fixed. Filtered preview summaries
+            // belong to their exclusion/cache key in the presentation owner;
+            // a late read must never overwrite the original draft facts.
             if (receipt.Kind == LibraryCommandKind.Objects || receipt.Kind == LibraryCommandKind.List || receipt.Kind == LibraryCommandKind.Preview) return;
+            if (receipt.Kind == LibraryCommandKind.BeginStage && receipt.Status == LibraryStatus.Completed && receipt.SuggestedName != null)
+            { Flow.DraftName = receipt.SuggestedName; Flow.Revision++; }
             if (receipt.Kind == LibraryCommandKind.DiscardDraft) return;
             if (receipt.Kind == LibraryCommandKind.Create)
             {

@@ -19,15 +19,25 @@ namespace JueMingR.Features.Blueprint
             string text = "{\"format\":\"JueMingR.BlueprintAsset\",\"version\":1,\"assetId\":" + Quote(value.AssetId.ToString("N")) + ",\"name\":" + Quote(value.Name) +
                 ",\"contentRevision\":" + Quote(value.ContentRevision.ToString("N")) + ",\"contentHash\":" + Quote(value.ContentHash) +
                 ",\"width\":" + Number(value.Width) + ",\"height\":" + Number(value.Height) + ",\"contentCount\":" + Number(value.ContentCount) + ",\"blockCount\":" + Number(value.BlockCount) +
-                ",\"missingSummary\":" + Quote(value.MissingSummary ?? "") + ",\"createdTicks\":" + Number(value.CreatedTicks) + ",\"updatedTicks\":" + Number(value.UpdatedTicks) + ",\"deleted\":" + (value.Deleted ? "true" : "false") + "}\n";
+                ",\"missingSummary\":" + Quote(value.MissingSummary ?? "") + ",\"createdTicks\":" + Number(value.CreatedTicks) + ",\"updatedTicks\":" + Number(value.UpdatedTicks) + ",\"deleted\":" + (value.Deleted ? "true" : "false") +
+                (value.Deleted ? ",\"cleanup\":{\"sourceIdentity\":" + Quote(value.CleanupSourceIdentity) + ",\"indexIdentity\":" + Quote(value.CleanupIndexIdentity) + "}" : "") + "}\n";
             byte[] bytes = Utf8.GetBytes(text); DecodeMetadata(bytes, value.AssetId); return bytes;
         }
         internal static LibraryMetadata DecodeMetadata(byte[] bytes, Guid expectedId)
         {
-            var root = PreferenceJson.Read(bytes, "JueMingR.BlueprintAsset", "format", "version", "assetId", "name", "contentRevision", "contentHash", "width", "height", "contentCount", "blockCount", "missingSummary", "createdTicks", "updatedTicks", "deleted");
+            var root = PreferenceJson.ReadOptional(bytes, "JueMingR.BlueprintAsset", "cleanup", "format", "version", "assetId", "name", "contentRevision", "contentHash", "width", "height", "contentCount", "blockCount", "missingSummary", "createdTicks", "updatedTicks", "deleted");
             var value = new LibraryMetadata { AssetId = Id(Text(root, "assetId")), Name = Text(root, "name"), ContentRevision = Id(Text(root, "contentRevision")), ContentHash = Text(root, "contentHash"), Width = PreferenceJson.Integer(PreferenceJson.Required(root, "width", "number")), Height = PreferenceJson.Integer(PreferenceJson.Required(root, "height", "number")), ContentCount = Long(root, "contentCount"), BlockCount = Long(root, "blockCount"), MissingSummary = Text(root, "missingSummary"), CreatedTicks = Long(root, "createdTicks"), UpdatedTicks = Long(root, "updatedTicks") };
             string deleted = PreferenceJson.Required(root, "deleted", "boolean").Value;
             if (deleted != "true" && deleted != "false") throw PreferenceJson.Invalid(); value.Deleted = deleted == "true";
+            if (root.Element("cleanup") != null)
+            {
+                if (!value.Deleted) throw PreferenceJson.Invalid();
+                var cleanup = PreferenceJson.Required(root, "cleanup", "object"); PreferenceJson.ExactFields(cleanup, "sourceIdentity", "indexIdentity");
+                value.CleanupSourceIdentity = Text(cleanup, "sourceIdentity"); value.CleanupIndexIdentity = Text(cleanup, "indexIdentity");
+                if (!HashText(value.CleanupSourceIdentity) || !HashText(value.CleanupIndexIdentity)) throw PreferenceJson.Invalid();
+            }
+            // Older candidate tombstones without cleanup proof remain logically
+            // deleted, but never authorize deletion of whatever files exist now.
             string error;
             if (value.AssetId != expectedId || !LibraryName.TryValidate(value.Name, out error) || value.Width < 1 || value.Height < 1 || value.ContentCount < 1 || value.ContentCount > (long)value.Width * value.Height || value.BlockCount < 1 || value.BlockCount > Int64.MaxValue / 32L || value.CreatedTicks < 0 || value.UpdatedTicks < value.CreatedTicks || value.MissingSummary.Length > 8192 || !HashText(value.ContentHash)) throw PreferenceJson.Invalid();
             return value;
@@ -93,7 +103,9 @@ namespace JueMingR.Features.Blueprint
                 for (int i = 0; i < objectCount; i++)
                 {
                     var o = new CaptureObject { Id = reader.ReadInt32(), Type = reader.ReadUInt16(), X = reader.ReadInt32(), Y = reader.ReadInt32(), Width = reader.ReadInt32(), Height = reader.ReadInt32(), Style = reader.ReadInt32(), Alternate = reader.ReadInt32(), PlacementStyle = reader.ReadInt32(), RandomVariant = reader.ReadInt32(), Direction = reader.ReadInt32(), OriginX = reader.ReadInt32(), OriginY = reader.ReadInt32(), Reliable = ReadBool(reader), Reason = ReadText(reader, 2048), MissingPayload = ReadText(reader, 256) };
-                    if (o.Id < 1 || !objectIds.Add(o.Id) || o.X < 0 || o.Y < 0 || o.Width < 1 || o.Height < 1 || (long)o.X + o.Width > Int32.MaxValue || (long)o.Y + o.Height > Int32.MaxValue || o.Style < 0 || o.Alternate < 0 || o.PlacementStyle < 0 || o.RandomVariant < 0 || o.Direction < -1 || o.Direction > 1 || o.OriginX < 0 || o.OriginY < 0 || !o.Reliable && String.IsNullOrWhiteSpace(o.Reason)) throw Bad("object-fields");
+                    // Terraria TileObjectDirection is None=0, PlaceLeft=1,
+                    // PlaceRight=2; this is not the player's signed direction.
+                    if (o.Id < 1 || !objectIds.Add(o.Id) || o.X < 0 || o.Y < 0 || o.Width < 1 || o.Height < 1 || (long)o.X + o.Width > Int32.MaxValue || (long)o.Y + o.Height > Int32.MaxValue || o.Style < 0 || o.Alternate < 0 || o.PlacementStyle < 0 || o.RandomVariant < 0 || o.Direction < 0 || o.Direction > 2 || o.OriginX < 0 || o.OriginY < 0 || !o.Reliable && String.IsNullOrWhiteSpace(o.Reason)) throw Bad("object-fields");
                     objects[i] = o;
                 }
                 if (stream.Position != stream.Length) throw Bad("block-trailing-fields"); return new CaptureChunk(cells, count, objects, objectCount);
