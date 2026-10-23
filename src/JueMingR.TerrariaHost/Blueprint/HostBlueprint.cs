@@ -62,9 +62,24 @@ namespace JueMingR.TerrariaHost.Blueprint
             !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
             !(Shell?.State.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !player.dead && !player.ghost && player.HeldItem != null && player.HeldItem.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0; } }
         internal void SetToolbar(bool value) { if (ControlsEnabled) preference.Set(value); }
+        internal bool CanOpenLibrary { get { return ManualLibraryDisabledReason == null; } }
+        internal string ManualLibraryDisabledReason
+        {
+            get {
+                if (!ControlsEnabled) return "蓝图当前不可用";
+                if (!Input.CanStartActions) return "请先结束当前输入";
+                if (Library == null) return "蓝图库暂不可用";
+                if (HasActiveCaptureWork) return "请先完成或退出当前采集";
+                if (ProjectionEditing || pendingProjection != null) return "请先完成或取消当前蓝图操作";
+                if (Library.Snapshot.Busy) return "蓝图库正在处理，请稍候";
+                return null;
+            }
+        }
         internal void OpenLibrary()
         {
-            if (!ControlsEnabled || !Input.CanStartActions) return;
+            // Reject before touching pointer/capture/scene ownership. Internal
+            // Saved completion uses ShowSaved and does not pass this manual gate.
+            if (!CanOpenLibrary) return;
             Pointer.Cancel(); Toolbar.Cancel(); State.Interrupt();
             Shell?.BlueprintUi?.OpenLibrary();
         }
@@ -80,9 +95,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             registry.Register(new HotkeyAction(BlueprintControls.CaptureAction, "采集蓝图", HotkeyContext.Gameplay, () => ControlsEnabled, Toggle));
             registry.Register(new HotkeyAction(BlueprintControls.SaveAction, "保存采集", HotkeyContext.Gameplay, () => CanSave, () => Save()));
-            registry.Register(new HotkeyAction(BlueprintControls.LibraryAction, "打开蓝图库", HotkeyContext.Gameplay, () => ControlsEnabled, OpenLibrary));
-            registry.Register(new HotkeyAction(BlueprintControls.MoveAction, "移动蓝图", HotkeyContext.Gameplay, () => CanMoveProjection, MoveProjection));
-            registry.Register(new HotkeyAction(BlueprintControls.RemoveAction, "移除蓝图", HotkeyContext.Gameplay, () => CanRemoveProjection, RemoveProjection));
+            registry.Register(new HotkeyAction(BlueprintControls.LibraryAction, "打开蓝图库", HotkeyContext.Gameplay, () => CanOpenLibrary, OpenLibrary));
+            registry.Register(new HotkeyAction(BlueprintControls.MoveAction, "移动蓝图", HotkeyContext.Gameplay, () => CanInvokeMove, MoveProjection));
+            registry.Register(new HotkeyAction(BlueprintControls.RemoveAction, "移除蓝图", HotkeyContext.Gameplay, () => CanInvokeRemove, RemoveProjection));
             // F5 and the independent display binding share the preference owner;
             // hiding the toolbar never exits capture or releases its world gate.
             Action toolbar = () => SetToolbar(!ToolbarEnabled);

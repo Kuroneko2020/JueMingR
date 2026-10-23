@@ -57,14 +57,16 @@ namespace JueMingR.TerrariaHost.Blueprint
             return Vector2.Transform(new Vector2(PlayerInput.MouseInfo.X * PlayerInput.RawMouseScale.X,
                 PlayerInput.MouseInfo.Y * PlayerInput.RawMouseScale.Y), Matrix.Invert(Main.UIScaleMatrix));
         }
-        private int ProjectionMode { get { return host.ProjectionEditing ? 2 : host.ProjectionScene.Count == 0 ? 0 : 1; } }
+        private int ProjectionMode { get { return host.OwnPlaceCancellation ? 2 : host.OwnMoveCancellation ? 3 : host.OwnRemoveCancellation ? 4 : host.ProjectionScene.Count == 0 ? 0 : 1; } }
         private bool Available(int index)
         {
             if (!Layout.Available(index)) return false;
             if (index == 0) return host.State.Active ? host.CanSave : !host.ProjectionEditing;
-            if (index == 2) return host.ProjectionEditing || host.CanMoveProjection;
-            if (index == 3) return host.CanRemoveProjection;
-            return true;
+            if (index == 1) return host.State.Active || host.CanOpenLibrary;
+            if (index == 2) return host.CanInvokeMove;
+            if (index == 3) return host.CanInvokeRemove;
+            if (index == 4) return host.OwnPlaceCancellation ? host.CanInvokePlace : host.CanRemoveAllProjections;
+            return false;
         }
 
         internal void Process()
@@ -107,8 +109,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             previousLeft = left;
             if (execute >= 0)
             {
-                if (execute == 2) { if (host.ProjectionEditing) host.CancelProjection(); else host.MoveProjection(); return; }
+                if (execute == 2) { host.MoveProjection(); return; }
                 if (execute == 3) { host.RemoveProjection(); return; }
+                if (execute == 4) { if (host.OwnPlaceCancellation) host.Place(null); else host.RemoveAllProjections(); return; }
                 if (host.State.Active && execute == 0) host.Save();
                 else if (!host.State.Active && execute == 1) host.OpenLibrary();
                 else host.Toggle();
@@ -193,8 +196,12 @@ namespace JueMingR.TerrariaHost.Blueprint
 
         private void DrawHint(SpriteBatch batch, F5Rect bounds, int hovered)
         {
-            string value = hovered == 2 ? Available(2) ? host.ProjectionEditing ? "取消当前蓝图操作" : "点击需要移动的蓝图" : host.ProjectionActionHint :
-                hovered == 3 ? Available(3) ? "点击需要移除的蓝图" : host.ProjectionActionHint : hovered == 0 && host.ProjectionEditing ? "请先完成或取消当前蓝图操作" : Layout.Hint(hovered);
+            string value = hovered == 2 ? host.CanInvokeMove ? host.OwnMoveCancellation ? "取消移动，保留原蓝图" : "点击需要移动的蓝图" : host.MoveDisabledReason :
+                hovered == 3 ? host.CanInvokeRemove ? host.OwnRemoveCancellation ? "退出移除选择" : "点击需要移除的蓝图" : host.RemoveDisabledReason :
+                hovered == 4 ? host.OwnPlaceCancellation ? "取消此次摆放" : host.RemoveAllDisabledReason :
+                hovered == 1 && !host.State.Active ? host.ManualLibraryDisabledReason :
+                hovered == 0 && host.State.Active && !host.CanSave ? host.SaveDisabledReason :
+                hovered == 0 && host.ProjectionEditing ? "请先完成或取消当前蓝图操作" : Layout.Hint(hovered);
             if (value == null || leftTail || rightTail || !host.Input.CanPrepareText) { hint.Hide(); return; }
             // Reuse the common bounded wrapping and glyph metrics, but place
             // the measured result above the entire bar, explicitly centered.
@@ -257,19 +264,25 @@ namespace JueMingR.TerrariaHost.Blueprint
             string first = mode ? "保存蓝图" : "采集蓝图", second = mode ? "退出采集" : "打开蓝图库";
             var a = measure(first, .70f); var b = measure(second, .70f);
             float aw = Math.Max(30, a.Width + 16), bw = Math.Max(30, b.Width + 16), bh = Math.Max(30, Math.Max(a.Height, b.Height) + 8);
-            string third = projection == 2 ? "取消摆放" : "移动蓝图";
-            var c = projection == 0 ? default(F5Size) : measure(third, .70f); var d = projection == 0 ? default(F5Size) : measure("移除蓝图", .70f);
+            string third = projection == 3 ? "取消移动" : "移动蓝图", fourth = projection == 4 ? "取消移除" : "移除蓝图";
+            string fifth = projection == 2 ? "取消摆放" : "移除所有";
+            bool extra = projection == 2 || projection == 4;
+            var c = projection == 0 ? default(F5Size) : measure(third, .70f); var d = projection == 0 ? default(F5Size) : measure(fourth, .70f);
+            var e = extra ? measure(fifth, .70f) : default(F5Size);
             float cw = Math.Max(30, c.Width + 16), dw = Math.Max(30, d.Width + 16);
-            float pw = aw + bw + 20 + (projection == 0 ? 0 : cw + dw + 8), ph = bh + 16;
+            float ew = Math.Max(30, e.Width + 16);
+            bh = Math.Max(bh, Math.Max(Math.Max(c.Height, d.Height), e.Height) + 8);
+            float pw = aw + bw + 20 + (projection == 0 ? 0 : cw + dw + 8) + (extra ? ew + 4 : 0), ph = bh + 16;
             if (!Finite(pw) || !Finite(ph) || pw > w / s - 16 || ph > h / s - 32) return false;
             Panel = new F5Rect((w / s - pw) / 2, h / s - ph - 24, pw, ph);
-            Buttons = new F5Element[projection == 0 ? 2 : 4];
+            Buttons = new F5Element[projection == 0 ? 2 : extra ? 5 : 4];
             Buttons[0] = new F5Element(F5ElementKind.Button, new F5Rect(8, 8, aw, bh), first, a, .70f, F5Command.None);
             Buttons[1] = new F5Element(F5ElementKind.Button, new F5Rect(12 + aw, 8, bw, bh), second, b, .70f, F5Command.None);
             if (projection != 0)
             {
                 Buttons[2] = new F5Element(F5ElementKind.Button, new F5Rect(16 + aw + bw, 8, cw, bh), third, c, .70f, F5Command.None);
-                Buttons[3] = new F5Element(F5ElementKind.Button, new F5Rect(20 + aw + bw + cw, 8, dw, bh), "移除蓝图", d, .70f, F5Command.None);
+                Buttons[3] = new F5Element(F5ElementKind.Button, new F5Rect(20 + aw + bw + cw, 8, dw, bh), fourth, d, .70f, F5Command.None);
+                if (extra) Buttons[4] = new F5Element(F5ElementKind.Button, new F5Rect(24 + aw + bw + cw + dw, 8, ew, bh), fifth, e, .70f, F5Command.None);
             }
             width = w; height = h; scale = s; font = f; active = mode; projectionMode = projection; Generation++;
             return true;

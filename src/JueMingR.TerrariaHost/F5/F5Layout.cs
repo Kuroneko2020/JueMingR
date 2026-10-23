@@ -93,6 +93,8 @@ namespace JueMingR.TerrariaHost.F5
         internal bool BlueprintAttached;
         private bool blueprintActive, builtBlueprintActive, builtBlueprintAttached, blueprintLibraryVisible, builtBlueprintLibraryVisible;
         internal void SetBlueprintMode(bool value) { blueprintActive = value; }
+        private int blueprintOperation, builtBlueprintOperation;
+        internal void SetBlueprintOperation(int value) { blueprintOperation = value; }
         internal void SetBlueprintLibraryVisible(bool value) { blueprintLibraryVisible = value; }
         internal void SetBlueprintContentHeight(float height) { if (page == 6) ContentHeight = Math.Max(0, height); }
         internal void SetMovementMode(Features.Movement.ContinuousDashMode value) { movementMode = value; }
@@ -160,7 +162,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal bool Matches(float width, float height, float scale, int currentPage)
-        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 6 || builtBlueprintActive == blueprintActive && builtBlueprintAttached == BlueprintAttached && builtBlueprintLibraryVisible == blueprintLibraryVisible) && (currentPage != 11 || builtMovementMode == movementMode && builtMovementConfiguration == movementConfiguration) && (currentPage != 1 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
+        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 6 || builtBlueprintActive == blueprintActive && builtBlueprintOperation == blueprintOperation && builtBlueprintAttached == BlueprintAttached && builtBlueprintLibraryVisible == blueprintLibraryVisible) && (currentPage != 11 || builtMovementMode == movementMode && builtMovementConfiguration == movementConfiguration) && (currentPage != 1 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
 
         internal void Ensure(float width, float height, float scale, int currentPage,
             object font, Func<string, F5Size> measureText)
@@ -208,7 +210,7 @@ namespace JueMingR.TerrariaHost.F5
             float y = 0;
             if (currentPage == 9) BuildInformation(ref y);
             else if (currentPage == 5) About.Build(elements, DynamicTextSize, Viewport.Height, ref y);
-            else if (currentPage == 6 && BlueprintAttached && !blueprintLibraryVisible) BlueprintControls.AddRows(elements, TextSize, ref y, blueprintActive);
+            else if (currentPage == 6 && BlueprintAttached && !blueprintLibraryVisible) BlueprintControls.AddRows(elements, TextSize, ref y, blueprintActive, blueprintOperation);
             else if (currentPage == 7 && !FishingAttached) BuildFishing(ref y);
             else if (currentPage == 8)
             {CombatObservationControls.AddRows(elements,TextSize,observation,ref y);CombatControls.AddRows(elements,TextSize,ref y,0,6);GuidanceControls.AddRows(elements,TextSize,ref y,8);CombatControls.AddRows(elements,TextSize,ref y,6,2);}
@@ -224,6 +226,7 @@ namespace JueMingR.TerrariaHost.F5
             // Only the mode changes row identities. XOR selection edits never
             // invalidate page geometry or a binding editor's anchor.
             builtBlueprintActive = blueprintActive;
+            builtBlueprintOperation = blueprintOperation;
             builtBlueprintAttached = BlueprintAttached;
             builtBlueprintLibraryVisible = blueprintLibraryVisible;
             builtMovementConfiguration = movementConfiguration;

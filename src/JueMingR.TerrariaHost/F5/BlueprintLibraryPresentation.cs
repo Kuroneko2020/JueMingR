@@ -9,6 +9,7 @@ using JueMingR.TerrariaHost.Notes;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
+using Terraria.GameInput;
 
 namespace JueMingR.TerrariaHost.F5
 {
@@ -25,6 +26,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly SingleLineEditView editView = new SingleLineEditView();
         private readonly List<BlueprintLibraryPart> parts = new List<BlueprintLibraryPart>();
         private readonly HashSet<string> failedPreviews = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<int> knownUnreliableObjects = new HashSet<int>();
         private readonly Dictionary<string, CaptureSummary> failedSummaries = new Dictionary<string, CaptureSummary>(StringComparer.Ordinal);
         private readonly Dictionary<Guid, string> pageKeys = new Dictionary<Guid, string>();
         internal readonly TextEditInput TextInput;
@@ -37,8 +39,9 @@ namespace JueMingR.TerrariaHost.F5
         private Vector2 screen;
         private int layoutGeneration = -1, resourceGeneration = -1, previewCacheGeneration = -1, projection, pressProjection;
         private Point previewSize;
+        private float captureHeaderHeight = BlueprintLibraryLayout.HeaderHeight, captureButtonHeight = 28;
         private float finalLibraryHeight;
-        private bool ready, dirty = true, previousLeft, leftTail, rightTail, wantList, listFailed, objectFailed, editProtected, focusSuspended;
+        private bool ready, dirty = true, previousLeft, leftTail, rightTail, wantList, listFailed, objectFailed, editProtected, focusSuspended, seenPlaceCancellation;
         private int requestedPage, objectIndex;
         private long readGeneration, activeReadGeneration, listGeneration, objectGeneration, previewGeneration, seenReceipt, seenFlow = -1, seenLibrary = -1;
         private float scroll;
@@ -80,7 +83,8 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void OpenLibrary()
         {
-            if (mode == View.Capture) host.CancelCaptureOrDraft();
+            // Host owns manual admission; presentation never cancels capture.
+            // Saved receipts reveal the list through their independent path.
             EndEdit(); mode = View.Library; deleteConfirm = null; validation = null; objects = null;
             failedPreviews.Clear(); failedSummaries.Clear(); RequestList(0, host.Flow.SelectedAssetId); Reveal();
         }
@@ -89,6 +93,7 @@ namespace JueMingR.TerrariaHost.F5
             CancelRead();
             EndEdit(); mode = View.Capture; selected = Guid.Empty; deleteConfirm = null; validation = null; objectIndex = 0; objects = null;
             objectsHandle = Guid.Empty; objectFailed = false; failedPreviews.Clear(); failedSummaries.Clear(); Reveal(); shell.ScrollTo(0);
+            knownUnreliableObjects.Clear();
         }
         private void Reveal() { focusSuspended = false; shell.RestoreVisible(); shell.Navigate(6); dirty = true; armed = null; }
         private void RequestList(int page, Guid? asset = null)
@@ -112,8 +117,9 @@ namespace JueMingR.TerrariaHost.F5
         public bool RequestFinish()
         {
             if (editor == null) return true;
-            if (!Editable) return false;
-            TextInput.FinishComposition(false); if (TextInput.HasComposition) return false;
+            if (!Editable) { if (mode == View.Capture && validation == null) { validation = GetDraftSaveEligibility(); dirty = true; } return false; }
+            TextInput.FinishComposition(false);
+            if (TextInput.HasComposition) { if (mode == View.Capture) { validation = GetDraftSaveEligibility(); dirty = true; } return false; }
             string error;
             if (!LibraryName.TryValidate(editor.Text, out error)) { validation = error; dirty = true; return false; }
             if (mode == View.Capture)
@@ -122,7 +128,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (host.Flow.DraftName != editor.Text) { validation = host.Flow.Message; dirty = true; return false; }
                 // Keep the exact editor until reliable Saved. A write failure
                 // returns to this draft/focus rather than rebuilding its text.
-                validation = null; host.ConfirmSave(); dirty = true; return false;
+                TryConfirmDraft(); return false;
             }
             if (!editId.HasValue || host.Library.Snapshot.Busy || pendingMutation.HasValue) return false;
             var entry = Find(editId.Value); if (entry == null || entry.IsProtected) { validation = "这个蓝图暂不可修改，原文件已保护"; dirty = true; return false; }
@@ -159,6 +165,7 @@ namespace JueMingR.TerrariaHost.F5
             EndEdit(); deleteConfirm = null; armed = hovered = null; ready = false;
             OwnsPointer = false; parts.Clear(); previews.Dispose(); renderer.Dispose(); objects = null; objectsHandle = Guid.Empty;
             pendingImage = null; pendingPreviewKey = null; failedPreviews.Clear(); failedSummaries.Clear();
+            knownUnreliableObjects.Clear();
         }
         private void CancelRead()
         {
@@ -247,7 +254,7 @@ namespace JueMingR.TerrariaHost.F5
                 case BlueprintLibraryCommand.ExcludeAll: CancelRead(); host.SetExcludeUnreliable(!host.Flow.ExcludeUnreliable); dirty = true; return;
                 case BlueprintLibraryCommand.ConfirmDraft:
                     if (editor != null) { RequestFinish(); return; }
-                    validation = null; host.ConfirmSave(); dirty = true; return;
+                    TryConfirmDraft(); return;
                 case BlueprintLibraryCommand.Rename: RequestFinish(); return;
                 case BlueprintLibraryCommand.Place:
                     var placing = Find(part.AssetId);
@@ -311,7 +318,11 @@ namespace JueMingR.TerrariaHost.F5
                     dirty = true;
                 }
                 if (receipt.Kind == LibraryCommandKind.Objects && receipt.Generation == objectGeneration)
-                { objects = receipt.ObjectPage; objectFailed = objects == null; if (objectFailed) validation = receipt.Error ?? "对象说明暂不可用"; dirty = true; }
+                {
+                    objects = receipt.ObjectPage; objectFailed = objects == null;
+                    if (objects != null) foreach (var item in objects.Items) knownUnreliableObjects.Add(item.Id);
+                    if (objectFailed) validation = receipt.Error ?? "对象说明暂不可用"; dirty = true;
+                }
                 if (receipt.Kind == LibraryCommandKind.List && receipt.Generation == listGeneration)
                 {
                     if (selectAfterList.HasValue) selected = selectAfterList;
@@ -369,10 +380,13 @@ namespace JueMingR.TerrariaHost.F5
             bool geometry = matrix != transform || screen != dimensions || !Same(view, next) || layoutGeneration != shell.Layout.Generation || resourceGeneration != renderer.Generation || previewCacheGeneration != previews.Generation;
             if (geometry || scroll != shell.Scroll) { projection++; armed = null; }
             matrix = transform; screen = dimensions; view = next; scroll = shell.Scroll; ready = true;
-            previewSize = mode == View.Capture ? BlueprintLibraryLayout.CapturePreviewSize(view.Width, view.Height, matrix) : BlueprintLibraryLayout.PreviewSize(view.Width, matrix);
+            if (mode == View.Capture) MeasureCaptureHeader(out captureHeaderHeight, out captureButtonHeight);
+            previewSize = mode == View.Capture ? BlueprintLibraryLayout.CapturePreviewSizeForHeader(view.Width, view.Height, matrix, captureHeaderHeight) : BlueprintLibraryLayout.PreviewSize(view.Width, matrix);
+            resourceGeneration = renderer.Generation; previewCacheGeneration = previews.Generation;
             if (geometry) hitClip = F5ControlRenderer.LogicalClip(F5ControlRenderer.ContentClip(view, matrix,
                 new Rectangle(0, 0, (int)dimensions.X, (int)dimensions.Y)), matrix);
-            bool shape = dirty || geometry || seenFlow != host.Flow.Revision || seenLibrary != host.Library.Snapshot.Revision || shownMessage != Message;
+            bool shape = dirty || geometry || seenFlow != host.Flow.Revision || seenLibrary != host.Library.Snapshot.Revision || shownMessage != Message || seenPlaceCancellation != host.OwnPlaceCancellation ||
+                mode == View.Capture && editor != null && (editRevision != editor.Revision || composition != TextInput.Composition);
             if (shape)
             {
                 Build(); LayoutBuilds++; dirty = false; projection++; armed = null;
@@ -381,7 +395,7 @@ namespace JueMingR.TerrariaHost.F5
                 // page cannot consume the user's scroll before the reply arrives.
                 shell.ClampScroll();
                 if (scroll != shell.Scroll) { scroll = shell.Scroll; projection++; armed = null; }
-                seenFlow = host.Flow.Revision; seenLibrary = host.Library.Snapshot.Revision; shownMessage = Message;
+                seenFlow = host.Flow.Revision; seenLibrary = host.Library.Snapshot.Revision; shownMessage = Message; seenPlaceCancellation = host.OwnPlaceCancellation;
                 layoutGeneration = shell.Layout.Generation; resourceGeneration = renderer.Generation; previewCacheGeneration = previews.Generation;
             }
             if (editor != null && editRect.Width > 0 && (shape || editRevision != editor.Revision || caretRevision != editor.CaretRevision || composition != TextInput.Composition))
@@ -423,7 +437,7 @@ namespace JueMingR.TerrariaHost.F5
                 var summary = host.Flow.Summary;
                 if (summary != null && summary.UnreliableObjectCount > 0 && !objectFailed && (objects == null || objectsHandle != host.Flow.ContentHandle.Id))
                 {
-                    if (objectsHandle != host.Flow.ContentHandle.Id) { objectsHandle = host.Flow.ContentHandle.Id; objectGeneration = ++readGeneration; }
+                    if (objectsHandle != host.Flow.ContentHandle.Id) { knownUnreliableObjects.Clear(); objectsHandle = host.Flow.ContentHandle.Id; objectGeneration = ++readGeneration; }
                     if (host.Library.TryObjects(objectGeneration, host.Flow.ContentHandle, objectIndex)) activeReadGeneration = objectGeneration; return;
                 }
                 string key = draftPreviewKey;
@@ -448,6 +462,50 @@ namespace JueMingR.TerrariaHost.F5
         private string PreviewIdentity { get { return ":" + BlueprintPreviewBuilder.RendererVersion + ":" + previewSize.X + ":" + previewSize.Y + ":g" + previews.Generation; } }
         private string AssetKey(LibraryEntry entry) { return "a:" + entry.ContentHash + PreviewIdentity; }
         private string DraftKey() { return "d:" + host.Flow.ContentHandle.Id.ToString("N") + ":" + host.Flow.ExcludeUnreliable + ":" + string.Join(",", host.Flow.ExcludedObjectIds) + PreviewIdentity; }
+        // Pure current proof shared by drawing and both production submit paths.
+        // Recalculate size from the live viewport: Enter precedes Prepare and
+        // must never use the preceding frame's resize/device/filter proof.
+        private string GetDraftSaveEligibility()
+        {
+            var flow = host.Flow;
+            if (mode != View.Capture) return "没有可保存的草稿";
+            if (editProtected) return "当前草稿已保护，不能再次提交";
+            if (flow.Status == BlueprintCaptureStatus.CommitUnconfirmed) return "无法确认提交结果，相关文件已保护";
+            if (flow.Status == BlueprintCaptureStatus.Saving) return "蓝图库正在处理，请稍候";
+            if (flow.Status == BlueprintCaptureStatus.Starting || flow.Status == BlueprintCaptureStatus.Capturing || flow.Status == BlueprintCaptureStatus.Sealing) return "采集或整理尚未完成";
+            if (flow.Status != BlueprintCaptureStatus.DraftReady || flow.ContentHandle.IsEmpty || flow.Summary == null) return "没有可保存的草稿";
+            if (host.Library == null) return "蓝图库暂不可用";
+            if (TextInput.HasComposition) return "请先完成名称输入";
+            string error;
+            if (!LibraryName.TryValidate(editor?.Text ?? flow.DraftName, out error)) return error;
+            if (host.Library.Snapshot.Busy) return "蓝图库正在处理，请稍候";
+            var current = shell.Layout.Viewport.Offset(shell.X, shell.Y);
+            float header, button;
+            MeasureCaptureHeader(out header, out button);
+            var size = BlueprintLibraryLayout.CapturePreviewSizeForHeader(current.Width, current.Height, Main.UIScaleMatrix, header);
+            if (!ready || !renderer.ResourcesCurrent || screen != PlayerInput.OriginalScreenSize || matrix != Main.UIScaleMatrix || !Same(view, current) || previewSize != size ||
+                captureHeaderHeight != header || captureButtonHeight != button ||
+                resourceGeneration != renderer.Generation || previewCacheGeneration != previews.Generation) return "当前预览尚未就绪";
+            string key = DraftKey();
+            var projected = previews.Summary(key);
+            CaptureSummary failed;
+            if (projected == null && failedSummaries.TryGetValue(key, out failed) && failed.ContentCount == 0) return "没有可保存的内容";
+            if (previews.Get(key) == null || projected == null) return failedPreviews.Contains(key) ? "当前预览暂不可用" : "当前预览尚未就绪";
+            if (projected.ContentCount == 0) return "没有可保存的内容";
+            bool resolved = flow.Summary.UnreliableObjectCount == 0 || flow.ExcludeUnreliable;
+            if (!resolved && objectsHandle == flow.ContentHandle.Id && knownUnreliableObjects.Count >= flow.Summary.UnreliableObjectCount)
+            {
+                resolved = true;
+                foreach (int id in knownUnreliableObjects) if (Array.IndexOf(flow.ExcludedObjectIds, id) < 0) { resolved = false; break; }
+            }
+            return resolved ? null : "仍有待排除的对象";
+        }
+        private void TryConfirmDraft()
+        {
+            validation = GetDraftSaveEligibility();
+            if (validation == null) host.ConfirmSave();
+            dirty = true;
+        }
         private void Build()
         {
             parts.Clear(); pageKeys.Clear(); draftPreviewKey = null; editRect = default(F5Rect);
@@ -492,8 +550,9 @@ namespace JueMingR.TerrariaHost.F5
             var namePart = Button(editing ? "" : name, nameRect, BlueprintLibraryCommand.Name, draft ? host.Flow.Status == BlueprintCaptureStatus.DraftReady && !host.Library.Snapshot.Busy : enabled || editing, id);
             namePart.Editing = editing;
             if (editing) editRect = nameRect;
-            var action = Button(draft ? "保存" : editing ? "保存" : "放置", BlueprintLibraryLayout.Action(card, 0), draft ? BlueprintLibraryCommand.ConfirmDraft : editing ? BlueprintLibraryCommand.Rename : BlueprintLibraryCommand.Place,
-                draft ? enabled : editing ? enabled && !editProtected : enabled && host.CanPlaceProjection, id);
+            var action = Button(draft ? "保存" : editing ? "保存" : host.OwnPlaceCancellation ? "取消" : "放置", BlueprintLibraryLayout.Action(card, 0), draft ? BlueprintLibraryCommand.ConfirmDraft : editing ? BlueprintLibraryCommand.Rename : BlueprintLibraryCommand.Place,
+                draft ? enabled : editing ? enabled && !editProtected : (host.OwnPlaceCancellation || enabled) && host.CanInvokePlace, id);
+            if (!draft && !editing && action.Enabled && host.OwnPlaceCancellation) { action.Hint = "取消摆放"; action.HintSize = Measure(action.Hint, .62f); }
             if (!draft && !editing && !action.Enabled)
             {
                 var snapshot = host.Library.Snapshot;
@@ -523,25 +582,30 @@ namespace JueMingR.TerrariaHost.F5
         private void BuildCapture()
         {
             var flow = host.Flow; var summary = flow.Summary;
-            Panel(new F5Rect(0, 0, view.Width, 42));
-            Label("保存采集", new F5Rect(10, 5, view.Width - 90, 20), .76f);
-            Button("返回", BlueprintLibraryLayout.HeaderButton(view.Width, 3), BlueprintLibraryCommand.Back, true);
-            float y = 48;
+            MeasureCaptureHeader(out captureHeaderHeight, out captureButtonHeight);
+            string saveText = flow.Status == BlueprintCaptureStatus.Saving ? "正在保存…" : "保存蓝图";
+            float saveWidth = Math.Max(76, Measure(saveText, .70f).Width + 18), backWidth = Math.Max(54, Measure("返回", .70f).Width + 18);
+            Panel(BlueprintLibraryLayout.CaptureHeader(view.Width, captureHeaderHeight));
+            Label("保存采集", BlueprintLibraryLayout.CaptureTitle(view.Width, saveWidth, backWidth, captureHeaderHeight), .76f);
+            var save = Button(saveText, BlueprintLibraryLayout.CaptureSave(view.Width, saveWidth, backWidth, captureHeaderHeight, captureButtonHeight), BlueprintLibraryCommand.ConfirmDraft,
+                GetDraftSaveEligibility() == null, Guid.Empty, .70f);
+            if (!save.Enabled) { save.Hint = GetDraftSaveEligibility(); save.HintSize = Measure(save.Hint, .62f); }
+            Button("返回", BlueprintLibraryLayout.CaptureBack(view.Width, backWidth, captureHeaderHeight, captureButtonHeight), BlueprintLibraryCommand.Back, true, Guid.Empty, .70f);
+            float y = captureHeaderHeight + BlueprintLibraryLayout.HeaderGap;
             if (summary != null && !flow.ContentHandle.IsEmpty)
             {
                 draftPreviewKey = DraftKey();
                 var projected = previews.Summary(draftPreviewKey);
                 if (projected == null) failedSummaries.TryGetValue(draftPreviewKey, out projected);
-                bool resolved = summary.UnreliableObjectCount == 0 || flow.ExcludeUnreliable || host.Flow.ExcludedObjectIds.LongLength >= summary.UnreliableObjectCount;
-                bool canSave = previews.Get(draftPreviewKey) != null && projected != null && projected.ContentCount > 0 && resolved && flow.Status == BlueprintCaptureStatus.DraftReady && !host.Library.Snapshot.Busy;
                 bool writable = flow.Status == BlueprintCaptureStatus.DraftReady && !editProtected;
-                Label("蓝图名称", new F5Rect(8, 48, view.Width - 16, 18), .62f);
-                var nameRect = BlueprintLibraryLayout.CaptureName(view.Width);
+                Panel(BlueprintLibraryLayout.CaptureNameRow(view.Width, captureHeaderHeight));
+                Label("蓝图名称", BlueprintLibraryLayout.CaptureNameLabel(view.Width, captureHeaderHeight), .70f);
+                var nameRect = BlueprintLibraryLayout.CaptureName(view.Width, captureHeaderHeight);
                 bool editing = editor != null && editId == Guid.Empty;
                 var name = Button(editing ? "" : flow.DraftName, nameRect, BlueprintLibraryCommand.Name, writable, Guid.Empty, .70f);
                 name.Editing = editing;
                 if (editing) editRect = nameRect;
-                var preview = BlueprintLibraryLayout.CapturePreview(view.Width, view.Height);
+                var preview = BlueprintLibraryLayout.CapturePreview(view.Width, view.Height, captureHeaderHeight);
                 var image = TextPart(failedPreviews.Contains(draftPreviewKey) ? "预览暂不可用" : "正在生成预览", preview, .62f, F5ElementKind.Image);
                 image.PreviewKey = draftPreviewKey;
                 y = preview.Bottom + 6;
@@ -551,12 +615,6 @@ namespace JueMingR.TerrariaHost.F5
                 string details = projected != null ? projected.Width + "x" + projected.Height + " / 内容 " + projected.ContentCount.ToString(CultureInfo.InvariantCulture) :
                     failedPreviews.Contains(draftPreviewKey) ? "预览暂不可用" : "正在准备预览";
                 Label(details, new F5Rect(8, y, view.Width - 16, 18), .62f); y += 24;
-                Button(flow.Status == BlueprintCaptureStatus.Saving ? "正在保存…" : "保存蓝图", new F5Rect(8, y, 176, 32), BlueprintLibraryCommand.ConfirmDraft, canSave && !editProtected, Guid.Empty, .70f);
-                // An accepted Create cannot be cancelled. Returning above only
-                // retires presentation; Host still owns its reliable receipt.
-                if (flow.Status != BlueprintCaptureStatus.Saving && flow.Status != BlueprintCaptureStatus.CommitUnconfirmed)
-                    Button("取消", new F5Rect(196, y, 84, 32), BlueprintLibraryCommand.Cancel, true, Guid.Empty, .70f);
-                y += 40;
                 if (projected != null && projected.ContentCount == 0) y += AddWrapped("没有可保存的内容", 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 4;
                 if (summary.UnreliableObjectCount > 0)
                 {
@@ -579,10 +637,17 @@ namespace JueMingR.TerrariaHost.F5
             {
                 string state = flow.Status == BlueprintCaptureStatus.NoContent ? "选区内没有可保存的内容" : flow.Status == BlueprintCaptureStatus.Starting || flow.Status == BlueprintCaptureStatus.Capturing || flow.Status == BlueprintCaptureStatus.Sealing ? "正在采集 " + flow.Progress + " / " + flow.Total : flow.Status == BlueprintCaptureStatus.Cancelled ? "已取消采集" : "采集未完成";
                 y += AddWrapped(state, 8, y, view.Width - 16, Color.White) + 8;
-                Button("取消", new F5Rect(8, y, 76, 24), BlueprintLibraryCommand.Cancel, true); y += 32;
             }
             if (!string.IsNullOrEmpty(Message)) y += AddWrapped(Message, 8, y, view.Width - 16, Color.LightSalmon) + 6;
             shell.Layout.SetBlueprintContentHeight(y + 6);
+        }
+        private void MeasureCaptureHeader(out float header, out float button)
+        {
+            // Shared glyph measurements are cached. Large real glyphs grow the
+            // row and its consumers; no text-only Y offset or forced shrinking.
+            button = Math.Max(28, Math.Max(Measure("保存蓝图", .70f).Height,
+                Math.Max(Measure("正在保存…", .70f).Height, Measure("返回", .70f).Height)) + 4);
+            header = Math.Max(BlueprintLibraryLayout.HeaderHeight, Math.Max(Measure("保存采集", .76f).Height + 8, button + 14));
         }
         private BlueprintLibraryPart Panel(F5Rect rect) { return TextPart("", rect, 1, F5ElementKind.Panel); }
         private BlueprintLibraryPart Label(string text, F5Rect rect, float scale = .70f, Color? ink = null)

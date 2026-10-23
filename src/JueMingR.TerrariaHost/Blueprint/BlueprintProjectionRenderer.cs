@@ -9,7 +9,7 @@ using Terraria.GameContent;
 
 namespace JueMingR.TerrariaHost.Blueprint
 {
-    // Game-thread owner of one completed window's derived drawing commands.
+    // Game-thread owner of one instance's completed cores and derived commands.
     // Native textures are borrowed each draw, including pending paint requests;
     // retaining a fallback would otherwise permanently hide a ready paint.
     internal sealed class BlueprintProjectionRenderer : IDisposable
@@ -18,7 +18,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private BlueprintProjectionWindow window;
         private BlueprintProjectionMask mask;
         private readonly Dictionary<long, Segment> segments = new Dictionary<long, Segment>();
-        private sealed class Segment
+        internal sealed class Segment
         {
             internal CaptureCell[] Cells;
             internal CaptureObject[] Objects;
@@ -35,6 +35,25 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal long BuildCount { get; private set; }
         internal long SegmentBuildCount { get; private set; }
         internal int CommandCount { get { return commands == null ? 0 : commands.Count; } }
+        internal sealed class WindowStage
+        {
+            internal Dictionary<long, Segment> Segments;
+            internal BlueprintProjectionWindow Window;
+            internal BlueprintProjectionMask Mask;
+            internal int CommandCount;
+        }
+        // Build locally, then let Host admit DTO and commands together. Rejected
+        // stages own no borrowed textures and never replace a resident core.
+        internal WindowStage StageWindow(BlueprintProjectionWindow next, BlueprintProjectionMask nextMask, BlueprintProjectionBounds core, BlueprintProjectionBounds coverage)
+        {
+            try { return BuildWindow(next, nextMask, core, coverage); }
+            catch (Exception error) when (LocalFailure(error)) { Fail(error, "蓝图外观数据与当前游戏不匹配，已停止投影并保留原文件。"); return null; }
+        }
+        internal void Publish(WindowStage stage)
+        {
+            segments.Clear(); foreach (var pair in stage.Segments) segments.Add(pair.Key, pair.Value);
+            Compose(); window = stage.Window; mask = stage.Mask; BuildCount++;
+        }
         internal int RequiredHalo
         {
             get
@@ -74,6 +93,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (Failure != null && next != null) return;
             if (!core.HasValue && ReferenceEquals(window, next) && ReferenceEquals(mask, nextMask)) return;
             if (next == null) { Clear(); return; }
+            Publish(BuildWindow(next, nextMask, core, coverage));
+        }
+        private WindowStage BuildWindow(BlueprintProjectionWindow next, BlueprintProjectionMask nextMask, BlueprintProjectionBounds? core, BlueprintProjectionBounds? coverage)
+        {
+            if (Failure != null) return null;
             var bounds = next.Bounds;
             // Reader coordinates are already local. Summary.Left/Top are used
             // only for source-anchored natural variation, never subtracted twice.
@@ -118,15 +142,23 @@ namespace JueMingR.TerrariaHost.Blueprint
                 { old = new Segment { Cells = cells, Objects = metadata, Bounds = region, Commands = BlueprintProjectionRendererCommands.Build(next.Summary, cells, metadata, region.Left, region.Top, region.Right, region.Bottom) }; SegmentBuildCount++; }
                 nextSegments[bucket.Key] = old;
             }
-            segments.Clear(); foreach (var pair in nextSegments) segments.Add(pair.Key, pair.Value);
-            Compose();
-            window = next; mask = nextMask; BuildCount++;
+            var extras = new HashSet<Vector2>(); int count = 0;
+            foreach (var segment in nextSegments.Values) foreach (var command in segment.Commands)
+                if (command.Texture != BlueprintProjectionTexture.Extra || extras.Add(command.Position)) count++;
+            return new WindowStage { Segments = nextSegments, Window = next, Mask = nextMask, CommandCount = count };
+        }
+        internal void RemoveCore(BlueprintProjectionBounds core)
+        {
+            window = null; mask = null;
+            var remove = new List<long>();
+            foreach (long key in segments.Keys) if (core.Contains((int)(key & uint.MaxValue), (int)(key >> 32))) remove.Add(key);
+            if (remove.Count == 0) return; foreach (long key in remove) segments.Remove(key); Compose();
         }
         internal void Trim(BlueprintProjectionBounds coverage)
         {
             var remove = new List<long>();
             foreach (var pair in segments) if (!coverage.Contains((int)(pair.Key & uint.MaxValue), (int)(pair.Key >> 32))) remove.Add(pair.Key);
-            if (remove.Count == 0) return; foreach (long key in remove) segments.Remove(key); Compose();
+            if (remove.Count == 0) return; foreach (long key in remove) segments.Remove(key); window = null; mask = null; Compose();
         }
         private void Compose()
         {
@@ -162,7 +194,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void DrawCore(int originX, int originY)
         {
-            if (window == null || commands == null || Main.spriteBatch == null) return;
+            if (commands == null || Main.spriteBatch == null) return;
             // Resolve once per distinct visible texture key, not once per tile.
             // No owned GPU resources survive a device generation: all slots are
             // refreshed from original resource owners and are never disposed.

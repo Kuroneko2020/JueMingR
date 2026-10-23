@@ -23,7 +23,7 @@ namespace NativeWorldTextProbe
             if (scope == "BlueprintCpu")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context => { NativeBlueprintChecks.Run(context); NativeBlueprintLibraryUiChecks.Run(context); NativeBlueprintCaptureContentChecks.Run(context); NativeBlueprintProjectionChecks.Run(context); NativeBlueprintPlacementChecks.Run(context); }, processing: true, shortFeedback: true); return 0;
+                NativeQuickItemChecks.Run(context => { NativeBlueprintChecks.Run(context); NativeBlueprintLibraryUiChecks.Run(context); NativeBlueprintCaptureContentChecks.Run(context); NativeBlueprintProjectionChecks.Run(context); NativeBlueprintPlacementChecks.Run(context); NativeBlueprintBudgetChecks.Run(context); }, processing: true, shortFeedback: true); return 0;
             }
             if (scope == "MovementOriginal") return NativeViewOriginalChecks.Run(content, output, movement: true);
             if (scope == "MovementSmartFallCpu")

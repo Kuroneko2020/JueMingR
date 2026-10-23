@@ -150,19 +150,23 @@ namespace NativeWorldTextProbe
                     var preview = Get(Get(image, "Element"), "Rect");
                     var save = parts.Single(p => Get(p, "Command").ToString() == "ConfirmDraft");
                     var saveRect = Get(Get(save, "Element"), "Rect");
-                    Require((float)Get(field, "Width") == 506 && (float)Get(field, "Height") == 32 && (float)Get(nameElement, "TextScale") == .70f,
-                        "production capture name uses the full safe-height normal-size field");
-                    Require((float)Get(preview, "Width") == 506 && (float)Get(preview, "Height") == (height == 581 ? 350 : height == 297 ? 123 : 48),
+                    var title = Get(parts.Single(p => (string)Get(Get(p, "Element"), "Text") == "保存采集"), "Element");
+                    var titleRect = Get(title, "Rect"); float header = (float)Get(titleRect, "Height");
+                    Require((float)Get(field, "X") == 104 && (float)Get(field, "Y") == header + 12 && (float)Get(field, "Width") == 410 && (float)Get(field, "Height") == 32 && (float)Get(nameElement, "TextScale") == .70f,
+                        "production capture name owns only the right field of the standard 44-high row");
+                    Require((float)Get(preview, "Y") == header + 58 && (float)Get(preview, "Width") == 506 && (float)Get(preview, "Height") == Math.Max(48, Math.Min(350, height - header - 88)),
                         "production capture gives preview the real remaining viewport, including the low 297 page");
-                    Require((float)Get(saveRect, "Width") == 176 && (float)Get(saveRect, "Height") == 32 && (float)Get(saveRect, "Y") > (float)Get(preview, "Bottom"),
-                        "production save is a dedicated large action below the image and summary");
+                    Require((float)Get(saveRect, "Height") >= 28 && (float)Get(saveRect, "Y") + (float)Get(saveRect, "Height") / 2 == header / 2 && (float)Get(titleRect, "X") == 10 && (float)Get(titleRect, "Y") == 0 && header >= 42 &&
+                        (float)Get(titleRect, "Right") < (float)Get(saveRect, "X") && (float)Get(saveRect, "Height") >= (float)Get(Get(Get(save, "Element"), "TextSize"), "Height") + 4,
+                        "real measured title remains left and save/back glyphs fit the shared vertically centered header");
+                    Require(!parts.Any(p => Get(p, "Command").ToString() == "Cancel"), "capture has no cancel button in any branch");
                     Require(!parts.Any(p => (bool)Get(p, "Card")) && GetOptional(ui, "Editor") == null,
                         "capture workspace has no selected library card and default name needs no editing");
                     Point budget = (Point)layout.GetMethod("CapturePreviewSize", F).Invoke(null, new object[] { 522f, height, Matrix.CreateScale(1.5f) });
                     Require(budget.X <= 1024 && budget.Y <= 768 && (height != 581 || budget.Y > 128), "actual capture request uses the new purpose's physical container budget");
                     Call(ui, "Execute", name);
                     Require(((TextEditBuffer)Get(ui, "Editor")).Text == flow.DraftName, "one actual capture name command enters the shared text editor");
-                    Call(ui, "Build"); Require((float)Get(Get(ui, "editRect"), "Width") == 506, "the real editRect follows the full capture field used by IME");
+                    Call(ui, "Build"); Require((float)Get(Get(ui, "editRect"), "X") == 104 && (float)Get(Get(ui, "editRect"), "Width") == 410, "the real editRect follows only the right input field used by IME");
                     flow.Status = BlueprintCaptureStatus.Saving; Call(ui, "Build");
                     parts = ((IEnumerable)Get(ui, "parts")).Cast<object>().ToArray();
                     Require(!(bool)Get(ui, "Editable") && !(bool)Call(ui, "RequestFinish") &&
@@ -436,6 +440,40 @@ namespace NativeWorldTextProbe
             Main.ingameOptionsWindow = true; press(); Require(!(bool)Get(ui, "Submenu"), "native modal blocks library opening"); Main.ingameOptionsWindow = false;
             press(); Require((bool)Get(ui, "Visible"), "new eligible edge recovers opening after text/modal gates");
             Call(shell, "CloseAndSubmitPosition"); release();
+            ManualLibraryGate(context, registry);
+        }
+        private static void ManualLibraryGate(object context, HotkeyRegistry registry)
+        {
+            var host = Get(context, "Blueprint"); var shell = Get(context, "Shell"); var ui = Get(shell, "BlueprintUi");
+            var input = Get(context, "Input"); var capture = (BlueprintCaptureState)Get(host, "State");
+            var flow = (BlueprintCaptureFlow)Get(host, "Flow");
+            var prior = typeof(BlueprintCaptureFlow).GetProperties().ToDictionary(p => p, p => p.GetValue(flow));
+            var controls = Get(Get(shell, "renderer"), "BlueprintControls");
+            object command = Enum.Parse(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.F5Command", true), "BlueprintLibrary");
+            try
+            {
+                foreach (var status in new[] { BlueprintCaptureStatus.Starting, BlueprintCaptureStatus.Capturing, BlueprintCaptureStatus.Sealing,
+                    BlueprintCaptureStatus.DraftReady, BlueprintCaptureStatus.Saving, BlueprintCaptureStatus.CommitUnconfirmed })
+                {
+                    NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
+                    flow.Status = status; flow.ContentHandle = new ContentHandle(Guid.NewGuid());
+                    Guid handle = flow.ContentHandle.Id; long revision = flow.Revision;
+                    Require(!(bool)Get(host, "CanOpenLibrary") && !(bool)Call(controls, "Available", command) && !registry.Find("blueprint.library").Invoke(HotkeyContext.Gameplay),
+                        "Host/F5/registered hotkey reject live capture work: " + status);
+                    Call(host, "OpenLibrary");
+                    Require(!(bool)Get(ui, "Visible") && flow.ContentHandle.Id == handle && flow.Status == status && flow.Revision == revision,
+                        "rejected direct Host open does not cancel or replace work: " + status);
+                }
+                capture.Enter(); flow.Status = BlueprintCaptureStatus.Saved; flow.ContentHandle = default(ContentHandle);
+                Require(!(bool)Get(host, "CanOpenLibrary"), "Saved while still in capture mode remains active work"); capture.Exit();
+                foreach (var status in new[] { BlueprintCaptureStatus.Saved, BlueprintCaptureStatus.Cancelled, BlueprintCaptureStatus.NoContent,
+                    BlueprintCaptureStatus.Failed, BlueprintCaptureStatus.CommitUnconfirmed })
+                {
+                    flow.Status = status; flow.ContentHandle = default(ContentHandle);
+                    Require((bool)Get(host, "CanOpenLibrary") && (bool)Call(controls, "Available", command), "retired terminal flow cannot permanently close manual library gate: " + status);
+                }
+            }
+            finally { capture.Exit(); foreach (var p in prior) p.Key.SetValue(flow, p.Value); }
         }
         private static void ReadCancellation(object ui, object host, LibraryState library)
         {

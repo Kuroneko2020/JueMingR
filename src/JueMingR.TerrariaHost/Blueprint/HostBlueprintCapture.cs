@@ -13,10 +13,26 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool discardPending;
         private long captureCommandId;
         private ulong latestTick;
-        internal bool CanSave { get { return ControlsEnabled && State.Active && State.Selection.HasSelection && Library != null &&
-            Flow.Status != BlueprintCaptureStatus.Starting && Flow.Status != BlueprintCaptureStatus.Capturing &&
-            Flow.Status != BlueprintCaptureStatus.Sealing && Flow.Status != BlueprintCaptureStatus.Saving &&
-            (Flow.Status != BlueprintCaptureStatus.CommitUnconfirmed || Flow.ContentHandle.IsEmpty); } }
+        internal bool CanSave { get { return SaveDisabledReason == null; } }
+        internal string SaveDisabledReason
+        {
+            get {
+                if (!ControlsEnabled) return "蓝图当前不可用";
+                if (!Input.CanStartActions) return "请先结束当前输入";
+                if (Library == null) return "蓝图库暂不可用";
+                if (Flow.Status == BlueprintCaptureStatus.Saving) return "正在保存蓝图，请稍候";
+                if (Flow.Status == BlueprintCaptureStatus.CommitUnconfirmed && !Flow.ContentHandle.IsEmpty) return "无法确认提交结果，相关文件已保护";
+                if (discardPending) return "正在清理采集草稿，请稍候";
+                if (Flow.Status == BlueprintCaptureStatus.Starting || Flow.Status == BlueprintCaptureStatus.Capturing || Flow.Status == BlueprintCaptureStatus.Sealing) return "采集或整理尚未完成";
+                if (!State.Active || !State.Selection.HasSelection) return "请先完成蓝图选区";
+                if (Flow.Status != BlueprintCaptureStatus.DraftReady && Library.Snapshot.Busy) return "蓝图库正在处理，请稍候";
+                return null;
+            }
+        }
+        internal bool HasActiveCaptureWork { get { return State.Active || discardPending || capture != null ||
+            Flow.Status == BlueprintCaptureStatus.Starting || Flow.Status == BlueprintCaptureStatus.Capturing || Flow.Status == BlueprintCaptureStatus.Sealing ||
+            Flow.Status == BlueprintCaptureStatus.DraftReady || Flow.Status == BlueprintCaptureStatus.Saving ||
+            Flow.Status == BlueprintCaptureStatus.CommitUnconfirmed && !Flow.ContentHandle.IsEmpty; } }
         internal bool Save()
         {
             if (!CanSave || !Input.CanStartActions) return false;

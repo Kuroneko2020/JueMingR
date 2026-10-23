@@ -44,11 +44,19 @@ namespace JueMingR.Features.Blueprint
         }
         public BlueprintProjectionWindow Apply(BlueprintProjectionWindow window)
         {
-            if (ReferenceEquals(this, Empty)) return window;
+            if (ReferenceEquals(window.AppliedMask, this)) return window;
             var visible = new List<CaptureCell>();
-            foreach (CaptureCell raw in window.Cells) { CaptureCell cell = Apply(raw); if (cell.HasContent) visible.Add(cell); }
-            var metadata = new List<CaptureObject>(); foreach (CaptureObject obj in window.Objects) if (!objects.Contains(obj.Id)) metadata.Add(obj);
-            return new BlueprintProjectionWindow(window.Identity, window.WindowGeneration, window.Summary, window.Bounds, visible.ToArray(), metadata.ToArray(), true);
+            var referenced = new HashSet<int>();
+            foreach (CaptureCell raw in window.Cells)
+            {
+                CaptureCell cell = Apply(raw); if (!cell.HasContent) continue;
+                visible.Add(cell);
+                if ((cell.Layers & CaptureLayer.Tile) != 0 && cell.ObjectId > 0) referenced.Add(cell.ObjectId);
+            }
+            // A halo member may refer to an object whose origin is outside the
+            // window. Keep its complete metadata by live Tile reference, not origin.
+            var metadata = new List<CaptureObject>(); foreach (CaptureObject obj in window.Objects) if (referenced.Contains(obj.Id)) metadata.Add(obj);
+            return new BlueprintProjectionWindow(window.Identity, window.WindowGeneration, window.Summary, window.Bounds, visible.ToArray(), metadata.ToArray(), true, this);
         }
         internal Dictionary<long, ushort> CopyCells() { return new Dictionary<long, ushort>(cells); }
         internal HashSet<int> CopyObjects() { return new HashSet<int>(objects); }

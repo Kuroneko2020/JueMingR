@@ -20,6 +20,9 @@ namespace JueMingR.TerrariaHost.F5
         internal F5Rect LastClip { get; private set; }
         internal Vector2? LastImeAnchor { get; private set; }
         internal GraphicsDevice Device { get { return pixel?.GraphicsDevice; } }
+        internal bool ResourcesCurrent { get { return font != null && pixel != null && !pixel.IsDisposed &&
+            ReferenceEquals(font, FontAssets.MouseText?.Value) && ReferenceEquals(pixel, TextureAssets.MagicPixel?.Value) &&
+            ReferenceEquals(surface, TextureAssets.InventoryBack?.Value); } }
         internal bool Refresh()
         {
             var nextFont = FontAssets.MouseText?.Value; var nextPixel = TextureAssets.MagicPixel?.Value;

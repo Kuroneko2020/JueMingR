@@ -77,6 +77,20 @@ namespace NativeWorldTextProbe
                     }
                     HintGeometry(assembly, layout, panel, screen.X / ui, font, measure, () => measurements);
                 }
+                foreach (int operation in new[] { 1, 2, 3, 4 })
+                {
+                    Require((bool)Call(layout, "EnsureProjection", 1920f, 1080f, 1f, font, measure, false, operation), "operation toolbar fits real measured geometry");
+                    var actionButtons = ((IEnumerable)Get(layout, "Buttons")).Cast<object>().ToArray();
+                    var texts = actionButtons.Select(b => (string)Get(b, "Text")).ToArray();
+                    Require(texts[2] == (operation == 3 ? "取消移动" : "移动蓝图") && texts[3] == (operation == 4 ? "取消移除" : "移除蓝图"),
+                        "move/remove slots only cancel their own actual operation");
+                    Require(operation == 2 || operation == 4 ? texts.Length == 5 && texts[4] == (operation == 2 ? "取消摆放" : "移除所有") : texts.Length == 4,
+                        "only new-place/remove modes own their exact extra action");
+                    int modeGeneration = (int)Get(layout, "Generation");
+                    for (int j = 0; j < 12; j++) Call(layout, "EnsureProjection", 1920f, 1080f, 1f, font, measure, false, operation);
+                    Require(modeGeneration == (int)Get(layout, "Generation") && !(bool)Call(layout, "MatchesProjection", 1920f, 1080f, 1f, font, false, operation == 4 ? 1 : operation + 1),
+                        "stable source reuses geometry and a different source invalidates release targets");
+                }
                 Require((Color)toolbar.GetType().GetField("HintColor", F).GetValue(null) == new Color(184,134,11), "toolbar's actual text draw color is dark goldenrod #B8860B");
                 int before = (int)Get(layout, "Generation");
                 Require(!(bool)Call(layout, "Matches", 1920f, 1080f, 2f, new object(), true), "font identity changes retire old hit geometry");
@@ -136,6 +150,15 @@ namespace NativeWorldTextProbe
                 Require(generation == (int)Get(layout, "Generation") && measurements == (int)Get(layout, "MeasurementCount"), "stable capture mode does not reflow or measure the F5 page");
                 Call(layout, "SetBlueprintMode", !mode);
                 Require(!(bool)Call(layout, "Matches", 1280f, 720f, 1.5f, 6), "mode switch invalidates old row targets before release dispatch");
+            }
+            foreach (int operation in new[] { 1, 2, 0 })
+            {
+                Call(layout, "SetBlueprintOperation", operation);
+                Require(!(bool)Call(layout, "Matches", 1280f, 720f, 1.5f, 6), "operation source invalidates cached F5 rows");
+                Call(layout, "Ensure", 1280f, 720f, 1.5f, 6, font, measure);
+                var elements = ((IEnumerable)Get(layout, "Elements")).Cast<object>().ToArray();
+                Require(elements.Any(e => (string)GetOptional(e, "Text") == (operation == 1 ? "取消移动" : "移动蓝图")) &&
+                    elements.Any(e => (string)GetOptional(e, "Text") == (operation == 2 ? "取消移除" : "移除蓝图")), "F5 measured rows use the real operation source");
             }
         }
 

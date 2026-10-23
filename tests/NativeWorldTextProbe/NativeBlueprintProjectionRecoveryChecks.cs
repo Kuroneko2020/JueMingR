@@ -88,6 +88,7 @@ namespace NativeWorldTextProbe
                     // A complete different-template Open naturally displaces the
                     // old decoded blocks. Cancel drops only that temporary ref.
                     open(pressure);Call(host,"CancelProjection");
+                    BeginWindowFrame(host, moving, "moving-source");
                     NativeQuickItemChecks.Until(()=>{Call(host,"UpdateInstanceWindow",moving,new WorldTargetView(500,250,4,4,0));Call(host,"Poll");return GetOptional(moving,"Window")!=null;});
                     Require(!Cached(worker,dense.AssetId,2),"commit source block2 is truly absent after bounded real cache pressure");
                     NativeQuickItemChecks.Sample(input,Array.Empty<Keys>());Call(host,"MoveProjection");
@@ -129,8 +130,18 @@ namespace NativeWorldTextProbe
         {foreach(var item in ((IEnumerable)Get(worker,"projectionCache")).Cast<object>())if((long)Get(item,"Number")==block && ((BlueprintProjectionIdentity)Get(Get(item,"Owner"),"Identity")).AssetId==asset)return true;return false;}
         private static void QueueBadWindow(object host,object opponent,object worker)
         {
+            BeginWindowFrame(host, opponent, "bad-native-opponent");
             Call(host,"UpdateInstanceWindow",opponent,new WorldTargetView(10,10,2,2,0));var identity=(BlueprintProjectionIdentity)Get(opponent,"Identity");var gate=Get(worker,"gate");
             NativeQuickItemChecks.Until(()=>{lock(gate)return ((IEnumerable)Get(worker,"projectionReceipts")).Cast<BlueprintProjectionReceipt>().Any(r=>r.Kind==BlueprintProjectionReceiptKind.Window && r.Identity.Equals(identity));});
+        }
+        private static void BeginWindowFrame(object host, object instance, string label)
+        {
+            Console.WriteLine("RECOVERY direct-window-frame=" + label + " priorAdmissions=" + Get(host, "projectionWindowAdmissions") + " pending=" + Get(instance, "WindowPending") + " core=" + Get(instance, "CoreSize") + " denied=" + Get(Get(instance, "Denied"), "Count"));
+            // This specialist intentionally isolates one instance's real request
+            // and worker ordering. Its private per-instance entry skips the
+            // public frame-start reset; restore only that frame admission count,
+            // never worker/cache contents, pending windows, or scene expectations.
+            Set(host, "projectionWindowAdmissions", 0);
         }
         private static LibraryEntry SeedDense(LibraryState library,string name)
         {

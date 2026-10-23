@@ -113,10 +113,13 @@ namespace NativeWorldTextProbe
                 Require((int)Get(texture, "Height") > 128 && (long)Get(ui, "PreviewBytes") <= 8L * 1024 * 1024,
                     "actual worker reply and uploaded draft use the extended resolution under retained byte budget");
                 var parts = ((IEnumerable)Get(ui, "parts")).Cast<object>().ToArray();
+                Console.WriteLine("CAPTURE WORKSPACE requestedLayoutScale=" + dimensions[1] + " actualMatrix=" + Main.UIScaleMatrix.M11 + "/" + Main.UIScaleMatrix.M22 +
+                    " header=" + Get(ui, "captureHeaderHeight") + " viewport=" + Get(Get(ui, "view"), "Width") + "x" + Get(Get(ui, "view"), "Height"));
+                ConfirmEligibility(ui, host, library, prepare);
                 var name = parts.Single(p => Get(p, "Command").ToString() == "Name");
                 Call(ui, "Execute", name); prepare();
                 var editor = (JueMingR.Features.Text.TextEditBuffer)Get(ui, "Editor");
-                Require(editor.Text == defaultName && (float)Get(Get(ui, "editRect"), "Width") == 506, "one production name command routes to the full shared editor rect");
+                Require(editor.Text == defaultName && (float)Get(Get(ui, "editRect"), "X") == 104 && (float)Get(Get(ui, "editRect"), "Width") == 410, "one production name command routes only to the right shared editor rect");
                 editor.MoveTo(editor.Text.Length);
                 var input = Get(ui, "TextInput"); Set(input, "Composition", "pinyin"); prepare();
                 Require(((string)Get(Get(ui, "editView"), "Text")).EndsWith("pinyin"), "real capture input preview consumes IME composition");
@@ -139,11 +142,65 @@ namespace NativeWorldTextProbe
             Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, 720));
             var save = ((IEnumerable)Get(ui, "parts")).Cast<object>().Single(p => Get(p, "Command").ToString() == "ConfirmDraft");
             Require((bool)Get(save, "Enabled") && GetOptional(ui, "Editor") == null && flow.DraftName == defaultName, "ready default-name save needs no synthetic editor");
-            Call(ui, "Execute", save);
-            Require(flow.Status == BlueprintCaptureStatus.Saving, "actual dedicated save action reaches Host's accepted write boundary");
+            Call(ui, "BeginEdit", Guid.Empty, defaultName);
+            long beforeEnter = library.AcceptedCommandId;
+            Require(!(bool)Call(ui, "RequestFinish") && flow.Status == BlueprintCaptureStatus.Saving && library.AcceptedCommandId > beforeEnter,
+                "valid current draft Enter still commits its stable name and reaches the actual Create boundary");
+            long acceptedEnter = library.AcceptedCommandId; Call(ui, "RequestFinish");
+            Require(library.AcceptedCommandId == acceptedEnter, "same draft Enter during Saving cannot create a second asset");
             Call(ui, "Suspend");
             Require(flow.Status == BlueprintCaptureStatus.Saving, "closing capture presentation cannot revoke the accepted write");
             Main.UIScale = 1f; PlayerInput.CacheOriginalScreenDimensions();
+        }
+        private static void ConfirmEligibility(object ui, object host, LibraryState library, Action prepare)
+        {
+            var flow = (BlueprintCaptureFlow)Get(host, "Flow");
+            var cache = Get(ui, "previews"); long command = library.AcceptedCommandId;
+            Action<string> reject = expected =>
+            {
+                // Both real submit callers must recheck now, even if the old
+                // button object was enabled before this state transition.
+                string reason = (string)Call(ui, "GetDraftSaveEligibility");
+                Require(reason != null && reason.Contains(expected), "current eligibility gives its actual reason: " + expected + " / " + reason);
+                var save = ((IEnumerable)Get(ui, "parts")).Cast<object>().Single(p => Get(p, "Command").ToString() == "ConfirmDraft");
+                Call(ui, "Execute", save);
+                bool protectedEdit = (bool)Get(ui, "editProtected");
+                Call(ui, "BeginEdit", Guid.Empty, flow.DraftName); Set(ui, "editProtected", protectedEdit); Call(ui, "RequestFinish");
+                Require(library.AcceptedCommandId == command && flow.Status != BlueprintCaptureStatus.Saving,
+                    "stale button and name Enter cannot Create without " + expected);
+                Call(ui, "CancelEdit");
+            };
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            object snapshot = Get(library, "snapshot");
+            try
+            {
+                Set(library, "snapshot", Activator.CreateInstance(typeof(LibrarySnapshot), flags, null, new object[] { 0L, true, null, null, 0L }, null));
+                reject("处理");
+                Call(ui, "BeginEdit", Guid.Empty, " ");
+                string nameReason = (string)Call(ui, "GetDraftSaveEligibility");
+                Call(ui, "RequestFinish");
+                Require((string)Get(ui, "validation") == nameReason && library.AcceptedCommandId == command,
+                    "invalid name during busy has the identical current button/Enter reason and cannot Create");
+                Call(ui, "CancelEdit");
+            }
+            finally { Set(library, "snapshot", snapshot); }
+            Set(ui, "editProtected", true); reject("保护"); Set(ui, "editProtected", false);
+            flow.Status = BlueprintCaptureStatus.Sealing; reject("尚未完成"); flow.Status = BlueprintCaptureStatus.DraftReady;
+            var original = flow.Summary;
+            flow.Summary = new CaptureSummary { Width = original.Width, Height = original.Height, ContentCount = original.ContentCount, UnreliableObjectCount = 1 };
+            flow.ExcludedObjectIds = new[] { 123456 }; reject("预览");
+            // A same-key image alone cannot turn arbitrary object IDs into a
+            // reliable exclusion proof. The original worker remains final authority.
+            var builder = new BlueprintPreviewBuilder(1, 1, 1, 1); builder.Add(0, 0, BlueprintPreviewLayer.Tile);
+            Call(cache, "Upload", Call(ui, "DraftKey"), builder.Complete(), new CaptureSummary { ContentCount = 1 }, Get(cache, "Generation"));
+            reject("待排除");
+            flow.ExcludedObjectIds = Array.Empty<int>(); flow.Summary = original;
+            float priorScale = Main.UIScale; Main.UIScale = 1.25f; reject("预览"); Main.UIScale = priorScale;
+            int priorHeight = Main.screenHeight; Main.screenHeight += 30; PlayerInput.CacheOriginalScreenDimensions(); reject("预览");
+            Main.screenHeight = priorHeight; PlayerInput.CacheOriginalScreenDimensions();
+            Call(cache, "Reset", null, EventArgs.Empty); reject("预览");
+            NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && Call(ui, "GetDraftSaveEligibility") == null; });
+            Require(library.AcceptedCommandId >= command, "after reset the actual worker is permitted to regenerate the current preview");
         }
         private static void FinalRendererPixels(object context, ProbeGraphics graphics, string output)
         {
