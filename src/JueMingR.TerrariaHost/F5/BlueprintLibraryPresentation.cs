@@ -101,8 +101,8 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void BeforeInput(bool active)
         {
-            // A retired capture can retain a name buffer for inspection, but no
-            // hidden/non-executable field may keep the native IME input lease.
+            // A retired capture retains its name buffer until explicit edit
+            // cancellation, but its hidden field cannot keep a native IME lease.
             TextInput.BeforeSample(active && Visible && (mode != View.Capture || !host.Flow.ContentHandle.IsEmpty));
         }
         public void PreserveUncommittedInput(TextEditBuffer value) { }
@@ -195,8 +195,22 @@ namespace JueMingR.TerrariaHost.F5
                     var target = armed; armed = null;
                     if (ReferenceEquals(target, hovered) && pressProjection == projection && pressMatrix == matrix && Same(pressView, view)) Execute(target);
                 }
-                if (!wasEditing && keys.IsKeyDown(Keys.Escape) && host.Input.Hotkeys.IsNew((int)Keys.Escape) && editor == null)
-                { host.Input.Hotkeys.SuppressKey((int)Keys.Escape); Back(); }
+                if (keys.IsKeyDown(Keys.Escape) && host.Input.Hotkeys.IsNew((int)Keys.Escape))
+                {
+                    if (editor != null && editProtected && mode == View.Capture && host.Flow.ContentHandle.IsEmpty &&
+                        !TextInput.Owned && !TextInput.OtherTextOwner)
+                    {
+                        // Retirement removes the field and its text lease, so
+                        // TextEditInput cannot consume this Escape. Cancel only
+                        // our retained buffer here; preserve the failure facts
+                        // and own its tail before a later independent Back.
+                        string message = validation;
+                        EndEdit(); validation = message;
+                        host.Input.Hotkeys.SuppressKey((int)Keys.Escape);
+                    }
+                    else if (!wasEditing && editor == null)
+                    { host.Input.Hotkeys.SuppressKey((int)Keys.Escape); Back(); }
+                }
             }
             ConsumeLeft = leftTail; ConsumeRight = rightTail;
             if (!left && focused) leftTail = false;
@@ -294,7 +308,8 @@ namespace JueMingR.TerrariaHost.F5
                 {
                     // File protection and commit certainty are separate facts.
                     // A proven precommit failure must not be called unknown, and
-                    // a retired handle must not leave an invisible retry editor.
+                    // a retired handle must never regain a retry gate. Its name
+                    // buffer awaits explicit cancellation even without a field.
                     validation = receipt.Status == LibraryStatus.CommitUnconfirmed ? "无法确认是否保存成功，相关文件已保留" :
                         receipt.OperationRetired ? "此次蓝图未保存，相关文件已保留。可重新采集。" : receipt.Error ?? "保存失败，草稿已保留";
                     if (receipt.OperationRetired) { TextInput.Release(false); editProtected = true; }

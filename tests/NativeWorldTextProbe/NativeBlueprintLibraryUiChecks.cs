@@ -112,26 +112,81 @@ namespace NativeWorldTextProbe
         private static void RetiredCreate(object ui, object host, LibraryState library)
         {
             object priorMode = Get(ui, "mode");
-            Set(ui, "mode", Enum.Parse(priorMode.GetType(), "Capture"));
-            Call(ui, "BeginEdit", Guid.Empty, "失败时保留的名称"); var editor = Get(ui, "Editor");
-            var token = ((BlueprintCaptureFlow)Get(host, "Flow")).Token;
+            var flow = (BlueprintCaptureFlow)Get(host, "Flow");
+            var priorFlow = typeof(BlueprintCaptureFlow).GetProperties().ToDictionary(property => property, property => property.GetValue(flow));
+            long priorCaptureCommand = (long)Get(host, "captureCommandId");
+            var input = Get(host, "Input"); var shell = Get(host, "Shell"); var state = Get(shell, "State"); var layout = Get(state, "Layout");
+            var renderer = Get(shell, "renderer"); var selection = ((BlueprintCaptureState)Get(host, "State")).Selection;
+            long selectionRevision = selection.Revision, acceptedCommand = library.AcceptedCommandId;
             try
             {
                 foreach (var status in new[] { LibraryStatus.Failed, LibraryStatus.CommitUnconfirmed })
                 {
+                    // This is the real post-Create receipt boundary. Mechanical
+                    // failure/protection is covered by the Host recovery checks;
+                    // here actual Host retirement must feed the UI key consumer.
+                    var token = new CaptureToken(Guid.NewGuid(), 7, 8, 1);
+                    flow.Token = token; flow.ContentHandle = new ContentHandle(token.OperationId);
+                    flow.Summary = new CaptureSummary { Width = 1, Height = 1, ContentCount = 1 };
+                    flow.Status = BlueprintCaptureStatus.Saving; flow.DraftName = "失败时保留的名称";
+                    Set(state, "Ready", true); Call(ui, "ShowCapture"); Call(ui, "BeginEdit", Guid.Empty, flow.DraftName);
+                    var editor = Get(ui, "Editor");
                     long command = status == LibraryStatus.Failed ? 903 : 904;
+                    // A Create outcome must also match the specific command
+                    // accepted by Host, not just this operation's stable ID.
+                    Set(host, "captureCommandId", command);
                     var receipt = (LibraryReceipt)Activator.CreateInstance(typeof(LibraryReceipt), F, null,
                         new object[] { command, LibraryCommandKind.Create, status, token.OperationId, token.OperationId, token, 0L, "故障材料保留", true, false, null, null, null, null, null, null, true }, null);
                     var snapshot = Activator.CreateInstance(typeof(LibrarySnapshot), F, null, new object[] { command, false, null, receipt, 0L }, null);
-                    Set(library, "snapshot", snapshot); Call(ui, "PollReceipts");
+                    Call(host, "ApplyReceipt", receipt); Set(library, "snapshot", snapshot); Call(ui, "PollReceipts");
+                    Require(flow.ContentHandle.IsEmpty && flow.Summary == null && flow.Status == (status == LibraryStatus.Failed ? BlueprintCaptureStatus.Failed : BlueprintCaptureStatus.CommitUnconfirmed),
+                        "actual Host retires the field's handle and summary while preserving commit certainty");
                     string message = (string)Get(ui, "validation");
                     Require(ReferenceEquals(editor, Get(ui, "Editor")) && (bool)Get(ui, "editProtected") && !(bool)Call(ui, "RequestFinish"),
                         "retired create retains its buffer but has no invalid retry execution gate");
                     Require(status == LibraryStatus.Failed ? message.Contains("未保存") && !message.Contains("无法确认") : message.Contains("无法确认"),
                         "actual UI separates definite failed/protected create from unknown commit certainty");
+
+                    // Prepare the production CPU layout only: no GPU/font asset
+                    // validity or OS IME claim is needed for this Escape branch.
+                    Call(layout, "SetBlueprintLibraryVisible", true); Call(renderer, "RefreshResources"); Call(renderer, "Prepare", state, 960f, 640f, 1f);
+                    Action prepare = () =>
+                    {
+                        Set(ui, "view", Call(Get(layout, "Viewport"), "Offset", (float)Get(state, "X"), (float)Get(state, "Y")));
+                        Set(ui, "matrix", Main.UIScaleMatrix); Set(ui, "layoutGeneration", Get(layout, "Generation"));
+                        Call(ui, "Build"); Call(state, "ClampScroll"); Set(ui, "scroll", Get(state, "Scroll"));
+                        Set(ui, "ready", true); Set(ui, "dirty", false);
+                    };
+                    Action<Keys[]> frame = keys =>
+                    {
+                        prepare(); PlayerInput.MouseInfo = new MouseState(); PlayerInput.Triggers.Reset();
+                        Call(input, "BeginUpdate"); Call(ui, "BeforeInput", true); Call(input, "AfterMapping");
+                        Main.keyState = new KeyboardState(keys); Call(input, "AfterKeyboardRefresh");
+                        Call(ui, "ProcessInput", true, new KeyboardState(keys), Vector2.Zero, true, true, false);
+                    };
+                    frame(Array.Empty<Keys>());
+                    Require(!(bool)Get(Get(ui, "TextInput"), "Owned") && (float)Get(Get(ui, "editRect"), "Width") == 0,
+                        "next retired frame has no visible name field and no text lease");
+                    frame(new[] { Keys.Escape });
+                    Require(GetOptional(ui, "Editor") == null && (bool)Get(ui, "Visible") && (string)Get(ui, "validation") == message,
+                        "first Escape must cancel the retired hidden name edit while keeping capture feedback visible: " + status);
+                    Require((bool)Call(Get(input, "Hotkeys"), "IsSuppressed", (int)Keys.Escape), "retired edit cancellation owns the full Escape physical tail");
+                    frame(new[] { Keys.Escape });
+                    Require((bool)Get(ui, "Visible"), "held cancellation Escape cannot also navigate back");
+                    frame(Array.Empty<Keys>()); frame(new[] { Keys.Escape });
+                    Require(!(bool)Get(ui, "Submenu") && (bool)Get(state, "Visible"), "next independent Escape returns to the F5 blueprint menu");
+                    Require(flow.Token.OperationId == token.OperationId && flow.ContentHandle.IsEmpty && flow.Summary == null && flow.DraftName == "失败时保留的名称" && selection.Revision == selectionRevision && library.AcceptedCommandId == acceptedCommand,
+                        "Escape navigation cannot retry old ID, enqueue cleanup or consume the retained selection");
+                    Require(library.Snapshot.LastReceipt.IsProtected && library.Snapshot.LastReceipt.OperationRetired, "Escape does not rewrite the protected retired receipt");
                 }
             }
-            finally { Set(ui, "mode", priorMode); }
+            finally
+            {
+                Call(ui, "Suspend"); foreach (var prior in priorFlow) prior.Key.SetValue(flow, prior.Value);
+                Set(host, "captureCommandId", priorCaptureCommand);
+                Set(ui, "mode", priorMode);
+                Call(layout, "SetBlueprintLibraryVisible", (bool)Get(Get(shell, "BlueprintUi"), "Submenu"));
+            }
         }
         private static void OpenAction(object context)
         {
