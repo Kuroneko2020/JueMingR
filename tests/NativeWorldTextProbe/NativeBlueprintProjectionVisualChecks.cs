@@ -132,7 +132,14 @@ namespace NativeWorldTextProbe
             var host = Get(context, "Blueprint"); var library = (LibraryState)Get(host, "Library");
             ((BlueprintCaptureState)Get(host, "State")).Exit(); Call(Get(context, "Shell"), "CloseAndSubmitPosition");
             var raw = NativeBlueprintProjectionChecks.MixedWindow();
-            var cells = raw.Cells.Select(c => { c.FullbrightTile = (c.Layers & CaptureLayer.Tile) != 0; c.FullbrightWall = (c.Layers & CaptureLayer.Wall) != 0; if (c.X == 11 && c.Y == 9) c.HalfBrick = true; return c; }).ToArray();
+            var cells = raw.Cells.Select(c => { c.FullbrightTile = (c.Layers & CaptureLayer.Tile) != 0; c.FullbrightWall = (c.Layers & CaptureLayer.Wall) != 0; if (c.X == 11 && c.Y == 9) c.HalfBrick = true; return c; }).Concat(new[]
+            {
+                // Normal violet paint on colored wood, and an independent lime
+                // wood wall, make shader consumption visible. The original
+                // gray-stone paint and wall/liquid/circuit mixed cell remain.
+                new CaptureCell { X = 0, Y = 7, Layers = CaptureLayer.Tile, TileType = 30, FrameX = 18, FrameY = 18, TilePaint = 11, FullbrightTile = true },
+                new CaptureCell { X = 0, Y = 2, Layers = CaptureLayer.Wall, WallType = 4, WallPaint = 4, FullbrightWall = true }
+            }).ToArray();
             var sample = new BlueprintProjectionWindow(raw.Identity, raw.WindowGeneration, raw.Summary, raw.Bounds, cells, raw.Objects.ToArray());
             const int sx = 380, sy = 208, dx = 405, dy = 208;
             var saved = new Tile[sample.Summary.Width + 4, sample.Summary.Height + 4];
@@ -162,7 +169,10 @@ namespace NativeWorldTextProbe
                 Refresh(draw); Refresh(draw);
                 var tilePaint = game.TilePaintSystem.TryGetTileAndRequestIfNotReady(1, 0, 11);
                 var wallPaint = game.TilePaintSystem.TryGetWallAndRequestIfNotReady(7, 4);
-                Require(tilePaint != null && wallPaint != null, "original Main actually prepared tile11/wall4 native paint textures before mixed reference");
+                var woodPaint = game.TilePaintSystem.TryGetTileAndRequestIfNotReady(30, 0, 11);
+                var woodWallPaint = game.TilePaintSystem.TryGetWallAndRequestIfNotReady(4, 4);
+                Require(tilePaint != null && wallPaint != null && woodPaint != null && woodWallPaint != null,
+                    "original Main actually prepared native stone/wood violet and mixed/independent wall lime paint textures before comparison");
                 var reference = Pixels(canvas()); Save(canvas(), output, "blueprint-projection-initialized-native-reference");
                 string beforeSource = NativeBlueprintProjectionVisualChecks.Snapshot(sx - 2, sy - 2, sample.Summary.Width + 4, sample.Summary.Height + 4);
                 string beforeTarget = NativeBlueprintProjectionVisualChecks.Snapshot(dx - 2, dy - 2, sample.Summary.Width + 4, sample.Summary.Height + 4);
@@ -188,7 +198,11 @@ namespace NativeWorldTextProbe
                 int nativeCrystal = Changed(empty, reference, Screen(sx * 16 + 137, sy * 16 + 34, 28, 26), canvas().Width, 12);
                 int rCrystal = Changed(reference, actual, Screen(dx * 16 + 137, dy * 16 + 34, 28, 26), canvas().Width, 5);
                 Require(nativeCrystal > 20 && rCrystal > 10, "native and R pylon both draw crystal body above pedestal fragments without creating a tile entity");
-                Console.WriteLine("PASS Blueprint initialized native/R mixed reference: full Main assets/renderers, ready native paint textures, actual Host/files/window/WorldLayer; native/R half/slopes masks, plant overhang and pylon body pixels; finite source/target/material/entity snapshots. Two PNGs retain walls/liquid/circuits/furniture for bounded visual comparison; static liquids/wall variants/pylon animation are representative, OS/multiplayer unclaimed.");
+                PaintBlend("violet wood tile", reference, actual, Screen(sx * 16 + 4, (sy + 7) * 16 + 4, 8, 8),
+                    Screen(dx * 16 + 4, (dy + 7) * 16 + 4, 8, 8), canvas().Width, true);
+                PaintBlend("lime independent wood wall", reference, actual, Screen(sx * 16 + 4, (sy + 2) * 16 + 4, 8, 8),
+                    Screen(dx * 16 + 4, (dy + 2) * 16 + 4, 8, 8), canvas().Width, false);
+                Console.WriteLine("PASS Blueprint initialized native/R mixed reference: full Main assets/renderers, native/R final colored wood tile11 and independent wood wall4 blend pixels, actual Host/files/window/WorldLayer; native/R half/slopes masks, plant overhang and pylon body pixels; finite source/target/material/entity snapshots. Two PNGs retain walls/liquid/circuits/furniture for bounded visual comparison; static liquids/wall variants/pylon animation are representative, other paint IDs/OS/multiplayer unclaimed.");
             }
             finally
             {
@@ -229,6 +243,35 @@ namespace NativeWorldTextProbe
         {
             Vector2 point = Vector2.Transform(new Vector2(x, y) - Main.screenPosition, Main.GameViewMatrix.ZoomMatrix);
             return new Rectangle((int)Math.Round(point.X), (int)Math.Round(point.Y), width, height);
+        }
+        private static void PaintBlend(string label, Color[] reference, Color[] actual, Rectangle source, Rectangle target, int width, bool violet)
+        {
+            double numerator = 0, denominator = 0; int colored = 0;
+            for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
+            {
+                Color native = reference[(source.Y + y) * width + source.X + x], background = reference[(target.Y + y) * width + target.X + x];
+                Color projected = actual[(target.Y + y) * width + target.X + x];
+                if (violet ? native.R > native.G + 8 && native.B > native.G + 8 : native.G >= native.R && native.G > native.B + 8) colored++;
+                double r = native.R - background.R, g = native.G - background.G, b = native.B - background.B;
+                numerator += r * (projected.R - background.R) + g * (projected.G - background.G) + b * (projected.B - background.B);
+                denominator += r * r + g * g + b * b;
+            }
+            Require(colored >= 16 && denominator > 10000, "original final " + label + " has a visible native paint color and differs from target background");
+            // Independent oracle is the original final colored source pixels.
+            // Fit one common transparency, rather than reading production
+            // command colors or duplicating its paint/shader implementation.
+            double alpha = numerator / denominator, maxResidual = 0;
+            for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
+            {
+                Color native = reference[(source.Y + y) * width + source.X + x], background = reference[(target.Y + y) * width + target.X + x];
+                Color projected = actual[(target.Y + y) * width + target.X + x];
+                maxResidual = Math.Max(maxResidual, Math.Abs(projected.R - (native.R * alpha + background.R * (1 - alpha))));
+                maxResidual = Math.Max(maxResidual, Math.Abs(projected.G - (native.G * alpha + background.G * (1 - alpha))));
+                maxResidual = Math.Max(maxResidual, Math.Abs(projected.B - (native.B * alpha + background.B * (1 - alpha))));
+            }
+            Console.WriteLine("BLUEPRINT native/R final paint " + label + " colored=" + colored + "/64 fitted-alpha=" + alpha.ToString("F5", System.Globalization.CultureInfo.InvariantCulture) +
+                " max-RGB-residual=" + maxResidual.ToString("F3", System.Globalization.CultureInfo.InvariantCulture));
+            Require(alpha > .15 && alpha < .9 && maxResidual <= 3, "R final " + label + " preserves original native paint color/texture under one semitransparent blend");
         }
         private static void Refresh(Action draw)
         {

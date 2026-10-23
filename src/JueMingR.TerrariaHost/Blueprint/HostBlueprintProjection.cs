@@ -206,6 +206,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (entry == null || !Library.TryDelete(entry.AssetId, entry.MetadataIdentity)) return false;
             if (ProjectionReferences(entry.AssetId))
             {
+                // Deleting the rollback asset also retires a different current
+                // replacement. Close that reader too; Delete itself only knows
+                // the asset ID being deleted and cannot release its sibling.
+                Library.CloseProjection();
                 // Worker closes the pinned index before Delete. Retain only a
                 // restorable fixed transaction for a proven precommit failure.
                 deletedProjection = ProjectionMode == BlueprintProjectionMode.Moving ? restoreProjection?.Copy() : ProjectionMode == BlueprintProjectionMode.Fixed ? CurrentProjection?.Copy() : restoreProjection?.Copy();
