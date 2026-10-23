@@ -38,6 +38,7 @@ namespace NativeWorldTextProbe
                     // The real F5 focus-loss route must retire text/pointer work
                     // while the already accepted game-thread read remains alive.
                     Call(shell, "CancelForFocusLoss");
+                    Call(shell, "ProcessInput");
                     Require(flow.Status == BlueprintCaptureStatus.Starting && !job.Cancelled, "focus loss does not cancel an accepted Host capture");
                     long maxReads = 0; double maxAdvanceMs = 0; var blocks = new HashSet<long>(); var total = Stopwatch.StartNew();
                     NativeQuickItemChecks.Until(() =>
@@ -55,7 +56,9 @@ namespace NativeWorldTextProbe
                 }
                 begin(); var cancelled = (CaptureJob)Get(host, "capture");
                 NativeQuickItemChecks.Until(() => { poll(); return cancelled.TotalReads > 0; });
-                finishCancel(); long stoppedReads = cancelled.TotalReads; for (int i = 0; i < 8; i++) poll();
+                Call(shell, "CloseAndSubmitPosition");
+                NativeQuickItemChecks.Until(() => { poll(); return !library.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
+                long stoppedReads = cancelled.TotalReads; for (int i = 0; i < 8; i++) poll();
                 Require(cancelled.Cancelled && cancelled.TotalReads == stoppedReads, "explicit cancel stops further real-world reads and discards only its private stage");
                 editor.Exit();
             }

@@ -50,8 +50,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal void CancelCaptureOrDraft()
         {
             // UI teardown can follow an earlier explicit/session cancellation.
-            // Do not enqueue a second discard after that stage was released.
-            if (Flow.Status == BlueprintCaptureStatus.Saving || Flow.Status == BlueprintCaptureStatus.CommitUnconfirmed || Flow.Status == BlueprintCaptureStatus.Cancelled) return;
+            // Do not enqueue a discard after that stage was released or saved.
+            if (Flow.Status == BlueprintCaptureStatus.Saving || Flow.Status == BlueprintCaptureStatus.Saved || Flow.Status == BlueprintCaptureStatus.CommitUnconfirmed || Flow.Status == BlueprintCaptureStatus.Cancelled) return;
             capture?.Cancel(); capture = null;
             if (!Flow.ContentHandle.IsEmpty) discardPending = true;
             SetFlow(BlueprintCaptureStatus.Cancelled, "已取消，选区已保留。");

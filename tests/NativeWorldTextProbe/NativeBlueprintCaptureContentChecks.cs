@@ -50,6 +50,8 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { pump(); return flow.Status == BlueprintCaptureStatus.DraftReady || flow.Status == BlueprintCaptureStatus.Failed; });
             Require(flow.Status == BlueprintCaptureStatus.DraftReady && flow.Summary.ContentCount == 1 && flow.Summary.Width == 1 && flow.Summary.Height == 1, "accepted capture progresses through CanEdit=false and trims real empty border");
             value.type = 2; Call(host, "SetDraftName", "真实采集一"); Call(host, "ConfirmSave");
+            Call(shell, "CancelForFocusLoss"); Call(shell, "ProcessInput");
+            Require(flow.Status == BlueprintCaptureStatus.Saving, "real Shell focus-loss follow-up cannot revoke an accepted save");
             NativeQuickItemChecks.Until(() => { pump(); return flow.Status == BlueprintCaptureStatus.Saved || flow.Status == BlueprintCaptureStatus.CommitUnconfirmed; });
             Require(flow.Status == BlueprintCaptureStatus.Saved && editor.Active && !editor.Selection.HasSelection && flow.SelectedAssetId.HasValue, "only reliable save consumes its original selection and retains capture mode");
 

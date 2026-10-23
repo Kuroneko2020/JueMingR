@@ -463,7 +463,10 @@ namespace JueMingR.TerrariaHost.F5
                     Wheel = PlayerInput.ScrollWheelDeltaForUI,
                     PageWheelHandled = (CombatInterval?.ConsumeWheel==true || CombatRadius?.ConsumeWheel==true) || FishingUi!=null && FishingUi.BlocksPageWheel || CaptureUi != null && CaptureUi.OwnsPointer || RecoveryUi != null && RecoveryUi.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible || FootprintPopup != null && FootprintPopup.Visible || inputActive && (notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI) || Browser != null && Browser.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI))
                 });
-                if (!State.Visible) { BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); }
+                // Blueprint's ProcessInput below owns hidden-view teardown and
+                // distinguishes focus suspension from an explicit departure.
+                // Repeating Suspend here would cancel its accepted read job.
+                if (!State.Visible) { MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); }
                 notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused, popupPointer, keySample);
                 items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused, popupPointer);
                 RecoveryUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer);
