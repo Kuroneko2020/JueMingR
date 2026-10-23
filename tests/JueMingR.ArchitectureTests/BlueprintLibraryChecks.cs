@@ -358,7 +358,8 @@ namespace JueMingR.ArchitectureTests
             private readonly FileBlueprintLibrary inner;
             private readonly string path;
             internal long BlockReads, BlockWrites;
-            internal bool UnknownMetadata, FailBlock, FailSeal, PrecommitMetadata, InterruptCleanup;
+            internal bool UnknownMetadata, FailBlock, FailSeal, InterruptCleanup;
+            internal bool PrecommitMetadata = false;
             internal Action BeforeBlockRead, BeforeEnumerate, AfterCleanupStep;
             internal readonly Dictionary<Guid, long> IndexBytes = new Dictionary<Guid, long>(), IndexOpens = new Dictionary<Guid, long>();
             internal PreferenceWriteResult LastMetadataResult;
