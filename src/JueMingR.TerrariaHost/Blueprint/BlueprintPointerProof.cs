@@ -53,7 +53,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private static HarmonyMethod Hook(string name) { return name == null ? null : new HarmonyMethod(typeof(BlueprintPointerProof).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)); }
         internal void Capture()
         {
-            if (!host.State.Active) return;
+            if (!host.WorldPointerActive) return;
             if (pending && mapping == host.Input.Mapping) return;
             pending = true; completed = inPass = drawn = false; mapping = host.Input.Mapping;
             raw = new Vector2(PlayerInput.MouseInfo.X, PlayerInput.MouseInfo.Y); screen = PlayerInput.OriginalScreenSize; scale = PlayerInput.RawMouseScale;
@@ -84,7 +84,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // lost in that gap cannot become a new press from a later hold.
             if (valid && !drawn && (!host.State.Dragging || left)) return;
             if (valid && certified && !ui && left && !host.State.Dragging && !freshLeft) return;
-            host.State.Pointer(valid && certified && !ui, left, right, x, y, width, height);
+            host.AcceptWorldPointer(valid && certified && !ui, left, right, x, y, width, height);
         }
         internal void Cancel() {
             pending = completed = inPass = HasPoint = false; lastMapping = -1; lastLeft = true; }

@@ -90,6 +90,11 @@ namespace JueMingR.TerrariaHost.F5
                     }
                     else Text(batch, source.Text, rect, source.TextSize, source.TextScale, part.Ink, false);
                 }
+                if (hovered != null && hovered.Hint != null)
+                {
+                    var rect = hovered.Element.Rect.Offset(viewport.X, viewport.Y - scroll);
+                    Text(batch, hovered.Hint, new F5Rect(Math.Max(viewport.X, Math.Min(rect.X, viewport.Right - hovered.HintSize.Width)), Math.Max(viewport.Y, rect.Y - hovered.HintSize.Height - 3), hovered.HintSize.Width, hovered.HintSize.Height), hovered.HintSize, .62f, Color.LightGoldenrodYellow, false);
+                }
                 batch.End(); began = false;
                 // Draw in physical integer pixels. The worker image fits the
                 // requested budget, so every aggregated source column survives

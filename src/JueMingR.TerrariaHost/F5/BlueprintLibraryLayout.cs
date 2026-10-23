@@ -5,7 +5,7 @@ using JueMingR.Features.Blueprint;
 namespace JueMingR.TerrariaHost.F5
 {
     internal enum BlueprintLibraryCommand
-    { None, Card, Name, Rename, Delete, Previous, Next, Back, ConfirmDraft, Cancel, Exclude, PreviousObjects, NextObjects, ExcludeAll }
+    { None, Card, Name, Rename, Delete, Previous, Next, Back, ConfirmDraft, Cancel, Exclude, PreviousObjects, NextObjects, ExcludeAll, Place }
 
     internal sealed class BlueprintLibraryPart
     {
@@ -15,6 +15,8 @@ namespace JueMingR.TerrariaHost.F5
         internal int ObjectId;
         internal bool Enabled, Selected, Card, Editing;
         internal string PreviewKey;
+        internal string Hint;
+        internal F5Size HintSize;
         internal Color Ink = Color.White;
     }
 

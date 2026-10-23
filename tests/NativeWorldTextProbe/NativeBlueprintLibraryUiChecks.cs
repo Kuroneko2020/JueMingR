@@ -53,6 +53,8 @@ namespace NativeWorldTextProbe
             {
                 ReadCancellation(ui, host, library);
                 EditGeometry(ui, assembly);
+                HiddenKeyboardTail(ui, state);
+                LegacyMissingUi(ui, host, library);
                 Guid id = Guid.NewGuid(); Call(ui, "BeginEdit", id, "原名");
                 var editor = (TextEditBuffer)Get(ui, "Editor"); editor.SelectAll(); editor.Insert(" ");
                 Require(!(bool)Call(ui, "RequestFinish") && ReferenceEquals(editor, Get(ui, "Editor")) && editor.Text == " ",
@@ -70,6 +72,84 @@ namespace NativeWorldTextProbe
             }
             finally { Set(library, "snapshot", savedSnapshot); ((IDisposable)ui).Dispose(); }
             OpenAction(context);
+        }
+        private static void HiddenKeyboardTail(object ui, object state)
+        {
+            var text = Get(ui, "TextInput");
+            var nativeIme = text.GetType().GetNestedType("NativeIme", BindingFlags.NonPublic);
+            var patch = new HarmonyLib.Harmony("JueMingR.Tests.Blueprint.HiddenKeyboardTail");
+            patch.Patch(nativeIme.GetMethod("Toggle", F), new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintLibraryUiChecks).GetMethod(nameof(ImeToggle), F)));
+            patch.Patch(nativeIme.GetProperty("Composition", F).GetGetMethod(true), new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintLibraryUiChecks).GetMethod(nameof(ImeEmpty), F)));
+            patch.Patch(nativeIme.GetProperty("Candidates", F).GetGetMethod(true), new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintLibraryUiChecks).GetMethod(nameof(ImeNoCandidates), F)));
+            bool oldWriting = PlayerInput.WritingText, oldBlock = Main.blockInput;
+            object oldOwner = Main.CurrentInputTextTakerOverride;
+            var keyboard = typeof(PlayerInput).GetMethod("KeyboardInput", F);
+            var oldChroma = Main.ChromaPainter;
+            Main.ChromaPainter = new Terraria.GameContent.ChromaHotkeyPainter();
+            try
+            {
+                foreach (bool switchPage in new[] { false, true })
+                {
+                    Main.CurrentInputTextTakerOverride = null; Main.blockInput = false; PlayerInput.WritingText = false;
+                    Call(state, "RestoreVisible"); Call(state, "Navigate", 6); Call(ui, "OpenLibrary"); Call(ui, "BeginEdit", Guid.NewGuid(), "名称");
+                    Call(ui, "BeforeInput", true);
+                    Call(text, "AfterSample", true, null, new KeyboardState(Keys.A, Keys.LeftControl), true);
+                    Require((bool)Get(text, "Owned"), "real name editor owns the keyboard lease before hide");
+                    if (switchPage) Call(state, "Navigate", 0); else Call(state, "Close");
+                    Func<bool, Keys[], bool> frame = (focused, keys) =>
+                    {
+                        // Exact native order: prefix owns WritingText, original
+                        // KeyboardInput maps the physical cached keys, native
+                        // UpdateInput resets WritingText, postfix feeds sample.
+                        Call(ui, "BeforeInput", false); Main.keyState = new KeyboardState(keys); Main.oldKeyState = default(KeyboardState);
+                        PlayerInput.Triggers.Reset(); PlayerInput.MouseKeys.Clear(); keyboard.Invoke(null, null);
+                        bool moved = PlayerInput.Triggers.Current.Left || PlayerInput.Triggers.Current.Jump;
+                        PlayerInput.WritingText = false;
+                        Call(ui, "ProcessInput", false, new KeyboardState(keys), Vector2.Zero, false, focused, false);
+                        return moved;
+                    };
+                    Require(!frame(true, new[] { Keys.A, Keys.LeftControl }), "held editor action cannot leak after hide/page change");
+                    frame(false, Array.Empty<Keys>());
+                    Require(!frame(true, new[] { Keys.A }), "unfocused neutral cannot retire a physical keyboard tail");
+                    frame(true, Array.Empty<Keys>());
+                    Require(frame(true, new[] { Keys.A, Keys.Space }), "trusted hidden neutral retires tail and new original movement/jump resumes: page=" + switchPage);
+                    var foreign = new object(); Main.CurrentInputTextTakerOverride = foreign; PlayerInput.WritingText = true;
+                    Call(ui, "BeforeInput", false); Call(ui, "ProcessInput", false, new KeyboardState(), Vector2.Zero, false, true, false);
+                    Require(ReferenceEquals(Main.CurrentInputTextTakerOverride, foreign) && PlayerInput.WritingText, "retirement preserves another text owner's valid lease");
+                    Main.CurrentInputTextTakerOverride = null; PlayerInput.WritingText = false; Call(ui, "Suspend");
+                }
+            }
+            finally { ((IDisposable)ui).Dispose(); patch.UnpatchAll(patch.Id); Main.ChromaPainter = oldChroma; Main.CurrentInputTextTakerOverride = oldOwner; Main.blockInput = oldBlock; PlayerInput.WritingText = oldWriting; Call(state, "Navigate", 6); Call(state, "RestoreVisible"); }
+        }
+        private static bool ImeToggle(bool enabled) { PlayerInput.WritingText = enabled; return false; }
+        private static bool ImeEmpty(ref string __result) { __result = ""; return false; }
+        private static bool ImeNoCandidates(ref bool __result) { __result = false; return false; }
+        private static void LegacyMissingUi(object ui, object host, LibraryState library)
+        {
+            const string historical = "箱内物品未采集；牌子或墓碑文字未采集；展示物品未采集";
+            var saved = Get(library, "snapshot");
+            var flow = (BlueprintCaptureFlow)Get(host, "Flow");
+            var oldSummary = flow.Summary; var oldHandle = flow.ContentHandle; var oldStatus = flow.Status;
+            try
+            {
+                var assembly = typeof(LibraryState).Assembly; var type = assembly.GetType("JueMingR.Features.Blueprint.LibraryMetadata", true);
+                object metadata = Activator.CreateInstance(type, true); Guid id = Guid.NewGuid();
+                Set(metadata, "AssetId", id); Set(metadata, "ContentRevision", Guid.NewGuid()); Set(metadata, "Name", "旧合法图");
+                Set(metadata, "ContentHash", new string('A', 64)); Set(metadata, "Width", 2); Set(metadata, "Height", 2); Set(metadata, "ContentCount", 4L); Set(metadata, "MissingSummary", historical);
+                var entry = (LibraryEntry)Activator.CreateInstance(typeof(LibraryEntry), F, null, new object[] { id, "metadata", metadata, false }, null);
+                var page = (LibraryPage)Activator.CreateInstance(typeof(LibraryPage), F, null, new object[] { 2024L, 0, 1L, new[] { entry }, 0, false, null }, null);
+                Set(library, "snapshot", Activator.CreateInstance(typeof(LibrarySnapshot), F, null, new object[] { 2024L, false, page, null, 0L }, null));
+                Call(ui, "OpenLibrary"); Set(ui, "listGeneration", 2024L); Set(ui, "wantList", false); Set(ui, "selected", (Guid?)id);
+                var rect = ui.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.F5Rect", true);
+                Set(ui, "view", Activator.CreateInstance(rect, F, null, new object[] { 0f, 0f, 522f, 580f }, null)); Call(ui, "Build");
+                Action quiet = () => Require(!((IEnumerable)Get(ui, "parts")).Cast<object>().Any(p => ((string)Get(Get(p, "Element"), "Text")).Contains("未采集")), "actual cards/list/selected-bottom consume historical Missing quietly");
+                quiet();
+                flow.Summary = new CaptureSummary { Width = 2, Height = 2, ContentCount = 4, MissingPayloads = historical.Split('；'), UnreliableObjectCount = 1 };
+                flow.ContentHandle = new ContentHandle(Guid.NewGuid()); flow.Status = BlueprintCaptureStatus.DraftReady;
+                Call(ui, "ShowCapture"); Call(ui, "Build"); quiet();
+                Require(((IEnumerable)Get(ui, "parts")).Cast<object>().Any(p => ((string)Get(Get(p, "Element"), "Text")).Contains("对象尚未确认")), "real incomplete-group warning remains in the draft consumer");
+            }
+            finally { Call(ui, "Suspend"); Set(library, "snapshot", saved); flow.Summary = oldSummary; flow.ContentHandle = oldHandle; flow.Status = oldStatus; }
         }
         private static void ReceiptFailure(object ui, LibraryState library, TextEditBuffer editor, Guid id, LibraryStatus status, long command)
         {

@@ -118,23 +118,7 @@ namespace JueMingR.Infrastructure.Blueprint
         }
         public void ValidateLayout(Guid id, bool stage, long blockCount)
         {
-            Ready(); if (blockCount < 0 || blockCount > Int64.MaxValue / 32L) throw new InvalidDataException("blueprint-block-count");
-            string content = Content(id, stage); Guard(content); int direct = 0;
-            foreach (string entry in Directory.EnumerateFileSystemEntries(content))
-            {
-                Guard(entry); string name = Path.GetFileName(entry);
-                if (++direct > (stage ? 4 : 3) || !(name == "root.bin" && File.Exists(entry) || name == "index.bin" && File.Exists(entry) || name == "chunks" && Directory.Exists(entry) || stage && name == ".owner.bin" && File.Exists(entry))) throw new InvalidDataException("blueprint-unknown-content-entry");
-            }
-            using (Stream index = OpenIndex(id, stage)) if (index.Length != blockCount * 32L) throw new InvalidDataException("blueprint-index-length");
-            string chunks = Path.Combine(content, "chunks"); Guard(chunks); long found = 0;
-            if (Directory.Exists(chunks)) foreach (string entry in Directory.EnumerateFileSystemEntries(chunks))
-            {
-                Guard(entry); long number;
-                if (Directory.Exists(entry) || !BlockNumber(Path.GetFileName(entry), out number) || number >= blockCount) throw new InvalidDataException("blueprint-unknown-chunk");
-                if (new FileInfo(entry).Length < 1 || new FileInfo(entry).Length > MaximumBlockBytes) throw new InvalidDataException("blueprint-chunk-length");
-                found++;
-            }
-            if (found != blockCount) throw new InvalidDataException("blueprint-missing-chunk");
+            foreach (int ignored in ValidateLayoutSteps(id, stage, blockCount, 64)) { }
         }
         public void PromoteStage(Guid stageId, Guid assetId)
         {

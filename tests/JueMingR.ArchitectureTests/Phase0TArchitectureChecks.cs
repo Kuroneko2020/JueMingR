@@ -95,6 +95,11 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Blueprint.LibraryCommandKind", "JueMingR.Features.Blueprint.LibraryStatus", "JueMingR.Features.Blueprint.LibraryEntry", "JueMingR.Features.Blueprint.LibraryPage",
                 "JueMingR.Features.Blueprint.LibraryObjectPage", "JueMingR.Features.Blueprint.LibraryReceipt", "JueMingR.Features.Blueprint.LibrarySnapshot", "JueMingR.Features.Blueprint.LibraryState", "JueMingR.Features.Blueprint.LibraryName",
                 "JueMingR.Features.Blueprint.BlueprintPreviewLayer", "JueMingR.Features.Blueprint.BlueprintPreviewBuilder", "JueMingR.Features.Blueprint.BlueprintPreviewImage",
+                "JueMingR.Features.Blueprint.BlueprintProjectionIdentity", "JueMingR.Features.Blueprint.BlueprintProjectionBounds", "JueMingR.Features.Blueprint.BlueprintProjectionWindow",
+                "JueMingR.Features.Blueprint.BlueprintProjectionReceiptKind", "JueMingR.Features.Blueprint.BlueprintProjectionReceipt",
+#if DEBUG
+                "JueMingR.Features.Blueprint.BlueprintProjectionStatistics",
+#endif
                 "JueMingR.Features.Movement.MovementOptions", "JueMingR.Features.Movement.MovementPreferenceCodec",
                 "JueMingR.Features.Movement.SmartFallProtectionOptions",
                 "JueMingR.Features.Movement.SmartFallFamily", "JueMingR.Features.Movement.SmartFallResult",

@@ -387,6 +387,8 @@ namespace JueMingR.TerrariaHost.F5
             if (hover.HotkeyTarget == F5.AnnouncementControls.SendActionId) return AnnouncementControls?.SendHint;
             if (hover.HotkeyTarget == F5.BlueprintControls.SaveAction) return "双击设置保存采集的快捷键";
             if (hover.HotkeyTarget == F5.BlueprintControls.LibraryAction) return "双击设置打开蓝图库的快捷键";
+            if (hover.HotkeyTarget == F5.BlueprintControls.MoveAction) return "双击设置移动蓝图的快捷键";
+            if (hover.HotkeyTarget == F5.BlueprintControls.RemoveAction) return "双击设置移除蓝图的快捷键";
             if (hover.Kind == F5ElementKind.Hotkey && hover.HotkeyTarget != null)
             {
                 if (hover.HotkeyTarget == F5.BlueprintControls.SaveAction) return "双击设置保存采集的快捷键";
@@ -396,6 +398,7 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal string ButtonHint(F5Element hover, bool biomeFailed)
         {
+            string blueprintHint = BlueprintControls?.Hint(hover.Command); if (blueprintHint != null) return blueprintHint;
             if (hover.Command == F5Command.BlueprintCapture) return BlueprintControls != null && BlueprintControls.Active ? F5.BlueprintControls.ExitHint : F5.BlueprintControls.StartHint;
             if (hover.Command == F5Command.BlueprintSave) return F5.BlueprintControls.SaveHint;
             if (biomeFailed && (hover.Command == F5Command.EnableBiome || hover.Command == F5Command.DisableBiome)) return "群系显示暂不可用";

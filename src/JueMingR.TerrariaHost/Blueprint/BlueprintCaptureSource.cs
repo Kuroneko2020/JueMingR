@@ -153,25 +153,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 Object = new CaptureObject { X = cell.X - (independent ? 0 : localX / step), Y = cell.Y - row, Width = data.Width, Height = data.Height,
                     Type = cell.TileType, Style = style, Alternate = alternate, Direction = (int)data.Direction,
                     OriginX = data.Origin.X, OriginY = data.Origin.Y, PlacementStyle = placement, RandomVariant = variant,
-                    Reliable = true, MissingPayload = Missing(cell.TileType) } };
+                    Reliable = true } };
         }
         private static BlueprintObjectShape Unknown(CaptureCell cell, string reason)
         { return new BlueprintObjectShape { Object = new CaptureObject { X = cell.X, Y = cell.Y, Width = 1, Height = 1, Type = cell.TileType, Reliable = false, Reason = reason } }; }
-        private static string Missing(ushort type)
-        {
-            if (type < TileID.Sets.BasicChest.Length && TileID.Sets.BasicChest[type] || type < TileID.Sets.BasicDresser.Length && TileID.Sets.BasicDresser[type]) return "箱内物品未采集";
-            if (type == TileID.Signs || type == TileID.Tombstones) return "牌子或墓碑文字未采集";
-            if (type == TileID.DisplayDoll || type == TileID.WeaponsRack || type == TileID.ItemFrame || type == TileID.FoodPlatter || type == TileID.HatRack) return "展示物品未采集";
-            // The locked .8 TileEntitiesManager registers these remaining
-            // entity families. Record the missing category without reading a
-            // payload or depending on the client receiving its entity first.
-            if (type == 378) return "训练假人关联状态未采集";
-            if (type == 423) return "逻辑感应设置未采集";
-            if (type == 597) return "晶塔实体状态未采集";
-            if (type == 698) return "展示罐内容未采集";
-            if (type == 723) return "风筝物品与放飞状态未采集";
-            if (type == 724) return "生物放置数据未采集";
-            return null;
-        }
     }
 }

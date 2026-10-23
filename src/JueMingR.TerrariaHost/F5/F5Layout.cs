@@ -48,7 +48,7 @@ namespace JueMingR.TerrariaHost.F5
         MovementFallAllow6, MovementFallDeny6, MovementFallAllow7, MovementFallDeny7,
         MovementFallAllow8, MovementFallDeny8, MovementFallAllow9, MovementFallDeny9,
         MovementFallAllow10, MovementFallDeny10, MovementFallAllow11, MovementFallDeny11,
-        BlueprintCapture, BlueprintSave, BlueprintToolbarOn, BlueprintToolbarOff, BlueprintLibrary }
+        BlueprintCapture, BlueprintSave, BlueprintToolbarOn, BlueprintToolbarOff, BlueprintLibrary, BlueprintMove, BlueprintRemove }
 
     internal sealed class F5Element
     {

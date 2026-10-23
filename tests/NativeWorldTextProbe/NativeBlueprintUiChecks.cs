@@ -123,12 +123,12 @@ namespace NativeWorldTextProbe
                 Call(layout, "SetBlueprintMode", mode);
                 Call(layout, "Ensure", 1280f, 720f, 1.5f, 6, font, measure);
                 object[] elements = ((IEnumerable)Get(layout, "Elements")).Cast<object>().ToArray();
-                Require(elements.Count(e => Get(e, "Kind").ToString() == "Panel") == 4, "blueprint F5 contains capture/save/library/toolbar standard rows");
+                Require(elements.Count(e => Get(e, "Kind").ToString() == "Panel") == 6, "blueprint F5 contains capture/save/library/move/remove/toolbar standard rows");
                 var capture = elements.Single(e => GetOptional(e, "Text") as string == (mode ? "退出采集" : "采集蓝图"));
                 Require((string)Get(Get(capture, "Description"), "Text") == (mode ? "退出选区，并清空已有选区" : "点击开始键执行选区，反选取消选区。"), "F5 capture row tracks the current owner mode");
                 var save = elements.Single(e => GetOptional(e, "Text") as string == "保存采集");
                 Require((string)Get(Get(save, "Description"), "Text") == "点击保存键保存世界上已有的蓝图选区。", "F5 save row keeps the exact approved description");
-                Require(elements.Where(e => Get(e, "Kind").ToString() == "Hotkey").Select(e => (string)Get(e, "HotkeyTarget")).SequenceEqual(new[] { "blueprint.capture", "blueprint.save", "blueprint.library", "blueprint.toolbar" }), "capture/save/library/toolbar have four approved stable binder targets; start/exit still share one identity");
+                Require(elements.Where(e => Get(e, "Kind").ToString() == "Hotkey").Select(e => (string)Get(e, "HotkeyTarget")).SequenceEqual(new[] { "blueprint.capture", "blueprint.save", "blueprint.library", "blueprint.move", "blueprint.remove", "blueprint.toolbar" }), "capture/save/library/move/remove/toolbar use the six approved stable binder targets; start/exit still share one identity");
                 var preference = elements.Single(e => GetOptional(e, "Text") as string == "手持凝胶显示快捷栏");
                 Require(GetOptional(preference, "Description") == null, "gel-toolbar preference adds no hint");
                 int generation = (int)Get(layout, "Generation"), measurements = (int)Get(layout, "MeasurementCount");

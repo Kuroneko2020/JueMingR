@@ -40,6 +40,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "normalize index source reuse", () => NormalizeWork(Path.Combine(area, "normalize-work")));
             Run(failures, "safe list cancellation and stop", () => CleanupCancellation(Path.Combine(area, "cleanup-cancel")));
             Run(failures, "legacy v1 literal asset", () => LegacyLiteralAsset(Path.Combine(area, "legacy-v1")));
+            Run(failures, "historical missing compatibility", () => HistoricalMissing(Path.Combine(area, "historical-missing")));
             // Failure originals remain in this printed, exclusively generated
             // root. Success cleanup cannot target installation/user data.
             if (failures.Count == before)
@@ -68,6 +69,27 @@ namespace JueMingR.ArchitectureTests
             int left = cells.Min(c => c.X), top = cells.Min(c => c.Y), right = cells.Max(c => c.X), bottom = cells.Max(c => c.Y);
             var summary = new CaptureSummary { Left = left, Top = top, Width = right - left + 1, Height = bottom - top + 1, ContentCount = cells.Length, UnreliableObjectCount = objects == null ? 0 : objects.Count(o => !o.Reliable), StartTick = 8, EndTick = 10 };
             Require(Command(state, state.TrySealDraft(new ContentHandle(id), summary)).Status == LibraryStatus.Completed, "draft normalizes and seals"); return new ContentHandle(id);
+        }
+        private static void HistoricalMissing(string path)
+        {
+            Guid id = Guid.NewGuid();
+            using (var state = new LibraryState(new FileBlueprintLibrary(path)))
+            {
+                var cell = Cell(4, 5); cell.ObjectId = 1;
+                var obj = new CaptureObject { Id = 1, X = 4, Y = 5, Width = 1, Height = 1, Type = 1, Reliable = true, MissingPayload = "箱内物品未采集" };
+                var handle = Draft(state, id, new[] { cell }, new[] { obj });
+                Require(Command(state, state.TryCreate(handle, "旧含Missing图", Token(id))).Status == LibraryStatus.Saved, "legacy semantic field survives reliable v1 creation");
+                var entry = List(state).Entries.Single(); var before = SnapshotFiles(Path.Combine(path, id.ToString("N")));
+                Require(entry.MissingSummary == obj.MissingPayload && Command(state, state.TryPreview(77, id, entry.ContentHash, 16, 16)).Summary.MissingPayloads.Single() == obj.MissingPayload, "v1 root/metadata/object historical Missing remains readable");
+                var after = SnapshotFiles(Path.Combine(path, id.ToString("N"))); foreach (var file in before) Require(after[file.Key].SequenceEqual(file.Value), "quiet UI policy never rewrites old content");
+            }
+            string metadata = Path.Combine(path, id.ToString("N"), "metadata.json");
+            File.WriteAllText(metadata, File.ReadAllText(metadata).Replace("箱内物品未采集", "展示物品未采集"), new UTF8Encoding(false));
+            using (var state = new LibraryState(new FileBlueprintLibrary(path)))
+            {
+                var page = List(state);
+                Require(page.TotalCount == 0 && page.IsolatedCount == 1, "real metadata/root Missing mismatch still isolates the bad asset");
+            }
         }
         private static Guid SaveOne(LibraryState state, string name = "蓝图")
         {

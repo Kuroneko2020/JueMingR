@@ -100,6 +100,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ApplyReceipt(LibraryReceipt receipt)
         {
+            ApplyProjectionMutation(receipt);
             if (receipt.OperationId != Flow.Token.OperationId) return;
             // The sealed capture summary is fixed. Filtered preview summaries
             // belong to their exclusion/cache key in the presentation owner;

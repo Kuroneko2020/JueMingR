@@ -48,7 +48,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool ControlsEnabled { get { return HasSession && preference.Snapshot.IsLoaded; } }
         internal bool ToolbarEnabled { get { return preference.Snapshot.Value; } }
         internal bool Local(Player candidate) { return candidate != null && ReferenceEquals(candidate, Main.LocalPlayer); }
-        internal int BlockedActions { get { State.SetInteractionBlocked(Shell?.BlueprintUi?.WorldInteractionBlocked == true); return State.BlockedActions; } }
+        internal int BlockedActions { get { State.SetInteractionBlocked(ProjectionEditing || Shell?.BlueprintUi?.WorldInteractionBlocked == true); return State.BlockedActions; } }
         internal bool WorldActionsBlocked { get { return BlockedActions != 0; } }
         internal bool NativeUiBusy { get { return Main.playerInventory || Main.mapFullscreen || Main.blockInput || Main.drawingPlayerChat ||
             Main.editSign || Main.editChest || !string.IsNullOrEmpty(Main.npcChatText) || Main.inFancyUI || Main.onlyDrawFancyUI || Main.ingameOptionsWindow ||
@@ -71,6 +71,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal void Toggle()
         {
             if (!ControlsEnabled || !Input.CanStartActions) return;
+            if (ProjectionEditing || pendingProjection != null) { projectionFeedback = "请先完成或取消当前摆放"; return; }
             Pointer.Cancel(); Toolbar.Cancel();
             if (State.Active) State.Exit();
             else { State.Enter(); Shell?.CloseAndSubmitPosition(); }
@@ -80,6 +81,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             registry.Register(new HotkeyAction(BlueprintControls.CaptureAction, "采集蓝图", HotkeyContext.Gameplay, () => ControlsEnabled, Toggle));
             registry.Register(new HotkeyAction(BlueprintControls.SaveAction, "保存采集", HotkeyContext.Gameplay, () => CanSave, () => Save()));
             registry.Register(new HotkeyAction(BlueprintControls.LibraryAction, "打开蓝图库", HotkeyContext.Gameplay, () => ControlsEnabled, OpenLibrary));
+            registry.Register(new HotkeyAction(BlueprintControls.MoveAction, "移动蓝图", HotkeyContext.Gameplay, () => CanMoveProjection, MoveProjection));
+            registry.Register(new HotkeyAction(BlueprintControls.RemoveAction, "移除蓝图", HotkeyContext.Gameplay, () => CanRemoveProjection, RemoveProjection));
             // F5 and the independent display binding share the preference owner;
             // hiding the toolbar never exits capture or releases its world gate.
             Action toolbar = () => SetToolbar(!ToolbarEnabled);
@@ -88,7 +91,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ObserveMapping()
         {
-            State.SetInteractionBlocked(Shell?.BlueprintUi?.WorldInteractionBlocked == true);
+            State.SetInteractionBlocked(ProjectionEditing || Shell?.BlueprintUi?.WorldInteractionBlocked == true);
             State.Observe(Input.SampleFocused, Input.RawMouseLeft, Input.RawMouseRight, Input.NativeUseItemRequest, Input.NativeUseTileRequest);
             if (!Input.SampleFocused) { Pointer.Cancel(); Toolbar.Cancel(); }
         }
@@ -99,30 +102,36 @@ namespace JueMingR.TerrariaHost.Blueprint
             Pointer.Consume(CanEdit);
             Toolbar.Process();
             if (!CanEdit) {
-                State.Interrupt(); Pointer.Cancel(); return; }
+                State.Interrupt(); if (ProjectionEditing) InterruptProjection(); Pointer.Cancel(); return; }
+            if (ProjectionEditing && Input.Hotkeys.IsNew((int)Microsoft.Xna.Framework.Input.Keys.Escape))
+            { Input.Hotkeys.SuppressKey((int)Microsoft.Xna.Framework.Input.Keys.Escape); CancelProjection(); return; }
             Pointer.Capture();
         }
         public void OnSessionStarted()
         {
             CancelOldCapture();
+            ClearProjection();
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); generation = runtime.Generation; player = Main.LocalPlayer; world = Main.ActiveWorldFileData; connection = Netplay.Connection; }
         public void OnSessionEnded()
         {
             CancelOldCapture();
+            ClearProjection();
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); player = null; world = connection = null; }
         public void Update(ulong updateTick)
         {
             AdvanceCapture(updateTick);
+            PumpProjection();
             if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad();
             if (State.Active && (!HasSession || !Input.CanRetainIntent || NativeUiBusy || player.dead || player.ghost || Shell?.State.Visible == true))
             {
                 State.Interrupt(); Pointer.Cancel(); }
         }
-        internal void Poll() { PumpLibrary(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
+        internal void Poll() { PumpLibrary(); PumpProjection(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
         public void FailClosed() {
-            failed = true; CancelOldCapture(); State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); }
+            failed = true; CancelOldCapture(); ClearProjection(); State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); }
         internal void TakeFeedback(Action<string> display)
         {
+            if (projectionFeedback != null) { string message = projectionFeedback; projectionFeedback = null; display(message); }
             var snapshot = preference.Snapshot;
             if (!snapshot.IsLoaded || reported == snapshot.Status) return;
             if (snapshot.Status == PreferenceStatus.Missing || snapshot.Status == PreferenceStatus.Saved || snapshot.Status == PreferenceStatus.Pending) return;
@@ -130,6 +139,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             reported = snapshot.Status;
         }
         private void ExitProcess(object sender, EventArgs args)
-        { AppDomain.CurrentDomain.ProcessExit -= ExitProcess; CancelOldCapture(); Library?.Stop(1500); preference.Stop(750); Toolbar.Dispose(); Pointer.Dispose(); BlueprintHooks.Uninstall(); }
+        { AppDomain.CurrentDomain.ProcessExit -= ExitProcess; CancelOldCapture(); ClearProjection(); ProjectionRenderer.Dispose(); Library?.Stop(1500); preference.Stop(750); Toolbar.Dispose(); Pointer.Dispose(); BlueprintHooks.Uninstall(); }
     }
 }

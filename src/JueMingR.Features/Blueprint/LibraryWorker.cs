@@ -44,10 +44,14 @@ namespace JueMingR.Features.Blueprint
                 while (true)
                 {
                     LibraryCommand command;
-                    lock (gate) { while (pending == null && !stopping) Monitor.Wait(gate); if (pending == null) break; command = pending; pending = null; }
+                    lock (gate) { while (pending == null && !ProjectionHasWorkLocked() && !stopping) Monitor.Wait(gate); if (pending == null && stopping) break; command = pending; pending = null; }
+                    // Accepted library commands have priority over the next
+                    // projection slice. Their receipt/operation slot is separate.
+                    if (command == null) { ProjectionStep(); continue; }
                     LibraryReceipt completed;
                     try
                     {
+                        ReleaseRetiredProjection();
                         if (!opened && rootFailure == null) { try { files.Open(); opened = true; } catch (Exception e) { rootFailure = Reason(e); } }
                         if (rootFailure != null) completed = Receipt(command, LibraryStatus.Protected, rootFailure, true);
                         else completed = Execute(command);
@@ -73,7 +77,7 @@ namespace JueMingR.Features.Blueprint
                 if (stage != null && !stage.Promoted)
                     try { Cleanup(stage.Physical, true, stage.Blocks); } catch { }
             }
-            finally { files.Dispose(); }
+            finally { CloseProjectionWorker(); files.Dispose(); }
         }
         private LibraryReceipt Execute(LibraryCommand c)
         {
@@ -180,6 +184,9 @@ namespace JueMingR.Features.Blueprint
         }
         private LibraryReceipt Delete(LibraryCommand c)
         {
+            // Cleanup must never contend with our own retained index handle.
+            // Host retains the old origin only for a known uncommitted failure.
+            RetireProjectionAsset(c.Id);
             LibraryMetadata value; PreferenceReadResult read; LibraryRoot root;
             if (!OpenAsset(c, out value, out read, out root)) return Receipt(c, LibraryStatus.Protected, "蓝图已改变或不可写，原件已保留", true);
             Validate(c.Id, false, root, null, false); value.Deleted = true; value.UpdatedTicks = Math.Max(value.CreatedTicks, DateTime.UtcNow.Ticks);
@@ -384,16 +391,20 @@ namespace JueMingR.Features.Blueprint
                 throw new InvalidDataException("blueprint-missing-object-reference");
             }
             internal void CheckComplete(CaptureObject obj)
+            { foreach (bool ignored in CheckCompleteSteps(obj)) { } }
+            internal IEnumerable<bool> CheckCompleteSteps(CaptureObject obj)
             {
                 // This is the capture resolver's per-object proof boundary, not
                 // a limit on selection/content size. Larger/uncertain groups are
                 // represented as unreliable and must be explicitly excluded.
                 long area = (long)obj.Width * obj.Height;
                 if (area < 1 || area >= CaptureChunk.MaximumRecords) throw new InvalidDataException("blueprint-object-proof-size");
+                int visited = 0;
                 for (int y = obj.Y; y < (long)obj.Y + obj.Height; y++) for (int x = obj.X; x < (long)obj.X + obj.Width; x++)
                 {
                     CaptureCell cell = FindCell(x, y);
                     if (cell.ObjectId != obj.Id || cell.TileType != obj.Type || (cell.Layers & CaptureLayer.Tile) == 0 || cell.UnreliableObject) throw new InvalidDataException("blueprint-incomplete-object-group");
+                    if (++visited % 32 == 0) yield return true;
                 }
             }
             private CaptureCell FindCell(int x, int y)
@@ -419,6 +430,7 @@ namespace JueMingR.Features.Blueprint
         }
         private bool Cleanup(Guid id, bool isStage, long blocks, BlueprintCleanupProof proof = null, LibraryCommand read = null)
         {
+            if (!isStage) RetireProjectionAsset(id);
             try
             {
                 while (true)
@@ -483,7 +495,11 @@ namespace JueMingR.Features.Blueprint
             return Receipt(c, status, error, value.IsProtected, failureCode: value.Error);
         }
         private LibraryReceipt Receipt(LibraryCommand c, LibraryStatus status, string error = null, bool protect = false, bool cleanup = false, LibraryPage page = null, BlueprintPreviewImage preview = null, LibraryObjectPage objectPage = null, CaptureSummary summary = null, string failureCode = null, string suggestedName = null, bool operationRetired = false)
-        { if (protect && !c.Stage && c.Id != Guid.Empty && (c.Kind == LibraryCommandKind.Preview || c.Kind == LibraryCommandKind.Create || c.Kind == LibraryCommandKind.Rename || c.Kind == LibraryCommandKind.Delete)) protectedAssets.Add(c.Id); return new LibraryReceipt(c.CommandId, c.Kind, status, c.Id, c.Id, c.Token, c.Generation, error, protect, cleanup, page, preview, objectPage, summary, failureCode, suggestedName, operationRetired); }
+        {
+            if (status == LibraryStatus.CommitUnconfirmed && c.Kind == LibraryCommandKind.Delete) projectionUncertainAssets.Add(c.Id);
+            if (protect && !c.Stage && c.Id != Guid.Empty && (c.Kind == LibraryCommandKind.Preview || c.Kind == LibraryCommandKind.Create || c.Kind == LibraryCommandKind.Rename || c.Kind == LibraryCommandKind.Delete)) protectedAssets.Add(c.Id);
+            return new LibraryReceipt(c.CommandId, c.Kind, status, c.Id, c.Id, c.Token, c.Generation, error, protect, cleanup, page, preview, objectPage, summary, failureCode, suggestedName, operationRetired);
+        }
         private static bool Excluded(int id, bool unreliable, LibraryCommand c) { return id > 0 && (unreliable && c.Exclude || Array.BinarySearch(c.Excluded, id) >= 0); }
         private static CaptureCell Filter(CaptureCell cell, LibraryCommand c) { return Excluded(cell.ObjectId, cell.UnreliableObject, c) ? cell.WithoutTile() : cell; }
         private static long Key(CaptureCell cell) { return ((long)cell.Y << 32) | (uint)cell.X; }

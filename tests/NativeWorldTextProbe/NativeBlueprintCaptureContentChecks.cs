@@ -27,8 +27,6 @@ namespace NativeWorldTextProbe
             TileObjectData.Initialize();
             var sourceType = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintCaptureSource", true);
             var source = (IBlueprintCaptureSource)Activator.CreateInstance(sourceType, F, null, new object[] { (Func<bool>)(() => true) }, null);
-            foreach (ushort entityType in new ushort[] { 378, 423, 597, 698, 723, 724 })
-                Require(!string.IsNullOrEmpty((string)sourceType.GetMethod("Missing", F).Invoke(null, new object[] { entityType })), "remaining registered original entity family has a concrete missing-data category " + entityType);
             Tile value = Main.tile[10, 10];
             value.active(true); value.type = 1; value.inActive(true); value.halfBrick(true); value.color(11); value.invisibleBlock(true); value.fullbrightBlock(true);
             value.wall = 7; value.wallColor(4); value.invisibleWall(true); value.fullbrightWall(true); value.wire(true); value.wire2(true); value.wire3(true); value.wire4(true); value.actuator(true); value.liquid = 201; value.liquidType(3);
@@ -41,6 +39,8 @@ namespace NativeWorldTextProbe
             Furniture(source, 30, 30, TileID.Tables, 3, 2, "ordinary 3x2 table");
             Furniture(source, 40, 30, TileID.ClosedDoor, 1, 3, "closed door row offsets");
             Furniture(source, 50, 30, TileID.Containers, 2, 2, "chest exterior and missing contents");
+            Furniture(source, 60, 30, TileID.Signs, 2, 2, "sign exterior without text payload");
+            Furniture(source, 70, 30, TileID.ItemFrame, 2, 2, "display exterior without held item payload");
 
             ulong tick = 100;
             Action pump = () => { Call(host, "Update", tick++); Call(host, "Poll"); };
@@ -102,7 +102,7 @@ namespace NativeWorldTextProbe
             for (int i = 0; !job.Complete && job.Error == null && i < 1000; i++)
             { job.Advance(2, 20); if (job.PendingChunk != null) { cells.AddRange(job.PendingChunk.Cells.Take(job.PendingChunk.Count)); objects.AddRange(job.PendingChunk.Objects.Take(job.PendingChunk.ObjectCount)); job.AcceptChunk(); } }
             Require(job.Complete && cells.Count == width * height && objects.Count == 1 && objects[0].Reliable, "real metadata partial capture completes one reliable object: " + name);
-            if (type == TileID.Containers) Require(objects[0].MissingPayload == "箱内物品未采集", "chest only claims exterior, not entity inventory");
+            Require(string.IsNullOrEmpty(objects[0].MissingPayload) && job.Summary(5).MissingPayloads.Length == 0, "normal building exterior generates no out-of-scope payload warning: " + name);
         }
     }
 }

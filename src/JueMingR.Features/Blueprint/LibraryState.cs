@@ -29,6 +29,15 @@ namespace JueMingR.Features.Blueprint
         public bool TryRename(Guid assetId, string expectedMetadataIdentity, string name) { return Submit(new LibraryCommand { Kind = LibraryCommandKind.Rename, Id = assetId, Identity = expectedMetadataIdentity, Name = name }); }
         public bool TryDelete(Guid assetId, string expectedMetadataIdentity) { return Submit(new LibraryCommand { Kind = LibraryCommandKind.Delete, Id = assetId, Identity = expectedMetadataIdentity }); }
         public void CancelRead(long generation) { worker.CancelRead(generation); }
+        // Projection work has its own bounded latest-request/result mailboxes;
+        // it never owns the accepted capture/save command slot or its token.
+        public bool RequestProjectionOpen(BlueprintProjectionIdentity identity) { return worker.RequestProjectionOpen(identity); }
+        public bool RequestProjectionWindow(BlueprintProjectionIdentity identity, long windowGeneration, BlueprintProjectionBounds localBounds) { return worker.RequestProjectionWindow(identity, windowGeneration, localBounds); }
+        public void CloseProjection() { worker.CloseProjection(); }
+        public bool TryTakeProjectionReceipt(out BlueprintProjectionReceipt value) { return worker.TryTakeProjectionReceipt(out value); }
+#if DEBUG
+        public BlueprintProjectionStatistics DebugProjectionStatistics { get { return worker.ProjectionStatistics; } }
+#endif
         public void Pump()
         {
             LibraryReceipt value;
