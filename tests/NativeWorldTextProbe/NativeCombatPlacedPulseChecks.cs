@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -28,6 +28,10 @@ namespace NativeWorldTextProbe
             for(int x=5;x<115;x++)for(int y=5;y<78;y++)Main.tile[x,y].ClearEverything();return p;
         }
         internal static void Run(object context)
+        {RunCore(context,false);}
+        internal static void RunReflection(object context)
+        {RunCore(context,true);}
+        private static void RunCore(object context,bool reflection)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var assembly=combat.GetType().Assembly;
             var model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostPlacedPulseAttack",true);var terrainType=assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true);
@@ -39,7 +43,7 @@ namespace NativeWorldTextProbe
                 {
                     var screen=point-Main.screenPosition;if(gravity<0)screen.Y=Main.screenHeight-screen.Y;Main.mouseX=(int)screen.X;Main.mouseY=(int)screen.Y;
                     var origin=p.RotatedRelativePoint(p.MountedCenter);p.direction=point.X<origin.X?-1:1;
-                    var velocity=(Vector2)assembly.GetType("JueMingR.TerrariaHost.Combat.HostThornAttack",true).GetMethod("BirthVelocity",Flags).Invoke(null,new object[]{p,origin,point,10f});
+                    var velocity=(Vector2)assembly.GetType("JueMingR.TerrariaHost.Combat.HostThornAttack",true).GetMethod("BirthVelocity",Flags,null,new[]{typeof(Player),typeof(Vector2),typeof(Vector2),typeof(float)},null).Invoke(null,new object[]{p,origin,point,10f});
                     var native=p.GetFarthestSpawnPositionOnLine(origin,velocity.X,velocity.Y);var terrain=Activator.CreateInstance(terrainType,true);Call(terrain,"Reset");
                     var args=new object[]{p,origin,point,10f,terrain,Vector2.Zero};Require((bool)model.GetMethod("Birth",Flags).Invoke(null,args),"finite placement ray is modeled");
                     if(Vector2.DistanceSquared(native,(Vector2)args[5])>=.001f)
@@ -55,6 +59,7 @@ namespace NativeWorldTextProbe
                     Require(Vector2.DistanceSquared(native,(Vector2)args[5])<.001f,"original integer cursor/normal and reverse gravity/blocked placement ray gravity="+gravity+" wall="+wall+" point="+point+" native="+native+" model="+args[5]+" origin="+origin);rays++;
                 }
             }
+            if(reflection){Console.WriteLine("PASS REFLECTION placed-pulse BirthVelocity original native placement rays="+rays);return;}
             foreach(int type in new[]{476,950})
             {
                 var p=Scene(context,type==476?3006:5065,1);int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),new Vector2(900,450),Vector2.Zero,type,0,0,p.whoAmI);var native=Main.projectile[slot];

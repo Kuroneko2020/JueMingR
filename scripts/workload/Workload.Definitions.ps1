@@ -11,11 +11,11 @@ function Get-WorkloadLeafChecks {
     # Hand-opening/navigation owners are consumed by the attack preparation,
     # G11 yoyo and presentation chains, not by NPC motion models. Parent CPU
     # entries still own Navigation/AttackCosts; the children remain specialists.
-    $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
+    $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
     # This asset initializer is also called by the narrow combat fixture.
     # Preserve its worker consumers when adding the explicit combat leaf;
     # the combat scope itself must not inherit the legacy-worker group.
-    $workerAssetConsumers=@('native-CombatInputGeometryCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields')
+    $workerAssetConsumers=@('native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields')
     foreach($scope in (Get-WorkloadNativeScopes).GetEnumerator()){
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
@@ -67,7 +67,7 @@ function Get-WorkloadLeafChecks {
         # Initialize also serves native Journey and graphical footprint/path
         # coexistence. The latter remains a separate graphics-risk entry; the
         # ordinary footprints CPU group cannot claim it executed real Draw.
-        'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual','native-CombatObservationCpu','native-CombatTerrainCpu','native-NpcPlayerPolicy','native-Journey','native-JourneyCpu','native-JourneyPredictionCpu','native-FootprintsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual','native-CombatObservationCpu','native-CombatTerrainCpu','native-NpcPlayerPolicy','native-Journey','native-JourneyCpu','native-JourneyPredictionCpu','native-FootprintsCpu')
         'tests/NativeWorldTextProbe/NativeCombatVisualChecks.cs'=@('native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatAimQualificationChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatAimUiChecks.cs'=@('native-CombatAimUi','native-CombatVisual')
@@ -75,21 +75,24 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatImpactRetirementChecks.cs'=@('native-CombatImpactVisual','native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.Geometry.cs'=@('native-CombatImpactVisual','native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs'=@('native-CombatIntegrationCpu')
-        'tests/NativeWorldTextProbe/NativeCombatBalancedAimChecks.cs'=@('native-CombatIntegrationCpu','native-CombatInputGeometryCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBalancedAimChecks.cs'=@('native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatInputGeometryChecks.cs'=@('native-CombatInputGeometryCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSkyActionChecks.cs'=@('native-CombatSkyActionCpu')
+        'tests/NativeWorldTextProbe/NativeCombatLunarChecks.cs'=@('native-CombatSkyActionCpu')
+        'tests/NativeWorldTextProbe/NativeCombatReflectionSeamsChecks.cs'=@('native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatBalancedPhaseChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatBalancedCandidateChecks.cs'=@('native-CombatIntegrationCpu')
         # Step is a shared native update/purity fixture. Bind every actual
         # caller even when this revision changes only the private ranking tests.
         'tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')
-        'tests/NativeWorldTextProbe/NativeCombatControlPreviewChecks.cs'=@('native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts')
+        'tests/NativeWorldTextProbe/NativeCombatControlPreviewChecks.cs'=@('native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatUsageChecks.cs'=@('native-CombatIntegrationCpu','native-CombatImpactVisual')
         'tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs'=@('native-CombatIntegrationCpu','native-CombatImpactVisual')
         'tests/NativeWorldTextProbe/NativeCombatOriginalRangedChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatCelebrationChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatBasicAimChecks.cs'=@('native-CombatAimCpu','native-CombatIntegrationCpu','native-CombatImpactVisual')
         'tests/NativeWorldTextProbe/NativeCombatMagicStringAimChecks.cs'=@('native-CombatIntegrationCpu')
-        'tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs'=@('native-CombatEffectsCpu','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatBallisticPreparationChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBallisticSceneChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBallisticMotionChecks.cs'=@('native-CombatEffectsCpu')
@@ -128,16 +131,16 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatPiranhaChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBubbleFlailFamilyChecks.cs'=@('native-CombatEffectsCpu','native-CombatControlCpu')
         'tests/NativeWorldTextProbe/NativeCombatHarpyArrowFamilyChecks.cs'=@('native-CombatEffectsCpu')
-        'tests/NativeWorldTextProbe/NativeCombatClingerWallChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatClingerWallChecks.cs'=@('native-CombatEffectsCpu','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatArrowFamilyChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatJoustingLanceChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatWhipStarChecks.cs'=@('native-CombatEffectsCpu')
-        'tests/NativeWorldTextProbe/NativeCombatFixedSkyChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatFixedSkyChecks.cs'=@('native-CombatEffectsCpu','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatSeedlerChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatRainbowChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatImpactBurstChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBallisticSpiritChecks.cs'=@('native-CombatEffectsCpu')
-        'tests/NativeWorldTextProbe/NativeCombatPlacedPulseChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatPlacedPulseChecks.cs'=@('native-CombatEffectsCpu','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatMagnetSphereChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatDirectionalControlChecks.cs'=@('native-CombatControlCpu')
         'tests/NativeWorldTextProbe/NativeCombatCostNavigationChecks.cs'=@('native-CombatControlCpu','native-CombatNavigationCpu','native-CombatIntegrationCpu')
@@ -156,11 +159,11 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Optional.cs'=@('native-CombatCosts','native-CombatAttackCosts')
         # CombatAttackCosts is a specialist selector; its normal workload
         # dispatcher is CombatCosts, which actually calls the new leaf once.
-        'tests/NativeWorldTextProbe/NativeCombatDedupChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupChecks.cs'=@('native-CombatCosts','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatDedupPremiseChecks.cs'=@('native-CombatCosts')
-        'tests/NativeWorldTextProbe/NativeCombatDedupReasons.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupReasons.cs'=@('native-CombatCosts','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatDedupPrefixChecks.cs'=@('native-CombatCosts')
-        'tests/NativeWorldTextProbe/NativeCombatDedupModelChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatDedupModelChecks.cs'=@('native-CombatCosts','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatDedupSourceChecks.cs'=@('native-CombatCosts')
         'tests/NativeWorldTextProbe/NativeCombatPreviewLeaseChecks.cs'=@('native-CombatCosts','native-CombatAttackCosts','native-CombatControlCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Natural.cs'=@('native-CombatCosts','native-CombatAttackCosts')
@@ -168,8 +171,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatObstacleChecks.cs'=@('native-CombatEffectsCpu')
-        'tests/NativeWorldTextProbe/NativeCombatAmmoChecks.cs'=@('native-CombatAimCpu')
-        'tests/NativeWorldTextProbe/NativeCombatSkyChecks.cs'=@('native-CombatAimCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAmmoChecks.cs'=@('native-CombatAimCpu','native-CombatSkyActionCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSkyChecks.cs'=@('native-CombatAimCpu','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatScatterChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatHeldSequenceChecks.cs'=@('native-CombatControlCpu')
         'tests/NativeWorldTextProbe/NativeCombatAttackFailureChecks.cs'=@('native-CombatControlCpu')
@@ -334,6 +337,7 @@ function Get-WorkloadNativeScopes {
         # The narrow bodies use NativeQuickItemChecks' real initialization;
         # bind that fixture owner without executing its feature matrices.
         'CombatInputGeometryCpu'=@('combat-host','quick-items-host');
+        'CombatSkyActionCpu'=@('combat-host','quick-items-host');
         'NpcRollingSelectionNegative'=@('combat-host');
         'NpcBasicMotion'=@('combat-host');
         'NpcPhasedFlight'=@('combat-host'); 'NpcAmbientFlight'=@('combat-host'); 'NpcRelatedMotion'=@('combat-host'); 'NpcTerrainFlight'=@('combat-host'); 'NpcUmbrella'=@('combat-host');

@@ -7,10 +7,11 @@ using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Combat
 {
-    internal static class HostSkyAttack
+    internal static partial class HostSkyAttack
     {
         internal static bool Handles(int type){return type==3029 || type==4381 || type==2750 || type==65 || type==3065 || type==3570;}
         internal static bool RawCursor(int type){return type==3029 || type==4381 || type==3065 || type==3570;}
+        internal static bool DirectionDependent(int type){return type==4381 || type==2750 || type==3065 || type==3570;}
         internal static AttackContact Solve(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 mounted,int age,PredictionTerrain terrain,bool beforeNpc,HostAttackObstacles obstacles,int delay=0)
         {
             if(item.type==3029)return HostNativeArrowBirthAttack.Solve(player,ammo,timeline,mounted,new HostAttackClock(timeline,beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld,delay),terrain,obstacles);
@@ -27,6 +28,7 @@ namespace JueMingR.TerrariaHost.Combat
                 var direct=FixedSky(player,item,mounted,sample,motion,timeline,age,terrain,receive,obstacles,delay);
                 if(direct!=null)return direct;
             }
+            if(item.type!=3065)return Search(player,item,mounted,sample,motion,timeline,age,terrain,receive,obstacles,delay);
             // Random birth X, spread, count and type/scale cannot be known
             // without consuming game RNG. One middle member is a representative
             // trajectory; no native random stream or ContentSamples is changed.
@@ -44,6 +46,11 @@ namespace JueMingR.TerrariaHost.Combat
                     for(int k=1;k<=steps;k++)motion.Advance(ref x,ref y,ref vx,ref vy,k);
                     aim.X+=b.CenterX-x;Launch(player,item.type,mounted,aim,speed,out birth,out velocity);
                 }
+                // Only FixedSky's difficult gate fallback reaches this old
+                // proposal generator. Keep its existing finite proposals and
+                // validate the exact encoded cursor; the normal A=0 path above
+                // remains first and the allowance is never restarted.
+                aim=Quantize(player,item.type,aim);Launch(player,item.type,mounted,aim,speed,out birth,out velocity);
                 float gate=aim.Y;
                 if(item.type==3065)gate=Math.Min(gate,player.Center.Y-200);
                 if(item.type==65)
@@ -106,18 +113,8 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private static void Launch(Player p,int type,Vector2 mounted,Vector2 aim,float speed,out Vector2 birth,out Vector2 velocity)
         {
-            float x;
-            if(type==3065)x=p.Center.X-200*p.direction+(mounted.X-p.MountedCenter.X);
-            else
-            {
-                float shift=type==4381?30:100;
-                if(type==65)shift=aim.X<p.Left.X?100:-100;
-                else shift*=-p.direction;
-                x=aim.X+p.width/2+shift;
-                if(type==3029 || type==4381)x=(x*10+p.Center.X)/11;
-                else if(type!=65)x=(x+p.Center.X)/2;
-            }
-            birth=new Vector2(x,mounted.Y-600-(type==4381?75:0));
+            var facts=new LaunchFacts(p,type,mounted,type==65 && aim.X<p.Left.X);
+            birth=new Vector2(facts.A*aim.X+facts.B,facts.Y);
             velocity=aim-birth;if(type!=65)velocity.Y=Math.Max(20,Math.Abs(velocity.Y));
             velocity=velocity.SafeNormalize(Vector2.UnitY)*speed;if(type==4381)velocity.X*=.675f;
         }

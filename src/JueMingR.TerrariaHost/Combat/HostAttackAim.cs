@@ -123,6 +123,8 @@ namespace JueMingR.TerrariaHost.Combat
         {
             var player=combat.Player;var item=player.HeldItem;
             var captured=AttackAmmoSnapshot.Capture(player,item);Projectile body;AttackMotion motion;int finiteRange=16;
+            if(!futureLaunch && captured!=null && HostSkyAttack.Handles(item.type) && item.type!=3029 && CombatSelection.Valid(target,observation.Session))
+                return HostSkyAttack.PreferredRange(player,item,captured,Main.npc[target.Slot]);
             if((BalancedHeld(item) || BalancedHand(player,item,captured)) && CombatSelection.Valid(target,observation.Session))
                 return BalancedPreferred(player,item,captured,Main.npc[target.Slot],futureLaunch);
             // The sealed primary whip ends at its native animation clock.
@@ -419,6 +421,10 @@ namespace JueMingR.TerrariaHost.Combat
         // not permission for other null-ammo ordinary cursor inputs.
         private bool ValidCore(bool checkAmmo,bool pureMeleeFamily)
         {
+            return (!HostSkyAttack.DirectionDependent(type) || combat.Player==null || combat.Player.direction==preparedDirection) && ValidOrdinaryFacts(checkAmmo,pureMeleeFamily);
+        }
+        private bool ValidOrdinaryFacts(bool checkAmmo,bool pureMeleeFamily)
+        {
             var player=combat.Player;
             if(weapon==null || !Permission || session!=observation.Session || Main.GameUpdateCount<prepared || Main.GameUpdateCount-prepared>1 ||
                 player.selectedItem!=slot || !ReferenceEquals(player.HeldItem,weapon) || weapon.type!=type || weapon.prefix!=prefix ||
@@ -468,6 +474,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Their Shoot does not consume its later AI direction packet.
             if(item.type==5462 || item.type==6153)return null;
             HostAttackInput input;
+            RefreshSkyFacing(player,item);
             if(!TryOrdinaryInput(player,item,HostAttackPhase.BeforeNpc,out input))return null;
             // One prepared ordinary attack is a capability, not a reusable
             // cursor value. Native consumption retires it even if a later

@@ -100,13 +100,14 @@ namespace NativeWorldTextProbe
             }}finally{Main.windPhysics=savedWind;}
             Console.WriteLine("PASS Hellwing representative directional clock contact: cases="+cases+" native first-Damage exact; random births remain Representative");
         }
+        internal static void RunReflection(object context){PewmaticContact(context);}
         private static void PewmaticContact(object context)
         {
             var combat=Get(context,"Combat");var models=combat.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels",true);bool savedWind=Main.windPhysics;int cases=0;
             try{foreach(int direction in new[]{-1,1})foreach(int distance in new[]{160,450})foreach(int vertical in new[]{-80,0,80})
             {
                 var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),5117,0,0);Main.windPhysics=false;for(int tx=5;tx<115;tx++)Main.tile[tx,43].ClearEverything();
-                var origin=(Vector2)models.GetMethod("LaunchOrigin",Flags).Invoke(null,new object[]{p,p.HeldItem});Require(origin.Y==p.position.Y+p.height/3,"Pewmatic representative keeps native modified birth origin");
+                var origin=(Vector2)models.GetMethod("LaunchOrigin",Flags,null,new[]{typeof(Player),typeof(Item)},null).Invoke(null,new object[]{p,p.HeldItem});Require(origin.Y==p.position.Y+p.height/3,"Pewmatic representative keeps native modified birth origin");
                 var n=Main.npc[2];n.SetDefaults(3);n.active=true;n.whoAmI=2;n.life=n.lifeMax=10000;n.position=new Vector2(950+direction*distance,350+vertical);n.netOffset=Vector2.Zero;Array.Clear(n.immune,0,n.immune.Length);
                 var key=new NpcIdentity(1,new object(),2,1,n.type,n.netID);var state=new NpcMotionState{Identity=key,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,CanReceive=true};var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();var timeline=new NpcTrajectory(key,0,1,PredictionAssumption.None,PredictionStop.None,points,points.Length,PredictionStrategy.RollingConditional);
                 var args=new object[]{968,12f,5117,default(AttackMotion)};Require((bool)models.GetMethod("TryResolved",Flags).Invoke(null,args),"Pewmatic native motion resolves explicit delayed horizontal damping");var motion=(AttackMotion)args[3];
