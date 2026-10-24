@@ -3,6 +3,7 @@ using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Combat
 {
@@ -13,6 +14,7 @@ namespace JueMingR.TerrariaHost.Combat
         // the body. The trigger uses NPC.Center, not the damage rectangle.
         private static AttackContact LunarReplay(Vector2 aim,Vector2 birth,Vector2 velocity,AttackMotion motion,NpcTrajectory timeline,int age,PredictionTerrain terrain,HostAttackObstacles obstacles,int delay)
         {
+            Projectile sample;if(!ContentSamples.ProjectilesByType.TryGetValue(645,out sample))return null;
             float x=birth.X,y=birth.Y,vx=velocity.X,vy=velocity.Y;motion.Launch(ref vx,ref vy);
             bool flagged=false,expanded=false,collides=false;int animation=0;
             int limit=Math.Min(motion.Lifetime,motion.SubupdatesForOuters(timeline.Count-age-1));
@@ -30,6 +32,11 @@ namespace JueMingR.TerrariaHost.Combat
                 {
                     expanded=true;vx=vy=0;collides=false;width=140;
                     if(++animation>=life)return null;
+                    // Native AI expands before wind/liquid detection. A zero
+                    // AI velocity does not authorize wet motion: Update had
+                    // already captured wetVelocity before running that AI.
+                    bool wet;byte kind;
+                    if(!HostProjectileEnvironment.Dry(sample,terrain,x,y,vx) || !terrain.ProjectileWet(x,y,width,width,out wet,out kind) || wet)return null;
                 }
                 else
                 {
@@ -37,6 +44,9 @@ namespace JueMingR.TerrariaHost.Combat
                     int count=outer==1 && motion.FirstUpdates>0?motion.FirstUpdates:motion.Updates;
                     if(sub==count-2 && obstacles.LunarNear(tick,x,y,terrain))flagged=true;
                     float nx=x,ny=y;motion.Advance(ref nx,ref ny,ref vx,ref vy,k);
+                    // Keep the old complete environment qualification, not
+                    // merely a water test; unknown cells and wind also retire.
+                    if(!HostProjectileEnvironment.Dry(sample,terrain,x,y,vx))return null;
                     if(collides)
                     {
                         float rx,ry;if(!terrain.ProjectileCollision(x,y,vx,vy,10,10,out rx,out ry))return null;
