@@ -32,8 +32,9 @@ namespace JueMingR.Features.Combat
         {
             public readonly float X,Y;
             public readonly int Tick;
+            public readonly bool IsCenter;
             internal readonly double Error;
-            internal Direction(double x,double y,int tick,double error){X=(float)x;Y=(float)y;Tick=tick;Error=error;}
+            internal Direction(double x,double y,int tick,double error,bool isCenter=false){X=(float)x;Y=(float)y;Tick=tick;Error=error;IsCenter=isCenter;}
         }
         // A preparation owns this dry response. Extension only appends whole
         // subupdates; it carries no trajectory, scene or execution permission.
