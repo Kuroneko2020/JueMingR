@@ -18,6 +18,13 @@ namespace NativeWorldTextProbe
     internal static class NativeBlueprintLibraryUiChecks
     {
         private const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+        internal static void InputContract(object context)
+        {
+            var host = Get(context, "Blueprint"); var shell = Get(context, "Shell"); var ui = Get(shell, "BlueprintUi");
+            var library = (LibraryState)Get(host, "Library"); var snapshot = Get(library, "snapshot");
+            try { EditGeometry(ui, host.GetType().Assembly); RetiredCreate(ui, host, library); HiddenKeyboardTail(ui, Get(shell, "State")); }
+            finally { Set(library, "snapshot", snapshot); }
+        }
         internal static void Run(object context)
         {
             var host = Get(context, "Blueprint"); var assembly = host.GetType().Assembly;
@@ -48,6 +55,9 @@ namespace NativeWorldTextProbe
             Call(shellRenderer, "RefreshResources"); Call(shellRenderer, "Prepare", state, 960f, 640f, 1f);
             var uiType = assembly.GetType("JueMingR.TerrariaHost.F5.BlueprintLibraryPresentation", true);
             var ui = Activator.CreateInstance(uiType, F, null, new object[] { host, state, null }, null);
+            // A real Capture Back closes through Host.Shell, whose close owns
+            // Suspend. Bind this isolated presentation to that existing shell.
+            var boundUi = Get(Get(context, "Shell"), "BlueprintUi"); Set(Get(context, "Shell"), "BlueprintUi", ui);
             var library = (LibraryState)Get(host, "Library"); var savedSnapshot = Get(library, "snapshot");
             try
             {
@@ -72,7 +82,7 @@ namespace NativeWorldTextProbe
                 RetiredCreate(ui, host, library);
                 Call(ui, "CancelEdit"); Require(GetOptional(ui, "Editor") == null, "explicit cancel releases this editor only");
             }
-            finally { Set(library, "snapshot", savedSnapshot); ((IDisposable)ui).Dispose(); }
+            finally { Set(library, "snapshot", savedSnapshot); ((IDisposable)ui).Dispose(); Set(Get(context, "Shell"), "BlueprintUi", boundUi); }
             OpenAction(context);
         }
         private static void HiddenKeyboardTail(object ui, object state)
@@ -354,7 +364,7 @@ namespace NativeWorldTextProbe
                     frame(new[] { Keys.Escape });
                     Require((bool)Get(ui, "Visible"), "held cancellation Escape cannot also navigate back");
                     frame(Array.Empty<Keys>()); frame(new[] { Keys.Escape });
-                    Require(!(bool)Get(ui, "Submenu") && (bool)Get(state, "Visible"), "next independent Escape returns to the F5 blueprint menu");
+                    Require(!(bool)Get(ui, "Submenu") && !(bool)Get(state, "Visible"), "next independent Capture Escape closes F5 to the world");
                     Require(flow.Token.OperationId == token.OperationId && flow.ContentHandle.IsEmpty && flow.Summary == null && flow.DraftName == "失败时保留的名称" && selection.Revision == selectionRevision && library.AcceptedCommandId == acceptedCommand,
                         "Escape navigation cannot retry old ID, enqueue cleanup or consume the retained selection");
                     Require(library.Snapshot.LastReceipt.IsProtected && library.Snapshot.LastReceipt.OperationRetired, "Escape does not rewrite the protected retired receipt");

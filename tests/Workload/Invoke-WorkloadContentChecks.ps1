@@ -29,6 +29,17 @@ try{
         $ownerOnly=[pscustomobject]@{inputs=@('scripts/workload/Workload.NativeContent.ps1:B','native-content/file/Fonts/Mouse_Text.xnb:A')}
         Assert-Content ((Get-WorkloadCheckFingerprint $before $name) -cne (Get-WorkloadCheckFingerprint $ownerOnly $name)) ('validation owner alone remains bound '+$scope)
     }
+    $blueprintPlan=@(Get-WorkloadPlan $fixture 'checks' 'architecture.exe' @() @('check:native-BlueprintInput'))
+    Assert-Content ($blueprintPlan.Count -eq 1 -and $blueprintPlan[0].arguments[-1] -ceq 'BlueprintInput') 'single registered Blueprint input scope does not expand to either broad Blueprint group'
+    $scopeValidation=@((Get-Command (Join-Path $repository 'scripts/test-world-object-text.ps1')).Parameters['Scope'].Attributes | Where-Object {$_ -is [Management.Automation.ValidateSetAttribute]})
+    Assert-Content ($scopeValidation.Count -eq 1 -and $scopeValidation[0].ValidValues -contains 'BlueprintInput') 'specialist entry admits the same Blueprint input scope'
+    foreach($path in @('tests/NativeWorldTextProbe/NativeBlueprintInputContinuityChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintInputRecoveryChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintLibraryUiChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintLibraryVisualChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintPlacementChecks.cs','scripts/workload/Workload.NativeContent.ps1')){
+        Assert-Content (@(Get-WorkloadPathChecks $path) -contains 'native-BlueprintInput') ('actual Blueprint input leaf remains bound '+$path)
+    }
+    foreach($path in @('src/JueMingR.TerrariaHost/F5/BlueprintLibraryPresentation.cs','src/JueMingR.TerrariaHost/Input/TextEditInput.cs','src/JueMingR.TerrariaHost/Input/HostInputState.cs','src/JueMingR.Infrastructure/Blueprint/FileBlueprintLibrary.cs','src/JueMingR.TerrariaHost/F5/F5Shell.cs')){
+        $beforeInput=[pscustomobject]@{inputs=@($path+':A')};$afterInput=[pscustomobject]@{inputs=@($path+':B')}
+        Assert-Content ((Get-WorkloadCheckFingerprint $beforeInput 'native-BlueprintInput') -cne (Get-WorkloadCheckFingerprint $afterInput 'native-BlueprintInput')) ('actual shared production dependency bound '+$path)
+    }
     foreach($scope in @('NpcInvasionFlightCpu','NpcProduction','NpcPlantera','NpcEyeBoss','CombatEffectsCpu')){
         $plan=@(Get-WorkloadPlan $fixture 'checks' 'architecture.exe' @() @('check:native-'+$scope))
         Assert-Content ($plan.Count -eq 1 -and $plan[0].arguments[1] -ceq '--cpu') ('CPU argv unchanged '+$scope)

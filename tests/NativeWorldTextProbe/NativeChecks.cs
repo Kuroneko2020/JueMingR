@@ -15,6 +15,11 @@ namespace NativeWorldTextProbe
         internal static int Run(string content, string output, string scope)
         {
             if (scope == "BlueprintOriginal") return NativeViewOriginalChecks.Run(content, output, blueprint: true);
+            if (scope == "BlueprintInput")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context => { NativeBlueprintInputRecoveryChecks.Cpu(context); using (var graphics = new ProbeGraphics(content)) NativeBlueprintInputContinuityChecks.Run(context, graphics); }, processing: true, shortFeedback: true); return 0;
+            }
             if (scope == "BlueprintVisual")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);

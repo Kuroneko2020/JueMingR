@@ -195,7 +195,7 @@ try {
         if ($expected -contains 'shared-host' -or $expected -contains 'storage-host' -or $expected -contains 'tools-host') { $expected += 'combat-host' }
         if ($expected -contains 'shared-host' -or $expected -contains 'storage-host') {
             $expected += 'legacy-worker'
-            $expected += @('notes-host','records','style-host','world-host','hotkeys','preferences','information','guidance','entity','items','biomes','pages-host','movement-host','view-host','journey-host')
+            $expected += @('notes-host','records','style-host','world-host','hotkeys','preferences','information','guidance','entity','items','biomes','pages-host','movement-host','view-host','journey-host','blueprint-host')
         }
         if ($expected -contains 'fishing-host') { $expected += 'information' }
         if ($expected -contains 'quick-items-host' -or $expected -contains 'notes-host') { $expected += 'hotkeys' }

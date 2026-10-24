@@ -179,7 +179,7 @@ namespace JueMingR.TerrariaHost.F5
             PollReceipts();
             bool ownGeometry = Same(view, shell.Layout.Viewport.Offset(shell.X, shell.Y)) && matrix == Main.UIScaleMatrix &&
                 scroll == shell.Scroll && layoutGeneration == shell.Layout.Generation;
-            bool on = active && Visible && ready && geometryCurrent && ownGeometry && !dirty && !blocked;
+            bool pointerOn = active && Visible && ready && geometryCurrent && ownGeometry && !dirty && !blocked;
             if (!Visible)
             {
                 // A hidden editor still needs real focused samples to retire
@@ -189,11 +189,14 @@ namespace JueMingR.TerrariaHost.F5
             }
             focusSuspended = false;
             bool wasEditing = editor != null;
-            TextInput.AfterSample(on && Editable, null, keys, focused);
+            // Scrolling/projection can retire pointer geometry before Prepare.
+            // The same editable field still owns text until a real input exit.
+            bool textActive = active && Visible && Editable && !blocked;
+            TextInput.AfterSample(textActive, null, keys, focused);
             bool inside = hitClip.Contains(point.X, point.Y);
-            OwnsPointer = on && (inside || leftTail || rightTail);
-            hovered = on && inside ? Hit(point.X - view.X, point.Y - view.Y + shell.Scroll) : null;
-            if (!on || !focused) { armed = null; if (deleteConfirm.HasValue) { deleteConfirm = null; dirty = true; } lastClickName = false; }
+            OwnsPointer = pointerOn && (inside || leftTail || rightTail);
+            hovered = pointerOn && inside ? Hit(point.X - view.X, point.Y - view.Y + shell.Scroll) : null;
+            if (!pointerOn || !focused) { armed = null; if (deleteConfirm.HasValue) { deleteConfirm = null; dirty = true; } lastClickName = false; }
             else
             {
                 if (left && !previousLeft && (!inside || hovered == null || hovered.Command != BlueprintLibraryCommand.Name)) lastClickName = false;
@@ -293,6 +296,9 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void Back()
         {
+            // Close owns Suspend and its accepted-write protection. Inspect the
+            // departing mode before that cleanup turns it into None.
+            if (mode == View.Capture) { host.Shell.CloseAndSubmitPosition(); return; }
             Suspend(); shell.ScrollTo(0);
         }
         private LibraryEntry Find(Guid id)
@@ -399,8 +405,9 @@ namespace JueMingR.TerrariaHost.F5
             if (editor != null && editRect.Width > 0 && (shape || editRevision != editor.Revision || caretRevision != editor.CaretRevision || composition != TextInput.Composition))
             {
                 // Reserve the caret's own pixel, including at the end of a full
-                // field. Composition/caret changes update this view without a
-                // layout rebuild or revoking the text lease.
+                // field. Caret changes only update this projection; Capture
+                // composition also rebuilds Save eligibility above. Neither
+                // projection change revokes the text lease.
                 editView.Prepare(editor, TextInput.Composition, editRect.Width - 11, Measure);
                 editRevision = editor.Revision; caretRevision = editor.CaretRevision; composition = TextInput.Composition;
             }
@@ -705,7 +712,9 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (!Visible || !ready) return;
             renderer.Draw(parts, view, matrix, shell.Scroll, hovered, armed, previews, editView,
-                !dirty && TextInput.Owned && TextInput.OwnsTextToken && !TextInput.OtherTextOwner);
+                !dirty && Editable && host.Input.CanPrepareText && TextInput.HasCurrentEditorLease && !TextInput.OtherTextOwner &&
+                Same(view, shell.Layout.Viewport.Offset(shell.X, shell.Y)) && matrix == Main.UIScaleMatrix &&
+                scroll == shell.Scroll && layoutGeneration == shell.Layout.Generation);
             // Retain the final caller scissor, including its fractional-scale
             // rounding. A changed visible region retires any earlier press.
             if (!Same(hitClip, renderer.LastClip)) { hitClip = renderer.LastClip; projection++; armed = null; }

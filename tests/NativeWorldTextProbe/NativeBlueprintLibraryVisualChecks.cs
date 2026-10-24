@@ -14,6 +14,8 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeBlueprintLibraryVisualChecks
     {
+        internal static void DrawInput(object ui, ProbeGraphics graphics)
+        { graphics.Render(() => Call(ui, "Draw"), Main.UIScaleMatrix); }
         internal static void Run(object context, ProbeGraphics graphics, string output)
         {
             var host = Get(context, "Blueprint"); var library = (LibraryState)Get(host, "Library");
@@ -61,16 +63,16 @@ namespace NativeWorldTextProbe
                 Set(textInput, "Composition", "pinyin"); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, 900));
                 Require(editor.Revision == revision && (long)Get(ui, "LayoutBuilds") == builds && firstComposition != (string)Get(Get(ui, "editView"), "Text") && ((string)Get(Get(ui, "editView"), "Text")).EndsWith("pinyin"),
                     "actual production Prepare refreshes changed composition without committed revision/layout changes");
-                // Simulate only the existing lease identity. This exercises the
-                // actual Draw anchor consumer without enabling an OS IME service.
+                // The actual consumer requires the current editor's real lease;
+                // only the OS IME service is substituted in this geometry scope.
                 object priorTextOwner = Main.CurrentInputTextTakerOverride;
-                Set(textInput, "leased", true); Main.CurrentInputTextTakerOverride = Get(textInput, "owner");
+                using (NativeBlueprintInputContinuityChecks.Lease(ui))
                 try
                 {
                     graphics.Image(Path.Combine(output, "blueprint-library-name-" + suffix + ".png"), draw, Main.UIScaleMatrix, 1280, 900);
                     Require(GetOptional(Get(ui, "renderer"), "LastImeAnchor") != null, "actual visible editing renderer submits this frame's candidate anchor at " + suffix);
                 }
-                finally { Set(textInput, "leased", false); Main.CurrentInputTextTakerOverride = priorTextOwner; Set(textInput, "Composition", ""); }
+                finally { Call(textInput, "Release", true); Main.CurrentInputTextTakerOverride = priorTextOwner; }
                 Call(ui, "CancelEdit"); Call(shell, "CloseAndSubmitPosition");
             }
             Main.UIScale = 1f; PlayerInput.CacheOriginalScreenDimensions();
@@ -128,14 +130,15 @@ namespace NativeWorldTextProbe
                 Require((long)Get(cache, "Uploads") == uploads && library.AcceptedCommandId == command,
                     "name/caret/scroll changes do not queue preview reads or repeat uploads");
                 editor.MoveTo(editor.Text.Length); Call(state, "ScrollTo", 0); prepare();
-                object oldOwner = Main.CurrentInputTextTakerOverride; Set(input, "leased", true); Main.CurrentInputTextTakerOverride = Get(input, "owner");
+                object oldOwner = Main.CurrentInputTextTakerOverride;
+                using (NativeBlueprintInputContinuityChecks.Lease(ui))
                 try
                 {
                     Action draw = () => { Call(renderer, "Draw", state, Main.UIScaleMatrix, false, false); Call(ui, "Draw"); };
                     graphics.Image(Path.Combine(output, "blueprint-capture-workspace-" + dimensions[1].ToString(System.Globalization.CultureInfo.InvariantCulture) + ".png"), draw, Main.UIScaleMatrix, 1280, (int)dimensions[0]);
                     Require(GetOptional(Get(ui, "renderer"), "LastImeAnchor") != null, "actual capture Draw publishes the candidate anchor from its full field");
                 }
-                finally { Set(input, "leased", false); Main.CurrentInputTextTakerOverride = oldOwner; Set(input, "Composition", ""); Call(ui, "CancelEdit"); }
+                finally { Call(input, "Release", true); Main.CurrentInputTextTakerOverride = oldOwner; Call(ui, "CancelEdit"); }
             }
             // No edit is needed: execute the real enabled action with the
             // generated default name and let Host own the accepted Create.
