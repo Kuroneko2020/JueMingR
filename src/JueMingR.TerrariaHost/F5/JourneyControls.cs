@@ -23,7 +23,7 @@ namespace JueMingR.TerrariaHost.F5
     {
         internal const string ActionId = "journey.toggle";
         private static readonly F5RowDescription description =
-            new F5RowDescription(ActionId, "单人临时使用原版旅行菜单");
+            new F5RowDescription(ActionId, "单人临时使用原版旅行菜单", F5NameStyle.Hidden);
         private readonly IJourneyControls owner;
         internal JourneyControls(IJourneyControls owner) { this.owner = owner; }
         internal static bool Owns(F5Command command)

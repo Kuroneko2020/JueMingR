@@ -58,11 +58,23 @@ namespace JueMingR.Platform.Hotkeys
         {
             if (frozen || !HotkeyAction.ValidId(prefix) || !prefix.EndsWith(".", StringComparison.Ordinal) || prefix.Length > 64)
                 throw new InvalidOperationException("Invalid or late dynamic owner.");
+            return Reserve(prefix, false);
+        }
+        // A hidden action may share its namespace with ordinary core actions.
+        // Reserve its exact ID without granting ownership of any sibling/child ID.
+        public DynamicHotkeyOwner CreateDynamicActionOwner(string id)
+        {
+            if (frozen || !HotkeyAction.ValidId(id) || id.EndsWith(".", StringComparison.Ordinal))
+                throw new InvalidOperationException("Invalid or late dynamic action owner.");
+            return Reserve(id, true);
+        }
+        private DynamicHotkeyOwner Reserve(string scope, bool exact)
+        {
+            var result = new DynamicHotkeyOwner(this, scope, exact);
             foreach (var owner in owners)
-                if (owner.Prefix.StartsWith(prefix, StringComparison.Ordinal) || prefix.StartsWith(owner.Prefix, StringComparison.Ordinal))
-                    throw new InvalidOperationException("Overlapping dynamic owners.");
-            foreach (var action in core) if (action.Id.StartsWith(prefix, StringComparison.Ordinal)) throw new InvalidOperationException("Core namespace already used.");
-            var result = new DynamicHotkeyOwner(this, prefix); owners.Add(result); return result;
+                if (owner.Overlaps(result)) throw new InvalidOperationException("Overlapping dynamic owners.");
+            foreach (var action in core) if (result.Owns(action.Id)) throw new InvalidOperationException("Core namespace already used.");
+            owners.Add(result); return result;
         }
         internal bool Replace(DynamicHotkeyOwner owner, IEnumerable<HotkeyAction> values, out string reason)
         {
@@ -95,10 +107,18 @@ namespace JueMingR.Platform.Hotkeys
     public sealed class DynamicHotkeyOwner
     {
         internal readonly HotkeyRegistry Registry;
-        internal readonly string Prefix;
+        private readonly string scope;
+        private readonly bool exact;
         internal IReadOnlyList<HotkeyAction> Current = new HotkeyAction[0];
-        internal DynamicHotkeyOwner(HotkeyRegistry registry, string prefix) { Registry = registry; Prefix = prefix; }
-        public bool Owns(string id) { return id != null && id.Length > Prefix.Length && id.StartsWith(Prefix, StringComparison.Ordinal); }
+        internal DynamicHotkeyOwner(HotkeyRegistry registry, string scope, bool exact) { Registry = registry; this.scope = scope; this.exact = exact; }
+        public bool Owns(string id)
+        { return exact ? String.Equals(id, scope, StringComparison.Ordinal) : id != null && id.Length > scope.Length && id.StartsWith(scope, StringComparison.Ordinal); }
+        internal bool Overlaps(DynamicHotkeyOwner other)
+        {
+            if (exact) return other.Owns(scope);
+            if (other.exact) return Owns(other.scope);
+            return scope.StartsWith(other.scope, StringComparison.Ordinal) || other.scope.StartsWith(scope, StringComparison.Ordinal);
+        }
         public bool TryReplace(IEnumerable<HotkeyAction> actions, out string reason)
         { if (actions == null) throw new ArgumentNullException(nameof(actions)); return Registry.Replace(this, actions, out reason); }
     }

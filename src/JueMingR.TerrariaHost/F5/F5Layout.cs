@@ -145,7 +145,6 @@ namespace JueMingR.TerrariaHost.F5
                 elements.Clear();float y=start;
                 GuidanceControls.AddRows(elements,TextSize,ref y,1,hiddenVisible);
                 JourneyControls.AddRows(elements,TextSize,ref y,hiddenVisible);
-                CombatObservationControls.AddHiddenPathRow(elements,TextSize,ref y,hiddenVisible);
                 ContentHeight=Math.Max(0,y-6);miscFooterStart=start;footerHiddenVisible=hiddenVisible;builtHiddenVisible=hiddenVisible;Generation++;
             }
         }
@@ -161,8 +160,10 @@ namespace JueMingR.TerrariaHost.F5
             return new F5Size(580, Math.Min(740, height / scale - 24));
         }
 
+        // Qualification changes affect both pages that own hidden names. A
+        // stable qualification remains a cache hit even while the pointer moves.
         internal bool Matches(float width, float height, float scale, int currentPage)
-        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 6 || builtBlueprintActive == blueprintActive && builtBlueprintOperation == blueprintOperation && builtBlueprintAttached == BlueprintAttached && builtBlueprintLibraryVisible == blueprintLibraryVisible) && (currentPage != 11 || builtMovementMode == movementMode && builtMovementConfiguration == movementConfiguration) && (currentPage != 1 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
+        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 6 || builtBlueprintActive == blueprintActive && builtBlueprintOperation == blueprintOperation && builtBlueprintAttached == BlueprintAttached && builtBlueprintLibraryVisible == blueprintLibraryVisible) && (currentPage != 11 || builtMovementMode == movementMode && builtMovementConfiguration == movementConfiguration) && (currentPage != 1 && currentPage != 8 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
 
         internal void Ensure(float width, float height, float scale, int currentPage,
             object font, Func<string, F5Size> measureText)
@@ -213,9 +214,13 @@ namespace JueMingR.TerrariaHost.F5
             else if (currentPage == 6 && BlueprintAttached && !blueprintLibraryVisible) BlueprintControls.AddRows(elements, TextSize, ref y, blueprintActive, blueprintOperation);
             else if (currentPage == 7 && !FishingAttached) BuildFishing(ref y);
             else if (currentPage == 8)
-            {CombatObservationControls.AddRows(elements,TextSize,observation,ref y);CombatControls.AddRows(elements,TextSize,ref y,0,6);GuidanceControls.AddRows(elements,TextSize,ref y,8);CombatControls.AddRows(elements,TextSize,ref y,6,2);}
+            {
+                CombatObservationControls.AddRows(elements,TextSize,observation,ref y);
+                CombatObservationControls.AddHiddenPathRow(elements,TextSize,ref y,hiddenVisible);
+                CombatControls.AddRows(elements,TextSize,ref y,0,6);GuidanceControls.AddRows(elements,TextSize,ref y,8);CombatControls.AddRows(elements,TextSize,ref y,6,2);
+            }
             else if (currentPage == 1 || currentPage == 2) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage, hiddenVisible);
-            if (currentPage == 1) {JourneyControls.AddRows(elements, TextSize, ref y, hiddenVisible);CombatObservationControls.AddHiddenPathRow(elements, TextSize, ref y, hiddenVisible);}
+            if (currentPage == 1) JourneyControls.AddRows(elements, TextSize, ref y, hiddenVisible);
             if (currentPage == 2) DeathControls.AddRows(elements, DynamicTextSize, ref y, deathCount, worldDays);
             if (currentPage == 2) ViewControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) MapControls.AddRows(elements, TextSize, ref y);

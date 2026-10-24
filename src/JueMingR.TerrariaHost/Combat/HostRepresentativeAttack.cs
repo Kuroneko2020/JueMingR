@@ -29,7 +29,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal static HostAttackSolution Prepare(Player player,AttackAmmoSnapshot ammo,NpcTrajectory path,Vector2 origin,HostAttackClock clock,PredictionTerrain terrain)
         {
-            return Prepare(player,ammo,path,origin,clock,terrain,aim=>
+            var solution=Prepare(player,ammo,path,origin,clock,terrain,aim=>
             {
                 var p=HostNoteAttack.Copy(ContentSamples.ProjectilesByType[ammo.Projectile]);p.active=true;p.owner=player.whoAmI;p.Center=origin;
                 p.velocity=HostThornAttack.BirthVelocity(player,origin,aim,ammo.Speed);p.velocity=HostSpecialArrowAttack.BirthVelocity(ammo,p.velocity,player.direction);p.damage=ammo.Damage;p.knockBack=ammo.NativeKnockBack;
@@ -37,6 +37,15 @@ namespace JueMingR.TerrariaHost.Combat
                 if(p.aiStyle==1)while(p.velocity.X>=16 || p.velocity.X<=-16 || p.velocity.Y>=16 || p.velocity.Y< -16)p.velocity*=.97f;
                 return p;
             });
+            if(!solution.HasPoint)return solution;
+            // Dependence comes from the actual origin/quantized-cursor/fan
+            // branches, not a weapon whitelist at the input consumer. Recheck
+            // the selected input (which need not be the final replay attempted).
+            bool originDirection,velocityDirection,fanDirection;
+            HostAttackModels.LaunchOrigin(player,player.HeldItem,out originDirection);
+            var raw=HostThornAttack.BirthVelocity(player,origin,solution.Point,ammo.Speed,out velocityDirection);
+            HostSpecialArrowAttack.BirthVelocity(ammo,raw,player.direction,out fanDirection);
+            return new HostAttackSolution(solution.Timeline,solution.Point,solution.HasPoint,solution.Reachability,solution.ReceiveTick,solution.Contact,!originDirection && !velocityDirection && !fanDirection,AttackPointSemantics.Direction);
         }
         internal static HostAttackSolution Prepare(Player player,AttackAmmoSnapshot ammo,NpcTrajectory path,Vector2 origin,HostAttackClock clock,PredictionTerrain terrain,Func<Vector2,Projectile> birth,int fireDelay=0)
         {
@@ -168,7 +177,7 @@ namespace JueMingR.TerrariaHost.Combat
                     PredictionPlayerMotion pose;if(!prefix.TryRead(step+phase,out pose))break;HostAttackPlayerFrame.ApplyPose(body,pose);body.itemAnimationMax=maximum;body.itemAnimation=Math.Max(0,animation-step-phase);body.direction=parent.velocity.X<0?-1:1;
                     parent.Center=body.RotatedRelativePoint(body.MountedCenter);float offset=HostMeleeAttack.SpearOffset(parent,body);parent.Center+=parent.velocity*(offset+1);HostMeleeAttack.SpearBoxes(parent,body,boxes);
                     int tick=clock.FirstTick+step;var b=path[tick].ProjectileReceiveBounds;var target=new Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height);
-                    if(path[tick].CanReceive && boxes.Exists(r=>r.Intersects(target)) && HostMeleeAttack.OwnerAllows(body,parent,b,false,terrain))return new HostAttackSolution(path,direct,true,HostAttackReachability.Reachable,tick);
+                    if(path[tick].CanReceive && boxes.Exists(r=>r.Intersects(target)) && HostMeleeAttack.OwnerAllows(body,parent,b,false,terrain))return new HostAttackSolution(path,direct,true,HostAttackReachability.Reachable,tick,pointSemantics:AttackPointSemantics.Direction);
                 }
             }
             if(clock.FirstTick+emission>=path.Count)return new HostAttackSolution(path,direct,false,HostAttackReachability.Unknown);
@@ -195,10 +204,10 @@ namespace JueMingR.TerrariaHost.Combat
                 var child=HostNoteAttack.Copy(sample);child.active=true;child.owner=player.whoAmI;child.Center=parent.Center;child.velocity=parent.velocity*multiplier;child.damage=northPole?ammo.Damage:(int)(ammo.Damage*.5f);if(!northPole)child.timeLeft=90;
                 return child;
                 },emission);
-                if(candidate.Reachability==HostAttackReachability.Reachable)return candidate;
+                if(candidate.Reachability==HostAttackReachability.Reachable)return candidate.WithSemantics(AttackPointSemantics.Direction);
                 if(branch==0 || !result.HasPoint)result=candidate;
             }
-            return result;
+            return result.WithSemantics(AttackPointSemantics.Direction);
         }
         internal static HostAttackReachability Replay(Player player,Projectile p,NpcTrajectory path,int first,PredictionTerrain terrain,AttackMotion motion,out int receive,out float nearest,HostProjectileTargets targets=null)
         {

@@ -9,6 +9,7 @@ namespace Terraria
     {
         internal static void Run()
         {
+            CheckClassification();
             CheckLayout(false); CheckLayout(true);
             var owner = new JourneyUiOwner(); var controls = new JourneyControls(owner);
             Require(controls.Available(F5Command.EnableJourney) && !controls.Available(F5Command.DisableJourney), "OFF can enable but cannot disable");
@@ -20,6 +21,30 @@ namespace Terraria
             Require(controls.Selected(F5Command.EnableJourney).HasValue && !controls.Selected(F5Command.DisableJourney).HasValue, "actual activation remains the sole green projection");
             Require(owner.ToggleCalls == 0 && owner.EnableCalls == 0 && owner.OpenCalls == 0, "layout/status/hints never submit commands");
             Console.WriteLine("PASS: Journey hidden standard rows, both layout paths, stable reflow and actual-state projection.");
+        }
+        private static void CheckClassification()
+        {
+            var layout = new F5Layout(); object font = new object();
+            layout.Ensure(1280, 720, 1.5f, 8, font, Measure);
+            Require(Find(layout, "combat.npc-path") == null, "locked combat page has no path row or binding");
+            int lockedGeneration = layout.Generation;
+            layout.SetHiddenFeaturesVisible(true);
+            layout.Ensure(1280, 720, 1.5f, 8, font, Measure);
+            Require(layout.Generation == lockedGeneration + 1 && Has(layout, "寻路预测") && Find(layout, "combat.npc-path") != null,
+                "unlock on the combat page invalidates its layout once and exposes path prediction");
+            Require(!Has(layout, "旅行菜单") && !Has(layout, "游商测试"), "non-combat hidden entries stay in Misc");
+            int generation = layout.Generation, measures = layout.MeasurementCount;
+            for (int i = 0; i < 100; i++) layout.Ensure(1280, 720, 1.5f, 8, font, Measure);
+            Require(layout.Generation == generation && layout.MeasurementCount == measures, "stable unlocked combat page does not reflow or remeasure");
+            foreach (bool footer in new[] { false, true })
+            {
+                layout.Ensure(1280, 720, 1.5f, 1, font, Measure);
+                if (footer) layout.SetMiscFooterStart(180);
+                Require(!Has(layout, "寻路预测") && Find(layout, "combat.npc-path") == null && Has(layout, "旅行菜单") && Has(layout, "游商测试"),
+                    "both Misc layout paths retain only their own hidden entries");
+                layout.Ensure(1280, 720, 1.5f, 8, font, Measure);
+                Require(Has(layout, "寻路预测") && Find(layout, "combat.npc-path") != null, "returning to combat restores its single path row");
+            }
         }
         private static void CheckLayout(bool footer)
         {

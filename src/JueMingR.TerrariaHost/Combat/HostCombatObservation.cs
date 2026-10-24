@@ -496,8 +496,9 @@ namespace JueMingR.TerrariaHost.Combat
                 a.GravityDirection==b.GravityDirection && a.GravityControl==b.GravityControl && a.GravityControl2==b.GravityControl2 && a.Complex==b.Complex && a.Mounted==b.Mounted && a.Rope==b.Rope && a.Grappled==b.Grappled && a.OnTrack==b.OnTrack && a.Wet==b.Wet && a.Honey==b.Honey && a.Lava==b.Lava && a.Shimmer==b.Shimmer &&
                 a.Width==b.Width && a.Height==b.Height && a.Acceleration==b.Acceleration && a.Slowdown==b.Slowdown && a.MaxSpeed==b.MaxSpeed && a.JumpSpeed==b.JumpSpeed && a.DefaultGravity==b.DefaultGravity && a.WaterWalk==b.WaterWalk && a.LavaWalk==b.LavaWalk && a.IgnorePlatforms==b.IgnorePlatforms && a.Vortex==b.Vortex && a.SlowFall==b.SlowFall && a.FloatInWater==b.FloatInWater;
         }
-        internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
+        internal Hotkeys.CombatPathHotkeys Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {
+            Hotkeys.CombatPathHotkeys pathHotkeys=null;
             Action aimCommand=()=>Set(6,!Options.Aim);
             if(feedback!=null)aimCommand=feedback.Committed("combat.aim","辅助瞄准",aimCommand,()=>Settings.CanRun && Options.Aim?1:0,()=>CanConfigure && !selectionFailed,
                 ()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded);
@@ -508,8 +509,11 @@ namespace JueMingR.TerrariaHost.Combat
                 Action command=()=>Set(field,!(field==0?Options.Collision:Options.Path));
                 if(feedback!=null)command=feedback.Committed(id,name,command,()=>field==0?(Collision?1:0):(Path?1:0),()=>CanConfigure && (field!=1 || PathAccess) && Unavailable(field)==null,
                     ()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded);
-                registry.Register(new HotkeyAction(id,name,HotkeyContext.Gameplay,()=>CanConfigure && (field!=1 || PathAccess),command,()=>field!=1 || PathAccess));
+                var action=new HotkeyAction(id,name,HotkeyContext.Gameplay,()=>CanConfigure && (field!=1 || PathAccess),command,()=>field!=1 || PathAccess);
+                if(field==1)pathHotkeys=new Hotkeys.CombatPathHotkeys(registry,hiddenAccess,action);
+                else registry.Register(action);
             }
+            return pathHotkeys;
         }
         internal void TakeFeedback(Action<string> show)
         {

@@ -92,7 +92,7 @@ namespace JueMingR.Features.Combat
                     if(!duplicate)best=row;
                 }
                 if(best==null)return;
-                result.Add(new AttackBallisticCandidates.Direction(best.X,best.Y,best.Tick,0));
+                result.Add(new AttackBallisticCandidates.Direction(best.X,best.Y,best.Tick,0,best.Center));
             }
         }
         private static double InverseY(AttackMotion motion,int step,double position)

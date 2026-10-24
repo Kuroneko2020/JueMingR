@@ -127,10 +127,13 @@ namespace JueMingR.TerrariaHost.Combat
             return false;
         }
         internal static Vector2 BirthVelocity(Player player,Vector2 origin,Vector2 aim,float speed)
+        {bool directionDependent;return BirthVelocity(player,origin,aim,speed,out directionDependent);}
+        internal static Vector2 BirthVelocity(Player player,Vector2 origin,Vector2 aim,float speed,out bool directionDependent)
         {
             var screen=aim-Main.screenPosition;if(player.gravDir==-1)screen.Y=Main.screenHeight-screen.Y;
             var cursor=new Vector2((int)screen.X+Main.screenPosition.X,player.gravDir==-1?Main.screenPosition.Y+Main.screenHeight-(int)screen.Y:(int)screen.Y+Main.screenPosition.Y);
             var v=cursor-origin;float factor=(float)Math.Sqrt(v.X*v.X+v.Y*v.Y);
+            directionDependent=v==Vector2.Zero;
             if(v==Vector2.Zero){v=Vector2.UnitX*HostBetsyFlameAttack.Facing(player,origin,aim);factor=speed;}else factor=speed/factor;v.X*=factor;v.Y*=factor;return v;
         }
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles,int delay)

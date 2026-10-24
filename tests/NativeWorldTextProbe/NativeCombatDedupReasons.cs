@@ -53,13 +53,35 @@ namespace NativeWorldTextProbe
                     var id=(NpcIdentity)Get(Get(host,"Selection"),"Target");Call(prediction,"PrepareActionPrefix",id,(long)Main.GameUpdateCount-1,120,120);
                     var full=(NpcTrajectory)Call(Get(prediction,"Cache"),"Read",1);var assembly=attack.GetType().Assembly;
                     var ammo=assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot").GetMethod("Capture",Flags).Invoke(null,new object[]{__0,__1});
-                    var terrain=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain"),true);
-                    var start=(Vector2)assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels").GetMethod("LaunchOrigin",Flags).Invoke(null,new object[]{__0,__1});
-                    var reference=full==null || ammo==null?null:(AttackContact)attack.GetType().GetMethod("SolveOnTerrain",Flags).Invoke(null,new object[]{__0,__1,ammo,full,start,0,true,terrain,0,null,null,null});
+                    var reference=full==null || ammo==null?null:FrozenOracle(attack,__0,__1,ammo,full);
                     var receiver=Main.npc[id.Slot];bool los=Collision.CanHitLine(__0.position,__0.width,__0.height,receiver.position,receiver.width,receiver.height);
                     Console.WriteLine("REASON separateOracle GUC="+Main.GameUpdateCount+" originalKind=Basic full="+(full?.Count??0)+" stop="+full?.Stop+" referenceContact="+(reference!=null)+" receive="+(reference?.ReceiveTick??-1)+" nativeLOS="+los+" floor43="+Main.tile[50,43].active());
                 }
             }
+        }
+        private static AttackContact FrozenOracle(object aim,Player player,Item item,object ammo,NpcTrajectory timeline)
+        {
+            var assembly=aim.GetType().Assembly;var terrain=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain"),true);
+            var start=(Vector2)assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels").GetMethod("LaunchOrigin",Flags,null,new[]{typeof(Player),typeof(Item)},null).Invoke(null,new object[]{player,item});
+            // Reflection does not fill optional arguments. This diagnostic
+            // starts at the live origin, so the existing final flag is false.
+            return (AttackContact)aim.GetType().GetMethod("SolveOnTerrain",Flags).Invoke(null,new object[]{player,item,ammo,timeline,start,0,true,terrain,0,null,null,null,false});
+        }
+        internal static void RunReflection(object context)
+        {
+            var combat=Get(context,"Combat");var observation=Get(context,"CombatObservation");var aim=Get(combat,"Attack");
+            NativeCombatObservationChecks.Save(observation,new ObservationOptions());
+            var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),95,0,0);p.position=new Vector2(700,646);p.ResetEffects();p.inventory[54].SetDefaults(97);p.inventory[54].stack=999;
+            foreach(var npc in Main.npc)npc.active=false;
+            var n=Main.npc[2];n.SetDefaults(3);n.whoAmI=2;n.active=true;n.Center=new Vector2(970,667);n.life=n.lifeMax=10000;Array.Clear(n.immune,0,n.immune.Length);
+            var id=new NpcIdentity((long)Get(observation,"Session"),n,2,n.generation,n.type,n.netID);
+            var state=new NpcMotionState{Identity=id,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,Active=true,CanReceive=true};
+            var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();
+            NativeQuickItemChecks.BeginWorldStep();var path=new NpcTrajectory(id,(long)Main.GameUpdateCount-1,1,PredictionAssumption.HeldPlayerControls,PredictionStop.None,points,points.Length);
+            var ammo=aim.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot").GetMethod("Capture",Flags).Invoke(null,new object[]{p,p.HeldItem});
+            AttackContact result;using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))result=FrozenOracle(aim,p,p.HeldItem,ammo,path);
+            Require(result!=null && ReferenceEquals(result.Timeline,path) && result.ReceiveTick>0 && p.inventory[54].stack==999,"separate frozen Basic-opportunity oracle actually receives its known static bullet target without consuming ammo");
+            Console.WriteLine("PASS REFLECTION reasons frozen original oracle receive="+result.ReceiveTick+" optionalLaunchOriginAdvanced=False; no production allowance or Source cache mutation");
         }
         internal static void Attach(Harmony audit,object value,object aim)
         {

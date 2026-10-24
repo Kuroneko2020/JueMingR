@@ -8,6 +8,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
+            HiddenPathBindingChecks.Run();
             int oldCalls = 0, newCalls = 0, coreCalls = 0;
             HotkeyChord dispatched = null;
             var registry = new HotkeyRegistry(); var dynamic = registry.CreateDynamicOwner("quick.use.");

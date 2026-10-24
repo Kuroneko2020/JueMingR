@@ -38,7 +38,7 @@ namespace NativeWorldTextProbe
             Require(!((bool)Get(journey, "IsActive")) && !access.IsUnlocked && registry.Find("journey.toggle") == null && bindings.Get("journey.toggle") == null,
                 "Journey starts OFF/Locked/unbound in the complete Host");
             NativeHiddenEntryChecks.RevealForComposition(context);
-            Call(Get(shell, "hotkeys"), "PollJourneyRegistration");
+            Call(Get(shell, "hotkeys"), "PollHiddenRegistration");
             Require(registry.Find("journey.toggle") != null && !((bool)Get(journey, "IsActive")), "real reveal publishes binding without enabling Journey");
             PrepareNativeMenu(graphics);
             NativeToolsUiChecks.Prepare(context, 1, 960, 640, 1);

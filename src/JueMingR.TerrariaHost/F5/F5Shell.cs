@@ -379,7 +379,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void BeforeInput()
-        { try { hotkeys?.PollJourneyRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); RecoveryUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
+        { try { hotkeys?.PollHiddenRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); RecoveryUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
 
         internal void ProcessInput()
         {
@@ -554,7 +554,7 @@ namespace JueMingR.TerrariaHost.F5
                         if (State.Layout.About.CompleteTitleClick(State.TitleClickMilliseconds, State.TitleClickIdentity))
                         {
                             State.Layout.SetHiddenFeaturesVisible(true);
-                            hotkeys?.PollJourneyRegistration();
+                            hotkeys?.PollHiddenRegistration();
                             try { ShortFeedback?.Show("hidden-entry.revealed", "隐藏功能已显示", true, () => hiddenAccess.IsUnlocked, ShortFeedback.Capture()); }
                             catch { /* A presentation failure cannot revoke access or repeat the gesture. */ }
                         }

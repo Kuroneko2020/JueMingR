@@ -15,13 +15,14 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly HostCombat combat;private readonly HostCombatObservation observation;
         private Item weapon;private NpcTrajectory timeline;private AttackAmmoSnapshot ammo;
         private uint step;private long operation;private Vector2 origin,point;private CombatAimStage stage;
+        private AttackPointSemantics pointSemantics;
         internal HostCadenceAim(HostCombat combat,HostCombatObservation observation){this.combat=combat;this.observation=observation;}
-        internal void Clear(){weapon=null;timeline=null;ammo=null;}
+        internal void Clear(){weapon=null;timeline=null;ammo=null;pointSemantics=AttackPointSemantics.Unknown;}
         internal void Prepare(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory future,HostAttackPhase phase,HostAttackSolution solution)
         {
             if(!solution.HasPoint){Prepare(player,item,captured,future,phase,(AttackContact)null);return;}
             Clear();if(!combat.Use.Active || captured==null || !WeaponCatalog.Switchable(item))return;
-            stage=CombatAimStage.ItemRelease;origin=player.RotatedRelativePoint(player.MountedCenter);point=solution.Point;Stamp(item,captured,future);
+            stage=CombatAimStage.ItemRelease;origin=player.RotatedRelativePoint(player.MountedCenter);point=solution.Point;pointSemantics=solution.PointSemantics;Stamp(item,captured,future);
         }
         internal void Prepare(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory future,HostAttackPhase phase,AttackContact contact)
         {
@@ -43,7 +44,7 @@ namespace JueMingR.TerrariaHost.Combat
             else
             {
                 stage=CombatAimStage.ItemRelease;
-                if(contact!=null){point=new Vector2(contact.AimX,contact.AimY);Stamp(item,captured,future);return;}
+                if(contact!=null){point=new Vector2(contact.AimX,contact.AimY);pointSemantics=contact.PointSemantics;Stamp(item,captured,future);return;}
                 var b=future[Math.Min(future.Count-1,tick)].ProjectileReceiveBounds;Projectile sample=ContentSamples.ProjectilesByType[captured.Projectile];
                 int substeps=Math.Max(1,(int)Math.Ceiling(Vector2.Distance(origin,new Vector2(b.CenterX,b.CenterY))/Math.Max(1,captured.Speed)));
                 AttackMotion motion;
@@ -51,7 +52,7 @@ namespace JueMingR.TerrariaHost.Combat
                 else tick+=player.magicQuiver && sample.arrow && sample.extraUpdates<1?(substeps==1?1:2+(substeps-2)/2):(substeps-1)/(sample.extraUpdates+1)+1;
             }
             if(tick<0 || tick>=future.Count)return; // A short real future is not extended by copying its tail.
-            point=HostHeldAttack.DirectionPoint(player,future,tick);Stamp(item,captured,future);
+            point=HostHeldAttack.DirectionPoint(player,future,tick);pointSemantics=AttackPointSemantics.Direction;Stamp(item,captured,future);
         }
         private void Stamp(Item item,AttackAmmoSnapshot captured,NpcTrajectory future)
         {weapon=item;ammo=captured;timeline=future;operation=combat.Use.Operation;step=Main.GameUpdateCount;}
@@ -62,7 +63,7 @@ namespace JueMingR.TerrariaHost.Combat
             // or basic. Do not relabel its returned basic point as enhanced.
             if(request.Stage==CombatAimStage.FlailRelease)
             {Vector2 flail;return combat.Attack.Control.TryPoint(request.Projectile,out flail)?new CombatAimPoint(request,flail):null;}
-            var enhanced=ReadEnhanced(request);if(enhanced!=null){combat.Attack.RecordControlInput(enhanced.World,request.Projectile,HostAttackInputKind.Enhanced);return enhanced;}
+            var enhanced=ReadEnhanced(request);if(enhanced!=null){combat.Attack.RecordControlInput(enhanced.World,request.Projectile,HostAttackInputKind.Enhanced,pointSemantics);return enhanced;}
             // The operation owner has already authenticated this charge or
             // release stage. Its current target direction remains legal when
             // an enhanced future is absent; this does not start/extend use.

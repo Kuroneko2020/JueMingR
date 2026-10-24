@@ -138,7 +138,7 @@ namespace JueMingR.TerrariaHost.Combat
                 int slot;if(!slots.TryAllocate(out slot))return null;var p=new Projectile();p.SetDefaults(ammo.Projectile);p.active=true;p.owner=player.whoAmI;p.whoAmI=slot;p.Center=origin;p.damage=ammo.Damage;p.knockBack=player.HeldItem.knockBack;p.ai[0]=aim.X;p.ai[1]=aim.Y;
                 var logical=aim;if(player.gravDir==-1)logical.Y=Main.screenPosition.Y+Main.screenHeight-(aim.Y-Main.screenPosition.Y);p.velocity=(logical-origin).SafeNormalize(Vector2.UnitX*player.direction)*ammo.Speed;
                 bool wet;byte kind;if(!terrain.ProjectileWet(origin.X,origin.Y,p.width,p.height,out wet,out kind,true))return null;p.wet=wet;p.honeyWet=wet && kind==2;rows.Add(Make(p,root,true,false));
-                for(int step=1;step<=Math.Min(120,path.Count-age-1);step++){AttackContact contact;if(!Outer(rows,slots,path,terrain,root,age+step,delay+step,aim,out contact))break;if(contact!=null)return contact;}
+                for(int step=1;step<=Math.Min(120,path.Count-age-1);step++){AttackContact contact;if(!Outer(rows,slots,path,terrain,root,age+step,delay+step,aim,out contact))break;if(contact!=null)return AttackIntercept.WithPointSemantics(contact,AttackPointSemantics.WorldPoint);}
             }
             return null;
         }

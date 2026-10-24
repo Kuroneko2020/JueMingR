@@ -113,15 +113,15 @@ namespace JueMingR.TerrariaHost.Combat
             if(ammo.WeaponType==3029)return Sky(launch,ammo,path,launchOrigin,clock,terrain,stage);
             int ordinal=ammo.WeaponType==2624?2:0;
             var result=HostRepresentativeAttack.Prepare(launch,ammo,path,launchOrigin,clock,terrain,aim=>Birth(launch,ammo,launchOrigin,aim,stage,terrain,ordinal));
-            if(result.Reachability==HostAttackReachability.Reachable || ammo.WeaponType!=2624)return result;
+            if(result.Reachability==HostAttackReachability.Reachable || ammo.WeaponType!=2624)return result.WithSemantics(AttackPointSemantics.Direction);
             // The centre owns the normal direction. Only its failed passage
             // pays for the four remaining native offsets, sharing terrain.
             foreach(int side in new[]{0,4,1,3})
             {
                 int member=side;var fallback=HostRepresentativeAttack.Prepare(launch,ammo,path,launchOrigin,clock,terrain,aim=>Birth(launch,ammo,launchOrigin,aim,stage,terrain,member));
-                if(fallback.Reachability==HostAttackReachability.Reachable)return fallback;
+                if(fallback.Reachability==HostAttackReachability.Reachable)return fallback.WithSemantics(AttackPointSemantics.Direction);
             }
-            return result;
+            return result.WithSemantics(AttackPointSemantics.Direction);
         }
         private static HostAttackSolution Sky(Player player,AttackAmmoSnapshot ammo,NpcTrajectory path,Vector2 origin,HostAttackClock clock,PredictionTerrain terrain,int stage)
         {
@@ -129,7 +129,7 @@ namespace JueMingR.TerrariaHost.Combat
             // direction point would move that region thousands of pixels.
             // Iterate only the representative arrival time; native scatter
             // and the other vertical ordinals remain with ItemCheck_Shoot.
-            int tick=clock.FirstTick;var initial=path[tick].ProjectileReceiveBounds;var aim=new Vector2(initial.CenterX,initial.CenterY);HostAttackSolution best=new HostAttackSolution(path,aim,false,HostAttackReachability.Unknown);
+            int tick=clock.FirstTick;var initial=path[tick].ProjectileReceiveBounds;var aim=new Vector2(initial.CenterX,initial.CenterY);HostAttackSolution best=new HostAttackSolution(path,aim,false,HostAttackReachability.Unknown,pointSemantics:AttackPointSemantics.WorldPoint);
             HostProjectileTargets targets=null;
             for(int pass=0;pass<4;pass++)
             {
@@ -141,7 +141,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(pass==0 && HostAmmoSteeringAttack.Handles(p.type))targets=HostProjectileTargets.Capture(p,path.Identity.Session);
                 AttackMotion motion;if(!HostRepresentativeAttack.TryMotion(ammo,out motion))return best;
                 int receive;float nearest;var reach=HostRepresentativeAttack.Replay(player,p,path,clock.FirstTick,terrain,motion,out receive,out nearest,targets);
-                if(reach==HostAttackReachability.Reachable)return new HostAttackSolution(path,aim,true,reach,receive);
+                if(reach==HostAttackReachability.Reachable)return new HostAttackSolution(path,aim,true,reach,receive,pointSemantics:AttackPointSemantics.WorldPoint);
                 // Closest future centre is supplied by a free flight of this
                 // same legal sky birth. That gives a bounded fixed point for
                 // a moving target without changing RAW coordinate semantics.
@@ -151,7 +151,7 @@ namespace JueMingR.TerrariaHost.Combat
                     motion.Advance(ref x,ref y,ref vx,ref vy,k);int t=clock.FirstTick+motion.OuterAtSubupdate(k)-1;var b=path[t].ProjectileReceiveBounds;float d=Math.Abs(y-b.CenterY);
                     if(d<distance){distance=d;chosen=t;}
                 }
-                var target=path[chosen].ProjectileReceiveBounds;aim=new Vector2(target.CenterX,target.CenterY);tick=chosen;best=new HostAttackSolution(path,aim,true,reach);
+                var target=path[chosen].ProjectileReceiveBounds;aim=new Vector2(target.CenterX,target.CenterY);tick=chosen;best=new HostAttackSolution(path,aim,true,reach,pointSemantics:AttackPointSemantics.WorldPoint);
             }
             return best;
         }

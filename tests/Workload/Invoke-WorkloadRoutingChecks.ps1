@@ -35,7 +35,7 @@ foreach($consumer in $selectionConsumers){
 }
 Assert-Route ((Get-WorkloadCheckFingerprint $before 'native-NpcEyeBoss') -ceq (Get-WorkloadCheckFingerprint $after 'native-NpcEyeBoss')) 'shared Step edit does not invalidate unrelated NPC motion proof'
 Assert-Route ($selectionPlan -notcontains 'native-NpcEyeBoss' -and $selectionPlan -notcontains 'native-CombatNavigationCpu') 'shared Step has no unrelated NPC or navigation consumer'
-$attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
+$attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
 foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){
     $consumers=@(Get-WorkloadPathChecks $path)
     Assert-Route ((($consumers|Sort-Object)-join '|') -ceq (($attackConsumers|Sort-Object)-join '|')) ('three attack owners bind all direct consumers '+$path)
@@ -45,6 +45,17 @@ foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/
     foreach($name in @('native-CombatControlCpu','native-CombatCosts','native-CombatCpu','native-CombatYoyoCausal')){Assert-Route ($plan -contains $name) ('actual attack parent consumer selected '+$name)}
     Assert-Route ($plan -notcontains 'native-CombatNavigationCpu' -and $plan -notcontains 'native-CombatAttackCosts' -and $plan -notcontains 'native-NpcBasicMotion') 'parent plan neither duplicates specialist children nor selects NPC motion'
 }
+# This task's explicit leaf runs its actual Source/native/receiver helpers,
+# without selecting the broad Aim or Effects matrices as a side effect.
+$skyOnly=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-CombatSkyActionCpu')|ForEach-Object {$_.name})
+Assert-Route ($skyOnly.Count -eq 1 -and $skyOnly[0] -ceq 'native-CombatSkyActionCpu') 'explicit sky scope dispatches exactly its one actual native leaf'
+foreach($skyPath in @('NativeCombatSkyActionChecks.cs','NativeCombatLunarChecks.cs','NativeCombatReflectionSeamsChecks.cs','NativeCombatSkyChecks.cs','NativeCombatFixedSkyChecks.cs','NativeCombatDedupModelChecks.cs','NativeCombatDedupReasons.cs','NativeCombatAmmoChecks.cs','NativeCombatPlacedPulseChecks.cs','NativeCombatClingerWallChecks.cs','NativeCombatDedupChecks.cs','NativeCombatBallisticCandidateChecks.cs','NativeCombatControlPreviewChecks.cs','NativeCombatAimFixture.cs','NativeCombatBalancedAimChecks.cs','NativeCombatWorkerAssetChecks.cs')){
+    $skyFile='tests/NativeWorldTextProbe/'+$skyPath
+    Assert-Route (@(Get-WorkloadPathChecks $skyFile) -contains 'native-CombatSkyActionCpu') ('actual sky helper is bound '+$skyPath)
+    $skyBefore=[pscustomobject]@{inputs=@($skyFile+':'+('A'*64))};$skyAfter=[pscustomobject]@{inputs=@($skyFile+':'+('B'*64))}
+    Assert-Route ((Get-WorkloadCheckFingerprint $skyBefore 'native-CombatSkyActionCpu') -cne (Get-WorkloadCheckFingerprint $skyAfter 'native-CombatSkyActionCpu')) ('changed actual sky helper invalidates the proof '+$skyPath)
+}
+Assert-Route (@(Get-WorkloadCheckGroups 'native-CombatSkyActionCpu') -notcontains 'legacy-worker') 'sky CPU does not inherit the worker catalogue'
 foreach($movementPath in @('src/JueMingR.TerrariaHost/Movement/MovementSession.cs','src/JueMingR.TerrariaHost/Input/HostInputState.cs','src/JueMingR.Platform/Settings/PreferenceDocument.cs','@full')){
     $movementRoute=Get-WorkloadRoute @($movementPath)
     $movementPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $movementRoute.groups | ForEach-Object {$_.name})

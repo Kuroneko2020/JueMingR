@@ -11,6 +11,9 @@ namespace JueMingR.Features.Movement
         {return intent && !down && remaining<=0 && opportunity;}
         public static MovementJumpPhase Before(MovementJumpPhase phase,bool intent,bool down,float directedVelocity)
         {return !intent || down || phase==MovementJumpPhase.Coast && directedVelocity>=0?MovementJumpPhase.None:phase;}
+        // Ordinary forecast only: complex sustained consumers retain their
+        // existing conditional boundary. The live host selects one whole-update
+        // input from their actual native gates before JumpMovement instead.
         public static bool Effective(bool nativeJump,MovementJumpPhase phase)
         {return nativeJump && phase!=MovementJumpPhase.Coast;}
         // Only a pre-registered native start may establish Held. In particular,

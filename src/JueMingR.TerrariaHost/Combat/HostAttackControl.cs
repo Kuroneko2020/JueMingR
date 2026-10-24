@@ -476,7 +476,7 @@ namespace JueMingR.TerrariaHost.Combat
             bool consumes=entry.Type==1035?HostWhipAttack.Consumes(shot):entry.Navigation!=null?combat.Player.channel && shot.ai[0]>=0:
                 HostDirectionalControl.Handles(entry.Type)?HostDirectionalControl.Consumes(combat.Player,shot):HostHeldAttack.Handles(entry.Type)?HostHeldAttack.Consumes(combat.Player,shot):HostGuidedAttack.Handles(entry.Type) && HostGuidedAttack.Consumes(combat.Player,shot);
             if(!consumes)return false;
-            if(TryEnhancedPoint(shot,out point)){combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Enhanced);return true;}
+            if(TryEnhancedPoint(shot,out point)){combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Enhanced,entry.Solution.HasPoint?entry.Solution.PointSemantics:entry.Navigation!=null?AttackPointSemantics.WorldPoint:entry.Contact?.PointSemantics??AttackPointSemantics.Unknown);return true;}
             HostAttackInput input;
             if(!combat.Attack.TryBasicInput(combat.Player,entry.Source.Weapon,shot,HostAttackPhase.Projectiles,out input))return false;
             point=input.Point;combat.Attack.RecordInput(input);return true;

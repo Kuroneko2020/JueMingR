@@ -36,7 +36,9 @@ namespace JueMingR.TerrariaHost.Combat
         internal static bool TrySeedMotion(AttackAmmoSnapshot ammo,out AttackMotion motion)
         {if(!TrySeedMotion(ammo.Projectile,ammo.Speed,ammo.WeaponType,out motion))return false;var p=ContentSamples.ProjectilesByType[ammo.Projectile];if(ammo.ExtraArrowUpdates && p.extraUpdates<1)motion=motion.WithUpdates(2,1);return true;}
         internal static Vector2 BirthVelocity(AttackAmmoSnapshot ammo,Vector2 raw,int direction,float fanMember=-.5f)
-        {if(ammo.WeaponType!=3859)return raw;Vector2 reduced=raw*.8f,unit=reduced.SafeNormalize(-Vector2.UnitY);return (reduced+unit*fanMember*.5f).RotatedBy(fanMember*MathHelper.Pi/180*-direction);}
+        {bool directionDependent;return BirthVelocity(ammo,raw,direction,out directionDependent,fanMember);}
+        internal static Vector2 BirthVelocity(AttackAmmoSnapshot ammo,Vector2 raw,int direction,out bool directionDependent,float fanMember=-.5f)
+        {directionDependent=ammo.WeaponType==3859;if(!directionDependent)return raw;Vector2 reduced=raw*.8f,unit=reduced.SafeNormalize(-Vector2.UnitY);return (reduced+unit*fanMember*.5f).RotatedBy(fanMember*MathHelper.Pi/180*-direction);}
         private static float VerticalSeedDistance(float vy,int steps)
         {
             if(steps<20)return vy*steps;int gravitySteps=steps-19;
