@@ -167,7 +167,7 @@ namespace NativeWorldTextProbe
         private static string Mode(object host) { return Get(host, "ProjectionMode").ToString(); }
         private static void Pointer(object host, bool left, int x, int y)
         { Call(host, "AcceptWorldPointer", true, left, false, x, y, 16384, 4096); }
-        private static void Place(object host, object input, LibraryEntry entry, int x, int y, bool commit = true)
+        private static void Place(object host, object input, LibraryEntry entry, int x, int y, bool commit = true, int densePriorCount = -1)
         {
             NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
             Require((bool)Call(host, "Place", entry), "budget sequence accepts genuine library entry");
@@ -176,28 +176,57 @@ namespace NativeWorldTextProbe
             Pointer(host, false, x, y);
             Require(!(bool)Get(host, "CanOpenLibrary"), "Following rejects manual library entry");
             if (!commit) return;
+            // Snapshot before acceptance: the worker may start the commit as
+            // soon as Pointer submits it, before WaitFixed gets its first turn.
+            BlueprintProjectionStatistics? commitStart = densePriorCount >= 0 ? ((LibraryState)Get(host, "Library")).DebugProjectionStatistics : (BlueprintProjectionStatistics?)null;
             Pointer(host, true, x, y);
             Require(Mode(host) == "Committing" && GetOptional(host, "projectionFeedback") == null, "accepted normal commit is quiet and remains a real transaction");
             Require(!(bool)Get(host, "CanOpenLibrary"), "Place Committing rejects manual library entry");
-            WaitFixed(host);
+            WaitFixed(host, densePriorCount, commitStart);
             Require((bool)Get(host, "CanOpenLibrary"), "Fixed passive projections permit manual library entry");
         }
-        private static void WaitFixed(object host)
+        private static void WaitFixed(object host, int densePriorCount, BlueprintProjectionStatistics? commitStart)
         {
             var clock = System.Diagnostics.Stopwatch.StartNew(); int report = 2;
-            var library = (LibraryState)Get(host, "Library"); var initial = library.DebugProjectionStatistics;
+            var library = (LibraryState)Get(host, "Library"); var initial = commitStart ?? library.DebugProjectionStatistics;
             var worker = Get(library, "worker"); var gate = Get(worker, "gate");
+            long lastReads = 0, lastDecoded = 0, lastComparisons = 0, lastProgressMs = 0;
+            // Only the literal A40 sequence supplies this count. Each aligned
+            // 128x128 template has eight 2048-cell blocks and no objects. Per
+            // old opponent: at most eight incoming plus eight target reads;
+            // directory searches cost <= (128 + 16384) * 4 comparisons. No new
+            // window/library requests are made here. These independent work
+            // ceilings must not grow with observed production counters.
+            long readLimit = 16L * densePriorCount, decodedLimit = 32768L * densePriorCount, comparisonLimit = 66048L * densePriorCount;
             Action print = () =>
             {
                 var stats = library.DebugProjectionStatistics;
-                lock (gate) Console.WriteLine("BUDGET commit elapsedMs=" + clock.ElapsedMilliseconds + " mode=" + Mode(host) + " scene=" + Scene(host).Length + " feedback=" + GetOptional(host, "projectionFeedback") + " queued=" + (GetOptional(worker, "projectionCommit") != null) + " active=" + (GetOptional(worker, "projectionActiveCommit") != null) + " iterator=" + (GetOptional(worker, "projectionCommitting") != null) + " receipt=" + (GetOptional(worker, "projectionCommitReceipt") != null) + " reads/decoded/slices=" + (stats.BlockReads - initial.BlockReads) + "/" + (stats.DecodedRecords - initial.DecodedRecords) + "/" + (stats.Slices - initial.Slices));
+                lock (gate) Console.WriteLine("BUDGET commit elapsedMs=" + clock.ElapsedMilliseconds + " mode=" + Mode(host) + " scene=" + Scene(host).Length + " feedback=" + GetOptional(host, "projectionFeedback") + " queued=" + (GetOptional(worker, "projectionCommit") != null) + " active=" + (GetOptional(worker, "projectionActiveCommit") != null) + " iterator=" + (GetOptional(worker, "projectionCommitting") != null) + " receipt=" + (GetOptional(worker, "projectionCommitReceipt") != null) + " reads/decoded/slices=" + (stats.BlockReads - initial.BlockReads) + "/" + (stats.DecodedRecords - initial.DecodedRecords) + "/" + (stats.Slices - initial.Slices) + " directoryComparisons=" + (stats.DirectoryComparisons - initial.DirectoryComparisons));
             };
             while (true)
             {
-                Call(host, "Poll"); if (Mode(host) == "Fixed") return;
-                if (Mode(host) != "Committing") { print(); throw new Exception("Budget commit left transaction before Fixed"); }
+                Call(host, "Poll"); string mode = Mode(host);
+                if (mode != "Fixed" && mode != "Committing") { print(); throw new Exception("Budget commit left transaction before Fixed"); }
+                if (densePriorCount >= 0)
+                {
+                    var stats = library.DebugProjectionStatistics;
+                    long reads = stats.BlockReads - initial.BlockReads, decoded = stats.DecodedRecords - initial.DecodedRecords, comparisons = stats.DirectoryComparisons - initial.DirectoryComparisons;
+                    if (reads > readLimit || decoded > decodedLimit || comparisons > comparisonLimit)
+                    { print(); throw new Exception("A40 commit exceeded literal finite work limits: " + readLimit + "/" + decodedLimit + "/" + comparisonLimit); }
+                    // A cooperative lane can spin without semantic work. Only
+                    // bounded read/decode/directory progress renews this timer;
+                    // Slices never does. The total watchdog is fixture safety,
+                    // not a product completion-latency promise.
+                    if (reads > lastReads || decoded > lastDecoded || comparisons > lastComparisons)
+                    { lastReads = reads; lastDecoded = decoded; lastComparisons = comparisons; lastProgressMs = clock.ElapsedMilliseconds; }
+                    if (clock.ElapsedMilliseconds - lastProgressMs > 8000)
+                    { print(); throw new Exception("A40 commit made no bounded read/decode/directory progress for 8 seconds"); }
+                    if (clock.Elapsed.TotalSeconds > 60)
+                    { print(); throw new Exception("A40 commit fixture 60-second total safety watchdog"); }
+                }
+                if (mode == "Fixed") return;
                 if (clock.Elapsed.TotalSeconds >= report) { print(); report += 2; }
-                if (clock.Elapsed.TotalSeconds > 8) { print(); throw new Exception("Budget commit fixture 8-second timeout; raw progress retained above"); }
+                if (densePriorCount < 0 && clock.Elapsed.TotalSeconds > 8) { print(); throw new Exception("Budget commit fixture 8-second timeout; raw progress retained above"); }
                 System.Threading.Thread.Sleep(2);
             }
         }
@@ -232,7 +261,7 @@ namespace NativeWorldTextProbe
                 // before the next commit permanently erases 127 columns.
                 var entry = Save(library, cells, 128, 128);
                 Console.WriteLine("A commit=" + (i + 1) + " priorScene=" + Scene(host).Length + " asset=" + entry.AssetId.ToString("N"));
-                Place(host, input, entry, 63 + i, 63);
+                Place(host, input, entry, 63 + i, 63, densePriorCount: i);
                 NativeQuickItemChecks.Until(() => { Tick(host, view); return Scene(host).All(p => Windows(p).Count == 1); });
             }
             var scene = Scene(host);
