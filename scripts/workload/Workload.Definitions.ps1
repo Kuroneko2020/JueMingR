@@ -12,7 +12,15 @@ function Get-WorkloadLeafChecks {
     # G11 yoyo and presentation chains, not by NPC motion models. Parent CPU
     # entries still own Navigation/AttackCosts; the children remain specialists.
     $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
+    # This asset initializer is also called by the narrow combat fixture.
+    # Preserve its worker consumers when adding the explicit combat leaf;
+    # the combat scope itself must not inherit the legacy-worker group.
+    $workerAssetConsumers=@('native-CombatInputGeometryCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields')
+    foreach($scope in (Get-WorkloadNativeScopes).GetEnumerator()){
+        if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
+    }
     $leaves = @{
+        'tests/NativeWorldTextProbe/NativeCombatWorkerAssetChecks.cs'=$workerAssetConsumers
         'tests/NativeWorldTextProbe/NativeBlueprintChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintUiChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintLibraryUiChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput')
