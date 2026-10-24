@@ -26,6 +26,11 @@ namespace NativeWorldTextProbe
         }
         internal static void Run(object context)
         {
+            // A historical action-only control must reach its Source witness
+            // without first stopping at the separately retained old-clock RED.
+            // The ordinary current scope always runs the full lunar oracle.
+            if(Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE")!=null && Environment.GetEnvironmentVariable("JUEMINGR_SKY_ACTION_ONLY")=="1")
+            {Console.WriteLine("HISTORICAL CONTROL: Source action only; original lunar-clock RED retained separately.");return;}
             var assembly=Get(context,"Combat").GetType().Assembly;var sky=assembly.GetType("JueMingR.TerrariaHost.Combat.HostSkyAttack",true);var vertical=sky.GetMethod("Vertical",F);
             foreach(int start in new[]{0,1,15})foreach(float gravity in new[]{0f,.1f})foreach(float cap in new[]{0f,16f})
             {
