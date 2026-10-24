@@ -42,6 +42,44 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal BlueprintProjectionMask Mask;
             internal int CommandCount;
         }
+        // A priority admission may discard several cores before publication.
+        // Keep only segment references and Extra-position reference counts:
+        // removing a duplicate body must not claim bytes still owned elsewhere.
+        internal sealed class CommandRetention
+        {
+            private readonly Dictionary<long, Segment> retained;
+            private readonly Dictionary<Vector2, int> extras = new Dictionary<Vector2, int>();
+            internal int CommandCount { get; private set; }
+            internal CommandRetention(Dictionary<long, Segment> source, bool borrow)
+            {
+                retained = borrow ? source : new Dictionary<long, Segment>(source);
+                foreach (var segment in retained.Values) foreach (var command in segment.Commands)
+                {
+                    if (command.Texture != BlueprintProjectionTexture.Extra) { CommandCount++; continue; }
+                    int count; extras.TryGetValue(command.Position, out count); extras[command.Position] = count + 1;
+                    if (count == 0) CommandCount++;
+                }
+            }
+            internal void RemoveCore(BlueprintProjectionBounds core)
+            {
+                var remove = new List<long>();
+                foreach (var pair in retained)
+                {
+                    if (!core.Contains((int)(pair.Key & uint.MaxValue), (int)(pair.Key >> 32))) continue;
+                    remove.Add(pair.Key);
+                    foreach (var command in pair.Value.Commands)
+                    {
+                        if (command.Texture != BlueprintProjectionTexture.Extra) { CommandCount--; continue; }
+                        int count = extras[command.Position] - 1;
+                        if (count == 0) { extras.Remove(command.Position); CommandCount--; }
+                        else extras[command.Position] = count;
+                    }
+                }
+                foreach (long key in remove) retained.Remove(key);
+            }
+        }
+        internal CommandRetention PlanCommands(WindowStage stage)
+        { return new CommandRetention(stage == null ? segments : stage.Segments, stage != null); }
         // Build locally, then let Host admit DTO and commands together. Rejected
         // stages own no borrowed textures and never replace a resident core.
         internal WindowStage StageWindow(BlueprintProjectionWindow next, BlueprintProjectionMask nextMask, BlueprintProjectionBounds core, BlueprintProjectionBounds coverage)

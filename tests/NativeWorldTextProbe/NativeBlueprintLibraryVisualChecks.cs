@@ -189,10 +189,10 @@ namespace NativeWorldTextProbe
             var original = flow.Summary;
             flow.Summary = new CaptureSummary { Width = original.Width, Height = original.Height, ContentCount = original.ContentCount, UnreliableObjectCount = 1 };
             flow.ExcludedObjectIds = new[] { 123456 }; reject("预览");
-            // A same-key image alone cannot turn arbitrary object IDs into a
-            // reliable exclusion proof. The original worker remains final authority.
+            // A same-key filtered summary still records any remaining unreliable
+            // objects. The original worker remains final storage authority.
             var builder = new BlueprintPreviewBuilder(1, 1, 1, 1); builder.Add(0, 0, BlueprintPreviewLayer.Tile);
-            Call(cache, "Upload", Call(ui, "DraftKey"), builder.Complete(), new CaptureSummary { ContentCount = 1 }, Get(cache, "Generation"));
+            Call(cache, "Upload", Call(ui, "DraftKey"), builder.Complete(), new CaptureSummary { ContentCount = 1, UnreliableObjectCount = 1 }, Get(cache, "Generation"));
             reject("待排除");
             flow.ExcludedObjectIds = Array.Empty<int>(); flow.Summary = original;
             float priorScale = Main.UIScale; Main.UIScale = 1.25f; reject("预览"); Main.UIScale = priorScale;

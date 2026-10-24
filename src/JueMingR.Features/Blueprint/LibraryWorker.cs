@@ -293,7 +293,7 @@ namespace JueMingR.Features.Blueprint
         }
         private CaptureSummary Measure(Guid id, bool isStage, LibraryRoot root, LibraryCommand command, bool requireExclusions)
         {
-            int left = Int32.MaxValue, top = Int32.MaxValue, right = -1, bottom = -1; long count = 0; var missing = new HashSet<string>(StringComparer.Ordinal);
+            int left = Int32.MaxValue, top = Int32.MaxValue, right = -1, bottom = -1; long count = 0, unreliable = 0; var missing = new HashSet<string>(StringComparer.Ordinal);
             Visit(id, isStage, root, command.Kind == LibraryCommandKind.Create ? null : command, chunk =>
             {
                 for (int i = 0; i < chunk.Count; i++)
@@ -301,10 +301,17 @@ namespace JueMingR.Features.Blueprint
                     CaptureCell original = chunk.Cells[i]; if (requireExclusions && original.UnreliableObject && !Excluded(original.ObjectId, true, command)) throw new InvalidDataException("请先排除所有未确认对象");
                     CaptureCell cell = Filter(original, command); if (!cell.HasContent) continue; count++; left = Math.Min(left, cell.X); top = Math.Min(top, cell.Y); right = Math.Max(right, cell.X); bottom = Math.Max(bottom, cell.Y);
                 }
-                for (int i = 0; i < chunk.ObjectCount; i++) { CaptureObject obj = chunk.Objects[i]; if (requireExclusions && !obj.Reliable && !Excluded(obj.Id, true, command)) throw new InvalidDataException("请先排除所有未确认对象"); if (!Excluded(obj.Id, !obj.Reliable, command) && !String.IsNullOrEmpty(obj.MissingPayload)) { if (missing.Count >= 16 && !missing.Contains(obj.MissingPayload)) throw new InvalidDataException("blueprint-missing-categories"); missing.Add(obj.MissingPayload); } }
+                for (int i = 0; i < chunk.ObjectCount; i++)
+                {
+                    CaptureObject obj = chunk.Objects[i]; bool excluded = Excluded(obj.Id, !obj.Reliable, command);
+                    if (!obj.Reliable && !excluded) { unreliable++; if (requireExclusions) throw new InvalidDataException("请先排除所有未确认对象"); }
+                    if (!excluded && !String.IsNullOrEmpty(obj.MissingPayload)) { if (missing.Count >= 16 && !missing.Contains(obj.MissingPayload)) throw new InvalidDataException("blueprint-missing-categories"); missing.Add(obj.MissingPayload); }
+                }
             });
+            // Count remaining unreliable objects in the existing visit; this is
+            // a filtered summary, never a mutation of the original capture.
             var names = new string[missing.Count]; missing.CopyTo(names); Array.Sort(names, StringComparer.Ordinal);
-            return new CaptureSummary { Left = count == 0 ? 0 : left, Top = count == 0 ? 0 : top, Width = count == 0 ? 0 : checked(right - left + 1), Height = count == 0 ? 0 : checked(bottom - top + 1), ContentCount = count, UnreliableObjectCount = requireExclusions ? 0 : root.Summary.UnreliableObjectCount, StartTick = root.Summary.StartTick, EndTick = root.Summary.EndTick, TargetVersion = root.Summary.TargetVersion, MissingPayloads = names };
+            return new CaptureSummary { Left = count == 0 ? 0 : left, Top = count == 0 ? 0 : top, Width = count == 0 ? 0 : checked(right - left + 1), Height = count == 0 ? 0 : checked(bottom - top + 1), ContentCount = count, UnreliableObjectCount = unreliable, StartTick = root.Summary.StartTick, EndTick = root.Summary.EndTick, TargetVersion = root.Summary.TargetVersion, MissingPayloads = names };
         }
         private void RequireStage(Guid id, bool? sealedState)
         {

@@ -24,6 +24,7 @@ namespace NativeWorldTextProbe
             ((BlueprintCaptureState)Get(host, "State")).Exit(); NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
             try
             {
+                AdmissionFailureAtomicity(host, library);
                 CompactSemantics();
                 NarrowStrips(host, input, library);
                 EmptyCompletion(host, input, library);
@@ -34,6 +35,131 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS BlueprintBudgetCpu actual Host/worker/renderer A40 compact strips, independent raw32/commands64 stable denial/release/candidate/point, immutable halo/empty/rollback; GPU/OS/FPS/multiplayer NOT_RUN.");
             }
             finally { NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); Call(host, "ClearProjection"); }
+        }
+        // Independent literal payloads exercise actual Host admission and the
+        // retained renderer seam. Repeated commands replace only the pressure
+        // fixture's retained payload; no GPU drawing correctness is claimed.
+        private static object RepeatCommand<T>(object command, int count)
+        { return Enumerable.Repeat((T)command, count).ToList(); }
+        private static BlueprintProjectionWindow AdmissionWindow(object item, BlueprintProjectionBounds core, long bytes = 0, bool slope = false)
+        {
+            var cells = slope ? Dense(128, 128, false) : new[] { new CaptureCell { X = core.Left, Y = core.Top, Layers = CaptureLayer.Tile, TileType = 1 } };
+            if (slope) for (int i = 0; i < cells.Length; i++) { var cell = cells[i]; cell.X += core.Left; cell.Y += core.Top; cell.Slope = 1; cells[i] = cell; }
+            var objects = bytes == 0 ? Array.Empty<CaptureObject>() : new[] { new CaptureObject { Id = 1, Reason = new string('x', checked((int)((bytes - 448) / 2))) } };
+            return new BlueprintProjectionWindow((BlueprintProjectionIdentity)Get(item, "Identity"), 1, (CaptureSummary)Get(item, "Summary"),
+                new BlueprintProjectionBounds(0, 0, 256, 128), cells, objects);
+        }
+        private static object AdmissionOwner(object host, int origin = 0)
+        {
+            var type = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintProjectionPlacement", true);
+            var item = Activator.CreateInstance(type, true);
+            Set(item, "Identity", new BlueprintProjectionIdentity(Guid.NewGuid(), Guid.NewGuid(), "admission", 1, 1));
+            Set(item, "Summary", new CaptureSummary { Width = 256, Height = 128, ContentCount = 32768 });
+            Set(item, "Coverage", new BlueprintProjectionBounds(0, 0, 256, 128));
+            Set(item, "OriginX", origin); Set(item, "Opened", true); Set(item, "Positioned", true);
+            return item;
+        }
+        private static void RetainAdmissionCore(object item, BlueprintProjectionBounds core, BlueprintProjectionWindow window, int commands = 0)
+        {
+            Windows(item).Add(core, window); Set(item, "Window", window); Set(item, "HasRequestedWindow", true);
+            var renderer = Get(item, "Renderer"); Call(renderer, "UpdateWindow", window, BlueprintProjectionMask.Empty, core, Get(item, "Coverage"));
+            if (commands == 0) return;
+            var segment = ((IDictionary)Get(renderer, "segments")).Values.Cast<object>().Single();
+            var first = ((IList)Get(segment, "Commands"))[0];
+            var payload = typeof(NativeBlueprintBudgetChecks).GetMethod("RepeatCommand", BindingFlags.NonPublic | BindingFlags.Static)
+                .MakeGenericMethod(first.GetType()).Invoke(null, new object[] { first, commands });
+            Set(segment, "Commands", payload); Set(renderer, "commands", payload);
+        }
+        private static void AddAdmissionScene(object host, object item)
+        { ((IList)Get(host, "projectionScene")).Add(item); }
+        private static void AdmissionUnchanged(object host, object item, BlueprintProjectionBounds core, BlueprintProjectionWindow window,
+            object commands, int count, long capacity, string label)
+        {
+            Require(Windows(item).Count == 1 && ReferenceEquals(Windows(item)[core], window) && ReferenceEquals(Get(item, "Window"), window) && (bool)Get(item, "HasRequestedWindow"), label + " exact old resident/alias/request state survives");
+            Require(ReferenceEquals(Get(Get(item, "Renderer"), "commands"), commands) && (int)Get(Get(item, "Renderer"), "CommandCount") == count && (int)Get(Get(item, "Denied"), "Count") == 0, label + " old commands and denial survive");
+            Require((long)Get(host, "projectionCapacityRevision") == capacity, label + " refusal creates no capacity revision");
+        }
+        private static void AdmissionFailureAtomicity(object host, LibraryState library)
+        {
+            var oldCore = new BlueprintProjectionBounds(0, 0, 128, 128); var incomingCore = new BlueprintProjectionBounds(128, 0, 128, 128);
+            try
+            {
+                ExtraRetention(host);
+                // 60MiB + 2MiB are compatible; even removing the whole 2MiB
+                // resident cannot fit the independent 8-command-per-cell slope.
+                var candidate = AdmissionOwner(host); var ordinary = AdmissionOwner(host, 512);
+                Set(host, "candidateProjection", candidate); AddAdmissionScene(host, ordinary);
+                var old = AdmissionWindow(ordinary, oldCore); var prior = AdmissionWindow(candidate, oldCore);
+                RetainAdmissionCore(candidate, oldCore, prior, 786432); RetainAdmissionCore(ordinary, oldCore, old, 26214);
+                var incoming = AdmissionWindow(candidate, incomingCore, slope: true);
+                var payload = Get(Get(ordinary, "Renderer"), "commands"); long capacity = (long)Get(host, "projectionCapacityRevision");
+                Require(ReferenceEquals(Call(host, "HitProjection", 512, 0, .5f, .5f, false), ordinary), "unsatisfiable commands fixture has an actual old Host hit");
+                Require(!(bool)Call(host, "AdmitProjectionWindow", candidate, incomingCore, incoming), "unsatisfiable commands priority actually refuses incoming");
+                AdmissionUnchanged(host, ordinary, oldCore, old, payload, 26214, capacity, "commands failure");
+                Require(Windows(candidate).Count == 1 && ReferenceEquals(Windows(candidate)[oldCore], prior) && (int)Get(Get(candidate, "Renderer"), "CommandCount") == 786432 && !Windows(candidate).ContainsKey(incomingCore), "commands refusal leaves candidate prefix intact and never publishes incoming");
+                Require((long)Get(host, "ProjectionCommandBytes") == (786432L + 26214L) * 80 && ReferenceEquals(Call(host, "HitProjection", 512, 0, .5f, .5f, false), ordinary), "commands refusal preserves exact charge and actual Host hit");
+                var stats = library.DebugProjectionStatistics; long builds = (long)Get(Get(candidate, "Renderer"), "BuildCount"), segments = (long)Get(Get(candidate, "Renderer"), "SegmentBuildCount");
+                for (int i = 0; i < 100; i++) Require((bool)Call(host, "ProjectionDenied", candidate, incomingCore), "stable same-capacity incoming denial remains bounded");
+                Require(stats.BlockReads == library.DebugProjectionStatistics.BlockReads && stats.DecodedRecords == library.DebugProjectionStatistics.DecodedRecords && builds == (long)Get(Get(candidate, "Renderer"), "BuildCount") && segments == (long)Get(Get(candidate, "Renderer"), "SegmentBuildCount"), "stable refused demand does no read/decode/rebuild");
+                Call(host, "RemoveProjectionCore", candidate, oldCore);
+                Require(!(bool)Call(host, "ProjectionDenied", candidate, incomingCore) && (bool)Call(host, "AdmitProjectionWindow", candidate, incomingCore, incoming), "real command release makes original incoming denial eligible and admission succeeds");
+                Call(host, "ClearProjection");
+
+                // Literal shared raw payload: 31.8MiB + .1MiB resident fits;
+                // even without ordinary, source/candidate + .4MiB exceeds 32.
+                var source = AdmissionOwner(host); candidate = AdmissionOwner(host); ordinary = AdmissionOwner(host, 512);
+                AddAdmissionScene(host, source); AddAdmissionScene(host, ordinary); Set(host, "restoreProjection", source); Set(host, "candidateProjection", candidate);
+                var shared = AdmissionWindow(source, oldCore, 33344716); old = AdmissionWindow(ordinary, oldCore, 104858);
+                RetainAdmissionCore(source, oldCore, shared); Call(Get(source, "Renderer"), "Clear");
+                RetainAdmissionCore(candidate, oldCore, shared); RetainAdmissionCore(ordinary, oldCore, old);
+                incoming = AdmissionWindow(candidate, incomingCore, 419430); payload = Get(Get(ordinary, "Renderer"), "commands"); capacity = (long)Get(host, "projectionCapacityRevision");
+                Require((long)Get(host, "ProjectionWindowBytes") == 33449574L, "literal raw source/candidate alias is charged once before admission");
+                Require(!(bool)Call(host, "AdmitProjectionWindow", candidate, incomingCore, incoming), "shared raw priority actually refuses impossible 32.2MiB payload");
+                AdmissionUnchanged(host, ordinary, oldCore, old, payload, 1, capacity, "shared raw failure");
+                Require((long)Get(host, "ProjectionWindowBytes") == 33449574L && ReferenceEquals(Windows(source)[oldCore], shared) && ReferenceEquals(Windows(candidate)[oldCore], shared) && !Windows(candidate).ContainsKey(incomingCore), "shared raw refusal preserves source/candidate aliases and original exact charge");
+                Require(ReferenceEquals(Call(host, "HitProjection", 512, 0, .5f, .5f, false), ordinary), "shared raw refusal keeps actual old hit");
+                var denial = ((IDictionary)Get(candidate, "Denied"))[incomingCore];
+                Require((long)Get(denial, "WindowBytes") == 419430L && (long)Get(denial, "CapacityRevision") == capacity, "incoming denial uses original net raw cost and real capacity revision");
+                Call(host, "RemoveProjectionCore", source, oldCore);
+                Require((long)Get(host, "ProjectionWindowBytes") == 33449574L && (bool)Call(host, "ProjectionDenied", candidate, incomingCore), "removing only rollback alias creates no raw room");
+                Call(host, "RemoveProjectionCore", candidate, oldCore);
+                Require(!(bool)Call(host, "ProjectionDenied", candidate, incomingCore) && (bool)Call(host, "AdmitProjectionWindow", candidate, incomingCore, incoming), "real shared DTO release recovers denied raw admission");
+                Call(host, "ClearProjection");
+
+                candidate = AdmissionOwner(host); ordinary = AdmissionOwner(host, 512); Set(host, "candidateProjection", candidate); AddAdmissionScene(host, ordinary);
+                RetainAdmissionCore(candidate, oldCore, AdmissionWindow(candidate, oldCore), 681574); RetainAdmissionCore(ordinary, oldCore, AdmissionWindow(ordinary, oldCore), 104857);
+                incoming = AdmissionWindow(candidate, incomingCore, slope: true);
+                Require((bool)Call(host, "AdmitProjectionWindow", candidate, incomingCore, incoming), "satisfiable priority really evicts legal ordinary core");
+                Require(Windows(ordinary).Count == 0 && (int)Get(Get(ordinary, "Renderer"), "CommandCount") == 0 && Windows(candidate).Count == 2 && (int)Get(Get(candidate, "Renderer"), "CommandCount") == 681574 + 131072, "successful plan publishes exact literal 52MiB-prefix plus 131072 slope commands");
+                Require((long)Get(host, "ProjectionWindowBytes") < 32L * 1024 * 1024 && (long)Get(host, "ProjectionCommandBytes") < 64L * 1024 * 1024 && (long)Get(((IDictionary)Get(ordinary, "Denied"))[oldCore], "CapacityRevision") == (long)Get(host, "projectionCapacityRevision"), "successful finite eviction stays in both original budgets and stamps final capacity");
+                Call(host, "ClearProjection");
+
+                var pointOwner = AdmissionOwner(host); AddAdmissionScene(host, pointOwner);
+                RetainAdmissionCore(pointOwner, oldCore, AdmissionWindow(pointOwner, oldCore), 838860);
+                var point = new BlueprintProjectionBounds(128, 0, 16, 16);
+                Set(host, "ProjectionMode", Enum.Parse(Get(host, "ProjectionMode").GetType(), "SelectingMove")); Set(host, "projectionPointTarget", pointOwner); Set(host, "projectionPointCore", point);
+                incoming = AdmissionWindow(pointOwner, point);
+                Require((bool)Call(host, "AdmitProjectionWindow", pointOwner, point, incoming), "same-owner point admits by finite non-point eviction");
+                Require(Windows(pointOwner).Count == 1 && Windows(pointOwner).ContainsKey(point) && !Windows(pointOwner).ContainsKey(oldCore) && (int)Get(Get(pointOwner, "Renderer"), "CommandCount") == 1, "published same-owner stage cannot bring its evicted 838860-command core back");
+                Require(Call(host, "HitProjection", 0, 0, .5f, .5f, false) == null && ReferenceEquals(Call(host, "HitProjection", 128, 0, .5f, .5f, false), pointOwner), "same-owner victim loses hit while admitted point remains hittable");
+                Console.WriteLine("PASS Blueprint admission atomic failure commands60+2/new10, sharedRaw31.8+.1/new.4, literal finite eviction and same-owner point; retained Extra-position counting; GPU NOT_RUN.");
+            }
+            finally { Call(host, "ClearProjection"); }
+        }
+        private static void ExtraRetention(object host)
+        {
+            var item = AdmissionOwner(host); var renderer = Get(item, "Renderer");
+            var window = new BlueprintProjectionWindow((BlueprintProjectionIdentity)Get(item, "Identity"), 1, new CaptureSummary { Width = 32, Height = 16 }, new BlueprintProjectionBounds(0, 0, 32, 16),
+                new[] { new CaptureCell { X = 1, Layers = CaptureLayer.Tile, TileType = 1, ObjectId = 1 }, new CaptureCell { X = 17, Layers = CaptureLayer.Tile, TileType = 1, ObjectId = 1 } },
+                new[] { new CaptureObject { Id = 1, Type = 597, Reliable = true, Width = 20, Height = 1 } });
+            var first = new BlueprintProjectionBounds(0, 0, 16, 16); var second = new BlueprintProjectionBounds(16, 0, 16, 16); var coverage = window.Bounds;
+            Call(renderer, "UpdateWindow", window, BlueprintProjectionMask.Empty, first, coverage); Call(renderer, "UpdateWindow", window, BlueprintProjectionMask.Empty, second, coverage);
+            Require((int)Get(renderer, "CommandCount") == 3, "two segments share exactly one Extra body plus two tile commands");
+            var plan = Call(renderer, "PlanCommands", new object[] { null }); Call(plan, "RemoveCore", first);
+            Require((int)Get(plan, "CommandCount") == 2 && (int)Get(renderer, "CommandCount") == 3, "read-only command plan retains duplicate Extra body while other segment owns it");
+            Call(renderer, "RemoveCore", first); Require((int)Get(renderer, "CommandCount") == 2, "actual Compose agrees with independent two-command expectation");
+            Call(plan, "RemoveCore", second); Call(renderer, "RemoveCore", second);
+            Require((int)Get(plan, "CommandCount") == 0 && (int)Get(renderer, "CommandCount") == 0, "last Extra reference releases exactly once");
         }
         private static object[] Scene(object host) { return ((IEnumerable)Get(host, "ProjectionScene")).Cast<object>().ToArray(); }
         private static Dictionary<BlueprintProjectionBounds, BlueprintProjectionWindow> Windows(object item)

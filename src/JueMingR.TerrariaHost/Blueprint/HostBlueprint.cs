@@ -62,12 +62,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
             !(Shell?.State.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !player.dead && !player.ghost && player.HeldItem != null && player.HeldItem.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0; } }
         internal void SetToolbar(bool value) { if (ControlsEnabled) preference.Set(value); }
+        // Display and cached UI use stable business eligibility. Every action
+        // entry independently checks this Update's completed input permission.
         internal bool CanOpenLibrary { get { return ManualLibraryDisabledReason == null; } }
         internal string ManualLibraryDisabledReason
         {
             get {
                 if (!ControlsEnabled) return "蓝图当前不可用";
-                if (!Input.CanStartActions) return "请先结束当前输入";
                 if (Library == null) return "蓝图库暂不可用";
                 if (HasActiveCaptureWork) return "请先完成或退出当前采集";
                 if (ProjectionEditing || pendingProjection != null) return "请先完成或取消当前蓝图操作";
@@ -79,7 +80,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             // Reject before touching pointer/capture/scene ownership. Internal
             // Saved completion uses ShowSaved and does not pass this manual gate.
-            if (!CanOpenLibrary) return;
+            if (!CanOpenLibrary || !Input.CanStartActions) return;
             Pointer.Cancel(); Toolbar.Cancel(); State.Interrupt();
             Shell?.BlueprintUi?.OpenLibrary();
         }

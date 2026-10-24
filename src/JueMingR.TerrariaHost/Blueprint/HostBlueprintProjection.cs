@@ -70,32 +70,35 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool OwnMoveCancellation { get { return ProjectionMode == BlueprintProjectionMode.SelectingMove || ProjectionMode == BlueprintProjectionMode.Moving || ProjectionMode == BlueprintProjectionMode.Committing && restoreProjection != null; } }
         internal bool OwnRemoveCancellation { get { return ProjectionMode == BlueprintProjectionMode.SelectingRemove; } }
         internal bool OwnPlaceCancellation { get { return pendingProjection != null || ProjectionMode == BlueprintProjectionMode.Following || ProjectionMode == BlueprintProjectionMode.Committing && restoreProjection == null; } }
-        internal bool CanInvokeMove { get { return ControlsEnabled && Input.CanStartActions && (OwnMoveCancellation || CanMoveProjection); } }
-        internal bool CanInvokeRemove { get { return ControlsEnabled && Input.CanStartActions && (OwnRemoveCancellation || CanRemoveProjection); } }
-        internal bool CanInvokePlace { get { return ControlsEnabled && Input.CanStartActions && (OwnPlaceCancellation || CanPlaceProjection); } }
-        internal string MoveDisabledReason { get { return CanInvokeMove ? null : !ControlsEnabled ? ProjectionActionHint : !Input.CanStartActions ? "请先结束当前输入" : ProjectionActionHint; } }
-        internal string RemoveDisabledReason { get { return CanInvokeRemove ? null : !ControlsEnabled ? ProjectionActionHint : !Input.CanStartActions ? "请先结束当前输入" : ProjectionActionHint; } }
-        internal string PlaceDisabledReason { get { return CanInvokePlace ? null : !ControlsEnabled ? ProjectionActionHint : !Input.CanStartActions ? "请先结束当前输入" : ProjectionActionHint; } }
-        internal bool CanRemoveAllProjections { get { return ControlsEnabled && Input.CanStartActions && OwnRemoveCancellation; } }
-        internal string RemoveAllDisabledReason { get { return CanRemoveAllProjections ? null : !ControlsEnabled ? "请先进入可用世界" : !Input.CanStartActions ? "请先结束当前输入" : "请先进入移除蓝图模式"; } }
+        internal bool CanInvokeMove { get { return ControlsEnabled && (OwnMoveCancellation || CanMoveProjection); } }
+        internal bool CanInvokeRemove { get { return ControlsEnabled && (OwnRemoveCancellation || CanRemoveProjection); } }
+        internal bool CanInvokePlace { get { return ControlsEnabled && (OwnPlaceCancellation || CanPlaceProjection); } }
+        internal string MoveDisabledReason { get { return CanInvokeMove ? null : ProjectionActionHint; } }
+        internal string RemoveDisabledReason { get { return CanInvokeRemove ? null : ProjectionActionHint; } }
+        internal string PlaceDisabledReason { get { return CanInvokePlace ? null : ProjectionActionHint; } }
+        internal bool CanRemoveAllProjections { get { return ControlsEnabled && OwnRemoveCancellation; } }
+        internal string RemoveAllDisabledReason { get { return CanRemoveAllProjections ? null : !ControlsEnabled ? "请先进入可用世界" : "请先进入移除蓝图模式"; } }
         internal string ProjectionActionHint { get { return !ControlsEnabled ? "请先进入可用世界" : Library == null ? "蓝图库暂不可用" : ProjectionCaptureBlocked ? "请先保存或退出当前采集" : pendingProjection != null ? "正在读取蓝图，可按 Esc 或返回取消" : deletePending ? "正在删除蓝图模板" : ProjectionEditing ? "请先完成或取消当前蓝图操作" : projectionScene.Count == 0 ? "当前没有可选的世界蓝图" : null; } }
         internal int ProjectionReferenceCount(Guid id) { int n = 0; foreach (var p in projectionScene) if (p.Identity.AssetId == id) n++; return n; }
         internal bool ProjectionCandidateReferences(Guid id) { return candidateProjection?.Identity.AssetId == id || pendingProjection?.Identity.AssetId == id; }
         internal bool ProjectionReferences(Guid id) { return ProjectionReferenceCount(id) != 0 || ProjectionCandidateReferences(id); }
         internal bool Place(LibraryEntry entry)
         {
+            // Check before the same-action cancellation branch as well: an
+            // unsampled outer Update never queues or executes a UI command.
+            if (!Input.CanStartActions) return false;
             if (OwnPlaceCancellation) { if (!CanInvokePlace) return false; CancelProjection(); return true; }
-            if (entry == null || entry.IsProtected || !CanPlaceProjection || !Input.CanStartActions) return false;
+            if (entry == null || entry.IsProtected || !CanPlaceProjection) return false;
             Guid revision; if (!Guid.TryParseExact(entry.ContentRevision, "N", out revision)) return false;
             var next = new BlueprintProjectionPlacement { Identity = new BlueprintProjectionIdentity(entry.AssetId, revision, entry.ContentHash, generation, ++projectionGeneration) };
             if (!Library.RequestProjectionOpen(next.Identity)) return false;
             projectionTransaction++; pendingProjection = next; if (State.Active) State.Exit();
             InterruptProjection(); Pointer.Cancel(); Toolbar.Cancel(); projectionFeedback = null; return true;
         }
-        internal void MoveProjection() { if (!CanInvokeMove) return; if (OwnMoveCancellation) CancelProjection(); else BeginProjectionSelection(BlueprintProjectionMode.SelectingMove, "点击需要移动的蓝图"); }
-        internal void RemoveProjection() { if (!CanInvokeRemove) return; if (OwnRemoveCancellation) CancelProjection(); else BeginProjectionSelection(BlueprintProjectionMode.SelectingRemove, "点击需要移除的蓝图"); }
+        internal void MoveProjection() { if (!CanInvokeMove || !Input.CanStartActions) return; if (OwnMoveCancellation) CancelProjection(); else BeginProjectionSelection(BlueprintProjectionMode.SelectingMove, "点击需要移动的蓝图"); }
+        internal void RemoveProjection() { if (!CanInvokeRemove || !Input.CanStartActions) return; if (OwnRemoveCancellation) CancelProjection(); else BeginProjectionSelection(BlueprintProjectionMode.SelectingRemove, "点击需要移除的蓝图"); }
         internal void RemoveAllProjections()
-        { if (!CanRemoveAllProjections) return; ClearProjection(); Pointer.Cancel(); Toolbar.Cancel(); }
+        { if (!CanRemoveAllProjections || !Input.CanStartActions) return; ClearProjection(); Pointer.Cancel(); Toolbar.Cancel(); }
         private void BeginProjectionSelection(BlueprintProjectionMode mode, string message)
         {
             if (!CanMoveProjection || !Input.CanStartActions) return;

@@ -26,7 +26,6 @@ namespace JueMingR.TerrariaHost.F5
         private readonly SingleLineEditView editView = new SingleLineEditView();
         private readonly List<BlueprintLibraryPart> parts = new List<BlueprintLibraryPart>();
         private readonly HashSet<string> failedPreviews = new HashSet<string>(StringComparer.Ordinal);
-        private readonly HashSet<int> knownUnreliableObjects = new HashSet<int>();
         private readonly Dictionary<string, CaptureSummary> failedSummaries = new Dictionary<string, CaptureSummary>(StringComparer.Ordinal);
         private readonly Dictionary<Guid, string> pageKeys = new Dictionary<Guid, string>();
         internal readonly TextEditInput TextInput;
@@ -41,7 +40,7 @@ namespace JueMingR.TerrariaHost.F5
         private Point previewSize;
         private float captureHeaderHeight = BlueprintLibraryLayout.HeaderHeight, captureButtonHeight = 28;
         private float finalLibraryHeight;
-        private bool ready, dirty = true, previousLeft, leftTail, rightTail, wantList, listFailed, objectFailed, editProtected, focusSuspended, seenPlaceCancellation;
+        private bool ready, dirty = true, previousLeft, leftTail, rightTail, wantList, listFailed, objectFailed, editProtected, focusSuspended, seenPlaceCancellation, seenPlaceEligibility;
         private int requestedPage, objectIndex;
         private long readGeneration, activeReadGeneration, listGeneration, objectGeneration, previewGeneration, seenReceipt, seenFlow = -1, seenLibrary = -1;
         private float scroll;
@@ -93,7 +92,6 @@ namespace JueMingR.TerrariaHost.F5
             CancelRead();
             EndEdit(); mode = View.Capture; selected = Guid.Empty; deleteConfirm = null; validation = null; objectIndex = 0; objects = null;
             objectsHandle = Guid.Empty; objectFailed = false; failedPreviews.Clear(); failedSummaries.Clear(); Reveal(); shell.ScrollTo(0);
-            knownUnreliableObjects.Clear();
         }
         private void Reveal() { focusSuspended = false; shell.RestoreVisible(); shell.Navigate(6); dirty = true; armed = null; }
         private void RequestList(int page, Guid? asset = null)
@@ -165,7 +163,6 @@ namespace JueMingR.TerrariaHost.F5
             EndEdit(); deleteConfirm = null; armed = hovered = null; ready = false;
             OwnsPointer = false; parts.Clear(); previews.Dispose(); renderer.Dispose(); objects = null; objectsHandle = Guid.Empty;
             pendingImage = null; pendingPreviewKey = null; failedPreviews.Clear(); failedSummaries.Clear();
-            knownUnreliableObjects.Clear();
         }
         private void CancelRead()
         {
@@ -320,7 +317,6 @@ namespace JueMingR.TerrariaHost.F5
                 if (receipt.Kind == LibraryCommandKind.Objects && receipt.Generation == objectGeneration)
                 {
                     objects = receipt.ObjectPage; objectFailed = objects == null;
-                    if (objects != null) foreach (var item in objects.Items) knownUnreliableObjects.Add(item.Id);
                     if (objectFailed) validation = receipt.Error ?? "对象说明暂不可用"; dirty = true;
                 }
                 if (receipt.Kind == LibraryCommandKind.List && receipt.Generation == listGeneration)
@@ -385,7 +381,9 @@ namespace JueMingR.TerrariaHost.F5
             resourceGeneration = renderer.Generation; previewCacheGeneration = previews.Generation;
             if (geometry) hitClip = F5ControlRenderer.LogicalClip(F5ControlRenderer.ContentClip(view, matrix,
                 new Rectangle(0, 0, (int)dimensions.X, (int)dimensions.Y)), matrix);
-            bool shape = dirty || geometry || seenFlow != host.Flow.Revision || seenLibrary != host.Library.Snapshot.Revision || shownMessage != Message || seenPlaceCancellation != host.OwnPlaceCancellation ||
+            // Stable placement eligibility is a real cache dependency. Input
+            // sampling phase is intentionally absent from this dependency.
+            bool shape = dirty || geometry || seenFlow != host.Flow.Revision || seenLibrary != host.Library.Snapshot.Revision || shownMessage != Message || seenPlaceCancellation != host.OwnPlaceCancellation || seenPlaceEligibility != host.CanInvokePlace ||
                 mode == View.Capture && editor != null && (editRevision != editor.Revision || composition != TextInput.Composition);
             if (shape)
             {
@@ -395,7 +393,7 @@ namespace JueMingR.TerrariaHost.F5
                 // page cannot consume the user's scroll before the reply arrives.
                 shell.ClampScroll();
                 if (scroll != shell.Scroll) { scroll = shell.Scroll; projection++; armed = null; }
-                seenFlow = host.Flow.Revision; seenLibrary = host.Library.Snapshot.Revision; shownMessage = Message; seenPlaceCancellation = host.OwnPlaceCancellation;
+                seenFlow = host.Flow.Revision; seenLibrary = host.Library.Snapshot.Revision; shownMessage = Message; seenPlaceCancellation = host.OwnPlaceCancellation; seenPlaceEligibility = host.CanInvokePlace;
                 layoutGeneration = shell.Layout.Generation; resourceGeneration = renderer.Generation; previewCacheGeneration = previews.Generation;
             }
             if (editor != null && editRect.Width > 0 && (shape || editRevision != editor.Revision || caretRevision != editor.CaretRevision || composition != TextInput.Composition))
@@ -437,7 +435,7 @@ namespace JueMingR.TerrariaHost.F5
                 var summary = host.Flow.Summary;
                 if (summary != null && summary.UnreliableObjectCount > 0 && !objectFailed && (objects == null || objectsHandle != host.Flow.ContentHandle.Id))
                 {
-                    if (objectsHandle != host.Flow.ContentHandle.Id) { knownUnreliableObjects.Clear(); objectsHandle = host.Flow.ContentHandle.Id; objectGeneration = ++readGeneration; }
+                    if (objectsHandle != host.Flow.ContentHandle.Id) { objectsHandle = host.Flow.ContentHandle.Id; objectGeneration = ++readGeneration; }
                     if (host.Library.TryObjects(objectGeneration, host.Flow.ContentHandle, objectIndex)) activeReadGeneration = objectGeneration; return;
                 }
                 string key = draftPreviewKey;
@@ -492,13 +490,9 @@ namespace JueMingR.TerrariaHost.F5
             if (projected == null && failedSummaries.TryGetValue(key, out failed) && failed.ContentCount == 0) return "没有可保存的内容";
             if (previews.Get(key) == null || projected == null) return failedPreviews.Contains(key) ? "当前预览暂不可用" : "当前预览尚未就绪";
             if (projected.ContentCount == 0) return "没有可保存的内容";
-            bool resolved = flow.Summary.UnreliableObjectCount == 0 || flow.ExcludeUnreliable;
-            if (!resolved && objectsHandle == flow.ContentHandle.Id && knownUnreliableObjects.Count >= flow.Summary.UnreliableObjectCount)
-            {
-                resolved = true;
-                foreach (int id in knownUnreliableObjects) if (Array.IndexOf(flow.ExcludedObjectIds, id) < 0) { resolved = false; break; }
-            }
-            return resolved ? null : "仍有待排除的对象";
+            // The paired filtered summary owns the remaining-object fact. Page
+            // browsing and GPU teardown must not change draft save eligibility.
+            return projected.UnreliableObjectCount == 0 ? null : "仍有待排除的对象";
         }
         private void TryConfirmDraft()
         {

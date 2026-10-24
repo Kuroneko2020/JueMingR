@@ -58,6 +58,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 PlayerInput.MouseInfo.Y * PlayerInput.RawMouseScale.Y), Matrix.Invert(Main.UIScaleMatrix));
         }
         private int ProjectionMode { get { return host.OwnPlaceCancellation ? 2 : host.OwnMoveCancellation ? 3 : host.OwnRemoveCancellation ? 4 : host.ProjectionScene.Count == 0 ? 0 : 1; } }
+        // Draw and hints share stable business predicates. Process still routes
+        // commands through Host entries with the current input permission.
         private bool Available(int index)
         {
             if (!Layout.Available(index)) return false;

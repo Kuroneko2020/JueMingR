@@ -46,6 +46,7 @@ namespace JueMingR.TerrariaHost.F5
             elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, id);
         }
         internal static bool Owns(F5Command command) { return command >= F5Command.BlueprintCapture && command <= F5Command.BlueprintRemove; }
+        // UI display is phase independent; Host action entries own admission.
         internal bool Available(F5Command command) { return owner.ControlsEnabled && (command != F5Command.BlueprintSave || owner.CanSave) &&
             (command != F5Command.BlueprintLibrary || owner.CanOpenLibrary) &&
             (command != F5Command.BlueprintMove || owner.CanInvokeMove) && (command != F5Command.BlueprintRemove || owner.CanInvokeRemove) &&
