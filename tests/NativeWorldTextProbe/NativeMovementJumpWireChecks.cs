@@ -30,7 +30,7 @@ namespace NativeWorldTextProbe
             {
                 foreach(bool startingDash in new[]{false,true})foreach(bool assisted in new[]{false,true})foreach(bool complex in new[]{false,true})foreach(int phase in new[]{0,1,2})
                 {
-                    var source=new Player{active=true,whoAmI=Main.myPlayer,controlJump=true,releaseJump=false,position=new Vector2(700,900)};
+                    var source=new Player{active=true,whoAmI=Main.myPlayer,controlJump=true,releaseJump=true,position=new Vector2(700,900)};
                     source.grappling[0]=-1;source.hasJumpOption_Cloud=complex;source.dashDelay=startingDash?-1:0;Main.player[Main.myPlayer]=source;
                     var npc=new NPC();npc.SetDefaults(NPCID.BlueSlime);npc.active=true;npc.whoAmI=0;npc.target=Main.myPlayer;npc.targetRect=source.Hitbox;Main.npc[0]=npc;
                     Call(jump,"ClearSession");Call(jump,"BeginUpdate",source,1L,++cases,1L);

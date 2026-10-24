@@ -85,7 +85,7 @@ namespace JueMingR.TerrariaHost.Combat
                 Equals(plan.Timeline.GravitySources,shared.GravitySources) && Equals(plan.Timeline.WallSources,shared.WallSources) &&
                 (!ReferenceEquals(plan.MotionSource,observation.Prediction) || plan.Timeline.RelationVersion==shared.RelationVersion))
             {
-                currentSolution=new HostAttackSolution(shared,plan.Solution.Point,true,plan.Solution.Reachability,plan.Solution.ReceiveTick,plan.Solution.Contact);
+                currentSolution=new HostAttackSolution(shared,plan.Solution.Point,true,plan.Solution.Reachability,plan.Solution.ReceiveTick,plan.Solution.Contact,plan.Solution.DirectionIndependent);
                 handTerrain=plan.Terrain.FreezeCells();handMotionTerrain=plan.MotionTerrain;sharedHandOwner=player;
             }
             else if(phase!=HostAttackPhase.CompletedWorld)currentSolution=SolveBalancedHand(player,item,captured,timeline,origin,clock,terrain);
@@ -116,7 +116,10 @@ namespace JueMingR.TerrariaHost.Combat
                 // Native Shoot has already admitted this action and may have
                 // started its animation. The preparation-only scheduling gate
                 // must not reject that same shootsEveryUse consumer afterward.
-                (checkAmmo || HostAttackWindow.NextAction(combat,player,weapon)) && (Main.GameUpdateCount==prepared?preparedMotion:nextBalancedMotion).SameSample(NpcPredictionSource.ReadPlayer(player)) && preparedDirection==player.direction &&
+                (checkAmmo || HostAttackWindow.NextAction(combat,player,weapon)) && (Main.GameUpdateCount==prepared?preparedMotion:nextBalancedMotion).SameSample(NpcPredictionSource.ReadPlayer(player)) &&
+                // Pure facing may leave this birth unchanged; physical samples,
+                // muzzle, target and freshness still qualify the same solution.
+                (solution.DirectionIndependent || preparedDirection==player.direction) &&
                 Vector2.DistanceSquared(HostAttackModels.LaunchOrigin(player,weapon),Main.GameUpdateCount==prepared?origin:nextOrigin)<=4 &&
                 environmentState.Current && (handTerrain==null?terrain.Unchanged:handTerrain.Current && handMotionTerrain!=null && handMotionTerrain.Current) && (checkAmmo?ammo.Matches(player,weapon):ammo.IdentityMatches(player,weapon));
         }

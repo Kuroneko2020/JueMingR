@@ -57,7 +57,8 @@ namespace NativeWorldTextProbe
                 Main.LocalPlayer.releaseJump=false;
                 Main.LocalPlayer.Update(Main.myPlayer);
                 Require(!Main.LocalPlayer.justJumped,"Isolated Player.Update outside real Main world scope cannot receive an auxiliary edge.");
-                world();Require(Main.LocalPlayer.justJumped && Main.LocalPlayer.jump>0,"Actual Main world -> mapped Player.Update -> original JumpMovement starts held jump.");
+                world();Require(!Main.LocalPlayer.justJumped && Main.LocalPlayer.releaseJump,"Actual Main scope first completes the unarmed input's release update.");
+                world();Require(Main.LocalPlayer.justJumped && Main.LocalPlayer.jump>0,"The later mapped Player.Update presses the native rearmed jump.");
                 RelayHeight(context,movement,input,world,output);
                 ResourceAndCleanup(context,movement,input,world);
                 MountedSources(context,movement,input,world);
@@ -116,8 +117,11 @@ namespace NativeWorldTextProbe
             var p=ResetPlayer(true);input(None);input(None);world();world();
             p.wingTime=0;p.rocketTime=0;p.releaseJump=false;
             input(Jump);input(Jump);world();
+            Require(p.jump==0 && p.releaseJump && p.rocketRelease && p.wingTime==p.wingTimeMax && p.rocketTime==p.rocketTimeMax,
+                "Unarmed intent completes a whole native release update and natural ground resource recovery.");
+            input(Jump);input(Jump);world();
             Require(p.justJumped && p.jump>0 && p.wingTime==p.wingTimeMax && p.rocketTime==p.rocketTimeMax && !p.autoJump,
-                "Exhausted ground resources refill inside original later Update consumers; temporary autoJump closes afterwards.");
+                "The later native press uses recovered resources without borrowing autoJump or release flags.");
             // This remote original consumer has no local scope and must not
             // revoke a published local intention merely by sharing the hook.
             var source=Get(Get(context,"CombatObservation"),"Prediction");var read=source.GetType().GetMethod("ReadPlayer",F);
@@ -134,7 +138,7 @@ namespace NativeWorldTextProbe
             try{world();}catch(InvalidOperationException e){propagated=e.Message=="movement-owned-post-consumer-failure";}
             finally{throwPlayer=null;}
             Require(propagated && p.jump>0 && p.velocity.Y<0 && !p.autoJump && !p.releaseJump,
-                "Real Player.Update finalizer preserves original exception and consumed motion while withdrawing only its temporary booleans.");
+                "Real Player.Update finalizer preserves original exception and consumed motion without restoring native release state.");
             Console.WriteLine("PASS MOVEMENT original exhausted-ground-refill/native-frog/remote-intent/post-consumer-exception scope cleanup");
         }
         private static void RelayHeight(object context,object movement,Action<Keys[]> input,Action world,string output)
@@ -172,8 +176,8 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("MOVEMENT MAIN TAIL equipment="+equipment+" manualPeak="+peak[0]+" assistedPeak="+peak[1]+" second="+second[1]+" paths="+paths[1].Count);
             }
             // One real cloud -> wing/boot combination exercises the complete
-            // Update consumer sequence; source conversion keeps running while
-            // its jump input is masked. No resources are restored by the test.
+            // Update consumer sequence; native conversion and sustained flight
+            // are allowed on the same final held tick. Resources stay native.
             SetEnabled(movement,0,true);var flight=ResetPlayer();flight.armor[3].SetDefaults(ItemID.CloudinaBottle);flight.armor[4].SetDefaults(ItemID.AngelWings);flight.armor[5].SetDefaults(ItemID.RocketBoots);
             input(None);input(None);world();world();int last=0,coast=0;bool spent=false,converted=false;
             for(int k=0;k<150;k++)
@@ -182,12 +186,12 @@ namespace NativeWorldTextProbe
                 input(Jump);input(Jump);world();
                 if(rocket>0 && flight.rocketTime==0 && flight.wingTime>=wing+rocket*6-1)converted=true;
                 if(before==1)
-                {last++;Require(flight.jump==0 && flight.velocity.Y<0 && flight.wingTime>=wing && flight.rocketDelay==0,"Last complete native tick cannot ignite later wing/boot consumers.");}
+                {last++;Require(flight.jump==0 && flight.velocity.Y<0 && flight.rocketDelay==0,"Last complete held tick retains its native motion and permits the later wing consumer.");}
                 var state=(PredictionPlayerMotion)context.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcPredictionSource",true).GetMethod("ReadPlayer",F).Invoke(null,new object[]{flight});
-                if(state.AssistedJumpPhase==MovementJumpPhase.Coast){coast++;Require(flight.wingTime>=wing && flight.rocketDelay==0,"Every owned natural tail preserves later native flight start.");}
-                if(flight.wingTime<wing){spent=true;break;}
+                if(state.AssistedJumpPhase==MovementJumpPhase.Coast)coast++;
+                if(!flight.canJumpAgain_Cloud && flight.jump==0 && flight.wingTime<wing){spent=true;break;}
             }
-            Require(last>=2 && coast>2 && converted && spent && !flight.canJumpAgain_Cloud,"Actual cloud then wing/boot handoff retains tails and native fuel conversion before eventual flight.");
+            Require(last>=2 && converted && spent && !flight.canJumpAgain_Cloud,"Actual ground/cloud spans complete while native sustained flight and fuel conversion retain their legal windows.");
             Console.WriteLine("PASS MOVEMENT MAIN TAIL native manual-height oracles; cloud-wing-boots lastTicks="+last+" coast="+coast+" nativeConversion="+converted+" nativeFlight="+spent);
         }
         private static void MountedSources(object context,object movement,Action<Keys[]> input,Action world)
@@ -330,7 +334,7 @@ namespace NativeWorldTextProbe
             {
                 Require(observed.Families.All(n=>n>0),"All five actual equipment-produced extra-jump families consumed: "+label+" "+String.Join(",",observed.Families));
                 if(label=="carpet")Require(rocketSpent>0 && carpetTicks>0,"Original rocket then carpet resources really execute.");
-                else Require(wingSpent>0 && observed.WingBoundary>0,"Native jumps retain their complete tails before later original wings consume fuel.");
+                else Require(wingSpent>0 && observed.WingBoundary>0,"Native held spans complete and later original wing consumers use real fuel.");
             }
             Console.WriteLine("MOVEMENT COST label="+label+" round="+round+" warm="+warm+" samples="+updates.Length+" starts="+observed.Starts+" ground="+observed.Ground+" extra="+observed.Extra+" families="+String.Join(",",observed.Families)+" wingSpent="+wingSpent+" rocketDelta="+rocketSpent+" carpetTicks="+carpetTicks+" dashTicks="+dashTicks+" allocated="+allocation+" gc="+(GC.CollectionCount(0)-collections0)+","+(GC.CollectionCount(1)-collections1)+","+(GC.CollectionCount(2)-collections2)+" first-max-frame="+firstSpike+" update="+Distribution(updates)+" full-mapped-world-draw="+Distribution(frames));
             // Sample release after a mapped latency pair; no new intent may be

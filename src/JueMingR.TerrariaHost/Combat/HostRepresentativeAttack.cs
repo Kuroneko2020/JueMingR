@@ -29,7 +29,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal static HostAttackSolution Prepare(Player player,AttackAmmoSnapshot ammo,NpcTrajectory path,Vector2 origin,HostAttackClock clock,PredictionTerrain terrain)
         {
-            return Prepare(player,ammo,path,origin,clock,terrain,aim=>
+            var solution=Prepare(player,ammo,path,origin,clock,terrain,aim=>
             {
                 var p=HostNoteAttack.Copy(ContentSamples.ProjectilesByType[ammo.Projectile]);p.active=true;p.owner=player.whoAmI;p.Center=origin;
                 p.velocity=HostThornAttack.BirthVelocity(player,origin,aim,ammo.Speed);p.velocity=HostSpecialArrowAttack.BirthVelocity(ammo,p.velocity,player.direction);p.damage=ammo.Damage;p.knockBack=ammo.NativeKnockBack;
@@ -37,6 +37,15 @@ namespace JueMingR.TerrariaHost.Combat
                 if(p.aiStyle==1)while(p.velocity.X>=16 || p.velocity.X<=-16 || p.velocity.Y>=16 || p.velocity.Y< -16)p.velocity*=.97f;
                 return p;
             });
+            if(!solution.HasPoint)return solution;
+            // Dependence comes from the actual origin/quantized-cursor/fan
+            // branches, not a weapon whitelist at the input consumer. Recheck
+            // the selected input (which need not be the final replay attempted).
+            bool originDirection,velocityDirection,fanDirection;
+            HostAttackModels.LaunchOrigin(player,player.HeldItem,out originDirection);
+            var raw=HostThornAttack.BirthVelocity(player,origin,solution.Point,ammo.Speed,out velocityDirection);
+            HostSpecialArrowAttack.BirthVelocity(ammo,raw,player.direction,out fanDirection);
+            return new HostAttackSolution(solution.Timeline,solution.Point,solution.HasPoint,solution.Reachability,solution.ReceiveTick,solution.Contact,!originDirection && !velocityDirection && !fanDirection);
         }
         internal static HostAttackSolution Prepare(Player player,AttackAmmoSnapshot ammo,NpcTrajectory path,Vector2 origin,HostAttackClock clock,PredictionTerrain terrain,Func<Vector2,Projectile> birth,int fireDelay=0)
         {

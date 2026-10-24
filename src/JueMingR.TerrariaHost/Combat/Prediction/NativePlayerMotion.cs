@@ -36,6 +36,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // retain this prefix too. Active thrust or a possible rocket edge
             // and wing/boot fuel transfer already have unmodelled consumers.
             return assisted && !p.mount.Active && p.wingTime<=0 && p.carpetFrame==-1 && p.rocketDelay==0 &&
+                // Reversed held wings use absolute positive Y for native
+                // third gravity, even at zero wingTime. That is not the
+                // ordinary held prefix implemented by this frozen motor.
+                !(p.wingsLogic>0 && p.gravDir==-1) &&
                 !(p.rocketBoots>0 && p.canRocket && p.rocketRelease && p.CanUseBootFlyingAbilities) &&
                 !(p.wingsLogic>0 && p.rocketBoots>0 && (p.rocketTime>0 || p.empressBrooch));
         }
@@ -213,12 +217,15 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 bool justJumped=false;
                 var phase=MovementJumpRules.Before(profile.JumpPhase,profile.AssistedJump,p.controlDown,p.velocity.Y*p.gravDir);
                 bool water=p.wet && p.accFlipper && !cart;if(water)phase=MovementJumpPhase.None;
+                // Only the supported ordinary subset reaches this simulated
+                // Jump consumer. Live flight handoff remains conditional, so
+                // Coast here still denotes its ordinary whole-update release.
                 bool effectiveJump=MovementJumpRules.Effective(p.controlJump,phase);
+                if(profile.AssistedJump && !p.controlDown && p.jump<=0 && (p.velocity.Y==0 || water) && !p.releaseJump && !(p.autoJump && p.velocity.Y==0))effectiveJump=false;
                 int beforeJump=p.jump;
                 bool candidate=profile.AssistedJump && !p.controlDown && !water && p.jump<=0 && p.velocity.Y==0 && effectiveJump;
                 if(effectiveJump)
                 {
-                    if(profile.AssistedJump && !p.controlDown && p.jump<=0 && (p.velocity.Y==0 || p.wet && p.accFlipper && !cart))p.releaseJump=true;
                     if(p.jump>0){if(p.velocity.Y==0)p.jump=0;else{p.velocity.Y=-jumpSpeed*p.gravDir;if(p.merman && !cart){if(p.swimTime<=10)p.swimTime=30;}else p.jump--;}}
                     else if((p.velocity.Y==0 || p.wet && p.accFlipper && !cart) && (p.releaseJump || p.autoJump && p.velocity.Y==0)){p.velocity.Y=-jumpSpeed*p.gravDir;p.jump=jumpHeight;justJumped=true;if(p.wet && p.accFlipper && p.swimTime==0)p.swimTime=30;}
                     p.releaseJump=false;

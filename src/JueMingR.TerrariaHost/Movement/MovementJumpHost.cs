@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Movement
         private Player player,intentPlayer;
         private long session,tick,version,lastInputVersion;
         private int thread;
-        private bool active,intent,releaseOwned,autoOwned,rocketOwned,jumpEntered;
+        private bool active,intent,jumpEntered;
         private bool masked,candidate,fallRelease;
         private int beforeJump;
         private MovementJumpPhase phase;
@@ -52,65 +52,47 @@ namespace JueMingR.TerrariaHost.Movement
             }
             if(water)SetPhase(MovementJumpPhase.None);
             else SetPhase(MovementJumpRules.Before(phase,holding,value.controlDown,value.velocity.Y*value.gravDir));
-            masked=phase==MovementJumpPhase.Coast;
+            // Choose one input for the whole native update. Coast delays our
+            // next discrete edge; it must not suppress an already legal native
+            // held-flight consumer. In particular the last held tick remains
+            // pressed all the way through carpet, wings and both hover reads.
+            masked=phase==MovementJumpPhase.Coast && !SustainedInput(value) || !water && NeedsBootRelease(value);
             if(masked)ownership.MarkWritten(MovementJumpOwner.SimulatedJump);
             beforeJump=value.jump;
             bool opportunity=value.sliding || value.velocity.Y==0 || ExtraJump(value) || value.wet && value.accFlipper && (!value.mount.Active || !value.mount.Cart) || value.mount.Active && value.mount.IsConsideredASlimeMount && value.wetSlime>0;
             bool release=!masked && MovementJumpRules.Release(holding,value.controlDown,value.jump,opportunity);
+            // A synthetic release flag is not a legal input edge. If vanilla
+            // still needs rearming, every consumer sees this release update;
+            // only a later update may press. Already-armed/native auto-jump
+            // opportunities pass immediately, without a forced wait.
+            if(release && !value.releaseJump && !(value.autoJump && (value.velocity.Y==0 || value.sliding)))
+            {masked=true;ownership.MarkWritten(MovementJumpOwner.SimulatedJump);release=false;}
             candidate=release && !water && !TakenOver(value);
-            if(!release || value.releaseJump)return;
-            ownership.MarkWritten(MovementJumpOwner.SimulatedJump);
-            value.releaseJump=true;releaseOwned=true;
-            // JumpMovement changes velocity and consumes releaseJump before
-            // Update's wing/rocket refill. autoJump && justJumped carries ONLY
-            // this legal ground jump across that resource-refresh consumer.
-            // Sliding explicitly clears autoJump inside the original method.
-            if(value.velocity.Y==0 && !value.sliding && !value.autoJump){value.autoJump=true;autoOwned=true;}
         }
         internal void AfterJump(Player value,bool permitted,bool heldJump,bool heldDown)
         {
             if(!Current(value) || !jumpEntered)return;
-            // A consumed false is native state and must never be rolled back.
-            if(releaseOwned && !value.releaseJump)releaseOwned=false;
             bool holding=intent && permitted && heldJump && !heldDown && value.controlJump && !value.controlDown && !ExcludedMount(value);
             if(!holding){Publish(value,false);SetPhase(MovementJumpPhase.None);masked=false;return;}
             if(ownership.Owner==MovementJumpOwner.SimulatedJump && !TakenOver(value))
                 SetPhase(MovementJumpRules.After(phase,candidate,beforeJump,value.jump,value.velocity.Y*value.gravDir));
-            // The final held tick has already reset native velocity. Its same
-            // Update carpet/wing/boot/hover consumers must now see release.
-            masked=phase==MovementJumpPhase.Coast;
-            if(masked && !ownership.Written)ownership.MarkWritten(MovementJumpOwner.SimulatedJump);
-            if(masked)return;
-            if(ownership.Owner!=MovementJumpOwner.SimulatedJump || TakenOver(value) || value.jump!=0 || ExtraJump(value) || value.rocketBoots==0 || value.rocketTime<=0 || value.rocketRelease)return;
-            // canRocket is deliberately NOT sampled here: Update establishes
-            // it after CarpetMovement. Its full later gate still owns wings,
-            // cooldown, CanUseBootFlyingAbilities, fuel and actual movement.
-            if(!ownership.Written)ownership.MarkWritten(MovementJumpOwner.SimulatedJump);
-            value.rocketRelease=true;rocketOwned=true;
+            // Do not change this update's effective input after JumpMovement.
+            // Native false input alone rearms boots; their later consumer must
+            // also see that complete release update before a subsequent press.
         }
         internal void EndUpdate(Player value)
         {
             if(!active || !ReferenceEquals(value,player) || Thread.CurrentThread.ManagedThreadId!=thread)return;
-            // Clear only booleans changed false -> true by this scope. These
-            // fields have no subsequent native true-writer while Jump is held
-            // in locked .8; original false writes and consumed motion survive.
-            if(releaseOwned && value.releaseJump)value.releaseJump=false;
-            if(autoOwned && value.autoJump)value.autoJump=false;
-            if(rocketOwned && value.rocketRelease)value.rocketRelease=false;
-            releaseOwned=autoOwned=rocketOwned=false;masked=candidate=false;active=false;player=null;ownership.Reset();
+            // Observe actual native takeovers. No release/resource fields are
+            // borrowed or restored; completed native effects survive cleanup.
+            if(ownership.Owner==MovementJumpOwner.SimulatedJump && (value.carpetFrame>=0 || value.rocketDelay>0))SetPhase(MovementJumpPhase.None);
+            masked=candidate=false;active=false;player=null;ownership.Reset();
         }
         internal bool Cancel()
         {
             bool changed=intent || phase!=MovementJumpPhase.None;
             // Disabling this feature withdraws its own request, not the shared
             // current-update scope or a future protection owner's reservation.
-            if(active && ownership.Owner==MovementJumpOwner.SimulatedJump)
-            {
-                if(releaseOwned && player.releaseJump)player.releaseJump=false;
-                if(autoOwned && player.autoJump)player.autoJump=false;
-                if(rocketOwned && player.rocketRelease)player.rocketRelease=false;
-                releaseOwned=autoOwned=rocketOwned=false;
-            }
             Publish(intentPlayer,false);SetPhase(MovementJumpPhase.None);masked=candidate=false;return changed;
         }
         internal void ClearSession()
@@ -130,6 +112,27 @@ namespace JueMingR.TerrariaHost.Movement
         private void SetPhase(MovementJumpPhase value){if(phase!=value){phase=value;version++;}}
         private static bool TakenOver(Player p)
         {return p.pulley || p.tongued || p.CCed || p.carpetFrame>=0 || p.rocketDelay>0 || p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0;}
+        private static bool BootInput(Player p)
+        {return p.jump<=0 && p.velocity.Y!=0 && !p.sliding && !ExtraJump(p) && p.rocketBoots!=0 && p.rocketTime>0 && (p.wingTime==0 || p.wingsLogic==0) && p.rocketDelay==0 && p.CanUseBootFlyingAbilities;}
+        private static bool NeedsBootRelease(Player p)
+        {return BootInput(p) && !p.rocketRelease;}
+        private static bool SustainedInput(Player p)
+        {
+            // A rearmed extra jump is still the native first consumer. Do not
+            // manufacture that discrete start early just to reach later wings.
+            if(p.releaseJump && ExtraJump(p))return false;
+            // These are the actual held-input families, not equipment presence.
+            // The depleted-wing branch deliberately uses absolute Y: .8 also
+            // applies its third gravity during reversed-gravity ascent.
+            if(p.wingsLogic>0 && !p.isPerformingJump_DownDash &&
+                (p.wingTime>0 && p.jump==0 && p.velocity.Y!=0 || p.velocity.Y>0))return true;
+            if(p.carpet && p.jump==0 && p.velocity.Y!=0 && !ExtraJump(p) && p.rocketTime==0 && p.wingTime==0 && !p.mount.Active && (p.canCarpet || p.carpetTime>0))return true;
+            // canRocket is established after CarpetMovement. Include that exact
+            // upcoming velocity gate, while leaving fuel/delay/use permission
+            // and the actual native action untouched.
+            return BootInput(p) && p.rocketRelease && (p.canRocket || p.velocity.Y!=0 &&
+                (p.gravDir==1 && p.velocity.Y> -Player.jumpSpeed || p.gravDir==-1 && p.velocity.Y<Player.jumpSpeed));
+        }
         internal bool EffectiveJump(Player value,bool nativeJump)
         {return nativeJump && !(Current(value) && (ownership.Owner==MovementJumpOwner.FallProtection && fallRelease || masked && intent && ownership.Owner==MovementJumpOwner.SimulatedJump && !value.dead && !value.ghost && !value.controlDown));}
         internal void AfterFlight(Player value)
@@ -138,7 +141,7 @@ namespace JueMingR.TerrariaHost.Movement
             // native consumer has actually completed, its flight supersedes
             // our registered jump tail; this is observation, not a new action.
             if(!Current(value) || ownership.Owner!=MovementJumpOwner.SimulatedJump)return;
-            SetPhase(MovementJumpPhase.None);masked=false;
+            SetPhase(MovementJumpPhase.None);
         }
         private void Publish(Player value,bool holding)
         {if(!ReferenceEquals(intentPlayer,value) || intent!=holding){version++;intentPlayer=value;intent=holding;}}

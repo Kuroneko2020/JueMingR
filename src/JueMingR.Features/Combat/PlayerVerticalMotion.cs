@@ -57,14 +57,16 @@ namespace JueMingR.Features.Combat
             bool water=p.Wet && p.Flipper && !p.Cart;
             var phase=MovementJumpRules.Before(p.AssistedJumpPhase,p.AssistedJump,p.Down,p.Vy*p.GravityDirection);
             if(water)phase=MovementJumpPhase.None;
+            // Continuation admits only its existing ordinary subset. Native
+            // sustained flight retires the live tail or stays conditional;
+            // this scalar does not infer flight permission from a Coast byte.
             bool effectiveJump=MovementJumpRules.Effective(p.HoldJump,phase);
+            bool opportunity=p.Vy==0 || water;
+            if(p.AssistedJump && !p.Down && p.Jump<=0 && opportunity && !p.ReleaseJump && !(p.AutoJump && p.Vy==0))effectiveJump=false;
             int beforeJump=p.Jump;
             bool candidate=p.AssistedJump && !p.Down && !water && p.Jump<=0 && p.Vy==0 && effectiveJump;
             if(effectiveJump)
             {
-                // The sampled intent adds only the ordinary native release
-                // premise; a forecast never acquires the live Jump writer.
-                if(p.AssistedJump && !p.Down && p.Jump<=0 && (p.Vy==0 || p.Wet && p.Flipper && !p.Cart))p.ReleaseJump=true;
                 if(p.Jump>0)
                 {
                     if(p.Vy==0)p.Jump=0;
