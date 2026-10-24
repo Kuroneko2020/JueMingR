@@ -68,6 +68,9 @@ function Get-WorkloadRoute {
         if (Test-WorkloadNonExecutableInput $path) { continue }
         $leaves=@(Get-WorkloadPathChecks $path)
         if ($leaves.Count) {
+            # Its explicit combat leaf must retain the existing worker plan,
+            # including the Integration-dependent private-image check.
+            if($path -ceq 'tests/NativeWorldTextProbe/NativeCombatWorkerAssetChecks.cs'){[void]$groups.Add('legacy-worker')}
             if(($leaves -join '|') -ceq 'workload-PackageVerification'){[void]$groups.Add('package-tools')}
             else{foreach($name in $leaves){[void]$groups.Add('check:'+$name)}}
             continue
