@@ -964,7 +964,8 @@ namespace JueMingR.TerrariaHost
                     runtime.SharedRuntime.AddFeature(Journey);
                     Movement = new Movement.MovementSession(gameDirectory, runtime.SharedRuntime, Input, items, Fishing?.Equipment);
                     runtime.SharedRuntime.AddFeature(Movement);
-                    Blueprint = new Blueprint.HostBlueprint(gameDirectory, runtime.SharedRuntime, Input, worldTiles);
+                    var blueprintLibrary = new Features.Blueprint.LibraryState(new Infrastructure.Blueprint.FileBlueprintLibrary(System.IO.Path.Combine(gameDirectory, "JueMingRData", "blueprints", "templates")));
+                    Blueprint = new Blueprint.HostBlueprint(gameDirectory, runtime.SharedRuntime, Input, worldTiles, blueprintLibrary);
                     runtime.SharedRuntime.AddFeature(Blueprint);
                     View = new View.HostView(gameDirectory, runtime.SharedRuntime, Input);
                     runtime.SharedRuntime.AddFeature(View);

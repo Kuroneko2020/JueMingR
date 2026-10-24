@@ -210,14 +210,14 @@ namespace JueMingR.TerrariaHost.F5
 
         internal void Prepare(F5Interaction state, float width, float height, float scale)
         {
-            if (BlueprintControls != null) state.Layout.SetBlueprintMode(BlueprintControls.Active);
+            if (BlueprintControls != null) { state.Layout.SetBlueprintMode(BlueprintControls.Active); state.Layout.SetBlueprintOperation(BlueprintControls.OperationMode); }
             if(CombatObservationControls!=null)state.Layout.SetObservationOptions(CombatObservationControls.Options);
             state.Layout.Ensure(width, height, scale, state.Page, font, measure);
             if(state.Page==8 && !ReferenceEquals(intervalFont,font))
             {for(int i=0;i<=30;i++){intervalLabels[i]="间隔 "+i;intervalSizes[i]=state.Layout.TextSize(intervalLabels[i],.65f);}for(int i=0;i<=50;i++){radiusLabels[i]="鼠标半径："+i+"格";radiusSizes[i]=state.Layout.TextSize(radiusLabels[i],.70f);}intervalFont=font;}
             // Dynamic pages clamp after committing their real content height.
             // Ensure's temporary empty height must not reset their offset.
-            if (state.Page != 0 && state.Page != 1 && state.Page != 4 && !(FishingUi!=null && state.Page==7) && !(RecoveryUi!=null && state.Page==10)) state.ClampScroll();
+            if (state.Page != 0 && state.Page != 1 && state.Page != 4 && (state.Page != 6 || !(BlueprintControls?.LibraryVisible ?? false)) && !(FishingUi!=null && state.Page==7) && !(RecoveryUi!=null && state.Page==10)) state.ClampScroll();
         }
 
         private F5Size Measure(string text)
@@ -386,6 +386,9 @@ namespace JueMingR.TerrariaHost.F5
             target = F5HintLayout.Intersect(hover.Rect.Offset(view.X, view.Y - state.Scroll), visible);
             if (hover.HotkeyTarget == F5.AnnouncementControls.SendActionId) return AnnouncementControls?.SendHint;
             if (hover.HotkeyTarget == F5.BlueprintControls.SaveAction) return "双击设置保存采集的快捷键";
+            if (hover.HotkeyTarget == F5.BlueprintControls.LibraryAction) return "双击设置打开蓝图库的快捷键";
+            if (hover.HotkeyTarget == F5.BlueprintControls.MoveAction) return "双击设置移动蓝图的快捷键";
+            if (hover.HotkeyTarget == F5.BlueprintControls.RemoveAction) return "双击设置移除蓝图的快捷键";
             if (hover.Kind == F5ElementKind.Hotkey && hover.HotkeyTarget != null)
             {
                 if (hover.HotkeyTarget == F5.BlueprintControls.SaveAction) return "双击设置保存采集的快捷键";
@@ -395,8 +398,15 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal string ButtonHint(F5Element hover, bool biomeFailed)
         {
+            // Names carry ordinary descriptions. The same controls also serve
+            // icon toolbars, so suppress only enabled F5 text buttons here;
+            // unavailable actions still explain their real current gate.
+            if (hover.Kind == F5ElementKind.Button && BlueprintControls != null && BlueprintControls.Available(hover.Command) &&
+                (hover.Command == F5Command.BlueprintCapture || hover.Command == F5Command.BlueprintSave ||
+                 hover.Command == F5Command.BlueprintMove || hover.Command == F5Command.BlueprintRemove)) return null;
+            string blueprintHint = BlueprintControls?.Hint(hover.Command); if (blueprintHint != null) return blueprintHint;
             if (hover.Command == F5Command.BlueprintCapture) return BlueprintControls != null && BlueprintControls.Active ? F5.BlueprintControls.ExitHint : F5.BlueprintControls.StartHint;
-            if (hover.Command == F5Command.BlueprintSave) return F5.BlueprintControls.SaveHint;
+            if (hover.Command == F5Command.BlueprintSave) return BlueprintControls?.Hint(hover.Command) ?? F5.BlueprintControls.SaveHint;
             if (biomeFailed && (hover.Command == F5Command.EnableBiome || hover.Command == F5Command.DisableBiome)) return "群系显示暂不可用";
             return MovementControls?.Hint(hover.Command) ?? ViewControls?.Hint(hover.Command) ?? JourneyControls?.Hint(hover.Command) ?? CombatObservationControls?.Hint(hover.Command) ?? CombatControls?.Hint(hover.Command) ?? EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command) ?? MapControls?.Hint(hover.Command) ?? FootprintControls?.Hint(hover.Command) ?? AnnouncementControls?.Hint(hover.Command);
         }

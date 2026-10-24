@@ -53,7 +53,7 @@ namespace NativeWorldTextProbe
                     Require((bool)Call(layout, "Ensure", screen.X, screen.Y, ui, font, measure, active), "toolbar fits supported viewport/UI scale");
                     var buttons = ((IEnumerable)Get(layout, "Buttons")).Cast<object>().ToArray();
                     Require(buttons.Length == 2 && buttons.Select(b => (string)Get(b, "Text")).SequenceEqual(active ? new[] { "保存蓝图", "退出采集" } : new[] { "采集蓝图", "打开蓝图库" }), "capture replaces the two toolbar buttons instead of appending another pair");
-                    Require((bool)Call(layout, "Available", 0) == !active && (bool)Call(layout, "Available", 1) == active, "only capture or exit can execute; save and library are disabled");
+                    Require((bool)Call(layout, "Available", 0) && (bool)Call(layout, "Available", 1), "capture/save and library/exit share the actual owner command paths");
                     Require((string)Call(layout, "Hint", 0) == (active ? "点击保存键保存世界上已有的蓝图选区。" : "点击开始键执行选区，反选取消选区。") &&
                         (string)Call(layout, "Hint", 1) == (active ? "退出选区，并清空已有选区" : null), "disabled save keeps its approved hint; disabled library has no hint");
                     object panel = Get(layout, "Panel");
@@ -76,6 +76,20 @@ namespace NativeWorldTextProbe
                         Require((int)Call(layout, "Hit", pointer.X, pointer.Y) == (active ? 1 : 0), "physical UI button hit stays aligned across world zoom and UI scale");
                     }
                     HintGeometry(assembly, layout, panel, screen.X / ui, font, measure, () => measurements);
+                }
+                foreach (int operation in new[] { 1, 2, 3, 4 })
+                {
+                    Require((bool)Call(layout, "EnsureProjection", 1920f, 1080f, 1f, font, measure, false, operation), "operation toolbar fits real measured geometry");
+                    var actionButtons = ((IEnumerable)Get(layout, "Buttons")).Cast<object>().ToArray();
+                    var texts = actionButtons.Select(b => (string)Get(b, "Text")).ToArray();
+                    Require(texts[2] == (operation == 3 ? "取消移动" : "移动蓝图") && texts[3] == (operation == 4 ? "取消移除" : "移除蓝图"),
+                        "move/remove slots only cancel their own actual operation");
+                    Require(operation == 2 || operation == 4 ? texts.Length == 5 && texts[4] == (operation == 2 ? "取消摆放" : "移除所有") : texts.Length == 4,
+                        "only new-place/remove modes own their exact extra action");
+                    int modeGeneration = (int)Get(layout, "Generation");
+                    for (int j = 0; j < 12; j++) Call(layout, "EnsureProjection", 1920f, 1080f, 1f, font, measure, false, operation);
+                    Require(modeGeneration == (int)Get(layout, "Generation") && !(bool)Call(layout, "MatchesProjection", 1920f, 1080f, 1f, font, false, operation == 4 ? 1 : operation + 1),
+                        "stable source reuses geometry and a different source invalidates release targets");
                 }
                 Require((Color)toolbar.GetType().GetField("HintColor", F).GetValue(null) == new Color(184,134,11), "toolbar's actual text draw color is dark goldenrod #B8860B");
                 int before = (int)Get(layout, "Generation");
@@ -123,12 +137,12 @@ namespace NativeWorldTextProbe
                 Call(layout, "SetBlueprintMode", mode);
                 Call(layout, "Ensure", 1280f, 720f, 1.5f, 6, font, measure);
                 object[] elements = ((IEnumerable)Get(layout, "Elements")).Cast<object>().ToArray();
-                Require(elements.Count(e => Get(e, "Kind").ToString() == "Panel") == 3, "blueprint F5 contains exactly three standard rows");
+                Require(elements.Count(e => Get(e, "Kind").ToString() == "Panel") == 6, "blueprint F5 contains capture/save/library/move/remove/toolbar standard rows");
                 var capture = elements.Single(e => GetOptional(e, "Text") as string == (mode ? "退出采集" : "采集蓝图"));
                 Require((string)Get(Get(capture, "Description"), "Text") == (mode ? "退出选区，并清空已有选区" : "点击开始键执行选区，反选取消选区。"), "F5 capture row tracks the current owner mode");
                 var save = elements.Single(e => GetOptional(e, "Text") as string == "保存采集");
                 Require((string)Get(Get(save, "Description"), "Text") == "点击保存键保存世界上已有的蓝图选区。", "F5 save row keeps the exact approved description");
-                Require(elements.Where(e => Get(e, "Kind").ToString() == "Hotkey").Select(e => (string)Get(e, "HotkeyTarget")).SequenceEqual(new[] { "blueprint.capture", "blueprint.save", "blueprint.toolbar" }), "capture/save/toolbar have three stable binder targets; start/exit still share one identity");
+                Require(elements.Where(e => Get(e, "Kind").ToString() == "Hotkey").Select(e => (string)Get(e, "HotkeyTarget")).SequenceEqual(new[] { "blueprint.capture", "blueprint.save", "blueprint.library", "blueprint.move", "blueprint.remove", "blueprint.toolbar" }), "capture/save/library/move/remove/toolbar use the six approved stable binder targets; start/exit still share one identity");
                 var preference = elements.Single(e => GetOptional(e, "Text") as string == "手持凝胶显示快捷栏");
                 Require(GetOptional(preference, "Description") == null, "gel-toolbar preference adds no hint");
                 int generation = (int)Get(layout, "Generation"), measurements = (int)Get(layout, "MeasurementCount");
@@ -136,6 +150,15 @@ namespace NativeWorldTextProbe
                 Require(generation == (int)Get(layout, "Generation") && measurements == (int)Get(layout, "MeasurementCount"), "stable capture mode does not reflow or measure the F5 page");
                 Call(layout, "SetBlueprintMode", !mode);
                 Require(!(bool)Call(layout, "Matches", 1280f, 720f, 1.5f, 6), "mode switch invalidates old row targets before release dispatch");
+            }
+            foreach (int operation in new[] { 1, 2, 0 })
+            {
+                Call(layout, "SetBlueprintOperation", operation);
+                Require(!(bool)Call(layout, "Matches", 1280f, 720f, 1.5f, 6), "operation source invalidates cached F5 rows");
+                Call(layout, "Ensure", 1280f, 720f, 1.5f, 6, font, measure);
+                var elements = ((IEnumerable)Get(layout, "Elements")).Cast<object>().ToArray();
+                Require(elements.Any(e => (string)GetOptional(e, "Text") == (operation == 1 ? "取消移动" : "移动蓝图")) &&
+                    elements.Any(e => (string)GetOptional(e, "Text") == (operation == 2 ? "取消移除" : "移除蓝图")), "F5 measured rows use the real operation source");
             }
         }
 

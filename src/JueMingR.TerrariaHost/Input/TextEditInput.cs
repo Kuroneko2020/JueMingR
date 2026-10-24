@@ -34,6 +34,9 @@ namespace JueMingR.TerrariaHost.Input
         internal string Composition { get; private set; } = "";
         internal string Error { get; private set; }
         internal bool Owned { get { return leased; } }
+        // The native token is cleared by outer Updates that may skip input but
+        // still Draw. Presentation may retain only this exact editor's lease.
+        internal bool HasCurrentEditorLease { get { return leased && bound != null && ReferenceEquals(bound, workspace.Editor); } }
         internal bool OwnsTextToken { get { return ReferenceEquals(Main.CurrentInputTextTakerOverride, owner); } }
         internal bool HasComposition { get { return leased && (Composition.Length != 0 || ime.Candidates || pendingHighSurrogate != 0); } }
         internal bool OtherTextOwner

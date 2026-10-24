@@ -13,7 +13,7 @@ using Terraria.GameInput;
 
 namespace JueMingR.TerrariaHost.Blueprint
 {
-    internal sealed class HostBlueprint : IRuntimeFeature
+    internal sealed partial class HostBlueprint : IRuntimeFeature
     {
         internal readonly BlueprintCaptureState State = new BlueprintCaptureState();
         internal readonly HostInputState Input;
@@ -30,9 +30,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         private PreferenceStatus? reported;
         internal F5Shell Shell;
         internal Exception SetupError { get; private set; }
-        internal HostBlueprint(string directory, SingleFeatureRuntime runtime, HostInputState input, World.WorldTileObservation geometry)
+        internal HostBlueprint(string directory, SingleFeatureRuntime runtime, HostInputState input, World.WorldTileObservation geometry, LibraryState library = null)
         {
             this.runtime = runtime; Input = input;
+            Library = library;
             preference = new PreferenceDocument<bool>(new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "config", "features", "blueprint.json"), 65536, true), new BlueprintPreferenceCodec(), false);
             World = new BlueprintWorldLayer(this, geometry); Toolbar = new BlueprintToolbar(this);
             Pointer = new BlueprintPointerProof(this);
@@ -47,7 +48,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool ControlsEnabled { get { return HasSession && preference.Snapshot.IsLoaded; } }
         internal bool ToolbarEnabled { get { return preference.Snapshot.Value; } }
         internal bool Local(Player candidate) { return candidate != null && ReferenceEquals(candidate, Main.LocalPlayer); }
-        internal int BlockedActions { get { return State.BlockedActions; } }
+        internal int BlockedActions { get { State.SetInteractionBlocked(ProjectionEditing || Shell?.BlueprintUi?.WorldInteractionBlocked == true); return State.BlockedActions; } }
         internal bool WorldActionsBlocked { get { return BlockedActions != 0; } }
         internal bool NativeUiBusy { get { return Main.playerInventory || Main.mapFullscreen || Main.blockInput || Main.drawingPlayerChat ||
             Main.editSign || Main.editChest || !string.IsNullOrEmpty(Main.npcChatText) || Main.inFancyUI || Main.onlyDrawFancyUI || Main.ingameOptionsWindow ||
@@ -61,20 +62,43 @@ namespace JueMingR.TerrariaHost.Blueprint
             !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
             !(Shell?.State.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !player.dead && !player.ghost && player.HeldItem != null && player.HeldItem.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0; } }
         internal void SetToolbar(bool value) { if (ControlsEnabled) preference.Set(value); }
+        // Display and cached UI use stable business eligibility. Every action
+        // entry independently checks this Update's completed input permission.
+        internal bool CanOpenLibrary { get { return ManualLibraryDisabledReason == null; } }
+        internal string ManualLibraryDisabledReason
+        {
+            get {
+                if (!ControlsEnabled) return "蓝图当前不可用";
+                if (Library == null) return "蓝图库暂不可用";
+                if (HasActiveCaptureWork) return "请先完成或退出当前采集";
+                if (ProjectionEditing || pendingProjection != null) return "请先完成或取消当前蓝图操作";
+                if (Library.Snapshot.Busy) return "蓝图库正在处理，请稍候";
+                return null;
+            }
+        }
+        internal void OpenLibrary()
+        {
+            // Reject before touching pointer/capture/scene ownership. Internal
+            // Saved completion uses ShowSaved and does not pass this manual gate.
+            if (!CanOpenLibrary || !Input.CanStartActions) return;
+            Pointer.Cancel(); Toolbar.Cancel(); State.Interrupt();
+            Shell?.BlueprintUi?.OpenLibrary();
+        }
         internal void Toggle()
         {
             if (!ControlsEnabled || !Input.CanStartActions) return;
+            if (ProjectionEditing || pendingProjection != null) { projectionFeedback = "请先完成或取消当前摆放"; return; }
             Pointer.Cancel(); Toolbar.Cancel();
             if (State.Active) State.Exit();
             else { State.Enter(); Shell?.CloseAndSubmitPosition(); }
         }
-        internal bool Save() { return false; }
         internal void Register(HotkeyRegistry registry, Hotkeys.HotkeyStateFeedback feedback = null)
         {
             registry.Register(new HotkeyAction(BlueprintControls.CaptureAction, "采集蓝图", HotkeyContext.Gameplay, () => ControlsEnabled, Toggle));
-            // Save remains configurable through the common binder but has no
-            // executable success path, including direct owner callers.
-            registry.Register(new HotkeyAction(BlueprintControls.SaveAction, "保存采集", HotkeyContext.Gameplay, () => false, () => Save()));
+            registry.Register(new HotkeyAction(BlueprintControls.SaveAction, "保存采集", HotkeyContext.Gameplay, () => CanSave, () => Save()));
+            registry.Register(new HotkeyAction(BlueprintControls.LibraryAction, "打开蓝图库", HotkeyContext.Gameplay, () => CanOpenLibrary, OpenLibrary));
+            registry.Register(new HotkeyAction(BlueprintControls.MoveAction, "移动蓝图", HotkeyContext.Gameplay, () => CanInvokeMove, MoveProjection));
+            registry.Register(new HotkeyAction(BlueprintControls.RemoveAction, "移除蓝图", HotkeyContext.Gameplay, () => CanInvokeRemove, RemoveProjection));
             // F5 and the independent display binding share the preference owner;
             // hiding the toolbar never exits capture or releases its world gate.
             Action toolbar = () => SetToolbar(!ToolbarEnabled);
@@ -83,6 +107,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ObserveMapping()
         {
+            State.SetInteractionBlocked(ProjectionEditing || Shell?.BlueprintUi?.WorldInteractionBlocked == true);
             State.Observe(Input.SampleFocused, Input.RawMouseLeft, Input.RawMouseRight, Input.NativeUseItemRequest, Input.NativeUseTileRequest);
             if (!Input.SampleFocused) { Pointer.Cancel(); Toolbar.Cancel(); }
         }
@@ -93,27 +118,36 @@ namespace JueMingR.TerrariaHost.Blueprint
             Pointer.Consume(CanEdit);
             Toolbar.Process();
             if (!CanEdit) {
-                State.Interrupt(); Pointer.Cancel(); return; }
+                State.Interrupt(); if (ProjectionEditing) InterruptProjection(); Pointer.Cancel(); return; }
+            if (ProjectionEditing && Input.Hotkeys.IsNew((int)Microsoft.Xna.Framework.Input.Keys.Escape))
+            { Input.Hotkeys.SuppressKey((int)Microsoft.Xna.Framework.Input.Keys.Escape); CancelProjection(); return; }
             Pointer.Capture();
         }
         public void OnSessionStarted()
         {
+            CancelOldCapture();
+            ClearProjection();
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); generation = runtime.Generation; player = Main.LocalPlayer; world = Main.ActiveWorldFileData; connection = Netplay.Connection; }
         public void OnSessionEnded()
         {
+            CancelOldCapture();
+            ClearProjection();
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); player = null; world = connection = null; }
         public void Update(ulong updateTick)
         {
+            AdvanceCapture(updateTick);
+            PumpProjection();
             if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad();
             if (State.Active && (!HasSession || !Input.CanRetainIntent || NativeUiBusy || player.dead || player.ghost || Shell?.State.Visible == true))
             {
                 State.Interrupt(); Pointer.Cancel(); }
         }
-        internal void Poll() { if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
+        internal void Poll() { PumpLibrary(); PumpProjection(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
         public void FailClosed() {
-            failed = true; State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); }
+            failed = true; CancelOldCapture(); ClearProjection(); State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); }
         internal void TakeFeedback(Action<string> display)
         {
+            if (projectionFeedback != null) { string message = projectionFeedback; projectionFeedback = null; display(message); }
             var snapshot = preference.Snapshot;
             if (!snapshot.IsLoaded || reported == snapshot.Status) return;
             if (snapshot.Status == PreferenceStatus.Missing || snapshot.Status == PreferenceStatus.Saved || snapshot.Status == PreferenceStatus.Pending) return;
@@ -121,6 +155,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             reported = snapshot.Status;
         }
         private void ExitProcess(object sender, EventArgs args)
-        { AppDomain.CurrentDomain.ProcessExit -= ExitProcess; preference.Stop(750); Toolbar.Dispose(); Pointer.Dispose(); BlueprintHooks.Uninstall(); }
+        { AppDomain.CurrentDomain.ProcessExit -= ExitProcess; CancelOldCapture(); ClearProjection(); ProjectionRenderer.Dispose(); Library?.Stop(1500); preference.Stop(750); Toolbar.Dispose(); Pointer.Dispose(); BlueprintHooks.Uninstall(); }
     }
 }

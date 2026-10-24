@@ -15,9 +15,17 @@ function Get-WorkloadLeafChecks {
     $leaves = @{
         'tests/NativeWorldTextProbe/NativeBlueprintChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintUiChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintLibraryUiChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput')
+        'tests/NativeWorldTextProbe/NativeBlueprintInputRecoveryChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput')
+        'tests/NativeWorldTextProbe/NativeBlueprintInputContinuityChecks.cs'=@('native-BlueprintInput')
+        'tests/NativeWorldTextProbe/NativeBlueprintLibraryVisualChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput')
+        'tests/NativeWorldTextProbe/NativeBlueprintCaptureContentChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintCaptureBoundaryChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintPlacementChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput')
+        'tests/NativeWorldTextProbe/NativeBlueprintProjectionChecks.cs'=@('native-BlueprintCpu')
         # This owner authenticates only actual Content consumers; CPU fixtures
         # keep their original argument and proof projection.
-        'scripts/workload/Workload.NativeContent.ps1'=@('native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
+        'scripts/workload/Workload.NativeContent.ps1'=@('native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
         'tests/Workload/Invoke-WorkloadContentChecks.ps1'=@('workload-Evidence')
         'tests/NativeWorldTextProbe/NativeMovementJumpChecks.cs'=@('native-MovementJumpCpu')
         'tests/NativeWorldTextProbe/NativeSmartFallRiskActionsChecks.cs'=@('native-MovementSmartFallCpu')
@@ -356,7 +364,9 @@ function Get-WorkloadNativeScopes {
         'CombatCpu'=@('combat-host'); 'CombatFacingCpu'=@('combat-host'); 'CombatHitsCpu'=@('combat-host'); 'CombatReportCpu'=@('combat-host'); 'CombatUiCpu'=@('combat-host'); 'CombatObservationCpu'=@('combat-host'); 'CombatCosts'=@('combat-host');
         'InputBoundary'=@('input-boundary','shared-host');
         'ToolsCpu'=@('tools-host'); 'ToolsCadence'=@('tools-host'); 'ToolsExecutionCpu'=@('tools-host'); 'ToolsWorkload'=@('tools-host');
-        'BlueprintCpu'=@('blueprint-host'); 'PageCompositionCpu'=@('pages-host'); 'FishingCpu'=@('fishing-host'); 'BackgroundCpu'=@('fishing-host','shared-host'); 'F5AutomationCpu'=@('fishing-host','shared-host');
+        'BlueprintCpu'=@('blueprint-host');
+        'BlueprintInput'=@('blueprint-host','shared-host','storage-host','notes-host','preferences','hotkeys');
+        'PageCompositionCpu'=@('pages-host'); 'FishingCpu'=@('fishing-host'); 'BackgroundCpu'=@('fishing-host','shared-host'); 'F5AutomationCpu'=@('fishing-host','shared-host');
         'AboutCpu'=@('about-host'); 'BrowserCpu'=@('browser-host'); 'QuickItemsCpu'=@('quick-items-host'); 'CoinDepositCpu'=@('coin-deposit-host');
         'RecoveryCpu'=@('recovery-host'); 'ProcessingCpu'=@('processing-host'); 'DeathCpu'=@('death-host'); 'FootprintsCpu'=@('footprints-host'); 'ExplorationCpu'=@('map-host')
     }

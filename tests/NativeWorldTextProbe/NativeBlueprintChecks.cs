@@ -45,7 +45,7 @@ namespace NativeWorldTextProbe
                     int py = (int)(((float)Get(panel, "Y") + (float)Get(rect, "Y") + (float)Get(rect, "Height") / 2) * ui);
                     PlayerInput.MouseInfo = new MouseState(px, py, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
                     graphics.Image(Path.Combine(output, "toolbar-hint-" + ui.ToString(System.Globalization.CultureInfo.InvariantCulture) + "-" + active + ".png"), () => Call(toolbar, "Draw"), Main.UIScaleMatrix, 1280, 900);
-                    Require((bool)Get(Get(toolbar, "hint"), "Visible"), "disabled save keeps an actual gold hover hint");
+                    Require((bool)Get(Get(toolbar, "hint"), "Visible"), "save keeps an actual gold hover hint");
                     Call(shell, "HoverGateLayer");
                     Require(p.mouseInterface && Main.mouseText && !(bool)Call(shell, "AllowNpcHover"), "visible toolbar hit owns only the existing world-hover gate");
                     Call(shell, "EndPointerLayer");
@@ -78,7 +78,7 @@ namespace NativeWorldTextProbe
             Require(registry.Find("blueprint.capture") != null && registry.Find("blueprint.save").CanConfigure && registry.Find("blueprint.toolbar").CanConfigure, "all three stable actions registered before binding freeze");
             Call(host, "Toggle"); Require(state.Active, "shared action enters current local session");
             state.Selection.ToggleRectangle(1, 2, 3, 4, Main.maxTilesX, Main.maxTilesY);
-            Require(!registry.Find("blueprint.save").Invoke(HotkeyContext.SinglePlayer) && !(bool)Call(host, "Save") && state.Selection.HasSelection, "save has no success path and cannot clear selection");
+            Require(registry.Find("blueprint.save").CanConfigure && (bool)Get(host, "CanSave") && state.Selection.HasSelection, "accepted capture now exposes the shared save request without consuming selection");
             WorldCoordinates(host, input);
 
             bool inventory = Main.playerInventory; var mouseItem = Main.mouseItem; Item slot = p.inventory[58]; bool mouseLeft = Main.mouseLeft, mouseRight = Main.mouseRight;

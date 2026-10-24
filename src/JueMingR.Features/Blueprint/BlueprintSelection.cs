@@ -40,6 +40,7 @@ namespace JueMingR.Features.Blueprint
     public sealed class BlueprintSelection
     {
         private readonly Dictionary<int, List<BlueprintSpan>> rows = new Dictionary<int, List<BlueprintSpan>>();
+        public long Revision { get; private set; }
         public bool HasSelection { get { return rows.Count != 0; } }
 #if DEBUG
         // Finite workload regression probes, absent from normal Release.
@@ -48,7 +49,15 @@ namespace JueMingR.Features.Blueprint
         public int DebugVisibleSpans { get; private set; }
         public int DebugVisibleSearchComparisons { get; private set; }
 #endif
-        public void Clear() { rows.Clear(); }
+        public void Clear() { if (rows.Count != 0) { rows.Clear(); Revision++; } }
+
+        public BlueprintSelectionSnapshot Freeze()
+        {
+            var ordered = new List<BlueprintSpan>();
+            foreach (var row in rows.Values) ordered.AddRange(row);
+            ordered.Sort((a, b) => a.Y != b.Y ? a.Y.CompareTo(b.Y) : a.Left.CompareTo(b.Left));
+            return new BlueprintSelectionSnapshot(ordered.ToArray(), Revision);
+        }
 
         public void ToggleRectangle(int startX, int startY, int endX, int endY, int worldWidth, int worldHeight)
         {
@@ -57,6 +66,7 @@ namespace JueMingR.Features.Blueprint
 #endif
             BlueprintRectangle rectangle = BlueprintRectangle.FromEndpoints(startX, startY, endX, endY, worldWidth, worldHeight);
             if (rectangle.IsEmpty) return;
+            Revision++;
             for (int y = rectangle.Top; y < rectangle.BottomExclusive; y++)
             {
                 List<BlueprintSpan> row;
