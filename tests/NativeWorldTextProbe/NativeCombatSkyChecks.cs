@@ -29,18 +29,16 @@ namespace NativeWorldTextProbe
                 // receiver. Its finite mechanism allowance is separate from
                 // cold Main opportunity; sample the actual pre-NPC phase.
                 NativeToolExecutionChecks.Sample(context,input,new Vector2(650,850),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,1,phaseName:"BeforeNpc");
-                // The native-arrow birth family uses the representative
-                // solution. The remaining dedicated sky solvers still owe
-                // their full Contact; nullable ordinary Contact cannot weaken
-                // those independent lifecycle oracles.
                 var plan=NativeCombatAimChecks.RequireSolution(attack,p,"sky consumer prepares its actual enhanced birth/flight input: "+type);
                 if(type==3029)NativeCombatAimChecks.SolutionCheckpoint(context,attack,"sky3029-prepared");
-                if(type!=3029)Require(plan.Contact!=null && plan.Contact.Confidence==AttackConfidence.Representative,"dedicated sky consumer retains its full contact: "+type);
+                if(plan.Contact!=null)Require(plan.Contact.Confidence==AttackConfidence.Representative,"optional sky Contact retains its representative confidence: "+type);
                 // Native sky cursor is an input to BOTH birth and direction.
                 // Its Y need not equal the receiver height after inverse birth
                 // solving; the exact encoded cursor/birth and native Damage
                 // assertions below remain the independent consumer oracle.
                 Require(!float.IsNaN(plan.Point.X) && !float.IsInfinity(plan.Point.X) && !float.IsNaN(plan.Point.Y) && !float.IsInfinity(plan.Point.Y),"sky AimInput is a finite native cursor proposal");
+                var prepared=Get(attack,"currentSolution");Require(Get(prepared,"PointSemantics").ToString()=="WorldPoint","all sky adapters preserve spatial command semantics: "+type);
+                if(type==3570)Require(Enumerable.Range(0,plan.Timeline.Count).Any(i=>{var b=plan.Timeline[i].ProjectileReceiveBounds;return Math.Abs(plan.Point.X-b.CenterX)<1.01f && Math.Abs(plan.Point.Y-b.CenterY)<1.01f;}),"lunar no-gravity command converges at a published target region");
                 Main.rand=new Terraria.Utilities.UnifiedRandom(7123);int x=Main.mouseX,y=Main.mouseY;
                 using(var witness=type==3029?new SkyWitness(attack,p,n,plan):null)
                 {

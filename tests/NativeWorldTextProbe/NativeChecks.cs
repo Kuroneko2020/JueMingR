@@ -55,7 +55,7 @@ namespace NativeWorldTextProbe
             if (scope == "MovementJumpCpu" || scope == "MovementDashCpu" || scope == "MovementTeleportCpu")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context => { if (scope == "MovementJumpCpu") NativeMovementJumpChecks.Run(context); else if (scope == "MovementDashCpu") NativeMovementDashChecks.Run(context); else NativeTeleportMovementChecks.Run(context); }, processing: true, shortFeedback: true); return 0;
+                NativeQuickItemChecks.Run(context => { if (scope == "MovementJumpCpu") NativeMovementJumpChecks.Run(context); else if (scope == "MovementDashCpu") NativeMovementDashChecks.Run(context); else NativeTeleportMovementChecks.Run(context); }, processing: true, shortFeedback: true,candidateAssembly:scope=="MovementJumpCpu"?Environment.GetEnvironmentVariable("JUEMINGR_MOVEMENT_JUMP_CANDIDATE"):null); return 0;
             }
             if(scope=="ViewZoomSpeed")return NativeViewOriginalChecks.Run(content,output,zoomSpeed:true);
             if(scope=="ViewZoomSpeedCpu")
@@ -299,7 +299,7 @@ namespace NativeWorldTextProbe
             if(scope=="CombatSkyActionCpu")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatSkyActionChecks.Run(context);if(Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE")==null){NativeCombatLunarChecks.Run(context);NativeCombatSkyChecks.Run(context);NativeCombatReflectionSeamsChecks.Run(context);}},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE"));return 0;
+                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();if(Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE")!=null)NativeCombatLunarChecks.Run(context);NativeCombatSkyActionChecks.Run(context);if(Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE")==null){NativeCombatSkySemanticsChecks.Run(context);NativeCombatLunarChecks.Run(context);NativeCombatSkyChecks.Run(context);NativeCombatReflectionSeamsChecks.Run(context);}},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE"));return 0;
             }
             if(scope=="CombatInputGeometryCpu")
             {

@@ -35,6 +35,13 @@ namespace JueMingR.ArchitectureTests
             var edge=AttackIntercept.Solve(100,100,new AttackMotion(10,0,0,1,2,2,1),Timeline(108,105,0,0,8,1),0,0);
             Require(edge!=null && edge.Tick==1,"a thin reachable edge is retained when the centre seed misses");Replay(edge,new AttackMotion(10,0,0,1,2,2,1),100,100,0);
             Require(AttackIntercept.Solve(100,100,new AttackMotion(10.6f,0,0,1,2,2,1),Timeline(111,100,0,0,1,1),0,0)==null,"floating overlap cannot bypass native integer top-left truncation");
+            Require(edge.PointSemantics==AttackPointSemantics.Unknown,"an unclassified specialized contact keeps its existing input without gaining ray equivalence");
+            foreach(var semantics in new[]{AttackPointSemantics.Direction,AttackPointSemantics.WorldPoint})
+            {
+                var marked=AttackIntercept.WithPointSemantics(edge,semantics);
+                var copied=AttackIntercept.Rebind(AttackIntercept.WithLaunchDelay(AttackIntercept.WithAimInput(marked,123,456),2),edge.Timeline);
+                Require(copied!=null && copied.PointSemantics==semantics && copied.AimX==123 && copied.AimY==456 && copied.Delay==2 && copied.ReceiveTick==edge.ReceiveTick && copied.ImpactX==edge.ImpactX && copied.ImpactY==edge.ImpactY,"input rebinding/delay/presentation copies preserve the independent command meaning and actual receive facts");
+            }
             Console.WriteLine("PASS attack contact: fixed/moving, delay/age, subupdates, delayed gravity, blocked and horizon negatives.");
         }
         private static NpcTrajectory Timeline(float x,float y,float vx,float vy,int width=20,int height=20)

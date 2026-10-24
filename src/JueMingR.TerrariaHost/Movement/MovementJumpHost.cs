@@ -60,13 +60,15 @@ namespace JueMingR.TerrariaHost.Movement
             bool activeFlight=ActiveFlightInput(value);
             bool protectedExtra=phase==MovementJumpPhase.Coast && value.releaseJump && ExtraJump(value);
             if(!water && !armedExtra && !protectedExtra && activeFlight)return;
-            if(flightHandoff)
+            if(flightHandoff && value.jump<=0)
             {
                 flightHandoff=false;
                 // This is one observation of completed native flight, not a
-                // stored fuel/velocity model. Only its next inactive boundary
-                // claims the CURRENT upward tail; a new discrete jump wins.
-                if(!water && !armedExtra && value.jump<=0 && value.velocity.Y*value.gravDir<0)
+                // stored fuel/velocity model. Early toggle-hover may consume
+                // its last fuel while a real held jump is still positive: keep
+                // the fact until that span ends, then claim only CURRENT rise.
+                // An already armed new discrete jump wins over the old fact.
+                if(!water && !armedExtra && value.velocity.Y*value.gravDir<0)
                     SetPhase(MovementJumpPhase.Coast);
             }
             // Choose one input for the whole native update. Coast delays our
@@ -173,13 +175,14 @@ namespace JueMingR.TerrariaHost.Movement
         {return nativeJump && !(Current(value) && (ownership.Owner==MovementJumpOwner.FallProtection && fallRelease || masked && intent && ownership.Owner==MovementJumpOwner.SimulatedJump && !value.dead && !value.ghost && !value.controlDown));}
         internal void AfterFlight(Player value)
         {
-            // Hover wings can start while jump is still positive. Once the
-            // native consumer has actually completed, its flight supersedes
-            // our registered jump tail; this is observation, not a new action.
+            // Hover may consume flight in parallel with a positive held jump.
+            // Observe completed native work without retiring that jump's Held;
+            // its pending handoff survives until the native span completes.
             if(!Current(value) || ownership.Owner!=MovementJumpOwner.SimulatedJump || !intent)return;
             ObserveFlight();
         }
-        private void ObserveFlight(){flightHandoff=true;SetPhase(MovementJumpPhase.None);}
+        private void ObserveFlight()
+        {flightHandoff=true;if(phase!=MovementJumpPhase.Held)SetPhase(MovementJumpPhase.None);}
         private void Publish(Player value,bool holding)
         {if(!ReferenceEquals(intentPlayer,value) || intent!=holding){version++;intentPlayer=value;intent=holding;}}
         internal static bool ReadIntent(Player value,out long intentVersion)

@@ -41,6 +41,7 @@ namespace NativeWorldTextProbe
             if(watched==null || __result<0 || __result>=Main.maxProjectiles)return;
             var p=Main.projectile[__result];if(p.owner!=watched.whoAmI)return;births++;
             string kind=(bool)Get(attack,"hasConsumedInput") && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount?Get(Get(attack,"consumedInput"),"Kind").ToString():"Unbound";
+            if(kind=="Enhanced")Require(Get(Get(attack,"consumedInput"),"PointSemantics").ToString()=="Direction","ordinary native birth consumes the adapter's direction meaning through final input");
             if(readyTick==Main.GameUpdateCount){readyBirths++;if(kind=="Enhanced")enhanced++;if(kind=="Basic")basic++;}
             facts.Add("birth type="+p.type+" kind="+kind+" direction="+watched.direction+" origin="+p.Center+" velocity="+p.velocity);
         }

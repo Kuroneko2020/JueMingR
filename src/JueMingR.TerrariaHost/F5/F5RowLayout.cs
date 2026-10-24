@@ -2,12 +2,15 @@ using System;
 using System.Collections.Generic;
 namespace JueMingR.TerrariaHost.F5
 {
+    internal enum F5NameStyle { Standard, Hidden }
     // The module owns this static metadata. An identity does not require a
     // registered hotkey, and a description never carries an executable command.
     internal sealed class F5RowDescription
     {
         internal readonly string Id, Text;
-        internal F5RowDescription(string id, string text) { Id = id; Text = text; }
+        internal readonly F5NameStyle NameStyle;
+        internal F5RowDescription(string id, string text, F5NameStyle nameStyle = F5NameStyle.Standard)
+        { Id = id; Text = text; NameStyle = nameStyle; }
     }
     // Shared row geometry; callers own commands and cache border-inclusive metrics.
     internal sealed class F5RowLayout

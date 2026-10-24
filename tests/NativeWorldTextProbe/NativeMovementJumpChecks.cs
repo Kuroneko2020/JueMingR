@@ -19,7 +19,7 @@ namespace NativeWorldTextProbe
 {
     // Actual locked .8 consumers in the existing isolated, silent fixture.
     // Stage checks do not claim Main/physical-input/rendering or owner play.
-    internal static class NativeMovementJumpChecks
+    internal static partial class NativeMovementJumpChecks
     {
         private const BindingFlags Flags=BindingFlags.Static|BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
         private static object stageMovement,stageInput;
@@ -324,6 +324,7 @@ namespace NativeWorldTextProbe
                 }
                 Require(failures==0,"Sustained flight matches original legal whole-update input for all bounded mechanisms; failing mechanisms="+failures);
                 NaturalWingRelay(jump,ref cases);
+                PendingHeldFlightHandoff(jump,ref cases);
                 RelayBoundaries(jump,ref cases);
                 Call(jump,"ClearSession");var protection=FlightPlayer("boots-armed");protection.rocketRelease=false;
                 Begin(jump,protection,++cases);Require((bool)Call(jump,"ReserveFallInput",protection,true),"Fall protection owns the whole release update before simulated jumping.");
@@ -489,7 +490,7 @@ namespace NativeWorldTextProbe
                 try{p.Update(Main.myPlayer);}finally{End(jump,p);}
                 MovementJumpPhase phase;long version;CallState(jump,p,out phase,out version);
                 Require((nativeWingStarts>0)==(wings!=31),"Native early hover family preserves 29/32 and omits 31, independently of merfolk.");
-                Require((phase==MovementJumpPhase.None)==(wings!=31 || !merman),"Late-only 31 handoff is observed at existing scope end only when CanUseWingAbilities permits it.");
+                Require((bool)Get(jump,"flightHandoff")== (wings!=31 || !merman) && phase==MovementJumpPhase.Held,"Completed early/late hover records its pending fact without erasing the original positive Held; late-only 31 retains CanUseWingAbilities.");
                 if(wings==31 && !merman)Require(Math.Abs(p.velocity.Y+4.149f)<.0002f,"Late-only hover keeps its native 0.9 velocity consumer without WingMovement.");
             }
             Console.WriteLine("PASS JUMP RELAY BOUNDARIES real-rearm-before-wing; final-fuel cancel/release/Down/permission/focus/death/ghost/grapple/pulley/CC/session/player/fall; remote/clone; early29/32-vs-late31-merfolk");

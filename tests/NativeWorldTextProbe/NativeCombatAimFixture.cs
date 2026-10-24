@@ -86,11 +86,11 @@ namespace NativeWorldTextProbe
         internal struct SolutionFacts
         {
             internal NpcTrajectory Timeline;internal Vector2 Point;internal int ReceiveTick,NativeTick,FirstTick,Delay;
-            internal AttackContact Contact;internal bool HasPoint;internal string Reachability,Route,Phase;
+            internal AttackContact Contact;internal bool HasPoint;internal string Reachability,Route,Phase,PointSemantics;
         }
         internal struct InputFacts
         {
-            internal bool Allowed;internal string Kind;internal Vector2 Point;internal NpcIdentity Target;
+            internal bool Allowed;internal string Kind,PointSemantics;internal Vector2 Point;internal NpcIdentity Target;
         }
         // Facts-only component adapters. Reading a private candidate/controller
         // is not an Aim permission query and never lends/records input. A caller
@@ -101,6 +101,7 @@ namespace NativeWorldTextProbe
             if(solution==null)return facts;
             facts.Timeline=(NpcTrajectory)GetOptional(solution,"Timeline");facts.Point=(Vector2)Get(solution,"Point");facts.HasPoint=(bool)Get(solution,"HasPoint");
             facts.ReceiveTick=(int)Get(solution,"ReceiveTick");facts.Reachability=Get(solution,"Reachability").ToString();facts.Contact=(AttackContact)GetOptional(solution,"Contact");
+            facts.PointSemantics=GetOptional(solution,"PointSemantics")?.ToString()??"Unknown";
             return FinishFacts(attack,facts);
         }
         internal static SolutionFacts ReadPlanSolution(object attack,object plan)
@@ -154,6 +155,7 @@ namespace NativeWorldTextProbe
                 var value=Get(attack,future?"nextSolution":"currentSolution");
                 result.Timeline=(NpcTrajectory)GetOptional(value,"Timeline");result.Point=(Vector2)Get(value,"Point");result.HasPoint=(bool)Get(value,"HasPoint");
                 result.ReceiveTick=(int)Get(value,"ReceiveTick");result.Reachability=Get(value,"Reachability").ToString();result.Contact=(AttackContact)GetOptional(value,"Contact");
+                result.PointSemantics=GetOptional(value,"PointSemantics")?.ToString()??"Unknown";
             }
             else
             {
@@ -175,7 +177,7 @@ namespace NativeWorldTextProbe
             var stage=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true);
             var args=new object[]{player,player.HeldItem,Enum.Parse(stage,phase),null};
             bool allowed=(bool)attack.GetType().GetMethod("TryOrdinaryInput",Flags).Invoke(attack,args);
-            return new InputFacts{Allowed=allowed,Kind=allowed?Get(args[3],"Kind").ToString():"None",Point=allowed?(Vector2)Get(args[3],"Point"):Vector2.Zero,Target=allowed?(NpcIdentity)Get(args[3],"Target"):default(NpcIdentity)};
+            return new InputFacts{Allowed=allowed,Kind=allowed?Get(args[3],"Kind").ToString():"None",PointSemantics=allowed?GetOptional(args[3],"PointSemantics")?.ToString()??"Unknown":"Unknown",Point=allowed?(Vector2)Get(args[3],"Point"):Vector2.Zero,Target=allowed?(NpcIdentity)Get(args[3],"Target"):default(NpcIdentity)};
         }
         internal static SolutionFacts RequireSolution(object attack,Player player,string reason)
         {

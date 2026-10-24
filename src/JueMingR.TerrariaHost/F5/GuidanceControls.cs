@@ -25,7 +25,7 @@ namespace JueMingR.TerrariaHost.F5
             new F5RowDescription(HotkeyActionIds.RareDirection, "箭头指向附近稀有生物，需要生命体分析仪。"),
             new F5RowDescription(HotkeyActionIds.MerchantDirection, "显示画面外旅商大致位置。"),
             new F5RowDescription(HotkeyActionIds.EquipmentWarning, "还得是穿渔夫套打boss"),
-            new F5RowDescription("merchant-test.once", "在单人世界尝试一次原版条件下的旅商到访。") };
+            new F5RowDescription("merchant-test.once", "在单人世界尝试一次原版条件下的旅商到访。", F5NameStyle.Hidden) };
         private readonly IGuidanceControls host;
         internal GuidanceControls(IGuidanceControls host) { this.host = host; }
         internal static string Name(GuidanceKind kind) { return kind == GuidanceKind.Rare ? "稀有生物方向" : kind == GuidanceKind.Merchant ? "旅商方向" : "装备提示"; }

@@ -15,9 +15,10 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly Projectile Source;
         internal readonly HostAttackPhase Phase;
         internal readonly bool ReverseGravity,TileTarget;
+        internal readonly AttackPointSemantics PointSemantics;
         private readonly HostAttackAim owner;
-        internal HostAttackInput(HostAttackAim owner,HostAttackInputKind kind,Vector2 point,NpcIdentity target,Item weapon,Projectile source,HostAttackPhase phase,bool reverseGravity,bool tileTarget)
-        {this.owner=owner;Kind=kind;Point=point;Target=target;Weapon=weapon;Source=source;Phase=phase;ReverseGravity=reverseGravity;TileTarget=tileTarget;}
+        internal HostAttackInput(HostAttackAim owner,HostAttackInputKind kind,Vector2 point,NpcIdentity target,Item weapon,Projectile source,HostAttackPhase phase,bool reverseGravity,bool tileTarget,AttackPointSemantics pointSemantics=AttackPointSemantics.Unknown)
+        {this.owner=owner;Kind=kind;Point=point;Target=target;Weapon=weapon;Source=source;Phase=phase;ReverseGravity=reverseGravity;TileTarget=tileTarget;PointSemantics=pointSemantics;}
         internal CombatCursorScope Begin()
         {var scope=TileTarget?CombatCursorScope.BeginTileTarget(Point,ReverseGravity):CombatCursorScope.Begin(Point,ReverseGravity);if(scope!=null)owner?.RecordInput(this);return scope;}
     }
@@ -33,8 +34,8 @@ namespace JueMingR.TerrariaHost.Combat
         // Read-only candidate/preview queries never publish it or acquire input.
         internal void RecordInput(HostAttackInput input)
         {consumedInput=input;consumedOrigin=input.Source?.Center??HostAttackModels.LaunchOrigin(combat.Player,input.Weapon);consumedInputStep=Main.GameUpdateCount;hasConsumedInput=true;}
-        internal void RecordControlInput(Vector2 point,Projectile source,HostAttackInputKind kind)
-        {RecordInput(new HostAttackInput(this,kind,point,observation.Selection.Target,combat.Player.HeldItem,source,source==null?HostAttackPhase.BeforeNpc:HostAttackPhase.Projectiles,true,false));}
+        internal void RecordControlInput(Vector2 point,Projectile source,HostAttackInputKind kind,AttackPointSemantics pointSemantics=AttackPointSemantics.WorldPoint)
+        {RecordInput(new HostAttackInput(this,kind,point,observation.Selection.Target,combat.Player.HeldItem,source,source==null?HostAttackPhase.BeforeNpc:HostAttackPhase.Projectiles,true,false,pointSemantics));}
         // A prediction fault retires enhanced information, not a current legal
         // consumer. This gate retains the actual focus/UI/source/use contract;
         // it has no terrain, future path, ammo prediction or damage premise.
@@ -56,7 +57,7 @@ namespace JueMingR.TerrariaHost.Combat
             bool reverse=source!=null || !HostSkyAttack.RawCursor(item.type) && !HostMeleeAttack.RawCursor(item.type) && !HostCloudAttack.RawCursor(item.type);
             var captured=source==null?AttackAmmoSnapshot.Capture(player,item):null;
             int projectile=captured?.Projectile??item.shoot;
-            input=new HostAttackInput(this,HostAttackInputKind.Basic,point,observation.Selection.Target,item,source,phase,reverse,source==null && (projectile==442 || projectile==80));
+            input=new HostAttackInput(this,HostAttackInputKind.Basic,point,observation.Selection.Target,item,source,phase,reverse,source==null && (projectile==442 || projectile==80),AttackPointSemantics.WorldPoint);
             return true;
         }
         internal bool TryOrdinaryInput(Player player,Item item,HostAttackPhase phase,out HostAttackInput input)
@@ -69,7 +70,7 @@ namespace JueMingR.TerrariaHost.Combat
                 {
                     var solution=Main.GameUpdateCount==prepared?currentSolution:nextSolution;
                     bool reverse=!HostSkyAttack.RawCursor(item.type) && !HostMeleeAttack.RawCursor(item.type) && !HostCloudAttack.RawCursor(item.type);
-                    input=new HostAttackInput(this,HostAttackInputKind.Enhanced,solution.Point,solution.Timeline.Identity,item,null,phase,reverse,ammo.Projectile==442 || ammo.Projectile==80);
+                    input=new HostAttackInput(this,HostAttackInputKind.Enhanced,solution.Point,solution.Timeline.Identity,item,null,phase,reverse,ammo.Projectile==442 || ammo.Projectile==80,solution.PointSemantics);
                 }
                 else input=ContactInput(Main.GameUpdateCount==prepared?current:next,item,null,phase);
                 return true;
@@ -80,7 +81,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             bool reverse=source!=null || !HostSkyAttack.RawCursor(item.type) && !HostMeleeAttack.RawCursor(item.type) && !HostCloudAttack.RawCursor(item.type);
             int projectile=ammo?.Projectile??item.shoot;
-            return new HostAttackInput(this,HostAttackInputKind.Enhanced,new Vector2(contact.AimX,contact.AimY),contact.Timeline.Identity,item,source,phase,reverse,source==null && (projectile==442 || projectile==80));
+            return new HostAttackInput(this,HostAttackInputKind.Enhanced,new Vector2(contact.AimX,contact.AimY),contact.Timeline.Identity,item,source,phase,reverse,source==null && (projectile==442 || projectile==80),contact.PointSemantics);
         }
         private CombatCursorScope BeginBasic(Player player,Item item,Projectile source,HostAttackPhase phase)
         {HostAttackInput input;return TryBasicInput(player,item,source,phase,out input)?input.Begin():null;}

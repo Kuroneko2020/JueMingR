@@ -5,6 +5,9 @@ namespace JueMingR.Features.Combat
 {
     public delegate bool AttackPassage(float x,float y,float nextX,float nextY,float width,float height);
     public enum AttackReceiveGeometry { Projectile, Melee }
+    // Unknown preserves the existing encoded point, but grants no permission
+    // to stretch it along a ray. Only its birth/command adapter can prove that.
+    public enum AttackPointSemantics { Unknown, Direction, WorldPoint }
     public sealed class AttackContact
     {
         public readonly NpcTrajectory Timeline;
@@ -12,23 +15,26 @@ namespace JueMingR.Features.Combat
         public readonly int Tick,ReceiveTick,Subupdate,Delay;
         public readonly AttackConfidence Confidence;
         public readonly AttackReceiveGeometry ReceiveGeometry;
+        public readonly AttackPointSemantics PointSemantics;
         public readonly MotionRect ReceiveBounds;
         // Freeze the SAME receiver rectangle used by the contact outlet. It
         // already includes native integer/netOffset and projectile-extension
         // semantics; presentation must not infer them again from the weapon.
-        internal AttackContact(NpcTrajectory timeline,float aimX,float aimY,float impactX,float impactY,int tick,int subupdate,int delay,AttackConfidence confidence,int receiveTick=-1,AttackReceiveGeometry receiveGeometry=AttackReceiveGeometry.Projectile)
-        {Timeline=timeline;AimX=aimX;AimY=aimY;ImpactX=impactX;ImpactY=impactY;Tick=tick;ReceiveTick=receiveTick<0?tick:receiveTick;Subupdate=subupdate;Delay=delay;Confidence=confidence;ReceiveGeometry=receiveGeometry;var sample=timeline[ReceiveTick];ReceiveBounds=receiveGeometry==AttackReceiveGeometry.Melee?sample.ReceiveBounds:sample.ProjectileReceiveBounds;}
+        internal AttackContact(NpcTrajectory timeline,float aimX,float aimY,float impactX,float impactY,int tick,int subupdate,int delay,AttackConfidence confidence,int receiveTick=-1,AttackReceiveGeometry receiveGeometry=AttackReceiveGeometry.Projectile,AttackPointSemantics pointSemantics=AttackPointSemantics.Unknown)
+        {Timeline=timeline;AimX=aimX;AimY=aimY;ImpactX=impactX;ImpactY=impactY;Tick=tick;ReceiveTick=receiveTick<0?tick:receiveTick;Subupdate=subupdate;Delay=delay;Confidence=confidence;ReceiveGeometry=receiveGeometry;PointSemantics=pointSemantics;var sample=timeline[ReceiveTick];ReceiveBounds=receiveGeometry==AttackReceiveGeometry.Melee?sample.ReceiveBounds:sample.ProjectileReceiveBounds;}
     }
     public static class AttackIntercept
     {
         // A derived body's contact belongs to the parent's aimed use. Keep
         // its receive time/position while carrying the actual parent input.
         public static AttackContact WithAimInput(AttackContact contact,float x,float y)
-        {return contact==null?null:new AttackContact(contact.Timeline,x,y,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay,contact.Confidence,contact.ReceiveTick,contact.ReceiveGeometry);}
+        {return contact==null?null:new AttackContact(contact.Timeline,x,y,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay,contact.Confidence,contact.ReceiveTick,contact.ReceiveGeometry,contact.PointSemantics);}
+        public static AttackContact WithPointSemantics(AttackContact contact,AttackPointSemantics semantics)
+        {return contact==null?null:new AttackContact(contact.Timeline,contact.AimX,contact.AimY,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay,contact.Confidence,contact.ReceiveTick,contact.ReceiveGeometry,semantics);}
         public static AttackContact WithLaunchDelay(AttackContact contact,int delay)
         {
             if(contact==null || delay<0)return null;
-            return new AttackContact(contact.Timeline,contact.AimX,contact.AimY,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay+delay,contact.Confidence,contact.ReceiveTick,contact.ReceiveGeometry);
+            return new AttackContact(contact.Timeline,contact.AimX,contact.AimY,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay+delay,contact.Confidence,contact.ReceiveTick,contact.ReceiveGeometry,contact.PointSemantics);
         }
         // A new observation may publish the identical relative future with a
         // new sampling identity. Rebind only exact geometry/phase equality;
@@ -36,7 +42,7 @@ namespace JueMingR.Features.Combat
         public static AttackContact Rebind(AttackContact contact,NpcTrajectory timeline)
         {
             if(contact==null || !Equivalent(contact.Timeline,timeline))return null;
-            return new AttackContact(timeline,contact.AimX,contact.AimY,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay,contact.Confidence,contact.ReceiveTick,contact.ReceiveGeometry);
+            return new AttackContact(timeline,contact.AimX,contact.AimY,contact.ImpactX,contact.ImpactY,contact.Tick,contact.Subupdate,contact.Delay,contact.Confidence,contact.ReceiveTick,contact.ReceiveGeometry,contact.PointSemantics);
         }
         public static bool Equivalent(NpcTrajectory a,NpcTrajectory b)
         {
