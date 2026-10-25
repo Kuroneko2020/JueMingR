@@ -434,8 +434,13 @@ namespace JueMingR.ArchitectureTests
                 var identity = new BlueprintProjectionIdentity(fixture.Id, fixture.Revision, fixture.Hash, 55, 77);
                 Require(state.RequestProjectionOpen(identity), "source open admitted"); var opened = Await(state, BlueprintProjectionReceiptKind.Opened);
                 Require(opened.SourceRanges != null && opened.SourceRanges.Count == 3 && opened.TotalLayerCount == count, "full validated sparse source directory has one range per cell block and exact layer denominator");
-                Require(opened.SourceRanges.Sum(r => r.SourceIndexBytes) == state.DebugProjectionStatistics.SourceIndexBytes && state.DebugProjectionStatistics.SourceIndexBytes <= 512,
+                long sourceIndexBytes = opened.SourceRanges.Sum(r => r.SourceIndexBytes);
+                Require(sourceIndexBytes <= 512,
                     "dense runs compress the shared position index; charged index is separate from decoded payload cache");
+                // Release keeps the public index/lifetime assertions; only diagnostic counter agreement is DEBUG-only.
+#if DEBUG
+                Require(sourceIndexBytes == state.DebugProjectionStatistics.SourceIndexBytes, "charged source index bytes match the public directory");
+#endif
                 int actual = 0; long token = 100; bool viewport = false;
                 for (int range = 0; range < opened.SourceRanges.Count; range++)
                 {
@@ -468,10 +473,16 @@ namespace JueMingR.ArchitectureTests
                     var id = new BlueprintProjectionIdentity(gap.Id, gap.Revision, gap.Hash, 90, i + 1); identities.Add(id); Require(state.RequestProjectionOpen(id), "shared sparse index open");
                     var opened = Await(state, BlueprintProjectionReceiptKind.Opened); range = opened.SourceRanges.Single();
                     Require(range.Contains(0, 0) && range.Contains(0, 999999) && !range.Contains(0, 500000) && !range.Intersects(new BlueprintProjectionBounds(0, 1, 1, 999998)), "exact index excludes every absent bbox row without scanning it");
-                    Require(state.DebugProjectionStatistics.SourceIndexBytes == 144 && counted.ActiveIndexes == 1, "16 instances share the same two-position 144-byte charged index and reader");
+                    Require(range.SourceIndexBytes == 144 && counted.ActiveIndexes == 1, "16 instances share the same two-position 144-byte index and reader");
+#if DEBUG
+                    Require(state.DebugProjectionStatistics.SourceIndexBytes == 144, "shared source index is charged once across 16 instances");
+#endif
                 }
-                foreach (var identity in identities) state.ReleaseProjection(identity); Until(() => counted.ActiveIndexes == 0 && state.DebugProjectionStatistics.SourceIndexBytes == 0);
+                foreach (var identity in identities) state.ReleaseProjection(identity); Until(() => counted.ActiveIndexes == 0);
+#if DEBUG
+                Until(() => state.DebugProjectionStatistics.SourceIndexBytes == 0);
                 Require(state.DebugProjectionStatistics.SourceIndexBytes == 0, "last reference releases the shared immutable source index");
+#endif
                 Console.WriteLine("BlueprintProjection source exactGapHeight=1000000 targetPositions=2 sharedInstances=16 chargedSourceIndexBytes=144 retiredIndexBytes=0");
             }
             string objectPath = Path.Combine(path, "cross-block-object");
