@@ -136,12 +136,18 @@ namespace NativeWorldTextProbe
             for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,65,TileID.Stone);
             owner.position=new Vector2(700,65*16-owner.height);owner.velocity=Vector2.Zero;owner.jump=0;owner.releaseJump=true;owner.fallStart=(int)(owner.position.Y/16);
             owner.immune=false;owner.immuneTime=0;owner.statLife=owner.statLifeMax=owner.statLifeMax2=400;owner.lifeRegenTime=0;owner.lifeRegenCount=0;
-            owner.inventory[54].SetDefaults(ItemID.WoodenArrow);owner.inventory[54].stack=999;owner.statMana=owner.statManaMax=owner.statManaMax2=10000;
+            owner.inventory[54].SetDefaults(ItemID.WoodenArrow);owner.inventory[54].stack=999;
             // Keep both completed observations in native's ordinary .25
             // altitude clamp. Its changing altitude gravity is a real exact
             // dependency, unlike the two naturally changing clocks below.
             Main.windPhysics=false;Main.worldSurface=60;Main.screenPosition=new Vector2(600.25f,700.75f);Main.GameViewMatrix.Zoom=Vector2.One;Main.rand=new Terraria.Utilities.UnifiedRandom(7193);
-            var target=Main.npc[2];target.SetDefaults(NPCID.Zombie);target.whoAmI=2;target.active=true;target.width=target.height=34;target.Center=new Vector2(1100,1000);target.velocity=Vector2.Zero;target.noGravity=target.noTileCollide=true;target.aiStyle=-1;target.life=target.lifeMax=100000;target.target=0;target.knockBackResist=0;Array.Clear(target.immune,0,target.immune.Length);
+            // This body enters the real Source: retain native Zombie defaults,
+            // including AI, shape, health, gravity and collision. A fresh actor
+            // stands on actual solid ground at night; no synthetic static AI.
+            var target=new NPC{whoAmI=2};Main.npc[2]=target;target.SetDefaults(NPCID.Zombie);target.active=true;target.Bottom=new Vector2(1100,65*16);target.target=0;Main.dayTime=false;
+            Require(target.aiStyle==3 && target.width==18 && target.height==40 && target.life==45 && target.lifeMax==45 &&
+                !target.noGravity && !target.noTileCollide && target.knockBackResist==.5f && owner.HeldItem.mana==0,"real Source witness retains original legal Zombie defaults and a no-mana weapon");
+            Console.WriteLine("RETAINED-NATIVE legal-target type="+target.type+" style="+target.aiStyle+" size="+target.width+"/"+target.height+" life="+target.life+"/"+target.lifeMax+" gravity="+!target.noGravity+" tile="+!target.noTileCollide+" knockback="+target.knockBackResist+" bottom="+target.Bottom+" night="+!Main.dayTime+" weaponMana="+owner.HeldItem.mana);
             var native=new Harmony("JueMingR.Tests.RetainedNativeUpdate");
             foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})native.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,F),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks).GetMethod("SkipAchievement",F)));
             try
