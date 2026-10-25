@@ -543,6 +543,29 @@ namespace JueMingR.ArchitectureTests
                 var mask=SourceMask(new Dictionary<long,ushort>(),new HashSet<int>{1},3);
                 routes.Clear();range.RouteProofs(new BlueprintProjectionBounds(1,0,1,1),1,mask,routes.Add);Require(routes.SequenceEqual(new[]{2}),"permanent object mask removes only its own proof from the shared wing");
             }
+            SourceOpenDoorBounds(Path.Combine(path,"open-door"));
+        }
+        private static void SourceOpenDoorBounds(string path)
+        {
+            for(int direction=1;direction<=2;direction++)
+            {
+                var cells=new List<CaptureCell>();
+                for(int row=0;row<3;row++)
+                {
+                    for(int column=0;column<2;column++)cells.Add(new CaptureCell{X=37+column,Y=91+row,ObjectId=1,Layers=CaptureLayer.Tile,TileType=11,FrameX=(short)((direction==1?36:0)+column*18),FrameY=(short)(row*18)});
+                    if(row==0)cells.Add(new CaptureCell{X=57,Y=91,Layers=CaptureLayer.Wire,Wires=8});
+                }
+                string folder=Path.Combine(path,direction.ToString());var fixture=Write(folder,21,3,7,n=>cells[(int)n],new[]{new CaptureObject{Id=1,Type=11,X=37,Y=91,Width=2,Height=3,Direction=(byte)direction,OriginX=direction==1?1:0,Reliable=true}});
+                using(var state=new LibraryState(new FileBlueprintLibrary(folder)))
+                {
+                    var id=new BlueprintProjectionIdentity(fixture.Id,fixture.Revision,fixture.Hash,95,direction);Require(state.RequestProjectionOpen(id),"original open-door source direction opens");var opened=Await(state,BlueprintProjectionReceiptKind.Opened);var physical=opened.SourceRanges.Single();var proof=opened.MatchRanges.Single(r=>r.TargetLayerCount==6);
+                    int left=direction==1?0:-1,outside=direction==1?-1:2;var change=new BlueprintProjectionBounds(outside,0,1,1);var routes=new List<int>();physical.RouteProofs(change,1,BlueprintProjectionMask.Empty,routes.Add);
+                    Console.WriteLine("BlueprintProjection open-door direction="+direction+" sourceProof="+proof.Bounds.Left+","+proof.Bounds.Width+" irrelevantOuterRoutes="+String.Join(",",routes));
+                    Require(physical.Bounds.Contains(outside,0) && !physical.IntersectsProofs(change,1,BlueprintProjectionMask.Empty) && routes.Count==0,"outer fourth column is only a coarse bbox hole, never a same-hinge member/seed dependency; direction="+direction);
+                    Require(proof.Bounds.Left==left && proof.Bounds.Width==3 && proof.Bounds.Height==3,"reliable original open direction defines the exact hinge-minus-one three-column union");
+                    routes.Clear();physical.RouteProofs(new BlueprintProjectionBounds(direction==1?2:-1,0,1,1),1,BlueprintProjectionMask.Empty,routes.Add);Require(routes.SequenceEqual(new[]{1}),"the opposite legal wing outside the source footprint remains a required object dependency");
+                }
+            }
         }
         private static BlueprintProjectionMask SourceMask(Dictionary<long, ushort> cells, HashSet<int> objects, long count)
         { return (BlueprintProjectionMask)typeof(BlueprintProjectionMask).GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Single().Invoke(new object[] { cells, objects, count }); }

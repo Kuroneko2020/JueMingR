@@ -322,6 +322,23 @@ namespace JueMingR.Features.Blueprint
             }
             ReleaseRetiredProjection();
         }
+        private static BlueprintProjectionBounds ProjectionSourceObjectBounds(CaptureObject obj,CaptureSummary summary)
+        {
+            int left=obj.X-summary.Left,top=obj.Y-summary.Top,width=obj.Width;
+            if(obj.Type==10 || obj.Type==11)
+            {
+                // Locked original open-door metadata records PlaceLeft=1 /
+                // OriginX=1 or PlaceRight=2 / OriginX=0. Its canonical hinge
+                // has three possible columns, not sourceWidth+two wings:
+                // a two-column source already contains one of those wings.
+                // Unknown/inconsistent metadata keeps the conservative extent.
+                if(obj.Reliable && obj.Type==11 && obj.Width==2 && obj.Height==3 &&
+                    (obj.Direction==1 && obj.OriginX==1 || obj.Direction==2 && obj.OriginX==0))
+                    return new BlueprintProjectionBounds(left+(obj.Direction==1?1:0)-1,top,3,3);
+                left--;width+=2;
+            }
+            return new BlueprintProjectionBounds(left,top,width,obj.Height);
+        }
         private IEnumerable<bool> OpenProjection(ProjectionOwner owner)
         {
             CheckProjection(owner);
@@ -392,7 +409,7 @@ namespace JueMingR.Features.Blueprint
                             // Cross-block groups need the entire footprint;
                             // doors also depend on the other legal wing column.
                             if (door || memberCounts[obj.Id] != checked(obj.Width * obj.Height))
-                                dependencies.Add(new BlueprintProjectionSourceDependency(new BlueprintProjectionBounds(obj.X - summary.Left - (door ? 1 : 0), obj.Y - summary.Top, obj.Width + (door ? 2 : 0), obj.Height), obj.Id));
+                                dependencies.Add(new BlueprintProjectionSourceDependency(ProjectionSourceObjectBounds(obj,summary),obj.Id));
                         }
                         int group = owner.SourceRanges.Count;
                         var range = new BlueprintProjectionSourceRange(number,
@@ -425,8 +442,8 @@ namespace JueMingR.Features.Blueprint
                             }
                             foreach (var pair in sourceObjects) if (indexedMatchObjects.Add(pair.Key))
                             {
-                                var obj = pair.Value; int x = obj.X-summary.Left, y = obj.Y-summary.Top; bool door = obj.Type==10 || obj.Type==11;
-                                var bounds = new BlueprintProjectionBounds(x-(door?1:0),y,obj.Width+(door?2:0),obj.Height);
+                                var obj = pair.Value; int x = obj.X-summary.Left, y = obj.Y-summary.Top;
+                                var bounds = ProjectionSourceObjectBounds(obj,summary);
                                 var proof = new BlueprintProjectionSourceRange(number,bounds,(long)obj.Width*obj.Height,
                                     new[]{((long)y<<32)|(uint)x},new ushort[]{1},new[]{obj.Id},new[]{new BlueprintProjectionSourceDependency(bounds,obj.Id)},group,obj.Id);
                                 routeObjects.Add(obj.Id);routeOrdinals.Add(owner.MatchRanges.Count-proofStart);

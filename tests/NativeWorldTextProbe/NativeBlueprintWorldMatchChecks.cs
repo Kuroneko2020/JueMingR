@@ -144,6 +144,7 @@ namespace NativeWorldTextProbe
                 ObjectProof(context, host, input, library, step);
                 ObjectInFlight(context, host, input, library, step);
                 DoorSeedInFlight(host,input,library,step);
+                OpenDoorDependencies(host,input,library,step);
                 AnimatedCompletion(host, input, library, step);
                 UnknownAndCandidate(context, host, input, library, step);
                 SlicedProofAndCommit(context, host, input, library, step);
@@ -510,6 +511,37 @@ namespace NativeWorldTextProbe
             }
             finally{objectSample=null;timing.UnpatchAll(timing.Id);Call(host,"ClearProjection");}
             Console.WriteLine("PASS BlueprintWorldMatch door seed in-flight: actual gated wing sample then original ordinary SelfFrame8Way; old native stamp revoked before first witness, fresh source retry and certified right-open, no success injection.");
+        }
+        private static void OpenDoorDependencies(object host,object input,LibraryState library,Action step)
+        {
+            for(int direction=-1;direction<=1;direction+=2)
+            {
+                int hinge=direction<0?450:550,y=85,outside=hinge+direction*2;
+                Require(WorldGen.PlaceTile(hinge,y-1,1,true,true) && WorldGen.PlaceTile(hinge,y+3,1,true,true) && WorldGen.PlaceTile(outside,y,1,true,true),"open-target fixture has original anchors and a foreign Tile beyond every legal wing");
+                for(int row=0;row<3;row++){var tile=Main.tile[hinge,y+row];tile.active(true);tile.type=10;tile.frameX=0;tile.frameY=(short)(row*18);}
+                Require(WorldGen.OpenDoor(hinge,y,direction),"original source opens in the requested direction");
+                int origin=direction<0?hinge-1:hinge;
+                var sourceType=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintCaptureSource",true);
+                var source=(IBlueprintCaptureSource)Activator.CreateInstance(sourceType,Flags,null,new object[]{(Func<bool>)(()=>true)},null);
+                CaptureCell member;Require(source.Read(origin,y,out member),"original open target source readable");var shape=source.Describe(member);
+                Require(shape!=null && shape.Object.Reliable && shape.Object.Width==2 && shape.Object.Direction==(direction<0?1:2) && shape.Object.OriginX==(direction<0?1:0),"actual original direction/origin identifies the open target's hinge");
+                var obj=shape.Object;obj.X=obj.Y=0;obj.Id=1;var cells=new List<CaptureCell>();
+                for(int row=0;row<3;row++)for(int column=0;column<2;column++){Require(source.Read(origin+column,y+row,out member),"open source includes both actual columns");member.X=column;member.Y=row;member.ObjectId=1;cells.Add(member);}
+                cells.Add(new CaptureCell{X=20,Layers=CaptureLayer.Wire,Wires=8});
+                var entry=NativeBlueprintProjectionVisualChecks.Save(library,new BlueprintProjectionWindow(new BlueprintProjectionIdentity(Guid.NewGuid(),Guid.NewGuid(),"open-dependency",1,1),1,new CaptureSummary{Width=21,Height=3,ContentCount=7},new BlueprintProjectionBounds(0,0,21,3),cells.ToArray(),new[]{obj}));
+                try
+                {
+                    var placed=Place(host,input,entry,origin,y,step);AwaitReady(placed,step);Require(Matches(placed)==6,"the actual two-column open target has complete Match while its sentinel is missing");
+                    long before=(long)Get(host,"ProjectionMatchInvalidations"),reads=(long)Get(host,"ProjectionMatchCellReads");
+                    for(int n=0;n<40;n++){WorldGen.paintTile(outside,y,(byte)(1+(n&1)),false,false);step();}
+                    Require(Matches(placed)==6 && (long)Get(host,"ProjectionMatchInvalidations")==before && (long)Get(host,"ProjectionMatchCellReads")==reads,"real continuous Tile changes outside the exact three-column union do not revoke or rescan an open target");
+                    WorldGen.PlaceWire4(origin+20,y);int updates=0;
+                    for(;updates<80 && Scene(host).Contains(placed);updates++){WorldGen.paintTile(outside,y,(byte)(1+(updates&1)),false,false);step();System.Threading.Thread.Sleep(2);}
+                    Require(!Scene(host).Contains(placed),"the complete open target retires naturally while unrelated outer-column native changes continue");
+                    Console.WriteLine("PASS BlueprintWorldMatch open source direction="+direction+" originalColumns=2 requiredUnionColumns=3 foreignOuterChanges="+(40+updates)+" stableWorldReads=0 currentMatch=6 naturalRetirement=true");
+                }
+                finally{Call(host,"ClearProjection");}
+            }
         }
         private static LibraryEntry Small(LibraryState library, params CaptureCell[] cells)
         {
