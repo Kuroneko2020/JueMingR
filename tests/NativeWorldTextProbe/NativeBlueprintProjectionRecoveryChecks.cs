@@ -22,10 +22,13 @@ namespace NativeWorldTextProbe
         private const BindingFlags F=BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
         internal static void Run(object context)
         {
+            using (NativeBlueprintWorldMatchChecks.EmptyWorld(Get(context,"Blueprint"),1024,1024))
+            {
             var failures=new List<Exception>();
             foreach(bool published in new[]{false,true}) try { CommitFailure(context,published); } catch(Exception error){failures.Add(error);}
             foreach(bool cancelBeforeOpen in new[]{false,true}) try { RestoreMoving(context,cancelBeforeOpen); } catch(Exception error){failures.Add(error);}
             if(failures.Count!=0)throw new AggregateException("Host commit failure ordering",failures);
+            }
         }
         private static void RestoreMoving(object context,bool cancelBeforeOpen)
         {
@@ -53,15 +56,20 @@ namespace NativeWorldTextProbe
                         Require(!(bool)Get(restored,"Opened") && (int)Get(Get(restored,"Windows"),"Count")>0 && (int)Get(Get(restored,"Renderer"),"CommandCount")==0,"restore qualification retains windows while actual Open is not ready");
                         NativeQuickItemChecks.Sample(input,Array.Empty<Keys>());Call(host,"MoveProjection");
                         Call(host,"AcceptWorldPointer",true,false,false,21,21,120,120);Call(host,"AcceptWorldPointer",true,true,false,21,21,120,120);
-                        Require(Mode(host)=="Moving","retained effective cell selects the unready restore through real Host pointer consumer");
+                        Require(Mode(host)=="SelectingMove" && Get(host,"ProjectionHoverMoveEligibility").ToString()=="Checking" && GetOptional(host,"ProjectionCandidate")==null,"unready restored source remains Unknown and cannot enter Moving before its complete world proof");
                         if(cancelBeforeOpen)Call(host,"CancelProjection");
                     }
                     NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return (bool)Get(restored,"Opened");});
-                    if(!cancelBeforeOpen)Call(host,"CancelProjection");
+                    if(!cancelBeforeOpen)
+                    {
+                        NativeBlueprintWorldMatchChecks.AwaitMovable(context,host,restored);
+                        Call(host,"AcceptWorldPointer",true,false,false,21,21,120,120);Call(host,"AcceptWorldPointer",true,true,false,21,21,120,120);
+                        Require(Mode(host)=="Moving","fresh click selects the restored source after actual Open and complete zero-Match proof"); Call(host,"CancelProjection");
+                    }
                     // No camera/window update after selection: unchanged source
                     // coverage must already have its rollback drawing commands.
                     Require(Mode(host)=="Fixed" && ReferenceEquals(identity,Get(restored,"Identity")) && ReferenceEquals(mask,Get(restored,"Mask")) && (int)Get(restored,"OriginX")==20 && (int)Get(restored,"OriginY")==20 && (long)Get(restored,"CommitOrder")==order && priorCommands.SequenceEqual(Commands(restored)),"restored Moving rollback keeps original identity/origin/order/mask and exact commands without camera change; cancelBeforeOpen="+cancelBeforeOpen);
-                    Console.WriteLine("PASS Host restore Moving rollback cancelBeforeOpen="+cancelBeforeOpen+" identity/origin/order/mask/commands retained without camera update");Call(host,"ClearProjection");
+                    Console.WriteLine("PASS Host restore eligibility and Moving rollback cancelBeforeOpen="+cancelBeforeOpen+" unready Checking; identity/origin/order/mask/commands retained without camera update");Call(host,"ClearProjection");
                 }
             }
             finally{Call(host,"ClearProjection");field.SetValue(host,original);}
@@ -85,6 +93,12 @@ namespace NativeWorldTextProbe
                     Action<int,int> fixedAt=(x,y)=>{Call(host,"AcceptWorldPointer",true,false,false,x,y,1000,1000);Call(host,"AcceptWorldPointer",true,true,false,x,y,1000,1000);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return Mode(host)=="Fixed";});};
                     open(dense);fixedAt(255,129);var moving=Scene(host).Single();
                     open(bad);fixedAt(10,10);var opponent=Scene(host).Single(p=>((BlueprintProjectionIdentity)Get(p,"Identity")).AssetId==bad.AssetId);
+                    // The later one-cell template permanently covers one raw
+                    // Tile of the moving source and changes its mask identity.
+                    // Earn qualification for that actual mask before cache
+                    // pressure; pressure itself must not revoke world proof.
+                    Require(((BlueprintProjectionMask)Get(moving,"Mask")).RemovedLayerCount==1,"recovery source has the literal one-cell permanent cover");
+                    NativeBlueprintWorldMatchChecks.AwaitMovable(context,host,moving,512*260,65,512*260-1);
                     // A complete different-template Open naturally displaces the
                     // old decoded blocks. Cancel drops only that temporary ref.
                     open(pressure);Call(host,"CancelProjection");

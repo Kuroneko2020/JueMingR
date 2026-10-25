@@ -31,6 +31,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         private int[] commandSlots = Array.Empty<int>();
         private Texture2D[] textures = Array.Empty<Texture2D>();
         private string pendingError;
+        private IReadOnlyDictionary<long, BlueprintWorldMatchResult> matchView;
+        internal void SetMatchView(IReadOnlyDictionary<long, BlueprintWorldMatchResult> value) { matchView = value; }
+        internal bool TryGetMatch(int x, int y, out BlueprintWorldMatchResult value)
+        { if (matchView != null) return matchView.TryGetValue(Key(x, y), out value); value = default(BlueprintWorldMatchResult); return false; }
         internal Exception Failure { get; private set; }
         internal long BuildCount { get; private set; }
         internal long SegmentBuildCount { get; private set; }
@@ -238,9 +242,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             // refreshed from original resource owners and are never disposed.
             for (int i = 0; i < textureKeys.Count; i++) textures[i] = Resolve(textureKeys[i]);
             Vector2 offset = new Vector2(originX * 16f, originY * 16f);
+            bool conflictMarkers = false;
             for (int i = 0; i < commands.Count; i++)
             {
                 var command = commands[i]; var texture = textures[commandSlots[i]];
+                BlueprintWorldMatchResult matched;
+                if (!ResolveMatch(ref command, out matched)) continue;
                 if (texture == null || texture.IsDisposed || !ReferenceEquals(texture.GraphicsDevice, Main.spriteBatch.GraphicsDevice)) continue;
                 Rectangle source = command.Source; Vector2 position = command.Position + offset;
                 Vector2 scale = Vector2.One;
@@ -263,7 +270,48 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // Caller already established the reliable world zoom matrix.
                 // We only use its existing reverse-gravity screen conversion.
                 Main.spriteBatch.Draw(texture, position, source, command.Color, 0, Vector2.Zero, scale, effects, 0);
+                conflictMarkers |= command.ConflictMarker && (matched.ConflictBits & command.SemanticBits) != 0;
             }
+            // Keep all pixel edges in one texture pass. Interleaving a white
+            // pixel after each painted Tile would force a texture switch for
+            // every conflict in the existing deferred SpriteBatch.
+            if (conflictMarkers) for (int i = 0; i < commands.Count; i++)
+            {
+                var command = commands[i]; BlueprintWorldMatchResult value;
+                if (command.ConflictMarker && TryGetMatch(command.CellX, command.CellY, out value) && (value.ConflictBits & command.SemanticBits) != 0)
+                    DrawConflictMarker(originX + command.CellX, originY + command.CellY);
+            }
+        }
+
+        private static void DrawConflictMarker(int x, int y)
+        {
+            // Sprite tint multiplies the original painted texture: deep green
+            // or black can erase its red channel completely. Keep the source
+            // silhouette and add one independent red cell edge, borrowing the
+            // existing pixel resource. No recolored atlas/cache/readback is
+            // created, and split slope commands do not repeat this marker.
+            if (x < 0 || y < 0 || x >= Main.maxTilesX || y >= Main.maxTilesY || TextureAssets.MagicPixel == null || !TextureAssets.MagicPixel.IsLoaded) return;
+            var pixel = TextureAssets.MagicPixel.Value;
+            if (pixel.IsDisposed || !ReferenceEquals(pixel.GraphicsDevice, Main.spriteBatch.GraphicsDevice)) return;
+            var point = Main.ReverseGravitySupport(new Vector2(x * 16f, y * 16f) - Main.screenPosition, 16f);
+            int left = (int)point.X, top = (int)point.Y; var red = Color.FromNonPremultiplied(255, 48, 48, 220);
+            Main.spriteBatch.Draw(pixel, new Rectangle(left, top, 16, 1), red);
+            Main.spriteBatch.Draw(pixel, new Rectangle(left, top + 15, 16, 1), red);
+            Main.spriteBatch.Draw(pixel, new Rectangle(left, top + 1, 1, 14), red);
+            Main.spriteBatch.Draw(pixel, new Rectangle(left + 15, top + 1, 1, 14), red);
+        }
+
+        // Geometry/adjacency and the permanent mask stay unchanged. Semantic
+        // ownership is attached before commands split into slopes/wires; draw
+        // pass numbers cannot stand in for individual target-layer bits.
+        internal bool ResolveMatch(ref BlueprintProjectionCommand command, out BlueprintWorldMatchResult value)
+        {
+            if (TryGetMatch(command.CellX, command.CellY, out value))
+            {
+                if ((value.MatchBits & command.SemanticBits) != 0) return false;
+                if ((value.ConflictBits & command.SemanticBits) != 0) command.Color = new Color(255, 48, 48, command.Color.A);
+            }
+            return true;
         }
 
         private static Texture2D Resolve(BlueprintProjectionCommand command)
@@ -302,7 +350,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal void Clear()
         {
-            window = null; mask = null; commands = null; slots.Clear(); textureKeys.Clear(); segments.Clear();
+            window = null; mask = null; matchView = null; commands = null; slots.Clear(); textureKeys.Clear(); segments.Clear();
             commandSlots = Array.Empty<int>(); textures = Array.Empty<Texture2D>();
             pendingError = null; Failure = null;
         }

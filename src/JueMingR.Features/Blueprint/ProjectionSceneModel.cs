@@ -29,6 +29,27 @@ namespace JueMingR.Features.Blueprint
         public long RemovedLayerCount { get; }
         public int CellCount { get { return cells.Count; } }
         public int ObjectCount { get { return objects.Count; } }
+        // The shared source-position index carries only layer bits/object ID.
+        // Observation can apply the current immutable mask without recreating
+        // a CaptureCell or retaining any template/world payload per instance.
+        internal ushort RemainingLayers(int x, int y, int objectId, ushort layers)
+        {
+            ushort removed; cells.TryGetValue(ProjectionDirectory.Key(x, y), out removed);
+            if (objectId > 0 && objects.Contains(objectId)) removed |= 1;
+            return (ushort)(layers & ~removed);
+        }
+        internal bool AnyRemainingLayers(BlueprintProjectionBounds bounds, int objectId, ushort layers)
+        {
+            if (objectId > 0 && objects.Contains(objectId)) layers &= 0xfe;
+            if (layers == 0 || bounds.Width <= 0 || bounds.Height <= 0) return false;
+            // A rectangle with more positions than the sparse removal table
+            // necessarily contains an untouched position. Otherwise enumerate
+            // at most that table's count; ordinary field stores query one cell.
+            if ((long)bounds.Width * bounds.Height > cells.Count) return true;
+            for (int y = bounds.Top; y < bounds.Bottom; y++) for (int x = bounds.Left; x < bounds.Right; x++)
+                if (RemainingLayers(x, y, objectId, layers) != 0) return true;
+            return false;
+        }
         public CaptureCell Apply(CaptureCell cell)
         {
             if (cells.Count == 0 && objects.Count == 0) return cell;

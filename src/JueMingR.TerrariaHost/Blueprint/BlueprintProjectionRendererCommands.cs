@@ -15,6 +15,8 @@ namespace JueMingR.TerrariaHost.Blueprint
     {
         internal BlueprintProjectionTexture Texture;
         internal int Type, Paint, Layer;
+        internal int CellX, CellY;
+        internal ushort SemanticBits;
         internal Rectangle Source;
         internal Vector2 Position;
         internal Color Color;
@@ -22,7 +24,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         // A special building body uses a frame grid whose pixel size belongs
         // to the borrowed texture. Ordinary tile slices always use raw pixels.
         internal int Columns, Rows;
-        internal bool Centered;
+        internal bool Centered, ConflictMarker;
     }
 
     // Interprets an immutable, bounded source window only. No Tile instances,
@@ -60,6 +62,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 {
                     var cell = cells[i];
                     if (cell.X < l || cell.Y < t || cell.X >= r || cell.Y >= b) continue;
+                    int cellFirst = commands.Count;
                     if (pass == 0 && Has(cell, CaptureLayer.Wall)) Wall(commands, lookup, cell);
                     if (pass == 1 && Has(cell, CaptureLayer.Liquid)) Liquid(commands, cell);
                     if (pass == 2 && Has(cell, CaptureLayer.Tile))
@@ -67,6 +70,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                         CaptureObject obj; groups.TryGetValue(cell.ObjectId, out obj);
                         Tile(commands, lookup, cell, obj, summary.Left, summary.Top);
                     }
+                    TagSemantic(commands, cellFirst, cell.X, cell.Y, (ushort)(pass == 0 ? 2 : pass == 1 ? 4 : 1));
                 }
                 Tag(commands, first, pass);
             }
@@ -80,7 +84,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 CaptureCell sample; if (!samples.TryGetValue(obj.Id, out sample)) continue;
                 commands.Add(new BlueprintProjectionCommand { Texture = BlueprintProjectionTexture.Extra, Type = 181,
                     Source = new Rectangle(3 + Math.Max(0, Math.Min(10, obj.Style)), 0, 1, 1), Columns = 14, Rows = 8,
-                    Position = new Vector2(obj.X * 16 + 24, obj.Y * 16 + 24), Centered = true, Color = Ink(sample, false) * .9f, Layer = 3 });
+                    Position = new Vector2(obj.X * 16 + 24, obj.Y * 16 + 24), Centered = true, Color = Ink(sample, false) * .9f, Layer = 3,
+                    CellX = sample.X, CellY = sample.Y, SemanticBits = 1 });
             }
             // Circuit layers deliberately remain visible without the player's
             // wiring tool. They never alter the real-world wiring visibility.
@@ -91,10 +96,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (Has(c, CaptureLayer.Wire)) Wire(commands, lookup, c);
                 if (Has(c, CaptureLayer.Actuator))
                 {
+                    int actuatorFirst = commands.Count;
                     Pixel(commands, c.X * 16 + 5, c.Y * 16 + 5, 6, 1, Color.Orange * .8f);
                     Pixel(commands, c.X * 16 + 5, c.Y * 16 + 10, 6, 1, Color.Orange * .8f);
                     Pixel(commands, c.X * 16 + 5, c.Y * 16 + 6, 1, 4, Color.Orange * .8f);
                     Pixel(commands, c.X * 16 + 10, c.Y * 16 + 6, 1, 4, Color.Orange * .8f);
+                    TagSemantic(commands, actuatorFirst, c.X, c.Y, 8);
                 }
                 Tag(commands, first, 4);
             }
@@ -102,6 +109,16 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private static void Tag(List<BlueprintProjectionCommand> commands, int first, int layer)
         { for (int i = first; i < commands.Count; i++) { var value = commands[i]; value.Layer = layer; commands[i] = value; } }
+        private static void TagSemantic(List<BlueprintProjectionCommand> commands, int first, int x, int y, ushort bits)
+        {
+            for (int i = first; i < commands.Count; i++)
+            {
+                var value = commands[i]; value.CellX = x; value.CellY = y; value.SemanticBits = bits;
+                // A sloped Tile may emit many strips. Its independent conflict
+                // edge is drawn once, after that cell/layer's final fragment.
+                value.ConflictMarker = (bits & 7) != 0 && i == commands.Count - 1; commands[i] = value;
+            }
+        }
 
         internal static void Shape(List<BlueprintProjectionCommand> output, BlueprintProjectionCommand normal, byte slope, bool half,
             bool platform, bool dontSlope, bool slopeFrames)
@@ -294,11 +311,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             for (int bit = 0; bit < 4; bit++)
             {
                 int mask = 1 << bit; if ((c.Wires & mask) == 0) continue;
+                int first = result.Count;
                 int center = 5 + bit * 2, x = c.X * 16, y = c.Y * 16; var color = WireColors[bit] * .85f;
                 bool w = (Get(cells, c.X - 1, c.Y).Wires & mask) != 0, e = (Get(cells, c.X + 1, c.Y).Wires & mask) != 0;
                 bool n = (Get(cells, c.X, c.Y - 1).Wires & mask) != 0, s = (Get(cells, c.X, c.Y + 1).Wires & mask) != 0;
                 Pixel(result, x + (w ? 0 : center - 1), y + center, (e ? 16 : center + 2) - (w ? 0 : center - 1), 1, color);
                 Pixel(result, x + center, y + (n ? 0 : center - 1), 1, (s ? 16 : center + 2) - (n ? 0 : center - 1), color);
+                TagSemantic(result, first, c.X, c.Y, (ushort)(16 << bit));
             }
         }
         private static SpriteEffects SourceFlip(int x) { return (x & 1) == 0 ? SpriteEffects.FlipHorizontally : SpriteEffects.None; }

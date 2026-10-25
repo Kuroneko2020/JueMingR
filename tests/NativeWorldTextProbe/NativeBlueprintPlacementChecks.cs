@@ -58,6 +58,7 @@ namespace NativeWorldTextProbe
                 Require(scene().Length==3 && (int)Call(host,"ProjectionReferenceCount",entry.AssetId)==2,"same template twice plus different template coexist independently");
                 Require(scene().Select(p=>((BlueprintProjectionIdentity)Get(p,"Identity")).ProjectionGeneration).Distinct().Count()==3,"instance ids independent");
                 NativeQuickItemChecks.Until(()=>{windows();return scene().All(p=>GetOptional(p,"Window")!=null);});
+                NativeBlueprintWorldMatchChecks.AwaitMovable(context,host,first);
                 NativeQuickItemChecks.Sample(input,Array.Empty<Keys>()); Call(host,"MoveProjection");
                 Require(mode()=="SelectingMove","Move starts target selection"); pointer(true,true,false,16,45); Require(mode()=="SelectingMove","startup press cannot select");
                 pointer(true,false,false,50,50); pointer(true,true,false,50,50); Require(mode()=="SelectingMove","air hole cannot seize a bounding box");
@@ -94,6 +95,7 @@ namespace NativeWorldTextProbe
                 var layerRenderer=Get(layered,"Renderer"); var drawn=((IEnumerable)Get(layerRenderer,"commands")).Cast<object>().ToArray();
                 Require(!drawn.Any(c=>Get(c,"Texture").ToString()=="Tile" && ((Microsoft.Xna.Framework.Vector2)Get(c,"Position")).X==0) && drawn.Any(c=>Get(c,"Texture").ToString()=="Wall"),"masked actual renderer removes covered Tile commands while retaining wall consumer");
                 NativeQuickItemChecks.Until(()=>{windows();return scene().All(p=>GetOptional(p,"Window")!=null);});
+                NativeBlueprintWorldMatchChecks.AwaitMovable(context,host,scene().Last());
                 NativeQuickItemChecks.Sample(input,Array.Empty<Keys>());Call(host,"MoveProjection");pointer(true,false,false,80,20);pointer(true,true,false,80,20);pointer(true,false,false,85,20);pointer(true,true,false,85,20);
                 NativeQuickItemChecks.Until(()=>{poll();return mode()=="Fixed";});Require(ReferenceEquals(masked,Get(layered,"Mask")) && masked.Apply(baseCell).Wires==2,"moving cover away never revives erased old layers");
                 NativeQuickItemChecks.Until(()=>{windows();return scene().All(p=>GetOptional(p,"Window")!=null);});NativeQuickItemChecks.Sample(input,Array.Empty<Keys>());Call(host,"RemoveProjection");pointer(true,false,false,85,20);pointer(true,true,false,85,20);

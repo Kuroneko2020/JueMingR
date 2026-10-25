@@ -29,6 +29,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "sparse overlap spans skip empty rows", () => SparseSpan(Path.Combine(area, "sparse-span")));
             Run(failures, "65 blocks retain intersection", () => CacheIntersection(Path.Combine(area, "cache-intersection")));
             Run(failures, "delete handle and commit boundaries", () => Deletion(Path.Combine(area, "deletion")));
+            Run(failures, "sparse source slices remain independent of viewport latest", () => MatchSources(Path.Combine(area, "match-sources")));
             if (before == failures.Count)
             {
                 string resolved = Path.GetFullPath(area), parent = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
@@ -83,7 +84,7 @@ namespace JueMingR.ArchitectureTests
                 Require(edge.Cells.Count == 2 && edge.Objects.Count == 1 && edge.Objects[0].X == 5, "visible member resolves object whose origin is outside query");
                 long blocks = counted.Reads, indexes = counted.IndexReadBytes;
                 LibraryReceipt rename = Library(state, state.TryRename(fixture.Id, Library(state, state.TryList(1, 0)).Page.Entries[0].MetadataIdentity, "改名"));
-                Require(rename.Status == LibraryStatus.Saved && counted.Reads == blocks && counted.IndexReadBytes >= indexes, "rename does not reparse content or retire window");
+                Require(rename.Status == LibraryStatus.Saved && counted.Reads == blocks && counted.IndexReadBytes >= indexes, "rename does not reparse content or retire window; status=" + rename.Status + " error=" + rename.Error + " failure=" + rename.FailureCode + " blockReads=" + blocks + "->" + counted.Reads + " indexBytes=" + indexes + "->" + counted.IndexReadBytes);
                 state.CloseProjection(); Until(() => Volatile.Read(ref counted.ActiveIndexes) == 0);
             }
             string brokenPath = Path.Combine(path, "incomplete-object"); Fixture broken = Write(brokenPath, 7, 2, 8, n => cells[n], new[] { obj });
@@ -112,7 +113,7 @@ namespace JueMingR.ArchitectureTests
                     BlueprintProjectionStatistics after = state.DebugProjectionStatistics;
                     Require(after.WindowBlocks - prior.WindowBlocks == 1 && after.DecodedRecords - prior.DecodedRecords <= 2048 && after.DirectoryComparisons - prior.DirectoryComparisons <= 9, "one block and logarithmic directory work for fixed visible width");
                     Require(after.CachePeakBytes <= 8L * 1024 * 1024, "decoded cache budget is measured in charged bytes");
-                    Require(after.DirectoryBlocks == width / 2048 && after.DirectoryBytes <= 128L + after.DirectoryBlocks * 48L, "directory stores O(blocks) ranges rather than per-cell entries");
+                    Require(after.DirectoryBlocks == width / 2048 && after.DirectoryBytes <= 256L + after.DirectoryBlocks * 256L, "query directory plus two bounded source/proof range lists store O(blocks) metadata rather than per-cell entries");
                     Console.WriteLine("BlueprintProjection wide=" + width + " blocks=" + after.DirectoryBlocks + " directoryBytes=" + after.DirectoryBytes + " openActualBlockReads=" + reads + " windowCells=" + window.Cells.Count + " windowObjects=" + window.Objects.Count + " windowEstimatedBytes=" + window.EstimatedBytes + " windowBlockHits=" + (after.WindowBlocks - prior.WindowBlocks) + " windowActualBlockReads=" + (counted.Reads - reads) + " decodedRecords=" + (after.DecodedRecords - prior.DecodedRecords) + " comparisons=" + (after.DirectoryComparisons - prior.DirectoryComparisons) + " cachePeakBytes=" + after.CachePeakBytes);
 #endif
                     long steady = counted.Reads; Thread.Sleep(15); Require(counted.Reads == steady, "stationary display has no periodic file read");
@@ -202,7 +203,7 @@ namespace JueMingR.ArchitectureTests
                     LibraryEntry entry = Library(state, state.TryList(3, 0)).Page.Entries[0]; counted.DeleteMode = mode;
                     LibraryReceipt deleted = Library(state, state.TryDelete(entry.AssetId, entry.MetadataIdentity));
                     Require(counted.IndexesAtMetadataWrite == 0 && Volatile.Read(ref counted.ActiveIndexes) == 0, "current index released before delete metadata commit/cleanup");
-                    if (mode == 0) Require(deleted.Status == LibraryStatus.Deleted, "successful delete retires content and handle");
+                    if (mode == 0) Require(deleted.Status == LibraryStatus.Deleted, "successful delete retires content and handle; status=" + deleted.Status + " error=" + deleted.Error + " failure=" + deleted.FailureCode);
                     else if (mode == 1)
                     {
                         Require(deleted.Status == LibraryStatus.Protected && !deleted.Error.Contains("无法确认"), "known uncommitted delete stays distinguishable");
@@ -424,6 +425,99 @@ namespace JueMingR.ArchitectureTests
         }
 
         private sealed class Fixture { internal Guid Id, Revision; internal string Hash; }
+        private static void MatchSources(string path)
+        {
+            const int count = 4097;
+            Fixture fixture = Write(path, 4096, 1000000, count, n => n < 4096 ? Tile(37 + (int)n, 91) : Tile(37, 1000090));
+            using (var counted = new CountedFiles(path)) using (var state = new LibraryState(counted))
+            {
+                var identity = new BlueprintProjectionIdentity(fixture.Id, fixture.Revision, fixture.Hash, 55, 77);
+                Require(state.RequestProjectionOpen(identity), "source open admitted"); var opened = Await(state, BlueprintProjectionReceiptKind.Opened);
+                Require(opened.SourceRanges != null && opened.SourceRanges.Count == 3 && opened.TotalLayerCount == count, "full validated sparse source directory has one range per cell block and exact layer denominator");
+                Require(opened.SourceRanges.Sum(r => r.SourceIndexBytes) == state.DebugProjectionStatistics.SourceIndexBytes && state.DebugProjectionStatistics.SourceIndexBytes <= 512,
+                    "dense runs compress the shared position index; charged index is separate from decoded payload cache");
+                int actual = 0; long token = 100; bool viewport = false;
+                for (int range = 0; range < opened.SourceRanges.Count; range++)
+                {
+                    int offset = 0;
+                    while (true)
+                    {
+                        Require(state.RequestProjectionSource(identity, ++token, range, offset: offset), "independent finite source lane admitted");
+                        Require(state.RequestProjectionWindow(identity, token, new BlueprintProjectionBounds(0, 999999, 1, 1)), "viewport Latest remains independent of complete traversal");
+                        BlueprintProjectionSourceReceipt source = null;
+                        Until(() => { BlueprintProjectionReceipt display; if (state.TryTakeProjectionReceipt(out display)) { Require(display.Kind != BlueprintProjectionReceiptKind.Failed, "viewport still reliable"); if (display.Kind == BlueprintProjectionReceiptKind.Window) viewport = true; } return state.TryTakeProjectionSource(out source); });
+                        Require(source.Generation == token && source.Range == range && source.Offset == offset && source.Window.Cells.Count > 0 && source.Window.Cells.Count <= 128, "receipt binds source range/offset/generation and bounded actual records");
+                        foreach (var cell in source.Window.Cells)
+                        { Require(cell.X == (actual < 4096 ? actual : 0) && cell.Y == (actual < 4096 ? 0 : 999999), "sparse normalized source order never scans or duplicates bbox air"); actual++; }
+                        offset = source.NextOffset; if (source.Complete) break;
+                    }
+                }
+                Require(actual == count && viewport, "source and visible demands both make progress despite changing viewport Latest");
+                Require(state.RequestProjectionSource(identity, ++token, 0), "retirement fixture source demand accepted"); state.ReleaseProjection(identity);
+                BlueprintProjectionSourceReceipt late; Require(!state.TryTakeProjectionSource(out late) && !state.RequestProjectionSource(identity, ++token, 0), "release clears late source payload and rejects identity resurrection");
+                Until(() => Volatile.Read(ref counted.ActiveIndexes) == 0);
+                long stopped = counted.Reads; Thread.Sleep(10); Require(counted.Reads == stopped, "last-reference source lane does no residual body IO");
+                Console.WriteLine("BlueprintProjection source ranges=3 targetCells=4097 bboxHeight=1000000 slices=33 sliceRecords<=128 viewportIndependent=true retiredReaders=0");
+            }
+            string gapPath = Path.Combine(path, "exact-gap"); Fixture gap = Write(gapPath, 1, 1000000, 2, n => Tile(37, n == 0 ? 91 : 1000090));
+            using (var counted = new CountedFiles(gapPath)) using (var state = new LibraryState(counted))
+            {
+                var identities = new List<BlueprintProjectionIdentity>(); BlueprintProjectionSourceRange range = default(BlueprintProjectionSourceRange);
+                for (int i = 0; i < 16; i++)
+                {
+                    var id = new BlueprintProjectionIdentity(gap.Id, gap.Revision, gap.Hash, 90, i + 1); identities.Add(id); Require(state.RequestProjectionOpen(id), "shared sparse index open");
+                    var opened = Await(state, BlueprintProjectionReceiptKind.Opened); range = opened.SourceRanges.Single();
+                    Require(range.Contains(0, 0) && range.Contains(0, 999999) && !range.Contains(0, 500000) && !range.Intersects(new BlueprintProjectionBounds(0, 1, 1, 999998)), "exact index excludes every absent bbox row without scanning it");
+                    Require(state.DebugProjectionStatistics.SourceIndexBytes == 144 && counted.ActiveIndexes == 1, "16 instances share the same two-position 144-byte charged index and reader");
+                }
+                foreach (var identity in identities) state.ReleaseProjection(identity); Until(() => counted.ActiveIndexes == 0 && state.DebugProjectionStatistics.SourceIndexBytes == 0);
+                Require(state.DebugProjectionStatistics.SourceIndexBytes == 0, "last reference releases the shared immutable source index");
+                Console.WriteLine("BlueprintProjection source exactGapHeight=1000000 targetPositions=2 sharedInstances=16 chargedSourceIndexBytes=144 retiredIndexBytes=0");
+            }
+            string objectPath = Path.Combine(path, "cross-block-object");
+            Fixture split = Write(objectPath, 4096, 2, 4100, n =>
+            {
+                var cell = Tile(37 + (int)(n < 4096 ? n : 4092 + n - 4096), 91 + (n < 4096 ? 0 : 1));
+                if (n >= 4094 && n < 4096 || n>=4098) { cell.ObjectId = 1; cell.TileType = 21; } return cell;
+            }, new[] { new CaptureObject { Id = 1, Type = 21, X = 4131, Y = 91, Width = 2, Height = 2, Reliable = true } });
+            using (var state = new LibraryState(new FileBlueprintLibrary(objectPath)))
+            {
+                var id = new BlueprintProjectionIdentity(split.Id, split.Revision, split.Hash, 91, 1); Require(state.RequestProjectionOpen(id), "cross-block group source open"); var opened = Await(state, BlueprintProjectionReceiptKind.Opened);
+                Require(opened.Kind == BlueprintProjectionReceiptKind.Opened && opened.SourceRanges.Count == 3 && opened.SourceRanges[1].Contains(4094, 1) && opened.SourceRanges[2].Contains(4094, 0) && !opened.SourceRanges[2].Contains(2000, 0),
+                    "each split group range includes all other-block object members while excluding unrelated source positions");
+                var maskedObject = SourceMask(new Dictionary<long, ushort>(), new HashSet<int> { 1 }, 4);
+                Require(!opened.SourceRanges[1].Intersects(new BlueprintProjectionBounds(4094, 1, 1, 1), 1, maskedObject) && !opened.SourceRanges[2].Intersects(new BlueprintProjectionBounds(4094, 0, 2, 2), 1, maskedObject),
+                    "whole-object permanent removal retracts other-block and own-member Tile dependencies by object ID");
+                Require(opened.MatchRanges.Count==4 && opened.MatchRanges[1].TargetLayerCount==2046 && opened.MatchRanges[2].TargetLayerCount==4 && opened.MatchRanges[2].ObservationGroup==1,
+                    "split object has one complete four-Tile logical proof while both physical-block ordinary proofs keep separate denominators");
+                var routes=new HashSet<int>();opened.SourceRanges[1].RouteProofs(new BlueprintProjectionBounds(4094,0,1,1),1,BlueprintProjectionMask.Empty,i=>routes.Add(i));opened.SourceRanges[1].RouteProofs(new BlueprintProjectionBounds(4095,1,1,1),1,BlueprintProjectionMask.Empty,i=>routes.Add(i));
+                Require(routes.SetEquals(new[]{1}),"two actual object member changes route only the object, without their union retracting the ordinary Tile proof");
+                routes.Clear();opened.SourceRanges[1].RouteProofs(new BlueprintProjectionBounds(2048,0,1,1),1,BlueprintProjectionMask.Empty,i=>routes.Add(i));Require(routes.SetEquals(new[]{0}),"real ordinary Tile change routes only its ordinary proof");
+                routes.Clear();opened.SourceRanges[1].RouteProofs(new BlueprintProjectionBounds(4094,1,1,1),1,maskedObject,i=>routes.Add(i));Require(routes.Count==0,"permanently erased object has no routed Tile proof dependency");
+                Require(!opened.SourceRanges[2].IntersectsProofs(new BlueprintProjectionBounds(4094,1,1,1),1,BlueprintProjectionMask.Empty) && opened.SourceRanges[1].IntersectsProofs(new BlueprintProjectionBounds(4094,1,1,1),1,BlueprintProjectionMask.Empty) && opened.SourceRanges[2].IntersectsProofs(new BlueprintProjectionBounds(4092,1,1,1),1,BlueprintProjectionMask.Empty),
+                    "mixed tail block rejects the earlier-owned object's true Tile write without losing its own ordinary Tile or the owning group's full member dependency");
+                Require(state.RequestProjectionSource(id,2001,2),"independent object proof primary slice admitted");BlueprintProjectionSourceReceipt objectSource=null;Until(()=>state.TryTakeProjectionSource(out objectSource));
+                Require(objectSource.ObjectId==0 && objectSource.Complete && objectSource.Window.Cells.Count==1 && objectSource.Window.Cells[0].ObjectId==1 && objectSource.Window.Cells[0].Layers==CaptureLayer.Tile,"object primary slice retains only one anchor member, not a second complete object DTO");
+                Require(state.RequestProjectionSource(id,2002,2,1),"one complete object target workset admitted");Until(()=>state.TryTakeProjectionSource(out objectSource));
+                Require(objectSource.ObjectId==1 && objectSource.Window.Cells.Count==4 && objectSource.Window.Objects.Count==1,"complete target workset returns all four cross-block members once");
+            }
+            string layersPath = Path.Combine(path, "exact-layers");
+            Fixture layered = Write(layersPath, 4096, 2, 2050, n => n < 2048 ? new CaptureCell { X = 37 + (int)n * 2, Y = 91, Layers = CaptureLayer.Wall, WallType = 7 } : n == 2048 ?
+                new CaptureCell { X = 37, Y = 92, Layers = CaptureLayer.Tile | CaptureLayer.Wall, TileType = 1, WallType = 7 } :
+                new CaptureCell { X = 4132, Y = 92, Layers = CaptureLayer.Wire | CaptureLayer.Actuator, Wires = 5, Actuator = true });
+            using (var state = new LibraryState(new FileBlueprintLibrary(layersPath)))
+            {
+                var id = new BlueprintProjectionIdentity(layered.Id, layered.Revision, layered.Hash, 92, 1); Require(state.RequestProjectionOpen(id), "layer position index opens"); var opened = Await(state, BlueprintProjectionReceiptKind.Opened); var range = opened.SourceRanges[1];
+                Require(range.TargetBits == (1 | 2 | 8 | 16 | 64) && !range.Intersects(new BlueprintProjectionBounds(0, 1, 1, 1), 16, BlueprintProjectionMask.Empty) && !range.Intersects(new BlueprintProjectionBounds(4095, 1, 1, 1), 32, BlueprintProjectionMask.Empty),
+                    "another coordinate/color in the same range cannot turn an extra layer into a target dependency");
+                var mask = SourceMask(new Dictionary<long, ushort> { [((long)1 << 32)] = 1, [((long)1 << 32) | 4095] = 16 }, new HashSet<int>(), 2);
+                Require(!range.Intersects(new BlueprintProjectionBounds(0, 1, 1, 1), 1, mask) && range.Intersects(new BlueprintProjectionBounds(0, 1, 1, 1), 2, mask) && !range.Intersects(new BlueprintProjectionBounds(4095, 1, 1, 1), 16, mask) && range.Intersects(new BlueprintProjectionBounds(4095, 1, 1, 1), 64, mask),
+                    "permanent masks remove only the exact coordinate/layer/color from immutable source observation dependencies");
+                Console.WriteLine("BlueprintProjection source mixed-layer position masks=true crossBlockObjectMasks=true; no per-instance DTO/world index");
+            }
+        }
+        private static BlueprintProjectionMask SourceMask(Dictionary<long, ushort> cells, HashSet<int> objects, long count)
+        { return (BlueprintProjectionMask)typeof(BlueprintProjectionMask).GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Single().Invoke(new object[] { cells, objects, count }); }
         // Literal v1 bytes are built independently of LibraryCodec. Expectations
         // above use supplied source coordinates/layers, never renderer output.
         private static Fixture Write(string path, int width, int height, long count, Func<long, CaptureCell> cell, CaptureObject[] objects = null)

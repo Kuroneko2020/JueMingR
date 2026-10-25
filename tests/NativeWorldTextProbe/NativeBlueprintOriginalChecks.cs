@@ -212,6 +212,7 @@ namespace NativeWorldTextProbe
                 }
                 NativeBlueprintPlacementOriginalChecks.Run(context, sample, draw);
                 NativeBlueprintProjectionOriginalChecks.Run(game, context, draw, canvas, output);
+                NativeBlueprintWorldMatchChecks.RunOriginal(context, sample, draw, canvas, output);
                 Console.WriteLine("PASS BLUEPRINT initialized-native specialist: explicit caller-first JIT, six resource variants/three originals, actual resource vs world hover, skip/exception fail closed, actual pointer pixels across empty Update/repeat Draw, startup barrier, held preview, once-only XOR/cancel, Draw gaps/no replay, focus/UI recovery, actual inventory slot/bar button, attack block/exit restore, native hint screenshots UI100/150. SkipAssemblyLoad, simplified Update, manual Runtime and controlled focus/window/input; not complete ordinary load/preload, OS input, multiplayer, FPS or owner acceptance.");
             }
             finally { resourceMode=0;Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(1)));state.Exit();mouse(1050,550,false);Main.playerInventory=false;Main.mouseItem=new Item(); }

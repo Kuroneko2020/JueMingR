@@ -23,8 +23,7 @@ namespace NativeWorldTextProbe
             // The shared headless fixture omits normal Main initialization.
             // Execute the original tile-property initializer for these object
             // consumers; do not hand-author flags to force a resolver result.
-            typeof(Main).GetMethod("Initialize_TileAndNPCData2", F).Invoke(null, null);
-            TileObjectData.Initialize();
+            NativeBlueprintWorldMatchChecks.InitializeMetadata();
             var sourceType = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintCaptureSource", true);
             var source = (IBlueprintCaptureSource)Activator.CreateInstance(sourceType, F, null, new object[] { (Func<bool>)(() => true) }, null);
             Tile value = Main.tile[10, 10];
@@ -42,13 +41,17 @@ namespace NativeWorldTextProbe
             Furniture(source, 60, 30, TileID.Signs, 2, 2, "sign exterior without text payload");
             Furniture(source, 70, 30, TileID.ItemFrame, 2, 2, "display exterior without held item payload");
 
-            ulong tick = 100;
+            // Earlier consumers advance the true entry counter. Starting a
+            // capture at the old literal 100 would make EndTick < StartTick
+            // and correctly fail immutable-root validation.
+            ulong tick = (ulong)Get(host,"latestTick") + 1;
+            Console.WriteLine("CAPTURE monotonic fixture firstTick=" + tick + " hostPriorTick=" + Get(host,"latestTick") + " nativeEntry=" + Main.GameUpdateCount);
             Action pump = () => { Call(host, "Update", tick++); Call(host, "Poll"); };
             Action begin = () => { Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); editor.Enter(); editor.Selection.ToggleRectangle(8, 8, 12, 12, 120, 120); Require((bool)Call(host, "Save"), "shared save request accepts a valid committed selection"); };
             begin();
             Require(!(bool)Get(host, "CanEdit"), "capture confirmation UI revokes world editor input");
             NativeQuickItemChecks.Until(() => { pump(); return flow.Status == BlueprintCaptureStatus.DraftReady || flow.Status == BlueprintCaptureStatus.Failed; });
-            Require(flow.Status == BlueprintCaptureStatus.DraftReady && flow.Summary.ContentCount == 1 && flow.Summary.Width == 1 && flow.Summary.Height == 1, "accepted capture progresses through CanEdit=false and trims real empty border");
+            Require(flow.Status == BlueprintCaptureStatus.DraftReady && flow.Summary.ContentCount == 1 && flow.Summary.Width == 1 && flow.Summary.Height == 1, "accepted capture progresses through CanEdit=false and trims real empty border; status=" + flow.Status + " message=" + flow.Message + " content=" + flow.Summary?.ContentCount + " bounds=" + flow.Summary?.Width + "x" + flow.Summary?.Height + " interval=" + flow.Summary?.StartTick + ".." + flow.Summary?.EndTick);
             value.type = 2; Call(host, "SetDraftName", "真实采集一"); Call(host, "ConfirmSave");
             Call(shell, "CancelForFocusLoss"); Call(shell, "ProcessInput");
             Require(flow.Status == BlueprintCaptureStatus.Saving, "real Shell focus-loss follow-up cannot revoke an accepted save");

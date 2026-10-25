@@ -22,6 +22,7 @@ namespace JueMingR.ArchitectureTests
             Add("BlueprintPreviewChecks", "blueprint-host", (root, failures) => BlueprintPreviewChecks.Check(failures));
             Add("BlueprintLibraryChecks", "blueprint-host", (root, failures) => BlueprintLibraryChecks.Check(failures));
             Add("BlueprintProjectionChecks", "blueprint-host", (root, failures) => BlueprintProjectionChecks.Check(failures));
+            Add("BlueprintWorldMatchChecks", "blueprint-host", (root, failures) => BlueprintWorldMatchChecks.Check(failures));
             Add("CombatChecks", "combat-host", (root, failures) => CombatChecks.Check(failures));
             Add("BrowserCoreChecks", "browser-host", (root, failures) => BrowserCoreChecks.Check(failures));
             Add("RelationChecks", "browser-host", (root, failures) => RelationChecks.Check(failures));

@@ -40,6 +40,9 @@ namespace JueMingR.Features.Blueprint
         public void CancelProjectionCommit(long sessionGeneration, long transactionId) { worker.CancelProjectionCommit(sessionGeneration, transactionId); }
         public bool TryTakeProjectionCommit(out BlueprintProjectionCommitReceipt receipt) { return worker.TryTakeProjectionCommit(out receipt); }
         public bool TryTakeProjectionReceipt(out BlueprintProjectionReceipt value) { return worker.TryTakeProjectionReceipt(out value); }
+        public bool RequestProjectionSource(BlueprintProjectionIdentity identity, long generation, int range, int objectId = 0, int offset = 0) { return worker.RequestProjectionSource(identity, generation, range, objectId, offset); }
+        public void ClearProjectionSource(BlueprintProjectionIdentity identity) { worker.ClearProjectionSource(identity); }
+        public bool TryTakeProjectionSource(out BlueprintProjectionSourceReceipt receipt) { return worker.TryTakeProjectionSource(out receipt); }
 #if DEBUG
         public BlueprintProjectionStatistics DebugProjectionStatistics { get { return worker.ProjectionStatistics; } }
 #endif

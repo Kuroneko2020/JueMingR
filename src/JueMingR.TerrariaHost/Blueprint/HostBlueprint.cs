@@ -37,8 +37,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             preference = new PreferenceDocument<bool>(new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "config", "features", "blueprint.json"), 65536, true), new BlueprintPreferenceCodec(), false);
             World = new BlueprintWorldLayer(this, geometry); Toolbar = new BlueprintToolbar(this);
             Pointer = new BlueprintPointerProof(this);
-            try { BlueprintHooks.Install(this); Pointer.Install(); ready = true; }
-            catch (Exception error) { SetupError = error; BlueprintHooks.Uninstall(); Pointer.Dispose(); }
+            try { BlueprintHooks.Install(this); Pointer.Install(); projectionChanges.Install(); ready = true; }
+            catch (Exception error) { SetupError = error; BlueprintHooks.Uninstall(); Pointer.Dispose(); projectionChanges.Dispose(); }
             Input.BlueprintMapping = ObserveMapping;
             AppDomain.CurrentDomain.ProcessExit += ExitProcess;
         }
@@ -127,7 +127,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             CancelOldCapture();
             ClearProjection();
-            State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); generation = runtime.Generation; player = Main.LocalPlayer; world = Main.ActiveWorldFileData; connection = Netplay.Connection; }
+            State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); generation = runtime.Generation; projectionChanges.SetSession(generation); player = Main.LocalPlayer; world = Main.ActiveWorldFileData; connection = Netplay.Connection; }
         public void OnSessionEnded()
         {
             CancelOldCapture();
@@ -137,6 +137,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             AdvanceCapture(updateTick);
             PumpProjection();
+            AdvanceProjectionMatch(updateTick);
             if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad();
             if (State.Active && (!HasSession || !Input.CanRetainIntent || NativeUiBusy || player.dead || player.ghost || Shell?.State.Visible == true))
             {
@@ -155,6 +156,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             reported = snapshot.Status;
         }
         private void ExitProcess(object sender, EventArgs args)
-        { AppDomain.CurrentDomain.ProcessExit -= ExitProcess; CancelOldCapture(); ClearProjection(); ProjectionRenderer.Dispose(); Library?.Stop(1500); preference.Stop(750); Toolbar.Dispose(); Pointer.Dispose(); BlueprintHooks.Uninstall(); }
+        { AppDomain.CurrentDomain.ProcessExit -= ExitProcess; CancelOldCapture(); ClearProjection(); projectionChanges.Dispose(); ProjectionRenderer.Dispose(); Library?.Stop(1500); preference.Stop(750); Toolbar.Dispose(); Pointer.Dispose(); BlueprintHooks.Uninstall(); }
     }
 }
