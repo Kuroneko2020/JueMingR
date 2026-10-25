@@ -26,6 +26,9 @@ namespace NativeWorldTextProbe
         static readonly List<Projectile> births=new List<Projectile>();
         static Projectile tracked;static int substep,firstEnabled,firstKilled;static Vector2 enabledAt,killedAt;
         static bool modelReplay;static int modelStep,modelFirstBlocked;static Vector2 modelBlockedAt;
+        static bool nativeWitness,sourcePreserved;static int sourceBudgetStops,nativeShootEntries,livePoseApplications;
+        static object retainedSolution;static NpcTrajectory retainedPublication;static PredictionPlayerMotion retainedMotion,shootMotion;
+        static uint retainedPrepared;static Vector2 retainedOrigin;static int retainedSky,retainedCore,retainedSource,retainedBegin;
         static void Sky(Player __0,Vector2 __4,object __8){skyCalls++;pose=__0;poseForReplay=(Player)typeof(object).GetMethod("MemberwiseClone",F).Invoke(__0,null);suppliedOrigin=__4;root=__8;}
         static void MotionStep(){if(modelReplay)modelStep++;}
         static void Passage(bool __result,float __0,float __1)
@@ -33,7 +36,7 @@ namespace NativeWorldTextProbe
         static void Arrow(){arrowCalls++;}
         static void Core(){coreCalls++;}
         static void Begin(){beginCalls++;}
-        static void Applied(Player __0){if(!ReferenceEquals(__0,owner))poseApplications++;}
+        static void Applied(Player __0){if(!ReferenceEquals(__0,owner))poseApplications++;else if(nativeWitness)livePoseApplications++;}
         static void Source()
         {
             sourceCalls++;
@@ -41,6 +44,38 @@ namespace NativeWorldTextProbe
             // Enter already established this real update. Charge its original
             // hard allowance, then let Check/TryContinue execute unchanged.
             typeof(CombatPredictionWork).GetField("spent",F).SetValue(work,typeof(CombatPredictionWork).GetField("allowance",F).GetValue(work));
+            if(nativeWitness)sourcePreserved=RetainedFactsCurrent();
+        }
+        static void SourceFinished(Exception __exception)
+        {if(nativeWitness && __exception is CombatPredictionBudgetExceededException)sourceBudgetStops++;}
+        static bool SameSolution(object a,object b)
+        {
+            // HostAttackSolution is a value. Reflection boxes each read; only
+            // its actual reference members have reference-identity meaning.
+            return a.GetType().GetFields(F).Where(f=>!f.IsStatic).All(f=>f.Name=="Timeline" || f.Name=="Contact"?
+                ReferenceEquals(f.GetValue(a),f.GetValue(b)):Equals(f.GetValue(a),f.GetValue(b)));
+        }
+        static bool RetainedFactsCurrent()
+        {return ReferenceEquals(retainedPublication,((NpcPredictionCache)Get(prediction,"Cache")).Read(1)) &&
+            SameSolution(retainedSolution,Get(attack,"nextSolution")) && (uint)Get(attack,"prepared")==retainedPrepared &&
+            retainedOrigin==(Vector2)Get(attack,"nextOrigin") && retainedMotion.SameSample((PredictionPlayerMotion)Get(attack,"nextBalancedMotion"));}
+        [HarmonyPriority(Priority.First)]
+        static void NativeShootStart(Player __instance)
+        {
+            if(!nativeWitness || !ReferenceEquals(__instance,owner))return;
+            nativeShootEntries++;shootMotion=(PredictionPlayerMotion)prediction.GetType().GetMethod("ReadPlayer",F).Invoke(null,new object[]{owner});
+            Console.WriteLine("RETAINED-NATIVE shoot-entry item="+owner.HeldItem.type+" sourceStops="+sourceBudgetStops+" sourcePreserved="+sourcePreserved+" retained="+RetainedFactsCurrent()+" sourceDelta="+(sourceCalls-retainedSource)+" coreDelta="+(coreCalls-retainedCore)+" skyDelta="+(skyCalls-retainedSky)+" nextTimelineSame="+ReferenceEquals(Get(retainedSolution,"Timeline"),Get(Get(attack,"nextSolution"),"Timeline")));
+            foreach(var f in typeof(PredictionPlayerMotion).GetFields(F).Where(f=>!f.IsStatic))if(!Equals(f.GetValue(retainedMotion),f.GetValue(shootMotion)))Console.WriteLine("RETAINED-NATIVE motion-diff "+f.Name+" expected="+f.GetValue(retainedMotion)+" actual="+f.GetValue(shootMotion));
+            Require(sourcePreserved && RetainedFactsCurrent() && sourceBudgetStops==1 && sourceCalls==retainedSource+1 && coreCalls==retainedCore && skyCalls==retainedSky,"original first Source Check stops before any replacement publication or Core/Sky solve");
+            // Update may consume RNG before Shoot. Seed only at the actual
+            // native emission entry, before production BeginShot, never before
+            // the whole Update and never by rewriting a projectile birth.
+            Main.rand=new Terraria.Utilities.UnifiedRandom(MeanSeed());births.Clear();shooting=true;
+        }
+        static void NativeShootEnd()
+        {
+            if(!nativeWitness)return;shooting=false;
+            foreach(var q in births)Console.WriteLine("RETAINED-NATIVE birth ordinal="+births.IndexOf(q)+" type="+q.type+" key="+q.key+" center="+q.Center+" v="+q.velocity+" ai1="+q.ai[1]+" tile="+q.tileCollide+" seedAtShoot="+MeanSeed());
         }
         static void Born(int __result)
         {if(shooting && __result>=0 && __result<Main.maxProjectiles){var q=Main.projectile[__result];if(q.owner==owner.whoAmI)births.Add(q);}}
@@ -61,7 +96,8 @@ namespace NativeWorldTextProbe
             audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.HostNativeArrowBirthAttack",true).GetMethod("Prepare",F),prefix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(Arrow)));
             audit.Patch(attack.GetType().GetMethod("PrepareCore",F),prefix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(Core)));
             audit.Patch(attack.GetType().GetMethod("BeginShot",F),prefix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(Begin)));
-            audit.Patch(prediction.GetType().GetMethod("PrepareSample",F),prefix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(Source)));
+            audit.Patch(prediction.GetType().GetMethod("PrepareSample",F),prefix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(Source)),finalizer:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(SourceFinished)));
+            audit.Patch(typeof(Player).GetMethod("ItemCheck_Shoot",F),prefix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(NativeShootStart)),postfix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(NativeShootEnd)));
             audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPlayerFrame",true).GetMethod("ApplyPose",F),prefix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(Applied)));
             audit.Patch(typeof(Projectile).GetMethods(F).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float)),postfix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(Born)));
             audit.Patch(typeof(Projectile).GetMethod("AI",F),prefix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(AiStart)),postfix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(AiEnd)));
@@ -70,6 +106,8 @@ namespace NativeWorldTextProbe
             audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true).GetMethod("ProjectilePassage",F),postfix:new HarmonyMethod(typeof(NativeCombatSkyNextPoseChecks),nameof(Passage)));
             try
             {
+                NativeRetainedConsume(context,3065);
+                NativeRetainedConsume(context,ItemID.WoodenBow);
                 Roof(context);
                 Meteor(context);
                 Prepare(context,3065,-10,false);BudgetConsume(context,true);
@@ -80,7 +118,108 @@ namespace NativeWorldTextProbe
                 CloneCosts();
                 Console.WriteLine("SKY-NEXT PASS source=real production-budget-stop=real consumed=BeginShot native=Shoot/AI/Update damage=NOT_EVALUATED");
             }
-            finally{exhaustAtSource=shooting=trackNative=modelReplay=false;owner=pose=poseForReplay=null;root=null;tracked=null;births.Clear();audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());Main.ProjectileUpdateLoopIndex=-1;}
+            finally{nativeWitness=exhaustAtSource=shooting=trackNative=modelReplay=false;owner=pose=poseForReplay=null;root=null;tracked=null;births.Clear();audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());Main.ProjectileUpdateLoopIndex=-1;}
+        }
+        static void NativeJumpStep(object context,bool fire)
+        {
+            NativeToolExecutionChecks.Sample(context,Get(context,"Input"),Main.npc[2].Center,fire);Call(combat,"Sample");
+            Terraria.GameInput.PlayerInput.Triggers.Current.Jump=true;owner.controlJump=true;
+            NativeQuickItemChecks.BeginWorldStep();owner.Update(owner.whoAmI);
+        }
+        static void NativeRetainedConsume(object context,int item)
+        {
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
+            owner=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),item,0,0);
+            foreach(var a in owner.armor)a.TurnToAir();owner.ResetEffects();owner.mount.Dismount(owner);
+            foreach(var n in Main.npc)n.active=false;foreach(var q in Main.projectile)q.active=false;
+            for(int x=5;x<115;x++)for(int y=5;y<115;y++)Main.tile[x,y].ClearEverything();
+            for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,65,TileID.Stone);
+            owner.position=new Vector2(700,65*16-owner.height);owner.velocity=Vector2.Zero;owner.jump=0;owner.releaseJump=true;owner.fallStart=(int)(owner.position.Y/16);
+            owner.immune=false;owner.immuneTime=0;owner.statLife=owner.statLifeMax=owner.statLifeMax2=400;owner.lifeRegenTime=0;owner.lifeRegenCount=0;
+            owner.inventory[54].SetDefaults(ItemID.WoodenArrow);owner.inventory[54].stack=999;owner.statMana=owner.statManaMax=owner.statManaMax2=10000;
+            // Keep both completed observations in native's ordinary .25
+            // altitude clamp. Its changing altitude gravity is a real exact
+            // dependency, unlike the two naturally changing clocks below.
+            Main.windPhysics=false;Main.worldSurface=60;Main.screenPosition=new Vector2(600.25f,700.75f);Main.GameViewMatrix.Zoom=Vector2.One;Main.rand=new Terraria.Utilities.UnifiedRandom(7193);
+            var target=Main.npc[2];target.SetDefaults(NPCID.Zombie);target.whoAmI=2;target.active=true;target.width=target.height=34;target.Center=new Vector2(1100,1000);target.velocity=Vector2.Zero;target.noGravity=target.noTileCollide=true;target.aiStyle=-1;target.life=target.lifeMax=100000;target.target=0;target.knockBackResist=0;Array.Clear(target.immune,0,target.immune.Length);
+            var native=new Harmony("JueMingR.Tests.RetainedNativeUpdate");
+            foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})native.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,F),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks).GetMethod("SkipAchievement",F)));
+            try
+            {
+                // Start on actual solid ground, then let two complete native
+                // held-jump updates establish the airborne prefix and old row.
+                // No forecast pose/timer is ever written to this live player.
+                NativeJumpStep(context,false);NativeJumpStep(context,false);
+                Console.WriteLine("RETAINED-NATIVE premise item="+item+" p="+owner.position+" v="+owner.velocity+" jump="+owner.jump+" fall="+owner.fallStart+" row="+(int)(owner.position.Y/16)+" regen="+owner.lifeRegenTime+" count="+owner.lifeRegenCount);
+                Require(owner.jump>1 && owner.controlJump && owner.velocity.Y<0 && owner.fallStart!=(int)(owner.position.Y/16),"original ground jump establishes a legal held-jump row crossing");
+                var cache=(NpcPredictionCache)Get(prediction,"Cache");var selection=Get(host,"Selection");
+                bool preparedNext=false;int attempts=0;
+                for(;attempts<24;attempts++)
+                {
+                    NativeToolExecutionChecks.Sample(context,Get(context,"Input"),target.Center,true);Call(combat,"Sample");Terraria.GameInput.PlayerInput.Triggers.Current.Jump=true;owner.controlJump=true;
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,50,true,true));
+                    Call(selection,"Update",((ObservationSettings)Get(host,"Settings")).Value,(long)Get(host,"Session"),true,null);cache.Demand(1,1,120);
+                    using(work.Enter(Main.GameUpdateCount))
+                    {
+                        Call(host,"PrepareSelectedPrediction",(long)Main.GameUpdateCount,false,(ulong)Main.GameUpdateCount,120);
+                        Call(attack,"Prepare");
+                    }
+                    if((bool)Get(Get(attack,"nextSolution"),"HasPoint") && (uint)Get(attack,"prepared")==Main.GameUpdateCount &&
+                        owner.jump>1 && owner.fallStart!=(int)(owner.position.Y/16)){preparedNext=true;break;}
+                    NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeJumpStep(context,false);
+                }
+                Console.WriteLine("RETAINED-NATIVE preparation item="+item+" budgetMs=6 attempts="+(attempts+1)+" usable="+preparedNext+" usedMs="+work.UsedMilliseconds);
+                Require(preparedNext,"finite normal shared 6ms Source/Host window supplies a legal next hand");
+                retainedSolution=Get(attack,"nextSolution");retainedPublication=cache.Read(1);retainedPrepared=(uint)Get(attack,"prepared");retainedOrigin=(Vector2)Get(attack,"nextOrigin");retainedMotion=(PredictionPlayerMotion)Get(attack,"nextBalancedMotion");
+                retainedSky=skyCalls;retainedCore=coreCalls;retainedSource=sourceCalls;retainedBegin=beginCalls;sourceBudgetStops=nativeShootEntries=livePoseApplications=0;sourcePreserved=false;
+                float regen=owner.lifeRegenTime;int count=owner.lifeRegenCount,fall=owner.fallStart,hp=owner.statLife,immuneTime=owner.immuneTime;bool immune=owner.immune;
+                Require(retainedPublication!=null && ReferenceEquals(Get(retainedSolution,"Timeline"),retainedPublication) && !retainedMotion.WallSourceExpected && retainedPublication.WallSources==null,"retained hand belongs to the real Source publication without a Wall payload");
+                nativeWitness=exhaustAtSource=true;
+                try{NativeJumpStep(context,true);}finally{nativeWitness=exhaustAtSource=shooting=false;}
+                var consumed=Get(attack,"consumedInput");
+                Console.WriteLine("RETAINED-NATIVE result item="+item+" update="+Main.GameUpdateCount+" prepared="+retainedPrepared+" sample="+retainedPublication.SampleTick+" capture="+retainedPublication.CaptureTick+" regen="+regen+"->"+owner.lifeRegenTime+" count="+count+"->"+owner.lifeRegenCount+" fall="+fall+"->"+owner.fallStart+" hp="+hp+"->"+owner.statLife+" immune="+immune+"/"+immuneTime+"->"+owner.immune+"/"+owner.immuneTime+" pos="+owner.position+" v="+owner.velocity+" expected="+retainedMotion.X+","+retainedMotion.Y+"/"+retainedMotion.Vx+","+retainedMotion.Vy+" kind="+Get(consumed,"Kind")+" births="+births.Count+" seedAtShoot="+MeanSeed());
+                Require(owner.lifeRegenTime==regen+1 && owner.fallStart!=fall && owner.statLife==hp && owner.immune==immune && owner.immuneTime==immuneTime,"one full original Update naturally changes regen and fall row while exact health/immunity stay valid");
+                Require(nativeShootEntries==1 && beginCalls==retainedBegin+1 && births.Count==(item==3065?3:1) && livePoseApplications==0,"one native ItemCheck/Shoot/BeginShot emits original members without a live ApplyPose");
+                Require((bool)Get(attack,"hasConsumedInput") && Get(consumed,"Kind").ToString()=="Enhanced" && (Vector2)Get(consumed,"Point")== (Vector2)Get(retainedSolution,"Point"),"full original Player.Update consumes the retained next as Enhanced");
+                Require((Vector2)Get(attack,"consumedOrigin")==retainedOrigin && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount &&
+                    ((NpcIdentity)Get(consumed,"Target")).Equals(retainedPublication.Identity) && ReferenceEquals(Get(consumed,"Weapon"),owner.HeldItem) && Equals(Get(consumed,"PointSemantics"),Get(retainedSolution,"PointSemantics")),"actual consumed origin/epoch/target/weapon/point meaning belong to the retained hand");
+                var exact=shootMotion;exact.GravityAction=1;exact.WallRegenTime=retainedMotion.WallRegenTime;exact.WallRegenCount=retainedMotion.WallRegenCount;exact.WallFallStart=retainedMotion.WallFallStart;
+                Require(retainedMotion.SameSample(exact),"all sampled physical/health/control facts match after only the independently justified clocks and ordinal are aligned in a local oracle copy");
+                Require(!(bool)Get(Get(attack,"nextSolution"),"HasPoint") && !(bool)Get(Get(attack,"currentSolution"),"HasPoint") && retainedMotion.SameSample((PredictionPlayerMotion)Get(attack,"nextBalancedMotion")),"one native consumption retires both solutions without modifying saved motion");
+                RetainedDependencies();
+            }
+            finally{nativeWitness=exhaustAtSource=shooting=false;native.UnpatchAll(native.Id);NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+        }
+        static PredictionPlayerMotion Changed(PredictionPlayerMotion value,string name,object replacement=null)
+        {
+            object box=value;var field=typeof(PredictionPlayerMotion).GetField(name,F);object old=field.GetValue(box);
+            field.SetValue(box,replacement??(old is bool?(object)!(bool)old:old is int?(object)((int)old+1):old is float?(object)((float)old+1):new object()));
+            return (PredictionPlayerMotion)box;
+        }
+        static void RetainedDependencies()
+        {
+            var compare=attack.GetType().GetMethod("RetainedNextMotionCurrent",F);
+            var a=retainedMotion;var b=a;b.WallRegenTime++;b.WallRegenCount++;b.WallFallStart++;
+            var world=default(PredictionEnvironment);var path=retainedPublication;
+            Func<PredictionPlayerMotion,PredictionPlayerMotion,NpcTrajectory,PredictionEnvironment,bool> same=(x,y,t,e)=>(bool)compare.Invoke(null,new object[]{x,y,t,e});
+            Require(!a.SameSample(b) && !PlayerMotionContinuation.SameFixedInput(a,b,false) && same(a,b,path,world),"global sample and existing fixed-input fall semantics remain strict while only retained-next admits its three non-dependencies");
+            foreach(string name in new[]{"WallSourceExpected","WallGross","WallTongued","WallHorrifiedTicks","WallTonguedTicks"})
+            {
+                object value=name.EndsWith("Ticks",StringComparison.Ordinal)?(object)5:true;
+                Require(!same(Changed(a,name,value),Changed(b,name,value),path,world),"either retained/observed Wall qualification forbids the exemption: "+name);
+                Require(!same(Changed(a,name,value),b,path,world) && !same(a,Changed(b,name,value),path,world),"changed Wall qualification remains exact on both sides: "+name);
+            }
+            var wallValues=Enumerable.Range(0,path.Count).Select(i=>new PredictionWallSource(true,false,default(NpcIdentity),default(MotionRect),0,0,0)).ToArray();
+            var sources=new PredictionWallSources(wallValues,wallValues.Length,owner,owner.whoAmI,path.Identity,path.CaptureTick);
+            var points=Enumerable.Range(0,path.Count).Select(i=>path[i]).ToArray();
+            var wallPath=new NpcTrajectory(path.Identity,path.SampleTick,path.Version,path.Assumptions,path.Stop,points,points.Length,path.Strategy,path.RelationVersion,path.Quality,path.GravitySources,sources);
+            Require(!same(a,b,wallPath,world),"real timeline Wall payload, including captured absence, forbids exemption");
+            world.WallSources=sources;Require(!same(a,b,path,world),"bound environment Wall sequence forbids exemption");world.WallSources=null;
+            world.WallSource=new PredictionWallSource(true,false,default(NpcIdentity),default(MotionRect),0,0,0);Require(!same(a,b,path,world),"captured individual Wall source forbids exemption even when not valid");world=default(PredictionEnvironment);
+            string[] exact={"X","Y","Vx","Vy","Width","Height","Gravity","DefaultGravity","GravityDirection","ForcedGravityTicks","GravityReleaseUp","GravityControl","GravityControl2","GravitySourceExpected","GravityAction","WallLife","WallLifeMax","WallHealthKnown","WallImmune","WallImmuneTime","BordersDead","WallExtraFall","WallNoFallDamage","WallHasWings","Left","Right","Up","Down","HoldJump","ReleaseJump","AutoJump","Jump","JumpSpeed","JumpHeight","PlayerToken","PlayerIndex","WallAction"};
+            foreach(string name in exact)Require(!same(a,Changed(b,name),path,world),"retained-next keeps the real dependency exact: "+name);
+            Require(a.SameSample(retainedMotion) && retainedMotion.SameSample((PredictionPlayerMotion)Get(attack,"nextBalancedMotion")),"all dependency comparisons operate only on value copies");
+            Console.WriteLine("RETAINED-NATIVE negatives Wall=timeline/environment/captured/expected/gross/tongued/buff-ticks physical-health-controls="+string.Join(",",exact)+" global-SameSample=STRICT existing-SameFixedInput-fall=STRICT savedMotion=UNCHANGED");
         }
         static NpcTrajectory Prepare(object context,int item,float vy,bool roof,bool gravityPayload=false)
         {
@@ -122,6 +261,8 @@ namespace NativeWorldTextProbe
         }
         static void BudgetConsume(object context,bool native)
         {
+            // Kept as a model-pose/budget-consumption mechanism check. Only
+            // NativeRetainedConsume above proves a complete Player.Update.
             var cache=(NpcPredictionCache)Get(prediction,"Cache");var path=cache.Read(1);var next=Get(attack,"nextSolution");var point=(Vector2)Get(next,"Point");var motion=(PredictionPlayerMotion)Get(attack,"nextBalancedMotion");uint prepared=Main.GameUpdateCount;
             Require((bool)Get(next,"HasPoint"),"open-sky next hand has a usable point");
             assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPlayerFrame",true).GetMethod("ApplyPose",F).Invoke(null,new object[]{owner,motion});SetTick(prepared+1);
@@ -153,7 +294,7 @@ namespace NativeWorldTextProbe
             int beginBefore=beginCalls;
             if(native)Shoot(MeanSeed());else {var scope=Call(attack,"BeginShot",owner,owner.HeldItem,true);Require(scope!=null,"retained next reaches a real cursor scope");Call(scope,"End");}
             var consumed=Get(attack,"consumedInput");
-            Console.WriteLine("SKY-NEXT budget prepared="+prepared+" now="+Main.GameUpdateCount+" sample="+path.SampleTick+" sourceCheck="+sourceCalls+" noNewSolve="+(solves==skyCalls)+" noNewCore="+(cores==coreCalls)+" exceeded="+work.Exceeded+" begin="+(beginCalls-beginBefore)+" consumed="+Get(consumed,"Kind")+" point="+Get(consumed,"Point")+" expected="+point+" nativeBirths="+births.Count);
+            Console.WriteLine("SKY-NEXT model-pose-budget-mechanism prepared="+prepared+" now="+Main.GameUpdateCount+" sample="+path.SampleTick+" sourceCheck="+sourceCalls+" noNewSolve="+(solves==skyCalls)+" noNewCore="+(cores==coreCalls)+" exceeded="+work.Exceeded+" begin="+(beginCalls-beginBefore)+" consumed="+Get(consumed,"Kind")+" point="+Get(consumed,"Point")+" expected="+point+" nativeBirths="+births.Count);
             Require(beginCalls>beginBefore && (bool)Get(attack,"hasConsumedInput") && Get(consumed,"Kind").ToString()=="Enhanced" && (Vector2)Get(consumed,"Point")==point,"BeginShot actually consumes that retained next as Enhanced");
             Require(!(bool)Get(Get(attack,"nextSolution"),"HasPoint") && !(bool)Get(Get(attack,"currentSolution"),"HasPoint"),"consumption retires both one-shot solutions");
             Require(motion.SameSample((PredictionPlayerMotion)Get(attack,"nextBalancedMotion")),"clock adaptation never rewrites the saved advanced motion");

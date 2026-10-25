@@ -178,7 +178,22 @@ namespace JueMingR.TerrariaHost.Combat
                 if(observed.GravityControlCaptured)observed.GravityAction=1;
             }
             if(timeline.WallSources!=null && !NpcPredictionSource.TryBindPlayerWall(timeline,(long)Main.GameUpdateCount,ref observed,ref environment))return false;
-            return nextBalancedMotion.SameSample(observed);
+            return RetainedNextMotionCurrent(nextBalancedMotion,observed,timeline,environment);
+        }
+        private static bool RetainedNextMotionCurrent(PredictionPlayerMotion expected,PredictionPlayerMotion observed,NpcTrajectory timeline,PredictionEnvironment environment)
+        {
+            bool wallSource=timeline.WallSources!=null || environment.WallSources!=null || environment.WallSource.Captured;
+            bool noWall=!wallSource && !expected.WallSourceExpected && !observed.WallSourceExpected &&
+                !expected.WallGross && !observed.WallGross && !expected.WallTongued && !observed.WallTongued &&
+                expected.WallHorrifiedTicks==0 && observed.WallHorrifiedTicks==0 && expected.WallTonguedTicks==0 && observed.WallTonguedTicks==0;
+            // Only this retained next-hand boundary compares dependencies, not
+            // a fresh observation sample. Native Update advances regen clocks
+            // and held-jump fallStart before ItemCheck; no-Wall continuation or
+            // this birth reads them. Timeline/bound environment own the source
+            // facts. Normalize only these value copies, after payload/age gates;
+            // physical, health, immunity, controls and tokens remain exact.
+            if(noWall)observed.WallFallStart=expected.WallFallStart;
+            return PlayerMotionContinuation.SameFixedInput(expected,observed,wallSource);
         }
         private bool PrepareBalancedPlan(PreviewPlan plan,NpcTrajectory timeline,HostAttackPhase phase)
         {
