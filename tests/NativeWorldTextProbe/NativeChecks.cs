@@ -299,7 +299,7 @@ namespace NativeWorldTextProbe
             if(scope=="CombatSkyActionCpu")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();if(Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE")!=null)NativeCombatLunarChecks.Run(context);NativeCombatSkyActionChecks.Run(context);if(Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE")==null){NativeCombatSkySemanticsChecks.Run(context);NativeCombatLunarChecks.Run(context);NativeCombatSkyChecks.Run(context);NativeCombatReflectionSeamsChecks.Run(context);}},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE"));return 0;
+                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatSkyNextPoseChecks.Run(context);if(Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE")!=null)NativeCombatLunarChecks.Run(context);NativeCombatSkyActionChecks.Run(context);if(Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE")==null){NativeCombatSkySemanticsChecks.Run(context);NativeCombatLunarChecks.Run(context);NativeCombatSkyChecks.Run(context);NativeCombatReflectionSeamsChecks.Run(context);}},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_SKY_CANDIDATE"));return 0;
             }
             if(scope=="CombatInputGeometryCpu")
             {

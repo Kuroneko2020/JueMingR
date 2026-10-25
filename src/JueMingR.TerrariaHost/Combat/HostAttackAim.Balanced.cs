@@ -81,6 +81,13 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostSpearShardAttack.Handles(captured.Projectile))return HostSpearShardAttack.Prepare(player,item,captured,timeline,clock,cells,HostAttackPlayerFrame.Capture(player,timeline));
             return HostRepresentativeAttack.Prepare(player,captured,timeline,start,clock,cells);
         }
+        private static HostAttackSolution SolveNextBalancedSky(Player poseBody,Player liveOwner,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,HostAttackClock clock,PredictionTerrain cells,out HostAttackObstacles root)
+        {
+            // Pose reads may describe the next hand; receiver eligibility must
+            // continue reading the real owner, not a frozen same-whoAmI copy.
+            root=new HostAttackObstacles(liveOwner,ContentSamples.ProjectilesByType[captured.Projectile],timeline,clock.LaunchDelay,clock.BeforeNpc,clock.NextWorld);
+            return HostSkyAttack.Prepare(poseBody,item,captured,timeline,start,clock.Age,cells,clock.BeforeNpc,root,clock.LaunchDelay);
+        }
         private void PrepareBalancedOrdinary(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,HostAttackPhase phase)
         {
             origin=HostAttackModels.LaunchOrigin(player,item);
@@ -101,15 +108,29 @@ namespace JueMingR.TerrariaHost.Combat
             else if(phase!=HostAttackPhase.CompletedWorld)currentSolution=SolveBalancedHand(player,item,captured,timeline,origin,clock,terrain,out obstacles);
             current=currentSolution.Contact;
             // World preparation predicts the next native player cursor read.
-            // It uses the same NPC future, with only the holder origin advanced.
+            // Sky birth and collision gates read one future pose. Its private
+            // shape reader never owns the live receiver lease or a new motion
+            // observation: retain Advance's real token/ordinal/clock below.
             if(phase==HostAttackPhase.CompletedWorld)
             {
                 var frame=HostAttackPlayerFrame.Capture(player,timeline);var motion=frame.Motion;PredictionStop stop;
                 if(PlayerMotionContinuation.Advance(ref motion,frame.Environment,terrain,out stop))
                 {
-                    nextOrigin=origin+new Vector2(motion.X-player.position.X,motion.Y-player.position.Y);
                     nextBalancedMotion=motion;
-                    nextSolution=SolveBalancedHand(player,item,captured,timeline,nextOrigin,clock,terrain,out obstacles,true);next=nextSolution.Contact;currentSolution=nextSolution;current=next;
+                    if(HostSkyAttack.Handles(item.type) && !HostNativeArrowBirthAttack.Weapon(item.type))
+                    {
+                        var body=(Player)previewCopy.Invoke(player,null);HostAttackPlayerFrame.ApplyPose(body,motion);
+                        // LaunchOrigin already includes the future displacement;
+                        // LaunchFacts must not receive the same delta twice.
+                        nextOrigin=HostAttackModels.LaunchOrigin(body,item);
+                        nextSolution=SolveNextBalancedSky(body,player,item,captured,timeline,nextOrigin,clock,terrain,out obstacles);
+                    }
+                    else
+                    {
+                        nextOrigin=origin+new Vector2(motion.X-player.position.X,motion.Y-player.position.Y);
+                        nextSolution=SolveBalancedHand(player,item,captured,timeline,nextOrigin,clock,terrain,out obstacles,true);
+                    }
+                    next=nextSolution.Contact;currentSolution=nextSolution;current=next;
                 }
             }
             weapon=item;slot=player.selectedItem;type=item.type;prefix=item.prefix;session=observation.Session;prepared=Main.GameUpdateCount;ammo=captured;
@@ -126,13 +147,38 @@ namespace JueMingR.TerrariaHost.Combat
                 // Native Shoot has already admitted this action and may have
                 // started its animation. The preparation-only scheduling gate
                 // must not reject that same shootsEveryUse consumer afterward.
-                (checkAmmo || HostAttackWindow.NextAction(combat,player,weapon)) && (Main.GameUpdateCount==prepared?preparedMotion:nextBalancedMotion).SameSample(NpcPredictionSource.ReadPlayer(player)) &&
+                (checkAmmo || HostAttackWindow.NextAction(combat,player,weapon)) && BalancedMotionCurrent(player,solution.Timeline) &&
                 // Pure facing may leave this birth unchanged; physical samples,
                 // muzzle, target and freshness still qualify the same solution.
                 (!checkDirection || solution.DirectionIndependent || preparedDirection==player.direction) &&
                 Vector2.DistanceSquared(HostAttackModels.LaunchOrigin(player,weapon),Main.GameUpdateCount==prepared?origin:nextOrigin)<=4 &&
                 environmentState.Current && (handTerrain==null?terrain.Unchanged:handTerrain.Current && handMotionTerrain!=null && handMotionTerrain.Current) &&
                 (solution.Contact==null || obstacles==null || (checkAmmo?obstacles.UnchangedForHandStart:obstacles.Unchanged)) && (checkAmmo?ammo.Matches(player,weapon):ammo.IdentityMatches(player,weapon));
+        }
+        private bool BalancedMotionCurrent(Player player,NpcTrajectory timeline)
+        {
+            var observed=NpcPredictionSource.ReadPlayer(player);
+            if(Main.GameUpdateCount==prepared)return preparedMotion.SameSample(observed);
+            if(preparedOrdinaryPhase!=HostAttackPhase.CompletedWorld || Main.GameUpdateCount<prepared || Main.GameUpdateCount-prepared!=1)return false;
+            long sampleAge=(long)prepared-timeline.SampleTick;
+            if(sampleAge<0 || sampleAge>1)return false;
+            // ReadPlayer observes physical facts, not a trajectory's ordinal.
+            // The retained hand completed exactly one Advance since prepared.
+            // Bind real payloads in their own token/capture/window coordinate;
+            // without a gravity payload that one Advance began at ordinal 0.
+            // Do not rewrite saved motion or borrow its expected field values.
+            var environment=default(PredictionEnvironment);
+            if(timeline.GravitySources!=null)
+            {
+                if(!NpcPredictionSource.TryBindPlayerGravity(timeline,(long)Main.GameUpdateCount,ref observed,ref environment))return false;
+            }
+            else
+            {
+                if(observed.GravitySourceExpected || observed.ForcedGravityTicks>0)return false;
+                if(observed.GravityControlCaptured)observed.GravityAction=1;
+            }
+            if(timeline.WallSources!=null && !NpcPredictionSource.TryBindPlayerWall(timeline,(long)Main.GameUpdateCount,ref observed,ref environment))return false;
+            return nextBalancedMotion.SameSample(observed);
         }
         private bool PrepareBalancedPlan(PreviewPlan plan,NpcTrajectory timeline,HostAttackPhase phase)
         {

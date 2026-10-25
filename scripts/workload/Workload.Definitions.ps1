@@ -80,6 +80,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatInputGeometryChecks.cs'=@('native-CombatInputGeometryCpu')
         'tests/NativeWorldTextProbe/NativeCombatSkyActionChecks.cs'=@('native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatSkySemanticsChecks.cs'=@('native-CombatSkyActionCpu')
+        'tests/NativeWorldTextProbe/NativeCombatSkyNextPoseChecks.cs'=@('native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatLunarChecks.cs'=@('native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatReflectionSeamsChecks.cs'=@('native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatBalancedPhaseChecks.cs'=@('native-CombatIntegrationCpu')
