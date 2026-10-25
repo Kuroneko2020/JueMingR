@@ -289,7 +289,7 @@ namespace JueMingR.TerrariaHost.F5
                     { Text(batch, mapValue ?? "", new Vector2(rect.Right - mapValueSize.Width, rect.Y + (rect.Height - mapValueSize.Height) / 2), element.TextScale, Color.White, mapValueSize); }
                     else if (element.Kind == F5ElementKind.Text || element.Kind == F5ElementKind.AboutHeading || element.Kind == F5ElementKind.AboutMuted)
                         Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale,
-                            element.Kind == F5ElementKind.AboutHeading ? About.AboutPainter.Gold : element.Kind == F5ElementKind.AboutMuted ? About.AboutPainter.Muted : Color.White, element.TextSize);
+                            TextColor(element), element.TextSize);
                     else if (element.Kind == F5ElementKind.AboutCard) aboutPainter.Card(batch, pixel, rect, element.Text, element.TextScale > 0 ? element.TextScale : 1);
                     else if (element.Kind == F5ElementKind.Divider) Decoration(batch, rect, Color.White * 0.35f);
                     else if (element.Kind == F5ElementKind.Image)
@@ -395,6 +395,14 @@ namespace JueMingR.TerrariaHost.F5
                 return hover.HotkeyTarget == Hotkeys.HotkeyActionIds.AdjustInformation ? "双击设置调整信息窗位置的快捷键" : "双击设置功能开关快捷键";
             }
             return ButtonHint(hover, biomeFailed);
+        }
+        // Row metadata belongs only to the measured name text. Command buttons,
+        // state underlines and hotkey icons keep their independent render paths.
+        internal static Color TextColor(F5Element element)
+        {
+            if (element.Kind == F5ElementKind.AboutHeading) return About.AboutPainter.Gold;
+            if (element.Kind == F5ElementKind.AboutMuted) return About.AboutPainter.Muted;
+            return element.Kind == F5ElementKind.Text && element.Description != null && element.Description.NameStyle == F5NameStyle.Hidden ? Color.Gold : Color.White;
         }
         internal string ButtonHint(F5Element hover, bool biomeFailed)
         {

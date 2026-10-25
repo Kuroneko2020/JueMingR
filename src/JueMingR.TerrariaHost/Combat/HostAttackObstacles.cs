@@ -358,9 +358,13 @@ namespace JueMingR.TerrariaHost.Combat
         // the real current projectile body supplied by width/height.
         internal bool PassCustomOuter(int k,int tick,int outer,float x,float y,int width,int height,Func<MotionRect,bool> collision,bool unlimited=false,int maximumRemaining=0,bool consumeSelected=false,Func<int,int,bool> onHit=null,Func<int,int,int> beforeHitPenetration=null)
         {return PassCore(k,tick,outer,x,y,width,height,unlimited,maximumRemaining,onHit,collision,consumeSelected,beforeHitPenetration);}
-        private bool PassCore(int k,int tick,int outer,float x,float y,int width,int height,bool unlimited,int maximumRemaining,Func<int,int,bool> onOtherHit,Func<MotionRect,bool> collision,bool consumeSelected,Func<int,int,int> beforeHitPenetration=null,Func<MotionRect,bool,bool> ownerQualification=null,int meleeCooldown=0,bool arc=false)
+        // A dedicated motor that begins before BeforeNpc owns the one reset;
+        // the first Damage must retain that already-observed receiver history.
+        internal bool PassStartedCustomOuter(int k,int tick,int outer,float x,float y,int width,int height,Func<int,int,bool> onHit)
+        {return PassCore(k,tick,outer,x,y,width,height,true,0,onHit,null,true,candidateStarted:true);}
+        private bool PassCore(int k,int tick,int outer,float x,float y,int width,int height,bool unlimited,int maximumRemaining,Func<int,int,bool> onOtherHit,Func<MotionRect,bool> collision,bool consumeSelected,Func<int,int,int> beforeHitPenetration=null,Func<MotionRect,bool,bool> ownerQualification=null,int meleeCooldown=0,bool arc=false,bool candidateStarted=false)
         {
-            if(k==1)BeginCandidate();
+            if(k==1 && !candidateStarted)BeginCandidate();
             if(maximumRemaining>0 && remaining>maximumRemaining)remaining=maximumRemaining;
             if(remaining==0 && !unlimited)return false;
             // Only an actual nonpositive-penetration Damage stage bypasses

@@ -56,6 +56,10 @@ namespace NativeWorldTextProbe
             var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();return new NpcTrajectory(key,Main.GameUpdateCount,1,PredictionAssumption.None,PredictionStop.None,points,points.Length);
         }
         internal static void Run(object context)
+        {RunCore(context,false);}
+        internal static void RunReflection(object context)
+        {RunCore(context,true);}
+        private static void RunCore(object context,bool reflection)
         {
             var host=Get(context,"Combat").GetType().Assembly;CandidateIdentity();var model=host.GetType("JueMingR.TerrariaHost.Combat.HostSkyAttack",true);var audit=new Harmony("JueMingR.Tests.FixedSky");
             audit.Patch(model.GetMethod("FixedSky",Flags),prefix:new HarmonyMethod(typeof(NativeCombatFixedSkyChecks),nameof(Fixed)),postfix:new HarmonyMethod(typeof(NativeCombatFixedSkyChecks),nameof(FixedDone)));
@@ -68,11 +72,12 @@ namespace NativeWorldTextProbe
             {
                 foreach(bool mirror in new[]{false,true})foreach(int distance in new[]{160,320,500})foreach(int immunity in new[]{0,12})
                 {
+                    if(reflection && (mirror || distance!=160 || immunity!=0))continue;
                     var p=NativeCombatBallisticCandidateChecks.Scene(context,3065,50,mirror);foreach(var npc in Main.npc)npc.active=false;
                     if(replayRotation!=null)p.fullRotation=rotation;
                     var n=Main.npc[2];n.SetDefaults(3);n.active=true;n.whoAmI=2;n.life=n.lifeMax=10000;n.knockBackResist=0;n.defense=0;n.aiStyle=-1;n.noGravity=true;n.Center=p.Center+new Vector2(mirror?-distance:distance,0);n.immune[p.whoAmI]=immunity;
                     var path=Path(n);var ammo=host.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true).GetMethod("Capture",Flags).Invoke(null,new object[]{p,p.HeldItem});
-                    var sample=Terraria.ID.ContentSamples.ProjectilesByType[(int)Get(ammo,"Projectile")];var origin=(Vector2)host.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels",true).GetMethod("LaunchOrigin",Flags).Invoke(null,new object[]{p,p.HeldItem});
+                    var sample=Terraria.ID.ContentSamples.ProjectilesByType[(int)Get(ammo,"Projectile")];var origin=(Vector2)host.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels",true).GetMethod("LaunchOrigin",Flags,null,new[]{typeof(Player),typeof(Item)},null).Invoke(null,new object[]{p,p.HeldItem});
                     var contacts=new AttackContact[2];var native=new int[2];var elapsed=new double[2];
                     for(int version=0;version<2;version++)
                     {

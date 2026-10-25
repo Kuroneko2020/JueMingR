@@ -32,7 +32,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Combat.CombatPredictionWork+ProgressScope",
                 "JueMingR.Features.Combat.CombatPredictionBudgetExceededException",
                 "JueMingR.Features.Combat.AttackConfidence", "JueMingR.Features.Combat.AttackSolveStatus", "JueMingR.Features.Combat.AttackMotion", "JueMingR.Features.Combat.AttackMotionCandidates",
-                "JueMingR.Features.Combat.AttackPassage", "JueMingR.Features.Combat.AttackContact", "JueMingR.Features.Combat.AttackReceiveGeometry", "JueMingR.Features.Combat.AttackIntercept", "JueMingR.Features.Combat.AttackBallisticCandidates", "JueMingR.Features.Combat.AttackBallisticCandidates+Direction", "JueMingR.Features.Combat.AttackBallisticCandidates+Response",
+                "JueMingR.Features.Combat.AttackPassage", "JueMingR.Features.Combat.AttackContact", "JueMingR.Features.Combat.AttackReceiveGeometry", "JueMingR.Features.Combat.AttackPointSemantics", "JueMingR.Features.Combat.AttackIntercept", "JueMingR.Features.Combat.AttackBallisticCandidates", "JueMingR.Features.Combat.AttackBallisticCandidates+Direction", "JueMingR.Features.Combat.AttackBallisticCandidates+Response",
                 "JueMingR.Features.Combat.PlayerVerticalMotion",
                 "JueMingR.Features.Combat.PlayerMotionContinuation",
                 "JueMingR.Features.Fishing.FishingCodec", "JueMingR.Features.Fishing.FishingSettings", "JueMingR.Features.Fishing.PlayerNameRules",

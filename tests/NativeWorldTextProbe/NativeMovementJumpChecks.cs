@@ -19,12 +19,12 @@ namespace NativeWorldTextProbe
 {
     // Actual locked .8 consumers in the existing isolated, silent fixture.
     // Stage checks do not claim Main/physical-input/rendering or owner play.
-    internal static class NativeMovementJumpChecks
+    internal static partial class NativeMovementJumpChecks
     {
         private const BindingFlags Flags=BindingFlags.Static|BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
         private static object stageMovement,stageInput;
         private static Player watchedFlight;
-        private static int nativeWingStarts,maskedConversions;
+        private static int nativeWingStarts;
         internal static void Run(object context)
         {
             var host=context.GetType().Assembly;
@@ -37,9 +37,10 @@ namespace NativeWorldTextProbe
             try
             {
                 Player.jumpSpeed=5.01f;Player.jumpHeight=15;
+                FlightConsumers(context,jump,ref cases);
                 foreach(string family in new[]{"Sandstorm","Blizzard","Fart","Sail","Cloud","Unicorn","Santank","WallOfFleshGoat","Basilisk"})
                 {
-                    var p=Local();p.velocity.Y=-1;p.releaseJump=false;
+                    var p=Local();p.velocity.Y=-1;p.releaseJump=true;
                     typeof(Player).GetField("canJumpAgain_"+family).SetValue(p,true);
                     typeof(Player).GetField("hasJumpOption_"+family).SetValue(p,true);
                     Begin(jump,p,++cases);Before(jump,p);p.JumpMovement();Call(jump,"AfterJump",p,true,true,false);
@@ -53,15 +54,15 @@ namespace NativeWorldTextProbe
                 }
                 foreach(float gravity in new[]{1f,-1f})foreach(bool sliding in new[]{false,true})foreach(bool wet in new[]{false,true})
                 {
-                    var p=Local();p.gravDir=gravity;p.velocity.Y=wet?1:0;p.sliding=sliding;p.wet=wet;p.accFlipper=wet;p.slideDir=1;
+                    var p=Local();p.releaseJump=true;p.gravDir=gravity;p.velocity.Y=wet?1:0;p.sliding=sliding;p.wet=wet;p.accFlipper=wet;p.slideDir=1;
                     Begin(jump,p,++cases);Before(jump,p);p.JumpMovement();Call(jump,"AfterJump",p,true,true,false);
                     Require(p.jump==15 && p.velocity.Y==-5.01f*gravity,"Native ground/wall/water jump follows gravity.");
                     if(sliding)Require(!p.autoJump,"Original wall consumer may clear autoJump.");
-                    End(jump,p);Require(!p.autoJump && !p.releaseJump,"Normal completion clears only temporary contribution.");
+                    End(jump,p);Require(!p.autoJump && !p.releaseJump,"Normal completion preserves native consumed release state and equipment attributes.");
                 }
                 foreach(bool nativeAuto in new[]{false,true})
                 {
-                    var p=Local();p.autoJump=nativeAuto;Begin(jump,p,++cases);Before(jump,p);p.JumpMovement();Call(jump,"AfterJump",p,true,true,false);End(jump,p);
+                    var p=Local();p.releaseJump=true;p.autoJump=nativeAuto;Begin(jump,p,++cases);Before(jump,p);p.JumpMovement();Call(jump,"AfterJump",p,true,true,false);End(jump,p);
                     Require(p.autoJump==nativeAuto && p.jump==15 && p.velocity.Y==-5.01f,"Native autoJump survives helper cleanup; no jump-speed boost.");
                 }
                 var down=Local();down.controlDown=true;Begin(jump,down,++cases);Call(jump,"BeforeJump",down,true,true,true,true,1L);down.JumpMovement();End(jump,down);Require(down.jump==0 && down.controlDown && down.controlJump,"Down+Jump is untouched.");
@@ -77,7 +78,7 @@ namespace NativeWorldTextProbe
                     bool excluded=(bool)type.GetMethod("ExcludedMount",Flags).Invoke(null,new object[]{p});
                     bool expected=Array.IndexOf(new[]{0,2,5,7,8,12,23,44,48,49,50,54,56,61},mount)>=0;
                     Require(excluded==expected,"Whole capability family classification mount="+mount);
-                    Begin(jump,p,++cases);Before(jump,p);Require(p.releaseJump!=expected,"Only non-flight mount receives helper edge mount="+mount);End(jump,p);
+                    Begin(jump,p,++cases);Before(jump,p);Require((bool)Call(jump,"EffectiveJump",p,true)==expected,"Only non-flight mount receives a whole-update rearming release mount="+mount);End(jump,p);
                 }
                 // These four source flags must come from actual Mount effects,
                 // not from the stage fixture assigning a canJumpAgain field.
@@ -92,7 +93,7 @@ namespace NativeWorldTextProbe
                     string family=mountFamilies[m];var option=typeof(Player).GetField("hasJumpOption_"+family);var remaining=typeof(Player).GetField("canJumpAgain_"+family);
                     Require((bool)option.GetValue(p),"Actual native Mount.UpdateEffects supplies "+family);
                     Player.jumpHeight=p.mount.JumpHeight(p.velocity.X);Player.jumpSpeed=p.mount.JumpSpeed(p.velocity.X);
-                    p.controlJump=true;p.releaseJump=false;p.velocity.Y=0;p.jump=0;
+                    p.controlJump=true;p.releaseJump=true;p.velocity.Y=0;p.jump=0;
                     Begin(jump,p,++cases);Before(jump,p);p.JumpMovement();Call(jump,"AfterJump",p,true,true,false);End(jump,p);
                     Require(p.justJumped && p.jump>0 && (bool)remaining.GetValue(p),"Original mounted ground jump refreshes its own extra resource "+family);
                     p.justJumped=false;
@@ -103,13 +104,8 @@ namespace NativeWorldTextProbe
                     Console.WriteLine("MOVEMENT MOUNT SOURCE type="+nativeMounts[m]+" family="+family+" jump="+p.jump+" original-effects-and-consumer=true complete-Main=false");
                 }
                 Player.jumpSpeed=5.01f;Player.jumpHeight=15;
-                // canRocket is intentionally false before Update's later gate.
-                var rocket=Local();rocket.velocity.Y=-1;rocket.rocketBoots=1;rocket.rocketTime=7;rocket.canRocket=false;
-                Begin(jump,rocket,++cases);Before(jump,rocket);rocket.JumpMovement();Call(jump,"AfterJump",rocket,true,true,false);
-                Require(rocket.rocketRelease && !rocket.canRocket && rocket.rocketTime==7,"Late rocket release does not falsify earlier canRocket or consume fuel.");End(jump,rocket);Require(!rocket.rocketRelease,"Temporary rocket release closes after the full update.");
                 InputTakeover(context,type);cases+=2;
                 CoastConsumers(context,jump,ref cases);
-                FlightConsumers(context,jump,ref cases);
                 HeldSpanPrediction(context,jump);
                 NativeMovementJumpWireChecks.Run(context);
                 HelperWorkload(type);
@@ -134,7 +130,7 @@ namespace NativeWorldTextProbe
             foreach(float gravity in new[]{1f,-1f})foreach(string family in new[]{"ordinary","Cloud","Sandstorm"})
             {
                 Call(jump,"ClearSession");var manual=Local();var assisted=Local();
-                manual.gravDir=assisted.gravDir=gravity;manual.releaseJump=true;
+                manual.gravDir=assisted.gravDir=gravity;manual.releaseJump=assisted.releaseJump=true;
                 if(family!="ordinary")foreach(var p in new[]{manual,assisted})
                 {typeof(Player).GetField("canJumpAgain_"+family).SetValue(p,true);typeof(Player).GetField("hasJumpOption_"+family).SetValue(p,true);}
                 int manualStarts=0,assistStarts=0,manualSecond=-1,assistSecond=-1;float peakManual=manual.position.Y*gravity,peakAssist=assisted.position.Y*gravity;
@@ -162,16 +158,16 @@ namespace NativeWorldTextProbe
                 Require(peakManual==peakAssist && (family=="ordinary"?assistStarts==1:assistStarts==2 && manualSecond==assistSecond),"Independent native height/start boundary family="+family);
                 Console.WriteLine("MOVEMENT COAST ORACLE family="+family+" grav="+gravity+" manualPeak="+peakManual+" assistPeak="+peakAssist+" manualSecond="+manualSecond+" assistSecond="+assistSecond);
             }
-            Call(jump,"ClearSession");var carpet=Local();carpet.carpet=carpet.canCarpet=true;carpet.carpetTime=17;
+            Call(jump,"ClearSession");var carpet=Local();carpet.releaseJump=true;carpet.rocketTimeMax=carpet.rocketTime=0;carpet.carpet=carpet.canCarpet=true;carpet.carpetTime=17;
             do
             {
                 Begin(jump,carpet,++cases);Before(jump,carpet);int before=carpet.jump;
                 carpet.JumpMovement();Call(jump,"AfterJump",carpet,true,true,false);
                 if(before==1)
                 {
-                    Require(carpet.jump==0 && carpet.controlJump && !(bool)Call(jump,"EffectiveJump",carpet,true) && !(bool)Call(jump,"EffectiveJump",carpet,false),"Last held tick latches effective release without writing physical Jump.");
+                    Require(carpet.jump==0 && carpet.controlJump && (bool)Call(jump,"EffectiveJump",carpet,true) && !(bool)Call(jump,"EffectiveJump",carpet,false),"Last held tick retains the same pressed input through all later consumers.");
                     carpet.CarpetMovement();
-                    Require(carpet.carpetFrame==-1 && carpet.carpetTime==17 && !carpet.rocketRelease,"Same-update original carpet and borrowed rocket edge wait for the owned tail.");
+                    Require(carpet.carpetFrame>=0 && carpet.carpetTime==299 && !carpet.canCarpet,"Original carpet consumes the same final held update without artificial waiting.");
                     var sample=(PredictionPlayerMotion)source.GetMethod("ReadPlayer",Flags).Invoke(null,new object[]{carpet});
                     Require(sample.AssistedJump && sample.HoldJump && sample.AssistedJumpPhase==MovementJumpPhase.Coast,"Direct capture preserves physical hold plus owned phase.");
                     var altered=sample;altered.AssistedJumpPhase=MovementJumpPhase.None;Require(!sample.SameSample(altered),"Phase alone changes exact sample identity.");
@@ -246,7 +242,7 @@ namespace NativeWorldTextProbe
                 }
                 Call(jump,"ClearSession");
             }
-            foreach(string boundary in new[]{"CarpetActive","RocketThrust","ResidualThrust","RocketReadyEdge","RocketEmptyEdge","WingFuel","WingBootTransfer","WingBootRefill"})
+            foreach(string boundary in new[]{"CarpetActive","RocketThrust","ResidualThrust","RocketReadyEdge","RocketEmptyEdge","WingFuel","WingBootTransfer","WingBootRefill","ReverseEmptyWings"})
             {
                 var p=Local();PreparePrefix(p,"Cloud");
                 if(boundary=="CarpetActive"){p.carpet=true;p.carpetFrame=0;p.carpetTime=17;}
@@ -254,6 +250,7 @@ namespace NativeWorldTextProbe
                 else if(boundary=="ResidualThrust")p.rocketDelay=3;
                 else if(boundary=="RocketReadyEdge" || boundary=="RocketEmptyEdge"){p.rocketBoots=1;p.canRocket=p.rocketRelease=true;p.rocketTime=boundary=="RocketReadyEdge"?7:0;}
                 else if(boundary=="WingFuel"){p.wingsLogic=1;p.wingTime=7;}
+                else if(boundary=="ReverseEmptyWings"){p.wingsLogic=1;p.wingTime=0;p.gravDir=-1;p.velocity.Y=2;}
                 else{p.wingsLogic=1;p.rocketBoots=1;p.rocketTime=boundary=="WingBootTransfer"?7:0;p.empressBrooch=boundary=="WingBootRefill";}
                 Begin(jump,p,1);Before(jump,p);End(jump,p);
                 var scalar=(PredictionPlayerMotion)source.GetMethod("ReadPlayer",Flags).Invoke(null,new object[]{p});
@@ -267,9 +264,9 @@ namespace NativeWorldTextProbe
                 "The unchanged native carpet really starts on the same action that ends the held span; the forecast must stop before jump=1.");
             var bootEdge=Local();PreparePrefix(bootEdge,"Boots");bootEdge.jump=1;
             Begin(jump,bootEdge,1);Before(jump,bootEdge);bootEdge.JumpMovement();Call(jump,"AfterJump",bootEdge,true,true,false);
-            Require(bootEdge.jump==0 && bootEdge.rocketRelease && bootEdge.rocketTime==7 && !(bool)motor.GetMethod("AssistedOrdinarySpan",Flags).Invoke(null,new object[]{bootEdge,true}),
-                "An unregistered pre-existing held span keeps its original rocket behavior without acquiring a coast.");
-            End(jump,bootEdge);Call(jump,"ClearSession");
+            Require(bootEdge.jump==0 && !bootEdge.rocketRelease && bootEdge.rocketTime==7,
+                "An unregistered final held tick never forges a rocket release for later consumers.");
+            End(jump,bootEdge);Begin(jump,bootEdge,2);Before(jump,bootEdge);Require(!(bool)Call(jump,"EffectiveJump",bootEdge,true),"Unarmed boots receive a complete release update.");bootEdge.JumpMovement();Call(jump,"AfterJump",bootEdge,true,true,false);Require(bootEdge.rocketRelease && !(bool)Call(jump,"EffectiveJump",bootEdge,true),"Native rearming does not turn the later consumer into a same-update press.");End(jump,bootEdge);Begin(jump,bootEdge,3);Before(jump,bootEdge);Require((bool)Call(jump,"EffectiveJump",bootEdge,true),"A subsequent update may legally press armed boots.");End(jump,bootEdge);Call(jump,"ClearSession");
             Console.WriteLine("PASS MOVEMENT JUMP held-prefix/native Horizontal+Jump+Carpet oracle; extra/carpet/boots/exhausted-wing and active-consumer boundaries");
             }
             finally{Main.worldSurface=previousSurface;Call(jump,"ClearSession");}
@@ -279,59 +276,225 @@ namespace NativeWorldTextProbe
             var update=typeof(Player).GetMethod("Update",new[]{typeof(int)});
             var isolated=new Harmony("JueMingR.Tests.Movement.NativeFlightSegment");
             isolated.Patch(update,transpiler:new HarmonyMethod(typeof(NativeMovementJumpChecks),nameof(IsolateFlight)){priority=Priority.Last});
-            // These two outlets dispatch only particles/sound. Movement,
-            // original gates, fuel conversion, fuel use and hover stay native.
+            // Only cosmetic outlets are skipped. All gates, held ticks,
+            // resource conversion, gravity and both late hover reads stay native.
             foreach(string visual in new[]{"WingAirVisuals","RocketBootVisuals"})isolated.Patch(AccessTools.Method(typeof(Player),visual),prefix:new HarmonyMethod(typeof(NativeMovementJumpChecks),nameof(NoFlightCosmetics)));
             isolated.Patch(AccessTools.Method(typeof(Player),"WingMovement"),prefix:new HarmonyMethod(typeof(NativeMovementJumpChecks),nameof(ObserveWingStart)));
             try
             {
-                foreach(string kind in new[]{"wing","boots","wing-boots","hover"})
+                int failures=0;
+                foreach(string kind in new[]{"wing","wing-boots","boots-armed","boots-rearm","boots-blocked","boots-wait","carpet","hover-last","hover-late","hover-active","reverse-empty"})
                 {
-                    Call(jump,"ClearSession");var p=Local();p.gravity=.4f;p.maxFallSpeed=10.01f;
-                    watchedFlight=p;nativeWingStarts=maskedConversions=0;
-                    if(kind!="boots"){p.wingsLogic=p.wings=kind=="hover"?37:1;p.wingTimeMax=20;p.wingTime=20;}
-                    if(kind=="boots" || kind=="wing-boots"){p.rocketBoots=1;p.rocketTimeMax=p.rocketTime=7;}
-                    if(kind=="wing-boots")p.empressBrooch=true;
-                    bool ended=false,started=false,converted=false;int coast=0,last=0;
-                    for(int k=0;k<75;k++)
+                    Call(jump,"ClearSession");var manual=FlightPlayer(kind);var assisted=FlightPlayer(kind);
+                    manual.releaseJump=true;int manualFirst=-1,assistFirst=-1,manualWings=0,assistWings=0,releaseStep=-1,mismatches=0;
+                    float firstManualVelocity=0,firstAssistVelocity=0;float firstManualFuel=0,firstAssistFuel=0;
+                    for(int step=0;step<24;step++)
                     {
-                        int remaining=p.jump,rocket=p.rocketTime;float wing=p.wingTime;
-                        if(kind=="hover" && remaining==1)p.tryKeepingHoveringDown=true;
-                        p.justJumped=false;Begin(jump,p,++cases);
-                        try{p.Update(Main.myPlayer);}
-                        finally{End(jump,p);}
-                        MovementJumpPhase phase;long version;bool intent=CallState(jump,p,out phase,out version);
-                        if(kind=="wing-boots" && maskedConversions>0)converted=true;
-                        if(remaining==1)
-                        {
-                            last++;Require(p.jump==0 && phase==MovementJumpPhase.Coast && Math.Abs(p.velocity.Y-(-5.01f+.4f))<.0001f,"Native Update retains final controlled tick and both late hover branches kind="+kind);
-                        }
-                        if(phase==MovementJumpPhase.Coast)
-                        {coast++;Require(intent && p.controlJump && p.wingTime>=wing && p.rocketDelay==0 && (kind!="boots" || p.rocketTime==rocket),"Native Update wing/boot consumption waits through the entire owned tail kind="+kind);}
-                        if(coast>0 && phase==MovementJumpPhase.None)ended=true;
-                        if(ended && (kind=="boots"?p.rocketDelay>0 && p.rocketTime<rocket:nativeWingStarts>0)){started=true;break;}
+                        // Equip depleted wings only after the ordinary ground start;
+                        // airborne equipment does not gain a ground refill.
+                        if(kind=="reverse-empty" && step==1)foreach(var p in new[]{manual,assisted}){p.wings=p.wingsLogic=1;p.wingTimeMax=20;p.wingTime=0;}
+                        if(kind=="hover-last" && step==15 || kind=="hover-late" && step==16)
+                            manual.tryKeepingHoveringDown=assisted.tryKeepingHoveringDown=true;
+                        bool held=true;
+                        // The manual boot oracle physically releases for a full
+                        // update, then presses later. No release flag is forged.
+                        if(kind=="boots-rearm" && step>0 && manual.jump==0 && !manual.rocketRelease && releaseStep<0)
+                        {held=false;releaseStep=step;}
+                        manual.controlJump=held;Main.player[Main.myPlayer]=manual;watchedFlight=manual;nativeWingStarts=0;
+                        manual.justJumped=false;manual.Update(Main.myPlayer);manualWings+=nativeWingStarts;
+                        if(manualFirst<0 && (nativeWingStarts>0 || manual.rocketDelay>0 || manual.carpetFrame>=0))
+                        {manualFirst=step;firstManualVelocity=manual.velocity.Y;firstManualFuel=manual.wingTime+manual.rocketTime;}
+                        assisted.controlJump=true;Main.player[Main.myPlayer]=assisted;watchedFlight=assisted;nativeWingStarts=0;
+                        assisted.justJumped=false;Begin(jump,assisted,++cases);
+                        try{assisted.Update(Main.myPlayer);}finally{End(jump,assisted);}
+                        assistWings+=nativeWingStarts;
+                        if(assistFirst<0 && (nativeWingStarts>0 || assisted.rocketDelay>0 || assisted.carpetFrame>=0))
+                        {assistFirst=step;firstAssistVelocity=assisted.velocity.Y;firstAssistFuel=assisted.wingTime+assisted.rocketTime;}
+                        bool equal=Math.Abs(manual.velocity.Y-assisted.velocity.Y)<.0001f && manual.jump==assisted.jump && manual.wingTime==assisted.wingTime && manual.rocketTime==assisted.rocketTime && manual.rocketDelay==assisted.rocketDelay && manual.carpetTime==assisted.carpetTime && manual.carpetFrame==assisted.carpetFrame;
+                        if(!equal){mismatches++;if(mismatches==1)Console.WriteLine("R1 FIRST DIFFERENCE kind="+kind+" step="+step+" manualVy="+manual.velocity.Y+" assistedVy="+assisted.velocity.Y+" manualJump="+manual.jump+" assistedJump="+assisted.jump+" manualFuel="+(manual.wingTime+manual.rocketTime)+" assistedFuel="+(assisted.wingTime+assisted.rocketTime));}
                     }
-                    Require(last==1 && coast>2 && ended && started && (kind!="wing-boots" || converted),"Actual native tail then flight consumer starts, retaining native conversion kind="+kind);
-                    Console.WriteLine("MOVEMENT NATIVE FLIGHT kind="+kind+" last="+last+" coast="+coast+" maskedConversions="+maskedConversions+" nativeWingStarts="+nativeWingStarts+" wing="+p.wingTime+" rocket="+p.rocketTime+" delay="+p.rocketDelay);
+                    bool expected=kind=="boots-blocked"?manualFirst<0:kind=="reverse-empty"?manualFirst<0:manualFirst>=0;
+                    Require(expected,"Original comparison actually exercises its declared flight gate kind="+kind);
+                    if(kind=="boots-rearm")Require(releaseStep==16 && manualFirst==17,"Unarmed original boots require one whole release update after the final held tick.");
+                    if(kind=="boots-wait")Require(manualFirst==5,"Armed boots still wait for the actual native canRocket velocity window.");
+                    if(kind=="wing" || kind=="wing-boots" || kind=="carpet" || kind=="hover-last")Require(manualFirst==15,"Original sustained consumer takes over on the final held tick kind="+kind);
+                    if(kind=="reverse-empty")Require(manual.velocity.Y>3.8f && manual.wingTime==0 && assisted.wingTime==0,"Reverse comparison has genuinely exhausted wings and original third-gravity velocity.");
+                    if(mismatches!=0 || manualFirst!=assistFirst || manualWings!=assistWings)failures++;
+                    Console.WriteLine("R1 ORIGINAL COMPARE kind="+kind+" manualFirst="+manualFirst+" assistedFirst="+assistFirst+" releaseStep="+releaseStep+" manualWingCalls="+manualWings+" assistedWingCalls="+assistWings+" firstManualVy="+firstManualVelocity+" firstAssistedVy="+firstAssistVelocity+" firstManualFuel="+firstManualFuel+" firstAssistedFuel="+firstAssistFuel+" finalManualVy="+manual.velocity.Y+" finalAssistedVy="+assisted.velocity.Y+" differences="+mismatches);
                 }
-                Call(jump,"ClearSession");var flying=Local();flying.wings=flying.wingsLogic=1;flying.wingTimeMax=20;flying.wingTime=20;flying.jump=0;flying.velocity.Y=-2;flying.gravity=.4f;flying.maxFallSpeed=10.01f;
-                Begin(jump,flying,++cases);try{flying.Update(Main.myPlayer);}finally{End(jump,flying);}
-                MovementJumpPhase external;long ignored;CallState(jump,flying,out external,out ignored);
-                Require(external==MovementJumpPhase.None && flying.wingTime<20,"Enabling during existing original flight never claims or masks its ascent.");
-                Call(jump,"ClearSession");var early=Local();early.wings=early.wingsLogic=37;early.wingTimeMax=20;early.wingTime=20;early.tryKeepingHoveringDown=true;early.gravity=.4f;early.maxFallSpeed=10.01f;
-                watchedFlight=early;nativeWingStarts=0;int earlyLast=0;
-                for(int k=0;k<20;k++)
-                {
-                    int before=early.jump;early.justJumped=false;Begin(jump,early,++cases);try{early.Update(Main.myPlayer);}finally{End(jump,early);}
-                    CallState(jump,early,out external,out ignored);
-                    Require(external==MovementJumpPhase.None && early.controlJump && (bool)Get(jump,"intent") && nativeWingStarts==k+1,"Actual early hover flight retires only the registered jump tail, preserving held intent and continued native flight.");
-                    if(before==1)earlyLast++;
-                }
-                Require(earlyLast==1 && early.wingTime<20,"Already-started native hover remains active across the later last held tick.");
+                Require(failures==0,"Sustained flight matches original legal whole-update input for all bounded mechanisms; failing mechanisms="+failures);
+                NaturalWingRelay(jump,ref cases);
+                PendingHeldFlightHandoff(jump,ref cases);
+                RelayBoundaries(jump,ref cases);
+                Call(jump,"ClearSession");var protection=FlightPlayer("boots-armed");protection.rocketRelease=false;
+                Begin(jump,protection,++cases);Require((bool)Call(jump,"ReserveFallInput",protection,true),"Fall protection owns the whole release update before simulated jumping.");
+                Call(jump,"Cancel");
+                Require(!(bool)Call(jump,"EffectiveJump",protection,true),"Lower cancellation cannot withdraw the protection release.");
+                try{protection.Update(Main.myPlayer);Require(protection.rocketRelease && protection.rocketDelay==0 && protection.rocketTime==7 && !(bool)Call(jump,"EffectiveJump",protection,true),"Native rearming keeps every later boot consumer released for the full protection update.");}finally{End(jump,protection);}
+                Begin(jump,protection,++cases);Require((bool)Call(jump,"ReserveFallInput",protection,false),"Protection may press only in the later update.");
+                try{protection.Update(Main.myPlayer);Require(protection.rocketDelay>0 && protection.rocketTime==6,"The later native protection press consumes one real boot fuel.");}finally{End(jump,protection);}
+                Call(jump,"ClearSession");
                 FrozenOrdinary(context,jump,ref cases);
-                Console.WriteLine("PASS MOVEMENT NATIVE FLIGHT real retained Player.Update Jump/Carpet/wing/boot/conversion/late-hover IL; isolated scope, no Main/device claim");
+                Console.WriteLine("PASS MOVEMENT NATIVE FLIGHT original/manual whole-update input; sustained/boot-rearm/late-hover/reverse-empty; no full Main claim");
             }
             finally{watchedFlight=null;isolated.UnpatchAll(isolated.Id);Call(jump,"ClearSession");}
+        }
+        private static Player FlightPlayer(string kind)
+        {
+            var p=Local();p.releaseJump=true;p.gravity=.4f;p.maxFallSpeed=10.01f;p.rocketTimeMax=p.rocketTime=0;
+            if(kind.StartsWith("wing") || kind.StartsWith("hover"))
+            {p.wingsLogic=p.wings=kind.StartsWith("hover")?37:1;p.wingTimeMax=20;p.wingTime=20;}
+            if(kind.Contains("boots")){p.rocketBoots=1;p.rocketTimeMax=p.rocketTime=7;}
+            if(kind=="wing-boots")p.empressBrooch=true;
+            if(kind=="boots-armed" || kind=="boots-blocked")
+            {p.jump=0;p.velocity.Y=-3;p.releaseJump=false;p.rocketRelease=true;p.canRocket=true;}
+            if(kind=="boots-wait"){p.jump=0;p.velocity.Y=-7;p.rocketRelease=true;p.canRocket=false;}
+            if(kind=="boots-blocked")p.isPerformingJump_DownDash=true;
+            if(kind=="carpet"){p.carpet=p.canCarpet=true;p.carpetTime=17;}
+            if(kind=="hover-active")p.tryKeepingHoveringDown=true;
+            if(kind=="reverse-empty")p.gravDir=-1;
+            return p;
+        }
+        private static void NaturalWingRelay(object jump,ref int cases)
+        {
+            Call(jump,"ClearSession");var p=FlightPlayer("wing");p.hasJumpOption_Cloud=true;
+            int firstWing=-1,lastWing=-1,cloud=-1,coast=-1,release=-1;
+            for(int step=0;step<160;step++)
+            {
+                int before=p.jump;float fuel=p.wingTime,vy=p.velocity.Y;
+                bool remaining=p.canJumpAgain_Cloud,armed=p.releaseJump;
+                p.justJumped=false;watchedFlight=p;nativeWingStarts=0;
+                Begin(jump,p,++cases);
+                try
+                {
+                    p.Update(Main.myPlayer);
+                    MovementJumpPhase phase;long version;CallState(jump,p,out phase,out version);
+                    bool effective=(bool)Call(jump,"EffectiveJump",p,true);
+                    Console.WriteLine("JUMP RELAY step="+step+" beforeJump="+before+" jump="+p.jump+" preFuel="+fuel+" fuel="+p.wingTime+" preVy="+vy+" vy="+p.velocity.Y+" wingCalls="+nativeWingStarts+" effective="+effective+" cloud="+p.canJumpAgain_Cloud+" phase="+phase+" armedBefore="+armed);
+                    if(nativeWingStarts>0)
+                    {
+                        if(firstWing<0){firstWing=step;Require(before==1 && p.jump==0,"Natural ground held 1->0 hands the same input to WingMovement.");}
+                        lastWing=step;
+                        Require(effective && p.canJumpAgain_Cloud,"Actual active wing retains pressed input and the naturally refreshed Cloud resource.");
+                    }
+                    if(firstWing>=0 && step>firstWing && fuel>0 && before==0)
+                        Require(nativeWingStarts==1 && effective && p.canJumpAgain_Cloud,"T1/T2 and later active wing updates cannot be preempted by a synthetic extra-jump release.");
+                    if(lastWing>=0 && nativeWingStarts==0 && before==0 && vy<0 && p.wingTime==0)
+                    {if(coast<0)coast=step;Require(phase==MovementJumpPhase.Coast && !effective && p.canJumpAgain_Cloud,"Natural fuel exhaustion hands real upward velocity to Coast before extra jump.");}
+                    if(!effective)release=step;
+                    if(remaining && !p.canJumpAgain_Cloud)
+                    {cloud=step;Require(before==0 && vy>=0 && armed && release>=0 && release<step && phase==MovementJumpPhase.Held && effective,"After the true apex, native Cloud consumes an earlier complete release and establishes Held.");break;}
+                }
+                finally{End(jump,p);}
+            }
+            Require(firstWing>=0 && lastWing>firstWing+1 && coast==lastWing+1 && cloud>coast,"One natural Cloud+ordinary-wing run covers active flight, natural depletion, Coast and one extra relay.");
+            Console.WriteLine("PASS JUMP NATURAL RELAY firstWing="+firstWing+" lastWing="+lastWing+" coast="+coast+" release="+release+" cloud="+cloud+" fuelWritesAfterStart=0 original-Update-segment=true full-Main=false");
+            Call(jump,"ClearSession");
+        }
+        private static void RelayBoundaries(object jump,ref int cases)
+        {
+            // A real released update, rather than setting releaseJump, rearms
+            // the earlier native extra consumer while wings still have fuel.
+            Call(jump,"ClearSession");var armed=FlightPlayer("wing");armed.hasJumpOption_Cloud=true;
+            for(int k=0;k<16;k++){Begin(jump,armed,++cases);try{armed.Update(Main.myPlayer);}finally{End(jump,armed);}}
+            Require(armed.canJumpAgain_Cloud && armed.wingTime>0,"Natural ground start preserves Cloud through the first wing update.");
+            armed.controlJump=false;armed.Update(Main.myPlayer);
+            Require(armed.releaseJump && armed.wingTime>0,"An actual complete native release rearms the earlier extra opportunity.");
+            armed.controlJump=true;Begin(jump,armed,++cases);
+            try
+            {
+                armed.Update(Main.myPlayer);MovementJumpPhase phase;long version;CallState(jump,armed,out phase,out version);
+                Require(!armed.canJumpAgain_Cloud && armed.jump>0 && phase==MovementJumpPhase.Held,"Rearmed native Cloud wins before later wing eligibility and consumes the old handoff.");
+            }
+            finally{End(jump,armed);}
+
+            // All cases establish the handoff through a real WingMovement on
+            // its final 1->0 fuel update, then revoke its owning context. The
+            // next upward, inactive update must not inherit an old Coast.
+            foreach(string cancel in new[]{"cancel","release","down","permission","focus","death","ghost","grapple","pulley","cc","session","player","fall"})
+            {
+                Call(jump,"ClearSession");var p=FlightPlayer("wing");p.jump=0;p.velocity.Y=-3;p.wingTime=1;
+                Begin(jump,p,++cases);try{p.Update(Main.myPlayer);}finally{End(jump,p);}
+                Require(p.wingTime==0 && p.velocity.Y<0,"Boundary starts with a real final fuel consumption: "+cancel);
+                if(cancel=="session")Call(jump,"ClearSession");
+                else if(cancel=="player")
+                {p=Local();p.velocity.Y=-3;}
+                else if(cancel=="cancel")Call(jump,"Cancel");
+                else if(cancel=="focus")
+                {
+                    object foreground=Get(stageInput,"foregroundWindow");
+                    try
+                    {
+                        Set(stageInput,"foregroundWindow",(Func<IntPtr>)(()=>IntPtr.Zero));
+                        Call(stageInput,"BeginUpdate");Call(stageMovement,"ObserveInput");
+                        MovementJumpPhase phase;long version;
+                        Require(!CallState(jump,p,out phase,out version),"Actual focus loss cancels the retained native-flight handoff before reuse.");
+                    }
+                    finally
+                    {
+                        Set(stageInput,"foregroundWindow",foreground);
+                        NativeQuickItemChecks.Sample(stageInput,new Keys[0]);NativeQuickItemChecks.Sample(stageInput,new Keys[0]);
+                    }
+                }
+                else
+                {
+                    Begin(jump,p,++cases);
+                    if(cancel=="fall")Require((bool)Call(jump,"ReserveFallProtection",p),"Fall protection reserves before new relay writes.");
+                    if(cancel=="death")p.dead=true;
+                    if(cancel=="ghost")p.ghost=true;
+                    if(cancel=="grapple")p.grappling[0]=0;
+                    if(cancel=="pulley")p.pulley=true;
+                    if(cancel=="cc")p.webbed=true;
+                    Call(jump,"BeforeJump",p,true,cancel!="permission",cancel!="release",cancel=="down",1L);
+                    if(cancel=="fall")
+                    {Call(jump,"Cancel");Require((bool)Call(jump,"EffectiveJump",p,true),"Lower relay cancellation does not replace the higher fall press.");}
+                    End(jump,p);
+                    p.dead=p.ghost=p.pulley=p.webbed=false;p.grappling[0]=-1;
+                }
+                Begin(jump,p,++cases);
+                try
+                {
+                    Before(jump,p);MovementJumpPhase phase;long version;CallState(jump,p,out phase,out version);
+                    Require(phase==MovementJumpPhase.None && (bool)Call(jump,"EffectiveJump",p,true),"Revoked native-flight handoff cannot reappear as a tail: "+cancel);
+                }
+                finally{End(jump,p);}
+            }
+            // No same-slot clone or remote call may end the live local scope,
+            // consume its handoff or acquire its effective-input contribution.
+            Call(jump,"ClearSession");var local=FlightPlayer("wing");local.jump=0;local.velocity.Y=-3;local.wingTime=1;
+            Begin(jump,local,++cases);try{local.Update(Main.myPlayer);}finally{End(jump,local);}
+            Begin(jump,local,++cases);Before(jump,local);
+            MovementJumpPhase retained;long retainedVersion;CallState(jump,local,out retained,out retainedVersion);
+            Require(retained==MovementJumpPhase.Coast && !(bool)Call(jump,"EffectiveJump",local,true),"Final actual wing consumption produces the local real-velocity Coast.");
+            foreach(var stranger in new[]{new Player{whoAmI=local.whoAmI,active=true,controlJump=true},new Player{whoAmI=(local.whoAmI+1)%Main.maxPlayers,active=true,controlJump=true}})
+            {
+                Call(jump,"BeginUpdate",stranger,999L,999L,999L);Call(jump,"BeforeJump",stranger,true,true,true,false,1L);Call(jump,"AfterFlight",stranger);Call(jump,"EndUpdate",stranger);
+                MovementJumpPhase phase;long version;CallState(jump,local,out phase,out version);
+                Require(phase==retained && version==retainedVersion && !(bool)Call(jump,"EffectiveJump",local,true) && (bool)Call(jump,"EffectiveJump",stranger,true),"Remote/clone invocation preserves the local owner and receives no input rights.");
+            }
+            End(jump,local);
+
+            Call(jump,"ClearSession");var carpet=FlightPlayer("carpet");carpet.hasJumpOption_Cloud=true;
+            for(int k=0;k<17;k++)
+            {
+                Begin(jump,carpet,++cases);try{carpet.Update(Main.myPlayer);}finally{End(jump,carpet);}
+                Require(carpet.carpetFrame<0 && carpet.canCarpet && carpet.canJumpAgain_Cloud,"Carpet retains the actual all-extra-false gate instead of preempting unused Cloud.");
+            }
+
+            foreach(int wings in new[]{29,32,31})foreach(bool merman in new[]{false,true})
+            {
+                Call(jump,"ClearSession");var p=FlightPlayer("wing");
+                Begin(jump,p,++cases);try{p.Update(Main.myPlayer);}finally{End(jump,p);}
+                p.wings=p.wingsLogic=wings;p.merman=merman;p.tryKeepingHoveringDown=true;
+                watchedFlight=p;nativeWingStarts=0;Begin(jump,p,++cases);
+                try{p.Update(Main.myPlayer);}finally{End(jump,p);}
+                MovementJumpPhase phase;long version;CallState(jump,p,out phase,out version);
+                Require((nativeWingStarts>0)==(wings!=31),"Native early hover family preserves 29/32 and omits 31, independently of merfolk.");
+                Require((bool)Get(jump,"flightHandoff")== (wings!=31 || !merman) && phase==MovementJumpPhase.Held,"Completed early/late hover records its pending fact without erasing the original positive Held; late-only 31 retains CanUseWingAbilities.");
+                if(wings==31 && !merman)Require(Math.Abs(p.velocity.Y+4.149f)<.0002f,"Late-only hover keeps its native 0.9 velocity consumer without WingMovement.");
+            }
+            Console.WriteLine("PASS JUMP RELAY BOUNDARIES real-rearm-before-wing; final-fuel cancel/release/Down/permission/focus/death/ghost/grapple/pulley/CC/session/player/fall; remote/clone; early29/32-vs-late31-merfolk");
+            Call(jump,"ClearSession");
         }
         private static bool CallState(object jump,Player p,out MovementJumpPhase phase,out long version)
         {
@@ -341,8 +504,7 @@ namespace NativeWorldTextProbe
         private static void ObserveWingStart(Player __instance){if(ReferenceEquals(__instance,watchedFlight))nativeWingStarts++;}
         private static void ObserveConversion(Player p)
         {
-            if(!ReferenceEquals(p,watchedFlight))return;MovementJumpPhase phase;long ignored;CallState(Get(stageMovement,"JumpHost"),p,out phase,out ignored);
-            if(phase==MovementJumpPhase.Coast){Require(p.rocketTime==0,"Original conversion zero is observed before native refill.");maskedConversions++;}
+            if(ReferenceEquals(p,watchedFlight))Require(p.rocketTime==0,"Original conversion zero is observed before native refill.");
         }
         private static IEnumerable<CodeInstruction> IsolateFlight(IEnumerable<CodeInstruction> source,ILGenerator generator)
         {
@@ -468,6 +630,7 @@ namespace NativeWorldTextProbe
             var before=(Action<Player,bool,bool,bool,bool,long>)Delegate.CreateDelegate(typeof(Action<Player,bool,bool,bool,bool,long>),host,type.GetMethod("BeforeJump",Flags));
             var after=(Action<Player,bool,bool,bool>)Delegate.CreateDelegate(typeof(Action<Player,bool,bool,bool>),host,type.GetMethod("AfterJump",Flags));
             var end=(Action<Player>)Delegate.CreateDelegate(typeof(Action<Player>),host,type.GetMethod("EndUpdate",Flags));
+            var effective=(Func<Player,bool,bool>)Delegate.CreateDelegate(typeof(Func<Player,bool,bool>),host,type.GetMethod("EffectiveJump",Flags));
             var allocationMethod=typeof(GC).GetMethod("GetAllocatedBytesForCurrentThread",BindingFlags.Static|BindingFlags.Public);
             Require(allocationMethod!=null,"The actual CLR must expose the synchronous helper thread's allocation counter.");
             var threadAllocated=(Func<long>)Delegate.CreateDelegate(typeof(Func<long>),allocationMethod);
@@ -484,7 +647,7 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<20000;i++)
                 {
                     begin(p,2,++tick,1);before(p,scenario!=0,true,scenario>=2,false,1);
-                    if(p.releaseJump)supplied++;
+                    if(!effective(p,true))supplied++;
                     after(p,true,scenario>=2,false);end(p);
                 }
                 clock.Stop();long bytes=threadAllocated()-allocated,domainBytes=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize-domainStart;

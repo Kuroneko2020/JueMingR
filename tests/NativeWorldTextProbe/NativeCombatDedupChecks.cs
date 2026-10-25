@@ -220,6 +220,53 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("DEDUP modes Path="+path+" Aim="+aim+" markerSaved=true 1/multi/1/0 lifecycle PASS");
             }
         }
+
+        internal static void RunReflection(object context)
+        {
+            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var input=Get(context,"Input");var aim=Get(combat,"Attack");
+            try
+            {
+                var p=Reset(context,combat,host,input,95);var n=Scene(2,new Vector2(970,667));Scene(3,new Vector2(1100,667));
+                NativeQuickItemChecks.BeginWorldStep();
+                var id=new NpcIdentity((long)Get(host,"Session"),n,2,n.generation,n.type,n.netID);
+                var state=new NpcMotionState{Identity=id,X=n.position.X,Y=n.position.Y,Width=n.width,Height=n.height,Active=true,CanReceive=true};
+                var points=Enumerable.Range(0,121).Select(t=>new NpcTrajectoryPoint(t,state)).ToArray();
+                var timeline=new NpcTrajectory(id,(long)Main.GameUpdateCount-1,1,PredictionAssumption.HeldPlayerControls,PredictionStop.None,points,points.Length);
+                var ammo=aim.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true).GetMethod("Capture",Flags).Invoke(null,new object[]{p,p.HeldItem});
+                using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))ImmunityOracle(aim,p,timeline,ammo,n.whoAmI);
+                Console.WriteLine("PASS REFLECTION dedup LaunchOrigin independent baseline/owner-immunity/other-receiver-root original oracle");
+            }
+            finally{NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+        }
+        // Both the full donor scenario and the reflection selector use this
+        // unchanged independent receive/root oracle; only donor preparation
+        // belongs to the full scenario. No ranking/source history is fabricated.
+        private static void ImmunityOracle(object aim,Player p,NpcTrajectory oraclePath,object oracleAmmo,int selectedSlot,Action prepareImmune=null)
+        {
+            int immune=Main.npc[selectedSlot].immune[0];var oracleType=aim.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true);var oracleOrigin=(Vector2)aim.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels",true).GetMethod("LaunchOrigin",Flags,null,new[]{typeof(Player),typeof(Item)},null).Invoke(null,new object[]{p,p.HeldItem});var solve=aim.GetType().GetMethod("SolveOnTerrain",Flags);var sample=ContentSamples.ProjectilesByType[(int)Get(oracleAmmo,"Projectile")];
+            // Native HitNPC bypasses owner immunity for maxPenetrate=1
+            // without local/static immunity. The original 97/14 fixture
+            // therefore compares two complete receives, not a fake miss.
+            // Reflection explicitly supplies the unadvanced-origin flag.
+            var baselineArgs=new object[]{p,p.HeldItem,oracleAmmo,oraclePath,oracleOrigin,0,true,Activator.CreateInstance(oracleType,true),0,null,null,null,false};var baseline=(AttackContact)solve.Invoke(null,baselineArgs);var baselineRoot=baselineArgs[10];
+            Require(sample.type==14 && sample.maxPenetrate==1 && !sample.usesLocalNPCImmunity && !sample.usesIDStaticNPCImmunity && baseline!=null && baselineRoot!=null && (bool)Get(baselineRoot,"Unchanged"),"original single-penetration native bullet has a complete baseline and a current independent root");
+            Main.npc[selectedSlot].immune[0]=120;
+            try
+            {
+                if(prepareImmune!=null)prepareImmune();
+                var oracleArgs=new object[]{p,p.HeldItem,oracleAmmo,oraclePath,oracleOrigin,0,true,Activator.CreateInstance(oracleType,true),0,null,null,null,false};var oracle=(AttackContact)solve.Invoke(null,oracleArgs);
+                Console.WriteLine("DEDUP immunity nativePolicy type="+sample.type+" maxPen="+sample.maxPenetrate+" local="+sample.usesLocalNPCImmunity+" static="+sample.usesIDStaticNPCImmunity+" owner="+p.whoAmI+" immune="+Main.npc[selectedSlot].immune[p.whoAmI]+" path="+oraclePath.Count+" sample="+oraclePath.SampleTick+" GUC="+Main.GameUpdateCount+" age=0 phase=BeforeNpc delay=0 advanced=False baseline="+baseline.Tick+"/"+baseline.ReceiveTick+" immuneContact="+oracle?.Tick+"/"+oracle?.ReceiveTick);
+                Require(oracle!=null && ReferenceEquals(baseline.Timeline,oracle.Timeline) && baseline.AimX==oracle.AimX && baseline.AimY==oracle.AimY && baseline.ImpactX==oracle.ImpactX && baseline.ImpactY==oracle.ImpactY && baseline.Tick==oracle.Tick && baseline.ReceiveTick==oracle.ReceiveTick && baseline.Subupdate==oracle.Subupdate && baseline.Delay==oracle.Delay && baseline.Confidence==oracle.Confidence && baseline.ReceiveGeometry==oracle.ReceiveGeometry,"native maxPen1 owner-immunity exception preserves the exact independent complete receive and aim");
+                Require((bool)Get(baselineRoot,"Unchanged") && oracleArgs[10]!=null && (bool)Get(oracleArgs[10],"Unchanged"),"selected immunity exception leaves the captured effective receive policy current");
+                // Other receiver rows separately lease their raw history.
+                // Keep that complete-root rejection on the existing other
+                // real candidate, without changing the public donor.
+                var otherReceiver=Main.npc[selectedSlot==2?3:2];int otherImmune=otherReceiver.immune[p.whoAmI];
+                try{otherReceiver.immune[p.whoAmI]=otherImmune+1;Require(!(bool)Get(baselineRoot,"Unchanged"),"independent complete root still retires for another captured receiver's raw immunity history");}finally{otherReceiver.immune[p.whoAmI]=otherImmune;}
+                Require((bool)Get(baselineRoot,"Unchanged"),"restored independent receiver history restores the unchanged complete root");
+            }
+            finally{Main.npc[selectedSlot].immune[0]=immune;}
+        }
         private static void Component(object context,object combat,object host,object input)
         {
             var p=Reset(context,combat,host,input,95);Scene(2,new Vector2(970,667));NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,true,false,false,50,true,true));
@@ -292,29 +339,10 @@ namespace NativeWorldTextProbe
                 reject(()=>p.itemAnimation++,()=>p.itemAnimation=animation,"native animation");
                 reject(()=>p.itemTime=2,()=>p.itemTime=time,"native cooldown");
                 reject(()=>p.position.X+=1,()=>p.position=position,"player starting pose");
-                var oraclePath=(NpcTrajectory)Get(donor,"Timeline");var oracleAmmo=Get(donor,"Ammo");var oracleType=attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true);var oracleOrigin=(Vector2)attack.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels",true).GetMethod("LaunchOrigin",Flags).Invoke(null,new object[]{p,p.HeldItem});var solve=attack.GetType().GetMethod("SolveOnTerrain",Flags);var sample=ContentSamples.ProjectilesByType[(int)Get(oracleAmmo,"Projectile")];
-                // Native HitNPC bypasses owner immunity for maxPenetrate=1
-                // without local/static immunity. The original 97/14 fixture
-                // therefore compares two complete receives, not a fake miss.
-                // Reflection explicitly supplies the unadvanced-origin flag.
-                var baselineArgs=new object[]{p,p.HeldItem,oracleAmmo,oraclePath,oracleOrigin,0,true,Activator.CreateInstance(oracleType,true),0,null,null,null,false};var baseline=(AttackContact)solve.Invoke(null,baselineArgs);var baselineRoot=baselineArgs[10];
-                Require(sample.type==14 && sample.maxPenetrate==1 && !sample.usesLocalNPCImmunity && !sample.usesIDStaticNPCImmunity && baseline!=null && baselineRoot!=null && (bool)Get(baselineRoot,"Unchanged"),"original single-penetration native bullet has a complete baseline and a current independent root");
-                Main.npc[selected.Slot].immune[0]=120;
-                try
+                ImmunityOracle(attack,p,(NpcTrajectory)Get(donor,"Timeline"),Get(donor,"Ammo"),selected.Slot,()=>
                 {
                     Call(attack,"ClearExecution");attack.GetType().GetField("candidateHandPlan",Flags).SetValue(attack,donor);shares=0;Call(attack,"PrepareAction");Require(shares==1,"receiver immunity does not withdraw a current representative direction");NativeCombatAimChecks.RequireSolution(attack,p,"immune receiver retains the same Enhanced direction");
-                    var oracleArgs=new object[]{p,p.HeldItem,oracleAmmo,oraclePath,oracleOrigin,0,true,Activator.CreateInstance(oracleType,true),0,null,null,null,false};var oracle=(AttackContact)solve.Invoke(null,oracleArgs);
-                    Console.WriteLine("DEDUP immunity nativePolicy type="+sample.type+" maxPen="+sample.maxPenetrate+" local="+sample.usesLocalNPCImmunity+" static="+sample.usesIDStaticNPCImmunity+" owner="+p.whoAmI+" immune="+Main.npc[selected.Slot].immune[p.whoAmI]+" path="+oraclePath.Count+" sample="+oraclePath.SampleTick+" GUC="+Main.GameUpdateCount+" age=0 phase=BeforeNpc delay=0 advanced=False baseline="+baseline.Tick+"/"+baseline.ReceiveTick+" immuneContact="+oracle?.Tick+"/"+oracle?.ReceiveTick);
-                    Require(oracle!=null && ReferenceEquals(baseline.Timeline,oracle.Timeline) && baseline.AimX==oracle.AimX && baseline.AimY==oracle.AimY && baseline.ImpactX==oracle.ImpactX && baseline.ImpactY==oracle.ImpactY && baseline.Tick==oracle.Tick && baseline.ReceiveTick==oracle.ReceiveTick && baseline.Subupdate==oracle.Subupdate && baseline.Delay==oracle.Delay && baseline.Confidence==oracle.Confidence && baseline.ReceiveGeometry==oracle.ReceiveGeometry,"native maxPen1 owner-immunity exception preserves the exact independent complete receive and aim");
-                    Require((bool)Get(baselineRoot,"Unchanged") && oracleArgs[10]!=null && (bool)Get(oracleArgs[10],"Unchanged"),"selected immunity exception leaves the captured effective receive policy current");
-                    // Other receiver rows separately lease their raw history.
-                    // Keep that complete-root rejection on the existing other
-                    // real candidate, without changing the public donor.
-                    var otherReceiver=Main.npc[selected.Slot==2?3:2];int otherImmune=otherReceiver.immune[p.whoAmI];
-                    try{otherReceiver.immune[p.whoAmI]=otherImmune+1;Require(!(bool)Get(baselineRoot,"Unchanged"),"independent complete root still retires for another captured receiver's raw immunity history");}finally{otherReceiver.immune[p.whoAmI]=otherImmune;}
-                    Require((bool)Get(baselineRoot,"Unchanged"),"restored independent receiver history restores the unchanged complete root");
-                }
-                finally{Main.npc[selected.Slot].immune[0]=immune;}
+                });
                 var receiver=Main.npc[selected.Slot];var replacement=new NPC();replacement.SetDefaults(receiver.type);replacement.whoAmI=selected.Slot;replacement.active=true;replacement.position=receiver.position;
                 reject(()=>Main.npc[selected.Slot]=replacement,()=>Main.npc[selected.Slot]=receiver,"target slot instance");
                 bool wet=Main.tile[53,41].active();ushort tileType=Main.tile[53,41].type;

@@ -54,10 +54,23 @@ namespace JueMingR.ArchitectureTests
                     "Actual NPC chase consumer receives the same supported near-player motion.");
                 foreach(float gravity in new[]{1f,-1f})foreach(bool down in new[]{false,true})
                 {
-                    var p=new PredictionPlayerMotion{HoldJump=true,AssistedJump=true,Down=down,Jump=0,JumpHeight=15,JumpSpeed=5.01f,GravityDirection=gravity,Gravity=.4f,MaxFall=10};
+                    var p=new PredictionPlayerMotion{HoldJump=true,AssistedJump=true,ReleaseJump=!down,Down=down,Jump=0,JumpHeight=15,JumpSpeed=5.01f,GravityDirection=gravity,Gravity=.4f,MaxFall=10};
                     PlayerVerticalMotion.Step(ref p,default(PredictionEnvironment));
                     Require((p.Jump==15)==!down && (down || Math.Abs(p.Vy-(-5.01f+.4f)*gravity)<.0001f),"Ordinary future ground jump preserves gravity and Down escape.");
+                    if(down)
+                    {
+                        // Down withdraws assistance; it does not prohibit a
+                        // native press which was already legally rearmed.
+                        p.ReleaseJump=true;p.Vy=0;var native=p;native.AssistedJump=false;
+                        PlayerVerticalMotion.Step(ref p,default(PredictionEnvironment));PlayerVerticalMotion.Step(ref native,default(PredictionEnvironment));
+                        Require(p.Jump==15 && p.Jump==native.Jump && p.Vy==native.Vy && p.ReleaseJump==native.ReleaseJump,"Already-armed Down+Jump stays exactly native with assistance enabled.");
+                    }
                 }
+                var unarmed=new PredictionPlayerMotion{HoldJump=true,AssistedJump=true,JumpHeight=15,JumpSpeed=5,GravityDirection=1,MaxFall=10};
+                PlayerVerticalMotion.Step(ref unarmed,default(PredictionEnvironment));
+                Require(unarmed.Jump==0 && unarmed.ReleaseJump,"Unarmed ordinary intent first completes a real release step.");
+                PlayerVerticalMotion.Step(ref unarmed,default(PredictionEnvironment));
+                Require(unarmed.Jump==15 && !unarmed.ReleaseJump,"Only the subsequent step presses the native rearmed jump.");
                 var ongoing=new PredictionPlayerMotion{HoldJump=true,AssistedJump=true,Jump=45,JumpSpeed=5,GravityDirection=1,Gravity=.4f,MaxFall=10,Vy=-2};
                 PlayerVerticalMotion.Step(ref ongoing,default(PredictionEnvironment));Require(ongoing.Jump==44 && Math.Abs(ongoing.Vy+4.6f)<.0001f,"Continuous intent cannot shorten a long native span.");
             }

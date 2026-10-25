@@ -61,7 +61,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             // Stable command/field identity is independent of its page position.
             new F5RowLayout(elements,measure).Row(ref y,0,522,Names[field],new[]{"开启","关闭","键"},label=>label=="开启"?(F5Command)((int)F5Command.ObservationCollisionOn+field*2):label=="关闭"?(F5Command)((int)F5Command.ObservationCollisionOn+field*2+1):F5Command.None,
-                new F5RowDescription(Actions[field],field==0?"↓":"显示NPC可能的未来路径"));
+                new F5RowDescription(Actions[field],field==0?"↓":"显示NPC可能的未来路径",field==1?F5NameStyle.Hidden:F5NameStyle.Standard));
             var key=elements[elements.Count-1];elements[elements.Count-1]=new F5Element(key.Kind,key.Rect,key.Text,key.TextSize,key.TextScale,key.Command,Actions[field]);
         }
         internal static bool Owns(F5Command c){return c>=F5Command.ObservationPolicy && c<=F5Command.ObservationAimOff;}

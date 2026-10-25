@@ -466,7 +466,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal bool PresentationMembersCurrent(Player player,int age){return age==0?MembersCurrent(player) && HandReceiveCurrent(player):WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && !Controlled && HandReceiveCurrent(player) && (WhipOwner==null || WhipOwner.Current) && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.PresentationCurrent(age));}
             internal void CopyPresentation(PreviewPlan source)
             {
-                Clear();Contact=source.Contact;Timeline=source.Timeline;Ammo=source.Ammo;Environment=source.Environment;EnvironmentState=source.EnvironmentState;Obstacles=source.Obstacles;
+                Clear();Contact=source.Contact;Solution=source.Solution;Balanced=source.Balanced;Timeline=source.Timeline;Ammo=source.Ammo;Environment=source.Environment;EnvironmentState=source.EnvironmentState;Obstacles=source.Obstacles;
                 HarpyState=source.HarpyState;Flight=source.Flight;ControlDependencies=source.ControlDependencies;WhipOwner=source.WhipOwner;Direction=source.Direction;Controlled=source.Controlled;
                 item=source.item;slot=source.slot;type=source.type;prefix=source.prefix;scale=source.scale;
                 Phase=source.Phase;Immune=source.Immune;AttackCooldown=source.AttackCooldown;MeleeCooldown=source.MeleeCooldown;

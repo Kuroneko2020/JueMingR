@@ -180,9 +180,9 @@ namespace JueMingR.TerrariaHost.Movement
         internal void AfterJump(Player value) { if (ReferenceEquals(player, value)) { JumpHost.AfterJump(value, CanAct(value), frame.JumpHeld, frame.DownHeld); FallHost.AfterJump(value); } }
         internal void AfterFlight(Player value)
         {
-            // Native flight already ran. Retiring our span is observation, not
-            // permission to start an action; even an unsampled epoch must not
-            // let a later coast mask take over that existing native flight.
+            // Native flight already ran. Observe its takeover without asking
+            // for new-action permission or erasing an overlapping real Held;
+            // an unsampled epoch must still retire an inapplicable Coast.
             if (ReferenceEquals(player, value) && Thread.CurrentThread.ManagedThreadId == thread) { JumpHost.AfterFlight(value); FallHost.AfterFlight(value); }
         }
         internal bool EffectiveJump(Player value, bool nativeJump)

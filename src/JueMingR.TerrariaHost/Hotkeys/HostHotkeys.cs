@@ -15,9 +15,10 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal readonly HotkeyBindings Bindings;
         internal readonly HotkeyStateFeedback Feedback;
         private readonly JourneyHotkeys journey;
+        private readonly CombatPathHotkeys combatPath;
         private readonly F5.IMovementControls movementOwner;
         private readonly Action movementModeChanged;
-        internal void PollJourneyRegistration() { journey?.Refresh(); }
+        internal void PollHiddenRegistration() { journey?.Refresh(); combatPath?.Refresh(); }
         internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null, WorldObjectText.HostWorldObjectText worldObjects = null,
             Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null, F5.IMapControls maps = null, F5.IFootprintControls footprints = null, Func<bool> canAnnounce = null, Action announce = null, Func<bool> canQuery = null, Action query = null, F5.IAnnouncementControls announcements = null, QuickItems.HostQuickItems quickItems = null, CoinDeposit.HostCoinDeposit coinDeposit = null, Recovery.HostRecovery recovery = null, Processing.HostProcessing processing = null, Feedback.LocalShortFeedback display = null, Tools.HostTools tools = null, Fishing.HostFishing fishing = null, Combat.HostCombat combat = null, Combat.HostCombatObservation combatObservation=null, F5.IJourneyControls journey = null, Features.HiddenFeatures.HiddenFeatureAccess hiddenAccess = null, Action journeyToggle = null, F5.IMovementControls movement = null, Blueprint.HostBlueprint blueprint = null)
         {
@@ -109,7 +110,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
             tools?.Register(Registry, Feedback);
             fishing?.Register(Registry, Feedback);
             combat?.Register(Registry, Feedback);
-            combatObservation?.Register(Registry, Feedback);
+            combatPath = combatObservation?.Register(Registry, Feedback);
             if (journey != null) this.journey = new JourneyHotkeys(Registry, hiddenAccess, journey, journeyToggle ?? throw new ArgumentNullException(nameof(journeyToggle)));
             blueprint?.Register(Registry, Feedback);
             Bindings = new HotkeyBindings(Registry, new AtomicFileDocument(Path.Combine(gameDirectory, "JueMingRData", "config", "hotkeys.json"), 65536, true));

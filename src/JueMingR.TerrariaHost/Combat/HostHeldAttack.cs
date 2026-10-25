@@ -88,7 +88,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(phoenix)shot.timeLeft=120;
                 else if(ammo.ExtraArrowUpdates && shot.arrow && shot.extraUpdates<1)shot.extraUpdates=1;
                 return shot;
-            },delay);
+            },delay).WithSemantics(AttackPointSemantics.Direction);
         }
     }
 }

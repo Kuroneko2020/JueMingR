@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -35,6 +35,10 @@ namespace NativeWorldTextProbe
             return p;
         }
         internal static void Run(object context)
+        {RunCore(context,false);}
+        internal static void RunReflection(object context)
+        {RunCore(context,true);}
+        private static void RunCore(object context,bool reflection)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var assembly=combat.GetType().Assembly;
             var model=assembly.GetType("JueMingR.TerrariaHost.Combat.HostClingerWallAttack",true);
@@ -42,6 +46,7 @@ namespace NativeWorldTextProbe
             var shoot=typeof(Player).GetMethod("ItemCheck_Shoot",Flags);int rays=0,actions=0,hands=0;
             foreach(float gravity in new[]{1f,-1f})foreach(int floor in new[]{0,1,2,3})foreach(bool wall in new[]{false,true})
             {
+                if(reflection)continue;
                 var p=Scene(context,gravity,floor);if(wall)for(int y=10;y<77;y++)NativeToolsChecks.Tile(55,y,1);
                 var raw=new Vector2(1060,660);Main.screenPosition.Y=660-Main.screenHeight/2;Main.mouseX=(int)(raw.X-Main.screenPosition.X);Main.mouseY=(int)(raw.Y-Main.screenPosition.Y);
                 var origin=p.RotatedRelativePoint(p.MountedCenter);p.direction=1;
@@ -61,11 +66,18 @@ namespace NativeWorldTextProbe
             {
                 var p=Scene(context,gravity,1);var raw=new Vector2(1060,y);Main.mouseX=(int)(raw.X-Main.screenPosition.X);Main.mouseY=(int)(raw.Y-Main.screenPosition.Y);p.direction=1;
                 var terrain=Activator.CreateInstance(terrainType,true);Call(terrain,"Reset");var args=new object[]{p,p.RotatedRelativePoint(p.MountedCenter),Main.MouseWorld,p.HeldItem.shootSpeed,terrain,null};
+                // The old reflection seam lived only in failed-ray diagnostics.
+                // Observe it on the same normal rays too, using the native
+                // integer MouseWorld direction before the original placement
+                // oracle below. A passing placement cannot skip this Invoke.
+                var origin=(Vector2)args[1];var logical=raw;if(gravity<0)logical.Y=Main.screenPosition.Y+Main.screenHeight-(raw.Y-Main.screenPosition.Y);
+                var velocity=(Vector2)assembly.GetType("JueMingR.TerrariaHost.Combat.HostThornAttack",true).GetMethod("BirthVelocity",Flags,null,new[]{typeof(Player),typeof(Vector2),typeof(Vector2),typeof(float)},null).Invoke(null,new object[]{p,origin,logical,p.HeldItem.shootSpeed});
+                var expectedDirection=Main.MouseWorld-origin;expectedDirection.Normalize();
+                Require(Vector2.DistanceSquared(velocity,expectedDirection*p.HeldItem.shootSpeed)<.0001f,"Clinger reflected initial ray uses the native integer MouseWorld and original speed before placement.");
                 bool modeled=(bool)model.GetMethod("Birth",Flags).Invoke(null,args);
                 if(!modeled)
                 {
-                    var origin=(Vector2)args[1];var logical=raw;if(gravity<0)logical.Y=Main.screenPosition.Y+Main.screenHeight-(raw.Y-Main.screenPosition.Y);
-                    var velocity=(Vector2)assembly.GetType("JueMingR.TerrariaHost.Combat.HostThornAttack",true).GetMethod("BirthVelocity",Flags).Invoke(null,new object[]{p,origin,logical,p.HeldItem.shootSpeed});var at=origin;var limited=raw;p.LimitPointToPlayerReachableArea(ref limited);
+                    var at=origin;var limited=raw;p.LimitPointToPlayerReachableArea(ref limited);
                     Console.WriteLine("CLINGER failed ray origin="+origin+" velocity="+velocity+" speed="+p.HeldItem.shootSpeed+" raw="+raw+" limited="+limited);
                     for(int i=0;i<300;i++)
                     {
@@ -77,6 +89,7 @@ namespace NativeWorldTextProbe
                 var native=Main.projectile.SingleOrDefault(q=>q.active && q.owner==p.whoAmI && q.type==482);var expected=(Projectile)args[5];
                 Require((native==null)==(expected==null) && (native==null || native.position==expected.position && native.ai[0]==expected.ai[0] && native.ai[1]==expected.ai[1]),"Clinger raw placement differs from the separately reversed initial ray exactly as vanilla gravity="+gravity+" y="+y+" native="+native?.position+"/"+native?.ai[0]+"/"+native?.ai[1]+" model="+expected?.position+"/"+expected?.ai[0]+"/"+expected?.ai[1]);rays++;
             }
+            if(reflection){Console.WriteLine("PASS REFLECTION clinger BirthVelocity actual native nonhorizontal placement rays="+rays);return;}
             foreach(bool olderFirst in new[]{false,true})
             {
                 var p=Scene(context,1,1);var native=new Projectile[2];var copies=new Projectile[2];

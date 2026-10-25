@@ -29,14 +29,16 @@ namespace NativeWorldTextProbe
                 // receiver. Its finite mechanism allowance is separate from
                 // cold Main opportunity; sample the actual pre-NPC phase.
                 NativeToolExecutionChecks.Sample(context,input,new Vector2(650,850),true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,25,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,attack,n,1,phaseName:"BeforeNpc");
-                // The native-arrow birth family uses the representative
-                // solution. The remaining dedicated sky solvers still owe
-                // their full Contact; nullable ordinary Contact cannot weaken
-                // those independent lifecycle oracles.
                 var plan=NativeCombatAimChecks.RequireSolution(attack,p,"sky consumer prepares its actual enhanced birth/flight input: "+type);
                 if(type==3029)NativeCombatAimChecks.SolutionCheckpoint(context,attack,"sky3029-prepared");
-                if(type!=3029)Require(plan.Contact!=null && plan.Contact.Confidence==AttackConfidence.Representative,"dedicated sky consumer retains its full contact: "+type);
-                Require(plan.Point.X>=1100 && plan.Point.X<1300 && Math.Abs(plan.Point.Y-1020)<25,"sky AimInput is future cursor point, not a long muzzle direction");
+                if(plan.Contact!=null)Require(plan.Contact.Confidence==AttackConfidence.Representative,"optional sky Contact retains its representative confidence: "+type);
+                // Native sky cursor is an input to BOTH birth and direction.
+                // Its Y need not equal the receiver height after inverse birth
+                // solving; the exact encoded cursor/birth and native Damage
+                // assertions below remain the independent consumer oracle.
+                Require(!float.IsNaN(plan.Point.X) && !float.IsInfinity(plan.Point.X) && !float.IsNaN(plan.Point.Y) && !float.IsInfinity(plan.Point.Y),"sky AimInput is a finite native cursor proposal");
+                var prepared=Get(attack,"currentSolution");Require(Get(prepared,"PointSemantics").ToString()=="WorldPoint","all sky adapters preserve spatial command semantics: "+type);
+                if(type==3570)Require(Enumerable.Range(0,plan.Timeline.Count).Any(i=>{var b=plan.Timeline[i].ProjectileReceiveBounds;return Math.Abs(plan.Point.X-b.CenterX)<1.01f && Math.Abs(plan.Point.Y-b.CenterY)<1.01f;}),"lunar no-gravity command converges at a published target region");
                 Main.rand=new Terraria.Utilities.UnifiedRandom(7123);int x=Main.mouseX,y=Main.mouseY;
                 using(var witness=type==3029?new SkyWitness(attack,p,n,plan):null)
                 {
@@ -72,6 +74,30 @@ namespace NativeWorldTextProbe
                 }
             }
             NativeCombatObservationChecks.Save(host,new ObservationOptions());
+            StarSides(context);
+        }
+        private static void StarSides(object context)
+        {
+            var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var assembly=combat.GetType().Assembly;var sky=assembly.GetType("JueMingR.TerrariaHost.Combat.HostSkyAttack",true);
+            foreach(int side in new[]{-1,1})
+            {
+                var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),65,0,0);p.position=new Vector2(800,900);p.ResetEffects();foreach(var oldNpc in Main.npc)oldNpc.active=false;foreach(var q in Main.projectile)q.active=false;
+                for(int x=5;x<115;x++)Main.tile[x,43].ClearEverything();
+                var n=Main.npc[2];n.SetDefaults(3);n.netOffset=Vector2.Zero;n.whoAmI=2;n.active=true;n.Center=p.Center+new Vector2(side*300,80);n.life=n.lifeMax=10000;n.knockBackResist=0;
+                // These two exact-motion components do not run NPC.Update.
+                // SetDefaults preserves old owner immunity, so each independent
+                // receiver starts with its explicitly uninjured premise.
+                Console.WriteLine("SKY-STAR prior-owner-immunity side="+side+" value="+n.immune[p.whoAmI]);Array.Clear(n.immune,0,n.immune.Length);
+                NativeToolExecutionChecks.Sample(context,Get(context,"Input"),n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,50,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,Get(combat,"Attack"),n,0,phaseName:"BeforeNpc");
+                var plan=NativeCombatAimChecks.RequireSolution(Get(combat,"Attack"),p,"both legal Starfury birth sides retain a representative Contact");
+                var args=new object[]{p,65,p.MountedCenter,plan.Point,p.HeldItem.shootSpeed,null,null};sky.GetMethod("Launch",Flags).Invoke(null,args);var birth=(Vector2)args[5];var velocity=(Vector2)args[6];
+                Require((plan.Point.X<p.Left.X)==(side<0),"native Starfury side-selection gate is retained");
+                int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),birth,velocity,9,50,0,p.whoAmI,0,plan.Point.Y);var shot=Main.projectile[slot];int first=0;
+                for(int t=1;t<=120 && shot.active;t++){NativeQuickItemChecks.BeginWorldStep();shot.Update(slot);if(n.life<10000){first=t;break;}}
+                Require(first==plan.Contact.Tick,"representative Starfury original movement/damage matches model on both birth sides: side="+side+" actual="+first+" expected="+plan.Contact.Tick);
+                Console.WriteLine("SKY-STAR side="+side+" cursor="+plan.Point+" birth="+birth+" velocity="+velocity+" contact="+plan.Contact.Tick+" nativeDamage="+first);
+            }
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());
         }
         // This finite observer keeps the original seeded miss and its separate
         // natural-outcome window. Its ordinal-0 run uses the existing legal birth
@@ -96,7 +122,7 @@ namespace NativeWorldTextProbe
                 try
                 {
                     var assembly=attack.GetType().Assembly;var terrain=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);Call(terrain,"Reset");
-                    var origin=(Vector2)assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels",true).GetMethod("LaunchOrigin",Flags).Invoke(null,new object[]{pose,pose.HeldItem});
+                    var origin=(Vector2)assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackModels",true).GetMethod("LaunchOrigin",Flags,null,new[]{typeof(Player),typeof(Item)},null).Invoke(null,new object[]{pose,pose.HeldItem});
                     var born=(Projectile[])assembly.GetType("JueMingR.TerrariaHost.Combat.HostNativeArrowBirthAttack",true).GetMethod("Births",Flags).Invoke(null,new object[]{pose,Get(attack,"ammo"),origin,plan.Point,0,terrain});
                     Require(born!=null && born.Length==3,"existing legal midpoint birth adapter supplies all sky ordinals");representative=born[0];
                     Require(SameRandom(random,Main.rand),"legal sky birth capture never consumes the natural seeded stream");
