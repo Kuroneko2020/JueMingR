@@ -506,7 +506,7 @@ namespace NativeWorldTextProbe
                 var placed=Place(host,input,entry,ox,oy,step);AwaitReady(placed,step);
                 Require(changes==1 && Scene(host).Contains(placed) && Matches(placed)==3,"stale seed is retried through the real source and cannot complete with the missing sentinel");
                 long invalidations=(long)Get(host,"ProjectionMatchInvalidations");Require(WorldGen.OpenDoor(ox,oy,1),"fresh certified door still opens on its unblocked wing");step();
-                Require(Matches(placed)==3 && (long)Get(host,"ProjectionMatchInvalidations")==invalidations,"fresh seed and complete real occupancy retain only an already current canonical proof");
+                Require(Matches(placed)==3 && (long)Get(host,"ProjectionMatchInvalidations")==invalidations,"fresh seed and complete real occupancy retain only an already current canonical proof; matches="+Matches(placed)+" hardInvalidations="+((long)Get(host,"ProjectionMatchInvalidations")-invalidations));
             }
             finally{objectSample=null;timing.UnpatchAll(timing.Id);Call(host,"ClearProjection");}
             Console.WriteLine("PASS BlueprintWorldMatch door seed in-flight: actual gated wing sample then original ordinary SelfFrame8Way; old native stamp revoked before first witness, fresh source retry and certified right-open, no success injection.");
@@ -655,14 +655,16 @@ namespace NativeWorldTextProbe
                 if (denseRecords == 0) NativeQuickItemChecks.Until(advance);
                 else
                 {
-                    // Two literal fixtures need bounded work rather than an
+                    // Three literal fixtures need bounded work rather than an
                     // eight-second wall clock: 512x260 recovery with one mask,
-                    // or forty 128x128 A40 sources. Keep the same stagnation
+                    // forty 128x128 A40 sources, or one 512x128 eight-layer
+                    // command-pressure source. Keep the same stagnation
                     // failure and a total facility guard; wakes/slice counts
                     // do not renew either instance's semantic progress.
                     bool recovery=denseRecords==512*260 && denseBlocks==65 && denseEffective==denseRecords-1 && cooperatingRecords==0 && cooperatingBlocks==0;
                     bool strips=denseRecords==128*128 && denseBlocks==8 && (denseEffective==128 || denseEffective==128*128) && cooperatingRecords==40*128*128 && cooperatingBlocks==40*8;
-                    Require(recovery || strips,"dense Move proof dimensions, cooperative source bound and effective denominator come from the two literal fixtures");
+                    bool commands=denseRecords==512*128 && denseBlocks==32 && denseEffective==denseRecords && cooperatingRecords==0 && cooperatingBlocks==0;
+                    Require(recovery || strips || commands,"dense Move proof dimensions, cooperative source bound and effective denominator come from the three literal fixtures");
                     var clock = System.Diagnostics.Stopwatch.StartNew(); long progressAt = 0, world = -1, decoded = -1, blocks = -1;
                     while (true)
                     {
@@ -679,6 +681,7 @@ namespace NativeWorldTextProbe
                         if (ready)
                         {
                             Require(currentWorld == denseEffective, "dense Move qualification observed every effective empty-world target and skipped permanently covered cells");
+                            if(commands)Require((long)Get(state,"Targets")==8L*denseEffective && ((Array)Get(state,"Ranges")).Length==32,"literal command-pressure proof covers all eight layers of 65536 cells in its 32 source blocks");
                             Console.WriteLine("PASS dense Move proof records="+denseRecords+" blocks="+denseBlocks+" cooperatingRecords="+sourceRecords+" cooperatingBlocks="+sourceBlocks+" worldReads="+world+" bodyReads="+blocks+" decoded="+decoded+" elapsedMs="+clock.ElapsedMilliseconds+"; finite work/stagnation guard, not a product latency or FPS gate"); break;
                         }
                         if (clock.ElapsedMilliseconds-progressAt > 8000 || clock.ElapsedMilliseconds > 60000) throw new Exception("Dense Move proof stalled or exceeded facility timeout");

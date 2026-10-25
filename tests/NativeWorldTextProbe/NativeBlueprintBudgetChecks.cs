@@ -386,7 +386,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { Tick(host, view); return !(bool)Get(source, "WindowPending") && Windows(source).Count + (int)Get(Get(source, "Denied"), "Count") == 4; });
             long commands = (long)Get(host, "ProjectionCommandBytes");
             Require(commands > 48L * 1024 * 1024 && commands < 64L * 1024 * 1024, "B single multi-core instance genuinely fills most commands64 budget");
-            NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, source);
+            NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, source,512*128,32,512*128);
             Stable(host, library, view, "BsingleMoveBefore");
             var originalWindows = Windows(source).ToDictionary(p => p.Key, p => p.Value); object alias = Get(source, "Window");
             var stats = library.DebugProjectionStatistics;

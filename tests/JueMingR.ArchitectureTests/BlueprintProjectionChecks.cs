@@ -515,6 +515,34 @@ namespace JueMingR.ArchitectureTests
                     "permanent masks remove only the exact coordinate/layer/color from immutable source observation dependencies");
                 Console.WriteLine("BlueprintProjection source mixed-layer position masks=true crossBlockObjectMasks=true; no per-instance DTO/world index");
             }
+            SourceObjectRoutes(Path.Combine(path,"unique-object-routes"));
+        }
+        private static void SourceObjectRoutes(string path)
+        {
+            // Small sparse blocks retain points while the same object's full
+            // extent is also indexed. Count callbacks, not just set membership:
+            // a repeated ordinal would apply one native old/new delta twice.
+            var cells=new List<CaptureCell>();
+            for(int row=0;row<3;row++)
+            {
+                for(int column=0;column<2;column++)cells.Add(new CaptureCell{X=37+column*2,Y=91+row,ObjectId=column+1,Layers=CaptureLayer.Tile|(row==0&&column==0?CaptureLayer.Wall:0),TileType=10,WallType=(ushort)(row==0&&column==0?7:0),FrameY=(short)(row*18)});
+                if(row==0)cells.Add(new CaptureCell{X=57,Y=91,Layers=CaptureLayer.Wire,Wires=8});
+            }
+            var fixture=Write(path,21,3,cells.Count,n=>cells[(int)n],new[]{new CaptureObject{Id=1,Type=10,X=37,Y=91,Width=1,Height=3,Reliable=true},new CaptureObject{Id=2,Type=10,X=39,Y=91,Width=1,Height=3,Reliable=true}});
+            using(var state=new LibraryState(new FileBlueprintLibrary(path)))
+            {
+                var id=new BlueprintProjectionIdentity(fixture.Id,fixture.Revision,fixture.Hash,94,1);Require(state.RequestProjectionOpen(id),"sparse object route source open");var opened=Await(state,BlueprintProjectionReceiptKind.Opened);
+                Require(opened.SourceRanges.Count==1 && opened.MatchRanges.Count==3,"one physical watch owns an ordinary proof and two complete doors");
+                var range=opened.SourceRanges[0];var routes=new List<int>();
+                range.RouteProofs(new BlueprintProjectionBounds(0,0,1,1),1,BlueprintProjectionMask.Empty,routes.Add);
+                Console.WriteLine("BlueprintProjection sparse native-store routes="+String.Join(",",routes));
+                Require(routes.SequenceEqual(new[]{1}),"one actual native store reaches the same sparse object proof exactly once despite point/extent overlap; actual="+String.Join(",",routes));
+                routes.Clear();range.RouteProofs(new BlueprintProjectionBounds(0,0,1,1),1,BlueprintProjectionMask.Empty,routes.Add);Require(routes.SequenceEqual(new[]{1}),"a later store in the same root must independently reach that proof once again");
+                routes.Clear();range.RouteProofs(new BlueprintProjectionBounds(1,0,1,1),1,BlueprintProjectionMask.Empty,routes.Add);Require(routes.Count==2 && routes.OrderBy(i=>i).SequenceEqual(new[]{1,2}),"the shared wing coordinate reaches both distinct object proofs once");
+                routes.Clear();range.RouteProofs(new BlueprintProjectionBounds(0,0,3,3),3,BlueprintProjectionMask.Empty,routes.Add);Require(routes.Count==3 && routes.OrderBy(i=>i).SequenceEqual(new[]{0,1,2}),"multi-member extent reaches each object and the independent wall proof once");
+                var mask=SourceMask(new Dictionary<long,ushort>(),new HashSet<int>{1},3);
+                routes.Clear();range.RouteProofs(new BlueprintProjectionBounds(1,0,1,1),1,mask,routes.Add);Require(routes.SequenceEqual(new[]{2}),"permanent object mask removes only its own proof from the shared wing");
+            }
         }
         private static BlueprintProjectionMask SourceMask(Dictionary<long, ushort> cells, HashSet<int> objects, long count)
         { return (BlueprintProjectionMask)typeof(BlueprintProjectionMask).GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Single().Invoke(new object[] { cells, objects, count }); }

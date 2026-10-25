@@ -77,11 +77,27 @@ namespace JueMingR.Features.Blueprint
             private static long Key(int x, int y) { return ((long)y << 32) | (uint)x; }
             internal SourceGeometry(long[] coordinates, ushort[] layers, int[] objectIds, IList<BlueprintProjectionSourceDependency> dependencies)
             {
+                ushort targetBits=0;bool hasObjectTile=false;
+                for(int i=0;i<layers.Length;i++){targetBits|=layers[i];hasObjectTile|=objectIds[i]>0 && (layers[i]&1)!=0;}
+                var objectBounds=new Dictionary<int,BlueprintProjectionBounds>();
+                if(hasObjectTile)
+                {
+                    var ordinaryCoordinates=new List<long>();var ordinaryLayers=new List<ushort>();
+                    for(int i=0;i<coordinates.Length;i++)
+                    {
+                        ushort ordinary=layers[i];
+                        if(objectIds[i]>0 && (ordinary&1)!=0)
+                        { IncludeObject(objectBounds,objectIds[i],new BlueprintProjectionBounds((int)(uint)coordinates[i],(int)(coordinates[i]>>32),1,1));ordinary&=0xfe; }
+                        if(ordinary!=0){ordinaryCoordinates.Add(coordinates[i]);ordinaryLayers.Add(ordinary);}
+                    }
+                    coordinates=ordinaryCoordinates.ToArray();layers=ordinaryLayers.ToArray();objectIds=new int[coordinates.Length];
+                }
+                foreach(var dependency in dependencies)IncludeObject(objectBounds,dependency.ObjectId,dependency.Bounds);
                 var compact = new List<Leaf>(); var vertical = new Dictionary<Tuple<int, int, ushort, int>, int>();
-                bool uniform = true, objects = false; ushort bits = 0;
-                uniformLayers = layers[0];
-                for (int i = 0; i < layers.Length; i++) { bits |= layers[i]; uniform &= layers[i] == uniformLayers; objects |= objectIds[i] != 0; }
-                TargetBits = bits;
+                bool uniform = true, objects = false;
+                uniformLayers = layers.Length==0?(ushort)0:layers[0];
+                for (int i = 0; i < layers.Length; i++) { uniform &= layers[i] == uniformLayers; objects |= objectIds[i] != 0; }
+                TargetBits = targetBits;
                 // Merge actual adjacent row runs; never walk absent bbox rows.
                 for (int i = 0; i < coordinates.Length;)
                 {
@@ -97,9 +113,12 @@ namespace JueMingR.Features.Blueprint
                 pointLayers = useRuns || uniform ? Array.Empty<ushort>() : layers;
                 pointObjects = useRuns || !objects ? Array.Empty<int>() : objectIds;
                 if (!useRuns) compact.Clear();
-                foreach (var dependency in dependencies) compact.Add(new Leaf { Bounds = dependency.Bounds, Layers = 1, ObjectId = dependency.ObjectId });
-                // Door expansion and complete-object rectangles frequently
-                // share a row interval. Their exact union remains a rectangle.
+                // Every complete object's Tile positions and expanded/cross-
+                // block dependency are the same proof. Keep one rectangle per
+                // ID instead of both sparse points and an overlapping extent:
+                // one real store must feed its strict old/new chain once.
+                // Other layers at those points remain ordinary geometry.
+                foreach(var pair in objectBounds)compact.Add(new Leaf{Bounds=pair.Value,Layers=1,ObjectId=pair.Key});
                 compact.Sort((a, b) => a.Layers != b.Layers ? a.Layers.CompareTo(b.Layers) : a.ObjectId != b.ObjectId ? a.ObjectId.CompareTo(b.ObjectId) : a.Bounds.Top != b.Bounds.Top ? a.Bounds.Top.CompareTo(b.Bounds.Top) : a.Bounds.Height != b.Bounds.Height ? a.Bounds.Height.CompareTo(b.Bounds.Height) : a.Bounds.Left.CompareTo(b.Bounds.Left));
                 var merged = new List<Leaf>();
                 foreach (var next in compact)
@@ -114,6 +133,13 @@ namespace JueMingR.Features.Blueprint
                 }
                 var rectangles = merged.ToArray(); nodes = new Node[Math.Max(0, rectangles.Length * 2 - 1)];
                 if (rectangles.Length != 0) Build(rectangles, 0, rectangles.Length);
+            }
+            private static void IncludeObject(Dictionary<int,BlueprintProjectionBounds> objects,int id,BlueprintProjectionBounds bounds)
+            {
+                BlueprintProjectionBounds prior;
+                if(objects.TryGetValue(id,out prior))
+                {int left=Math.Min(prior.Left,bounds.Left),top=Math.Min(prior.Top,bounds.Top);bounds=new BlueprintProjectionBounds(left,top,Math.Max(prior.Right,bounds.Right)-left,Math.Max(prior.Bottom,bounds.Bottom)-top);}
+                objects[id]=bounds;
             }
             private int Build(Leaf[] rectangles, int start, int count)
             {
@@ -150,17 +176,7 @@ namespace JueMingR.Features.Blueprint
             }
             internal bool HasRoutedObject(BlueprintProjectionBounds bounds,BlueprintProjectionMask mask,int[] objects)
             {
-                if(objects.Length==0)return false;
-                if(bounds.Width==1 && bounds.Height==1)
-                {int at=Array.BinarySearch(points,Key(bounds.Left,bounds.Top));if(at>=0 && pointObjects.Length!=0 && PointIntersects(at,1,mask) && Array.BinarySearch(objects,pointObjects[at])>=0)return true;}
-                else
-                {
-                    int low=0,high=points.Length;long first=Key(0,bounds.Top);
-                    while(low<high){int middle=(low+high)/2;if(points[middle]<first)low=middle+1;else high=middle;}
-                    for(int i=low;i<points.Length && (points[i]>>32)<bounds.Bottom;i++)
-                        if(pointObjects.Length!=0 && bounds.Contains((int)(uint)points[i],(int)(points[i]>>32)) && PointIntersects(i,1,mask) && Array.BinarySearch(objects,pointObjects[i])>=0)return true;
-                }
-                return nodes.Length!=0 && HasObjectNode(0,bounds,mask,objects);
+                return objects.Length!=0 && nodes.Length!=0 && HasObjectNode(0,bounds,mask,objects);
             }
             private void RouteObjectNode(int index,BlueprintProjectionBounds bounds,BlueprintProjectionMask mask,int[] objects,int[] routes,Action<int> emit)
             {
@@ -171,17 +187,7 @@ namespace JueMingR.Features.Blueprint
             }
             internal void RouteObjects(BlueprintProjectionBounds bounds,BlueprintProjectionMask mask,int[] objects,int[] routes,Action<int> emit)
             {
-                if(objects.Length==0)return;
-                if(bounds.Width==1 && bounds.Height==1)
-                {int at=Array.BinarySearch(points,Key(bounds.Left,bounds.Top));if(at>=0 && pointObjects.Length!=0 && PointIntersects(at,1,mask))EmitObject(pointObjects[at],objects,routes,emit);}
-                else
-                {
-                    int low=0,high=points.Length;long first=Key(0,bounds.Top);
-                    while(low<high){int middle=(low+high)/2;if(points[middle]<first)low=middle+1;else high=middle;}
-                    for(int i=low;i<points.Length && (points[i]>>32)<bounds.Bottom;i++)
-                        if(pointObjects.Length!=0 && bounds.Contains((int)(uint)points[i],(int)(points[i]>>32)) && PointIntersects(i,1,mask))EmitObject(pointObjects[i],objects,routes,emit);
-                }
-                if(nodes.Length!=0)RouteObjectNode(0,bounds,mask,objects,routes,emit);
+                if(objects.Length!=0 && nodes.Length!=0)RouteObjectNode(0,bounds,mask,objects,routes,emit);
             }
             internal bool Intersects(BlueprintProjectionBounds bounds, ushort layers, BlueprintProjectionMask mask)
             {
