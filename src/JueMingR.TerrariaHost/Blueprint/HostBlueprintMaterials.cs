@@ -326,8 +326,13 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (value.Unresolved) { range.Owner.Match.Materials.Unresolved--; materialAll.Unresolved--; }
             }
             value.Candidate = value.CandidateFallback = null; value.Progress = null;
-            value.EligibilityRetry = false;
-            if (resetBuild) { value.CandidateCursor = 0; value.BuildExhausted = false; }
+            // A bill/context refresh keeps the no-spend native rejection's
+            // bounded recovery. Only a changed placement identity/target or
+            // retirement discards that wait together with its candidate walk.
+            if (retiring || resetBuild)
+            {
+                value.EligibilityRetry = false; value.CandidateCursor = 0; value.BuildExhausted = false;
+            }
             value.Desired = null; QueueMaterialChange(range);
             if (retiring) value.CatalogRevision = -1;
             CancelMaterialPublication();
@@ -393,7 +398,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     if (materialTransitionRemaining > 0 && --materialTransitionRemaining == 0) materialCatalogTransition = materialBuildTransition = materialContextTransition = false;
                 }
                 var value = range.Materials;
-                if (value != null && value.CatalogRevision != materialPlacementIdentity) { RevokeMaterialRange(range); value.CatalogRevision = materialPlacementIdentity; }
+                if (value != null && value.CatalogRevision != materialPlacementIdentity) { RevokeMaterialRange(range, resetBuild: true); value.CatalogRevision = materialPlacementIdentity; }
                 bool buildChanged = MaterialBuildDemand?.Invoke() == true && value != null && value.BuildEpoch != MaterialBuildEligibilityRevision;
                 if (buildChanged) { value.BuildEpoch = MaterialBuildEligibilityRevision; value.BuildExhausted = false; value.CandidateCursor = 0; value.Candidate = value.CandidateFallback = null; value.EligibilityRetry = false; }
                 if (value == null || value.CatalogRevision != materialPlacementIdentity || !value.Current && !value.Queued && value.Progress == null)

@@ -11,14 +11,17 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!DynamicMaterialDemand || catalog == null) return;
             read.MaterialStampReady = projectionChanges.TryGetMaterialStamp(read.Range.Watch, read.Range.PartIndex, out read.MaterialStamp);
             var value = read.Range.Materials;
-            if (value == null) read.Range.Materials = value = new BlueprintRangeMaterials { OwnerTotals = read.Owner.Match.Materials, BuildEpoch = MaterialBuildEligibilityRevision };
+            if (value == null) read.Range.Materials = value = new BlueprintRangeMaterials { OwnerTotals = read.Owner.Match.Materials, BuildEpoch = MaterialBuildEligibilityRevision, CatalogRevision = catalog.Revision };
             if (value.BuildEpoch != MaterialBuildEligibilityRevision)
             { value.BuildEpoch = MaterialBuildEligibilityRevision; value.BuildExhausted = false; value.CandidateCursor = 0; }
             // A placement-only refresh does not invalidate an unchanged final
             // target proof. Retain its contribution while this same bounded
             // read rebuilds candidates; catalog changes still revoke it.
             read.MaterialReuseContribution = value.Current && read.Range.Current && read.Range.Unknown == 0 && value.CatalogRevision == catalog.Revision;
-            if (value.Current && value.CatalogRevision != catalog.Revision) RevokeMaterialRange(read.Range);
+            // A context-invalidated bill may already be Pending when its
+            // catalog changes. Its old rejection/cursor still belongs to that
+            // old placement identity and must not survive the new catalog.
+            if (value.CatalogRevision != catalog.Revision) RevokeMaterialRange(read.Range, resetBuild: true);
             if (read.Range.Offset == 0 || value.Progress == null || value.CatalogRevision != catalog.Revision)
             {
                 value.Progress = new BlueprintMaterialAccumulator(); value.CatalogRevision = catalog.Revision;

@@ -132,6 +132,64 @@ namespace NativeWorldTextProbe
                 TileEntity.ByID = oldById; TileEntity.ByPosition = oldByPosition; TileEntity.UpdateEntities = oldUpdates; TileEntity.TileEntitiesNextID = oldNext; TileEntity.manager = oldManager; Main.PylonSystem = oldPylons;
             }
         }
+        private static long EligibilityMaterialStamp(object host, object range)
+        {
+            object[] args = { Get(range, "Watch"), Get(range, "PartIndex"), 0L };
+            Require((bool)Call(Get(host, "projectionChanges"), "TryGetMaterialStamp", args), "real material part stamp is current after its native writes drain");
+            return (long)args[2];
+        }
+        private static void MaterialOnlyBuildEligibility(object context, object host, object tools, object input)
+        {
+            var oldPylons = Main.PylonSystem; var oldManager = TileEntity.manager;
+            var oldById = TileEntity.ByID; var oldByPosition = TileEntity.ByPosition; var oldUpdates = TileEntity.UpdateEntities; int oldNext = TileEntity.TileEntitiesNextID;
+            try
+            {
+                var p = Reset(context, host, tools, input); p.inventory[12].SetDefaults(TETeleportationPylon.GetPylonItemTypeFromTileStyle(0)); p.inventory[12].stack = 2;
+                Main.PylonSystem = new TeleportPylonsSystem(); if (TileEntity.manager == null) TileEntity.InitializeAll();
+                TileEntity.ByID = new Dictionary<int, TileEntity>(); TileEntity.ByPosition = new Dictionary<Point16, TileEntity>(); TileEntity.UpdateEntities = new List<TileEntity>(); TileEntity.TileEntitiesNextID = 0;
+                if (NetManager.Instance.GetModule<NetTeleportPylonModule>() == null) NetManager.Instance.Register<NetTeleportPylonModule>();
+                Require(WorldGen.PlaceObject(80, 42, TileID.TeleportationPylon, true), "material-only seam uses a real remote pylon source");
+                for (int x = 79; x < 82; x++) for (int y = 39; y < 43; y++) WorldGen.PlaceWall(x, y, WallID.Wood, true);
+                var entry = NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context, host, input, (LibraryState)Get(host, "Library"), () => Step(context, input), 79, 39, 3, 4, "晶塔墙漆资格接缝");
+                Require(TETeleportationPylon.PlacementPreviewHook_AfterPlacement(80, 42) >= 0, "original remote entity really blocks the same pylon type");
+                for (int x = 44; x < 47; x++) for (int y = 39; y < 43; y++) WorldGen.PlaceWall(x, y, WallID.Wood, true);
+                var item = Place(context, host, input, entry, 44, 39); object range = null;
+                SetAutomatic(host, input, true);
+                Until(context, input, () =>
+                {
+                    if (GetOptional(item, "Match") == null) return false;
+                    range = EligibilityRanges(item).Single(r => (int)Get(Get(r, "Source"), "ObjectId") > 0);
+                    var material = GetOptional(range, "Materials");
+                    return material != null && (bool)Get(material, "Current") && (bool)Get(material, "BuildExhausted") && (bool)Get(material, "EligibilityRetry") &&
+                        !(bool)Get(range, "Demand") && !(bool)Get(range, "Reading") && !(bool)Get(Get(tools, "Use"), "Active");
+                });
+                Require((bool)Get(range, "MaterialCrossLayers") && p.inventory[12].stack == 2 && !Main.tile[44, 39].active(), "captured furniture/wall part retains its actual no-spend global rejection");
+                long version = (long)Get(range, "Version"), wake = (long)Get(Get(range, "Materials"), "BuildWakeRevision"), stamp = EligibilityMaterialStamp(host, range);
+                long epoch = (long)Get(host, "MaterialBuildEligibilityRevision"), inventory = ((BlueprintMaterialInventory)Get(host, "MaterialInventory")).Revision, uses = (long)Get(host, "BuildUsesStarted");
+                Vector2 position = p.position;
+                Require(WorldGen.paintWall(44, 39, PaintID.BluePaint, false, false), "actual native wall-paint store changes only the material context of the object part");
+                Until(context, input, () => (bool)Get(Get(range, "Materials"), "Current") && !(bool)Get(range, "Demand") && !(bool)Get(range, "Reading"));
+                bool waiting = (bool)Get(Get(range, "Materials"), "EligibilityRetry");
+                Require((bool)Get(range, "Current") && version == (long)Get(range, "Version") && wake == (long)Get(Get(range, "Materials"), "BuildWakeRevision") && stamp != EligibilityMaterialStamp(host, range) &&
+                    epoch == (long)Get(host, "MaterialBuildEligibilityRevision") && inventory == ((BlueprintMaterialInventory)Get(host, "MaterialInventory")).Revision && p.position == position && (long)Get(host, "BuildUsesStarted") == uses,
+                    "paintWall uses the independent material channel: object proof, build wake, epoch, inventory, position and native use remain unchanged");
+                WorldGen.KillTile(79, 39, noItem: true); TileObject original;
+                Require(TileObject.CanPlace(45, 42, TileID.TeleportationPylon, 0, 1, out original), "after the real remote demolition, the original complete placement selector permits this unchanged target");
+                for (int i = 0; i < 600; i++) Step(context, input);
+                Console.WriteLine("MATERIAL ONLY ELIGIBILITY waitingAfterPaint=" + waiting + " objectVersion=" + version + "->" + Get(range, "Version") + " buildWake=" + wake + "->" + Get(Get(range, "Materials"), "BuildWakeRevision") +
+                    " epoch=" + epoch + "->" + Get(host, "MaterialBuildEligibilityRevision") + " nativeUses=" + uses + "->" + Get(host, "BuildUsesStarted") + " active=" + Main.tile[44, 39].active() + " stack=" + p.inventory[12].stack);
+                Require(waiting && Main.tile[44, 39].active() && p.inventory[12].stack == 1 && p.position == position && Scene(host).Contains(item),
+                    "material-only contribution invalidation must preserve the rejected range's bounded recovery while pending wall appearance still prevents full retirement");
+                Require(WorldGen.paintWall(44, 39, 0, false, false), "independent original writer restores the final captured wall appearance");
+                Until(context, input, () => Scene(host).Length == 0);
+                Console.WriteLine("PASS BlueprintBuild material-only paint invalidation preserves non-local wait without a build wake; actual remote release resumes body, full appearance still gates retirement");
+            }
+            finally
+            {
+                Call(host, "SetAutoBuild", false); Call(host, "ClearProjection");
+                TileEntity.ByID = oldById; TileEntity.ByPosition = oldByPosition; TileEntity.UpdateEntities = oldUpdates; TileEntity.TileEntitiesNextID = oldNext; TileEntity.manager = oldManager; Main.PylonSystem = oldPylons;
+            }
+        }
         private static void GlobalChestEligibility(object context, object host, object tools, object input)
         {
             var chests = Main.chest; var byCoords = AccessTools.Field(typeof(Chest), "_chestsByCoords").GetValue(null);

@@ -63,6 +63,7 @@ namespace NativeWorldTextProbe
                     check("support and distance", () => SupportAndDistance(context, host, tools, input));
                     check("furniture anchor and closed support cost", () => FurnitureAnchor(context, host, tools, input));
                     check("remote global pylon eligibility and range fairness", () => GlobalPylonEligibility(context, host, tools, input));
+                    check("material-only invalidation retains global wait", () => MaterialOnlyBuildEligibility(context, host, tools, input));
                     check("remote global chest capacity eligibility", () => GlobalChestEligibility(context, host, tools, input));
                     check("remote biome style eligibility", () => GlobalBiomeEligibility(context, host, tools, input));
                     check("unknown result excludes eligibility retry", () => UnknownEligibilityProtection(context, host, tools, input));
