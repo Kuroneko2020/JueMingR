@@ -32,7 +32,7 @@ namespace JueMingR.TerrariaHost.F5
             return font != null && pixel != null && !pixel.IsDisposed;
         }
         internal void Draw(IList<BlueprintLibraryPart> parts, F5Rect viewport, Matrix matrix, float scroll,
-            BlueprintLibraryPart hovered, BlueprintLibraryPart armed, BlueprintLibraryPreviewCache cache, SingleLineEditView edit, bool ownsText)
+            BlueprintLibraryPart hovered, BlueprintLibraryPart armed, BlueprintLibraryPreviewCache cache, SingleLineEditView edit, bool ownsText, float fixedHeaderHeight = 0)
         {
             SpriteBatch batch = Main.spriteBatch;
             if (batch == null) throw new InvalidOperationException("blueprint-batch-unavailable");
@@ -44,14 +44,27 @@ namespace JueMingR.TerrariaHost.F5
             bool began = false; batch.End();
             try
             {
-                device.ScissorRectangle = F5ControlRenderer.ContentClip(viewport, matrix, oldScissor);
-                LastClip = F5ControlRenderer.LogicalClip(device.ScissorRectangle, matrix);
+                var fullClip = F5ControlRenderer.ContentClip(viewport, matrix, oldScissor);
+                var bodyView = new F5Rect(viewport.X, viewport.Y + fixedHeaderHeight, viewport.Width, Math.Max(0, viewport.Height - fixedHeaderHeight));
+                var bodyClip = F5ControlRenderer.ContentClip(bodyView, matrix, fullClip);
+                var bodyLogical = F5ControlRenderer.LogicalClip(bodyClip, matrix);
+                device.ScissorRectangle = bodyClip;
+                LastClip = F5ControlRenderer.LogicalClip(fullClip, matrix);
                 // Font atlases need linear filtering at fractional text/UI scale.
                 // Finite summary textures get their own point-filtered pass below.
                 batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.None, clipped, null, matrix); began = true;
-                foreach (var part in parts)
+                for (int phase = 0; phase < (fixedHeaderHeight > 0 ? 2 : 1); phase++)
                 {
+                    if (phase == 1)
+                    {
+                        batch.End(); began = false; device.ScissorRectangle = fullClip;
+                        batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.None, clipped, null, matrix); began = true;
+                    }
+                    foreach (var part in parts)
+                    {
+                    if (part.Fixed != (phase == 1)) continue;
                     var source = part.Element; var rect = source.Rect.Offset(viewport.X, viewport.Y - scroll);
+                    if (part.Fixed) rect = source.Rect.Offset(viewport.X, viewport.Y);
                     if (rect.Bottom <= viewport.Y || rect.Y >= viewport.Bottom) continue;
                     if (source.Kind == F5ElementKind.Panel)
                     {
@@ -72,7 +85,7 @@ namespace JueMingR.TerrariaHost.F5
                         }
                         else
                         {
-                            UiSurface.Panel(batch, pixel, F5Layout.ButtonSurface(source).Offset(viewport.X, viewport.Y - scroll), surface,
+                            UiSurface.Panel(batch, pixel, F5Layout.ButtonSurface(source).Offset(viewport.X, viewport.Y - (part.Fixed ? 0 : scroll)), surface,
                                 part.Enabled && ReferenceEquals(part, armed) ? new Color(185, 185, 185) : part.Enabled && ReferenceEquals(part, hovered) ? Color.White : !part.Enabled ? new Color(165, 165, 165) : new Color(220, 220, 220), fractionalSurface: true);
                             Text(batch, source.Text, rect, source.TextSize, source.TextScale, part.Enabled ? Color.White : Color.Gray, true);
                         }
@@ -84,7 +97,7 @@ namespace JueMingR.TerrariaHost.F5
                             Text(batch, edit.Text, new F5Rect(rect.X + 5, rect.Y, rect.Width - 10, rect.Height), edit.Size, .70f, Color.White, false);
                             if ((Environment.TickCount & 1023) < 512) Fill(batch, new F5Rect(rect.X + 5 + edit.Caret, y, 1, Math.Min(rect.Height - 4, edit.Size.Height)), Color.White);
                             Vector2 anchor;
-                            if (ownsText && TryImeAnchor(rect, edit.Caret, edit.Size.Height, LastClip, matrix, Main.UIScaleMatrix, out anchor))
+                            if (ownsText && TryImeAnchor(rect, edit.Caret, edit.Size.Height, bodyLogical, matrix, Main.UIScaleMatrix, out anchor))
                             {
                                 LastImeAnchor = anchor;
                                 Main.instance.SetIMEPanelAnchor(anchor, 0);
@@ -92,13 +105,15 @@ namespace JueMingR.TerrariaHost.F5
                         }
                     }
                     else Text(batch, source.Text, rect, source.TextSize, source.TextScale, part.Ink, false);
+                    }
                 }
                 if (hovered != null && hovered.Hint != null)
                 {
-                    var rect = hovered.Element.Rect.Offset(viewport.X, viewport.Y - scroll);
+                    var rect = hovered.Element.Rect.Offset(viewport.X, viewport.Y - (hovered.Fixed ? 0 : scroll));
                     Text(batch, hovered.Hint, new F5Rect(Math.Max(viewport.X, Math.Min(rect.X, viewport.Right - hovered.HintSize.Width)), Math.Max(viewport.Y, rect.Y - hovered.HintSize.Height - 3), hovered.HintSize.Width, hovered.HintSize.Height), hovered.HintSize, .62f, Color.LightGoldenrodYellow, false);
                 }
                 batch.End(); began = false;
+                device.ScissorRectangle = bodyClip;
                 // Draw in physical integer pixels. The worker image fits the
                 // requested budget, so every aggregated source column survives
                 // final consumption (including sparse columns skipped by 256→231).

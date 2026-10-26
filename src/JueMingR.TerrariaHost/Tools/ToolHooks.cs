@@ -32,6 +32,8 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Player),"DropItems",new[]{typeof(bool)},nameof(Boundary));
             Patch(typeof(Player),"PickTile",new[]{typeof(int),typeof(int),typeof(int),typeof(int)},nameof(BeforePick),nameof(AfterPick));
             Patch(typeof(Player),"PlaceThing_Tiles",new[]{typeof(bool)},nameof(BeforePlant),nameof(AfterPlant));
+            Patch(typeof(Player),"PlaceThing_Walls",Type.EmptyTypes,nameof(BeforeWall));
+            Patch(typeof(Player),"PlaceThing_Tiles_PlaceIt",new[]{typeof(bool),typeof(TileObject),typeof(int)},nameof(BeforeTileChoice));
             Patch(typeof(Player),"ItemCheck_CatchCritters",new[]{typeof(Item),typeof(Microsoft.Xna.Framework.Rectangle)},nameof(Catch));
             Patch(typeof(Player),"ItemCheck_UseMiningTools",new[]{typeof(Item)},nameof(Mine));
             Patch(typeof(Player),"ItemCheck_UseMiningTools_ActuallyUseMiningTool",new[]{typeof(Item),typeof(bool).MakeByRefType(),typeof(int),typeof(int)},nameof(MiningEnter),nameof(MiningLeave),nameof(MiningFinal));
@@ -141,7 +143,7 @@ namespace JueMingR.TerrariaHost.Tools
             // Capture is a local world editor, not a UI owner. Deny new tool /
             // combat leases before they can inject fresh held-item input, and
             // mask raw mouse only inside this exact native world consumer.
-            if(Blueprint.BlueprintHooks.Blocks(__instance))
+            if(Blueprint.BlueprintHooks.Blocks(__instance) && !(host.Use.Building && host.Use.ActionValid))
             {__state=new Lease{Blueprint=Blueprint.BlueprintHooks.BeginHeld(__instance)};return;}
             if(ReferenceEquals(__instance,host.Player))
             {
@@ -177,7 +179,16 @@ namespace JueMingR.TerrariaHost.Tools
         private static void BeforePick(Player __instance,int __0,int __1,out AutoMining.ManualHit __state){__state=ReferenceEquals(__instance,miningScope.Player) && ReferenceEquals(__instance.HeldItem,miningScope.Item) && __0==miningScope.X && __1==miningScope.Y?host.Mining.BeforePick(__instance,__0,__1):default(AutoMining.ManualHit);}
         private static void AfterPick(Player __instance,AutoMining.ManualHit __state){host?.Mining.AfterPick(__instance,__state);}
         private static bool BeforePlant(Player __instance,out HerbHarvest.HarvestReceipt __state)
-        {__state=host?.Herbs.BeforePlant(__instance)??default(HerbHarvest.HarvestReceipt);return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.InNativeUse || !host.Use.Is(ToolKind.Harvest) && !host.Use.Is(ToolKind.Seed) || host.Use.ActionValid;}
+        {
+            __state=host?.Herbs.BeforePlant(__instance)??default(HerbHarvest.HarvestReceipt);
+            if(host==null || !ReferenceEquals(__instance,host.Player))return true;
+            if(host.Use.Building)return host.Use.AllowBuildPlacement(false);
+            return !host.Use.InNativeUse || !host.Use.Is(ToolKind.Harvest) && !host.Use.Is(ToolKind.Seed) || host.Use.ActionValid;
+        }
+        private static bool BeforeWall(Player __instance)
+        {return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Building || host.Use.AllowBuildPlacement(true);}
+        private static bool BeforeTileChoice(Player __instance,bool __0,TileObject __1,int __2)
+        {return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Building || host.Use.AllowBuildTileChoice(__0,__1,__2);}
         private static void AfterPlant(Player __instance,HerbHarvest.HarvestReceipt __state){host?.Herbs.AfterPlant(__instance,__state);}
         private static bool Catch(Player __instance){return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Is(ToolKind.Capture) || host.Use.ActionValid;}
         private static bool Mine(Player __instance){return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Is(ToolKind.Mining) || host.Use.ActionValid;}

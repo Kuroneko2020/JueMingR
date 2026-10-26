@@ -9,6 +9,7 @@ namespace JueMingR.TerrariaHost.Blueprint
     {
         internal BlueprintProjectionIdentity Identity;
         internal CaptureSummary Summary;
+        internal string Name;
         internal int OriginX, OriginY;
         internal int CoreSize = 128;
         internal long CommitOrder, TotalLayerCount, WindowGeneration;
@@ -25,7 +26,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool HasRequestedWindow, Positioned, Opened, WindowPending, WindowBudgetBlocked;
         internal BlueprintProjectionPlacement Copy()
         {
-            var copy = new BlueprintProjectionPlacement { Identity = Identity, Summary = Summary, OriginX = OriginX, OriginY = OriginY, CommitOrder = CommitOrder, TotalLayerCount = TotalLayerCount, Mask = Mask, Window = Window, Opened = Opened, Positioned = Positioned, Coverage = Coverage, CoreSize = CoreSize, SourceRanges = SourceRanges, MatchRanges = MatchRanges };
+            var copy = new BlueprintProjectionPlacement { Identity = Identity, Summary = Summary, Name = Name, OriginX = OriginX, OriginY = OriginY, CommitOrder = CommitOrder, TotalLayerCount = TotalLayerCount, Mask = Mask, Window = Window, Opened = Opened, Positioned = Positioned, Coverage = Coverage, CoreSize = CoreSize, SourceRanges = SourceRanges, MatchRanges = MatchRanges };
             foreach (var pair in Windows) copy.Windows.Add(pair.Key, pair.Value); return copy;
         }
         internal JueMingR.Features.Blueprint.BlueprintProjectionPlacement Snapshot()
@@ -93,7 +94,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (OwnPlaceCancellation) { if (!CanInvokePlace) return false; CancelProjection(); return true; }
             if (entry == null || entry.IsProtected || !CanPlaceProjection) return false;
             Guid revision; if (!Guid.TryParseExact(entry.ContentRevision, "N", out revision)) return false;
-            var next = new BlueprintProjectionPlacement { Identity = new BlueprintProjectionIdentity(entry.AssetId, revision, entry.ContentHash, generation, ++projectionGeneration) };
+            var next = new BlueprintProjectionPlacement { Identity = new BlueprintProjectionIdentity(entry.AssetId, revision, entry.ContentHash, generation, ++projectionGeneration), Name = entry.Name };
             if (!Library.RequestProjectionOpen(next.Identity)) return false;
             projectionTransaction++; pendingProjection = next; if (State.Active) State.Exit();
             InterruptProjection(); Pointer.Cancel(); Toolbar.Cancel(); projectionFeedback = null; return true;
@@ -141,13 +142,14 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ClearProjection()
         {
+            ClearAutomaticBuild();
             projectionCapacityRevision++; ClearProjectionPoint();
             Library?.CloseProjection(); projectionTransaction++; projectionSceneRevision++;
             foreach (var item in projectionScene) DisposeProjectionData(item); projectionScene.Clear();
             ClearProjectionMatchWork(); projectionChanges.Clear(); projectionMatchWatches.Clear(); projectionMatchPriority = null; projectionMatchTickSet = false;
             projectionMatchSource = null; projectionMatchTiles = projectionMatchSections = null;
             if (candidateProjection != null) DisposeProjectionData(candidateProjection); candidateProjection = pendingProjection = restoreProjection = hoveredProjection = null;
-            deletedProjections.Clear(); projectionRestoreAdmissions.Clear(); deletePending = false; ProjectionMode = BlueprintProjectionMode.None; emptyProjectionRenderer.Clear(); InterruptProjection();
+            deletedProjections.Clear(); projectionRestoreAdmissions.Clear(); deletePending = false; ProjectionMode = BlueprintProjectionMode.None; emptyProjectionRenderer.Clear(); InterruptProjection(); ClearMaterials();
         }
         private void PumpProjection()
         {
@@ -269,6 +271,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void DisposeProjectionData(BlueprintProjectionPlacement item)
         {
+            RetireAutomaticBuild(item.Identity);
             // Delete rollback owns its separate Copy before this point. A dead
             // instance itself must release DTOs and the shared source index,
             // even if an old caller/receipt still temporarily holds its object.
@@ -410,6 +413,17 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ApplyProjectionMutation(LibraryReceipt receipt)
         {
+            if (receipt.Kind == LibraryCommandKind.Rename && receipt.Status == LibraryStatus.Saved && receipt.CommittedName != null)
+            {
+                // World names follow the reliable mutation receipt even when
+                // the renamed asset is absent from the currently visible page.
+                foreach (var item in projectionScene) if (item.Identity.AssetId == receipt.AssetId) item.Name = receipt.CommittedName;
+                foreach (var item in deletedProjections) if (item.Identity.AssetId == receipt.AssetId) item.Name = receipt.CommittedName;
+                if (pendingProjection?.Identity.AssetId == receipt.AssetId) pendingProjection.Name = receipt.CommittedName;
+                if (candidateProjection?.Identity.AssetId == receipt.AssetId) candidateProjection.Name = receipt.CommittedName;
+                if (restoreProjection?.Identity.AssetId == receipt.AssetId) restoreProjection.Name = receipt.CommittedName;
+                materialSceneIdentity = -1;
+            }
             if (receipt.Kind != LibraryCommandKind.Delete || !deletePending || receipt.AssetId != deletedAsset) return; deletePending = false;
             // The receipt's mechanical certainty is narrower than Protected or
             // Failed. Only that proof may restore the exact old scene snapshot.

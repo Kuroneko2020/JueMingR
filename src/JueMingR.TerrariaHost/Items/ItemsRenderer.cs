@@ -19,6 +19,8 @@ namespace JueMingR.TerrariaHost.Items
         private SpriteBatch batch;
         internal float RowHeight { get; set; }
         internal int Generation { get; private set; }
+        internal bool ResourcesCurrent { get { return font != null && pixel != null && !pixel.IsDisposed && ReferenceEquals(font, FontAssets.MouseText?.Value) &&
+            ReferenceEquals(pixel, TextureAssets.MagicPixel?.Value) && ReferenceEquals(surface, TextureAssets.InventoryBack?.Value); } }
         private readonly System.Collections.Generic.Dictionary<string, F5Size> sizes = new System.Collections.Generic.Dictionary<string, F5Size>();
         private F5Size Measure(string text)
         {
@@ -59,15 +61,16 @@ namespace JueMingR.TerrariaHost.Items
                 {
                     batch = null; device.ScissorRectangle = oldScissor; device.RasterizerState = oldRasterizer; device.BlendState = oldBlend;
                     device.DepthStencilState = oldDepth; device.SamplerStates[0] = oldSampler;
-                    target.Begin(SpriteSortMode.Deferred, null, null, null, null, null, Main.UIScaleMatrix);
+                    target.Begin(SpriteSortMode.Deferred, oldBlend, oldSampler, oldDepth, oldRasterizer, null, Main.UIScaleMatrix);
                 }
             }
         }
         internal void Panel(F5Rect rect) { F5ControlRenderer.Panel(batch, pixel, surface, rect); }
         internal void Divider(F5Rect rect) { Fill(rect, Color.White * .35f); }
         internal void Label(F5Element element) { F5ControlRenderer.Text(batch, font, element, Color.White); }
-        internal void Button(F5Element element, bool selected, bool enabled, bool off, bool hovered)
-        { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null, subduedWhenDisabled: true); }
+        internal void Label(F5Element element, Color ink) { F5ControlRenderer.Text(batch, font, element, ink); }
+        internal void Button(F5Element element, bool selected, bool enabled, bool off, bool hovered, bool pressed = false)
+        { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null, subduedWhenDisabled: true, pressed: pressed); }
         internal void ItemButton(F5Rect rect, bool enabled, bool hovered)
         {
             // Inset only the borrowed skin. Icon fitting and input still use

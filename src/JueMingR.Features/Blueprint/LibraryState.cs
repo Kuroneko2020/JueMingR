@@ -30,6 +30,9 @@ namespace JueMingR.Features.Blueprint
         public bool TryRename(Guid assetId, string expectedMetadataIdentity, string name) { return Submit(new LibraryCommand { Kind = LibraryCommandKind.Rename, Id = assetId, Identity = expectedMetadataIdentity, Name = name }); }
         public bool TryDelete(Guid assetId, string expectedMetadataIdentity) { return Submit(new LibraryCommand { Kind = LibraryCommandKind.Delete, Id = assetId, Identity = expectedMetadataIdentity }); }
         public void CancelRead(long generation) { worker.CancelRead(generation); }
+        public bool RequestMaterials(BlueprintMaterialKey key, BlueprintPlacementCatalog catalog) { return worker.RequestMaterials(key, catalog); }
+        public BlueprintMaterialSnapshot Materials(BlueprintMaterialKey key) { return key == null ? BlueprintMaterialSnapshot.Pending : worker.GetMaterials(key); }
+        public void CancelMaterials() { worker.CancelMaterials(); }
         // Projection work has its own bounded latest-request/result mailboxes;
         // it never owns the accepted capture/save command slot or its token.
         public bool RequestProjectionOpen(BlueprintProjectionIdentity identity) { return worker.RequestProjectionOpen(identity); }

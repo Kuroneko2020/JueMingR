@@ -133,10 +133,11 @@ namespace NativeWorldTextProbe
         }
         private static void PreferencesAndLifecycle(object context, object host, object input, object keys)
         {
-            var preference = (PreferenceDocument<bool>)Get(host, "preference");
+            var preference = (PreferenceDocument<BlueprintPreferences>)Get(host, "preference");
             var state = (BlueprintCaptureState)Get(host, "State"); var p = Main.LocalPlayer;
             var bindings = (HotkeyBindings)Get(keys, "Bindings");
-            Require(bindings.Get("blueprint.capture") == null && bindings.Get("blueprint.save") == null && bindings.Get("blueprint.toolbar") == null, "all three bindings default unbound");
+            Require(bindings.Get("blueprint.capture") == null && bindings.Get("blueprint.save") == null && bindings.Get("blueprint.toolbar") == null &&
+                bindings.Get("blueprint.autobuild") == null && bindings.Get("blueprint.materials") == null, "blueprint bindings including both new actions default unbound");
             HotkeyChord capture = null, save = null; string reason; long command;
             Require(HotkeyChord.TryParse("K", out capture, out reason) && HotkeyChord.TryParse("L", out save, out reason), "test bindings parse");
             Require(bindings.TrySet("blueprint.capture", capture, null, out command, out reason), "capture binding enters common save pipeline");
@@ -163,7 +164,8 @@ namespace NativeWorldTextProbe
             state.Exit(); NativeQuickItemChecks.Sample(input, new Keys[0]);
             NativeQuickItemChecks.Until(() => preference.Snapshot.Status == PreferenceStatus.Saved);
             var path = Path.Combine((string)Get(context, "gameDirectory"), "JueMingRData", "config", "features", "blueprint.json");
-            Require(new BlueprintPreferenceCodec().Decode(File.ReadAllBytes(path)), "real preference worker persists only the toolbar bool");
+            var restoredBlueprint = new BlueprintPreferenceCodec().Decode(File.ReadAllBytes(path));
+            Require(restoredBlueprint.GelToolbar && !restoredBlueprint.AutoBuild, "real preference worker preserves toolbar and default automatic construction in one document");
             Item item = p.inventory[0]; int selected = p.selectedItem; bool dead = p.dead, menu = Main.gameMenu;
             bool map = PlayerInput.Triggers.Current.MapFull, camera = PlayerInput.Triggers.Current.ToggleCameraMode;
             try

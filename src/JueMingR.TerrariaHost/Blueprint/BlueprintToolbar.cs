@@ -9,7 +9,7 @@ using Terraria.GameInput;
 
 namespace JueMingR.TerrariaHost.Blueprint
 {
-    // Presentation owns only two button rectangles and their UI gesture. Mode,
+    // Presentation owns only button rectangles and their UI gesture. Mode,
     // selection, world-action tails and preference all remain on HostBlueprint.
     internal sealed class BlueprintToolbar : IDisposable
     {
@@ -63,6 +63,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool Available(int index)
         {
             if (!Layout.Available(index)) return false;
+            if (index == Layout.MaterialsIndex) return host.CanOpenMaterials;
             if (index == 0) return host.State.Active ? host.CanSave : !host.ProjectionEditing;
             if (index == 1) return host.State.Active || host.CanOpenLibrary;
             if (index == 2) return host.CanInvokeMove;
@@ -111,6 +112,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             previousLeft = left;
             if (execute >= 0)
             {
+                if (execute == Layout.MaterialsIndex)
+                { host.OpenMaterialsFromToolbar(Layout.Buttons[execute].Rect.Offset(Layout.Panel.X, Layout.Panel.Y)); return; }
                 if (execute == 2) { host.MoveProjection(); return; }
                 if (execute == 3) { host.RemoveProjection(); return; }
                 if (execute == 4) { if (host.OwnPlaceCancellation) host.Place(null); else host.RemoveAllProjections(); return; }
@@ -198,7 +201,8 @@ namespace JueMingR.TerrariaHost.Blueprint
 
         private void DrawHint(SpriteBatch batch, F5Rect bounds, int hovered)
         {
-            string value = hovered == 2 ? host.CanInvokeMove ? host.OwnMoveCancellation ? "取消移动，保留原蓝图" : "点击需要移动的蓝图" : host.MoveDisabledReason :
+            string value = hovered == Layout.MaterialsIndex ? host.MaterialsDisabledReason ?? BlueprintControls.MaterialsHint :
+                hovered == 2 ? host.CanInvokeMove ? host.OwnMoveCancellation ? "取消移动，保留原蓝图" : "点击需要移动的蓝图" : host.MoveDisabledReason :
                 hovered == 3 ? host.CanInvokeRemove ? host.OwnRemoveCancellation ? "退出移除选择" : "点击需要移除的蓝图" : host.RemoveDisabledReason :
                 hovered == 4 ? host.OwnPlaceCancellation ? "取消此次摆放" : host.RemoveAllDisabledReason :
                 hovered == 1 && !host.State.Active ? host.ManualLibraryDisabledReason :
@@ -246,7 +250,8 @@ namespace JueMingR.TerrariaHost.Blueprint
     // placement, mode replacement and stable-layout cost can be checked directly.
     internal sealed class BlueprintToolbarLayout
     {
-        internal F5Element[] Buttons = new F5Element[2];
+        internal F5Element[] Buttons = new F5Element[3];
+        internal int MaterialsIndex { get { return Buttons.Length - 1; } }
         internal F5Rect Panel { get; private set; }
         internal int Generation { get; private set; }
         private float width, height, scale;
@@ -274,18 +279,26 @@ namespace JueMingR.TerrariaHost.Blueprint
             float cw = Math.Max(30, c.Width + 16), dw = Math.Max(30, d.Width + 16);
             float ew = Math.Max(30, e.Width + 16);
             bh = Math.Max(bh, Math.Max(Math.Max(c.Height, d.Height), e.Height) + 8);
-            float pw = aw + bw + 20 + (projection == 0 ? 0 : cw + dw + 8) + (extra ? ew + 4 : 0), ph = bh + 16;
-            if (!Finite(pw) || !Finite(ph) || pw > w / s - 16 || ph > h / s - 32) return false;
-            Panel = new F5Rect((w / s - pw) / 2, h / s - ph - 24, pw, ph);
-            Buttons = new F5Element[projection == 0 ? 2 : extra ? 5 : 4];
-            Buttons[0] = new F5Element(F5ElementKind.Button, new F5Rect(8, 8, aw, bh), first, a, .70f, F5Command.None);
-            Buttons[1] = new F5Element(F5ElementKind.Button, new F5Rect(12 + aw, 8, bw, bh), second, b, .70f, F5Command.None);
-            if (projection != 0)
+            var material = measure("材料", .70f); float mw = Math.Max(30, material.Width + 16);
+            bh = Math.Max(bh, material.Height + 8);
+            int count = projection == 0 ? 3 : extra ? 6 : 5;
+            var text = new[] { first, second, third, fourth, fifth, "材料" };
+            var sizes = new[] { a, b, c, d, e, material };
+            var widths = new[] { aw, bw, cw, dw, ew, mw };
+            float maximum = w / s - 16, total = aw + bw + mw + 24 + (projection == 0 ? 0 : cw + dw + 8) + (extra ? ew + 4 : 0);
+            float pw = Math.Min(maximum, total), x = 8, y = 8;
+            Buttons = new F5Element[count];
+            for (int i = 0; i < count; i++)
             {
-                Buttons[2] = new F5Element(F5ElementKind.Button, new F5Rect(16 + aw + bw, 8, cw, bh), third, c, .70f, F5Command.None);
-                Buttons[3] = new F5Element(F5ElementKind.Button, new F5Rect(20 + aw + bw + cw, 8, dw, bh), fourth, d, .70f, F5Command.None);
-                if (extra) Buttons[4] = new F5Element(F5ElementKind.Button, new F5Rect(24 + aw + bw + cw + dw, 8, ew, bh), fifth, e, .70f, F5Command.None);
+                int value = i == count - 1 ? 5 : i;
+                if (widths[value] > maximum - 16) return false;
+                if (x + widths[value] > pw - 8 && x > 8) { x = 8; y += bh + 4; }
+                Buttons[i] = new F5Element(F5ElementKind.Button, new F5Rect(x, y, widths[value], bh), text[value], sizes[value], .70f, F5Command.None);
+                x += widths[value] + 4;
             }
+            float ph = y + bh + 8;
+            if (!Finite(pw) || !Finite(ph) || ph > h / s - 32) return false;
+            Panel = new F5Rect((w / s - pw) / 2, h / s - ph - 24, pw, ph);
             width = w; height = h; scale = s; font = f; active = mode; projectionMode = projection; Generation++;
             return true;
         }

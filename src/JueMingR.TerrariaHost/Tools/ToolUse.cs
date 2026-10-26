@@ -5,7 +5,7 @@ using Terraria.GameInput;
 
 namespace JueMingR.TerrariaHost.Tools
 {
-    internal enum ToolKind { Capture, Harvest, Seed, Mining, Recast, FishingPull, FishingCast, FishingCut }
+    internal enum ToolKind { Capture, Harvest, Seed, Mining, Recast, FishingPull, FishingCast, FishingCut, Build }
     internal sealed class ToolIntent
     {
         internal ToolKind Kind;
@@ -19,6 +19,15 @@ namespace JueMingR.TerrariaHost.Tools
         internal Action<bool,bool> Completed;
         internal bool SelectionOnly;
         internal bool HeldInventory;
+        internal int PlayerDirection;
+        internal int MaximumConsumption=1;
+        internal ulong MaterialSlots;
+        internal Func<Item[],int,bool> OwnsMaterial;
+        internal Func<Item,bool> OwnsMaterialIdentity;
+        internal Func<bool> ConsumptionValid;
+        internal Func<bool,bool> NativePlacement;
+        internal Func<bool,TileObject,int,bool> NativeTileChoice;
+        internal Action NativeChecked;
     }
     // The target, sustained business intent and actual use lease have distinct
     // lifetimes. Only the feature refreshes targets; vanilla owns selection,
@@ -33,6 +42,8 @@ namespace JueMingR.TerrariaHost.Tools
         private bool pulsed,checkedItem,started,cancelled,borrowed,notified,yieldExternal,returnRequested;
         private int oldX,oldY,oldTileX,oldTileY,ownX,ownY,ownTileX,ownTileY;
         private bool oldMouse;
+        private bool directionBorrowed;
+        private int oldDirection,ownDirection;
         private Projectile drill;
         private int drillKey;
         internal ToolIntent Intent {get;private set;}
@@ -41,6 +52,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal bool Active {get{return player!=null;}}
         internal long Operation {get{return token;}}
         internal bool CompletedAnimation {get{return Active && started && player.itemAnimation<=0;}}
+        internal bool Building {get{return Active && Intent?.Kind==ToolKind.Build;}}
         private bool HeldInventory {get{return Intent.HeldInventory || Intent.Kind==ToolKind.Capture && host.Mode(0)==2;}}
         // Only G10 automatic fishing pauses with F5. New tool kinds and the
         // G09 borrowed-net return must not inherit this feature-specific gate.
@@ -70,7 +82,7 @@ namespace JueMingR.TerrariaHost.Tools
         {
             if(candidate.Slot<0 || candidate.Slot>=50 || !(candidate.Valid?.Invoke()??false))return false;
             long next=host.Items.Ownership.NewUseToken();
-            if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,candidate.Slot,next))return false;
+            if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,candidate.Slot,next,candidate.MaterialSlots))return false;
             player=p;Intent=candidate;item=p.inventory[candidate.Slot];type=item.type;stack=item.stack;original=p.selectedItem;
             originalItem=original>=0 && original<50?p.inventory[original]:null;originalType=originalItem?.type??0;
             token=next;session=host.Runtime.Generation;selection=host.SelectionIntent;
@@ -110,7 +122,11 @@ namespace JueMingR.TerrariaHost.Tools
             // vanilla projectile AI observes the temporary non-rod itself.
             if(Intent.SelectionOnly)return;
             if(Intent.Refresh==null && (pulsed || checkedItem))return;
-            p.controlUseItem=true;if(!pulsed)p.releaseUseItem=true;pulseFrame=host.Input.Frame;pulsed=true;
+            // Construction supplies one legal press after vanilla observed a
+            // release. It never manufactures a release or resets native time.
+            if(Building && !p.releaseUseItem)return;
+            BorrowDirection();
+            p.controlUseItem=true;if(!pulsed && !Building)p.releaseUseItem=true;pulseFrame=host.Input.Frame;pulsed=true;
         }
         internal void Begin(Player p)
         {
@@ -122,6 +138,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(!Refresh()){Cancel();return;}
             if(Intent.SelectionOnly)return;
             // Establish cleanup ownership BEFORE the first temporary write.
+            BorrowDirection();
             BorrowAim();
             if(pulsed && (Intent.Refresh!=null || !checkedItem))Main.mouseLeft=true;
         }
@@ -132,6 +149,26 @@ namespace JueMingR.TerrariaHost.Tools
             ownX=(int)screen.X;ownY=(int)screen.Y;ownTileX=(int)(Intent.Target.X/16);ownTileY=(int)(Intent.Target.Y/16);borrowed=true;
             Main.mouseX=ownX;Main.mouseY=ownY;Player.tileTargetX=ownTileX;Player.tileTargetY=ownTileY;
         }
+        private void BorrowDirection()
+        {
+            int direction=Intent.PlayerDirection;
+            if(directionBorrowed || direction!=1 && direction!=-1)return;
+            oldDirection=player.direction;ownDirection=direction;directionBorrowed=true;
+            // Ordinary facing input can reach either direction without moving.
+            // Direct ownership of this temporary field avoids ChangeDir's
+            // pulley relocation; a newer native direction is never restored.
+            player.direction=direction;
+        }
+        internal bool AllowBuildPlacement(bool wall)
+        {return !Building || InNativeUse && ActionValid && (Intent.NativePlacement?.Invoke(wall)??false);}
+        internal bool AllowBuildTileChoice(bool objectType,TileObject placement,int tileType)
+        {return !Building || InNativeUse && ActionValid && (Intent.NativeTileChoice?.Invoke(objectType,placement,tileType)??false);}
+        internal bool OwnsBuildSource(Item[] array,int slot)
+        {return Building && session==host.Runtime.Generation && host.SelectionIntent==selection && ReferenceEquals(array,player.inventory) &&
+            (slot==Intent.Slot && ReferenceEquals(array[slot],item) || (Intent.OwnsMaterial?.Invoke(array,slot)??false));}
+        internal bool OwnsBuildMaterial(Item source)
+        {return Building && !cancelled && SourceIdentity() && host.Items.Ownership.IsUseSlot(Intent.Slot) &&
+            (ReferenceEquals(source,item) || (Intent.OwnsMaterialIdentity?.Invoke(source)??false));}
         internal void ObserveProjectile(Player p,Projectile projectile)
         {if(ReferenceEquals(p,player) && Is(ToolKind.Mining) && projectile.owner==p.whoAmI && projectile.type==item.shoot && (projectile.aiStyle==20 || projectile.type==445)){drill=projectile;drillKey=(int)projectile.key;}}
         internal bool OwnsProjectile(Projectile projectile)
@@ -153,17 +190,20 @@ namespace JueMingR.TerrariaHost.Tools
             {
                 // An interrupted consumer is not a rollback. Retain only the
                 // real source until a genuinely new player/world connection.
-                host.HoldUnknown(Intent.Slot);Notify(true);Cancel();host.Report("工具操作结果未确认，已停止；相关物品暂受保护。");
+                host.HoldUnknown((1UL<<Intent.Slot)|Intent.MaterialSlots);Notify(true);Cancel();host.Report("工具操作结果未确认，已停止；相关物品暂受保护。");
             }
-            else if(item.stack>stack || item.stack<stack-1 || !ReferenceEquals(p.inventory[Intent.Slot],item) && !p.inventory[Intent.Slot].IsAir)
-            {host.HoldUnknown(Intent.Slot);Notify(true);Cancel();}
+            else if(item.stack>stack || item.stack<stack-Intent.MaximumConsumption || !ReferenceEquals(p.inventory[Intent.Slot],item) && !p.inventory[Intent.Slot].IsAir ||
+                Intent.ConsumptionValid!=null && !Intent.ConsumptionValid())
+            {host.HoldUnknown((1UL<<Intent.Slot)|Intent.MaterialSlots);Notify(true);Cancel();}
+            else Intent.NativeChecked?.Invoke();
             if(!cancelled && Intent.Refresh!=null && (host.Input.Frame>=nextContention || (host.Combat?.Handoff.ResumeWanted??false)))
             {
                 nextContention=host.Input.Frame+Math.Max(1,p.itemAnimationMax);
                 bool external;if(host.Contended(Intent.Kind,out external)){yieldExternal=external;Intent.Yielded?.Invoke();Cancel();}
             }
         }
-        internal bool Owns(Item[] array,int slot){return InNativeUse && ReferenceEquals(array,player?.inventory) && Intent!=null && slot==Intent.Slot && ReferenceEquals(array[slot],item);}
+        internal bool Owns(Item[] array,int slot){return InNativeUse && ReferenceEquals(array,player?.inventory) && Intent!=null &&
+            (slot==Intent.Slot && ReferenceEquals(array[slot],item) || Building && (Intent.OwnsMaterial?.Invoke(array,slot)??false));}
         internal bool Is(ToolKind kind){return InNativeUse && Intent!=null && Intent.Kind==kind;}
         internal void Update()
         {
@@ -182,7 +222,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(!Active)return;cancelled=true;
             if(player.selectedItemState.HasActiveOverride && !player.selectedItemState.HasBufferedChange && host.SelectionIntent==selection)
             {Returning=true;try{player.selectedItemState.Select(original);returnRequested=true;}finally{Returning=false;}}
-            if(pulseFrame==host.Input.Frame && pulsed){player.controlUseItem=host.ManualLeft;player.releaseUseItem=!player.controlUseItem;}
+            if(pulseFrame==host.Input.Frame && pulsed){player.controlUseItem=host.ManualLeft;if(!Building)player.releaseUseItem=!player.controlUseItem;}
         }
         internal void Retire()
         {
@@ -192,6 +232,7 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private void Restore()
         {
+            if(directionBorrowed){directionBorrowed=false;if(player!=null && player.direction==ownDirection)player.direction=oldDirection;}
             if(!borrowed)return;borrowed=false;
             if(Main.mouseX==ownX)Main.mouseX=oldX;if(Main.mouseY==ownY)Main.mouseY=oldY;
             if(Player.tileTargetX==ownTileX)Player.tileTargetX=oldTileX;if(Player.tileTargetY==ownTileY)Player.tileTargetY=oldTileY;

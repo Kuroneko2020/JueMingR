@@ -966,6 +966,8 @@ namespace JueMingR.TerrariaHost
                     runtime.SharedRuntime.AddFeature(Movement);
                     var blueprintLibrary = new Features.Blueprint.LibraryState(new Infrastructure.Blueprint.FileBlueprintLibrary(System.IO.Path.Combine(gameDirectory, "JueMingRData", "blueprints", "templates")));
                     Blueprint = new Blueprint.HostBlueprint(gameDirectory, runtime.SharedRuntime, Input, worldTiles, blueprintLibrary);
+                    Blueprint.AttachBuildTools(Tools);
+                    if (Browser != null) Blueprint.AttachMaterialKnowledge(Browser.Knowledge, (slot, item) => Tools != null && Tools.BuildInventoryEligible(slot, item));
                     runtime.SharedRuntime.AddFeature(Blueprint);
                     View = new View.HostView(gameDirectory, runtime.SharedRuntime, Input);
                     runtime.SharedRuntime.AddFeature(View);

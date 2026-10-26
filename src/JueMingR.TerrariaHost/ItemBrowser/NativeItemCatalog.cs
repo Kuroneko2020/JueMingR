@@ -12,7 +12,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
 {
     // Main-thread demand-driven capture. Draw only consumes published frozen data.
     // A language event includes same-culture resource hot reloads.
-    internal sealed class NativeItemCatalog : IDisposable
+    internal sealed partial class NativeItemCatalog : IDisposable
     {
         private readonly List<CatalogItem> items = new List<CatalogItem>();
         private readonly List<ItemRelation> recipes = new List<ItemRelation>();
@@ -60,6 +60,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             {
                 if (itemCursor < ItemID.Count)
                 {
+                    materialPlacementTick = Main.GameUpdateCount; materialPlacementTickSet = true;
                     int end = Math.Min(ItemID.Count, itemCursor + 64);
                     for (; itemCursor < end; itemCursor++)
                     {
@@ -97,19 +98,21 @@ namespace JueMingR.TerrariaHost.ItemBrowser
 #else
                 _ = error;
 #endif
-                failures++; Catalog = null; Recipes = null; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); placementNames.Clear();
+                failures++; Catalog = null; Recipes = null; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); placementNames.Clear(); ClearMaterialPlacement();
                 itemCursor = placementCursor = 1; recipeCursor = ExcludedIdentities = 0;
                 Status = "原版资料读取未完成（" + failures + "/3）";
             }
         }
         private void Reset()
-        { dirty = false; itemCursor = placementCursor = 1; recipeCursor = failures = ExcludedIdentities = 0; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); placementNames.Clear(); Catalog = null; Recipes = null; Revision++; }
+        { dirty = false; itemCursor = placementCursor = 1; recipeCursor = failures = ExcludedIdentities = 0; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); placementNames.Clear(); ClearMaterialPlacement(); Catalog = null; Recipes = null; Revision++; }
         // A cold world gesture needs only canonical placement metadata. It does
         // not materialize descriptions, recipes, drops, shops, or the directory.
         // The gesture owns the demand and cancellation; no background warm-up.
         internal void StepPlacement()
         {
             ObserveContext(); if (dirty) Reset();
+            if (materialPlacementTickSet && materialPlacementTick == Main.GameUpdateCount) return;
+            materialPlacementTick = Main.GameUpdateCount; materialPlacementTickSet = true;
             if (PlacementReady || ContentSamples.ItemsByType.Count < ItemID.Count) return;
             int end = Math.Min(ItemID.Count, placementCursor + 64);
             for (; placementCursor < end; placementCursor++)
@@ -120,10 +123,13 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 PlacementReads++;
 #endif
             }
+            PublishMaterialPlacement();
         }
         private void CapturePlacement(Item sample)
         {
+            if (materialCaptured.Contains(sample.type)) return;
             placementNames.Capture(sample);
+            CaptureMaterialPlacement(sample);
             if (sample.createTile >= 0)
             {
                 long key = ((long)sample.createTile << 32) | (uint)sample.placeStyle;

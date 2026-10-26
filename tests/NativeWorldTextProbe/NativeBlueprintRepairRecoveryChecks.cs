@@ -21,8 +21,8 @@ namespace NativeWorldTextProbe
             var host = Get(context, "Blueprint"); var shell = Get(context, "Shell"); var input = Get(context, "Input");
             var editor = (BlueprintCaptureState)Get(host, "State"); var flow = (BlueprintCaptureFlow)Get(host, "Flow");
             var field = host.GetType().GetField("<Library>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
-            var original = (LibraryState)field.GetValue(host); ulong tick = 90000;
-            Action pump = () => { Call(host, "Update", tick++); Call(host, "Poll"); };
+            var original = (LibraryState)field.GetValue(host);
+            Action pump = () => { NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); Call(host, "Poll"); };
             Action begin = () => { Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); editor.Enter(); editor.Selection.Clear(); editor.Selection.ToggleRectangle(10, 10, 10, 10, 120, 120); Require((bool)Call(host, "Save"), "actual Host accepts a new capture after a retired operation"); };
             try
             {

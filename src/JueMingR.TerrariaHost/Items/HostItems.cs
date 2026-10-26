@@ -35,6 +35,7 @@ namespace JueMingR.TerrariaHost.Items
         internal readonly int ThreadId = Thread.CurrentThread.ManagedThreadId;
         internal Func<int, bool> AllowsOwnedUse;
         internal Func<Item[],int,bool> AllowsOwnedTools {get;set;}
+        internal Func<Item,bool> OwnsBuildHeldMaterial;
         internal Func<Item[],int,bool> AllowsOwnedCombat {get;set;}
         internal bool ReturningSelection {get;private set;}
         // Synchronous owner scope only: explicit user Select still advances

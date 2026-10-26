@@ -300,7 +300,11 @@ namespace JueMingR.TerrariaHost.Items
             Player player = host.World.Player;
             if (player == null || item == null || item.IsAir) return false;
             Item held = player.inventory[player.selectedItem];
-            if (player.itemAnimation > 0 || player.itemTime > 0 || player.channel)
+            // The finite build lease already protects its exact source slots.
+            // Do not let its own native animation masquerade as a foreign
+            // held use and revoke that same lease. Other ownership guards and
+            // projectile material protection below remain independently live.
+            if (!(host.OwnsBuildHeldMaterial?.Invoke(item) ?? false) && (player.itemAnimation > 0 || player.itemTime > 0 || player.channel))
             {
                 if (ReferenceEquals(item, held) || held.useAmmo > 0 && item.ammo == held.useAmmo || held.tileWand > 0 && item.type == held.tileWand ||
                     item.PaintOrCoating && player.autoPaint || item.type == 849 && player.autoActuator || WireTool(held) && (item.type == 530 || item.type == 849)) return true;

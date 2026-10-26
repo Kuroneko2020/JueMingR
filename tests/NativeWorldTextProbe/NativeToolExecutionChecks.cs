@@ -27,8 +27,7 @@ namespace NativeWorldTextProbe
             textures=graphics;
             object host=Get(context,"Tools"),input=Get(context,"Input");
             NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return ((JueMingR.Features.Tools.ToolSettings[])Get(host,"Settings")).All(s=>s.Loaded);});
-            typeof(Main).GetMethod("Initialize_TileAndNPCData1",Flags).Invoke(null,null);
-            typeof(Main).GetMethod("Initialize_TileAndNPCData2",Flags).Invoke(null,null);TileObjectData.Initialize();
+            NativeBlueprintWorldMatchChecks.InitializeMetadata();
             Terraria.GameContent.Creative.CreativePowerManager.Initialize();
             Terraria.DataStructures.ArmorSetBonuses.Initialize();Terraria.DataStructures.ArmorSetBonuses.BuildLookup();
             for(int i=1;i<Main.player.Length;i++)if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};

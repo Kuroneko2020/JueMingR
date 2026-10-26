@@ -16,6 +16,7 @@ namespace NativeWorldTextProbe
         private static bool CompletionV2SourceTake() { return !holdCompletionV2Sources; }
         private static object completionV2PublicationTarget;
         private static long completionV2FirstVisibleTick;
+        private static object completionReceiptContext;
         private static void CompletionV2Published(object __instance,object item)
         {
             if(!ReferenceEquals(completionV2PublicationTarget,item) || completionV2FirstVisibleTick>=0)return;
@@ -45,7 +46,7 @@ namespace NativeWorldTextProbe
         // The fixture builds original furniture on real supports, then enters
         // the production capture/save flow. No CaptureCell/Object array is
         // passed to Save, and both placement arms reuse the same saved asset.
-        private static LibraryEntry CaptureCompletionAsset(object context, object host, object input, LibraryState library,
+        internal static LibraryEntry CaptureCompletionAsset(object context, object host, object input, LibraryState library,
             Action step, int ox, int oy, int width, int height, string name)
         {
             var shell = Get(context, "Shell");
@@ -55,9 +56,17 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
             editor.Exit(); editor.Enter();
             editor.Selection.ToggleRectangle(ox, oy, ox + width - 1, oy + height - 1, Main.maxTilesX, Main.maxTilesY);
-            Require((bool)Call(host, "Save"), "completion pair enters the real Host capture admission");
-            NativeQuickItemChecks.Until(() => { step(); return flow.Status == BlueprintCaptureStatus.DraftReady || flow.Status == BlueprintCaptureStatus.Failed; });
-            Require(flow.Status == BlueprintCaptureStatus.DraftReady, "completion pair reaches actual DraftReady: " + flow.Status + " " + flow.Message);
+            var receiptProbe = new HarmonyLib.Harmony("JueMingR.Tests.Blueprint.CaptureFailureReceipt");
+            completionReceiptContext = context;
+            var applyReceipt = host.GetType().GetMethod("ApplyReceipt", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            receiptProbe.Patch(applyReceipt, prefix: new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldMatchChecks), nameof(CompletionFailureReceipt)));
+            try
+            {
+                Require((bool)Call(host, "Save"), "completion pair enters the real Host capture admission");
+                NativeQuickItemChecks.Until(() => { step(); return flow.Status == BlueprintCaptureStatus.DraftReady || flow.Status == BlueprintCaptureStatus.Failed; });
+                Require(flow.Status == BlueprintCaptureStatus.DraftReady, "completion pair reaches actual DraftReady: " + flow.Status + " " + flow.Message);
+            }
+            finally { receiptProbe.Unpatch(applyReceipt, HarmonyLib.HarmonyPatchType.All, receiptProbe.Id); completionReceiptContext = null; }
             Call(host, "SetDraftName", name); Call(host, "ConfirmSave");
             NativeQuickItemChecks.Until(() => { step(); return flow.Status == BlueprintCaptureStatus.Saved || flow.Status == BlueprintCaptureStatus.CommitUnconfirmed; });
             Require(flow.Status == BlueprintCaptureStatus.Saved && flow.SelectedAssetId.HasValue, "completion pair requires reliable Saved, never uncertain content");
@@ -68,6 +77,18 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
             Console.WriteLine("BlueprintCompletionV2 captured asset=" + id.ToString("N") + " revision=" + entry.ContentRevision + " hash=" + entry.ContentHash + " dimensions=" + entry.Width + "x" + entry.Height + " contentRecords=" + entry.ContentCount + " capture=Capture-DraftReady-ConfirmSave-Saved library=real-list");
             return entry;
+        }
+
+        private static void CompletionFailureReceipt(object __instance, LibraryReceipt __0)
+        {
+            if (__0.Status == LibraryStatus.Completed || __0.Status == LibraryStatus.Saved) return;
+            Console.Error.WriteLine("BLUEPRINT CAPTURE RECEIPT kind=" + __0.Kind + " status=" + __0.Status + " retired=" + __0.OperationRetired +
+                " operation=" + __0.OperationId + " command=" + __0.CommandId + " code=" + __0.FailureCode + " error=" + __0.Error);
+            var summary = ((BlueprintCaptureFlow)Get(__instance, "Flow")).Summary;
+            if (summary != null) Console.Error.WriteLine("BLUEPRINT CAPTURE SUMMARY xy=" + summary.Left + "," + summary.Top + " size=" + summary.Width + "x" + summary.Height +
+                " content=" + summary.ContentCount + " unreliable=" + summary.UnreliableObjectCount + " version=" + summary.TargetVersion +
+                " start=" + summary.StartTick + " end=" + summary.EndTick + " hostLatest=" + Get(__instance, "latestTick") +
+                " runtimeTick=" + Get(completionReceiptContext, "updateTick") + " nativeEntry=" + Main.GameUpdateCount);
         }
 
         private static void BuildCompletionLamps(int ox, int oy, int lamps, bool includeOrdinary)

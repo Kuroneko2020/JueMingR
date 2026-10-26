@@ -1,0 +1,438 @@
+using System;
+using System.Collections.Generic;
+using JueMingR.Features.Blueprint;
+using JueMingR.TerrariaHost.Tools;
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.DataStructures;
+using Terraria.Enums;
+using Terraria.ID;
+using Terraria.ObjectData;
+
+namespace JueMingR.TerrariaHost.Blueprint
+{
+    // Blueprint chooses current targets. ToolUse alone owns the temporary
+    // selection, native input and use token. Neither owner records completion:
+    // actual native writes invalidate the existing full world-match proof.
+    internal sealed partial class HostBlueprint
+    {
+        private sealed class BuildSource
+        {
+            internal int Slot, Type, Stack;
+            internal Item Item;
+        }
+        private sealed class BuildFlight
+        {
+            internal BlueprintBuildTarget Target;
+            internal Player Player;
+            internal BuildSource Source;
+            internal BuildSource[] Dependencies;
+            internal ulong DependencySlots;
+            internal int Direction;
+            internal long Token;
+            internal bool Checked, Started, Chosen;
+        }
+        internal sealed class BuildContainerReceipt
+        {
+            internal BlueprintProjectionIdentity Identity;
+            internal long Session, Token;
+            internal int X, Y, Type, Style, Action;
+            internal BlueprintProjectionBounds Bounds;
+            internal bool Sent, Resolved;
+        }
+        private sealed class BuildUnconfirmed
+        {
+            internal BlueprintProjectionIdentity Identity;
+            internal int X, Y;
+            internal BlueprintPlacementKind Kind;
+        }
+        private HostTools buildTools;
+        private BuildFlight preparedBuild, activeBuild;
+        // Packet 34 is the one original container request with an explicit
+        // success/failure reply. It has no user token, so retain its coordinate
+        // obligation even after a projection is removed; a later same-position
+        // request cannot accidentally consume the old reply. Session exit ends it.
+        private BuildContainerReceipt buildContainer;
+        private readonly List<BuildUnconfirmed> buildUnconfirmed = new List<BuildUnconfirmed>();
+        private long buildInventoryRevision = -1;
+        private int buildPlayerX, buildPlayerY, buildRange;
+        private bool buildEligible;
+#if DEBUG
+        internal long BuildCandidateChecks { get; private set; }
+        internal long BuildNativeChoices { get; private set; }
+        internal long BuildNativeChecks { get; private set; }
+        internal long BuildUsesStarted { get; private set; }
+        internal long BuildUnknownResults { get; private set; }
+        internal long BuildEligibilityReads { get; private set; }
+#endif
+        internal void AttachBuildTools(HostTools tools)
+        {
+            buildTools = tools;
+            if (tools == null) return;
+            tools.BuildEnabled = () => AutoBuildEnabled && HasSession;
+            tools.BuildChoice = ChooseAutomaticBuild;
+            tools.BuildReady = () => preparedBuild != null && CanBuildAutomatically(tools.Player);
+            MaterialBuildDemand = () => AutoBuildEnabled && HasSession;
+        }
+        private bool CanBuildAutomatically(Player p, bool prepareOnly = false)
+        {
+            return AutoBuildEnabled && ControlsEnabled && buildTools != null && buildTools.Available && HasSession &&
+                ReferenceEquals(p, player) && !State.Active && !HasActiveCaptureWork && !ProjectionEditing && pendingProjection == null && !deletePending &&
+                buildTools.Admit(p, false) && (prepareOnly || !buildTools.ManualLeft) && !buildTools.ManualRight && !p.ghost && !p.noBuilding;
+        }
+        internal bool OwnsAutomaticBuildInput(Player p)
+        { return ReferenceEquals(p, player) && buildTools?.Use.Building == true && buildTools.Use.ActionValid; }
+        private void AdvanceAutomaticBuild()
+        {
+            var p = buildTools?.Player;
+            bool eligible = p != null && CanBuildAutomatically(p);
+            long inventory = MaterialInventory?.Revision ?? -1;
+            int px = p == null ? 0 : (int)p.position.X, py = p == null ? 0 : (int)p.position.Y, reach = p?.blockRange ?? 0;
+            if (inventory != buildInventoryRevision || px != buildPlayerX || py != buildPlayerY || reach != buildRange || eligible != buildEligible)
+            {
+                buildInventoryRevision = inventory; buildPlayerX = px; buildPlayerY = py; buildRange = reach; buildEligible = eligible;
+                MaterialBuildEligibilityRevision++;
+            }
+            preparedBuild = null;
+            // Retain a ready target while another native animation finishes,
+            // so the existing combat/extraction handoff can see this borrower.
+            // Only Choose may acquire it, after all original timing gates.
+            if (p == null || !CanBuildAutomatically(p, true) || activeBuild != null || MaterialInventory?.Ready != true) return;
+            // The source/match owner provides a bounded round-robin prefix.
+            // A blocked first material must yield to another layer or instance.
+            for (int n = 0; n < 64; n++)
+            {
+                BlueprintBuildTarget target;
+                if (!TryGetBuildTarget(out target)) break;
+#if DEBUG
+                BuildCandidateChecks++;
+#endif
+                BuildFlight next;
+                if (TryPrepareBuild(target, p, out next)) { preparedBuild = next; break; }
+                NotifyBuildAttempt(target);
+            }
+        }
+        private bool TryPrepareBuild(BlueprintBuildTarget target, Player p, out BuildFlight result)
+        {
+            result = null;
+            if (!IsBuildTargetCurrent(target) || !BasicPlacement(target.Placement) || IsUnconfirmedTarget(target) ||
+                target.Bounds.Left < 6 || target.Bounds.Top < 6 || target.Bounds.Right >= Main.maxTilesX - 6 || target.Bounds.Bottom >= Main.maxTilesY - 6) return false;
+            if (target.Body != null && TileID.Sets.IsAContainer[target.Placement.TileType] && buildContainer != null) return false;
+            int slot = -1;
+            foreach (var source in MaterialInventory.Slots)
+                if (source.Eligible && source.ItemType == target.Placement.UseItemType && source.Stack > 0 && buildTools.BuildInventoryEligible(source.Slot, p.inventory[source.Slot])) { slot = source.Slot; break; }
+            if (slot < 0) return false;
+            var item = p.inventory[slot];
+            int direction = target.Placement.Direction == (int)TileObjectDirection.PlaceLeft ? -1 :
+                target.Placement.Direction == (int)TileObjectDirection.PlaceRight ? 1 : p.direction;
+            if (p.pulley && p.pulleyDir == 2 && direction != p.direction) return false;
+            if (!NativeBuildGeometry(target, p, item)) return false;
+            BuildSource[] dependencies; ulong slots;
+            if (!CaptureBuildDependencies(p, out dependencies, out slots)) return false;
+            result = new BuildFlight { Target = target, Player = p, Source = SnapshotSource(slot, item), Dependencies = dependencies, DependencySlots = slots, Direction = direction };
+            return true;
+        }
+        private static bool BasicPlacement(BlueprintPlacementDescriptor value)
+        { return value != null && !value.Flexible && value.UseItemType > 0 && value.UseItemType == value.ConsumeItemType && value.Units == 1; }
+        private static BuildSource SnapshotSource(int slot, Item item)
+        { return new BuildSource { Slot = slot, Item = item, Type = item.type, Stack = item.stack }; }
+        private bool CaptureBuildDependencies(Player p, out BuildSource[] dependencies, out ulong slots)
+        {
+            slots = 0; dependencies = Array.Empty<BuildSource>();
+            bool paint = p.autoPaint && p.builderAccStatus[3] == 0, actuator = p.autoActuator && p.builderAccStatus[2] == 0;
+            if (!paint && !actuator) return true;
+            var sources = new List<BuildSource>();
+            // A multi-member object or FillEmptySpace can exhaust the first
+            // stack and select its successor during this same native call.
+            // Lease only those finite potential accessory sources; all other
+            // inventory slots retain their existing protection and ownership.
+            for (int i = 0; i < 58; i++)
+            {
+                var item = p.inventory[i];
+                if (item == null || item.IsAir || !(paint && item.PaintOrCoating || actuator && item.type == ItemID.Actuator)) continue;
+                if (buildTools.Items.Ownership.IsProtected(i)) continue; // The original guarded selector also excludes it.
+                if (p.inventoryChestStack[i] || buildTools.Items.World.ManualMaterials.Contains(item) || buildTools.ProtectedAfterYield(item)) return false;
+                sources.Add(SnapshotSource(i, item)); slots |= 1UL << i;
+            }
+            dependencies = sources.ToArray(); return true;
+        }
+        private bool NativeBuildGeometry(BlueprintBuildTarget target, Player p, Item item)
+        {
+            var placement = target.Placement;
+            if (item == null || item.IsAir || item.type != placement.UseItemType || item.GetFlexibleTileWand() != null || item.tileWand > 0 ||
+                !p.IsInTileInteractionRange(target.WorldX, target.WorldY, TileReachCheckSettings.Simple, item.tileBoost + p.blockRange)) return false;
+            if (placement.Kind == BlueprintPlacementKind.Wall)
+            {
+                if (item.createWall != placement.WallType || !BuildEmpty(target.WorldX, target.WorldY, true)) return false;
+                return BuildNeighbor(target.WorldX - 1, target.WorldY, true) || BuildNeighbor(target.WorldX + 1, target.WorldY, true) ||
+                    BuildNeighbor(target.WorldX, target.WorldY - 1, true) || BuildNeighbor(target.WorldX, target.WorldY + 1, true);
+            }
+            if (item.createTile != placement.TileType || item.placeStyle != placement.Style) return false;
+            // These original helpers only derive the current biome style.
+            // Refuse a substitution that differs from the captured body, while
+            // allowing ordinary surface torches with Torch God's Favor on.
+            int nativeType = item.createTile, nativeStyle = item.placeStyle;
+            if (nativeType == TileID.Torches) p.BiomeTorchPlaceStyle(ref nativeType, ref nativeStyle);
+            if (nativeType == TileID.Campfire) p.BiomeCampfirePlaceStyle(ref nativeType, ref nativeStyle);
+            if (nativeType != placement.TileType || nativeStyle != placement.Style || nativeType == 724) return false;
+            if (target.Body != null)
+            {
+                var data = TileObjectData.GetTileData(item.createTile, item.placeStyle, placement.Alternate);
+                if (data == null || target.Bounds.Width != data.Width || target.Bounds.Height != data.Height ||
+                    target.WorldX - data.Origin.X != target.Bounds.Left || target.WorldY - data.Origin.Y != target.Bounds.Top) return false;
+                // IsBuildTargetCurrent certifies the same full empty footprint
+                // already sampled by the match owner. Do not read every member
+                // again on each admission. The actual original CanPlace selects the current alternate,
+                // anchors and random decoration. Its resulting TileObject is
+                // checked immediately before PlaceIt, avoiding an extra RNG or
+                // preview pass and refusing a different body before spending.
+                return true;
+            }
+            if (!BuildEmpty(target.WorldX, target.WorldY, false)) return false;
+            if (Main.tileFrameImportant[item.createTile] && !TileID.Sets.Platforms[item.createTile]) return false;
+            return BuildNeighbor(target.WorldX, target.WorldY, false) || BuildNeighbor(target.WorldX - 1, target.WorldY, false) ||
+                BuildNeighbor(target.WorldX + 1, target.WorldY, false) || BuildNeighbor(target.WorldX, target.WorldY - 1, false) || BuildNeighbor(target.WorldX, target.WorldY + 1, false);
+        }
+        private bool BuildEmpty(int x, int y, bool wall)
+        {
+#if DEBUG
+            BuildEligibilityReads++;
+#endif
+            BlueprintWorldMatchSample sample;
+            return projectionMatchSource != null && projectionMatchSource.TryRead(x, y, out sample) && sample.Available &&
+                (sample.Cell.Layers & (wall ? CaptureLayer.Wall : CaptureLayer.Tile)) == 0;
+        }
+        private bool BuildNeighbor(int x, int y, bool wall)
+        {
+#if DEBUG
+            BuildEligibilityReads++;
+#endif
+            BlueprintWorldMatchSample sample;
+            if (projectionMatchSource == null || !projectionMatchSource.TryRead(x, y, out sample) || !sample.Available) return false;
+            if ((sample.Cell.Layers & CaptureLayer.Wall) != 0) return true;
+            if ((sample.Cell.Layers & CaptureLayer.Tile) == 0) return false;
+            int type = sample.Cell.TileType;
+            return wall || Main.tileSolid[type] || TileID.Sets.IsBeam[type] || Main.tileRope[type] || type == TileID.MinecartTrack;
+        }
+        private ToolIntent ChooseAutomaticBuild(Player p)
+        {
+            var next = preparedBuild; preparedBuild = null;
+            if (next == null || !ReferenceEquals(p, next.Player) || !CanBuildAutomatically(p) || p.itemAnimation > 0 || p.itemTime > 0 || p.channel || p.reuseDelay > 0 ||
+                !p.releaseUseItem || p.selectedItemState.HasActiveOverride || p.selectedItemState.HasBufferedChange || !BuildFlightCurrent(next, false)) return null;
+            return new ToolIntent {
+                Kind = ToolKind.Build, Slot = next.Source.Slot, Target = new Vector2(next.Target.WorldX * 16 + 8, next.Target.WorldY * 16 + 8),
+                PlayerDirection = next.Direction, MaterialSlots = next.DependencySlots, MaximumConsumption = next.Target.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1,
+                Valid = () => CanBuildAutomatically(p) && BuildFlightCurrent(next, true),
+                Admitted = () => { next.Token = buildTools.Use.Operation; activeBuild = next; },
+                Used = () => { next.Started = true;
+#if DEBUG
+                    BuildUsesStarted++;
+#endif
+                },
+                NativePlacement = wall => NativeBuildConsumer(next, wall),
+                NativeTileChoice = (objectType, placement, type) => NativeBuildChoice(next, objectType, placement, type),
+                OwnsMaterial = (array, slot) => OwnsBuildDependency(next, array, slot),
+                OwnsMaterialIdentity = item => OwnsBuildDependency(next, item),
+                ConsumptionValid = () => BuildConsumptionValid(next),
+                NativeChecked = () => CheckedAutomaticBuild(next),
+                Completed = (started, unknown) => EndAutomaticBuild(next, unknown)
+            };
+        }
+        private bool BuildFlightCurrent(BuildFlight flight, bool mayOwn)
+        {
+            var p = flight.Player; var source = flight.Source;
+            if (!IsBuildTargetCurrent(flight.Target) || !ReferenceEquals(p, player) || source.Slot < 0 || source.Slot >= 50 ||
+                !ReferenceEquals(p.inventory[source.Slot], source.Item) || source.Item.type != source.Type || source.Item.stack <= 0 ||
+                !buildTools.BuildInventoryEligible(source.Slot, source.Item)) return false;
+            if (mayOwn && activeBuild != null && (!ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation)) return false;
+            foreach (var dependency in flight.Dependencies)
+                if (!ReferenceEquals(p.inventory[dependency.Slot], dependency.Item) || dependency.Item.type != dependency.Type || dependency.Item.stack <= 0 ||
+                    p.inventoryChestStack[dependency.Slot] || buildTools.Items.World.ManualMaterials.Contains(dependency.Item) || buildTools.ProtectedAfterYield(dependency.Item) ||
+                    buildTools.Items.Ownership.IsProtected(dependency.Slot) && !buildTools.Use.OwnsBuildSource(p.inventory, dependency.Slot)) return false;
+            return NativeBuildGeometry(flight.Target, p, source.Item);
+        }
+        private bool NativeBuildConsumer(BuildFlight flight, bool wall)
+        {
+            if (!ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation || flight.Checked ||
+                (flight.Target.Placement.Kind == BlueprintPlacementKind.Wall) != wall || !BuildFlightCurrent(flight, true)) return false;
+            // Once the consumer starts, its natural observer transaction owns
+            // all neighbor/member side effects. No second per-cell success bit.
+            return true;
+        }
+        private bool NativeBuildChoice(BuildFlight flight, bool objectType, TileObject placement, int type)
+        {
+            if (!NativeBuildConsumer(flight, false) || type != flight.Target.Placement.TileType) return false;
+            if (flight.Target.Body == null) return !objectType;
+            if (!objectType) return NativeLegacyBuildChoice(flight, type);
+            var data = TileObjectData.GetTileData(type, placement.style, placement.alternate);
+            if (data == null || placement.xCoord != flight.Target.Bounds.Left || placement.yCoord != flight.Target.Bounds.Top ||
+                data.Width != flight.Target.Bounds.Width || data.Height != flight.Target.Bounds.Height) return false;
+            int style = data.CalculatePlacementStyle(placement.style, placement.alternate, placement.random), line = 0;
+            if (data.StyleWrapLimit > 0) { line = style / data.StyleWrapLimit * data.StyleLineSkip; style %= data.StyleWrapLimit; }
+            var cell = new CaptureCell { X = placement.xCoord, Y = placement.yCoord, Layers = CaptureLayer.Tile, TileType = (ushort)type,
+                FrameX = checked((short)(data.CoordinateFullWidth * (data.StyleHorizontal ? style : line))),
+                FrameY = checked((short)(data.CoordinateFullHeight * (data.StyleHorizontal ? line : style))) };
+            var shape = BlueprintCaptureSource.DescribeRead(cell, BlueprintWorldObjectSemantics.TileValue(cell)); BlueprintWorldObject actual;
+            if (!BlueprintWorldObjectSemantics.TryCreate(cell, shape, out actual) || actual == null || !flight.Target.Body.SamePlacement(actual)) return false;
+            flight.Chosen = true;
+#if DEBUG
+            BuildNativeChoices++;
+#endif
+            return true;
+        }
+        private bool NativeLegacyBuildChoice(BuildFlight flight, int type)
+        {
+            // .8 Player explicitly routes the normal torch around custom
+            // TileObject.CanPlace. Its deterministic CheckTorch attachment
+            // priority must still match the captured metadata form before use.
+            if (type != TileID.Torches) return false;
+            var cells = new CaptureCell[3, 3];
+            for (int x = 0; x < 3; x++) for (int y = 0; y < 3; y++)
+            {
+                BlueprintWorldMatchSample sample;
+#if DEBUG
+                BuildEligibilityReads++;
+#endif
+                if (projectionMatchSource == null || !projectionMatchSource.TryRead(flight.Target.WorldX + x - 1, flight.Target.WorldY + y - 1, out sample) || !sample.Available) return false;
+                cells[x, y] = sample.Cell;
+            }
+            var down = cells[1, 2]; var left = cells[0, 1]; var right = cells[2, 1];
+            int d = BuildActive(down) && (TileID.Sets.Platforms[down.TileType] && !down.HalfBrick && !down.Inactive &&
+                (down.Slope != 1 && down.Slope != 2 || WorldGen.PlatformProperTopFrame(down.FrameX)) || !down.HalfBrick && down.Slope != 1 && down.Slope != 2) ? down.TileType : -1;
+            int l = BuildActive(left) && (left.Slope == 0 || left.Slope % 2 != 1) ? left.TileType : -1;
+            int r = BuildActive(right) && (right.Slope == 0 || right.Slope % 2 != 0) ? right.TileType : -1;
+            int frame;
+            if (d >= 0 && Main.tileSolid[d] && (!Main.tileNoAttach[d] || TileID.Sets.Platforms[d])) frame = 0;
+            else if (l >= 0 && (Main.tileSolid[l] && !Main.tileNoAttach[l] || TileID.Sets.IsBeam[l]) || BuildTree(l, cells[0, 0], cells[0, 2])) frame = 22;
+            else if (r >= 0 && (Main.tileSolid[r] && !Main.tileNoAttach[r] || TileID.Sets.IsBeam[r]) || BuildTree(r, cells[2, 0], cells[2, 2])) frame = 44;
+            else if ((cells[1, 1].Layers & CaptureLayer.Wall) != 0) frame = 0;
+            else return false;
+            var cell = new CaptureCell { X = flight.Target.WorldX, Y = flight.Target.WorldY, Layers = CaptureLayer.Tile, TileType = (ushort)type,
+                FrameX = (short)frame, FrameY = checked((short)(flight.Target.Placement.Style * 22)) };
+            var shape = BlueprintCaptureSource.DescribeRead(cell, BlueprintWorldObjectSemantics.TileValue(cell)); BlueprintWorldObject actual;
+            return BlueprintWorldObjectSemantics.TryCreate(cell, shape, out actual) && actual != null && flight.Target.Body.SamePlacement(actual);
+        }
+        private static bool BuildActive(CaptureCell cell) { return (cell.Layers & CaptureLayer.Tile) != 0; }
+        private static bool BuildTree(int type, CaptureCell above, CaptureCell below)
+        { return type >= 0 && WorldGen.IsTreeType(type) && BuildActive(above) && WorldGen.IsTreeType(above.TileType) && BuildActive(below) && WorldGen.IsTreeType(below.TileType); }
+        private static bool OwnsBuildDependency(BuildFlight flight, Item[] array, int slot)
+        {
+            if (!ReferenceEquals(array, flight.Player.inventory)) return false;
+            foreach (var source in flight.Dependencies) if (source.Slot == slot && ReferenceEquals(source.Item, array[slot]) && (source.Item.type == source.Type || source.Item.IsAir)) return true;
+            return false;
+        }
+        private static bool OwnsBuildDependency(BuildFlight flight, Item item)
+        {
+            foreach (var source in flight.Dependencies)
+                if (ReferenceEquals(source.Item, item) && ReferenceEquals(flight.Player.inventory[source.Slot], item) && (item.type == source.Type || item.IsAir)) return true;
+            return false;
+        }
+        private static bool BuildConsumptionValid(BuildFlight flight)
+        {
+            foreach (var source in flight.Dependencies)
+            {
+                Item current = flight.Player.inventory[source.Slot];
+                if (!ReferenceEquals(current, source.Item) || current.stack > source.Stack || current.stack < 0 || !current.IsAir && current.type != source.Type) return false;
+            }
+            return true;
+        }
+        private void CheckedAutomaticBuild(BuildFlight flight)
+        {
+            if (!ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation || flight.Checked) return;
+            flight.Checked = true;
+#if DEBUG
+            BuildNativeChecks++;
+#endif
+            bool spent = flight.Source.Item.stack < flight.Source.Stack;
+            foreach (var source in flight.Dependencies) spent |= source.Item.stack < source.Stack;
+            if (spent && BuildEmpty(flight.Target.Bounds.Left, flight.Target.Bounds.Top, flight.Target.Placement.Kind == BlueprintPlacementKind.Wall))
+            {
+                // Consumption without an observable body is unknown, never a
+                // retry key renewed by the decreasing stack. Protect the real
+                // sources and this target; independent targets can still run.
+                HoldUnconfirmedBuild(flight);
+            }
+            NotifyBuildAttempt(flight.Target);
+        }
+        private void HoldUnconfirmedBuild(BuildFlight flight)
+        {
+            if (!IsUnconfirmedTarget(flight.Target)) buildUnconfirmed.Add(new BuildUnconfirmed { Identity = flight.Target.Identity, X = flight.Target.WorldX, Y = flight.Target.WorldY, Kind = flight.Target.Placement.Kind });
+            buildTools.HoldUnknown(flight.DependencySlots | (1UL << flight.Source.Slot));
+            projectionFeedback = "一次施工结果未确认，相关材料已受保护；其他可建部分继续。";
+#if DEBUG
+            BuildUnknownResults++;
+#endif
+        }
+        private bool IsUnconfirmedTarget(BlueprintBuildTarget target)
+        {
+            foreach (var failure in buildUnconfirmed) if (failure.Identity.Equals(target.Identity) && failure.X == target.WorldX && failure.Y == target.WorldY && failure.Kind == target.Placement.Kind) return true;
+            return false;
+        }
+        private void EndAutomaticBuild(BuildFlight flight, bool unknown)
+        {
+            if (!ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation) return;
+            if (unknown) HoldUnconfirmedBuild(flight);
+            activeBuild = null; NotifyBuildAttempt(flight.Target);
+        }
+        internal void CancelAutomaticBuild()
+        { preparedBuild = null; if (buildTools?.Use.Building == true) buildTools.Use.Cancel(); }
+        internal void AutomaticBuildChanged()
+        { preparedBuild = null; MaterialBuildEligibilityRevision++; }
+        private void ClearAutomaticBuild()
+        {
+            CancelAutomaticBuild(); if (buildTools?.Use.Building == true) buildTools.Use.Retire(); preparedBuild = activeBuild = null; buildUnconfirmed.Clear();
+            // RemoveAll/Clear retires projection work, not an original packet
+            // already sent in this connection. Keep that finite responsibility
+            // until its decoder reply or the actual session boundary below.
+            MaterialBuildEligibilityRevision++; buildInventoryRevision = -1; buildEligible = false;
+        }
+        private void ClearBuildSession() { buildContainer = null; }
+        private void RetireAutomaticBuild(BlueprintProjectionIdentity identity)
+        {
+            if (preparedBuild?.Target.Identity.Equals(identity) == true) preparedBuild = null;
+            if (activeBuild?.Target.Identity.Equals(identity) == true && buildTools?.Use.Building == true) buildTools.Use.Cancel();
+            buildUnconfirmed.RemoveAll(value => value.Identity.Equals(identity));
+        }
+        private bool BuildBlocksRetirement(BlueprintProjectionPlacement item)
+        {
+            if (activeBuild != null && activeBuild.Target.Identity.Equals(item.Identity) && buildTools?.Use.InNativeUse == true) return true;
+            var receipt = buildContainer;
+            if (receipt == null || receipt.Resolved) return false;
+            // A newer projection over the same predicted body cannot turn an
+            // old in-flight container into proven construction. This O(1)
+            // coarse overlap only delays retirement; it creates no Match.
+            return receipt.Identity.Equals(item.Identity) || item.OriginX < receipt.Bounds.Right && receipt.Bounds.Left < (long)item.OriginX + item.Summary.Width &&
+                item.OriginY < receipt.Bounds.Bottom && receipt.Bounds.Top < (long)item.OriginY + item.Summary.Height;
+        }
+        internal BuildContainerReceipt BeginBuildContainer(int x, int y, int type, int style)
+        {
+            var flight = activeBuild;
+            if (Main.netMode != 1 || flight == null || buildTools?.Use.InNativeUse != true || !flight.Chosen ||
+                flight.Token != buildTools.Use.Operation || flight.Target.WorldX != x || flight.Target.WorldY != y || flight.Target.Placement.TileType != type ||
+                flight.Target.Placement.Style != style || buildContainer != null) return null;
+            return buildContainer = new BuildContainerReceipt { Identity = flight.Target.Identity, Session = generation, Token = flight.Token, X = x, Y = y, Type = type, Style = style,
+                Bounds = flight.Target.Bounds, Action = type == TileID.Containers ? 0 : type == TileID.Containers2 ? 4 : 2 };
+        }
+        internal void EndBuildContainer(BuildContainerReceipt receipt, int result, Exception error)
+        {
+            if (receipt == null || !ReferenceEquals(receipt, buildContainer)) return;
+            if (error != null) { if (activeBuild != null && activeBuild.Token == receipt.Token) HoldUnconfirmedBuild(activeBuild); return; }
+            if (result < 0) { receipt.Resolved = true; buildContainer = null; return; }
+            receipt.Sent = true;
+        }
+        internal BuildContainerReceipt MatchBuildContainer(byte[] bytes, int start, int length)
+        {
+            var receipt = buildContainer;
+            if (receipt == null || !receipt.Sent || receipt.Resolved || Main.netMode != 1 || receipt.Session != generation || !HasSession || bytes == null || start < 0 || length < 10 || start > bytes.Length - length || bytes[start] != 34) return null;
+            return bytes[start + 1] == receipt.Action && ReadBuildShort(bytes, start + 2) == receipt.X && ReadBuildShort(bytes, start + 4) == receipt.Y && ReadBuildShort(bytes, start + 6) == receipt.Style ? receipt : null;
+        }
+        private static short ReadBuildShort(byte[] data, int at) { return unchecked((short)(data[at] | data[at + 1] << 8)); }
+        internal void ReceiveBuildContainer(BuildContainerReceipt receipt, bool accepted, Exception error)
+        {
+            if (receipt == null || !ReferenceEquals(receipt, buildContainer) || receipt.Session != generation) return;
+            if (error != null) { projectionFeedback = "容器施工回执未能确认，相关图纸等待原版同步。"; return; }
+            receipt.Resolved = true; buildContainer = null; MaterialBuildEligibilityRevision++;
+            if (!accepted) projectionFeedback = "原版未接受这次容器放置，图纸已保留。";
+        }
+    }
+}

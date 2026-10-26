@@ -44,10 +44,10 @@ namespace JueMingR.Features.Blueprint
                 while (true)
                 {
                     LibraryCommand command;
-                    lock (gate) { while (pending == null && !ProjectionHasWorkLocked() && !stopping) Monitor.Wait(gate); if (pending == null && stopping) break; command = pending; pending = null; }
+                    lock (gate) { while (pending == null && !ProjectionHasWorkLocked() && !MaterialHasWorkLocked() && !stopping) Monitor.Wait(gate); if (pending == null && stopping) break; command = pending; pending = null; }
                     // Accepted library commands have priority over the next
                     // projection slice. Their receipt/operation slot is separate.
-                    if (command == null) { ProjectionStep(); continue; }
+                    if (command == null) { if (MaterialTurn()) MaterialStep(); else ProjectionStep(); continue; }
                     LibraryReceipt completed;
                     try
                     {
@@ -77,10 +77,12 @@ namespace JueMingR.Features.Blueprint
                 if (stage != null && !stage.Promoted)
                     try { Cleanup(stage.Physical, true, stage.Blocks); } catch { }
             }
-            finally { CloseProjectionWorker(); files.Dispose(); }
+            finally { CloseMaterialWorker(); CloseProjectionWorker(); files.Dispose(); }
         }
         private LibraryReceipt Execute(LibraryCommand c)
         {
+            if (c.Kind == LibraryCommandKind.Create || c.Kind == LibraryCommandKind.DiscardDraft) RetireMaterialSource(c.Id, true);
+            else if (c.Kind == LibraryCommandKind.Delete) RetireMaterialSource(c.Id, false);
             // Capture correlation before any command can retire the old stage.
             // Old handles never acquire the token or ownership of a newer stage.
             if (stage != null && stage.Id == c.Id && c.Kind != LibraryCommandKind.Create && c.Kind != LibraryCommandKind.BeginStage) c.Token = stage.Token;
@@ -275,7 +277,9 @@ namespace JueMingR.Features.Blueprint
             CaptureSummary summary = Measure(physical, isStage, root, c, false);
             if (summary.ContentCount == 0) return Receipt(c, LibraryStatus.Failed, "没有可预览的内容", summary: summary);
             var builder = new BlueprintPreviewBuilder(summary.Width, summary.Height, c.Width, c.Height, c.Stage);
-            Visit(physical, isStage, root, c, chunk =>
+            var materialCompanion = TakePreviewMaterials(c, root);
+            var materialSummary = materialCompanion == null ? null : new BlueprintMaterialAccumulator();
+            foreach (bool ignored in VisitSteps(physical, isStage, root, c, chunk =>
             {
                 for (int i = 0; i < chunk.Count; i++)
                 {
@@ -288,7 +292,8 @@ namespace JueMingR.Features.Blueprint
                     if ((cell.Layers & CaptureLayer.Tile) != 0) layers |= cell.ObjectId == 0 ? BlueprintPreviewLayer.Tile : BlueprintPreviewLayer.Object;
                     builder.Add(cell.X - summary.Left, cell.Y - summary.Top, layers);
                 }
-            });
+            }, materialKey: materialCompanion?.Key, catalog: materialCompanion?.Catalog, materials: materialSummary)) { }
+            if (materialCompanion != null) StoreMaterials(materialCompanion.Key, materialSummary.Snapshot(++materialRevision));
             return Receipt(c, LibraryStatus.Completed, preview: builder.Complete(), summary: summary);
         }
         private CaptureSummary Measure(Guid id, bool isStage, LibraryRoot root, LibraryCommand command, bool requireExclusions)
@@ -349,12 +354,16 @@ namespace JueMingR.Features.Blueprint
         private void Validate(Guid id, bool isStage, LibraryRoot root, LibraryCommand command, bool allowPartialSummary)
         { files.ValidateLayout(id, isStage, root.BlockCount); Visit(id, isStage, root, command, chunk => { }, !allowPartialSummary); }
         private void Visit(Guid id, bool isStage, LibraryRoot root, LibraryCommand command, Action<CaptureChunk> visit, bool checkSummary = true)
+        { foreach (bool ignored in VisitSteps(id, isStage, root, command, visit, checkSummary)) { } }
+        private IEnumerable<bool> VisitSteps(Guid id, bool isStage, LibraryRoot root, LibraryCommand command, Action<CaptureChunk> visit, bool checkSummary = true,
+            Stream verifiedIndex = null, Func<long, CaptureChunk> reader = null, BlueprintMaterialKey materialKey = null,
+            BlueprintPlacementCatalog catalog = null, BlueprintMaterialAccumulator materials = null)
         {
             long previous = -1, totalCells = 0, unreliable = 0; int previousObject = 0; bool sawObjects = false;
-            using (Stream index = OpenVerifiedIndex(id, isStage, root))
-            using (var objects = new ObjectLookup(this, id, isStage, root.BlockCount, index)) for (long number = 0; number < root.BlockCount; number++)
+            using (Stream index = verifiedIndex ?? OpenVerifiedIndex(id, isStage, root))
+            using (var objects = new ObjectLookup(this, id, isStage, root.BlockCount, index, reader)) for (long number = 0; number < root.BlockCount; number++)
             {
-                if (command != null) CheckRead(command); CaptureChunk chunk = ReadChunk(id, isStage, number, index);
+                if (command != null) CheckRead(command); CaptureChunk chunk = reader == null ? ReadChunk(id, isStage, number, index) : reader(number);
                 for (int i = 0; i < chunk.Count; i++)
                 {
                     CaptureCell cell = chunk.Cells[i]; long key = Key(cell);
@@ -364,10 +373,22 @@ namespace JueMingR.Features.Blueprint
                         CaptureObject obj = objects.Find(cell.ObjectId);
                         if (obj.Type != cell.TileType || obj.Reliable == cell.UnreliableObject || cell.X < obj.X || cell.Y < obj.Y || (long)cell.X >= (long)obj.X + obj.Width || (long)cell.Y >= (long)obj.Y + obj.Height) throw new InvalidDataException("blueprint-object-member-reference");
                     }
+                    if (materials != null)
+                    {
+                        CaptureCell effective = materialKey.Excluded(cell.ObjectId, cell.UnreliableObject) ? cell.WithoutTile() : cell;
+                        if (effective.HasContent) BlueprintMaterialSteps.StaticCell(effective, catalog, materials);
+                    }
+                    if ((i & 31) == 31) yield return true;
                 }
                 totalCells = checked(totalCells + chunk.Count);
-                for (int i = 0; i < chunk.ObjectCount; i++) { sawObjects = true; CaptureObject obj = chunk.Objects[i]; if (obj.Id <= previousObject) throw new InvalidDataException("blueprint-object-order-or-duplicate"); previousObject = obj.Id; if (!obj.Reliable) unreliable++; else if (checkSummary) objects.CheckComplete(obj); }
-                visit(chunk); Interlocked.Increment(ref processed);
+                for (int i = 0; i < chunk.ObjectCount; i++)
+                {
+                    sawObjects = true; CaptureObject obj = chunk.Objects[i]; if (obj.Id <= previousObject) throw new InvalidDataException("blueprint-object-order-or-duplicate"); previousObject = obj.Id;
+                    if (!obj.Reliable) unreliable++; else if (checkSummary) foreach (bool ignored in objects.CheckCompleteSteps(obj)) yield return true;
+                    if (materials != null && !materialKey.Excluded(obj.Id, !obj.Reliable)) BlueprintMaterialSteps.StaticObject(obj, objects.FindCell(obj.X, obj.Y), catalog, materials);
+                    yield return true;
+                }
+                visit?.Invoke(chunk); if (materials == null) Interlocked.Increment(ref processed); yield return true;
             }
             if (checkSummary && (totalCells != root.Summary.ContentCount || unreliable != root.Summary.UnreliableObjectCount)) throw new InvalidDataException("blueprint-content-count");
         }
@@ -419,7 +440,7 @@ namespace JueMingR.Features.Blueprint
                     if (++visited % 32 == 0) yield return true;
                 }
             }
-            private CaptureCell FindCell(int x, int y)
+            internal CaptureCell FindCell(int x, int y)
             {
                 long target = ((long)y << 32) | (uint)x, low = 0, high = blocks - 1;
                 while (low <= high)
@@ -513,7 +534,8 @@ namespace JueMingR.Features.Blueprint
         {
             if (status == LibraryStatus.CommitUnconfirmed && c.Kind == LibraryCommandKind.Delete) projectionUncertainAssets.Add(c.Id);
             if (protect && !c.Stage && c.Id != Guid.Empty && (c.Kind == LibraryCommandKind.Preview || c.Kind == LibraryCommandKind.Create || c.Kind == LibraryCommandKind.Rename || c.Kind == LibraryCommandKind.Delete)) protectedAssets.Add(c.Id);
-            return new LibraryReceipt(c.CommandId, c.Kind, status, c.Id, c.Id, c.Token, c.Generation, error, protect, cleanup, page, preview, objectPage, summary, failureCode, suggestedName, operationRetired);
+            return new LibraryReceipt(c.CommandId, c.Kind, status, c.Id, c.Id, c.Token, c.Generation, error, protect, cleanup, page, preview, objectPage, summary, failureCode, suggestedName, operationRetired)
+            { CommittedName = c.Kind == LibraryCommandKind.Rename && status == LibraryStatus.Saved ? c.Name : null };
         }
         private static bool Excluded(int id, bool unreliable, LibraryCommand c) { return id > 0 && (unreliable && c.Exclude || Array.BinarySearch(c.Excluded, id) >= 0); }
         private static CaptureCell Filter(CaptureCell cell, LibraryCommand c) { return Excluded(cell.ObjectId, cell.UnreliableObject, c) ? cell.WithoutTile() : cell; }
