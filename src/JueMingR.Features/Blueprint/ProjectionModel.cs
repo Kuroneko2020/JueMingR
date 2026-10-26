@@ -105,8 +105,8 @@ namespace JueMingR.Features.Blueprint
 #endif
     public sealed class BlueprintProjectionReceipt
     {
-        internal BlueprintProjectionReceipt(BlueprintProjectionReceiptKind kind, BlueprintProjectionIdentity identity, long windowGeneration = 0, CaptureSummary summary = null, BlueprintProjectionWindow window = null, string error = null, string failureCode = null, long totalLayerCount = 0, IReadOnlyList<BlueprintProjectionSourceRange> sourceRanges = null, IReadOnlyList<BlueprintProjectionSourceRange> matchRanges = null)
-        { MatchRanges = matchRanges; SourceRanges = sourceRanges; TotalLayerCount = totalLayerCount; Kind = kind; Identity = identity; WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary); Window = window; Error = error; FailureCode = failureCode; }
+        internal BlueprintProjectionReceipt(BlueprintProjectionReceiptKind kind, BlueprintProjectionIdentity identity, long windowGeneration = 0, CaptureSummary summary = null, BlueprintProjectionWindow window = null, string error = null, string failureCode = null, long totalLayerCount = 0, IReadOnlyList<BlueprintProjectionSourceRange> sourceRanges = null, IReadOnlyList<BlueprintProjectionSourceRange> matchRanges = null, bool identityRetired = false)
+        { MatchRanges = matchRanges; SourceRanges = sourceRanges; TotalLayerCount = totalLayerCount; Kind = kind; Identity = identity; WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary); Window = window; Error = error; FailureCode = failureCode; IdentityRetired = identityRetired; }
         public IReadOnlyList<BlueprintProjectionSourceRange> SourceRanges { get; }
         public IReadOnlyList<BlueprintProjectionSourceRange> MatchRanges { get; }
         public long TotalLayerCount { get; }
@@ -117,5 +117,9 @@ namespace JueMingR.Features.Blueprint
         public BlueprintProjectionWindow Window { get; }
         public string Error { get; }
         public string FailureCode { get; }
+        // FailureCode describes the read; this states the worker ownership fact.
+        // A source failure can use the same code as a recoverable viewport
+        // budget refusal while already having revoked the shared identity.
+        public bool IdentityRetired { get; }
     }
 }

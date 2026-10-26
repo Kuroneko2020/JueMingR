@@ -173,7 +173,20 @@ namespace JueMingR.ArchitectureTests
                 identity = Open(state, fixture, 2, 2); counted.FailBlock = 0;
                 Require(state.RequestProjectionWindow(identity, 20, new BlueprintProjectionBounds(0, 0, 10, 1)), "failing halo requested");
                 BlueprintProjectionReceipt failed = Await(state, BlueprintProjectionReceiptKind.Failed);
-                Require(failed.Kind == BlueprintProjectionReceiptKind.Failed && failed.Window == null, "read failure is explicit and never a completed empty/air window");
+                Require(failed.Kind == BlueprintProjectionReceiptKind.Failed && failed.Window == null && failed.IdentityRetired, "read failure is explicit, revokes identity and never becomes a completed empty/air window");
+                Require(!state.RequestProjectionSource(identity, 201, 0), "a fatal viewport read no longer owns a source reference");
+                counted.FailBlock = -1; identity = Open(state, fixture, 21, 2); counted.FailBlock = 0; counted.FailCode = "blueprint-projection-window-budget";
+                Require(state.RequestProjectionSource(identity, 202, 0), "source budget-named reader exception reaches the real source lane");
+                failed = Await(state, BlueprintProjectionReceiptKind.Failed);
+                Require(failed.IdentityRetired && failed.WindowGeneration == 0 && failed.FailureCode == counted.FailCode && !state.RequestProjectionSource(identity, 203, 0),
+                    "source failure broadcasts actual identity retirement even when its code names a recoverable viewport budget refusal");
+                counted.FailBlock = -1; identity = Open(state, fixture, 22, 2); counted.FailBlock = 0;
+                Require(state.RequestProjectionWindow(identity, 204, new BlueprintProjectionBounds(0, 0, 10, 1)), "viewport budget refusal reaches its own request path");
+                failed = Await(state, BlueprintProjectionReceiptKind.Failed);
+                Require(!failed.IdentityRetired && failed.WindowGeneration == 204 && failed.FailureCode == counted.FailCode,
+                    "viewport budget refusal retains identity and binds the actual viewport generation");
+                counted.FailBlock = -1; counted.FailCode = null;
+                Require(Window(state, identity, 205, new BlueprintProjectionBounds(0, 0, 10, 1)).Cells.Count == 10, "budget refusal keeps its live reference available for a smaller retry");
                 counted.FailBlock = -1; identity = Open(state, fixture, 3, 2);
                 Require(Window(state, identity, 21, new BlueprintProjectionBounds(0, 0, 10, 1)).Cells.Count == 10, "retry replaces failure with actual records");
                 Require(!state.RequestProjectionWindow(new BlueprintProjectionIdentity(fixture.Id, fixture.Revision, fixture.Hash, 1, 1), 99, new BlueprintProjectionBounds(0, 0, 10, 1)), "old session/selection cannot enqueue or revive a window");
@@ -441,7 +454,7 @@ namespace JueMingR.ArchitectureTests
 #if DEBUG
                 Require(sourceIndexBytes == state.DebugProjectionStatistics.SourceIndexBytes, "charged source index bytes match the public directory");
 #endif
-                int actual = 0; long token = 100; bool viewport = false;
+                int actual = 0, worksets = 0; long token = 100; bool viewport = false;
                 for (int range = 0; range < opened.SourceRanges.Count; range++)
                 {
                     int offset = 0;
@@ -451,18 +464,21 @@ namespace JueMingR.ArchitectureTests
                         Require(state.RequestProjectionWindow(identity, token, new BlueprintProjectionBounds(0, 999999, 1, 1)), "viewport Latest remains independent of complete traversal");
                         BlueprintProjectionSourceReceipt source = null;
                         Until(() => { BlueprintProjectionReceipt display; if (state.TryTakeProjectionReceipt(out display)) { Require(display.Kind != BlueprintProjectionReceiptKind.Failed, "viewport still reliable"); if (display.Kind == BlueprintProjectionReceiptKind.Window) viewport = true; } return state.TryTakeProjectionSource(out source); });
-                        Require(source.Generation == token && source.Range == range && source.Offset == offset && source.Window.Cells.Count > 0 && source.Window.Cells.Count <= 128, "receipt binds source range/offset/generation and bounded actual records");
+                        worksets++;
+                        Require(source.Generation == token && source.Range == range && source.Offset == offset && source.Complete && source.Window.Cells.Count > 0 && source.Window.Cells.Count <= 2048 && source.NextOffset > offset,
+                            "receipt binds range/raw offset/generation and returns one finite physical block within the DTO byte gate");
+                        Require(source.Window.EstimatedBytes == 256L + source.Window.Cells.Count * 64L && source.Window.EstimatedBytes <= 32L * 1024 * 1024, "ordinary workset cells and array/header ownership are charged to the existing DTO limit");
                         foreach (var cell in source.Window.Cells)
                         { Require(cell.X == (actual < 4096 ? actual : 0) && cell.Y == (actual < 4096 ? 0 : 999999), "sparse normalized source order never scans or duplicates bbox air"); actual++; }
                         offset = source.NextOffset; if (source.Complete) break;
                     }
                 }
-                Require(actual == count && viewport, "source and visible demands both make progress despite changing viewport Latest");
+                Require(actual == count && worksets == 3 && viewport, "three physical blocks cover actual sparse records once while viewport Latest independently makes progress");
                 Require(state.RequestProjectionSource(identity, ++token, 0), "retirement fixture source demand accepted"); state.ReleaseProjection(identity);
                 BlueprintProjectionSourceReceipt late; Require(!state.TryTakeProjectionSource(out late) && !state.RequestProjectionSource(identity, ++token, 0), "release clears late source payload and rejects identity resurrection");
                 Until(() => Volatile.Read(ref counted.ActiveIndexes) == 0);
                 long stopped = counted.Reads; Thread.Sleep(10); Require(counted.Reads == stopped, "last-reference source lane does no residual body IO");
-                Console.WriteLine("BlueprintProjection source ranges=3 targetCells=4097 bboxHeight=1000000 slices=33 sliceRecords<=128 viewportIndependent=true retiredReaders=0");
+                Console.WriteLine("BlueprintProjection source ranges=3 targetCells=4097 bboxHeight=1000000 worksets=3 physicalRecords<=2048 dtoBytesCharged=true viewportIndependent=true retiredReaders=0");
             }
             string gapPath = Path.Combine(path, "exact-gap"); Fixture gap = Write(gapPath, 1, 1000000, 2, n => Tile(37, n == 0 ? 91 : 1000090));
             using (var counted = new CountedFiles(gapPath)) using (var state = new LibraryState(counted))
@@ -508,7 +524,8 @@ namespace JueMingR.ArchitectureTests
                 Require(!opened.SourceRanges[2].IntersectsProofs(new BlueprintProjectionBounds(4094,1,1,1),1,BlueprintProjectionMask.Empty) && opened.SourceRanges[1].IntersectsProofs(new BlueprintProjectionBounds(4094,1,1,1),1,BlueprintProjectionMask.Empty) && opened.SourceRanges[2].IntersectsProofs(new BlueprintProjectionBounds(4092,1,1,1),1,BlueprintProjectionMask.Empty),
                     "mixed tail block rejects the earlier-owned object's true Tile write without losing its own ordinary Tile or the owning group's full member dependency");
                 Require(state.RequestProjectionSource(id,2001,2),"independent object proof primary slice admitted");BlueprintProjectionSourceReceipt objectSource=null;Until(()=>state.TryTakeProjectionSource(out objectSource));
-                Require(objectSource.ObjectId==0 && objectSource.Complete && objectSource.Window.Cells.Count==1 && objectSource.Window.Cells[0].ObjectId==1 && objectSource.Window.Cells[0].Layers==CaptureLayer.Tile,"object primary slice retains only one anchor member, not a second complete object DTO");
+                Require(opened.MatchRanges[2].ObjectId==1 && objectSource.ObjectId==0 && objectSource.Complete && objectSource.Window.Cells.Count==4 && objectSource.Window.Objects.Count==1 && objectSource.Window.Cells.All(c=>c.ObjectId==1 && c.Layers==CaptureLayer.Tile),
+                    "logical object primary workset directly returns all cross-block Tile members and metadata without an anchor round trip or duplicate same-cell layers");
                 Require(state.RequestProjectionSource(id,2002,2,1),"one complete object target workset admitted");Until(()=>state.TryTakeProjectionSource(out objectSource));
                 Require(objectSource.ObjectId==1 && objectSource.Window.Cells.Count==4 && objectSource.Window.Objects.Count==1,"complete target workset returns all four cross-block members once");
             }
@@ -637,6 +654,7 @@ namespace JueMingR.ArchitectureTests
             private bool disposed;
             internal long Reads, IndexReadBytes; internal int ActiveIndexes, MetadataWhileLayout, IndexesAtMetadataWrite, WritesWhileLayout;
             internal string LastWrittenIdentity;
+            internal string FailCode;
             internal bool HoldDispose;
             internal readonly ManualResetEventSlim DisposeEntered=new ManualResetEventSlim(), DisposeRelease=new ManualResetEventSlim();
             internal int DeleteMode, HoldLayoutBatches; internal long HoldBlock = -1, FailBlock = -1; internal bool LayoutStarted, LayoutCompleted;
@@ -662,7 +680,7 @@ namespace JueMingR.ArchitectureTests
             {
                 Interlocked.Increment(ref Reads);
                 if (number == HoldBlock) { HoldBlock = -1; BlockEntered.Set(); if (!BlockRelease.Wait(5000)) throw new TimeoutException("Held read test boundary timed out."); }
-                if (number == FailBlock) throw new IOException("injected-projection-block-failure"); return inner.ReadBlock(id, stage, number);
+                if (number == FailBlock) { if (FailCode != null) throw new InvalidDataException(FailCode); throw new IOException("injected-projection-block-failure"); } return inner.ReadBlock(id, stage, number);
             }
             public Stream OpenIndex(Guid id, bool stage) { return new CountedIndex(inner.OpenIndex(id, stage), this); }
             public void SealStage(Guid id, byte[] root) { inner.SealStage(id, root); }

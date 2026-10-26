@@ -116,7 +116,10 @@ namespace JueMingR.Features.Blueprint
             {
                 CaptureChunk chunk = ProjectionChunk(owner, range.Block);
                 if (request.Offset < 0 || request.Offset >= chunk.Count) throw new System.IO.InvalidDataException("blueprint-source-offset");
-                nextOffset = Math.Min(chunk.Count, request.Offset + 128); complete = nextOffset == chunk.Count;
+                // One immutable physical block is the source work unit. The
+                // Host spends its own bounded Update allowance consuming it;
+                // no per-128-record worker handshake throttles world sampling.
+                nextOffset = chunk.Count;
                 for (int i = request.Offset; i < nextOffset; i++)
                 {
                     var cell = chunk.Cells[i]; if (cell.ObjectId > 0) cell = cell.WithoutTile();
@@ -140,14 +143,8 @@ namespace JueMingR.Features.Blueprint
                         {
                             var cell = members.Cells[i]; if (objectRange) cell.Layers = CaptureLayer.Tile;
                             cell.X -= summary.Left; cell.Y -= summary.Top; cells.Add(cell);
-                            if(objectRange)break;
                         }
                         yield return true;
-                        // A logical object's primary source slice needs only
-                        // its anchor member. The existing positive ObjectId
-                        // request transfers its one complete target workset;
-                        // never retain two complete furniture payloads.
-                        if(objectRange && cells.Count!=0)break;
                     }
                 }
                 found.X -= summary.Left; found.Y -= summary.Top; metadata.Add(found); yield return true;

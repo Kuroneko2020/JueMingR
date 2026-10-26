@@ -112,16 +112,18 @@ namespace JueMingR.TerrariaHost.Blueprint
         // gestures. The separately accepted Save is never revoked here.
         internal void CancelProjectionOpen() { if (pendingProjection != null) CancelProjection(); }
         internal void CancelProjection()
+        { EndProjectionEdit(true); }
+        private void EndProjectionEdit(bool restoreSource)
         {
             if (!ProjectionEditing) return;
-            bool retainRollbackPoint = restoreProjection != null && ReferenceEquals(projectionPointTarget, restoreProjection);
+            bool retainRollbackPoint = restoreSource && restoreProjection != null && ReferenceEquals(projectionPointTarget, restoreProjection);
             Library?.CancelProjectionCommit(generation, projectionTransaction);
             if (pendingProjection != null) Library?.ReleaseProjection(pendingProjection.Identity);
             if (candidateProjection != null && restoreProjection == null) Library?.ReleaseProjection(candidateProjection.Identity);
             if (restoreProjection != null) { Library?.ClearProjectionWindow(restoreProjection.Identity); restoreProjection.WindowPending = false; }
             if (candidateProjection?.Windows.Count > 0 || candidateProjection?.Renderer.CommandCount > 0) projectionCapacityRevision++;
             if (candidateProjection != null) DisposeProjectionData(candidateProjection); candidateProjection = pendingProjection = hoveredProjection = null;
-            if (restoreProjection != null)
+            if (restoreSource && restoreProjection != null)
             {
                 var alias = restoreProjection.Window;
                 // Hidden source commands were retired to give Moving its full
@@ -164,6 +166,14 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var item = FindProjection(receipt.Identity); if (item == null) continue;
                 if (receipt.Kind == BlueprintProjectionReceiptKind.Failed)
                 {
+                    if (receipt.IdentityRetired)
+                    {
+                        // Moving has two Host objects for one worker identity.
+                        // A revoked identity cannot roll back into an Opened
+                        // restore or retain its scene-wide source execution slot.
+                        RetireProjectionIdentity(receipt.Identity);
+                        projectionFeedback = receipt.Error ?? "蓝图读取失败，库中原文件已保留。"; continue;
+                    }
                     if (receipt.FailureCode == "blueprint-projection-window-budget")
                     {
                         if (!item.WindowPending || receipt.WindowGeneration != item.WindowGeneration) continue;
@@ -231,6 +241,19 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private BlueprintProjectionPlacement FindProjection(BlueprintProjectionIdentity id)
         { if (pendingProjection?.Identity.Equals(id) == true) return pendingProjection; if (candidateProjection?.Identity.Equals(id) == true) return candidateProjection; return projectionScene.Find(p => p.Identity.Equals(id)); }
+        private void RetireProjectionIdentity(BlueprintProjectionIdentity identity)
+        {
+            ReleaseProjectionMatchIdentity(identity);
+            var fixedItem = projectionScene.Find(p => p.Identity.Equals(identity));
+            if (pendingProjection?.Identity.Equals(identity) == true || candidateProjection?.Identity.Equals(identity) == true || restoreProjection?.Identity.Equals(identity) == true)
+            {
+                // End the transaction before retirement, rejecting old commit
+                // receipts. A dead source has no rollback drawing to rebuild;
+                // ordinary user cancellation still restores its exact DTOs.
+                EndProjectionEdit(false);
+            }
+            if (fixedItem != null) RetireProjection(fixedItem);
+        }
         private void RetireProjection(BlueprintProjectionPlacement item, bool revision = true)
         {
             // An opponent's read/draw failure invalidates the whole pending

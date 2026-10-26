@@ -25,7 +25,7 @@ namespace JueMingR.Features.Blueprint
         internal BlueprintProjectionSourceRange WithRouting(BlueprintProjectionSourceRange? ordinary, int[] objectIds, int[] routes)
         { return new BlueprintProjectionSourceRange(this,new ProofRouting(ordinary,objectIds,routes)); }
         internal long Block { get; }
-        internal int ObjectId { get; }
+        public int ObjectId { get; }
         public int ObservationGroup { get; }
         public BlueprintProjectionBounds Bounds { get; }
         public long TargetLayerCount { get; }
@@ -215,8 +215,9 @@ namespace JueMingR.Features.Blueprint
         public BlueprintProjectionIdentity Identity { get; }
         public long Generation { get; }
         public int Range { get; }
-        // Zero returns a bounded ordinary source slice or one object anchor.
-        // Positive returns its one complete target workset; the Host counts
+        // Zero returns the remaining physical block or the logical object's
+        // complete Tile workset. Positive requests remain available for an
+        // explicit complete target workset. The Host counts
         // that object's Tile members once, apart from same-cell other layers.
         public int ObjectId { get; }
         public int Offset { get; }

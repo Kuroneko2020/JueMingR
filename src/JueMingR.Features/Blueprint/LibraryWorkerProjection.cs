@@ -309,15 +309,16 @@ namespace JueMingR.Features.Blueprint
                 {
                     ProjectionReference reference;
                     if (!projectionReferences.TryGetValue(request.Identity, out reference) || reference.Serial != request.Serial) return;
-                    projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, request.Identity, request.Generation, error: Code(error) == "blueprint-projection-window-budget" ? "投影窗口需分批读取" : Reason(error), failureCode: Code(error)));
+                    bool retired = Code(error) != "blueprint-projection-window-budget";
+                    projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, request.Identity, request.Generation, error: retired ? Reason(error) : "投影窗口需分批读取", failureCode: Code(error), identityRetired: retired));
                     // Budget pressure is a demand-level retry, never loss of a
                     // scene instance or of its validated shared template.
-                    if (Code(error) != "blueprint-projection-window-budget") RemoveProjectionReferenceLocked(request.Identity);
+                    if (retired) RemoveProjectionReferenceLocked(request.Identity);
                 }
                 else
                 {
                     var affected = new List<BlueprintProjectionIdentity>(); foreach (ProjectionReference reference in projectionReferences.Values) if (reference.Identity.TemplateKey.Equals(owner.Identity.TemplateKey)) affected.Add(reference.Identity);
-                    foreach (BlueprintProjectionIdentity identity in affected) { projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, identity, error: Reason(error), failureCode: Code(error))); RemoveProjectionReferenceLocked(identity); }
+                    foreach (BlueprintProjectionIdentity identity in affected) { projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, identity, error: Reason(error), failureCode: Code(error), identityRetired: true)); RemoveProjectionReferenceLocked(identity); }
                 }
             }
             ReleaseRetiredProjection();

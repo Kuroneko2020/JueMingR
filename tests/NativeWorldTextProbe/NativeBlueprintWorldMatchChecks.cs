@@ -13,7 +13,7 @@ namespace NativeWorldTextProbe
 {
     // Test setup owns a finite disposable Tile world. Only original mutations
     // trigger invalidation; no match/completion bit is injected into the Host.
-    internal static class NativeBlueprintWorldMatchChecks
+    internal static partial class NativeBlueprintWorldMatchChecks
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
         internal static void Run(object context, ProbeGraphics graphics = null, string output = null)
@@ -150,7 +150,8 @@ namespace NativeWorldTextProbe
                 SlicedProofAndCommit(context, host, input, library, step);
                 OperatingCompletion(host, input, library, step, true, 8, true);
                 OperatingCompletion(host, input, library, step, true, 8, true, true);
-                Console.WriteLine("BlueprintWorldMatch costs targets=5 sourceRecords=2 bboxWidth=260 instances=2 firstCoverageWorldReads=" + coverageReads + " firstCoverageBodyBlocks=" + coverageBlocks + " stable12UpdatesReads=0 localWorldReads=" + localReads + " localBodyBlocks=" + localBlocks + " localSegmentBuilds=0 offscreenWorldReads=" + offscreenReads + " currentMoveQueryReads=0 completionWorldReads=" + completionReads + " maxActualReadsPerUpdate=" + maxStepReads + "; bounded source=128 and one object group; not FPS evidence");
+                CompletionProgress(context, host, input, library, step);
+                Console.WriteLine("BlueprintWorldMatch costs targets=5 sourceRecords=2 bboxWidth=260 instances=2 firstCoverageWorldReads=" + coverageReads + " firstCoverageBodyBlocks=" + coverageBlocks + " stable12UpdatesReads=0 localWorldReads=" + localReads + " localBodyBlocks=" + localBlocks + " localSegmentBuilds=0 offscreenWorldReads=" + offscreenReads + " currentMoveQueryReads=0 completionWorldReads=" + completionReads + " maxActualReadsPerUpdate=" + maxStepReads + "; bounded physical-source/complete-object workset; not FPS evidence");
                 Console.WriteLine("PASS BlueprintWorldMatch real Host/source/Tile consumers: per-layer ordinary/hide/red/recovery, stable zero scans, offscreen locking/remove, same-template independence, moving restore recheck, complete retirement/no resurrection, world/inventory read-only and final cleanup. Ordinary game/FPS/multiplayer NOT_RUN.");
             }
             finally
@@ -301,7 +302,7 @@ namespace NativeWorldTextProbe
             Require(!Scene(host).Contains(placed), "4097 mixed targets must finish bounded multi-tick verification while extra Tile/wire/liquid at a wall-only point and permanently erased Tile change every update; changes=" + changes + " invalidations=" + ((long)Get(host, "ProjectionMatchInvalidations") - invalidations) + " worldReads=" + ((long)Get(host, "ProjectionMatchCellReads") - reads));
             Require((long)Get(host, "ProjectionMatchInvalidations") - invalidations == 1, "only the final required wall revokes its own range; non-target/masked layer writes never revoke proof");
             Call(host, "ClearProjection");
-            Console.WriteLine("PASS BlueprintWorldMatch layer churn records=4097 ranges=3 sourceSlice=128 mixed-range=true permanent-mask=true extra-Tile/wire/liquid-mutations=" + changes + " requiredWallInvalidations=1 completeRetirement=true; genuine native writers and liquid receiver, not Main.tileFrame-only animation.");
+            Console.WriteLine("PASS BlueprintWorldMatch layer churn records=4097 ranges=3 physicalSourceWorksets=3 mixed-range=true permanent-mask=true extra-Tile/wire/liquid-mutations=" + changes + " requiredWallInvalidations=1 completeRetirement=true; genuine native writers and liquid receiver, not Main.tileFrame-only animation.");
         }
         private static void ObjectProof(object context, object host, object input, LibraryState library, Action step)
         {
@@ -397,7 +398,7 @@ namespace NativeWorldTextProbe
             int updates = 0, changes = 0; long invalidations = (long)Get(host,"ProjectionMatchInvalidations"), reads = (long)Get(host,"ProjectionMatchCellReads");
             Action operating = () =>
             {
-                if(++updates%15==0)
+                if(++updates>0)
                 {
                     foreach(int x in lamps)
                     {
@@ -417,7 +418,7 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < 320 && Scene(host).Contains(placed); i++) { operating(); System.Threading.Thread.Sleep(2); }
                 var state = GetOptional(placed,"Match");
                 Console.WriteLine("OPERATING completion kind="+(doors?"door":"lamp")+" blockedUnusedWing="+blockedLeft+" records="+records+" objects="+lamps.Length+" ordinaryTileBetween="+multiple+" nativeWatches=1 logicalProofs="+(lamps.Length+1)+" sharedIndexBytes="+indexBytes+" updates="+updates+" realToggle="+changes+" invalidations="+((long)Get(host,"ProjectionMatchInvalidations")-invalidations)+" ordinaryInvalidations="+Get(ordinary,"Version")+" worldReads="+((long)Get(host,"ProjectionMatchCellReads")-reads)+" current="+(state==null?"retired":Get(state,"Current"))+" ranges="+(state==null?0:((Array)Get(state,"Ranges")).Length)+" retired="+!Scene(host).Contains(placed));
-                Require(changes >= 2 && (long)Get(ordinary,"Version")==0 && !Scene(host).Contains(placed), "complete canonical operating objects and same-block stable layers converge under genuine 15-update transitions without a union-bounds ordinary Tile invalidation");
+                Require(changes >= 2 && (long)Get(ordinary,"Version")==0 && !Scene(host).Contains(placed), "complete canonical operating objects and same-block stable layers converge under genuine every-update transitions without a union-bounds ordinary Tile invalidation");
             }
             finally { Call(host,"ClearProjection"); }
         }
@@ -439,7 +440,7 @@ namespace NativeWorldTextProbe
                 Action animated = () => { Main.tileFrame[658] = ++frames % 6; step(); };
                 var placed = Place(host, input, entry, x, y, animated);
                 NativeQuickItemChecks.Until(() => { animated(); return !Scene(host).Contains(placed); });
-                Require(frames > 4 && Main.tile[x, y].active() && Main.tile[x, y].type == 658, "stable complete native object retires naturally while its original draw animation array changes every update");
+                Require(frames > 0 && Main.tile[x, y].active() && Main.tile[x, y].type == 658, "stable complete native object retires naturally while its original draw animation array changes every update, including immediate safe retirement");
                 Console.WriteLine("PASS BlueprintWorldMatch animated complete monolith members=6 animation-updates=" + frames + " actual fixed retirement=true");
             }
             finally { Main.tileFrame[658] = frame; Call(host, "ClearProjection"); }
@@ -610,9 +611,14 @@ namespace NativeWorldTextProbe
             var entry = NativeBlueprintProjectionVisualChecks.Save(library, window);
             for (int x = 500; x < 799; x++) Require(WorldGen.PlaceTile(x, 100, 1, true, true), "finite pre-existing source row");
             var instance = Place(host, input, entry, 500, 100, step);
-            NativeQuickItemChecks.Until(() => { step(); var state = GetOptional(instance, "Match"); return state != null && ((IEnumerable)Get(state, "Ranges")).Cast<object>().Any(r => (int)Get(r, "Offset") >= 128); });
-            long sameTickReads = (long)Get(host, "ProjectionMatchCellReads"); Call(host, "Poll"); Call(context, "UpdateRuntime"); Call(host, "Poll");
-            Require((long)Get(host, "ProjectionMatchCellReads") == sameTickReads, "Poll plus repeated Runtime callback on the same original update entry cannot provide a second read allowance");
+            NativeQuickItemChecks.Until(() => { step(); var read = GetOptional(host, "projectionMatchRead"); return read != null && ReferenceEquals(Get(read,"Owner"),instance) && (int)Get(read,"CellIndex") >= 256; });
+            // UpdateRuntime owns and increments its token on every callback;
+            // calling it twice is two different Update tokens. Repeat the exact
+            // already consumed Host token to test the real budget contract.
+            ulong consumedTick = (ulong)Get(host,"projectionMatchTick");
+            long sameTickReads = (long)Get(host, "ProjectionMatchCellReads");
+            Call(host, "Poll"); Call(host, "Update", consumedTick); Call(host, "Poll");
+            Require((long)Get(host, "ProjectionMatchCellReads") == sameTickReads, "Poll plus repeated Host callback with the same consumed updateTick cannot provide a second read allowance");
             WorldGen.KillTile(500, 100, false, false, true); Require(WorldGen.PlaceTile(799, 100, 1, true, true), "tail becomes correct only after previously read head was demolished");
             AwaitReady(instance, step);
             Require(Scene(host).Contains(instance) && Matches(instance) == 299, "cross-tick traversal cannot add historical head Match to a later tail and retire an incomplete row");
@@ -630,7 +636,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => library.TryTakeProjectionCommit(out delivery));
             Require(delivery.Succeeded, "held receipt came from the real overlap computation");
             Require(WorldGen.PlaceTile(500, 100, 1, true, true), "last missing row member built through original mutation");
-            NativeQuickItemChecks.Until(() => { step(); var state = GetOptional(instance, "Match"); return state != null && (bool)Get(state, "Verifying") && (int)Get(state, "Verified") == ((Array)Get(state, "Ranges")).Length; });
+            NativeQuickItemChecks.Until(() => { step(); var state = GetOptional(instance, "Match"); return state != null && (int)Get(state, "Current") == ((Array)Get(state, "Ranges")).Length && (long)Get(state,"Unknown")==0 && (long)Get(state,"Matches")==300; });
             Require(Mode(host) == "Committing" && Scene(host).Contains(instance) && GetOptional(host, "ProjectionCandidate") != null,
                 "current complete proof waits without cancelling an unrelated real Committing transaction");
             var worker = Get(library, "worker"); var gate = Get(worker, "gate");
@@ -639,7 +645,7 @@ namespace NativeWorldTextProbe
             Require(Scene(host).Length == 1 && ((BlueprintProjectionIdentity)Get(Scene(host)[0], "Identity")).AssetId == other.AssetId,
                 "safe exit applies the unrelated commit then retires only the completed row");
             Call(host, "ClearProjection");
-            Console.WriteLine("PASS BlueprintWorldMatch cross-tick 300-target/128-source-slice history revocation and delayed real commit delivery: no stale completion, no unrelated cancellation, safe deferred single retirement.");
+            Console.WriteLine("PASS BlueprintWorldMatch cross-tick 300-target/physical-source-workset history revocation and delayed real commit delivery: no stale completion, no unrelated cancellation, safe deferred single retirement.");
         }
         private static object Place(object host, object input, LibraryEntry entry, int x, int y, Action step)
         {
@@ -648,8 +654,11 @@ namespace NativeWorldTextProbe
             var candidate = Get(host, "ProjectionCandidate"); var summary = (CaptureSummary)Get(candidate, "Summary"); int px = x + (summary.Width - 1) / 2, py = y + (summary.Height - 1) / 2;
             Pointer(host, false, px, py); for (int i = 0; i < 3; i++) step();
             Require(Mode(host) == "Following", "an unconfirmed preview never auto-retires");
+            long retired = (long)Get(host,"ProjectionMatchRetirements");
             Pointer(host, true, px, py); NativeQuickItemChecks.Until(() => { step(); return Mode(host) == "Fixed"; });
-            return Scene(host).Single(p => ReferenceEquals(p, candidate));
+            Require(Scene(host).Contains(candidate) || (long)Get(host,"ProjectionMatchRetirements") > retired && GetOptional(candidate,"Match")==null,
+                "confirmed Fixed is either still in the scene or already safely retired by complete current proof");
+            return candidate;
         }
         private static void AwaitReady(object item, Action step)
         { NativeQuickItemChecks.Until(() => { step(); var state = GetOptional(item, "Match"); return state != null && (int)Get(state, "Current") == ((Array)Get(state, "Ranges")).Length && (long)Get(state, "Unknown") == 0; }); }

@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal long Version, RawVersion, Stamp, ProgressStamp, Targets, Matches, Unknown, ProgressTargets, ProgressMatches, ProgressUnknown;
         internal long Watch { get { return Group.Watch; } }
         internal int Index, Offset, PartIndex;
-        internal bool Current, Verified, Reading, Demand;
+        internal bool Current, Reading, Demand;
         // Offscreen logical proofs retain summaries only. Do not allocate an
         // empty per-object dictionary or copy shared source geometry per instance.
         internal Dictionary<long, BlueprintWorldMatchResult> Visual;
@@ -29,9 +29,9 @@ namespace JueMingR.TerrariaHost.Blueprint
     internal sealed class BlueprintProjectionMatchState
     {
         internal BlueprintProjectionMask Mask;
-        internal int OriginX, OriginY, Cursor, Current, Verified;
+        internal int OriginX, OriginY, Cursor, Current;
         internal long Matches, Targets, Unknown;
-        internal bool Verifying, ViewDirty;
+        internal bool ViewDirty;
         internal BlueprintProjectionMatchRange[] Ranges;
         internal BlueprintProjectionMatchGroup[] Groups;
         internal readonly Dictionary<long, BlueprintWorldMatchResult> Visible = new Dictionary<long, BlueprintWorldMatchResult>();
@@ -46,6 +46,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintProjectionMatchRange Range;
         internal long Token;
         internal bool Pending;
+        internal bool Sampling;
         internal BlueprintProjectionSourceReceipt Batch;
         internal int CellIndex, ObjectId, ObjectIndex;
         internal BlueprintProjectionWindow ObjectTargets;
@@ -76,6 +77,9 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if DEBUG
         internal long ProjectionMatchCellReads { get; private set; }
         internal long ProjectionMatchSourceBatches { get; private set; }
+        internal long ProjectionMatchSourceRequests { get; private set; }
+        internal long ProjectionMatchSourceSteps { get; private set; }
+        internal long ProjectionMatchSourceBytesPeak { get; private set; }
         internal long ProjectionMatchInvalidations { get; private set; }
         internal long ProjectionMatchRetirements { get; private set; }
         internal int ProjectionMatchWatchCount { get { return projectionMatchWatches.Count; } }
@@ -87,6 +91,15 @@ namespace JueMingR.TerrariaHost.Blueprint
             var read=projectionMatchRead;if(read==null)return;
             projectionMatchRead=null;read.WriteSeed?.Dispose();read.WriteSeed=null;
             if(cancelSource)Library?.ClearProjectionSource(read.Owner.Identity);
+        }
+        // Moving candidate and its scene restore share one worker identity.
+        // Fatal ownership loss must release the scene-wide slot by identity,
+        // even when the UI candidate is a different placement reference.
+        private void ReleaseProjectionMatchIdentity(BlueprintProjectionIdentity identity)
+        {
+            if (identity == null) return;
+            if (projectionMatchRead?.Owner.Identity.Equals(identity) == true) ReleaseProjectionMatchRead(true);
+            if (projectionMatchPriority?.Identity.Equals(identity) == true) projectionMatchPriority = null;
         }
         private void EnsureProjectionMatch(BlueprintProjectionPlacement item)
         {
@@ -130,10 +143,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             var state = range.Owner.Match; if (state == null) return;
             range.Version++;range.RawVersion++;
             if (range.Current) { state.Current--; state.Targets -= range.Targets; state.Matches -= range.Matches; state.Unknown -= range.Unknown; }
-            if (range.Verified) state.Verified--;
-            range.Current = range.Verified = range.Reading = false; range.Offset = 0;
+            range.Current = range.Reading = false; range.Offset = 0;
             if(range.Visual!=null) { foreach (var pair in range.Visual) RemoveProjectionMatchVisual(state,pair.Key,pair.Value.TargetBits); range.Visual=null; }
-            if (ReferenceEquals(projectionMatchRead?.Range, range)) ReleaseProjectionMatchRead(true);
+            // A file request has no world samples to invalidate. Let that
+            // immutable source arrive under its original request identity.
+            // Once sampling began, discard the stale attempt and yield the
+            // single slot, so a repeatedly dirty owner cannot starve siblings.
+            if (ReferenceEquals(projectionMatchRead?.Range, range) && projectionMatchRead.Sampling) ReleaseProjectionMatchRead(true);
 #if DEBUG
             ProjectionMatchInvalidations++;
 #endif
@@ -149,10 +165,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(hardDirty || !range.Current || range.Targets<=0 || range.Matches!=range.Targets || range.Unknown!=0) { InvalidateProjectionMatch(range);return; }
                 // A native transaction can preserve only an already complete
                 // canonical Match through its immutable frame witness. Raw
-                // samples are a different fact: always cancel that in-flight
-                // group, even if all completed building semantics survived.
+                // samples are a different fact. Only an actual sampling
+                // attempt is discarded; immutable source may still arrive.
                 range.RawVersion++;range.Reading=false;range.Offset=0;
-                if(ReferenceEquals(projectionMatchRead?.Range,range))ReleaseProjectionMatchRead(true);
+                if(ReferenceEquals(projectionMatchRead?.Range,range) && projectionMatchRead.Sampling)ReleaseProjectionMatchRead(true);
             });
             // A physical native stamp guards in-flight writes. Only its routed
             // proofs get a new local version; stable sibling proofs retain
@@ -178,35 +194,34 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             foreach (var item in projectionScene) EnsureProjectionMatch(item);
             DrainProjectionChanges(); TakeProjectionMatchSources();
-            // One bounded source slice is retained scene-wide, not one full
-            // block/cache per instance. Draw and Poll never replenish this work.
-            int reads = 256;
+            // One physical block or complete-object workset is retained for
+            // the scene. Both world reads and source cursor steps are bounded:
+            // fully masked/empty records cannot create an unbounded pure loop.
+            int reads = 256, sourceSteps = 256;
             if (projectionMatchRead == null) StartProjectionMatchRead();
-            if (projectionMatchRead != null) AdvanceProjectionMatchRead(ref reads);
+            if (projectionMatchRead != null)
+            {
+                var read = projectionMatchRead;
+                AdvanceProjectionMatchRead(ref reads, ref sourceSteps);
+                if (ReferenceEquals(projectionMatchRead, read)) PublishProjectionMatchReadResults(read);
+            }
             foreach (var item in projectionScene) PublishProjectionMatchView(item);
             ApplyCompletedProjections();
+            // Submit the next finite workset at the completion boundary,
+            // without the old fixed Update gap. Never wait/spin for the worker.
+            if (projectionMatchRead == null) StartProjectionMatchRead();
         }
         private BlueprintProjectionMatchRange NextProjectionMatchRange(BlueprintProjectionPlacement item)
         {
             var state = item.Match; if (state == null || state.Ranges.Length == 0) return null;
-            if (state.Current == state.Ranges.Length && !state.Verifying)
-            {
-                if (state.Unknown == 0 && state.Targets > 0 && state.Targets == item.TotalLayerCount - item.Mask.RemovedLayerCount && state.Matches == state.Targets)
-                {
-                    state.Verifying = true; state.Verified = 0; foreach (var range in state.Ranges) range.Verified = false;
-                }
-                else { bool demand = false; foreach (var range in state.Ranges) if (range.Demand) { demand = true; break; } if (!demand) return null; }
-            }
-            // Keep successive bounded slices of one physical source block
-            // adjacent. Rotating 65 blocks through the shared 64-block cache
-            // after every 128 records decodes each 2048-record block 16 times.
-            // Scene scheduling still rotates instances after every slice; this
-            // is source locality, not a larger world-read or retention budget.
+            // A block is consumed before admitting another owner (at most its
+            // finite records/read allowance). This preserves 65-block cache
+            // locality without holding a slot for an entire large template.
             foreach (var range in state.Ranges) if (range.Reading) return range;
             for (int n = 0; n < state.Ranges.Length; n++)
             {
                 int i = (state.Cursor + n) % state.Ranges.Length; var range = state.Ranges[i];
-                if (!range.Current || range.Reading || range.Demand || state.Verifying && !range.Verified)
+                if (!range.Current || range.Reading || range.Demand)
                 { state.Cursor = (i + 1) % state.Ranges.Length; return range; }
             }
             return null;
@@ -223,10 +238,6 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (item == null || !projectionScene.Contains(item)) continue;
                 var range = NextProjectionMatchRange(item); if (range == null) continue;
                 if(!range.Group.Ready || !projectionChanges.IsCurrent(range.Watch,range.Group.NativeStamp))continue;
-                long stamp=range.RawVersion;
-                if (range.Reading && stamp != range.ProgressStamp) { InvalidateProjectionMatch(range);stamp=range.RawVersion; }
-                if (!range.Reading)
-                { range.Reading = true; range.Offset = 0; range.ProgressStamp = stamp; range.ProgressTargets = range.ProgressMatches = range.ProgressUnknown = 0; }
                 projectionMatchRead = new BlueprintProjectionMatchRead { Owner = item, Range = range, Token = ++projectionMatchToken };
                 projectionMatchPriorityTurn=n>=0;
                 projectionMatchCursor = (projectionMatchCursor + Math.Max(1, n + 1)) % count;
@@ -237,6 +248,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if (read.Pending) return;
             read.Pending = Library.RequestProjectionSource(read.Owner.Identity, read.Token, read.Range.Index, read.ObjectId, read.Range.Offset);
+#if DEBUG
+            if (read.Pending) ProjectionMatchSourceRequests++;
+#endif
         }
         private void TakeProjectionMatchSources()
         {
@@ -246,10 +260,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var read = projectionMatchRead;
                 if (read == null || receipt.Generation != read.Token || !receipt.Identity.Equals(read.Owner.Identity) || receipt.Range != read.Range.Index || receipt.ObjectId != read.ObjectId) continue;
                 read.Pending = false;
-                if (!ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp)) { InvalidateProjectionMatch(read.Range); continue; }
                 if (receipt.ObjectId == 0) { read.Batch = receipt;
+                    if (read.Range.Source.ObjectId > 0) { read.ObjectId = read.Range.Source.ObjectId; read.ObjectTargets = receipt.Window; }
 #if DEBUG
                     ProjectionMatchSourceBatches++;
+                    ProjectionMatchSourceBytesPeak = Math.Max(ProjectionMatchSourceBytesPeak, receipt.Window.EstimatedBytes);
 #endif
                 }
                 else read.ObjectTargets = receipt.Window;
@@ -264,13 +279,25 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             return sample;
         }
-        private void AdvanceProjectionMatchRead(ref int reads)
+        private void AdvanceProjectionMatchRead(ref int reads, ref int sourceSteps)
         {
             var read = projectionMatchRead;
-            if (!ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp)) { InvalidateProjectionMatch(read.Range); return; }
             if (read.Batch == null) { RequestProjectionMatchSource(read); return; }
-            while (reads > 0 && read.CellIndex < read.Batch.Window.Cells.Count)
+            if (!read.Sampling)
             {
+                if (!read.Range.Group.Ready || !projectionChanges.IsCurrent(read.Range.Watch, read.Range.Group.NativeStamp)) { ReleaseProjectionMatchRead(true); return; }
+                // Request time is not sample time: bind raw qualification only
+                // when immutable targets are ready for actual world sampling.
+                read.Sampling = read.Range.Reading = true; read.Range.ProgressStamp = read.Range.RawVersion;
+                read.Range.ProgressTargets = read.Range.ProgressMatches = read.Range.ProgressUnknown = 0;
+            }
+            if (!ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp)) { InvalidateProjectionMatch(read.Range); return; }
+            while (reads > 0 && sourceSteps > 0 && read.CellIndex < read.Batch.Window.Cells.Count)
+            {
+                sourceSteps--;
+#if DEBUG
+                ProjectionMatchSourceSteps++;
+#endif
                 var cell = read.Owner.Mask.Apply(read.Batch.Window.Cells[read.CellIndex]);
                 // Permanent erasure is resolved from immutable source data.
                 // A cell with no effective target has no world dependency and
@@ -285,7 +312,13 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 BlueprintWorldMatchResult result;
                 if(cell.ObjectId>0 && cell.Layers==CaptureLayer.Tile)
-                { read.CellIndex++;continue; } // The complete object was counted once by FinishProjectionMatchObject.
+                {
+                    // The complete object decides Tile semantics once; each
+                    // effective member is then counted by the bounded source
+                    // cursor, with no second world read or unbounded fan-out.
+                    result = new BlueprintWorldMatchResult(1, objectState == BlueprintWorldMatchState.Match ? (ushort)1 : (ushort)0,
+                        objectState == BlueprintWorldMatchState.Conflict ? (ushort)1 : (ushort)0, objectState == BlueprintWorldMatchState.Unknown ? (ushort)1 : (ushort)0);
+                }
                 else
                 {
                     if (reads == 0) return;
@@ -299,8 +332,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (read.CellIndex != read.Batch.Window.Cells.Count) return;
             if (!ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp)) { InvalidateProjectionMatch(read.Range); return; }
             var range = read.Range; var state = read.Owner.Match;
-            foreach (var pair in read.Results) if (ProjectionMatchCellResident(read.Owner, (int)(uint)pair.Key, (int)(pair.Key >> 32)))
-            { if(range.Visual==null)range.Visual=new Dictionary<long,BlueprintWorldMatchResult>();BlueprintWorldMatchResult old;if(range.Visual.TryGetValue(pair.Key,out old))RemoveProjectionMatchVisual(state,pair.Key,old.TargetBits);range.Visual[pair.Key]=pair.Value;MergeProjectionMatchVisual(state,pair.Key,pair.Value); }
+            PublishProjectionMatchReadResults(read);
             range.Offset = read.Batch.NextOffset;
             if (read.Batch.Complete)
             {
@@ -308,12 +340,21 @@ namespace JueMingR.TerrariaHost.Blueprint
                 range.Current = true; range.Reading = false; range.Offset = 0; range.Stamp = range.Version;
                 range.Targets = range.ProgressTargets; range.Matches = range.ProgressMatches; range.Unknown = range.ProgressUnknown;
                 state.Targets += range.Targets; state.Matches += range.Matches; state.Unknown += range.Unknown; range.Demand = false;
-                if (state.Verifying && !range.Verified) { range.Verified = true; state.Verified++; }
-                if (state.Verifying && (range.Unknown != 0 || range.Matches != range.Targets)) { state.Verifying = false; state.Verified = 0; foreach (var other in state.Ranges) other.Verified = false; }
                 if(read.WriteWitness!=null && range.Targets>0 && range.Matches==range.Targets && range.Unknown==0)
                     projectionChanges.TrySetWitness(range.Watch,range.Group.NativeStamp,range.PartIndex,read.WriteWitness);
             }
             ReleaseProjectionMatchRead(false);
+        }
+        private void PublishProjectionMatchReadResults(BlueprintProjectionMatchRead read)
+        {
+            if (!read.Sampling || !ProjectionMatchReadCurrent(read.Range, read.Range.ProgressStamp)) return;
+            var range = read.Range; var state = read.Owner.Match;
+            // Drain only this Update's bounded results. Even an unusually
+            // large complete object cannot accumulate a full second member
+            // dictionary and publish it in one unbounded retirement fan-out.
+            foreach (var pair in read.Results) if (ProjectionMatchCellResident(read.Owner, (int)(uint)pair.Key, (int)(pair.Key >> 32)))
+            { if(range.Visual==null)range.Visual=new Dictionary<long,BlueprintWorldMatchResult>();BlueprintWorldMatchResult old;if(range.Visual.TryGetValue(pair.Key,out old))RemoveProjectionMatchVisual(state,pair.Key,old.TargetBits);range.Visual[pair.Key]=pair.Value;MergeProjectionMatchVisual(state,pair.Key,pair.Value); }
+            read.Results.Clear();
         }
         private bool AdvanceProjectionMatchObject(BlueprintProjectionMatchRead read, ref int reads)
         {
@@ -390,16 +431,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private static void FinishProjectionMatchObject(BlueprintProjectionMatchRead read, BlueprintWorldMatchState state)
         {
-            // Whole-object Tile is one structural result, published for every
-            // effective member. Independent same-cell layers live in the
-            // physical block's ordinary proof, so no second world sample is
-            // needed and no complete object DTO stays after this workset.
-            if(read.ObjectTargets!=null)foreach(var raw in read.ObjectTargets.Cells)
-            {
-                var cell=read.Owner.Mask.Apply(raw);if((cell.Layers&CaptureLayer.Tile)==0)continue;
-                var result=new BlueprintWorldMatchResult(1,state==BlueprintWorldMatchState.Match?(ushort)1:(ushort)0,state==BlueprintWorldMatchState.Conflict?(ushort)1:(ushort)0,state==BlueprintWorldMatchState.Unknown?(ushort)1:(ushort)0);
-                read.Results[MatchKey(cell.X,cell.Y)]=result;read.Range.ProgressTargets++;read.Range.ProgressMatches+=result.MatchCount;read.Range.ProgressUnknown+=CountMatchBits(result.UnknownBits);
-            }
+            // Keep only the complete structural result; bounded source cursor
+            // consumption publishes its individual members and layer counts.
             read.Objects[read.ObjectId]=state;read.ObjectId=read.ObjectIndex=0;read.ObjectTarget=null;read.ObjectTargets=null;read.ObjectSamples.Clear();read.ObjectUnion=null;
         }
         private static int CountMatchBits(ushort bits) { int count = 0; while (bits != 0) { count += bits & 1; bits >>= 1; } return count; }
@@ -480,14 +513,20 @@ namespace JueMingR.TerrariaHost.Blueprint
             foreach (var item in new List<BlueprintProjectionPlacement>(projectionScene))
             {
                 var state = item.Match;
-                if (ReferenceEquals(item, restoreProjection) || state == null || state.Ranges.Length == 0 || !state.Verifying ||
-                    state.Current != state.Ranges.Length || state.Verified != state.Ranges.Length || state.Unknown != 0 || state.Targets <= 0 ||
-                    state.Targets != item.TotalLayerCount - item.Mask.RemovedLayerCount || state.Matches != state.Targets || ReferenceEquals(projectionMatchRead?.Owner, item)) continue;
+                if (ReferenceEquals(item, restoreProjection) || state == null || state.Ranges.Length == 0 ||
+                    state.Current != state.Ranges.Length || state.Unknown != 0 || state.Targets <= 0 ||
+                    state.Targets != item.TotalLayerCount - item.Mask.RemovedLayerCount || state.Matches != state.Targets) continue;
+                var identity = item.Identity;
                 var last = state.Ranges[state.Ranges.Length - 1];
                 projectionChanges.TryRunStable(last.Watch, last.Group.NativeStamp, () =>
                 {
-                    if (!projectionScene.Contains(item) || !ReferenceEquals(item.Match, state) || !ReferenceEquals(state.Mask, item.Mask) || state.OriginX != item.OriginX || state.OriginY != item.OriginY) return;
-                    foreach (var range in state.Ranges) if (!range.Current || !range.Verified || !ProjectionMatchCurrent(range,range.Stamp)) return;
+                    if (!HasSession || identity.SessionGeneration != generation || !item.Identity.Equals(identity) || !projectionScene.Contains(item) || !ReferenceEquals(item.Match, state) || !ReferenceEquals(state.Mask, item.Mask) || state.OriginX != item.OriginX || state.OriginY != item.OriginY) return;
+                    if (state.Current != state.Ranges.Length || state.Unknown != 0 || state.Targets <= 0 || state.Targets != item.TotalLayerCount - item.Mask.RemovedLayerCount || state.Matches != state.Targets) return;
+                    // Complete proofs stay current via synchronous observer
+                    // invalidation/witness maintenance. Recheck every scope
+                    // under this one lock, rather than reading the template a
+                    // mandatory second time or trusting only the last range.
+                    foreach (var range in state.Ranges) if (!range.Current || !ProjectionMatchCurrent(range,range.Stamp)) return;
                     RetireProjection(item); InterruptProjection(); Pointer.Cancel(); Toolbar.Cancel();
                     if ((ProjectionMode == BlueprintProjectionMode.SelectingMove || ProjectionMode == BlueprintProjectionMode.SelectingRemove) && projectionScene.Count == 0) ProjectionMode = BlueprintProjectionMode.None;
 #if DEBUG
