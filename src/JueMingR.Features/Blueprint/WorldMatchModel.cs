@@ -61,6 +61,9 @@ namespace JueMingR.Features.Blueprint
         public BlueprintWorldObjectFamily Family { get; }
         public long FrameGroup { get; }
         public int MemberCount { get { return Width * Height; } }
+        // Conservative retained-value accounting for a suspended Host sample;
+        // this object owns both private arrays, never source/world Tile data.
+        public long EstimatedBytes { get { return 128L + form.LongLength * 4L + (rowOffsets?.LongLength ?? 0) * 4L; } }
         public bool Contains(int x, int y) { return x >= WorldX && y >= WorldY && (long)x < (long)WorldX + Width && (long)y < (long)WorldY + Height; }
         public bool SameBuilding(BlueprintWorldObject other)
         {
@@ -145,6 +148,7 @@ namespace JueMingR.Features.Blueprint
         public ushort Kind { get; }
         public int MemberCount { get { return Width * Height; } }
         public long InitialPhase { get; }
+        public long EstimatedBytes { get { return 128L + rowOffsets.LongLength * 4L + phases.LongLength * 8L; } }
 
         // The other axis comes from the previously certified member phase, not
         // a native Tile read in a write hook. Checking the exact old field value

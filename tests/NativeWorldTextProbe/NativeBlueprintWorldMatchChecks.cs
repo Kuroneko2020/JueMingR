@@ -54,6 +54,7 @@ namespace NativeWorldTextProbe
                 // Poll and Draw deliberately do not provide another allowance.
                 int maxStepReads = 0;
                 Action step = () => { long before = (long)Get(host, "ProjectionMatchCellReads"); NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); int used = checked((int)((long)Get(host, "ProjectionMatchCellReads") - before)); maxStepReads = Math.Max(maxStepReads, used); Require(used <= 256, "one original update entry has at most 256 actual match reads"); };
+                CompletionV2Progress(context, host, input, library, step);
                 LayerChurn(host, input, library, step);
                 OperatingCompletion(host, input, library, step);
                 OperatingCompletion(host, input, library, step, true);

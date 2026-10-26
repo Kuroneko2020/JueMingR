@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 
 namespace JueMingR.Features.Blueprint
@@ -10,7 +11,26 @@ namespace JueMingR.Features.Blueprint
         {
             internal BlueprintProjectionIdentity Identity;
             internal long Generation, Serial;
-            internal int Range, ObjectId, Offset;
+            internal BlueprintProjectionSourceDemand[] Demands;
+        }
+        private sealed class ProjectionSourceBuild
+        {
+            internal BlueprintProjectionBounds Bounds;
+            internal long Block, PlannedBytes;
+            internal int ObjectId, Offset, NextOffset, PlannedCells;
+            internal bool TileOnly;
+            internal CaptureObject Metadata;
+            internal IReadOnlyList<long> MemberBlocks;
+            internal List<CaptureCell> Cells;
+            internal BlueprintProjectionWindow Window;
+        }
+        private readonly struct ProjectionSourcePlan
+        {
+            internal ProjectionSourcePlan(BlueprintProjectionSourceDemand demand, int logicalObjectId, ProjectionSourceBuild build)
+            { Demand = demand; LogicalObjectId = logicalObjectId; Build = build; }
+            internal BlueprintProjectionSourceDemand Demand { get; }
+            internal int LogicalObjectId { get; }
+            internal ProjectionSourceBuild Build { get; }
         }
         private readonly Queue<ProjectionSourceRequest> projectionSourceRequests = new Queue<ProjectionSourceRequest>();
         private readonly Dictionary<BlueprintProjectionIdentity, long> projectionSourceSerials = new Dictionary<BlueprintProjectionIdentity, long>();
@@ -19,15 +39,40 @@ namespace JueMingR.Features.Blueprint
         private ProjectionOwner projectionSourceOwner;
         private IEnumerator<bool> projectionSourceReading;
         private long projectionSourceSerial;
+        private long projectionSourceReceiptBytes;
+#if DEBUG
+        private long projectionSourceRequestsAccepted, projectionSourcePublished, projectionSourceParts, projectionSourceMemberBlocks, projectionSourceMemberRecords;
+        private long projectionSourceWorkingBytes, projectionSourceWorkingPeak, projectionSourceReceiptPeak;
+        internal BlueprintProjectionSourceStatistics ProjectionSourceStatistics
+        {
+            get
+            {
+                lock (gate) return new BlueprintProjectionSourceStatistics(Interlocked.Read(ref projectionSourceRequestsAccepted),
+                    Interlocked.Read(ref projectionSourcePublished), Interlocked.Read(ref projectionSourceParts), Interlocked.Read(ref projectionSourceMemberBlocks),
+                    Interlocked.Read(ref projectionSourceMemberRecords), Interlocked.Read(ref projectionSourceWorkingBytes), Interlocked.Read(ref projectionSourceWorkingPeak),
+                    projectionSourceReceiptBytes, projectionSourceReceiptPeak, projectionSourceRequests.Count + (projectionSourceActive == null ? 0 : 1));
+            }
+        }
+#endif
 
         internal bool RequestProjectionSource(BlueprintProjectionIdentity identity, long generation, int range, int objectId, int offset)
+        { return RequestProjectionSources(identity, generation, new[] { new BlueprintProjectionSourceDemand(range, objectId, offset) }); }
+        internal bool RequestProjectionSources(BlueprintProjectionIdentity identity, long generation, IReadOnlyList<BlueprintProjectionSourceDemand> demands)
         {
+            if (identity == null) throw new ArgumentNullException(nameof(identity));
+            if (demands == null) throw new ArgumentNullException(nameof(demands));
+            if (demands.Count == 0 || demands.Count > BlueprintProjectionSourceReceipt.MaximumPartCount) return false;
+            var owned = new BlueprintProjectionSourceDemand[demands.Count];
+            for (int i = 0; i < owned.Length; i++) owned[i] = demands[i];
             lock (gate)
             {
                 if (stopping || !projectionReferences.ContainsKey(identity) || projectionSourceSerials.ContainsKey(identity) ||
                     projectionRequests.Count + projectionSourceRequests.Count + (projectionActiveRequest == null ? 0 : 1) + (projectionSourceActive == null ? 0 : 1) >= ProjectionRequestLimit ||
                     projectionReceipts.Count + projectionSourceReceipts.Count + projectionFailures.Count >= ProjectionRequestLimit) return false;
-                var request = new ProjectionSourceRequest { Identity = identity, Generation = generation, Range = range, ObjectId = objectId, Offset = offset, Serial = ++projectionSourceSerial };
+                var request = new ProjectionSourceRequest { Identity = identity, Generation = generation, Demands = owned, Serial = ++projectionSourceSerial };
+#if DEBUG
+                Interlocked.Increment(ref projectionSourceRequestsAccepted);
+#endif
                 projectionSourceSerials.Add(identity, request.Serial); projectionSourceRequests.Enqueue(request); projectionWake = true; Monitor.Pulse(gate); return true;
             }
         }
@@ -39,7 +84,7 @@ namespace JueMingR.Features.Blueprint
                 int count = projectionSourceRequests.Count;
                 while (count-- > 0) { var next = projectionSourceRequests.Dequeue(); if (!next.Identity.Equals(identity)) projectionSourceRequests.Enqueue(next); }
                 count = projectionSourceReceipts.Count;
-                while (count-- > 0) { var next = projectionSourceReceipts.Dequeue(); if (next.Identity.Equals(identity)) projectionReceiptBytes -= next.Window?.EstimatedBytes ?? 0; else projectionSourceReceipts.Enqueue(next); }
+                while (count-- > 0) { var next = projectionSourceReceipts.Dequeue(); if (next.Identity.Equals(identity)) ChargeProjectionSourceReceipt(-next.EstimatedBytes); else projectionSourceReceipts.Enqueue(next); }
                 projectionAwaitingReceiptSpace = false; projectionWake = true; Monitor.Pulse(gate);
             }
         }
@@ -49,7 +94,7 @@ namespace JueMingR.Features.Blueprint
             {
                 receipt = projectionSourceReceipts.Count == 0 ? null : projectionSourceReceipts.Dequeue();
                 if (receipt == null) return false;
-                projectionReceiptBytes -= receipt.Window?.EstimatedBytes ?? 0; projectionAwaitingReceiptSpace = false; projectionWake = true; Monitor.Pulse(gate); return true;
+                ChargeProjectionSourceReceipt(-receipt.EstimatedBytes); projectionAwaitingReceiptSpace = false; projectionWake = true; Monitor.Pulse(gate); return true;
             }
         }
         private bool ProjectionSourceCurrent(ProjectionOwner owner, ProjectionSourceRequest request)
@@ -65,7 +110,26 @@ namespace JueMingR.Features.Blueprint
         private void CloseProjectionSourceWorker()
         {
             projectionSourceReading?.Dispose(); projectionSourceReading = null; projectionSourceActive = null; projectionSourceOwner = null;
-            lock (gate) { projectionSourceRequests.Clear(); projectionSourceSerials.Clear(); projectionSourceReceipts.Clear(); }
+            lock (gate) { projectionSourceRequests.Clear(); projectionSourceSerials.Clear(); ClearProjectionSourceReceipts(); }
+        }
+        private void ClearProjectionSourceReceipts()
+        { while (projectionSourceReceipts.Count != 0) ChargeProjectionSourceReceipt(-projectionSourceReceipts.Dequeue().EstimatedBytes); }
+        // gate owns both totals. The source-specific total is observational;
+        // the shared total continues to enforce viewport/source backpressure.
+        private void ChargeProjectionSourceReceipt(long bytes)
+        {
+            projectionReceiptBytes += bytes; projectionSourceReceiptBytes += bytes;
+#if DEBUG
+            if (projectionSourceReceiptBytes > projectionSourceReceiptPeak) projectionSourceReceiptPeak = projectionSourceReceiptBytes;
+#endif
+        }
+        [System.Diagnostics.Conditional("DEBUG")]
+        private void UpdateProjectionSourceWorkingBytes(long bytes)
+        {
+#if DEBUG
+            Interlocked.Exchange(ref projectionSourceWorkingBytes, bytes);
+            if (bytes > Interlocked.Read(ref projectionSourceWorkingPeak)) Interlocked.Exchange(ref projectionSourceWorkingPeak, bytes);
+#endif
         }
         private void RetireProjectionSourceOwner(ProjectionOwner owner)
         {
@@ -106,64 +170,181 @@ namespace JueMingR.Features.Blueprint
         private IEnumerable<bool> ReadProjectionSource(ProjectionOwner owner, ProjectionSourceRequest request)
         {
             CheckProjectionSource(owner, request);
-            if (request.Range < 0 || request.Range >= owner.MatchRanges.Count) throw new System.IO.InvalidDataException("blueprint-source-range");
-            var range = owner.MatchRanges[request.Range]; var summary = owner.Root.Summary;
-            var cells = new List<CaptureCell>(); var metadata = new List<CaptureObject>(); var ids = new HashSet<int>();
-            BlueprintProjectionBounds bounds = range.Bounds;
-            int nextOffset = 0; bool complete = true;
-            bool objectRange = request.ObjectId == 0 && range.ObjectId > 0;
-            if (request.ObjectId == 0 && !objectRange)
+            var summary = owner.Root.Summary;
+            long summaryReferenceBytes = BlueprintProjectionSourcePart.SummaryReferenceBytes(summary);
+            var plans = new List<ProjectionSourcePlan>(); var builds = new List<ProjectionSourceBuild>();
+            var unique = new Dictionary<Tuple<long, int, int>, ProjectionSourceBuild>();
+            long retained = BlueprintProjectionSourceReceipt.DirectoryBytes;
+            // Plans/keys and their bounded container capacities are charged
+            // separately from immutable payload. The raw cache is still shared.
+            long working = 1024L + request.Demands.LongLength * 32L;
+            UpdateProjectionSourceWorkingBytes(working);
+            try
             {
-                CaptureChunk chunk = ProjectionChunk(owner, range.Block);
-                if (request.Offset < 0 || request.Offset >= chunk.Count) throw new System.IO.InvalidDataException("blueprint-source-offset");
-                // One immutable physical block is the source work unit. The
-                // Host spends its own bounded Update allowance consuming it;
-                // no per-128-record worker handshake throttles world sampling.
-                nextOffset = chunk.Count;
-                for (int i = request.Offset; i < nextOffset; i++)
+                foreach (var demand in request.Demands)
                 {
-                    var cell = chunk.Cells[i]; if (cell.ObjectId > 0) cell = cell.WithoutTile();
-                    if (!cell.HasContent) continue; cell.X -= summary.Left; cell.Y -= summary.Top; cells.Add(cell);
-                }
-                yield return true;
-            }
-            else ids.Add(objectRange ? range.ObjectId : request.ObjectId);
-            foreach (int id in ids)
-            {
-                CheckProjectionSource(owner, request); var chunk = ProjectionChunk(owner, owner.Directory.FindObject(id, ProjectionComparison)); CaptureObject found = default(CaptureObject); bool have = false;
-                for (int i = 0; i < chunk.ObjectCount; i++) if (chunk.Objects[i].Id == id) { found = chunk.Objects[i]; have = true; break; }
-                if (!have) throw new System.IO.InvalidDataException("blueprint-missing-object-reference");
-                if (request.ObjectId > 0 || objectRange)
-                {
-                    bounds = new BlueprintProjectionBounds(found.X - summary.Left, found.Y - summary.Top, found.Width, found.Height);
-                    foreach (long number in ProjectionBlocks(owner, found.X, found.Y, checked(found.X + found.Width), checked(found.Y + found.Height)))
+                    CheckProjectionSource(owner, request);
+                    if (demand.Range < 0 || demand.Range >= owner.MatchRanges.Count) throw new InvalidDataException("blueprint-source-range");
+                    var range = owner.MatchRanges[demand.Range];
+                    bool tileOnly = demand.ObjectId == 0 && range.ObjectId > 0;
+                    int objectId = tileOnly ? range.ObjectId : demand.ObjectId;
+                    var key = objectId == 0 ? Tuple.Create(range.Block, 0, demand.Offset) : Tuple.Create(-1L, objectId, tileOnly ? 1 : 2);
+                    ProjectionSourceBuild build; bool shared = unique.TryGetValue(key, out build);
+                    if (!shared) build = PlanProjectionSource(owner, range, demand, objectId, tileOnly);
+                    long nextRetained = checked(retained + BlueprintProjectionSourcePart.DescriptorBytes + (shared ? 0 : build.PlannedBytes + summaryReferenceBytes));
+                    // A full transport is a legal prefix, never a fatal asset
+                    // error. A large first item retains the old single-window
+                    // capacity and is served alone rather than being starved.
+                    if (plans.Count != 0 && nextRetained > BlueprintProjectionSourceReceipt.TargetBytes) break;
+                    if (build.PlannedBytes > ProjectionWindowLimit) throw new InvalidDataException("blueprint-projection-window-budget");
+                    if (!shared)
                     {
-                        CheckProjectionSource(owner, request); var members = ProjectionChunk(owner, number);
-                        for (int i = 0; i < members.Count; i++) if (members.Cells[i].ObjectId == id)
-                        {
-                            var cell = members.Cells[i]; if (objectRange) cell.Layers = CaptureLayer.Tile;
-                            cell.X -= summary.Left; cell.Y -= summary.Top; cells.Add(cell);
-                        }
-                        yield return true;
+                        unique.Add(key, build); builds.Add(build);
+                        working += 768L + (long)((build.Metadata.Reason ?? "").Length + (build.Metadata.MissingPayload ?? "").Length) * 2;
                     }
+                    plans.Add(new ProjectionSourcePlan(demand, range.ObjectId, build)); retained = nextRetained; working += 128;
+                    UpdateProjectionSourceWorkingBytes(working); yield return true;
+                    if (retained > BlueprintProjectionSourceReceipt.TargetBytes) break;
                 }
-                found.X -= summary.Left; found.Y -= summary.Top; metadata.Add(found); yield return true;
-            }
-            cells.Sort(CellComparer.Instance);
-            var window = new BlueprintProjectionWindow(request.Identity, request.Generation, summary, bounds, cells.ToArray(), metadata.ToArray(), true);
-            if (window.EstimatedBytes > ProjectionWindowLimit) throw new System.IO.InvalidDataException("blueprint-projection-window-budget");
-            var receipt = new BlueprintProjectionSourceReceipt(request.Identity, request.Generation, request.Range, request.ObjectId, window, request.Offset, nextOffset, complete);
-            while (true)
-            {
-                CheckProjectionSource(owner, request);
-                lock (gate)
+
+                var selected = new HashSet<long>(); var blocks = new List<long>();
+                var ordinary = new Dictionary<long, List<ProjectionSourceBuild>>();
+                var objects = new Dictionary<int, List<ProjectionSourceBuild>>();
+                foreach (var build in builds)
                 {
-                    if (projectionReceipts.Count + projectionSourceReceipts.Count < ProjectionRequestLimit && projectionReceiptBytes + window.EstimatedBytes <= ProjectionWindowLimit)
-                    { projectionSourceReceipts.Enqueue(receipt); projectionReceiptBytes += window.EstimatedBytes; projectionSourceSerials.Remove(request.Identity); break; }
-                    projectionAwaitingReceiptSpace = true;
+                    CheckProjectionSource(owner, request);
+                    build.Cells = new List<CaptureCell>(build.PlannedCells); working += 64L + build.PlannedCells * 64L;
+                    if (build.ObjectId == 0)
+                    {
+                        AddProjectionSourceRoute(ordinary, build.Block, build);
+                        if (selected.Add(build.Block)) { blocks.Add(build.Block); working += 64; }
+                    }
+                    else
+                    {
+                        AddProjectionSourceRoute(objects, build.ObjectId, build);
+                        foreach (long number in build.MemberBlocks)
+                        {
+                            CheckProjectionSource(owner, request);
+                            if (selected.Add(number)) { blocks.Add(number); working += 64; }
+                            UpdateProjectionSourceWorkingBytes(working); yield return true;
+                        }
+                    }
+                    working += 128; UpdateProjectionSourceWorkingBytes(working);
                 }
-                yield return true;
+                // Consume all cache hits before decoding misses, as viewport
+                // reads do. Each physical member block is scanned once for
+                // the whole batch; ObjectId dispatch is independent of the
+                // number of furniture items sharing that block.
+                var ordered = new List<long>(blocks.Count); working += 32L + blocks.Count * 8L;
+                foreach (long number in blocks) if (FindProjectionBlock(owner, number) != null) ordered.Add(number);
+                foreach (long number in blocks) if (FindProjectionBlock(owner, number) == null) ordered.Add(number);
+                UpdateProjectionSourceWorkingBytes(working);
+                foreach (long number in ordered)
+                {
+                    CheckProjectionSource(owner, request); var chunk = ProjectionChunk(owner, number);
+                    List<ProjectionSourceBuild> ordinaryTargets; ordinary.TryGetValue(number, out ordinaryTargets);
+#if DEBUG
+                    Interlocked.Increment(ref projectionSourceMemberBlocks); Interlocked.Add(ref projectionSourceMemberRecords, chunk.Count);
+#endif
+                    for (int i = 0; i < chunk.Count; i++)
+                    {
+                        var raw = chunk.Cells[i];
+                        if (ordinaryTargets != null)
+                        {
+                            var cell = raw.ObjectId > 0 ? raw.WithoutTile() : raw;
+                            if (cell.HasContent)
+                            {
+                                cell.X -= summary.Left; cell.Y -= summary.Top;
+                                foreach (var build in ordinaryTargets) if (i >= build.Offset) build.Cells.Add(cell);
+                            }
+                        }
+                        List<ProjectionSourceBuild> objectTargets;
+                        if (raw.ObjectId > 0 && objects.TryGetValue(raw.ObjectId, out objectTargets))
+                        {
+                            raw.X -= summary.Left; raw.Y -= summary.Top;
+                            foreach (var build in objectTargets)
+                            { var cell = raw; if (build.TileOnly) cell.Layers = CaptureLayer.Tile; build.Cells.Add(cell); }
+                        }
+                        if ((i & 31) == 31) { CheckProjectionSource(owner, request); yield return true; }
+                    }
+                    yield return true;
+                }
+
+                foreach (var build in builds)
+                {
+                    CheckProjectionSource(owner, request);
+                    if (build.ObjectId != 0 && build.Cells.Count != build.PlannedCells) throw new InvalidDataException("blueprint-object-member-reference");
+                    build.Cells.Sort(CellComparer.Instance);
+                    // ToArray briefly coexists with the mutable construction
+                    // buffer. Include both arrays and metadata/string payload
+                    // in the working peak, then drop this build's staging list.
+                    UpdateProjectionSourceWorkingBytes(working + build.PlannedBytes + summaryReferenceBytes);
+                    build.Window = new BlueprintProjectionWindow(request.Identity, request.Generation, summary, build.Bounds,
+                        build.Cells.ToArray(), build.ObjectId == 0 ? Array.Empty<CaptureObject>() : new[] { build.Metadata }, true);
+                    if (build.Window.EstimatedBytes > ProjectionWindowLimit) throw new InvalidDataException("blueprint-projection-window-budget");
+                    working += build.Window.EstimatedBytes + summaryReferenceBytes - (64L + build.Cells.Capacity * 64L); build.Cells = null;
+                    UpdateProjectionSourceWorkingBytes(working); yield return true;
+                }
+                var parts = new BlueprintProjectionSourcePart[plans.Count];
+                for (int i = 0; i < parts.Length; i++)
+                { var plan = plans[i]; parts[i] = new BlueprintProjectionSourcePart(plan.Demand, plan.LogicalObjectId, plan.Build.Window, plan.Build.NextOffset, true); }
+                var receipt = new BlueprintProjectionSourceReceipt(request.Identity, request.Generation, parts);
+                UpdateProjectionSourceWorkingBytes(working + BlueprintProjectionSourceReceipt.DirectoryBytes + parts.LongLength * BlueprintProjectionSourcePart.DescriptorBytes);
+                if (receipt.EstimatedBytes > BlueprintProjectionSourceReceipt.MaximumEstimatedBytes) throw new InvalidDataException("blueprint-projection-window-budget");
+                while (true)
+                {
+                    CheckProjectionSource(owner, request);
+                    lock (gate)
+                    {
+                        // Clear/re-request may race the last outside check.
+                        // Test the exact serial again under the publication lock
+                        // so an old read cannot erase or publish over its heir.
+                        CheckProjectionSource(owner, request);
+                        if (projectionReceipts.Count + projectionSourceReceipts.Count < ProjectionRequestLimit && projectionReceiptBytes + receipt.EstimatedBytes <= BlueprintProjectionSourceReceipt.MaximumEstimatedBytes)
+                        {
+                            projectionSourceReceipts.Enqueue(receipt); ChargeProjectionSourceReceipt(receipt.EstimatedBytes); projectionSourceSerials.Remove(request.Identity);
+#if DEBUG
+                            Interlocked.Increment(ref projectionSourcePublished); Interlocked.Add(ref projectionSourceParts, parts.Length);
+#endif
+                            UpdateProjectionSourceWorkingBytes(0); break;
+                        }
+                        projectionAwaitingReceiptSpace = true;
+                    }
+                    yield return true;
+                }
             }
+            finally { UpdateProjectionSourceWorkingBytes(0); }
+        }
+        private static void AddProjectionSourceRoute<TKey>(Dictionary<TKey, List<ProjectionSourceBuild>> routes, TKey key, ProjectionSourceBuild build)
+        { List<ProjectionSourceBuild> values; if (!routes.TryGetValue(key, out values)) { values = new List<ProjectionSourceBuild>(); routes.Add(key, values); } values.Add(build); }
+        private ProjectionSourceBuild PlanProjectionSource(ProjectionOwner owner, BlueprintProjectionSourceRange range,
+            BlueprintProjectionSourceDemand demand, int objectId, bool tileOnly)
+        {
+            var build = new ProjectionSourceBuild { Bounds = range.Bounds, Block = range.Block, Offset = demand.Offset, ObjectId = objectId, TileOnly = tileOnly };
+            if (objectId == 0)
+            {
+                var chunk = ProjectionChunk(owner, range.Block);
+                if (demand.Offset < 0 || demand.Offset >= chunk.Count) throw new InvalidDataException("blueprint-source-offset");
+                build.PlannedCells = chunk.Count - demand.Offset; build.NextOffset = chunk.Count;
+                build.PlannedBytes = 256L + build.PlannedCells * 64L; return build;
+            }
+            var metadata = ProjectionChunk(owner, owner.Directory.FindObject(objectId, ProjectionComparison));
+            int low = 0, high = metadata.ObjectCount - 1; bool found = false;
+            while (low <= high)
+            {
+                int at = low + (high - low) / 2; var obj = metadata.Objects[at];
+                if (obj.Id < objectId) low = at + 1; else if (obj.Id > objectId) high = at - 1;
+                else { build.Metadata = obj; found = true; break; }
+            }
+            if (!found) throw new InvalidDataException("blueprint-missing-object-reference");
+            ProjectionSourceObjectIndex source = null;
+            if (owner.SourceObjects != null) owner.SourceObjects.TryGetValue(objectId, out source);
+            int members = source == null ? 0 : source.Members;
+            build.MemberBlocks = source == null ? (IReadOnlyList<long>)Array.Empty<long>() : source.Blocks;
+            var target = build.Metadata; target.X -= owner.Root.Summary.Left; target.Y -= owner.Root.Summary.Top; build.Metadata = target;
+            build.Bounds = new BlueprintProjectionBounds(target.X, target.Y, target.Width, target.Height); build.PlannedCells = members;
+            build.PlannedBytes = checked(384L + members * 64L + (long)((target.Reason ?? "").Length + (target.MissingPayload ?? "").Length) * 2);
+            return build;
         }
     }
 }

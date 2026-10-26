@@ -93,7 +93,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             { Dirty = false; DirtyLayers = 0; Array.Clear(RawRoutes, 0, RawRoutes.Length); Array.Clear(DirtyRoutes, 0, DirtyRoutes.Length); }
         }
 
-        // Exactly one Host read workset can be assembling a Door's nine raw
+        // Exactly one Host sample can be assembling a Door's nine raw
         // seeds. Its interest starts BEFORE the first native sample and lasts
         // through publication, so an ordinary/inactive wing's ignored drawing
         // frame cannot make that first immutable certificate stale. This lease

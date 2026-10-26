@@ -144,7 +144,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             projectionCapacityRevision++; ClearProjectionPoint();
             Library?.CloseProjection(); projectionTransaction++; projectionSceneRevision++;
             foreach (var item in projectionScene) DisposeProjectionData(item); projectionScene.Clear();
-            ReleaseProjectionMatchRead(true); projectionChanges.Clear(); projectionMatchWatches.Clear(); projectionMatchPriority = null; projectionMatchTickSet = false;
+            ClearProjectionMatchWork(); projectionChanges.Clear(); projectionMatchWatches.Clear(); projectionMatchPriority = null; projectionMatchTickSet = false;
             projectionMatchSource = null; projectionMatchTiles = projectionMatchSections = null;
             if (candidateProjection != null) DisposeProjectionData(candidateProjection); candidateProjection = pendingProjection = restoreProjection = hoveredProjection = null;
             deletedProjections.Clear(); projectionRestoreAdmissions.Clear(); deletePending = false; ProjectionMode = BlueprintProjectionMode.None; emptyProjectionRenderer.Clear(); InterruptProjection();
@@ -234,7 +234,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (restoreProjection != null)
                 {
                     if (ReferenceEquals(projectionPointTarget, restoreProjection)) projectionPointTarget = candidateProjection;
-                    projectionScene.Remove(restoreProjection); DisposeProjectionData(restoreProjection);
+                    RemoveProjectionSceneItem(restoreProjection); DisposeProjectionData(restoreProjection);
                 }
                 candidateProjection.CommitOrder = ++projectionOrder; projectionScene.Add(candidateProjection); candidateProjection = restoreProjection = hoveredProjection = null;
                 projectionSceneRevision++; ProjectionMode = BlueprintProjectionMode.Fixed; InterruptProjection(); Pointer.Cancel();
@@ -261,7 +261,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // also restores the moving source and rejects any published delta.
             // Successful atomic application retires with revision=false.
             if (revision && ProjectionMode == BlueprintProjectionMode.Committing) CancelProjection();
-            projectionScene.Remove(item); DisposeProjectionData(item); Library?.ReleaseProjection(item.Identity);
+            RemoveProjectionSceneItem(item); DisposeProjectionData(item); Library?.ReleaseProjection(item.Identity);
             projectionCapacityRevision++; if (ReferenceEquals(projectionPointTarget, item)) ClearProjectionPoint();
             if (ReferenceEquals(hoveredProjection, item)) hoveredProjection = null;
             if (revision) projectionSceneRevision++;

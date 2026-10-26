@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using JueMingR.Platform.Blueprint;
 
 namespace JueMingR.Features.Blueprint
@@ -41,10 +42,12 @@ namespace JueMingR.Features.Blueprint
         public bool TryTakeProjectionCommit(out BlueprintProjectionCommitReceipt receipt) { return worker.TryTakeProjectionCommit(out receipt); }
         public bool TryTakeProjectionReceipt(out BlueprintProjectionReceipt value) { return worker.TryTakeProjectionReceipt(out value); }
         public bool RequestProjectionSource(BlueprintProjectionIdentity identity, long generation, int range, int objectId = 0, int offset = 0) { return worker.RequestProjectionSource(identity, generation, range, objectId, offset); }
+        public bool RequestProjectionSources(BlueprintProjectionIdentity identity, long generation, IReadOnlyList<BlueprintProjectionSourceDemand> demands) { return worker.RequestProjectionSources(identity, generation, demands); }
         public void ClearProjectionSource(BlueprintProjectionIdentity identity) { worker.ClearProjectionSource(identity); }
         public bool TryTakeProjectionSource(out BlueprintProjectionSourceReceipt receipt) { return worker.TryTakeProjectionSource(out receipt); }
 #if DEBUG
         public BlueprintProjectionStatistics DebugProjectionStatistics { get { return worker.ProjectionStatistics; } }
+        public BlueprintProjectionSourceStatistics DebugProjectionSourceStatistics { get { return worker.ProjectionSourceStatistics; } }
 #endif
         public void Pump()
         {

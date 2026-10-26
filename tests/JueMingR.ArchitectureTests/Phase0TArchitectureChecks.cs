@@ -100,12 +100,14 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Blueprint.BlueprintTemplateKey", "JueMingR.Features.Blueprint.BlueprintProjectionMask", "JueMingR.Features.Blueprint.BlueprintProjectionPlacement",
                 "JueMingR.Features.Blueprint.BlueprintProjectionCommitRequest", "JueMingR.Features.Blueprint.BlueprintProjectionCommitReceipt", "JueMingR.Features.Blueprint.BlueprintPreviewBudget",
                 "JueMingR.Features.Blueprint.BlueprintProjectionSourceRange", "JueMingR.Features.Blueprint.BlueprintProjectionSourceReceipt",
+                "JueMingR.Features.Blueprint.BlueprintProjectionSourceDemand", "JueMingR.Features.Blueprint.BlueprintProjectionSourcePart",
                 "JueMingR.Features.Blueprint.BlueprintWorldMatchState", "JueMingR.Features.Blueprint.BlueprintWorldObjectFamily", "JueMingR.Features.Blueprint.BlueprintWorldFrameKind",
                 "JueMingR.Features.Blueprint.BlueprintWorldMatchResult", "JueMingR.Features.Blueprint.BlueprintWorldObject", "JueMingR.Features.Blueprint.BlueprintWorldMatchSample", "JueMingR.Features.Blueprint.BlueprintWorldMatchComparer",
                 "JueMingR.Features.Blueprint.BlueprintWorldObjectFrameWitness",
                 "JueMingR.Features.Blueprint.IBlueprintWorldObjectWriteWitness", "JueMingR.Features.Blueprint.BlueprintWorldTileWriteState", "JueMingR.Features.Blueprint.BlueprintWorldDoorWitness",
 #if DEBUG
                 "JueMingR.Features.Blueprint.BlueprintProjectionStatistics",
+                "JueMingR.Features.Blueprint.BlueprintProjectionSourceStatistics",
 #endif
                 "JueMingR.Features.Movement.MovementOptions", "JueMingR.Features.Movement.MovementPreferenceCodec",
                 "JueMingR.Features.Movement.SmartFallProtectionOptions",

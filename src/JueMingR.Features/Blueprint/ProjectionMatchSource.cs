@@ -207,23 +207,94 @@ namespace JueMingR.Features.Blueprint
         }
     }
 
-    public sealed class BlueprintProjectionSourceReceipt
+    public readonly struct BlueprintProjectionSourceDemand
     {
-        internal BlueprintProjectionSourceReceipt(BlueprintProjectionIdentity identity, long generation, int range, int objectId,
-            BlueprintProjectionWindow window, int offset, int nextOffset, bool complete, string error = null)
-        { Identity = identity; Generation = generation; Range = range; ObjectId = objectId; Window = window; Offset = offset; NextOffset = nextOffset; Complete = complete; Error = error; }
-        public BlueprintProjectionIdentity Identity { get; }
-        public long Generation { get; }
+        public BlueprintProjectionSourceDemand(int range, int objectId = 0, int offset = 0)
+        { Range = range; ObjectId = objectId; Offset = offset; }
         public int Range { get; }
-        // Zero returns the remaining physical block or the logical object's
-        // complete Tile workset. Positive requests remain available for an
-        // explicit complete target workset. The Host counts
-        // that object's Tile members once, apart from same-cell other layers.
+        // Zero selects the logical range: ordinary layers or one complete
+        // object's Tile. Positive values retain the explicit all-layer API.
         public int ObjectId { get; }
+        public int Offset { get; }
+    }
+
+    public sealed class BlueprintProjectionSourcePart
+    {
+        internal const long DescriptorBytes = 128;
+        internal BlueprintProjectionSourcePart(BlueprintProjectionSourceDemand demand, int logicalObjectId,
+            BlueprintProjectionWindow window, int nextOffset, bool complete)
+        { Range = demand.Range; ObjectId = demand.ObjectId; LogicalObjectId = logicalObjectId; Offset = demand.Offset; Window = window; NextOffset = nextOffset; Complete = complete; WindowEstimatedBytes = window == null ? 0 : checked(window.EstimatedBytes + SummaryReferenceBytes(window.Summary)); }
+        internal static long SummaryReferenceBytes(CaptureSummary summary)
+        { return summary == null ? 0 : checked(8L * ((summary.MissingPayloads?.LongLength ?? 0) + (summary.UnreliableReasons?.LongLength ?? 0))); }
+        public int Range { get; }
+        public int ObjectId { get; }
+        public int LogicalObjectId { get; }
         public int Offset { get; }
         public int NextOffset { get; }
         public bool Complete { get; }
         public BlueprintProjectionWindow Window { get; }
+        // Window's legacy estimate covers its fixed headers/payload. Copy
+        // clones the summary's two reference arrays; each slot is additional
+        // per-window retention. The immutable strings remain shared with root.
+        public long WindowEstimatedBytes { get; }
+        // A standalone part estimate. A batch owner must charge the receipt,
+        // which deduplicates shared windows rather than summing this property.
+        public long EstimatedBytes { get { return DescriptorBytes + WindowEstimatedBytes; } }
+    }
+
+    // A transport has immutable source ownership only. Each part still needs
+    // its own Host world stamp and complete proof; finishing or invalidating
+    // one proof must not cancel the transport's stable siblings.
+    public sealed class BlueprintProjectionSourceReceipt
+    {
+        public const int MaximumPartCount = 64;
+        public const long TargetBytes = 256L * 1024;
+        internal const long DirectoryBytes = 128;
+        // A legal old 32-MiB single window still fits with its descriptor,
+        // directory and cloned summary slots. Validated v1 roots have at most
+        // 16 MissingPayloads and no serialized UnreliableReasons. This is a
+        // transport bound, not an extension of reliable-object proof capacity.
+        public const long MaximumEstimatedBytes = 32L * 1024 * 1024 + DirectoryBytes + BlueprintProjectionSourcePart.DescriptorBytes + 16L * 8;
+        internal BlueprintProjectionSourceReceipt(BlueprintProjectionIdentity identity, long generation,
+            BlueprintProjectionSourcePart[] parts, string error = null)
+        {
+            Identity = identity; Generation = generation; Parts = Array.AsReadOnly(parts); Error = error;
+            long bytes = DirectoryBytes + parts.LongLength * BlueprintProjectionSourcePart.DescriptorBytes;
+            var windows = new HashSet<BlueprintProjectionWindow>();
+            foreach (var part in parts) if (part.Window != null && windows.Add(part.Window)) bytes = checked(bytes + part.WindowEstimatedBytes);
+            EstimatedBytes = bytes;
+        }
+        public BlueprintProjectionIdentity Identity { get; }
+        public long Generation { get; }
+        public IReadOnlyList<BlueprintProjectionSourcePart> Parts { get; }
+        public long EstimatedBytes { get; }
+        // Compatibility accessors describe the first requested part, including
+        // the original ObjectId request rather than the derived logical ID.
+        public int Range { get { return Parts[0].Range; } }
+        public int ObjectId { get { return Parts[0].ObjectId; } }
+        public int Offset { get { return Parts[0].Offset; } }
+        public int NextOffset { get { return Parts[0].NextOffset; } }
+        public bool Complete { get { return Parts[0].Complete; } }
+        public BlueprintProjectionWindow Window { get { return Parts[0].Window; } }
         public string Error { get; }
     }
+#if DEBUG
+    // Bounded-work evidence only; no Release sampling, timers or file output.
+    public readonly struct BlueprintProjectionSourceStatistics
+    {
+        internal BlueprintProjectionSourceStatistics(long requests, long receipts, long parts, long blocks, long records,
+            long working, long workingPeak, long receiptBytes, long receiptPeak, long pending)
+        { Requests = requests; Receipts = receipts; Parts = parts; MemberBlocks = blocks; MemberRecords = records; WorkingBytes = working; WorkingPeakBytes = workingPeak; ReceiptBytes = receiptBytes; ReceiptPeakBytes = receiptPeak; PendingRequests = pending; }
+        public long Requests { get; }
+        public long Receipts { get; }
+        public long Parts { get; }
+        public long MemberBlocks { get; }
+        public long MemberRecords { get; }
+        public long WorkingBytes { get; }
+        public long WorkingPeakBytes { get; }
+        public long ReceiptBytes { get; }
+        public long ReceiptPeakBytes { get; }
+        public long PendingRequests { get; }
+    }
+#endif
 }

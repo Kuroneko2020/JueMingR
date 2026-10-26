@@ -30,6 +30,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "65 blocks retain intersection", () => CacheIntersection(Path.Combine(area, "cache-intersection")));
             Run(failures, "delete handle and commit boundaries", () => Deletion(Path.Combine(area, "deletion")));
             Run(failures, "sparse source slices remain independent of viewport latest", () => MatchSources(Path.Combine(area, "match-sources")));
+            Run(failures, "source batches preserve members layers prefix and lifetime", () => SourceBatches(Path.Combine(area, "source-batches")));
             if (before == failures.Count)
             {
                 string resolved = Path.GetFullPath(area), parent = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
@@ -597,11 +598,189 @@ namespace JueMingR.ArchitectureTests
         }
         private static BlueprintProjectionMask SourceMask(Dictionary<long, ushort> cells, HashSet<int> objects, long count)
         { return (BlueprintProjectionMask)typeof(BlueprintProjectionMask).GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Single().Invoke(new object[] { cells, objects, count }); }
+        private static BlueprintProjectionSourceReceipt Source(LibraryState state)
+        {
+            BlueprintProjectionSourceReceipt found = null;
+            Until(() =>
+            {
+                BlueprintProjectionReceipt other;
+                if (state.TryTakeProjectionReceipt(out other)) Require(other.Kind != BlueprintProjectionReceiptKind.Failed, "source batch must not retire a valid asset: " + other.FailureCode);
+                return state.TryTakeProjectionSource(out found);
+            });
+            return found;
+        }
+        private static void SourceBatches(string path)
+        {
+            string mixedPath = Path.Combine(path, "mixed-small-objects"); var cells = new List<CaptureCell>(); var objects = new List<CaptureObject>();
+            for (int row = 0; row < 3; row++)
+            {
+                for (int item = 0; item < 64; item++) cells.Add(new CaptureCell { X = 37 + item * 2, Y = 91 + row, ObjectId = item + 1, Layers = CaptureLayer.Tile |
+                    (row == 0 && item == 0 ? CaptureLayer.Wall : 0) | (row == 0 && item == 1 ? CaptureLayer.Wire : 0), TileType = 10,
+                    WallType = (ushort)(row == 0 && item == 0 ? 7 : 0), Wires = (byte)(row == 0 && item == 1 ? 1 : 0), FrameY = (short)(row * 18) });
+                if (row == 0) cells.Add(Tile(165, 91));
+            }
+            for (int item = 0; item < 64; item++) objects.Add(new CaptureObject { Id = item + 1, Type = 10, X = 37 + item * 2, Y = 91, Width = 1, Height = 3, Reliable = true, Reason = item == 0 ? "retained metadata" : "" });
+            var missing = Enumerable.Range(0, 16).Select(i => "PayloadCategory" + i).ToArray();
+            var fixture = Write(mixedPath, 129, 3, cells.Count, n => cells[(int)n], objects.ToArray(), missing);
+            using (var counted = new CountedFiles(mixedPath)) using (var state = new LibraryState(counted))
+            {
+                var id = new BlueprintProjectionIdentity(fixture.Id, fixture.Revision, fixture.Hash, 96, 1);
+                Require(state.RequestProjectionOpen(id), "mixed batch source open"); var opened = Await(state, BlueprintProjectionReceiptKind.Opened);
+                Require(opened.MatchRanges.Count == 65 && opened.TotalLayerCount == 195, "64 independent three-member objects keep a separate ordinary Tile/wall/wire proof");
+                var demands = Enumerable.Range(0, 64).Select(r => new BlueprintProjectionSourceDemand(r)).ToArray();
+#if DEBUG
+                var before = state.DebugProjectionSourceStatistics;
+#endif
+                Require(state.RequestProjectionSources(id, 3001, demands), "finite source batch accepted");
+                demands[0] = new BlueprintProjectionSourceDemand(Int32.MaxValue);
+                var batch = Source(state);
+                Require(batch.Generation == 3001 && batch.Parts.Count == 64 && batch.Range == 0 && batch.Window == batch.Parts[0].Window && batch.ObjectId == 0,
+                    "request owns its copied finite demand list and old accessors describe its first part");
+                var ordinary = batch.Parts[0];
+                Require(ordinary.LogicalObjectId == 0 && ordinary.NextOffset == cells.Count && ordinary.Window.Cells.Count == 3 && ordinary.Window.Objects.Count == 0 &&
+                    ordinary.Window.Cells.Count(c => c.Layers == CaptureLayer.Wall) == 1 && ordinary.Window.Cells.Count(c => c.Layers == CaptureLayer.Wire) == 1 && ordinary.Window.Cells.Count(c => c.Layers == CaptureLayer.Tile) == 1,
+                    "ordinary WithoutTile preserves same-cell wall/wire once and raw next offset counts all physical records");
+                for (int i = 1; i < batch.Parts.Count; i++)
+                {
+                    var part = batch.Parts[i];
+                    int expectedObject = opened.MatchRanges[i].ObjectId;
+                    Require(part.Range == i && part.ObjectId == 0 && part.LogicalObjectId == expectedObject && part.Offset == 0 && part.NextOffset == 0 && part.Complete &&
+                        part.Window.Cells.Count == 3 && part.Window.Objects.Count == 1 && part.Window.Objects[0].Id == expectedObject && part.Window.Cells.All(c => c.ObjectId == expectedObject && c.Layers == CaptureLayer.Tile),
+                        "each logical object is a complete Tile-only workset, independent of same-cell other layers");
+                }
+                long uniqueWindows = batch.Parts.Select(p => p.Window).Distinct().Sum(w => w.EstimatedBytes);
+                Require(batch.Parts.All(p => p.WindowEstimatedBytes == p.Window.EstimatedBytes + missing.Length * 8L && p.Window.Summary.MissingPayloads.SequenceEqual(missing) && p.Window.Summary.UnreliableReasons.Length == 0) &&
+                    !ReferenceEquals(batch.Parts[0].Window.Summary.MissingPayloads, batch.Parts[1].Window.Summary.MissingPayloads) &&
+                    ReferenceEquals(batch.Parts[0].Window.Summary.MissingPayloads[0], batch.Parts[1].Window.Summary.MissingPayloads[0]),
+                    "actual ReadRoot summary arrays are cloned per window and charged per slot while their immutable strings remain shared");
+                Require(batch.EstimatedBytes == uniqueWindows + 128L + batch.Parts.Count * (128L + missing.Length * 8L) && batch.EstimatedBytes <= BlueprintProjectionSourceReceipt.TargetBytes,
+                    "retained batch estimate includes unique immutable windows plus real directory/descriptor ownership");
+#if DEBUG
+                var after = state.DebugProjectionSourceStatistics;
+                Require(after.MemberBlocks - before.MemberBlocks == 1 && after.MemberRecords - before.MemberRecords == cells.Count,
+                    "64 logical parts scan the shared physical member block once, not once per object");
+                Require(after.Receipts - before.Receipts == 1 && after.Parts - before.Parts == 64 && after.ReceiptBytes == 0 && after.WorkingPeakBytes >= batch.EstimatedBytes,
+                    "actual transport/part counts and staging/receipt ownership are observable and released on Take");
+                Console.WriteLine("BlueprintProjection batch smallObjects=63 ordinaryRecords=3 physicalRecords=" + cells.Count + " memberScans=" + (after.MemberBlocks - before.MemberBlocks) +
+                    " scannedRecords=" + (after.MemberRecords - before.MemberRecords) + " parts=" + batch.Parts.Count + " retainedBytes=" + batch.EstimatedBytes + " workingPeakBytes=" + after.WorkingPeakBytes);
+#endif
+                Require(state.RequestProjectionSources(id, 3003, new[] { new BlueprintProjectionSourceDemand(1), new BlueprintProjectionSourceDemand(1) }), "repeated immutable demand shares one build");
+                var duplicate = Source(state);
+                Require(duplicate.Parts.Count == 2 && ReferenceEquals(duplicate.Parts[0].Window, duplicate.Parts[1].Window) &&
+                    duplicate.EstimatedBytes == duplicate.Window.EstimatedBytes + missing.Length * 8L + 384L,
+                    "two part references retain one window payload, while both descriptors remain charged");
+                int objectOne = Enumerable.Range(0, opened.MatchRanges.Count).Single(r => opened.MatchRanges[r].ObjectId == 1);
+                Require(state.RequestProjectionSource(id, 3004, objectOne, 1), "legacy explicit positive object request remains accepted");
+                var explicitObject = Source(state);
+                Require(explicitObject.ObjectId == 1 && explicitObject.Parts[0].LogicalObjectId == 1 && explicitObject.Window.Cells.Count == 3 &&
+                    explicitObject.Window.Cells.Any(c => c.Layers == (CaptureLayer.Tile | CaptureLayer.Wall)), "explicit all-layer selection is distinct from logical Tile-only supply");
+                Require(!state.RequestProjectionSources(id, 3005, new BlueprintProjectionSourceDemand[65]) && !state.RequestProjectionSources(id, 3005, Array.Empty<BlueprintProjectionSourceDemand>()),
+                    "request envelope backpressure rejects empty/over-64 lists without retiring valid source identity");
+                Require(state.RequestProjectionSource(id, 3006, 64), "a still-live final logical object remains independently serviceable");
+                Require(Source(state).Window.Objects[0].Id == opened.MatchRanges[64].ObjectId, "64-part envelope never labels its unrequested suffix complete");
+                state.ReleaseProjection(id); Until(() => counted.ActiveIndexes == 0);
+            }
+            SourceBatchPrefix(Path.Combine(path, "prefix"));
+            SourceBatchLifetime(Path.Combine(path, "lifetime"));
+        }
+        private static void SourceBatchPrefix(string path)
+        {
+            string densePath = Path.Combine(path, "ordinary"); var dense = Write(densePath, 6144, 1, 6144, n => Tile(37 + (int)n, 91));
+            using (var state = new LibraryState(new FileBlueprintLibrary(densePath)))
+            {
+                var id = Open(state, dense);
+                Require(state.RequestProjectionSources(id, 3101, new[] { new BlueprintProjectionSourceDemand(0), new BlueprintProjectionSourceDemand(1), new BlueprintProjectionSourceDemand(2) }), "three valid ordinary demands accepted");
+                var first = Source(state);
+                Require(first.Parts.Count == 1 && first.Range == 0 && first.Window.Cells.Count == 2048 && first.Complete && first.EstimatedBytes <= BlueprintProjectionSourceReceipt.TargetBytes,
+                    "two full physical windows plus their directories exceed the soft batch target, yielding a legal one-item prefix");
+                Require(state.RequestProjectionSources(id, 3102, new[] { new BlueprintProjectionSourceDemand(1), new BlueprintProjectionSourceDemand(2) }), "unaccepted suffix can be requested normally");
+                Require(Source(state).Range == 1, "batch-full does not retire identity or skip the first unaccepted range");
+                Require(state.RequestProjectionSource(id, 3103, 2, offset: 10), "old raw offset API remains independent of batch filtering");
+                var tail = Source(state); Require(tail.Offset == 10 && tail.NextOffset == 2048 && tail.Window.Cells.Count == 2038 && tail.Window.Cells[0].X == 4106, "raw physical offset survives transport batching");
+                Require(Library(state, state.TryList(3104, 0)).Status == LibraryStatus.Completed, "ordinary library lane remains live after repeated batch capacity refusals");
+            }
+            string largePath = Path.Combine(path, "reliable-cross-block-object"); const int memberCount = 2047;
+            var large = Write(largePath, 2050, 1, 2050, n => n >= 2 && n < 2049 ?
+                new CaptureCell { X = 37 + (int)n, Y = 91, ObjectId = 1, Layers = CaptureLayer.Tile, TileType = 21 } : Tile(37 + (int)n, 91),
+                new[] { new CaptureObject { Id = 1, Type = 21, X = 39, Y = 91, Width = memberCount, Height = 1, Reliable = true } });
+            using (var state = new LibraryState(new FileBlueprintLibrary(largePath)))
+            {
+                var id = new BlueprintProjectionIdentity(large.Id, large.Revision, large.Hash, 97, 1); Require(state.RequestProjectionOpen(id), "legal reliable cross-block source opens");
+                var opened = Await(state, BlueprintProjectionReceiptKind.Opened);
+                Require(opened.Kind == BlueprintProjectionReceiptKind.Opened && opened.MatchRanges.Count == 3 && opened.MatchRanges[1].ObjectId == 1,
+                    "one reliable cross-block object has its own proof between independent head and tail ordinary ranges");
+#if DEBUG
+                var before = state.DebugProjectionSourceStatistics;
+#endif
+                Require(state.RequestProjectionSources(id, 3201, new[] { new BlueprintProjectionSourceDemand(1), new BlueprintProjectionSourceDemand(2) }), "reliable cross-block object and ordinary tail admitted together");
+                var batch = Source(state);
+                Require(batch.Parts.Count == 2 && batch.Window.Cells.Count == memberCount && batch.Window.Objects.Count == 1 && batch.Complete &&
+                    batch.Window.Cells.All(c => c.ObjectId == 1 && c.Layers == CaptureLayer.Tile) && batch.Parts[1].Range == 2 && batch.Parts[1].Window.Cells.Count == 1 && batch.Parts[1].NextOffset == 2,
+                    "reliable whole-object members and its same-physical-block ordinary sibling keep separate target ownership in one transport");
+#if DEBUG
+                var after = state.DebugProjectionSourceStatistics;
+                Require(after.MemberBlocks - before.MemberBlocks == 2 && after.MemberRecords - before.MemberRecords == 2050,
+                    "cross-block object plus tail ordinary demand scan their two shared physical blocks only once");
+#endif
+                Require(state.RequestProjectionSource(id, 3202, 1, 1), "legacy explicit positive ID assembles the same legal complete cross-block source");
+                Require(Source(state).Window.Cells.Count == memberCount, "explicit positive request preserves all 2047 reliable members without extending the original proof-size limit");
+            }
+            // Saved assets must contain zero unresolved objects. A format-
+            // readable root with an accurate nonzero uncertain count is rejected
+            // before source opens; it cannot prove a large legal source path.
+            string uncertainPath = Path.Combine(path, "uncertain-root-rejected");
+            var uncertain = Write(uncertainPath, 1, 1, 1,
+                n => new CaptureCell { X = 37, Y = 91, ObjectId = 1, Layers = CaptureLayer.Tile, TileType = 21, UnreliableObject = true },
+                new[] { new CaptureObject { Id = 1, Type = 21, X = 37, Y = 91, Width = 1, Height = 1, Reliable = false, Reason = "uncertain saved source fixture" } });
+            using (var state = new LibraryState(new FileBlueprintLibrary(uncertainPath)))
+            {
+                var id = new BlueprintProjectionIdentity(uncertain.Id, uncertain.Revision, uncertain.Hash, 97, 2); Require(state.RequestProjectionOpen(id), "uncertain saved identity is admitted only for validation");
+                var failed = Await(state, BlueprintProjectionReceiptKind.Failed);
+                Require(failed.Kind == BlueprintProjectionReceiptKind.Failed && failed.IdentityRetired && failed.FailureCode == "blueprint-metadata-content-mismatch" &&
+                    !state.RequestProjectionSource(id, 3203, 0, 1), "unresolved saved root remains rejected before any logical or explicit source request");
+            }
+        }
+        private static void SourceBatchLifetime(string path)
+        {
+            var fixture = Write(path, 140000, 1, 140000, n => Tile(37 + (int)n, 91));
+            using (var counted = new CountedFiles(path)) using (var state = new LibraryState(counted))
+            {
+                var a = Open(state, fixture, 1, 98); var b = Open(state, fixture, 2, 98);
+                counted.HoldBlock = 0;
+                Require(state.RequestProjectionSources(a, 3301, new[] { new BlueprintProjectionSourceDemand(0), new BlueprintProjectionSourceDemand(1) }), "old batch starts at uncached block");
+                Require(counted.BlockEntered.Wait(5000), "old transport held in real reader before cancellation");
+                Require(!state.RequestProjectionSources(a, 3300, new[] { new BlueprintProjectionSourceDemand(2) }), "one identity keeps one unfinished transport while the real reader is held");
+                state.ClearProjectionSource(a);
+                Require(state.RequestProjectionSources(a, 3302, new[] { new BlueprintProjectionSourceDemand(2), new BlueprintProjectionSourceDemand(3) }), "new serial can replace canceled transport while old read returns");
+                Require(state.TryList(3303, 0), "ordinary library command accepted while source is in flight");
+                counted.BlockRelease.Set(); Require(Library(state, true).Status == LibraryStatus.Completed, "single worker services accepted List at its next cooperative source boundary");
+                var current = Source(state);
+                Require(current.Identity.Equals(a) && current.Generation == 3302 && current.Range == 2, "late old batch cannot publish over or remove the replacement serial");
+                Require(state.RequestProjectionSources(a, 3304, new[] { new BlueprintProjectionSourceDemand(3), new BlueprintProjectionSourceDemand(4) }), "retirement can hold a queued batch");
+#if DEBUG
+                Until(() => state.DebugProjectionSourceStatistics.ReceiptBytes > 0);
+#endif
+                state.ReleaseProjection(a);
+                Require(!state.RequestProjectionSource(a, 3305, 0), "released identity cannot resurrect through source request");
+                BlueprintProjectionSourceReceipt stale; Require(!state.TryTakeProjectionSource(out stale), "retirement removes queued source parts before consumer sees them");
+                Require(state.RequestProjectionSources(b, 3306, new[] { new BlueprintProjectionSourceDemand(4), new BlueprintProjectionSourceDemand(5) }), "same-template sibling retains its own live source reference");
+                Require(Source(state).Identity.Equals(b) && counted.ActiveIndexes == 1, "retiring one identity does not dispose its shared template owner");
+                Require(state.RequestProjectionSource(b, 3307, 0), "last reference can retire with pending source"); state.ReleaseProjection(b);
+                Until(() => counted.ActiveIndexes == 0);
+#if DEBUG
+                Until(() => state.DebugProjectionSourceStatistics.PendingRequests == 0 && state.DebugProjectionSourceStatistics.WorkingBytes == 0);
+                Require(state.DebugProjectionSourceStatistics.ReceiptBytes == 0 && state.DebugProjectionStatistics.ReceiptBytes == 0 && state.DebugProjectionStatistics.SourceIndexBytes == 0,
+                    "last reference returns source queue/staging/shared index ownership without leaking charged payload");
+                Console.WriteLine("BlueprintProjection batch cancellationSerial=true queuedRetirement=true sharedSibling=true lastReferenceBytes=0 workingPeakBytes=" + state.DebugProjectionSourceStatistics.WorkingPeakBytes);
+#endif
+                Require(!state.TryTakeProjectionSource(out stale), "late batch after last retirement cannot revive source identity");
+            }
+        }
         // Literal v1 bytes are built independently of LibraryCodec. Expectations
         // above use supplied source coordinates/layers, never renderer output.
-        private static Fixture Write(string path, int width, int height, long count, Func<long, CaptureCell> cell, CaptureObject[] objects = null)
+        private static Fixture Write(string path, int width, int height, long count, Func<long, CaptureCell> cell, CaptureObject[] objects = null, string[] missing = null)
         {
-            var fixture = new Fixture { Id = Guid.NewGuid(), Revision = Guid.NewGuid() }; objects = objects ?? Array.Empty<CaptureObject>();
+            var fixture = new Fixture { Id = Guid.NewGuid(), Revision = Guid.NewGuid() }; objects = objects ?? Array.Empty<CaptureObject>(); missing = missing ?? Array.Empty<string>();
             string asset = Path.Combine(path, fixture.Id.ToString("N")), content = Path.Combine(asset, "content"), chunks = Path.Combine(content, "chunks"); Directory.CreateDirectory(chunks);
             long number = 0; byte[] index;
             using (var hashes = new MemoryStream())
@@ -634,10 +813,10 @@ namespace JueMingR.ArchitectureTests
             File.WriteAllBytes(Path.Combine(content, "index.bin"), index); byte[] root;
             using (var stream = new MemoryStream()) using (var writer = new BinaryWriter(stream))
             {
-                writer.Write(0x42524D4A); writer.Write(1); writer.Write(fixture.Revision.ToByteArray()); writer.Write(number); writer.Write(Digest(index)); writer.Write(37); writer.Write(91); writer.Write(width); writer.Write(height); writer.Write(count); writer.Write(0L); writer.Write(1UL); writer.Write(2UL); Text(writer, "1.4.5.8"); writer.Write(0); writer.Flush(); root = stream.ToArray();
+                writer.Write(0x42524D4A); writer.Write(1); writer.Write(fixture.Revision.ToByteArray()); writer.Write(number); writer.Write(Digest(index)); writer.Write(37); writer.Write(91); writer.Write(width); writer.Write(height); writer.Write(count); writer.Write(objects.LongCount(o => !o.Reliable)); writer.Write(1UL); writer.Write(2UL); Text(writer, "1.4.5.8"); writer.Write(missing.Length); foreach (string category in missing) Text(writer, category); writer.Flush(); root = stream.ToArray();
             }
             File.WriteAllBytes(Path.Combine(content, "root.bin"), root); fixture.Hash = Convert.ToBase64String(Digest(root));
-            File.WriteAllText(Path.Combine(asset, "metadata.json"), "{\"format\":\"JueMingR.BlueprintAsset\",\"version\":1,\"assetId\":\"" + fixture.Id.ToString("N") + "\",\"name\":\"投影测试\",\"contentRevision\":\"" + fixture.Revision.ToString("N") + "\",\"contentHash\":\"" + fixture.Hash + "\",\"width\":" + width + ",\"height\":" + height + ",\"contentCount\":" + count + ",\"blockCount\":" + number + ",\"missingSummary\":\"\",\"createdTicks\":1,\"updatedTicks\":2,\"deleted\":false}\n", new UTF8Encoding(false));
+            File.WriteAllText(Path.Combine(asset, "metadata.json"), "{\"format\":\"JueMingR.BlueprintAsset\",\"version\":1,\"assetId\":\"" + fixture.Id.ToString("N") + "\",\"name\":\"投影测试\",\"contentRevision\":\"" + fixture.Revision.ToString("N") + "\",\"contentHash\":\"" + fixture.Hash + "\",\"width\":" + width + ",\"height\":" + height + ",\"contentCount\":" + count + ",\"blockCount\":" + number + ",\"missingSummary\":\"" + String.Join("；", missing) + "\",\"createdTicks\":1,\"updatedTicks\":2,\"deleted\":false}\n", new UTF8Encoding(false));
             return fixture;
         }
         private static void WriteCell(BinaryWriter writer, CaptureCell c)

@@ -37,6 +37,15 @@ namespace NativeWorldTextProbe
         // Host still owns every Take/sample and never spins for worker output.
         private static bool AwaitSourceSupply(object host, LibraryState library)
         {
+            var work = GetOptional(host, "projectionMatchWork") as IDictionary;
+            if(work!=null)
+            {
+                bool pending=work.Values.Cast<object>().Any(w=>(bool)Get(w,"Pending"));
+                if(!pending)return work.Values.Cast<object>().Any(w=>((IList)Get(w,"Parts")).Cast<object>().Any(p=>p!=null));
+                var sourceWorker=Get(library,"worker");var sourceGate=Get(sourceWorker,"gate");
+                NativeQuickItemChecks.Until(()=>{lock(sourceGate)return (int)Get(Get(sourceWorker,"projectionSourceReceipts"),"Count")>0 || (int)Get(Get(sourceWorker,"projectionFailures"),"Count")>0;});
+                return true;
+            }
             var read = GetOptional(host, "projectionMatchRead");
             if (read == null) return false;
             if (GetOptional(read, "Batch") != null) return true;
@@ -78,7 +87,7 @@ namespace NativeWorldTextProbe
             var entry=NativeBlueprintBudgetChecks.Save(library,cells,width,height);
             var item=ConfirmCompletion(host,input,entry,ox,oy,step);
             long reads=(long)Get(host,"ProjectionMatchCellReads"),requests=(long)Get(host,"ProjectionMatchSourceRequests"),batches=(long)Get(host,"ProjectionMatchSourceBatches"),steps=(long)Get(host,"ProjectionMatchSourceSteps");
-            var before=library.DebugProjectionStatistics; int updates=0,productive=0,supplyWait=0,readyIdle=0,firstCoverage=-1,visibleHidden=-1;
+            var before=library.DebugProjectionStatistics; int updates=0,productive=0,supplyWait=0,readyIdle=0,firstCoverage=-1,visibleHidden=-1;long sourcePeak=0;
             var costs=new HarmonyLib.Harmony("JueMingR.Tests.Blueprint.CompletionCosts"); completionUpdateCosts.Clear();
             costs.Patch(host.GetType().GetMethod("AdvanceProjectionMatch",Flags),prefix:new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldMatchChecks).GetMethod(nameof(CompletionUpdatePrefix),Flags)),postfix:new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldMatchChecks).GetMethod(nameof(CompletionUpdatePostfix),Flags)));
             var elapsed=Stopwatch.StartNew();
@@ -91,6 +100,7 @@ namespace NativeWorldTextProbe
                     if(active!=null && GetOptional(active,"Batch")!=null)ready=true;
                     long prior=(long)Get(host,"ProjectionMatchCellReads"),priorSteps=(long)Get(host,"ProjectionMatchSourceSteps");
                     step();updates++;
+                    sourcePeak=Math.Max(sourcePeak,(long)Get(host,"ProjectionMatchSourceRetainedBytes"));
                     int used=checked((int)((long)Get(host,"ProjectionMatchCellReads")-prior));
                     Require(used<=256 && (long)Get(host,"ProjectionMatchSourceSteps")-priorSteps<=256,"dense Update bounds both world sampling and masked/source cursor work");
                     if(used>0){productive++;Require(used==256,"ready dense ordinary work consumes its actual declared Update allowance without a fixed protocol gap");}
@@ -114,7 +124,10 @@ namespace NativeWorldTextProbe
                 Require(!Scene(host).Contains(item) && GetOptional(item,"Match")==null && GetOptional(item,"SourceRanges")==null && GetOptional(item,"Window")==null && ((IDictionary)Get(item,"Windows")).Count==0 && (int)Get(Get(item,"Renderer"),"CommandCount")==0 && (int)Get(host,"ProjectionMatchWatchCount")==0 && !(bool)Get(host,"ProjectionMatchReading"),
                     "dense completion retires scene identity, match/watch/window/renderer and the unique active slot");
                 Require(after.BlockReads-before.BlockReads<=32 && after.DecodedRecords-before.DecodedRecords<=count,"hot 32-block source does not repeatedly decode each small protocol fragment");
-                long peak=(long)Get(host,"ProjectionMatchSourceBytesPeak");Require(peak<=256L+2048L*64,"ordinary scene retains at most one charged physical source workset");
+                // The Host lifetime peak now also covers earlier four/six-owner
+                // cases. Measure this dense single-owner interval from its
+                // real retained state rather than relabel that global peak.
+                long peak=sourcePeak;Require(peak>0 && peak<=8192L+2048L*64,"ordinary scene charges its single physical source payload plus actual transport/Host descriptors");
                 double[] ms=completionUpdateCosts.Select(t=>t*1000.0/Stopwatch.Frequency).OrderBy(v=>v).ToArray();
                 Console.WriteLine("PASS BlueprintCompletion dense mode="+(controlledSupply?"controlled-worker-supply":"natural-worker-production")+" records=65536 objects=0 physicalBlocks=32 targets=65536 sourceRequests="+actualRequests+" sourceArrivals="+actualBatches+" worldReads="+((long)Get(host,"ProjectionMatchCellReads")-reads)+" sourceSteps="+((long)Get(host,"ProjectionMatchSourceSteps")-steps)+" updates="+updates+" productive="+productive+" zeroReadsWaitingForSupplyOrCommit="+supplyWait+" readyIdle="+readyIdle+" firstCoverageUpdate="+firstCoverage+" firstVisibleMatchUpdate="+visibleHidden+" retirementUpdate="+updates+" bodyReads="+(after.BlockReads-before.BlockReads)+" decoded="+(after.DecodedRecords-before.DecodedRecords)+" sourceBytesPeak="+peak+" elapsedMs="+elapsed.ElapsedMilliseconds+" matchUpdateMedianMs="+ms[ms.Length/2].ToString("F3",System.Globalization.CultureInfo.InvariantCulture)+" p95Ms="+ms[(ms.Length-1)*95/100].ToString("F3",System.Globalization.CultureInfo.InvariantCulture)+" maxMs="+ms[ms.Length-1].ToString("F3",System.Globalization.CultureInfo.InvariantCulture)+"; no 60Hz conversion, no FPS/owner acceptance claim");
                 WorldGen.KillTile(ox,oy,false,false,true);for(int n=0;n<3;n++)step();
@@ -176,8 +189,8 @@ namespace NativeWorldTextProbe
                 timing.Patch(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintWorldMatchSource",true).GetMethod("TryRead",Flags),postfix:new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldMatchChecks).GetMethod(nameof(AfterObjectSample),Flags)));
                 var b=Place(host,input,bEntry,bx,by,dirty);int updates=0;
                 while(Scene(host).Contains(b) && updates++<32)dirty();
-                Require(Scene(host).Contains(a) && !Scene(host).Contains(b) && bReads>0 && changes>4,"a continuously hard-dirty owner yields its single source slot so another template receives actual world sampling and retires without clicks");
-                Console.WriteLine("PASS BlueprintCompletion hardDirtyFairness nativeChanges="+changes+" BActualWorldReads="+bReads+" afterConfirmUpdates="+updates+" AStillIncomplete=true BRetired=true singleSlot=true");
+                Require(Scene(host).Contains(a) && !Scene(host).Contains(b) && bReads>0 && changes>4,"a continuously hard-dirty owner leaves finite scene service for another template's actual world sampling and retirement without clicks");
+                Console.WriteLine("PASS BlueprintCompletion hardDirtyFairness nativeChanges="+changes+" BActualWorldReads="+bReads+" afterConfirmUpdates="+updates+" AStillIncomplete=true BRetired=true sceneWorkBounded=true");
             }
             finally { objectSample=null;timing.UnpatchAll(timing.Id);Call(host,"ClearProjection"); }
         }
