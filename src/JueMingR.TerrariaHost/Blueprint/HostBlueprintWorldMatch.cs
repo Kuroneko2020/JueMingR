@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal readonly Dictionary<long, BlueprintWorldMatchResult> Visible = new Dictionary<long, BlueprintWorldMatchResult>();
         internal IReadOnlyDictionary<long, BlueprintWorldMatchResult> View;
 #if DEBUG
-        internal long WorldReads;
+        internal long WorldReads, SourceRequests, SourceArrivals;
 #endif
     }
     internal sealed class BlueprintProjectionMatchRead
@@ -90,6 +90,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private long projectionMatchWatch, projectionMatchToken;
         private int projectionMatchCursor, projectionMatchAdmissionCursor;
         private bool projectionMatchPriorityTurn = true;
+        private bool projectionMatchAdmissionPriorityTurn = true;
         private ulong projectionMatchTick;
         private bool projectionMatchTickSet;
 #if DEBUG
@@ -104,6 +105,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal long ProjectionMatchServices { get; private set; }
         internal long ProjectionMatchOrdinaryServices { get; private set; }
         internal long ProjectionMatchPriorityServices { get; private set; }
+        internal long ProjectionMatchAdmissionAttempts { get; private set; }
         internal int ProjectionMatchWorkCount { get { return projectionMatchWork.Count; } }
         internal long ProjectionMatchSourceRetainedBytes { get { return ProjectionMatchSourceBytes(false); } }
         internal long ProjectionMatchReservedBytes { get { return ProjectionMatchSourceBytes(true); } }
@@ -141,7 +143,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void ClearProjectionMatchWork()
         {
             foreach(var identity in new List<BlueprintProjectionIdentity>(projectionMatchWork.Keys))ReleaseProjectionMatchWork(identity);
-            projectionMatchRead=null;projectionMatchCursor=projectionMatchAdmissionCursor=0;projectionMatchPriorityTurn=true;
+            projectionMatchRead=null;projectionMatchCursor=projectionMatchAdmissionCursor=0;projectionMatchPriorityTurn=projectionMatchAdmissionPriorityTurn=true;
         }
         private void ResetProjectionMatchRead(BlueprintProjectionMatchRange range)
         {
@@ -340,8 +342,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Ready parts continue in this same Update, under the one token's
             // world/source and scheduling limits. Waiting for I/O never spins.
             int reads = 256, sourceSteps = 256, schedules = ProjectionMatchScheduleLimit;
-            int admissions = ProjectionMatchWorkLimit;
-            AdmitProjectionMatchSources(ref admissions);
+            int admissions = ProjectionMatchWorkLimit, admissionAttempts=ProjectionMatchScheduleLimit;
+            AdmitProjectionMatchSources(ref admissions,ref admissionAttempts);
             while(reads>0 && sourceSteps>0 && schedules-->0)
             {
                 if(!StartProjectionMatchRead())break;
@@ -353,20 +355,28 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             foreach (var item in projectionScene) PublishProjectionMatchView(item);
             ApplyCompletedProjections();
-            AdmitProjectionMatchSources(ref admissions);
+            AdmitProjectionMatchSources(ref admissions,ref admissionAttempts);
             ObserveProjectionMatchRetained();
         }
-        private void AdmitProjectionMatchSources(ref int admissions)
+        private void AdmitProjectionMatchSources(ref int admissions,ref int admissionAttempts)
         {
             int count=projectionScene.Count;
-            if(count==0 || admissions==0)return;
+            if(count==0 || admissions==0 || admissionAttempts==0)return;
             // Admission has its own cursor. A pending request cannot consume
             // a normal world-sampling turn, nor stop another ready identity.
-            int attempts=Math.Min(count,ProjectionMatchScheduleLimit);
-            while(attempts-->0 && admissions>0)
+            int cursor=projectionMatchAdmissionCursor%count,sceneScanned=0;
+            bool ordinaryAdmitted=false;
+            int priorityIndex=projectionMatchAdmissionPriorityTurn && projectionMatchPriority!=null?projectionScene.IndexOf(projectionMatchPriority):-1;
+            int attempts=Math.Min(count,admissionAttempts-(priorityIndex>=0?1:0));
+            for(int n=priorityIndex>=0?-1:0;n<attempts && admissions>0;n++)
             {
-                int index=projectionMatchAdmissionCursor%count;
-                projectionMatchAdmissionCursor=(index+1)%count;
+                admissionAttempts--;
+#if DEBUG
+                ProjectionMatchAdmissionAttempts++;
+#endif
+                bool prioritized=n<0;
+                int index=prioritized?priorityIndex:(cursor+n)%count;
+                if(!prioritized)sceneScanned++;
                 var item=projectionScene[index];var state=item.Match;
                 if(state==null || state.Ranges.Length==0 || projectionMatchWork.ContainsKey(item.Identity) || state.Current==state.Ranges.Length && state.Demands==0)continue;
                 if(projectionMatchWork.Count>=ProjectionMatchWorkLimit && !YieldRestartedProjectionMatchWork())continue;
@@ -389,10 +399,23 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(!Library.RequestProjectionSources(item.Identity,work.Token,demands))continue;
                 foreach(var demand in demands)work.Requested.Add(demand.Range);
                 projectionMatchWork.Add(item.Identity,work);admissions--;
+                // A capacity scan can inspect a whole scene while accepting
+                // only one request. Advancing at every attempt would wrap to
+                // the same first owner and refill it until its entire template
+                // finished. Preserve the actual normal admission's successor.
+                // Priority also needs source admission, before it has a work
+                // slot; it alternates with normal admissions without spending
+                // that ordinary turn or evicting stable partial samples.
+                if(prioritized)projectionMatchAdmissionPriorityTurn=false;
+                else {projectionMatchAdmissionCursor=(index+1)%count;projectionMatchAdmissionPriorityTurn=true;ordinaryAdmitted=true;}
 #if DEBUG
-                ProjectionMatchSourceRequests++;
+                ProjectionMatchSourceRequests++;state.SourceRequests++;
 #endif
             }
+            // The scene has no fixed count cap. If a finite prefix is already
+            // current (or unavailable), resume after that actual prefix next
+            // token instead of examining the same first 64 identities forever.
+            if(!ordinaryAdmitted && sceneScanned>0)projectionMatchAdmissionCursor=(cursor+sceneScanned)%count;
         }
         private bool StartProjectionMatchRead()
         {
@@ -481,7 +504,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 if(!HasProjectionMatchParts(work))projectionMatchWork.Remove(receipt.Identity);
 #if DEBUG
-                ProjectionMatchSourceBatches++;
+                ProjectionMatchSourceBatches++;work.Owner.Match.SourceArrivals++;
 #endif
             }
             ObserveProjectionMatchRetained();

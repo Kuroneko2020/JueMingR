@@ -45,6 +45,8 @@ namespace NativeWorldTextProbe
             {
                 using(var library=new LibraryState(files))
                 {
+                    try
+                    {
                     field.SetValue(host,library);var worker=Get(library,"worker");var gate=Get(worker,"gate");
                     LibraryEntry asset=SaveOrdinary(library,260),healthy=SaveOrdinary(library,1);var pressure=SeedDense(library,"身份失败缓存压力");
                     var moving=PlaceAt(host,input,asset,20,600);var other=PlaceAt(host,input,healthy,800,800);
@@ -78,8 +80,14 @@ namespace NativeWorldTextProbe
                     {
                         Require(WorldGen.PlaceTile(20,600,1,true,true),"real original Tile mutation dirties the moving source origin");
                         NativeQuickItemChecks.Until(()=>{step();return entered.WaitOne(0);});
-                        lock(gate)Require(((BlueprintProjectionIdentity)Get(Get(worker,"projectionSourceActive"),"Identity")).Equals(identity),"held source request belongs to the moving restore identity");
-                        var read=Get(host,"projectionMatchRead");Require(ReferenceEquals(Get(read,"Owner"),moving) && (bool)Get(read,"Pending"),"real source admission retains the restore-owned pending scene slot before failure");
+                        lock(gate)
+                        {
+                            var request=Get(worker,"projectionSourceActive");
+                            Require(((BlueprintProjectionIdentity)Get(request,"Identity")).Equals(identity),"held source request belongs to the moving restore identity");
+                            var work=((IDictionary)Get(host,"projectionMatchWork"))[identity];
+                            Require(work!=null && ReferenceEquals(Get(work,"Owner"),moving) && (bool)Get(work,"Pending") && (long)Get(work,"Token")== (long)Get(request,"Generation") && GetOptional(work,"Read")==null,
+                                "held source transport retains the restore-owned work, exact worker generation and pending state before any world sample");
+                        }
                     }
                     Require(WorldGen.PlaceTile(800,800,1,true,true),"other template gets a real final construction while failed reader is held");
                     step();Require(Scene(host).Contains(other),"different template still needs its actual post-mutation proof");
@@ -111,6 +119,7 @@ namespace NativeWorldTextProbe
                     Require(ReferenceEquals(mask,Get(moving,"Mask")),"failure does not mutate the permanent restore mask");
                     AssertDisposed(moving);AssertDisposed(candidate);
                     var active=GetOptional(host,"projectionMatchRead");Require(active==null || !((BlueprintProjectionIdentity)Get(Get(active,"Owner"),"Identity")).Equals(identity),"failed restore leaves no orphan scene-wide source slot");
+                    Require(!((IDictionary)Get(host,"projectionMatchWork")).Contains(identity),"fatal identity releases every pending/ready transport and partial sample alias");
                     Require(!((IEnumerable)Get(host,"projectionMatchWatches")).Cast<object>().Any(pair=>((BlueprintProjectionIdentity)Get(Get(Get(pair,"Value"),"Owner"),"Identity")).Equals(identity)),"failed identity leaves no match watch owner");
                     if(sourceBytes!=null){File.WriteAllBytes(sourcePath,sourceBytes);Require(File.ReadAllBytes(sourcePath).SequenceEqual(sourceBytes),"isolated fault bytes are restored exactly; template is not consumed as empty");}
                     NativeQuickItemChecks.Until(()=>{step();return !Scene(host).Contains(other);});
@@ -121,6 +130,15 @@ namespace NativeWorldTextProbe
                     Require(library.TryList(91003,0,asset.AssetId),"failed template remains in the actual library");Require(Complete(library).Page.Entries.Any(e=>e.AssetId==asset.AssetId),"identity failure preserves library metadata and original source");
                     Console.WriteLine("PASS Host Moving identity failure lane="+(viewport?"viewport":"source")+" error="+failed.FailureCode+" actual nonresident block0/reader/worker Failed; source qualification=zero Match; both aliases/source slot/watch/windows/commands released; other template actual reads and natural retirement; old commit refused; library retained");
                     Call(host,"ClearProjection");
+                    }
+                    catch(Exception error){Console.Error.WriteLine("RECOVERY first failure lane="+(viewport?"viewport":"source")+" budgetCode="+budgetCode+": "+error);throw;}
+                    finally
+                    {
+                        // This test's read gate is independent of worker.Stop.
+                        // Release it before using calls Dispose, so a failed
+                        // assertion cannot be hidden by its bounded file Join.
+                        release.Set();
+                    }
                 }
             }
             finally
