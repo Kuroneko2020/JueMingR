@@ -413,13 +413,21 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (receipt.Kind != LibraryCommandKind.Delete || !deletePending || receipt.AssetId != deletedAsset) return; deletePending = false;
             // The receipt's mechanical certainty is narrower than Protected or
             // Failed. Only that proof may restore the exact old scene snapshot.
-            if (receipt.DeleteProvenUncommitted) foreach (var item in deletedProjections)
+            if (receipt.DeleteProvenUncommitted)
             {
-                item.HasRequestedWindow = item.Windows.Count != 0; item.WindowPending = false; item.Opened = false;
-                projectionScene.Add(item); projectionRestoreAdmissions.Enqueue(item);
+                // Resolve each successor before the first Add changes scene/count.
+                var samplingNext = ProjectionMatchCursorOwner(projectionMatchCursor);
+                var admissionNext = ProjectionMatchCursorOwner(projectionMatchAdmissionCursor);
+                foreach (var item in deletedProjections)
+                {
+                    item.HasRequestedWindow = item.Windows.Count != 0; item.WindowPending = false; item.Opened = false;
+                    projectionScene.Add(item); projectionRestoreAdmissions.Enqueue(item);
+                }
+                projectionScene.Sort((a, b) => a.CommitOrder.CompareTo(b.CommitOrder));
+                ReconcileProjectionSceneOrder(samplingNext, admissionNext);
             }
             else if (receipt.Status != LibraryStatus.Deleted && receipt.Status != LibraryStatus.Completed) projectionFeedback = receipt.Status == LibraryStatus.CommitUnconfirmed ? "无法确认删除结果，已停止读取这个模板，原文件已保护。" : "蓝图删除失败，原文件已保护。";
-            deletedProjections.Clear(); projectionScene.Sort((a, b) => a.CommitOrder.CompareTo(b.CommitOrder)); projectionSceneRevision++;
+            deletedProjections.Clear(); projectionSceneRevision++;
             if (!ProjectionEditing) ProjectionMode = projectionScene.Count == 0 ? BlueprintProjectionMode.None : BlueprintProjectionMode.Fixed;
         }
     }

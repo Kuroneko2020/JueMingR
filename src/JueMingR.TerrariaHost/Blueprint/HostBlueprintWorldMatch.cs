@@ -188,6 +188,28 @@ namespace JueMingR.TerrariaHost.Blueprint
             projectionMatchCursor=count==0?0:projectionMatchCursor%count;
             projectionMatchAdmissionCursor=count==0?0:projectionMatchAdmissionCursor%count;
         }
+        private BlueprintProjectionPlacement ProjectionMatchCursorOwner(int cursor)
+        { return projectionScene.Count==0?null:projectionScene[cursor%projectionScene.Count]; }
+        private int ProjectionSceneReferenceIndex(BlueprintProjectionPlacement owner)
+        {
+            for(int i=0;i<projectionScene.Count;i++)if(ReferenceEquals(projectionScene[i],owner))return i;
+            return -1;
+        }
+        private void ReconcileProjectionSceneOrder(BlueprintProjectionPlacement samplingNext,BlueprintProjectionPlacement admissionNext)
+        {
+            // SceneIndex is derived scheduling state. A reorder must remap
+            // exact owners and each ordinary successor without discarding live
+            // source/partial samples or spending either priority turn. Snapshot
+            // the bounded work set because orphan release removes its entry.
+            foreach(var work in new List<BlueprintProjectionMatchWork>(projectionMatchWork.Values))
+            {
+                int index=ProjectionSceneReferenceIndex(work.Owner);
+                if(index<0)ReleaseProjectionMatchIdentity(work.Owner.Identity);
+                else work.SceneIndex=index;
+            }
+            projectionMatchCursor=Math.Max(0,ProjectionSceneReferenceIndex(samplingNext));
+            projectionMatchAdmissionCursor=Math.Max(0,ProjectionSceneReferenceIndex(admissionNext));
+        }
         private long ProjectionMatchSourceBytes(bool reservations)
         {
             long bytes=0;

@@ -28,12 +28,95 @@ namespace NativeWorldTextProbe
             using (NativeBlueprintWorldMatchChecks.EmptyWorld(Get(context,"Blueprint"),1024,1024))
             {
             var failures=new List<Exception>();
+            foreach(bool partial in new[]{false,true}) try { DeleteRestoreReordersLiveWork(context,partial); } catch(Exception error){failures.Add(error);}
             foreach(bool published in new[]{false,true}) try { CommitFailure(context,published); } catch(Exception error){failures.Add(error);}
             foreach(bool cancelBeforeOpen in new[]{false,true}) try { RestoreMoving(context,cancelBeforeOpen); } catch(Exception error){failures.Add(error);}
             foreach(bool viewport in new[]{false,true}) foreach(bool budgetCode in new[]{false,true}) try { using(NativeBlueprintWorldMatchChecks.EmptyWorld(Get(context,"Blueprint"),1024,1024)) IdentityReadFailure(context,viewport,budgetCode); } catch(Exception error){failures.Add(error);}
             if(failures.Count!=0)throw new AggregateException("Host projection identity and commit failure ordering",failures);
             }
         }
+        private static void DeleteRestoreReordersLiveWork(object context,bool partial)
+        {
+            var host=Get(context,"Blueprint");var input=Get(context,"Input");var field=host.GetType().GetField("<Library>k__BackingField",F);var original=field.GetValue(host);
+            var type=typeof(NativeBlueprintRepairRecoveryChecks).GetNestedType("FaultFiles",BindingFlags.NonPublic);
+            var files=Activator.CreateInstance(type,F,null,new object[]{Path.Combine(Terraria.Program.SavePath,"projection-delete-reorder-"+(partial?"partial":"pending"))},null);
+            var release=(ManualResetEvent)Get(files,"ReadRelease");
+            using(NativeBlueprintWorldMatchChecks.EmptyWorld(host,1024,1024))
+            try
+            {
+                using(var library=new LibraryState((IBlueprintLibraryFiles)files))
+                {
+                    try
+                    {
+                        field.SetValue(host,library);var worker=Get(library,"worker");
+                        var assetA=SaveOrdinary(library,1);var assetB=SaveOrdinary(library,300);var assetC=SaveOrdinary(library,1);
+                        for(int x=300;x<600;x++)Require(WorldGen.PlaceTile(x,600,1,true,true),"delete-reorder B is a real complete native row");
+                        var a=PlaceAt(host,input,assetA,20,600);var b=PlaceAt(host,input,assetB,300,600);var c=PlaceAt(host,input,assetC,800,600);
+                        var identityA=Get(a,"Identity");var maskA=Get(a,"Mask");long orderA=(long)Get(a,"CommitOrder");
+                        var identityB=(BlueprintProjectionIdentity)Get(b,"Identity");var works=(IDictionary)Get(host,"projectionMatchWork");
+                        int maxReads=0,maxSteps=0,maxServices=0,maxAttempts=0,maxRequests=0;
+                        Action step=()=>
+                        {
+                            string[] counters={"ProjectionMatchCellReads","ProjectionMatchSourceSteps","ProjectionMatchServices","ProjectionMatchAdmissionAttempts","ProjectionMatchSourceRequests"};
+                            var before=counters.Select(name=>(long)Get(host,name)).ToArray();NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");
+                            var used=counters.Select((name,index)=>checked((int)((long)Get(host,name)-before[index]))).ToArray();
+                            maxReads=Math.Max(maxReads,used[0]);maxSteps=Math.Max(maxSteps,used[1]);maxServices=Math.Max(maxServices,used[2]);maxAttempts=Math.Max(maxAttempts,used[3]);maxRequests=Math.Max(maxRequests,used[4]);
+                            Require(used[0]<=256 && used[1]<=256 && used[2]<=64 && used[3]<=64 && used[4]<=4 && works.Count<=4,"delete-reorder real Update retains world/source/schedule/admission/work budgets");
+                        };
+                        // The first real Update admits immutable source requests
+                        // after taking receipts. Poll below never consumes those
+                        // sources or samples the world; no worker read is held.
+                        step();object work=works[identityB];
+                        Require(work!=null && (bool)Get(work,"Pending") && GetOptional(work,"Read")==null,"delete-reorder actual B request is admitted and Host remains Pending");
+                        if(partial)NativeQuickItemChecks.Until(()=>
+                        {
+                            step();work=works[identityB];var current=work==null?null:GetOptional(work,"Read");
+                            return current!=null && (bool)Get(current,"Sampling") && (int)Get(current,"CellIndex")>0 && (int)Get(current,"CellIndex")<((BlueprintProjectionSourcePart)Get(current,"Batch")).Window.Cells.Count;
+                        });
+                        // Use the real query to retain a live explicit priority,
+                        // never supply scheduler positions or proof fields.
+                        Call(host,"CheckProjectionMove",b);
+                        var state=Get(b,"Match");var progress=MatchProgress(state);long readsBefore=(long)Get(state,"WorldReads"),arrivalsBefore=(long)Get(state,"SourceArrivals");
+                        long token=(long)Get(work,"Token");bool pending=(bool)Get(work,"Pending");int partCursor=(int)Get(work,"PartCursor");
+                        var parts=((IEnumerable)Get(work,"Parts")).Cast<object>().ToArray();var requested=((IEnumerable)Get(work,"Requested")).Cast<int>().OrderBy(value=>value).ToArray();
+                        var read=GetOptional(work,"Read");int cellIndex=read==null?0:(int)Get(read,"CellIndex");var batch=read==null?null:Get(read,"Batch");
+                        var range=read==null?null:Get(read,"Range");var rangeProgress=range==null?null:RangeProgress(range);int results=read==null?0:(int)Get(Get(read,"Results"),"Count");
+                        bool samplingTurn=(bool)Get(host,"projectionMatchPriorityTurn"),admissionTurn=(bool)Get(host,"projectionMatchAdmissionPriorityTurn");var priority=GetOptional(host,"projectionMatchPriority");
+                        Set(files,"Fault","precommit");Require((bool)Call(host,"DeleteAsset",assetA),"delete-reorder real precommit Delete accepted");
+                        Require(Scene(host).SequenceEqual(new[]{b,c}),"delete-reorder removes only earlier A before its receipt");
+                        var samplingNext=CursorOwner(host,"projectionMatchCursor");var admissionNext=CursorOwner(host,"projectionMatchAdmissionCursor");
+                        Require(!ReferenceEquals(samplingNext,admissionNext),"delete-reorder interleaving gives the two ordinary cursors different actual successors");
+                        NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !(bool)Get(host,"deletePending");});
+                        var restored=Scene(host).Single(item=>((BlueprintProjectionIdentity)Get(item,"Identity")).AssetId==assetA.AssetId);
+                        Require(!ReferenceEquals(restored,a) && ReferenceEquals(identityA,Get(restored,"Identity")) && ReferenceEquals(maskA,Get(restored,"Mask")) && (long)Get(restored,"CommitOrder")==orderA && (int)Get(restored,"OriginX")==20 && (int)Get(restored,"OriginY")==600,"delete-reorder proven precommit restores A copy with exact identity/origin/order/mask");
+                        Require(Scene(host).SequenceEqual(new[]{restored,b,c}),"delete-reorder actual recovery Add and CommitOrder sort restores A before B");
+                        Require(ReferenceEquals(work,works[identityB]) && (long)Get(work,"Token")==token && (bool)Get(work,"Pending")==pending && (int)Get(work,"PartCursor")==partCursor && parts.SequenceEqual(((IEnumerable)Get(work,"Parts")).Cast<object>()) && requested.SequenceEqual(((IEnumerable)Get(work,"Requested")).Cast<int>().OrderBy(value=>value)),"delete-reorder retains the same live work/token/Pending/parts/requested/part cursor before another match Update");
+                        Require(ReferenceEquals(state,Get(b,"Match")) && progress.SequenceEqual(MatchProgress(state)) && ReferenceEquals(read,GetOptional(work,"Read")) && (long)Get(state,"WorldReads")==readsBefore && (long)Get(state,"SourceArrivals")==arrivalsBefore,"delete-reorder Poll preserves match proofs/demands and never consumes source or samples world");
+                        if(partial)Require(ReferenceEquals(batch,Get(read,"Batch")) && ReferenceEquals(range,Get(read,"Range")) && (bool)Get(read,"Sampling") && (int)Get(read,"CellIndex")==cellIndex && results==(int)Get(Get(read,"Results"),"Count") && rangeProgress.SequenceEqual(RangeProgress(range)),"delete-reorder retains real partial read/batch/range/samples and exact progress");
+                        Require(ReferenceEquals(priority,GetOptional(host,"projectionMatchPriority")) && samplingTurn==(bool)Get(host,"projectionMatchPriorityTurn") && admissionTurn==(bool)Get(host,"projectionMatchAdmissionPriorityTurn"),"delete-reorder keeps priority owner and both priority-turn states");
+                        Console.WriteLine("RECOVERY delete-reorder state="+(partial?"partial":"pending")+" token="+token+" workIndex="+Get(work,"SceneIndex")+" actualIndex="+Array.IndexOf(Scene(host),b)+" cellIndex="+cellIndex+" sourceComplete="+(batch==null?"pending":((BlueprintProjectionSourcePart)batch).Complete.ToString())+" samplingNext="+Array.IndexOf(Scene(host),samplingNext)+"/"+Get(host,"projectionMatchCursor")+" admissionNext="+Array.IndexOf(Scene(host),admissionNext)+"/"+Get(host,"projectionMatchAdmissionCursor"));
+                        Require(ReferenceEquals(Scene(host)[(int)Get(work,"SceneIndex")],Get(work,"Owner")),"delete-reorder B work SceneIndex must name its actual surviving Owner after recovery sort");
+                        Require(ReferenceEquals(samplingNext,CursorOwner(host,"projectionMatchCursor")) && ReferenceEquals(admissionNext,CursorOwner(host,"projectionMatchAdmissionCursor")),"delete-reorder independently preserves both ordinary successor identities");
+                        Set(files,"Fault",null);
+                        NativeQuickItemChecks.Until(()=>{step();return !Scene(host).Contains(b);});
+                        Require((long)Get(state,"WorldReads")>readsBefore && (partial || (long)Get(state,"SourceArrivals")>arrivalsBefore),"delete-reorder B consumes its actual source and continues real world reads to natural retirement");
+                        Require(GetOptional(b,"Match")==null && !works.Contains(identityB) && !((IEnumerable)Get(host,"projectionMatchWatches")).Cast<object>().Any(pair=>ReferenceEquals(Get(Get(pair,"Value"),"Owner"),b)),"delete-reorder natural completion releases B work and observer owners");
+                        NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !WorkerReferences(worker,identityB);});
+                        Require(Scene(host).Contains(restored) && Scene(host).Contains(c) && Main.tile[300,600].active() && Main.tile[599,600].active(),"delete-reorder natural completion preserves both incomplete peers and world building");
+                        Console.WriteLine("PASS Host DeleteProvenUncommitted recovery sort state="+(partial?"partial":"pending")+" sameWork/token/read/progress; two distinct ordinary successors; actual continuedReads="+((long)Get(state,"WorldReads")-readsBefore)+" sourceArrivals="+((long)Get(state,"SourceArrivals")-arrivalsBefore)+" natural retirement/work/watch/reference release; maxUpdate reads="+maxReads+" sourceSteps="+maxSteps+" services="+maxServices+" admissionAttempts="+maxAttempts+" requests="+maxRequests);
+                        Call(host,"ClearProjection");Require(works.Count==0 && (int)Get(host,"projectionMatchCursor")==0 && (int)Get(host,"projectionMatchAdmissionCursor")==0,"delete-reorder scene clear releases work and resets both empty-scene cursors");
+                    }
+                    finally{release.Set();Call(host,"ClearProjection");}
+                }
+            }
+            finally{try{release.Set();}catch(ObjectDisposedException){}Call(host,"ClearProjection");field.SetValue(host,original);}
+        }
+        private static object CursorOwner(object host,string name)
+        {var scene=Scene(host);int cursor=(int)Get(host,name);Require(scene.Length>0 && cursor>=0 && cursor<scene.Length,"ordinary cursor is a valid actual scene position: "+name);return scene[cursor];}
+        private static object[] MatchProgress(object state)
+        {return new[]{"OriginX","OriginY","Cursor","Current","Demands","Matches","Targets","Unknown","ViewDirty"}.Select(name=>Get(state,name)).ToArray();}
+        private static object[] RangeProgress(object range)
+        {return new[]{"Version","RawVersion","Stamp","ProgressStamp","Targets","Matches","Unknown","ProgressTargets","ProgressMatches","ProgressUnknown","Offset","PartIndex","Current","Reading","Demand"}.Select(name=>Get(range,name)).ToArray();}
         private static void IdentityReadFailure(object context,bool viewport,bool budgetCode)
         {
             var host=Get(context,"Blueprint");var input=Get(context,"Input");var field=host.GetType().GetField("<Library>k__BackingField",F);var original=field.GetValue(host);
