@@ -41,7 +41,7 @@ namespace NativeWorldTextProbe
         {
             Network(context);
         }
-        internal static void Visual(object context,ProbeGraphics graphics)
+        internal static void Visual(object context,ProbeGraphics graphics,bool materialViewing=false)
         {
             graphics.LoadItemTextures(new[]{Terraria.ID.ItemID.CopperPickaxe,1991,213,424,188,50,0,2289});Clear(context);
             object host=Get(context,"Tools"),input=Get(context,"Input"),quick=Get(context,"QuickItems"),processing=Get(context,"Processing"),recovery=Get(context,"Recovery");var p=Main.LocalPlayer;
@@ -61,6 +61,14 @@ namespace NativeWorldTextProbe
             int recalls=NativeQuickItemChecks.Recalls;
             try
             {
+                if(materialViewing)
+                {
+                    object blueprint=Get(context,"Blueprint");
+                    NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return (bool)Get(blueprint,"ControlsEnabled");});
+                    NativeQuickItemChecks.Sample(input,new Keys[0]);Call(blueprint,"OpenMaterials");
+                    Require((bool)Get(Get(Get(context,"Shell"),"BlueprintMaterialsUi"),"Visible"),"mixed consumers open the actual independent material viewer");
+                    Call(Get(context,"Shell"),"AfterUpdate");
+                }
                 // G05 intentionally rejects a press during an unfinished
                 // animation. Issue one real press in a finite native idle
                 // window while the background tool modes remain enabled.
@@ -70,13 +78,40 @@ namespace NativeWorldTextProbe
                 Require(Enumerable.Range(36,4).Any(x=>Enumerable.Range(39,4).Any(y=>!Main.tile[x,y].active())),"mining makes real progress alongside capture/harvest/extraction");
                 Require(p.inventory[10].IsAir || p.inventory[10].stack<5,"native extraction is not starved by enabled tool consumers");
                 Require(p.statLife>300 && p.inventory[3].stack==1,"actual recovery consumes exactly one potion during tool activity");
-                Require(pressed && NativeQuickItemChecks.Recalls==recalls+1,"explicit quick-item request completes one actual native delayed recall during tool activity");
+                if(materialViewing)
+                {
+                    Require((bool)Get(Get(Get(context,"Shell"),"BlueprintMaterialsUi"),"Visible") && pressed && NativeQuickItemChecks.Recalls==recalls,
+                        "the real material modal preserves automatic work while retaining ownership against a new manual gameplay hotkey");
+                    // J is an explicit gameplay command, not automatic work.
+                    // Keep the modal's real command gate; only a fresh request
+                    // after Close and a neutral native sample may be admitted.
+                    Call(Get(Get(context,"Shell"),"BlueprintMaterialsUi"),"Close");
+                    // The completed mixed phase can still own an uninterrupted
+                    // tool animation/selection. End those modes through their
+                    // real controls and let native steps retire them; viewing
+                    // never promises a manual command may ignore that owner.
+                    for(int i=0;i<3;i++)NativeToolsChecks.SetMode(host,i,0);
+                    Call(processing,"Set",1,false);
+                    NativeQuickItemChecks.Sample(input,new Keys[0]);Call(Get(context,"Shell"),"ProcessInput");NativeQuickItemChecks.NativeFrame(p);Call(context,"UpdateRuntime");
+                    pressed=false;
+                    for(int f=0;f<320;f++)
+                    {
+                        bool press=!pressed && p.selectedItemState.CanChangeSelectedItemImmediately && !(bool)Get(Get(processing,"Extraction"),"Active");
+                        if(press){pressed=true;Console.WriteLine("MATERIAL MANUAL fresh press anim/time="+p.itemAnimation+"/"+p.itemTime+" selected="+p.selectedItem+" interface="+p.mouseInterface+" can="+Get(input,"CanStartActions"));}
+                        NativeQuickItemChecks.Sample(input,press?new[]{Keys.J}:new Keys[0]);Call(Get(context,"Shell"),"ProcessInput");NativeQuickItemChecks.NativeFrame(p);Call(context,"UpdateRuntime");
+                    }
+                }
+                Console.WriteLine("MATERIAL MIXED viewing="+materialViewing+" pressed="+pressed+" recallDelta="+(NativeQuickItemChecks.Recalls-recalls)+" anim/time="+p.itemAnimation+"/"+p.itemTime+" can="+Get(input,"CanStartActions")+" quick="+GetOptional(quick,"Message"));
+                Require(pressed && NativeQuickItemChecks.Recalls==recalls+1,materialViewing?
+                    "after modal close and real tool retirement, a fresh manual request completes exactly one native delayed recall":
+                    "explicit quick-item request completes one actual native delayed recall during tool activity");
             }
             finally
             {
+                if(materialViewing)Call(Get(Get(context,"Shell"),"BlueprintMaterialsUi"),"Close");
                 audit.Unpatch(achievement,HarmonyPatchType.All,audit.Id);NativeRecoveryChecks.Save(recoverySettings,new RecoveryOptions());Call(processing,"Set",1,false);NativeQuickItemChecks.Until(()=>{Call(processing,"Poll");return (bool)Call(processing,"Controls",1);});Call(quick,"Delete",entry.Id);NativeQuickItemChecks.Until(()=>{Call(quick,"Poll");bindings.Poll();return !quickSettings.Busy && !bindings.Busy;});Clear(context);
             }
-            CaptureClient(context);Console.WriteLine("PASS G09 mixed real consumers: capture, harvest, low-pick mining, quick-item native recall, native recovery and extraction all progress.");
+            CaptureClient(context);Console.WriteLine("PASS G09 mixed real consumers: capture, harvest, low-pick mining, quick-item native recall, native recovery and extraction all progress; materialViewing="+materialViewing+".");
         }
         private static void CaptureClient(object context)
         {

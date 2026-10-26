@@ -48,7 +48,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool ControlsEnabled { get { return HasSession && preference.Snapshot.IsLoaded; } }
         internal bool ToolbarEnabled { get { return preference.Snapshot.Value.GelToolbar; } }
         internal bool Local(Player candidate) { return candidate != null && ReferenceEquals(candidate, Main.LocalPlayer); }
-        internal int BlockedActions { get { State.SetInteractionBlocked(ProjectionEditing || Shell?.BlueprintUi?.WorldInteractionBlocked == true || Shell?.BlueprintMaterialsUi?.Visible == true); return State.BlockedActions; } }
+        // This is the world editor's gate. Pure material viewing owns its
+        // pointer and physical tails in F5Shell; treating visibility as an
+        // editor barrier also erases unrelated automatic held-item presses.
+        internal int BlockedActions { get { State.SetInteractionBlocked(ProjectionEditing || Shell?.BlueprintUi?.WorldInteractionBlocked == true); return State.BlockedActions; } }
         internal bool WorldActionsBlocked { get { return BlockedActions != 0; } }
         internal bool NativeUiBusy { get { return Main.playerInventory || Main.mapFullscreen || Main.blockInput || Main.drawingPlayerChat ||
             Main.editSign || Main.editChest || !string.IsNullOrEmpty(Main.npcChatText) || Main.inFancyUI || Main.onlyDrawFancyUI || Main.ingameOptionsWindow ||
@@ -111,7 +114,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ObserveMapping()
         {
-            State.SetInteractionBlocked(ProjectionEditing || Shell?.BlueprintUi?.WorldInteractionBlocked == true || Shell?.BlueprintMaterialsUi?.Visible == true);
+            State.SetInteractionBlocked(ProjectionEditing || Shell?.BlueprintUi?.WorldInteractionBlocked == true);
             State.Observe(Input.SampleFocused, Input.RawMouseLeft, Input.RawMouseRight, Input.NativeUseItemRequest, Input.NativeUseTileRequest);
             if (!Input.SampleFocused) { Pointer.Cancel(); Toolbar.Cancel(); }
         }

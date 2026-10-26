@@ -69,12 +69,40 @@ namespace NativeWorldTextProbe
                 }
                 Require(failures.Count==0,"full native execution: "+string.Join("; ",failures));
                 MiningManual(context,host,input);Safety(context,host,input);
+                MaterialsViewing(context,host,input);
                 NativeToolWaitChecks.Run(context,host,input,release);
                 Console.WriteLine("PASS G09 full Player.Update/ItemCheckWrapped: true automatic first hit, continuous effects, unsampled outer updates, focused retention and safety cancellation"+(graphics==null?"; texture-free CPU cadence, capture not run.":"; three real net textures, native rabbit AI from both sides and actual catch output."));
             }
             finally{for(int i=0;i<3;i++)NativeToolsChecks.SetMode(host,i,0);foreach(var method in watch.GetPatchedMethods().ToArray())watch.Unpatch(method,HarmonyPatchType.All,watch.Id);}
         }
         private static bool SkipOutlet(){return false;}
+        private static void MaterialsViewing(object context,object host,object input)
+        {
+            object blueprint=Get(context,"Blueprint"),shell=Get(context,"Shell"),popup=Get(shell,"BlueprintMaterialsUi"),state=Get(blueprint,"State");
+            NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return (bool)Get(blueprint,"ControlsEnabled");});
+            Call(shell,"CloseAndSubmitPosition");
+            Require(!(bool)Get(state,"Active"),"material-view comparison starts outside the real capture editor");
+            try
+            {
+                var closed=Cadence(context,host,input,ItemID.StaffofRegrowth,12,true,true,false,0);
+                Call(blueprint,"OpenMaterials");
+                Require((bool)Get(popup,"Visible") && !(bool)Get(Get(shell,"State"),"Visible"),"actual independent material entry opens without an empty F5 shell");
+                var opened=Cadence(context,host,input,ItemID.StaffofRegrowth,12,true,true,false,0);
+                Require(closed.Count==7 && opened.Count==7 && (bool)Get(popup,"Visible"),
+                    "pure material viewing preserves all seven actual automatic native harvest/replant effects");
+                Console.WriteLine("PASS material-view automatic harvest closed="+closed.Count+" open="+opened.Count+"; original Player.Update/ItemCheck, no editor-gate bypass");
+
+                Call(popup,"Close");Sample(context,input,new Vector2(480,540),false);Call(blueprint,"Toggle");
+                Require((bool)Get(state,"Active"),"actual capture toggle still owns the world editor");
+                var p=Reset(context,host,input,ItemID.StaffofRegrowth,12,0);
+                for(int x=41;x<=44;x++){Require(WorldGen.PlaceTile(x,42,78,mute:true,forced:true,plr:0),"capture barrier actual pot");NativeToolsChecks.Tile(x,41,84);}
+                NativeToolsChecks.SetMode(host,1,1);
+                for(int frame=0;frame<80;frame++){Sample(context,input,new Vector2(480,540),false);NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");}
+                Require(Enumerable.Range(41,4).All(x=>Main.tile[x,41].active() && Main.tile[x,41].type==84),
+                    "active capture retains its original automatic held-item world barrier");
+            }
+            finally{Call(popup,"Close");Call(state,"Exit");NativeToolsChecks.SetMode(host,1,0);Sample(context,input,new Vector2(480,540),false);}
+        }
         private static void Consumed(bool __runOriginal){if(__runOriginal)consumers++;}
         private static void Caught(Rectangle __1,bool __runOriginal)
         {if(!__runOriginal){catchSkipped++;return;}catchCalls++;if(watched!=null && __1.Intersects(watched.Hitbox))catchHits++;}

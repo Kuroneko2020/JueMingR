@@ -171,7 +171,7 @@ try {
         'src/JueMingR.Features/WorldObjectText/WorldObjectResolver.cs' = @('core','world-host','browser-host');
         'src/JueMingR.TerrariaHost/World/WorldTileObservation.cs' = @('core','world-host','browser-host','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
         'src/JueMingR.Platform/WorldTargets/WorldTargetObservation.cs' = @('core','world-host','browser-host','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host');
-        'src/JueMingR.TerrariaHost/ItemBrowser/NativeItemCatalog.cs' = @('core','browser-host');
+        'src/JueMingR.TerrariaHost/ItemBrowser/NativeItemCatalog.cs' = @('core','browser-host','blueprint-host');
         'src/JueMingR.TerrariaHost/Hotkeys/HostHotkeys.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host','tools-host');
         'src/JueMingR.TerrariaHost/F5/F5Layout.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host','tools-host');
         'src/JueMingR.TerrariaHost/Input/HostInputState.cs' = @('core','shared-host','death-host','map-host','footprints-host','browser-host','quick-items-host','coin-deposit-host','about-host','recovery-host','processing-host','tools-host');
@@ -182,6 +182,18 @@ try {
         'src/JueMingR.TerrariaHost/EntityLabels/StyleEditor.cs' = @('core','style-host');
         'src/JueMingR.Features/DeathHistory/DeathArchive.cs' = @('core','death-host');
         'docs/guide.md' = @('core')
+    }
+    foreach ($name in @('NativeMaterialPlacement','NativePlacementNames','HostItemKnowledge')) {
+        $path = 'src/JueMingR.TerrariaHost/ItemBrowser/' + $name + '.cs'
+        $cases[$path] = 'blueprint-host'; $exactGroups[$path] = @('core','browser-host','blueprint-host')
+    }
+    foreach ($name in @('PreparedItemIcons','ItemsRenderer')) {
+        $path = 'src/JueMingR.TerrariaHost/Items/' + $name + '.cs'
+        $cases[$path] = 'storage-host'; $exactGroups[$path] = $exactGroups['src/JueMingR.Platform/Persistence/DocumentWorker.cs']
+    }
+    foreach ($name in @('HostBlueprint','BlueprintHooks')) {
+        $path = 'src/JueMingR.TerrariaHost/Blueprint/' + $name + '.cs'
+        $cases[$path] = 'blueprint-host'; $exactGroups[$path] = @('core','blueprint-host','tools-host','quick-items-host','coin-deposit-host','recovery-host','processing-host')
     }
     # Exercise production-only regressions too: a test-file edit must not be
     # required to select these assertions. Shared facts retain all consumers.

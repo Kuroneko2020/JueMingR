@@ -41,9 +41,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if (host == null || !host.Local(player)) return;
             int mask = host.BlockedActions;
-            // The modal keeps manual world clicks blocked. An exact admitted
-            // build supplies its own scoped press after CopyInto; later native
-            // interaction gates must not erase that owned automatic press.
+            // Editor/tail protection remains local to this world consumer.
+            // An exact admitted build supplies its scoped press after CopyInto;
+            // pure material-view pointer ownership stays in F5Shell instead.
             if ((mask & 1) != 0 && !host.OwnsAutomaticBuildInput(player)) player.controlUseItem = false;
             if ((mask & 2) != 0) player.controlUseTile = false;
         }
