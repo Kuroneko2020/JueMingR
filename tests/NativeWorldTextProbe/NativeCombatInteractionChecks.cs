@@ -12,6 +12,7 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatInteractionChecks
     {
         private static readonly List<byte[]> packets=new List<byte[]>();
+        private static readonly List<string> networkUses=new List<string>();
         internal static void Run(object context)
         {
             // Vanilla compares UI identity here. Both null would incorrectly
@@ -45,10 +46,16 @@ namespace NativeWorldTextProbe
             var p=NativeToolExecutionChecks.Reset(context,tools,input,198,0,0);p.inventory[1].SetDefaults(671);NativeCombatCadenceChecks.Step(context,false,false,0);
             NativeCombatCadenceChecks.Save(combat,new CombatOptions(4));
             var audit=new Harmony("JueMingR.Tests.CombatInteractionPackets");audit.Patch(AccessTools.Method(typeof(NetMessage),"SendData"),postfix:new HarmonyMethod(typeof(NativeCombatInteractionChecks),nameof(Capture)));
-            Netplay.Connection=new RemoteServer{PendingTermination=true};NetMessage.buffer[256]=new MessageBuffer();Main.clientPlayer=new Player();Main.netMode=1;packets.Clear();
+            audit.Patch(AccessTools.Method(typeof(Player),"ItemCheck_StartActualUse"),postfix:new HarmonyMethod(typeof(NativeCombatInteractionChecks),nameof(NetworkUse)));
+            Netplay.Connection=new RemoteServer{PendingTermination=true};NetMessage.buffer[256]=new MessageBuffer();Main.clientPlayer=new Player();Main.netMode=1;packets.Clear();networkUses.Clear();
             try
             {
-                for(int i=0;i<160;i++)NativeCombatCadenceChecks.Step(context,false,true,0);
+                for(int i=0;i<160;i++)
+                {
+                    NativeCombatCadenceChecks.Step(context,false,true,0);
+                    if(i==0 || i==1 || i==4 || i==159)Console.WriteLine("COMBAT NETWORK step="+i+" samePlayer="+ReferenceEquals(p,Main.LocalPlayer)+" selected="+p.selectedItem+" animation="+p.itemAnimation+" controlUse="+p.controlUseItem+" nativeUse="+Get(input,"NativeUseItemRequest")+" nativeTile="+Get(input,"NativeUseTileRequest")+" action="+Get(input,"CanStartActions")+" gesture="+Get(combat,"FreshGesture")+" combatActive="+Get(Get(combat,"Use"),"Active")+" toolActive="+Get(Get(tools,"Use"),"Active")+" build="+Get(Get(context,"Blueprint"),"AutoBuildEnabled"));
+                }
+                Console.WriteLine("COMBAT NETWORK packet13="+packets.Count+" heldSlots="+string.Join(",",packets.Where(b=>(b[4]&32)!=0).GroupBy(b=>b[8]).Select(g=>g.Key+":"+g.Count()))+" release="+packets.Count(b=>(b[4]&32)==0)+" actualUses="+string.Join(",",networkUses)+" tail="+string.Join(";",packets.Skip(Math.Max(0,packets.Count-12)).Select(b=>BitConverter.ToString(b.Take(9).ToArray()))));
                 Require(packets.Any(b=>(b[4]&32)!=0 && b[8]==0) && packets.Any(b=>(b[4]&32)!=0 && b[8]==1),"native packet13 publishes both actual right-held weapon uses");
                 Require(packets.Any(b=>(b[4]&32)==0),"native packet13 publishes release phases");
                 for(int i=0;i<40;i++)NativeCombatCadenceChecks.Step(context,false,false,0);
@@ -62,5 +69,7 @@ namespace NativeWorldTextProbe
             byte[] buffer=NetMessage.buffer[256].writeBuffer;int length=BitConverter.ToUInt16(buffer,0);
             Require(length>=9 && buffer[2]==13,"actual original control packet serialized");packets.Add(buffer.Take(length).ToArray());
         }
+        private static void NetworkUse(Player __instance,Item __0)
+        {if(__instance.whoAmI==Main.myPlayer && networkUses.Count<32)networkUses.Add(__instance.selectedItem+":"+__0.type+"@"+Main.GameUpdateCount);}
     }
 }
