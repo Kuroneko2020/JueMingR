@@ -47,13 +47,21 @@ namespace NativeWorldTextProbe
             NativeCombatCadenceChecks.Save(combat,new CombatOptions(4));
             var audit=new Harmony("JueMingR.Tests.CombatInteractionPackets");audit.Patch(AccessTools.Method(typeof(NetMessage),"SendData"),postfix:new HarmonyMethod(typeof(NativeCombatInteractionChecks),nameof(Capture)));
             audit.Patch(AccessTools.Method(typeof(Player),"ItemCheck_StartActualUse"),postfix:new HarmonyMethod(typeof(NativeCombatInteractionChecks),nameof(NetworkUse)));
+            long oldSession=(long)Get(Get(tools,"Runtime"),"Generation");
             Netplay.Connection=new RemoteServer{PendingTermination=true};NetMessage.buffer[256]=new MessageBuffer();Main.clientPlayer=new Player();Main.netMode=1;packets.Clear();networkUses.Clear();
             try
             {
+                // Establish the real connection identity before the first held
+                // action. Step updates Runtime after Player.Update; switching
+                // mode immediately before that held step otherwise starts the
+                // weapon in the old session, then retires its start receipt.
+                Call(context,"UpdateRuntime");NativeCombatCadenceChecks.Step(context,false,false,0);
+                Require((long)Get(Get(tools,"Runtime"),"Generation")>oldSession && p.itemAnimation==0 && !(bool)Get(Get(combat,"Use"),"Active"),"real client session and neutral input settle before the first held network action");
+                Console.WriteLine("COMBAT NETWORK real session="+oldSession+"->"+Get(Get(tools,"Runtime"),"Generation")+" neutral=True");
                 for(int i=0;i<160;i++)
                 {
                     NativeCombatCadenceChecks.Step(context,false,true,0);
-                    if(i==0 || i==1 || i==4 || i==159)Console.WriteLine("COMBAT NETWORK step="+i+" samePlayer="+ReferenceEquals(p,Main.LocalPlayer)+" selected="+p.selectedItem+" animation="+p.itemAnimation+" controlUse="+p.controlUseItem+" nativeUse="+Get(input,"NativeUseItemRequest")+" nativeTile="+Get(input,"NativeUseTileRequest")+" action="+Get(input,"CanStartActions")+" gesture="+Get(combat,"FreshGesture")+" combatActive="+Get(Get(combat,"Use"),"Active")+" toolActive="+Get(Get(tools,"Use"),"Active")+" build="+Get(Get(context,"Blueprint"),"AutoBuildEnabled"));
+                    if(i==0 || i==1 || i==4 || i==159)Console.WriteLine("COMBAT NETWORK step="+i+" session="+Get(Get(tools,"Runtime"),"Generation")+" samePlayer="+ReferenceEquals(p,Main.LocalPlayer)+" selected="+p.selectedItem+" animation="+p.itemAnimation+" controlUse="+p.controlUseItem+" nativeUse="+Get(input,"NativeUseItemRequest")+" nativeTile="+Get(input,"NativeUseTileRequest")+" action="+Get(input,"CanStartActions")+" gesture="+Get(combat,"FreshGesture")+" combatActive="+Get(Get(combat,"Use"),"Active")+" used="+Get(Get(combat,"Use"),"used")+" released="+Get(Get(combat,"Use"),"released")+" toolActive="+Get(Get(tools,"Use"),"Active")+" build="+Get(Get(context,"Blueprint"),"AutoBuildEnabled"));
                 }
                 Console.WriteLine("COMBAT NETWORK packet13="+packets.Count+" heldSlots="+string.Join(",",packets.Where(b=>(b[4]&32)!=0).GroupBy(b=>b[8]).Select(g=>g.Key+":"+g.Count()))+" release="+packets.Count(b=>(b[4]&32)==0)+" actualUses="+string.Join(",",networkUses)+" tail="+string.Join(";",packets.Skip(Math.Max(0,packets.Count-12)).Select(b=>BitConverter.ToString(b.Take(9).ToArray()))));
                 Require(packets.Any(b=>(b[4]&32)!=0 && b[8]==0) && packets.Any(b=>(b[4]&32)!=0 && b[8]==1),"native packet13 publishes both actual right-held weapon uses");
