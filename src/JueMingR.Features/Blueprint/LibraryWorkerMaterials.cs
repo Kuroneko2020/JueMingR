@@ -188,12 +188,18 @@ namespace JueMingR.Features.Blueprint
             var layout = files as IBlueprintLibraryLayoutSteps;
             if (layout != null) foreach (int ignored in layout.ValidateLayoutSteps(physical, key.Stage, root.BlockCount, 32)) { CheckMaterials(request); yield return true; }
             else { files.ValidateLayout(physical, key.Stage, root.BlockCount); yield return true; }
-            // Reuse the projection owner's decoded raw cache when this exact
-            // template is already open; static queries never open a per-instance
-            // reader or build a second spatial/object directory.
-            ProjectionOwner shared = null;
-            if (!key.Stage) projectionOwners.TryGetValue(new BlueprintTemplateKey(key.Id, key.ContentRevision, key.ContentHash), out shared);
-            Func<long, CaptureChunk> reader = shared?.Ready == true ? new Func<long, CaptureChunk>(number => ProjectionChunk(shared, number)) : null;
+            // A static view owns its verified index, not a world projection's
+            // lifetime. Recheck the exact shared owner at each actual read:
+            // its final instance may retire between these cooperative yields.
+            // Returning null selects VisitSteps' ordinary verified read/cache;
+            // it neither keeps the retired projection alive nor starts a worker.
+            var template = key.Stage ? null : new BlueprintTemplateKey(key.Id, key.ContentRevision, key.ContentHash);
+            Func<long, CaptureChunk> reader = template == null ? null : new Func<long, CaptureChunk>(number =>
+            {
+                ProjectionOwner shared;
+                return projectionOwners.TryGetValue(template, out shared) && shared.Ready && shared.Index != null && ProjectionCurrent(shared)
+                    ? ProjectionChunk(shared, number) : null;
+            });
             Stream index = files.OpenIndex(physical, key.Stage);
             bool transferred = false;
             try

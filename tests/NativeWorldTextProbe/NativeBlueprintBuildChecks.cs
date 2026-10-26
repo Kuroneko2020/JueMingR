@@ -62,6 +62,10 @@ namespace NativeWorldTextProbe
                     check("torch and open door", () => TorchAndOpenDoor(context, host, tools, input));
                     check("support and distance", () => SupportAndDistance(context, host, tools, input));
                     check("furniture anchor and closed support cost", () => FurnitureAnchor(context, host, tools, input));
+                    check("remote global pylon eligibility and range fairness", () => GlobalPylonEligibility(context, host, tools, input));
+                    check("remote global chest capacity eligibility", () => GlobalChestEligibility(context, host, tools, input));
+                    check("remote biome style eligibility", () => GlobalBiomeEligibility(context, host, tools, input));
+                    check("unknown result excludes eligibility retry", () => UnknownEligibilityProtection(context, host, tools, input));
                     check("stop restart and manual selection", () => OffAndManual(context, host, tools, input));
                     check("stale source and target", () => StaleSourcesAndTargets(context, host, tools, input));
                     check("edit mask deletion and session", () => ProjectionLifecycle(context, host, tools, input));

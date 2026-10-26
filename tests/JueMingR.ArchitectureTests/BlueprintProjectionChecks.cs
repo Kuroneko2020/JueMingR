@@ -639,14 +639,19 @@ namespace JueMingR.ArchitectureTests
                 var ordinary = batch.Parts[0];
                 Require(ordinary.LogicalObjectId == 0 && ordinary.NextOffset == cells.Count && ordinary.Window.Cells.Count == 3 && ordinary.Window.Objects.Count == 0 &&
                     ordinary.Window.Cells.Count(c => c.Layers == CaptureLayer.Wall) == 1 && ordinary.Window.Cells.Count(c => c.Layers == CaptureLayer.Wire) == 1 && ordinary.Window.Cells.Count(c => c.Layers == CaptureLayer.Tile) == 1,
-                    "ordinary WithoutTile preserves same-cell wall/wire once and raw next offset counts all physical records");
+                    "ordinary lane preserves same-cell wall/wire once and raw next offset counts all physical records");
+                Require(ordinary.Window.Cells.Single(c => c.Layers == CaptureLayer.Wall).ObjectId == 1 &&
+                    ordinary.Window.Cells.Single(c => c.Layers == CaptureLayer.Wire).ObjectId == 2,
+                    "ordinary non-Tile targets retain captured furniture identity as context, without acquiring its Tile ownership");
                 for (int i = 1; i < batch.Parts.Count; i++)
                 {
                     var part = batch.Parts[i];
                     int expectedObject = opened.MatchRanges[i].ObjectId;
                     Require(part.Range == i && part.ObjectId == 0 && part.LogicalObjectId == expectedObject && part.Offset == 0 && part.NextOffset == 0 && part.Complete &&
-                        part.Window.Cells.Count == 3 && part.Window.Objects.Count == 1 && part.Window.Objects[0].Id == expectedObject && part.Window.Cells.All(c => c.ObjectId == expectedObject && c.Layers == CaptureLayer.Tile),
-                        "each logical object is a complete Tile-only workset, independent of same-cell other layers");
+                        part.Window.Cells.Count == 3 && part.Window.Objects.Count == 1 && part.Window.Objects[0].Id == expectedObject &&
+                        part.Window.Cells.All(c => c.ObjectId == expectedObject && (c.Layers & CaptureLayer.Tile) != 0 && (c.Layers & ~(CaptureLayer.Tile | CaptureLayer.Wall)) == 0) &&
+                        part.Window.Cells.Count(c => (c.Layers & CaptureLayer.Wall) != 0) == (expectedObject == 1 ? 1 : 0),
+                        "each logical object keeps one complete Tile owner and only its original same-cell wall context; wire stays ordinary");
                 }
                 long uniqueWindows = batch.Parts.Select(p => p.Window).Distinct().Sum(w => w.EstimatedBytes);
                 Require(batch.Parts.All(p => p.WindowEstimatedBytes == p.Window.EstimatedBytes + missing.Length * 8L && p.Window.Summary.MissingPayloads.SequenceEqual(missing) && p.Window.Summary.UnreliableReasons.Length == 0) &&
@@ -673,7 +678,12 @@ namespace JueMingR.ArchitectureTests
                 Require(state.RequestProjectionSource(id, 3004, objectOne, 1), "legacy explicit positive object request remains accepted");
                 var explicitObject = Source(state);
                 Require(explicitObject.ObjectId == 1 && explicitObject.Parts[0].LogicalObjectId == 1 && explicitObject.Window.Cells.Count == 3 &&
-                    explicitObject.Window.Cells.Any(c => c.Layers == (CaptureLayer.Tile | CaptureLayer.Wall)), "explicit all-layer selection is distinct from logical Tile-only supply");
+                    explicitObject.Window.Cells.Any(c => c.Layers == (CaptureLayer.Tile | CaptureLayer.Wall)), "explicit all-layer selection keeps its original request identity and captured layers");
+                int objectTwo = Enumerable.Range(0, opened.MatchRanges.Count).Single(r => opened.MatchRanges[r].ObjectId == 2);
+                Require(state.RequestProjectionSource(id, 3007, objectTwo, 2), "legacy explicit same-cell wire request remains accepted");
+                var explicitWire = Source(state);
+                Require(explicitWire.ObjectId == 2 && explicitWire.Window.Cells.Any(c => c.Layers == (CaptureLayer.Tile | CaptureLayer.Wire)),
+                    "explicit positive object API keeps wire, whereas the logical Tile-owner transport carries only its required wall context");
                 Require(!state.RequestProjectionSources(id, 3005, new BlueprintProjectionSourceDemand[65]) && !state.RequestProjectionSources(id, 3005, Array.Empty<BlueprintProjectionSourceDemand>()),
                     "request envelope backpressure rejects empty/over-64 lists without retiring valid source identity");
                 Require(state.RequestProjectionSource(id, 3006, 64), "a still-live final logical object remains independently serviceable");

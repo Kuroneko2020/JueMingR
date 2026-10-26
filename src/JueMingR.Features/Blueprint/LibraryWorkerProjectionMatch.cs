@@ -251,7 +251,11 @@ namespace JueMingR.Features.Blueprint
                         var raw = chunk.Cells[i];
                         if (ordinaryTargets != null)
                         {
-                            var cell = raw.ObjectId > 0 ? raw.WithoutTile() : raw;
+                            // Tile ownership stays in the complete-object lane.
+                            // Preserve its captured identity/appearance only as
+                            // same-cell material context; Host strips it before
+                            // ordinary Match comparison. No extra DTO is kept.
+                            var cell = raw; if (cell.ObjectId > 0) cell.Layers &= ~CaptureLayer.Tile;
                             if (cell.HasContent)
                             {
                                 cell.X -= summary.Left; cell.Y -= summary.Top;
@@ -263,7 +267,15 @@ namespace JueMingR.Features.Blueprint
                         {
                             raw.X -= summary.Left; raw.Y -= summary.Top;
                             foreach (var build in objectTargets)
-                            { var cell = raw; if (build.TileOnly) cell.Layers = CaptureLayer.Tile; build.Cells.Add(cell); }
+                            {
+                                var cell = raw;
+                                // A wall scrape can remove this member's Tile
+                                // appearance first. The object reducer needs
+                                // the captured wall context, while Host's Match
+                                // input remains Tile-only for this logical lane.
+                                if (build.TileOnly) cell.Layers &= CaptureLayer.Tile | CaptureLayer.Wall;
+                                build.Cells.Add(cell);
+                            }
                         }
                         if ((i & 31) == 31) { CheckProjectionSource(owner, request); yield return true; }
                     }

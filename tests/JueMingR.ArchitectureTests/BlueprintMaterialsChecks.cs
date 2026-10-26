@@ -9,7 +9,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
-            try { LayersAndBodies(); PlacementCanonicalMetadata(); UnknownAndArithmetic(); }
+            try { LayersAndBodies(); SplitObjectAppearance(); PlacementCanonicalMetadata(); UnknownAndArithmetic(); }
             catch (Exception error) { failures.Add("Blueprint materials values: " + error); }
             BlueprintLibraryChecks.MaterialLane(failures);
         }
@@ -79,6 +79,30 @@ namespace JueMingR.ArchitectureTests
                 "same-type partial furniture is not a complete body or an empty placement footprint");
             samples[3] = default(BlueprintWorldMatchSample);
             Require(BlueprintMaterialSteps.SameBody(body, members, samples, true) == BlueprintBodyState.Unknown, "unread member remains unknown");
+        }
+        private static void SplitObjectAppearance()
+        {
+            var catalog = Catalog();
+            var target = new CaptureCell { Layers = CaptureLayer.Tile | CaptureLayer.Wall, TileType = 14, ObjectId = 1,
+                WallType = 7, TilePaint = 1, InvisibleTile = true, FullbrightTile = true };
+            var actual = target; actual.WallPaint = 1;
+            var split = new BlueprintMaterialAccumulator();
+            BlueprintMaterialSteps.RequiredSteps(target.WithoutTile(), new BlueprintWorldMatchSample(true, actual), catalog, split,
+                foregroundHandledElsewhere: true);
+            BlueprintMaterialSteps.ObjectMemberAppearance(target, new BlueprintWorldMatchSample(true, actual), catalog, split);
+            var result = split.Snapshot(1);
+            Require(result.Status == BlueprintMaterialStatus.Exact && result.Total == 3 && result.KindCount == 3 &&
+                result.Rows.All(r => r.Required == 1 && r.ItemType >= 1004 && r.ItemType <= 1006),
+                "split wall/object reducers restore the selected foreground paint and both coatings exactly once, without furniture/wall body");
+            var unknown = new BlueprintMaterialAccumulator();
+            BlueprintMaterialSteps.RequiredSteps(target.WithoutTile(), new BlueprintWorldMatchSample(true, actual), catalog, unknown);
+            Require(unknown.Snapshot(2).Status == BlueprintMaterialStatus.Unresolved,
+                "an actually unselected foreground still has no restoration contract");
+            target.Layers = CaptureLayer.Tile;
+            var maskedWall = new BlueprintMaterialAccumulator();
+            BlueprintMaterialSteps.ObjectMemberAppearance(target, new BlueprintWorldMatchSample(true, actual), catalog, maskedWall);
+            Require(maskedWall.Snapshot(3).Status == BlueprintMaterialStatus.Exact && maskedWall.Snapshot(3).Total == 0,
+                "a masked wall cannot force selected furniture appearance to be restored");
         }
         private static void PlacementCanonicalMetadata()
         {

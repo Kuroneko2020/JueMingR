@@ -65,7 +65,7 @@ namespace JueMingR.Features.Blueprint
         { if (!obj.Reliable) into.Unresolved("对象尚未完整确认"); else into.Add(catalog.Tile(first)); }
 
         public static void RequiredSteps(CaptureCell target, BlueprintWorldMatchSample world, BlueprintPlacementCatalog catalog,
-            BlueprintMaterialAccumulator into, BlueprintBodyState? objectBody = null)
+            BlueprintMaterialAccumulator into, BlueprintBodyState? objectBody = null, bool foregroundHandledElsewhere = false)
         {
             if (!world.Available) { into.Unresolved("世界内容尚未可读"); return; }
             bool tileSame = false, wallSame = false; CaptureCell appearanceTarget = target;
@@ -83,7 +83,7 @@ namespace JueMingR.Features.Blueprint
                 else if (body != BlueprintBodyState.Same) into.Add(catalog.Wall(target.WallType));
                 wallSame = body == BlueprintBodyState.Same;
             }
-            Appearance(appearanceTarget, world.Cell, tileSame, wallSame, catalog, into);
+            Appearance(appearanceTarget, world.Cell, tileSame, wallSame, catalog, into, foregroundHandledElsewhere: foregroundHandledElsewhere);
             if ((target.Layers & CaptureLayer.Wire) != 0) into.Add(catalog.WireItemType, BitCount((byte)(target.Wires & ~world.Cell.Wires)));
             if ((target.Layers & CaptureLayer.Actuator) != 0 && target.Actuator && !world.Cell.Actuator) into.Add(catalog.ActuatorItemType, 1);
             if ((target.Layers & CaptureLayer.Liquid) != 0 && (target.LiquidKind != world.Cell.LiquidKind || target.LiquidAmount != world.Cell.LiquidAmount))
@@ -92,11 +92,23 @@ namespace JueMingR.Features.Blueprint
         public static void ObjectBody(BlueprintBodyState body, CaptureCell first, BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
         { if (body == BlueprintBodyState.Unknown) into.Unresolved("对象尚未完整确认"); else if (body != BlueprintBodyState.Same) into.Add(catalog.Tile(first)); }
 
+        // The complete-object proof owns Tile appearance only. Its original
+        // same-cell wall target is context for the scraper's order, never a
+        // second wall body/appearance contribution. Ordinary and object lanes
+        // therefore share the operation meaning without sharing a bill owner.
+        public static void ObjectMemberAppearance(CaptureCell target, BlueprintWorldMatchSample world,
+            BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
+        {
+            if (!world.Available) { into.Unresolved("世界内容尚未可读"); return; }
+            if ((target.Layers & CaptureLayer.Tile) == 0) return;
+            Appearance(target, world.Cell, true, SameBody(target, world, true) == BlueprintBodyState.Same, catalog, into, tileOnly: true);
+        }
+
         // Paint and both coatings consume separately on each actual member and
         // layer. Scraping is a reusable tool step; clearing coatings clears
         // both flags, so a desired retained coating must then be reapplied.
         private static void Appearance(CaptureCell target, CaptureCell actual, bool tileSame, bool wallSame,
-            BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
+            BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into, bool tileOnly = false, bool foregroundHandledElsewhere = false)
         {
             bool wallScrape = wallSame && (target.Layers & CaptureLayer.Wall) != 0 &&
                 (target.WallPaint == 0 && actual.WallPaint != 0 || actual.InvisibleWall && !target.InvisibleWall || actual.FullbrightWall && !target.FullbrightWall);
@@ -107,7 +119,7 @@ namespace JueMingR.Features.Blueprint
             // foreground only after the wall is finished. An unselected
             // foreground has no captured restoration contract to infer here.
             bool restoreForeground = wallScrape && foreground && tileSame && (target.Layers & CaptureLayer.Tile) != 0;
-            if (wallScrape && foreground && (target.Layers & CaptureLayer.Tile) == 0)
+            if (wallScrape && foreground && (target.Layers & CaptureLayer.Tile) == 0 && !foregroundHandledElsewhere)
                 into.Unresolved("墙面刮除的前景步骤尚未确定");
             if ((target.Layers & CaptureLayer.Tile) != 0)
             {
@@ -120,7 +132,7 @@ namespace JueMingR.Features.Blueprint
                 if (target.Inactive != (tileSame && actual.Inactive) && !target.Actuator && !(tileSame && actual.Actuator))
                     into.Unresolved("此致动状态的临时材料步骤尚未确定");
             }
-            if ((target.Layers & CaptureLayer.Wall) != 0)
+            if (!tileOnly && (target.Layers & CaptureLayer.Wall) != 0)
                 LayerAppearance(target.WallPaint, target.InvisibleWall, target.FullbrightWall,
                     wallSame ? actual.WallPaint : (byte)0, wallSame && actual.InvisibleWall, wallSame && actual.FullbrightWall, catalog, into);
         }

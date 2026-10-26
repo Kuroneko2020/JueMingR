@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal Dictionary<long, BlueprintWorldMatchResult> Visual;
         internal BlueprintRangeMaterials Materials;
         internal long MaterialDemandEpoch;
+        internal bool MaterialCrossLayers = true;
     }
     internal sealed class BlueprintProjectionMatchGroup
     {
@@ -67,6 +68,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintObjectBodyProof MaterialObjectProof;
         internal long MaterialBuildEpoch, MaterialBuildWakeRevision, MaterialSupportStamp;
         internal bool MaterialSupportReady, MaterialReuseContribution;
+        internal long MaterialStamp;
+        internal bool MaterialStampReady, MaterialCrossLayerSeen;
         internal readonly Dictionary<int, BlueprintBodyState> MaterialObjectBodies = new Dictionary<int, BlueprintBodyState>();
     }
     // Transport is immutable and belongs to an identity, while a partial world
@@ -304,7 +307,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                     (changed, layers) => source.IntersectsProofs(new BlueprintProjectionBounds(changed.Left - originX, changed.Top - originY, changed.Width, changed.Height), layers, state.Mask), source.TargetBits,
                     group.Parts.Count,(changed,layers,emit)=>source.RouteProofs(new BlueprintProjectionBounds(changed.Left-originX,changed.Top-originY,changed.Width,changed.Height),layers,state.Mask,emit),
                     (changed,layers)=>MaterialSupportInterest(source,state.Mask,originX,originY,changed,layers),
-                    (changed,layers,emit)=>RouteMaterialSupport(source,state.Mask,originX,originY,changed,layers,emit));
+                    (changed,layers,emit)=>RouteMaterialSupport(source,state.Mask,originX,originY,changed,layers,emit),
+                    (changed,layers)=>MaterialCrossLayerInterest(source,state.Mask,originX,originY,changed,layers,group),
+                    (changed,layers,emit)=>RouteMaterialCrossLayer(source,state.Mask,originX,originY,changed,layers,group,emit));
                 group.Ready=projectionChanges.TryGetStamp(group.Watch,out group.NativeStamp);
             }
         }
@@ -354,6 +359,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 BlueprintProjectionMatchGroup group;
                 if (projectionMatchWatches.TryGetValue(id, out group) && part >= 0 && part < group.Parts.Count) WakeMaterialBuildRange(group.Parts[part]);
+            }, (id,part) =>
+            {
+                BlueprintProjectionMatchGroup group;
+                if (projectionMatchWatches.TryGetValue(id, out group) && part >= 0 && part < group.Parts.Count) InvalidateMaterialCrossLayer(group.Parts[part]);
             });
             // A physical native stamp guards in-flight writes. Only its routed
             // proofs get a new local version; stable sibling proofs retain
@@ -580,6 +589,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 ProjectionMatchSourceSteps++;
 #endif
                 var cell = read.Owner.Mask.Apply(read.Batch.Window.Cells[read.CellIndex]);
+                // Transport retains coincident layers as material context.
+                // Each logical Match part still owns exactly its old layers.
+                if (read.Batch.LogicalObjectId > 0) cell.Layers &= CaptureLayer.Tile;
+                else if (cell.ObjectId > 0) cell = cell.WithoutTile();
                 // Permanent erasure is resolved from immutable source data.
                 // A cell with no effective target has no world dependency and
                 // must not spend observation reads on its old raw layers.

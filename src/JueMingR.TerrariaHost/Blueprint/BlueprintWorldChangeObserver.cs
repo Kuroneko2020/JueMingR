@@ -30,11 +30,42 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal ulong[] BuildDirtyRoutes;
             internal long[] BuildVersions;
             internal bool BuildDirty;
+            internal Func<BlueprintProjectionBounds, ushort, bool> MaterialInterest;
+            internal Action<BlueprintProjectionBounds, ushort, Action<int>> MaterialRoute;
+            internal Action<int> MaterialSink;
+            internal ulong[] MaterialDirtyRoutes;
+            internal long[] MaterialVersions;
+            internal bool MaterialDirty;
             internal Dictionary<int, FrameProof> Frames;
             internal int Pending, DoorCount;
             internal bool Dirty;
             private bool sawRoute;
             private bool sawBuildRoute;
+            private bool sawMaterialRoute;
+
+            // A scraper may affect the other captured layer without changing
+            // this part's final Match. Reuse the physical watch and finite
+            // route bits, but keep its material revision separate from both
+            // canonical completion and placement-support qualification.
+            internal void RecordMaterialRoutes(BlueprintProjectionBounds changed, ushort layers)
+            {
+                sawMaterialRoute = false;
+                if (MaterialRoute == null) MarkMaterialRoute(0); else MaterialRoute(changed, layers, MaterialSink);
+                if (!sawMaterialRoute) MarkAllMaterialRoutes();
+            }
+            internal void MarkMaterialRoute(int ordinal)
+            {
+                sawMaterialRoute = true;
+                if (ordinal < 0 || ordinal >= RouteCount) { MarkAllMaterialRoutes(); return; }
+                MaterialVersions[ordinal] = ++Owner.materialVersion;
+                MaterialDirtyRoutes[ordinal >> 6] |= 1UL << (ordinal & 63); MaterialDirty = true;
+            }
+            internal void MarkAllMaterialRoutes()
+            {
+                if (MaterialVersions == null) return;
+                sawMaterialRoute = true;
+                for (int ordinal = 0; ordinal < RouteCount; ordinal++) MarkMaterialRoute(ordinal);
+            }
 
             // Placement anchors are not final-match targets. Keep their
             // invalidation in this same physical watch, with separate bounded
@@ -269,6 +300,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                     {
                         ushort buildLayers = BuildStoreLayers(kind, oldValue ^ newValue);
                         if (!seedFrameOnly && BuildRelevant(state, bounds, buildLayers)) state.RecordBuildRoutes(bounds, buildLayers);
+                        ushort materialLayers = MaterialStoreLayers(kind, oldValue ^ newValue);
+                        if (!seedFrameOnly && MaterialRelevant(state, bounds, materialLayers)) state.RecordMaterialRoutes(bounds, materialLayers);
                         bool seedLease = (changedLayers & 1) != 0 && current.SeedContains(state, x, y);
                         if (seedFrameOnly ? !state.Bounds.Contains(x, y) || state.DoorCount == 0 && !seedLease : !seedLease && !Relevant(state, bounds, changedLayers)) continue;
                         storeWatch = state; storeX = x; storeY = y; storeKind = kind; storeOld = oldValue; storeNew = newValue; sawStoreRoute = false;
@@ -334,6 +367,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     foreach (WatchState state in current.watches.Values)
                     {
                         if (BuildRelevant(state, bounds, changedLayers)) state.RecordBuildRoutes(bounds, (ushort)(changedLayers & 7));
+                        if (MaterialRelevant(state, bounds, changedLayers)) state.RecordMaterialRoutes(bounds, (ushort)(changedLayers & 3));
                         if (!Relevant(state, bounds, changedLayers)) continue;
                         TouchState(current, state, bounds, changedLayers);
                     }
@@ -349,6 +383,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     foreach (WatchState state in current.watches.Values)
                     {
                         if (BuildRelevant(state, state.Bounds, 7)) state.MarkAllBuildRoutes();
+                        if (MaterialRelevant(state, state.Bounds, 3)) state.MarkAllMaterialRoutes();
                         TouchState(current, state, state.Bounds, 0xff, allRoutes: true);
                     }
                 }
@@ -364,8 +399,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                     {
                         WatchState live;
                         if (!current.watches.TryGetValue(pair.Key.Id, out live) || !ReferenceEquals(live, pair.Key)) continue;
-                        if (!seedFrameOnly && ((pair.Value >> 8) & changedLayers) != 0 && BuildRelevant(live, live.Bounds, changedLayers))
+                        if (!seedFrameOnly && ((pair.Value >> 8) & 7 & changedLayers) != 0 && BuildRelevant(live, live.Bounds, changedLayers))
                         { live.RecordBuildRoutes(live.Bounds, (ushort)(changedLayers & 7)); touched = true; }
+                        if (!seedFrameOnly && ((pair.Value >> 11) & 3 & changedLayers) != 0 && MaterialRelevant(live, live.Bounds, changedLayers))
+                        { live.RecordMaterialRoutes(live.Bounds, (ushort)(changedLayers & 3)); touched = true; }
                         if ((pair.Value & changedLayers) == 0) continue;
                         if (seedFrameOnly) touched |= TouchSeedState(current, live, live.Bounds);
                         else { TouchState(current, live, live.Bounds, changedLayers); touched = true; }
@@ -451,7 +488,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
         }
 
-        // Only the pressure path keeps this summary: match/build layer bytes
+        // Only the pressure path keeps this summary: Match bits 0..7,
+        // build bits 8..10 and material-context bits 11..12
         // per live watch, with no Tile values or event history. Merely reading
         // or reaching the coordinate cap never dirties or holds Pending. A
         // later actual, unlocated field change can conservatively revoke only
@@ -478,6 +516,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                         ushort layers = Owner.SeedContains(state, point.Left, point.Top) ? (ushort)1 : (ushort)0;
                         for (int bit = 1; bit <= 128; bit <<= 1) if (Relevant(state, point, (ushort)bit)) layers |= (ushort)bit;
                         for (int bit = 1; bit <= 4; bit <<= 1) if (BuildRelevant(state, point, (ushort)bit)) layers |= (ushort)(bit << 8);
+                        for (int bit = 1; bit <= 2; bit <<= 1) if (MaterialRelevant(state, point, (ushort)bit)) layers |= (ushort)(bit << 11);
                         if (layers == 0) continue;
                         ushort old; Ranges.TryGetValue(state, out old); Ranges[state] = (ushort)(old | layers);
                     }
@@ -490,7 +529,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                     foreach (var pair in Ranges)
                     {
                         WatchState live;
-                        if (((pair.Value | pair.Value >> 8) & changedLayers) != 0 && Owner.watches.TryGetValue(pair.Key.Id, out live) && ReferenceEquals(live, pair.Key)) return true;
+                        if (((pair.Value & 0xff | (pair.Value >> 8) & 7 | (pair.Value >> 11) & 3) & changedLayers) != 0 &&
+                            Owner.watches.TryGetValue(pair.Key.Id, out live) && ReferenceEquals(live, pair.Key)) return true;
                     }
                     return false;
                 }
@@ -499,7 +539,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 
         private readonly object gate = new object();
         private readonly Dictionary<long, WatchState> watches = new Dictionary<long, WatchState>();
-        private long session, version, buildVersion;
+        private long session, version, buildVersion, materialVersion;
         private volatile int watchCount, rawSeedInterestCount;
         private bool disposed;
         private int interestLeft, interestTop, interestRight, interestBottom;
@@ -559,17 +599,27 @@ namespace JueMingR.TerrariaHost.Blueprint
             int routeCount, Action<BlueprintProjectionBounds, ushort, Action<int>> route,
             Func<BlueprintProjectionBounds, ushort, bool> buildInterest,
             Action<BlueprintProjectionBounds, ushort, Action<int>> buildRoute)
+        { Watch(id, worldBounds, intersectsContent, targetLayers, routeCount, route, buildInterest, buildRoute, null, null); }
+        internal void Watch(long id, BlueprintProjectionBounds worldBounds,
+            Func<BlueprintProjectionBounds, ushort, bool> intersectsContent, ushort targetLayers,
+            int routeCount, Action<BlueprintProjectionBounds, ushort, Action<int>> route,
+            Func<BlueprintProjectionBounds, ushort, bool> buildInterest,
+            Action<BlueprintProjectionBounds, ushort, Action<int>> buildRoute,
+            Func<BlueprintProjectionBounds, ushort, bool> materialInterest,
+            Action<BlueprintProjectionBounds, ushort, Action<int>> materialRoute)
         {
             if (routeCount <= 0) throw new ArgumentOutOfRangeException(nameof(routeCount));
             if (route == null && routeCount != 1) throw new ArgumentNullException(nameof(route));
-            RegisterWatch(id, worldBounds, null, intersectsContent, (ushort)(targetLayers & 0xff), routeCount, route, buildInterest, buildRoute);
+            RegisterWatch(id, worldBounds, null, intersectsContent, (ushort)(targetLayers & 0xff), routeCount, route, buildInterest, buildRoute, materialInterest, materialRoute);
         }
 
         private void RegisterWatch(long id, BlueprintProjectionBounds worldBounds,
             Func<BlueprintProjectionBounds, bool> intersectsContent, Func<BlueprintProjectionBounds, ushort, bool> intersectsLayers, ushort targetLayers,
             int routeCount = 1, Action<BlueprintProjectionBounds, ushort, Action<int>> route = null,
             Func<BlueprintProjectionBounds, ushort, bool> buildInterest = null,
-            Action<BlueprintProjectionBounds, ushort, Action<int>> buildRoute = null)
+            Action<BlueprintProjectionBounds, ushort, Action<int>> buildRoute = null,
+            Func<BlueprintProjectionBounds, ushort, bool> materialInterest = null,
+            Action<BlueprintProjectionBounds, ushort, Action<int>> materialRoute = null)
         {
             lock (gate)
             {
@@ -577,16 +627,20 @@ namespace JueMingR.TerrariaHost.Blueprint
                 WatchState state;
                 if (watches.TryGetValue(id, out state) && Same(state.Bounds, worldBounds) && state.TargetLayers == targetLayers &&
                     ReferenceEquals(state.IntersectsContent, intersectsContent) && ReferenceEquals(state.IntersectsLayers, intersectsLayers) &&
-                    state.RouteCount == routeCount && ReferenceEquals(state.Route, route) && ReferenceEquals(state.BuildInterest, buildInterest) && ReferenceEquals(state.BuildRoute, buildRoute)) return;
+                    state.RouteCount == routeCount && ReferenceEquals(state.Route, route) && ReferenceEquals(state.BuildInterest, buildInterest) && ReferenceEquals(state.BuildRoute, buildRoute) &&
+                    ReferenceEquals(state.MaterialInterest, materialInterest) && ReferenceEquals(state.MaterialRoute, materialRoute)) return;
                 if (state != null) RetireWatch(state);
                 int words = (routeCount - 1) / 64 + 1;
                 state = new WatchState { Owner = this, Id = id, Bounds = worldBounds, IntersectsContent = intersectsContent,
                     IntersectsLayers = intersectsLayers, TargetLayers = targetLayers, Version = ++version,
                     RouteCount = routeCount, Route = route, RawRoutes = new ulong[words], DirtyRoutes = new ulong[words], PendingRoutes = new ulong[words],
                     BuildInterest = buildInterest, BuildRoute = buildRoute, BuildVersions = buildInterest == null ? null : new long[routeCount],
-                    BuildDirtyRoutes = buildInterest == null ? null : new ulong[words] };
+                    BuildDirtyRoutes = buildInterest == null ? null : new ulong[words],
+                    MaterialInterest = materialInterest, MaterialRoute = materialRoute, MaterialVersions = materialInterest == null ? null : new long[routeCount],
+                    MaterialDirtyRoutes = materialInterest == null ? null : new ulong[words] };
                 state.RouteSink = state.MarkRoute; watches[id] = state;
                 state.BuildSink = state.MarkBuildRoute;
+                state.MaterialSink = state.MarkMaterialRoute;
                 if (watchCount == 0)
                 { interestLeft = worldBounds.Left; interestTop = worldBounds.Top; interestRight = worldBounds.Right; interestBottom = worldBounds.Bottom; }
                 else
@@ -622,7 +676,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             lock (gate)
             {
                 var point = new BlueprintProjectionBounds(x, y, 1, 1);
-                foreach (WatchState state in watches.Values) if (state.Bounds.Contains(x, y) && (Relevant(state, point, changedLayers) || BuildRelevant(state, point, changedLayers))) return true;
+                foreach (WatchState state in watches.Values) if (state.Bounds.Contains(x, y) &&
+                    (Relevant(state, point, changedLayers) || BuildRelevant(state, point, changedLayers) || MaterialRelevant(state, point, changedLayers))) return true;
                 return false;
             }
         }
@@ -731,6 +786,20 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool IsBuildCurrent(long id, int ordinal, long stamp)
         { long current; return TryGetBuildStamp(id, ordinal, out current) && current == stamp; }
 
+        internal bool TryGetMaterialStamp(long id, int ordinal, out long stamp)
+        {
+            lock (gate)
+            {
+                WatchState state;
+                bool ready = !disposed && !BlueprintWorldChangeHooks.NativeTransformPending && watches.TryGetValue(id, out state) &&
+                    state.MaterialVersions != null && ordinal >= 0 && ordinal < state.RouteCount &&
+                    (state.MaterialDirtyRoutes[ordinal >> 6] & (1UL << (ordinal & 63))) == 0;
+                stamp = ready ? watches[id].MaterialVersions[ordinal] : 0; return ready;
+            }
+        }
+        internal bool IsMaterialCurrent(long id, int ordinal, long stamp)
+        { long current; return TryGetMaterialStamp(id, ordinal, out current) && current == stamp; }
+
         // The Host checks every range inside this same reentrant lock, then
         // retires the instance. A mutation prefix cannot slip between its last
         // check and that commit; an already entered mutation holds Pending.
@@ -782,12 +851,28 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal void DrainRoutes(Action<long, int, bool> dirty)
         { DrainRoutes(dirty, null); }
         internal void DrainRoutes(Action<long, int, bool> dirty, Action<long, int> buildDirty)
+        { DrainRoutes(dirty, buildDirty, null); }
+        internal void DrainRoutes(Action<long, int, bool> dirty, Action<long, int> buildDirty, Action<long, int> materialDirty)
         {
             if (dirty == null) throw new ArgumentNullException(nameof(dirty));
             lock (gate)
             {
                 foreach (WatchState state in watches.Values)
                 {
+                    if (state.MaterialDirty)
+                    {
+                        for (int word = 0; word < state.MaterialDirtyRoutes.Length; word++)
+                        {
+                            ulong bits = state.MaterialDirtyRoutes[word]; int bit = 0;
+                            while (bits != 0)
+                            {
+                                int ordinal = word * 64 + bit;
+                                if ((bits & 1) != 0 && ordinal < state.RouteCount) materialDirty?.Invoke(state.Id, ordinal);
+                                bits >>= 1; bit++;
+                            }
+                        }
+                        Array.Clear(state.MaterialDirtyRoutes, 0, state.MaterialDirtyRoutes.Length); state.MaterialDirty = false;
+                    }
                     if (state.BuildDirty)
                     {
                         for (int word = 0; word < state.BuildDirtyRoutes.Length; word++)
@@ -828,6 +913,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 foreach (WatchState state in watches.Values)
                 {
                     if (BuildRelevant(state, worldBounds, changedLayers)) state.RecordBuildRoutes(worldBounds, (ushort)(changedLayers & 7));
+                    if (MaterialRelevant(state, worldBounds, changedLayers)) state.RecordMaterialRoutes(worldBounds, (ushort)(changedLayers & 3));
                     if (!Relevant(state, worldBounds, changedLayers)) continue;
                     if (affected == null) affected = new List<WatchState>();
                     affected.Add(state); state.Pending++;
@@ -867,6 +953,25 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             ushort layers = (ushort)(changedLayers & 7);
             return layers != 0 && state.BuildInterest != null && Intersects(state.Bounds, changed) && state.BuildInterest(changed, layers);
+        }
+        private static bool MaterialRelevant(WatchState state, BlueprintProjectionBounds changed, ushort changedLayers)
+        {
+            ushort layers = (ushort)(changedLayers & 3);
+            return layers != 0 && state.MaterialInterest != null && Intersects(state.Bounds, changed) && state.MaterialInterest(changed, layers);
+        }
+        private static ushort MaterialStoreLayers(int kind, int delta)
+        {
+            // .8 stores the two paints/coatings in these content fields.
+            // Drawing frames and liquid do not change scraper restoration.
+            switch (kind)
+            {
+                case 0: return 1;
+                case 1: return 2;
+                case 3: return (ushort)(((delta & 0x747f) != 0 ? 1 : 0) | ((delta & 0x8000) != 0 ? 2 : 0));
+                case 4: return (ushort)((delta & 0x1f) != 0 ? 2 : 0);
+                case 5: return (ushort)(((delta & 0xa0) != 0 ? 1 : 0) | ((delta & 0x40) != 0 ? 2 : 0));
+                default: return 0;
+            }
         }
         private static ushort BuildStoreLayers(int kind, int delta)
         {

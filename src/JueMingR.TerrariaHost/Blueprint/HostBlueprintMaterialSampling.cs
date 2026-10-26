@@ -9,6 +9,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             var catalog = MaterialCatalog;
             if (!DynamicMaterialDemand || catalog == null) return;
+            read.MaterialStampReady = projectionChanges.TryGetMaterialStamp(read.Range.Watch, read.Range.PartIndex, out read.MaterialStamp);
             var value = read.Range.Materials;
             if (value == null) read.Range.Materials = value = new BlueprintRangeMaterials { OwnerTotals = read.Owner.Match.Materials, BuildEpoch = MaterialBuildEligibilityRevision };
             if (value.BuildEpoch != MaterialBuildEligibilityRevision)
@@ -33,9 +34,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (read.Materials == null || read.MaterialCatalog == null || target.ObjectId > 0 && target.Layers == CaptureLayer.Tile) return;
             // Complete-object Tile and member appearance belong to the object
             // proof below. A coincident wall/wire/actuator keeps its own cell.
+            var context = MaterialSourceTarget(read, read.CellIndex);
+            bool objectForeground = context.ObjectId > 0 && (context.Layers & CaptureLayer.Tile) != 0;
+            // Even an unselected/masked foreground can block the native wall
+            // scraper. Its later removal must release that Unknown result.
+            read.MaterialCrossLayerSeen |= (context.Layers & CaptureLayer.Wall) != 0;
             if (target.ObjectId > 0) target = target.WithoutTile();
             if (!target.HasContent) return;
-            BlueprintMaterialSteps.RequiredSteps(target, sample, read.MaterialCatalog, read.Materials);
+            BlueprintMaterialSteps.RequiredSteps(target, sample, read.MaterialCatalog, read.Materials, foregroundHandledElsewhere: objectForeground);
             if (MaterialBuildDemand?.Invoke() != true || !sample.Available) return;
             if ((target.Layers & CaptureLayer.Tile) != 0 && BlueprintMaterialSteps.SameBody(target, sample, read.MaterialCatalog) == BlueprintBodyState.Missing)
                 OfferMaterialBuildTarget(read, target, read.MaterialCatalog.Tile(target), null, null, checked((read.Batch.Offset + read.CellIndex) * 2));
@@ -72,8 +78,23 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private static void AddMaterialObjectAppearance(BlueprintProjectionMatchRead read, int index, BlueprintWorldMatchSample sample)
         {
-            var target = read.ObjectTargets.Cells[index]; target.Layers = CaptureLayer.Tile;
-            BlueprintMaterialSteps.RequiredSteps(target, sample, read.MaterialCatalog, read.MaterialObjectAppearance, BlueprintBodyState.Same);
+            var target = MaterialSourceTarget(read, index);
+            read.MaterialCrossLayerSeen |= (target.Layers & (CaptureLayer.Tile | CaptureLayer.Wall)) == (CaptureLayer.Tile | CaptureLayer.Wall);
+            // Canonical door forms can map two saved members to one hinge.
+            // Only a wall at this actual member's coordinate can require its
+            // foreground restoration; a different saved wing is not that wall.
+            if (target.X + read.Owner.OriginX != sample.Cell.X || target.Y + read.Owner.OriginY != sample.Cell.Y)
+                target.Layers &= ~CaptureLayer.Wall;
+            BlueprintMaterialSteps.ObjectMemberAppearance(target, sample, read.MaterialCatalog, read.MaterialObjectAppearance);
+        }
+        private static CaptureCell MaterialSourceTarget(BlueprintProjectionMatchRead read, int index)
+        {
+            var target = read.Batch.Window.Cells[index];
+            // Ordinary source cells retain only context for the separately
+            // owned furniture Tile. Apply this instance's same immutable mask
+            // before deciding that the foreground was actually selected.
+            if (read.Batch.LogicalObjectId == 0 && target.ObjectId > 0) target.Layers |= CaptureLayer.Tile;
+            return read.Owner.Mask.Apply(target);
         }
         private void CompleteMaterialObject(BlueprintProjectionMatchRead read)
         {
@@ -107,6 +128,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             var value = read.Range.Materials;
             if (read.Materials == null || value == null || !ReferenceEquals(value.Progress, read.Materials) || read.MaterialCatalog.Revision != materialPlacementIdentity) return;
+            if (!read.MaterialStampReady || !projectionChanges.IsMaterialCurrent(read.Range.Watch, read.Range.PartIndex, read.MaterialStamp))
+            { InvalidateMaterialCrossLayer(read.Range); return; }
+            read.Range.MaterialCrossLayers = read.MaterialCrossLayerSeen;
             bool keepContribution = value.Current && read.MaterialReuseContribution && read.Range.ProgressUnknown == 0 &&
                 value.Unresolved == (read.Materials.Status != BlueprintMaterialStatus.Exact);
             if (!keepContribution)
@@ -132,6 +156,57 @@ namespace JueMingR.TerrariaHost.Blueprint
             value.CandidateFallback = null;
             if (value.Candidate != null) value.Candidate.RangeStamp = read.Range.Version;
             if (!keepContribution) { QueueMaterialChange(read.Range); CancelMaterialPublication(); }
+        }
+        // The existing immutable proof geometry routes just this native write.
+        // A cold range remains conservative until its same-source material read
+        // has established whether a wall target needs foreground context.
+        // Known independent ranges do not inherit a neighbour's extra work.
+        private Action<int> materialCrossLayerSink, materialCrossLayerEmit;
+        private BlueprintProjectionMatchGroup materialCrossLayerGroup;
+        private bool materialCrossLayerFound;
+        private bool MaterialCrossLayerInterest(BlueprintProjectionSourceRange source, BlueprintProjectionMask mask,
+            int originX, int originY, BlueprintProjectionBounds changed, ushort layers, BlueprintProjectionMatchGroup group)
+        {
+            if (!DynamicMaterialDemand || (layers & 3) == 0) return false;
+            return RouteMaterialCrossLayers(source, mask, originX, originY, changed, group, null);
+        }
+        private void RouteMaterialCrossLayer(BlueprintProjectionSourceRange source, BlueprintProjectionMask mask,
+            int originX, int originY, BlueprintProjectionBounds changed, ushort layers, BlueprintProjectionMatchGroup group, Action<int> emit)
+        {
+            if (!DynamicMaterialDemand || (layers & 3) == 0) return;
+            RouteMaterialCrossLayers(source, mask, originX, originY, changed, group, emit);
+        }
+        private bool RouteMaterialCrossLayers(BlueprintProjectionSourceRange source, BlueprintProjectionMask mask,
+            int originX, int originY, BlueprintProjectionBounds changed, BlueprintProjectionMatchGroup group, Action<int> emit)
+        {
+            var local = new BlueprintProjectionBounds(changed.Left - originX, changed.Top - originY, changed.Width, changed.Height);
+            // Native write routing is synchronous on this Host's game thread.
+            // The immutable geometry visits only this sink, whose optional emit
+            // marks observer bits and never writes the world. Reuse one sink;
+            // per-store captured delegates would allocate on paint hot paths.
+            if (materialCrossLayerSink == null) materialCrossLayerSink = AcceptMaterialCrossLayer;
+            materialCrossLayerGroup = group; materialCrossLayerEmit = emit; materialCrossLayerFound = false;
+            try
+            {
+                source.RouteProofs(local, 3, mask, materialCrossLayerSink);
+                return materialCrossLayerFound;
+            }
+            finally { materialCrossLayerGroup = null; materialCrossLayerEmit = null; }
+        }
+        private void AcceptMaterialCrossLayer(int ordinal)
+        {
+            var group = materialCrossLayerGroup;
+            if (group == null || ordinal < 0 || ordinal >= group.Parts.Count || !group.Parts[ordinal].MaterialCrossLayers) return;
+            materialCrossLayerFound = true; materialCrossLayerEmit?.Invoke(ordinal);
+        }
+        private void InvalidateMaterialCrossLayer(BlueprintProjectionMatchRange range)
+        {
+            if (!range.MaterialCrossLayers) return;
+            // Keep the final target proof and its version. Only this material
+            // dependency and partial sample are obsolete; the immutable source
+            // transport/other completed siblings remain reusable.
+            ResetProjectionMatchRead(range); range.Reading = false; range.Offset = 0;
+            RevokeMaterialRange(range); DemandProjectionMatchRange(range);
         }
         private void OfferMaterialBuildTarget(BlueprintProjectionMatchRead read, CaptureCell cell, BlueprintPlacementDescriptor descriptor,
             CaptureObject? obj, BlueprintWorldObject body, int ordinal)
@@ -176,6 +251,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (match == null || match.Ranges.Length == 0) continue;
                 match.MaterialBuildCursor %= match.Ranges.Length;
                 var range = match.Ranges[match.MaterialBuildCursor]; match.MaterialBuildCursor = (match.MaterialBuildCursor + 1) % match.Ranges.Length;
+                TryWakeBuildEligibility(range);
                 var candidate = range.Materials?.Candidate;
                 if (candidate != null && IsBuildTargetCurrent(candidate)) { target = candidate; return true; }
             }

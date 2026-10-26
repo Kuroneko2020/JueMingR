@@ -363,7 +363,7 @@ namespace JueMingR.Features.Blueprint
             using (Stream index = verifiedIndex ?? OpenVerifiedIndex(id, isStage, root))
             using (var objects = new ObjectLookup(this, id, isStage, root.BlockCount, index, reader)) for (long number = 0; number < root.BlockCount; number++)
             {
-                if (command != null) CheckRead(command); CaptureChunk chunk = reader == null ? ReadChunk(id, isStage, number, index) : reader(number);
+                if (command != null) CheckRead(command); CaptureChunk chunk = reader?.Invoke(number) ?? ReadChunk(id, isStage, number, index);
                 for (int i = 0; i < chunk.Count; i++)
                 {
                     CaptureCell cell = chunk.Cells[i]; long key = Key(cell);
@@ -456,9 +456,10 @@ namespace JueMingR.Features.Blueprint
             }
             private CaptureChunk Get(long number)
             {
-                // Concurrent projection opens borrow the one global block cache;
-                // the ordinary save validator keeps its original private cache.
-                if (reader != null) return reader(number);
+                // Borrow a live projection's global cache when available.
+                // A static reader whose final projection retired falls through
+                // to this same bounded cache used by standalone validation.
+                if (reader != null) { var shared = reader(number); if (shared != null) return shared; }
                 for (int i = 0; i < cache.Count; i++) if (cache[i].Number == number) { Cache hit = cache[i]; cache.RemoveAt(i); cache.Add(hit); return hit.Chunk; }
                 CaptureChunk chunk = owner.ReadChunk(id, stage, number, index); if (cache.Count == 8) cache.RemoveAt(0); cache.Add(new Cache { Number = number, Chunk = chunk }); return chunk;
             }

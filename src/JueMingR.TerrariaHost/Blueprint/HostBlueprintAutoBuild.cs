@@ -174,7 +174,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             int nativeType = item.createTile, nativeStyle = item.placeStyle;
             if (nativeType == TileID.Torches) p.BiomeTorchPlaceStyle(ref nativeType, ref nativeStyle);
             if (nativeType == TileID.Campfire) p.BiomeCampfirePlaceStyle(ref nativeType, ref nativeStyle);
-            if (nativeType != placement.TileType || nativeStyle != placement.Style || nativeType == 724) return false;
+            if (nativeType != placement.TileType || nativeStyle != placement.Style)
+            { RequestBuildEligibilityRetry(target); return false; }
+            if (nativeType == 724) return false;
             if (target.Body != null)
             {
                 var data = TileObjectData.GetTileData(item.createTile, item.placeStyle, placement.Alternate);
@@ -352,10 +354,20 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // sources and this target; independent targets can still run.
                 HoldUnconfirmedBuild(flight);
             }
+            // No-consumption native rejection is not an unknown result. Its
+            // prerequisite may change outside our local Tile dependencies.
+            // Unknown/spent outcomes retain their existing protection and
+            // can never be renewed by this bounded eligibility retry.
+            if (!spent) RequestBuildEligibilityRetry(flight.Target);
             NotifyBuildAttempt(flight.Target);
         }
         private void HoldUnconfirmedBuild(BuildFlight flight)
         {
+            // A later native failure can make an earlier no-spend check
+            // unknown. Revoke only this target's retry permission; another
+            // rejected sibling in the same range keeps its own recovery.
+            var materials = flight.Target.Range.Materials;
+            if (materials != null && materials.EligibilityRetryOrdinal == flight.Target.Ordinal) materials.EligibilityRetry = false;
             if (!IsUnconfirmedTarget(flight.Target)) buildUnconfirmed.Add(new BuildUnconfirmed { Identity = flight.Target.Identity, X = flight.Target.WorldX, Y = flight.Target.WorldY, Kind = flight.Target.Placement.Kind });
             buildTools.HoldUnknown(flight.DependencySlots | (1UL << flight.Source.Slot));
             projectionFeedback = "一次施工结果未确认，相关材料已受保护；其他可建部分继续。";
@@ -377,7 +389,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal void CancelAutomaticBuild()
         { preparedBuild = null; if (buildTools?.Use.Building == true) buildTools.Use.Cancel(); }
         internal void AutomaticBuildChanged()
-        { preparedBuild = null; MaterialBuildEligibilityRevision++; }
+        { preparedBuild = null; MaterialBuildEligibilityRevision++; ObserveMaterialDemand(); }
         private void ClearAutomaticBuild()
         {
             CancelAutomaticBuild(); if (buildTools?.Use.Building == true) buildTools.Use.Retire(); preparedBuild = activeBuild = null; buildUnconfirmed.Clear();

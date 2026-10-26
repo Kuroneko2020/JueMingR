@@ -84,6 +84,9 @@ namespace NativeWorldTextProbe
                 Place(host, input, complete, 40, 70, step);
                 NativeQuickItemChecks.Until(() => { step(); return Scene(host).Length == 0; });
                 Require(Scene(host).Length == 0, "unavailable material provider never delays existing complete-match natural retirement");
+                host.GetType().GetField("materialKnowledge", Flags).SetValue(host, knowledge);
+                MaterialFurnitureWallSeams(context, host, input, library, step);
+                MaterialProjectionRetirement(context, host, input, library, step);
                 Console.WriteLine("PASS: native Blueprint materials declaration identity; real worker static summary; two fixed instances 100/80/20 and single 50/80/0; slots 0/49 versus 50/57; world/inventory refresh, retirement fallback, stable numbering; 120 closed updates; matching retires without a material provider.");
             }
             finally
