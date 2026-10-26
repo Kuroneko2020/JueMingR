@@ -83,8 +83,9 @@ namespace JueMingR.Features.Blueprint
     // sampling, logging, timers, or diagnostic file output is installed.
     public readonly struct BlueprintProjectionStatistics
     {
-        internal BlueprintProjectionStatistics(long reads, long records, long comparisons, long windowBlocks, long slices, long retired, long cachePeak, long directoryBytes, long directoryBlocks, long cacheBytes, long templates = 0, long references = 0, long pending = 0, long receipts = 0, long working = 0)
-        { BlockReads = reads; DecodedRecords = records; DirectoryComparisons = comparisons; WindowBlocks = windowBlocks; Slices = slices; RetiredRequests = retired; CachePeakBytes = cachePeak; DirectoryBytes = directoryBytes; DirectoryBlocks = directoryBlocks; CacheBytes = cacheBytes; ActiveTemplates = templates; ActiveReferences = references; PendingRequests = pending; ReceiptBytes = receipts; WindowWorkingBytes = working; }
+        internal BlueprintProjectionStatistics(long reads, long records, long comparisons, long windowBlocks, long slices, long retired, long cachePeak, long directoryBytes, long directoryBlocks, long cacheBytes, long templates = 0, long references = 0, long pending = 0, long receipts = 0, long working = 0, long sourceIndexBytes = 0)
+        { BlockReads = reads; DecodedRecords = records; DirectoryComparisons = comparisons; WindowBlocks = windowBlocks; Slices = slices; RetiredRequests = retired; CachePeakBytes = cachePeak; DirectoryBytes = directoryBytes; DirectoryBlocks = directoryBlocks; CacheBytes = cacheBytes; ActiveTemplates = templates; ActiveReferences = references; PendingRequests = pending; ReceiptBytes = receipts; WindowWorkingBytes = working; SourceIndexBytes = sourceIndexBytes; }
+        public long SourceIndexBytes { get; }
         public long ActiveTemplates { get; }
         public long ActiveReferences { get; }
         public long PendingRequests { get; }
@@ -104,8 +105,10 @@ namespace JueMingR.Features.Blueprint
 #endif
     public sealed class BlueprintProjectionReceipt
     {
-        internal BlueprintProjectionReceipt(BlueprintProjectionReceiptKind kind, BlueprintProjectionIdentity identity, long windowGeneration = 0, CaptureSummary summary = null, BlueprintProjectionWindow window = null, string error = null, string failureCode = null, long totalLayerCount = 0)
-        { TotalLayerCount = totalLayerCount; Kind = kind; Identity = identity; WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary); Window = window; Error = error; FailureCode = failureCode; }
+        internal BlueprintProjectionReceipt(BlueprintProjectionReceiptKind kind, BlueprintProjectionIdentity identity, long windowGeneration = 0, CaptureSummary summary = null, BlueprintProjectionWindow window = null, string error = null, string failureCode = null, long totalLayerCount = 0, IReadOnlyList<BlueprintProjectionSourceRange> sourceRanges = null, IReadOnlyList<BlueprintProjectionSourceRange> matchRanges = null, bool identityRetired = false)
+        { MatchRanges = matchRanges; SourceRanges = sourceRanges; TotalLayerCount = totalLayerCount; Kind = kind; Identity = identity; WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary); Window = window; Error = error; FailureCode = failureCode; IdentityRetired = identityRetired; }
+        public IReadOnlyList<BlueprintProjectionSourceRange> SourceRanges { get; }
+        public IReadOnlyList<BlueprintProjectionSourceRange> MatchRanges { get; }
         public long TotalLayerCount { get; }
         public BlueprintProjectionReceiptKind Kind { get; }
         public BlueprintProjectionIdentity Identity { get; }
@@ -114,5 +117,9 @@ namespace JueMingR.Features.Blueprint
         public BlueprintProjectionWindow Window { get; }
         public string Error { get; }
         public string FailureCode { get; }
+        // FailureCode describes the read; this states the worker ownership fact.
+        // A source failure can use the same code as a recoverable viewport
+        // budget refusal while already having revoked the shared identity.
+        public bool IdentityRetired { get; }
     }
 }

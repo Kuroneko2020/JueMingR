@@ -17,18 +17,24 @@ namespace JueMingR.TerrariaHost.Blueprint
         private CaptureCell describedCell;
         private BlueprintObjectShape describedShape;
         private bool hasDescription;
+        private BlueprintWorldTileWriteState writeState;
+        internal BlueprintWorldTileWriteState WriteState { get { return writeState; } }
         private static readonly PropertyInfo alternatesProperty = typeof(TileObjectData).GetProperty("Alternates", BindingFlags.Instance | BindingFlags.NonPublic);
         internal BlueprintCaptureSource(Func<bool> session)
         { this.session = session; tiles = Main.tile; sections = Main.sectionManager; }
         public bool Read(int x, int y, out CaptureCell value)
         {
             value = default(CaptureCell);
-            hasDescription = false; describedShape = null;
+            hasDescription = false; describedShape = null; writeState = default(BlueprintWorldTileWriteState);
             if (!session() || !ReferenceEquals(tiles, Main.tile) || !ReferenceEquals(sections, Main.sectionManager) ||
                 Main.tile == null || x < 0 || y < 0 || x >= Main.maxTilesX || y >= Main.maxTilesY ||
                 Main.netMode == 1 && (Main.sectionManager == null || !Main.sectionManager.TileLoaded(x, y))) return false;
             Tile tile = Main.tile[x, y];
             if (tile == null) return false;
+            // Preserve inactive slots' actual residual fields for finite door
+            // write certificates. CaptureCell still omits absent Tile content;
+            // this value uses this same gated Tile, never a second grid lookup.
+            writeState = new BlueprintWorldTileWriteState(tile.type, tile.frameX, tile.frameY, tile.sTileHeader, tile.bTileHeader3);
             value.X = x; value.Y = y;
             if (tile.active())
             {
@@ -57,7 +63,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return Unknown(cell, "对象读取样本已失效");
             return describedShape;
         }
-        private static BlueprintObjectShape DescribeRead(CaptureCell cell, Tile tile)
+        // World matching reuses this exact metadata decoder on copied values.
+        // Its canonical equivalence rules live separately and never change the
+        // capture's raw DTO, stable-group checks or output format.
+        internal static BlueprintObjectShape DescribeRead(CaptureCell cell, Tile tile)
         {
             if ((cell.Layers & CaptureLayer.Tile) == 0 || cell.TileType >= Main.tileFrameImportant.Length || !Main.tileFrameImportant[cell.TileType]) return null;
             try { return Resolve(cell, tile); }

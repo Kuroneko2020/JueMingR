@@ -39,9 +39,22 @@ namespace JueMingR.Features.Blueprint
             internal Stream Index;
             internal bool Ready;
             internal long TotalLayers;
+            internal long SourceIndexBytes;
+            // Exact counts admit a bounded prefix before copying payload.
+            // Actual block IDs give the batch its exact bounded member union
+            // without repeating per-object bbox queries. Shared numeric geometry
+            // only: metadata and cell bodies remain in the decoded cache.
+            internal Dictionary<int, ProjectionSourceObjectIndex> SourceObjects;
             internal IEnumerator<bool> Opening;
             internal readonly ProjectionDirectory Directory = new ProjectionDirectory();
+            internal readonly List<BlueprintProjectionSourceRange> SourceRanges = new List<BlueprintProjectionSourceRange>();
+            internal readonly List<BlueprintProjectionSourceRange> MatchRanges = new List<BlueprintProjectionSourceRange>();
             public void Dispose() { if (Opening != null) Opening.Dispose(); Opening = null; if (Index != null) Index.Dispose(); Index = null; }
+        }
+        private sealed class ProjectionSourceObjectIndex
+        {
+            internal int Members;
+            internal readonly List<long> Blocks = new List<long>();
         }
         // One files owner and one global decoded cache serve every instance.
         // References scale with actual scene instances; queued payloads do not.
@@ -64,16 +77,16 @@ namespace JueMingR.Features.Blueprint
 #endif
         private readonly HashSet<Guid> projectionUncertainAssets = new HashSet<Guid>();
 #if DEBUG
-        private long projectionBlockReads, projectionDecodedRecords, projectionDirectoryComparisons, projectionWindowBlocks, projectionSlices, projectionRetiredRequests, projectionCachePeak, projectionDirectoryBytes, projectionDirectoryBlocks, projectionCacheBytes;
+        private long projectionBlockReads, projectionDecodedRecords, projectionDirectoryComparisons, projectionWindowBlocks, projectionSlices, projectionRetiredRequests, projectionCachePeak, projectionDirectoryBytes, projectionDirectoryBlocks, projectionCacheBytes, projectionSourceIndexBytes;
         internal BlueprintProjectionStatistics ProjectionStatistics
-        { get { lock (gate) return new BlueprintProjectionStatistics(Interlocked.Read(ref projectionBlockReads), Interlocked.Read(ref projectionDecodedRecords), Interlocked.Read(ref projectionDirectoryComparisons), Interlocked.Read(ref projectionWindowBlocks), Interlocked.Read(ref projectionSlices), Interlocked.Read(ref projectionRetiredRequests), Interlocked.Read(ref projectionCachePeak), Interlocked.Read(ref projectionDirectoryBytes), Interlocked.Read(ref projectionDirectoryBlocks), Interlocked.Read(ref projectionCacheBytes), projectionOwners.Count, projectionReferences.Count, projectionRequests.Count + (projectionActiveRequest == null ? 0 : 1), projectionReceiptBytes, Interlocked.Read(ref projectionWindowWorkingBytes)); } }
+        { get { lock (gate) return new BlueprintProjectionStatistics(Interlocked.Read(ref projectionBlockReads), Interlocked.Read(ref projectionDecodedRecords), Interlocked.Read(ref projectionDirectoryComparisons), Interlocked.Read(ref projectionWindowBlocks), Interlocked.Read(ref projectionSlices), Interlocked.Read(ref projectionRetiredRequests), Interlocked.Read(ref projectionCachePeak), Interlocked.Read(ref projectionDirectoryBytes), Interlocked.Read(ref projectionDirectoryBlocks), Interlocked.Read(ref projectionCacheBytes), projectionOwners.Count, projectionReferences.Count, projectionRequests.Count + (projectionActiveRequest == null ? 0 : 1) + projectionSourceRequests.Count + (projectionSourceActive == null ? 0 : 1), projectionReceiptBytes, Interlocked.Read(ref projectionWindowWorkingBytes), Interlocked.Read(ref projectionSourceIndexBytes)); } }
 #endif
         internal bool RequestProjectionOpen(BlueprintProjectionIdentity identity)
         {
             if (identity == null) throw new ArgumentNullException(nameof(identity));
             lock (gate)
             {
-                if (stopping || projectionReceipts.Count + projectionFailures.Count >= ProjectionRequestLimit) return false;
+                if (stopping || projectionReceipts.Count + projectionSourceReceipts.Count + projectionFailures.Count >= ProjectionRequestLimit) return false;
                 ProjectionReference found;
                 if (projectionReferences.TryGetValue(identity, out found)) return true;
                 if (projectionUnopenedReferences >= ProjectionRequestLimit) return false;
@@ -89,7 +102,7 @@ namespace JueMingR.Features.Blueprint
                 if (stopping || projectionReceipts.Count + projectionFailures.Count >= ProjectionRequestLimit || !projectionReferences.TryGetValue(identity, out reference)) return false;
                 if (reference.Latest == null)
                 {
-                    if (projectionRequests.Count + (projectionActiveRequest == null ? 0 : 1) >= ProjectionRequestLimit) return false;
+                    if (projectionRequests.Count + projectionSourceRequests.Count + (projectionActiveRequest == null ? 0 : 1) + (projectionSourceActive == null ? 0 : 1) >= ProjectionRequestLimit) return false;
                     projectionRequests.Enqueue(identity);
                 }
 #if DEBUG
@@ -112,11 +125,12 @@ namespace JueMingR.Features.Blueprint
         { lock (gate) { RemoveProjectionReferenceLocked(identity); RemoveProjectionReceipts(identity, false); projectionWake = true; Monitor.Pulse(gate); } }
         internal void CloseProjection()
         {
-            lock (gate) { projectionReferences.Clear(); projectionTemplateReferences.Clear(); projectionUnopenedReferences = 0; projectionRetireWake = true; projectionRequests.Clear(); projectionReceipts.Clear(); projectionFailures.Clear(); projectionReceiptBytes = 0; projectionAwaitingReceiptSpace = false; CancelAllProjectionCommitsLocked(); projectionWake = true; Monitor.Pulse(gate); }
+            lock (gate) { projectionReferences.Clear(); projectionTemplateReferences.Clear(); projectionUnopenedReferences = 0; projectionRetireWake = true; projectionRequests.Clear(); projectionReceipts.Clear(); projectionSourceRequests.Clear(); projectionSourceSerials.Clear(); ClearProjectionSourceReceipts(); projectionFailures.Clear(); projectionReceiptBytes = 0; projectionAwaitingReceiptSpace = false; CancelAllProjectionCommitsLocked(); projectionWake = true; Monitor.Pulse(gate); }
         }
         private void RemoveProjectionReferenceLocked(BlueprintProjectionIdentity identity)
         {
             ProjectionReference reference; if (!projectionReferences.TryGetValue(identity, out reference)) return;
+            ClearProjectionSource(identity);
             if (!reference.Opened) projectionUnopenedReferences--; projectionReferences.Remove(identity);
             int count = projectionTemplateReferences[identity.TemplateKey] - 1;
             if (count == 0) projectionTemplateReferences.Remove(identity.TemplateKey); else projectionTemplateReferences[identity.TemplateKey] = count;
@@ -152,7 +166,7 @@ namespace JueMingR.Features.Blueprint
         // A release can arrive during the previous disposal batch, before that
         // step consumes projectionWake. Retirement owns an independent wake
         // condition so the last reader cannot be stranded until a new action.
-        { return projectionRetireWake || projectionWake || ProjectionCommitHasWorkLocked() || !projectionAwaitingReceiptSpace && (projectionOpenings.Count != 0 || projectionReading != null || projectionRequests.Count != 0 || projectionFailures.Count != 0); }
+        { return projectionRetireWake || projectionWake || ProjectionCommitHasWorkLocked() || !projectionAwaitingReceiptSpace && (projectionOpenings.Count != 0 || projectionReading != null || projectionRequests.Count != 0 || projectionFailures.Count != 0 || projectionSourceReading != null || projectionSourceRequests.Count != 0); }
         private bool ProjectionCurrent(ProjectionOwner owner, ProjectionRequest request = null)
         {
             lock (gate)
@@ -184,12 +198,13 @@ namespace JueMingR.Features.Blueprint
                     if (reference.Serial != request.Serial) return true;
                 }
                 long bytes = receipt.Window == null ? 0 : receipt.Window.EstimatedBytes;
-                if (projectionReceipts.Count >= ProjectionRequestLimit || projectionReceiptBytes + bytes > ProjectionWindowLimit) { projectionAwaitingReceiptSpace = true; return false; }
+                if (projectionReceipts.Count + projectionSourceReceipts.Count >= ProjectionRequestLimit || projectionReceiptBytes + bytes > BlueprintProjectionSourceReceipt.MaximumEstimatedBytes) { projectionAwaitingReceiptSpace = true; return false; }
                 projectionReceipts.Enqueue(receipt); projectionReceiptBytes += bytes; return true;
             }
         }
         private void CloseProjectionWorker()
         {
+            CloseProjectionSourceWorker();
             if (projectionReading != null) projectionReading.Dispose(); projectionReading = null; projectionActiveRequest = null; projectionReadingOwner = null;
             foreach (ProjectionOwner owner in projectionOwners.Values) owner.Dispose(); projectionOwners.Clear(); projectionOpenings.Clear();
             projectionCache.Clear(); projectionCacheSize = 0; UpdateProjectionWindowWorkingBytes(0); CloseProjectionCommitWorker(); UpdateProjectionStatistics();
@@ -213,7 +228,7 @@ namespace JueMingR.Features.Blueprint
             {
                 ProjectionOwner owner = projectionOwners[key];
                 if (ReferenceEquals(owner, projectionReadingOwner)) { projectionReading.Dispose(); projectionReading = null; projectionActiveRequest = null; projectionReadingOwner = null; }
-                owner.Dispose(); projectionOwners.Remove(key);
+                RetireProjectionSourceOwner(owner); owner.Dispose(); projectionOwners.Remove(key);
                 for (int i = projectionCache.Count - 1; i >= 0; i--) if (ReferenceEquals(projectionCache[i].Owner, owner)) { projectionCacheSize -= projectionCache[i].Bytes; projectionCache.RemoveAt(i); }
             }
             UpdateProjectionStatistics();
@@ -243,7 +258,7 @@ namespace JueMingR.Features.Blueprint
                                 owner = new ProjectionOwner { Identity = reference.Identity }; projectionOwners.Add(reference.Identity.TemplateKey, owner);
                                 owner.Opening = OpenProjection(owner).GetEnumerator(); projectionOpenings.Enqueue(owner);
                             }
-                            if (owner.Ready && !reference.Opened && PublishProjection(owner, new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Opened, reference.Identity, summary: owner.Root.Summary, totalLayerCount: owner.TotalLayers))) { reference.Opened = true; projectionUnopenedReferences--; }
+                            if (owner.Ready && !reference.Opened && PublishProjection(owner, new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Opened, reference.Identity, summary: owner.Root.Summary, totalLayerCount: owner.TotalLayers, sourceRanges: owner.SourceRanges.AsReadOnly(), matchRanges: owner.MatchRanges.AsReadOnly()))) { reference.Opened = true; projectionUnopenedReferences--; }
                         }
                     }
                 }
@@ -252,10 +267,11 @@ namespace JueMingR.Features.Blueprint
 #if DEBUG
                 Interlocked.Increment(ref projectionSlices);
 #endif
-                // Open, viewport and overlap each receive cooperative turns;
+                // Open, viewport, overlap and source matching receive cooperative turns;
                 // accepted library commands retain priority in the single Run loop.
-                projectionLane = (projectionLane + 1) % 3;
+                projectionLane = (projectionLane + 1) % 4;
                 if (ProjectionCommitStep(projectionLane == 0)) return;
+                if (ProjectionSourceStep(projectionLane == 3)) return;
                 if (projectionOpenings.Count != 0 && (projectionLane == 1 || projectionReading == null && projectionRequests.Count == 0))
                 {
                     ProjectionOwner owner = projectionOpenings.Dequeue();
@@ -303,18 +319,36 @@ namespace JueMingR.Features.Blueprint
                 {
                     ProjectionReference reference;
                     if (!projectionReferences.TryGetValue(request.Identity, out reference) || reference.Serial != request.Serial) return;
-                    projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, request.Identity, request.Generation, error: Code(error) == "blueprint-projection-window-budget" ? "投影窗口需分批读取" : Reason(error), failureCode: Code(error)));
+                    bool retired = Code(error) != "blueprint-projection-window-budget";
+                    projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, request.Identity, request.Generation, error: retired ? Reason(error) : "投影窗口需分批读取", failureCode: Code(error), identityRetired: retired));
                     // Budget pressure is a demand-level retry, never loss of a
                     // scene instance or of its validated shared template.
-                    if (Code(error) != "blueprint-projection-window-budget") RemoveProjectionReferenceLocked(request.Identity);
+                    if (retired) RemoveProjectionReferenceLocked(request.Identity);
                 }
                 else
                 {
                     var affected = new List<BlueprintProjectionIdentity>(); foreach (ProjectionReference reference in projectionReferences.Values) if (reference.Identity.TemplateKey.Equals(owner.Identity.TemplateKey)) affected.Add(reference.Identity);
-                    foreach (BlueprintProjectionIdentity identity in affected) { projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, identity, error: Reason(error), failureCode: Code(error))); RemoveProjectionReferenceLocked(identity); }
+                    foreach (BlueprintProjectionIdentity identity in affected) { projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, identity, error: Reason(error), failureCode: Code(error), identityRetired: true)); RemoveProjectionReferenceLocked(identity); }
                 }
             }
             ReleaseRetiredProjection();
+        }
+        private static BlueprintProjectionBounds ProjectionSourceObjectBounds(CaptureObject obj,CaptureSummary summary)
+        {
+            int left=obj.X-summary.Left,top=obj.Y-summary.Top,width=obj.Width;
+            if(obj.Type==10 || obj.Type==11)
+            {
+                // Locked original open-door metadata records PlaceLeft=1 /
+                // OriginX=1 or PlaceRight=2 / OriginX=0. Its canonical hinge
+                // has three possible columns, not sourceWidth+two wings:
+                // a two-column source already contains one of those wings.
+                // Unknown/inconsistent metadata keeps the conservative extent.
+                if(obj.Reliable && obj.Type==11 && obj.Width==2 && obj.Height==3 &&
+                    (obj.Direction==1 && obj.OriginX==1 || obj.Direction==2 && obj.OriginX==0))
+                    return new BlueprintProjectionBounds(left+(obj.Direction==1?1:0)-1,top,3,3);
+                left--;width+=2;
+            }
+            return new BlueprintProjectionBounds(left,top,width,obj.Height);
         }
         private IEnumerable<bool> OpenProjection(ProjectionOwner owner)
         {
@@ -341,19 +375,37 @@ namespace JueMingR.Features.Blueprint
             // rectangular object completeness. Its cost can exceed O(N); only
             // directory construction itself is one streaming O(N+B) pass.
             long previous = -1, totalCells = 0, unreliable = 0; int previousObject = 0; bool sawObjects = false;
+            var indexedMatchObjects = new HashSet<int>();
             using (var objects = new ObjectLookup(this, owner.Identity.AssetId, false, owner.Root.BlockCount, owner.Index, number => ProjectionChunk(owner, number)))
             {
                 for (long number = 0; number < owner.Root.BlockCount; number++)
                 {
                     CheckProjection(owner); CaptureChunk chunk = ProjectionChunk(owner, number); CaptureSummary summary = owner.Root.Summary;
+                    int sourceLeft = Int32.MaxValue, sourceTop = Int32.MaxValue, sourceRight = 0, sourceBottom = 0; long sourceLayers = 0;
+                    var coordinates = new long[chunk.Count]; var sourceBits = new ushort[chunk.Count]; var sourceIds = new int[chunk.Count]; var sourceObjects = new Dictionary<int, CaptureObject>(); var memberCounts = new Dictionary<int, int>();
                     for (int i = 0; i < chunk.Count; i++)
                     {
                         CaptureCell cell = chunk.Cells[i]; long key = Key(cell);
                         if (sawObjects || key <= previous || cell.X < summary.Left || cell.Y < summary.Top || (long)cell.X >= (long)summary.Left + summary.Width || (long)cell.Y >= (long)summary.Top + summary.Height) throw new InvalidDataException("blueprint-cell-order-bounds-or-duplicate");
-                        previous = key; owner.TotalLayers += BlueprintProjectionMask.Count(BlueprintProjectionMask.Layers(cell));
+                        previous = key; int layers = BlueprintProjectionMask.Count(BlueprintProjectionMask.Layers(cell)); owner.TotalLayers += layers; sourceLayers += layers;
+                        sourceLeft = Math.Min(sourceLeft, cell.X); sourceTop = Math.Min(sourceTop, cell.Y); sourceRight = Math.Max(sourceRight, cell.X + 1); sourceBottom = Math.Max(sourceBottom, cell.Y + 1);
+                        coordinates[i] = ((long)(cell.Y - summary.Top) << 32) | (uint)(cell.X - summary.Left);
+                        sourceBits[i] = BlueprintProjectionMask.Layers(cell); sourceIds[i] = cell.ObjectId;
                         if (cell.ObjectId > 0)
                         {
+                            if (owner.SourceObjects == null) { owner.SourceObjects = new Dictionary<int, ProjectionSourceObjectIndex>(); owner.SourceIndexBytes += 128; }
+                            ProjectionSourceObjectIndex sourceObject;
+                            if (!owner.SourceObjects.TryGetValue(cell.ObjectId, out sourceObject))
+                            { owner.SourceObjects.Add(cell.ObjectId, sourceObject = new ProjectionSourceObjectIndex()); owner.SourceIndexBytes += 192; }
+                            sourceObject.Members = checked(sourceObject.Members + 1);
+                            if (sourceObject.Blocks.Count == 0 || sourceObject.Blocks[sourceObject.Blocks.Count - 1] != number)
+                            {
+                                int capacity = sourceObject.Blocks.Capacity; sourceObject.Blocks.Add(number);
+                                owner.SourceIndexBytes += (sourceObject.Blocks.Capacity - capacity) * 8L;
+                            }
                             CaptureObject obj = objects.Find(cell.ObjectId);
+                            int members; memberCounts.TryGetValue(obj.Id, out members); memberCounts[obj.Id] = members + 1; if (members == 0) sourceObjects.Add(obj.Id, obj);
+                            sourceLeft = Math.Min(sourceLeft, obj.X); sourceTop = Math.Min(sourceTop, obj.Y); sourceRight = Math.Max(sourceRight, checked(obj.X + obj.Width)); sourceBottom = Math.Max(sourceBottom, checked(obj.Y + obj.Height));
                             if (obj.Type != cell.TileType || obj.Reliable == cell.UnreliableObject || cell.X < obj.X || cell.Y < obj.Y || (long)cell.X >= (long)obj.X + obj.Width || (long)cell.Y >= (long)obj.Y + obj.Height) throw new InvalidDataException("blueprint-object-member-reference");
                         }
                         if ((i & 31) == 31) { CheckProjection(owner); yield return true; }
@@ -368,6 +420,60 @@ namespace JueMingR.Features.Blueprint
                         CheckProjection(owner); yield return true;
                     }
                     owner.Directory.Add(number, chunk);
+                    if (chunk.Count != 0)
+                    {
+                        var dependencies = new List<BlueprintProjectionSourceDependency>();
+                        foreach (var pair in sourceObjects)
+                        {
+                            var obj = pair.Value; bool door = obj.Type == 10 || obj.Type == 11;
+                            // Ordinary complete members are already indexed.
+                            // Cross-block groups need the entire footprint;
+                            // doors also depend on the other legal wing column.
+                            if (door || memberCounts[obj.Id] != checked(obj.Width * obj.Height))
+                                dependencies.Add(new BlueprintProjectionSourceDependency(ProjectionSourceObjectBounds(obj,summary),obj.Id));
+                        }
+                        int group = owner.SourceRanges.Count;
+                        var range = new BlueprintProjectionSourceRange(number,
+                            new BlueprintProjectionBounds(sourceLeft - summary.Left - 1, sourceTop - summary.Top - 1, sourceRight - sourceLeft + 2, sourceBottom - sourceTop + 2), sourceLayers, coordinates, sourceBits, sourceIds, dependencies, group);
+                        if (sourceObjects.Count == 0) owner.MatchRanges.Add(range);
+                        else
+                        {
+                            // Keep native observation at physical-block scale.
+                            // Independent object Tile proofs stop a legitimate
+                            // operating-frame change from restarting the same
+                            // block's ordinary Tile/wall/circuit proof. Shared
+                            // indices contain geometry only, never world values.
+                            var ordinaryPositions = new List<long>(); var ordinaryBits = new List<ushort>(); var ordinaryIds = new List<int>(); long ordinaryTargets = 0;
+                            int proofStart=owner.MatchRanges.Count; BlueprintProjectionSourceRange? ordinaryProof=null; var routeObjects=new List<int>();var routeOrdinals=new List<int>();
+                            int left = Int32.MaxValue, top = Int32.MaxValue, right = 0, bottom = 0;
+                            for (int i = 0; i < coordinates.Length; i++)
+                            {
+                                ushort bits = (ushort)(sourceBits[i] & (sourceIds[i] > 0 ? 0xfe : 0xff)); if (bits == 0) continue;
+                                ordinaryPositions.Add(coordinates[i]); ordinaryBits.Add(bits); ordinaryIds.Add(0); ordinaryTargets += BlueprintProjectionMask.Count(bits);
+                                int x = (int)(uint)coordinates[i], y = (int)(coordinates[i] >> 32);
+                                left = Math.Min(left,x); top = Math.Min(top,y); right = Math.Max(right,x+1); bottom = Math.Max(bottom,y+1);
+                                if ((i & 31) == 31) { CheckProjection(owner); yield return true; }
+                            }
+                            if (ordinaryPositions.Count != 0)
+                            {
+                                var ordinary = new BlueprintProjectionSourceRange(number, new BlueprintProjectionBounds(left,top,right-left,bottom-top), ordinaryTargets,
+                                    ordinaryPositions.ToArray(),ordinaryBits.ToArray(),ordinaryIds.ToArray(),Array.Empty<BlueprintProjectionSourceDependency>(),group);
+                                owner.MatchRanges.Add(ordinary); owner.SourceIndexBytes += ordinary.SourceIndexBytes;
+                                ordinaryProof=ordinary;
+                            }
+                            foreach (var pair in sourceObjects) if (indexedMatchObjects.Add(pair.Key))
+                            {
+                                var obj = pair.Value; int x = obj.X-summary.Left, y = obj.Y-summary.Top;
+                                var bounds = ProjectionSourceObjectBounds(obj,summary);
+                                var proof = new BlueprintProjectionSourceRange(number,bounds,(long)obj.Width*obj.Height,
+                                    new[]{((long)y<<32)|(uint)x},new ushort[]{1},new[]{obj.Id},new[]{new BlueprintProjectionSourceDependency(bounds,obj.Id)},group,obj.Id);
+                                routeObjects.Add(obj.Id);routeOrdinals.Add(owner.MatchRanges.Count-proofStart);
+                                owner.MatchRanges.Add(proof); owner.SourceIndexBytes += proof.SourceIndexBytes;
+                            }
+                            range=range.WithRouting(ordinaryProof,routeObjects.ToArray(),routeOrdinals.ToArray());
+                        }
+                        owner.SourceRanges.Add(range); owner.SourceIndexBytes += range.SourceIndexBytes;
+                    }
 #if DEBUG
                     UpdateProjectionStatistics();
 #endif
@@ -461,7 +567,8 @@ namespace JueMingR.Features.Blueprint
         private void UpdateProjectionStatistics()
         {
 #if DEBUG
-            long directoryBytes = 0, blocks = 0; foreach (ProjectionOwner owner in projectionOwners.Values) { directoryBytes += owner.Directory.EstimatedBytes; blocks += owner.Directory.CellBlockCount + owner.Directory.ObjectBlockCount; }
+            long directoryBytes = 0, blocks = 0, sourceIndexBytes = 0; foreach (ProjectionOwner owner in projectionOwners.Values) { directoryBytes += owner.Directory.EstimatedBytes + 128L + (owner.SourceRanges.Capacity + owner.MatchRanges.Capacity) * 48L; sourceIndexBytes += owner.SourceIndexBytes; blocks += owner.Directory.CellBlockCount + owner.Directory.ObjectBlockCount; }
+            Interlocked.Exchange(ref projectionSourceIndexBytes, sourceIndexBytes);
             Interlocked.Exchange(ref projectionDirectoryBytes, directoryBytes); Interlocked.Exchange(ref projectionDirectoryBlocks, blocks);
             Interlocked.Exchange(ref projectionCacheBytes, projectionCacheSize);
             if (projectionCacheSize > Interlocked.Read(ref projectionCachePeak)) Interlocked.Exchange(ref projectionCachePeak, projectionCacheSize);

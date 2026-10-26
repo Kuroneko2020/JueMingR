@@ -22,16 +22,18 @@ namespace NativeWorldTextProbe
             Call(Get(context, "Shell"), "CloseAndSubmitPosition"); Call(host, "ClearProjection"); Call(host, "CancelCaptureOrDraft");
             NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
             ((BlueprintCaptureState)Get(host, "State")).Exit(); NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
+            using (NativeBlueprintWorldMatchChecks.EmptyWorld(host, 4700, 160))
             try
             {
                 AdmissionFailureAtomicity(host, library);
                 CompactSemantics();
-                NarrowStrips(host, input, library);
+                AdmissionScanContinuation(context,host,input,library);
+                NarrowStrips(context, host, input, library);
                 EmptyCompletion(host, input, library);
-                Pressure(host, input, library, false);
-                Pressure(host, input, library, true);
-                MovingCommandPressure(host, input, library);
-                OperationOwnership(host, input, library);
+                Pressure(context, host, input, library, false);
+                Pressure(context, host, input, library, true);
+                MovingCommandPressure(context, host, input, library);
+                OperationOwnership(context, host, input, library);
                 Console.WriteLine("PASS BlueprintBudgetCpu actual Host/worker/renderer A40 compact strips, independent raw32/commands64 stable denial/release/candidate/point, immutable halo/empty/rollback; GPU/OS/FPS/multiplayer NOT_RUN.");
             }
             finally { NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); Call(host, "ClearProjection"); }
@@ -250,7 +252,7 @@ namespace NativeWorldTextProbe
             Require((long)Get(host, "ProjectionWindowBytes") < 32L * 1024 * 1024 && (long)Get(host, "ProjectionCommandBytes") < 64L * 1024 * 1024, label + " retained DTO/commands stay within original budgets");
             Console.WriteLine(label + " reads/decoded/builds/segments=" + String.Join("/", before) + " retained=" + Get(host, "ProjectionWindowBytes") + "/" + Get(host, "ProjectionCommandBytes"));
         }
-        private static void NarrowStrips(object host, object input, LibraryState library)
+        private static void NarrowStrips(object context, object host, object input, LibraryState library)
         {
             var view = new WorldTargetView(0, 0, 167, 128, 0);
             var cells = Dense(128, 128, false);
@@ -279,6 +281,12 @@ namespace NativeWorldTextProbe
                 Require(ReferenceEquals(actual, scene[i]), "A every effective visible strip has its own actual Host hit; index=" + i + " expected=" + ((BlueprintProjectionIdentity)Get(scene[i], "Identity")).ProjectionGeneration + " actual=" + (actual == null ? "null" : ((BlueprintProjectionIdentity)Get(actual, "Identity")).ProjectionGeneration.ToString()));
             }
             Call(host, "RemoveProjection"); Require(Mode(host) == "Fixed", "same remove command cancels selection");
+            // All forty sources may fairly advance. This literal fixture has
+            // 40*8 blocks/40*16384 source records, while each selected instance
+            // still earns exactly its own effective empty-world observation.
+            NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, scene[39],16384,8,16384,40*16384,40*8);
+            NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, scene[0],16384,8,128,40*16384,40*8);
+            Require((long)Get(Get(scene[0], "Match"), "WorldReads") == 128, "A first 16384-record source observes only its 128 effective strip cells; 16256 permanently erased cells spend zero world reads");
             Stable(host, library, view, "A40");
 
             // A moving copy borrows immutable DTOs. Cancel through the owning
@@ -292,7 +300,7 @@ namespace NativeWorldTextProbe
             Require(Mode(host) == "Fixed" && (int)Get(last, "OriginX") == 39 && (long)Get(last, "CommitOrder") == order && ReferenceEquals(oldMask, Get(last, "Mask")) && ReferenceEquals(old, Get(last, "Window")), "C same move action restores exact retained origin/order/mask/immutable DTO");
             Call(host, "ClearProjection");
         }
-        private static void Pressure(object host, object input, LibraryState library, bool commands)
+        private static void Pressure(object context, object host, object input, LibraryState library, bool commands)
         {
             int count = commands ? 10 : 35;
             var entry = Save(library, Dense(128, 128, commands), 128, 128);
@@ -316,6 +324,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { Tick(host, view); return Windows(target).Keys.Any(k => k.Width == 16); });
             Require(Mode(host) == "SelectingMove" && Scene(host).Contains(target) && Windows(target).Keys.Any(k => k.Width == 16 && k.Height == 16), "B point16 priority loads actual worker receipt without auto selection");
             var pointWindow = Windows(target).Values.Single();
+            AwaitPointMovable(context,host,target,count);
             Pointer(host, false, x, 0); Pointer(host, true, x, 0);
             Require(Mode(host) == "Moving", "B second independent click selects point-loaded target");
             Call(host, "MoveProjection");
@@ -342,6 +351,65 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { Tick(host, pan); return Scene(host).All(p => !(bool)Get(p, "WindowPending")); });
             Stable(host, library, pan, commands ? "BcommandsPan" : "BrawPan");
             Call(host, "ClearProjection");
+        }
+        private static void AdmissionScanContinuation(object context,object host,object input,LibraryState library)
+        {
+            Call(host,"ClearProjection");
+            try
+            {
+                var entry=Save(library,new[]{new CaptureCell{X=0,Y=0,Layers=CaptureLayer.Tile,TileType=1}},1,1);
+                for(int i=0;i<70;i++)Place(host,input,entry,10+i*2,50);
+                var items=Scene(host);
+                Action step=()=>{NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");};
+                NativeQuickItemChecks.Until(()=>{step();return items.All(p=>{var s=GetOptional(p,"Match");return s!=null && (int)Get(s,"Current")==1 && (long)Get(s,"Matches")==0 && (int)Get(s,"Demands")==0;}) && !(bool)Get(host,"ProjectionMatchReading");});
+                Require(Scene(host).Length==70 && GetOptional(host,"projectionMatchPriority")==null,"seventy actual fixed identities are legal and fully proved empty without priority or private cursor injection");
+                int cursor=(int)Get(host,"projectionMatchAdmissionCursor"),index=(cursor+64)%70;
+                object target=items[index],state=Get(target,"Match");int x=(int)Get(target,"OriginX"),y=(int)Get(target,"OriginY");
+                long requests=(long)Get(state,"SourceRequests"),world=(long)Get(host,"ProjectionMatchCellReads"),attempts=(long)Get(host,"ProjectionMatchAdmissionAttempts");
+                Require(Terraria.WorldGen.PlaceTile(x,y,1,true,true),"real original writer dirties the first owner beyond this token's 64 current-prefix candidates");
+                step();
+                Require((long)Get(host,"ProjectionMatchAdmissionAttempts")-attempts==64 && (int)Get(host,"projectionMatchAdmissionCursor")==index && (long)Get(state,"SourceRequests")==requests && (long)Get(host,"ProjectionMatchCellReads")==world && (int)Get(state,"Current")==0,
+                    "a source-free 64-attempt token stops at its true scan successor without hiding the unscanned dirty identity");
+                attempts=(long)Get(host,"ProjectionMatchAdmissionAttempts");step();
+                Require((long)Get(host,"ProjectionMatchAdmissionAttempts")-attempts<=64 && (long)Get(state,"SourceRequests")==requests+1,
+                    "next actual Update resumes the unscanned owner and admits its real source without a new pointer or budget grant");
+                NativeQuickItemChecks.Until(()=>{step();return !Scene(host).Contains(target);});
+                Require(Scene(host).Length==69 && items.Where(p=>!ReferenceEquals(p,target)).All(p=>Scene(host).Contains(p) && (long)Get(Get(p,"Match"),"Matches")==0),"tail identity naturally retires while all sixty-nine unrelated incomplete instances remain");
+                Terraria.WorldGen.KillTile(x,y,false,false,true);for(int i=0;i<3;i++)step();
+                Require(Scene(host).Length==69 && !Scene(host).Contains(target),"completed tail identity cannot revive after original demolition");
+                Console.WriteLine("PASS Blueprint source admission scan scene=70 actualCursor="+cursor+" dirtyTailIndex="+index+" firstTokenAttempts=64 firstTokenTargetRequests=0 nextTokenTargetRequests=1 otherIncomplete=69 naturalRetirement=true noPrivateCursorOrProof=true");
+            }
+            finally{Call(host,"ClearProjection");}
+        }
+        private static object pointAdmissionHost,pointAdmissionTarget;
+        private static long pointAdmissionStart,pointAdmissionUnserved;
+        private static void ObservePointAdmission(object __instance,bool __result)
+        {
+            if(!__result || !ReferenceEquals(__instance,pointAdmissionHost))return;
+            var state=GetOptional(pointAdmissionTarget,"Match");
+            if(state==null || (long)Get(state,"SourceRequests")==0)
+                pointAdmissionUnserved=Math.Max(pointAdmissionUnserved,(long)Get(__instance,"ProjectionMatchOrdinaryServices")-pointAdmissionStart);
+        }
+        private static void AwaitPointMovable(object context,object host,object target,int instances)
+        {
+            var observer=new HarmonyLib.Harmony("JueMingR.Tests.Blueprint.PointSourceAdmission");
+            pointAdmissionHost=host;pointAdmissionTarget=target;
+            pointAdmissionStart=(long)Get(host,"ProjectionMatchOrdinaryServices");pointAdmissionUnserved=0;
+            observer.Patch(host.GetType().GetMethod("StartProjectionMatchRead",Flags),postfix:new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintBudgetChecks),nameof(ObservePointAdmission)));
+            Exception failure=null;
+            try{NativeBlueprintWorldMatchChecks.AwaitMovable(context,host,target);}catch(Exception error){failure=error;}
+            finally{observer.UnpatchAll(observer.Id);pointAdmissionHost=pointAdmissionTarget=null;}
+            // These literal pressure assets have 2048 ordinary cells per
+            // range. Four already occupied work slots need at most 4*8 actual
+            // 256-cell services to free a source admission. Pending I/O gives
+            // no service credit. A point priority must then be supplied; it
+            // cannot wait for all preceding whole templates to finish.
+            Require(pointAdmissionUnserved<=32,"point priority source admission is not skipped after a finite ready-slot round: actual ordinary services before any accepted target request="+pointAdmissionUnserved);
+            if(failure!=null)System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+            var state=Get(target,"Match");int ranges=((Array)Get(state,"Ranges")).Length;
+            Require((long)Get(state,"WorldReads")==16384 && (long)Get(state,"SourceRequests")==ranges && (long)Get(state,"SourceArrivals")==ranges,
+                "point identity obtains each real ordinary source range once and samples all 16384 target cells while its siblings remain incomplete");
+            Console.WriteLine("PASS Blueprint point source priority instances="+instances+" actualOrdinaryServicesBeforeFirstRequest="+pointAdmissionUnserved+" ownAcceptedRequests="+Get(state,"SourceRequests")+" ownArrivals="+Get(state,"SourceArrivals")+" ownWorldReads="+Get(state,"WorldReads")+" ranges="+ranges+" sourceWaitingNotCounted=true unchangedWaitGuard=true");
         }
         private static void EmptyCompletion(object host, object input, LibraryState library)
         {
@@ -370,7 +438,7 @@ namespace NativeWorldTextProbe
             for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) cells[y * width + x] = new CaptureCell { X = x, Y = y, Layers = commands ? CaptureLayer.Tile | CaptureLayer.Wire | CaptureLayer.Wall | CaptureLayer.Actuator | CaptureLayer.Liquid : CaptureLayer.Tile, TileType = 1, WallType = commands ? (ushort)7 : (ushort)0, Slope = commands ? (byte)1 : (byte)0, Wires = commands ? (byte)15 : (byte)0, Actuator = commands, LiquidAmount = commands ? (byte)80 : (byte)0 };
             return cells;
         }
-        private static void MovingCommandPressure(object host, object input, LibraryState library)
+        private static void MovingCommandPressure(object context, object host, object input, LibraryState library)
         {
             var entry = Save(library, Dense(512, 128, true), 512, 128);
             Place(host, input, entry, 255, 63);
@@ -378,6 +446,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { Tick(host, view); return !(bool)Get(source, "WindowPending") && Windows(source).Count + (int)Get(Get(source, "Denied"), "Count") == 4; });
             long commands = (long)Get(host, "ProjectionCommandBytes");
             Require(commands > 48L * 1024 * 1024 && commands < 64L * 1024 * 1024, "B single multi-core instance genuinely fills most commands64 budget");
+            NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, source,512*128,32,512*128);
             Stable(host, library, view, "BsingleMoveBefore");
             var originalWindows = Windows(source).ToDictionary(p => p.Key, p => p.Value); object alias = Get(source, "Window");
             var stats = library.DebugProjectionStatistics;
@@ -389,7 +458,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { Tick(host, view); return !(bool)Get(source, "WindowPending"); });
             Stable(host, library, view, "BsingleMoveAfter"); Call(host, "ClearProjection");
         }
-        private static void OperationOwnership(object host, object input, LibraryState library)
+        private static void OperationOwnership(object context, object host, object input, LibraryState library)
         {
             var entry = NativeBlueprintPlacementChecks.Seed(library, 2, 2, "操作来源样本");
             Action drain = () => { for (int i = 0; i < 25; i++) { Call(host, "Poll"); System.Threading.Thread.Sleep(2); } };
@@ -405,7 +474,8 @@ namespace NativeWorldTextProbe
             Place(host, input, entry, 20, 20); Place(host, input, entry, 400, 20);
             var view = new WorldTargetView(0, 0, 430, 128, 0);
             NativeQuickItemChecks.Until(() => { Tick(host, view); return Scene(host).All(p => Windows(p).Count != 0); });
-            object original = Scene(host)[0]; var window = Get(original, "Window"); var mask = Get(original, "Mask"); long order = (long)Get(original, "CommitOrder");
+            object original = Scene(host)[0]; NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, original);
+            var window = Get(original, "Window"); var mask = Get(original, "Mask"); long order = (long)Get(original, "CommitOrder");
             NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); Call(host, "MoveProjection");
             Require((bool)Get(host, "OwnMoveCancellation") && (bool)Get(host, "CanInvokeMove") && !(bool)Get(host, "CanInvokeRemove") && !(bool)Get(host, "CanInvokePlace"), "SelectingMove exposes only its own cancel");
             Require(!(bool)Get(host, "CanOpenLibrary"), "SelectingMove rejects manual library entry");
@@ -426,7 +496,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return library.DebugProjectionStatistics.ActiveReferences == 0 && library.DebugProjectionStatistics.ActiveTemplates == 0; });
             Console.WriteLine("PASS operation ownership pending/Following/PlaceCommitting/SelectingMove/MoveCommitting/SelectingRemove, cross-action rejection, late receipts and RemoveAll last-reference/library preservation.");
         }
-        private static LibraryEntry Save(LibraryState library, CaptureCell[] cells, int width, int height)
+        internal static LibraryEntry Save(LibraryState library, CaptureCell[] cells, int width, int height)
         {
             var token = new CaptureToken(Guid.NewGuid(), 1, 1, 1); var handle = new ContentHandle(token.OperationId);
             Require(library.TryBeginStage(token), "budget real stage accepted"); Complete(library);

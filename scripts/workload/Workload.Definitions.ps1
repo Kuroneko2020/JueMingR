@@ -31,6 +31,9 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintCaptureBoundaryChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPlacementChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput')
         'tests/NativeWorldTextProbe/NativeBlueprintProjectionChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintWorldMatchSemanticChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintWorldChangeChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs'=@('native-BlueprintCpu')
         # This owner authenticates only actual Content consumers; CPU fixtures
         # keep their original argument and proof projection.
         'scripts/workload/Workload.NativeContent.ps1'=@('native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')

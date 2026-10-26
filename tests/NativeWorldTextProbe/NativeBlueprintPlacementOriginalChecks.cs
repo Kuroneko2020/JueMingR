@@ -29,6 +29,7 @@ namespace NativeWorldTextProbe
             Func<int> x = () => (int)Get(Get(host, "CurrentProjection"), "OriginX"), y = () => (int)Get(Get(host, "CurrentProjection"), "OriginY");
             int oldX = x(), oldY = y();
             sample(1050, 550, false); sample(1050, 550, false);
+            NativeQuickItemChecks.Until(() => { sample(1050,550,false); return Call(host,"ProjectionMoveEligibility",Get(host,"CurrentProjection")).ToString()=="Movable"; });
             var toolbar = Get(host, "Toolbar"); var layout = Get(toolbar, "Layout"); draw();
             Require(((IEnumerable)Get(layout, "Buttons")).Cast<object>().Count() == 4, "native gel toolbar adds move/remove for the fixed projection");
             Action<bool> move = down =>

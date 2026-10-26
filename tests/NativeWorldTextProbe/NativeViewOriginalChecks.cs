@@ -379,6 +379,10 @@ namespace NativeWorldTextProbe
             private void InputStep(params Keys[] keys)
             {
                 bool chat=Main.drawingPlayerChat;float before=GameZoomTarget;
+                // This specialist skips Main.DoUpdate. Each declared native
+                // input/update step still needs the original world's entry
+                // counter; repeated Draw and empty callbacks do not renew it.
+                if(blueprint) NativeQuickItemChecks.BeginWorldStep();
                 Call(input,"BeginUpdate");keyboard=new KeyboardState(keys);
                 typeof(Main).GetMethod("DoUpdate_HandleInput",F).Invoke(this,null);Call(context,"UpdateRuntime");
                 if(frame>=820)Console.WriteLine("VIEW input witness keys="+String.Join(",",keys)+" before="+before+" after="+GameZoomTarget+" chat="+chat+"->"+Main.drawingPlayerChat+" map="+Main.mapFullscreen+" writing="+PlayerInput.WritingText);

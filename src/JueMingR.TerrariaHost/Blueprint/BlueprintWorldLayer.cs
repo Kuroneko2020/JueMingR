@@ -31,7 +31,13 @@ namespace JueMingR.TerrariaHost.Blueprint
                     Outline(projection.OriginX, projection.OriginY, projection.Summary.Width, projection.Summary.Height, view, Color.FromNonPremultiplied(100, 200, 255, 90));
                 }
                 var hover = host.ProjectionHover;
-                if (hover != null) Outline(hover.OriginX, hover.OriginY, hover.Summary.Width, hover.Summary.Height, view, Color.FromNonPremultiplied(160, 230, 255, 190));
+                if (hover != null)
+                {
+                    var eligibility = host.ProjectionHoverMoveEligibility;
+                    var color = eligibility == BlueprintProjectionMoveEligibility.Matched ? Color.FromNonPremultiplied(255, 120, 100, 190) :
+                        eligibility == BlueprintProjectionMoveEligibility.Checking ? Color.FromNonPremultiplied(255, 205, 100, 190) : Color.FromNonPremultiplied(160, 230, 255, 190);
+                    Outline(hover.OriginX, hover.OriginY, hover.Summary.Width, hover.Summary.Height, view, color);
+                }
             }
             if (!host.State.Active) return;
             // Enumerate only visible rows/spans. A solid world-sized selection

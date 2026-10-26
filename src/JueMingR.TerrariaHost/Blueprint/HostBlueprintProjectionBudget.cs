@@ -71,6 +71,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!item.Windows.TryGetValue(core, out removed)) return;
             long beforeBytes = ProjectionWindowBytes, beforeCommands = ProjectionCommandBytes;
             item.Windows.Remove(core); item.Renderer.RemoveCore(core);
+            if (item.Match != null) item.Match.ViewDirty = true;
             if (ReferenceEquals(item.Window, removed)) { item.Window = null; foreach (var value in item.Windows.Values) { item.Window = value; break; } }
             item.HasRequestedWindow = item.Windows.Count != 0 || item.WindowPending;
             if (ProjectionWindowBytes < beforeBytes || ProjectionCommandBytes < beforeCommands) projectionCapacityRevision++;
@@ -180,6 +181,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             long beforeBytes = ProjectionWindowBytes, beforeCommands = ProjectionCommandBytes;
             foreach (var replacedCore in replacedCores) item.Windows.Remove(replacedCore);
             item.Renderer.Publish(stage); item.Windows[core] = effective; item.Window = effective; item.HasRequestedWindow = true; item.Denied.Remove(core);
+            DemandProjectionMatchView(item, effective.Bounds);
             // The larger completed core replaces the extra point ownership;
             // it becomes an ordinary resident rather than a permanent priority.
             if (ReferenceEquals(item, projectionPointTarget) && !core.Equals(projectionPointCore) && ContainsCore(core, projectionPointCore)) projectionPointTarget = null;
