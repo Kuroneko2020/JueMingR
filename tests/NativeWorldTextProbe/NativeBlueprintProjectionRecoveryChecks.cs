@@ -421,10 +421,32 @@ namespace NativeWorldTextProbe
                 Require(library.TryAppendChunk(handle,new CaptureChunk(cells,cells.Length)),"bounded dense source chunk accepted");Complete(library);
             }
             Require(library.TrySealDraft(handle,new CaptureSummary{Width=width,Height=height,ContentCount=width*height}),"dense isolated draft sealed");Complete(library);
-            Require(library.TryCreate(handle,name,token),"dense isolated asset create accepted");var saved=Complete(library);
+            Require(library.TryCreate(handle,name,token),"dense isolated asset create accepted");var saved=Complete(library,"dense Create "+name);
             Require(library.TryList(91002,0,saved.AssetId),"dense isolated asset lists");return Complete(library).Page.Entries.Single(e=>e.AssetId==saved.AssetId);
         }
-        private static LibraryReceipt Complete(LibraryState state)
-        {LibraryReceipt value=null;NativeQuickItemChecks.Until(()=>{state.Pump();return state.TryTakeReceipt(out value);});Require(value.Status==LibraryStatus.Completed || value.Status==LibraryStatus.Saved,"isolated recovery library command reliable: "+value.Error);return value;}
+        private static LibraryReceipt Complete(LibraryState state,string diagnostic=null)
+        {
+            LibraryReceipt value=null;var clock=System.Diagnostics.Stopwatch.StartNew();long previous=-1;int reports=0;
+            try
+            {
+                NativeQuickItemChecks.Until(()=>
+                {
+                    state.Pump();long progress=state.Snapshot.ProcessedItems;
+                    if(diagnostic!=null && progress!=previous && reports++<12){previous=progress;Console.WriteLine("RECOVERY COMMAND "+diagnostic+" ms="+clock.ElapsedMilliseconds+" processed="+progress+" accepted="+state.AcceptedCommandId);}
+                    return state.TryTakeReceipt(out value);
+                });
+            }
+            catch
+            {
+                if(diagnostic!=null)
+                {
+                    object worker=Get(state,"worker"),stage=GetOptional(worker,"stage"),pending=GetOptional(worker,"pending"),result=GetOptional(worker,"result");
+                    Console.Error.WriteLine("RECOVERY COMMAND TIMEOUT "+diagnostic+" ms="+clock.ElapsedMilliseconds+" processed="+Get(worker,"Processed")+" busy="+state.Snapshot.Busy+" occupied="+Get(worker,"occupied")+" pending="+(pending!=null)+" result="+(result!=null)+" stageBlocks="+(stage==null?"null":Get(stage,"Blocks").ToString())+" thread="+((Thread)Get(worker,"thread")).ThreadState);
+                }
+                throw;
+            }
+            if(diagnostic!=null)Console.WriteLine("RECOVERY COMMAND END "+diagnostic+" ms="+clock.ElapsedMilliseconds+" processed="+state.Snapshot.ProcessedItems+" status="+value.Status);
+            Require(value.Status==LibraryStatus.Completed || value.Status==LibraryStatus.Saved,"isolated recovery library command reliable: "+value.Error);return value;
+        }
     }
 }

@@ -247,10 +247,31 @@ namespace NativeWorldTextProbe
         private static void Stable(object host, LibraryState library, WorldTargetView view, string label)
         {
             var before = Work(host, library);
+            string beforeState = StableState(host, library);
             for (int i = 0; i < 100; i++) Tick(host, view);
-            Require(before.SequenceEqual(Work(host, library)), label + " 100 unchanged Update/Pump cause zero reads/decodes/builds/segment builds");
+            var after = Work(host, library);
+            Console.WriteLine(label+" STEADY before="+String.Join("/",before)+" after="+String.Join("/",after));
+            if(!before.SequenceEqual(after))Console.Error.WriteLine(label+" STEADY initial="+beforeState+" changed="+StableState(host,library));
+            Require(before.SequenceEqual(after), label + " 100 unchanged Update/Pump cause zero reads/decodes/builds/segment builds");
             Require((long)Get(host, "ProjectionWindowBytes") < 32L * 1024 * 1024 && (long)Get(host, "ProjectionCommandBytes") < 64L * 1024 * 1024, label + " retained DTO/commands stay within original budgets");
             Console.WriteLine(label + " reads/decoded/builds/segments=" + String.Join("/", before) + " retained=" + Get(host, "ProjectionWindowBytes") + "/" + Get(host, "ProjectionCommandBytes"));
+        }
+        private static string StableState(object host,LibraryState library)
+        {
+            var windows=library.DebugProjectionStatistics;var source=library.DebugProjectionSourceStatistics;
+            var worker=Get(library,"worker");string materialState;
+            lock(Get(worker,"gate"))materialState=" material queued/active/reading/cancelled="+((IEnumerable)Get(worker,"materialRequests")).Cast<object>().Count()+"/"+(GetOptional(worker,"materialRequest")!=null)+"/"+(GetOptional(worker,"materialReading")!=null)+"/"+Get(worker,"materialCancelled")+" command pending/result/occupied="+(GetOptional(worker,"pending")!=null)+"/"+(GetOptional(worker,"result")!=null)+"/"+Get(worker,"occupied");
+            string owners=String.Join(";",Scene(host).Select(p=>
+            {
+                var match=GetOptional(p,"Match");
+                string ranges=match==null?"none":String.Join(",",((IEnumerable)Get(match,"Ranges")).Cast<object>().Select(r=>Get(r,"Index")+":"+Get(r,"Reading")+"/"+Get(r,"Demand")+"/"+Get(r,"Offset")));
+                return ((BlueprintProjectionIdentity)Get(p,"Identity")).ProjectionGeneration+"{current="+(match==null?"none":Get(match,"Current")+"/"+((Array)Get(match,"Ranges")).Length+" demand="+Get(match,"Demands"))+",windowPending="+Get(p,"WindowPending")+",generation="+Get(p,"WindowGeneration")+",ranges="+ranges+"}";
+            }));
+            var work=((IDictionary)Get(host,"projectionMatchWork")).Values.Cast<object>();
+            return "window pending/receipts/working="+windows.PendingRequests+"/"+windows.ReceiptBytes+"/"+windows.WindowWorkingBytes+
+                " source pending/receipts/parts/working="+source.PendingRequests+"/"+source.Receipts+"/"+source.Parts+"/"+source.WorkingBytes+
+                " matchWork="+Get(host,"ProjectionMatchWorkCount")+" reading="+Get(host,"ProjectionMatchReading")+
+                " work="+String.Join(",",work.Select(w=>Get(w,"Owner")+":"+Get(w,"Pending")+"/"+((IEnumerable)Get(w,"Parts")).Cast<object>().Count()+"/"+(GetOptional(w,"Read")!=null)))+materialState+" owners="+owners;
         }
         private static void NarrowStrips(object context, object host, object input, LibraryState library)
         {
@@ -287,6 +308,25 @@ namespace NativeWorldTextProbe
             NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, scene[39],16384,8,16384,40*16384,40*8);
             NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, scene[0],16384,8,128,40*16384,40*8);
             Require((long)Get(Get(scene[0], "Match"), "WorldReads") == 128, "A first 16384-record source observes only its 128 effective strip cells; 16256 permanently erased cells spend zero world reads");
+            // The shared read/decode counters also charge immutable source
+            // work already accepted for the other thirty-eight instances.
+            // Two movable owners are not a settled forty-owner scene. Earn
+            // every remaining proof through the real scheduler, then drain
+            // its accepted source/window receipts before measuring idleness;
+            // never cancel a lane or hide its still-pending first pass.
+            for (int i = 1; i < 39; i++)
+                NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, scene[i],16384,8,128,40*16384,40*8);
+            NativeQuickItemChecks.Until(() =>
+            {
+                NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); Tick(host, view);
+                var windows = library.DebugProjectionStatistics; var source = library.DebugProjectionSourceStatistics;
+                return Scene(host).Length == 40 && scene.All(p =>
+                {
+                    var match = GetOptional(p, "Match");
+                    return match != null && (int)Get(match, "Current") == ((Array)Get(match, "Ranges")).Length && (int)Get(match, "Demands") == 0 && !(bool)Get(p, "WindowPending");
+                }) && (int)Get(host, "ProjectionMatchWorkCount") == 0 && source.PendingRequests == 0 && source.ReceiptBytes == 0 && source.WorkingBytes == 0 &&
+                    windows.PendingRequests == 0 && windows.ReceiptBytes == 0 && windows.WindowWorkingBytes == 0;
+            });
             Stable(host, library, view, "A40");
 
             // A moving copy borrows immutable DTOs. Cancel through the owning
