@@ -127,10 +127,10 @@ namespace JueMingR.Features.Blueprint
         public const int ParserVersion = 1;
         private readonly int[] excluded;
         public BlueprintMaterialKey(Guid id, bool stage, Guid contentRevision, string contentHash, bool excludeUnreliable,
-            int[] excludedObjectIds, long placementRevision, string targetVersion = "1.4.5.8")
+            int[] excludedObjectIds, long placementRevision, string targetVersion = "1.4.5.8", int classifierVersion = BlueprintPlacementCatalog.ClassifierVersion)
         {
             Id = id; Stage = stage; ContentRevision = contentRevision; ContentHash = contentHash ?? "";
-            ExcludeUnreliable = excludeUnreliable; PlacementRevision = placementRevision; TargetVersion = targetVersion;
+            ExcludeUnreliable = excludeUnreliable; PlacementRevision = placementRevision; TargetVersion = targetVersion; ClassifierVersion = classifierVersion;
             excluded = excludedObjectIds == null ? Array.Empty<int>() : (int[])excludedObjectIds.Clone(); Array.Sort(excluded);
         }
         public Guid Id { get; }
@@ -140,16 +140,17 @@ namespace JueMingR.Features.Blueprint
         public bool ExcludeUnreliable { get; }
         public long PlacementRevision { get; }
         public string TargetVersion { get; }
+        public int ClassifierVersion { get; }
         public bool Excluded(int objectId, bool unreliable) { return objectId > 0 && (ExcludeUnreliable && unreliable || Array.BinarySearch(excluded, objectId) >= 0); }
         public bool Equals(BlueprintMaterialKey other)
         {
             if (other == null || Id != other.Id || Stage != other.Stage || ContentRevision != other.ContentRevision || ContentHash != other.ContentHash ||
-                ExcludeUnreliable != other.ExcludeUnreliable || PlacementRevision != other.PlacementRevision || TargetVersion != other.TargetVersion || excluded.Length != other.excluded.Length) return false;
+                ExcludeUnreliable != other.ExcludeUnreliable || PlacementRevision != other.PlacementRevision || TargetVersion != other.TargetVersion || ClassifierVersion != other.ClassifierVersion || excluded.Length != other.excluded.Length) return false;
             for (int i = 0; i < excluded.Length; i++) if (excluded[i] != other.excluded[i]) return false;
             return true;
         }
         public override bool Equals(object other) { return Equals(other as BlueprintMaterialKey); }
         public override int GetHashCode()
-        { unchecked { int hash = Id.GetHashCode() ^ ContentRevision.GetHashCode() ^ ContentHash.GetHashCode() ^ PlacementRevision.GetHashCode() ^ (Stage ? 1 : 0) ^ (ExcludeUnreliable ? 2 : 0); foreach (int id in excluded) hash = hash * 397 ^ id; return hash; } }
+        { unchecked { int hash = Id.GetHashCode() ^ ContentRevision.GetHashCode() ^ ContentHash.GetHashCode() ^ PlacementRevision.GetHashCode() ^ ClassifierVersion ^ (TargetVersion?.GetHashCode() ?? 0) ^ (Stage ? 1 : 0) ^ (ExcludeUnreliable ? 2 : 0); foreach (int id in excluded) hash = hash * 397 ^ id; return hash; } }
     }
 }

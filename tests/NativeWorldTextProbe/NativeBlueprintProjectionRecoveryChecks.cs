@@ -63,10 +63,11 @@ namespace NativeWorldTextProbe
                             maxReads=Math.Max(maxReads,used[0]);maxSteps=Math.Max(maxSteps,used[1]);maxServices=Math.Max(maxServices,used[2]);maxAttempts=Math.Max(maxAttempts,used[3]);maxRequests=Math.Max(maxRequests,used[4]);
                             Require(used[0]<=256 && used[1]<=256 && used[2]<=64 && used[3]<=64 && used[4]<=4 && works.Count<=4,"delete-reorder real Update retains world/source/schedule/admission/work budgets");
                         };
-                        // The first real Update admits immutable source requests
-                        // after taking receipts. Poll below never consumes those
-                        // sources or samples the world; no worker read is held.
-                        step();object work=works[identityB];
+                        // Poll/Fixed do not complete the cold qualification pass.
+                        // Stop at the first real B work admission; Take precedes
+                        // that request in this Update, so Pending is still real.
+                        NativeQuickItemChecks.Until(()=>{step();return (bool)Call(host,"ProjectionQualificationCurrent",b) && works.Contains(identityB);});
+                        object work=works[identityB];
                         Require(work!=null && (bool)Get(work,"Pending") && GetOptional(work,"Read")==null,"delete-reorder actual B request is admitted and Host remains Pending");
                         if(partial)NativeQuickItemChecks.Until(()=>
                         {

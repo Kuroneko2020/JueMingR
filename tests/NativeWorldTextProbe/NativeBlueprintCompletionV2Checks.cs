@@ -179,6 +179,15 @@ namespace NativeWorldTextProbe
             }
         }
 
+        private static bool AwaitCompletionV2Supply(object host,object item,LibraryState library,Action step)
+        {
+            // Fixed is a commit result, not qualification or source readiness.
+            // Taking stays held while real Updates establish this actual work.
+            NativeQuickItemChecks.Until(()=>{step();return Mode(host)!="Committing" && (bool)Call(host,"ProjectionQualificationCurrent",item) &&
+                GetOptional(item,"Match")!=null && ((IDictionary)Get(host,"projectionMatchWork")).Contains(Get(item,"Identity"));});
+            bool ready=AwaitSourceSupply(host,library);
+            Require(ready,"controlled next Update has actual qualified work and real production worker output");return ready;
+        }
         private static void SmallObjectThroughput(object context, object host, object input, LibraryState library, Action step, int count)
         {
             const int ox = 20, oy = 50;
@@ -190,9 +199,8 @@ namespace NativeWorldTextProbe
                 holdCompletionV2Sources = true;
                 timing.Patch(host.GetType().GetMethod("TakeProjectionMatchSources", Flags), prefix: new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldMatchChecks), nameof(CompletionV2SourceTake)));
                 var item = ConfirmCompletion(host, input, entry, ox, oy, step);
-                NativeQuickItemChecks.Until(() => { step(); return Mode(host) != "Committing"; });
+                bool realWorkerReady=AwaitCompletionV2Supply(host,item,library,step);
                 Require(Scene(host).Contains(item), "controlled throughput begins with the real committed identity and unconsumed real worker output");
-                AwaitSourceSupply(host, library);
                 var sampled = new HashSet<int>();
                 objectSample = (x, y) => { if (x >= ox && x < ox + count * 3 && (x - ox) % 3 == 0 && y >= oy && y < oy + 3) sampled.Add((x - ox) / 3); };
                 timing.Patch(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintWorldMatchSource", true).GetMethod("TryRead", Flags), postfix: new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldMatchChecks), nameof(AfterObjectSample)));
@@ -201,7 +209,7 @@ namespace NativeWorldTextProbe
                 long used = (long)Get(host, "ProjectionMatchCellReads") - before, sourceUsed = (long)Get(host, "ProjectionMatchSourceSteps") - sourceBefore;
                 var state = GetOptional(item, "Match");
                 int completed = state == null ? count : ((IEnumerable)Get(state, "Ranges")).Cast<object>().Count(r => ((BlueprintProjectionSourceRange)Get(r, "Source")).ObjectId > 0 && (bool)Get(r, "Current") && (long)Get(r, "Matches") == (long)Get(r, "Targets") && (long)Get(r, "Targets") == 3);
-                Console.WriteLine("BlueprintCompletionV2 throughput declaredUpdates=1 objects=" + count + " independentlySampled=" + sampled.Count + " independentlyCompleted=" + completed + " worldReads=" + used + " sourceSteps=" + sourceUsed + " realWorkerReady=true injectedDto=false source=real-captured-asset retired=" + !Scene(host).Contains(item));
+                Console.WriteLine("BlueprintCompletionV2 throughput declaredUpdates=1 objects=" + count + " independentlySampled=" + sampled.Count + " independentlyCompleted=" + completed + " worldReads=" + used + " sourceSteps=" + sourceUsed + " realWorkerReady="+realWorkerReady+" injectedDto=false source=real-captured-asset retired=" + !Scene(host).Contains(item));
                 Require(used <= 256 && sourceUsed <= 256 && sampled.Count >= 2 && completed >= 2,
                     "one real Update with ready real production source completes more than one independent small object within its existing world/source allowance");
                 ulong token = (ulong)Get(host, "projectionMatchTick"); long same = (long)Get(host, "ProjectionMatchCellReads");
@@ -225,8 +233,7 @@ namespace NativeWorldTextProbe
                 holdCompletionV2Sources=true;
                 timing.Patch(host.GetType().GetMethod("TakeProjectionMatchSources",Flags),prefix:new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldMatchChecks),nameof(CompletionV2SourceTake)));
                 var item=ConfirmCompletion(host,input,entry,ox,oy,step);
-                NativeQuickItemChecks.Until(()=>{step();return Mode(host)!="Committing";});
-                AwaitSourceSupply(host,library);
+                AwaitCompletionV2Supply(host,item,library,step);
                 long requests=(long)Get(host,"ProjectionMatchSourceRequests");
                 WorldGen.paintTile(ox,oy,1,false,false);WorldGen.paintTile(ox,oy,0,false,false);
                 holdCompletionV2Sources=false;step();

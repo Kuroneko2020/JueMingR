@@ -6,6 +6,14 @@ namespace JueMingR.Features.Blueprint
     public static class BlueprintWorldMatchComparer
     {
         public static BlueprintWorldMatchResult CompareCell(CaptureCell target, BlueprintWorldMatchSample world,
+            BlueprintConstructionSelection selection, BlueprintWorldMatchState objectTileState = BlueprintWorldMatchState.Unknown)
+        {
+            var result = CompareCell(selection.Apply(target), world, objectTileState);
+            ushort known = (ushort)~selection.UnknownBits;
+            return new BlueprintWorldMatchResult(result.TargetBits, (ushort)(result.MatchBits & known),
+                (ushort)(result.ConflictBits & known), (ushort)(result.UnknownBits | selection.UnknownBits));
+        }
+        public static BlueprintWorldMatchResult CompareCell(CaptureCell target, BlueprintWorldMatchSample world,
             BlueprintWorldMatchState objectTileState = BlueprintWorldMatchState.Unknown)
         {
             ushort bits = BlueprintConstructionTargets.Layers(target), matches = 0, conflicts = 0, unknown = 0;

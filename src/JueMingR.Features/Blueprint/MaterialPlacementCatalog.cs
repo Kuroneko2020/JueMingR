@@ -45,10 +45,13 @@ namespace JueMingR.Features.Blueprint
         private readonly Dictionary<int, BlueprintPlacementRule[]> tiles;
         private readonly Dictionary<int, BlueprintPlacementDescriptor> walls;
         private readonly Dictionary<int, int> paints, coatings;
+        private readonly Dictionary<int, BlueprintPlacementDeclaration[]> declarations;
+        public const int ClassifierVersion = 2;
         public BlueprintPlacementCatalog(long revision, IEnumerable<BlueprintPlacementRule> rules, IDictionary<int, BlueprintPlacementDescriptor> walls,
-            IDictionary<int, int> paints, IDictionary<int, int> coatings, int wire, int actuator, string targetVersion = "1.4.5.8")
+            IDictionary<int, int> paints, IDictionary<int, int> coatings, int wire, int actuator, string targetVersion = "1.4.5.8",
+            IEnumerable<BlueprintPlacementDeclaration> declarations = null, BlueprintProducerCoverage coverage = null)
         {
-            Revision = revision; TargetVersion = targetVersion; WireItemType = wire; ActuatorItemType = actuator;
+            Revision = revision; TargetVersion = targetVersion; WireItemType = wire; ActuatorItemType = actuator; Coverage = coverage;
             this.walls = new Dictionary<int, BlueprintPlacementDescriptor>(walls); this.paints = new Dictionary<int, int>(paints); this.coatings = new Dictionary<int, int>(coatings);
             var grouped = new Dictionary<int, List<BlueprintPlacementRule>>();
             foreach (var rule in rules)
@@ -59,9 +62,23 @@ namespace JueMingR.Features.Blueprint
                 if (rule.Door) { if (!grouped.TryGetValue(11, out list)) grouped.Add(11, list = new List<BlueprintPlacementRule>()); list.Add(rule); }
             }
             tiles = new Dictionary<int, BlueprintPlacementRule[]>(); foreach (var pair in grouped) tiles.Add(pair.Key, pair.Value.ToArray());
+            var declared = new Dictionary<int, List<BlueprintPlacementDeclaration>>();
+            if (declarations != null) foreach (var value in declarations)
+            {
+                DeclarationCount++; if (!value.Compiled) UncompiledDeclarationCount++;
+                if (value.Kind != BlueprintPlacementKind.Tile) continue;
+                List<BlueprintPlacementDeclaration> list;
+                if (!declared.TryGetValue(value.TileType, out list)) declared.Add(value.TileType, list = new List<BlueprintPlacementDeclaration>());
+                list.Add(value);
+            }
+            this.declarations = new Dictionary<int, BlueprintPlacementDeclaration[]>();
+            foreach (var pair in declared) this.declarations.Add(pair.Key, pair.Value.ToArray());
         }
         public long Revision { get; }
         public string TargetVersion { get; }
+        public BlueprintProducerCoverage Coverage { get; }
+        public int DeclarationCount { get; }
+        public int UncompiledDeclarationCount { get; }
         public int WireItemType { get; }
         public int ActuatorItemType { get; }
         public int Paint(int paint) { int result; return paints.TryGetValue(paint, out result) && result > 0 ? result : 0; }
@@ -70,7 +87,15 @@ namespace JueMingR.Features.Blueprint
         public BlueprintPlacementDescriptor Tile(CaptureCell cell)
         { return Tile(cell, null); }
         public BlueprintPlacementDescriptor Tile(CaptureCell cell, CaptureObject? obj)
+        { return QualifyTile(cell, obj).Placement; }
+        // Body comparison may borrow compiled shape hints even when another
+        // producer prevents a unique bill. This is not a placement/candidate
+        // outlet; public Tile returns only a fully explained qualification.
+        internal BlueprintPlacementDescriptor TileShape(CaptureCell cell)
+        { return ResolveTile(cell, null, out _); }
+        private BlueprintPlacementDescriptor ResolveTile(CaptureCell cell, CaptureObject? obj, out bool ambiguous)
         {
+            ambiguous = false;
             BlueprintPlacementRule[] list; if (!tiles.TryGetValue(cell.TileType, out list)) return null;
             BlueprintPlacementDescriptor found = null;
             foreach (var rule in list)
@@ -83,7 +108,7 @@ namespace JueMingR.Features.Blueprint
                 // origin/direction/alternate for native execution; keep frame,
                 // complete dimensions and unique consumption as evidence.
                 if (obj.HasValue && !rule.Door && (rule.Descriptor.Width != obj.Value.Width || rule.Descriptor.Height != obj.Value.Height)) continue;
-                if (found != null && !found.SameConsumption(rule.Descriptor)) return null;
+                if (found != null && !found.SameConsumption(rule.Descriptor)) { ambiguous = true; return null; }
                 // A normal direct declaration is preferable to an optional
                 // selector using the same material, but never resolves a
                 // genuinely ambiguous material identity by item-ID order.
@@ -91,6 +116,53 @@ namespace JueMingR.Features.Blueprint
             }
             return found;
         }
+        private BlueprintTargetQualification Qualification(BlueprintTargetDisposition disposition, BlueprintPlacementResolutionKind resolution,
+            BlueprintPlacementDescriptor placement, BlueprintTargetReason reason)
+        { return new BlueprintTargetQualification(disposition, resolution, placement, reason, Revision); }
+        public BlueprintTargetQualification QualifyTile(CaptureCell cell, CaptureObject? obj = null)
+        {
+            if (TargetVersion != "1.4.5.8") return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.None, null, BlueprintTargetReason.VersionMismatch);
+            if (cell.UnreliableObject || obj.HasValue && (!obj.Value.Reliable || obj.Value.Type != cell.TileType))
+                return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.None, null, BlueprintTargetReason.UnreliableObject);
+            bool ambiguous; var placement = ResolveTile(cell, obj, out ambiguous);
+            if (ambiguous) return Qualification(BlueprintTargetDisposition.Construction, BlueprintPlacementResolutionKind.Ambiguous, null, BlueprintTargetReason.AmbiguousConsumption);
+            BlueprintPlacementDeclaration[] declared;
+            bool hasDeclarations = declarations.TryGetValue(cell.TileType, out declared);
+            if (hasDeclarations)
+            {
+                // A successful rule does not account for an uncompiled producer
+                // of this output. Declarations retain no consumed item/units or
+                // failed grid, so even a second rule from the same use item may
+                // change the bill. Only reliable style facts may exclude it;
+                // absent object metadata keeps every failed style conservative.
+                foreach (var value in declared) if (!value.Compiled && (!obj.HasValue || value.Style == obj.Value.PlacementStyle || value.Style == obj.Value.Style || placement != null && value.Style == placement.Style))
+                    return Qualification(BlueprintTargetDisposition.Construction, BlueprintPlacementResolutionKind.Unsupported, null, BlueprintTargetReason.DeclaredOutputUnsupported);
+            }
+            if (placement != null) return Qualification(BlueprintTargetDisposition.Construction, BlueprintPlacementResolutionKind.Exact, placement, BlueprintTargetReason.None);
+            if (hasDeclarations)
+            {
+                // A frame that no rule explains remains a qualification unknown;
+                // even a completed scan cannot turn a decoder gap into scenery.
+                return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.Unsupported, null, BlueprintTargetReason.TargetShapeUnresolved);
+            }
+            if (tiles.ContainsKey(cell.TileType)) return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.Unsupported, null, BlueprintTargetReason.TargetShapeUnresolved);
+            if (Coverage == null || !Coverage.TileComplete(cell.TileType)) return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.None, null,
+                Coverage != null && !Coverage.SourceAbiValid ? BlueprintTargetReason.SourceAbiFailure : BlueprintTargetReason.ProducerCoverageIncomplete);
+            return Qualification(BlueprintTargetDisposition.DisplayOnly, BlueprintPlacementResolutionKind.None, null, BlueprintTargetReason.NoPlayerProducer);
+        }
+        public BlueprintTargetQualification QualifyWall(int wall)
+        {
+            if (TargetVersion != "1.4.5.8") return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.None, null, BlueprintTargetReason.VersionMismatch);
+            BlueprintPlacementDescriptor placement;
+            if (walls.TryGetValue(wall, out placement)) return Qualification(BlueprintTargetDisposition.Construction,
+                placement == null ? BlueprintPlacementResolutionKind.Ambiguous : BlueprintPlacementResolutionKind.Exact, placement,
+                placement == null ? BlueprintTargetReason.AmbiguousConsumption : BlueprintTargetReason.None);
+            if (Coverage == null || !Coverage.WallComplete(wall)) return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.None, null,
+                Coverage != null && !Coverage.SourceAbiValid ? BlueprintTargetReason.SourceAbiFailure : BlueprintTargetReason.ProducerCoverageIncomplete);
+            return Qualification(BlueprintTargetDisposition.DisplayOnly, BlueprintPlacementResolutionKind.None, null, BlueprintTargetReason.NoPlayerProducer);
+        }
+        public BlueprintConstructionSelection Select(CaptureCell cell, CaptureObject? obj = null)
+        { return BlueprintConstructionTargets.Select(cell, this, obj); }
     }
 
     public sealed class BlueprintMaterialAccumulator
@@ -112,6 +184,13 @@ namespace JueMingR.Features.Blueprint
             if (descriptor == null || descriptor.Units < 0 || descriptor.UseItemType <= 0) { Unresolved("目标没有唯一的直接材料解释"); return; }
             if (descriptor.Units > 0) Add(descriptor.ConsumeItemType, descriptor.Units);
             if (descriptor.RequiresSubstrate) Unresolved("地表转换的底材步骤尚未确定");
+        }
+        public void Add(BlueprintTargetQualification target)
+        {
+            if (target.Disposition == BlueprintTargetDisposition.DisplayOnly) return;
+            if (target.Disposition != BlueprintTargetDisposition.Construction || target.Resolution != BlueprintPlacementResolutionKind.Exact)
+            { Unresolved(target.MaterialReason); return; }
+            Add(target.Placement);
         }
         public BlueprintMaterialSnapshot Snapshot(long revision, BlueprintMaterialInventory inventory = null, BlueprintMaterialStatus? status = null)
         {

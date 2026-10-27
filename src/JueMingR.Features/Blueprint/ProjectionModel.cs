@@ -110,6 +110,8 @@ namespace JueMingR.Features.Blueprint
         public IReadOnlyList<BlueprintProjectionSourceRange> SourceRanges { get; }
         public IReadOnlyList<BlueprintProjectionSourceRange> MatchRanges { get; }
         public long TotalLayerCount { get; }
+        // Display-open's non-liquid upper bound is not a qualification proof.
+        // Host must await the separate catalog/mask-bound effective count.
         public long TotalConstructionLayerCount { get; }
         public BlueprintProjectionReceiptKind Kind { get; }
         public BlueprintProjectionIdentity Identity { get; }

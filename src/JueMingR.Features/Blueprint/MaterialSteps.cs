@@ -19,7 +19,7 @@ namespace JueMingR.Features.Blueprint
         public static BlueprintBodyState SameBody(CaptureCell target, BlueprintWorldMatchSample world, BlueprintPlacementCatalog catalog, bool wall = false)
         {
             if (wall) return SameBody(target, world, true);
-            var descriptor = catalog?.Tile(target);
+            var descriptor = catalog?.TileShape(target);
             if (descriptor?.RequiresObject == true && target.ObjectId == 0) return BlueprintBodyState.Unknown;
             if (descriptor?.Platform == true && world.Available && (world.Cell.Layers & CaptureLayer.Tile) != 0 && target.TileType == world.Cell.TileType)
                 return target.FrameY == world.Cell.FrameY ? BlueprintBodyState.Same : BlueprintBodyState.Conflict;
@@ -47,64 +47,78 @@ namespace JueMingR.Features.Blueprint
             return true;
         }
 
-        public static void StaticCell(CaptureCell target, BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
+        public static void StaticCell(CaptureCell target, BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into, CaptureObject? obj = null)
         {
-            target = BlueprintConstructionTargets.Filter(target);
+            target = BlueprintConstructionTargets.Select(target, catalog, obj).Apply(target);
             if (!target.HasContent) return;
             if (catalog == null) { into.Unresolved("放置资料尚未就绪"); return; }
             if ((target.Layers & CaptureLayer.Tile) != 0 && target.ObjectId == 0)
             {
-                var descriptor = catalog.Tile(target);
-                if (target.UnreliableObject || descriptor?.RequiresObject == true) into.Unresolved("对象尚未完整确认"); else into.Add(descriptor);
+                var qualification = catalog.QualifyTile(target, obj);
+                if (target.UnreliableObject || qualification.Placement?.RequiresObject == true) into.Unresolved("对象尚未完整确认"); else into.Add(qualification);
             }
-            if ((target.Layers & CaptureLayer.Wall) != 0) into.Add(catalog.Wall(target.WallType));
+            if ((target.Layers & CaptureLayer.Tile) != 0 && target.ObjectId > 0 && catalog.QualifyTile(target, obj).Disposition == BlueprintTargetDisposition.Unresolved)
+                into.Unresolved(catalog.QualifyTile(target, obj).MaterialReason);
+            if ((target.Layers & CaptureLayer.Wall) != 0) into.Add(catalog.QualifyWall(target.WallType));
             Appearance(target, default(CaptureCell), false, false, catalog, into);
             if ((target.Layers & CaptureLayer.Wire) != 0) into.Add(catalog.WireItemType, BitCount(target.Wires));
             if ((target.Layers & CaptureLayer.Actuator) != 0 && target.Actuator) into.Add(catalog.ActuatorItemType, 1);
         }
         public static void StaticObject(CaptureObject obj, CaptureCell first, BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
-        { if (!obj.Reliable) into.Unresolved("对象尚未完整确认"); else into.Add(catalog.Tile(first)); }
+        { if (!obj.Reliable) into.Unresolved("对象尚未完整确认"); else into.Add(catalog == null ? BlueprintConstructionTargets.Pending : catalog.QualifyTile(first, obj)); }
 
         public static void RequiredSteps(CaptureCell target, BlueprintWorldMatchSample world, BlueprintPlacementCatalog catalog,
-            BlueprintMaterialAccumulator into, BlueprintBodyState? objectBody = null, bool foregroundHandledElsewhere = false)
+            BlueprintMaterialAccumulator into, BlueprintBodyState? objectBody = null, bool foregroundHandledElsewhere = false, CaptureObject? obj = null)
         {
             // A confirmed display-only source has no material/world dependency.
             // Filter before Available so unreadable liquid alone is exact zero;
             // unreadable non-liquid targets retain their original unknown state.
-            target = BlueprintConstructionTargets.Filter(target);
+            var selection = BlueprintConstructionTargets.Select(target, catalog, obj);
+            if ((target.Layers & CaptureLayer.Tile) != 0 && (selection.RequiredBits & 1) == 0) foregroundHandledElsewhere = false;
+            target = selection.Apply(target);
             if (!target.HasContent) return;
+            if (catalog == null) { into.Unresolved("放置资料尚未就绪"); return; }
+            if (selection.UnknownBits != 0) into.Unresolved((selection.UnknownBits & 1) != 0 ? catalog.QualifyTile(target, obj).MaterialReason : catalog.QualifyWall(target.WallType).MaterialReason);
             if (!world.Available) { into.Unresolved("世界内容尚未可读"); return; }
             bool tileSame = false, wallSame = false; CaptureCell appearanceTarget = target;
             if ((target.Layers & CaptureLayer.Tile) != 0)
             {
                 var body = objectBody ?? SameBody(target, world, catalog);
                 if (body == BlueprintBodyState.Unknown) { into.Unresolved("本体尚未完整确认"); appearanceTarget.Layers &= ~CaptureLayer.Tile; }
-                else if (target.ObjectId == 0 && body != BlueprintBodyState.Same) into.Add(catalog.Tile(target));
+                else if (target.ObjectId == 0 && body != BlueprintBodyState.Same) into.Add(catalog.QualifyTile(target, obj));
                 tileSame = body == BlueprintBodyState.Same;
             }
             if ((target.Layers & CaptureLayer.Wall) != 0)
             {
                 var body = SameBody(target, world, true);
                 if (body == BlueprintBodyState.Unknown) { into.Unresolved("墙体尚未可读"); appearanceTarget.Layers &= ~CaptureLayer.Wall; }
-                else if (body != BlueprintBodyState.Same) into.Add(catalog.Wall(target.WallType));
+                else if (body != BlueprintBodyState.Same) into.Add(catalog.QualifyWall(target.WallType));
                 wallSame = body == BlueprintBodyState.Same;
             }
             Appearance(appearanceTarget, world.Cell, tileSame, wallSame, catalog, into, foregroundHandledElsewhere: foregroundHandledElsewhere);
             if ((target.Layers & CaptureLayer.Wire) != 0) into.Add(catalog.WireItemType, BitCount((byte)(target.Wires & ~world.Cell.Wires)));
             if ((target.Layers & CaptureLayer.Actuator) != 0 && target.Actuator && !world.Cell.Actuator) into.Add(catalog.ActuatorItemType, 1);
         }
-        public static void ObjectBody(BlueprintBodyState body, CaptureCell first, BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
-        { if (body == BlueprintBodyState.Unknown) into.Unresolved("对象尚未完整确认"); else if (body != BlueprintBodyState.Same) into.Add(catalog.Tile(first)); }
+        public static void ObjectBody(BlueprintBodyState body, CaptureCell first, BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into, CaptureObject? obj = null)
+        {
+            var qualification = catalog == null ? BlueprintConstructionTargets.Pending : catalog.QualifyTile(first, obj);
+            if (qualification.Disposition == BlueprintTargetDisposition.DisplayOnly) return;
+            if (qualification.Disposition == BlueprintTargetDisposition.Unresolved) { into.Unresolved(qualification.MaterialReason); return; }
+            if (body == BlueprintBodyState.Unknown) into.Unresolved("对象尚未完整确认"); else if (body != BlueprintBodyState.Same) into.Add(qualification);
+        }
 
         // The complete-object proof owns Tile appearance only. Its original
         // same-cell wall target is context for the scraper's order, never a
         // second wall body/appearance contribution. Ordinary and object lanes
         // therefore share the operation meaning without sharing a bill owner.
         public static void ObjectMemberAppearance(CaptureCell target, BlueprintWorldMatchSample world,
-            BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
+            BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into, CaptureObject? obj = null)
         {
-            if (!world.Available) { into.Unresolved("世界内容尚未可读"); return; }
+            var qualification = catalog == null ? BlueprintConstructionTargets.Pending : catalog.QualifyTile(target, obj);
+            if (qualification.Disposition == BlueprintTargetDisposition.DisplayOnly) return;
             if ((target.Layers & CaptureLayer.Tile) == 0) return;
+            if (qualification.Disposition == BlueprintTargetDisposition.Unresolved) { into.Unresolved(qualification.MaterialReason); return; }
+            if (!world.Available) { into.Unresolved("世界内容尚未可读"); return; }
             Appearance(target, world.Cell, true, SameBody(target, world, true) == BlueprintBodyState.Same, catalog, into, tileOnly: true);
         }
 

@@ -23,6 +23,8 @@ namespace JueMingR.TerrariaHost.Tools
             harmony.CreateReversePatcher(typeof(Player).GetMethod("TrySyncingInput",BindingFlags.Instance|BindingFlags.NonPublic),new HarmonyMethod(typeof(ToolHooks).GetMethod(nameof(NativeSync),BindingFlags.Static|BindingFlags.NonPublic))).Patch();
             Patch(typeof(Player),"PickItemSelectionOverride",new[]{typeof(int).MakeByRefType()},null,nameof(Pick));
             Patch(typeof(Player),"TrySyncingInput",Type.EmptyTypes,nameof(Sync));
+            Patch(typeof(Terraria.GameContent.SmartCursorHelper),"SmartCursorLookup",new[]{typeof(Player)},nameof(TargetBefore),nameof(TargetAfter));
+            Patch(typeof(Player),"Update",new[]{typeof(int)},null,nameof(PlayerUpdateAfter),nameof(PlayerUpdateFinal));
             Patch(typeof(Player),"LookForTileInteractions",Type.EmptyTypes,null,nameof(Interactions),nameof(InteractionsFinal));
             Patch(typeof(Player),"ItemCheck",Type.EmptyTypes,nameof(Before),nameof(After),nameof(Final));
             Patch(typeof(Player),"ItemCheck_Shoot",new[]{typeof(int),typeof(Item),typeof(int),typeof(bool)},nameof(ShotBefore),nameof(ShotAfter),nameof(ShotFinal));
@@ -50,7 +52,7 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private static void Patch(Type type,string name,Type[] args,string prefix=null,string postfix=null,string finalizer=null)
         {
-            var m=type.GetMethod(name,BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic,null,args,null);
+            var m=type.GetMethod(name,BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic,null,args,null);
             if(m==null || m.GetMethodBody()==null)throw new MissingMethodException("tools-abi:"+name);
             harmony.Patch(m,Hook(prefix),Hook(postfix),null,Hook(finalizer));
         }
@@ -71,6 +73,10 @@ namespace JueMingR.TerrariaHost.Tools
         {__state=null;try{__state=host?.Combat?.Attack?.Control.BeginDamage(__instance);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}}
         internal static void Uninstall(){foreach(var m in harmony.GetPatchedMethods().ToArray())harmony.Unpatch(m,HarmonyPatchType.All,harmony.Id);host=null;deferredSync=null;}
         private static void Pick(Player __instance,ref int __0,ref bool __result){host?.Use.Pick(__instance,ref __0,ref __result);}
+        private static void TargetBefore(Player __0){host?.Use.BeforeTargetResolution(__0);}
+        private static void TargetAfter(Player __0){host?.Use.AfterTargetResolution(__0);}
+        private static void PlayerUpdateAfter(Player __instance){host?.Use.FinishPlayerUpdate(__instance,null);}
+        private static Exception PlayerUpdateFinal(Player __instance,Exception __exception){if(__exception!=null)host?.Use.FinishPlayerUpdate(__instance,__exception);return __exception;}
         [HarmonyPriority(Priority.First)]
         private static bool Sync(Player __instance)
         {

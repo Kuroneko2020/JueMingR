@@ -21,7 +21,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int WorldY { get { return TargetY; } }
         internal BlueprintProjectionBounds Bounds;
         internal BlueprintPlacementDescriptor Placement;
-        internal bool LocalProof;
+        internal bool LocalProof, LocalPriority;
     }
     internal sealed class BlueprintMaterialTotals
     {
@@ -239,16 +239,18 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!HasSession) return;
             ObserveMaterialDemand();
             materialBuildSearchBudget = MaterialBuildDemand?.Invoke() == true ? 64 : 0;
-            if (dynamicDemand || materialStaticDemand) materialKnowledge?.Native.StepPlacement();
+            if (dynamicDemand || materialStaticDemand || projectionScene.Count>0) materialKnowledge?.Native.StepPlacement();
             materialStaticDemand = false;
             var catalog = MaterialCatalog;
             if (catalog == null && projectionScene.Count > 0) CancelMaterialPublication();
             if (catalog != null && materialPlacementIdentity != catalog.Revision)
             {
+                bool firstCatalog=materialPlacementIdentity<0;
                 materialPlacementIdentity = catalog.Revision;
+                RevokeProjectionQualifications(firstCatalog);
                 materialCatalogTransition = materialAll.Expected > 0; materialDemandEpoch++; materialTransitionRemaining = materialAll.Expected;
-                // The bounded source cursor below requests only missing
-                // material evidence. Existing Match.Current stays untouched.
+                // Catalog identity also owns target qualification. Raw display
+                // windows survive; old denominators, hidden Match and candidates do not.
                 CancelMaterialPublication();
             }
             if (dynamicDemand) ObserveMaterialInventory(tick);

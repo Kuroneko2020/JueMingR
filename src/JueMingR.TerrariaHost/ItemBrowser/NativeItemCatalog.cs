@@ -117,7 +117,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             int end = Math.Min(ItemID.Count, placementCursor + 64);
             for (; placementCursor < end; placementCursor++)
             {
-                Item sample = ContentSamples.ItemsByType[placementCursor];
+                Item sample;
+                if (!ContentSamples.ItemsByType.TryGetValue(placementCursor, out sample) || sample == null)
+                { materialTileSourceComplete = materialWallSourceComplete = false; continue; }
                 if (sample.type == placementCursor) CapturePlacement(sample);
 #if DEBUG
                 PlacementReads++;

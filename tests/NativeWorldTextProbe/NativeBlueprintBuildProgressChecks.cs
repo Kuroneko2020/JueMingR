@@ -93,18 +93,32 @@ namespace NativeWorldTextProbe
         private static void RefillBeforeMissingTail(object context, object host, object tools, object input)
         {
             var p = Reset(context, host, tools, input);
-            var entry = Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Dirt },
-                new CaptureCell { X = 2, Layers = CaptureLayer.Tile, TileType = TileID.Stone });
+            // Missing supply is now rejected before a native candidate. A real
+            // finite tail longer than the unchanged 64-step slice exposes that
+            // earlier wait without depending on the removed preflight counter.
+            var cells=Enumerable.Range(0,300).Select(i=>new CaptureCell{X=(i==0?0:i+1)%30,Y=(i==0?0:i+1)/30*2,
+                Layers=CaptureLayer.Tile,TileType=i==0?TileID.Dirt:TileID.Stone}).ToArray();
+            var entry = Asset(host,cells);
             var instance = Place(context, host, input, entry, 42, 42);
+            Require(42+cells.Max(cell=>cell.X)<Main.maxTilesX && 42+cells.Max(cell=>cell.Y)<Main.maxTilesY && cells.All(cell=>cell.Y!=1),
+                "the complete finite missing tail fits the original 200-wide Build world and skips its existing y43 support row");
             long checks = (long)Get(host, "BuildCandidateChecks"), uses = (long)Get(host, "BuildUsesStarted");
-            SetAutomatic(host, input, true); Until(context, input, () => (long)Get(host, "BuildCandidateChecks") > checks);
-            Require(!Main.tile[42, 42].active() && !Main.tile[44, 42].active(), "the early refill begins after the first actual missing-material preflight, with no world write");
+            object material=null;int recoveryCursor=0;
+            SetAutomatic(host, input, true); Until(context, input, () =>
+            {
+                if(GetOptional(instance,"Match")==null)return false;
+                material=GetOptional(EligibilityRanges(instance).Single(),"Materials");if(material==null)return false;
+                recoveryCursor=(int)Get(material,"CandidateCursor");
+                return Get(material,"BuildWaits").ToString().Contains("Material") && !(bool)Get(material,"BuildExhausted") && recoveryCursor>2 && recoveryCursor<cells.Length*2;
+            });
+            Require(!Main.tile[42, 42].active() && !Main.tile[44, 42].active() && (long)Get(host,"BuildUsesStarted")==uses,
+                "the real walk has observed early missing supply and still owns an unvisited tail, with no native use or world write");
             p.inventory[13].SetDefaults(ItemID.DirtBlock); p.inventory[13].stack = 1;
             Until(context, input, () => Main.tile[42, 42].active() && ProgressDormant(instance) && !(bool)Get(Get(tools, "Use"), "Active"));
             Require(!Main.tile[44, 42].active() && Main.tile[42, 42].type == TileID.Dirt && p.inventory[13].IsAir && Scene(host).Length == 1 &&
-                (long)Get(host, "BuildUsesStarted") == uses + 1 && (long)Get(host, "BuildCandidateChecks") >= checks + 3,
+                (long)Get(host, "BuildUsesStarted") == uses + 1 && (long)Get(host, "BuildCandidateChecks") > checks,
                 "an early relevant recovery survives the missing tail without any intervening world change; the next walk consumes the restored dirt exactly once");
-            Console.WriteLine("PASS BlueprintBuild refill before all-missing tail: no pre-recovery world write, original dirt consumption=1, stone remains missing");
+            Console.WriteLine("PASS BlueprintBuild refill before all-missing tail: actualWorld="+Main.maxTilesX+"x"+Main.maxTilesY+" actualRecoveryCursor="+recoveryCursor+" tailOrdinals="+cells.Length*2+" no pre-recovery world/native write, original dirt consumption=1, stone remains missing");
         }
         private static void StableRangesIgnoreSupplyNoise(object context, object host, object tools, object input)
         {
@@ -117,10 +131,12 @@ namespace NativeWorldTextProbe
             var reads = states.Select(state => (long)Get(state, "WorldReads")).ToArray();
             var requests = states.Select(state => (long)Get(state, "SourceRequests")).ToArray();
             long inventoryRevision = ((BlueprintMaterialInventory)Get(host, "MaterialInventory")).Revision;
+            StableRangeSnapshot("baseline",host,p,states);
             var stone = Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone });
             Place(context, host, input, stone, 44, 42);
             Until(context, input, () => Main.tile[44, 42].active() && !(bool)Get(Get(tools, "Use"), "Active"));
             Require(p.inventory[12].stack == 4, "the isolated real successful stone action spends one while unrelated dirt ranges stay intact");
+            StableRangeSnapshot("first-stone",host,p,states);
             for (int i = 0; i < 100; i++)
             {
                 // All observations retain a positive same-type source. This
@@ -129,13 +145,23 @@ namespace NativeWorldTextProbe
                 else { p.inventory[12].stack = 4; p.inventory[13].TurnToAir(); }
                 p.inventory[20].SetDefaults(ItemID.Wood); p.inventory[20].stack = i + 1; Step(context, input);
             }
+            StableRangeSnapshot("100-inventory-noise",host,p,states);
             Place(context, host, input, Asset(host, new[] { 0, 1, 3, 4 }.Select(x => new CaptureCell { X = x, Layers = CaptureLayer.Tile, TileType = TileID.Stone }).ToArray()), 42, 42);
             Until(context, input, () => new[] { 42, 43, 45, 46 }.All(x => Main.tile[x, 42].active()) && !(bool)Get(Get(tools, "Use"), "Active"));
+            StableRangeSnapshot("last-four-stones",host,p,states);
             Require(((BlueprintMaterialInventory)Get(host, "MaterialInventory")).Revision > inventoryRevision &&
                 p.inventory[12].IsAir && p.inventory[13].IsAir &&
                 Enumerable.Range(0, states.Length).All(i => (long)Get(states[i], "WorldReads") == reads[i] && (long)Get(states[i], "SourceRequests") == requests[i]),
                 "normal spend through the last positive source, splits/merges/moves and unrelated changes update held inventory without re-reading stable unrelated world proofs");
             Console.WriteLine("PASS BlueprintBuild two unrelated stable ranges: all 5 original stones consumed including last 1->0, 100 split/merge/unrelated updates, extraWorldReads=0 extraSourceRequests=0");
+        }
+        private static void StableRangeSnapshot(string phase,object host,Player player,object[] states)
+        {
+            Console.WriteLine("STABLE RANGE phase="+phase+" inventoryRevision="+((BlueprintMaterialInventory)Get(host,"MaterialInventory")).Revision+
+                " eligibilityRevision="+Get(host,"MaterialBuildEligibilityRevision")+" direction="+player.direction+
+                " slots12/13="+player.inventory[12].type+":"+player.inventory[12].stack+":"+player.inventory[12].IsAir+"/"+player.inventory[13].type+":"+player.inventory[13].stack+":"+player.inventory[13].IsAir+
+                " ranges="+string.Join(";",states.Select(state=>{var range=((Array)Get(state,"Ranges")).Cast<object>().Single();var material=Get(range,"Materials");
+                    return Get(state,"OriginX")+":reads="+Get(state,"WorldReads")+",requests="+Get(state,"SourceRequests")+",waits="+Get(material,"BuildWaits")+",playerRevision="+Get(material,"BuildPlayerRevision");})));
         }
         private static void ProtectedSourceRecovery(object context, object host, object tools, object input)
         {

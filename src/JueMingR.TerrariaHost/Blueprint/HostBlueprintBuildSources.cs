@@ -14,6 +14,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal BlueprintProjectionSourcePart Part;
             internal int X, Y;
             internal long Catalog;
+            internal long NearVersion=-1, NearWake=-1, NearPlayer=-1, NearSupply=-1;
+            internal int NearCursor, FrontierCursor;
+            internal BlueprintProjectionBounds NearBounds, FrontierBounds;
+            internal bool Frontier;
         }
         // Reuse the immutable transport, not a second world/target table. Four
         // recent parts share the match owner's retained-byte accounting. The
@@ -21,7 +25,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         // there, even when sampling crossed an Update or a different budget.
         private const int BuildSourcePartLimit = 4;
         private const long BuildSourceByteLimit = 4 * BlueprintProjectionSourceReceipt.TargetBytes;
-        private static long BuildSourceRetainedBytes(BlueprintProjectionSourcePart part) { return part.EstimatedBytes + 128; }
+        private static long BuildSourceRetainedBytes(BlueprintProjectionSourcePart part) { return part.EstimatedBytes + 256; }
         private readonly LinkedList<BuildSourcePart> buildSources = new LinkedList<BuildSourcePart>();
         private long buildSourceBytes;
         private int materialBuildSourceBudget, buildSourceCursor;
@@ -32,15 +36,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                 BuildSourceRetainedBytes(read.Batch) > BuildSourceByteLimit) return;
             if (read.BuildSourceTickSet && read.BuildSourceTick == projectionMatchTick) return;
             read.BuildSourceTickSet = true; read.BuildSourceTick = projectionMatchTick;
-            if (read.Range.Materials?.BuildExhausted == true)
-            { RemoveBuildSources(read.Owner.Identity, read.Range); return; }
             var retained = FindBuildSource(read.Range);
             if (retained != null && ReferenceEquals(retained.Window, read.Batch.Window)) return;
             RemoveBuildSources(read.Owner.Identity, read.Range);
             while (buildSources.Count >= BuildSourcePartLimit || buildSourceBytes + BuildSourceRetainedBytes(read.Batch) > BuildSourceByteLimit)
             {
-                var victim = buildSources.First;
-                while (victim != null && victim.Value.Range.Materials?.BuildExhausted == false) victim = victim.Next;
+                var victim = BuildSourceVictim(read.Batch.Window.Bounds,read.Owner);
                 if (victim == null) return;
                 RemoveBuildSource(victim);
             }
@@ -88,13 +89,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             target = null;
             var value = range.Materials;
-            if (value == null || value.BuildExhausted)
-            { if (value?.BuildExhausted == true) RemoveBuildSources(range.Owner.Identity, range); return false; }
+            if (value == null || value.BuildExhausted) return false;
             var part = FindBuildSource(range);
             if (part == null)
             {
-                // Existing active source walks finish before another locality
-                // asks for a cache slot. Do not thrash them per skipped target.
                 if (BuildSourceCapacityAvailable()) DemandProjectionMatchRange(range);
                 return false;
             }
@@ -107,13 +105,20 @@ namespace JueMingR.TerrariaHost.Blueprint
                 int index = part.LogicalObjectId > 0 ? 0 : value.CandidateCursor / 2 - part.Offset;
                 if (index < 0) { DemandProjectionMatchRange(range); return false; }
                 if (index >= part.Window.Cells.Count || part.LogicalObjectId > 0 && value.CandidateCursor > 0)
-                { value.BuildExhausted = part.Complete; RemoveBuildSources(range.Owner.Identity, range); return false; }
+                { value.BuildExhausted = part.Complete; return false; }
                 materialBuildSourceBudget--;
 #if DEBUG
                 ProjectionMatchSourceSteps++;
 #endif
                 int ordinal = value.CandidateCursor;
-                var cell = BlueprintConstructionTargets.Filter(range.Owner.Mask.Apply(part.Window.Cells[index]));
+                var cell = range.Owner.Mask.Apply(part.Window.Cells[index]);
+                CaptureObject? metadata=part.LogicalObjectId>0 && part.Window.Objects.Count==1?part.Window.Objects[0]:(CaptureObject?)null;
+                var selection=SelectProjectionTarget(range.Owner,cell,metadata);
+                cell=selection.Apply(cell);
+                // A wall-only record has no Tile ordinal to inspect. Keep the
+                // stable two-slot identity without spending a second source step.
+                if(part.LogicalObjectId==0 && (ordinal&1)==0 && (cell.Layers&CaptureLayer.Tile)==0 && (cell.Layers&CaptureLayer.Wall)!=0)
+                {ordinal++;value.CandidateCursor=ordinal;}
                 CaptureObject? obj = null; BlueprintWorldObject body = null;
                 BlueprintPlacementDescriptor descriptor = null;
                 if (part.LogicalObjectId > 0)
@@ -127,7 +132,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                     if ((cell.Layers & CaptureLayer.Tile) != 0 && cell.ObjectId == 0) descriptor = catalog.Tile(cell);
                 }
                 else if ((cell.Layers & CaptureLayer.Wall) != 0) descriptor = catalog.Wall(cell.WallType);
-                if (descriptor != null && !descriptor.Flexible && !descriptor.RequiresSubstrate && descriptor.UseItemType > 0)
+                bool supplied=descriptor!=null && buildSupply.ContainsKey(descriptor.UseItemType);
+                bool nearby=BuildNearBounds(range.Owner).Contains(cell.X,cell.Y);
+                if(descriptor!=null && !supplied)value.BuildWaits|=BlueprintBuildWait.Material;
+                // Missing material is the first failed gate. Player changes
+                // cannot recover it; recording both would resample unrelated
+                // world proofs on an edit/turn without any relevant refill.
+                if(descriptor!=null && supplied && !nearby)value.BuildWaits|=BlueprintBuildWait.Player;
+                ushort targetBit=part.LogicalObjectId>0 || (ordinal&1)==0?(ushort)1:(ushort)2;
+                if ((selection.UnknownBits&targetBit)==0 && descriptor != null && !descriptor.Flexible && !descriptor.RequiresSubstrate && descriptor.UseItemType > 0 && supplied && nearby)
                 {
                     target = CreateMaterialBuildTarget(range.Owner, range, cell, descriptor, obj, body, ordinal, support, catalog.Revision);
                     // This is a local admission proof, not a whole-range Match.
@@ -141,13 +154,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool BuildSourceCapacityAvailable()
         {
-            if (buildSources.Count < BuildSourcePartLimit) return true;
-            // Match can replay an already exhausted range. Finished entries
-            // are replaceable capacity, exactly as RetainBuildSource treats
-            // them; only genuinely unfinished walks hold the four pins.
-            for (var node = buildSources.First; node != null; node = node.Next)
-                if (node.Value.Range.Materials?.BuildExhausted != false) return true;
-            return false;
+            // A paused discovery walk keeps its ordinal in the range, never a
+            // permanent cache pin. Nearby immutable transport can displace it.
+            return true;
         }
         private bool TryRetainedBuildTarget(out BlueprintBuildTarget target)
         {
@@ -162,6 +171,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var node = buildSources.First;
                 for (int i = 0; i < at; i++) node = node.Next;
                 buildSourceCursor = (at + 1) % count;
+                if (TryNearbyBuildTarget(node.Value,out target)) return true;
                 if (TryMaterialBuildTarget(node.Value.Range, out target)) return true;
             }
             return false;

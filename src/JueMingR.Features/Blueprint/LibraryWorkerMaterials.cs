@@ -155,7 +155,7 @@ namespace JueMingR.Features.Blueprint
                     var request = materialRequests[i]; var key = request.Key;
                     if (key.Id != command.Id || key.Stage != command.Stage) continue;
                     var expected = new BlueprintMaterialKey(command.Id, command.Stage, command.Stage ? Guid.Empty : root.ContentRevision,
-                        command.Stage ? "" : command.Identity, command.Exclude, command.Excluded, key.PlacementRevision, root.Summary.TargetVersion);
+                        command.Stage ? "" : command.Identity, command.Exclude, command.Excluded, key.PlacementRevision, root.Summary.TargetVersion, key.ClassifierVersion);
                     if (!key.Equals(expected)) continue;
                     materialRequests.RemoveAt(i); return request;
                 }

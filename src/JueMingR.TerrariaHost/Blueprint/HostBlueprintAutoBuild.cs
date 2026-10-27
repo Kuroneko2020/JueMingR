@@ -255,13 +255,14 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private ToolIntent ChooseAutomaticBuild(Player p)
         {
-            var next = preparedBuild; preparedBuild = null;
+            var next = preparedBuild;
             if (next == null || !ReferenceEquals(p, next.Player) || !CanBuildAutomatically(p) || p.itemAnimation > 0 || p.itemTime > 0 || p.channel || p.reuseDelay > 0 ||
                 !p.releaseUseItem || p.selectedItemState.HasActiveOverride || p.selectedItemState.HasBufferedChange || !BuildFlightCurrent(next, false)) return null;
+            preparedBuild = null;
             var intent = new ToolIntent {
                 Kind = ToolKind.Build, Slot = next.Source.Slot, Target = new Vector2(next.Target.WorldX * 16 + 8, next.Target.WorldY * 16 + 8),
                 PlayerDirection = next.Direction, MaterialSlots = next.DependencySlots, MaximumConsumption = next.Target.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1,
-                Valid = () => CanBuildAutomatically(p) && BuildFlightCurrent(activeBuild ?? next, true),
+                Valid = () => CanBuildAutomatically(p) && BuildLeaseCurrent(activeBuild ?? next),
                 Admitted = () => { next.Token = buildTools.Use.Operation; activeBuild = next; },
                 Used = () => { if (activeBuild == null) return; activeBuild.Started = true;
 #if DEBUG
@@ -278,7 +279,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 NativeChecked = () => CheckedAutomaticBuild(activeBuild),
                 Completed = (started, unknown) => EndAutomaticBuild(activeBuild, unknown)
             };
-            intent.Refresh = () => RefreshAutomaticBuild(p, intent);
+            intent.Readiness = () => RefreshAutomaticBuild(p, intent);
+            intent.ResolvedTarget = (x,y) => ResolveAutomaticBuildTarget(p,intent,x,y);
             return intent;
         }
         private void BeginAutomaticBuildCheck(BuildFlight flight)
@@ -289,14 +291,16 @@ namespace JueMingR.TerrariaHost.Blueprint
             flight.Entered = false; flight.Source.Stack = flight.Source.Item.stack;
             foreach (var dependency in flight.Dependencies) dependency.Stack = dependency.Item.stack;
         }
-        private bool RefreshAutomaticBuild(Player p, ToolIntent intent)
+        private ToolReadiness RefreshAutomaticBuild(Player p, ToolIntent intent)
         {
             var current = activeBuild;
-            if (current == null || current.Token != buildTools.Use.Operation || !CanBuildAutomatically(p)) return false;
-            if (!current.Checked) return BuildFlightCurrent(current, true);
+            if (current == null || current.Token != buildTools.Use.Operation || !CanBuildAutomatically(p) || !BuildLeaseCurrent(current)) return ToolReadiness.Invalid;
+            if (!current.Checked) return BuildFlightCurrent(current, true) ? ToolReadiness.Ready : ToolReadiness.Invalid;
             var next = preparedBuild;
-            if (next == null || next.Source.Slot != current.Source.Slot || !ReferenceEquals(next.Source.Item, current.Source.Item) || next.Source.Type != current.Source.Type ||
-                next.DependencySlots != intent.MaterialSlots || !BuildFlightCurrent(next, false)) return false;
+            if (next == null) return BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield;
+            if (next.Source.Slot != current.Source.Slot || !ReferenceEquals(next.Source.Item, current.Source.Item) || next.Source.Type != current.Source.Type ||
+                next.DependencySlots != intent.MaterialSlots) return ToolReadiness.Yield;
+            if (!BuildFlightCurrent(next, false)) { preparedBuild = null; return BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield; }
             // One native ItemCheck has fully returned before this handoff.
             // The lease stays, but target, baselines and cleanup responsibility
             // belong to the new flight. Original selection/timers stay intact.
@@ -304,6 +308,35 @@ namespace JueMingR.TerrariaHost.Blueprint
             intent.Target = new Vector2(next.Target.WorldX * 16 + 8, next.Target.WorldY * 16 + 8);
             intent.PlayerDirection = next.Direction;
             intent.MaximumConsumption = next.Target.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1;
+            return ToolReadiness.Ready;
+        }
+        private bool BuildLeaseCurrent(BuildFlight flight)
+        {
+            if (flight == null || !ReferenceEquals(flight.Player,player) || !CanBuildAutomatically(flight.Player)) return false;
+            var source=flight.Source;var p=flight.Player;
+            if(source.Slot<0 || source.Slot>=50 || !ReferenceEquals(p.inventory[source.Slot],source.Item) || source.Item.type!=source.Type || source.Item.stack<=0 ||
+                !buildTools.BuildInventoryEligible(source.Slot,source.Item))return false;
+            foreach(var dependency in flight.Dependencies)
+                if(!ReferenceEquals(p.inventory[dependency.Slot],dependency.Item) || dependency.Item.type!=dependency.Type || dependency.Item.stack<=0 ||
+                    p.inventoryChestStack[dependency.Slot] || buildTools.Items.World.ManualMaterials.Contains(dependency.Item) || buildTools.ProtectedAfterYield(dependency.Item))return false;
+            // A checked target may already have naturally retired. Its old
+            // world proof grants no new input; only the exact live source can wait.
+            return flight.Checked || BuildFlightCurrent(flight,true);
+        }
+        private bool ResolveAutomaticBuildTarget(Player p,ToolIntent intent,int x,int y)
+        {
+            var current=activeBuild;
+            if(current==null || current.Checked || !BuildLeaseCurrent(current))return false;
+            if(current.Target.WorldX==x && current.Target.WorldY==y)return true;
+            // Vanilla smart cursor may continue to a different neighbour.
+            // Accept that natural target only through the same source/candidate
+            // owner and full preflight; never write SmartCursorX/Y or its locks.
+            BlueprintBuildTarget target;BuildFlight next;
+            if(!TryLocalBuildTargetAt(x,y,current.Source.Type,out target) || !TryPrepareBuild(target,p,out next) ||
+                next.Source.Slot!=current.Source.Slot || !ReferenceEquals(next.Source.Item,current.Source.Item) || next.DependencySlots!=intent.MaterialSlots)return false;
+            next.Token=current.Token;activeBuild=next;
+            intent.Target=new Vector2(x*16+8,y*16+8);intent.PlayerDirection=next.Direction;
+            intent.MaximumConsumption=next.Target.Placement.Kind==BlueprintPlacementKind.Wall?5:1;
             return true;
         }
         private bool BuildFlightCurrent(BuildFlight flight, bool mayOwn)
@@ -427,6 +460,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Unknown/spent outcomes retain their existing protection and
             // can never be renewed by this bounded eligibility retry.
             if (!spent) RequestBuildEligibilityRetry(flight.Target);
+            else RememberBuildFrontier(flight.Target);
             NotifyBuildAttempt(flight.Target);
         }
         private void HoldUnconfirmedBuild(BuildFlight flight)

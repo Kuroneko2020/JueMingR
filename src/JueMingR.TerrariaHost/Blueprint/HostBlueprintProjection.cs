@@ -15,6 +15,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal long CommitOrder, TotalLayerCount, TotalConstructionLayerCount, WindowGeneration;
         internal IReadOnlyList<BlueprintProjectionSourceRange> SourceRanges;
         internal IReadOnlyList<BlueprintProjectionSourceRange> MatchRanges;
+        internal BlueprintProjectionQualificationReceipt Qualification;
+        internal BlueprintProjectionMask QualificationRequestedMask;
+        internal long QualificationRequestedRevision=-1;
         internal BlueprintProjectionMatchState Match;
         internal BlueprintProjectionMask Mask = BlueprintProjectionMask.Empty;
         internal BlueprintProjectionWindow Window;
@@ -26,7 +29,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool HasRequestedWindow, Positioned, Opened, WindowPending, WindowBudgetBlocked;
         internal BlueprintProjectionPlacement Copy()
         {
-            var copy = new BlueprintProjectionPlacement { Identity = Identity, Summary = Summary, Name = Name, OriginX = OriginX, OriginY = OriginY, CommitOrder = CommitOrder, TotalLayerCount = TotalLayerCount, TotalConstructionLayerCount = TotalConstructionLayerCount, Mask = Mask, Window = Window, Opened = Opened, Positioned = Positioned, Coverage = Coverage, CoreSize = CoreSize, SourceRanges = SourceRanges, MatchRanges = MatchRanges };
+            var copy = new BlueprintProjectionPlacement { Identity = Identity, Summary = Summary, Name = Name, OriginX = OriginX, OriginY = OriginY, CommitOrder = CommitOrder, TotalLayerCount = TotalLayerCount, TotalConstructionLayerCount = TotalConstructionLayerCount, Mask = Mask, Window = Window, Opened = Opened, Positioned = Positioned, Coverage = Coverage, CoreSize = CoreSize, SourceRanges = SourceRanges, MatchRanges = MatchRanges,
+                Qualification=Qualification,QualificationRequestedMask=QualificationRequestedMask,QualificationRequestedRevision=QualificationRequestedRevision };
             foreach (var pair in Windows) copy.Windows.Add(pair.Key, pair.Value); return copy;
         }
         internal JueMingR.Features.Blueprint.BlueprintProjectionPlacement Snapshot()
@@ -189,6 +193,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 if (receipt.Kind == BlueprintProjectionReceiptKind.Opened)
                 {
+                    ReleaseProjectionMatch(item);item.Qualification=null;item.QualificationRequestedMask=null;item.QualificationRequestedRevision=-1;
                     item.Summary = receipt.Summary; item.TotalLayerCount = receipt.TotalLayerCount; item.TotalConstructionLayerCount = receipt.TotalConstructionLayerCount; item.SourceRanges = receipt.SourceRanges; item.MatchRanges = receipt.MatchRanges; item.Opened = true;
                     if (restoreProjection?.Identity.Equals(receipt.Identity) == true)
                     {
@@ -196,6 +201,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                         // source validation current, but reserve its command
                         // budget for the visible copy until actual cancellation.
                         restoreProjection.Opened = true;
+                        ReleaseProjectionMatch(restoreProjection);restoreProjection.Qualification=null;restoreProjection.QualificationRequestedMask=null;restoreProjection.QualificationRequestedRevision=-1;
                         restoreProjection.SourceRanges = receipt.SourceRanges;
                         restoreProjection.MatchRanges = receipt.MatchRanges;
                     }

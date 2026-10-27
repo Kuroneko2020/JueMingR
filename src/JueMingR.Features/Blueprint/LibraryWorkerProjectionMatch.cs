@@ -10,7 +10,7 @@ namespace JueMingR.Features.Blueprint
         private sealed class ProjectionSourceRequest
         {
             internal BlueprintProjectionIdentity Identity;
-            internal long Generation, Serial;
+            internal long Generation, Serial, CapabilityRevision;
             internal BlueprintProjectionSourceDemand[] Demands;
         }
         private sealed class ProjectionSourceBuild
@@ -55,9 +55,9 @@ namespace JueMingR.Features.Blueprint
         }
 #endif
 
-        internal bool RequestProjectionSource(BlueprintProjectionIdentity identity, long generation, int range, int objectId, int offset)
-        { return RequestProjectionSources(identity, generation, new[] { new BlueprintProjectionSourceDemand(range, objectId, offset) }); }
-        internal bool RequestProjectionSources(BlueprintProjectionIdentity identity, long generation, IReadOnlyList<BlueprintProjectionSourceDemand> demands)
+        internal bool RequestProjectionSource(BlueprintProjectionIdentity identity, long generation, int range, int objectId, int offset, long capabilityRevision = 0)
+        { return RequestProjectionSources(identity, generation, new[] { new BlueprintProjectionSourceDemand(range, objectId, offset) }, capabilityRevision); }
+        internal bool RequestProjectionSources(BlueprintProjectionIdentity identity, long generation, IReadOnlyList<BlueprintProjectionSourceDemand> demands, long capabilityRevision = 0)
         {
             if (identity == null) throw new ArgumentNullException(nameof(identity));
             if (demands == null) throw new ArgumentNullException(nameof(demands));
@@ -67,9 +67,11 @@ namespace JueMingR.Features.Blueprint
             lock (gate)
             {
                 if (stopping || !projectionReferences.ContainsKey(identity) || projectionSourceSerials.ContainsKey(identity) ||
-                    projectionRequests.Count + projectionSourceRequests.Count + (projectionActiveRequest == null ? 0 : 1) + (projectionSourceActive == null ? 0 : 1) >= ProjectionRequestLimit ||
-                    projectionReceipts.Count + projectionSourceReceipts.Count + projectionFailures.Count >= ProjectionRequestLimit) return false;
-                var request = new ProjectionSourceRequest { Identity = identity, Generation = generation, Demands = owned, Serial = ++projectionSourceSerial };
+                    projectionRequests.Count + projectionSourceRequests.Count + projectionQualificationRequests.Count + (projectionActiveRequest == null ? 0 : 1) + (projectionSourceActive == null ? 0 : 1) + (projectionQualifying == null ? 0 : 1) >= ProjectionRequestLimit ||
+                    projectionReceipts.Count + projectionSourceReceipts.Count + projectionQualificationReceipts.Count + projectionFailures.Count >= ProjectionRequestLimit) return false;
+                ProjectionOwner owner;
+                if (capabilityRevision != 0 && (!projectionOwners.TryGetValue(identity.TemplateKey, out owner) || owner.QualificationCatalog?.Revision != capabilityRevision || owner.RequestedQualificationCatalog?.Revision != capabilityRevision)) return false;
+                var request = new ProjectionSourceRequest { Identity = identity, Generation = generation, Demands = owned, Serial = ++projectionSourceSerial, CapabilityRevision = capabilityRevision };
 #if DEBUG
                 Interlocked.Increment(ref projectionSourceRequestsAccepted);
 #endif
@@ -102,7 +104,8 @@ namespace JueMingR.Features.Blueprint
             lock (gate)
             {
                 long serial;
-                return !stopping && projectionReferences.ContainsKey(request.Identity) && projectionSourceSerials.TryGetValue(request.Identity, out serial) && serial == request.Serial && ProjectionCurrent(owner);
+                return !stopping && projectionReferences.ContainsKey(request.Identity) && projectionSourceSerials.TryGetValue(request.Identity, out serial) && serial == request.Serial && ProjectionCurrent(owner) &&
+                    (request.CapabilityRevision == 0 || owner.QualificationCatalog?.Revision == request.CapabilityRevision && owner.RequestedQualificationCatalog?.Revision == request.CapabilityRevision);
             }
         }
         private void CheckProjectionSource(ProjectionOwner owner, ProjectionSourceRequest request)
@@ -184,8 +187,9 @@ namespace JueMingR.Features.Blueprint
                 foreach (var demand in request.Demands)
                 {
                     CheckProjectionSource(owner, request);
-                    if (demand.Range < 0 || demand.Range >= owner.MatchRanges.Count) throw new InvalidDataException("blueprint-source-range");
-                    var range = owner.MatchRanges[demand.Range];
+                    var matchRanges = request.CapabilityRevision == 0 ? (IReadOnlyList<BlueprintProjectionSourceRange>)owner.MatchRanges : owner.QualificationMatchRanges;
+                    if (demand.Range < 0 || demand.Range >= matchRanges.Count) throw new InvalidDataException("blueprint-source-range");
+                    var range = matchRanges[demand.Range];
                     bool tileOnly = demand.ObjectId == 0 && range.ObjectId > 0;
                     int objectId = tileOnly ? range.ObjectId : demand.ObjectId;
                     var key = objectId == 0 ? Tuple.Create(range.Block, 0, demand.Offset) : Tuple.Create(-1L, objectId, tileOnly ? 1 : 2);
@@ -300,7 +304,7 @@ namespace JueMingR.Features.Blueprint
                 var parts = new BlueprintProjectionSourcePart[plans.Count];
                 for (int i = 0; i < parts.Length; i++)
                 { var plan = plans[i]; parts[i] = new BlueprintProjectionSourcePart(plan.Demand, plan.LogicalObjectId, plan.Build.Window, plan.Build.NextOffset, true); }
-                var receipt = new BlueprintProjectionSourceReceipt(request.Identity, request.Generation, parts);
+                var receipt = new BlueprintProjectionSourceReceipt(request.Identity, request.Generation, parts, capabilityRevision: request.CapabilityRevision);
                 UpdateProjectionSourceWorkingBytes(working + BlueprintProjectionSourceReceipt.DirectoryBytes + parts.LongLength * BlueprintProjectionSourcePart.DescriptorBytes);
                 if (receipt.EstimatedBytes > BlueprintProjectionSourceReceipt.MaximumEstimatedBytes) throw new InvalidDataException("blueprint-projection-window-budget");
                 while (true)
@@ -312,7 +316,7 @@ namespace JueMingR.Features.Blueprint
                         // Test the exact serial again under the publication lock
                         // so an old read cannot erase or publish over its heir.
                         CheckProjectionSource(owner, request);
-                        if (projectionReceipts.Count + projectionSourceReceipts.Count < ProjectionRequestLimit && projectionReceiptBytes + receipt.EstimatedBytes <= BlueprintProjectionSourceReceipt.MaximumEstimatedBytes)
+                        if (projectionReceipts.Count + projectionSourceReceipts.Count + projectionQualificationReceipts.Count < ProjectionRequestLimit && projectionReceiptBytes + receipt.EstimatedBytes <= BlueprintProjectionSourceReceipt.MaximumEstimatedBytes)
                         {
                             projectionSourceReceipts.Enqueue(receipt); ChargeProjectionSourceReceipt(receipt.EstimatedBytes); projectionSourceSerials.Remove(request.Identity);
 #if DEBUG

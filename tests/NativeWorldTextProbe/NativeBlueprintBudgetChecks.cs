@@ -28,6 +28,7 @@ namespace NativeWorldTextProbe
                 AdmissionFailureAtomicity(host, library);
                 CompactSemantics();
                 AdmissionScanContinuation(context,host,input,library);
+                NativeBlueprintQualificationPriorityChecks.Run(context,host,input,library);
                 NarrowStrips(context, host, input, library);
                 EmptyCompletion(host, input, library);
                 Pressure(context, host, input, library, false);
@@ -422,19 +423,30 @@ namespace NativeWorldTextProbe
             finally{Call(host,"ClearProjection");}
         }
         private static object pointAdmissionHost,pointAdmissionTarget;
-        private static long pointAdmissionStart,pointAdmissionUnserved;
+        private static long pointAdmissionStart,pointAdmissionUnserved,pointQualificationStart,pointQualificationServices;
+        private static bool pointAdmissionReady;
+        private static void ObservePointQualification(object __instance,object item)
+        {
+            if(pointAdmissionReady || !ReferenceEquals(__instance,pointAdmissionHost) || !ReferenceEquals(item,pointAdmissionTarget) ||
+                GetOptional(item,"Match")==null || !(bool)Call(__instance,"ProjectionQualificationCurrent",item))return;
+            pointAdmissionReady=true;pointAdmissionStart=(long)Get(__instance,"ProjectionMatchOrdinaryServices");
+            pointQualificationServices=pointAdmissionStart-pointQualificationStart;
+        }
         private static void ObservePointAdmission(object __instance,bool __result)
         {
-            if(!__result || !ReferenceEquals(__instance,pointAdmissionHost))return;
+            if(!__result || !pointAdmissionReady || !ReferenceEquals(__instance,pointAdmissionHost))return;
             var state=GetOptional(pointAdmissionTarget,"Match");
-            if(state==null || (long)Get(state,"SourceRequests")==0)
+            if(state!=null && (long)Get(state,"SourceRequests")==0)
                 pointAdmissionUnserved=Math.Max(pointAdmissionUnserved,(long)Get(__instance,"ProjectionMatchOrdinaryServices")-pointAdmissionStart);
         }
         private static void AwaitPointMovable(object context,object host,object target,int instances)
         {
             var observer=new HarmonyLib.Harmony("JueMingR.Tests.Blueprint.PointSourceAdmission");
             pointAdmissionHost=host;pointAdmissionTarget=target;
-            pointAdmissionStart=(long)Get(host,"ProjectionMatchOrdinaryServices");pointAdmissionUnserved=0;
+            pointQualificationStart=(long)Get(host,"ProjectionMatchOrdinaryServices");pointAdmissionStart=pointQualificationStart;
+            pointAdmissionUnserved=pointQualificationServices=0;pointAdmissionReady=false;
+            ObservePointQualification(host,target);
+            observer.Patch(host.GetType().GetMethod("EnsureProjectionMatch",Flags),postfix:new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintBudgetChecks),nameof(ObservePointQualification)));
             observer.Patch(host.GetType().GetMethod("StartProjectionMatchRead",Flags),postfix:new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintBudgetChecks),nameof(ObservePointAdmission)));
             Exception failure=null;
             try{NativeBlueprintWorldMatchChecks.AwaitMovable(context,host,target);}catch(Exception error){failure=error;}
@@ -442,14 +454,16 @@ namespace NativeWorldTextProbe
             // These literal pressure assets have 2048 ordinary cells per
             // range. Four already occupied work slots need at most 4*8 actual
             // 256-cell services to free a source admission. Pending I/O gives
-            // no service credit. A point priority must then be supplied; it
-            // cannot wait for all preceding whole templates to finish.
+            // no service credit. A qualification-pending owner has no Match
+            // range to admit, so record that separate phase without spending
+            // the ready-slot bound. The one original click is never repeated.
+            Require(pointAdmissionReady,"point target actually reaches current qualification and Match before admission is evaluated");
             Require(pointAdmissionUnserved<=32,"point priority source admission is not skipped after a finite ready-slot round: actual ordinary services before any accepted target request="+pointAdmissionUnserved);
             if(failure!=null)System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
             var state=Get(target,"Match");int ranges=((Array)Get(state,"Ranges")).Length;
             Require((long)Get(state,"WorldReads")==16384 && (long)Get(state,"SourceRequests")==ranges && (long)Get(state,"SourceArrivals")==ranges,
                 "point identity obtains each real ordinary source range once and samples all 16384 target cells while its siblings remain incomplete");
-            Console.WriteLine("PASS Blueprint point source priority instances="+instances+" actualOrdinaryServicesBeforeFirstRequest="+pointAdmissionUnserved+" ownAcceptedRequests="+Get(state,"SourceRequests")+" ownArrivals="+Get(state,"SourceArrivals")+" ownWorldReads="+Get(state,"WorldReads")+" ranges="+ranges+" sourceWaitingNotCounted=true unchangedWaitGuard=true");
+            Console.WriteLine("PASS Blueprint point source priority instances="+instances+" qualificationPendingOrdinaryServices="+pointQualificationServices+" readyOrdinaryServicesBeforeFirstRequest="+pointAdmissionUnserved+" ownAcceptedRequests="+Get(state,"SourceRequests")+" ownArrivals="+Get(state,"SourceArrivals")+" ownWorldReads="+Get(state,"WorldReads")+" ranges="+ranges+" sourceWaitingNotCounted=true unchangedWaitGuard=true");
         }
         private static void EmptyCompletion(object host, object input, LibraryState library)
         {

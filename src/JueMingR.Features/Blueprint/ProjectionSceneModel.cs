@@ -27,6 +27,9 @@ namespace JueMingR.Features.Blueprint
         internal BlueprintProjectionMask(Dictionary<long, ushort> cells, HashSet<int> objects, long removed, long removedConstruction = 0)
         { this.cells = cells; this.objects = objects; RemovedLayerCount = removed; RemovedConstructionLayerCount = removedConstruction; }
         public long RemovedLayerCount { get; }
+        // Legacy non-liquid accounting for raw overlap receipts only. Producer
+        // qualification can change without changing this permanent raw mask;
+        // effective construction counts come from its catalog-bound receipt.
         public long RemovedConstructionLayerCount { get; }
         public int CellCount { get { return cells.Count; } }
         public int ObjectCount { get { return objects.Count; } }

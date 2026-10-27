@@ -149,7 +149,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void ClearBuildProgressSignals()
         {
             buildSupply.Clear(); buildNextSupply.Clear(); buildSupplyInventory = null;
-            buildEligible = false;
+            buildEligible = false;buildNearTickSet=false;
         }
     }
 }

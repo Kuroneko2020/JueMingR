@@ -40,6 +40,11 @@ namespace NativeWorldTextProbe
                     Layers = CaptureLayer.Tile, TileType = i == 2 ? TileID.Stone : TileID.Dirt }).ToArray();
                 smaller = Place(context, host, input, Asset(host, small), 74, 42);
             }
+            // Commit completion does not imply that the new bounded catalog
+            // qualification has published Match. Stop at its first presence,
+            // retaining the cold arm's incomplete world/source proof below.
+            NativeQuickItemChecks.Until(()=>{Step(context,input);return (bool)Call(host,"ProjectionQualificationCurrent",instance) && GetOptional(instance,"Match")!=null &&
+                (smaller==null || (bool)Call(host,"ProjectionQualificationCurrent",smaller) && GetOptional(smaller,"Match")!=null);});
             var ranges = EligibilityRanges(instance).Concat(smaller == null ? Array.Empty<object>() : EligibilityRanges(smaller)).ToArray();
             Require(ranges.Length == (shared ? 2 : 1), "independent sparse records really occupy the intended ordinary logical ranges");
             if (warm) NativeQuickItemChecks.Until(() => { Step(context, input); return ranges.All(r => (bool)Get(r, "Current")); });

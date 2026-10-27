@@ -284,15 +284,19 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void EnsureProjectionMatch(BlueprintProjectionPlacement item)
         {
-            if (!item.Opened || item.SourceRanges == null || item.MatchRanges == null || item.Summary == null) return;
+            EnsureProjectionQualification(item);
+            if (!item.Opened || !ProjectionQualificationCurrent(item) || item.MatchRanges == null || item.Summary == null) return;
+            var qualifiedSources=item.Qualification.SourceRanges;
             var state = item.Match;
             if (state != null && ReferenceEquals(state.Mask, item.Mask) && state.OriginX == item.OriginX && state.OriginY == item.OriginY) return;
-            ReleaseProjectionMatch(item);
-            state = new BlueprintProjectionMatchState { Mask = item.Mask, OriginX = item.OriginX, OriginY = item.OriginY, Ranges = new BlueprintProjectionMatchRange[item.MatchRanges.Count], Groups=new BlueprintProjectionMatchGroup[item.SourceRanges.Count], ViewDirty = true };
+            // Initial Match creation is not cancellation of this same owner's
+            // earlier Checking request. A replaced proof still retires normally.
+            if(state!=null)ReleaseProjectionMatch(item);
+            state = new BlueprintProjectionMatchState { Mask = item.Mask, OriginX = item.OriginX, OriginY = item.OriginY, Ranges = new BlueprintProjectionMatchRange[item.MatchRanges.Count], Groups=new BlueprintProjectionMatchGroup[qualifiedSources.Count], ViewDirty = true };
             state.View = new ReadOnlyDictionary<long, BlueprintWorldMatchResult>(state.Visible);
             item.Match = state;
             InitializeMaterialMatch(item);
-            for(int i=0;i<state.Groups.Length;i++)state.Groups[i]=new BlueprintProjectionMatchGroup{Owner=item,Source=item.SourceRanges[i],Watch=++projectionMatchWatch};
+            for(int i=0;i<state.Groups.Length;i++)state.Groups[i]=new BlueprintProjectionMatchGroup{Owner=item,Source=qualifiedSources[i],Watch=++projectionMatchWatch};
             for (int i = 0; i < state.Ranges.Length; i++)
             {
                 var source = item.MatchRanges[i];var group=state.Groups[source.ObservationGroup];
@@ -307,7 +311,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var source=group.Source;var bounds=source.Bounds;projectionMatchWatches.Add(group.Watch,group);
                 int originX = item.OriginX, originY = item.OriginY;
                 projectionChanges.Watch(group.Watch, new BlueprintProjectionBounds(checked(originX + bounds.Left), checked(originY + bounds.Top), bounds.Width, bounds.Height),
-                    // Main Match ignores display-only liquid. BuildSupport and
+                    // This geometry already contains only required target
+                    // layers. BuildSupport and
                     // material cross-layer callbacks retain their own interests:
                     // real water/lava can still revoke placement qualification.
                     (changed, layers) => source.IntersectsProofs(new BlueprintProjectionBounds(changed.Left - originX, changed.Top - originY, changed.Width, changed.Height), BlueprintConstructionTargets.FilterBits(layers), state.Mask), BlueprintConstructionTargets.FilterBits(source.TargetBits),
@@ -397,6 +402,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 projectionMatchTiles = Terraria.Main.tile; projectionMatchSections = Terraria.Main.sectionManager;
                 projectionMatchSource = new BlueprintWorldMatchSource(() => HasSession);
             }
+            TakeProjectionQualifications();
             foreach (var item in projectionScene) EnsureProjectionMatch(item);
             DrainProjectionChanges(); TakeProjectionMatchSources();
             // A transport can contain several independent logical proofs.
@@ -459,7 +465,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(demands.Count==0)continue;
                 var work=new BlueprintProjectionMatchWork{Owner=item,SceneIndex=index,Token=++projectionMatchToken,Pending=true};
                 bool reused=ReuseBuildSources(item,demands,work);
-                if(!reused && !Library.RequestProjectionSources(item.Identity,work.Token,demands))continue;
+                if(!reused && !Library.RequestProjectionSources(item.Identity,work.Token,demands,MaterialCatalog.Revision))continue;
                 if(reused)work.Pending=false;
                 foreach(var demand in demands)work.Requested.Add(demand.Range);
                 projectionMatchWork.Add(item.Identity,work);admissions--;
@@ -557,7 +563,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             while (remaining-->0 && Library.TryTakeProjectionSource(out receipt))
             {
                 BlueprintProjectionMatchWork work;
-                if(!projectionMatchWork.TryGetValue(receipt.Identity,out work) || !work.Pending || receipt.Generation!=work.Token || !projectionScene.Contains(work.Owner) || work.Owner.Match==null)continue;
+                if(!projectionMatchWork.TryGetValue(receipt.Identity,out work) || !work.Pending || receipt.Generation!=work.Token || !projectionScene.Contains(work.Owner) || work.Owner.Match==null ||
+                    !ProjectionQualificationCurrent(work.Owner) || receipt.CapabilityRevision!=work.Owner.Qualification.CapabilityRevision)continue;
                 work.Pending=false;
                 foreach(var part in receipt.Parts)
                 {
@@ -611,13 +618,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // Each logical Match part still owns exactly its old layers.
                 if (read.Batch.LogicalObjectId > 0) cell.Layers &= CaptureLayer.Tile;
                 else if (cell.ObjectId > 0) cell = cell.WithoutTile();
-                cell = BlueprintConstructionTargets.Filter(cell);
+                CaptureObject? qualificationObject=read.Batch.LogicalObjectId>0 && read.Batch.Window.Objects.Count==1?read.Batch.Window.Objects[0]:(CaptureObject?)null;
+                var selection=SelectProjectionTarget(read.Owner,cell,qualificationObject);
+                cell=selection.Apply(cell);
                 // Permanent erasure is resolved from immutable source data.
                 // A cell with no effective target has no world dependency and
                 // must not spend observation reads on its old raw layers.
                 if (!cell.HasContent) { read.CellIndex++; continue; }
                 BlueprintWorldMatchState objectState = BlueprintWorldMatchState.Unknown;
-                if ((cell.Layers & CaptureLayer.Tile) != 0 && cell.ObjectId > 0 && !read.Objects.TryGetValue(cell.ObjectId, out objectState))
+                if ((cell.Layers & CaptureLayer.Tile) != 0 && (selection.UnknownBits&1)==0 && cell.ObjectId > 0 && !read.Objects.TryGetValue(cell.ObjectId, out objectState))
                 {
                     if (read.ObjectId == 0) read.ObjectId = cell.ObjectId;
                     if (!AdvanceProjectionMatchObject(read, ref reads)) return;
@@ -625,7 +634,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 BlueprintWorldMatchResult result;
                 BlueprintWorldMatchSample materialSample = default(BlueprintWorldMatchSample);
-                if(cell.ObjectId>0 && cell.Layers==CaptureLayer.Tile)
+                if(BlueprintConstructionTargets.Layers(cell)==selection.UnknownBits)
+                    result=new BlueprintWorldMatchResult(selection.RequiredBits,0,0,selection.UnknownBits);
+                else if(cell.ObjectId>0 && cell.Layers==CaptureLayer.Tile)
                 {
                     // The complete object decides Tile semantics once; each
                     // effective member is then counted by the bounded source
@@ -638,7 +649,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     if (reads == 0) return;
                     var sample = ReadProjectionWorld(read.Owner.OriginX + cell.X, read.Owner.OriginY + cell.Y); reads--;
                     materialSample = sample;
-                    result=BlueprintWorldMatchComparer.CompareCell(cell,sample,objectState);
+                    result=BlueprintWorldMatchComparer.CompareCell(cell,sample,selection,objectState);
                 }
                 SampleMaterialObjectCell(read, cell);
                 SampleMaterialCell(read, cell, materialSample);
@@ -799,7 +810,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private BlueprintProjectionMoveEligibility ReadProjectionMoveEligibility(BlueprintProjectionPlacement item)
         {
-            var state = item.Match; if (state == null || state.Ranges.Length == 0) return BlueprintProjectionMoveEligibility.Checking;
+            var state = item.Match; if (state == null || !ProjectionQualificationCurrent(item)) return BlueprintProjectionMoveEligibility.Checking;
+            if(item.Qualification.EffectiveUnknownLayerCount>0)return BlueprintProjectionMoveEligibility.Checking;
+            if(item.Qualification.EffectiveRequiredLayerCount==0)return BlueprintProjectionMoveEligibility.Movable;
             bool unknown = false;
             foreach (var range in state.Ranges)
             {
@@ -807,7 +820,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (range.Matches > 0) return BlueprintProjectionMoveEligibility.Matched;
                 if (range.Unknown > 0) unknown = true;
             }
-            return unknown || state.Targets != item.TotalConstructionLayerCount - item.Mask.RemovedConstructionLayerCount ? BlueprintProjectionMoveEligibility.Checking : BlueprintProjectionMoveEligibility.Movable;
+            return unknown || state.Targets != item.Qualification.EffectiveRequiredLayerCount ? BlueprintProjectionMoveEligibility.Checking : BlueprintProjectionMoveEligibility.Movable;
         }
         private bool CheckProjectionMove(BlueprintProjectionPlacement item)
         {
@@ -825,6 +838,14 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool TryRunProjectionMovable(BlueprintProjectionPlacement item, Action action)
         {
             if (ProjectionMoveEligibility(item) != BlueprintProjectionMoveEligibility.Movable) return false;
+            if(item.Qualification.EffectiveRequiredLayerCount==0)
+            {
+                // No world dependency exists for a qualified display instance.
+                // Recheck its exact identity/mask/catalog, never index a missing range.
+                var qualification=item.Qualification;
+                if(!ReferenceEquals(item.Qualification,qualification) || !ProjectionQualificationCurrent(item))return false;
+                action();return true;
+            }
             var last = item.Match.Ranges[item.Match.Ranges.Length - 1]; bool applied = false;
             projectionChanges.TryRunStable(last.Watch, last.Group.NativeStamp, () => { if (ProjectionMoveEligibility(item) == BlueprintProjectionMoveEligibility.Movable) { action(); applied = true; } });
             return applied;
@@ -838,15 +859,15 @@ namespace JueMingR.TerrariaHost.Blueprint
             foreach (var item in new List<BlueprintProjectionPlacement>(projectionScene))
             {
                 var state = item.Match;
-                if (ReferenceEquals(item, restoreProjection) || BuildBlocksRetirement(item) || state == null || state.Ranges.Length == 0 ||
+                if (ReferenceEquals(item, restoreProjection) || BuildBlocksRetirement(item) || state == null || state.Ranges.Length == 0 || !ProjectionQualificationCurrent(item) || item.Qualification.EffectiveUnknownLayerCount!=0 ||
                     state.Current != state.Ranges.Length || state.Unknown != 0 || state.Targets <= 0 ||
-                    state.Targets != item.TotalConstructionLayerCount - item.Mask.RemovedConstructionLayerCount || state.Matches != state.Targets) continue;
+                    state.Targets != item.Qualification.EffectiveRequiredLayerCount || state.Matches != state.Targets) continue;
                 var identity = item.Identity;
                 var last = state.Ranges[state.Ranges.Length - 1];
                 projectionChanges.TryRunStable(last.Watch, last.Group.NativeStamp, () =>
                 {
                     if (!HasSession || BuildBlocksRetirement(item) || identity.SessionGeneration != generation || !item.Identity.Equals(identity) || !projectionScene.Contains(item) || !ReferenceEquals(item.Match, state) || !ReferenceEquals(state.Mask, item.Mask) || state.OriginX != item.OriginX || state.OriginY != item.OriginY) return;
-                    if (state.Current != state.Ranges.Length || state.Unknown != 0 || state.Targets <= 0 || state.Targets != item.TotalConstructionLayerCount - item.Mask.RemovedConstructionLayerCount || state.Matches != state.Targets) return;
+                    if (!ProjectionQualificationCurrent(item) || item.Qualification.EffectiveUnknownLayerCount!=0 || state.Current != state.Ranges.Length || state.Unknown != 0 || state.Targets <= 0 || state.Targets != item.Qualification.EffectiveRequiredLayerCount || state.Matches != state.Targets) return;
                     // Complete proofs stay current via synchronous observer
                     // invalidation/witness maintenance. Recheck every scope
                     // under this one lock, rather than reading the template a

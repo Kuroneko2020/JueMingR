@@ -376,7 +376,7 @@ namespace JueMingR.Features.Blueprint
                     if (materials != null)
                     {
                         CaptureCell effective = materialKey.Excluded(cell.ObjectId, cell.UnreliableObject) ? cell.WithoutTile() : cell;
-                        if (effective.HasContent) BlueprintMaterialSteps.StaticCell(effective, catalog, materials);
+                        if (effective.HasContent) BlueprintMaterialSteps.StaticCell(effective, catalog, materials, effective.ObjectId > 0 ? (CaptureObject?)objects.Find(effective.ObjectId) : null);
                     }
                     if ((i & 31) == 31) yield return true;
                 }

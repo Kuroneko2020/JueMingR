@@ -20,7 +20,7 @@ namespace NativeWorldTextProbe
         private const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
         private static object faultTools;
         private static bool reportedNativeFault;
-        internal static void Run(object context)
+        internal static void Run(object context, bool throughputOnly=false)
         {
             var host = Get(context, "Blueprint"); var tools = Get(context, "Tools"); var input = Get(context, "Input");
             NativeToolExecutionChecks.Initialize(context, null);
@@ -51,6 +51,10 @@ namespace NativeWorldTextProbe
                         try { body(); Console.WriteLine("PASS BlueprintBuild case=" + name); }
                         catch (Exception error) { Console.Error.WriteLine("BUILD CASE " + name + ": " + error); if (first == null) first = error; }
                     };
+                    check("sustained native throughput", () => SustainedNativeThroughput(context,host,tools,input));
+                    check("pending build input is neutral", () => PendingBuildInput(context,host,tools,input));
+                    if(!throughputOnly)
+                    {
                     check("missing material fairness", () => MissingMaterialFairness(context, host, tools, input));
                     check("continuous movement candidate fairness", () => ContinuousCandidateProgress(context, host, tools, input, true, false, false));
                     check("continuous unrelated inventory fairness", () => ContinuousCandidateProgress(context, host, tools, input, false, true, false));
@@ -109,9 +113,11 @@ namespace NativeWorldTextProbe
                     check("edit mask deletion and session", () => ProjectionLifecycle(context, host, tools, input));
                     check("background and manual protection", () => BackgroundAndManualProtection(context, host, tools, input));
                     check("native network", () => NetworkProgress(context, host, tools, input));
+                    }
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                 }
-                Console.WriteLine("PASS BlueprintBuild production natural Player.Update/ItemCheck: real block/wall/chair material consumption, precise style/direction, first-missing fairness, supplement, distance/support resume, stop/restart, manual selection, complete current match retirement. Ordinary startup/real multiplayer/GPU/FPS NOT_RUN.");
+                Console.WriteLine(throughputOnly?"PASS BlueprintBuildThroughput production natural Player.Update/ItemCheck: complete paired block/wall/platform consumption sequences, nearby sparse prefix/local reentry and neutral Pending. Full build siblings/ordinary startup/real multiplayer/GPU/FPS NOT_RUN.":
+                    "PASS BlueprintBuild production natural Player.Update/ItemCheck: real block/wall/chair material consumption, precise style/direction, first-missing fairness, supplement, distance/support resume, stop/restart, manual selection, complete current match retirement. Ordinary startup/real multiplayer/GPU/FPS NOT_RUN.");
             }
             finally
             {

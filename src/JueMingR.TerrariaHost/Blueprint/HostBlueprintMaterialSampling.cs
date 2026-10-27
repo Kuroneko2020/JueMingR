@@ -26,6 +26,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 value.Progress = new BlueprintMaterialAccumulator(); value.CatalogRevision = catalog.Revision;
             }
             read.MaterialCatalog = catalog; read.Materials = value.Progress;
+            if(read.Owner.Summary.TargetVersion!=catalog.TargetVersion)read.Materials.Unresolved("此蓝图版本的施工内容尚未确认");
             RetainBuildSource(read);
         }
         private void SampleMaterialCell(BlueprintProjectionMatchRead read, CaptureCell target, BlueprintWorldMatchSample sample)
@@ -34,7 +35,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Complete-object Tile and member appearance belong to the object
             // proof below. A coincident wall/wire/actuator keeps its own cell.
             var context = MaterialSourceTarget(read, read.CellIndex);
-            bool objectForeground = context.ObjectId > 0 && (context.Layers & CaptureLayer.Tile) != 0;
+            bool objectForeground = context.ObjectId > 0 && (context.Layers & CaptureLayer.Tile) != 0 &&
+                read.MaterialCatalog.QualifyTile(context).Disposition==BlueprintTargetDisposition.Construction;
             // Even an unselected/masked foreground can block the native wall
             // scraper. Its later removal must release that Unknown result.
             read.MaterialCrossLayerSeen |= (context.Layers & CaptureLayer.Wall) != 0;
@@ -79,7 +81,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             // foreground restoration; a different saved wing is not that wall.
             if (target.X + read.Owner.OriginX != sample.Cell.X || target.Y + read.Owner.OriginY != sample.Cell.Y)
                 target.Layers &= ~CaptureLayer.Wall;
-            BlueprintMaterialSteps.ObjectMemberAppearance(target, sample, read.MaterialCatalog, read.MaterialObjectAppearance);
+            BlueprintMaterialSteps.ObjectMemberAppearance(target, sample, read.MaterialCatalog, read.MaterialObjectAppearance,
+                read.ObjectTargets.Objects.Count==1?read.ObjectTargets.Objects[0]:(CaptureObject?)null);
         }
         private static CaptureCell MaterialSourceTarget(BlueprintProjectionMatchRead read, int index)
         {
@@ -96,7 +99,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintBodyState body = read.MaterialObjectProof?.Complete() ?? BlueprintBodyState.Unknown;
             read.MaterialObjectBodies[read.ObjectId] = body;
             var first = read.ObjectTargets.Cells[0];
-            BlueprintMaterialSteps.ObjectBody(body, first, read.MaterialCatalog, read.Materials);
+            BlueprintMaterialSteps.ObjectBody(body, first, read.MaterialCatalog, read.Materials,
+                read.ObjectTargets.Objects.Count==1?read.ObjectTargets.Objects[0]:(CaptureObject?)null);
             if (body == BlueprintBodyState.Same && read.MaterialObjectAppearance != null)
             {
                 // At most the locked paint/coating identities (31 + 2) occur
@@ -113,7 +117,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!read.MaterialObjectBodies.TryGetValue(cell.ObjectId, out body) || body == BlueprintBodyState.Unknown) { read.Materials.Unresolved("对象尚未完整确认"); return; }
             if (body == BlueprintBodyState.Same) return;
             cell.Layers = CaptureLayer.Tile;
-            BlueprintMaterialSteps.RequiredSteps(cell, new BlueprintWorldMatchSample(true, new CaptureCell()), read.MaterialCatalog, read.Materials, body);
+            BlueprintMaterialSteps.RequiredSteps(cell, new BlueprintWorldMatchSample(true, new CaptureCell()), read.MaterialCatalog, read.Materials, body,
+                obj:read.Batch.Window.Objects.Count==1?read.Batch.Window.Objects[0]:(CaptureObject?)null);
         }
         private void CompleteMaterialSample(BlueprintProjectionMatchRead read)
         {
@@ -254,7 +259,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (target == null || !HasSession || MaterialBuildDemand?.Invoke() != true || ProjectionEditing || ProjectionCaptureBlocked ||
                 target.Identity.SessionGeneration != generation || target.PlacementRevision != MaterialCatalog?.Revision) return false;
             var owner = target.Range?.Owner;
-            return owner != null && projectionScene.Contains(owner) && owner.Identity.Equals(target.Identity) && ReferenceEquals(owner.Mask, target.Mask) &&
+            return owner != null && ProjectionQualificationCurrent(owner) && owner.Summary.TargetVersion==MaterialCatalog.TargetVersion && projectionScene.Contains(owner) && owner.Identity.Equals(target.Identity) && ReferenceEquals(owner.Mask, target.Mask) &&
                 owner.OriginX == target.OriginX && owner.OriginY == target.OriginY && owner.Match != null && (target.LocalProof || target.Range.Current) &&
                 target.Range.Version == target.RangeStamp && ProjectionMatchReadCurrent(target.Range, target.Range.RawVersion);
         }
@@ -263,7 +268,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (target == null || target.Range?.Materials == null) return;
             var value = target.Range.Materials;
             if (!ReferenceEquals(value.Candidate, target)) return;
-            value.CandidateCursor = NextBuildSourceOrdinal(target.Ordinal, target.Cell, target.Body != null); value.Candidate = null;
+            if(!target.LocalPriority)value.CandidateCursor = NextBuildSourceOrdinal(target.Ordinal, target.Cell, target.Body != null);
+            value.Candidate = null;
         }
         internal void InvalidateBuildTargets(BlueprintProjectionIdentity identity = null)
         {

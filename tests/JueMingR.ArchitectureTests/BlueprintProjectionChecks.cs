@@ -24,6 +24,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "open fairness latest retirement and failure", () => Scheduling(Path.Combine(area, "scheduling")));
             Run(failures, "shared instances and atomic layer/object delta", () => Scene(Path.Combine(area, "scene")));
             Run(failures, "liquid display and construction denominators", () => LiquidDenominators(Path.Combine(area, "liquid-denominators")));
+            Run(failures, "qualified objects sibling masks and catalog revision", () => QualificationDenominators(Path.Combine(area, "qualification")));
             Run(failures, "overlap reader retirement rejects late delta", () => CommitRetirement(Path.Combine(area, "commit-retirement")));
             Run(failures, "shared request saturation and eventual progress", () => Saturation(Path.Combine(area, "saturation")));
             Run(failures, "last reference retirement during reader disposal", () => LastReferenceWake(Path.Combine(area, "last-reference-wake")));
@@ -42,6 +43,85 @@ namespace JueMingR.ArchitectureTests
         }
         private static void Run(IList<string> failures, string name, Action check) { try { check(); } catch (Exception e) { failures.Add("BlueprintProjection " + name + ": " + e); } }
         private static void Require(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
+        private static BlueprintProjectionQualificationReceipt Qualification(LibraryState state, BlueprintProjectionIdentity identity,
+            BlueprintPlacementCatalog catalog, BlueprintProjectionMask mask)
+        {
+            Require(state.RequestProjectionQualification(identity,catalog,mask),"finite immutable qualification demand admitted");
+            BlueprintProjectionQualificationReceipt receipt=null;Until(()=>state.TryTakeProjectionQualification(out receipt));
+            Require(receipt.Identity.Equals(identity) && ReferenceEquals(receipt.Catalog,catalog) && ReferenceEquals(receipt.Mask,mask) && receipt.CapabilityRevision==catalog.Revision,
+                "qualification receipt binds template/session/instance, catalog and exact mask reference");
+            return receipt;
+        }
+        private static void QualificationDenominators(string path)
+        {
+            var objects=new[]{
+                new CaptureObject{Id=1,Type=187,X=37,Y=91,Width=3,Height=2,Style=15,PlacementStyle=15,Reliable=true},
+                new CaptureObject{Id=2,Type=700,X=40,Y=91,Width=1,Height=1,Reliable=true},
+                new CaptureObject{Id=3,Type=624,X=40,Y=92,Width=1,Height=1,Reliable=true}};
+            Fixture fixture=Write(path,4,2,8,n=>
+            {
+                int x=(int)n%4,y=(int)n/4;var cell=new CaptureCell{X=37+x,Y=91+y,Layers=CaptureLayer.Tile,TileType=x==3?(ushort)(y==0?700:624):(ushort)187,ObjectId=x==3?y+2:1};
+                if(x<3){cell.FrameX=(short)(810+x*18);cell.FrameY=(short)(y*18);}
+                if(y==0 && x<2){cell.Layers|=CaptureLayer.Wall;cell.WallType=7;}
+                if(n==0){cell.Layers|=CaptureLayer.Wire|CaptureLayer.Actuator;cell.Wires=1;cell.Actuator=true;}
+                if(n==7){cell.Layers|=CaptureLayer.Liquid;cell.LiquidAmount=80;}
+                return cell;
+            },objects);
+            Fixture incoming=Write(path,1,1,1,n=>Tile(37,91));
+            Fixture wall=Write(path,1,1,1,n=>new CaptureCell{X=37,Y=91,Layers=CaptureLayer.Wall,WallType=7});
+            using(var counted=new CountedFiles(path))using(var state=new LibraryState(counted))
+            {
+                var identity=new BlueprintProjectionIdentity(fixture.Id,fixture.Revision,fixture.Hash,11,1);
+                Require(state.RequestProjectionOpen(identity),"display open remains independent of cold producer catalog");var opened=Await(state,BlueprintProjectionReceiptKind.Opened);
+                BlueprintProjectionQualificationReceipt pending;Require(opened.TotalLayerCount==13 && !state.TryTakeProjectionQualification(out pending),
+                    "original full display layers open before qualification instead of fabricating final zero targets");
+                var catalog=BlueprintQualificationChecks.Catalog();var qualified=Qualification(state,identity,catalog,BlueprintProjectionMask.Empty);
+                Require(qualified.TotalRequiredLayerCount==5 && qualified.EffectiveRequiredLayerCount==5 && qualified.EffectiveUnknownLayerCount==0 && qualified.MatchRanges.Count==2,
+                    "seven display-object Tile members disappear from construction only, replica and valid same-cell sibling layers retain five targets");
+                Require(!qualified.SourceRanges[0].IntersectsProofs(new BlueprintProjectionBounds(2,1,1,1),1,BlueprintProjectionMask.Empty) &&
+                    qualified.SourceRanges[0].IntersectsProofs(new BlueprintProjectionBounds(0,0,1,1),2,BlueprintProjectionMask.Empty),
+                    "natural object changes do not route construction proof invalidation; coincident valid walls still do");
+                Require(state.RequestProjectionSource(identity,9100,1,capabilityRevision:catalog.Revision),"qualified replica proof requests the derived range index");
+                BlueprintProjectionSourceReceipt source=null;Until(()=>state.TryTakeProjectionSource(out source));
+                Require(source.CapabilityRevision==catalog.Revision && source.Window.Objects.Single().Type==700 && source.Window.Cells.Count==1,
+                    "qualified source receipt retains original replica body and catalog identity");
+                var incomingId=Open(state,incoming,2);var incomingSummary=new CaptureSummary{Left=37,Top=91,Width=1,Height=1,ContentCount=1};
+                var previous=new BlueprintProjectionPlacement(identity,opened.Summary,100,100,1);
+                var covered=Commit(state,new BlueprintProjectionCommitRequest(11,9101,1,new BlueprintProjectionPlacement(incomingId,incomingSummary,100,100,2),new[]{previous}));
+                var mask=covered.Masks[1];var after=Qualification(state,identity,catalog,mask);
+                Require(mask.RemovedLayerCount==6 && after.EffectiveRequiredLayerCount==5 && ReferenceEquals(after.MatchRanges,qualified.MatchRanges),
+                    "covering one natural member removes the complete display object while construction count and shared derived geometry remain unchanged");
+                var wallId=Open(state,wall,3);
+                var wallCovered=Commit(state,new BlueprintProjectionCommitRequest(11,9102,2,new BlueprintProjectionPlacement(wallId,incomingSummary,100,100,3),
+                    new[]{new BlueprintProjectionPlacement(identity,opened.Summary,100,100,1,mask)}));
+                var wallMask=wallCovered.Masks[1];var afterWall=Qualification(state,identity,catalog,wallMask);
+                Require(wallMask.RemovedLayerCount==7 && afterWall.EffectiveRequiredLayerCount==4,"old target qualification intersected with raw mask removes exactly one valid wall requirement");
+                var changedCatalog=BlueprintQualificationChecks.Catalog(902,complete:false);
+                const System.Reflection.BindingFlags ownerFields=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+                var worker=typeof(LibraryState).GetField("worker",ownerFields).GetValue(state);var workerGate=worker.GetType().GetField("gate",ownerFields).GetValue(worker);
+                // Order competing accepted/rejected requests before the worker
+                // can consume either. No qualification/result state is injected.
+                lock(workerGate)
+                {
+                    Require(state.RequestProjectionQualification(identity,changedCatalog,wallMask),"catalog switch enters an explicit new qualification pass");
+                    Require(!state.RequestProjectionQualification(identity,catalog,mask),"a stale catalog cannot replace or remove the already accepted newer qualification pass");
+                    Require(!state.RequestProjectionSource(identity,9103,0,capabilityRevision:catalog.Revision),"old catalog source admission is rejected as soon as qualification changes");
+                }
+                BlueprintProjectionQualificationReceipt changed=null;Until(()=>state.TryTakeProjectionQualification(out changed));
+                Require(changed.CapabilityRevision==902 && ReferenceEquals(changed.Mask,wallMask) && changed.TotalRequiredLayerCount==12 && changed.EffectiveRequiredLayerCount==5 && changed.EffectiveUnknownLayerCount==1,
+                    "coverage loss restores real unknown responsibility only on still-unmasked content, with a new denominator and revision");
+                var raw=Window(state,identity,9104,new BlueprintProjectionBounds(0,0,4,2));
+                Require(raw.Cells.Count==8 && raw.Cells.Count(c=>c.TileType==187)==6 && raw.Cells.Any(c=>c.TileType==624 && (c.Layers&CaptureLayer.Liquid)!=0) && fixture.Hash==identity.ContentHash,
+                    "qualification, masks and revision changes never rewrite the raw display window or original v1 content identity");
+#if DEBUG
+                Require(state.DebugProjectionStatistics.SourceIndexBytes>=qualified.SourceRanges.Sum(r=>r.SourceIndexBytes)+qualified.MatchRanges.Sum(r=>r.SourceIndexBytes),
+                    "derived construction geometry is charged to the shared source index lifecycle");
+#endif
+                state.ReleaseProjection(identity);Require(!state.TryTakeProjectionQualification(out pending) && !state.RequestProjectionQualification(identity,catalog,wallMask),
+                    "retired instance cannot accept a late qualification or resurrect the original template reference");
+                state.ReleaseProjection(incomingId);state.ReleaseProjection(wallId);Until(()=>counted.ActiveIndexes==0);
+            }
+        }
         private static void Until(Func<bool> condition)
         { var clock = Stopwatch.StartNew(); while (!condition()) { if (clock.ElapsedMilliseconds > 30000) throw new TimeoutException("Projection work did not reach its bounded test boundary."); Thread.Sleep(1); } }
         private static BlueprintProjectionReceipt Await(LibraryState state, BlueprintProjectionReceiptKind kind, long generation = -1)

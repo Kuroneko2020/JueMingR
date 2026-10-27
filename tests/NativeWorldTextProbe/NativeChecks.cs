@@ -25,10 +25,20 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Run(context => { using (var graphics = new ProbeGraphics(content)) NativePageCompositionChecks.ItemsVisual(context, graphics, output); }, processing: true, shortFeedback: true); return 0;
             }
             if (scope == "BlueprintOriginal") return NativeViewOriginalChecks.Run(content, output, blueprint: true);
+            if (scope == "BlueprintQualificationCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(NativeBlueprintQualificationChecks.Run, processing:true,shortFeedback:true);return 0;
+            }
+            if (scope == "BlueprintBuildThroughputCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>NativeBlueprintBuildChecks.Run(context,true), processing:true,shortFeedback:true);return 0;
+            }
             if (scope == "BlueprintBuildCpu")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(NativeBlueprintBuildChecks.Run, processing: true, shortFeedback: true); return 0;
+                NativeQuickItemChecks.Run(context=>NativeBlueprintBuildChecks.Run(context), processing: true, shortFeedback: true); return 0;
             }
             if (scope == "BlueprintBuildContextCpu")
             {
@@ -48,7 +58,7 @@ namespace NativeWorldTextProbe
                     };
                     using (NativeBlueprintWorldChangeChecks.ObserveFrameFaults()) check("world changes", NativeBlueprintWorldChangeChecks.Run);
                     check("match semantics", NativeBlueprintWorldMatchSemanticChecks.Run);
-                    check("actual native construction", NativeBlueprintBuildChecks.Run);
+                    check("actual native construction", c=>NativeBlueprintBuildChecks.Run(c));
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                 }, processing: true, shortFeedback: true); return 0;
             }
@@ -116,6 +126,7 @@ namespace NativeWorldTextProbe
                         catch (Exception error) { Console.Error.WriteLine("BLUEPRINT CPU " + name + ": " + error); if (first == null) first = error; }
                     };
                     check("world match", c => NativeBlueprintWorldMatchChecks.Run(c));
+                    check("exact construction qualification", NativeBlueprintQualificationChecks.Run);
                     check("world changes", NativeBlueprintWorldChangeChecks.Run);
                     check("match semantics", NativeBlueprintWorldMatchSemanticChecks.Run);
                     check("capture UI", NativeBlueprintChecks.Run);
@@ -125,7 +136,7 @@ namespace NativeWorldTextProbe
                     check("placement", NativeBlueprintPlacementChecks.Run);
                     check("budgets", NativeBlueprintBudgetChecks.Run);
                     check("input recovery", NativeBlueprintInputRecoveryChecks.Cpu);
-                    check("actual native construction", NativeBlueprintBuildChecks.Run);
+                    check("actual native construction", c=>NativeBlueprintBuildChecks.Run(c));
                     check("materials UI", NativeBlueprintMaterialsUiChecks.Run);
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                 }, processing: true, shortFeedback: true); return 0;

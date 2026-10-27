@@ -12,6 +12,7 @@ namespace JueMingR.ArchitectureTests
             try { LayersAndBodies(); DisplayOnlyLiquids(); SplitObjectAppearance(); PlacementCanonicalMetadata(); UnknownAndArithmetic(); }
             catch (Exception error) { failures.Add("Blueprint materials values: " + error); }
             BlueprintLibraryChecks.MaterialLane(failures);
+            BlueprintQualificationChecks.Check(failures);
         }
         private static void Require(bool condition, string reason) { if (!condition) throw new InvalidOperationException(reason); }
         internal static BlueprintPlacementCatalog Catalog()
