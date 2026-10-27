@@ -42,7 +42,7 @@ namespace JueMingR.TerrariaHost.F5
         private Matrix matrix;
         private Vector2 screen;
         private F5Rect anchor, preparedAnchor, panel, body, selector, scopePanel, summaryRect;
-        private float scroll, scopeScroll, scopeHeight, lineHeight, summaryHeight, bodyTop;
+        private float scroll, scopeScroll, scopeHeight, lineHeight, summaryLineHeight, summaryHeight, bodyTop;
         private int generation, pressedGeneration, projection, shownContent = -1, resource = -1, layout = -1;
         private F5Element hovered, armed;
         private bool dirty = true, ready, dropDown, previousLeft, leftTail, rightTail;
@@ -301,7 +301,13 @@ namespace JueMingR.TerrariaHost.F5
             if (width < 300 || maximumHeight < 160) throw new InvalidOperationException("材料窗口当前空间不足");
             bool headerCurrent = headerWidth == width && headerResource == renderer.Generation;
             if (!headerCurrent)
-            { lineHeight = Math.Max(28, measureHeader("测试Ag", .70f).Height + 8); closeSize = measureHeader("关闭", .70f); }
+            {
+                lineHeight = Math.Max(28, measureHeader("测试Ag", .70f).Height + 8); closeSize = measureHeader("关闭", .70f);
+                // The summary uses only this vocabulary, decimal digits and
+                // the unknown dash. Reserve their actual visible line bounds:
+                // 70 -> 69 must not end a drag because those digits are taller.
+                summaryLineHeight = measureHeader("剩余材料 0123456789— 种 · 还需 · 总计", .70f).Height;
+            }
             // Measure in local coordinates first. Width determines content; only
             // the complete height is clamped, then one origin is projected for
             // drawing, hits and the final scroll clamp.
@@ -311,7 +317,8 @@ namespace JueMingR.TerrariaHost.F5
             var title = HeaderBlock(ref titleText, ref titleLines, WorldMode ? "施工材料" : "蓝图材料：" + asset.Name, width - closeWidth - 36, .76f, headerCurrent);
             var summary = HeaderBlock(ref summaryText, ref summaryLines, BlueprintMaterialsLayout.Summary(snapshot, WorldMode), width - 24, .70f, headerCurrent);
             float measuredTitle = Math.Max(42, Math.Max(BlueprintMaterialsLayout.BlockHeight(title, 2) + 18, closeHeight + 14));
-            float measuredSummary = BlueprintMaterialsLayout.BlockHeight(summary, 2);
+            float measuredSummary = Math.Max(BlueprintMaterialsLayout.BlockHeight(summary, 2),
+                summary.Count * summaryLineHeight + Math.Max(0, summary.Count - 1) * 2);
             List<F5Element> range = null; float measuredSelector = 0;
             if (WorldMode)
             {

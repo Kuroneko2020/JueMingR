@@ -8,6 +8,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Threading;
+using HarmonyLib;
 using JueMingR.Features.Blueprint;
 using JueMingR.Infrastructure.Blueprint;
 using JueMingR.Platform.Hotkeys;
@@ -26,6 +27,10 @@ namespace NativeWorldTextProbe
         private const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
         private static long secondSequence;
         private static string observedEntry;
+        private static object imageSurface;
+        private static Matrix expectedImageMatrix, actualImageMatrix, mismatchedImageMatrix;
+        private static int imagePasses;
+        private static bool imageMatrixMismatch;
         internal static void BeginInstanceScope(object context, long firstId, long secondId)
         {
             var host = Get(context, "Blueprint"); var shell = Get(context, "Shell"); var popup = Get(shell, "BlueprintMaterialsUi");
@@ -415,16 +420,18 @@ namespace NativeWorldTextProbe
         {
             var host = Get(context, "Blueprint"); var shell = Get(context, "Shell"); var popup = Get(shell, "BlueprintMaterialsUi"); var input = Get(context, "Input");
             var toolbar = Get(host, "Toolbar"); var player = Main.LocalPlayer;
-            var foreground = (Func<IntPtr>)Get(input, "foregroundWindow"); float scale = Main.UIScale;
+            var foreground = (Func<IntPtr>)Get(input, "foregroundWindow"); float scale = Main.UIScaleWanted;
+            int oldWidth = Main.screenWidth, oldHeight = Main.screenHeight;
             bool auto = (bool)Get(host, "AutoBuildEnabled"), bar = (bool)Get(host, "ToolbarEnabled"); Item slot = player.inventory[0]; int selected = player.selectedItem;
             Exception failure = null;
             try
             {
+                EnsureNativeScaleRoom();
                 Call(host, "SetAutoBuild", true); Call(shell, "CloseAndSubmitPosition");
                 Frame(shell, input, 1, 1, false); Frame(shell, input, 1, 1, false); Call(host, "OpenMaterials"); Prepare(shell, graphics);
                 var close = Get(Objects(Get(popup, "buttons"))[0], "Rect"); float x = (float)Get(close, "X") + 8, y = (float)Get(close, "Y") + 8;
                 Frame(shell, input, x, y, true); Require(GetOptional(popup, "armed") != null, "a fresh real close press arms the current popup geometry");
-                Main.UIScale = scale * 1.1f; PlayerInput.CacheOriginalScreenDimensions(); Frame(shell, input, x, y, false);
+                ChangeNativeScale("material-close-release"); Frame(shell, input, x, y, false);
                 Require((bool)Get(popup, "Visible") && GetOptional(popup, "armed") == null, "UI matrix change cancels the stale close release before it can act");
                 Main.UIScale = scale; PlayerInput.CacheOriginalScreenDimensions(); Prepare(shell, graphics);
                 close = Get(Objects(Get(popup, "buttons"))[0], "Rect"); x = (float)Get(close, "X") + 8; y = (float)Get(close, "Y") + 8;
@@ -512,7 +519,7 @@ namespace NativeWorldTextProbe
             finally
             {
                 RestoreAfterCheck(failure,
-                    () => { Set(input, "foregroundWindow", foreground); Main.UIScale = scale; PlayerInput.CacheOriginalScreenDimensions(); Call(popup, "Close"); },
+                    () => { Set(input, "foregroundWindow", foreground); Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = scale; Call(popup, "Close"); },
                     () => { player.inventory[0] = slot; player.selectedItemState.Select(selected); player.selectedItemState.Update(); },
                     () => { Call(host, "SetToolbar", bar); Call(host, "SetAutoBuild", auto); },
                     () => { Frame(shell, input, 1, 1, false); Frame(shell, input, 1, 1, false); });
@@ -531,6 +538,8 @@ namespace NativeWorldTextProbe
         internal static void Visual(object context, ProbeGraphics graphics, string output)
         {
             Directory.CreateDirectory(output);
+            NativeBlueprintDraftMaterialsChecks.Visual(context, graphics, output);
+            NativeBlueprintMaterialGeometryChecks.Run(context);
             Input(context, graphics, output);
             var host = Get(context, "Blueprint"); var shell = Get(context, "Shell"); var popup = Get(shell, "BlueprintMaterialsUi");
             Call(host, "OpenMaterials"); Prepare(shell, graphics);
@@ -540,7 +549,6 @@ namespace NativeWorldTextProbe
             Call(popup, "Close");
             DrawValues(context, graphics, output);
             StaticAssembly(context, graphics, output);
-            NativeBlueprintDraftMaterialsChecks.Visual(context, graphics, output);
         }
         private static void StaticAssembly(object context, ProbeGraphics graphics, string output)
         {
@@ -583,6 +591,7 @@ namespace NativeWorldTextProbe
                 Action drawPage = () => { Call(renderer, "Draw", state, Main.UIScaleMatrix, false, false); Call(ui, "Draw"); };
                 graphics.Image(Path.Combine(output, "blueprint-capture-materials-exact.png"), drawPage, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
                 NativeBlueprintMaterialNameChecks.Capture(context, graphics);
+                graphics.Image(Path.Combine(output, "blueprint-capture-materials-hover.png"), drawPage, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
                 var save = Objects(Get(ui, "parts")).Single(p => Get(p, "Command").ToString() == "ConfirmDraft");
                 Require((bool)Get(save, "Enabled"), "the real exact material grid preserves the original current-key Save eligibility");
                 Call(ui, "Execute", save);
@@ -662,14 +671,15 @@ namespace NativeWorldTextProbe
                 new[] { new BlueprintMaterialRow(2, 4000000000, long.MaxValue, true), new BlueprintMaterialRow(3, 1, 1, true), new BlueprintMaterialRow(9, 100, 80, true) }, true);
             graphics.LoadItemTextures(values.Rows.Select(row => row.ItemType));
             Func<int, string> names = id => Lang.GetItemNameValue(id) + (id == 2 ? new string('材', 40) : "");
-            float oldScale = Main.UIScale; int oldWidth = Main.screenWidth, oldHeight = Main.screenHeight; int identity = 0;
+            float oldScale = Main.UIScaleWanted; int oldWidth = Main.screenWidth, oldHeight = Main.screenHeight; int identity = 0;
             try
             {
                 foreach (float scale in new[] { 1f, 1.2f })
                 foreach (bool world in new[] { false, true })
                 {
-                    Main.screenWidth = 1280; Main.screenHeight = 900; Main.UIScale = scale; PlayerInput.CacheOriginalScreenDimensions();
+                    Main.screenWidth = 1280; Main.screenHeight = 900; PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = scale;
                     Call(Get(shell, "renderer"), "RefreshResources"); Call(Get(shell, "renderer"), "Prepare", state, 1280f, 900f, scale);
+                    VerifyActualScale("values-" + world, scale);
                     Require((bool)Call(renderer, "Refresh"), "material actual native font/surface are available");
                     Call(layout, "Prepare", values, world, 522f, measure, names, 1L, (int)Get(renderer, "Generation"), 0f);
                     var clip = Activator.CreateInstance(rectType, F, null, new object[] { 40f, 40f, 522f, 260f }, null);
@@ -684,20 +694,90 @@ namespace NativeWorldTextProbe
                 }
                 Console.WriteLine("PASS Blueprint materials actual GPU adapter: common static/dynamic value views, original item icons, long counts/names, UI 100/120%, stable 120 visible-resource preparations. Values are UI fixtures; native mapping/inventory, OS/IME and owner experience are separate.");
             }
-            finally { ((IDisposable)renderer).Dispose(); Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; Main.UIScale = oldScale; PlayerInput.CacheOriginalScreenDimensions(); }
+            finally { ((IDisposable)renderer).Dispose(); Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = oldScale; }
         }
         private static void ImagesAtScales(object shell, object popup, ProbeGraphics graphics, string output, string name)
         {
-            float original = Main.UIScale;
+            float original = Main.UIScaleWanted; int oldWidth = Main.screenWidth, oldHeight = Main.screenHeight;
+            var input = Get(shell, "inputState");
+            imageSurface = Get(Get(popup, "renderer"), "surface");
+            var audit = new Harmony("JueMingR.Tests.MaterialImageMatrix");
+            audit.Patch(AccessTools.Method(imageSurface.GetType(), "Pass"), prefix: new HarmonyMethod(typeof(NativeBlueprintMaterialsUiChecks), nameof(BeforeImagePass)));
+            Exception failure = null;
             try
             {
                 foreach (float scale in new[] { 1f, 1.2f })
                 {
-                    Main.UIScale = scale; PlayerInput.CacheOriginalScreenDimensions(); Prepare(shell, graphics);
+                    // UIScale's original setter clamps against PlayerInput's
+                    // cached real viewport. Publish a legal viewport first;
+                    // a filename alone is no evidence that 120% was accepted.
+                    Main.screenWidth = 1280; Main.screenHeight = 900; PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = scale;
+                    // ProcessInput freezes the native matrix for this UI frame.
+                    // AfterUpdate alone would keep the preceding shell matrix.
+                    Frame(shell, input, 1, 1, false); Prepare(shell, graphics); VerifyActualScale(name, scale);
+                    VerifyPreparedMatrix(shell, popup);
+                    expectedImageMatrix = Main.UIScaleMatrix; imagePasses = 0; imageMatrixMismatch = false; mismatchedImageMatrix = default(Matrix);
                     graphics.Image(Path.Combine(output, name + "-" + scale.ToString(CultureInfo.InvariantCulture) + ".png"), () => Call(popup, "Draw"), Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
+                    Console.WriteLine("MATERIAL IMAGE " + name + " scale=" + scale.ToString("R", CultureInfo.InvariantCulture) +
+                        " shell=" + MatrixScale((Matrix)Get(shell, "matrix")) + " popup=" + MatrixScale((Matrix)Get(popup, "matrix")) +
+                        " renderer=" + MatrixScale(actualImageMatrix) + " expected=" + MatrixScale(expectedImageMatrix) +
+                        " passes=" + imagePasses + " mismatch=" + imageMatrixMismatch + " firstMismatch=" + MatrixScale(mismatchedImageMatrix));
+                    Require(imagePasses >= 2 && !imageMatrixMismatch, "the actual material panel/content GPU passes consume the same current matrix as native input and prepared geometry");
                 }
             }
-            finally { Main.UIScale = original; PlayerInput.CacheOriginalScreenDimensions(); Prepare(shell, graphics); }
+            catch (Exception error) { failure = error; throw; }
+            finally
+            {
+                RestoreAfterCheck(failure,
+                    () =>
+                    {
+                        Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = original;
+                        expectedImageMatrix = Main.UIScaleMatrix; imagePasses = 0; imageMatrixMismatch = false; mismatchedImageMatrix = default(Matrix);
+                        Frame(shell, input, 1, 1, false); Prepare(shell, graphics); VerifyPreparedMatrix(shell, popup);
+                        Require(imagePasses >= 2 && !imageMatrixMismatch, "restoring the actual viewport and native sample restores the material renderer matrix too");
+                    },
+                    () => { imageSurface = null; audit.UnpatchAll(audit.Id); });
+            }
+        }
+        private static void BeforeImagePass(object __instance, Matrix matrix)
+        {
+            if (!ReferenceEquals(__instance, imageSurface)) return;
+            imagePasses++; actualImageMatrix = matrix;
+            if (matrix != expectedImageMatrix) { if (!imageMatrixMismatch) mismatchedImageMatrix = matrix; imageMatrixMismatch = true; }
+        }
+        private static void VerifyPreparedMatrix(object shell, object popup)
+        {
+            Require((Matrix)Get(shell, "matrix") == Main.UIScaleMatrix && (Matrix)Get(popup, "matrix") == Main.UIScaleMatrix,
+                "the real sampled shell and prepared material popup use the current native matrix before drawing: main=" + MatrixScale(Main.UIScaleMatrix) +
+                " shell=" + MatrixScale((Matrix)Get(shell, "matrix")) + " popup=" + MatrixScale((Matrix)Get(popup, "matrix")));
+        }
+        private static string MatrixScale(Matrix value)
+        { return value.M11.ToString("R", CultureInfo.InvariantCulture) + "/" + value.M22.ToString("R", CultureInfo.InvariantCulture); }
+        private static void VerifyActualScale(string view, float requested)
+        {
+            Require(Main.UIScale == requested && Main.UIScaleMatrix.M11 == requested && Main.UIScaleMatrix.M22 == requested &&
+                PlayerInput.OriginalScreenSize.X == Main.screenWidth && PlayerInput.OriginalScreenSize.Y == Main.screenHeight,
+                "the original native scale setter accepts the requested material view scale in its actual cached viewport");
+            Console.WriteLine("MATERIAL VIEW " + view + " requested=" + requested.ToString("R", CultureInfo.InvariantCulture) +
+                " actual=" + Main.UIScale.ToString("R", CultureInfo.InvariantCulture) + " matrix=" + MatrixScale(Main.UIScaleMatrix) +
+                " real=" + PlayerInput.RealScreenWidth + "x" + PlayerInput.RealScreenHeight + " worldZoom=" + Main.GameViewMatrix.Zoom);
+        }
+        internal static void EnsureNativeScaleRoom()
+        {
+            if (Main.instance.UIScaleMax > 1f) return;
+            Main.screenWidth = Math.Max(1280, Main.screenWidth); Main.screenHeight = Math.Max(900, Main.screenHeight);
+            PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = Main.UIScaleWanted;
+        }
+        internal static void ChangeNativeScale(string scenario)
+        {
+            var before = Main.UIScaleMatrix;
+            float requested = Main.UIScale == 1f ? Math.Min(1.2f, Main.instance.UIScaleMax) : 1f;
+            Main.UIScale = requested;
+            Console.WriteLine("MATERIAL SCALE " + scenario + " before=" + before.M11.ToString("R", CultureInfo.InvariantCulture) +
+                " requested=" + requested.ToString("R", CultureInfo.InvariantCulture) + " actual=" + Main.UIScale.ToString("R", CultureInfo.InvariantCulture) +
+                " matrix=" + Main.UIScaleMatrix.M11.ToString("R", CultureInfo.InvariantCulture) + " real=" + PlayerInput.RealScreenWidth + "x" + PlayerInput.RealScreenHeight);
+            Require(before != Main.UIScaleMatrix && Main.UIScaleMatrix.M11 == Main.UIScale && Main.UIScaleMatrix.M22 == Main.UIScale,
+                "the original native setter changes the actual UI matrix before the stale gesture's next sample");
         }
         internal static void Prepare(object shell, ProbeGraphics graphics)
         {
