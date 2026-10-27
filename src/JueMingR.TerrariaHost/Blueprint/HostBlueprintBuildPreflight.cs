@@ -62,6 +62,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (raw.liquid > 0 && raw.lava() && (Main.tileSolid[item.createTile] || !TileObjectData.CheckLiquidPlacement(item.createTile, item.placeStyle, raw))) return false;
             if (item.createTile == TileID.Torches)
             {
+                if (!PreflightLegacyLiquid(target, raw, item)) return false;
                 // This one legacy branch does not call custom CanPlace. Reuse
                 // the exact captured-form predicate also used at PlaceIt.
                 return NativeLegacyBuildChoice(new BuildFlight { Target = target, Player = p, Source = SnapshotSource(0, item) }, item.createTile, true);
@@ -104,11 +105,34 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!ReadBuildCell(target.WorldX, target.WorldY, out sample)) return false;
             var raw = Main.tile[target.WorldX, target.WorldY];
             if (raw.liquid > 0 && raw.lava() && (Main.tileSolid[item.createTile] || !TileObjectData.CheckLiquidPlacement(item.createTile, item.placeStyle, raw))) return false;
+            if (!PreflightLegacyLiquid(target, raw, item)) return false;
             // WorldGen.PlaceTile calls this entity test only for solid tiles.
             // Walls, non-solid rope and custom furniture do not inherit it.
             if (Main.tileSolid[item.createTile] && !Collision.EmptyTile(target.WorldX, target.WorldY))
             { WaitForDynamicBuild(target); return false; }
             return true;
+        }
+        private bool PreflightLegacyLiquid(BlueprintBuildTarget target, Tile raw, Item item)
+        {
+            if (raw.liquid == 0 && !raw.checkingLiquid()) return true;
+            bool allowed = true;
+            if (TileID.Sets.Torches[item.createTile])
+            {
+                allowed = item.createTile != TileID.Torches || item.placeStyle == 8 || item.placeStyle == 11 || item.placeStyle == 17;
+                var data = TileObjectData.GetTileData(item.createTile, item.placeStyle);
+                allowed &= data == null || data.WaterPlacement == Terraria.Enums.LiquidPlacement.Allowed;
+            }
+            else switch (item.createTile)
+            {
+                case 3: case 20: case 24: case 27: case 32: case 51: case 69: case 72: case 201:
+                case 352: case 529: case 624: case 700: case 637: case 656: case 701: case 697: allowed = false; break;
+            }
+            // WorldGen's legacy writer tests this transient bit as well as
+            // liquid amount. It has no SupportStamp event: use the existing
+            // bounded transient retry, not a native no-spend rejection's long
+            // deadline, rather than leave a dry target dormant.
+            if (!allowed && raw.checkingLiquid()) WaitForDynamicBuild(target);
+            return allowed;
         }
     }
 }

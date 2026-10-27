@@ -44,8 +44,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private sealed class BuildUnconfirmed
         {
-            internal BlueprintProjectionIdentity Identity;
-            internal int X, Y;
+            internal int Left, Top, Right, Bottom;
             internal BlueprintPlacementKind Kind;
         }
         private HostTools buildTools;
@@ -57,6 +56,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         // request cannot accidentally consume the old reply. Session exit ends it.
         private BuildContainerReceipt buildContainer;
         private readonly List<BuildUnconfirmed> buildUnconfirmed = new List<BuildUnconfirmed>();
+        private Player buildUnknownPlayer;
+        private object buildUnknownWorld, buildUnknownSocket;
+        private int buildUnknownMode;
 #if DEBUG
         internal long BuildCandidateChecks { get; private set; }
         internal long BuildNativeChoices { get; private set; }
@@ -177,7 +179,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (nativeType != placement.TileType || nativeStyle != placement.Style)
             { RequestBuildEligibilityRetry(target); return false; }
             if (nativeType == 724) return false;
-            if (target.Body != null)
+            // Capture may attach a one-member metadata Body to a platform,
+            // while its existing catalog descriptor deliberately remains an
+            // ordinary recipe. Player routes that descriptor to legacy
+            // PlaceTile, never custom CanPlace/TileObject.Place.
+            bool platform = placement.Platform && TileID.Sets.Platforms[nativeType];
+            if (platform && !BuildPlatformForm(target, nativeType)) return false;
+            if (target.Body != null && !platform)
             {
                 var data = TileObjectData.GetTileData(item.createTile, item.placeStyle, placement.Alternate);
                 if (data == null || target.Bounds.Width != data.Width || target.Bounds.Height != data.Height ||
@@ -187,14 +195,42 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!BuildEmpty(target.WorldX, target.WorldY, false)) return false;
             if (Main.tileFrameImportant[item.createTile] && !TileID.Sets.Platforms[item.createTile]) return false;
             if (!PreflightBuildOrdinary(target, item)) return false;
-            if (TileID.Sets.Platforms[item.createTile])
+            // Player's special four-neighbour branch accepts every active
+            // Tile (including non-solid furniture), but not a wall only in
+            // the destination. This changes eligibility, never the catalog.
+            if (BuildUsesAnyCardinalNeighbor(item.createTile))
+                return BuildNeighbor(target.WorldX - 1, target.WorldY, true) || BuildNeighbor(target.WorldX + 1, target.WorldY, true) ||
+                    BuildNeighbor(target.WorldX, target.WorldY - 1, true) || BuildNeighbor(target.WorldX, target.WorldY + 1, true);
+            bool connected = BuildNeighbor(target.WorldX, target.WorldY, false) || BuildNeighbor(target.WorldX - 1, target.WorldY, false) ||
+                BuildNeighbor(target.WorldX + 1, target.WorldY, false) || BuildNeighbor(target.WorldX, target.WorldY - 1, false) || BuildNeighbor(target.WorldX, target.WorldY + 1, false);
+            if (connected) return true;
+            if (platform)
             {
                 for (int x = target.WorldX - 1; x <= target.WorldX + 1; x++) for (int y = target.WorldY - 1; y <= target.WorldY + 1; y++)
-                    if (BuildNeighbor(x, y, true)) return true;
-                return false;
+                {
+                    BlueprintWorldMatchSample sample;
+                    // The platform-only diagonal extension is active Tile,
+                    // unlike Player's preceding cardinal/current-wall gate.
+                    if (ReadBuildCell(x, y, out sample) && (sample.Cell.Layers & CaptureLayer.Tile) != 0) return true;
+                }
             }
-            return BuildNeighbor(target.WorldX, target.WorldY, false) || BuildNeighbor(target.WorldX - 1, target.WorldY, false) ||
-                BuildNeighbor(target.WorldX + 1, target.WorldY, false) || BuildNeighbor(target.WorldX, target.WorldY - 1, false) || BuildNeighbor(target.WorldX, target.WorldY + 1, false);
+            return false;
+        }
+        private static bool BuildUsesAnyCardinalNeighbor(int type)
+        {
+            switch (type)
+            {
+                case 51: case 697: case 330: case 331: case 332: case 333: case 336:
+                case 340: case 342: case 341: case 343: case 344: case 379: case 351: return true;
+                default: return false;
+            }
+        }
+        private static bool BuildPlatformForm(BlueprintBuildTarget target, int type)
+        {
+            return target.Placement.Platform && !target.Placement.RequiresObject && target.Cell.TileType == type &&
+                target.Cell.FrameY == 18 * target.Placement.Style && target.Bounds.Width == 1 && target.Bounds.Height == 1 &&
+                target.WorldX == target.Bounds.Left && target.WorldY == target.Bounds.Top &&
+                (target.Body == null || target.Body.Kind == type && target.Body.Width == 1 && target.Body.Height == 1);
         }
         private bool BuildEmpty(int x, int y, bool wall)
         {
@@ -302,6 +338,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool NativeBuildChoice(BuildFlight flight, bool objectType, TileObject placement, int type)
         {
             if (!NativeBuildConsumer(flight, false) || type != flight.Target.Placement.TileType) return false;
+            if (flight.Target.Placement.Platform) return !objectType && BuildPlatformForm(flight.Target, type);
             if (flight.Target.Body == null) return !objectType;
             if (!objectType) return NativeLegacyBuildChoice(flight, type);
             var data = TileObjectData.GetTileData(type, placement.style, placement.alternate);
@@ -399,7 +436,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             // rejected sibling in the same range keeps its own recovery.
             var materials = flight.Target.Range.Materials;
             if (materials != null && materials.EligibilityRetryOrdinal == flight.Target.Ordinal) materials.EligibilityRetry = false;
-            if (!IsUnconfirmedTarget(flight.Target)) buildUnconfirmed.Add(new BuildUnconfirmed { Identity = flight.Target.Identity, X = flight.Target.WorldX, Y = flight.Target.WorldY, Kind = flight.Target.Placement.Kind });
+            if (!IsUnconfirmedTarget(flight.Target)) buildUnconfirmed.Add(new BuildUnconfirmed { Left = flight.Target.Bounds.Left, Top = flight.Target.Bounds.Top,
+                Right = flight.Target.Bounds.Right, Bottom = flight.Target.Bounds.Bottom, Kind = flight.Target.Placement.Kind });
             buildTools.HoldUnknown(flight.DependencySlots | (1UL << flight.Source.Slot));
             projectionFeedback = "一次施工结果未确认，相关材料已受保护；其他可建部分继续。";
 #if DEBUG
@@ -408,7 +446,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool IsUnconfirmedTarget(BlueprintBuildTarget target)
         {
-            foreach (var failure in buildUnconfirmed) if (failure.Identity.Equals(target.Identity) && failure.X == target.WorldX && failure.Y == target.WorldY && failure.Kind == target.Placement.Kind) return true;
+            // Unknown belongs to the actual world layer/footprint, not the
+            // disposable projection or a newly selected same-type source.
+            // Keep only finite scalar bounds, never retired source/range DTOs.
+            foreach (var failure in buildUnconfirmed)
+                if (failure.Kind == target.Placement.Kind && failure.Left < target.Bounds.Right && target.Bounds.Left < failure.Right &&
+                    failure.Top < target.Bounds.Bottom && target.Bounds.Top < failure.Bottom) return true;
             return false;
         }
         private void EndAutomaticBuild(BuildFlight flight, bool unknown)
@@ -424,13 +467,23 @@ namespace JueMingR.TerrariaHost.Blueprint
         { preparedBuild = null; if (AutoBuildEnabled) buildActivationRevision++; else RemoveBuildSources(); MaterialBuildEligibilityRevision++; ObserveMaterialDemand(); }
         private void ClearAutomaticBuild()
         {
-            CancelAutomaticBuild(); if (buildTools?.Use.Building == true) buildTools.Use.Retire(); preparedBuild = activeBuild = null; buildUnconfirmed.Clear();
+            CancelAutomaticBuild(); if (buildTools?.Use.Building == true) buildTools.Use.Retire(); preparedBuild = activeBuild = null;
             // RemoveAll/Clear retires projection work, not an original packet
             // already sent in this connection. Keep that finite responsibility
             // until its decoder reply or the actual session boundary below.
             MaterialBuildEligibilityRevision++; ClearBuildProgressSignals(); RemoveBuildSources();
         }
         private void ClearBuildSession() { buildContainer = null; }
+        private void StartBuildUnknownSession()
+        {
+            // Match Tools' real identity boundary. A menu/UI interruption or
+            // projection removal cannot renew unknown consumption in the same
+            // player/world/connection; an actual replacement releases it.
+            object socket = Main.netMode == 1 ? Netplay.Connection.Socket : null;
+            if (!ReferenceEquals(buildUnknownPlayer, Main.LocalPlayer) || !ReferenceEquals(buildUnknownWorld, Main.ActiveWorldFileData) ||
+                !ReferenceEquals(buildUnknownSocket, socket) || buildUnknownMode != Main.netMode) buildUnconfirmed.Clear();
+            buildUnknownPlayer = Main.LocalPlayer; buildUnknownWorld = Main.ActiveWorldFileData; buildUnknownSocket = socket; buildUnknownMode = Main.netMode;
+        }
         private void RetireAutomaticBuild(BlueprintProjectionIdentity identity)
         {
             RemoveBuildSources(identity);
@@ -441,7 +494,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             // still cancels, and editing/clear/session keep their own gates.
             if (activeBuild?.Target.Identity.Equals(identity) == true && buildTools?.Use.Building == true &&
                 (!activeBuild.Checked || buildTools.Use.InNativeUse)) buildTools.Use.Cancel();
-            buildUnconfirmed.RemoveAll(value => value.Identity.Equals(identity));
         }
         private bool BuildBlocksRetirement(BlueprintProjectionPlacement item)
         {

@@ -134,6 +134,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             CancelOldCapture();
             ClearProjection(); ClearBuildSession();
+            StartBuildUnknownSession();
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); generation = runtime.Generation; projectionChanges.SetSession(generation); player = Main.LocalPlayer; world = Main.ActiveWorldFileData; connection = Netplay.Connection; }
         public void OnSessionEnded()
         {

@@ -77,6 +77,11 @@ namespace NativeWorldTextProbe
                     check("actuated anchor and recovery", () => PreflightActuatedAnchor(context, host, tools, input));
                     check("support disappears after Ready", () => PreflightPreparedSupport(context, host, tools, input));
                     check("world liquid placement qualification", () => PreflightLiquidQualification(context, host, tools, input));
+                    check("review platform exact connectivity", () => ReviewPlatformConnectivity(context, host, tools, input));
+                    check("review special ordinary cardinal adjacency", () => ReviewOrdinaryAdjacency(context, host, tools, input));
+                    check("review legacy liquid and transient qualification", () => ReviewLegacyLiquidEligibility(context, host, tools, input));
+                    check("review unknown removal replay and real session", () => ReviewUnknownReplays(context, host, tools, input));
+                    check("review unknown complete furniture footprint", () => ReviewUnknownFurniture(context, host, tools, input));
                     check("stable ranges ignore inventory and consumption noise", () => StableRangesIgnoreSupplyNoise(context, host, tools, input));
                     check("exact source owner recovery", () => ProtectedSourceRecovery(context, host, tools, input));
                     check("accessory source recovery", () => AccessorySourceRecovery(context, host, tools, input));
