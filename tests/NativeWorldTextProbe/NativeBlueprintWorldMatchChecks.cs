@@ -673,8 +673,7 @@ namespace NativeWorldTextProbe
             int previousPage=library.Snapshot.Page?.PageIndex??-1;
             bool wasVisible=library.Snapshot.Page!=null && library.Snapshot.Page.Entries.Any(e=>e.AssetId==asset);
             Require(library.TryList(77001,0,asset),"retained template list request admitted");
-            LibraryReceipt receipt=null;
-            NativeQuickItemChecks.Until(()=>{library.Pump();return library.TryTakeReceipt(out receipt);});
+            LibraryReceipt receipt=NativeBlueprintLibraryWait.AcceptedList(library,"retained selected="+asset);
             Require(receipt.Kind==LibraryCommandKind.List && receipt.Generation==77001 && receipt.Page!=null && receipt.Page.Entries.Any(e=>e.AssetId==asset),reason+"; actualPage="+receipt.Page?.PageIndex+" total="+receipt.Page?.TotalCount);
             if(!wasVisible)Console.WriteLine("PASS retained template actual list: priorPage="+previousPage+" selectedPage="+receipt.Page.PageIndex+" totalAssets="+receipt.Page.TotalCount+" sixRowsPerPage=true; prior-page absence was not deletion");
         }

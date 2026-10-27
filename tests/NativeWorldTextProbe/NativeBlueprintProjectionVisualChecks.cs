@@ -114,7 +114,7 @@ namespace NativeWorldTextProbe
             Require(library.TryCreate(handle, "投影机制混合样本", token), "projection mixed asset accepted"); var saved = Complete(library);
             Require(saved.Status == LibraryStatus.Saved, "projection mixed asset reliably saved");
             Require(library.TryList(91001, 0, saved.AssetId), "projection mixed asset lists through real metadata");
-            return Complete(library).Page.Entries.Single(e => e.AssetId == saved.AssetId);
+            return NativeBlueprintLibraryWait.AcceptedList(library, "projection selected=" + saved.AssetId).Page.Entries.Single(e => e.AssetId == saved.AssetId);
         }
         private static LibraryReceipt Complete(LibraryState state)
         {

@@ -553,21 +553,12 @@ namespace NativeWorldTextProbe
         }
         private static LibraryReceipt Complete(LibraryState library, string phase = null)
         {
-            LibraryReceipt result = null; var clock = System.Diagnostics.Stopwatch.StartNew(); bool observed = false;
+            LibraryReceipt result = null; var clock = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                // Keep Until's original eight seconds. One bounded mid-wait
-                // snapshot and an exceptional snapshot distinguish a command
-                // still processing from a missing result; neither pumps Host
-                // consumers, changes admission or renews the wait deadline.
-                NativeQuickItemChecks.Until(() =>
-                {
-                    library.Pump();
-                    if (library.TryTakeReceipt(out result)) return true;
-                    if (!observed && phase != null && phase.StartsWith("list ", StringComparison.Ordinal) && clock.ElapsedMilliseconds >= 4000)
-                    { observed = true; Console.WriteLine("BUDGET library pending phase=" + phase + " ms=" + clock.ElapsedMilliseconds + " " + BudgetLibraryState(library)); }
-                    return false;
-                });
+                if (phase != null && phase.StartsWith("list ", StringComparison.Ordinal))
+                    result = NativeBlueprintLibraryWait.AcceptedList(library, phase);
+                else NativeQuickItemChecks.Until(() => { library.Pump(); return library.TryTakeReceipt(out result); });
             }
             catch
             {

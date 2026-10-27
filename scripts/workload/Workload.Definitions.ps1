@@ -36,6 +36,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintWorldMatchSemanticChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintWorldChangeChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs'=@('native-BlueprintCpu','native-BlueprintInput')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintLiquidChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildProgressChecks.cs'=@('native-BlueprintCpu')
