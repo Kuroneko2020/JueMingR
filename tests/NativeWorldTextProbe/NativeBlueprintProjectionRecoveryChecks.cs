@@ -210,7 +210,7 @@ namespace NativeWorldTextProbe
                     for(int i=0;i<12;i++)step();
                     Require(Scene(host).Length==0 && Mode(host)=="None" && !(bool)Get(host,"ProjectionMatchReading") && (int)Get(host,"ProjectionMatchWatchCount")==0,"late processing cannot revive either retired instance or retain a source/watch");
                     NativeQuickItemChecks.Until(()=>library.DebugProjectionStatistics.ActiveReferences==0 && library.DebugProjectionStatistics.ActiveTemplates==0 && library.DebugProjectionStatistics.PendingRequests==0 && library.DebugProjectionStatistics.ReceiptBytes==0);
-                    Require(library.TryList(91003,0,asset.AssetId),"failed template remains in the actual library");Require(Complete(library).Page.Entries.Any(e=>e.AssetId==asset.AssetId),"identity failure preserves library metadata and original source");
+                    Require(library.TryList(91003,0,asset.AssetId),"failed template remains in the actual library");Require(Complete(library,"list identity failure selected="+asset.AssetId).Page.Entries.Any(e=>e.AssetId==asset.AssetId),"identity failure preserves library metadata and original source");
                     Console.WriteLine("PASS Host Moving identity failure lane="+(viewport?"viewport":"source")+" error="+failed.FailureCode+" actual nonresident block0/reader/worker Failed; source qualification=zero Match; both aliases/source slot/watch/windows/commands released; other template actual reads and natural retirement; old commit refused; library retained");
                     Call(host,"ClearProjection");
                     }
@@ -422,10 +422,11 @@ namespace NativeWorldTextProbe
             }
             Require(library.TrySealDraft(handle,new CaptureSummary{Width=width,Height=height,ContentCount=width*height}),"dense isolated draft sealed");Complete(library);
             Require(library.TryCreate(handle,name,token),"dense isolated asset create accepted");var saved=Complete(library,"dense Create "+name);
-            Require(library.TryList(91002,0,saved.AssetId),"dense isolated asset lists");return Complete(library).Page.Entries.Single(e=>e.AssetId==saved.AssetId);
+            Require(library.TryList(91002,0,saved.AssetId),"dense isolated asset lists");return Complete(library,"list dense selected="+saved.AssetId).Page.Entries.Single(e=>e.AssetId==saved.AssetId);
         }
         private static LibraryReceipt Complete(LibraryState state,string diagnostic=null)
         {
+            if(diagnostic!=null && diagnostic.StartsWith("list ",StringComparison.Ordinal)) return NativeBlueprintLibraryWait.AcceptedList(state,diagnostic);
             LibraryReceipt value=null;var clock=System.Diagnostics.Stopwatch.StartNew();long previous=-1;int reports=0;
             try
             {

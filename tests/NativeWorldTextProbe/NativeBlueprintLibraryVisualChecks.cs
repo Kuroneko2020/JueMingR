@@ -18,6 +18,11 @@ namespace NativeWorldTextProbe
         { graphics.Render(() => Call(ui, "Draw"), Main.UIScaleMatrix); }
         internal static void Run(object context, ProbeGraphics graphics, string output)
         {
+            var library = (LibraryState)Get(Get(context, "Blueprint"), "Library");
+            using (NativeBlueprintLibraryWait.ObserveHost(library)) RunObserved(context, graphics, output);
+        }
+        private static void RunObserved(object context, ProbeGraphics graphics, string output)
+        {
             var host = Get(context, "Blueprint"); var library = (LibraryState)Get(host, "Library");
             var shell = Get(context, "Shell"); var state = Get(shell, "State"); var layout = Get(state, "Layout");
             var renderer = Get(shell, "renderer"); var ui = Get(shell, "BlueprintUi");
@@ -42,7 +47,7 @@ namespace NativeWorldTextProbe
                 Main.UIScale = scale; PlayerInput.CacheOriginalScreenDimensions();
                 Call(ui, "OpenLibrary"); Call(layout, "SetBlueprintLibraryVisible", true);
                 Call(renderer, "RefreshResources"); Call(renderer, "Prepare", state, 1280f, 900f, scale);
-                NativeQuickItemChecks.Until(() =>
+                NativeBlueprintLibraryWait.HostCondition(library, "library visible previews", () =>
                 {
                     Call(host, "Poll"); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, 900));
                     return library.Snapshot.Page != null && library.Snapshot.Page.TotalCount == 6 && !library.Snapshot.Busy && (int)Get(ui, "PreviewCount") >= Math.Min(4, library.Snapshot.Page.Entries.Count);
@@ -286,12 +291,12 @@ namespace NativeWorldTextProbe
             var layout = Get(state, "Layout"); Main.screenWidth = 1280; Main.screenHeight = 520; PlayerInput.CacheOriginalScreenDimensions();
             Call(ui, "OpenLibrary"); Call(layout, "SetBlueprintLibraryVisible", true); Call(renderer, "Prepare", state, 1280f, 520f, 1f);
             Action prepare = () => { Call(host, "Poll"); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, Main.screenHeight)); };
-            NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && library.Snapshot.Page != null && !(bool)Get(ui, "wantList"); });
+            NativeBlueprintLibraryWait.HostCondition(library, "scroll library page", () => { prepare(); return !library.Snapshot.Busy && library.Snapshot.Page != null && !(bool)Get(ui, "wantList"); });
             Call(state, "ScrollTo", float.MaxValue); prepare(); float before = (float)Get(state, "Scroll");
             Require(before > 0, "short viewport has a real nonzero library scroll range");
             Call(ui, "RequestList", 0, null); prepare();
             Require((float)Get(state, "Scroll") == before, "temporary loading height retains the last effective content height and exact scroll");
-            NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "wantList"); });
+            NativeBlueprintLibraryWait.HostCondition(library, "scroll list refresh", () => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "wantList"); });
             var first = ((IEnumerable)Get(ui, "parts")).Cast<object>().First(); Set(ui, "armed", first);
             Main.screenHeight = 900; PlayerInput.CacheOriginalScreenDimensions(); Call(renderer, "Prepare", state, 1280f, 900f, 1f); prepare();
             Require((float)Get(state, "Scroll") <= (float)Get(layout, "MaxScroll") && (float)Get(ui, "scroll") == (float)Get(state, "Scroll") && GetOptional(ui, "armed") == null,
@@ -300,7 +305,7 @@ namespace NativeWorldTextProbe
             var entries = library.Snapshot.Page.Entries.Take(Math.Max(0, library.Snapshot.Page.Entries.Count - 2)).ToArray();
             foreach (var entry in entries) { Require(library.TryDelete(entry.AssetId, entry.MetadataIdentity), "isolated actual row-reduction delete accepted"); Complete(library); }
             Call(ui, "RequestList", 0, null);
-            NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "wantList"); });
+            NativeBlueprintLibraryWait.HostCondition(library, "deleted rows list refresh", () => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "wantList"); });
             Require(library.Snapshot.Page.Entries.Count == 2 && (float)Get(state, "Scroll") <= (float)Get(layout, "MaxScroll") && (float)Get(layout, "ContentHeight") < 300,
                 "actual deleted rows reduce final height and clamp the old offset to the new valid range");
             Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });

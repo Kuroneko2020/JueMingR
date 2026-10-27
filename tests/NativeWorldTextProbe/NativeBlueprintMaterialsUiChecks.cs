@@ -557,6 +557,7 @@ namespace NativeWorldTextProbe
             var ui = Get(shell, "BlueprintUi"); var renderer = Get(shell, "renderer"); var popup = Get(shell, "BlueprintMaterialsUi");
             var library = (LibraryState)Get(host, "Library"); var flow = (BlueprintCaptureFlow)Get(host, "Flow");
             Exception failure = null;
+            using (NativeBlueprintLibraryWait.ObserveHost(library))
             using (NativeBlueprintWorldMatchChecks.EmptyWorld(host, 120, 120))
             try
             {
@@ -599,7 +600,7 @@ namespace NativeWorldTextProbe
                 Call(ui, "Execute", save);
                 NativeQuickItemChecks.Until(() => { step(); return flow.Status == BlueprintCaptureStatus.Saved; });
                 Guid savedId = flow.SelectedAssetId.Value; BlueprintMaterialSnapshot savedBill = null;
-                NativeQuickItemChecks.Until(() =>
+                NativeBlueprintLibraryWait.HostCondition(library, "saved material card", () =>
                 {
                     step(); var page = library.Snapshot.Page;
                     return page != null && page.Entries.Any(e => e.AssetId == savedId) &&
@@ -641,12 +642,13 @@ namespace NativeWorldTextProbe
             var field = host.GetType().GetField("<Library>k__BackingField", F); var original = (LibraryState)field.GetValue(host);
             Call(shell, "CloseAndSubmitPosition");
             using (var library = new LibraryState(new FileBlueprintLibrary(Path.Combine(Terraria.Program.SavePath, "material-return-" + Guid.NewGuid().ToString("N")))))
+            using (NativeBlueprintLibraryWait.ObserveHost(library))
             {
                 field.SetValue(host, library);
                 try
                 {
                     var entry = NativeBlueprintPlacementChecks.Seed(library, 2, 2, "材料详情返回"); Call(ui, "OpenLibrary");
-                    NativeQuickItemChecks.Until(() =>
+                    NativeBlueprintLibraryWait.HostCondition(library, "library material action", () =>
                     { Call(host, "Poll"); Call(shell, "AfterUpdate"); return !(bool)Get(ui, "dirty") && Objects(Get(ui, "parts")).Any(p => Get(p, "Command").ToString() == "Materials"); });
                     Call(ui, "BeginEdit", entry.AssetId, "尚未提交的名称"); Call(shell, "AfterUpdate");
                     var editor = Get(ui, "Editor"); float scroll = (float)Get(state, "Scroll"); object selected = GetOptional(ui, "selected");

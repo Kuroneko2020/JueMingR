@@ -65,6 +65,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !original.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
             object oldOwner = Main.CurrentInputTextTakerOverride; bool oldBlock = Main.blockInput, oldWriting = PlayerInput.WritingText;
             using (var library = new LibraryState(new FileBlueprintLibrary(Path.Combine(Terraria.Program.SavePath, "input-continuity"))))
+            using (NativeBlueprintLibraryWait.ObserveHost(library))
             using (var ime = new ImeScope(text))
             {
                 libraryField.SetValue(host, library);
@@ -74,7 +75,12 @@ namespace NativeWorldTextProbe
                     Main.CurrentInputTextTakerOverride = null; Main.blockInput = false; PlayerInput.WritingText = false;
                     for (int i = 0; i < 6; i++) NativeBlueprintPlacementChecks.Seed(library, 2, 2, "连续输入" + i);
                     Action prepare = () => { Call(host, "Poll"); Call(layout, "SetBlueprintLibraryVisible", true); Call(renderer, "RefreshResources"); Call(renderer, "Prepare", state, 960f, 640f, 1f); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(960, 640)); };
-                    Action settle = () => NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "dirty") && (int)Get(ui, "PreviewCount") > 0; });
+                    Action settle = () =>
+                    {
+                        Func<bool> ready = () => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "dirty") && (int)Get(ui, "PreviewCount") > 0; };
+                        if (Get(ui, "mode").ToString() == "Library") NativeBlueprintLibraryWait.HostCondition(library, "input library settled", ready);
+                        else NativeQuickItemChecks.Until(ready);
+                    };
                     foreach (bool capture in new[] { false, true })
                     {
                         composition = "";

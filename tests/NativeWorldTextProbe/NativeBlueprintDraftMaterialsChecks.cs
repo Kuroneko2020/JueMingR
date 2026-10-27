@@ -45,7 +45,11 @@ namespace NativeWorldTextProbe
             Exception failure = null;
             string phase = "setup";
             Action<string, Func<bool>> wait = (label, done) =>
-            { phase = label; Console.WriteLine("DRAFT material lifetime phase=" + label); NativeQuickItemChecks.Until(done); };
+            {
+                phase = label; Console.WriteLine("DRAFT material lifetime phase=" + label);
+                if (label == "saved asset bill") NativeBlueprintLibraryWait.HostCondition(library, label, done);
+                else NativeQuickItemChecks.Until(done);
+            };
             bool preparing = false, tracedPrepare = false; int gameThread = Thread.CurrentThread.ManagedThreadId;
             var prepareFaults = new List<Exception>();
             EventHandler<FirstChanceExceptionEventArgs> observe = (sender, args) =>
@@ -55,6 +59,7 @@ namespace NativeWorldTextProbe
             audit.Patch(AccessTools.Method(Get(worker, "files").GetType(), "PromoteStage"), prefix: new HarmonyMethod(typeof(NativeBlueprintDraftMaterialsChecks), nameof(BeforePromote)));
             audit.Patch(AccessTools.Method(typeof(LibraryState), "RequestMaterials"), prefix: new HarmonyMethod(typeof(NativeBlueprintDraftMaterialsChecks), nameof(BeforeRequest)));
             audit.Patch(AccessTools.Method(worker.GetType(), "ReadChunk"), prefix: new HarmonyMethod(typeof(NativeBlueprintDraftMaterialsChecks), nameof(BeforeMaterialRead)));
+            using (NativeBlueprintLibraryWait.ObserveHost(library))
             using (NativeBlueprintWorldMatchChecks.EmptyWorld(host, 120, 120))
             try
             {
@@ -244,7 +249,9 @@ namespace NativeWorldTextProbe
                 try
                 {
                     Call(host, "CancelCaptureOrDraft");
-                    NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy && flow.ContentHandle.IsEmpty; });
+                    Func<bool> retired = () => { Call(host, "Poll"); return !library.Snapshot.Busy && flow.ContentHandle.IsEmpty; };
+                    if (flow.Status == BlueprintCaptureStatus.Saved) NativeBlueprintLibraryWait.HostCondition(library, "saved page exit", retired);
+                    else NativeQuickItemChecks.Until(retired);
                     Call(shell, "CloseAndSubmitPosition"); editor.Exit(); Call(host, "CancelStaticMaterialViews");
                     Call(host, "SetMaterialViewDemand", false); Call(host, "SetAutoBuild", automatic);
                 }

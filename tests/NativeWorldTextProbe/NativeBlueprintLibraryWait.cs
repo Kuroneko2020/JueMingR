@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using HarmonyLib;
 using JueMingR.Features.Blueprint;
 using JueMingR.Infrastructure.Blueprint;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -12,6 +13,118 @@ namespace NativeWorldTextProbe
     internal static class NativeBlueprintLibraryWait
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+        private static HostObservation hostObservation;
+
+        // Host-owned compound conditions must keep their normal Update/Poll/
+        // Prepare path, including its receipt consumer. Observe actual accepted
+        // List submissions and actual receipt takes; never pump/take for Host.
+        internal static IDisposable ObserveHost(LibraryState library) { return new HostObservation(library); }
+        internal static void HostCondition(LibraryState library, string phase, Func<bool> done)
+        {
+            Require(hostObservation != null && ReferenceEquals(hostObservation.Library, library), "host list condition has its explicit library observation scope");
+            hostObservation.Wait(phase, done);
+        }
+
+        private sealed class HostObservation : IDisposable
+        {
+            internal readonly LibraryState Library;
+            private readonly HostObservation previous;
+            private readonly Harmony patch;
+            private readonly int thread = Thread.CurrentThread.ManagedThreadId;
+            private Flight flight;
+            private bool waiting;
+            private sealed class Flight
+            {
+                internal long Command, Bound, Assets, Processed;
+                internal LibraryReceipt Receipt;
+            }
+            internal HostObservation(LibraryState library)
+            {
+                Library = library; previous = hostObservation;
+                if (previous == null)
+                {
+                    patch = new Harmony("JueMingR.Tests.BlueprintHostListWait");
+                    try
+                    {
+                        patch.Patch(typeof(LibraryState).GetMethod("TryList"), postfix: new HarmonyMethod(typeof(NativeBlueprintLibraryWait), nameof(HostListAccepted)));
+                        patch.Patch(typeof(LibraryState).GetMethod("TryTakeReceipt"), postfix: new HarmonyMethod(typeof(NativeBlueprintLibraryWait), nameof(HostListTaken)));
+                    }
+                    catch { patch.UnpatchAll(patch.Id); throw; }
+                }
+                hostObservation = this;
+            }
+            internal void Accepted()
+            {
+                Require(Thread.CurrentThread.ManagedThreadId == thread, "host library commands remain on their actual game-thread owner");
+                long assets = AssetDirectories(Library);
+                flight = new Flight { Command = Library.AcceptedCommandId, Assets = assets, Bound = checked(2 * assets) };
+            }
+            internal void Taken(LibraryReceipt receipt)
+            {
+                if (flight == null || receipt.CommandId != flight.Command) return;
+                Require(Thread.CurrentThread.ManagedThreadId == thread, "observed Host receipt stays on its game-thread owner");
+                flight.Receipt = receipt; flight.Processed = Library.Snapshot.ProcessedItems;
+                if (waiting) Completed(flight);
+            }
+            private static void Completed(Flight value)
+            {
+                Require(value.Processed >= 0 && value.Processed <= value.Bound, "completed host List stays within its independent two-pass input bound");
+                Require(value.Receipt.Kind == LibraryCommandKind.List && value.Receipt.Status == LibraryStatus.Completed,
+                    "host selected list retains its actual Completed receipt; failure/cancellation cannot extend a condition: " + value.Receipt.Status + " " + value.Receipt.Error);
+            }
+            internal void Wait(string phase, Func<bool> done)
+            {
+                Require(!waiting, "host list conditions do not recursively advance the Host");
+                var clock = Stopwatch.StartNew(); long ordinaryDeadline = 8000, command = 0, progressAt = 0, processed = 0;
+                bool completionObserved = false;
+                waiting = true;
+                try
+                {
+                    while (true)
+                    {
+                        bool ready = done(); long now = clock.ElapsedMilliseconds;
+                        Flight current = flight;
+                        if (current != null && current.Receipt == null)
+                        {
+                            Require(Library.AcceptedCommandId == current.Command, "one observed host List retains its accepted command");
+                            long actual = Library.Snapshot.ProcessedItems;
+                            if (command != current.Command) { command = current.Command; processed = 0; progressAt = now; completionObserved = false; }
+                            Require(actual >= processed && actual <= current.Bound, "host List progresses monotonically within two passes of independent fixed directories");
+                            if (actual != processed) { processed = actual; progressAt = now; }
+                            if (now - progressAt > 8000 || now > 60000)
+                                throw new Exception("G05 host List stalled or exceeded facility guard: phase=" + phase + " command=" + command + " processed=" + processed + "/" + current.Bound + " elapsedMs=" + now);
+                        }
+                        else
+                        {
+                            if (current != null && command == current.Command && !completionObserved)
+                            {
+                                Completed(current); completionObserved = true; ordinaryDeadline = now + 8000;
+                                Console.WriteLine("PASS bounded host list phase=" + phase + " command=" + command + " assetDirectories=" + current.Assets + " processed=" + current.Processed + " bound=" + current.Bound + " conditionElapsedMs=" + now + " receiptOwner=Host");
+                            }
+                            // Only actual List work pauses the original
+                            // ordinary condition protection. Materials, preview,
+                            // capture and every other command still get eight
+                            // seconds; several Lists cannot exceed one minute.
+                            if (!ready && (now > ordinaryDeadline || now > 60000))
+                                throw new Exception("G05 host library condition timeout: phase=" + phase + " elapsedMs=" + now);
+                        }
+                        if (ready) return;
+                        Thread.Sleep(2);
+                    }
+                }
+                finally { waiting = false; }
+            }
+            public void Dispose()
+            {
+                Require(ReferenceEquals(hostObservation, this), "host library observation scopes retire in owner order");
+                hostObservation = previous;
+                if (patch != null) patch.UnpatchAll(patch.Id);
+            }
+        }
+        private static void HostListAccepted(LibraryState __instance, bool __result)
+        { if (__result && hostObservation != null && ReferenceEquals(__instance, hostObservation.Library)) hostObservation.Accepted(); }
+        private static void HostListTaken(LibraryState __instance, bool __result, LibraryReceipt __0)
+        { if (__result && hostObservation != null && ReferenceEquals(__instance, hostObservation.Library)) hostObservation.Taken(__0); }
 
         internal static LibraryReceipt AcceptedList(LibraryState library, string phase)
         {

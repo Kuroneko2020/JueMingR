@@ -20,7 +20,10 @@ namespace NativeWorldTextProbe
             var cells = new[] { new CaptureCell { X = 30, Y = 40, Layers = CaptureLayer.Tile, TileType = 1 }, new CaptureCell { X = 30 + width - 1, Y = 40 + height - 1, Layers = CaptureLayer.Wire, Wires = 1 } };
             complete(library.TryAppendChunk(handle, new CaptureChunk(cells, 2)));
             complete(library.TrySealDraft(handle, new CaptureSummary { Left = 30, Top = 40, Width = width, Height = height, ContentCount = 2, StartTick = 1, EndTick = 2 }));
-            complete(library.TryCreate(handle, name, token)); complete(library.TryList(7700, 0, id)); return library.Snapshot.Page.Entries.Single(e => e.AssetId == id);
+            complete(library.TryCreate(handle, name, token));
+            Require(library.TryList(7700, 0, id), "isolated projection asset list accepted");
+            NativeBlueprintLibraryWait.AcceptedList(library, "placement seed selected=" + id);
+            return library.Snapshot.Page.Entries.Single(e => e.AssetId == id);
         }
         internal static void Run(object context)
         {

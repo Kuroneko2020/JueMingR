@@ -532,7 +532,7 @@ namespace NativeWorldTextProbe
             Call(host, "RemoveProjection"); Require(Mode(host) == "Fixed", "same Remove command cancels remove selection");
             Call(host, "RemoveProjection"); Call(host, "RemoveAllProjections"); drain();
             Require(Mode(host) == "None" && Scene(host).Length == 0 && GetOptional(host, "ProjectionCandidate") == null && !(bool)Get(host, "CanRemoveAllProjections"), "RemoveAll clears same-template visible/offscreen scene and exits mode without late revival");
-            Require(library.TryList(91003, 0, entry.AssetId), "RemoveAll leaves library template queryable"); Require(Complete(library).Page.Entries.Any(e => e.AssetId == entry.AssetId), "RemoveAll never deletes library asset");
+            Require(library.TryList(91003, 0, entry.AssetId), "RemoveAll leaves library template queryable"); Require(Complete(library, "list generation=91003 after RemoveAll").Page.Entries.Any(e => e.AssetId == entry.AssetId), "RemoveAll never deletes library asset");
             NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return library.DebugProjectionStatistics.ActiveReferences == 0 && library.DebugProjectionStatistics.ActiveTemplates == 0; });
             Console.WriteLine("PASS operation ownership pending/Following/PlaceCommitting/SelectingMove/MoveCommitting/SelectingRemove, cross-action rejection, late receipts and RemoveAll last-reference/library preservation.");
         }

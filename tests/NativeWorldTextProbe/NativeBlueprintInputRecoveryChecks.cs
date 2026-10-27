@@ -79,6 +79,7 @@ namespace NativeWorldTextProbe
             Call(shell, "CloseAndSubmitPosition"); Call(host, "CancelCaptureOrDraft"); Call(host, "ClearProjection"); capture.Exit();
             NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !originalLibrary.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
             using (var library = new LibraryState(new FileBlueprintLibrary(Path.Combine(Terraria.Program.SavePath, "input-recovery-seven"))))
+            using (NativeBlueprintLibraryWait.ObserveHost(library))
             {
                 libraryField.SetValue(host, library);
                 try
@@ -88,7 +89,7 @@ namespace NativeWorldTextProbe
                     Call(ui, "OpenLibrary"); Call(Get(state, "Layout"), "SetBlueprintLibraryVisible", true);
                     Call(renderer, "RefreshResources"); Call(renderer, "Prepare", state, 1280f, 900f, 1f);
                     Action prepare = () => { Call(host, "Poll"); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, 900)); };
-                    NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && (int)Get(ui, "PreviewCount") == 1; });
+                    NativeBlueprintLibraryWait.HostCondition(library, "input library preview", () => { prepare(); return !library.Snapshot.Busy && (int)Get(ui, "PreviewCount") == 1; });
                     var controls = Get(renderer, "BlueprintControls"); var toolbar = Get(host, "Toolbar");
                     var commandType = controls.GetType().GetMethod("Available", BindingFlags.Instance | BindingFlags.NonPublic).GetParameters()[0].ParameterType;
                     var commands = new[] { "BlueprintSave", "BlueprintLibrary", "BlueprintMove", "BlueprintRemove" }.Select(n => Enum.Parse(commandType, n)).ToArray();
