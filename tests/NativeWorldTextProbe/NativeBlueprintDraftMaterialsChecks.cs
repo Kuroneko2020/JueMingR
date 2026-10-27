@@ -101,7 +101,12 @@ namespace NativeWorldTextProbe
 
                 Action begin = () =>
                 {
-                    Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
+                    Call(shell, "CloseAndSubmitPosition");
+                    // Saved opens a real library page whose final Prepare may
+                    // have accepted a list/preview command. Retire that command
+                    // through Poll before requiring another legal Save.
+                    wait("new capture command admission", () => { Call(host, "Poll"); return !library.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
+                    NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
                     editor.Enter(); editor.Selection.Clear(); editor.Selection.ToggleRectangle(40, 40, 41, 40, 120, 120);
                     Require((bool)Call(host, "Save") && flow.Status == BlueprintCaptureStatus.Starting, "real Save opens a new Starting capture with its allocated handle");
                     pausedOperation = flow.ContentHandle.Id;

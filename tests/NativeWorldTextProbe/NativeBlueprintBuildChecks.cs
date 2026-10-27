@@ -61,6 +61,7 @@ namespace NativeWorldTextProbe
                     check("shared budget smaller range continuation", () => BudgetPrefixContinuation(context, host, tools, input, false, true));
                     check("retained source world identity replacement", () => BuildSourceWorldIdentity(context, host, tools, input));
                     check("full source cache continuation", () => BuildSourceFullContinuation(context, host, tools, input));
+                    check("mixed large ordinary and object source continuation", () => MixedSourceContinuation(context, host, tools, input));
                     check("legal continuous native opportunity", () => NativeContinuousOpportunity(context, host, tools, input));
                     check("native preflight query isolation", () => PlacementQueryIsolation(context, host, tools, input));
                     check("legacy torch platform and flattening", () => LegacyTorchAttachments(context, host, tools, input));

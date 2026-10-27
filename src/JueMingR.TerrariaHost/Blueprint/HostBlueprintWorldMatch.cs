@@ -51,6 +51,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintProjectionMatchRange Range;
         internal long Token;
         internal bool Sampling;
+        internal bool BuildSourceTickSet;
+        internal ulong BuildSourceTick;
         internal BlueprintProjectionSourcePart Batch;
         internal int SourcePart;
         internal int CellIndex, ObjectId, ObjectIndex;
@@ -594,6 +596,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 BeginMaterialSample(read);
             }
             if (!ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp)) { InvalidateProjectionMatch(read.Range); return; }
+            // A full cache may have declined this long immutable source at
+            // BeginMaterialSample. Retry once in each later update while the
+            // same read is alive; never restart its sample or its build ordinal.
+            RetainBuildSource(read);
             while (reads > 0 && sourceSteps > 0 && read.CellIndex < read.Batch.Window.Cells.Count)
             {
                 sourceSteps--;

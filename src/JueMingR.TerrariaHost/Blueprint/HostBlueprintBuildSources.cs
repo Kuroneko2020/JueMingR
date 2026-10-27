@@ -24,12 +24,16 @@ namespace JueMingR.TerrariaHost.Blueprint
         private static long BuildSourceRetainedBytes(BlueprintProjectionSourcePart part) { return part.EstimatedBytes + 128; }
         private readonly LinkedList<BuildSourcePart> buildSources = new LinkedList<BuildSourcePart>();
         private long buildSourceBytes;
-        private int materialBuildSourceBudget;
+        private int materialBuildSourceBudget, buildSourceCursor;
 
         private void RetainBuildSource(BlueprintProjectionMatchRead read)
         {
             if (MaterialBuildDemand?.Invoke() != true || read.Batch == null || read.MaterialCatalog == null ||
                 BuildSourceRetainedBytes(read.Batch) > BuildSourceByteLimit) return;
+            if (read.BuildSourceTickSet && read.BuildSourceTick == projectionMatchTick) return;
+            read.BuildSourceTickSet = true; read.BuildSourceTick = projectionMatchTick;
+            if (read.Range.Materials?.BuildExhausted == true)
+            { RemoveBuildSources(read.Owner.Identity, read.Range); return; }
             var retained = FindBuildSource(read.Range);
             if (retained != null && ReferenceEquals(retained.Window, read.Batch.Window)) return;
             RemoveBuildSources(read.Owner.Identity, read.Range);
@@ -84,13 +88,14 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             target = null;
             var value = range.Materials;
-            if (value == null || value.BuildExhausted) return false;
+            if (value == null || value.BuildExhausted)
+            { if (value?.BuildExhausted == true) RemoveBuildSources(range.Owner.Identity, range); return false; }
             var part = FindBuildSource(range);
             if (part == null)
             {
                 // Existing active source walks finish before another locality
                 // asks for a cache slot. Do not thrash them per skipped target.
-                if (buildSources.Count < BuildSourcePartLimit) DemandProjectionMatchRange(range);
+                if (BuildSourceCapacityAvailable()) DemandProjectionMatchRange(range);
                 return false;
             }
             long support;
@@ -131,6 +136,33 @@ namespace JueMingR.TerrariaHost.Blueprint
                     target.LocalProof = true; value.Candidate = target; return true;
                 }
                 value.CandidateCursor = NextBuildSourceOrdinal(ordinal, cell, part.LogicalObjectId > 0);
+            }
+            return false;
+        }
+        private bool BuildSourceCapacityAvailable()
+        {
+            if (buildSources.Count < BuildSourcePartLimit) return true;
+            // Match can replay an already exhausted range. Finished entries
+            // are replaceable capacity, exactly as RetainBuildSource treats
+            // them; only genuinely unfinished walks hold the four pins.
+            for (var node = buildSources.First; node != null; node = node.Next)
+                if (node.Value.Range.Materials?.BuildExhausted != false) return true;
+            return false;
+        }
+        private bool TryRetainedBuildTarget(out BlueprintBuildTarget target)
+        {
+            target = null;
+            // Spend the same 64 source steps on at most four live walks before
+            // discovering another locality. A large mixed template must not
+            // revisit hundreds of exhausted object ranges for each ordinary
+            // candidate. Source discovery keeps its own bounded scene cursor.
+            for (int n = 0; n < BuildSourcePartLimit && buildSources.Count > 0 && materialBuildSourceBudget > 0; n++)
+            {
+                int count = buildSources.Count, at = buildSourceCursor % count;
+                var node = buildSources.First;
+                for (int i = 0; i < at; i++) node = node.Next;
+                buildSourceCursor = (at + 1) % count;
+                if (TryMaterialBuildTarget(node.Value.Range, out target)) return true;
             }
             return false;
         }

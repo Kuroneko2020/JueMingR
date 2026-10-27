@@ -82,12 +82,16 @@ namespace NativeWorldTextProbe
         private static void MaterialNativeScraper(object input)
         {
             var player = Main.LocalPlayer; var savedItem = player.inventory[12]; int selected = player.selectedItem;
-            var position = player.position; var camera = Main.screenPosition;
+            var position = player.position; var camera = Main.screenPosition; bool mouseInterface = player.mouseInterface;
             int mouseX = Main.mouseX, mouseY = Main.mouseY, tileX = Player.tileTargetX, tileY = Player.tileTargetY;
             try
             {
                 MaterialFurnitureAt(44, 41, ItemID.WoodenChair, PaintID.BluePaint);
                 WorldGen.paintCoatWall(44, 41, 1, false, false); WorldGen.paintCoatWall(44, 41, 2, false, false);
+                // This direct ItemCheck fixture starts a world-only input
+                // frame. Normal Main.Draw clears the preceding UI hover;
+                // earlier offscreen visual leaves cannot supply that reset.
+                player.mouseInterface = false;
                 NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
                 NativeQuickItemChecks.Until(() => { NativeQuickItemChecks.NativeFrame(player); return player.itemAnimation == 0 && player.itemTime == 0; });
                 player.inventory[12] = new Item(); player.inventory[12].SetDefaults(ItemID.PaintScraper); player.selectedItemState.Select(12);
@@ -95,7 +99,7 @@ namespace NativeWorldTextProbe
                 Main.mouseX = 44 * 16 + 8; Main.mouseY = 41 * 16 + 8; Player.tileTargetX = 44; Player.tileTargetY = 41;
                 Terraria.GameInput.PlayerInput.Triggers.Current.MouseLeft = true; Main.mouseLeft = true;
                 int phase = 0;
-                NativeQuickItemChecks.Until(() =>
+                try { NativeQuickItemChecks.Until(() =>
                 {
                     NativeQuickItemChecks.NativeFrame(player); var tile = Main.tile[44, 41];
                     int next = tile.color() != 0 ? 0 : tile.invisibleBlock() || tile.fullbrightBlock() ? 1 : tile.wallColor() != 0 ? 2 : tile.invisibleWall() || tile.fullbrightWall() ? 3 : 4;
@@ -105,7 +109,16 @@ namespace NativeWorldTextProbe
                     if (next == 1) Require(tile.invisibleBlock() && tile.fullbrightBlock(), "first scrape removes Tile paint before either Tile coating");
                     if (next == 3) Require(tile.invisibleWall() && tile.fullbrightWall(), "wall paint is removed before its coatings");
                     phase = next; return phase == 4;
-                });
+                }); }
+                catch
+                {
+                    Console.Error.WriteLine("SCRAPER native state phase=" + phase + " selected=" + player.selectedItem + " held=" + player.HeldItem.type +
+                        " anim/time=" + player.itemAnimation + "/" + player.itemTime + " use/release=" + player.controlUseItem + "/" + player.releaseUseItem +
+                        " mouseInterface=" + player.mouseInterface + " target=" + Player.tileTargetX + "," + Player.tileTargetY +
+                        " position=" + player.position + " mouse=" + Main.mouseX + "," + Main.mouseY + " camera=" + Main.screenPosition +
+                        " trigger=" + Terraria.GameInput.PlayerInput.Triggers.Current.MouseLeft + " raw=" + Main.mouseLeft);
+                    throw;
+                }
                 Require(player.inventory[12].type == ItemID.PaintScraper && player.inventory[12].stack == 1, "scraper itself is a reusable original tool, not a material charge");
                 Console.WriteLine("PASS original .8 scraper ItemCheck: Tile paint / both Tile coatings / Wall paint / both Wall coatings; reusable source unchanged.");
             }
@@ -114,6 +127,7 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
                 NativeQuickItemChecks.Until(() => { NativeQuickItemChecks.NativeFrame(player); return player.itemAnimation == 0 && player.itemTime == 0; });
                 player.inventory[12] = savedItem; player.selectedItemState.Select(selected); player.selectedItemState.Update();
+                player.mouseInterface = mouseInterface;
                 player.position = position; Main.screenPosition = camera; Main.mouseX = mouseX; Main.mouseY = mouseY; Player.tileTargetX = tileX; Player.tileTargetY = tileY;
             }
         }

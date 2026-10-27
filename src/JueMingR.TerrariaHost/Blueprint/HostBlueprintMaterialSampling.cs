@@ -222,6 +222,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             target = null;
             if (!HasSession || MaterialBuildDemand?.Invoke() != true || ProjectionEditing || ProjectionCaptureBlocked) return false;
             int count = projectionScene.Count; if (count == 0) return false;
+            if (TryRetainedBuildTarget(out target)) return true;
             while (materialBuildSearchBudget-- > 0)
             {
                 materialBuildSceneCursor %= count; var item = projectionScene[materialBuildSceneCursor]; var match = item.Match;
@@ -229,13 +230,17 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (match == null || match.Ranges.Length == 0) continue;
                 match.MaterialBuildCursor %= match.Ranges.Length;
                 var range = match.Ranges[match.MaterialBuildCursor]; match.MaterialBuildCursor = (match.MaterialBuildCursor + 1) % match.Ranges.Length;
-                TryWakeBuildEligibility(range);
-                var candidate = range.Materials?.Candidate;
-                if (candidate != null && IsBuildTargetCurrent(candidate)) { target = candidate; return true; }
-                if (candidate != null) range.Materials.Candidate = null;
-                if (ContinueMaterialBuildSource(range, out target)) return true;
+                if (TryMaterialBuildTarget(range, out target)) return true;
             }
             return false;
+        }
+        private bool TryMaterialBuildTarget(BlueprintProjectionMatchRange range, out BlueprintBuildTarget target)
+        {
+            TryWakeBuildEligibility(range);
+            var candidate = range.Materials?.Candidate;
+            if (candidate != null && IsBuildTargetCurrent(candidate)) { target = candidate; return true; }
+            if (candidate != null) range.Materials.Candidate = null;
+            return ContinueMaterialBuildSource(range, out target);
         }
         internal bool IsBuildTargetCurrent(BlueprintBuildTarget target)
         {

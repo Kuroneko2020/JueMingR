@@ -111,8 +111,23 @@ namespace NativeWorldTextProbe
                 Call(host, "ClearProjection");
 
                 Main.netMode = 1; Main.sectionManager = new WorldSections(6, 2);
+                // A client mode is a real ItemSessionProbe identity change.
+                // Let the original runtime retire the old session before
+                // admitting a new projection under its successor generation.
+                step();
                 long reads = (long)Get(host, "ProjectionMatchCellReads");
-                var unseenLiquid = Place(host, input, pure, 700, 70, step); AwaitReady(unseenLiquid, step);
+                Console.WriteLine("LIQUID unreceived before Place hostGeneration=" + Get(host, "generation") + " runtimeGeneration=" + Get(Get(host, "runtime"), "Generation") +
+                    " canRetain=" + Get(host, "CanRetainEdit") + " camera=" + Main.screenPosition + " mode=" + Mode(host));
+                object unseenLiquid;
+                try { unseenLiquid = Place(host, input, pure, 700, 70, step); AwaitReady(unseenLiquid, step); }
+                catch
+                {
+                    Console.Error.WriteLine("LIQUID unreceived failure hostGeneration=" + Get(host, "generation") + " runtimeGeneration=" + Get(Get(host, "runtime"), "Generation") +
+                        " hasSession=" + Get(host, "HasSession") + " canRetain=" + Get(host, "CanRetainEdit") + " mode=" + Mode(host) +
+                        " pending=" + (GetOptional(host, "pendingProjection") != null) + " candidate=" + (GetOptional(host, "ProjectionCandidate") != null) +
+                        " feedback=" + GetOptional(host, "projectionFeedback") + " libraryBusy=" + library.Snapshot.Busy);
+                    throw;
+                }
                 Require((long)Get(host, "ProjectionMatchCellReads") == reads && Scene(host).Contains(unseenLiquid) &&
                     CallResult(host, "ProjectionMoveEligibility", unseenLiquid).ToString() == "Movable" && MaterialAwait(host, "MaterialWorld", 0L, step).Total == 0,
                     "pure-liquid targets in an unreceived native section need no world reads and cannot manufacture Unknown");
@@ -124,6 +139,9 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS Blueprint liquid: actual capture/save/static/world materials; seven non-liquid targets; partial wire and move lock; native target-liquid churn preserves Match and updates BuildSupport; initial/last-target retirement; pure-liquid Draw/move/remove; last-target mask and empty retirement; unreceived-section zero versus non-liquid Unknown.");
             }
             finally { Main.screenPosition = camera; Call(host, "SetMaterialViewDemand", false); Call(host, "SetAutoBuild", auto); }
+            // EmptyWorld restores the original mode/array on disposal. Enter
+            // that original session before a sibling submits its next Open.
+            step();
         }
 
         private static long LiquidSupportStamp(object host, object range)
