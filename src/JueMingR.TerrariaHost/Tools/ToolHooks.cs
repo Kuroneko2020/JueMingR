@@ -34,6 +34,7 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Player),"PlaceThing_Tiles",new[]{typeof(bool)},nameof(BeforePlant),nameof(AfterPlant));
             Patch(typeof(Player),"PlaceThing_Walls",Type.EmptyTypes,nameof(BeforeWall));
             Patch(typeof(Player),"PlaceThing_Tiles_PlaceIt",new[]{typeof(bool),typeof(TileObject),typeof(int)},nameof(BeforeTileChoice));
+            Patch(typeof(Player),"PlaceThing_Tiles_BlockPlacementForAssortedThings",new[]{typeof(bool)},nameof(BeforeBuildPreparation),nameof(AfterBuildPreparation),nameof(FinalBuildPreparation));
             Patch(typeof(Player),"ItemCheck_CatchCritters",new[]{typeof(Item),typeof(Microsoft.Xna.Framework.Rectangle)},nameof(Catch));
             Patch(typeof(Player),"ItemCheck_UseMiningTools",new[]{typeof(Item)},nameof(Mine));
             Patch(typeof(Player),"ItemCheck_UseMiningTools_ActuallyUseMiningTool",new[]{typeof(Item),typeof(bool).MakeByRefType(),typeof(int),typeof(int)},nameof(MiningEnter),nameof(MiningLeave),nameof(MiningFinal));
@@ -133,7 +134,7 @@ namespace JueMingR.TerrariaHost.Tools
         private static void Boundary(Player __instance){if(ReferenceEquals(__instance,host?.Player))host.Use.Retire();}
         // Reference state exists before Begin; even a Prefix exception midway
         // through temporary input borrowing reaches the same idempotent cleanup.
-        private sealed class Lease {internal long Token;internal Combat.CombatInputScope Combat;internal Combat.HostAttackAim.PlacementUse Placement;internal Blueprint.BlueprintHooks.MouseLease Blueprint;}
+        private sealed class Lease {internal long Token,Generation;internal Combat.CombatInputScope Combat;internal Combat.HostAttackAim.PlacementUse Placement;internal Blueprint.BlueprintHooks.MouseLease Blueprint;}
         private static void SeedBoundary(Player player){if(ReferenceEquals(player,host?.Player))host.Herbs.InvalidateSeeds();}
         // Select from the captured physical sample before optional Facing and
         // before vanilla builds this action's pose; input leases follow it.
@@ -152,12 +153,12 @@ namespace JueMingR.TerrariaHost.Tools
                 {var placement=host.Combat?.Attack?.EnterPlacementUse(__instance);if(placement!=null)__state=new Lease{Placement=placement};}
             }
             if(host.Combat?.Use.Active??false){if(__state==null)__state=new Lease();__state.Combat=host.Combat.Use.Begin(__instance);return;}
-            if(!host.Use.Active)return;if(__state==null)__state=new Lease();__state.Token=host.Use.Operation;host.Use.Begin(__instance);
+            if(!host.Use.Active)return;if(__state==null)__state=new Lease();__state.Token=host.Use.Operation;__state.Generation=host.Use.NativeGeneration+1;host.Use.Begin(__instance);
         }
         private static void After(Player __instance,Lease __state)
-        {try{SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}finally{__state?.Placement?.End();__state?.Blueprint?.End();}}
+        {try{SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}finally{__state?.Placement?.End();__state?.Blueprint?.End();}}
         private static Exception Final(Player __instance,Lease __state,Exception __exception)
-        {try{if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception);host?.Combat?.Use.End(__state?.Combat,__exception);}}finally{__state?.Placement?.End();__state?.Blueprint?.End();}return __exception;}
+        {try{if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,__exception);}}finally{__state?.Placement?.End();__state?.Blueprint?.End();}return __exception;}
         private static void Select(Player ___player){if(host!=null && (host.Enabled || host.Combat?.Enabled==true) && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.ManualSelection();}}
         private static void SelectionUpdate(Player ___player)
         {
@@ -189,6 +190,11 @@ namespace JueMingR.TerrariaHost.Tools
         {return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Building || host.Use.AllowBuildPlacement(true);}
         private static bool BeforeTileChoice(Player __instance,bool __0,TileObject __1,int __2)
         {return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Building || host.Use.AllowBuildTileChoice(__0,__1,__2);}
+        private static void BeforeBuildPreparation(Player __instance,out Action<bool> __state)
+        {__state=ReferenceEquals(__instance,host?.Player)?host.Use.BeginBuildPreparation():null;}
+        private static void AfterBuildPreparation(bool __result,Action<bool> __state){__state?.Invoke(__result);}
+        private static Exception FinalBuildPreparation(Action<bool> __state,Exception __exception)
+        {if(__exception!=null)__state?.Invoke(false);return __exception;}
         private static void AfterPlant(Player __instance,HerbHarvest.HarvestReceipt __state){host?.Herbs.AfterPlant(__instance,__state);}
         private static bool Catch(Player __instance){return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Is(ToolKind.Capture) || host.Use.ActionValid;}
         private static bool Mine(Player __instance){return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Is(ToolKind.Mining) || host.Use.ActionValid;}

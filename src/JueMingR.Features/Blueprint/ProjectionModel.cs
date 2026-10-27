@@ -105,11 +105,12 @@ namespace JueMingR.Features.Blueprint
 #endif
     public sealed class BlueprintProjectionReceipt
     {
-        internal BlueprintProjectionReceipt(BlueprintProjectionReceiptKind kind, BlueprintProjectionIdentity identity, long windowGeneration = 0, CaptureSummary summary = null, BlueprintProjectionWindow window = null, string error = null, string failureCode = null, long totalLayerCount = 0, IReadOnlyList<BlueprintProjectionSourceRange> sourceRanges = null, IReadOnlyList<BlueprintProjectionSourceRange> matchRanges = null, bool identityRetired = false)
-        { MatchRanges = matchRanges; SourceRanges = sourceRanges; TotalLayerCount = totalLayerCount; Kind = kind; Identity = identity; WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary); Window = window; Error = error; FailureCode = failureCode; IdentityRetired = identityRetired; }
+        internal BlueprintProjectionReceipt(BlueprintProjectionReceiptKind kind, BlueprintProjectionIdentity identity, long windowGeneration = 0, CaptureSummary summary = null, BlueprintProjectionWindow window = null, string error = null, string failureCode = null, long totalLayerCount = 0, IReadOnlyList<BlueprintProjectionSourceRange> sourceRanges = null, IReadOnlyList<BlueprintProjectionSourceRange> matchRanges = null, bool identityRetired = false, long totalConstructionLayerCount = 0)
+        { MatchRanges = matchRanges; SourceRanges = sourceRanges; TotalLayerCount = totalLayerCount; TotalConstructionLayerCount = totalConstructionLayerCount; Kind = kind; Identity = identity; WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary); Window = window; Error = error; FailureCode = failureCode; IdentityRetired = identityRetired; }
         public IReadOnlyList<BlueprintProjectionSourceRange> SourceRanges { get; }
         public IReadOnlyList<BlueprintProjectionSourceRange> MatchRanges { get; }
         public long TotalLayerCount { get; }
+        public long TotalConstructionLayerCount { get; }
         public BlueprintProjectionReceiptKind Kind { get; }
         public BlueprintProjectionIdentity Identity { get; }
         public long WindowGeneration { get; }

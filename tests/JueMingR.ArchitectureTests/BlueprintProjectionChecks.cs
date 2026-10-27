@@ -23,6 +23,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "X bounded wide rows and stationary reuse", () => Shapes(Path.Combine(area, "shapes")));
             Run(failures, "open fairness latest retirement and failure", () => Scheduling(Path.Combine(area, "scheduling")));
             Run(failures, "shared instances and atomic layer/object delta", () => Scene(Path.Combine(area, "scene")));
+            Run(failures, "liquid display and construction denominators", () => LiquidDenominators(Path.Combine(area, "liquid-denominators")));
             Run(failures, "overlap reader retirement rejects late delta", () => CommitRetirement(Path.Combine(area, "commit-retirement")));
             Run(failures, "shared request saturation and eventual progress", () => Saturation(Path.Combine(area, "saturation")));
             Run(failures, "last reference retirement during reader disposal", () => LastReferenceWake(Path.Combine(area, "last-reference-wake")));
@@ -265,7 +266,7 @@ namespace JueMingR.ArchitectureTests
                 CaptureCell left = mask.Apply(zero), right = mask.Apply(one);
                 Require((left.Layers & CaptureLayer.Tile) == 0 && (right.Layers & CaptureLayer.Tile) == 0 && right.Layers == CaptureLayer.Wall, "one-member overlap removes entire off-overlap object Tile, preserving member Wall");
                 Require(left.Wires == 10 && (left.Layers & (CaptureLayer.Wall | CaptureLayer.Liquid | CaptureLayer.Actuator)) == (CaptureLayer.Wall | CaptureLayer.Liquid | CaptureLayer.Actuator), "only same wire colors and Tile removed; missing Wall/Liquid/Actuator transparent");
-                Require(mask.RemovedLayerCount == 4 && pa.Mask.RemovedLayerCount == 0 && pb.Mask.RemovedLayerCount == 0, "source masks remain byte-semantic unchanged until Host chooses atomic commit");
+                Require(mask.RemovedLayerCount == 4 && mask.RemovedConstructionLayerCount == 4 && pa.Mask.RemovedLayerCount == 0 && pb.Mask.RemovedLayerCount == 0, "whole-object Tile and two wire colors advance both denominators while source masks remain unchanged");
                 var moved = new BlueprintProjectionPlacement(a, summary, 101, 100, 4, mask);
                 BlueprintProjectionCommitReceipt self = Commit(state, new BlueprintProjectionCommitRequest(11, 71, 10, moved, new[] { pa }));
                 Require(self.Masks.Count == 0 && moved.Mask.Apply(one).Layers == CaptureLayer.Wall, "moving self intersection excluded, inherited permanent mask follows origin");
@@ -596,8 +597,47 @@ namespace JueMingR.ArchitectureTests
                 }
             }
         }
+        private static void LiquidDenominators(string path)
+        {
+            var mixed = Tile(37, 91); mixed.Layers |= CaptureLayer.Liquid; mixed.LiquidAmount = 40; mixed.LiquidKind = 2;
+            var liquid = new CaptureCell { X = 37, Y = 91, Layers = CaptureLayer.Liquid, LiquidAmount = 80, LiquidKind = 1 };
+            Fixture original = Write(path, 1, 1, 1, n => mixed);
+            Fixture tileOnly = Write(path, 1, 1, 1, n => Tile(37, 91));
+            Fixture liquidOnly = Write(path, 1, 1, 1, n => liquid);
+            using (var state = new LibraryState(new FileBlueprintLibrary(path)))
+            {
+                var a = new BlueprintProjectionIdentity(original.Id, original.Revision, original.Hash, 11, 1);
+                Require(state.RequestProjectionOpen(a), "mixed denominator source admitted"); var opened = Await(state, BlueprintProjectionReceiptKind.Opened);
+                Require(opened.Kind == BlueprintProjectionReceiptKind.Opened && opened.TotalLayerCount == 2 && opened.TotalConstructionLayerCount == 1,
+                    "validated old-v1 mixed source keeps two display layers but only one construction target");
+                var b = Open(state, original, 2); var tile = Open(state, tileOnly, 3); var water = Open(state, liquidOnly, 4);
+                var summary = opened.Summary;
+                var pa = new BlueprintProjectionPlacement(a, summary, 100, 100, 1, totalLayerCount: 2, totalConstructionLayerCount: 1);
+                var pb = new BlueprintProjectionPlacement(b, summary, 200, 100, 2, totalLayerCount: 2, totalConstructionLayerCount: 1);
+                var removeTile = Commit(state, new BlueprintProjectionCommitRequest(11, 120, 1,
+                    new BlueprintProjectionPlacement(tile, summary, 100, 100, 3), new[] { pa }));
+                var lastLiquid = removeTile.Masks[1]; var local = mixed; local.X = local.Y = 0;
+                Require(lastLiquid.RemovedLayerCount == 1 && lastLiquid.RemovedConstructionLayerCount == 1 &&
+                    lastLiquid.Apply(local).Layers == CaptureLayer.Liquid && removeTile.RetiredInstanceIds.Count == 0,
+                    "masking the last construction target preserves the display-only liquid instance rather than empty retirement");
+                var removeLiquid = Commit(state, new BlueprintProjectionCommitRequest(11, 121, 2,
+                    new BlueprintProjectionPlacement(water, summary, 200, 100, 4), new[] { pb }));
+                Require(removeLiquid.Masks[2].RemovedLayerCount == 1 && removeLiquid.Masks[2].RemovedConstructionLayerCount == 0 &&
+                    removeLiquid.Masks[2].Apply(local).Layers == CaptureLayer.Tile && removeLiquid.RetiredInstanceIds.Count == 0,
+                    "liquid overlap erases only the full-layer liquid count, never the independent Tile denominator");
+                var masked = new BlueprintProjectionPlacement(a, summary, 100, 100, 5, lastLiquid, 2, 1);
+                var removeAll = Commit(state, new BlueprintProjectionCommitRequest(11, 122, 3,
+                    new BlueprintProjectionPlacement(water, summary, 100, 100, 6), new[] { masked }));
+                Require(removeAll.Masks[1].RemovedLayerCount == 2 && removeAll.Masks[1].RemovedConstructionLayerCount == 1 &&
+                    removeAll.RetiredInstanceIds.SequenceEqual(new long[] { 1 }),
+                    "removing the final display layer still uses original all-layer empty retirement");
+                var restored = Window(state, a, 88, new BlueprintProjectionBounds(0, 0, 1, 1));
+                Require(restored.Cells.Single().Layers == (CaptureLayer.Tile | CaptureLayer.Liquid) && restored.Cells.Single().LiquidAmount == 40,
+                    "derived denominators and immutable masks never migrate or rewrite old saved liquid bytes");
+            }
+        }
         private static BlueprintProjectionMask SourceMask(Dictionary<long, ushort> cells, HashSet<int> objects, long count)
-        { return (BlueprintProjectionMask)typeof(BlueprintProjectionMask).GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Single().Invoke(new object[] { cells, objects, count }); }
+        { return (BlueprintProjectionMask)typeof(BlueprintProjectionMask).GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Single().Invoke(new object[] { cells, objects, count, count }); }
         private static BlueprintProjectionSourceReceipt Source(LibraryState state)
         {
             BlueprintProjectionSourceReceipt found = null;

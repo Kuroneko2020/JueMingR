@@ -7,15 +7,15 @@ namespace JueMingR.Features.Blueprint
     public enum BlueprintWorldObjectFamily { Metadata, Door }
     public enum BlueprintWorldFrameKind { Literal, TreeTrunk22, Palm22, Mushroom18 }
 
-    // These bits deliberately share the permanent mask's counting unit, but
-    // are observations only. A match must never be written into that mask.
+    // Construction observations use the permanent mask's layer units without
+    // its display-only Liquid bit. A Match never mutates the permanent mask.
     public readonly struct BlueprintWorldMatchResult
     {
         public BlueprintWorldMatchResult(ushort targetBits, ushort matchBits, ushort conflictBits, ushort unknownBits)
         {
-            TargetBits = targetBits; MatchBits = (ushort)(matchBits & targetBits);
-            ConflictBits = (ushort)(conflictBits & targetBits & ~MatchBits);
-            UnknownBits = (ushort)(unknownBits & targetBits & ~MatchBits & ~ConflictBits);
+            TargetBits = BlueprintConstructionTargets.FilterBits(targetBits); MatchBits = (ushort)(matchBits & TargetBits);
+            ConflictBits = (ushort)(conflictBits & TargetBits & ~MatchBits);
+            UnknownBits = (ushort)(unknownBits & TargetBits & ~MatchBits & ~ConflictBits);
         }
         public ushort TargetBits { get; }
         public ushort MatchBits { get; }

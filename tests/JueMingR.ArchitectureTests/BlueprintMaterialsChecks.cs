@@ -9,7 +9,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
-            try { LayersAndBodies(); SplitObjectAppearance(); PlacementCanonicalMetadata(); UnknownAndArithmetic(); }
+            try { LayersAndBodies(); DisplayOnlyLiquids(); SplitObjectAppearance(); PlacementCanonicalMetadata(); UnknownAndArithmetic(); }
             catch (Exception error) { failures.Add("Blueprint materials values: " + error); }
             BlueprintLibraryChecks.MaterialLane(failures);
         }
@@ -104,6 +104,28 @@ namespace JueMingR.ArchitectureTests
             Require(maskedWall.Snapshot(3).Status == BlueprintMaterialStatus.Exact && maskedWall.Snapshot(3).Total == 0,
                 "a masked wall cannot force selected furniture appearance to be restored");
         }
+        private static void DisplayOnlyLiquids()
+        {
+            var liquid = new CaptureCell { Layers = CaptureLayer.Liquid, LiquidAmount = 128, LiquidKind = 1 };
+            var empty = new BlueprintMaterialAccumulator();
+            BlueprintMaterialSteps.StaticCell(liquid, null, empty);
+            BlueprintMaterialSteps.RequiredSteps(liquid, default(BlueprintWorldMatchSample), Catalog(), empty);
+            Require(empty.Snapshot(1).Status == BlueprintMaterialStatus.Exact && empty.Snapshot(1).Total == 0 && empty.Snapshot(1).KindCount == 0,
+                "confirmed liquid-only content needs no placement explanation or world read, and contributes exact zero materials");
+            var mixed = Tile(); mixed.Layers |= CaptureLayer.Liquid | CaptureLayer.Wire; mixed.Wires = 15; mixed.LiquidAmount = 240;
+            var all = new BlueprintMaterialAccumulator(); BlueprintMaterialSteps.StaticCell(mixed, Catalog(), all);
+            Require(all.Snapshot(2).Status == BlueprintMaterialStatus.Exact && all.Snapshot(2).Total == 5 && all.Snapshot(2).KindCount == 2,
+                "ordinary body plus four colors has unchanged known direct materials despite coincident liquid");
+            var unreadable = new BlueprintMaterialAccumulator(); BlueprintMaterialSteps.RequiredSteps(mixed, default(BlueprintWorldMatchSample), Catalog(), unreadable);
+            Require(unreadable.Snapshot(3).Status == BlueprintMaterialStatus.Unresolved,
+                "unreadable non-liquid content remains unresolved after filtering display liquid");
+            var member = new CaptureCell { Layers = CaptureLayer.Tile | CaptureLayer.Liquid, TileType = 14, ObjectId = 1, LiquidAmount = 64 };
+            var furniture = new BlueprintMaterialAccumulator();
+            BlueprintMaterialSteps.StaticCell(member, Catalog(), furniture);
+            BlueprintMaterialSteps.StaticObject(new CaptureObject { Id = 1, Type = 14, Width = 2, Height = 2, Reliable = true }, member, Catalog(), furniture);
+            Require(furniture.Snapshot(4).Status == BlueprintMaterialStatus.Exact && furniture.Snapshot(4).Rows.Single().ItemType == 1002 && furniture.Snapshot(4).Total == 1,
+                "complete furniture still contributes one body while its member liquid contributes nothing");
+        }
         private static void PlacementCanonicalMetadata()
         {
             // A pure model of the original anchor-alternate mechanism: the
@@ -147,7 +169,7 @@ namespace JueMingR.ArchitectureTests
             Require(tools.Snapshot(1).Status == BlueprintMaterialStatus.Exact && tools.Snapshot(1).Total == 0, "proven hammer-only change is an explained zero");
             var liquid = new CaptureCell { Layers = CaptureLayer.Liquid, LiquidAmount = 128, LiquidKind = 0 };
             BlueprintMaterialSteps.StaticCell(liquid, Catalog(), tools);
-            Require(tools.Snapshot(2).Status == BlueprintMaterialStatus.Unresolved, "liquid amount is not bucket count");
+            Require(tools.Snapshot(2).Status == BlueprintMaterialStatus.Exact && tools.Snapshot(2).Total == 0, "display liquid cannot turn an explained tool-only zero into unresolved material");
 
             var large = new BlueprintMaterialAccumulator(); large.Add(1001, (long)int.MaxValue + 1); large.Add(1001, 17);
             Require(large.Snapshot(1).Total == (long)int.MaxValue + 18, "direct counts remain exact beyond int");

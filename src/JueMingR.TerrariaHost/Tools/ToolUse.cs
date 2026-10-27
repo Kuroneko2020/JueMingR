@@ -28,6 +28,8 @@ namespace JueMingR.TerrariaHost.Tools
         internal Func<bool,bool> NativePlacement;
         internal Func<bool,TileObject,int,bool> NativeTileChoice;
         internal Action NativeChecked;
+        internal Action NativeBeginning;
+        internal Func<Action<bool>> NativePreparing;
     }
     // The target, sustained business intent and actual use lease have distinct
     // lifetimes. Only the feature refreshes targets; vanilla owns selection,
@@ -38,7 +40,7 @@ namespace JueMingR.TerrariaHost.Tools
         private Player player;
         private Item item,originalItem;
         private int type,original,stack,originalType;
-        private long token,session,pulseFrame,selection,nextContention;
+        private long token,session,pulseFrame,selection,nextContention,nativeGeneration;
         private bool pulsed,checkedItem,started,cancelled,borrowed,notified,yieldExternal,returnRequested;
         private int oldX,oldY,oldTileX,oldTileY,ownX,ownY,ownTileX,ownTileY;
         private bool oldMouse;
@@ -51,6 +53,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal bool Returning {get;private set;}
         internal bool Active {get{return player!=null;}}
         internal long Operation {get{return token;}}
+        internal long NativeGeneration {get{return nativeGeneration;}}
         internal bool CompletedAnimation {get{return Active && started && player.itemAnimation<=0;}}
         internal bool Building {get{return Active && Intent?.Kind==ToolKind.Build;}}
         private bool HeldInventory {get{return Intent.HeldInventory || Intent.Kind==ToolKind.Capture && host.Mode(0)==2;}}
@@ -122,25 +125,29 @@ namespace JueMingR.TerrariaHost.Tools
             // vanilla projectile AI observes the temporary non-rod itself.
             if(Intent.SelectionOnly)return;
             if(Intent.Refresh==null && (pulsed || checkedItem))return;
-            // Construction supplies one legal press after vanilla observed a
-            // release. It never manufactures a release or resets native time.
-            if(Building && !p.releaseUseItem)return;
+            // Held construction can use another original item-time window
+            // inside an animation. A non-reusing item still gets a real neutral
+            // input step before its next animation; never manufacture release.
+            if(Building && p.itemAnimation<=0 && !p.releaseUseItem && !item.autoReuse)return;
             BorrowDirection();
             p.controlUseItem=true;if(!pulsed && !Building)p.releaseUseItem=true;pulseFrame=host.Input.Frame;pulsed=true;
         }
         internal void Begin(Player p)
         {
             if(!ReferenceEquals(p,player) || p.selectedItem!=Intent.Slot)return;
+            nativeGeneration++;
             // Cleanup responsibility may outlive automatic intent. A genuine
             // manual press owns this ItemCheck, including during a Boss pause.
             if(host.ManualLeft || host.SelectionIntent!=selection){HandToManual();return;}
             InNativeUse=true;
             if(!Refresh()){Cancel();return;}
             if(Intent.SelectionOnly)return;
+            if(Building)stack=item.stack;
+            Intent.NativeBeginning?.Invoke();
             // Establish cleanup ownership BEFORE the first temporary write.
             BorrowDirection();
             BorrowAim();
-            if(pulsed && (Intent.Refresh!=null || !checkedItem))Main.mouseLeft=true;
+            if(pulsed && (Intent.Refresh!=null || !checkedItem) && (!Building || pulseFrame==host.Input.Frame))Main.mouseLeft=true;
         }
         private void BorrowAim()
         {
@@ -163,6 +170,8 @@ namespace JueMingR.TerrariaHost.Tools
         {return !Building || InNativeUse && ActionValid && (Intent.NativePlacement?.Invoke(wall)??false);}
         internal bool AllowBuildTileChoice(bool objectType,TileObject placement,int tileType)
         {return !Building || InNativeUse && ActionValid && (Intent.NativeTileChoice?.Invoke(objectType,placement,tileType)??false);}
+        internal Action<bool> BeginBuildPreparation()
+        {return Building && InNativeUse && ActionValid ? Intent.NativePreparing?.Invoke() : null;}
         internal bool OwnsBuildSource(Item[] array,int slot)
         {return Building && session==host.Runtime.Generation && host.SelectionIntent==selection && ReferenceEquals(array,player.inventory) &&
             (slot==Intent.Slot && ReferenceEquals(array[slot],item) || (Intent.OwnsMaterial?.Invoke(array,slot)??false));}
@@ -182,9 +191,9 @@ namespace JueMingR.TerrariaHost.Tools
         internal void EndProjectile(long operation,Exception error)
         {if(operation<=0 || operation!=token || !Active)return;Restore();if(error!=null){host.HoldUnknown(Intent.Slot);Notify(true);Cancel();}}
         internal void Started(Player p){if(ReferenceEquals(p,player) && InNativeUse){started=true;Intent.Used?.Invoke();}}
-        internal void End(Player p,long operation,Exception error)
+        internal void End(Player p,long operation,Exception error,long generation=0)
         {
-            if(operation==0 || operation!=token || !ReferenceEquals(p,player))return;
+            if(operation==0 || operation!=token || generation!=0 && generation!=nativeGeneration || !ReferenceEquals(p,player))return;
             Restore();bool entered=InNativeUse;InNativeUse=false;if(!entered)return;checkedItem=true;
             if(error!=null)
             {

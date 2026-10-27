@@ -21,6 +21,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int WorldY { get { return TargetY; } }
         internal BlueprintProjectionBounds Bounds;
         internal BlueprintPlacementDescriptor Placement;
+        internal bool LocalProof;
     }
     internal sealed class BlueprintMaterialTotals
     {
@@ -52,7 +53,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool Adding, Current, Unresolved, Queued;
         internal BlueprintMaterialStatus NextStatus;
         internal long CatalogRevision;
-        internal BlueprintBuildTarget Candidate, CandidateFallback;
+        internal BlueprintBuildTarget Candidate;
         internal int CandidateCursor;
         internal long BuildEpoch, BuildWakeRevision;
         internal long BuildPlayerRevision, BuildSupplyRevision, BuildContainerRevision, BuildActivationRevision;
@@ -63,6 +64,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool EligibilityRetry;
         internal int EligibilityRetryOrdinal;
         internal ulong EligibilityRetryAt;
+        internal ulong DynamicRetryAt;
     }
     internal sealed partial class HostBlueprint
     {
@@ -215,7 +217,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             var value = range.Materials;
             if (value != null)
             {
-                value.BuildWakeRevision++; ResetMaterialBuildWalk(range, true);
+                value.BuildWakeRevision++; value.Candidate = null;
+                value.BuildRetryPending = true; value.EligibilityRetry = false;
             }
             // This demand uses the original bounded source/world scheduler.
             // Its final Match proof and material contribution remain current.
@@ -318,7 +321,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 range.Owner.Match.Materials.Current--; materialAll.Current--;
                 if (value.Unresolved) { range.Owner.Match.Materials.Unresolved--; materialAll.Unresolved--; }
             }
-            value.Candidate = value.CandidateFallback = null; value.Progress = null;
+            value.Candidate = null; value.Progress = null;
             // A bill/context refresh keeps the no-spend native rejection's
             // bounded recovery. Only a changed placement identity/target or
             // retirement discards that wait together with its candidate walk.

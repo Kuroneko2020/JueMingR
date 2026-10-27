@@ -24,9 +24,10 @@ namespace JueMingR.Features.Blueprint
         private readonly Dictionary<long, ushort> cells;
         private readonly HashSet<int> objects;
         public static BlueprintProjectionMask Empty { get; } = new BlueprintProjectionMask(new Dictionary<long, ushort>(), new HashSet<int>(), 0);
-        internal BlueprintProjectionMask(Dictionary<long, ushort> cells, HashSet<int> objects, long removed)
-        { this.cells = cells; this.objects = objects; RemovedLayerCount = removed; }
+        internal BlueprintProjectionMask(Dictionary<long, ushort> cells, HashSet<int> objects, long removed, long removedConstruction = 0)
+        { this.cells = cells; this.objects = objects; RemovedLayerCount = removed; RemovedConstructionLayerCount = removedConstruction; }
         public long RemovedLayerCount { get; }
+        public long RemovedConstructionLayerCount { get; }
         public int CellCount { get { return cells.Count; } }
         public int ObjectCount { get { return objects.Count; } }
         // The shared source-position index carries only layer bits/object ID.
@@ -96,8 +97,8 @@ namespace JueMingR.Features.Blueprint
 
     public sealed class BlueprintProjectionPlacement
     {
-        public BlueprintProjectionPlacement(BlueprintProjectionIdentity identity, CaptureSummary summary, int originX, int originY, long commitOrder, BlueprintProjectionMask mask = null, long totalLayerCount = 0)
-        { Identity = identity ?? throw new ArgumentNullException(nameof(identity)); savedSummary = LibraryState.Copy(summary) ?? throw new ArgumentNullException(nameof(summary)); OriginX = originX; OriginY = originY; CommitOrder = commitOrder; Mask = mask ?? BlueprintProjectionMask.Empty; TotalLayerCount = totalLayerCount; }
+        public BlueprintProjectionPlacement(BlueprintProjectionIdentity identity, CaptureSummary summary, int originX, int originY, long commitOrder, BlueprintProjectionMask mask = null, long totalLayerCount = 0, long totalConstructionLayerCount = 0)
+        { Identity = identity ?? throw new ArgumentNullException(nameof(identity)); savedSummary = LibraryState.Copy(summary) ?? throw new ArgumentNullException(nameof(summary)); OriginX = originX; OriginY = originY; CommitOrder = commitOrder; Mask = mask ?? BlueprintProjectionMask.Empty; TotalLayerCount = totalLayerCount; TotalConstructionLayerCount = totalConstructionLayerCount; }
         public BlueprintProjectionIdentity Identity { get; }
         private readonly CaptureSummary savedSummary;
         public CaptureSummary Summary { get { return LibraryState.Copy(savedSummary); } }
@@ -106,6 +107,7 @@ namespace JueMingR.Features.Blueprint
         public long CommitOrder { get; }
         public BlueprintProjectionMask Mask { get; }
         public long TotalLayerCount { get; }
+        public long TotalConstructionLayerCount { get; }
     }
 
     public sealed class BlueprintProjectionCommitRequest

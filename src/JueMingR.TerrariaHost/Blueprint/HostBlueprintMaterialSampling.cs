@@ -24,12 +24,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (read.Range.Offset == 0 || value.Progress == null || value.CatalogRevision != catalog.Revision)
             {
                 value.Progress = new BlueprintMaterialAccumulator(); value.CatalogRevision = catalog.Revision;
-                value.Candidate = value.CandidateFallback = null;
             }
-            read.MaterialCatalog = catalog; read.Materials = value.Progress; read.MaterialBuildEpoch = value.BuildEpoch;
-            read.MaterialBuildWakeRevision = value.BuildWakeRevision;
-            read.MaterialSupportReady = MaterialBuildDemand?.Invoke() == true &&
-                projectionChanges.TryGetBuildStamp(read.Range.Watch, read.Range.PartIndex, out read.MaterialSupportStamp);
+            read.MaterialCatalog = catalog; read.Materials = value.Progress;
+            RetainBuildSource(read);
         }
         private void SampleMaterialCell(BlueprintProjectionMatchRead read, CaptureCell target, BlueprintWorldMatchSample sample)
         {
@@ -44,11 +41,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (target.ObjectId > 0) target = target.WithoutTile();
             if (!target.HasContent) return;
             BlueprintMaterialSteps.RequiredSteps(target, sample, read.MaterialCatalog, read.Materials, foregroundHandledElsewhere: objectForeground);
-            if (MaterialBuildDemand?.Invoke() != true || !sample.Available) return;
-            if ((target.Layers & CaptureLayer.Tile) != 0 && BlueprintMaterialSteps.SameBody(target, sample, read.MaterialCatalog) == BlueprintBodyState.Missing)
-                OfferMaterialBuildTarget(read, target, read.MaterialCatalog.Tile(target), null, null, checked((read.Batch.Offset + read.CellIndex) * 2));
-            if ((target.Layers & CaptureLayer.Wall) != 0 && BlueprintMaterialSteps.SameBody(target, sample, true) == BlueprintBodyState.Missing)
-                OfferMaterialBuildTarget(read, target, read.MaterialCatalog.Wall(target.WallType), null, null, checked((read.Batch.Offset + read.CellIndex) * 2 + 1));
         }
         private void SampleMaterialObjectRead(BlueprintProjectionMatchRead read, BlueprintWorldMatchSample sample)
         {
@@ -112,9 +104,6 @@ namespace JueMingR.TerrariaHost.Blueprint
                 foreach (var pair in read.MaterialObjectAppearance.Counts) read.Materials.Add(pair.Key, pair.Value);
                 if (read.MaterialObjectAppearance.Status != BlueprintMaterialStatus.Exact) read.Materials.Unresolved(read.MaterialObjectAppearance.Error);
             }
-            if (MaterialBuildDemand?.Invoke() == true && body == BlueprintBodyState.Missing)
-                OfferMaterialBuildTarget(read, first, read.MaterialCatalog.Tile(first, read.ObjectTargets.Objects[0]),
-                    read.ObjectTargets.Objects[0], read.ObjectTarget, 0);
             read.MaterialObjectProof = null; read.MaterialObjectAppearance = null;
         }
         private void SampleMaterialObjectCell(BlueprintProjectionMatchRead read, CaptureCell cell)
@@ -141,21 +130,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                 {
                     // Availability/status really changed. Revoke that bill,
                     // but retain candidates proven by this fresh read.
-                    var candidate = value.Candidate; var fallback = value.CandidateFallback;
-                    RevokeMaterialRange(read.Range); value.Candidate = candidate; value.CandidateFallback = fallback;
+                    var candidate = value.Candidate;
+                    RevokeMaterialRange(read.Range); value.Candidate = candidate;
                 }
                 value.Desired = read.Materials.Counts; value.NextStatus = read.Materials.Status;
             }
             value.Progress = null;
-            if (MaterialBuildDemand?.Invoke() == true && (read.MaterialBuildEpoch != value.BuildEpoch || read.MaterialBuildWakeRevision != value.BuildWakeRevision ||
-                !read.MaterialSupportReady || !projectionChanges.IsBuildCurrent(read.Range.Watch, read.Range.PartIndex, read.MaterialSupportStamp)))
-            { value.Candidate = value.CandidateFallback = null; DemandProjectionMatchRange(read.Range); }
-            // Reaching the tail ends this walk. Recovery observed during its
-            // prefix stays latched until the ordinary range cursor opens the
-            // next walk; it never promotes a fallback ahead of the current tail.
-            else if (MaterialBuildDemand?.Invoke() == true && value.Candidate == null) value.BuildExhausted = true;
-            value.CandidateFallback = null;
-            if (value.Candidate != null) value.Candidate.RangeStamp = read.Range.Version;
+            // Source/world sampling completion is not construction exhaustion.
+            // The independent ordinal consumes the same retained immutable
+            // source, and only it may declare every candidate served.
             if (!keepContribution) { QueueMaterialChange(read.Range); CancelMaterialPublication(); }
         }
         // The existing immutable proof geometry routes just this native write.
@@ -209,13 +192,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             ResetProjectionMatchRead(range); range.Reading = false; range.Offset = 0;
             RevokeMaterialRange(range); DemandProjectionMatchRange(range);
         }
-        private void OfferMaterialBuildTarget(BlueprintProjectionMatchRead read, CaptureCell cell, BlueprintPlacementDescriptor descriptor,
-            CaptureObject? obj, BlueprintWorldObject body, int ordinal)
+        private static BlueprintBuildTarget CreateMaterialBuildTarget(BlueprintProjectionPlacement owner, BlueprintProjectionMatchRange range,
+            CaptureCell cell, BlueprintPlacementDescriptor descriptor, CaptureObject? obj, BlueprintWorldObject body, int ordinal, long support, long catalog)
         {
-            if (descriptor == null || descriptor.Flexible || descriptor.RequiresSubstrate || descriptor.UseItemType <= 0 ||
-                read.Range.Materials == null || read.Range.Materials.BuildExhausted || !read.MaterialSupportReady) return;
-            var value = read.Range.Materials;
-            int x = read.Owner.OriginX + cell.X, y = read.Owner.OriginY + cell.Y;
+            int x = owner.OriginX + cell.X, y = owner.OriginY + cell.Y;
             var bounds = body == null ? new BlueprintProjectionBounds(x, y, 1, 1) : new BlueprintProjectionBounds(body.WorldX, body.WorldY, body.Width, body.Height);
             if (body?.Family == BlueprintWorldObjectFamily.Door)
             {
@@ -229,16 +209,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             else if (obj.HasValue)
             {
-                x = checked(read.Owner.OriginX + obj.Value.X + descriptor.OriginX);
-                y = checked(read.Owner.OriginY + obj.Value.Y + descriptor.OriginY);
+                x = checked(owner.OriginX + obj.Value.X + descriptor.OriginX);
+                y = checked(owner.OriginY + obj.Value.Y + descriptor.OriginY);
             }
-            var target = new BlueprintBuildTarget { Identity = read.Owner.Identity, Mask = read.Owner.Mask, Range = read.Range,
-                RangeStamp = read.Range.Version, SupportStamp = read.MaterialSupportStamp, PlacementRevision = read.MaterialCatalog.Revision, OriginX = read.Owner.OriginX, OriginY = read.Owner.OriginY,
+            return new BlueprintBuildTarget { Identity = owner.Identity, Mask = owner.Mask, Range = range,
+                RangeStamp = range.Version, SupportStamp = support, PlacementRevision = catalog, OriginX = owner.OriginX, OriginY = owner.OriginY,
                 TargetX = x, TargetY = y, Ordinal = ordinal, Cell = cell, Object = obj ?? default(CaptureObject), Body = body,
                 Bounds = bounds, Placement = descriptor };
-            if (ordinal >= value.CandidateCursor)
-            { if (value.Candidate == null) value.Candidate = target; }
-            else if (value.CandidateFallback == null) value.CandidateFallback = target;
         }
         internal bool TryGetBuildTarget(out BlueprintBuildTarget target)
         {
@@ -255,33 +232,40 @@ namespace JueMingR.TerrariaHost.Blueprint
                 TryWakeBuildEligibility(range);
                 var candidate = range.Materials?.Candidate;
                 if (candidate != null && IsBuildTargetCurrent(candidate)) { target = candidate; return true; }
+                if (candidate != null) range.Materials.Candidate = null;
+                if (ContinueMaterialBuildSource(range, out target)) return true;
             }
             return false;
         }
         internal bool IsBuildTargetCurrent(BlueprintBuildTarget target)
         {
+            return IsBuildTargetIdentityCurrent(target) && projectionChanges.IsBuildCurrent(target.Range.Watch, target.Range.PartIndex, target.SupportStamp);
+        }
+        private bool IsBuildTargetIdentityCurrent(BlueprintBuildTarget target)
+        {
+            // This half is never an admission by itself. Only the exact
+            // native torch-preparation receipt may replace the support stamp;
+            // scene/mask/catalog/raw-target identity is still mandatory.
             if (target == null || !HasSession || MaterialBuildDemand?.Invoke() != true || ProjectionEditing || ProjectionCaptureBlocked ||
                 target.Identity.SessionGeneration != generation || target.PlacementRevision != MaterialCatalog?.Revision) return false;
             var owner = target.Range?.Owner;
             return owner != null && projectionScene.Contains(owner) && owner.Identity.Equals(target.Identity) && ReferenceEquals(owner.Mask, target.Mask) &&
-                owner.OriginX == target.OriginX && owner.OriginY == target.OriginY && owner.Match != null && target.Range.Current &&
-                target.Range.Version == target.RangeStamp && ProjectionMatchReadCurrent(target.Range, target.Range.RawVersion) &&
-                projectionChanges.IsBuildCurrent(target.Range.Watch, target.Range.PartIndex, target.SupportStamp);
+                owner.OriginX == target.OriginX && owner.OriginY == target.OriginY && owner.Match != null && (target.LocalProof || target.Range.Current) &&
+                target.Range.Version == target.RangeStamp && ProjectionMatchReadCurrent(target.Range, target.Range.RawVersion);
         }
         internal void NotifyBuildAttempt(BlueprintBuildTarget target)
         {
             if (target == null || target.Range?.Materials == null) return;
             var value = target.Range.Materials;
             if (!ReferenceEquals(value.Candidate, target)) return;
-            value.CandidateCursor = target.Ordinal == int.MaxValue ? 0 : target.Ordinal + 1; value.Candidate = null;
-            if (!value.BuildExhausted && IsBuildTargetCurrent(target)) DemandProjectionMatchRange(target.Range);
+            value.CandidateCursor = NextBuildSourceOrdinal(target.Ordinal, target.Cell, target.Body != null); value.Candidate = null;
         }
         internal void InvalidateBuildTargets(BlueprintProjectionIdentity identity = null)
         {
             foreach (var item in projectionScene)
             {
                 if (identity != null && !identity.Equals(item.Identity) || item.Match == null) continue;
-                foreach (var range in item.Match.Ranges) if (range.Materials != null) range.Materials.Candidate = range.Materials.CandidateFallback = null;
+                foreach (var range in item.Match.Ranges) if (range.Materials != null) range.Materials.Candidate = null;
             }
         }
     }

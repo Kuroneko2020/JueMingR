@@ -61,6 +61,8 @@ namespace NativeWorldTextProbe
                 Call(host, "SetAutoBuild", false); Call(shell, "CloseAndSubmitPosition");
                 NativeBlueprintWorldMatchChecks.InitializeMetadata(); Framing.Initialize(); Main.SetupTileMerge();
                 Main.tile[40, 40].wall = WallID.Wood; Main.tile[41, 40].wall = WallID.Stone;
+                Main.tile[40, 40].liquid = 64; Main.tile[41, 40].liquid = 180;
+                Main.tile[41, 40].liquidType(2);
                 if (graphics != null) graphics.LoadItemTextures(new[] { (int)ItemID.WoodWall, (int)ItemID.StoneWall });
                 Action prepare = () =>
                 {
@@ -130,7 +132,7 @@ namespace NativeWorldTextProbe
                 wait("sealed exact bill", () => { step(); exact = (BlueprintMaterialSnapshot)Call(host, "MaterialDraft"); return flow.Status == BlueprintCaptureStatus.DraftReady && exact.Status == BlueprintMaterialStatus.Exact; });
                 Require(exact.KindCount == 2 && exact.Total == 2 && exact.Rows.Count == 2 && exact.Rows.All(r => r.Required == 1) &&
                     exact.Rows.Any(r => r.ItemType == ItemID.WoodWall) && exact.Rows.Any(r => r.ItemType == ItemID.StoneWall),
-                    "the same open page naturally derives independently known one Wood Wall and one Stone Wall");
+                    "the same open page naturally derives one Wood Wall and one Stone Wall, with coincident water/honey excluded");
                 Require(flow.Token.OperationId == operation && flow.ContentHandle.Equals(handle) && ReferenceEquals(flow.Summary, summary) &&
                     ReferenceEquals(catalog, Get(host, "MaterialCatalog")), "no close/reopen, exclusion change, resample or catalog change repairs the result");
                 long slices = (long)Get(worker, "MaterialSlices"); requests = (long)Get(worker, "MaterialRequests");

@@ -56,6 +56,26 @@ namespace NativeWorldTextProbe
                     check("continuous unrelated inventory fairness", () => ContinuousCandidateProgress(context, host, tools, input, false, true, false));
                     check("supply restored before active walk tail", () => ContinuousCandidateProgress(context, host, tools, input, true, true, true));
                     check("refill before all-missing active tail", () => RefillBeforeMissingTail(context, host, tools, input));
+                    check("cold 300-record prefix continuation", () => BudgetPrefixContinuation(context, host, tools, input, false, false));
+                    check("current 300-record prefix continuation", () => BudgetPrefixContinuation(context, host, tools, input, true, false));
+                    check("shared budget smaller range continuation", () => BudgetPrefixContinuation(context, host, tools, input, false, true));
+                    check("retained source world identity replacement", () => BuildSourceWorldIdentity(context, host, tools, input));
+                    check("full source cache continuation", () => BuildSourceFullContinuation(context, host, tools, input));
+                    check("legal continuous native opportunity", () => NativeContinuousOpportunity(context, host, tools, input));
+                    check("native preflight query isolation", () => PlacementQueryIsolation(context, host, tools, input));
+                    check("legacy torch platform and flattening", () => LegacyTorchAttachments(context, host, tools, input));
+                    check("legacy torch late support interruption", () => LegacyTorchInterruptedFlattening(context, host, tools, input));
+                    check("legacy alchemy native eligibility", () => LegacyAlchemyEligibility(context, host, tools, input));
+                    check("legacy dye native eligibility", () => LegacyDyeEligibility(context, host, tools, input));
+                    check("query readable section and null protection", () => LegacyQueryAvailability(context, host, tools, input));
+                    check("NPC blocker and entity-only recovery", () => PreflightEntityBlocker(context, host, tools, input, false, false));
+                    check("remote player blocker and entity-only recovery", () => PreflightEntityBlocker(context, host, tools, input, true, false));
+                    check("entity enters after Ready", () => PreflightEntityBlocker(context, host, tools, input, false, true));
+                    check("native legal entity overlaps", () => PreflightAllowedEntityOverlap(context, host, tools, input));
+                    check("existing wrong support and no extra support", () => PreflightExistingWorldSupport(context, host, tools, input));
+                    check("actuated anchor and recovery", () => PreflightActuatedAnchor(context, host, tools, input));
+                    check("support disappears after Ready", () => PreflightPreparedSupport(context, host, tools, input));
+                    check("world liquid placement qualification", () => PreflightLiquidQualification(context, host, tools, input));
                     check("stable ranges ignore inventory and consumption noise", () => StableRangesIgnoreSupplyNoise(context, host, tools, input));
                     check("exact source owner recovery", () => ProtectedSourceRecovery(context, host, tools, input));
                     check("accessory source recovery", () => AccessorySourceRecovery(context, host, tools, input));
@@ -321,9 +341,9 @@ namespace NativeWorldTextProbe
             Require(WorldGen.PlaceObject(60, 42, TileID.Chairs, true), "independent original chair has a real floor anchor");
             var entry = NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context, host, input, (LibraryState)Get(host, "Library"),
                 () => Step(context, input), 60, 41, 1, 2, "等待支撑的椅子");
-            Place(context, host, input, entry, 44, 39); SetAutomatic(host, input, true);
+            Place(context, host, input, entry, 44, 39); long initialStarted = (long)Get(host, "BuildUsesStarted"); SetAutomatic(host, input, true);
             for (int i = 0; i < 100; i++) Step(context, input);
-            Require(!Main.tile[44, 39].active() && p.inventory[12].stack == 2, "actual TileObject.CanPlace rejects the chair with no bottom anchor without consuming");
+            Require(!Main.tile[44, 39].active() && p.inventory[12].stack == 2 && initialStarted == (long)Get(host, "BuildUsesStarted"), "known missing chair anchor is rejected before any original animation or consumption starts");
             long started = (long)Get(host, "BuildUsesStarted");
             for (int i = 0; i < 80; i++) Step(context, input);
             Require(started == (long)Get(host, "BuildUsesStarted"), "stable missing furniture support does not restart original use continuously");

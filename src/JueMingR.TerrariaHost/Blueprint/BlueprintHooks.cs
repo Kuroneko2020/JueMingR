@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal static void Install(HostBlueprint owner)
         {
             host = owner;
+            BlueprintPlacementQuery.Install();
             Patch(typeof(TriggersSet), "CopyInto", new[] { typeof(Player) }, null, nameof(Copied));
             Patch(typeof(TriggersSet), "CopyIntoDuringChat", new[] { typeof(Player) }, null, nameof(Copied));
             Patch(typeof(Player), "LookForTileInteractions", Type.EmptyTypes, nameof(PlayerGate));

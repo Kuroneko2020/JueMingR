@@ -153,10 +153,12 @@ namespace NativeWorldTextProbe
             Tile tile = Main.tile[10, 10]; tile.active(true); tile.type = 1; tile.inActive(true); tile.halfBrick(true); tile.color(9); tile.invisibleBlock(true); tile.fullbrightBlock(true);
             tile.wall = 7; tile.wallColor(4); tile.invisibleWall(true); tile.fullbrightWall(true); tile.wire(true); tile.wire2(true); tile.wire3(true); tile.wire4(true); tile.actuator(true); tile.liquid = 201; tile.liquidType(3);
             var actual = Read(source, 10, 10); CaptureCell target = actual.Cell;
-            Require(BlueprintWorldMatchComparer.CompareCell(target, actual).MatchBits == 255, "one actual Tile read provides all eight independently counted layers");
+            Require(BlueprintWorldMatchComparer.CompareCell(target, actual).MatchBits == 251 && actual.Cell.LiquidAmount == 201,
+                "one actual Tile read retains all display content while Match counts seven non-liquid construction layers");
             tile.active(false); tile.wallColor(5); tile.wire2(false); tile.liquid = 0;
             var result = BlueprintWorldMatchComparer.CompareCell(target, Read(source, 10, 10));
-            Require(result.MatchBits == (8 | 16 | 64 | 128) && result.ConflictBits == 2 && result.MissingBits == (1 | 4 | 32), "actual inactive=false, wall paint, wire color and amount=0 are independent");
+            Require(result.MatchBits == (8 | 16 | 64 | 128) && result.ConflictBits == 2 && result.MissingBits == (1 | 32),
+                "actual inactive=false, wall paint and wire color stay independent; amount=0 has no construction target");
         }
         private static CaptureCell[] Pattern(ushort type, int width, int[] rows, int startX)
         {

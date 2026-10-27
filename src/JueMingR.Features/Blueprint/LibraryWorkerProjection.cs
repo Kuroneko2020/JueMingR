@@ -38,7 +38,7 @@ namespace JueMingR.Features.Blueprint
             internal LibraryRoot Root;
             internal Stream Index;
             internal bool Ready;
-            internal long TotalLayers;
+            internal long TotalLayers, TotalConstructionLayers;
             internal long SourceIndexBytes;
             // Exact counts admit a bounded prefix before copying payload.
             // Actual block IDs give the batch its exact bounded member union
@@ -258,7 +258,7 @@ namespace JueMingR.Features.Blueprint
                                 owner = new ProjectionOwner { Identity = reference.Identity }; projectionOwners.Add(reference.Identity.TemplateKey, owner);
                                 owner.Opening = OpenProjection(owner).GetEnumerator(); projectionOpenings.Enqueue(owner);
                             }
-                            if (owner.Ready && !reference.Opened && PublishProjection(owner, new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Opened, reference.Identity, summary: owner.Root.Summary, totalLayerCount: owner.TotalLayers, sourceRanges: owner.SourceRanges.AsReadOnly(), matchRanges: owner.MatchRanges.AsReadOnly()))) { reference.Opened = true; projectionUnopenedReferences--; }
+                            if (owner.Ready && !reference.Opened && PublishProjection(owner, new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Opened, reference.Identity, summary: owner.Root.Summary, totalLayerCount: owner.TotalLayers, sourceRanges: owner.SourceRanges.AsReadOnly(), matchRanges: owner.MatchRanges.AsReadOnly(), totalConstructionLayerCount: owner.TotalConstructionLayers))) { reference.Opened = true; projectionUnopenedReferences--; }
                         }
                     }
                 }
@@ -388,6 +388,9 @@ namespace JueMingR.Features.Blueprint
                         CaptureCell cell = chunk.Cells[i]; long key = Key(cell);
                         if (sawObjects || key <= previous || cell.X < summary.Left || cell.Y < summary.Top || (long)cell.X >= (long)summary.Left + summary.Width || (long)cell.Y >= (long)summary.Top + summary.Height) throw new InvalidDataException("blueprint-cell-order-bounds-or-duplicate");
                         previous = key; int layers = BlueprintProjectionMask.Count(BlueprintProjectionMask.Layers(cell)); owner.TotalLayers += layers; sourceLayers += layers;
+                        // Derive both denominators during the existing validated
+                        // source pass. Liquid still owns display/overlap layers.
+                        owner.TotalConstructionLayers += BlueprintConstructionTargets.Count(cell);
                         sourceLeft = Math.Min(sourceLeft, cell.X); sourceTop = Math.Min(sourceTop, cell.Y); sourceRight = Math.Max(sourceRight, cell.X + 1); sourceBottom = Math.Max(sourceBottom, cell.Y + 1);
                         coordinates[i] = ((long)(cell.Y - summary.Top) << 32) | (uint)(cell.X - summary.Left);
                         sourceBits[i] = BlueprintProjectionMask.Layers(cell); sourceIds[i] = cell.ObjectId;

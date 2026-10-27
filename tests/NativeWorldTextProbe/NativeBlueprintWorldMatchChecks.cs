@@ -56,6 +56,7 @@ namespace NativeWorldTextProbe
                 Action step = () => { long before = (long)Get(host, "ProjectionMatchCellReads"); NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); int used = checked((int)((long)Get(host, "ProjectionMatchCellReads") - before)); maxStepReads = Math.Max(maxStepReads, used); Require(used <= 256, "one original update entry has at most 256 actual match reads"); };
                 CompletionV2Progress(context, host, input, library, step);
                 MaterialProgress(context, host, input, library, step);
+                LiquidDisplayProgress(context, host, input, library, step, graphics, output);
                 LayerChurn(host, input, library, step);
                 OperatingCompletion(host, input, library, step);
                 OperatingCompletion(host, input, library, step, true);
@@ -724,7 +725,7 @@ namespace NativeWorldTextProbe
                         if (ready)
                         {
                             Require(currentWorld == denseEffective, "dense Move qualification observed every effective empty-world target and skipped permanently covered cells");
-                            if(commands)Require((long)Get(state,"Targets")==8L*denseEffective && ((Array)Get(state,"Ranges")).Length==32,"literal command-pressure proof covers all eight layers of 65536 cells in its 32 source blocks");
+                            if(commands)Require((long)Get(state,"Targets")==7L*denseEffective && ((Array)Get(state,"Ranges")).Length==32,"literal command-pressure source retains eight display layers while its 32 blocks prove seven construction layers per cell");
                             Console.WriteLine("PASS dense Move proof records="+denseRecords+" blocks="+denseBlocks+" cooperatingRecords="+sourceRecords+" cooperatingBlocks="+sourceBlocks+" worldReads="+world+" bodyReads="+blocks+" decoded="+decoded+" elapsedMs="+clock.ElapsedMilliseconds+"; finite work/stagnation guard, not a product latency or FPS gate"); break;
                         }
                         if (clock.ElapsedMilliseconds-progressAt > 8000 || clock.ElapsedMilliseconds > 60000) throw new Exception("Dense Move proof stalled or exceeded facility timeout");

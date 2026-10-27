@@ -49,6 +49,8 @@ namespace JueMingR.Features.Blueprint
 
         public static void StaticCell(CaptureCell target, BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
         {
+            target = BlueprintConstructionTargets.Filter(target);
+            if (!target.HasContent) return;
             if (catalog == null) { into.Unresolved("放置资料尚未就绪"); return; }
             if ((target.Layers & CaptureLayer.Tile) != 0 && target.ObjectId == 0)
             {
@@ -59,7 +61,6 @@ namespace JueMingR.Features.Blueprint
             Appearance(target, default(CaptureCell), false, false, catalog, into);
             if ((target.Layers & CaptureLayer.Wire) != 0) into.Add(catalog.WireItemType, BitCount(target.Wires));
             if ((target.Layers & CaptureLayer.Actuator) != 0 && target.Actuator) into.Add(catalog.ActuatorItemType, 1);
-            if ((target.Layers & CaptureLayer.Liquid) != 0 && target.LiquidAmount > 0) into.Unresolved("精确液体量尚无可靠的容器步骤解释");
         }
         public static void StaticObject(CaptureObject obj, CaptureCell first, BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
         { if (!obj.Reliable) into.Unresolved("对象尚未完整确认"); else into.Add(catalog.Tile(first)); }
@@ -67,6 +68,11 @@ namespace JueMingR.Features.Blueprint
         public static void RequiredSteps(CaptureCell target, BlueprintWorldMatchSample world, BlueprintPlacementCatalog catalog,
             BlueprintMaterialAccumulator into, BlueprintBodyState? objectBody = null, bool foregroundHandledElsewhere = false)
         {
+            // A confirmed display-only source has no material/world dependency.
+            // Filter before Available so unreadable liquid alone is exact zero;
+            // unreadable non-liquid targets retain their original unknown state.
+            target = BlueprintConstructionTargets.Filter(target);
+            if (!target.HasContent) return;
             if (!world.Available) { into.Unresolved("世界内容尚未可读"); return; }
             bool tileSame = false, wallSame = false; CaptureCell appearanceTarget = target;
             if ((target.Layers & CaptureLayer.Tile) != 0)
@@ -86,8 +92,6 @@ namespace JueMingR.Features.Blueprint
             Appearance(appearanceTarget, world.Cell, tileSame, wallSame, catalog, into, foregroundHandledElsewhere: foregroundHandledElsewhere);
             if ((target.Layers & CaptureLayer.Wire) != 0) into.Add(catalog.WireItemType, BitCount((byte)(target.Wires & ~world.Cell.Wires)));
             if ((target.Layers & CaptureLayer.Actuator) != 0 && target.Actuator && !world.Cell.Actuator) into.Add(catalog.ActuatorItemType, 1);
-            if ((target.Layers & CaptureLayer.Liquid) != 0 && (target.LiquidKind != world.Cell.LiquidKind || target.LiquidAmount != world.Cell.LiquidAmount))
-                into.Unresolved("精确液体量尚无可靠的容器步骤解释");
         }
         public static void ObjectBody(BlueprintBodyState body, CaptureCell first, BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
         { if (body == BlueprintBodyState.Unknown) into.Unresolved("对象尚未完整确认"); else if (body != BlueprintBodyState.Same) into.Add(catalog.Tile(first)); }

@@ -8,7 +8,7 @@ namespace JueMingR.TerrariaHost.Blueprint
     [Flags]
     internal enum BlueprintBuildWait : byte
     {
-        None = 0, Material = 1, Player = 2, Dependencies = 4, Container = 8
+        None = 0, Material = 1, Player = 2, Dependencies = 4, Container = 8, Dynamic = 16
     }
 
     internal sealed partial class HostBlueprint
@@ -67,7 +67,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void ResetMaterialBuildWalk(BlueprintProjectionMatchRange range, bool resetNativeRetry)
         {
             var value = range.Materials; if (value == null) return;
-            value.BuildEpoch++; value.CandidateCursor = 0; value.Candidate = value.CandidateFallback = null;
+            value.BuildEpoch++; value.CandidateCursor = 0; value.Candidate = null;
             value.BuildExhausted = value.BuildRetryPending = false;
             value.BuildWaits = BlueprintBuildWait.None; value.BuildDependencyWaitSlots = 0;
             CaptureBuildWalkSignals(value);
@@ -82,6 +82,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             // type ever becoming unavailable. Its invalid flight gets one local
             // merged retry, while later ordinals still finish this same walk.
             value.BuildRetryPending |= retryPending;
+        }
+        private void WaitForDynamicBuild(BlueprintBuildTarget target)
+        {
+            WaitForBuild(target, BlueprintBuildWait.Dynamic);
+            if (target.Range?.Materials != null) target.Range.Materials.DynamicRetryAt = materialTick + 8;
         }
         private bool BuildDependencyReleased(BlueprintRangeMaterials value)
         {
@@ -110,7 +115,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (value.BuildActivationRevision != buildActivationRevision)
             {
                 value.BuildActivationRevision = buildActivationRevision;
-                value.Candidate = value.CandidateFallback = null; value.BuildRetryPending = true;
+                value.Candidate = null; value.BuildRetryPending = true;
                 DemandProjectionMatchRange(range);
             }
             if ((value.BuildWaits & BlueprintBuildWait.Material) != 0 && value.CatalogRevision == materialPlacementIdentity && value.Desired != null)
@@ -121,10 +126,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                 (value.BuildWaits & BlueprintBuildWait.Dependencies) != 0 && BuildDependencyReleased(value)) value.BuildRetryPending = true;
 
             bool nativeDue = value.EligibilityRetry && materialTick >= value.EligibilityRetryAt;
+            bool dynamicDue = (value.BuildWaits & BlueprintBuildWait.Dynamic) != 0 && materialTick >= value.DynamicRetryAt;
             // An outstanding source/sample is already an active walk. Later
             // signals coalesce into one permission and cannot cancel/restart it.
             if (!value.BuildExhausted || value.Candidate != null || range.Demand || range.Reading || value.Progress != null ||
-                !value.Current || !range.Current || !value.BuildRetryPending && !nativeDue) return;
+                !value.Current || !range.Current || !value.BuildRetryPending && !nativeDue && !dynamicDue) return;
             ResetMaterialBuildWalk(range, false);
             DemandProjectionMatchRange(range);
 #if DEBUG

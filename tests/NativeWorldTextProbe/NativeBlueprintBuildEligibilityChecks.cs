@@ -83,8 +83,8 @@ namespace NativeWorldTextProbe
                         "eligibility recovery retains the original per-update world/source budgets");
                 }
                 long repeatUses = (long)Get(host, "BuildUsesStarted") - retryUses, repeatReads = (long)Get(host, "ProjectionMatchCellReads") - retryReads;
-                Require(repeatUses > 0 && repeatUses <= 6 && repeatReads <= 192 && (long)Get(host, "ProjectionMatchSourceRequests") - retryRequests <= 16 && p.inventory[12].stack == 2 && p.inventory[13].stack == 2,
-                    "continuous pixel/inventory changes cannot bypass the unchanged remote rejection's bounded no-spend native backoff");
+                Require(repeatUses == 0 && repeatReads > 0 && repeatReads <= 192 && (long)Get(host, "ProjectionMatchSourceRequests") - retryRequests <= 16 && p.inventory[12].stack == 2 && p.inventory[13].stack == 2,
+                    "unchanged remote qualification is rechecked at bounded intervals before any new use starts; movement and inventory noise cannot produce periodic empty animations");
                 Until(context, input, () => instances.All(EligibilityDormant) && !(bool)Get(Get(tools, "Use"), "Active"));
                 SetAutomatic(host, input, false);
                 long closedReads = (long)Get(host, "ProjectionMatchCellReads"), closedRequests = (long)Get(host, "ProjectionMatchSourceRequests"), closedUses = (long)Get(host, "BuildUsesStarted"), closedWakes = (long)Get(host, "BuildEligibilityRetryWakes");
@@ -102,6 +102,13 @@ namespace NativeWorldTextProbe
                     "stable no-spend backoff performs no native use, source request or world reread before its per-range deadline");
                 Vector2 position = p.position; long epoch = (long)Get(host, "MaterialBuildEligibilityRevision"), inventory = ((BlueprintMaterialInventory)Get(host, "MaterialInventory")).Revision;
                 long invalidations = (long)Get(host, "ProjectionMatchInvalidations"), wakes = (long)Get(host, "BuildEligibilityRetryWakes");
+                // Exercise the cold-source arm deliberately. A valid retained
+                // immutable window now correctly bypasses the worker entirely;
+                // waiting for its old request would misclassify successful
+                // reuse as a timeout. Evict only transport references, just as
+                // bounded cache pressure may, without touching the target,
+                // ordinal, world proof or eligibility deadline.
+                Call(host, "RemoveBuildSources", null, null);
                 eligibilityWorker = Get(Get(host, "Library"), "worker"); eligibilitySourceEntered = new ManualResetEventSlim(); eligibilitySourceContinue = new ManualResetEventSlim();
                 patch.Patch(AccessTools.Method(eligibilityWorker.GetType(), "ProjectionSourceStep"), prefix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(PauseEligibilitySource)));
                 // These remote native removals update the real PylonSystem.
@@ -124,7 +131,7 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < 300; i++) Step(context, input);
                 Require(stableReads == (long)Get(host, "ProjectionMatchCellReads") && stableWakes == (long)Get(host, "BuildEligibilityRetryWakes") && stableUses == (long)Get(host, "BuildUsesStarted"),
                     "retired scene has zero eligibility retry, source/world sampling and native action growth");
-                Console.WriteLine("PASS BlueprintBuild remote global eligibility: two real pylon types, independent ready target, movingUnrelatedInventoryTokens=620 repeatUses=" + repeatUses + " repeatWorldReads=" + repeatReads + ", quietTokens=" + quiet + ", bothRangeWakes=2, sourceBlockedTokens=300, naturalRetirement=true");
+                Console.WriteLine("PASS BlueprintBuild remote global eligibility: two real pylon types, independent ready target, movingUnrelatedInventoryTokens=620 repeatUses=" + repeatUses + " repeatWorldReads=" + repeatReads + ", quietTokens=" + quiet + ", bothRangeWakes=2, testEvictedImmutableTransport=true sourceBlockedTokens=300, naturalRetirement=true");
             }
             finally
             {

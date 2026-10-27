@@ -12,7 +12,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal string Name;
         internal int OriginX, OriginY;
         internal int CoreSize = 128;
-        internal long CommitOrder, TotalLayerCount, WindowGeneration;
+        internal long CommitOrder, TotalLayerCount, TotalConstructionLayerCount, WindowGeneration;
         internal IReadOnlyList<BlueprintProjectionSourceRange> SourceRanges;
         internal IReadOnlyList<BlueprintProjectionSourceRange> MatchRanges;
         internal BlueprintProjectionMatchState Match;
@@ -26,11 +26,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool HasRequestedWindow, Positioned, Opened, WindowPending, WindowBudgetBlocked;
         internal BlueprintProjectionPlacement Copy()
         {
-            var copy = new BlueprintProjectionPlacement { Identity = Identity, Summary = Summary, Name = Name, OriginX = OriginX, OriginY = OriginY, CommitOrder = CommitOrder, TotalLayerCount = TotalLayerCount, Mask = Mask, Window = Window, Opened = Opened, Positioned = Positioned, Coverage = Coverage, CoreSize = CoreSize, SourceRanges = SourceRanges, MatchRanges = MatchRanges };
+            var copy = new BlueprintProjectionPlacement { Identity = Identity, Summary = Summary, Name = Name, OriginX = OriginX, OriginY = OriginY, CommitOrder = CommitOrder, TotalLayerCount = TotalLayerCount, TotalConstructionLayerCount = TotalConstructionLayerCount, Mask = Mask, Window = Window, Opened = Opened, Positioned = Positioned, Coverage = Coverage, CoreSize = CoreSize, SourceRanges = SourceRanges, MatchRanges = MatchRanges };
             foreach (var pair in Windows) copy.Windows.Add(pair.Key, pair.Value); return copy;
         }
         internal JueMingR.Features.Blueprint.BlueprintProjectionPlacement Snapshot()
-        { return new JueMingR.Features.Blueprint.BlueprintProjectionPlacement(Identity, Summary, OriginX, OriginY, CommitOrder, Mask, TotalLayerCount); }
+        { return new JueMingR.Features.Blueprint.BlueprintProjectionPlacement(Identity, Summary, OriginX, OriginY, CommitOrder, Mask, TotalLayerCount, TotalConstructionLayerCount); }
     }
     internal sealed class BlueprintProjectionDenial
     {
@@ -189,7 +189,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 if (receipt.Kind == BlueprintProjectionReceiptKind.Opened)
                 {
-                    item.Summary = receipt.Summary; item.TotalLayerCount = receipt.TotalLayerCount; item.SourceRanges = receipt.SourceRanges; item.MatchRanges = receipt.MatchRanges; item.Opened = true;
+                    item.Summary = receipt.Summary; item.TotalLayerCount = receipt.TotalLayerCount; item.TotalConstructionLayerCount = receipt.TotalConstructionLayerCount; item.SourceRanges = receipt.SourceRanges; item.MatchRanges = receipt.MatchRanges; item.Opened = true;
                     if (restoreProjection?.Identity.Equals(receipt.Identity) == true)
                     {
                         // FindProjection selects the moving copy first. Keep

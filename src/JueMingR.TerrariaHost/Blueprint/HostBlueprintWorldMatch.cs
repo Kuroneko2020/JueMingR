@@ -66,8 +66,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintPlacementCatalog MaterialCatalog;
         internal BlueprintMaterialAccumulator Materials, MaterialObjectAppearance;
         internal BlueprintObjectBodyProof MaterialObjectProof;
-        internal long MaterialBuildEpoch, MaterialBuildWakeRevision, MaterialSupportStamp;
-        internal bool MaterialSupportReady, MaterialReuseContribution;
+        internal bool MaterialReuseContribution;
         internal long MaterialStamp;
         internal bool MaterialStampReady, MaterialCrossLayerSeen;
         internal readonly Dictionary<int, BlueprintBodyState> MaterialObjectBodies = new Dictionary<int, BlueprintBodyState>();
@@ -225,7 +224,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private long ProjectionMatchSourceBytes(bool reservations)
         {
-            long bytes=0;
+            // Conservative alias charging: cached construction parts can also
+            // be in a live match transport. They still share its hard bound.
+            long bytes=buildSourceBytes;
             foreach(var work in projectionMatchWork.Values)
             {
                 bytes+=256L+work.Parts.Capacity*8L+work.Requested.Count*32L;
@@ -304,8 +305,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var source=group.Source;var bounds=source.Bounds;projectionMatchWatches.Add(group.Watch,group);
                 int originX = item.OriginX, originY = item.OriginY;
                 projectionChanges.Watch(group.Watch, new BlueprintProjectionBounds(checked(originX + bounds.Left), checked(originY + bounds.Top), bounds.Width, bounds.Height),
-                    (changed, layers) => source.IntersectsProofs(new BlueprintProjectionBounds(changed.Left - originX, changed.Top - originY, changed.Width, changed.Height), layers, state.Mask), source.TargetBits,
-                    group.Parts.Count,(changed,layers,emit)=>source.RouteProofs(new BlueprintProjectionBounds(changed.Left-originX,changed.Top-originY,changed.Width,changed.Height),layers,state.Mask,emit),
+                    // Main Match ignores display-only liquid. BuildSupport and
+                    // material cross-layer callbacks retain their own interests:
+                    // real water/lava can still revoke placement qualification.
+                    (changed, layers) => source.IntersectsProofs(new BlueprintProjectionBounds(changed.Left - originX, changed.Top - originY, changed.Width, changed.Height), BlueprintConstructionTargets.FilterBits(layers), state.Mask), BlueprintConstructionTargets.FilterBits(source.TargetBits),
+                    group.Parts.Count,(changed,layers,emit)=>source.RouteProofs(new BlueprintProjectionBounds(changed.Left-originX,changed.Top-originY,changed.Width,changed.Height),BlueprintConstructionTargets.FilterBits(layers),state.Mask,emit),
                     (changed,layers)=>MaterialSupportInterest(source,state.Mask,originX,originY,changed,layers),
                     (changed,layers,emit)=>RouteMaterialSupport(source,state.Mask,originX,originY,changed,layers,emit),
                     (changed,layers)=>MaterialCrossLayerInterest(source,state.Mask,originX,originY,changed,layers,group),
@@ -316,6 +320,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void ReleaseProjectionMatch(BlueprintProjectionPlacement item)
         {
             if (item == null) return;
+            // A world-array/section identity or mask/origin replacement can
+            // retire Match while keeping the placement itself. Its old range
+            // pins must not occupy every construction source slot forever.
+            RemoveBuildSources(item.Identity);
             ReleaseMaterialMatch(item);
             BlueprintProjectionMatchWork work;
             if(projectionMatchWork.TryGetValue(item.Identity,out work) && ReferenceEquals(work.Owner,item))ReleaseProjectionMatchWork(item.Identity);
@@ -326,7 +334,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void InvalidateProjectionMatch(BlueprintProjectionMatchRange range)
         {
             var state = range.Owner.Match; if (state == null) return;
-            RevokeMaterialRange(range, resetBuild: true);
+            RevokeMaterialRange(range);
+            if (range.Materials != null) range.Materials.BuildRetryPending = true;
             range.Version++;range.RawVersion++;
             if (range.Current) { state.Current--; state.Targets -= range.Targets; state.Matches -= range.Matches; state.Unknown -= range.Unknown; }
             range.Current = range.Reading = false; range.Offset = 0;
@@ -391,7 +400,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             // A transport can contain several independent logical proofs.
             // Ready parts continue in this same Update, under the one token's
             // world/source and scheduling limits. Waiting for I/O never spins.
-            int reads = 256, sourceSteps = 256, schedules = ProjectionMatchScheduleLimit;
+            materialBuildSourceBudget = MaterialBuildDemand?.Invoke() == true ? 64 : 0;
+            int reads = 256, sourceSteps = 256 - materialBuildSourceBudget, schedules = ProjectionMatchScheduleLimit;
             int admissions = ProjectionMatchWorkLimit, admissionAttempts=ProjectionMatchScheduleLimit;
             AdmitProjectionMatchSources(ref admissions,ref admissionAttempts);
             while(reads>0 && sourceSteps>0 && schedules-->0)
@@ -446,7 +456,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 state.Cursor=(state.Cursor+scanned)%state.Ranges.Length;
                 if(demands.Count==0)continue;
                 var work=new BlueprintProjectionMatchWork{Owner=item,SceneIndex=index,Token=++projectionMatchToken,Pending=true};
-                if(!Library.RequestProjectionSources(item.Identity,work.Token,demands))continue;
+                bool reused=ReuseBuildSources(item,demands,work);
+                if(!reused && !Library.RequestProjectionSources(item.Identity,work.Token,demands))continue;
+                if(reused)work.Pending=false;
                 foreach(var demand in demands)work.Requested.Add(demand.Range);
                 projectionMatchWork.Add(item.Identity,work);admissions--;
                 // A capacity scan can inspect a whole scene while accepting
@@ -459,7 +471,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(prioritized)projectionMatchAdmissionPriorityTurn=false;
                 else {projectionMatchAdmissionCursor=(index+1)%count;projectionMatchAdmissionPriorityTurn=true;ordinaryAdmitted=true;}
 #if DEBUG
-                ProjectionMatchSourceRequests++;state.SourceRequests++;
+                if(!reused){ProjectionMatchSourceRequests++;state.SourceRequests++;}
 #endif
             }
             // The scene has no fixed count cap. If a finite prefix is already
@@ -593,6 +605,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // Each logical Match part still owns exactly its old layers.
                 if (read.Batch.LogicalObjectId > 0) cell.Layers &= CaptureLayer.Tile;
                 else if (cell.ObjectId > 0) cell = cell.WithoutTile();
+                cell = BlueprintConstructionTargets.Filter(cell);
                 // Permanent erasure is resolved from immutable source data.
                 // A cell with no effective target has no world dependency and
                 // must not spend observation reads on its old raw layers.
@@ -788,7 +801,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (range.Matches > 0) return BlueprintProjectionMoveEligibility.Matched;
                 if (range.Unknown > 0) unknown = true;
             }
-            return unknown || state.Targets != item.TotalLayerCount - item.Mask.RemovedLayerCount ? BlueprintProjectionMoveEligibility.Checking : BlueprintProjectionMoveEligibility.Movable;
+            return unknown || state.Targets != item.TotalConstructionLayerCount - item.Mask.RemovedConstructionLayerCount ? BlueprintProjectionMoveEligibility.Checking : BlueprintProjectionMoveEligibility.Movable;
         }
         private bool CheckProjectionMove(BlueprintProjectionPlacement item)
         {
@@ -821,13 +834,13 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var state = item.Match;
                 if (ReferenceEquals(item, restoreProjection) || BuildBlocksRetirement(item) || state == null || state.Ranges.Length == 0 ||
                     state.Current != state.Ranges.Length || state.Unknown != 0 || state.Targets <= 0 ||
-                    state.Targets != item.TotalLayerCount - item.Mask.RemovedLayerCount || state.Matches != state.Targets) continue;
+                    state.Targets != item.TotalConstructionLayerCount - item.Mask.RemovedConstructionLayerCount || state.Matches != state.Targets) continue;
                 var identity = item.Identity;
                 var last = state.Ranges[state.Ranges.Length - 1];
                 projectionChanges.TryRunStable(last.Watch, last.Group.NativeStamp, () =>
                 {
                     if (!HasSession || BuildBlocksRetirement(item) || identity.SessionGeneration != generation || !item.Identity.Equals(identity) || !projectionScene.Contains(item) || !ReferenceEquals(item.Match, state) || !ReferenceEquals(state.Mask, item.Mask) || state.OriginX != item.OriginX || state.OriginY != item.OriginY) return;
-                    if (state.Current != state.Ranges.Length || state.Unknown != 0 || state.Targets <= 0 || state.Targets != item.TotalLayerCount - item.Mask.RemovedLayerCount || state.Matches != state.Targets) return;
+                    if (state.Current != state.Ranges.Length || state.Unknown != 0 || state.Targets <= 0 || state.Targets != item.TotalConstructionLayerCount - item.Mask.RemovedConstructionLayerCount || state.Matches != state.Targets) return;
                     // Complete proofs stay current via synchronous observer
                     // invalidation/witness maintenance. Recheck every scope
                     // under this one lock, rather than reading the template a

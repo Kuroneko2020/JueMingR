@@ -17,10 +17,10 @@ namespace JueMingR.ArchitectureTests
             int before = failures.Count;
             try
             {
-                var catalog = BlueprintMaterialsChecks.Catalog(); Guid id = Guid.NewGuid(); LibraryEntry entry;
+                var catalog = BlueprintMaterialsChecks.Catalog(); Guid id = Guid.NewGuid(); LibraryEntry entry, liquidEntry;
                 using (var state = new LibraryState(new FileBlueprintLibrary(area)))
                 {
-                    var cell = Cell(500000, 8000); cell.Layers |= CaptureLayer.Wall; cell.WallType = 7; cell.ObjectId = 1; cell.UnreliableObject = true;
+                    var cell = Cell(500000, 8000); cell.Layers |= CaptureLayer.Wall | CaptureLayer.Liquid; cell.WallType = 7; cell.LiquidAmount = 180; cell.LiquidKind = 2; cell.ObjectId = 1; cell.UnreliableObject = true;
                     var obj = new CaptureObject { Id = 1, X = cell.X, Y = cell.Y, Width = 1, Height = 1, Type = 1, Reliable = false, Reason = "fixture unconfirmed group" };
                     var handle = Draft(state, id, new[] { cell }, new[] { obj });
                     var a = new BlueprintMaterialKey(id, true, Guid.Empty, "", false, null, catalog.Revision);
@@ -40,6 +40,15 @@ namespace JueMingR.ArchitectureTests
                         "cancelled material viewing cannot cancel an accepted or subsequent reliable Create");
                     entry = List(state).Entries.Single();
                     Require(entry.ContentCount == 1 && entry.Width == 1 && entry.Height == 1, "derived material values do not rewrite content summary");
+                    Guid liquidId = Guid.NewGuid();
+                    var liquidHandle = Draft(state, liquidId, new[] { new CaptureCell { X = 2, Y = 3, Layers = CaptureLayer.Liquid, LiquidAmount = 64, LiquidKind = 1 } }, Array.Empty<CaptureObject>());
+                    var liquidDraftKey = new BlueprintMaterialKey(liquidId, true, Guid.Empty, "", false, null, catalog.Revision);
+                    Require(state.RequestMaterials(liquidDraftKey, catalog), "confirmed liquid draft material request admitted");
+                    var liquidDraft = AwaitMaterials(state, liquidDraftKey);
+                    Require(liquidDraft.Status == BlueprintMaterialStatus.Exact && liquidDraft.Total == 0 && liquidDraft.Rows.Count == 0,
+                        "sealed pure-liquid draft derives exact zero without losing its display content");
+                    Require(Command(state, state.TryCreate(liquidHandle, "仅液体", Token(liquidId))).Status == LibraryStatus.Saved, "pure-liquid draft remains an ordinary savable v1 asset");
+                    liquidEntry = List(state).Entries.Single(e => e.AssetId == liquidId);
                 }
                 string[] original = Directory.GetFiles(area, "*", SearchOption.AllDirectories);
                 var hashes = original.ToDictionary(p => p, p => Digest(File.ReadAllBytes(p)), StringComparer.OrdinalIgnoreCase);
@@ -64,6 +73,17 @@ namespace JueMingR.ArchitectureTests
                     Require(renamed.Status == LibraryStatus.Saved && renamed.CommittedName == "仅改名",
                         "reliable metadata rename publishes its actual name independently of the current page and material cache");
                     Require(ReferenceEquals(result, reopened.Materials(key)), "renaming does not invalidate immutable material content identity");
+                    var liquidKey = new BlueprintMaterialKey(liquidEntry.AssetId, false, Guid.Parse(liquidEntry.ContentRevision), liquidEntry.ContentHash, false, null, catalog.Revision);
+                    reopened.CancelMaterials(); files.BeforeBlockRead = () => { throw new IOException("controlled pure-liquid source read failure"); };
+                    Require(reopened.RequestMaterials(liquidKey, catalog), "cold pure-liquid asset source still requires a reliable read");
+                    var failedLiquid = AwaitMaterials(reopened, liquidKey);
+                    Require(failedLiquid.Status == BlueprintMaterialStatus.Unresolved && !String.IsNullOrEmpty(failedLiquid.Error),
+                        "unread pure-liquid bytes are not replaced with a fabricated exact zero");
+                    reopened.CancelMaterials(); files.BeforeBlockRead = null;
+                    Require(reopened.RequestMaterials(liquidKey, catalog), "pure-liquid source can be retried after actual read failure clears");
+                    var liquidResult = AwaitMaterials(reopened, liquidKey);
+                    Require(liquidResult.Status == BlueprintMaterialStatus.Exact && liquidResult.Total == 0 && liquidResult.Rows.Count == 0,
+                        "reopened old-v1 pure-liquid bytes derive reliable exact zero only after successful source reading");
                 }
                 foreach (var pair in hashes)
                 {

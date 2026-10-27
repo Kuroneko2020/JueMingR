@@ -40,6 +40,7 @@ namespace NativeWorldTextProbe
         private static LibraryEntry MaterialFurnitureAsset(object context, object host, object input, LibraryState library, Action step)
         {
             MaterialFurnitureAt(60, 41, ItemID.WoodenChair, 0); WorldGen.PlaceWire(62, 41);
+            NativeLiquidStore(60, 41, 64, 0);
             return CaptureCompletionAsset(context, host, input, library, step, 60, 41, 3, 2, "家具墙面材料接缝");
         }
         private static BlueprintMaterialSnapshot MaterialSeamResult(object host, long scope, Action step)

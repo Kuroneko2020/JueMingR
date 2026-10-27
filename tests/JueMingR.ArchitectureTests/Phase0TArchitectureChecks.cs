@@ -96,6 +96,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Blueprint.BlueprintMaterialInstance", "JueMingR.Features.Blueprint.BlueprintMaterialInventorySlot",
                 "JueMingR.Features.Blueprint.BlueprintMaterialInventory", "JueMingR.Features.Blueprint.BlueprintMaterialKey",
                 "JueMingR.Features.Blueprint.BlueprintBodyState", "JueMingR.Features.Blueprint.BlueprintMaterialSteps", "JueMingR.Features.Blueprint.BlueprintObjectBodyProof",
+                "JueMingR.Features.Blueprint.BlueprintConstructionTargets",
                 "JueMingR.Features.Blueprint.BlueprintSelectionSnapshot", "JueMingR.Features.Blueprint.CaptureJob",
                 "JueMingR.Features.Blueprint.CaptureLayer", "JueMingR.Features.Blueprint.ContentHandle", "JueMingR.Features.Blueprint.CaptureToken",
                 "JueMingR.Features.Blueprint.CaptureCell", "JueMingR.Features.Blueprint.CaptureObject", "JueMingR.Features.Blueprint.CaptureChunk", "JueMingR.Features.Blueprint.CaptureSummary",
