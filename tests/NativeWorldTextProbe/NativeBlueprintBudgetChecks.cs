@@ -539,22 +539,60 @@ namespace NativeWorldTextProbe
         internal static LibraryEntry Save(LibraryState library, CaptureCell[] cells, int width, int height)
         {
             var token = new CaptureToken(Guid.NewGuid(), 1, 1, 1); var handle = new ContentHandle(token.OperationId);
-            Require(library.TryBeginStage(token), "budget real stage accepted"); Complete(library);
+            Require(library.TryBeginStage(token), "budget real stage accepted"); Complete(library, "begin " + token.OperationId);
             for (int i = 0; i < cells.Length; i += CaptureChunk.MaximumRecords)
             {
                 var chunk = cells.Skip(i).Take(CaptureChunk.MaximumRecords).ToArray();
-                Require(library.TryAppendChunk(handle, new CaptureChunk(chunk, chunk.Length)), "budget bounded real chunk accepted"); Complete(library);
+                Require(library.TryAppendChunk(handle, new CaptureChunk(chunk, chunk.Length)), "budget bounded real chunk accepted"); Complete(library, "append " + i + "/" + cells.Length);
             }
-            Require(library.TrySealDraft(handle, new CaptureSummary { Width = width, Height = height, ContentCount = cells.Length }), "budget draft sealed"); Complete(library);
-            Require(library.TryCreate(handle, "预算机制样本", token), "budget asset create accepted"); var saved = Complete(library);
+            Require(library.TrySealDraft(handle, new CaptureSummary { Width = width, Height = height, ContentCount = cells.Length }), "budget draft sealed"); Complete(library, "seal " + width + "x" + height);
+            Require(library.TryCreate(handle, "预算机制样本", token), "budget asset create accepted"); var saved = Complete(library, "create " + token.OperationId);
             Require(saved.Status == LibraryStatus.Saved, "budget asset reliably saved");
             Require(library.TryList(91002, 0, saved.AssetId), "budget list targets exact newly saved asset");
-            return Complete(library).Page.Entries.Single(e => e.AssetId == saved.AssetId);
+            return Complete(library, "list generation=91002 selected=" + saved.AssetId).Page.Entries.Single(e => e.AssetId == saved.AssetId);
         }
-        private static LibraryReceipt Complete(LibraryState library)
+        private static LibraryReceipt Complete(LibraryState library, string phase = null)
         {
-            LibraryReceipt result = null; NativeQuickItemChecks.Until(() => { library.Pump(); return library.TryTakeReceipt(out result); });
+            LibraryReceipt result = null; var clock = System.Diagnostics.Stopwatch.StartNew(); bool observed = false;
+            try
+            {
+                // Keep Until's original eight seconds. One bounded mid-wait
+                // snapshot and an exceptional snapshot distinguish a command
+                // still processing from a missing result; neither pumps Host
+                // consumers, changes admission or renews the wait deadline.
+                NativeQuickItemChecks.Until(() =>
+                {
+                    library.Pump();
+                    if (library.TryTakeReceipt(out result)) return true;
+                    if (!observed && phase != null && phase.StartsWith("list ", StringComparison.Ordinal) && clock.ElapsedMilliseconds >= 4000)
+                    { observed = true; Console.WriteLine("BUDGET library pending phase=" + phase + " ms=" + clock.ElapsedMilliseconds + " " + BudgetLibraryState(library)); }
+                    return false;
+                });
+            }
+            catch
+            {
+                try { Console.Error.WriteLine("BUDGET library original wait failure phase=" + phase + " ms=" + clock.ElapsedMilliseconds + " " + BudgetLibraryState(library)); }
+                catch (Exception diagnostic) { Console.Error.WriteLine("BUDGET wait snapshot unavailable: " + diagnostic.GetType().FullName); }
+                throw;
+            }
+            if (phase != null && phase.StartsWith("list ", StringComparison.Ordinal))
+                Console.WriteLine("BUDGET library completed phase=" + phase + " ms=" + clock.ElapsedMilliseconds + " returnedCommand=" + result.CommandId +
+                    " processed=" + library.Snapshot.ProcessedItems + " assets=" + result.Page?.TotalCount);
             Require(result.Status != LibraryStatus.Failed && result.Status != LibraryStatus.CommitUnconfirmed, "budget real files operation: " + result.Error); return result;
+        }
+        private static string BudgetLibraryState(LibraryState library)
+        {
+            var worker = Get(library, "worker"); var source = library.DebugProjectionSourceStatistics;
+            lock (Get(worker, "gate"))
+            {
+                var pending = GetOptional(worker, "pending"); var result = (LibraryReceipt)GetOptional(worker, "result");
+                return "accepted=" + library.AcceptedCommandId + " snapshotBusy/processed=" + library.Snapshot.Busy + "/" + library.Snapshot.ProcessedItems +
+                    " workerOccupied/processed=" + Get(worker, "occupied") + "/" + Get(worker, "processed") +
+                    " pending=" + (pending == null ? "none" : Get(pending, "Kind") + "/" + Get(pending, "CommandId")) +
+                    " result=" + (result == null ? "none" : result.Kind + "/" + result.CommandId + "/" + result.Status) +
+                    " threadAlive/stopping=" + ((System.Threading.Thread)Get(worker, "thread")).IsAlive + "/" + Get(worker, "stopping") +
+                    " sourcePending/receipts/parts=" + source.PendingRequests + "/" + source.Receipts + "/" + source.Parts;
+            }
         }
         private static void CompactSemantics()
         {
