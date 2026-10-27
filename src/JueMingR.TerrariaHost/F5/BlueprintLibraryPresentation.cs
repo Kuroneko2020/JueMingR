@@ -23,7 +23,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly F5Interaction shell;
         private readonly BlueprintLibraryRenderer renderer = new BlueprintLibraryRenderer();
         private readonly BlueprintLibraryPreviewCache previews = new BlueprintLibraryPreviewCache();
-        private readonly BlueprintMaterialsLayout captureMaterials = new BlueprintMaterialsLayout();
+        private readonly BlueprintMaterialsLayout captureMaterials = new BlueprintMaterialsLayout { ShowNames = false };
         private readonly BlueprintMaterialsRenderer materialRenderer = new BlueprintMaterialsRenderer();
         private readonly Dictionary<Guid, BlueprintMaterialSnapshot> pageMaterials = new Dictionary<Guid, BlueprintMaterialSnapshot>();
         private BlueprintMaterialSnapshot draftMaterials;

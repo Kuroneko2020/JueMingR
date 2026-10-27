@@ -76,13 +76,15 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < 620; i++)
                 {
                     long before = (long)Get(host, "ProjectionMatchCellReads"), steps = (long)Get(host, "ProjectionMatchSourceSteps");
+                    p.position = new Vector2(44 * 16 + i % 2, 646); p.velocity = Vector2.Zero;
+                    p.inventory[20].SetDefaults(ItemID.Wood); p.inventory[20].stack = 1 + i % 2;
                     Step(context, input);
                     Require((long)Get(host, "ProjectionMatchCellReads") - before <= 256 && (long)Get(host, "ProjectionMatchSourceSteps") - steps <= 256,
                         "eligibility recovery retains the original per-update world/source budgets");
                 }
                 long repeatUses = (long)Get(host, "BuildUsesStarted") - retryUses, repeatReads = (long)Get(host, "ProjectionMatchCellReads") - retryReads;
                 Require(repeatUses > 0 && repeatUses <= 6 && repeatReads <= 192 && (long)Get(host, "ProjectionMatchSourceRequests") - retryRequests <= 16 && p.inventory[12].stack == 2 && p.inventory[13].stack == 2,
-                    "unchanged remote rejection is checked infrequently with zero spend, not every frame or an unbounded source rebuild");
+                    "continuous pixel/inventory changes cannot bypass the unchanged remote rejection's bounded no-spend native backoff");
                 Until(context, input, () => instances.All(EligibilityDormant) && !(bool)Get(Get(tools, "Use"), "Active"));
                 SetAutomatic(host, input, false);
                 long closedReads = (long)Get(host, "ProjectionMatchCellReads"), closedRequests = (long)Get(host, "ProjectionMatchSourceRequests"), closedUses = (long)Get(host, "BuildUsesStarted"), closedWakes = (long)Get(host, "BuildEligibilityRetryWakes");
@@ -122,7 +124,7 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < 300; i++) Step(context, input);
                 Require(stableReads == (long)Get(host, "ProjectionMatchCellReads") && stableWakes == (long)Get(host, "BuildEligibilityRetryWakes") && stableUses == (long)Get(host, "BuildUsesStarted"),
                     "retired scene has zero eligibility retry, source/world sampling and native action growth");
-                Console.WriteLine("PASS BlueprintBuild remote global eligibility: two real pylon types, independent ready target, unchangedTokens=620 repeatUses=" + repeatUses + " repeatWorldReads=" + repeatReads + ", quietTokens=" + quiet + ", bothRangeWakes=2, sourceBlockedTokens=300, naturalRetirement=true");
+                Console.WriteLine("PASS BlueprintBuild remote global eligibility: two real pylon types, independent ready target, movingUnrelatedInventoryTokens=620 repeatUses=" + repeatUses + " repeatWorldReads=" + repeatReads + ", quietTokens=" + quiet + ", bothRangeWakes=2, sourceBlockedTokens=300, naturalRetirement=true");
             }
             finally
             {
@@ -265,11 +267,16 @@ namespace NativeWorldTextProbe
                 Require(!Main.tile[44, 42].active() && p.inventory[12].stack == 2 && p.inventory[13].stack == 1 && Scene(host).Contains(item),
                     "spent-but-empty original action becomes unknown while the independent dirt target still completes");
                 long uses = (long)Get(host, "BuildUsesStarted"), wakes = (long)Get(host, "BuildEligibilityRetryWakes");
-                for (int i = 0; i < 600; i++) Step(context, input);
+                for (int i = 0; i < 600; i++)
+                {
+                    ProgressStep(context, host, input, p, i, true, true);
+                    if (i == 120) { p.inventory[14].SetDefaults(ItemID.StoneBlock); p.inventory[14].stack = 2; }
+                }
                 Require(uses == (long)Get(host, "BuildUsesStarted") && wakes == (long)Get(host, "BuildEligibilityRetryWakes") && p.inventory[12].stack == 2 &&
+                    p.inventory[14].stack == 2 && (bool)Get(Get(Get(tools, "Items"), "Ownership"), "AnyProtected") &&
                     EligibilityRanges(item).All(range => GetOptional(range, "Materials") == null || !(bool)Get(Get(range, "Materials"), "EligibilityRetry")),
                     "an unknown/spent target never enters the no-spend recovery mechanism across multiple intervals");
-                Console.WriteLine("PASS BlueprintBuild consumed/empty unknown stays protected for 600 tokens, independent target advances, no eligibility retry permission");
+                Console.WriteLine("PASS BlueprintBuild consumed/empty unknown stays protected for 600 moving/unrelated-inventory tokens plus new matching supply, independent target advances, no eligibility retry permission");
             }
             finally
             {

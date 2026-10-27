@@ -55,6 +55,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintBuildTarget Candidate, CandidateFallback;
         internal int CandidateCursor;
         internal long BuildEpoch, BuildWakeRevision;
+        internal long BuildPlayerRevision, BuildSupplyRevision, BuildContainerRevision, BuildActivationRevision;
+        internal BlueprintBuildWait BuildWaits;
+        internal ulong BuildDependencyWaitSlots;
+        internal bool BuildRetryPending;
         internal bool BuildExhausted;
         internal bool EligibilityRetry;
         internal int EligibilityRetryOrdinal;
@@ -71,8 +75,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private long materialScope;
         private ulong materialTick;
         private bool materialTickSet;
-        private bool materialCatalogTransition, materialBuildTransition, materialContextTransition, materialObservedDynamicDemand;
-        private long materialBuildObservedEpoch = -1;
+        private bool materialCatalogTransition, materialContextTransition, materialObservedDynamicDemand;
         private long materialDemandEpoch, materialTransitionRemaining;
         private Item[] materialInventoryArray;
         private readonly BlueprintMaterialInventorySlot[] materialSlots = new BlueprintMaterialInventorySlot[50];
@@ -97,6 +100,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private BlueprintMaterialSnapshot materialWorldSnapshot = BlueprintMaterialSnapshot.Pending;
         private BlueprintMaterialKey materialDraftKey;
         private int[] materialDraftExclusions;
+        private BlueprintMaterialSnapshot materialDraftSnapshot = BlueprintMaterialSnapshot.Pending;
         private readonly Dictionary<Guid, BlueprintMaterialKey> materialAssetKeys = new Dictionary<Guid, BlueprintMaterialKey>();
 #if DEBUG
         internal long MaterialInventoryReads, MaterialContributionSteps, MaterialPublicationSteps, MaterialSourceDemands;
@@ -119,16 +123,25 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintMaterialSnapshot MaterialDraft()
         {
             materialStaticDemand = true; var catalog = MaterialCatalog;
-            if (Library == null || Flow.ContentHandle.IsEmpty || catalog == null) return BlueprintMaterialSnapshot.Pending;
-            if (materialDraftKey == null || materialDraftKey.Id != Flow.ContentHandle.Id || materialDraftKey.ExcludeUnreliable != Flow.ExcludeUnreliable ||
-                !ReferenceEquals(materialDraftExclusions, Flow.ExcludedObjectIds) || materialDraftKey.PlacementRevision != catalog.Revision)
+            if (Library == null || Flow.ContentHandle.IsEmpty || Flow.Summary == null || catalog == null) return BlueprintMaterialSnapshot.Pending;
+            bool sameKey = materialDraftKey != null && materialDraftKey.Id == Flow.ContentHandle.Id &&
+                materialDraftKey.ExcludeUnreliable == Flow.ExcludeUnreliable && ReferenceEquals(materialDraftExclusions, Flow.ExcludedObjectIds) &&
+                materialDraftKey.PlacementRevision == catalog.Revision && materialDraftKey.TargetVersion == Flow.Summary.TargetVersion;
+            // A handle is allocated before capture, and Summary already exists
+            // during Sealing. Only the completed seal receipt authorizes reads.
+            // Accepted Create retires its reader before promotion; Saving may
+            // retain this exact key's published value but must never reopen it.
+            if (Flow.Status == BlueprintCaptureStatus.Saving) return sameKey ? materialDraftSnapshot : BlueprintMaterialSnapshot.Pending;
+            if (Flow.Status != BlueprintCaptureStatus.DraftReady) return BlueprintMaterialSnapshot.Pending;
+            if (!sameKey)
             {
                 materialDraftExclusions = Flow.ExcludedObjectIds;
                 materialDraftKey = new BlueprintMaterialKey(Flow.ContentHandle.Id, true, Guid.Empty, "", Flow.ExcludeUnreliable,
-                    Flow.ExcludedObjectIds, catalog.Revision, Flow.Summary?.TargetVersion ?? "1.4.5.8");
+                    Flow.ExcludedObjectIds, catalog.Revision, Flow.Summary.TargetVersion);
+                materialDraftSnapshot = BlueprintMaterialSnapshot.Pending;
             }
             var key = materialDraftKey;
-            Library.RequestMaterials(key, catalog); return Library.Materials(key);
+            Library.RequestMaterials(key, catalog); return materialDraftSnapshot = Library.Materials(key);
         }
         internal BlueprintMaterialSnapshot MaterialAsset(LibraryEntry entry)
         {
@@ -202,9 +215,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             var value = range.Materials;
             if (value != null)
             {
-                value.BuildWakeRevision++; value.Candidate = value.CandidateFallback = null;
-                value.CandidateCursor = 0; value.BuildExhausted = false;
-                value.EligibilityRetry = false;
+                value.BuildWakeRevision++; ResetMaterialBuildWalk(range, true);
             }
             // This demand uses the original bounded source/world scheduler.
             // Its final Match proof and material contribution remain current.
@@ -217,20 +228,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (value.EligibilityRetry) return;
             value.EligibilityRetry = true; value.EligibilityRetryOrdinal = target.Ordinal;
             value.EligibilityRetryAt = materialTick + BuildEligibilityRetryDelay;
-        }
-        private void TryWakeBuildEligibility(BlueprintProjectionMatchRange range)
-        {
-            var value = range.Materials;
-            if (value == null || !value.EligibilityRetry || !value.BuildExhausted || value.Candidate != null ||
-                !value.Current || !range.Current || value.BuildEpoch != MaterialBuildEligibilityRevision ||
-                materialTick < value.EligibilityRetryAt || MaterialBuildDemand?.Invoke() != true) return;
-            // Resume the same range/cursor lifecycle, not a second action
-            // queue. The native action still rechecks its exact source/body,
-            // original CanPlace, timing and token before any possible spend.
-            WakeMaterialBuildRange(range);
-#if DEBUG
-            BuildEligibilityRetryWakes++;
-#endif
         }
         internal void UpdateMaterials(ulong tick)
         {
@@ -251,13 +248,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // material evidence. Existing Match.Current stays untouched.
                 CancelMaterialPublication();
             }
-            if (MaterialBuildDemand?.Invoke() == true && materialBuildObservedEpoch != MaterialBuildEligibilityRevision)
-            {
-                materialBuildObservedEpoch = MaterialBuildEligibilityRevision; materialBuildTransition = materialAll.Expected > 0;
-                materialDemandEpoch++; materialTransitionRemaining = materialAll.Expected;
-            }
             if (dynamicDemand) ObserveMaterialInventory(tick);
             else { materialInventory = null; materialInventoryArray = null; }
+            if (MaterialBuildDemand?.Invoke() == true) ObserveBuildSignals();
             DrainMaterialChanges(64);
             if (dynamicDemand && catalog != null) DemandMaterialSources(64);
             if (materialViewDemand) PublishMaterialWorld(64);
@@ -300,7 +293,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             item.Match.Materials = new BlueprintMaterialTotals { Expected = item.Match.Ranges.Length };
             materialMatchOwners++;
             materialAll.Expected += item.Match.Ranges.Length; materialAll.Revision++;
-            if (materialCatalogTransition || materialBuildTransition || materialContextTransition) materialTransitionRemaining += item.Match.Ranges.Length;
+            if (materialCatalogTransition || materialContextTransition) materialTransitionRemaining += item.Match.Ranges.Length;
             CancelMaterialPublication();
         }
         private void ReleaseMaterialMatch(BlueprintProjectionPlacement item)
@@ -310,10 +303,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             materialAll.Expected -= state.Ranges.Length;
             foreach (var range in state.Ranges)
             {
-                if ((materialCatalogTransition || materialBuildTransition || materialContextTransition) && range.MaterialDemandEpoch != materialDemandEpoch && materialTransitionRemaining > 0) materialTransitionRemaining--;
+                if ((materialCatalogTransition || materialContextTransition) && range.MaterialDemandEpoch != materialDemandEpoch && materialTransitionRemaining > 0) materialTransitionRemaining--;
                 RevokeMaterialRange(range, true);
             }
-            if (materialTransitionRemaining == 0) materialCatalogTransition = materialBuildTransition = materialContextTransition = false;
+            if (materialTransitionRemaining == 0) materialCatalogTransition = materialContextTransition = false;
             materialAll.Revision++; CancelMaterialPublication();
         }
         private void RevokeMaterialRange(BlueprintProjectionMatchRange range, bool retiring = false, bool resetBuild = false)
@@ -331,7 +324,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // retirement discards that wait together with its candidate walk.
             if (retiring || resetBuild)
             {
-                value.EligibilityRetry = false; value.CandidateCursor = 0; value.BuildExhausted = false;
+                ResetMaterialBuildWalk(range, true);
             }
             value.Desired = null; QueueMaterialChange(range);
             if (retiring) value.CatalogRevision = -1;
@@ -382,7 +375,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void DemandMaterialSources(int budget)
         {
-            if (!materialCatalogTransition && !materialBuildTransition && !materialContextTransition && materialAll.Current == materialAll.Expected && materialAll.Updating == 0) return;
+            if (!materialCatalogTransition && !materialContextTransition && materialAll.Current == materialAll.Expected && materialAll.Updating == 0) return;
             int count = projectionScene.Count; if (count == 0) return;
             while (budget-- > 0 && count != 0)
             {
@@ -395,12 +388,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 {
                     if (materialContextTransition && range.MaterialCrossLayers) InvalidateMaterialCrossLayer(range);
                     range.MaterialDemandEpoch = materialDemandEpoch;
-                    if (materialTransitionRemaining > 0 && --materialTransitionRemaining == 0) materialCatalogTransition = materialBuildTransition = materialContextTransition = false;
+                    if (materialTransitionRemaining > 0 && --materialTransitionRemaining == 0) materialCatalogTransition = materialContextTransition = false;
                 }
                 var value = range.Materials;
                 if (value != null && value.CatalogRevision != materialPlacementIdentity) { RevokeMaterialRange(range, resetBuild: true); value.CatalogRevision = materialPlacementIdentity; }
-                bool buildChanged = MaterialBuildDemand?.Invoke() == true && value != null && value.BuildEpoch != MaterialBuildEligibilityRevision;
-                if (buildChanged) { value.BuildEpoch = MaterialBuildEligibilityRevision; value.BuildExhausted = false; value.CandidateCursor = 0; value.Candidate = value.CandidateFallback = null; value.EligibilityRetry = false; }
                 if (value == null || value.CatalogRevision != materialPlacementIdentity || !value.Current && !value.Queued && value.Progress == null)
                 {
                     DemandProjectionMatchRange(range);
@@ -408,10 +399,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                     MaterialSourceDemands++;
 #endif
                 }
-                else if (buildChanged) DemandProjectionMatchRange(range);
                 // A complete stable scene does not need a recurring range
                 // walk. The cursor resumes only while evidence remains missing.
-                if (!materialCatalogTransition && !materialBuildTransition && !materialContextTransition && materialAll.Current == materialAll.Expected && materialAll.Updating == 0) break;
+                if (!materialCatalogTransition && !materialContextTransition && materialAll.Current == materialAll.Expected && materialAll.Updating == 0) break;
             }
         }
         private void CancelMaterialPublication()
@@ -464,13 +454,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             // A scene can exit halfway through an epoch walk. Its remaining
             // count belongs to that scene and must not hold the next scene
             // pending when the same frozen placement catalog is reused.
-            materialCatalogTransition = materialBuildTransition = materialContextTransition = materialObservedDynamicDemand = false; materialTransitionRemaining = 0;
-            materialBuildObservedEpoch = -1; materialDemandEpoch++; materialScope = 0;
+            materialCatalogTransition = materialContextTransition = materialObservedDynamicDemand = false; materialTransitionRemaining = 0;
+            materialDemandEpoch++; materialScope = 0;
             materialMatchOwners = 0;
             materialAll.Counts.Clear(); materialAll.Expected = materialAll.Current = materialAll.Unresolved = materialAll.Updating = 0; materialAll.Failed = false; materialAll.Revision++;
             foreach (var range in materialChanges) range.Materials.Change?.Dispose(); materialChanges.Clear();
             materialInstances = Array.Empty<BlueprintMaterialInstance>(); materialSceneIdentity = -1;
-            materialDraftKey = null; materialDraftExclusions = null; materialAssetKeys.Clear();
+            materialDraftKey = null; materialDraftExclusions = null; materialDraftSnapshot = BlueprintMaterialSnapshot.Pending; materialAssetKeys.Clear();
             materialDemandSceneCursor = materialBuildSceneCursor = materialBuildSearchBudget = 0;
             Library?.CancelMaterials(); CancelMaterialPublication();
         }

@@ -52,6 +52,17 @@ namespace NativeWorldTextProbe
                         catch (Exception error) { Console.Error.WriteLine("BUILD CASE " + name + ": " + error); if (first == null) first = error; }
                     };
                     check("missing material fairness", () => MissingMaterialFairness(context, host, tools, input));
+                    check("continuous movement candidate fairness", () => ContinuousCandidateProgress(context, host, tools, input, true, false, false));
+                    check("continuous unrelated inventory fairness", () => ContinuousCandidateProgress(context, host, tools, input, false, true, false));
+                    check("supply restored before active walk tail", () => ContinuousCandidateProgress(context, host, tools, input, true, true, true));
+                    check("refill before all-missing active tail", () => RefillBeforeMissingTail(context, host, tools, input));
+                    check("stable ranges ignore inventory and consumption noise", () => StableRangesIgnoreSupplyNoise(context, host, tools, input));
+                    check("exact source owner recovery", () => ProtectedSourceRecovery(context, host, tools, input));
+                    check("accessory source recovery", () => AccessorySourceRecovery(context, host, tools, input));
+                    check("continuous signals while source waits", () => ProgressWhileSourceWaiting(context, host, tools, input));
+                    check("immediate reach and admission recovery", () => ImmediateReachAndAdmissionRecovery(context, host, tools, input));
+                    check("pulley direction recovery", () => PulleyDirectionRecovery(context, host, tools, input));
+                    check("subpixel native reach recovery", () => SubpixelReachRecovery(context, host, tools, input));
                     check("wall side effects", () => WallSideEffect(context, host, tools, input));
                     check("platform and shape", () => PlatformAndShape(context, host, tools, input));
                     check("original accessories", () => OriginalAccessories(context, host, tools, input));

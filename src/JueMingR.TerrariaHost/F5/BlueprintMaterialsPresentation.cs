@@ -23,6 +23,13 @@ namespace JueMingR.TerrariaHost.F5
         private readonly List<F5Element> labels = new List<F5Element>(), buttons = new List<F5Element>(), scopeLabels = new List<F5Element>();
         private readonly List<ScopeRow> scopes = new List<ScopeRow>(), visibleScopes = new List<ScopeRow>();
         private readonly Dictionary<long, ScopeRow> scopesById = new Dictionary<long, ScopeRow>();
+        private readonly Func<string, float, F5Size> measure, measureHeader;
+        private List<F5Element> titleLines, summaryLines, rangeLines;
+        private readonly List<F5Element> columnLabels = new List<F5Element>();
+        private string titleText, summaryText, rangeText;
+        private F5Size closeSize;
+        private float headerWidth, columnWidth, columnRequiredX, columnHeight;
+        private int headerResource = -1, columnResource = -1;
         private IReadOnlyList<BlueprintMaterialInstance> scopedInstances;
         private float scopedWidth;
         private int scopedResources = -1;
@@ -35,10 +42,14 @@ namespace JueMingR.TerrariaHost.F5
         private Matrix matrix;
         private Vector2 screen;
         private F5Rect anchor, preparedAnchor, panel, body, selector, scopePanel, summaryRect;
-        private float scroll, scopeScroll, scopeHeight, lineHeight, summaryHeight;
+        private float scroll, scopeScroll, scopeHeight, lineHeight, summaryHeight, bodyTop;
         private int generation, pressedGeneration, projection, shownContent = -1, resource = -1, layout = -1;
         private F5Element hovered, armed;
         private bool dirty = true, ready, dropDown, previousLeft, leftTail, rightTail;
+        private bool dragging, userPositioned, positionDirty, scrollDirty;
+        private Vector2 requestedPosition, grabOffset, frozenSize;
+        private float titleHeight, selectorHeight, frozenTitleHeight, frozenSummaryHeight, frozenSelectorHeight;
+        private F5Rect titleBar;
         private int hoveredItem;
         private long names = -1;
         private Vector2 pointer;
@@ -58,12 +69,16 @@ namespace JueMingR.TerrariaHost.F5
         internal int HoveredItem { get { return hoveredItem; } }
         internal int Generation { get { return generation; } }
         internal BlueprintMaterialsLayout Content { get { return content; } }
+        internal bool Dragging { get { return dragging; } }
 #if DEBUG
         internal long LayoutBuilds { get; private set; }
         internal long IconLoads { get { return renderer.IconLoads; } }
         internal long VisibleSetBuilds { get { return renderer.VisibleSetBuilds; } }
+        internal long HeaderMeasurements { get; private set; }
+        internal long FramePlacements { get; private set; }
 #endif
-        internal BlueprintMaterialsPresentation(HostBlueprint host, F5Interaction shell) { this.host = host; this.shell = shell; }
+        internal BlueprintMaterialsPresentation(HostBlueprint host, F5Interaction shell)
+        { this.host = host; this.shell = shell; measure = shell.Layout.DynamicTextSize; measureHeader = MeasureHeader; }
         internal void OpenWorld(BlueprintMaterialsSource origin, F5Rect entry)
         { Open(origin, entry, null); host.SetMaterialViewDemand(true); }
         internal void OpenAsset(LibraryEntry entry, F5Rect position)
@@ -76,17 +91,28 @@ namespace JueMingR.TerrariaHost.F5
             // not create another mouse sample or synthesize a neutral release.
             host.Input.Hotkeys.SuppressHeld(); host.Input.ConsumeHotkeyActions();
         }
-        internal void MoveAnchor(F5Rect entry) { if (!F5PopupPlacement.SameAnchor(anchor, entry)) { anchor = entry; dirty = true; armed = null; } }
+        internal void MoveAnchor(F5Rect entry)
+        {
+            if (F5PopupPlacement.SameAnchor(anchor, entry)) return;
+            anchor = entry;
+            // The caller keeps its return source current, but after a drag the
+            // user's position owns this opening. Anchor refresh is no reflow.
+            if (userPositioned) preparedAnchor = entry;
+            else { dirty = true; armed = null; }
+        }
         internal bool Contains(float x, float y) { return Visible && (panel.Contains(x, y) || dropDown && scopePanel.Contains(x, y)); }
-        internal bool Captured { get { return armed != null || leftTail || rightTail; } }
+        internal bool Captured { get { return dragging || armed != null || leftTail || rightTail; } }
         internal void Close()
         {
             if (Visible) { host.SetMaterialViewDemand(false); host.Input.Hotkeys.SuppressHeld(); host.Input.ConsumeHotkeyActions(); }
             Visible = ready = dropDown = OwnsPointer = false; armed = hovered = null; hoveredItem = 0;
             asset = null; snapshot = null; shownInstances = observedInstances = null; labels.Clear(); buttons.Clear(); scopes.Clear(); visibleScopes.Clear(); scopeLabels.Clear();
             content.Clear(); renderer.Dispose(); shownContent = resource = layout = -1; dirty = true;
-            summaryHeight = 0;
+            summaryHeight = bodyTop = 0;
+            dragging = userPositioned = positionDirty = scrollDirty = false;
             scopedInstances = null; scopesById.Clear(); scopedResources = -1;
+            titleLines = summaryLines = rangeLines = null; titleText = summaryText = rangeText = null;
+            columnLabels.Clear(); headerResource = columnResource = -1;
             // Existing physical tails stay owned until a trustworthy sample
             // proves release, including when focus/map closes the whole modal.
         }
@@ -100,10 +126,10 @@ namespace JueMingR.TerrariaHost.F5
             if (!active || !focused) { if (Visible) Close(); armed = null; previousLeft = focused ? left : true; RetireTails(left, right, focused); return; }
             if (!Visible) { previousLeft = left; RetireTails(left, right, focused); return; }
             bool current = ready && matrix == Terraria.Main.UIScaleMatrix && screen == Terraria.GameInput.PlayerInput.OriginalScreenSize &&
-                resource == renderer.Generation && renderer.ResourcesCurrent && layout == shell.Layout.Generation && F5PopupPlacement.SameAnchor(anchor, preparedAnchor) && !dirty;
+                resource == renderer.Generation && renderer.ResourcesCurrent && layout == shell.Layout.Generation && F5PopupPlacement.SameAnchor(anchor, preparedAnchor) && !dirty && !scrollDirty;
             bool inside = current && Contains(point.X, point.Y);
-            OwnsPointer = inside || leftTail || rightTail || host.Input.HotkeyPointerOwned;
-            if (!current) armed = null;
+            OwnsPointer = inside || dragging || leftTail || rightTail || host.Input.HotkeyPointerOwned;
+            if (!current) { armed = null; EndDrag(); }
             hovered = current ? Hit(point) : null;
             if (host.Input.Hotkeys.IsNew(27) || f5)
             {
@@ -111,13 +137,31 @@ namespace JueMingR.TerrariaHost.F5
                 if (dropDown && !f5) { dropDown = false; armed = null; dirty = true; } else Close();
                 previousLeft = left; RetireTails(left, right, focused); return;
             }
-            if (left && !previousLeft && (inside || dropDown))
+            bool wasDragging = dragging;
+            if (dragging)
+            {
+                leftTail = ConsumeLeft = OwnsPointer = true;
+                if (left)
+                {
+                    var next = point - grabOffset;
+                    if (requestedPosition != next) { requestedPosition = next; positionDirty = true; }
+                }
+                else EndDrag();
+            }
+            if (!wasDragging && host.Input.CanStartActions && left && !previousLeft && (inside || dropDown))
             {
                 // This is a modal for the page. A click outside closes only its
                 // expanded selector and cannot become a click on a lower row.
                 leftTail = true; ConsumeLeft = true;
                 if (dropDown && !scopePanel.Contains(point.X, point.Y) && !selector.Contains(point.X, point.Y))
                 { dropDown = false; dirty = true; armed = null; }
+                else if (!dropDown && hovered == null && titleBar.Contains(point.X, point.Y))
+                {
+                    armed = null; dragging = userPositioned = true;
+                    requestedPosition = new Vector2(panel.X, panel.Y); grabOffset = point - requestedPosition;
+                    frozenSize = new Vector2(panel.Width, panel.Height);
+                    frozenTitleHeight = titleHeight; frozenSummaryHeight = summaryHeight; frozenSelectorHeight = selectorHeight;
+                }
                 else { armed = hovered; pressedGeneration = generation; }
             }
             if (right && inside) { rightTail = ConsumeRight = true; armed = null; }
@@ -137,9 +181,12 @@ namespace JueMingR.TerrariaHost.F5
                 // The list still owns top/bottom wheel input. Pointer samples
                 // outside our panel remain available to other native UI.
                 ConsumeWheel = true; armed = null;
-                if (dropDown) scopeScroll = Math.Max(0, Math.Min(Math.Max(0, scopeHeight - scopePanel.Height + 8), scopeScroll - Math.Sign(wheel) * lineHeight * 3));
-                else scroll = Math.Max(0, Math.Min(Math.Max(0, content.Height - body.Height), scroll - Math.Sign(wheel) * lineHeight * 3));
-                dirty = true;
+                if (!dragging)
+                {
+                    if (dropDown) scopeScroll = Math.Max(0, Math.Min(Math.Max(0, scopeHeight - scopePanel.Height + 8), scopeScroll - Math.Sign(wheel) * lineHeight * 3));
+                    else scroll = Math.Max(0, Math.Min(Math.Max(0, content.Height - body.Height), scroll - Math.Sign(wheel) * lineHeight * 3));
+                    scrollDirty = true;
+                }
             }
             if (Visible && current && !left && !right && !dropDown)
             { var row = content.Hit(point.X, point.Y, body); hoveredItem = row?.Cell.ItemType ?? 0; }
@@ -148,6 +195,7 @@ namespace JueMingR.TerrariaHost.F5
             { for (int key = 256; key <= 260; key++) host.Input.Hotkeys.ConsumePress(key); host.Input.ConsumeHotkeyActions(); }
             previousLeft = left; RetireTails(left, right, focused);
         }
+        private void EndDrag() { if (dragging) { dragging = false; dirty = true; } }
         private void RetireTails(bool left, bool right, bool focused)
         { if (!focused) return; if (!left) leftTail = false; if (!right) rightTail = false; }
         private F5Element Hit(Vector2 point)
@@ -168,13 +216,15 @@ namespace JueMingR.TerrariaHost.F5
                 !F5PopupPlacement.SameAnchor(anchor, preparedAnchor);
             bool changed = !ReferenceEquals(snapshot, value) || !ReferenceEquals(shownInstances, instances) || names != host.MaterialNameRevision;
             matrix = transform; screen = dimensions;
+            if (geometry) EndDrag();
             if (geometry || changed || dirty)
             {
                 bool identity = geometry || dirty || !ReferenceEquals(shownInstances, instances) || !SameRows(snapshot, value);
+                bool retainFrame = !geometry && !dirty && names == host.MaterialNameRevision && snapshot?.Status == value?.Status && SameRows(snapshot, value);
                 var oldButtons = buttons.ToArray(); var oldBody = body;
                 bool keepClose = !geometry && !dirty && oldButtons.Length > 0 && ReferenceEquals(armed, oldButtons[0]);
                 snapshot = value; shownInstances = instances;
-                Build(dimensions.X / transform.M11, dimensions.Y / transform.M11, WorldMode && !geometry && content.Count > 0);
+                Build(dimensions.X / transform.M11, dimensions.Y / transform.M11, WorldMode && changed && !geometry && !positionDirty && !dragging && content.Count > 0, retainFrame);
                 // Numeric updates do not create new button identities. Preserve
                 // a close press if its geometry and the selected scope survive.
                 for (int i = 0; i < buttons.Count && i < oldButtons.Length; i++)
@@ -186,18 +236,32 @@ namespace JueMingR.TerrariaHost.F5
                 if (keepClose && ReferenceEquals(buttons[0], oldButtons[0])) { armed = buttons[0]; pressedGeneration = generation; }
                 resource = renderer.Generation; layout = shell.Layout.Generation; preparedAnchor = anchor;
                 names = host.MaterialNameRevision;
+                positionDirty = scrollDirty = false;
 #if DEBUG
                 LayoutBuilds++;
 #endif
             }
+            else if (positionDirty || scrollDirty)
+            {
+                if (positionDirty)
+                {
+                    var next = Place(panel.Width, panel.Height, dimensions.X / transform.M11, dimensions.Y / transform.M11);
+                    Translate(next.X - panel.X, next.Y - panel.Y);
+                }
+                if (scrollDirty && dropDown)
+                {
+                    var oldRows = new Dictionary<long, ScopeRow>(); foreach (var row in visibleScopes) oldRows[row.Identity] = row;
+                    ProjectScopes(oldRows);
+                }
+                content.Project(body.X, body.Y - scroll, body); projection++; positionDirty = scrollDirty = false;
+            }
             if (shownContent != content.Generation) { shownContent = content.Generation; projection++; }
             renderer.Prepare(content, projection);
             string hint = null; F5Rect target = default(F5Rect);
-            if (hoveredItem > 0) foreach (var row in content.Visible) if (row.Cell.ItemType == hoveredItem) { hint = row.Cell.Name; target = row.Rect; break; }
-            if (dropDown && hovered != null) foreach (var row in visibleScopes) if (ReferenceEquals(row.Element, hovered)) { hint = row.Position; target = row.Element.Rect; break; }
-            if (hint == null && SummaryRect().Contains(pointer.X, pointer.Y))
+            if (!dragging && dropDown && hovered != null) foreach (var row in visibleScopes) if (ReferenceEquals(row.Element, hovered)) { hint = row.Position; target = row.Element.Rect; break; }
+            if (!dragging && hint == null && SummaryRect().Contains(pointer.X, pointer.Y))
             { hint = snapshot?.Error ?? (snapshot?.Status == BlueprintMaterialStatus.Pending ? "正在核对材料" : snapshot?.Status == BlueprintMaterialStatus.Unresolved ? "部分目标的材料尚未确定" : WorldMode && snapshot?.InventoryReady != true ? "随身材料尚未核对完成" : null); target = SummaryRect(); }
-            renderer.PrepareHint(hint, target, new F5Rect(12, 12, dimensions.X / transform.M11 - 24, dimensions.Y / transform.M11 - 24),
+            renderer.PrepareHint(host.Input.CanPrepareText && !leftTail && !rightTail ? hint : null, target, new F5Rect(12, 12, dimensions.X / transform.M11 - 24, dimensions.Y / transform.M11 - 24),
                 Terraria.GameContent.FontAssets.MouseText?.Value, shell.Layout.DynamicTextSize);
         }
         internal bool SelectScope(long identity)
@@ -226,50 +290,78 @@ namespace JueMingR.TerrariaHost.F5
             return WorldMode ? host.MaterialWorld(selected) : host.MaterialAsset(asset);
         }
         private F5Rect SummaryRect() { return summaryRect; }
-        private void Build(float screenWidth, float screenHeight, bool preserveBodyOrigin)
+        private void Build(float screenWidth, float screenHeight, bool preserveBodyOrigin, bool retainFrame)
         {
-            float previousBodyY = body.Y;
+            float previousBodyY = body.Y, previousBodyTop = bodyTop, previousContentHeight = content.Height;
+            var previousPanel = panel;
             var oldScopeRows = new Dictionary<long, ScopeRow>(); foreach (var row in visibleScopes) oldScopeRows[row.Identity] = row;
             labels.Clear(); buttons.Clear(); scopeLabels.Clear(); visibleScopes.Clear();
-            float width = Math.Min(720, screenWidth - 24), height = Math.Min(540, screenHeight - 24);
-            if (width < 300 || height < 160) throw new InvalidOperationException("材料窗口当前空间不足");
-            var measure = new Func<string, float, F5Size>(shell.Layout.DynamicTextSize);
-            lineHeight = Math.Max(28, measure("测试Ag", .70f).Height + 8);
-            panel = F5PopupPlacement.Place(anchor, width, height, screenWidth, screenHeight);
-            var closeSize = measure("关闭", .70f); float closeWidth = Math.Max(58, closeSize.Width + 18);
-            buttons.Add(new F5Element(F5ElementKind.Button, new F5Rect(panel.Right - closeWidth - 10, panel.Y + 7, closeWidth, Math.Max(28, closeSize.Height + 8)), "关闭", closeSize, .70f, F5Command.None));
-            var title = BlueprintMaterialsLayout.Wrap(WorldMode ? "施工材料" : "蓝图材料：" + asset.Name, width - closeWidth - 36, .76f, measure);
-            foreach (var line in title) labels.Add(new F5Element(F5ElementKind.Text, line.Rect.Offset(panel.X + 12, panel.Y + 10), line.Text, line.TextSize, line.TextScale, line.Command));
-            float y = panel.Y + Math.Max(42, Math.Max(BlueprintMaterialsLayout.BlockHeight(title, 2) + 18, buttons[0].Rect.Height + 14));
-            var summary = BlueprintMaterialsLayout.Wrap(BlueprintMaterialsLayout.Summary(snapshot, WorldMode), width - 24, .70f, measure);
-            foreach (var line in summary) labels.Add(new F5Element(F5ElementKind.Text, line.Rect.Offset(panel.X + 12, y), line.Text, line.TextSize, line.TextScale, line.Command));
+            float width = dragging ? frozenSize.X : Math.Min(WorldMode ? 584 : 560, screenWidth - 24);
+            float maximumHeight = Math.Min(540, screenHeight - 24);
+            if (width < 300 || maximumHeight < 160) throw new InvalidOperationException("材料窗口当前空间不足");
+            bool headerCurrent = headerWidth == width && headerResource == renderer.Generation;
+            if (!headerCurrent)
+            { lineHeight = Math.Max(28, measureHeader("测试Ag", .70f).Height + 8); closeSize = measureHeader("关闭", .70f); }
+            // Measure in local coordinates first. Width determines content; only
+            // the complete height is clamped, then one origin is projected for
+            // drawing, hits and the final scroll clamp.
+            panel = new F5Rect(0, 0, width, maximumHeight);
+            float closeWidth = Math.Max(58, closeSize.Width + 18);
+            float closeHeight = Math.Max(28, closeSize.Height + 8);
+            var title = HeaderBlock(ref titleText, ref titleLines, WorldMode ? "施工材料" : "蓝图材料：" + asset.Name, width - closeWidth - 36, .76f, headerCurrent);
+            var summary = HeaderBlock(ref summaryText, ref summaryLines, BlueprintMaterialsLayout.Summary(snapshot, WorldMode), width - 24, .70f, headerCurrent);
+            float measuredTitle = Math.Max(42, Math.Max(BlueprintMaterialsLayout.BlockHeight(title, 2) + 18, closeHeight + 14));
             float measuredSummary = BlueprintMaterialsLayout.BlockHeight(summary, 2);
-            summaryHeight = snapshot?.Status == BlueprintMaterialStatus.Pending && snapshot.Rows.Count == 0 && content.Count > 0 ? Math.Max(summaryHeight, measuredSummary) : measuredSummary;
-            summaryRect = new F5Rect(panel.X + 12, y, width - 24, summaryHeight);
-            y += summaryHeight + 8;
+            List<F5Element> range = null; float measuredSelector = 0;
             if (WorldMode)
             {
                 BuildScopes(); ScopeRow currentScope; string current = scopesById.TryGetValue(selected, out currentScope) ? currentScope.Name : scopes[0].Name;
-                var lines = BlueprintMaterialsLayout.Wrap("查看范围：" + current, width - 48, .70f, measure);
-                float sh = Math.Max(lineHeight, BlueprintMaterialsLayout.BlockHeight(lines, 2) + 8);
-                selector = new F5Rect(panel.X + 12, y, width - 24, sh);
+                range = HeaderBlock(ref rangeText, ref rangeLines, "查看范围：" + current, width - 48, .70f, headerCurrent);
+                measuredSelector = Math.Max(lineHeight, BlueprintMaterialsLayout.BlockHeight(range, 2) + 8);
+            }
+            // A drag freezes local frame geometry, never its material facts.
+            // Uncontainable new header glyphs end that gesture safely; its
+            // physical mouse tail is retired only by a focused raw release.
+            if (dragging && (measuredTitle > frozenTitleHeight || measuredSummary > frozenSummaryHeight || measuredSelector > frozenSelectorHeight)) EndDrag();
+            titleHeight = dragging ? frozenTitleHeight : measuredTitle;
+            summaryHeight = dragging ? frozenSummaryHeight : snapshot?.Status == BlueprintMaterialStatus.Pending && snapshot.Rows.Count == 0 && content.Count > 0 ? Math.Max(summaryHeight, measuredSummary) : measuredSummary;
+            selectorHeight = dragging ? frozenSelectorHeight : measuredSelector;
+            titleBar = new F5Rect(0, 0, width, titleHeight);
+            buttons.Add(new F5Element(F5ElementKind.Button, new F5Rect(width - closeWidth - 10, 7, closeWidth, closeHeight), "关闭", closeSize, .70f, F5Command.None));
+            foreach (var line in title) labels.Add(new F5Element(F5ElementKind.Text, line.Rect.Offset(12, 10), line.Text, line.TextSize, line.TextScale, line.Command));
+            float y = titleHeight;
+            foreach (var line in summary) labels.Add(new F5Element(F5ElementKind.Text, line.Rect.Offset(12, y), line.Text, line.TextSize, line.TextScale, line.Command));
+            summaryRect = new F5Rect(12, y, width - 24, summaryHeight); y += summaryHeight + 8;
+            if (WorldMode)
+            {
+                selector = new F5Rect(12, y, width - 24, selectorHeight);
                 // The selector is one control even when a long instance name
                 // needs several readable lines. Its label is prepared in full.
                 buttons.Add(new F5Element(F5ElementKind.Button, selector, "", default(F5Size), .70f, F5Command.None));
-                foreach (var line in lines) labels.Add(new F5Element(F5ElementKind.Text, line.Rect.Offset(selector.X + 8, selector.Y + 4), line.Text, line.TextSize, line.TextScale, line.Command));
+                foreach (var line in range) labels.Add(new F5Element(F5ElementKind.Text, line.Rect.Offset(selector.X + 8, selector.Y + 4), line.Text, line.TextSize, line.TextScale, line.Command));
                 y = selector.Bottom + 8;
             }
             float contentWidth = width - 32;
             scroll = content.Prepare(snapshot, WorldMode, contentWidth, measure, host.MaterialName, host.MaterialNameRevision, renderer.Generation, scroll);
             if (WorldMode)
             {
-                AddLabel("物品", panel.X + 16, y, content.RequiredX - 4, .70f);
-                AddRightLabel("还需", panel.X + 16 + content.RequiredX + content.NumberWidth - 4, y, .70f);
-                AddRightLabel("持有", panel.X + 16 + content.HeldX + content.NumberWidth - 4, y, .70f);
-                AddRightLabel("缺少", panel.X + 16 + content.MissingX + content.NumberWidth - 4, y, .70f);
-                y += lineHeight;
+                PrepareColumns(); foreach (var label in columnLabels) labels.Add(Move(label, 0, y)); y += columnHeight;
             }
-            body = new F5Rect(panel.X + 16, y, contentWidth, Math.Max(1, panel.Bottom - 12 - y));
+            bool empty = snapshot?.Status == BlueprintMaterialStatus.Exact && content.Count == 0;
+            float emptyHeight = empty ? measure("没有需要的材料", .70f).Height + 12 : lineHeight;
+            // Ordinary quantities can change without changing the frame's
+            // shape. Keep that proven frame; expansion, set/name/resource and
+            // viewport changes still take the normal content-size path.
+            bool keepFrame = retainFrame && !dragging && y == previousBodyTop && content.Height == previousContentHeight;
+            float height = dragging ? frozenSize.Y : keepFrame ? previousPanel.Height : Math.Min(maximumHeight, y + Math.Max(content.Height, content.Count == 0 ? emptyHeight : 0) + 12);
+            if (height - y - 12 < 1) throw new InvalidOperationException("材料窗口当前空间不足");
+            panel = new F5Rect(0, 0, width, height);
+            bodyTop = y;
+            body = new F5Rect(16, y, contentWidth, height - 12 - y);
+            if (empty) AddLabel("没有需要的材料", body.X, body.Y + 6, body.Width, .70f);
+            var position = keepFrame || dragging && !positionDirty ? previousPanel : Place(width, height, screenWidth, screenHeight);
+            Translate(position.X, position.Y);
+            headerWidth = width; headerResource = renderer.Generation;
             // The ItemType anchor above preserves its content-space offset.
             // Actual summary glyph heights can also move the body during a
             // same-scope publication. Compensate that origin before the sole
@@ -278,26 +370,73 @@ namespace JueMingR.TerrariaHost.F5
             if (preserveBodyOrigin) scroll += body.Y - previousBodyY;
             scroll = Math.Max(0, Math.Min(Math.Max(0, content.Height - body.Height), scroll));
             content.Project(body.X, body.Y - scroll, body);
-            if (snapshot?.Status == BlueprintMaterialStatus.Exact && content.Count == 0) AddLabel("没有需要的材料", body.X, body.Y + 6, body.Width, .70f);
             if (dropDown)
             {
                 float dropdownHeight = Math.Min(Math.Max(lineHeight + 8, scopeHeight + 8), Math.Max(lineHeight + 8, panel.Bottom - selector.Bottom - 18));
                 scopePanel = F5PopupPlacement.Place(selector, selector.Width, dropdownHeight, screenWidth, screenHeight);
-                scopeScroll = Math.Max(0, Math.Min(Math.Max(0, scopeHeight - dropdownHeight + 8), scopeScroll));
-                int first = 0, last = scopes.Count;
-                while (first < last) { int mid = (first + last) / 2; if (scopes[mid].Element.Rect.Bottom <= scopeScroll) first = mid + 1; else last = mid; }
-                for (int i = first; i < scopes.Count; i++)
-                {
-                    var option = scopes[i];
-                    var rect = option.Element.Rect.Offset(scopePanel.X + 4, scopePanel.Y + 4 - scopeScroll);
-                    if (rect.Y >= scopePanel.Bottom - 4) break;
-                    var element = new F5Element(option.Element.Kind, rect, option.Element.Text, option.Element.TextSize, option.Element.TextScale, option.Element.Command);
-                    ScopeRow previous;
-                    if (oldScopeRows.TryGetValue(option.Identity, out previous) && previous.Element.Text == element.Text && F5PopupPlacement.SameAnchor(previous.Element.Rect, rect)) element = previous.Element;
-                    var projected = new ScopeRow { Identity = option.Identity, Name = option.Name, Position = option.Position, Element = element };
-                    visibleScopes.Add(projected); scopeLabels.Add(element);
-                }
+                ProjectScopes(oldScopeRows);
             }
+        }
+        private void ProjectScopes(IDictionary<long, ScopeRow> previousRows)
+        {
+            visibleScopes.Clear(); scopeLabels.Clear();
+            scopeScroll = Math.Max(0, Math.Min(Math.Max(0, scopeHeight - scopePanel.Height + 8), scopeScroll));
+            int first = 0, last = scopes.Count;
+            while (first < last) { int mid = (first + last) / 2; if (scopes[mid].Element.Rect.Bottom <= scopeScroll) first = mid + 1; else last = mid; }
+            for (int i = first; i < scopes.Count; i++)
+            {
+                var option = scopes[i]; var rect = option.Element.Rect.Offset(scopePanel.X + 4, scopePanel.Y + 4 - scopeScroll);
+                if (rect.Y >= scopePanel.Bottom - 4) break;
+                var element = Move(option.Element, scopePanel.X + 4, scopePanel.Y + 4 - scopeScroll); ScopeRow previous;
+                if (previousRows.TryGetValue(option.Identity, out previous) && previous.Element.Text == element.Text && F5PopupPlacement.SameAnchor(previous.Element.Rect, rect)) element = previous.Element;
+                visibleScopes.Add(new ScopeRow { Identity = option.Identity, Name = option.Name, Position = option.Position, Element = element }); scopeLabels.Add(element);
+            }
+        }
+        private F5Rect Place(float width, float height, float screenWidth, float screenHeight)
+        {
+#if DEBUG
+            FramePlacements++;
+#endif
+            if (!userPositioned) return F5PopupPlacement.Place(anchor, width, height, screenWidth, screenHeight);
+            return new F5Rect(Math.Max(12, Math.Min(screenWidth - width - 12, requestedPosition.X)),
+                Math.Max(12, Math.Min(screenHeight - height - 12, requestedPosition.Y)), width, height);
+        }
+        private void Translate(float x, float y)
+        {
+            if (x == 0 && y == 0) return;
+            panel = panel.Offset(x, y); body = body.Offset(x, y); selector = selector.Offset(x, y);
+            summaryRect = summaryRect.Offset(x, y); titleBar = titleBar.Offset(x, y); scopePanel = scopePanel.Offset(x, y);
+            Translate(labels, x, y); Translate(buttons, x, y); Translate(scopeLabels, x, y);
+            foreach (var row in visibleScopes) row.Element = Move(row.Element, x, y);
+        }
+        private static void Translate(List<F5Element> elements, float x, float y)
+        { for (int i = 0; i < elements.Count; i++) elements[i] = Move(elements[i], x, y); }
+        private static F5Element Move(F5Element value, float x, float y)
+        { return new F5Element(value.Kind, value.Rect.Offset(x, y), value.Text, value.TextSize, value.TextScale, value.Command); }
+        private F5Size MeasureHeader(string value, float scale)
+        {
+#if DEBUG
+            HeaderMeasurements++;
+#endif
+            return measure(value, scale);
+        }
+        private List<F5Element> HeaderBlock(ref string oldText, ref List<F5Element> lines, string value, float width, float scale, bool current)
+        {
+            if (!current || oldText != value || lines == null)
+            { lines = BlueprintMaterialsLayout.Wrap(value, width, scale, measureHeader); oldText = value; }
+            return lines;
+        }
+        private void PrepareColumns()
+        {
+            if (columnResource == renderer.Generation && columnWidth == content.NumberWidth && columnRequiredX == content.RequiredX) return;
+            columnLabels.Clear();
+            var item = BlueprintMaterialsLayout.Wrap("物品", content.RequiredX - 8, .70f, measureHeader);
+            foreach (var line in item) columnLabels.Add(Move(line, 16, 0));
+            columnHeight = Math.Max(lineHeight, BlueprintMaterialsLayout.BlockHeight(item, 2) + 6);
+            columnHeight = Math.Max(columnHeight, AddRightBlock("还需", 16 + content.RequiredX + content.NumberWidth, content.NumberWidth));
+            columnHeight = Math.Max(columnHeight, AddRightBlock("持有", 16 + content.HeldX + content.NumberWidth, content.NumberWidth));
+            columnHeight = Math.Max(columnHeight, AddRightBlock("缺少", 16 + content.MissingX + content.NumberWidth, content.NumberWidth));
+            columnResource = renderer.Generation; columnWidth = content.NumberWidth; columnRequiredX = content.RequiredX;
         }
         private void BuildScopes()
         {
@@ -338,8 +477,12 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void AddLabel(string value, float x, float y, float width, float scale)
         { var size = shell.Layout.DynamicTextSize(value, scale); labels.Add(new F5Element(F5ElementKind.Text, new F5Rect(x, y, width, size.Height), value, size, scale, F5Command.None)); }
-        private void AddRightLabel(string value, float right, float y, float scale)
-        { var size = shell.Layout.DynamicTextSize(value, scale); labels.Add(new F5Element(F5ElementKind.Text, new F5Rect(right - size.Width, y, size.Width, size.Height), value, size, scale, F5Command.None)); }
+        private float AddRightBlock(string value, float right, float width)
+        {
+            var lines = BlueprintMaterialsLayout.Wrap(value, width, .70f, measureHeader);
+            foreach (var line in lines) columnLabels.Add(Move(line, right - line.TextSize.Width, 0));
+            return BlueprintMaterialsLayout.BlockHeight(lines, 2) + 6;
+        }
         internal void Draw()
         {
             if (!Visible || !ready) return;

@@ -53,6 +53,7 @@ namespace NativeWorldTextProbe
         }
         internal static void Run(object context)
         {
+            NativeBlueprintDraftMaterialsChecks.Cpu(context);
             var host = Get(context, "Blueprint"); var shell = Get(context, "Shell"); var state = Get(shell, "State");
             var painter = Get(shell, "renderer"); var oldFont = Terraria.GameContent.FontAssets.MouseText;
             try
@@ -66,7 +67,7 @@ namespace NativeWorldTextProbe
                 Action count = () => measures++;
                 var measure = Expression.Lambda(measureType, Expression.Block(Expression.Invoke(Expression.Constant(count)),
                     Expression.Invoke(Expression.Constant(production, measureType), text, scale)), text, scale).Compile();
-                Func<int, string> name = id => new string('材', id == 1 ? 70 : 3);
+                Func<int, string> name = id => (id == 1 ? "A\u0301𠮷" : "") + new string('材', id == 1 ? 70 : 3);
                 Func<BlueprintMaterialSnapshot, bool, float, float, float> prepare = (value, world, width, scroll) =>
                     (float)Call(layout, "Prepare", value, world, width, measure, name, 1L, 1, scroll);
                 var longValue = new BlueprintMaterialSnapshot(1, BlueprintMaterialStatus.Exact,
@@ -81,6 +82,8 @@ namespace NativeWorldTextProbe
                     "compressed real table preserves every decimal digit for required/held/missing instead of int, stack or 999+ truncation");
                 Require(Objects(Get(cells[0], "Glyphs")).Count(g => ((string)Get(Get(g, "Element"), "Text")).Contains("材")) > 1,
                     "long material names wrap at the readable scale in their actual name column");
+                Require(string.Concat(Objects(Get(cells[0], "Glyphs")).Where(g => (bool)Get(g, "Name")).Select(g => (string)Get(Get(g, "Element"), "Text"))) == name(1),
+                    "wrapped labels preserve complete Chinese, surrogate and combining text elements in their original order");
                 int generation = (int)Get(layout, "Generation"), stableMeasures = measures;
                 for (int i = 0; i < 120; i++) prepare(longValue, true, 320, 0);
                 Require((int)Get(layout, "Generation") == generation && measures == stableMeasures, "120 stable material preparations reuse rows and glyph metrics");
@@ -138,6 +141,7 @@ namespace NativeWorldTextProbe
                 float recovered = prepare(retired, true, 522, anchor); var survivors = Objects(Get(layout, "cells"));
                 Require((float)Get(Get(survivors[1], "Rect"), "Y") - recovered == successorOffset,
                     "completion of the first visible material preserves the next surviving ItemType at its prior screen offset");
+                NativeBlueprintMaterialGeometryChecks.Run(context);
                 Console.WriteLine("PASS Blueprint material UI CPU: exact long decimals, wrapped names, pending/unresolved versus zero, stable 120 preparations, virtual visible set, 700th-row reachability and ItemType anchor. GPU/OS/IME NOT_EXECUTED.");
             }
             finally { Terraria.GameContent.FontAssets.MouseText = oldFont; Call(painter, "RefreshResources"); }
@@ -206,6 +210,7 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(popup, "Visible") && (bool)Get(state, "Visible") && Get(popup, "Source").ToString() == "F5", "F5 row calls the same modal through its F5 return context");
                 Call(popup, "Close"); Require((bool)Get(state, "Visible") && (int)Get(state, "Page") == 6, "closing F5 materials retains the blueprint main page");
                 LibraryReturn(context, graphics);
+                NativeBlueprintMaterialsDragChecks.Run(context, graphics, output);
                 HostPublicationGaps(context, graphics, output);
                 Console.WriteLine("PASS Blueprint material native input: real Host/registered action/F5 owner, source return, scope Escape hierarchy, original CopyInto and HandleHotbarControls consume opening/closing/list tails and resume later. OS clicks/IME/multiplayer NOT_EXECUTED.");
             }
@@ -271,6 +276,8 @@ namespace NativeWorldTextProbe
                     NativeQuickItemChecks.Until(() => { tick(); return ((BlueprintMaterialSnapshot)Call(host, "MaterialWorld", 0L)).Status == BlueprintMaterialStatus.Exact; });
                     Prepare(shell, graphics); var content = Get(popup, "Content");
                     Require((int)Get(content, "Count") == 70, "actual source/match/material publication reaches the real common popup with seventy material rows");
+                    NativeBlueprintMaterialNameChecks.Standalone(context, graphics);
+                    if (output != null) ImagesAtScales(shell, popup, graphics, output, "blueprint-world-materials-compact-first");
                     Main.screenHeight = Math.Min(originalHeight, 400); PlayerInput.CacheOriginalScreenDimensions(); Prepare(shell, graphics);
                     var shortBody = Get(popup, "Body"); float shortX = (float)Get(shortBody, "X") + 8, shortY = (float)Get(shortBody, "Y") + 8;
                     int hotbar = player.selectedItemState.Hotbar;
@@ -303,16 +310,22 @@ namespace NativeWorldTextProbe
                     tick(); var pending = (BlueprintMaterialSnapshot)Call(host, "MaterialWorld", 0L);
                     Require(pending.Status == BlueprintMaterialStatus.Pending && pending.Rows.Count == 0 && GetOptional(host, "materialPublishing") != null,
                         "real inventory revision starts the bounded seventy-row publisher and exposes its empty Pending slice after Host.Update");
-                    Prepare(shell, graphics); AssertPendingView(popup, content, scroll, hovered);
+                    Prepare(shell, graphics); AssertPendingView(popup, content, scroll);
+                    NativeBlueprintMaterialNameChecks.PendingSummary(context, graphics);
                     NativeQuickItemChecks.Until(() => { tick(); Prepare(shell, graphics); return ((BlueprintMaterialSnapshot)Get(popup, "snapshot")).Status == BlueprintMaterialStatus.Exact; });
                     AssertAnchor(popup, content, item, top, "inventory-exact");
+                    NativeBlueprintMaterialsDragChecks.DuringPublication(context, graphics, tick, () =>
+                    {
+                        WorldGen.PlaceWall(40, 70, cells[0].WallType, true);
+                        Require(Main.tile[40, 70].wall == cells[0].WallType, "independent native wall writer completes one material while the title remains grabbed");
+                    });
 
                     var close = Objects(Get(popup, "buttons"))[0]; var closeRect = Get(close, "Rect"); x = (float)Get(closeRect, "X") + 8; y = (float)Get(closeRect, "Y") + 8;
                     Frame(shell, input, x, y, true); Require(ReferenceEquals(GetOptional(popup, "armed"), close), "real close press is armed before the world-match publication gap");
                     long reads = (long)Get(host, "ProjectionMatchCellReads"); bool afterMatchGap = false;
                     string priorAnchorState = null; int anchorTraces = 0;
-                    WorldGen.PlaceWall(40, 70, cells[0].WallType, true);
-                    Require(Main.tile[40, 70].wall == cells[0].WallType, "independent original wall writer changes one actual target");
+                    WorldGen.PlaceWall(41, 70, cells[1].WallType, true);
+                    Require(Main.tile[41, 70].wall == cells[1].WallType, "independent original wall writer changes the next actual target");
                     NativeQuickItemChecks.Until(() =>
                     {
                         tick(); var value = (BlueprintMaterialSnapshot)Call(host, "MaterialWorld", 0L); Prepare(shell, graphics);
@@ -322,10 +335,10 @@ namespace NativeWorldTextProbe
                         priorAnchorState = anchorState;
                         if ((long)Get(host, "ProjectionMatchCellReads") > reads && value.Status == BlueprintMaterialStatus.Pending && value.Rows.Count == 0 && GetOptional(host, "materialPublishing") == null) afterMatchGap = true;
                         Require(ReferenceEquals(GetOptional(popup, "armed"), close), "same physical Close remains eligible through actual Host material/match updates");
-                        return afterMatchGap && value.Status == BlueprintMaterialStatus.Exact && value.Rows.Count == 69;
+                        return afterMatchGap && value.Status == BlueprintMaterialStatus.Exact && value.Rows.Count == 68;
                     });
                     Require(afterMatchGap, "actual Host.Update material pass then matching/revocation exposes empty Pending to the actual popup Prepare");
-                    AssertAnchor(popup, content, item, top, "world-69-exact");
+                    AssertAnchor(popup, content, item, top, "world-68-exact");
                     Frame(shell, input, x, y, false); PlayerInput.Triggers.Current.CopyInto(player);
                     Require(!(bool)Get(popup, "Visible") && !player.controlUseItem, "the original close release succeeds after Pending recovery without world-use click-through");
                     Frame(shell, input, 1, 1, false); Frame(shell, input, 1, 1, false); Call(host, "OpenMaterials");
@@ -336,11 +349,15 @@ namespace NativeWorldTextProbe
                     Require((bool)Get(popup, "RangeExpanded"), "the actual nonempty selector press and release opens its projected choices");
                     var choice = Objects(Get(popup, "visibleScopes")).Single(r => (long)Get(r, "Identity") == identity); var choiceRect = Get(Get(choice, "Element"), "Rect");
                     x = (float)Get(choiceRect, "X") + 8; y = (float)Get(choiceRect, "Y") + (float)Get(choiceRect, "Height") / 2;
+                    Frame(shell, input, x, y, false); Prepare(shell, graphics);
+                    var scopeHint = Get(Get(popup, "renderer"), "hint");
+                    Require((bool)Get(scopeHint, "Visible") && string.Concat(Objects(Get(scopeHint, "Lines")).Select(e => (string)Get(e, "Text"))).Contains("40，70"),
+                        "the expanded range retains its real instance-position hint after item-name hints are removed");
                     Frame(shell, input, x, y, false); Frame(shell, input, x, y, true); Frame(shell, input, x, y, false); Prepare(shell, graphics);
                     Require((long)Get(popup, "Selected") == identity && !(bool)Get(popup, "RangeExpanded"), "the actual instance choice release changes the one selector's identity");
                     Require(!(bool)Get(content, "HoldingPending") && (int)Get(content, "Count") == 0 && (float)Get(popup, "scroll") == 0,
                         "changing scope discards retained rows rather than showing another scope's historical bill");
-                    Console.WriteLine("PASS material publication UI: real 70-row inventory publisher and Host.Update material→match revocation expose Pending empty slices; old numbers become dashes, scroll/hover survive, fresh 69-row anchor recovers and original Close release still consumes; short-viewport first/last wheel reaches the native hotbar consumer without switching slots, last row fully visible, actual selector choice clears retained rows.");
+                    Console.WriteLine("PASS material publication UI: real 70-row inventory publisher and Host.Update material→match revocation expose Pending empty slices; old numbers become dashes, ItemType/scroll survive, live 69-row set updates during title drag, fresh 68-row anchor recovers and original Close release still consumes; short-viewport first/last wheel reaches the native hotbar consumer without switching slots, last row fully visible, actual selector choice clears retained rows.");
                 }
                 catch (Exception error) { failure = error; throw; }
                 finally
@@ -362,10 +379,10 @@ namespace NativeWorldTextProbe
                 "an extra wheel at a nonempty material boundary is consumed before the original hotbar consumer");
             Prepare(shell, graphics);
         }
-        private static void AssertPendingView(object popup, object content, float scroll, int hovered)
+        private static void AssertPendingView(object popup, object content, float scroll)
         {
-            Require((bool)Get(content, "HoldingPending") && (int)Get(content, "Count") == 70 && (float)Get(popup, "scroll") == scroll && (int)Get(popup, "HoveredItem") == hovered,
-                "empty Pending preserves same-scope measured rows, scroll and hover identity instead of clamping to the top");
+            Require((bool)Get(content, "HoldingPending") && (int)Get(content, "Count") == 70 && (float)Get(popup, "scroll") == scroll,
+                "empty Pending preserves same-scope measured ItemType rows and scroll instead of clamping to the top");
             var labels = Objects(Get(popup, "labels"));
             Require(labels.Any(e => ((string)Get(e, "Text")).Contains("剩余材料 —")), "Pending summary never presents the last exact total as current");
             foreach (var row in Objects(Get(content, "Visible")))
@@ -468,6 +485,26 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(popup, "Visible") && Get(popup, "Source").ToString() == "World" && !(bool)Get(Get(shell, "State"), "Visible") && !player.controlUseItem,
                     "actual gel material button opens the shared world popup and consumes the opening release");
                 Call(popup, "Close"); Require((bool)Get(host, "AutoBuildEnabled"), "closing only materials retains automatic-build intent");
+                Frame(shell, input, 1, 1, false); Frame(shell, input, 1, 1, false); Call(host, "Toggle");
+                DrawCurrentViewport(graphics, () => Call(toolbar, "Draw"));
+                Require(((BlueprintCaptureState)Get(host, "State")).Active && (int)Get(layout, "MaterialsIndex") == -1 &&
+                    Objects(Get(layout, "Buttons")).Select(b => (string)Get(b, "Text")).SequenceEqual(new[] { "保存蓝图", "退出采集" }),
+                    "the actual capture toolbar has exactly Save/Exit and no material action");
+                button = Get(Objects(Get(layout, "Buttons"))[1], "Rect"); panel = Get(layout, "Panel");
+                x = (float)Get(panel, "X") + (float)Get(button, "X") + (float)Get(button, "Width") / 2;
+                y = (float)Get(panel, "Y") + (float)Get(button, "Y") + (float)Get(button, "Height") / 2;
+                Frame(shell, input, x, y, false); DrawCurrentViewport(graphics, () => Call(toolbar, "Draw"));
+                Frame(shell, input, x, y, true); Frame(shell, input, x, y, false); PlayerInput.Triggers.Current.CopyInto(player);
+                Require(!((BlueprintCaptureState)Get(host, "State")).Active && !(bool)Get(popup, "Visible") && !player.controlUseItem,
+                    "the real Exit release exits capture through its owner and cannot open Materials or leak a world use");
+                Frame(shell, input, 1, 1, false); Frame(shell, input, 1, 1, false); Call(host, "Toggle");
+                DrawCurrentViewport(graphics, () => Call(toolbar, "Draw")); panel = Get(layout, "Panel"); button = Get(Objects(Get(layout, "Buttons"))[1], "Rect");
+                x = (float)Get(panel, "X") + (float)Get(button, "X") + 8; y = (float)Get(panel, "Y") + (float)Get(button, "Y") + 8;
+                Frame(shell, input, x, y, false); DrawCurrentViewport(graphics, () => Call(toolbar, "Draw")); Frame(shell, input, x, y, true);
+                Call(host, "Toggle"); DrawCurrentViewport(graphics, () => Call(toolbar, "Draw"));
+                Frame(shell, input, x, y, false); PlayerInput.Triggers.Current.CopyInto(player);
+                Require(!((BlueprintCaptureState)Get(host, "State")).Active && !(bool)Get(popup, "Visible") && !(bool)Get(Get(shell, "BlueprintUi"), "Submenu") && !player.controlUseItem,
+                    "a mode change after press invalidates the old capture slot before its release can call a replacement world action");
                 player.inventory[0] = new Item(); player.inventory[0].SetDefaults(Terraria.ID.ItemID.Wood);
                 Require(!(bool)Get(host, "ShowToolbar"), "changing the real held item removes gel-only entry eligibility");
             }
@@ -503,6 +540,7 @@ namespace NativeWorldTextProbe
             Call(popup, "Close");
             DrawValues(context, graphics, output);
             StaticAssembly(context, graphics, output);
+            NativeBlueprintDraftMaterialsChecks.Visual(context, graphics, output);
         }
         private static void StaticAssembly(object context, ProbeGraphics graphics, string output)
         {
@@ -544,6 +582,7 @@ namespace NativeWorldTextProbe
                     "both real capture material icons and counts reach the actual scrollable body");
                 Action drawPage = () => { Call(renderer, "Draw", state, Main.UIScaleMatrix, false, false); Call(ui, "Draw"); };
                 graphics.Image(Path.Combine(output, "blueprint-capture-materials-exact.png"), drawPage, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
+                NativeBlueprintMaterialNameChecks.Capture(context, graphics);
                 var save = Objects(Get(ui, "parts")).Single(p => Get(p, "Command").ToString() == "ConfirmDraft");
                 Require((bool)Get(save, "Enabled"), "the real exact material grid preserves the original current-key Save eligibility");
                 Call(ui, "Execute", save);
@@ -573,7 +612,8 @@ namespace NativeWorldTextProbe
                 var detail = (BlueprintMaterialSnapshot)Get(popup, "snapshot");
                 Require((bool)Get(popup, "Visible") && !(bool)Get(popup, "WorldMode") && detail.Status == BlueprintMaterialStatus.Exact && detail.KindCount == 2 && detail.Total == 2,
                     "the original card material action assembles the same exact bill in the common static detail window");
-                graphics.Image(Path.Combine(output, "blueprint-library-materials-detail-exact.png"), () => Call(popup, "Draw"), Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
+                NativeBlueprintMaterialNameChecks.Standalone(context, graphics);
+                ImagesAtScales(shell, popup, graphics, output, "blueprint-library-materials-detail-exact");
                 Console.WriteLine("PASS Blueprint static material assembly: actual native two-wall Capture/DraftKey, exact worker bill, real capture grid/count-one/two aggregates, reliable Save, own library card aggregates and common static detail, with actual native-resource Draws. No injected Flow/snapshot; OS/IME/owner acceptance NOT_EXECUTED.");
             }
             catch (Exception error) { failure = error; throw; }
@@ -619,13 +659,13 @@ namespace NativeWorldTextProbe
             var measureType = layoutType.GetMethod("Prepare", F).GetParameters()[3].ParameterType;
             var measure = Delegate.CreateDelegate(measureType, Get(state, "Layout"), Get(state, "Layout").GetType().GetMethod("DynamicTextSize", F));
             var values = new BlueprintMaterialSnapshot(100, BlueprintMaterialStatus.Exact,
-                new[] { new BlueprintMaterialRow(2, 4000000000, 80, true), new BlueprintMaterialRow(3, 1, 1, true), new BlueprintMaterialRow(9, 100, 80, true) }, true);
+                new[] { new BlueprintMaterialRow(2, 4000000000, long.MaxValue, true), new BlueprintMaterialRow(3, 1, 1, true), new BlueprintMaterialRow(9, 100, 80, true) }, true);
             graphics.LoadItemTextures(values.Rows.Select(row => row.ItemType));
             Func<int, string> names = id => Lang.GetItemNameValue(id) + (id == 2 ? new string('材', 40) : "");
             float oldScale = Main.UIScale; int oldWidth = Main.screenWidth, oldHeight = Main.screenHeight; int identity = 0;
             try
             {
-                foreach (float scale in new[] { 1f, 1.5f })
+                foreach (float scale in new[] { 1f, 1.2f })
                 foreach (bool world in new[] { false, true })
                 {
                     Main.screenWidth = 1280; Main.screenHeight = 900; Main.UIScale = scale; PlayerInput.CacheOriginalScreenDimensions();
@@ -642,11 +682,24 @@ namespace NativeWorldTextProbe
                     Require(loads > 0 && pixels.Any(p => p.A > 0), "real borrowed item icons and exact prepared material glyphs reach the GPU consumer");
                     graphics.Image(Path.Combine(output, "blueprint-material-values-" + world + "-" + scale.ToString(CultureInfo.InvariantCulture) + ".png"), draw, Main.UIScaleMatrix, 1280, 900);
                 }
-                Console.WriteLine("PASS Blueprint materials actual GPU adapter: common static/dynamic value views, original item icons, long counts/names, UI 100/150%, stable 120 visible-resource preparations. Values are UI fixtures; native mapping/inventory, OS/IME and owner experience are separate.");
+                Console.WriteLine("PASS Blueprint materials actual GPU adapter: common static/dynamic value views, original item icons, long counts/names, UI 100/120%, stable 120 visible-resource preparations. Values are UI fixtures; native mapping/inventory, OS/IME and owner experience are separate.");
             }
             finally { ((IDisposable)renderer).Dispose(); Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; Main.UIScale = oldScale; PlayerInput.CacheOriginalScreenDimensions(); }
         }
-        private static void Prepare(object shell, ProbeGraphics graphics)
+        private static void ImagesAtScales(object shell, object popup, ProbeGraphics graphics, string output, string name)
+        {
+            float original = Main.UIScale;
+            try
+            {
+                foreach (float scale in new[] { 1f, 1.2f })
+                {
+                    Main.UIScale = scale; PlayerInput.CacheOriginalScreenDimensions(); Prepare(shell, graphics);
+                    graphics.Image(Path.Combine(output, name + "-" + scale.ToString(CultureInfo.InvariantCulture) + ".png"), () => Call(popup, "Draw"), Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
+                }
+            }
+            finally { Main.UIScale = original; PlayerInput.CacheOriginalScreenDimensions(); Prepare(shell, graphics); }
+        }
+        internal static void Prepare(object shell, ProbeGraphics graphics)
         {
             ObservedCall(shell, "AfterUpdate");
             Require(!(bool)Get(shell, "Failed"), "material production shell remains healthy after F5Shell.AfterUpdate");
@@ -687,7 +740,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { bindings.Poll(); return !bindings.Busy; });
             Require(Equals(bindings.Get(id), chord), "isolated action binding publishes after the reliable write");
         }
-        private static void Frame(object shell, object input, float x, float y, bool left, int wheel = 0, params Keys[] keys)
+        internal static void Frame(object shell, object input, float x, float y, bool left, int wheel = 0, params Keys[] keys)
         { FrameCore(shell, input, x, y, left, wheel, keys, false); }
         private static void FrameCore(object shell, object input, float x, float y, bool left, int wheel, Keys[] keys, bool mapRequest)
         {

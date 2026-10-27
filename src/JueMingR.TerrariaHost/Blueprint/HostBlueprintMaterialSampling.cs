@@ -11,9 +11,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!DynamicMaterialDemand || catalog == null) return;
             read.MaterialStampReady = projectionChanges.TryGetMaterialStamp(read.Range.Watch, read.Range.PartIndex, out read.MaterialStamp);
             var value = read.Range.Materials;
-            if (value == null) read.Range.Materials = value = new BlueprintRangeMaterials { OwnerTotals = read.Owner.Match.Materials, BuildEpoch = MaterialBuildEligibilityRevision, CatalogRevision = catalog.Revision };
-            if (value.BuildEpoch != MaterialBuildEligibilityRevision)
-            { value.BuildEpoch = MaterialBuildEligibilityRevision; value.BuildExhausted = false; value.CandidateCursor = 0; }
+            if (value == null) read.Range.Materials = value = new BlueprintRangeMaterials { OwnerTotals = read.Owner.Match.Materials, CatalogRevision = catalog.Revision };
+            if (MaterialBuildDemand?.Invoke() == true && value.BuildEpoch == 0) ResetMaterialBuildWalk(read.Range, false);
             // A placement-only refresh does not invalidate an unchanged final
             // target proof. Retain its contribution while this same bounded
             // read rebuilds candidates; catalog changes still revoke it.
@@ -148,14 +147,13 @@ namespace JueMingR.TerrariaHost.Blueprint
                 value.Desired = read.Materials.Counts; value.NextStatus = read.Materials.Status;
             }
             value.Progress = null;
-            if (MaterialBuildDemand?.Invoke() == true && (read.MaterialBuildEpoch != value.BuildEpoch ||
-                read.MaterialBuildEpoch != MaterialBuildEligibilityRevision || read.MaterialBuildWakeRevision != value.BuildWakeRevision ||
+            if (MaterialBuildDemand?.Invoke() == true && (read.MaterialBuildEpoch != value.BuildEpoch || read.MaterialBuildWakeRevision != value.BuildWakeRevision ||
                 !read.MaterialSupportReady || !projectionChanges.IsBuildCurrent(read.Range.Watch, read.Range.PartIndex, read.MaterialSupportStamp)))
-            { value.Candidate = value.CandidateFallback = null; value.CandidateCursor = 0; value.BuildExhausted = false; DemandProjectionMatchRange(read.Range); }
-            // Falling below the cursor would repeat this epoch's first failed
-            // candidate. Keep the range dormant until an actual eligibility or
-            // world change, while later source ranges retain their own turns.
-            else if (value.Candidate == null && value.CandidateCursor > 0 || value.Candidate == null && value.CandidateFallback == null) value.BuildExhausted = true;
+            { value.Candidate = value.CandidateFallback = null; DemandProjectionMatchRange(read.Range); }
+            // Reaching the tail ends this walk. Recovery observed during its
+            // prefix stays latched until the ordinary range cursor opens the
+            // next walk; it never promotes a fallback ahead of the current tail.
+            else if (MaterialBuildDemand?.Invoke() == true && value.Candidate == null) value.BuildExhausted = true;
             value.CandidateFallback = null;
             if (value.Candidate != null) value.Candidate.RangeStamp = read.Range.Version;
             if (!keepContribution) { QueueMaterialChange(read.Range); CancelMaterialPublication(); }

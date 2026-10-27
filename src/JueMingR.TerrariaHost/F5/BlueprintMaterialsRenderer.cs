@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.F5
         private object hintFont;
         private F5Rect hintPanel;
         private int preparedProjection = -1;
+        private readonly List<int> preparedItems = new List<int>();
         internal int Generation { get { return surface.Generation; } }
         internal bool ResourcesCurrent { get { return surface.ResourcesCurrent; } }
 #if DEBUG
@@ -26,7 +27,15 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (projection != preparedProjection)
             {
-                icons.BeginVisibleSet(); foreach (var row in layout.Visible) icons.AddVisible(row.Cell.ItemType); icons.EndVisibleSet();
+                bool changed = preparedItems.Count != layout.Visible.Count;
+                if (!changed) for (int i = 0; i < preparedItems.Count; i++)
+                    if (preparedItems[i] != layout.Visible[i].Cell.ItemType) { changed = true; break; }
+                if (changed)
+                {
+                    preparedItems.Clear(); icons.BeginVisibleSet();
+                    foreach (var row in layout.Visible) { preparedItems.Add(row.Cell.ItemType); icons.AddVisible(row.Cell.ItemType); }
+                    icons.EndVisibleSet();
+                }
                 preparedProjection = projection;
             }
             icons.Prepare();
@@ -77,6 +86,6 @@ namespace JueMingR.TerrariaHost.F5
                 foreach (var line in hintLines) surface.Label(line);
             });
         }
-        public void Dispose() { icons.Clear(); hint.Clear(); hintLines.Clear(); hintValue = null; hintFont = null; preparedProjection = -1; surface.Dispose(); }
+        public void Dispose() { icons.Clear(); preparedItems.Clear(); hint.Clear(); hintLines.Clear(); hintValue = null; hintFont = null; preparedProjection = -1; surface.Dispose(); }
     }
 }

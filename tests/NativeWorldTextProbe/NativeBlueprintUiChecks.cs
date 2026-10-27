@@ -52,7 +52,8 @@ namespace NativeWorldTextProbe
                     PlayerInput.CacheOriginalScreenDimensions(); PlayerInput.RawMouseScale = Vector2.One;
                     Require((bool)Call(layout, "Ensure", screen.X, screen.Y, ui, font, measure, active), "toolbar fits supported viewport/UI scale");
                     var buttons = ((IEnumerable)Get(layout, "Buttons")).Cast<object>().ToArray();
-                    Require(buttons.Length == 3 && buttons.Select(b => (string)Get(b, "Text")).SequenceEqual(active ? new[] { "保存蓝图", "退出采集", "材料" } : new[] { "采集蓝图", "打开蓝图库", "材料" }), "capture replaces its two slots and the sole approved material action remains at the end");
+                    Require(buttons.Length == (active ? 2 : 3) && buttons.Select(b => (string)Get(b, "Text")).SequenceEqual(active ? new[] { "保存蓝图", "退出采集" } : new[] { "采集蓝图", "打开蓝图库", "材料" }), "capture publishes exactly Save/Exit; only world mode includes Materials");
+                    Require((int)Get(layout, "MaterialsIndex") == (active ? -1 : 2) && Call(layout, "Action", -1).ToString() == "None", "missing material action and no-hit sentinel have distinct safe identities");
                     Require((bool)Call(layout, "Available", 0) && (bool)Call(layout, "Available", 1), "capture/save and library/exit share the actual owner command paths");
                     Require((string)Call(layout, "Hint", 0) == (active ? "点击保存键保存世界上已有的蓝图选区。" : "点击开始键执行选区，反选取消选区。") &&
                         (string)Call(layout, "Hint", 1) == (active ? "退出选区，并清空已有选区" : null), "disabled save keeps its approved hint; disabled library has no hint");
@@ -91,6 +92,15 @@ namespace NativeWorldTextProbe
                     Require(modeGeneration == (int)Get(layout, "Generation") && !(bool)Call(layout, "MatchesProjection", 1920f, 1080f, 1f, font, false, operation == 4 ? 1 : operation + 1),
                         "stable source reuses geometry and a different source invalidates release targets");
                 }
+                foreach (int operation in new[] { 0, 1, 2, 3, 4 })
+                {
+                    int count = measurements;
+                    Call(layout, "EnsureProjection", 1920f, 1080f, 1f, font, measure, true, operation);
+                    Require(Objects(Get(layout, "Buttons")).Select(b => (string)Get(b, "Text")).SequenceEqual(new[] { "保存蓝图", "退出采集" }) &&
+                        (int)Get(layout, "MaterialsIndex") == -1 && measurements - count == 2,
+                        "all residual projection modes measure and publish only their two capture actions");
+                }
+                FractionalWidths(assembly);
                 Require((Color)toolbar.GetType().GetField("HintColor", F).GetValue(null) == new Color(184,134,11), "toolbar's actual text draw color is dark goldenrod #B8860B");
                 int before = (int)Get(layout, "Generation");
                 Require(!(bool)Call(layout, "Matches", 1920f, 1080f, 2f, new object(), true), "font identity changes retire old hit geometry");
@@ -99,7 +109,7 @@ namespace NativeWorldTextProbe
                 var registry = (HotkeyRegistry)Get(Get(shell, "hotkeys"), "Registry");
                 Require(registry.Find("blueprint.capture").CanConfigure && registry.Find("blueprint.save").CanConfigure && registry.Find("blueprint.toolbar").CanConfigure &&
                     !(bool)Call(Get(renderer, "BlueprintControls"), "Available", Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.F5.F5Command", true), "BlueprintSave")), "all three real binder targets remain editable while save execution is unavailable");
-                Console.WriteLine("PASS Blueprint UI CPU: actual toolbar/layout/hint projection with one material action, 3 viewports x UI 100/150/200% x world 30/100/1000%, stable metrics, raw UI hit, centered above-bar gold hint contract, F5 mode invalidation and shared binder targets. GPU pixels/OS clicks/owner experience NOT_EXECUTED.");
+                Console.WriteLine("PASS Blueprint UI CPU: two capture actions versus world Materials identity, fractional-width single/wrapped geometry, 3 viewports x UI 100/150/200% x world 30/100/1000%, stable metrics, raw UI hit, centered gold hint, F5 invalidation/binder targets. GPU pixels/OS clicks/owner experience NOT_EXECUTED.");
             }
             finally
             {
@@ -108,6 +118,33 @@ namespace NativeWorldTextProbe
                 Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; PlayerInput.CacheOriginalScreenDimensions();
                 PlayerInput.MouseInfo = oldMouse; PlayerInput.RawMouseScale = oldRawScale;
             }
+        }
+
+        private static object[] Objects(object value) { return ((IEnumerable)value).Cast<object>().ToArray(); }
+        private static void FractionalWidths(Assembly assembly)
+        {
+            var type = assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintToolbarLayout", true);
+            var layout = Activator.CreateInstance(type, true);
+            var measureType = type.GetMethod("Ensure", F).GetParameters()[4].ParameterType;
+            var sizeType = assembly.GetType("JueMingR.TerrariaHost.F5.F5Size", true);
+            Func<string, float, object> sizes = (text, scale) => Activator.CreateInstance(sizeType, F, null,
+                new object[] { (text == "采集蓝图" ? 62f : text == "打开蓝图库" ? 64.0999984741211f : 45.19999694824219f) - 16, 14f, -2f, 3f }, null);
+            var textParameter = Expression.Parameter(typeof(string)); var scaleParameter = Expression.Parameter(typeof(float));
+            var measure = Expression.Lambda(measureType, Expression.Convert(Expression.Invoke(Expression.Constant(sizes), textParameter, scaleParameter), sizeType), textParameter, scaleParameter).Compile();
+            object font = new object();
+            Call(layout, "Ensure", 212f, 600f, 1f, font, measure, false);
+            var buttons = Objects(Get(layout, "Buttons")); var panel = Get(layout, "Panel");
+            Require(buttons.All(b => Near(Y(Get(b, "Rect")), 8)) && buttons.All(b => X(Get(b, "Rect")) >= 8 &&
+                X(Get(b, "Rect")) + W(Get(b, "Rect")) <= W(panel) - 8 + .0001f),
+                "the independent fractional-width counterexample stays one row when its measured total fits");
+            foreach (var button in buttons)
+            {
+                var rect = Get(button, "Rect"); float x = X(panel) + X(rect) + W(rect) / 2, y = Y(panel) + Y(rect) + H(rect) / 2;
+                Require((int)Call(layout, "Hit", x, y) == Array.IndexOf(buttons, button), "fractional toolbar hit consumes the same published button rectangle");
+            }
+            Call(layout, "Ensure", 210f, 600f, 1f, font, measure, false);
+            Require(Objects(Get(layout, "Buttons")).Select(b => Y(Get(b, "Rect"))).Distinct().Count() == 2,
+                "a genuinely narrower viewport wraps the same fractional-width action list");
         }
 
         private static void HintGeometry(Assembly assembly, object layout, object bar, float width, object font, Delegate measure, Func<int> count)
