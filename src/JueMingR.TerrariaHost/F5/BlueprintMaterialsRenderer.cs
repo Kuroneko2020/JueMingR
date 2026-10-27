@@ -2,11 +2,15 @@ using System;
 using System.Collections.Generic;
 using JueMingR.TerrariaHost.Items;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Terraria;
 
 namespace JueMingR.TerrariaHost.F5
 {
     internal sealed class BlueprintMaterialsRenderer : IDisposable
     {
+        private sealed class CaptureIcon
+        { internal BlueprintMaterialDrawing Row; internal Texture2D Texture; internal Rectangle Frame; internal Vector2 Center; internal float Scale; }
         private readonly ItemsRenderer surface = new ItemsRenderer();
         private readonly PreparedItemIcons icons = new PreparedItemIcons();
         private readonly F5HintLayout hint = new F5HintLayout();
@@ -16,11 +20,13 @@ namespace JueMingR.TerrariaHost.F5
         private F5Rect hintPanel;
         private int preparedProjection = -1;
         private readonly List<int> preparedItems = new List<int>();
+        private readonly Dictionary<int, CaptureIcon> captureIcons = new Dictionary<int, CaptureIcon>();
         internal int Generation { get { return surface.Generation; } }
         internal bool ResourcesCurrent { get { return surface.ResourcesCurrent; } }
 #if DEBUG
         internal long IconLoads { get { return icons.IconLoads; } }
         internal long VisibleSetBuilds { get { return icons.VisibleSetBuilds; } }
+        internal long CaptureIconProjects { get; private set; }
 #endif
         internal bool Refresh() { return surface.Refresh(); }
         internal void Prepare(BlueprintMaterialsLayout layout, int projection)
@@ -32,6 +38,7 @@ namespace JueMingR.TerrariaHost.F5
                     if (preparedItems[i] != layout.Visible[i].Cell.ItemType) { changed = true; break; }
                 if (changed)
                 {
+                    captureIcons.Clear();
                     preparedItems.Clear(); icons.BeginVisibleSet();
                     foreach (var row in layout.Visible) { preparedItems.Add(row.Cell.ItemType); icons.AddVisible(row.Cell.ItemType); }
                     icons.EndVisibleSet();
@@ -39,6 +46,38 @@ namespace JueMingR.TerrariaHost.F5
                 preparedProjection = projection;
             }
             icons.Prepare();
+            if (!layout.Dynamic && !layout.ShowNames)
+                foreach (var row in layout.Visible) PrepareCaptureIcon(row);
+            else captureIcons.Clear();
+        }
+        private void PrepareCaptureIcon(BlueprintMaterialDrawing row)
+        {
+            var texture = icons.Get(row.Cell.ItemType);
+            if (texture == null || texture.IsDisposed) { captureIcons.Remove(row.Cell.ItemType); return; }
+            Rectangle frame = Main.itemAnimations[row.Cell.ItemType] == null ? texture.Bounds : Main.itemAnimations[row.Cell.ItemType].GetFrame(texture);
+            CaptureIcon prior;
+            if (captureIcons.TryGetValue(row.Cell.ItemType, out prior) && ReferenceEquals(prior.Row, row) && ReferenceEquals(prior.Texture, texture) && prior.Frame == frame) return;
+            var box = row.Cell.Icon.Offset(row.Rect.X - row.Cell.Rect.X, row.Rect.Y - row.Cell.Rect.Y);
+            float scale = Math.Min(1, Math.Min((box.Width - 4) / frame.Width, (box.Height - 4) / frame.Height));
+            var center = new Vector2(box.X + box.Width / 2, box.Y + box.Height / 2);
+            // Match the native inventory's current texture frame and 32-unit
+            // size limit, not a count anchored to the old whole-cell footer.
+            // Frame and pose are prepared together; Draw neither loads textures
+            // nor rereads a different animation frame halfway through this UI.
+            row.Icon = new F5Rect(center.X - frame.Width * scale / 2, center.Y - frame.Height * scale / 2, frame.Width * scale, frame.Height * scale);
+            var lines = row.Cell.RequiredLines;
+            float width = 0; foreach (var line in lines) width = Math.Max(width, line.TextSize.Width);
+            bool below = lines.Count > 1;
+            float right = below ? center.X + width / 2 : Math.Max(row.Rect.X + 4 + width, Math.Min(row.Rect.Right - 4, row.Icon.Right + 2));
+            float top = below ? row.Icon.Bottom + 3 : row.Icon.Bottom + 2 - BlueprintMaterialsLayout.BlockHeight(lines, 2);
+            row.Glyphs.Clear();
+            foreach (var line in lines)
+                row.Glyphs.Add(new BlueprintMaterialGlyph { Element = new F5Element(F5ElementKind.Text,
+                    new F5Rect(right - line.TextSize.Width, top + line.Rect.Y, line.TextSize.Width, line.TextSize.Height), line.Text, line.TextSize, line.TextScale, line.Command), Ink = Color.White });
+            captureIcons[row.Cell.ItemType] = new CaptureIcon { Row = row, Texture = texture, Frame = frame, Center = center, Scale = scale };
+#if DEBUG
+            CaptureIconProjects++;
+#endif
         }
         internal void PrepareHint(string value, F5Rect target, F5Rect bounds, object font, Func<string, float, F5Size> measure)
         {
@@ -55,9 +94,13 @@ namespace JueMingR.TerrariaHost.F5
             {
                 foreach (var row in layout.Visible)
                 {
-                    if (!layout.Dynamic) surface.ItemButton(row.Rect, true, false);
-                    else surface.Divider(new F5Rect(row.Rect.X, row.Rect.Bottom, row.Rect.Width, 1));
-                    surface.PreparedItem(row.Cell.ItemType, icons.Get(row.Cell.ItemType), row.Icon);
+                    bool capture = !layout.Dynamic && !layout.ShowNames;
+                    if (!layout.Dynamic && !capture) surface.ItemButton(row.Rect, true, false);
+                    else if (layout.Dynamic) surface.Divider(new F5Rect(row.Rect.X, row.Rect.Bottom, row.Rect.Width, 1));
+                    CaptureIcon icon;
+                    if (capture && captureIcons.TryGetValue(row.Cell.ItemType, out icon) && ReferenceEquals(icon.Row, row) && !icon.Texture.IsDisposed)
+                        Main.spriteBatch.Draw(icon.Texture, icon.Center, icon.Frame, Color.White, 0, new Vector2(icon.Frame.Width / 2f, icon.Frame.Height / 2f), icon.Scale, SpriteEffects.None, 0);
+                    else surface.PreparedItem(row.Cell.ItemType, icons.Get(row.Cell.ItemType), row.Icon);
                     foreach (var glyph in row.Glyphs) surface.Label(glyph.Element, glyph.Ink);
                 }
             });
@@ -86,6 +129,6 @@ namespace JueMingR.TerrariaHost.F5
                 foreach (var line in hintLines) surface.Label(line);
             });
         }
-        public void Dispose() { icons.Clear(); preparedItems.Clear(); hint.Clear(); hintLines.Clear(); hintValue = null; hintFont = null; preparedProjection = -1; surface.Dispose(); }
+        public void Dispose() { icons.Clear(); preparedItems.Clear(); captureIcons.Clear(); hint.Clear(); hintLines.Clear(); hintValue = null; hintFont = null; preparedProjection = -1; surface.Dispose(); }
     }
 }

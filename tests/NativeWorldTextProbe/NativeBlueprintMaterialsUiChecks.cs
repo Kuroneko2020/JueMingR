@@ -548,6 +548,7 @@ namespace NativeWorldTextProbe
             Directory.CreateDirectory(output); graphics.Image(Path.Combine(output, "blueprint-world-materials.png"), () => Call(popup, "Draw"), Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
             Call(popup, "Close");
             DrawValues(context, graphics, output);
+            NativeBlueprintCaptureMaterialIconChecks.Values(context, graphics, output);
             StaticAssembly(context, graphics, output);
         }
         private static void StaticAssembly(object context, ProbeGraphics graphics, string output)
@@ -590,6 +591,7 @@ namespace NativeWorldTextProbe
                     "both real capture material icons and counts reach the actual scrollable body");
                 Action drawPage = () => { Call(renderer, "Draw", state, Main.UIScaleMatrix, false, false); Call(ui, "Draw"); };
                 graphics.Image(Path.Combine(output, "blueprint-capture-materials-exact.png"), drawPage, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
+                NativeBlueprintCaptureMaterialIconChecks.Capture(context, graphics);
                 NativeBlueprintMaterialNameChecks.Capture(context, graphics);
                 graphics.Image(Path.Combine(output, "blueprint-capture-materials-hover.png"), drawPage, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
                 var save = Objects(Get(ui, "parts")).Single(p => Get(p, "Command").ToString() == "ConfirmDraft");

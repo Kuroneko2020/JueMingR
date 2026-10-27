@@ -93,6 +93,13 @@ namespace NativeWorldTextProbe
             Require(Objects(Get(layout, "cells")).All(c => Objects(Get(c, "Glyphs")).All(g => !(bool)Get(g, "Name"))) &&
                 string.Concat(Objects(Get(Objects(Get(layout, "cells"))[0], "Glyphs")).Select(g => (string)Get(Get(g, "Element"), "Text"))) == "1",
                 "the save workspace preserves its icon/count-only mode including explicit quantity one and available hover names");
+            var captureCells = Objects(Get(layout, "cells"));
+            Require(captureCells.All(c => W(Get(c, "Rect")) <= 44 && (bool)Get(c, "IconCountOnly")) &&
+                captureCells.All(c => Y(Get(c, "Icon")) == Y(Get(c, "Rect")) + 4),
+                "save material slots stay compact and keep one icon baseline when a neighbouring long integer grows the row");
+            prepare(new BlueprintMaterialSnapshot(43, BlueprintMaterialStatus.Exact, new[] { new BlueprintMaterialRow(1, long.MaxValue) }), false, 552);
+            Require(string.Concat(Objects(Get(Objects(Get(layout, "cells"))[0], "Glyphs")).Select(g => (string)Get(Get(g, "Element"), "Text"))) == long.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "the compact save grid retains every digit of a legal long.MaxValue without reducing its text scale");
             FrameCache(context);
             Console.WriteLine("PASS material geometry relations: visible-center compact rows, separate named/static count domains, 9/10 and long-digit stability, full static decimals, save-grid mode.");
         }

@@ -16,6 +16,7 @@ namespace JueMingR.TerrariaHost.F5
     internal sealed class BlueprintMaterialCell
     {
         internal int ItemType;
+        internal bool IconCountOnly;
         internal string Name;
         internal F5Rect Rect, Icon;
         internal float NaturalHeight;
@@ -110,8 +111,8 @@ namespace JueMingR.TerrariaHost.F5
             else NumberWidth = 0;
             snapshot = value; dynamic = world; namedGrid = ShowNames; width = available; nameRevision = names; resources = resource;
             cells.Clear(); Visible.Clear(); Height = 0;
-            Columns = world ? 1 : Math.Max(1, (int)((available + 6) / ((ShowNames ? 202 : 62) + 6)));
-            float cellWidth = world ? available : (available - (Columns - 1) * 6) / Columns;
+            Columns = world ? 1 : Math.Max(1, (int)((available + 6) / ((ShowNames ? 202 : 44) + 6)));
+            float cellWidth = world ? available : ShowNames ? (available - (Columns - 1) * 6) / Columns : Math.Min(44, available);
             RequiredX = world ? available - NumberWidth * 3 - 16 : 0;
             HeldX = RequiredX + NumberWidth + 8; MissingX = HeldX + NumberWidth + 8;
             int index = 0; float gridTop = 0, gridHeight = 0;
@@ -157,12 +158,16 @@ namespace JueMingR.TerrariaHost.F5
             if (world || !ShowNames) cell.UnknownSize = prior?.UnknownSize ?? measure("—", world ? .70f : .65f);
             if (!world && !ShowNames)
             {
+                cell.IconCountOnly = true;
                 cell.RequiredText = Number(row.Required);
-                var count = cell.RequiredLines = Reuse(cell.RequiredText, prior?.RequiredText, prior?.RequiredLines, Math.Max(1, cellWidth - 8), .65f, measure);
-                float textHeight = BlockHeight(count, 2), height = Math.Max(58, 38 + textHeight);
+                var count = cell.RequiredLines = Reuse(cell.RequiredText, prior?.RequiredText, prior?.RequiredLines, Math.Max(1, Math.Min(32, cellWidth - 8)), .65f, measure);
+                float textHeight = BlockHeight(count, 2), height = count.Count > 1 ? 47 + textHeight : 44;
                 cell.Rect = new F5Rect(0, 0, cellWidth, height);
-                cell.Icon = new F5Rect((cellWidth - 32) / 2, 4, 32, 32);
-                Add(cell, count, cellWidth - 4, height - 4 - textHeight, .65f, Color.White, true);
+                // Invisible inventory-sized slots keep icons on one baseline.
+                // Renderer uses the prepared native frame's drawn footprint to
+                // attach the count; full long integers retain a lower text block.
+                cell.Icon = new F5Rect((cellWidth - 36) / 2, 4, 36, 36);
+                Add(cell, count, cellWidth - 6, count.Count > 1 ? 43 : 38 - textHeight, .65f, Color.White, true);
                 AddUnknown(cell, cellWidth - 4, height - 4, .65f, cell.UnknownSize, true);
             }
             else if (!world)
@@ -219,6 +224,7 @@ namespace JueMingR.TerrariaHost.F5
             float delta = height - cell.Rect.Height;
             if (delta == 0) return;
             cell.Rect = new F5Rect(cell.Rect.X, cell.Rect.Y, cell.Rect.Width, height);
+            if (cell.IconCountOnly) return;
             cell.Icon = cell.Icon.Offset(0, delta / 2);
             foreach (var glyph in cell.Glyphs)
             { var e = glyph.Element; glyph.Element = new F5Element(e.Kind, e.Rect.Offset(0, delta / 2), e.Text, e.TextSize, e.TextScale, e.Command); }
