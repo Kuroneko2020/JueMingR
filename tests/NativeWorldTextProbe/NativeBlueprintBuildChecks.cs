@@ -205,6 +205,9 @@ namespace NativeWorldTextProbe
         private static void WallSideEffect(object context, object host, object tools, object input)
         {
             var p = Reset(context, host, tools, input); p.inventory[12].SetDefaults(ItemID.StoneWall); p.inventory[12].stack = 8;
+            // This is host-lifetime telemetry. Earlier cases deliberately
+            // create unknown results; only this operation's increment matters.
+            long unknown = (long)Get(host, "BuildUnknownResults");
             int wall = p.inventory[12].createWall;
             foreach (var point in new[] { new Point(42, 40), new Point(45, 40), new Point(44, 39), new Point(44, 41) }) WorldGen.PlaceWall(point.X, point.Y, wall);
             var entry = Asset(host, new CaptureCell { Layers = CaptureLayer.Wall, WallType = (ushort)wall });
@@ -212,10 +215,11 @@ namespace NativeWorldTextProbe
             Until(context, input, () => Scene(host).Length == 0);
             Require(Main.tile[43, 40].wall == wall && Main.tile[44, 40].wall == wall && p.inventory[12].stack == 6,
                 "natural PlaceThing_Walls_FillEmptySpace fills the independent adjacent hole and consumes two real walls, never restored by old single-consumption guard");
-            Require((long)Get(host, "BuildUnknownResults") == 0, "legal multi-wall consumption does not become unknown");
             Until(context, input, () => !(bool)Get(Get(tools, "Use"), "Active"));
             Require(!(bool)Get(Get(Get(tools, "Items"), "Ownership"), "AnyProtected"),
                 "the real native animation/selection return releases its source lock after final-instance retirement");
+            Require((long)Get(host, "BuildUnknownResults") == unknown, "legal multi-wall consumption does not add an unknown result through source release");
+            Console.WriteLine("PASS BlueprintBuild multi-wall actualWalls=2 consumed=2 unknownBefore=" + unknown + " unknownAfter=" + Get(host, "BuildUnknownResults") + "; source released");
         }
         private static void Furniture(object context, object host, object tools, object input, int itemType, int direction)
         {
