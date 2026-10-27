@@ -560,7 +560,10 @@ namespace NativeWorldTextProbe
         {
             var ctor = typeof(BlueprintProjectionMask).GetConstructors(Flags).Single();
             var removed = new Dictionary<long, ushort> { [((long)5 << 32) | 5] = 1, [((long)5 << 32) | 6] = 1 };
-            var mask = (BlueprintProjectionMask)ctor.Invoke(new object[] { removed, new HashSet<int>(), 2L });
+            // These literal masks remove Tile only, so their display and
+            // construction decrements agree. Reflection must supply the new
+            // optional constructor argument explicitly, unlike a C# call.
+            var mask = (BlueprintProjectionMask)ctor.Invoke(new object[] { removed, new HashSet<int>(), 2L, 2L });
             var id = new BlueprintProjectionIdentity(Guid.NewGuid(), Guid.NewGuid(), "halo", 1, 1);
             var cells = new[] {
                 new CaptureCell { X = 5, Y = 5, Layers = CaptureLayer.Tile | CaptureLayer.Wall | CaptureLayer.Wire, TileType = 1, WallType = 7, Wires = 2, ObjectId = 1 },
@@ -572,7 +575,7 @@ namespace NativeWorldTextProbe
             Require(effective.Bounds.Equals(raw.Bounds) && ReferenceEquals(effective.Identity, id) && effective.WindowGeneration == 7 && ReferenceEquals(effective.AppliedMask, mask), "C effective preserves halo bounds/instance/generation/applied mask identity");
             Require(effective.Cells.Count == 2 && effective.Cells[0].Layers == (CaptureLayer.Wall | CaptureLayer.Wire) && effective.Cells[0].Wires == 2 && effective.Objects.Count == 1 && effective.Objects[0].Id == 3 && effective.Objects[0].X == 0, "C Tile-only erase preserves other layers and only referenced full external-origin metadata");
             Require(raw.Cells.Count == 3 && raw.Objects.Count == 3 && raw.Cells[0].ObjectId == 1 && effective.EstimatedBytes < raw.EstimatedBytes && ReferenceEquals(mask.Apply(effective), effective), "C raw/cache snapshot unmodified; repeated applied identity reuses compact snapshot");
-            var emptyMask = (BlueprintProjectionMask)ctor.Invoke(new object[] { new Dictionary<long, ushort> { [((long)5 << 32) | 7] = 1 }, new HashSet<int>(), 1L });
+            var emptyMask = (BlueprintProjectionMask)ctor.Invoke(new object[] { new Dictionary<long, ushort> { [((long)5 << 32) | 7] = 1 }, new HashSet<int>(), 1L, 1L });
             var empty = emptyMask.Apply(new BlueprintProjectionWindow(id, 8, raw.Summary, raw.Bounds, new[] { cells[2] }, objects));
             Require(empty.Cells.Count == 0 && empty.Objects.Count == 0 && empty.Bounds.Equals(raw.Bounds), "C completed empty DTO retains coverage and no object ghost");
         }
