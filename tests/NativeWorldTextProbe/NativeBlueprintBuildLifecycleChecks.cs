@@ -113,6 +113,7 @@ namespace NativeWorldTextProbe
             // Publish a current observation without executing another player
             // use. The following native step must recheck this exact source.
             NativeQuickItemChecks.Until(() => { NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); return GetOptional(host, "preparedBuild") != null; });
+            EmptyBuildOuter(context,host,tools,input,2);
             var original = p.inventory[12]; p.inventory[13] = original; p.inventory[12] = new Item(); p.inventory[12].SetDefaults(ItemID.DirtBlock);
             Step(context, input);
             Require(!Main.tile[44, 42].active() && original.stack == 2 && p.inventory[12].type == ItemID.DirtBlock && p.inventory[12].stack == 1,
@@ -123,6 +124,7 @@ namespace NativeWorldTextProbe
             p = Reset(context, host, tools, input); p.inventory[12].SetDefaults(ItemID.StoneBlock); p.inventory[12].stack = 2;
             Place(context, host, input, entry, 44, 42); SetAutomatic(host, input, true);
             NativeQuickItemChecks.Until(() => { NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); return GetOptional(host, "preparedBuild") != null; });
+            EmptyBuildOuter(context,host,tools,input,1);
             long uses = (long)Get(host, "BuildUsesStarted");
             Require(WorldGen.PlaceTile(44, 42, TileID.Stone, true, true), "independent manual native writer completes the target after planning");
             Until(context, input, () => Scene(host).Length == 0);
@@ -141,7 +143,7 @@ namespace NativeWorldTextProbe
             try
             {
                 Set(input, "foregroundWindow", (Func<IntPtr>)(() => new IntPtr(2))); FocusHelper.IsSelectedApplication = false; p.mouseInterface = true;
-                Until(context, input, () => Scene(host).Length == 0);
+                Until(context, input, () => { NativeToolExecutionChecks.Outer(context,input,1); return Scene(host).Length == 0; });
                 Require(!(bool)Get(input, "IsFocused") && Main.tile[44, 42].active() && p.inventory[12].stack == 1 && generation == (long)Get(Get(tools, "Runtime"), "Generation"),
                     "real OS focus sampler permits original automatic build only on background gameplay steps, ignores stale Draw hover and preserves session identity");
             }

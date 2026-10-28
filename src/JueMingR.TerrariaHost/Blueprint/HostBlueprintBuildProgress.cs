@@ -34,7 +34,9 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             if (MaterialBuildDemand?.Invoke() != true || projectionScene.Count == 0) return;
             var p = buildTools?.Player;
-            bool eligible = p != null && CanBuildAutomatically(p);
+            // Eligibility describes persistent business permission, not whether
+            // this outer callback happened to contain a native execution epoch.
+            bool eligible = p != null && CanRetainBuildIntent(p, false);
             // Native reach includes Ceiling(position + body extent). A legal
             // subpixel step can cross that boundary without changing (int)X/Y.
             // This only wakes actual player-gate waits, never world proofs.

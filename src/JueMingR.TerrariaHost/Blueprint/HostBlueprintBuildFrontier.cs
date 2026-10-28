@@ -54,63 +54,56 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             return low;
         }
-        private bool TryNearbyBuildTarget(BuildSourcePart source,out BlueprintBuildTarget target)
+        private bool TryNearbyBuildTarget(BuildSourcePart source,int stepLimit,out BlueprintBuildTarget target)
         {
             target=null;var range=source.Range;var value=range.Materials;
             if(value==null || !ReferenceEquals(FindBuildSource(range),source.Part))return false;
             TryWakeBuildEligibility(range);
             if(value.Candidate!=null && IsBuildTargetCurrent(value.Candidate)){target=value.Candidate;return true;}
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            int resetReasons=0;bool resetNeeded;
-            if(BlueprintBuildTrace.Active)
-            {
-                resetReasons=(source.NearVersion!=range.Version?1:0)|(source.NearWake!=value.BuildWakeRevision?2:0)|
-                    (source.NearPlayer!=MaterialBuildEligibilityRevision?4:0)|(source.NearSupply!=buildSupplyRevision?8:0);
-                resetNeeded=resetReasons!=0;
-            }
-            else resetNeeded=source.NearVersion!=range.Version || source.NearWake!=value.BuildWakeRevision || source.NearPlayer!=MaterialBuildEligibilityRevision || source.NearSupply!=buildSupplyRevision;
-            if(resetNeeded)
-#else
             if(source.NearVersion!=range.Version || source.NearWake!=value.BuildWakeRevision || source.NearPlayer!=MaterialBuildEligibilityRevision || source.NearSupply!=buildSupplyRevision)
-#endif
             {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                int resetBefore=0;var priorBounds=default(BlueprintProjectionBounds);
-                if(BlueprintBuildTrace.Active){resetBefore=source.NearCursor;priorBounds=source.NearBounds;}
-#endif
                 source.NearVersion=range.Version;source.NearWake=value.BuildWakeRevision;
                 source.NearPlayer=MaterialBuildEligibilityRevision;source.NearSupply=buildSupplyRevision;
                 source.NearBounds=BuildNearBounds(source.Owner);
+                // These revisions invalidate candidate proofs, not the stable
+                // source ordinal. Merge a revisit and refresh the broad phase
+                // now; finish the current finite pass before wrapping once.
+                source.NearRevisit=true;
+            }
+            if(!source.NearInitialized || source.NearComplete && source.NearRevisit)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                source.DiagnosticResetBefore=source.NearCursor;
+#endif
+                source.NearInitialized=true;source.NearComplete=source.NearRevisit=false;
                 source.NearCursor=source.Part.LogicalObjectId>0?0:BuildCellLowerBound(source.Part.Window.Cells,source.NearBounds.Left,source.NearBounds.Top)*2;
 #if JMR_BLUEPRINT_DIAGNOSTIC
-                if(BlueprintBuildTrace.Active)
-                {
-                    if(!priorBounds.Equals(source.NearBounds))resetReasons|=16;
-                    source.DiagnosticResetBefore=resetBefore;source.DiagnosticResetAfter=source.NearCursor;source.DiagnosticResetReasons=resetReasons;
-                    BlueprintBuildTrace.Count(BuildTraceReason.NearReset);
-                    if((resetReasons&1)!=0)BlueprintBuildTrace.Count(BuildTraceReason.ResetVersion);
-                    if((resetReasons&2)!=0)BlueprintBuildTrace.Count(BuildTraceReason.ResetWake);
-                    if((resetReasons&4)!=0)BlueprintBuildTrace.Count(BuildTraceReason.ResetPlayer);
-                    if((resetReasons&8)!=0)BlueprintBuildTrace.Count(BuildTraceReason.ResetSupply);
-                    if((resetReasons&16)!=0)BlueprintBuildTrace.Count(BuildTraceReason.ResetBounds);
-                }
+                source.DiagnosticResetAfter=source.NearCursor;
+                // A merged revisit no longer has one immediate reset cause.
+                source.DiagnosticResetReasons=0;
+                BlueprintBuildTrace.Count(BuildTraceReason.NearReset);
 #endif
             }
+            bool complete;
             if(source.Frontier)
             {
-                if(ContinueLocalBuildSource(source,source.FrontierBounds,ref source.FrontierCursor,out target))return true;
-                if(materialBuildSourceBudget<=0)return false;
-                source.Frontier=false;
+                if(ContinueLocalBuildSource(source,source.FrontierBounds,ref source.FrontierCursor,ref stepLimit,out target,out complete))return true;
+                // Slice exhaustion only pauses this pass. It does not consume
+                // a pending revisit or discard unfinished frontier work.
+                if(complete)source.Frontier=false;
+                if(materialBuildSourceBudget<=0 || stepLimit<=0 || !complete)return false;
             }
-            return ContinueLocalBuildSource(source,source.NearBounds,ref source.NearCursor,out target);
+            if(source.NearComplete)return false;
+            if(ContinueLocalBuildSource(source,source.NearBounds,ref source.NearCursor,ref stepLimit,out target,out complete))return true;
+            source.NearComplete=complete;return false;
         }
-        private bool ContinueLocalBuildSource(BuildSourcePart source,BlueprintProjectionBounds bounds,ref int cursor,out BlueprintBuildTarget target)
+        private bool ContinueLocalBuildSource(BuildSourcePart source,BlueprintProjectionBounds bounds,ref int cursor,ref int stepLimit,out BlueprintBuildTarget target,out bool complete)
         {
 #if JMR_BLUEPRINT_DIAGNOSTIC
             bool diagnosticFrontier=false;
             if(BlueprintBuildTrace.Active){diagnosticFrontier=source.Frontier;BlueprintBuildTrace.Hit(diagnosticFrontier?BuildTraceStage.Frontier:BuildTraceStage.Near);}
 #endif
-            target=null;var part=source.Part;var range=source.Range;var cells=part.Window.Cells;
+            target=null;complete=false;var part=source.Part;var range=source.Range;var cells=part.Window.Cells;
             long support;
             if(!range.Group.Ready || !ProjectionMatchReadCurrent(range,range.RawVersion) ||
                 !projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support))
@@ -120,7 +113,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                 return false;
             }
-            while(materialBuildSourceBudget>0)
+            while(materialBuildSourceBudget>0 && stepLimit>0)
             {
                 int index=part.LogicalObjectId>0?0:cursor/2;
                 if(index>=cells.Count || part.LogicalObjectId>0 && cursor>0)
@@ -128,7 +121,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if JMR_BLUEPRINT_DIAGNOSTIC
                     BlueprintBuildTrace.Count(BuildTraceReason.SourceEnd);
 #endif
-                    return false;
+                    complete=true;return false;
                 }
                 var cell=cells[index];
                 if(part.LogicalObjectId==0)
@@ -138,14 +131,17 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if JMR_BLUEPRINT_DIAGNOSTIC
                         BlueprintBuildTrace.Count(BuildTraceReason.SourceBoundsEnd);
 #endif
-                        return false;
+                        complete=true;return false;
                     }
                     if(cell.X<bounds.Left || cell.X>=bounds.Right || cell.Y<bounds.Top)
                     {cursor=BuildCellLowerBound(cells,bounds.Left,cell.X>=bounds.Right?cell.Y+1:Math.Max(cell.Y,bounds.Top))*2;continue;}
                 }
+                // Use the same stable Tile/Wall identity and hole skipping as
+                // forward discovery; a wall-only record costs one real step.
+                if(part.LogicalObjectId==0 && (cursor&1)==0 && (cell.Layers&CaptureLayer.Tile)==0 && (cell.Layers&CaptureLayer.Wall)!=0)cursor++;
                 int ordinal=part.LogicalObjectId>0?0:(part.Offset+index)*2+(cursor&1);
-                cursor=part.LogicalObjectId>0?1:cursor+((cursor&1)==0 && (cell.Layers&CaptureLayer.Wall)==0?2:1);
-                materialBuildSourceBudget--;
+                cursor=part.LogicalObjectId>0?1:NextBuildSourceOrdinal(cursor,cell,false);
+                materialBuildSourceBudget--;stepLimit--;
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 BlueprintBuildTrace.Count(diagnosticFrontier?BuildTraceReason.FrontierStep:BuildTraceReason.NearStep);
 #endif

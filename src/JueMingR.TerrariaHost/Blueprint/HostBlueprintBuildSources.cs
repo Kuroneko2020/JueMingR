@@ -17,7 +17,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal long NearVersion=-1, NearWake=-1, NearPlayer=-1, NearSupply=-1;
             internal int NearCursor, FrontierCursor;
             internal BlueprintProjectionBounds NearBounds, FrontierBounds;
-            internal bool Frontier;
+            internal bool Frontier, NearInitialized, NearComplete, NearRevisit, LocalFirst = true;
 #if JMR_BLUEPRINT_DIAGNOSTIC
             internal int DiagnosticResetBefore,DiagnosticResetAfter,DiagnosticResetReasons;
 #endif
@@ -27,6 +27,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         // per-range ordinal survives eviction; a later source resumes exactly
         // there, even when sampling crossed an Update or a different budget.
         private const int BuildSourcePartLimit = 4;
+        // Each retained source gets a bounded local and forward slice from the
+        // one shared budget. A hit rotates both source and class before return.
+        private const int BuildSourceSlice = 8;
         private const long BuildSourceByteLimit = 4 * BlueprintProjectionSourceReceipt.TargetBytes;
         private static long BuildSourceRetainedBytes(BlueprintProjectionSourcePart part) { return part.EstimatedBytes + 256; }
         private readonly LinkedList<BuildSourcePart> buildSources = new LinkedList<BuildSourcePart>();
@@ -88,7 +91,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             return true;
         }
-        private bool ContinueMaterialBuildSource(BlueprintProjectionMatchRange range, out BlueprintBuildTarget target)
+        private bool ContinueMaterialBuildSource(BlueprintProjectionMatchRange range, out BlueprintBuildTarget target, int stepLimit)
         {
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.Forward);
@@ -123,7 +126,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return false;
             }
             var catalog = MaterialCatalog;
-            while (materialBuildSourceBudget > 0)
+            while (materialBuildSourceBudget > 0 && stepLimit-- > 0)
             {
                 int index = part.LogicalObjectId > 0 ? 0 : value.CandidateCursor / 2 - part.Offset;
                 if (index < 0) { DemandProjectionMatchRange(range);
@@ -215,8 +218,18 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var node = buildSources.First;
                 for (int i = 0; i < at; i++) node = node.Next;
                 buildSourceCursor = (at + 1) % count;
-                if (TryNearbyBuildTarget(node.Value,out target)) return true;
-                if (TryMaterialBuildTarget(node.Value.Range, out target)) return true;
+                var source = node.Value;
+                bool localFirst = source.LocalFirst; source.LocalFirst = !localFirst;
+                if (localFirst)
+                {
+                    if (TryNearbyBuildTarget(source, BuildSourceSlice, out target)) return true;
+                    if (TryMaterialBuildTarget(source.Range, out target, BuildSourceSlice)) return true;
+                }
+                else
+                {
+                    if (TryMaterialBuildTarget(source.Range, out target, BuildSourceSlice)) return true;
+                    if (TryNearbyBuildTarget(source, BuildSourceSlice, out target)) return true;
+                }
             }
             return false;
         }

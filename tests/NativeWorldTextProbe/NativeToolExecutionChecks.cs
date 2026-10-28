@@ -69,6 +69,7 @@ namespace NativeWorldTextProbe
                 }
                 Require(failures.Count==0,"full native execution: "+string.Join("; ",failures));
                 MiningManual(context,host,input);Safety(context,host,input);
+                DirectionOwnership(context,host,input);
                 MaterialsViewing(context,host,input);
                 NativeToolWaitChecks.Run(context,host,input,release);
                 Console.WriteLine("PASS G09 full Player.Update/ItemCheckWrapped: true automatic first hit, continuous effects, unsampled outer updates, focused retention and safety cancellation"+(graphics==null?"; texture-free CPU cadence, capture not run.":"; three real net textures, native rabbit AI from both sides and actual catch output."));
@@ -106,6 +107,65 @@ namespace NativeWorldTextProbe
         private static void Consumed(bool __runOriginal){if(__runOriginal)consumers++;}
         private static void Caught(Rectangle __1,bool __runOriginal)
         {if(!__runOriginal){catchSkipped++;return;}catchCalls++;if(watched!=null && __1.Intersects(watched.Hitbox))catchHits++;}
+        internal static void DirectionOwnership(object context,object host,object input)
+        {
+            var p=Reset(context,host,input,ItemID.WoodenChair,12,12);
+            object use=Get(host,"Use"),ownership=Get(Get(host,"Items"),"Ownership");
+            Type intentType=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Tools.ToolIntent",true);
+            object intent=Activator.CreateInstance(intentType,true);
+            var target=new Vector2(42*16+8,41*16+8);bool valid=true;int placementCalls=0,consumerDirection=0;
+            Set(intent,"Kind",Enum.Parse(intentType.GetField("Kind",Flags).FieldType,"Build"));
+            Set(intent,"Slot",12);Set(intent,"Target",target);Set(intent,"PlayerDirection",-1);
+            Set(intent,"Valid",(Func<bool>)(()=>valid));Set(intent,"Refresh",(Func<bool>)(()=>true));
+            Set(intent,"ResolvedTarget",(Func<int,int,bool>)((x,y)=>x==42 && y==41));
+            // This component check owns only the borrowed field and real source
+            // lease. Its observer rejects placement; actual furniture results
+            // remain the responsibility of the native Blueprint checks.
+            Set(intent,"NativePlacement",(Func<bool,bool>)(wall=>{placementCalls++;consumerDirection=p.direction;return false;}));
+            Action acquire=()=>
+            {
+                Call(use,"Retire");valid=true;Sample(context,input,target,false);NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");
+                Require(!(bool)Get(use,"Active") && (bool)Call(host,"Admit",p,false),"direction fixture starts at an admitted real input epoch without another lease");
+                Require((bool)Call(use,"Acquire",p,intent) && (bool)Call(ownership,"IsUseSlot",12),"direction fixture leases the actual carried source");
+            };
+            Action end=()=>Call(use,"End",p,(long)Get(use,"Operation"),null,(long)Get(use,"NativeGeneration"));
+            int savedDirection=p.direction;
+            try
+            {
+                acquire();p.direction=1;
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && p.direction==1 && placementCalls==0,"unentered consumer cannot borrow direction or call placement");
+                Call(use,"BeforeSync",p);Call(use,"BeforeTargetResolution",p);Call(use,"BeforeSync",p);Call(use,"Begin",p);
+                Require(p.direction==-1,"existing native boundaries apply the requested temporary direction");
+                end();Require(p.direction==1,"repeated own writes never replace the original return direction");
+
+                acquire();p.direction=-1;Call(use,"BeforeSync",p);Call(use,"BeforeTargetResolution",p);
+                p.direction=1; // Controlled external write at the native movement boundary.
+                Call(use,"Begin",p);Call(use,"BeforeTargetResolution",p);
+                Require(p.direction==-1,"Begin reapplies facing after a newer native movement write");
+                end();Require(p.direction==1,"cleanup returns the newer native facing, not the first borrowed baseline");
+
+                acquire();p.direction=-1;Call(use,"BeforeSync",p);Call(use,"Begin",p);
+                p.direction=1; // Native StartActualUse may write after Begin.
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && placementCalls==1 && consumerDirection==-1 && p.direction==-1,
+                    "the admitted early consumer reapplies facing before its placement callback; observer still rejects placement");
+                end();Require(p.direction==1,"consumer-boundary reapplication preserves the late native return direction");
+
+                acquire();p.direction=-1;Call(use,"BeforeSync",p);Call(use,"Begin",p);p.direction=1;valid=false;
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && p.direction==1 && placementCalls==1,"invalid current action cannot rewrite a newer direction or reach placement");
+                valid=true;Player.tileTargetX=43;
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && p.direction==1 && placementCalls==1,"wrong actual consumer coordinates are rejected before any direction write");
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && p.direction==1 && placementCalls==1,"rejected native readiness cannot reborrow direction");
+                end();Require(p.direction==1,"cleanup preserves a later writer when this scope no longer owns its value");
+
+                acquire();p.direction=-1;Call(use,"BeforeSync",p);p.direction=1;Call(use,"BeforeTargetResolution",p);
+                Require(p.direction==-1,"target resolution reapplies the temporary direction after native input");
+                Sample(context,input,target,true);Call(use,"BeforeSync",p);
+                Require(p.direction==1 && !(bool)Get(use,"ActionValid") && !(bool)Call(ownership,"IsUseSlot",12),
+                    "a genuine physical press restores the newer direction and immediately owns the source");
+                Console.WriteLine("PASS ToolUse direction ownership: repeated existing boundaries, native movement and post-Begin writes, consumer admission and actual-coordinate rejection, cleanup and physical handoff; component seam only");
+            }
+            finally{Call(use,"Retire");p.direction=savedDirection;Sample(context,input,new Vector2(480,540),false);}
+        }
         internal static void Sample(object context,object input,Vector2 world,bool held)
         {
             Call(input,"BeginUpdate");

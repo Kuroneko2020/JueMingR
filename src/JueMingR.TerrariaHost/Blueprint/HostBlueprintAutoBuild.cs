@@ -77,11 +77,15 @@ namespace JueMingR.TerrariaHost.Blueprint
             tools.BuildReady = () => preparedBuild != null && CanBuildAutomatically(tools.Player);
             MaterialBuildDemand = () => AutoBuildEnabled && HasSession;
         }
+        private bool CanRetainBuildIntent(Player p, bool forPreparation)
+        {
+            return AutoBuildEnabled && ControlsEnabled && buildTools != null && buildTools.Available && HasSession &&
+                ReferenceEquals(p, player) && !State.Active && !HasActiveCaptureWork && !ProjectionEditing && pendingProjection == null && !deletePending &&
+                buildTools.CanRetainUse(p, false) && (forPreparation || !buildTools.ManualLeft) && !buildTools.ManualRight && !p.ghost && !p.noBuilding;
+        }
         private bool CanBuildAutomatically(Player p, bool prepareOnly = false)
         {
-            bool allowed = AutoBuildEnabled && ControlsEnabled && buildTools != null && buildTools.Available && HasSession &&
-                ReferenceEquals(p, player) && !State.Active && !HasActiveCaptureWork && !ProjectionEditing && pendingProjection == null && !deletePending &&
-                buildTools.Admit(p, false) && (prepareOnly || !buildTools.ManualLeft) && !buildTools.ManualRight && !p.ghost && !p.noBuilding;
+            bool allowed = CanRetainBuildIntent(p, prepareOnly) && buildTools.Input.CanRunAutomaticActions;
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.AutomaticGate,allowed?BuildTraceReason.Passed:BuildTraceReason.AutomaticGateFalse);
 #endif
@@ -95,7 +99,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintBuildTrace.Hit(BuildTraceStage.Advance);
 #endif
             var p = buildTools?.Player;
-            if (p == null || !CanBuildAutomatically(p, true) ||
+            if (p == null || !CanRetainBuildIntent(p, true) ||
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 !BlueprintBuildTrace.Gate(MaterialInventory?.Ready == true,BuildTraceReason.InventoryNotReady,BuildTraceStage.Advance))
 #else
@@ -107,6 +111,11 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                 preparedBuild = null; return;
             }
+            // Main.Update can return without a world/input epoch. That is no
+            // cancellation: keep the suggestion, but do no discovery/preflight.
+            // Pick and each native consumer still validate current permission,
+            // source and geometry before this prepared work can own any input.
+            if (!buildTools.Input.CanRunAutomaticActions) return;
             // Preparation has no input/selection ownership. A previous native
             // body's animation must not hide the next legal placement window.
             if (preparedBuild != null && BuildFlightCurrent(preparedBuild, false))

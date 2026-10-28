@@ -257,13 +257,13 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             return false;
         }
-        private bool TryMaterialBuildTarget(BlueprintProjectionMatchRange range, out BlueprintBuildTarget target)
+        private bool TryMaterialBuildTarget(BlueprintProjectionMatchRange range, out BlueprintBuildTarget target, int stepLimit = int.MaxValue)
         {
             TryWakeBuildEligibility(range);
             var candidate = range.Materials?.Candidate;
             if (candidate != null && IsBuildTargetCurrent(candidate)) { target = candidate; return true; }
             if (candidate != null) range.Materials.Candidate = null;
-            return ContinueMaterialBuildSource(range, out target);
+            return ContinueMaterialBuildSource(range, out target, stepLimit);
         }
         internal bool IsBuildTargetCurrent(BlueprintBuildTarget target)
         {

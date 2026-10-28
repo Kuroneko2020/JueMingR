@@ -57,6 +57,14 @@ namespace NativeWorldTextProbe
                     check("final resolution refusal advances and recovers", () => FinalTargetRejection(context,host,tools,input,false));
                     check("consumer target refusal advances and recovers", () => FinalTargetRejection(context,host,tools,input,true));
                     check("native stationary reach ability changes", () => NativeReachChanges(context,host,tools,input));
+                    check("empty outer retained source safety", () => StaleSourcesAndTargets(context,host,tools,input));
+                    check("background empty outer and manual protection", () => BackgroundAndManualProtection(context,host,tools,input));
+                    check("cross-capacity search stationary", () => ExecutionSearchFairness(context,host,tools,input,false));
+                    check("cross-capacity search native movement", () => ExecutionSearchFairness(context,host,tools,input,true));
+                    check("direction ownership and manual return", () => NativeToolExecutionChecks.DirectionOwnership(context,tools,input));
+                    check("native moving furniture direction", () => MovingFurnitureDirection(context,host,tools,input));
+                    check("wrong final furniture choice remains rejected", () => WrongNativeFurnitureChoice(context,host,tools,input));
+                    check("native multi-wall collateral remains real", () => WallSideEffect(context,host,tools,input));
                     if(!throughputOnly)
                     {
                     check("missing material fairness", () => MissingMaterialFairness(context, host, tools, input));
@@ -97,13 +105,11 @@ namespace NativeWorldTextProbe
                     check("immediate reach and admission recovery", () => ImmediateReachAndAdmissionRecovery(context, host, tools, input));
                     check("pulley direction recovery", () => PulleyDirectionRecovery(context, host, tools, input));
                     check("subpixel native reach recovery", () => SubpixelReachRecovery(context, host, tools, input));
-                    check("wall side effects", () => WallSideEffect(context, host, tools, input));
                     check("platform and shape", () => PlatformAndShape(context, host, tools, input));
                     check("original accessories", () => OriginalAccessories(context, host, tools, input));
                     check("materials viewing", () => MaterialsViewing(context, host, tools, input));
                     check("wood chair left", () => Furniture(context, host, tools, input, ItemID.WoodenChair, -1));
                     check("glass chair right", () => Furniture(context, host, tools, input, ItemID.GlassChair, 1));
-                    check("wrong native direction alternate and style", () => WrongNativeFurnitureChoice(context, host, tools, input));
                     check("torch and open door", () => TorchAndOpenDoor(context, host, tools, input));
                     check("support and distance", () => SupportAndDistance(context, host, tools, input));
                     check("furniture anchor and closed support cost", () => FurnitureAnchor(context, host, tools, input));
@@ -113,9 +119,7 @@ namespace NativeWorldTextProbe
                     check("remote biome style eligibility", () => GlobalBiomeEligibility(context, host, tools, input));
                     check("unknown result excludes eligibility retry", () => UnknownEligibilityProtection(context, host, tools, input));
                     check("stop restart and manual selection", () => OffAndManual(context, host, tools, input));
-                    check("stale source and target", () => StaleSourcesAndTargets(context, host, tools, input));
                     check("edit mask deletion and session", () => ProjectionLifecycle(context, host, tools, input));
-                    check("background and manual protection", () => BackgroundAndManualProtection(context, host, tools, input));
                     check("native network", () => NetworkProgress(context, host, tools, input));
                     }
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();

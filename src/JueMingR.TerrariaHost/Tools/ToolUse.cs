@@ -314,16 +314,27 @@ namespace JueMingR.TerrariaHost.Tools
         private void BorrowDirection()
         {
             int direction=Intent.PlayerDirection;
-            if(directionBorrowed || direction!=1 && direction!=-1)return;
-            oldDirection=player.direction;ownDirection=direction;directionBorrowed=true;
+            if(direction!=1 && direction!=-1)return;
+            // Movement and native use startup can write facing between these
+            // boundaries. Retain their newer value for cleanup, but never
+            // mistake our own previous borrow for a new return baseline.
+            if(!directionBorrowed || player.direction!=ownDirection)oldDirection=player.direction;
+            ownDirection=direction;directionBorrowed=true;
             // Ordinary facing input can reach either direction without moving.
             // Direct ownership of this temporary field avoids ChangeDir's
-            // pulley relocation; a newer native direction is never restored.
+            // pulley relocation; cleanup still respects a later native writer.
             player.direction=direction;
         }
         internal bool AllowBuildPlacement(bool wall)
         {
-            bool allowed=!Building || CurrentBuildConsumerTarget() && (Intent.NativePlacement?.Invoke(wall)??false);
+            bool allowed=!Building;
+            if(Building && CurrentBuildConsumerTarget())
+            {
+                // StartActualUse can face along a grapple's movement after
+                // Begin. Reapply only after admission and actual coordinates
+                // pass, before native geometry chooses its directional object.
+                BorrowDirection();allowed=Intent.NativePlacement?.Invoke(wall)??false;
+            }
 #if JMR_BLUEPRINT_DIAGNOSTIC
             if(Building)BlueprintBuildTrace.Count(allowed?BuildTraceReason.Passed:BuildTraceReason.NativeRejected);
 #endif
@@ -331,6 +342,8 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal bool AllowBuildTileChoice(bool objectType,TileObject placement,int tileType)
         {
+            // The original consumer has already chosen this placement. Keep
+            // validating the actual choice; facing cannot repair it this late.
             bool allowed=!Building || CurrentBuildConsumerTarget() && (Intent.NativeTileChoice?.Invoke(objectType,placement,tileType)??false);
 #if JMR_BLUEPRINT_DIAGNOSTIC
             DiagnosticPhase(BuildTraceStage.NativeChoiceGate,allowed?BuildTraceReason.NativeChosen:BuildTraceReason.NativeRejected);

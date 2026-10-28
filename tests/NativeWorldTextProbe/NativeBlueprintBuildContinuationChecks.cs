@@ -7,6 +7,7 @@ using JueMingR.Features.Blueprint;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
+using Terraria.GameInput;
 using Terraria.ID;
 using Terraria.ObjectData;
 using Terraria.Utilities;
@@ -16,6 +17,85 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeBlueprintBuildChecks
     {
+        private static void ExecutionSearchFairness(object context,object host,object tools,object input,bool moving)
+        {
+            var p=Reset(context,host,tools,input);p.position=new Vector2(48*16,646);
+            p.inventory[12].SetDefaults(ItemID.WoodWall);p.inventory[12].stack=4;
+            p.inventory[14].SetDefaults(ItemID.StoneBlock);p.inventory[14].stack=2;
+            // All 77 wall records fit vanilla reach. The last WoodWall is
+            // behind 76 missing StoneWall records: beyond even a whole 64-step
+            // budget AFTER wall-only ordinal holes have been removed.
+            var cells=Enumerable.Range(0,77).Select(i=>new CaptureCell{X=i%11,Y=i/11,Layers=CaptureLayer.Wall,
+                WallType=i==76?(ushort)WallID.Wood:(ushort)WallID.Stone}).ToArray();
+            var instance=Place(context,host,input,Asset(host,cells),43,36);
+            Place(context,host,input,Asset(host,new CaptureCell{Layers=CaptureLayer.Tile,TileType=TileID.Stone}),52,42);
+            WorldGen.PlaceWall(53,43,WallID.Wood,true);
+            Require(Main.tile[53,43].wall==WallID.Wood,"late wall has an existing legal native support");
+            SetAutomatic(host,input,true);
+            int updates=0,maxNear=0,maxForward=0,maxSources=0,boundsChanges=0;bool right=true;
+            object priorBounds=null;float startX=p.position.X,minX=startX,maxX=startX;bool moved=false;
+            try{NativeQuickItemChecks.Until(()=>
+            {
+                NativeToolExecutionChecks.Sample(context,input,new Vector2(480,540),false);
+                // Sample initializes neutral keyboard state. Apply real native
+                // movement AFTER it, and feed both original controls/triggers.
+                if(moving)
+                {
+                    // Alternate real controls across an interior tile edge.
+                    // Staying near vanilla's 640px world clamp could stop all
+                    // motion at the left limit and never change broad bounds.
+                    right=p.position.X<48*16;
+                    p.controlLeft=!right;p.controlRight=right;
+                    PlayerInput.Triggers.Current.Left=!right;PlayerInput.Triggers.Current.Right=right;
+                }
+                long before=(long)Get(host,"ProjectionMatchSourceSteps");
+                NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");updates++;
+                moved|=p.position.X!=startX;minX=Math.Min(minX,p.position.X);maxX=Math.Max(maxX,p.position.X);
+                Require(p.IsInTileInteractionRange(53,42,TileReachCheckSettings.Simple,p.inventory[12].tileBoost+p.blockRange),
+                    "the late target stays inside actual native reach during the complete moving walk");
+                Require((long)Get(host,"ProjectionMatchSourceSteps")-before<=256 && (int)Get(host,"materialBuildSourceBudget")>=0,
+                    "local, forward and match still share the original per-update source budget");
+                var sources=((IEnumerable)Get(host,"buildSources")).Cast<object>().ToArray();maxSources=Math.Max(maxSources,sources.Length);
+                foreach(var source in sources.Where(s=>ReferenceEquals(Get(s,"Owner"),instance)))
+                {
+                    var value=Get(Get(source,"Range"),"Materials");int cursor=(int)Get(value,"CandidateCursor");
+                    maxNear=Math.Max(maxNear,(int)Get(source,"NearCursor"));maxForward=Math.Max(maxForward,cursor);
+                    var bounds=Get(source,"NearBounds");if(priorBounds!=null && !priorBounds.Equals(bounds))boundsChanges++;priorBounds=bounds;
+                    Require(!(bool)Get(value,"BuildExhausted") || cursor>=cells.Length*2,
+                        "a finite local/forward slice is not mistaken for source exhaustion");
+                }
+                NativeToolExecutionChecks.Outer(context,input,1+updates%2);
+                return Main.tile[53,42].wall==WallID.Wood && Main.tile[52,42].active() && ProgressDormant(instance) && !(bool)Get(Get(tools,"Use"),"Active") &&
+                    maxNear>128 && maxForward>0 && (!moving || boundsChanges>0);
+            });}
+            catch
+            {
+                Console.Error.WriteLine("EXECUTION SEARCH state moving="+moving+" updates="+updates+" position="+p.position+" velocity="+p.velocity+
+                    " maxNear="+maxNear+" maxForward="+maxForward+" boundsChanges="+boundsChanges+" maxSources="+maxSources+" moved="+moved+
+                    " woodWall="+Main.tile[53,42].wall+" stone="+Main.tile[52,42].active()+" dormant="+ProgressDormant(instance)+" use="+Get(Get(tools,"Use"),"Active")+
+                    " minX="+minX+" maxX="+maxX+" stocks="+p.inventory[12].stack+"/"+p.inventory[14].stack);
+                foreach(var source in ((IEnumerable)Get(host,"buildSources")).Cast<object>())Console.Error.WriteLine("EXECUTION SEARCH source near="+Get(source,"NearCursor")+
+                    " nearComplete="+Get(source,"NearComplete")+" revisit="+Get(source,"NearRevisit")+" bounds="+Get(source,"NearBounds")+
+                    " forward="+Get(Get(Get(source,"Range"),"Materials"),"CandidateCursor")+" exhausted="+Get(Get(Get(source,"Range"),"Materials"),"BuildExhausted"));
+                throw;
+            }
+            Require(p.inventory[12].stack==3 && p.inventory[14].stack==1 && maxNear>128 && maxForward>0 && maxSources>=2 &&
+                (!moving || moved && boundsChanges>0),
+                "beyond-capacity local tail and another retained source both really build under stationary/continuous native movement");
+            p.controlLeft=p.controlRight=false;
+            for(int i=0;i<40;i++)Step(context,input);
+            long settled=(long)Get(host,"ProjectionMatchSourceSteps");
+            for(int i=0;i<20;i++)Step(context,input);
+            Require(settled==(long)Get(host,"ProjectionMatchSourceSteps"),"completed near/forward passes sleep while their real signals remain unchanged");
+            p.inventory[13].SetDefaults(ItemID.StoneWall);p.inventory[13].stack=1;
+            Until(context,input,()=>p.inventory[13].IsAir);
+            Require(cells.Take(76).Any(c=>Main.tile[43+c.X,36+c.Y].wall==WallID.Stone) && Main.tile[53,42].wall==WallID.Wood &&
+                p.inventory[12].stack==3 && p.inventory[14].stack==1 && (long)Get(host,"BuildUnknownResults")==0,
+                "a later real refill revisits the already passed prefix without duplicate spending or an automatic toggle");
+            Console.WriteLine("PASS BlueprintExecutionSearch moving="+moving+" records=77 missingPrefix=76 updates="+updates+" maxNear="+maxNear+
+                " maxForward="+maxForward+" retainedSources="+maxSources+" boundsChanges="+boundsChanges+" minX="+minX+" maxX="+maxX+
+                " nativeWoodWall=1 nativeStone=1 refillStoneWall=1 stablePassSleeping=true");
+        }
         private static void BudgetPrefixContinuation(object context, object host, object tools, object input, bool warm, bool shared)
         {
             var p = Reset(context, host, tools, input);

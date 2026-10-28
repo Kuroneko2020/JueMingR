@@ -2,7 +2,9 @@ using System;
 using System.Linq;
 using HarmonyLib;
 using JueMingR.Features.Blueprint;
+using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.GameInput;
 using Terraria.ID;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
@@ -10,6 +12,67 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeBlueprintBuildChecks
     {
+        private static bool movingChairWatch,movingChairLate;
+        private static int movingChairMovement,movingChairLateWrites;
+        private static void ObserveChairMovement(Player __instance)
+        {
+            if(movingChairWatch && __instance.controlRight && __instance.direction==1 && (bool)Get(Get(faultTools,"Use"),"Building"))movingChairMovement++;
+        }
+        private static void EnterChairGrappleBranch(Player __instance,out int __state)
+        {
+            __state=int.MinValue;
+            if(!movingChairWatch || !movingChairLate || !(bool)Get(Get(faultTools,"Use"),"InNativeUse"))return;
+            // Enter only the original StartActualUse grapple-facing branch at
+            // this narrow fixture seam. Its real code performs the late write;
+            // placement remains the complete original Player consumer chain.
+            __state=__instance.grappling[0];__instance.grappling[0]=0;
+        }
+        private static void LeaveChairGrappleBranch(Player __instance,int __state)
+        {
+            if(__state==int.MinValue)return;
+            if(__instance.direction==1)movingChairLateWrites++;
+            __instance.grappling[0]=__state;
+        }
+        private static void MovingFurnitureDirection(object context,object host,object tools,object input)
+        {
+            var patch=new Harmony("JueMingR.Tests.BlueprintMovingChair");
+            patch.Patch(typeof(Player).GetMethod("HorizontalMovement",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(ObserveChairMovement)));
+            patch.Patch(typeof(Player).GetMethod("ItemCheck_StartActualUse",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(EnterChairGrappleBranch)),
+                postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(LeaveChairGrappleBranch)));
+            try
+            {
+                foreach(bool late in new[]{false,true})
+                {
+                    var p=Reset(context,host,tools,input);p.inventory[12].SetDefaults(ItemID.WoodenChair);p.inventory[12].stack=2;
+                    Require(p.inventory[12].useTurn && WorldGen.PlaceObject(60,42,p.inventory[12].createTile,true,p.inventory[12].placeStyle,direction:-1),
+                        "the directional source uses the actual vanilla useTurn chair and left alternate");
+                    var entry=NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context,host,input,(LibraryState)Get(host,"Library"),
+                        ()=>Step(context,input),60,41,1,2,"移动定向椅子"+late);
+                    Place(context,host,input,entry,44,41);SetAutomatic(host,input,true);AwaitPrepared(context,host,input);
+                    movingChairMovement=movingChairLateWrites=0;movingChairLate=late;movingChairWatch=true;
+                    float start=p.position.X;
+                    NativeQuickItemChecks.Until(()=>
+                    {
+                        NativeToolExecutionChecks.Sample(context,input,new Vector2(480,540),false);
+                        p.controlRight=true;p.controlLeft=false;PlayerInput.Triggers.Current.Right=true;PlayerInput.Triggers.Current.Left=false;
+                        NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");NativeToolExecutionChecks.Outer(context,input,1);
+                        return Scene(host).Length==0 && !(bool)Get(Get(tools,"Use"),"Active");
+                    });
+                    Require(Main.tile[44,41].active() && Main.tile[44,42].active() && Main.tile[44,41].type==TileID.Chairs && p.inventory[12].stack==1 &&
+                        p.position.X>start && movingChairMovement>0 && (!late || movingChairLateWrites>0) && p.direction==1,
+                        "native rightward movement and optional post-Begin original direction write still place the captured left chair, then return native facing");
+                    Console.WriteLine("PASS BlueprintMovingChair lateStartActualUse="+late+" nativeMovementWrites="+movingChairMovement+
+                        " nativeLateWrites="+movingChairLateWrites+" completeCapturedDirection=true consumed=1 returnDirection="+p.direction);
+                    movingChairWatch=false;p.controlRight=false;
+                }
+            }
+            finally
+            {
+                movingChairWatch=movingChairLate=false;Main.LocalPlayer.controlLeft=Main.LocalPlayer.controlRight=false;Main.LocalPlayer.grappling[0]=-1;
+                foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);
+                SetAutomatic(host,input,false);
+            }
+        }
         private static int wrongNativeChoice, observedWrongChoice;
         private static TileObject wrongNativeResult;
         private static void ChangeNativeChoice(ref int __3, ref int __4)

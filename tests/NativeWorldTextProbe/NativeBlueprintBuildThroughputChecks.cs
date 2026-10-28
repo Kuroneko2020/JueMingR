@@ -15,7 +15,7 @@ namespace NativeWorldTextProbe
         private sealed class ThroughputEvent
         {
             internal int Frame,Count,Animation,Time;
-            internal long Token,InputFrame,HostTick;
+            internal long Token,InputFrame,HostTick,Flight;
             internal uint WorldTick;
         }
         private static void SustainedNativeThroughput(object context,object host,object tools,object input)
@@ -79,20 +79,28 @@ namespace NativeWorldTextProbe
             var result=new List<ThroughputEvent>();int total=0;
             long initialStarts=(long)Get(host,"BuildUsesStarted");
             long steps=(long)Get(host,"ProjectionMatchSourceSteps"),checks=(long)Get(host,"BuildCandidateChecks");
-            int idleWithLegalFrontier=0;bool removedBuff=false;
+            int idleWithLegalFrontier=0,retainedFirst=0,retainedSuccessor=0;bool removedBuff=false;
             for(int frame=0;frame<1200 && total<points.Count;frame++)
             {
                 Point next=points.First(point=>!ThroughputPresent(point,wall,tile));
                 int before=p.inventory[12].stack;
                 NativeToolExecutionChecks.Sample(context,input,new Vector2(automatic?480:next.X*16+8,automatic?540:next.Y*16+8),!automatic);
                 NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");
+                if(automatic)
+                {
+                    var prepared=GetOptional(host,"preparedBuild");var active=GetOptional(host,"activeBuild");
+                    EmptyBuildOuter(context,host,tools,input,1+frame%2);
+                    if(prepared!=null){if(active==null)retainedFirst++;else if((bool)Get(active,"Checked"))retainedSuccessor++;}
+                }
+                else NativeToolExecutionChecks.Outer(context,input,1+frame%2);
                 int spent=before-p.inventory[12].stack;
                 if(spent<=0){if(result.Count>0)idleWithLegalFrontier++;continue;}
                 int present=points.Count(point=>ThroughputPresent(point,wall,tile));
                 Require(present-total==spent,"native consumer spend equals actual target layers; wall collateral is one event with its real count; item="+item+" auto="+automatic+" frame="+frame+" spent="+spent+" changed="+(present-total)+" target="+Player.tileTargetX+","+Player.tileTargetY);
                 total=present;
                 result.Add(new ThroughputEvent{Frame=frame,Count=spent,Animation=p.itemAnimation,Time=p.itemTime,Token=automatic?(long)Get(Get(tools,"Use"),"Operation"):0,
-                    WorldTick=Main.GameUpdateCount,InputFrame=(long)Get(input,"Frame"),HostTick=checked((long)(ulong)Get(host,"projectionMatchTick"))});
+                    WorldTick=Main.GameUpdateCount,InputFrame=(long)Get(input,"Frame"),HostTick=checked((long)(ulong)Get(host,"projectionMatchTick")),
+                    Flight=automatic?(long)Get(Get(host,"activeBuild"),"Generation"):0});
                 if(accelerated && !removedBuff && total>=6)
                 {
                     Require(p.tileSpeed<1f && p.wallSpeed<1f,"the actual Builder buff affects native construction speed before it expires");
@@ -102,9 +110,12 @@ namespace NativeWorldTextProbe
             Require(total==points.Count && p.inventory[12].stack==64-points.Count && result.Count>4,
                 "sustained original Player.Update consumes every local target across multiple animations");
             Require((long)Get(host,"BuildUnknownResults")==0,"sustained sequence has no unknown consumption");
+            if(automatic)Require(retainedFirst>0 && retainedSuccessor>0 && result.Select(e=>e.Flight).Distinct().Count()==result.Count,
+                "empty outer preserves both startup and Checked-successor preparation; each actual consumer owns a different flight across animation boundaries");
             Console.WriteLine("BlueprintThroughput item="+item+" auto="+automatic+" sparse="+sparse+" smart="+smart+" builderThenExpiry="+accelerated+" startupUpdates="+result[0].Frame+" events="+string.Join(",",result.Select(e=>e.Frame+":"+e.Count))+
                 " sourceSteps="+((long)Get(host,"ProjectionMatchSourceSteps")-steps)+" candidateChecks="+((long)Get(host,"BuildCandidateChecks")-checks)+" betweenEventNeutral="+idleWithLegalFrontier+
-                " nativeUseTime="+p.inventory[12].useTime+" nativeAnimation="+p.inventory[12].useAnimation+" tileSpeed="+p.tileSpeed+" wallSpeed="+p.wallSpeed+" actualStarts="+((long)Get(host,"BuildUsesStarted")-initialStarts));
+                " nativeUseTime="+p.inventory[12].useTime+" nativeAnimation="+p.inventory[12].useAnimation+" tileSpeed="+p.tileSpeed+" wallSpeed="+p.wallSpeed+" actualStarts="+((long)Get(host,"BuildUsesStarted")-initialStarts)+
+                " emptyRetainedStartup="+retainedFirst+" emptyRetainedSuccessor="+retainedSuccessor);
             Console.WriteLine("BlueprintThroughput states item="+item+" auto="+automatic+" entries=frame/world/input/host/animation/itemTime/token "+
                 string.Join(";",result.Select(e=>e.Frame+"/"+e.WorldTick+"/"+e.InputFrame+"/"+e.HostTick+"/"+e.Animation+"/"+e.Time+"/"+e.Token)));
             if(automatic && !sparse)Until(context,input,()=>Scene(host).Length==0 && !(bool)Get(Get(tools,"Use"),"Active"));
@@ -124,10 +135,23 @@ namespace NativeWorldTextProbe
         }
         private static bool ThroughputPresent(Point point,bool wall,int tile)
         {var value=Main.tile[point.X,point.Y];return wall?value.wall==WallID.Wood:value.active() && value.type==tile;}
+        private static void EmptyBuildOuter(object context,object host,object tools,object input,int count)
+        {
+            var p=Main.LocalPlayer;var prepared=GetOptional(host,"preparedBuild");
+            long revision=(long)Get(host,"MaterialBuildEligibilityRevision"),uses=(long)Get(host,"BuildUsesStarted"),checks=(long)Get(host,"BuildNativeChecks");
+            uint world=Main.GameUpdateCount;int animation=p.itemAnimation,time=p.itemTime,reuse=p.reuseDelay;
+            int inventory=p.inventory.Where(item=>!item.IsAir).Sum(item=>item.stack);
+            NativeToolExecutionChecks.Outer(context,input,count);
+            Require(ReferenceEquals(prepared,GetOptional(host,"preparedBuild")) && (long)Get(host,"MaterialBuildEligibilityRevision")==revision,
+                "stationary empty outer is not a cancellation or a persistent eligibility change");
+            Require(Main.GameUpdateCount==world && p.itemAnimation==animation && p.itemTime==time && p.reuseDelay==reuse &&
+                uses==(long)Get(host,"BuildUsesStarted") && checks==(long)Get(host,"BuildNativeChecks") && inventory==p.inventory.Where(item=>!item.IsAir).Sum(item=>item.stack),
+                "empty outer performs no native use, consumption, world advance or artificial timer progress");
+        }
         private static void CompareThroughput(List<ThroughputEvent> expected,List<ThroughputEvent> actual,int item,string scene)
         {
-            var reference=expected.Skip(1).Select((e,i)=>e.Frame-expected[i].Frame).ToArray();
-            var intervals=actual.Skip(1).Select((e,i)=>e.Frame-actual[i].Frame).ToArray();
+            var reference=expected.Skip(1).Select((e,i)=>unchecked(e.WorldTick-expected[i].WorldTick)).ToArray();
+            var intervals=actual.Skip(1).Select((e,i)=>unchecked(e.WorldTick-actual[i].WorldTick)).ToArray();
             // Original FillEmptySpace can legitimately cover several target
             // layers in one wall consumer. Keep that event and its real count;
             // compare each actual opportunity, never insert artificial zero gaps.
