@@ -19,17 +19,32 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool PreflightBuildObject(BlueprintBuildTarget target, Player p, Item item, int direction)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.ObjectPreflight);
+#endif
             // Framing.GetTileSafely inside CanPlace fills null entries. Prove
             // all alternate footprints and real anchor extents readable first;
             // preview queries never create a Tile or assume an absent section.
             var root = TileObjectData.GetTileData(item.createTile, item.placeStyle);
-            if (root == null) return false;
+            if (root == null)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.ObjectPreflight,BuildTraceReason.ObjectMetadata);
+#endif
+                return false;
+            }
             int left = target.Bounds.Left, right = target.Bounds.Right, top = target.Bounds.Top, bottom = target.Bounds.Bottom;
             bool global = false;
             for (int alternate = 0; alternate <= root.AlternatesCount; alternate++)
             {
                 var data = TileObjectData.GetTileData(item.createTile, item.placeStyle, alternate);
-                if (data == null) return false;
+                if (data == null)
+                {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                    DiagnosticReject(target,BuildTraceStage.ObjectPreflight,BuildTraceReason.ObjectMetadata);
+#endif
+                    return false;
+                }
                 int x = target.WorldX - data.Origin.X, y = target.WorldY - data.Origin.Y;
                 left = Math.Min(left, x - 1); right = Math.Max(right, x + data.Width + 1);
                 top = Math.Min(top, y - 1); bottom = Math.Max(bottom, y + data.Height + 1);
@@ -43,7 +58,13 @@ namespace JueMingR.TerrariaHost.Blueprint
                     var method = hook.Method;
                     if (method.DeclaringType == typeof(Chest) && method.Name == nameof(Chest.FindEmptyChest) ||
                         method.DeclaringType == typeof(Terraria.GameContent.Tile_Entities.TETeleportationPylon) && method.Name == "PlacementPreviewHook_CheckIfCanPlace") global = true;
-                    else if (method.DeclaringType != typeof(WorldGen) || method.Name != "PlantCheck_CanPlaceHook" && method.Name != "CanPlaceProjectilePressurePad") return false;
+                    else if (method.DeclaringType != typeof(WorldGen) || method.Name != "PlantCheck_CanPlaceHook" && method.Name != "CanPlaceProjectilePressurePad")
+                    {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                        DiagnosticReject(target,BuildTraceStage.ObjectPreflight,BuildTraceReason.Unsupported);
+#endif
+                        return false;
+                    }
                 }
             }
             // The original Pigronata post-gate names clickX-2 explicitly;
@@ -52,14 +73,38 @@ namespace JueMingR.TerrariaHost.Blueprint
             for (int x = left; x < right; x++) for (int y = top; y < bottom; y++)
             {
                 BlueprintWorldMatchSample sample;
-                if (!ReadBuildCell(x, y, out sample)) return false;
+                if (!ReadBuildCell(x, y, out sample))
+                {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                    DiagnosticReject(target,BuildTraceStage.ObjectPreflight,BuildTraceReason.ReadUnavailable);
+#endif
+                    return false;
+                }
                 if (x >= target.Bounds.Left && x < target.Bounds.Right && y >= target.Bounds.Top && y < target.Bounds.Bottom &&
-                    (sample.Cell.Layers & CaptureLayer.Tile) != 0) return false;
+                    (sample.Cell.Layers & CaptureLayer.Tile) != 0)
+                {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                    DiagnosticReject(target,BuildTraceStage.ObjectPreflight,BuildTraceReason.Occupied);
+#endif
+                    return false;
+                }
             }
             BlueprintWorldMatchSample point;
-            if (!ReadBuildCell(target.WorldX, target.WorldY, out point)) return false;
+            if (!ReadBuildCell(target.WorldX, target.WorldY, out point))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.ObjectPreflight,BuildTraceReason.ReadUnavailable);
+#endif
+                return false;
+            }
             var raw = Main.tile[target.WorldX, target.WorldY];
-            if (raw.liquid > 0 && raw.lava() && (Main.tileSolid[item.createTile] || !TileObjectData.CheckLiquidPlacement(item.createTile, item.placeStyle, raw))) return false;
+            if (raw.liquid > 0 && raw.lava() && (Main.tileSolid[item.createTile] || !TileObjectData.CheckLiquidPlacement(item.createTile, item.placeStyle, raw)))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Geometry,BuildTraceReason.LiquidRejected);
+#endif
+                return false;
+            }
             if (item.createTile == TileID.Torches)
             {
                 if (!PreflightLegacyLiquid(target, raw, item)) return false;
@@ -71,17 +116,47 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return BlueprintPlacementQuery.LegacyPlant(target.WorldX, target.WorldY, item.createTile, item.placeStyle) &&
                     NativeLegacyBuildChoice(new BuildFlight { Target = target, Player = p, Source = SnapshotSource(0, item) }, item.createTile);
             TileObject choice;
-            if (!BlueprintPlacementQuery.CanPlace(target.WorldX, target.WorldY, item.createTile, item.placeStyle, direction, out choice))
+            bool canPlace=BlueprintPlacementQuery.CanPlace(target.WorldX, target.WorldY, item.createTile, item.placeStyle, direction, out choice);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticObjectChoice(target,direction,canPlace,choice);
+#endif
+            if (!canPlace)
             { if (global) RequestBuildEligibilityRetry(target); return false; }
-            if (choice.xCoord != target.Bounds.Left || choice.yCoord != target.Bounds.Top) return false;
+            if (choice.xCoord != target.Bounds.Left || choice.yCoord != target.Bounds.Top)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.ObjectPreflight,BuildTraceReason.ObjectChoice);
+#endif
+                return false;
+            }
             var chosen = TileObjectData.GetTileData(choice.type, choice.style, choice.alternate);
-            if (chosen == null || chosen.Width != target.Bounds.Width || chosen.Height != target.Bounds.Height) return false;
+            if (chosen == null || chosen.Width != target.Bounds.Width || chosen.Height != target.Bounds.Height)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.ObjectPreflight,BuildTraceReason.ObjectChoice);
+#endif
+                return false;
+            }
             // The copied static gates read private query coordinates, never
             // borrow the player's live aim during preparation.
-            if (!BlueprintPlacementQuery.PostConditions(choice, target.WorldX, target.WorldY)) return false;
-            if (BuildObjectPlayerBlocked(choice)) { WaitForDynamicBuild(target); return false; }
+            if (!BlueprintPlacementQuery.PostConditions(choice, target.WorldX, target.WorldY))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.ObjectPreflight,BuildTraceReason.ObjectPostConditions);
+#endif
+                return false;
+            }
+            if (BuildObjectPlayerBlocked(choice)) { WaitForDynamicBuild(target);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.ObjectPreflight,BuildTraceReason.EntityBlocked);
+#endif
+                return false; }
             if (TileID.Sets.IsAContainer[item.createTile] && Chest.FindEmptyChest(choice.xCoord, choice.yCoord) < 0)
-            { RequestBuildEligibilityRetry(target); return false; }
+            { RequestBuildEligibilityRetry(target);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.ObjectPreflight,BuildTraceReason.ContainerCapacity);
+#endif
+                return false; }
             return true;
         }
         private static bool BuildObjectPlayerBlocked(TileObject choice)
@@ -104,12 +179,22 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintWorldMatchSample sample;
             if (!ReadBuildCell(target.WorldX, target.WorldY, out sample)) return false;
             var raw = Main.tile[target.WorldX, target.WorldY];
-            if (raw.liquid > 0 && raw.lava() && (Main.tileSolid[item.createTile] || !TileObjectData.CheckLiquidPlacement(item.createTile, item.placeStyle, raw))) return false;
+            if (raw.liquid > 0 && raw.lava() && (Main.tileSolid[item.createTile] || !TileObjectData.CheckLiquidPlacement(item.createTile, item.placeStyle, raw)))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Geometry,BuildTraceReason.LiquidRejected);
+#endif
+                return false;
+            }
             if (!PreflightLegacyLiquid(target, raw, item)) return false;
             // WorldGen.PlaceTile calls this entity test only for solid tiles.
             // Walls, non-solid rope and custom furniture do not inherit it.
             if (Main.tileSolid[item.createTile] && !Collision.EmptyTile(target.WorldX, target.WorldY))
-            { WaitForDynamicBuild(target); return false; }
+            { WaitForDynamicBuild(target);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Geometry,BuildTraceReason.EntityBlocked);
+#endif
+                return false; }
             return true;
         }
         private bool PreflightLegacyLiquid(BlueprintBuildTarget target, Tile raw, Item item)
@@ -132,6 +217,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             // bounded transient retry, not a native no-spend rejection's long
             // deadline, rather than leave a dry target dormant.
             if (!allowed && raw.checkingLiquid()) WaitForDynamicBuild(target);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            if(!allowed)DiagnosticReject(target,BuildTraceStage.Geometry,BuildTraceReason.LiquidRejected);
+#endif
             return allowed;
         }
     }

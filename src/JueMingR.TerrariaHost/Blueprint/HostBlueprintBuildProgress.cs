@@ -29,6 +29,9 @@ namespace JueMingR.TerrariaHost.Blueprint
 
         private void ObserveBuildSignals()
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Signals);
+#endif
             if (MaterialBuildDemand?.Invoke() != true || projectionScene.Count == 0) return;
             var p = buildTools?.Player;
             bool eligible = p != null && CanBuildAutomatically(p);
@@ -38,9 +41,19 @@ namespace JueMingR.TerrariaHost.Blueprint
             float px = p?.position.X ?? 0f, py = p?.position.Y ?? 0f;
             int reach = p?.blockRange ?? 0, direction = p?.direction ?? 0, pulleyDirection = p?.pulleyDir ?? 0;
             bool pulley = p?.pulley == true;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            // The original OR still short-circuits. This records the actual
+            // first changed family, not hypothetical later conditions.
+            if (BlueprintBuildTrace.Changed(px != buildPlayerX || py != buildPlayerY,BuildTraceReason.SignalPosition) ||
+                BlueprintBuildTrace.Changed(reach != buildRange || Player.tileRangeX != buildReachX || Player.tileRangeY != buildReachY,BuildTraceReason.SignalReach) ||
+                BlueprintBuildTrace.Changed(direction != buildDirection || pulleyDirection != buildPulleyDirection || pulley != buildPulley,BuildTraceReason.SignalDirection) ||
+                BlueprintBuildTrace.Changed(eligible != buildEligible,BuildTraceReason.SignalEligibility) ||
+                BlueprintBuildTrace.Changed((p?.width ?? 0) != buildPlayerWidth || (p?.height ?? 0) != buildPlayerHeight,BuildTraceReason.SignalBody))
+#else
             if (px != buildPlayerX || py != buildPlayerY || reach != buildRange || Player.tileRangeX != buildReachX || Player.tileRangeY != buildReachY ||
                 direction != buildDirection || pulleyDirection != buildPulleyDirection || pulley != buildPulley || eligible != buildEligible ||
                 (p?.width ?? 0) != buildPlayerWidth || (p?.height ?? 0) != buildPlayerHeight)
+#endif
             {
                 buildPlayerX = px; buildPlayerY = py; buildRange = reach; buildReachX = Player.tileRangeX; buildReachY = Player.tileRangeY;
                 buildDirection = direction; buildPulleyDirection = pulleyDirection; buildPulley = pulley; buildEligible = eligible;
@@ -70,7 +83,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             { int old; if (!buildItemReach.TryGetValue(entry.Key, out old) || old != entry.Value) { reachChanged = true; break; } }
             var previousReach = buildItemReach; buildItemReach = buildNextItemReach; buildNextItemReach = previousReach;
             buildEnvelopeBoost = envelopeBoost;
-            if (reachChanged) { MaterialBuildEligibilityRevision++; buildNearTickSet = false; }
+            if (reachChanged) { MaterialBuildEligibilityRevision++; buildNearTickSet = false;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.SignalItemReach);
+#endif
+            }
             if (ReferenceEquals(buildSupplyInventory, inventory)) return;
             buildSupplyInventory = inventory; buildNextSupply.Clear();
             if (inventory?.Ready == true) foreach (var slot in inventory.Slots)
@@ -109,6 +126,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             // type ever becoming unavailable. Its invalid flight gets one local
             // merged retry, while later ordinals still finish this same walk.
             value.BuildRetryPending |= retryPending;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Count(BuildTraceReason.WaitRegistered);
+            var diagnosticReason=reason==BlueprintBuildWait.Material?BuildTraceReason.MissingMaterial:
+                reason==BlueprintBuildWait.Container?BuildTraceReason.ContainerWaiting:reason==BlueprintBuildWait.Dependencies?BuildTraceReason.Dependencies:
+                reason==BlueprintBuildWait.Dynamic?BuildTraceReason.DynamicWait:BuildTraceReason.PlayerReachOrPulley;
+            BlueprintBuildTrace.Count(diagnosticReason);DiagnosticTarget(target,BuildTraceStage.Retry,diagnosticReason);
+#endif
         }
         private void WaitForDynamicBuild(BlueprintBuildTarget target)
         {
@@ -132,6 +156,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void TryWakeBuildEligibility(BlueprintProjectionMatchRange range)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Wake);
+#endif
             var value = range.Materials;
             if (value == null || MaterialBuildDemand?.Invoke() != true) return;
             // Re-enabling needs a fresh support read even when an independent
@@ -154,10 +181,32 @@ namespace JueMingR.TerrariaHost.Blueprint
 
             bool nativeDue = value.EligibilityRetry && materialTick >= value.EligibilityRetryAt;
             bool dynamicDue = (value.BuildWaits & BlueprintBuildWait.Dynamic) != 0 && materialTick >= value.DynamicRetryAt;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            if(nativeDue)BlueprintBuildTrace.Count(BuildTraceReason.RetryDue);
+#endif
             // An outstanding source/sample is already an active walk. Later
             // signals coalesce into one permission and cannot cancel/restart it.
             if (!value.BuildExhausted || value.Candidate != null || range.Demand || range.Reading || value.Progress != null ||
-                !value.Current || !range.Current || !value.BuildRetryPending && !nativeDue && !dynamicDue) return;
+                !value.Current || !range.Current || !value.BuildRetryPending && !nativeDue && !dynamicDue)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                // These are the already-known scalar blockers. No dependency,
+                // demand, stamp or eligibility query is repeated to explain it.
+                BlueprintBuildTrace.Count(BuildTraceReason.WakeBlocked);
+                if(!value.BuildExhausted)BlueprintBuildTrace.Count(BuildTraceReason.WakeNotExhausted);
+                if(value.Candidate!=null)BlueprintBuildTrace.Count(BuildTraceReason.WakeCandidate);
+                if(range.Demand)BlueprintBuildTrace.Count(BuildTraceReason.WakeDemand);
+                if(range.Reading)BlueprintBuildTrace.Count(BuildTraceReason.WakeReading);
+                if(value.Progress!=null)BlueprintBuildTrace.Count(BuildTraceReason.WakeProgress);
+                if(!value.Current)BlueprintBuildTrace.Count(BuildTraceReason.WakeMaterialNotCurrent);
+                if(!range.Current)BlueprintBuildTrace.Count(BuildTraceReason.WakeRangeNotCurrent);
+                if(!value.BuildRetryPending && !nativeDue && !dynamicDue)BlueprintBuildTrace.Count(BuildTraceReason.WakeNoPermission);
+#endif
+                return;
+            }
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Semantic(BuildTraceStage.Wake,BuildTraceReason.WakePerformed,value.EligibilityRetryOrdinal,unchecked((long)materialTick),unchecked((long)value.EligibilityRetryAt),nativeDue?1:0);
+#endif
             ResetMaterialBuildWalk(range, false);
             DemandProjectionMatchRange(range);
 #if DEBUG
@@ -170,7 +219,16 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (value == null || !value.EligibilityRetry || value.EligibilityRetryOrdinal != target.Ordinal) return true;
             // Local recovery must not bypass a registered original rejection's
             // deadline. Consume it only when that same target gets its turn.
-            if (materialTick < value.EligibilityRetryAt) return false;
+            if (materialTick < value.EligibilityRetryAt)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Retry,BuildTraceReason.RetryWaiting);
+#endif
+                return false;
+            }
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Count(BuildTraceReason.RetryConsumed);
+#endif
             value.EligibilityRetry = false; return true;
         }
         private void ClearBuildProgressSignals()

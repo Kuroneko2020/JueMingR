@@ -145,6 +145,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); player = null; world = connection = null; }
         public void Update(ulong updateTick)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.BlueprintUpdate);
+#endif
             AdvanceCapture(updateTick);
             PumpProjectionPersistence();
             PumpProjection();
@@ -159,6 +162,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal void Poll() { PumpLibrary(); PumpProjectionPersistence(); PumpProjection(); AcceptProjectionSceneSnapshot(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
         public void FailClosed() {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.FailClosed);
+            BlueprintBuildTrace.Semantic(BuildTraceStage.FailClosed,BuildTraceReason.BlueprintFailed);
+#endif
             failed = true; CancelOldCapture(); EndProjectionSession(); ClearProjection(); State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); }
         internal void TakeFeedback(Action<string> display)
         {

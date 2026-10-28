@@ -2,6 +2,9 @@ using System;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.GameInput;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+using JueMingR.TerrariaHost.Blueprint;
+#endif
 
 namespace JueMingR.TerrariaHost.Tools
 {
@@ -36,6 +39,9 @@ namespace JueMingR.TerrariaHost.Tools
         internal Action NativeChecked;
         internal Action NativeBeginning;
         internal Func<Action<bool>> NativePreparing;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+        internal long BlueprintDiagnosticFlight;
+#endif
     }
     // The target, sustained business intent and actual use lease have distinct
     // lifetimes. Only the feature refreshes targets; vanilla owns selection,
@@ -70,9 +76,22 @@ namespace JueMingR.TerrariaHost.Tools
         private bool Admitted(Player p){return CanRunFeature && host.Admit(p,HeldInventory);}
         internal bool ActionValid {get{return Active && !cancelled && Identity() && Admitted(player) && (Intent.Valid?.Invoke()??false);}}
         internal ToolUse(HostTools host){this.host=host;}
+#if JMR_BLUEPRINT_DIAGNOSTIC
+        private void DiagnosticPhase(BuildTraceStage stage,BuildTraceReason reason)
+        {
+            if(!BlueprintBuildTrace.Active || Intent?.Kind!=ToolKind.Build || player==null)return;
+            BlueprintBuildTrace.Hit(stage);
+            long flags=(directionBorrowed?1:0)|(player.controlLeft?2:0)|(player.controlRight?4:0)|(nativeReady?8:0)|
+                (player.controlUseItem?16:0)|(player.releaseUseItem?32:0)|(player.selectedItemState.HasBufferedChange?64:0)|(player.selectedItemState.HasActiveOverride?128:0);
+            BlueprintBuildTrace.Semantic(stage,reason,player.direction,flags,Player.tileTargetX,Player.tileTargetY,Intent.BlueprintDiagnosticFlight,token,nativeGeneration);
+        }
+#endif
         internal void Pick(Player p,ref int chosen,ref bool result)
         {
             if(!ReferenceEquals(p,host.Player))return;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Selection);
+#endif
             if(Active)
             {
                 // Vanilla has restored its original selection before this
@@ -84,15 +103,36 @@ namespace JueMingR.TerrariaHost.Tools
                 {chosen=Intent.Slot;result=true;return;}
                 bool handoff=yieldExternal;Retire();if(handoff)return;
             }
-            if(result || host.Input.Frame<host.NextUseFrame || host.ManualSelectionFrame==host.Input.Frame)return;
+            if(result || host.Input.Frame<host.NextUseFrame || host.ManualSelectionFrame==host.Input.Frame)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.SelectionWait);
+#endif
+                return;
+            }
             ToolIntent candidate=host.Choose(p);if(candidate==null)return;
             if(Acquire(p,candidate)){chosen=candidate.Slot;result=true;}
         }
         private bool Acquire(Player p,ToolIntent candidate)
         {
-            if(candidate.Slot<0 || candidate.Slot>=50 || !(candidate.Valid?.Invoke()??false))return false;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            if(candidate.Kind==ToolKind.Build)BlueprintBuildTrace.Hit(BuildTraceStage.Acquire);
+#endif
+            if(candidate.Slot<0 || candidate.Slot>=50 || !(candidate.Valid?.Invoke()??false))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                if(candidate.Kind==ToolKind.Build)BlueprintBuildTrace.Count(BuildTraceReason.AcquireRejected);
+#endif
+                return false;
+            }
             long next=host.Items.Ownership.NewUseToken();
-            if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,candidate.Slot,next,candidate.MaterialSlots))return false;
+            if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,candidate.Slot,next,candidate.MaterialSlots))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                if(candidate.Kind==ToolKind.Build)BlueprintBuildTrace.Count(BuildTraceReason.OwnershipDenied);
+#endif
+                return false;
+            }
             player=p;Intent=candidate;item=p.inventory[candidate.Slot];type=item.type;stack=item.stack;original=p.selectedItem;
             originalItem=original>=0 && original<50?p.inventory[original]:null;originalType=originalItem?.type??0;
             token=next;session=host.Runtime.Generation;selection=host.SelectionIntent;
@@ -106,9 +146,24 @@ namespace JueMingR.TerrariaHost.Tools
         private bool Identity(){return SourceIdentity() && player.selectedItem==Intent.Slot;}
         private ToolReadiness Refresh()
         {
-            if(!Active || cancelled || !Identity() || !Admitted(player))return ToolReadiness.Invalid;
+            if(!Active || cancelled || !Identity() || !Admitted(player))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticPhase(BuildTraceStage.Refresh,BuildTraceReason.Invalid);
+#endif
+                return ToolReadiness.Invalid;
+            }
             var state=Intent.Readiness!=null?Intent.Readiness():(Intent.Refresh==null || Intent.Refresh()?ToolReadiness.Ready:ToolReadiness.Invalid);
-            if(state==ToolReadiness.Ready && !ActionValid)return ToolReadiness.Invalid;
+            if(state==ToolReadiness.Ready && !ActionValid)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticPhase(BuildTraceStage.Refresh,BuildTraceReason.Invalid);
+#endif
+                return ToolReadiness.Invalid;
+            }
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticPhase(BuildTraceStage.Refresh,state==ToolReadiness.Ready?BuildTraceReason.Ready:state==ToolReadiness.Pending?BuildTraceReason.Pending:state==ToolReadiness.Yield?BuildTraceReason.Yield:BuildTraceReason.Invalid);
+#endif
             return state;
         }
         private bool RetainAtSelection()
@@ -145,8 +200,15 @@ namespace JueMingR.TerrariaHost.Tools
                 if(candidate!=null && candidate.Slot==p.selectedItem)Acquire(p,candidate);
             }
             if(!ReferenceEquals(p,player))return;
-            if(host.ManualLeft || host.ManualRight || PlayerInput.Triggers.Current.SmartSelect){HandToManual();return;}
+            if(host.ManualLeft || host.ManualRight || PlayerInput.Triggers.Current.SmartSelect){
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                if(Building)BlueprintBuildTrace.Count(BuildTraceReason.ManualInput);
+#endif
+                HandToManual();return;}
             var readiness=suspendedFrame==host.Input.Frame?ToolReadiness.Pending:Refresh();nativeReady=readiness==ToolReadiness.Ready;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticPhase(BuildTraceStage.BeforeSync,readiness==ToolReadiness.Ready?BuildTraceReason.Ready:readiness==ToolReadiness.Pending?BuildTraceReason.Pending:readiness==ToolReadiness.Yield?BuildTraceReason.Yield:BuildTraceReason.Invalid);
+#endif
             if(nativeReady)targetRejected=false;
             if(readiness==ToolReadiness.Invalid || readiness==ToolReadiness.Yield){Cancel();return;}
             if(!nativeReady){SuspendInput();return;}
@@ -157,7 +219,13 @@ namespace JueMingR.TerrariaHost.Tools
             // Held construction can use another original item-time window
             // inside an animation. A non-reusing item still gets a real neutral
             // input step before its next animation; never manufacture release.
-            if(Building && p.itemAnimation<=0 && !p.releaseUseItem && !item.autoReuse)return;
+            if(Building && p.itemAnimation<=0 && !p.releaseUseItem && !item.autoReuse)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.NativeTimerWait);
+#endif
+                return;
+            }
             BorrowDirection();
             p.controlUseItem=true;if(!pulsed && !Building)p.releaseUseItem=true;pulseFrame=host.Input.Frame;pulsed=true;
         }
@@ -166,6 +234,9 @@ namespace JueMingR.TerrariaHost.Tools
             if(!ReferenceEquals(p,player) || p.selectedItem!=Intent.Slot)return;
             nativeGeneration++;
             nativeBaseline=false;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticPhase(BuildTraceStage.ItemBegin,BuildTraceReason.DirectionPhase);
+#endif
             // Cleanup responsibility may outlive automatic intent. A genuine
             // manual press owns this ItemCheck, including during a Boss pause.
             if(host.ManualLeft || host.SelectionIntent!=selection){HandToManual();return;}
@@ -187,11 +258,17 @@ namespace JueMingR.TerrariaHost.Tools
         internal void BeforeTargetResolution(Player p)
         {
             if(!ReferenceEquals(p,player) || !Building || !nativeReady || pulseFrame!=host.Input.Frame)return;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticPhase(BuildTraceStage.ResolveBefore,BuildTraceReason.DirectionPhase);
+#endif
             BorrowDirection();BorrowCursorMode();BorrowAim();
         }
         internal void AfterTargetResolution(Player p)
         {
             if(!ReferenceEquals(p,player) || !Building || !nativeReady || !borrowed)return;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticPhase(BuildTraceStage.ResolveAfter,BuildTraceReason.DirectionPhase);
+#endif
             if(Intent.ResolvedTarget!=null && !Intent.ResolvedTarget(Player.tileTargetX,Player.tileTargetY))
                 RejectTarget(ToolTargetRejection.Resolution);
         }
@@ -245,11 +322,26 @@ namespace JueMingR.TerrariaHost.Tools
             player.direction=direction;
         }
         internal bool AllowBuildPlacement(bool wall)
-        {return !Building || CurrentBuildConsumerTarget() && (Intent.NativePlacement?.Invoke(wall)??false);}
+        {
+            bool allowed=!Building || CurrentBuildConsumerTarget() && (Intent.NativePlacement?.Invoke(wall)??false);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            if(Building)BlueprintBuildTrace.Count(allowed?BuildTraceReason.Passed:BuildTraceReason.NativeRejected);
+#endif
+            return allowed;
+        }
         internal bool AllowBuildTileChoice(bool objectType,TileObject placement,int tileType)
-        {return !Building || CurrentBuildConsumerTarget() && (Intent.NativeTileChoice?.Invoke(objectType,placement,tileType)??false);}
+        {
+            bool allowed=!Building || CurrentBuildConsumerTarget() && (Intent.NativeTileChoice?.Invoke(objectType,placement,tileType)??false);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticPhase(BuildTraceStage.NativeChoiceGate,allowed?BuildTraceReason.NativeChosen:BuildTraceReason.NativeRejected);
+#endif
+            return allowed;
+        }
         private bool CurrentBuildConsumerTarget()
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticPhase(BuildTraceStage.ConsumerGate,BuildTraceReason.DirectionPhase);
+#endif
             if(!InNativeUse || !nativeReady || !ActionValid)return false;
             // Other vanilla stages/hooks may adjust tileTarget after lookup.
             // Recheck the coordinates the consumer is about to read, including

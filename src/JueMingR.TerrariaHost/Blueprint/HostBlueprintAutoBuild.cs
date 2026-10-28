@@ -79,27 +79,63 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool CanBuildAutomatically(Player p, bool prepareOnly = false)
         {
-            return AutoBuildEnabled && ControlsEnabled && buildTools != null && buildTools.Available && HasSession &&
+            bool allowed = AutoBuildEnabled && ControlsEnabled && buildTools != null && buildTools.Available && HasSession &&
                 ReferenceEquals(p, player) && !State.Active && !HasActiveCaptureWork && !ProjectionEditing && pendingProjection == null && !deletePending &&
                 buildTools.Admit(p, false) && (prepareOnly || !buildTools.ManualLeft) && !buildTools.ManualRight && !p.ghost && !p.noBuilding;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.AutomaticGate,allowed?BuildTraceReason.Passed:BuildTraceReason.AutomaticGateFalse);
+#endif
+            return allowed;
         }
         internal bool OwnsAutomaticBuildInput(Player p)
         { return ReferenceEquals(p, player) && buildTools?.Use.Building == true && buildTools.Use.ActionValid; }
         private void AdvanceAutomaticBuild()
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Advance);
+#endif
             var p = buildTools?.Player;
-            if (p == null || !CanBuildAutomatically(p, true) || MaterialInventory?.Ready != true) { preparedBuild = null; return; }
+            if (p == null || !CanBuildAutomatically(p, true) ||
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                !BlueprintBuildTrace.Gate(MaterialInventory?.Ready == true,BuildTraceReason.InventoryNotReady,BuildTraceStage.Advance))
+#else
+                MaterialInventory?.Ready != true)
+#endif
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(p==null?BuildTraceReason.NoPlayer:BuildTraceReason.PreparedCleared);
+#endif
+                preparedBuild = null; return;
+            }
             // Preparation has no input/selection ownership. A previous native
             // body's animation must not hide the next legal placement window.
-            if (preparedBuild != null && BuildFlightCurrent(preparedBuild, false)) return;
+            if (preparedBuild != null && BuildFlightCurrent(preparedBuild, false))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.PreparedRetained);
+#endif
+                return;
+            }
             preparedBuild = null;
             // The source/match owner provides a bounded round-robin prefix.
             // A blocked first material must yield to another layer or instance.
             for (int n = 0; n < 64; n++)
             {
                 BlueprintBuildTarget target;
-                if (!TryGetBuildTarget(out target)) break;
-                if (ReferenceEquals(activeBuild?.Target, target) && !activeBuild.Checked && !activeBuild.Rejected) break;
+                if (!TryGetBuildTarget(out target))
+                {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                    BlueprintBuildTrace.Count(BuildTraceReason.NoCandidate);
+#endif
+                    break;
+                }
+                if (ReferenceEquals(activeBuild?.Target, target) && !activeBuild.Checked && !activeBuild.Rejected)
+                {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                    BlueprintBuildTrace.Count(BuildTraceReason.ActiveTarget);
+#endif
+                    break;
+                }
 #if DEBUG
                 BuildCandidateChecks++;
 #endif
@@ -110,28 +146,90 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool TryPrepareBuild(BlueprintBuildTarget target, Player p, out BuildFlight result)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Prepare);
+            DiagnosticTarget(target,BuildTraceStage.Prepare,BuildTraceReason.Candidate);
+#endif
             result = null;
-            if (!IsBuildTargetCurrent(target) || !BasicPlacement(target.Placement) || IsUnconfirmedTarget(target) ||
-                target.Bounds.Left < 6 || target.Bounds.Top < 6 || target.Bounds.Right >= Main.maxTilesX - 6 || target.Bounds.Bottom >= Main.maxTilesY - 6) return false;
+            if (!IsBuildTargetCurrent(target))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.TargetStale);
+#endif
+                return false;
+            }
+            if (!BasicPlacement(target.Placement))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.Unsupported);
+#endif
+                return false;
+            }
+            if (IsUnconfirmedTarget(target))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.Unconfirmed);
+#endif
+                return false;
+            }
+            if (target.Bounds.Left < 6 || target.Bounds.Top < 6 || target.Bounds.Right >= Main.maxTilesX - 6 || target.Bounds.Bottom >= Main.maxTilesY - 6)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.WorldBounds);
+#endif
+                return false;
+            }
             if (!BuildRetryReady(target)) return false;
             if (target.Body != null && TileID.Sets.IsAContainer[target.Placement.TileType] && buildContainer != null)
-            { WaitForBuild(target, BlueprintBuildWait.Container); return false; }
+            { WaitForBuild(target, BlueprintBuildWait.Container);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.ContainerWaiting);
+#endif
+                return false; }
             int slot = -1;
             foreach (var source in MaterialInventory.Slots)
-                if (source.Eligible && source.ItemType == target.Placement.UseItemType && source.Stack > 0 && buildTools.BuildInventoryEligible(source.Slot, p.inventory[source.Slot])) { slot = source.Slot; break; }
-            if (slot < 0) { WaitForBuild(target, BlueprintBuildWait.Material); return false; }
+                if (source.Eligible && source.ItemType == target.Placement.UseItemType && source.Stack > 0 &&
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                    DiagnosticMaterialEligible(source.ItemType,buildTools.BuildInventoryEligible(source.Slot, p.inventory[source.Slot])))
+#else
+                    buildTools.BuildInventoryEligible(source.Slot, p.inventory[source.Slot]))
+#endif
+                { slot = source.Slot; break; }
+            if (slot < 0) { WaitForBuild(target, BlueprintBuildWait.Material);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                if(BlueprintBuildTrace.Active)BlueprintBuildTrace.Current.Supply(target.Placement.UseItemType,false,buildSupplyRevision,false);
+                DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.MissingMaterial);
+#endif
+                return false; }
             var item = p.inventory[slot];
             int direction = target.Placement.Direction == (int)TileObjectDirection.PlaceLeft ? -1 :
                 target.Placement.Direction == (int)TileObjectDirection.PlaceRight ? 1 : p.direction;
             if (p.pulley && p.pulleyDir == 2 && direction != p.direction ||
                 !p.IsInTileInteractionRange(target.WorldX, target.WorldY, TileReachCheckSettings.Simple, item.tileBoost + p.blockRange))
-            { WaitForBuild(target, BlueprintBuildWait.Player); return false; }
-            if (!NativeBuildGeometry(target, p, item, direction)) return false;
+            { WaitForBuild(target, BlueprintBuildWait.Player);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.PlayerReachOrPulley);
+#endif
+                return false; }
+            if (!NativeBuildGeometry(target, p, item, direction))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.GeometryRejected);
+#endif
+                return false;
+            }
             BuildSource[] dependencies; ulong slots, waiting;
             if (!CaptureBuildDependencies(p, out dependencies, out slots, out waiting))
-            { WaitForBuild(target, BlueprintBuildWait.Dependencies, waiting); return false; }
+            { WaitForBuild(target, BlueprintBuildWait.Dependencies, waiting);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.Dependencies);
+#endif
+                return false; }
             result = new BuildFlight { Target = target, Player = p, Source = SnapshotSource(slot, item), Dependencies = dependencies, DependencySlots = slots, Direction = direction,
                 Generation = ++buildFlightGeneration };
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticFlight(result,BuildTraceStage.Prepare,BuildTraceReason.Prepared);
+#endif
             return true;
         }
         private static bool BasicPlacement(BlueprintPlacementDescriptor value)
@@ -161,9 +259,18 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool NativeBuildGeometry(BlueprintBuildTarget target, Player p, Item item, int direction)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Geometry);
+#endif
             var placement = target.Placement;
             if (item == null || item.IsAir || item.type != placement.UseItemType || item.GetFlexibleTileWand() != null || item.tileWand > 0 ||
-                !p.IsInTileInteractionRange(target.WorldX, target.WorldY, TileReachCheckSettings.Simple, item.tileBoost + p.blockRange)) return false;
+                !p.IsInTileInteractionRange(target.WorldX, target.WorldY, TileReachCheckSettings.Simple, item.tileBoost + p.blockRange))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(target,BuildTraceStage.Geometry,BuildTraceReason.SourceOrReachGate);
+#endif
+                return false;
+            }
             if (placement.Kind == BlueprintPlacementKind.Wall)
             {
                 if (item.createWall != placement.WallType || !BuildEmpty(target.WorldX, target.WorldY, true)) return false;
@@ -239,8 +346,16 @@ namespace JueMingR.TerrariaHost.Blueprint
             BuildEligibilityReads++;
 #endif
             BlueprintWorldMatchSample sample;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            if(projectionMatchSource==null || !projectionMatchSource.TryRead(x,y,out sample) || !sample.Available)
+            {BlueprintBuildTrace.Count(BuildTraceReason.ReadUnavailable);return false;}
+            bool empty=(sample.Cell.Layers & (wall ? CaptureLayer.Wall : CaptureLayer.Tile)) == 0;
+            if(!empty)BlueprintBuildTrace.Count(BuildTraceReason.Occupied);
+            return empty;
+#else
             return projectionMatchSource != null && projectionMatchSource.TryRead(x, y, out sample) && sample.Available &&
                 (sample.Cell.Layers & (wall ? CaptureLayer.Wall : CaptureLayer.Tile)) == 0;
+#endif
         }
         private bool BuildNeighbor(int x, int y, bool wall)
         {
@@ -248,24 +363,57 @@ namespace JueMingR.TerrariaHost.Blueprint
             BuildEligibilityReads++;
 #endif
             BlueprintWorldMatchSample sample;
-            if (projectionMatchSource == null || !projectionMatchSource.TryRead(x, y, out sample) || !sample.Available) return false;
+            if (projectionMatchSource == null || !projectionMatchSource.TryRead(x, y, out sample) || !sample.Available)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.ReadUnavailable);
+#endif
+                return false;
+            }
             if ((sample.Cell.Layers & CaptureLayer.Wall) != 0) return true;
-            if ((sample.Cell.Layers & CaptureLayer.Tile) == 0) return false;
+            if ((sample.Cell.Layers & CaptureLayer.Tile) == 0)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.SupportMissing);
+#endif
+                return false;
+            }
             int type = sample.Cell.TileType;
             return wall || Main.tileSolid[type] || TileID.Sets.IsBeam[type] || Main.tileRope[type] || type == TileID.MinecartTrack;
         }
         private ToolIntent ChooseAutomaticBuild(Player p)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.BuildChoice);
+#endif
             var next = preparedBuild;
             if (next == null || !ReferenceEquals(p, next.Player) || !CanBuildAutomatically(p) || p.itemAnimation > 0 || p.itemTime > 0 || p.channel || p.reuseDelay > 0 ||
-                !p.releaseUseItem || p.selectedItemState.HasActiveOverride || p.selectedItemState.HasBufferedChange || !BuildFlightCurrent(next, false)) return null;
+                !p.releaseUseItem || p.selectedItemState.HasActiveOverride || p.selectedItemState.HasBufferedChange || !BuildFlightCurrent(next, false))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(next==null?BuildTraceReason.NoPrepared:BuildTraceReason.ChooseGate);
+                DiagnosticTarget(next?.Target,BuildTraceStage.BuildChoice,BuildTraceReason.ChooseGate,next);
+#endif
+                return null;
+            }
             preparedBuild = null;
             var intent = new ToolIntent {
                 Kind = ToolKind.Build, Slot = next.Source.Slot, PreciseTarget = true, Target = new Vector2(next.Target.WorldX * 16 + 8, next.Target.WorldY * 16 + 8),
                 PlayerDirection = next.Direction, MaterialSlots = next.DependencySlots, MaximumConsumption = next.Target.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1,
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintDiagnosticFlight=next.Generation,
+#endif
                 Valid = () => CanBuildAutomatically(p) && BuildLeaseCurrent(activeBuild ?? next),
-                Admitted = () => { next.Token = buildTools.Use.Operation; activeBuild = next; },
+                Admitted = () => { next.Token = buildTools.Use.Operation; activeBuild = next;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                    DiagnosticFlight(next,BuildTraceStage.Acquire,BuildTraceReason.Acquired);
+#endif
+                },
                 Used = () => { if (activeBuild == null) return; activeBuild.Started = true;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                    BlueprintBuildTrace.Hit(BuildTraceStage.Started);
+                    DiagnosticFlight(activeBuild,BuildTraceStage.Started,BuildTraceReason.Passed);
+#endif
 #if DEBUG
                     BuildUsesStarted++;
 #endif
@@ -287,14 +435,23 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void BeginAutomaticBuildCheck(BuildFlight flight)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.NativeBaseline);
+#endif
             if (flight == null) return;
             flight.TorchPreparation = null;
             if (flight.Checked) return;
             flight.Entered = false; flight.Source.Stack = flight.Source.Item.stack;
             foreach (var dependency in flight.Dependencies) dependency.Stack = dependency.Item.stack;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticFlight(flight,BuildTraceStage.NativeBaseline,BuildTraceReason.Passed);
+#endif
         }
         private ToolReadiness RefreshAutomaticBuild(Player p, ToolIntent intent)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.BuildRefresh);
+#endif
             var current = activeBuild;
             if (current == null || current.Token != buildTools.Use.Operation || !CanBuildAutomatically(p) || !BuildLeaseCurrent(current)) return ToolReadiness.Invalid;
             if (!current.Checked && !current.Rejected) return BuildFlightCurrent(current, true) ? ToolReadiness.Ready : ToolReadiness.Invalid;
@@ -307,6 +464,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             // The lease stays, but target, baselines and cleanup responsibility
             // belong to the new flight. Original selection/timers stay intact.
             preparedBuild = null; next.Token = current.Token; activeBuild = next;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            intent.BlueprintDiagnosticFlight=next.Generation;
+#endif
             intent.Target = new Vector2(next.Target.WorldX * 16 + 8, next.Target.WorldY * 16 + 8);
             intent.PlayerDirection = next.Direction;
             intent.MaximumConsumption = next.Target.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1;
@@ -337,12 +497,24 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Retire its candidate now, preserve the unfinished world target,
             // and reuse the existing bounded dynamic/native eligibility wake.
             flight.Rejected=true;flight.TorchPreparation=null;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticFlight(flight,BuildTraceStage.ResolveAfter,reason==ToolTargetRejection.Resolution?BuildTraceReason.TargetResolution:BuildTraceReason.TargetConsumer);
+#endif
             RequestBuildEligibilityRetry(flight.Target);NotifyBuildAttempt(flight.Target);
         }
         private bool BuildFlightCurrent(BuildFlight flight, bool mayOwn)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.FlightCurrent);
+#endif
             var p = flight.Player; var source = flight.Source;
-            if ((!IsBuildTargetCurrent(flight.Target) && !NativeTorchPreparationCurrent(flight)) || !ReferenceEquals(p, player)) return false;
+            if ((!IsBuildTargetCurrent(flight.Target) && !NativeTorchPreparationCurrent(flight)) || !ReferenceEquals(p, player))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                DiagnosticReject(flight.Target,BuildTraceStage.FlightCurrent,BuildTraceReason.TargetStale);
+#endif
+                return false;
+            }
             if (source.Slot < 0 || source.Slot >= 50 ||
                 !ReferenceEquals(p.inventory[source.Slot], source.Item) || source.Item.type != source.Type || source.Item.stack <= 0 ||
                 !buildTools.BuildInventoryEligible(source.Slot, source.Item))
@@ -360,17 +532,28 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool NativeBuildConsumer(BuildFlight flight, bool wall)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Consumer);
+            DiagnosticTarget(flight?.Target,BuildTraceStage.Consumer,BuildTraceReason.None,flight);
+#endif
             if (flight == null || !ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation || flight.Checked || flight.Rejected ||
                 (flight.Target.Placement.Kind == BlueprintPlacementKind.Wall) != wall || !BuildFlightCurrent(flight, true)) return false;
             if(Player.tileTargetX!=flight.Target.WorldX || Player.tileTargetY!=flight.Target.WorldY)return false;
             if (!flight.Player.ItemTimeIsZero || flight.Player.itemAnimation <= 0 || !flight.Player.controlUseItem) return false;
             flight.Entered = true;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticFlight(flight,BuildTraceStage.Consumer,BuildTraceReason.Entered);
+#endif
             // Once the consumer starts, its natural observer transaction owns
             // all neighbor/member side effects. No second per-cell success bit.
             return true;
         }
         private bool NativeBuildChoice(BuildFlight flight, bool objectType, TileObject placement, int type)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Choice);
+            if(objectType)DiagnosticTarget(flight?.Target,BuildTraceStage.Choice,BuildTraceReason.None,flight,placement);
+#endif
             if (!NativeBuildConsumer(flight, false) || type != flight.Target.Placement.TileType) return false;
             if (flight.Target.Placement.Platform) return !objectType && BuildPlatformForm(flight.Target, type);
             if (flight.Target.Body == null) return !objectType;
@@ -386,6 +569,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             var shape = BlueprintCaptureSource.DescribeRead(cell, BlueprintWorldObjectSemantics.TileValue(cell)); BlueprintWorldObject actual;
             if (!BlueprintWorldObjectSemantics.TryCreate(cell, shape, out actual) || actual == null || !flight.Target.Body.SamePlacement(actual)) return false;
             flight.Chosen = true;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticFlight(flight,BuildTraceStage.Choice,BuildTraceReason.NativeChosen);
+#endif
 #if DEBUG
             BuildNativeChoices++;
 #endif
@@ -441,6 +627,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void CheckedAutomaticBuild(BuildFlight flight)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Checked);
+#endif
             if (flight == null || !ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation || flight.Checked || flight.Rejected || !flight.Entered) return;
             flight.Checked = true;
             flight.TorchPreparation = null;
@@ -449,6 +638,9 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             bool spent = flight.Source.Item.stack < flight.Source.Stack;
             foreach (var source in flight.Dependencies) spent |= source.Item.stack < source.Stack;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticFlight(flight,BuildTraceStage.Checked,spent?BuildTraceReason.ConsumptionObserved:BuildTraceReason.NoConsumption);
+#endif
             if (spent && BuildEmpty(flight.Target.Bounds.Left, flight.Target.Bounds.Top, flight.Target.Placement.Kind == BlueprintPlacementKind.Wall))
             {
                 // Consumption without an observable body is unknown, never a
@@ -466,6 +658,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void HoldUnconfirmedBuild(BuildFlight flight)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            DiagnosticFlight(flight,BuildTraceStage.Checked,BuildTraceReason.UnknownOutcome);
+#endif
             // A later native failure can make an earlier no-spend check
             // unknown. Revoke only this target's retry permission; another
             // rejected sibling in the same range keeps its own recovery.
@@ -491,6 +686,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void EndAutomaticBuild(BuildFlight flight, bool unknown)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.End);
+            DiagnosticFlight(flight,BuildTraceStage.End,unknown?BuildTraceReason.UnknownOutcome:BuildTraceReason.Ended);
+#endif
             if (flight == null || !ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation) return;
             if (unknown) HoldUnconfirmedBuild(flight);
             else if (!flight.Checked && !flight.Rejected) WaitForBuild(flight.Target, BlueprintBuildWait.Player, retryPending: true);

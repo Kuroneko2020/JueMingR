@@ -899,6 +899,9 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences = new HostPreferences(gameDirectory);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                JueMingR.TerrariaHost.Blueprint.BlueprintBuildTrace.Initialize(gameDirectory,PackageId,Terraria.Main.versionNumber);
+#endif
                 bool quickPackage = (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || (PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || (PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal) || PackageId.StartsWith("continuous-processing-", StringComparison.Ordinal)))));
                 bool footprintPackage = (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage);
                 bool mapPackage = footprintPackage || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal);
@@ -1009,6 +1012,9 @@ namespace JueMingR.TerrariaHost
 
             internal void UpdateRuntime()
             {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                JueMingR.TerrariaHost.Blueprint.BlueprintBuildTraceHost.Outer(Blueprint,Input,updateTick);
+#endif
                 Phase0TBiomeRuntime current = runtime;
                 if (current == null)
                 {

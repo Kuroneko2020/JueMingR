@@ -226,11 +226,21 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void RequestBuildEligibilityRetry(BlueprintBuildTarget target)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Retry);
+#endif
             if (target?.Range.Materials == null || !IsBuildTargetCurrent(target) || IsUnconfirmedTarget(target)) return;
             var value = target.Range.Materials;
             if (value.EligibilityRetry) return;
             value.EligibilityRetry = true; value.EligibilityRetryOrdinal = target.Ordinal;
             value.EligibilityRetryAt = materialTick + BuildEligibilityRetryDelay;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            if(BlueprintBuildTrace.Active)
+            {
+                int detail=DiagnosticTarget(target,BuildTraceStage.Retry,BuildTraceReason.RetryRequested);
+                BlueprintBuildTrace.Semantic(BuildTraceStage.Retry,BuildTraceReason.RetryRequested,target.Ordinal,unchecked((long)materialTick),unchecked((long)value.EligibilityRetryAt),(long)BuildEligibilityRetryDelay,target:detail);
+            }
+#endif
         }
         internal void UpdateMaterials(ulong tick)
         {
@@ -262,18 +272,27 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ObserveMaterialInventory(ulong tick)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            if(BlueprintBuildTrace.Active)BlueprintBuildTrace.Current.InventoryBegin();
+#endif
             var inventory = player?.inventory; bool readyInventory = inventory != null && inventory.Length >= 50 && materialInventoryEligible != null;
             bool changed = materialInventory == null || materialInventory.Ready != readyInventory || !ReferenceEquals(inventory, materialInventoryArray) || materialInventory.SessionGeneration != generation;
             if (readyInventory) for (int i = 0; i < 50; i++)
             {
                 Item item = inventory[i]; int type = item == null || item.IsAir || item.stack <= 0 ? 0 : item.type;
                 bool eligible = type > 0 && materialInventoryEligible(i, item); long stack = type > 0 ? item.stack : 0;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                if(BlueprintBuildTrace.Active)BlueprintBuildTrace.Current.InventorySlot(type,stack,eligible);
+#endif
                 var old = materialSlots[i]; if (old.ItemType != type || old.Stack != stack || old.Eligible != eligible) changed = true;
                 materialSlots[i] = new BlueprintMaterialInventorySlot(i, type, stack, eligible);
 #if DEBUG
                 MaterialInventoryReads++;
 #endif
             }
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            if(readyInventory && BlueprintBuildTrace.Active)BlueprintBuildTrace.Current.InventoryEnd(tick);
+#endif
             if (!changed) return;
             materialInventoryArray = inventory;
             materialInventory = new BlueprintMaterialInventory(generation, ++materialInventoryRevision, tick, readyInventory,

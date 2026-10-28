@@ -409,6 +409,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Ready parts continue in this same Update, under the one token's
             // world/source and scheduling limits. Waiting for I/O never spins.
             materialBuildSourceBudget = MaterialBuildDemand?.Invoke() == true ? 64 : 0;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Count(BuildTraceReason.BudgetGranted,materialBuildSourceBudget);
+#endif
             int reads = 256, sourceSteps = 256 - materialBuildSourceBudget, schedules = ProjectionMatchScheduleLimit;
             int admissions = ProjectionMatchWorkLimit, admissionAttempts=ProjectionMatchScheduleLimit;
             AdmitProjectionMatchSources(ref admissions,ref admissionAttempts);
@@ -667,6 +670,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (range.Current) { state.Targets -= range.Targets; state.Matches -= range.Matches; state.Unknown -= range.Unknown; } else state.Current++;
                 range.Current = true; range.Reading = false; range.Offset = 0; range.Stamp = range.Version;
                 range.Targets = range.ProgressTargets; range.Matches = range.ProgressMatches; range.Unknown = range.ProgressUnknown;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Hit(BuildTraceStage.Match);
+                BlueprintBuildTrace.Semantic(BuildTraceStage.Match,BuildTraceReason.MatchPublished,range.Targets,range.Matches,range.Unknown,range.Index);
+#endif
                 state.Targets += range.Targets; state.Matches += range.Matches; state.Unknown += range.Unknown;
                 if(range.Demand){range.Demand=false;state.Demands--;}
                 CompleteMaterialSample(read);

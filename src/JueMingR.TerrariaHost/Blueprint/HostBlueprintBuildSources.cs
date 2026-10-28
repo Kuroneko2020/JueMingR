@@ -18,6 +18,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal int NearCursor, FrontierCursor;
             internal BlueprintProjectionBounds NearBounds, FrontierBounds;
             internal bool Frontier;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            internal int DiagnosticResetBefore,DiagnosticResetAfter,DiagnosticResetReasons;
+#endif
         }
         // Reuse the immutable transport, not a second world/target table. Four
         // recent parts share the match owner's retained-byte accounting. The
@@ -87,26 +90,57 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool ContinueMaterialBuildSource(BlueprintProjectionMatchRange range, out BlueprintBuildTarget target)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Forward);
+            BlueprintBuildTrace.Count(BuildTraceReason.ForwardVisit);
+            if(materialBuildSourceBudget<=0)BlueprintBuildTrace.Count(BuildTraceReason.ForwardZeroBudget);
+#endif
             target = null;
             var value = range.Materials;
-            if (value == null || value.BuildExhausted) return false;
+            if (value == null || value.BuildExhausted)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.SourceExhausted);
+#endif
+                return false;
+            }
             var part = FindBuildSource(range);
             if (part == null)
             {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.SourceMissing);
+#endif
                 if (BuildSourceCapacityAvailable()) DemandProjectionMatchRange(range);
                 return false;
             }
             long support;
             if (!range.Group.Ready || !ProjectionMatchReadCurrent(range, range.RawVersion) ||
-                !projectionChanges.TryGetBuildStamp(range.Watch, range.PartIndex, out support)) return false;
+                !projectionChanges.TryGetBuildStamp(range.Watch, range.PartIndex, out support))
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.SourceNotCurrent);
+#endif
+                return false;
+            }
             var catalog = MaterialCatalog;
             while (materialBuildSourceBudget > 0)
             {
                 int index = part.LogicalObjectId > 0 ? 0 : value.CandidateCursor / 2 - part.Offset;
-                if (index < 0) { DemandProjectionMatchRange(range); return false; }
+                if (index < 0) { DemandProjectionMatchRange(range);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                    BlueprintBuildTrace.Count(BuildTraceReason.SourceOffset);
+#endif
+                    return false; }
                 if (index >= part.Window.Cells.Count || part.LogicalObjectId > 0 && value.CandidateCursor > 0)
-                { value.BuildExhausted = part.Complete; return false; }
+                { value.BuildExhausted = part.Complete;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                    BlueprintBuildTrace.Count(BuildTraceReason.SourceEnd);
+#endif
+                    return false; }
                 materialBuildSourceBudget--;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.ForwardStep);
+#endif
 #if DEBUG
                 ProjectionMatchSourceSteps++;
 #endif
@@ -133,6 +167,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 else if ((cell.Layers & CaptureLayer.Wall) != 0) descriptor = catalog.Wall(cell.WallType);
                 bool supplied=descriptor!=null && buildSupply.ContainsKey(descriptor.UseItemType);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                if(descriptor!=null)DiagnosticSupply(descriptor.UseItemType,supplied);
+#endif
                 // Complete objects use their original click/origin, which may
                 // differ from this source member or the footprint's top-left.
                 var next=!supplied?null:CreateMaterialBuildTarget(range.Owner,range,cell,descriptor,obj,body,ordinal,support,catalog.Revision);
@@ -154,6 +191,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 value.CandidateCursor = NextBuildSourceOrdinal(ordinal, cell, part.LogicalObjectId > 0);
             }
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Count(BuildTraceReason.SourceBudgetEmpty);
+#endif
             return false;
         }
         private bool BuildSourceCapacityAvailable()

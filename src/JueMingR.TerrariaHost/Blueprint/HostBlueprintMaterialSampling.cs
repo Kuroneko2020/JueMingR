@@ -224,9 +224,24 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal bool TryGetBuildTarget(out BlueprintBuildTarget target)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.Discover);
+#endif
             target = null;
-            if (!HasSession || MaterialBuildDemand?.Invoke() != true || ProjectionEditing || ProjectionCaptureBlocked) return false;
-            int count = projectionScene.Count; if (count == 0) return false;
+            if (!HasSession || MaterialBuildDemand?.Invoke() != true || ProjectionEditing || ProjectionCaptureBlocked)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.AutomaticGateFalse);
+#endif
+                return false;
+            }
+            int count = projectionScene.Count; if (count == 0)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.SourceMissing);
+#endif
+                return false;
+            }
             if (TryRetainedBuildTarget(out target)) return true;
             while (materialBuildSearchBudget-- > 0)
             {
@@ -237,6 +252,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var range = match.Ranges[match.MaterialBuildCursor]; match.MaterialBuildCursor = (match.MaterialBuildCursor + 1) % match.Ranges.Length;
                 if (TryMaterialBuildTarget(range, out target)) return true;
             }
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            if(materialBuildSearchBudget<=0)BlueprintBuildTrace.Count(BuildTraceReason.SearchBudgetEmpty);
+#endif
             return false;
         }
         private bool TryMaterialBuildTarget(BlueprintProjectionMatchRange range, out BlueprintBuildTarget target)
