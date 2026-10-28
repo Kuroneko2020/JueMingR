@@ -21,13 +21,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal readonly CaptureObject? Object;
             internal readonly BlueprintWorldObject Body;
             internal readonly BlueprintPlacementDescriptor Placement;
+            internal readonly BlueprintBuildOperation Operation;
 
             internal DeferredBuildSeed(BlueprintBuildTarget target)
             {
                 Owner = target.Range.Owner; Range = target.Range; Identity = target.Identity; Mask = target.Mask;
                 X = target.OriginX; Y = target.OriginY; Ordinal = target.Ordinal; Catalog = target.PlacementRevision;
                 Cell = target.Cell; Object = target.Body == null ? (CaptureObject?)null : target.Object;
-                Body = target.Body; Placement = target.Placement;
+                Body = target.Body; Placement = target.Placement; Operation = target.Operation;
             }
         }
         private DeferredBuildSeed deferredBuild;
@@ -50,14 +51,32 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             return current != null && next != null && next.Source.Slot == current.Source.Slot &&
                 ReferenceEquals(next.Source.Item, current.Source.Item) && next.Source.Type == current.Source.Type &&
-                next.DependencySlots == materialSlots;
+                next.DependencySlots == materialSlots && SameBuildContinuationOperation(current.Operation, next.Operation) && SameBuildDependencies(current, next);
+        }
+        private static bool SameBuildContinuationOperation(BlueprintBuildOperation a,BlueprintBuildOperation b)
+        {
+            // Hammer Mode is an observed before-shape, not a borrowed tool
+            // setting. Keep the exact hammer lease so its next real neutral
+            // ItemCheck can restore poundRelease at the same valid aim.
+            if(a?.Kind==BlueprintBuildOperationKind.Hammer && b?.Kind==BlueprintBuildOperationKind.Hammer)return true;
+            return SameBuildOperation(a,b);
+        }
+        private static bool SameBuildOperation(BlueprintBuildOperation a, BlueprintBuildOperation b)
+        { return a == null ? b == null : b != null && a.Kind == b.Kind && a.Consumer == b.Consumer && a.Mode == b.Mode && a.SupplyType == b.SupplyType && a.Cycle == b.Cycle; }
+        private static bool SameBuildDependencies(BuildFlight a, BuildFlight b)
+        {
+            if (a.Dependencies.Length != b.Dependencies.Length) return false;
+            for (int i = 0; i < a.Dependencies.Length; i++)
+                if (a.Dependencies[i].Slot != b.Dependencies[i].Slot || a.Dependencies[i].Type != b.Dependencies[i].Type ||
+                    !ReferenceEquals(a.Dependencies[i].Item, b.Dependencies[i].Item)) return false;
+            return true;
         }
         private static bool SameBuildTarget(BlueprintBuildTarget left, BlueprintBuildTarget right)
         {
             return left != null && right != null && ReferenceEquals(left.Range, right.Range) && left.Identity.Equals(right.Identity) &&
                 ReferenceEquals(left.Mask, right.Mask) && left.OriginX == right.OriginX && left.OriginY == right.OriginY &&
                 left.PlacementRevision == right.PlacementRevision && left.Ordinal == right.Ordinal &&
-                left.Placement.Kind == right.Placement.Kind && left.WorldX == right.WorldX && left.WorldY == right.WorldY;
+                SameBuildOperation(left.Operation, right.Operation) && left.Placement?.Kind == right.Placement?.Kind && left.WorldX == right.WorldX && left.WorldY == right.WorldY;
         }
         private bool IsUnfinishedBuildTarget(BlueprintBuildTarget target)
         { return activeBuild != null && !activeBuild.Checked && !activeBuild.Rejected && SameBuildTarget(activeBuild.Target, target); }
@@ -103,29 +122,27 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (value.PreferredLease != buildTools.Use.Operation)
                 {
                     value.PreferredLease = buildTools.Use.Operation;
-                    value.PreferredCursor = part.LogicalObjectId > 0 ? 0 : (part.Offset + BuildCellLowerBound(cells, bounds.Left, bounds.Top)) * 2;
+                    value.PreferredCursor = BuildMemberOrdinal(part.Offset + BuildCellLowerBound(cells, bounds.Left, bounds.Top));
                 }
                 // The stable ordinal belongs to the range, not the retained
                 // transport window. Moving/support changes never rewind it.
-                if (part.LogicalObjectId == 0 && value.PreferredCursor / 2 < part.Offset)
-                    value.PreferredCursor = (part.Offset + BuildCellLowerBound(cells, bounds.Left, bounds.Top)) * 2;
+                if (BuildMemberIndex(value.PreferredCursor) < part.Offset)
+                    value.PreferredCursor = BuildMemberOrdinal(part.Offset + BuildCellLowerBound(cells, bounds.Left, bounds.Top));
                 int steps = BuildSourceSlice;
                 while (materialBuildSourceBudget > 0 && steps > 0 && allowance > 0)
                 {
-                    int index = part.LogicalObjectId > 0 ? 0 : value.PreferredCursor / 2 - part.Offset;
-                    if (index < 0 || index >= cells.Count || part.LogicalObjectId > 0 && value.PreferredCursor > 0) break;
+                    int index = BuildMemberIndex(value.PreferredCursor) - part.Offset;
+                    if (index < 0 || index >= cells.Count) break;
                     var cell = cells[index];
                     if (part.LogicalObjectId == 0)
                     {
                         if (cell.Y >= bounds.Bottom) break;
                         if (cell.X < bounds.Left || cell.X >= bounds.Right || cell.Y < bounds.Top)
                         {
-                            value.PreferredCursor = (part.Offset + BuildCellLowerBound(cells, bounds.Left,
-                                cell.X >= bounds.Right ? cell.Y + 1 : Math.Max(cell.Y, bounds.Top))) * 2;
+                            value.PreferredCursor = BuildMemberOrdinal(part.Offset + BuildCellLowerBound(cells, bounds.Left,
+                                cell.X >= bounds.Right ? cell.Y + 1 : Math.Max(cell.Y, bounds.Top)));
                             continue;
                         }
-                        if ((value.PreferredCursor & 1) == 0 && (cell.Layers & CaptureLayer.Tile) == 0 && (cell.Layers & CaptureLayer.Wall) != 0)
-                            value.PreferredCursor++;
                     }
                     int ordinal = value.PreferredCursor;
                     value.PreferredCursor = NextBuildSourceOrdinal(ordinal, cell, part.LogicalObjectId > 0);
@@ -165,6 +182,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             var target = CreateMaterialBuildTarget(seed.Owner, range, seed.Cell, seed.Placement, seed.Object, seed.Body,
                 seed.Ordinal, support, seed.Catalog);
+            target.Operation = seed.Operation;
+            if (BuildLane(seed.Ordinal) != BlueprintBuildLane.TileBody)
+            {
+                target.TargetX = seed.X + seed.Cell.X; target.TargetY = seed.Y + seed.Cell.Y;
+                target.Bounds = new BlueprintProjectionBounds(target.TargetX, target.TargetY, 1, 1);
+            }
             target.LocalProof = target.LocalPriority = true;
             var candidate = range.Materials?.Candidate;
             if (SameBuildTarget(candidate, target)) range.Materials.Candidate = target;

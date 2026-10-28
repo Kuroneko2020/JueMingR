@@ -984,7 +984,7 @@ namespace JueMingR.TerrariaHost
                 if (View != null) Shell.AttachView(View);
                 if (Movement != null) { Shell.AttachMovement(Movement); Movement.CanMovementInput = () => Shell.CanMovementInput; Movement.CanTeleportPointer = () => Shell.CanMovementInput && !Shell.OwnsPointer && !Terraria.Main.LocalPlayer.mouseInterface; }
                 Browser?.Attach(Shell, hotkeys);
-                if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanAutomaticProcessingInput;Tools.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Tools.Feedback=ShortFeedback;}
+                if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanAutomaticProcessingInput;Tools.CanInventoryPreparationInterface=()=>Shell.CanInventoryPreparationInput;Tools.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Tools.Feedback=ShortFeedback;}
                 if(Combat!=null){Shell.AttachCombat(Combat);Combat.CanInterface=()=>Shell.CanTargetInput && !Shell.OwnsPointer && Shell.CanAutomaticMouseInterface;}
                 if(CombatObservation!=null)Shell.AttachCombatObservation(CombatObservation);
                 if(Fishing!=null)Shell.AttachFishing(Fishing);

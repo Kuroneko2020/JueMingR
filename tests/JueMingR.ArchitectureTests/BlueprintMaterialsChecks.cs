@@ -9,7 +9,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
-            try { LayersAndBodies(); DisplayOnlyLiquids(); SplitObjectAppearance(); PlacementCanonicalMetadata(); UnknownAndArithmetic(); }
+            try { LayersAndBodies(); DisplayOnlyLiquids(); SplitObjectAppearance(); PlacementCanonicalMetadata(); FiniteRecipeProducerAmbiguity(); UnknownAndArithmetic(); }
             catch (Exception error) { failures.Add("Blueprint materials values: " + error); }
             BlueprintLibraryChecks.MaterialLane(failures);
             BlueprintQualificationChecks.Check(failures);
@@ -22,7 +22,7 @@ namespace JueMingR.ArchitectureTests
             return new BlueprintPlacementCatalog(71, new[] {
                 new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, 1001, 1001, 1, 1, 0), true),
                 new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, 1002, 1002, 1, 14, 0, width:2,height:2), false, rowOffsets:new[]{0,18}),
-                new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, 1009, 1009, 1, 23, 0, requiresSubstrate:true), true) },
+                new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, 59, 59, 1, 23, 0, requiresSubstrate:true), true) },
                 new Dictionary<int, BlueprintPlacementDescriptor> { { 7, new BlueprintPlacementDescriptor(BlueprintPlacementKind.Wall, 1003, 1003, 1, -1, 0, 7) } },
                 new Dictionary<int, int> { { 1, 1004 } }, new Dictionary<int, int> { { 1, 1005 }, { 2, 1006 } }, 1007, 1008);
         }
@@ -160,14 +160,28 @@ namespace JueMingR.ArchitectureTests
             Require(unknown.Snapshot(1).Status == BlueprintMaterialStatus.Unresolved && unknown.Snapshot(1).Total == 0, "unmapped natural content is not an exact zero");
             var seeded = Tile(); seeded.TileType = 23;
             var conversion = new BlueprintMaterialAccumulator(); BlueprintMaterialSteps.StaticCell(seeded, Catalog(), conversion);
-            Require(conversion.Snapshot(2).Status == BlueprintMaterialStatus.Unresolved && conversion.Snapshot(2).Rows.Single().ItemType == 1009,
-                "a known seed does not claim a complete from-air body recipe when the substrate step is unimplemented");
+            var recipeBill=conversion.Snapshot(2);
+            Require(recipeBill.Status == BlueprintMaterialStatus.Exact && recipeBill.Total==2 && recipeBill.Rows.Single(r=>r.ItemType==59).Required==1 &&
+                recipeBill.Rows.Single(r=>r.ItemType==2).Required==1,"known finite from-air recipe counts one actual dirt base and one corruption seed");
+            var basis=Tile();basis.TileType=0;
+            var basePresent=new BlueprintMaterialAccumulator();BlueprintMaterialSteps.RequiredSteps(seeded,new BlueprintWorldMatchSample(true,basis),Catalog(),basePresent);
+            Require(basePresent.Snapshot(2).Status==BlueprintMaterialStatus.Exact && basePresent.Snapshot(2).Rows.Single().ItemType==59 && basePresent.Snapshot(2).Total==1,
+                "existing legal dirt base needs only its actual seed, with no second base or implicit refund");
+            basis.TileType=2;var wrongBase=new BlueprintMaterialAccumulator();BlueprintMaterialSteps.RequiredSteps(seeded,new BlueprintWorldMatchSample(true,basis),Catalog(),wrongBase);
+            Require(wrongBase.Snapshot(2).Status==BlueprintMaterialStatus.Unresolved,"a conflicting body cannot be presented as a legal prepared substrate");
             var present = new BlueprintMaterialAccumulator(); BlueprintMaterialSteps.RequiredSteps(seeded, new BlueprintWorldMatchSample(true, seeded), Catalog(), present);
             Require(present.Snapshot(3).Status == BlueprintMaterialStatus.Exact && present.Snapshot(3).Total == 0,
                 "an already matching seeded body does not need another seed or an unresolved construction step");
             var toolsOnly = Tile(); toolsOnly.HalfBrick = true;
             var tools = new BlueprintMaterialAccumulator(); BlueprintMaterialSteps.RequiredSteps(toolsOnly, new BlueprintWorldMatchSample(true, Tile()), Catalog(), tools);
             Require(tools.Snapshot(1).Status == BlueprintMaterialStatus.Exact && tools.Snapshot(1).Total == 0, "proven hammer-only change is an explained zero");
+            var inactive=Tile();inactive.Inactive=true;var actuation=new BlueprintMaterialAccumulator();
+            BlueprintMaterialSteps.RequiredSteps(inactive,new BlueprintWorldMatchSample(true,Tile()),Catalog(),actuation);
+            Require(actuation.Snapshot(1).Status==BlueprintMaterialStatus.Exact && actuation.Snapshot(1).Rows.Single().ItemType==1008 && actuation.Snapshot(1).Total==1,
+                "inactive conversion without an existing actuator requires one real temporary prerequisite, without assuming its eventual pickup");
+            var existing=Tile();existing.Actuator=true;var reuse=new BlueprintMaterialAccumulator();
+            BlueprintMaterialSteps.RequiredSteps(inactive,new BlueprintWorldMatchSample(true,existing),Catalog(),reuse);
+            Require(reuse.Snapshot(1).Status==BlueprintMaterialStatus.Exact && reuse.Snapshot(1).Total==0,"an existing actuator is reusable presence, never an automatic cleanup entitlement");
             var liquid = new CaptureCell { Layers = CaptureLayer.Liquid, LiquidAmount = 128, LiquidKind = 0 };
             BlueprintMaterialSteps.StaticCell(liquid, Catalog(), tools);
             Require(tools.Snapshot(2).Status == BlueprintMaterialStatus.Exact && tools.Snapshot(2).Total == 0, "display liquid cannot turn an explained tool-only zero into unresolved material");
@@ -187,6 +201,29 @@ namespace JueMingR.ArchitectureTests
                 "each independent scope sees one shared inventory; all merges need before subtracting");
             Require(!one.Snapshot(3, new BlueprintMaterialInventory(1, 3, 4, false, Array.Empty<BlueprintMaterialInventorySlot>())).Rows.Single().InventoryReady,
                 "inventory failure is distinct from a successful zero count");
+        }
+        private static void FiniteRecipeProducerAmbiguity()
+        {
+            var rules=new[]{
+                new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile,62,62,1,2,0,requiresSubstrate:true),true),
+                new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile,213,0,0,2,0,requiresSubstrate:true),true),
+                new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile,5295,0,0,2,0,requiresSubstrate:true),true)};
+            var catalog=new BlueprintPlacementCatalog(74,rules,new Dictionary<int,BlueprintPlacementDescriptor>(),new Dictionary<int,int>(),new Dictionary<int,int>(),530,849);
+            var grass=Tile();grass.TileType=2;
+            Require(catalog.QualifyTile(grass).Resolution==BlueprintPlacementResolutionKind.Ambiguous && catalog.Tile(grass)==null && catalog.Producers(grass).Count==3,
+                "the explicit seed route preserves general seed/regrowth-tool consumption ambiguity and every producer");
+            var plan=catalog.Substrate(grass);
+            Require(plan?.UseItemType==62 && catalog.TileShape(grass)==plan,"only the specified compiled seed route explains this finite recipe's execution and geometry");
+            var total=new BlueprintMaterialAccumulator();BlueprintMaterialSteps.StaticCell(grass,catalog,total);
+            Require(total.Status==BlueprintMaterialStatus.Exact && total.Counts[2]==1 && total.Counts[62]==1 && total.Counts.Count==2,
+                "the conservative finite recipe bill is dirt plus its explicit seed, never an arbitrary free producer");
+            var dirt=grass;dirt.TileType=0;var remaining=new BlueprintMaterialAccumulator();
+            BlueprintMaterialSteps.RequiredSteps(grass,new BlueprintWorldMatchSample(true,dirt),catalog,remaining);
+            Require(remaining.Status==BlueprintMaterialStatus.Exact && remaining.Counts.Count==1 && remaining.Counts[62]==1,
+                "already present legal dirt removes only the base cost from the same specified plan");
+            var unsupported=new BlueprintPlacementCatalog(75,rules,new Dictionary<int,BlueprintPlacementDescriptor>(),new Dictionary<int,int>(),new Dictionary<int,int>(),530,849,
+                declarations:new[]{new BlueprintPlacementDeclaration(BlueprintPlacementKind.Tile,62,2,0,0,BlueprintProducerSource.Direct,false)});
+            Require(unsupported.Substrate(grass)==null,"a failed declaration of this exact seed profile cannot gain an automatic recipe from its target type alone");
         }
     }
 }

@@ -33,6 +33,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal readonly FishingBorrow Fishing;
         private readonly Func<Item,bool> priorProtection;
         internal Func<bool> CanInterface;
+        internal Func<bool> CanInventoryPreparationInterface;
         internal Func<bool> CanMouseInterface;
         internal Func<bool> CanFishingInterface;
         internal Func<bool> OtherUseReady;
@@ -46,6 +47,9 @@ namespace JueMingR.TerrariaHost.Tools
         internal Func<bool> BuildEnabled;
         internal Func<Player,ToolIntent> BuildChoice;
         internal Func<bool> BuildReady;
+        internal Func<Item[],int,bool> BuildPreparationOwns;
+        internal Func<Item,bool> BuildCleanupMaterial;
+        internal Func<Item,bool> BuildPendingMaterial;
         internal Feedback.LocalShortFeedback Feedback;
         private bool report;
         private int roundRobin;
@@ -180,7 +184,8 @@ namespace JueMingR.TerrariaHost.Tools
         {
             var p=Player;
             return p!=null && slot>=0 && slot<50 && item!=null && ReferenceEquals(p.inventory[slot],item) && !item.IsAir &&
-                (!Items.Ownership.IsProtected(slot) || Use.OwnsBuildSource(p.inventory,slot)) && !p.inventoryChestStack[slot] &&
+                (!Items.Ownership.IsProtected(slot) || Use.OwnsBuildSource(p.inventory,slot) || (BuildPreparationOwns?.Invoke(p.inventory,slot)??false)) &&
+                !(BuildCleanupMaterial?.Invoke(item)??false) && !(BuildPendingMaterial?.Invoke(item)??false) && !p.inventoryChestStack[slot] &&
                 !Items.World.ManualMaterials.Contains(item) && !(priorProtection?.Invoke(item)??false) && !Herbs.ProtectSeed(item) && !Fishing.ProtectRod(item);
         }
         internal ToolIntent Choose(Player p)

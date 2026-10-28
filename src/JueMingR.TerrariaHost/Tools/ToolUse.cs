@@ -11,6 +11,8 @@ namespace JueMingR.TerrariaHost.Tools
     internal enum ToolKind { Capture, Harvest, Seed, Mining, Recast, FishingPull, FishingCast, FishingCut, Build }
     internal enum ToolReadiness { Ready, Pending, Yield, Invalid }
     internal enum ToolTargetRejection { Resolution, Consumer }
+    internal enum ToolInputGesture { HeldPress, NeutralRelease, SelectUp, SelectDown }
+    internal enum ToolBuildConsumer { Tiles, Walls, Hammer, Paintbrush, PaintRoller, PaintScraper, ApplyPaint, ApplyCoating, Wiring, GrandDesign, HittingWall, LongMoss }
     internal sealed class ToolIntent
     {
         internal ToolKind Kind;
@@ -39,6 +41,10 @@ namespace JueMingR.TerrariaHost.Tools
         internal Action NativeChecked;
         internal Action NativeBeginning;
         internal Func<Action<bool>> NativePreparing;
+        internal Func<ToolInputGesture> InputGesture;
+        internal Func<ToolBuildConsumer,Item,bool,bool,bool> NativeConsumer;
+        internal Func<ToolBuildConsumer,Action<Exception>> NativeConsumerScope;
+        internal Func<long,bool> AcquireLease;
 #if JMR_BLUEPRINT_DIAGNOSTIC
         internal long BlueprintDiagnosticFlight;
 #endif
@@ -56,6 +62,8 @@ namespace JueMingR.TerrariaHost.Tools
         private bool pulsed,checkedItem,started,cancelled,borrowed,notified,yieldExternal,returnRequested,nativeReady,nativeBaseline,targetRejected;
         private int oldX,oldY,oldTileX,oldTileY,ownX,ownY,ownTileX,ownTileY;
         private bool oldMouse;
+        private bool useMouseBorrowed, ownMouse;
+        private ToolInputGesture nativeGesture;
         private bool cursorBorrowed,oldSmartMouse,oldSmartPad;
         private bool directionBorrowed;
         private int oldDirection,ownDirection;
@@ -126,7 +134,7 @@ namespace JueMingR.TerrariaHost.Tools
                 return false;
             }
             long next=host.Items.Ownership.NewUseToken();
-            if(!host.Items.Ownership.TryBeginUse(host.Runtime.Generation,candidate.Slot,next,candidate.MaterialSlots))
+            if(!(candidate.AcquireLease?.Invoke(next)??host.Items.Ownership.TryBeginUse(host.Runtime.Generation,candidate.Slot,next,candidate.MaterialSlots)))
             {
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 if(candidate.Kind==ToolKind.Build)BlueprintBuildTrace.Count(BuildTraceReason.OwnershipDenied);
@@ -216,6 +224,14 @@ namespace JueMingR.TerrariaHost.Tools
             // vanilla projectile AI observes the temporary non-rod itself.
             if(Intent.SelectionOnly)return;
             if(Intent.Refresh==null && Intent.Readiness==null && (pulsed || checkedItem))return;
+            nativeGesture=Intent.InputGesture?.Invoke()??ToolInputGesture.HeldPress;
+            if(Building && nativeGesture!=ToolInputGesture.HeldPress)
+            {
+                // A neutral/cycle epoch still owns selection and exact aim.
+                // Vanilla, rather than a synthetic release flag, observes the
+                // unpressed use input and advances its own release state.
+                p.controlUseItem=false;pulseFrame=host.Input.Frame;pulsed=true;return;
+            }
             // Held construction can use another original item-time window
             // inside an animation. A non-reusing item still gets a real neutral
             // input step before its next animation; never manufacture release.
@@ -246,15 +262,19 @@ namespace JueMingR.TerrariaHost.Tools
             // baseline or rejection callback. Vanilla alone winds its timers down.
             if(!nativeReady){SuspendInput();return;}
             if(Intent.SelectionOnly)return;
-            nativeBaseline=true;targetRejected=false;
+            nativeGesture=Intent.InputGesture?.Invoke()??ToolInputGesture.HeldPress;
+            nativeBaseline=!Building || nativeGesture==ToolInputGesture.HeldPress;targetRejected=false;
             if(Building)stack=item.stack;
-            Intent.NativeBeginning?.Invoke();
+            if(nativeBaseline)Intent.NativeBeginning?.Invoke();
             // Native movement and StartActualUse must choose their own facing.
             // Only target lookup and an admitted placement borrow direction;
             // aim/cursor still span this native use until the normal cleanup.
             BorrowCursorMode();
             BorrowAim();
-            if(pulsed && (Intent.Refresh!=null || Intent.Readiness!=null || !checkedItem) && (!Building || pulseFrame==host.Input.Frame))Main.mouseLeft=true;
+            if(Building && nativeGesture!=ToolInputGesture.HeldPress)
+            {p.controlUseItem=false;useMouseBorrowed=true;ownMouse=false;Main.mouseLeft=false;}
+            else if(pulsed && (Intent.Refresh!=null || Intent.Readiness!=null || !checkedItem) && (!Building || pulseFrame==host.Input.Frame))
+            {useMouseBorrowed=true;ownMouse=true;Main.mouseLeft=true;}
         }
         internal void BeforeTargetResolution(Player p)
         {
@@ -363,6 +383,24 @@ namespace JueMingR.TerrariaHost.Tools
 #endif
             return allowed;
         }
+        internal bool AllowBuildConsumer(ToolBuildConsumer consumer,Item material=null,bool wall=false,bool applyItemAnimation=true)
+        {
+            if(!Building)return true;
+            // Attached auto-paint runs after the body's natural write has
+            // invalidated its admission proof. The exact native flight still
+            // owns that call and its finite material vector until ItemCheck
+            // returns; it does not authorize another placement.
+            bool attached=!applyItemAnimation || consumer==ToolBuildConsumer.ApplyPaint || consumer==ToolBuildConsumer.ApplyCoating;
+            return (attached?InNativeUse && nativeReady && !cancelled:CurrentBuildConsumerTarget()) &&
+                (Intent.NativeConsumer?.Invoke(consumer,material,wall,applyItemAnimation)??false);
+        }
+        internal Action<Exception> BeginBuildConsumerScope(ToolBuildConsumer consumer)
+        {return Building && InNativeUse && nativeReady && !cancelled ? Intent.NativeConsumerScope?.Invoke(consumer) : null;}
+        internal bool AllowBuildConsumerAt(ToolBuildConsumer consumer,int x,int y,Item material=null,bool wall=false,bool applyItemAnimation=true)
+        {
+            if(Building && applyItemAnimation && ((int)(Intent.Target.X/16)!=x || (int)(Intent.Target.Y/16)!=y))return false;
+            return AllowBuildConsumer(consumer,material,wall,applyItemAnimation);
+        }
         private bool CurrentBuildConsumerTarget()
         {
 #if JMR_BLUEPRINT_DIAGNOSTIC
@@ -458,7 +496,8 @@ namespace JueMingR.TerrariaHost.Tools
             if(!borrowed)return;borrowed=false;
             if(Main.mouseX==ownX)Main.mouseX=oldX;if(Main.mouseY==ownY)Main.mouseY=oldY;
             if(Player.tileTargetX==ownTileX)Player.tileTargetX=oldTileX;if(Player.tileTargetY==ownTileY)Player.tileTargetY=oldTileY;
-            if(!oldMouse && Main.mouseLeft && pulsed)Main.mouseLeft=false;
+            if(useMouseBorrowed && Main.mouseLeft==ownMouse)Main.mouseLeft=oldMouse;
+            useMouseBorrowed=false;
         }
         private void RestoreDirection()
         {

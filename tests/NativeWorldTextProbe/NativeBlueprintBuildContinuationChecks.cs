@@ -380,6 +380,8 @@ namespace NativeWorldTextProbe
                     preparedInAnimation |= continuousPlacements.Count > 0 && p.itemAnimation > 0 && GetOptional(host, "preparedBuild") != null;
                 }
                 continuousWatch = false;
+                Console.WriteLine("BlueprintContinuous actual placements="+continuousPlacements.Count+" stack="+p.inventory[12].stack+" scene="+Scene(host).Length+
+                    " preparedDuringAnimation="+preparedInAnimation+" staleCheckIssued="+staleCheckIssued);
                 Require(continuousPlacements.Count == 4 && p.inventory[12].stack == 2 && Scene(host).Length == 0 && preparedInAnimation && staleCheckIssued,
                     "actual source accounting, early successor preparation, stale callback protection and full-Match retirement all hold for the continuous sequence");
                 var first = continuousPlacements[0]; var second = continuousPlacements[1];

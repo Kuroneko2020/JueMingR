@@ -25,6 +25,8 @@ namespace JueMingR.ArchitectureTests
                 Require(owner.TryBeginUse(1,12,first),"first tool admitted");owner.EndUse(1,first);
                 Require(owner.TryBeginUse(1,13,second),"quick item admitted after tool yields");
                 owner.EndUse(1,first);Require(owner.IsUseSlot(13),"late tool finalizer cannot release quick item");
+                Require(owner.OwnsUse(1,second) && !owner.OwnsUse(1,first) && !owner.OwnsUse(2,second),
+                    "only the exact current session/token can continue retained native preparation after a predecessor yielded");
                 owner.EndUse(1,second);
                 long building=owner.NewUseToken(),later=owner.NewUseToken();
                 Require(owner.TryBeginUse(1,12,building,(1UL<<54)|(1UL<<17)),"building source and exact accessory dependencies share one lease");

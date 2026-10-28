@@ -127,6 +127,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!read.MaterialStampReady || !projectionChanges.IsMaterialCurrent(read.Range.Watch, read.Range.PartIndex, read.MaterialStamp))
             { InvalidateMaterialCrossLayer(read.Range); return; }
             read.Range.MaterialCrossLayers = read.MaterialCrossLayerSeen;
+            // Reuse the completed bounded structural proof, never rescan a
+            // whole furniture footprint for each member's paint/actuation.
+            value.BuildObjectBodies = read.MaterialObjectBodies.Count == 0 ? null : read.MaterialObjectBodies;
+            value.BuildBodyVersion = read.Range.Version; value.BuildBodyStamp = read.MaterialStamp;
             bool keepContribution = value.Current && read.MaterialReuseContribution && read.Range.ProgressUnknown == 0 &&
                 value.Unresolved == (read.Materials.Status != BlueprintMaterialStatus.Exact);
             if (!keepContribution)
@@ -202,7 +206,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             int x = owner.OriginX + cell.X, y = owner.OriginY + cell.Y;
             var bounds = body == null ? new BlueprintProjectionBounds(x, y, 1, 1) : new BlueprintProjectionBounds(body.WorldX, body.WorldY, body.Width, body.Height);
-            if (body?.Family == BlueprintWorldObjectFamily.Door)
+            if (descriptor != null && body?.Family == BlueprintWorldObjectFamily.Door)
             {
                 // The accepted source can be an open 2x3 door, while the
                 // original item places its closed 1x3 body on the same hinge.
@@ -212,7 +216,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 x = checked(body.AnchorX + descriptor.OriginX);
                 y = checked(body.WorldY + descriptor.OriginY);
             }
-            else if (obj.HasValue)
+            else if (descriptor != null && obj.HasValue)
             {
                 x = checked(owner.OriginX + obj.Value.X + descriptor.OriginX);
                 y = checked(owner.OriginY + obj.Value.Y + descriptor.OriginY);

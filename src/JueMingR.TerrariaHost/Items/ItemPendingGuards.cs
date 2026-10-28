@@ -82,18 +82,19 @@ namespace JueMingR.TerrariaHost.Items
         {
             if(host==null || !Active)return false;
             int account=Account(host.World.SessionPlayer,array);
-            return account>=0 && host.Ownership.IsProtected(account,slot) &&
+            return account>=0 && (host.Ownership.IsProtected(account,slot) || account==0 && slot>=0 && slot<array.Length && (host.ConstructionPendingProtected?.Invoke(array[slot])??false)) &&
                 !(host.AllowsOwnedProcessing!=null && host.AllowsOwnedProcessing(array,slot)) &&
                 !(host.AllowsOwnedRecovery!=null && host.AllowsOwnedRecovery(array,slot)) &&
                 !(host.AllowsOwnedTools!=null && host.AllowsOwnedTools(array,slot)) &&
                 !(host.AllowsOwnedCombat!=null && host.AllowsOwnedCombat(array,slot)) &&
+                !(host.AllowsOwnedConstructionMaterial?.Invoke(array,slot)??false) &&
                 !(account==0 && host.Ownership.IsUseSlot(slot) && host.AllowsOwnedUse!=null && host.AllowsOwnedUse(slot));
         }
         private static int Account(Player p,Item[] array)
         {return ReferenceEquals(p.inventory,array)?0:ReferenceEquals(p.bank.item,array)?1:ReferenceEquals(p.bank2.item,array)?2:ReferenceEquals(p.bank3.item,array)?3:ReferenceEquals(p.bank4.item,array)?4:ReferenceEquals(p.armor,array)?5:ReferenceEquals(p.miscEquips,array)?6:-1;}
         private static bool Protected(Item item)
         {
-            if (host == null || !host.Ownership.AnyProtected || item == null || !Active) return false;
+            if (host == null || !host.Ownership.AnyProtected && !(host.HasConstructionPending?.Invoke()??false) || item == null || !Active) return false;
             Item[] inv = host.World.SessionPlayer.inventory;
             for (int i = 0; i < 58; i++) if (ReferenceEquals(item, inv[i]) && Protected(inv, i)) return true;
             Player p=host.World.SessionPlayer;
@@ -114,7 +115,7 @@ namespace JueMingR.TerrariaHost.Items
         private static void Handle(Item[] __0, int __1, int __2, ref bool __3)
         { Remember(__0, __2); if (Protected(__0, __2) || TrashRange(__0, __2)) __3 = false; }
         private static bool ManualSlot(Item[] __0, int __1, int __2)
-        { Remember(__0, __2); return !Protected(__0, __2) && !TrashRange(__0, __2); }
+        { if(ItemMaterialPreparation.Current?.AllowsNativeSlot(__0,__1,__2)==true)return true;Remember(__0, __2); return !Protected(__0, __2) && !TrashRange(__0, __2); }
         private static void NotifyManualMutation(Item[] array, int slot)
         {
             // Explicit physical click intent hands control to the player even
@@ -148,7 +149,7 @@ namespace JueMingR.TerrariaHost.Items
             return __exception;
         }
         private static bool ManualLeftSlot(Item[] __0, int __1, int __2)
-        { if (Main.mouseLeft && Main.mouseLeftRelease) NotifyManualMutation(__0, __2); return ManualSlot(__0, __1, __2); }
+        { if(ItemMaterialPreparation.Current?.AllowsNativeSlot(__0,__1,__2)==true)return true;if (Main.mouseLeft && Main.mouseLeftRelease) NotifyManualMutation(__0, __2); return ManualSlot(__0, __1, __2); }
         private static bool ManualRightSlot(Item[] __0, int __1, int __2)
         { if (Main.mouseRight) NotifyManualMutation(__0, __2); return ManualSlot(__0, __1, __2); }
         private static bool Gamepad(Item[] __0, int __1, int __2, ref string __result)
@@ -163,6 +164,7 @@ namespace JueMingR.TerrariaHost.Items
         { return Active && host.Ownership.DiscardBlocked && slot >= 0 && slot < array.Length && ReferenceEquals(array[slot], host.World.SessionPlayer.trashItem); }
         private static bool OverrideClick(Item[] __0, int __1, int __2, ref bool __result)
         {
+            if(ItemMaterialPreparation.Current?.AllowsNativeSlot(__0,__1,__2)==true)return true;
             if (Main.mouseLeft && Main.mouseLeftRelease) NotifyManualMutation(__0, __2);
             bool blocked = !ManualSlot(__0, __1, __2) || Active &&
                 (Main.cursorOverride == 10 && host.Ownership.SaleBlocked || Main.cursorOverride == 6 && host.Ownership.DiscardBlocked);
@@ -247,7 +249,7 @@ namespace JueMingR.TerrariaHost.Items
         }
         private static bool PlaceTiles(Player __instance)
         {
-            if (!Active || !ReferenceEquals(__instance, host.World.SessionPlayer) || host.Ownership.ProtectedSlots == 0) return true;
+            if (!Active || !ReferenceEquals(__instance, host.World.SessionPlayer) || host.Ownership.ProtectedSlots == 0 && !(host.HasConstructionPending?.Invoke()??false)) return true;
             Item held = __instance.inventory[__instance.selectedItem];
             if (Protected(held) || PendingType(held.tileWand)) return false;
             FlexibleTileWand flexible = held.GetFlexibleTileWand();
@@ -260,7 +262,13 @@ namespace JueMingR.TerrariaHost.Items
             for (int n = 0; n < 58; n++)
             {
                 int i = __1 ? 57 - n : n; Item item = __instance.inventory[i];
-                if (item.type == __0 && item.stack > 0 && !Protected(item)) { if(!(host.AllowsOwnedProcessing?.Invoke(__instance.inventory,i)??false))host.World.ManualMaterials.Add(item); return; }
+                if (item.type == __0 && item.stack > 0 && !Protected(item))
+                {
+                    if(!(host.AllowsOwnedProcessing?.Invoke(__instance.inventory,i)??false) &&
+                        !(host.AllowsOwnedTools?.Invoke(__instance.inventory,i)??false) &&
+                        !(host.AllowsOwnedConstructionMaterial?.Invoke(__instance.inventory,i)??false))host.World.ManualMaterials.Add(item);
+                    return;
+                }
             }
         }
         private static bool Wand(Player __instance, ref bool __result)
@@ -271,11 +279,11 @@ namespace JueMingR.TerrariaHost.Items
         { return !ReferenceEquals(__instance, host?.World.SessionPlayer) || !PendingDependency(__instance, __0); }
         private static bool PendingType(int type)
         {
-            if (!Active || type <= 0 || host.Ownership.ProtectedSlots == 0) return false;
+            if (!Active || type <= 0 || host.Ownership.ProtectedSlots == 0 && !(host.HasConstructionPending?.Invoke()??false)) return false;
             // Match the first original main-inventory consumer, not every stack
             // of this type. A protected later stack does not block an earlier one.
             Item[] inv = host.World.SessionPlayer.inventory;
-            for (int i = 0; i < 58; i++) if (inv[i].type == type && inv[i].stack > 0) return host.Ownership.IsProtected(i);
+            for (int i = 0; i < 58; i++) if (inv[i].type == type && inv[i].stack > 0) return Protected(inv,i);
             return false;
         }
         private static bool WireTool(Item item)
@@ -289,7 +297,7 @@ namespace JueMingR.TerrariaHost.Items
             if (item.shoot == 651 || item.type == 3625)
             {
                 if (!Active) return false;
-                for (int i = 0; i < 58; i++) if (host.Ownership.IsProtected(i) &&
+                for (int i = 0; i < 58; i++) if (Protected(player.inventory,i) &&
                     (player.inventory[i].type == 530 || item.shoot == 651 && player.inventory[i].type == 849)) return true;
                 return false;
             }
@@ -312,6 +320,7 @@ namespace JueMingR.TerrariaHost.Items
                 if (flexible != null && flexible.TryGetPlacementOption(player, Player.FlexibleWandRandomSeed, Player.FlexibleWandCycleOffset, out var option, out Item material) && ReferenceEquals(material, item)) return true;
             }
             if (item.bait <= 0 && item.type != 530 && item.type != 849) return false;
+            if(host.OwnsBuildHeldMaterial?.Invoke(item)==true)return false;
             // One bounded scan on a relevant observation tick, not per slot.
             if (materialTick != host.Tick)
             {

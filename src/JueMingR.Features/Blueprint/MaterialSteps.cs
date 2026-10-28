@@ -55,7 +55,9 @@ namespace JueMingR.Features.Blueprint
             if ((target.Layers & CaptureLayer.Tile) != 0 && target.ObjectId == 0)
             {
                 var qualification = catalog.QualifyTile(target, obj);
-                if (target.UnreliableObject || qualification.Placement?.RequiresObject == true) into.Unresolved("对象尚未完整确认"); else into.Add(qualification);
+                if (target.UnreliableObject || qualification.Placement?.RequiresObject == true) into.Unresolved("对象尚未完整确认");
+                else if (catalog.Substrate(target) is BlueprintPlacementDescriptor substrate) into.Add(substrate);
+                else into.Add(qualification);
             }
             if ((target.Layers & CaptureLayer.Tile) != 0 && target.ObjectId > 0 && catalog.QualifyTile(target, obj).Disposition == BlueprintTargetDisposition.Unresolved)
                 into.Unresolved(catalog.QualifyTile(target, obj).MaterialReason);
@@ -85,7 +87,19 @@ namespace JueMingR.Features.Blueprint
             {
                 var body = objectBody ?? SameBody(target, world, catalog);
                 if (body == BlueprintBodyState.Unknown) { into.Unresolved("本体尚未完整确认"); appearanceTarget.Layers &= ~CaptureLayer.Tile; }
-                else if (target.ObjectId == 0 && body != BlueprintBodyState.Same) into.Add(catalog.QualifyTile(target, obj));
+                else if (target.ObjectId == 0 && body != BlueprintBodyState.Same)
+                {
+                    BlueprintSubstrateRecipe recipe;
+                    var substrate=catalog.Substrate(target);
+                    if(substrate!=null && BlueprintSubstrateRecipe.TryGet(target.TileType,out recipe))
+                    {
+                        if(body==BlueprintBodyState.Missing)into.Add(substrate);
+                        else if((world.Cell.Layers&CaptureLayer.Tile)!=0 && world.Cell.TileType==recipe.BaseTile && !world.Cell.Inactive)
+                            into.Add(recipe.ConversionItem,1);
+                        else into.Unresolved("目标底材存在本体冲突");
+                    }
+                    else into.Add(catalog.QualifyTile(target,obj));
+                }
                 tileSame = body == BlueprintBodyState.Same;
             }
             if ((target.Layers & CaptureLayer.Wall) != 0)
@@ -128,41 +142,15 @@ namespace JueMingR.Features.Blueprint
         private static void Appearance(CaptureCell target, CaptureCell actual, bool tileSame, bool wallSame,
             BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into, bool tileOnly = false, bool foregroundHandledElsewhere = false)
         {
-            bool wallScrape = wallSame && (target.Layers & CaptureLayer.Wall) != 0 &&
-                (target.WallPaint == 0 && actual.WallPaint != 0 || actual.InvisibleWall && !target.InvisibleWall || actual.FullbrightWall && !target.FullbrightWall);
-            bool foreground = (actual.Layers & CaptureLayer.Tile) != 0 && (actual.TilePaint != 0 || actual.InvisibleTile || actual.FullbrightTile);
-            // The native scraper short-circuits Tile paint, Tile coatings,
-            // Wall paint, Wall coatings in that order. Reaching a wall scrape
-            // first clears an existing foreground appearance; restore a saved
-            // foreground only after the wall is finished. An unselected
-            // foreground has no captured restoration contract to infer here.
-            bool restoreForeground = wallScrape && foreground && tileSame && (target.Layers & CaptureLayer.Tile) != 0;
-            if (wallScrape && foreground && (target.Layers & CaptureLayer.Tile) == 0 && !foregroundHandledElsewhere)
-                into.Unresolved("墙面刮除的前景步骤尚未确定");
+            BlueprintConstructionAppearance.AddMaterials(target,actual,tileSame,wallSame,catalog,into,tileOnly,foregroundHandledElsewhere);
             if ((target.Layers & CaptureLayer.Tile) != 0)
             {
-                LayerAppearance(target.TilePaint, target.InvisibleTile, target.FullbrightTile,
-                    tileSame && !restoreForeground ? actual.TilePaint : (byte)0,
-                    tileSame && !restoreForeground && actual.InvisibleTile, tileSame && !restoreForeground && actual.FullbrightTile, catalog, into);
                 // Hammer shape and actuation are reusable tool operations in
                 // locked .8. Their zero direct consumption does not mean Match.
                 if (target.Slope > 4 || target.HalfBrick && target.Slope != 0) into.Unresolved("形状步骤尚未确认");
                 if (target.Inactive != (tileSame && actual.Inactive) && !target.Actuator && !(tileSame && actual.Actuator))
-                    into.Unresolved("此致动状态的临时材料步骤尚未确定");
+                    into.Add(catalog.ActuatorItemType,1);
             }
-            if (!tileOnly && (target.Layers & CaptureLayer.Wall) != 0)
-                LayerAppearance(target.WallPaint, target.InvisibleWall, target.FullbrightWall,
-                    wallSame ? actual.WallPaint : (byte)0, wallSame && actual.InvisibleWall, wallSame && actual.FullbrightWall, catalog, into);
-        }
-        private static void LayerAppearance(byte paint, bool invisible, bool fullbright, byte actualPaint, bool actualInvisible, bool actualFullbright,
-            BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
-        {
-            bool clear = actualInvisible && !invisible || actualFullbright && !fullbright;
-            // A coating clear is reached only after paint was scraped to 0.
-            // Reapplying a retained paint is a real consumable step as well.
-            if (paint > 0 && (paint != actualPaint || clear && actualPaint > 0)) into.Add(catalog.Paint(paint), 1);
-            if (invisible && (clear || !actualInvisible)) into.Add(catalog.Coating(2), 1);
-            if (fullbright && (clear || !actualFullbright)) into.Add(catalog.Coating(1), 1);
         }
         private static int BitCount(byte bits) { int result = 0; bits &= 15; while (bits != 0) { result += bits & 1; bits >>= 1; } return result; }
     }

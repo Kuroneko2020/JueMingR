@@ -19,6 +19,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         private sealed class BuildSource
         {
             internal int Slot, Type, Stack;
+            internal int Maximum;
+            internal bool Primary;
+            internal bool Cleanup;
             internal Item Item;
         }
         private sealed class BuildFlight
@@ -31,6 +34,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal int Direction;
             internal long Token, Generation;
             internal bool Checked, Rejected, Started, Chosen, Entered;
+            internal BlueprintBuildOperation Operation { get { return Target.Operation; } }
+            internal ToolInputGesture InputGesture;
+            internal int AccessoryMaximum;
             internal CaptureCell[,] TorchPreparation;
             internal long TorchPreparationGeneration;
         }
@@ -46,6 +52,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             internal int Left, Top, Right, Bottom;
             internal BlueprintPlacementKind Kind;
+            internal ushort Layers;
         }
         private HostTools buildTools;
         private BuildFlight preparedBuild, activeBuild;
@@ -76,6 +83,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             tools.BuildChoice = ChooseAutomaticBuild;
             tools.BuildReady = () => preparedBuild != null && CanBuildAutomatically(tools.Player);
             MaterialBuildDemand = () => AutoBuildEnabled && HasSession;
+            InitializeBuildSupply();
+            InitializeWiringBuild();
+            tools.Items.HasConstructionPending=()=>wiringReply!=null;
+            tools.Items.ConstructionPendingProtected=WiringPendingMaterial;
+            tools.Items.AllowsOwnedConstructionMaterial=AllowsWiringReplyMaterial;
+            tools.BuildPendingMaterial=WiringPendingMaterial;
         }
         private bool CanRetainBuildIntent(Player p, bool forPreparation)
         {
@@ -95,6 +108,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         { return ReferenceEquals(p, player) && buildTools?.Use.Building == true && buildTools.Use.ActionValid; }
         private void AdvanceAutomaticBuild()
         {
+            // Receipt endpoints own cleanup after admission. Once settled or
+            // unknown, retain no old projection transport through its hint.
+            if(buildMaterialPreparation?.HasWork!=true || buildMaterialPreparation.Unknown || buildMaterialPreparation.Returning)buildSupplyTarget=null;
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.Advance);
 #endif
@@ -116,6 +132,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Pick and each native consumer still validate current permission,
             // source and geometry before this prepared work can own any input.
             if (!buildTools.Input.CanRunAutomaticActions) return;
+            if(ContinueBuildSupply(p))return;
             // Preparation has no input/selection ownership. A previous native
             // body's animation must not hide the next legal placement window.
             if (preparedBuild != null && BuildFlightCurrent(preparedBuild, false))
@@ -167,7 +184,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                 return false;
             }
-            if (!BasicPlacement(target.Placement))
+            if (target.Operation == null && !BasicPlacement(target.Placement))
             {
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.Unsupported);
@@ -189,6 +206,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return false;
             }
             if (!BuildRetryReady(target)) return false;
+            if (target.Operation != null) return TryPrepareConstructionBuild(target, p, out result);
             if (target.Body != null && TileID.Sets.IsAContainer[target.Placement.TileType] && buildContainer != null)
             { WaitForBuild(target, BlueprintBuildWait.Container);
 #if JMR_BLUEPRINT_DIAGNOSTIC
@@ -240,7 +258,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.Dependencies);
 #endif
                 return false; }
-            result = new BuildFlight { Target = target, Player = p, Source = SnapshotSource(slot, item), Dependencies = dependencies, DependencySlots = slots, Direction = direction,
+            int accessoryMaximum = target.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : Math.Max(1, target.Body?.MemberCount ?? 1);
+            foreach (var dependency in dependencies) dependency.Maximum = accessoryMaximum;
+            result = new BuildFlight { Target = target, Player = p, Source = SnapshotSource(slot, item), Dependencies = dependencies, DependencySlots = slots, Direction = direction, AccessoryMaximum = accessoryMaximum,
                 Generation = ++buildFlightGeneration };
 #if JMR_BLUEPRINT_DIAGNOSTIC
             DiagnosticFlight(result,BuildTraceStage.Prepare,BuildTraceReason.Prepared);
@@ -265,7 +285,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 var item = p.inventory[i];
                 if (item == null || item.IsAir || !(paint && item.PaintOrCoating || actuator && item.type == ItemID.Actuator)) continue;
-                if (buildTools.Items.Ownership.IsProtected(i)) continue; // The original guarded selector also excludes it.
+                if (buildTools.Items.Ownership.IsProtected(i) && !(buildMaterialPreparation?.OwnsEndpoint(p.inventory,i)??false)) continue;
+                if(buildMaterialPreparation?.IsDisplaced(item)==true)continue;
                 if (p.inventoryChestStack[i] || buildTools.Items.World.ManualMaterials.Contains(item) || buildTools.ProtectedAfterYield(item))
                 { waiting = 1UL << i; return false; }
                 sources.Add(SnapshotSource(i, item)); slots |= 1UL << i;
@@ -414,7 +435,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             preparedBuild = null;
             var intent = new ToolIntent {
                 Kind = ToolKind.Build, Slot = next.Source.Slot, PreciseTarget = true, Target = new Vector2(next.Target.WorldX * 16 + 8, next.Target.WorldY * 16 + 8),
-                PlayerDirection = next.Direction, MaterialSlots = next.DependencySlots, MaximumConsumption = next.Target.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1,
+                PlayerDirection = next.Direction, MaterialSlots = next.DependencySlots, MaximumConsumption = BuildHeldMaximum(next),
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 BlueprintDiagnosticFlight=next.Generation,
 #endif
@@ -435,6 +456,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 },
                 NativeBeginning = () => BeginAutomaticBuildCheck(activeBuild),
                 NativePreparing = BeginNativeBuildPreparation,
+                AcquireLease = token => AcquirePreparedBuildLease(next,token),
+                InputGesture = () => activeBuild?.InputGesture ?? next.InputGesture,
+                NativeConsumer = (consumer, material, wall, animation) => NativeConstructionConsumer(activeBuild, consumer, material, wall, animation),
+                NativeConsumerScope = consumer => BeginConstructionConsumer(activeBuild, consumer),
                 NativePlacement = wall => NativeBuildConsumer(activeBuild, wall),
                 NativeTileChoice = (objectType, placement, type) => NativeBuildChoice(activeBuild, objectType, placement, type),
                 OwnsMaterial = (array, slot) => activeBuild != null && OwnsBuildDependency(activeBuild, array, slot),
@@ -448,6 +473,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             intent.TargetRejected = reason => RejectAutomaticBuildTarget(activeBuild,reason);
             return intent;
         }
+        private static int BuildHeldMaximum(BuildFlight flight)
+        { return flight.Operation?.HeldMaximum ?? (flight.Target.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1); }
         private void BeginAutomaticBuildCheck(BuildFlight flight)
         {
 #if JMR_BLUEPRINT_DIAGNOSTIC
@@ -469,21 +496,35 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             var current = activeBuild;
             if (current == null || current.Token != buildTools.Use.Operation || !CanBuildAutomatically(p) || !BuildLeaseCurrent(current)) return ToolReadiness.Invalid;
-            if (!current.Checked && !current.Rejected) return BuildFlightCurrent(current, true) ? ToolReadiness.Ready : ToolReadiness.Invalid;
+            if (!current.Checked && !current.Rejected)
+            {
+                if (!BuildFlightCurrent(current, true)) return ToolReadiness.Invalid;
+                if (WiringOperation(current.Operation)) return WiringBuildReadiness(current);
+                if (current.Operation?.NativePlacement?.Producer?.Kind == BlueprintSpecialProducerKind.Flexible) return SpecialBuildReadiness(current);
+                return ToolReadiness.Ready;
+            }
             var next = preparedBuild;
-            if (next == null) return BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield;
-            if (!SameBuildSource(current, next, intent.MaterialSlots)) return ToolReadiness.Yield;
+            if (next == null || !SameBuildSource(current, next, intent.MaterialSlots))
+            {
+                if (current.Operation?.NativePlacement?.Producer?.Kind == BlueprintSpecialProducerKind.Flexible)
+                {
+                    var cleanup = SpecialBuildReadiness(current);
+                    if (cleanup != ToolReadiness.Yield) return cleanup;
+                }
+                return next == null && BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield;
+            }
             if (!BuildFlightCurrent(next, false)) { preparedBuild = null; return BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield; }
             // One native ItemCheck has fully returned before this handoff.
             // The lease stays, but target, baselines and cleanup responsibility
             // belong to the new flight. Original selection/timers stay intact.
             preparedBuild = null; next.Token = current.Token; activeBuild = next; ServiceDeferredBuild(next.Target);
+            ConfigurePreparedBuildBudgets(next);
 #if JMR_BLUEPRINT_DIAGNOSTIC
             intent.BlueprintDiagnosticFlight=next.Generation;
 #endif
             intent.Target = new Vector2(next.Target.WorldX * 16 + 8, next.Target.WorldY * 16 + 8);
             intent.PlayerDirection = next.Direction;
-            intent.MaximumConsumption = next.Target.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1;
+            intent.MaximumConsumption = BuildHeldMaximum(next);
             return ToolReadiness.Ready;
         }
         private bool BuildLeaseCurrent(BuildFlight flight)
@@ -493,7 +534,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(source.Slot<0 || source.Slot>=50 || !ReferenceEquals(p.inventory[source.Slot],source.Item) || source.Item.type!=source.Type || source.Item.stack<=0 ||
                 !buildTools.BuildInventoryEligible(source.Slot,source.Item))return false;
             foreach(var dependency in flight.Dependencies)
-                if(!ReferenceEquals(p.inventory[dependency.Slot],dependency.Item) || dependency.Item.type!=dependency.Type || dependency.Item.stack<=0 ||
+                if(!BuildDependencyIdentity(flight,dependency,flight.Checked) || !flight.Checked && dependency.Primary && dependency.Item.stack<=0 ||
                     p.inventoryChestStack[dependency.Slot] || buildTools.Items.World.ManualMaterials.Contains(dependency.Item) || buildTools.ProtectedAfterYield(dependency.Item))return false;
             // A checked target may already have naturally retired. Its old
             // world proof grants no new input; only the exact live source can wait.
@@ -535,17 +576,19 @@ namespace JueMingR.TerrariaHost.Blueprint
             { WaitForBuild(flight.Target, BlueprintBuildWait.Material, retryPending: true); return false; }
             if (mayOwn && activeBuild != null && (!ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation)) return false;
             foreach (var dependency in flight.Dependencies)
-                if (!ReferenceEquals(p.inventory[dependency.Slot], dependency.Item) || dependency.Item.type != dependency.Type || dependency.Item.stack <= 0 ||
+                if (!BuildDependencyIdentity(flight,dependency,false) || dependency.Primary && dependency.Item.stack <= 0 ||
                     p.inventoryChestStack[dependency.Slot] || buildTools.Items.World.ManualMaterials.Contains(dependency.Item) || buildTools.ProtectedAfterYield(dependency.Item) ||
-                    buildTools.Items.Ownership.IsProtected(dependency.Slot) && !buildTools.Use.OwnsBuildSource(p.inventory, dependency.Slot))
+                    buildTools.Items.Ownership.IsProtected(dependency.Slot) && !buildTools.Use.OwnsBuildSource(p.inventory, dependency.Slot) &&
+                    !(buildMaterialPreparation?.OwnsEndpoint(p.inventory,dependency.Slot)??false))
                 { WaitForBuild(flight.Target, BlueprintBuildWait.Dependencies, 1UL << dependency.Slot, true); return false; }
-            if (p.pulley && p.pulleyDir == 2 && flight.Direction != p.direction ||
+            if (p.pulley && p.pulleyDir == 2 && flight.Direction != p.direction || flight.Operation?.Consumer!=ToolBuildConsumer.GrandDesign &&
                 !p.IsInTileInteractionRange(flight.Target.WorldX, flight.Target.WorldY, TileReachCheckSettings.Simple, source.Item.tileBoost + p.blockRange))
             { WaitForBuild(flight.Target, BlueprintBuildWait.Player, retryPending: true); return false; }
-            return NativeBuildGeometry(flight.Target, p, source.Item, flight.Direction);
+            return flight.Operation == null ? NativeBuildGeometry(flight.Target, p, source.Item, flight.Direction) : ConstructionBuildCurrent(flight);
         }
         private bool NativeBuildConsumer(BuildFlight flight, bool wall)
         {
+            if (flight?.Operation != null) return NativeConstructionConsumer(flight, wall ? ToolBuildConsumer.Walls : ToolBuildConsumer.Tiles, null, wall, true);
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.Consumer);
             DiagnosticTarget(flight?.Target,BuildTraceStage.Consumer,BuildTraceReason.None,flight);
@@ -568,7 +611,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintBuildTrace.Hit(BuildTraceStage.Choice);
             if(objectType)DiagnosticTarget(flight?.Target,BuildTraceStage.Choice,BuildTraceReason.None,flight,placement);
 #endif
-            if (!NativeBuildConsumer(flight, false) || type != flight.Target.Placement.TileType) return false;
+            if (!NativeBuildConsumer(flight, false)) return false;
+            if (flight.Operation != null) return NativeSpecialBuildChoice(flight, objectType, placement, type);
+            if (type != flight.Target.Placement.TileType) return false;
             if (flight.Target.Placement.Platform) return !objectType && BuildPlatformForm(flight.Target, type);
             if (flight.Target.Body == null) return !objectType;
             if (!objectType) return NativeLegacyBuildChoice(flight, type);
@@ -632,12 +677,25 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private static bool BuildConsumptionValid(BuildFlight flight)
         {
+            int paints=0,actuators=0;
             foreach (var source in flight.Dependencies)
             {
                 Item current = flight.Player.inventory[source.Slot];
-                if (!ReferenceEquals(current, source.Item) || current.stack > source.Stack || current.stack < 0 || !current.IsAir && current.type != source.Type) return false;
+                if (!BuildDependencyIdentity(flight,source,true)) return false;
+                int remaining=current.IsAir?0:current.stack,delta=source.Stack-remaining;
+                if(delta<0 || delta>source.Maximum)return false;
+                if(!source.Primary){if(source.Item.PaintOrCoating || source.Type!=Terraria.ID.ItemID.Actuator)paints+=delta;else actuators+=delta;}
             }
-            return true;
+            return paints<=flight.AccessoryMaximum && actuators<=flight.AccessoryMaximum;
+        }
+        private static bool BuildDependencyIdentity(BuildFlight flight,BuildSource source,bool allowSpent)
+        {
+            var current=flight.Player.inventory[source.Slot];
+            if(current==null)return false;
+            if(ReferenceEquals(current,source.Item))return current.type==source.Type || allowSpent && current.IsAir;
+            // Only the locked tileWand tail replaces its exhausted primary
+            // with a new Air Item. A non-Air replacement is never a spend.
+            return allowSpent && source.Primary && current.IsAir && flight.Operation?.NativePlacement?.Producer?.Kind==BlueprintSpecialProducerKind.TileWand;
         }
         private void CheckedAutomaticBuild(BuildFlight flight)
         {
@@ -645,17 +703,19 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintBuildTrace.Hit(BuildTraceStage.Checked);
 #endif
             if (flight == null || !ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation || flight.Checked || flight.Rejected || !flight.Entered) return;
+            if (WiringOperation(flight.Operation) && WiringBuildPending(flight)) return;
             flight.Checked = true;
             flight.TorchPreparation = null;
 #if DEBUG
             BuildNativeChecks++;
 #endif
-            bool spent = flight.Source.Item.stack < flight.Source.Stack;
-            foreach (var source in flight.Dependencies) spent |= source.Item.stack < source.Stack;
+            bool spent = BuildSourceSpent(flight,flight.Source);
+            foreach (var source in flight.Dependencies) spent |= BuildSourceSpent(flight,source);
 #if JMR_BLUEPRINT_DIAGNOSTIC
             DiagnosticFlight(flight,BuildTraceStage.Checked,spent?BuildTraceReason.ConsumptionObserved:BuildTraceReason.NoConsumption);
 #endif
-            if (spent && BuildEmpty(flight.Target.Bounds.Left, flight.Target.Bounds.Top, flight.Target.Placement.Kind == BlueprintPlacementKind.Wall))
+            bool applied = flight.Operation == null ? !BuildEmpty(flight.Target.Bounds.Left,flight.Target.Bounds.Top,flight.Target.Placement.Kind==BlueprintPlacementKind.Wall) : ConstructionBuildApplied(flight);
+            if (spent && !applied)
             {
                 // Consumption without an observable body is unknown, never a
                 // retry key renewed by the decreasing stack. Protect the real
@@ -666,7 +726,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // prerequisite may change outside our local Tile dependencies.
             // Unknown/spent outcomes retain their existing protection and
             // can never be renewed by this bounded eligibility retry.
-            if (!spent) RequestBuildEligibilityRetry(flight.Target);
+            if (!spent && !applied) RequestBuildEligibilityRetry(flight.Target);
             else RememberBuildFrontier(flight.Target);
             NotifyBuildAttempt(flight.Target);
         }
@@ -678,10 +738,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             // A later native failure can make an earlier no-spend check
             // unknown. Revoke only this target's retry permission; another
             // rejected sibling in the same range keeps its own recovery.
-            var materials = flight.Target.Range.Materials;
+            var materials = flight.Target.Range?.Materials;
             if (materials != null && materials.EligibilityRetryOrdinal == flight.Target.Ordinal) materials.EligibilityRetry = false;
             if (!IsUnconfirmedTarget(flight.Target)) buildUnconfirmed.Add(new BuildUnconfirmed { Left = flight.Target.Bounds.Left, Top = flight.Target.Bounds.Top,
-                Right = flight.Target.Bounds.Right, Bottom = flight.Target.Bounds.Bottom, Kind = flight.Target.Placement.Kind });
+                Right = flight.Target.Bounds.Right, Bottom = flight.Target.Bounds.Bottom, Kind = flight.Target.Placement?.Kind ?? BlueprintPlacementKind.Tile, Layers = BuildTargetLayers(flight.Target) });
             buildTools.HoldUnknown(flight.DependencySlots | (1UL << flight.Source.Slot));
             projectionFeedback = "一次施工结果未确认，相关材料已受保护；其他可建部分继续。";
 #if DEBUG
@@ -694,7 +754,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // disposable projection or a newly selected same-type source.
             // Keep only finite scalar bounds, never retired source/range DTOs.
             foreach (var failure in buildUnconfirmed)
-                if (failure.Kind == target.Placement.Kind && failure.Left < target.Bounds.Right && target.Bounds.Left < failure.Right &&
+                if ((failure.Layers & BuildTargetLayers(target)) != 0 && failure.Left < target.Bounds.Right && target.Bounds.Left < failure.Right &&
                     failure.Top < target.Bounds.Bottom && target.Bounds.Top < failure.Bottom) return true;
             return false;
         }
@@ -705,12 +765,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             DiagnosticFlight(flight,BuildTraceStage.End,unknown?BuildTraceReason.UnknownOutcome:BuildTraceReason.Ended);
 #endif
             if (flight == null || !ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation) return;
+            EndWiringBuildFlight(flight,unknown);
+            ReturnPreparedBuildLease(flight);
             if (unknown) HoldUnconfirmedBuild(flight);
             else if (!flight.Checked && !flight.Rejected) WaitForBuild(flight.Target, BlueprintBuildWait.Player, retryPending: true);
             activeBuild = null; NotifyBuildAttempt(flight.Target);
         }
         internal void CancelAutomaticBuild()
-        { preparedBuild = null; deferredBuild = null; if (buildTools?.Use.Building == true) buildTools.Use.Cancel(); }
+        { preparedBuild = null; deferredBuild = null; StopWiringBuild(false); buildMaterialPreparation?.RequestReturn(); if (buildTools?.Use.Building == true) buildTools.Use.Cancel(); }
         internal void AutomaticBuildChanged()
         { preparedBuild = null; deferredBuild = null; if (AutoBuildEnabled) buildActivationRevision++; else RemoveBuildSources(); MaterialBuildEligibilityRevision++; ObserveMaterialDemand(); }
         private void ClearAutomaticBuild()
@@ -721,7 +783,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // until its decoder reply or the actual session boundary below.
             MaterialBuildEligibilityRevision++; ClearBuildProgressSignals(); RemoveBuildSources();
         }
-        private void ClearBuildSession() { buildContainer = null; }
+        private void ClearBuildSession() { buildContainer = null; StopWiringBuild(true); buildMaterialPreparation?.ClearSession(); buildSupplyTarget=null; }
         private void StartBuildUnknownSession()
         {
             // Match Tools' real identity boundary. A menu/UI interruption or
@@ -746,6 +808,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool BuildBlocksRetirement(BlueprintProjectionPlacement item)
         {
+            if (WiringBuildBlocksRetirement(item.Identity)) return true;
+            if(buildMaterialPreparation?.Blocks(item.Identity)==true)return true;
             if (activeBuild != null && activeBuild.Target.Identity.Equals(item.Identity) && buildTools?.Use.InNativeUse == true) return true;
             var receipt = buildContainer;
             if (receipt == null || receipt.Resolved) return false;

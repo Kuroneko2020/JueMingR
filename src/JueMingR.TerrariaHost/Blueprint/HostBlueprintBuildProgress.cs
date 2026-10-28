@@ -8,7 +8,7 @@ namespace JueMingR.TerrariaHost.Blueprint
     [Flags]
     internal enum BlueprintBuildWait : byte
     {
-        None = 0, Material = 1, Player = 2, Dependencies = 4, Container = 8, Dynamic = 16
+        None = 0, Material = 1, Player = 2, Dependencies = 4, Container = 8, Dynamic = 16, Capability = 32
     }
 
     internal sealed partial class HostBlueprint
@@ -126,6 +126,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if (target?.Range.Materials == null || !IsBuildTargetCurrent(target) || IsUnconfirmedTarget(target)) return;
             var value = target.Range.Materials;
+            if(reason==BlueprintBuildWait.Material && target.Operation!=null)reason|=BlueprintBuildWait.Capability;
             value.BuildWaits |= reason; value.BuildDependencyWaitSlots |= dependencySlots;
             // A prepared source may move to another qualified slot without a
             // type ever becoming unavailable. Its invalid flight gets one local
@@ -147,14 +148,14 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool BuildDependencyReleased(BlueprintRangeMaterials value)
         {
             var p = player; if (p == null || buildTools == null) return false;
-            bool paint = p.autoPaint && p.builderAccStatus[3] == 0, actuator = p.autoActuator && p.builderAccStatus[2] == 0;
             ulong waiting = value.BuildDependencyWaitSlots;
             for (int slot = 0; slot < 58 && waiting != 0; slot++)
             {
                 ulong bit = 1UL << slot; if ((waiting & bit) == 0) continue; waiting &= ~bit;
                 var item = p.inventory[slot];
-                if (item == null || item.IsAir || !(paint && item.PaintOrCoating || actuator && item.type == Terraria.ID.ItemID.Actuator) ||
-                    !p.inventoryChestStack[slot] && !buildTools.Items.World.ManualMaterials.Contains(item) && !buildTools.ProtectedAfterYield(item))
+                if (item == null || item.IsAir ||
+                    !p.inventoryChestStack[slot] && !buildTools.Items.World.ManualMaterials.Contains(item) && !buildTools.ProtectedAfterYield(item) &&
+                    !buildTools.Items.Ownership.IsProtected(slot) && !WiringPendingMaterial(item))
                     return true;
             }
             return false;
@@ -180,6 +181,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if ((value.BuildWaits & BlueprintBuildWait.Material) != 0 && value.CatalogRevision == materialPlacementIdentity && value.Desired != null)
                 foreach (var supply in buildSupply)
                     if (supply.Value > value.BuildSupplyRevision && value.Desired.ContainsKey(supply.Key)) { value.BuildRetryPending = true; break; }
+            if((value.BuildWaits&BlueprintBuildWait.Capability)!=0 && value.BuildSupplyRevision!=buildSupplyRevision)value.BuildRetryPending=true;
             if ((value.BuildWaits & BlueprintBuildWait.Player) != 0 && value.BuildPlayerRevision != MaterialBuildEligibilityRevision ||
                 (value.BuildWaits & BlueprintBuildWait.Container) != 0 && value.BuildContainerRevision != buildContainerRevision ||
                 (value.BuildWaits & BlueprintBuildWait.Dependencies) != 0 && BuildDependencyReleased(value)) value.BuildRetryPending = true;

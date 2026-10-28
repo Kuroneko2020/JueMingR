@@ -37,10 +37,13 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintWorldChangeChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs'=@('native-BlueprintCpu','native-BlueprintInput')
-        'tests/NativeWorldTextProbe/NativeBlueprintBuildChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBuildChecks.cs'=@('native-BlueprintCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintConstructionChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintPreparationCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintConstructionAppearanceChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintConstructionWiringSpecialChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintLiquidChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildProgressChecks.cs'=@('native-BlueprintCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintBuildContinuationChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBuildContinuationChecks.cs'=@('native-BlueprintCpu','native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildThroughputChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildNativeTargetChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPersistenceChecks.cs'=@('native-BlueprintCpu')
@@ -415,6 +418,11 @@ function Get-WorkloadNativeScopes {
         'InputBoundary'=@('input-boundary','shared-host');
         'ToolsCpu'=@('tools-host'); 'ToolsCadence'=@('tools-host'); 'ToolsExecutionCpu'=@('tools-host'); 'ToolsWorkload'=@('tools-host');
         'BlueprintCpu'=@('blueprint-host','tools-host');
+        'BlueprintConstructionCpu'=@('blueprint-host','tools-host');
+        'BlueprintPreparationCpu'=@('blueprint-host','tools-host');
+        'BlueprintAppearanceCpu'=@('blueprint-host','tools-host');
+        'BlueprintWiringCpu'=@('blueprint-host','tools-host');
+        'BlueprintSpecialCpu'=@('blueprint-host','tools-host');
         'BlueprintInput'=@('blueprint-host','shared-host','storage-host','notes-host','preferences','hotkeys');
         'PageCompositionCpu'=@('pages-host'); 'FishingCpu'=@('fishing-host'); 'BackgroundCpu'=@('fishing-host','shared-host'); 'F5AutomationCpu'=@('fishing-host','shared-host');
         'AboutCpu'=@('about-host'); 'BrowserCpu'=@('browser-host'); 'QuickItemsCpu'=@('quick-items-host'); 'CoinDepositCpu'=@('coin-deposit-host');

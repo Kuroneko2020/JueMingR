@@ -100,6 +100,10 @@ namespace JueMingR.Platform.Items
         }
         public bool IsUseSlot(int slot) { return slot >= 0 && slot < 50 && (useSlots & (1UL << slot)) != 0; }
         public bool HasUse {get{return useToken!=0;}}
+        // A retained native preparation may continue only its current lease;
+        // protected slots alone cannot distinguish a later use owner.
+        public bool OwnsUse(long generation,long token)
+        {return generation>0 && generation==Session && token>0 && token==useToken;}
         // Native cursor use has no inventory source range. Its input lease
         // excludes a concurrent borrowed use without pretending slot 58 is a
         // protected inventory slot or relaxing existing callers' slot contract.

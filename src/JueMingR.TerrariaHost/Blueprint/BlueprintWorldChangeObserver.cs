@@ -291,6 +291,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal MutationBatch(BlueprintWorldChangeObserver owner) { this.owner = owner; storeRoute = RecordStoreRoute; }
             internal void TouchStore(int x, int y, int kind, int oldValue, int newValue, ushort changedLayers, bool seedFrameOnly = false)
             {
+                HostBlueprint.ObserveConstructionWorldStore(x,y,kind,oldValue,newValue);
                 var current = owner; if (current == null) return;
                 var bounds = new BlueprintProjectionBounds(x, y, 1, 1);
                 lock (current.gate)

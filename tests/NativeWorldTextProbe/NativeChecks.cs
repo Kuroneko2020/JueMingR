@@ -14,6 +14,12 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="BlueprintConstructionCpu" || scope=="BlueprintPreparationCpu" || scope=="BlueprintAppearanceCpu" || scope=="BlueprintWiringCpu" || scope=="BlueprintSpecialCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                string family=scope=="BlueprintAppearanceCpu"?"Appearance":scope=="BlueprintWiringCpu"?"Wiring":scope=="BlueprintSpecialCpu"?"Special":null;
+                NativeQuickItemChecks.Run(context=>NativeBlueprintBuildChecks.RunConstruction(context,scope=="BlueprintPreparationCpu",family),processing:true,shortFeedback:true);return 0;
+            }
             if (scope == "BlueprintMaterialsAutomationVisual")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
