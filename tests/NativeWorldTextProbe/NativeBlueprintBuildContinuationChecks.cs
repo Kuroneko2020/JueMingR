@@ -374,14 +374,42 @@ namespace NativeWorldTextProbe
                 Place(context, host, input, Asset(host, Enumerable.Range(0, 4).Select(x => new CaptureCell { X = x, Layers = CaptureLayer.Tile, TileType = TileID.Dirt }).ToArray()), 44, 42);
                 continuousPlacements.Clear(); continuousAutomatic = true; staleCheckIssued = false; continuousWatch = true;
                 SetAutomatic(host, input, true); bool preparedInAnimation = false;
-                for (continuousFrame = 0; continuousFrame < 200 && (Scene(host).Length > 0 || (bool)Get(continuousUse, "Active")); continuousFrame++)
+                AwaitFirstContinuousPlacement(context,input);
+                for (int opportunities = 0; opportunities < 200 && (Scene(host).Length > 0 || (bool)Get(continuousUse, "Active")); opportunities++)
                 {
+                    continuousFrame++;
                     Step(context, input);
                     preparedInAnimation |= continuousPlacements.Count > 0 && p.itemAnimation > 0 && GetOptional(host, "preparedBuild") != null;
                 }
                 continuousWatch = false;
                 Console.WriteLine("BlueprintContinuous actual placements="+continuousPlacements.Count+" stack="+p.inventory[12].stack+" scene="+Scene(host).Length+
-                    " preparedDuringAnimation="+preparedInAnimation+" staleCheckIssued="+staleCheckIssued);
+                    " preparedDuringAnimation="+preparedInAnimation+" staleCheckIssued="+staleCheckIssued+
+                    " startupFrames="+continuousPlacements[0].Frame+" events="+string.Join(",",continuousPlacements.Take(4).Select(v=>v.Frame+":"+v.X)));
+                if(continuousPlacements.Count!=4 || p.inventory[12].stack!=2 || Scene(host).Length!=0)
+                {
+                    Console.Error.WriteLine("BlueprintContinuous events="+string.Join(",",continuousPlacements.Take(4).Select(v=>v.Frame+":"+v.X+"@"+v.Animation+"#"+v.Token+"/"+v.Flight+"/"+v.Native))+
+                        " tick="+Get(host,"materialTick")+" player="+p.position+" anim/time="+p.itemAnimation+"/"+p.itemTime);
+                    for(int x=44;x<=47;x++)Console.Error.WriteLine("BlueprintContinuous cell="+x+" active/type="+Main.tile[x,42].active()+"/"+Main.tile[x,42].type+
+                        " reach="+p.IsInTileInteractionRange(x,42,TileReachCheckSettings.Simple,p.inventory[12].tileBoost+p.blockRange));
+                    foreach(string name in new[]{"activeBuild","preparedBuild","deferredBuild"})
+                    {
+                        var flight=GetOptional(host,name);var target=flight==null?null:GetOptional(flight,"Target");
+                        Console.Error.WriteLine("BlueprintContinuous "+name+"="+(flight==null?"none":target==null?"finite seed ordinal="+GetOptional(flight,"Ordinal"):
+                            "target="+GetOptional(target,"WorldX")+" ordinal="+GetOptional(target,"Ordinal")+
+                            " checked/entered/rejected="+GetOptional(flight,"Checked")+"/"+GetOptional(flight,"Entered")+"/"+GetOptional(flight,"Rejected")));
+                    }
+                    foreach(var scene in Scene(host))
+                    {
+                        var match=GetOptional(scene,"Match");if(match==null)continue;
+                        foreach(var range in ((IEnumerable)Get(match,"Ranges")).Cast<object>())
+                        {
+                            var material=GetOptional(range,"Materials");if(material==null)continue;
+                            Console.Error.WriteLine("BlueprintContinuous range=current:"+Get(range,"Current")+" demand:"+Get(range,"Demand")+" reading:"+Get(range,"Reading")+
+                                " cursor/exhausted="+Get(material,"CandidateCursor")+"/"+Get(material,"BuildExhausted")+" waits="+Get(material,"BuildWaits")+
+                                " retry/ordinal/due="+Get(material,"EligibilityRetry")+"/"+Get(material,"EligibilityRetryOrdinal")+"/"+Get(material,"EligibilityRetryAt"));
+                        }
+                    }
+                }
                 Require(continuousPlacements.Count == 4 && p.inventory[12].stack == 2 && Scene(host).Length == 0 && preparedInAnimation && staleCheckIssued,
                     "actual source accounting, early successor preparation, stale callback protection and full-Match retirement all hold for the continuous sequence");
                 var first = continuousPlacements[0]; var second = continuousPlacements[1];
@@ -394,7 +422,9 @@ namespace NativeWorldTextProbe
                 var separate = Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Dirt });
                 for (int i = 0; i < 4; i++) Place(context, host, input, separate, 44 + i, 42);
                 continuousPlacements.Clear(); staleCheckIssued = true; continuousWatch = true; SetAutomatic(host, input, true);
-                for (continuousFrame = 0; continuousFrame < 240 && (Scene(host).Length > 0 || (bool)Get(continuousUse, "Active")); continuousFrame++) Step(context, input);
+                AwaitFirstContinuousPlacement(context,input);
+                for (int opportunities = 0; opportunities < 240 && (Scene(host).Length > 0 || (bool)Get(continuousUse, "Active")); opportunities++)
+                {continuousFrame++;Step(context,input);}
                 continuousWatch = false;
                 Require(continuousPlacements.Count == 4 && p.inventory[12].stack == 2 && Scene(host).Length == 0 &&
                     continuousPlacements[1].Frame - continuousPlacements[0].Frame == reference && continuousPlacements[0].Token == continuousPlacements[1].Token,
@@ -409,7 +439,9 @@ namespace NativeWorldTextProbe
                         TileType = different && x >= 2 ? TileID.Stone : TileID.Dirt }).ToArray();
                     Place(context, host, input, Asset(host, targets), 44, 42);
                     continuousPlacements.Clear(); staleCheckIssued = true; continuousWatch = true; SetAutomatic(host, input, true);
-                    for (continuousFrame = 0; continuousFrame < 240 && (Scene(host).Length > 0 || (bool)Get(continuousUse, "Active")); continuousFrame++) Step(context, input);
+                    AwaitFirstContinuousPlacement(context,input);
+                    for (int opportunities = 0; opportunities < 240 && (Scene(host).Length > 0 || (bool)Get(continuousUse, "Active")); opportunities++)
+                    {continuousFrame++;Step(context,input);}
                     continuousWatch = false;
                     Require(continuousPlacements.Count == 4 && Scene(host).Length == 0 && p.inventory[12].IsAir && p.inventory[13].stack == 2 &&
                         continuousPlacements[0].Token == continuousPlacements[1].Token && continuousPlacements[2].Token != continuousPlacements[1].Token &&
@@ -424,6 +456,16 @@ namespace NativeWorldTextProbe
                 foreach (var method in patch.GetPatchedMethods().ToArray()) patch.Unpatch(method, HarmonyPatchType.All, patch.Id);
                 SetAutomatic(host, input, false);
             }
+        }
+        private static void AwaitFirstContinuousPlacement(object context,object input)
+        {
+            // Source opening/worker publication is asynchronous and has no
+            // gameplay cadence SLA. Establish the first real placement with
+            // the existing bounded worker wait, retaining its event, lease,
+            // consumption and cumulative Frame. Only then measure the original
+            // 200/240 native-update window; never reset the first event to zero.
+            continuousFrame=0;
+            Until(context,input,()=>{if(continuousPlacements.Count>0)return true;continuousFrame++;return false;});
         }
         private static void PlacementQueryIsolation(object context, object host, object tools, object input)
         {

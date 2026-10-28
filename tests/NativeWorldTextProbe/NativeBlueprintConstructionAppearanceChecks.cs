@@ -301,8 +301,16 @@ namespace NativeWorldTextProbe
         private static void ConstructionPlatformBoundary(object context, object host, object tools, object input)
         {
             var p = Reset(context, host, tools, input);
+            // Both fixed cells must be reachable by the actual hammer, whose
+            // native range does not include placement's extra blockRange.
+            p.position.X = 42 * 16;
             p.inventory[12].SetDefaults(ItemID.WoodPlatform); p.inventory[12].stack = 2;
             p.inventory[13].SetDefaults(ItemID.StoneBlock); p.inventory[13].stack = 2; p.inventory[14].SetDefaults(ItemID.WoodenHammer);
+            Require(p.IsInTileInteractionRange(44, 42, Terraria.DataStructures.TileReachCheckSettings.Simple, p.inventory[14].tileBoost) &&
+                p.IsInTileInteractionRange(46, 42, Terraria.DataStructures.TileReachCheckSettings.Simple, p.inventory[14].tileBoost) &&
+                !p.Hitbox.Intersects(new Microsoft.Xna.Framework.Rectangle(44 * 16, 42 * 16, 16, 16)) &&
+                !p.Hitbox.Intersects(new Microsoft.Xna.Framework.Rectangle(46 * 16, 42 * 16, 16, 16)),
+                "platform boundary fixture puts both cells in original hammer reach while the player occupies neither target");
             var entry = Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Platforms,
                     FrameY = (short)(p.inventory[12].placeStyle * 18), Slope = 3 },
                 new CaptureCell { X = 2, Layers = CaptureLayer.Tile, TileType = TileID.Stone, Slope = 1 });
