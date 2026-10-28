@@ -39,7 +39,7 @@ namespace JueMingR.Features.Blueprint
         {
             try { return DecodeKnown(bytes, scope, width, height); }
             catch (PreferenceFormatException) { throw; }
-            catch (Exception error) when (error is IOException || error is ArgumentException || error is OverflowException || error is FormatException)
+            catch (Exception error) when (error is InvalidDataException || error is IOException || error is ArgumentException || error is OverflowException || error is FormatException)
             { throw new PreferenceFormatException(PreferenceStatus.Invalid, "blueprint-scene-invalid"); }
         }
         private static BlueprintSceneDocument DecodeKnown(byte[] bytes, string scope, int width, int height)
