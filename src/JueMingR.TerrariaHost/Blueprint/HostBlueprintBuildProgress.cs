@@ -116,7 +116,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (item == null || item.type != slot.ItemType || !item.PaintOrCoating) continue;
                 int amount, previousAmount;
                 buildNextAppearanceSupply.TryGetValue(slot.ItemType, out amount);
-                int currentAmount = Math.Min(2, amount + Math.Min(2, slot.Stack));
+                int currentAmount = (int)Math.Min(2L, amount + Math.Min(2L, slot.Stack));
                 buildNextAppearanceSupply[slot.ItemType] = currentAmount;
                 if (amount < 2 && currentAmount == 2 && buildSupply.ContainsKey(slot.ItemType) &&
                     (!buildAppearanceSupply.TryGetValue(slot.ItemType, out previousAmount) || previousAmount < 2))
