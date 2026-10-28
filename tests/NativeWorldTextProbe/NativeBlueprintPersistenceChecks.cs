@@ -70,50 +70,62 @@ namespace NativeWorldTextProbe
                 covering = Place(host, input, wallEntry, 200, 60, step); Remove(host, input, covering, 200, 60, step);
                 Require(((BlueprintProjectionMask)Get(large, "Mask")).CellCount == denseCount, "real large overlap retains every sparse removed layer without a preference-size quota");
 
-                Move(host, input, first, 40, 45, 60, 45, true, step);
-                Require((int)Get(first = Scene(host).Single(item => ((BlueprintProjectionIdentity)Get(item, "Identity")).AssetId == mixed.AssetId), "OriginX") == 60, "confirmed move publishes its new origin");
-                Move(host, input, first, 60, 45, 70, 45, false, step);
+                // MixedWindow is a raw visual fixture with intentionally
+                // unresolved producer/object semantics. It proves persistence
+                // of raw masks, not permission to move. A real ordinary block
+                // template earns its own current movement proof and raw mask.
+                var movementEntry = Save(library, new CaptureCell { Layers = CaptureLayer.Tile, TileType = 1 },
+                    new CaptureCell { X = 1, Layers = CaptureLayer.Tile, TileType = 1 }, new CaptureCell { X = 2, Layers = CaptureLayer.Tile, TileType = 1 });
+                object moving = Place(host, input, movementEntry, 170, 40, step);
+                covering = Place(host, input, one, 171, 40, step); Remove(host, input, covering, 171, 40, step);
+                Require(((BlueprintProjectionMask)Get(moving, "Mask")).RemovedLayerCount == 1, "the movable ordinary instance owns its own permanent middle-cell mask");
+                Move(host, input, moving, 170, 40, 175, 40, true, step);
+                moving = Scene(host).Single(item => ((BlueprintProjectionIdentity)Get(item, "Identity")).AssetId == movementEntry.AssetId);
+                Require((int)Get(moving, "OriginX") == 175, "confirmed move publishes its new origin");
+                Move(host, input, moving, 175, 40, 180, 40, false, step);
                 Require(Get(host, "ProjectionMode").ToString() == "Moving", "a second movement remains deliberately unconfirmed");
                 step(); NativeQuickItemChecks.Until(() => { step(); return history.Saved; });
                 string scopeA = (string)Get(history, "requestedScope"), pathA = ScenePath(root, scopeA);
                 byte[] savedA = File.ReadAllBytes(pathA); Require(savedA.Length > 65536, "real atomic scene document exceeds 64 KiB with no dropped masks");
                 var document = BlueprintSceneCodec.Decode(savedA, scopeA, 512, 160);
-                Require(document.Records.Count == 3 && document.Records.Single(record => record.Template.AssetId == mixed.AssetId).OriginX == 60, "archive contains only the last committed scene, excluding completed/removed/covering and unconfirmed movement");
+                Require(document.Records.Count == 4 && document.Records.Single(record => record.Template.AssetId == movementEntry.AssetId).OriginX == 175, "archive contains only the last committed scene, excluding completed/removed/covering and unconfirmed movement");
                 long oldGeneration = ((BlueprintProjectionIdentity)Get(first, "Identity")).SessionGeneration;
                 menu(); Require(history.Stop(3000), "retired old scene owner really ends before replacement");
                 history = create(); Set(host, "projectionHistory", history); enter();
-                Require(Scene(host).Length == 3 && Scene(host).Select(item => (long)Get(item, "CommitOrder")).SequenceEqual(document.Records.Select(record => record.Order)), "a new owner restores the complete ordered scene through actual Host/template admissions");
+                Require(Scene(host).Length == 4 && Scene(host).Select(item => (long)Get(item, "CommitOrder")).SequenceEqual(document.Records.Select(record => record.Order)), "a new owner restores the complete ordered scene through actual Host/template admissions");
                 first = Scene(host).Single(item => ((BlueprintProjectionIdentity)Get(item, "Identity")).AssetId == mixed.AssetId);
-                Require((int)Get(first, "OriginX") == 60 && ((BlueprintProjectionMask)Get(first, "Mask")).RemovedLayerCount == 15 &&
+                Require((int)Get(first, "OriginX") == 40 && ((BlueprintProjectionMask)Get(first, "Mask")).RemovedLayerCount == 15 &&
                     ((BlueprintProjectionIdentity)Get(first, "Identity")).SessionGeneration != oldGeneration, "new runtime generation restores committed origin and permanent whole-object/layer history");
+                moving = Scene(host).Single(item => ((BlueprintProjectionIdentity)Get(item, "Identity")).AssetId == movementEntry.AssetId);
+                Require((int)Get(moving, "OriginX") == 175 && ((BlueprintProjectionMask)Get(moving, "Mask")).RemovedLayerCount == 1,
+                    "new-owner recovery keeps the moved instance's last confirmed origin and its own permanent mask");
                 Require(GetOptional(host, "preparedBuild") == null && !(bool)Get(Get(Get(context, "Tools"), "Use"), "Active"), "recovery itself has no old prepared target or native action");
                 Require(Scene(host).Any(item => ((BlueprintProjectionIdentity)Get(item, "Identity")).AssetId == display.AssetId) && !Scene(host).Any(item => ((BlueprintProjectionIdentity)Get(item, "Identity")).AssetId == one.AssetId), "pure-display survives while genuine completion and manual removal never resurrect");
                 Require(((BlueprintProjectionMask)Get(Scene(host).Single(item => ((BlueprintProjectionIdentity)Get(item, "Identity")).AssetId == denseEntry.AssetId), "Mask")).CellCount == denseCount,
                     "new-owner source validation retains the entire large permanent mask");
                 // Rebuild actual Match from the current world after recovery;
                 // no persisted completion map is supplied by the fixture.
-                Require(WorldGen.PlaceTile(60, 45, 1, true, true), "current destination now receives a native tile");
-                WorldGen.paintTile(60, 45, 11, false, false);
-                NativeQuickItemChecks.Until(() => { step(); var state = GetOptional(first, "Match"); return state != null && (long)Get(state, "Matches") > 0; });
-                Require(Call(host, "ProjectionMoveEligibility", first).ToString() == "Matched", "current world re-observation restores the existing movement lock");
+                Require(WorldGen.PlaceTile(175, 40, 1, true, true), "current destination now receives a native tile");
+                NativeQuickItemChecks.Until(() => { step(); var state = GetOptional(moving, "Match"); return state != null && (long)Get(state, "Matches") > 0; });
+                Require(Call(host, "ProjectionMoveEligibility", moving).ToString() == "Matched", "current world re-observation restores the existing movement lock");
 
                 menu(); Main.ActiveWorldFileData = worldB; enter(); Require(Scene(host).Length == 0, "another reliable world scope starts without A's instances");
                 Place(host, input, display, 310, 40, step);
                 Require(library.TryRename(denseEntry.AssetId, denseEntry.MetadataIdentity, "跨世界新名字"), "reliable metadata rename is accepted outside A's world");
                 NativeQuickItemChecks.Until(() => { step(); return !library.Snapshot.Busy; });
                 menu(); Main.ActiveWorldFileData = worldA; enter();
-                Require(Scene(host).Length == 3 && Scene(host).All(item => (int)Get(item, "OriginX") != 310), "fast B-to-A transition waits for its writer and reloads only A");
+                Require(Scene(host).Length == 4 && Scene(host).All(item => (int)Get(item, "OriginX") != 310), "fast B-to-A transition waits for its writer and reloads only A");
                 Require((string)Get(Scene(host).Single(item => ((BlueprintProjectionIdentity)Get(item, "Identity")).AssetId == denseEntry.AssetId), "Name") == "跨世界新名字", "restore obtains the reliable current metadata name instead of a saved display label");
                 menu(); Main.ActiveWorldFileData = worldB; enter(); Require(Scene(host).Length == 1 && (int)Get(Scene(host)[0], "OriginX") == 310, "B remains independently saved after returning to A");
                 byte[] beforeDelete = File.ReadAllBytes(pathA);
                 Require((bool)Call(host, "DeleteAsset", mixed), "another world reliably deletes a template still referenced by A's archive");
                 NativeQuickItemChecks.Until(() => { step(); return !library.Snapshot.Busy; });
                 menu(); Main.ActiveWorldFileData = worldA; enter();
-                Require(history.Protected && Scene(host).Length == 2 && Scene(host).All(item => ((BlueprintProjectionIdentity)Get(item, "Identity")).AssetId != mixed.AssetId),
+                Require(history.Protected && Scene(host).Length == 3 && Scene(host).All(item => ((BlueprintProjectionIdentity)Get(item, "Identity")).AssetId != mixed.AssetId),
                     "a deleted template is rejected while independent legal instances still restore");
                 for (int i = 0; i < 8; i++) step();
                 Require(File.ReadAllBytes(pathA).SequenceEqual(beforeDelete), "a rejected archive reference does not cause a filtered or empty rewrite");
-                menu(); enter(); Require(Scene(host).Length == 2 && history.Protected, "same-process protected reentry retains independently verified records without reopening a writer");
+                menu(); enter(); Require(Scene(host).Length == 3 && history.Protected, "same-process protected reentry retains independently verified records without reopening a writer");
                 OwnerFailures(Path.Combine(root, "mechanical"), document);
                 Console.WriteLine("PASS BlueprintPersistence production Host commits/new-owner atomic-file recovery: order/origin/permanent raw and whole-object masks, >64KiB scene, last committed move, removal/completion/display, current Match and independent worlds; delayed read/write retirement and failure protect original. Real process/gameplay exit, OS input, multiplayer and FPS NOT_RUN.");
             }
@@ -148,7 +160,17 @@ namespace NativeWorldTextProbe
         }
         private static void Move(object host, object input, object item, int x, int y, int toX, int toY, bool commit, Action step)
         {
-            Window(host, item, step); NativeQuickItemChecks.Until(() => { step(); return Call(host, "ProjectionMoveEligibility", item).ToString() == "Movable"; });
+            Window(host, item, step);
+            try { NativeQuickItemChecks.Until(() => { step(); return Call(host, "ProjectionMoveEligibility", item).ToString() == "Movable"; }); }
+            catch
+            {
+                var qualification = GetOptional(item, "Qualification"); var match = GetOptional(item, "Match"); var catalog = GetOptional(host, "MaterialCatalog");
+                Console.Error.WriteLine("PERSIST move original failure eligibility=" + Call(host, "ProjectionMoveEligibility", item) + " origin=" + Get(item, "OriginX") + "," + Get(item, "OriginY") +
+                    " summaryVersion=" + ((CaptureSummary)Get(item, "Summary")).TargetVersion + " catalogVersion=" + (catalog == null ? "none" : Get(catalog, "TargetVersion")) +
+                    " qualification=" + (qualification == null ? "none" : "total=" + Get(qualification, "TotalRequiredLayerCount") + " effective=" + Get(qualification, "EffectiveRequiredLayerCount") + " unknown=" + Get(qualification, "EffectiveUnknownLayerCount")) +
+                    " match=" + (match == null ? "none" : "current=" + Get(match, "Current") + " targets=" + Get(match, "Targets") + " matches=" + Get(match, "Matches") + " unknown=" + Get(match, "Unknown")));
+                throw;
+            }
             NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); Call(host, "MoveProjection"); Pointer(host, false, x, y); Pointer(host, true, x, y);
             Require(Get(host, "ProjectionMode").ToString() == "Moving", "trusted selection begins actual moving rollback ownership");
             Pointer(host, false, toX, toY);
