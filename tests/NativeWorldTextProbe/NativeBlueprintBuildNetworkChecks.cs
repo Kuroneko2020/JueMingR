@@ -33,7 +33,7 @@ namespace NativeWorldTextProbe
                 // The existing NativeQuickItem fixture blocks only SendPacket.
                 // SendData and GetData below are the original .8 serializer and
                 // receiver. This is not an executed server or socket session.
-                Netplay.Connection = new RemoteServer { PendingTermination = true };
+                Netplay.Connection = new RemoteServer { PendingTermination = true, State = 10 };
                 NetMessage.buffer[256] = new MessageBuffer(); Main.clientPlayer = new Player(); Main.netMode = 1;
                 Main.sectionManager = new WorldSections(1, 1); Main.sectionManager.SetAllSectionsLoaded(); Call(context, "UpdateRuntime");
                 var p = Reset(context, host, tools, input); p.inventory[12].SetDefaults(ItemID.StoneBlock); p.inventory[12].stack = 2;

@@ -440,7 +440,7 @@ namespace NativeWorldTextProbe
                     var entry = LegacyCapture(context, host, input, "跨区查询保护");
                     for (int x = 190; x <= 204; x++) LegacyReplaceTile(x, 43, TileID.Stone);
                     LegacyReplaceTile(199, 43, TileID.Dirt); p.position = new Vector2(195 * 16, 43 * 16 - p.height); p.velocity = Vector2.Zero;
-                    Netplay.Connection = new RemoteServer { PendingTermination = true }; Main.clientPlayer = new Player(); NetMessage.buffer[256] = new MessageBuffer();
+                    Netplay.Connection = new RemoteServer { PendingTermination = true, State = 10 }; Main.clientPlayer = new Player(); NetMessage.buffer[256] = new MessageBuffer();
                     Main.netMode = 1; Main.sectionManager = new WorldSections(2, 2); Main.sectionManager.SetSectionLoaded(0, 0); Call(context, "UpdateRuntime");
                     Place(context, host, input, entry, 199, 42);
                     Require(Main.sectionManager.TileLoaded(199, 42) && !Main.sectionManager.TileLoaded(200, 42),
