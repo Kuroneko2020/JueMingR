@@ -226,7 +226,6 @@ namespace JueMingR.TerrariaHost.Tools
 #endif
                 return;
             }
-            BorrowDirection();
             p.controlUseItem=true;if(!pulsed && !Building)p.releaseUseItem=true;pulseFrame=host.Input.Frame;pulsed=true;
         }
         internal void Begin(Player p)
@@ -250,8 +249,10 @@ namespace JueMingR.TerrariaHost.Tools
             nativeBaseline=true;targetRejected=false;
             if(Building)stack=item.stack;
             Intent.NativeBeginning?.Invoke();
-            // Establish cleanup ownership BEFORE the first temporary write.
-            BorrowDirection();BorrowCursorMode();
+            // Native movement and StartActualUse must choose their own facing.
+            // Only target lookup and an admitted placement borrow direction;
+            // aim/cursor still span this native use until the normal cleanup.
+            BorrowCursorMode();
             BorrowAim();
             if(pulsed && (Intent.Refresh!=null || Intent.Readiness!=null || !checkedItem) && (!Building || pulseFrame==host.Input.Frame))Main.mouseLeft=true;
         }
@@ -265,12 +266,24 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal void AfterTargetResolution(Player p)
         {
-            if(!ReferenceEquals(p,player) || !Building || !nativeReady || !borrowed)return;
+            if(!ReferenceEquals(p,player))return;
+            try
+            {
+                if(!Building || !nativeReady || !borrowed)return;
 #if JMR_BLUEPRINT_DIAGNOSTIC
-            DiagnosticPhase(BuildTraceStage.ResolveAfter,BuildTraceReason.DirectionPhase);
+                DiagnosticPhase(BuildTraceStage.ResolveAfter,BuildTraceReason.DirectionPhase);
 #endif
-            if(Intent.ResolvedTarget!=null && !Intent.ResolvedTarget(Player.tileTargetX,Player.tileTargetY))
-                RejectTarget(ToolTargetRejection.Resolution);
+                if(Intent.ResolvedTarget!=null && !Intent.ResolvedTarget(Player.tileTargetX,Player.tileTargetY))
+                    RejectTarget(ToolTargetRejection.Resolution);
+            }
+            finally{RestoreDirection();}
+        }
+        internal void TargetResolutionFailed(Player p)
+        {
+            // Vanilla catches lookup faults and continues into movement before
+            // Player.Update cleanup. End only this player's direction borrow;
+            // its aim/cursor still belong to the later native-use cleanup.
+            if(ReferenceEquals(p,player))RestoreDirection();
         }
         private void RejectTarget(ToolTargetRejection reason)
         {
@@ -315,9 +328,9 @@ namespace JueMingR.TerrariaHost.Tools
         {
             int direction=Intent.PlayerDirection;
             if(direction!=1 && direction!=-1)return;
-            // Movement and native use startup can write facing between these
-            // boundaries. Retain their newer value for cleanup, but never
-            // mistake our own previous borrow for a new return baseline.
+            // Lookup releases before native movement; actual placement starts
+            // a fresh scope after StartActualUse. Repeated consumer checks must
+            // not mistake our own temporary value for a new return baseline.
             if(!directionBorrowed || player.direction!=ownDirection)oldDirection=player.direction;
             ownDirection=direction;directionBorrowed=true;
             // Ordinary facing input can reach either direction without moving.
@@ -441,11 +454,17 @@ namespace JueMingR.TerrariaHost.Tools
                 if(!Main.SmartCursorWanted_Mouse)Main.SmartCursorWanted_Mouse=oldSmartMouse;
                 if(!Main.SmartCursorWanted_GamePad)Main.SmartCursorWanted_GamePad=oldSmartPad;
             }
-            if(directionBorrowed){directionBorrowed=false;if(player!=null && player.direction==ownDirection)player.direction=oldDirection;}
+            RestoreDirection();
             if(!borrowed)return;borrowed=false;
             if(Main.mouseX==ownX)Main.mouseX=oldX;if(Main.mouseY==ownY)Main.mouseY=oldY;
             if(Player.tileTargetX==ownTileX)Player.tileTargetX=oldTileX;if(Player.tileTargetY==ownTileY)Player.tileTargetY=oldTileY;
             if(!oldMouse && Main.mouseLeft && pulsed)Main.mouseLeft=false;
+        }
+        private void RestoreDirection()
+        {
+            if(!directionBorrowed)return;
+            directionBorrowed=false;
+            if(player!=null && player.direction==ownDirection)player.direction=oldDirection;
         }
     }
 }

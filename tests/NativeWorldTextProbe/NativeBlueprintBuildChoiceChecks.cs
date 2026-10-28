@@ -12,63 +12,130 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeBlueprintBuildChecks
     {
-        private static bool movingChairWatch,movingChairLate;
-        private static int movingChairMovement,movingChairLateWrites;
-        private static void ObserveChairMovement(Player __instance)
+        private static bool movingChairWatch,movingChairLate,movingChairLookupFault,movingChairFaultBorrowed,movingChairFaultMovement,movingChairFaultMovementSeen;
+        private static int movingChairMovement,movingChairMovementTurns,movingChairLateEntries,movingChairLateBaselines,movingChairLateWrites,movingChairLookupFailures;
+        private static Exception movingChairLookupError,movingChairObservedError;
+        private struct ChairGrappleState {internal bool Active,Left,Right;internal int Grapple;}
+        private static void BeforeChairMovement(Player __instance,out int __state)
         {
-            if(movingChairWatch && __instance.controlRight && __instance.direction==1 && (bool)Get(Get(faultTools,"Use"),"Building"))movingChairMovement++;
+            __state=__instance.direction;
+            if(movingChairWatch && movingChairLookupFailures>0 && movingChairObservedError!=null && !movingChairFaultMovementSeen)
+            {
+                movingChairFaultMovementSeen=true;
+                object use=Get(faultTools,"Use");
+                movingChairFaultMovement=__instance.direction==-1 && !(bool)Get(use,"directionBorrowed") &&
+                    (bool)Get(use,"borrowed") && (bool)Get(use,"cursorBorrowed");
+            }
         }
-        private static void EnterChairGrappleBranch(Player __instance,out int __state)
+        private static void ObserveChairMovement(Player __instance,int __state)
         {
-            __state=int.MinValue;
+            if(!movingChairWatch || !__instance.controlRight || __instance.direction!=1 || !(bool)Get(Get(faultTools,"Use"),"Building"))return;
+            movingChairMovement++;if(__state==-1)movingChairMovementTurns++;
+        }
+        private static void EnterChairGrappleBranch(Player __instance,out ChairGrappleState __state)
+        {
+            __state=default(ChairGrappleState);
             if(!movingChairWatch || !movingChairLate || !(bool)Get(Get(faultTools,"Use"),"InNativeUse"))return;
             // Enter only the original StartActualUse grapple-facing branch at
-            // this narrow fixture seam. Its real code performs the late write;
-            // placement remains the complete original Player consumer chain.
-            __state=__instance.grappling[0];__instance.grappling[0]=0;
+            // this narrow seam, after neutral movement. The fixture never writes
+            // facing; the original code must turn left to right before placing.
+            __state=new ChairGrappleState{Active=true,Grapple=__instance.grappling[0],Left=__instance.controlLeft,Right=__instance.controlRight};
+            movingChairLateEntries++;if(__instance.direction==-1)movingChairLateBaselines++;
+            __instance.grappling[0]=0;__instance.controlRight=true;__instance.controlLeft=false;
         }
-        private static void LeaveChairGrappleBranch(Player __instance,int __state)
+        private static Exception LeaveChairGrappleBranch(Player __instance,ChairGrappleState __state,Exception __exception)
         {
-            if(__state==int.MinValue)return;
-            if(__instance.direction==1)movingChairLateWrites++;
-            __instance.grappling[0]=__state;
+            if(__state.Active)
+            {
+                if(__exception==null && __instance.direction==1)movingChairLateWrites++;
+                __instance.grappling[0]=__state.Grapple;__instance.controlLeft=__state.Left;__instance.controlRight=__state.Right;
+            }
+            return __exception;
+        }
+        [HarmonyAfter("JueMingR.Tools"),HarmonyPriority(Priority.Last)]
+        private static void FailChairTargetLookup(Player __0)
+        {
+            if(!movingChairWatch || !movingChairLookupFault || !(bool)Get(Get(faultTools,"Use"),"Building"))return;
+            object use=Get(faultTools,"Use");
+            movingChairLookupFault=false;movingChairLookupFailures++;
+            movingChairFaultBorrowed=__0.direction==1 && (bool)Get(use,"directionBorrowed") &&
+                (bool)Get(use,"borrowed") && (bool)Get(use,"cursorBorrowed");
+            // Throw after the production prefix borrowed direction. Its postfix
+            // cannot run; only the production finalizer can release before the
+            // original Update catch continues into HorizontalMovement.
+            throw movingChairLookupError;
+        }
+        [HarmonyAfter("JueMingR.Tools"),HarmonyPriority(Priority.Last)]
+        private static Exception ObserveChairLookupFault(Exception __exception)
+        {
+            if(movingChairWatch && __exception!=null)movingChairObservedError=__exception;
+            return __exception;
         }
         private static void MovingFurnitureDirection(object context,object host,object tools,object input)
         {
             var patch=new Harmony("JueMingR.Tests.BlueprintMovingChair");
-            patch.Patch(typeof(Player).GetMethod("HorizontalMovement",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(ObserveChairMovement)));
+            patch.Patch(typeof(Player).GetMethod("HorizontalMovement",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(BeforeChairMovement)),
+                postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(ObserveChairMovement)));
             patch.Patch(typeof(Player).GetMethod("ItemCheck_StartActualUse",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(EnterChairGrappleBranch)),
-                postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(LeaveChairGrappleBranch)));
+                finalizer:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(LeaveChairGrappleBranch)));
+            patch.Patch(typeof(Terraria.GameContent.SmartCursorHelper).GetMethod("SmartCursorLookup",F),
+                prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(FailChairTargetLookup)),
+                finalizer:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(ObserveChairLookupFault)));
             try
             {
-                foreach(bool late in new[]{false,true})
+                foreach(string scenario in new[]{"opposite-movement","same-movement","same-late-start","same-lookup-fault"})
                 {
+                    bool late=scenario=="same-late-start",lookupFault=scenario=="same-lookup-fault";
+                    int capturedDirection=scenario=="opposite-movement"?-1:1;
                     var p=Reset(context,host,tools,input);p.inventory[12].SetDefaults(ItemID.WoodenChair);p.inventory[12].stack=2;
-                    Require(p.inventory[12].useTurn && WorldGen.PlaceObject(60,42,p.inventory[12].createTile,true,p.inventory[12].placeStyle,direction:-1),
-                        "the directional source uses the actual vanilla useTurn chair and left alternate");
+                    Require(p.inventory[12].useTurn && WorldGen.PlaceObject(60,42,p.inventory[12].createTile,true,p.inventory[12].placeStyle,direction:capturedDirection),
+                        "the directional source uses the actual vanilla useTurn chair and requested alternate");
                     var entry=NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context,host,input,(LibraryState)Get(host,"Library"),
-                        ()=>Step(context,input),60,41,1,2,"移动定向椅子"+late);
+                        ()=>Step(context,input),60,41,1,2,"移动定向椅子"+scenario);
                     Place(context,host,input,entry,44,41);SetAutomatic(host,input,true);AwaitPrepared(context,host,input);
-                    movingChairMovement=movingChairLateWrites=0;movingChairLate=late;movingChairWatch=true;
-                    float start=p.position.X;
+                    movingChairMovement=movingChairMovementTurns=movingChairLateEntries=movingChairLateBaselines=movingChairLateWrites=movingChairLookupFailures=0;
+                    movingChairFaultBorrowed=movingChairFaultMovement=movingChairFaultMovementSeen=false;movingChairObservedError=null;
+                    movingChairLookupError=new InvalidOperationException("fixture-smartcursor-after-direction-borrow");
+                    movingChairLate=late;movingChairLookupFault=lookupFault;movingChairWatch=true;p.direction=-1;
+                    float start=p.position.X;int firstDirection=0;long choices=(long)Get(host,"BuildNativeChoices");
                     NativeQuickItemChecks.Until(()=>
                     {
                         NativeToolExecutionChecks.Sample(context,input,new Vector2(480,540),false);
-                        p.controlRight=true;p.controlLeft=false;PlayerInput.Triggers.Current.Right=true;PlayerInput.Triggers.Current.Left=false;
-                        NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");NativeToolExecutionChecks.Outer(context,input,1);
-                        return Scene(host).Length==0 && !(bool)Get(Get(tools,"Use"),"Active");
+                        p.controlRight=!late;p.controlLeft=false;PlayerInput.Triggers.Current.Right=!late;PlayerInput.Triggers.Current.Left=false;
+                        NativeQuickItemChecks.BeginWorldStep();p.Update(0);
+                        if(p.inventory[12].stack<2)
+                        {
+                            // Observe the first consuming Player.Update itself.
+                            // Later idle movement must not repair a bad return
+                            // direction before this assertion can see it.
+                            firstDirection=p.direction;
+                            Require(firstDirection==1 && p.inventory[12].stack==1 && (long)Get(host,"BuildNativeChoices")>choices,
+                                "first actual chair consumption immediately returns the latest original facing: "+scenario+" direction="+firstDirection);
+                            return true;
+                        }
+                        Call(context,"UpdateRuntime");NativeToolExecutionChecks.Outer(context,input,1);return false;
                     });
-                    Require(Main.tile[44,41].active() && Main.tile[44,42].active() && Main.tile[44,41].type==TileID.Chairs && p.inventory[12].stack==1 &&
-                        p.position.X>start && movingChairMovement>0 && (!late || movingChairLateWrites>0) && p.direction==1,
-                        "native rightward movement and optional post-Begin original direction write still place the captured left chair, then return native facing");
-                    Console.WriteLine("PASS BlueprintMovingChair lateStartActualUse="+late+" nativeMovementWrites="+movingChairMovement+
-                        " nativeLateWrites="+movingChairLateWrites+" completeCapturedDirection=true consumed=1 returnDirection="+p.direction);
+                    Require(Enumerable.Range(0,2).All(y=>Main.tile[44,41+y].active() && Main.tile[44,41+y].type==TileID.Chairs &&
+                        Main.tile[44,41+y].frameX==Main.tile[60,41+y].frameX && Main.tile[44,41+y].frameY==Main.tile[60,41+y].frameY),
+                        "the real consumer wrote both members in the captured direction and style: "+scenario);
+                    Require(late?movingChairLateEntries>0 && movingChairLateBaselines==movingChairLateEntries && movingChairLateWrites==movingChairLateEntries:
+                        p.position.X>start && movingChairMovement>0 && movingChairMovementTurns>0,
+                        "the original movement or StartActualUse actually turns from its unborrowed left baseline: "+scenario);
+                    if(lookupFault)Require(movingChairLookupFailures==1 && movingChairFaultBorrowed && movingChairFaultMovement &&
+                        ReferenceEquals(movingChairObservedError,movingChairLookupError),
+                        "production lookup finalizer returns the original fault and only direction before vanilla catches and continues moving");
                     movingChairWatch=false;p.controlRight=false;
+                    Call(context,"UpdateRuntime");Until(context,input,()=>Scene(host).Length==0 && !(bool)Get(Get(tools,"Use"),"Active"));
+                    Require(p.inventory[12].stack==1,"full current furniture match retires without a second consumption: "+scenario);
+                    Console.WriteLine("PASS BlueprintMovingChair scenario="+scenario+" nativeMovementTurns="+movingChairMovementTurns+
+                        " nativeLateWrites="+movingChairLateWrites+" lookupFaults="+movingChairLookupFailures+
+                        " completeCapturedDirection=true consumed=1 firstConsumptionReturnDirection="+firstDirection);
                 }
             }
             finally
             {
-                movingChairWatch=movingChairLate=false;Main.LocalPlayer.controlLeft=Main.LocalPlayer.controlRight=false;Main.LocalPlayer.grappling[0]=-1;
+                movingChairWatch=movingChairLate=movingChairLookupFault=false;movingChairLookupError=movingChairObservedError=null;
+                Main.LocalPlayer.controlLeft=Main.LocalPlayer.controlRight=false;
                 foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);
                 SetAutomatic(host,input,false);
             }

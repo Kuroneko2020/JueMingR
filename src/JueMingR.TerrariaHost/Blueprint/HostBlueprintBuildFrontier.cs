@@ -156,7 +156,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             return false;
         }
-        private bool TryCreateLocalBuildTarget(BuildSourcePart source,int index,int ordinal,long support,out BlueprintBuildTarget target)
+        private bool TryCreateLocalBuildTarget(BuildSourcePart source,int index,int ordinal,long support,out BlueprintBuildTarget target,int preferredItemType=0)
         {
             target=null;var range=source.Range;var part=source.Part;var catalog=MaterialCatalog;
             if(!ProjectionQualificationCurrent(source.Owner))
@@ -176,6 +176,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             else if((ordinal&1)==0 && (cell.Layers&CaptureLayer.Tile)!=0 && cell.ObjectId==0)descriptor=catalog.Tile(cell);
             else if((ordinal&1)!=0 && (cell.Layers&CaptureLayer.Wall)!=0)descriptor=catalog.Wall(cell.WallType);
+            // Preference uses this same decoder, but unrelated descriptors do
+            // not need world vacancy or a complete placement preflight.
+            if(preferredItemType>0 && descriptor?.UseItemType!=preferredItemType)return false;
             ushort targetBit=part.LogicalObjectId>0 || (ordinal&1)==0?(ushort)1:(ushort)2;
             if((selection.UnknownBits&targetBit)!=0 || !BasicPlacement(descriptor) || descriptor.RequiresSubstrate)
             {

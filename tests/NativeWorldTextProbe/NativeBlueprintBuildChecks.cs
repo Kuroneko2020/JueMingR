@@ -61,6 +61,8 @@ namespace NativeWorldTextProbe
                     check("background empty outer and manual protection", () => BackgroundAndManualProtection(context,host,tools,input));
                     check("cross-capacity search stationary", () => ExecutionSearchFairness(context,host,tools,input,false));
                     check("cross-capacity search native movement", () => ExecutionSearchFairness(context,host,tools,input,true));
+                    check("material continuity and finite ordinary service", () => MaterialContinuityAndYield(context,host,tools,input));
+                    check("legal continuous native opportunity", () => NativeContinuousOpportunity(context, host, tools, input));
                     check("direction ownership and manual return", () => NativeToolExecutionChecks.DirectionOwnership(context,tools,input));
                     check("native moving furniture direction", () => MovingFurnitureDirection(context,host,tools,input));
                     check("wrong final furniture choice remains rejected", () => WrongNativeFurnitureChoice(context,host,tools,input));
@@ -78,7 +80,6 @@ namespace NativeWorldTextProbe
                     check("retained source world identity replacement", () => BuildSourceWorldIdentity(context, host, tools, input));
                     check("full source cache continuation", () => BuildSourceFullContinuation(context, host, tools, input));
                     check("mixed large ordinary and object source continuation", () => MixedSourceContinuation(context, host, tools, input));
-                    check("legal continuous native opportunity", () => NativeContinuousOpportunity(context, host, tools, input));
                     check("native preflight query isolation", () => PlacementQueryIsolation(context, host, tools, input));
                     check("legacy torch platform and flattening", () => LegacyTorchAttachments(context, host, tools, input));
                     check("legacy torch late support interruption", () => LegacyTorchInterruptedFlattening(context, host, tools, input));

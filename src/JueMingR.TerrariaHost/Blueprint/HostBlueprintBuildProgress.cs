@@ -64,11 +64,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             var inventory = MaterialInventory;
             // Inventory publication intentionally ignores item reach fields.
-            // Observe the actual first qualified source of each material (the
-            // same choice as TryPrepareBuild), plus the broad-phase maximum.
+            // Observe the current exact lease's qualified source when present,
+            // otherwise the first eligible source, just as TryPrepareBuild does.
+            // The same one inventory walk still owns the broad-phase maximum.
             // This wakes a shorter material even if another item keeps the
             // overall envelope unchanged; stack noise/equivalent moves do not.
             buildNextItemReach.Clear(); int envelopeBoost = 0;
+            var hint = CurrentBuildSourceHint(p);
             if (p != null && inventory?.Ready == true) foreach (var slot in inventory.Slots)
             {
 #if DEBUG
@@ -78,7 +80,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var item = p.inventory[slot.Slot];
                 if (!buildTools.BuildInventoryEligible(slot.Slot, item)) continue;
                 envelopeBoost = Math.Max(envelopeBoost, item.tileBoost);
-                if (!buildNextItemReach.ContainsKey(slot.ItemType)) buildNextItemReach.Add(slot.ItemType, item.tileBoost);
+                if (!buildNextItemReach.ContainsKey(slot.ItemType) || hint != null && hint.Slot == slot.Slot && hint.Type == slot.ItemType && ReferenceEquals(hint.Item, item))
+                    buildNextItemReach[slot.ItemType] = item.tileBoost;
             }
             bool reachChanged = envelopeBoost != buildEnvelopeBoost || buildItemReach.Count != buildNextItemReach.Count;
             if (!reachChanged) foreach (var entry in buildNextItemReach)

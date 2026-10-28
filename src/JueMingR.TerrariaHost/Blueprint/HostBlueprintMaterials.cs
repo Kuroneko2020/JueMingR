@@ -55,6 +55,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal long CatalogRevision;
         internal BlueprintBuildTarget Candidate;
         internal int CandidateCursor;
+        // One finite preference pass per real use lease. Ordinary discovery,
+        // near/frontier cursors and their Candidate keep their own service.
+        internal long PreferredLease;
+        internal int PreferredCursor;
         internal long BuildEpoch, BuildWakeRevision;
         internal long BuildPlayerRevision, BuildSupplyRevision, BuildContainerRevision, BuildActivationRevision;
         internal BlueprintBuildWait BuildWaits;
@@ -349,6 +353,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (retiring || resetBuild)
             {
                 ResetMaterialBuildWalk(range, true);
+                value.PreferredLease = 0; value.PreferredCursor = 0;
             }
             value.Desired = null; QueueMaterialChange(range);
             if (retiring) value.CatalogRevision = -1;

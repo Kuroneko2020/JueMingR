@@ -153,7 +153,7 @@ namespace NativeWorldTextProbe
 
         private sealed class ContinuousPlacement
         {
-            internal int Frame, Animation, X;
+            internal int Frame, Animation, X, Slot, Type;
             internal long Token, Native, Flight;
         }
         private static void BuildSourceFullContinuation(object context, object host, object tools, object input)
@@ -225,7 +225,114 @@ namespace NativeWorldTextProbe
             var flight = continuousAutomatic ? GetOptional(continuousHost, "activeBuild") : null;
             continuousPlacements.Add(new ContinuousPlacement { Frame = continuousFrame, Animation = __instance.itemAnimation, X = Player.tileTargetX,
                 Token = continuousAutomatic ? (long)Get(continuousUse, "Operation") : 0, Native = continuousAutomatic ? (long)Get(continuousUse, "NativeGeneration") : 0,
-                Flight = flight == null ? 0 : (long)Get(flight, "Generation") });
+                Flight = flight == null ? 0 : (long)Get(flight, "Generation"),
+                Slot = flight == null ? __instance.selectedItem : (int)Get(Get(flight, "Source"), "Slot"),
+                Type = flight == null ? __instance.HeldItem.type : (int)Get(Get(flight, "Source"), "Type") });
+        }
+        private static void MaterialContinuityAndYield(object context, object host, object tools, object input)
+        {
+            var patch = new Harmony("JueMingR.Tests.BlueprintMaterialContinuity");
+            patch.Patch(typeof(Player).GetMethod("PlaceThing_Tiles_PlaceIt", F), postfix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(ContinuousPlaced)));
+            continuousHost = host; continuousUse = Get(tools, "Use"); continuousAutomatic = true;
+            try
+            {
+                foreach (bool blocked in new[] { false, true })
+                {
+                    var p = Reset(context, host, tools, input); p.position = new Vector2(42 * 16, 646);
+                    p.inventory[12].SetDefaults(ItemID.DirtBlock); p.inventory[12].stack = 8;
+                    p.inventory[13].SetDefaults(ItemID.StoneBlock); p.inventory[13].stack = 2;
+                    var cells = Enumerable.Range(0, 4).Select(x => new CaptureCell { X = x, Layers = CaptureLayer.Tile,
+                        TileType = x == 1 ? TileID.Stone : TileID.Dirt }).ToArray();
+                    var instance = Place(context, host, input, Asset(host, cells), 44, 42);
+                    if (blocked) foreach (int x in new[] { 46, 47 }) Require(WorldGen.PlaceTile(x, 42, TileID.Stone, true, true), "preference obstacles are real original world bodies");
+                    continuousPlacements.Clear(); continuousWatch = true; SetAutomatic(host, input, true);
+                    bool earlier = false, preparedDebt = false, invalidatedDebt = false, reboundDebt = false;
+                    object seed = null, debtTarget = null;
+                    for (continuousFrame = 0; continuousFrame < 300 && continuousPlacements.Count < (blocked ? 2 : 4); continuousFrame++)
+                    {
+                        NativeToolExecutionChecks.Sample(context, input, new Vector2(480, 540), false);
+                        long steps = (long)Get(host, "ProjectionMatchSourceSteps"), checks = (long)Get(host, "BuildCandidateChecks");
+                        NativeQuickItemChecks.BeginWorldStep(); p.Update(0);
+                        if (!blocked && continuousPlacements.Count > 0 && !earlier)
+                        {
+                            // A genuine new earlier same-type stack must not
+                            // steal this exact ongoing source or its reach.
+                            p.inventory[11].SetDefaults(ItemID.DirtBlock); p.inventory[11].stack = 3; p.inventory[11].tileBoost = 1;
+                            earlier = true;
+                        }
+                        var before = GetOptional(host, "preparedBuild");
+                        if (!blocked && continuousPlacements.Count == 2 && before != null && (int)Get(Get(before, "Target"), "WorldX") == 45 &&
+                            !(bool)Call(host, "IsBuildTargetCurrent", Get(before, "Target")))
+                        {
+                            invalidatedDebt = true;
+                            Require(ReferenceEquals(seed, GetOptional(host, "deferredBuild")), "actual preferred write invalidates the prepared fallback without forgiving its service debt");
+                        }
+                        Call(context, "UpdateRuntime");
+                        Require((long)Get(host, "ProjectionMatchSourceSteps") - steps <= 256 && (int)Get(host, "materialBuildSourceBudget") >= 0 &&
+                            (long)Get(host, "BuildCandidateChecks") - checks <= 64,
+                            "ordinary, preference and deferred work share the original source and full-preflight allowances");
+                        var pendingSeed = GetOptional(host, "deferredBuild"); var prepared = GetOptional(host, "preparedBuild");
+                        if (pendingSeed != null && seed == null) seed = pendingSeed;
+                        if (pendingSeed != null && prepared != null && (int)Get(Get(prepared, "Target"), "WorldX") == 45)
+                        {
+                            preparedDebt = true;
+                            if (invalidatedDebt && debtTarget != null && !ReferenceEquals(debtTarget, Get(prepared, "Target"))) reboundDebt = true;
+                            debtTarget = Get(prepared, "Target");
+                        }
+                        if (!blocked && continuousPlacements.Count == 1)
+                        {
+                            var reach = (IDictionary<int, int>)Get(host, "buildItemReach"); int actualBoost;
+                            Require(reach.TryGetValue(ItemID.DirtBlock, out actualBoost) && actualBoost == p.inventory[12].tileBoost && (int)Get(host, "buildEnvelopeBoost") == 1,
+                                "one capability observation retains the exact active source reach while the earlier stack only expands the broad envelope");
+                        }
+                        // Empty outer callbacks preserve one debt and do no
+                        // new preparation, preference scanning or native spend.
+                        int count = continuousPlacements.Count; object kept = GetOptional(host, "deferredBuild");
+                        long outerChecks = (long)Get(host, "BuildCandidateChecks");
+                        var cursorOwners = GetOptional(instance, "Match") == null ? Array.Empty<object>() :
+                            EligibilityRanges(instance).Select(r => GetOptional(r, "Materials")).Where(v => v != null).ToArray();
+                        var preferenceCursors = cursorOwners.Select(v => (int)Get(v, "PreferredCursor")).ToArray();
+                        NativeToolExecutionChecks.Outer(context, input, 2);
+                        Require(continuousPlacements.Count == count && ReferenceEquals(kept, GetOptional(host, "deferredBuild")) &&
+                            outerChecks == (long)Get(host, "BuildCandidateChecks") && cursorOwners.Select((v, i) => (int)Get(v, "PreferredCursor") == preferenceCursors[i]).All(v => v),
+                            "empty outer does not reset fairness or spend another preparation allowance");
+                    }
+                    continuousWatch = false;
+                    Require(continuousPlacements.Count >= 2 && continuousPlacements[0].X == 44 && continuousPlacements[0].Type == ItemID.DirtBlock,
+                        "mixed sequence starts by the ordinary real Dirt placement");
+                    if (blocked)
+                    {
+                        Require(continuousPlacements[1].X == 45 && p.inventory[13].stack == 1 && GetOptional(host, "deferredBuild") == null,
+                            "when current-material targets are blocked, the first prepared legal Stone fallback actually consumes next");
+                        foreach (int x in new[] { 46, 47 }) WorldGen.KillTile(x, 42, false, false, true);
+                        Until(context, input, () => Scene(host).Length == 0);
+                        Require(p.inventory[12].stack == 5, "real obstacle removal recovers all original Dirt work without toggling build");
+                    }
+                    else
+                    {
+                        Require(continuousPlacements.Count == 4 && continuousPlacements[1].Type == ItemID.DirtBlock && continuousPlacements[1].Slot == 12 &&
+                            continuousPlacements[0].Token == continuousPlacements[1].Token && continuousPlacements[0].Flight != continuousPlacements[1].Flight &&
+                            continuousPlacements[2].X == 45 && continuousPlacements[2].Type == ItemID.StoneBlock && continuousPlacements[2].Token != continuousPlacements[1].Token,
+                            "one active-source overtake really continues the same exact stack/lease, then the ordinary Stone target receives finite native service");
+                        Require(seed != null && preparedDebt && invalidatedDebt && reboundDebt && GetOptional(host, "deferredBuild") == null &&
+                            p.inventory[11].stack + p.inventory[12].stack == 8 && p.inventory[13].stack == 1,
+                            "the single debt survives a stale prepared proof, rebinds current support and is cleared by actual admission with exact real consumption");
+                        Until(context, input, () => Scene(host).Length == 0);
+                    }
+                    Console.WriteLine("PASS BlueprintBuild material continuity blocked=" + blocked + " placements=" +
+                        string.Join(",", continuousPlacements.Select(v => v.X + ":" + v.Type + "@" + v.Slot + "#" + v.Token)) +
+                        " preparedDebt=" + preparedDebt + " staleDebt=" + invalidatedDebt + " reboundDebt=" + reboundDebt + " originalBudgets=true");
+                    SetAutomatic(host, input, false);
+                    Require(GetOptional(host, "deferredBuild") == null && (int)Get(Get(host, "buildSources"), "Count") == 0,
+                        "turning construction off releases preference transports and its sole deferred description");
+                }
+            }
+            finally
+            {
+                continuousWatch = false; continuousHost = continuousUse = null;
+                foreach (var method in patch.GetPatchedMethods().ToArray()) patch.Unpatch(method, HarmonyPatchType.All, patch.Id);
+                SetAutomatic(host, input, false);
+            }
         }
         [HarmonyPriority(Priority.Last)]
         private static void LateContinuousCheck(Player __instance)

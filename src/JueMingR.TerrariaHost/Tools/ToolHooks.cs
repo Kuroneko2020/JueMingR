@@ -23,7 +23,7 @@ namespace JueMingR.TerrariaHost.Tools
             harmony.CreateReversePatcher(typeof(Player).GetMethod("TrySyncingInput",BindingFlags.Instance|BindingFlags.NonPublic),new HarmonyMethod(typeof(ToolHooks).GetMethod(nameof(NativeSync),BindingFlags.Static|BindingFlags.NonPublic))).Patch();
             Patch(typeof(Player),"PickItemSelectionOverride",new[]{typeof(int).MakeByRefType()},null,nameof(Pick));
             Patch(typeof(Player),"TrySyncingInput",Type.EmptyTypes,nameof(Sync));
-            Patch(typeof(Terraria.GameContent.SmartCursorHelper),"SmartCursorLookup",new[]{typeof(Player)},nameof(TargetBefore),nameof(TargetAfter));
+            Patch(typeof(Terraria.GameContent.SmartCursorHelper),"SmartCursorLookup",new[]{typeof(Player)},nameof(TargetBefore),nameof(TargetAfter),nameof(TargetFinal));
             Patch(typeof(Player),"Update",new[]{typeof(int)},null,nameof(PlayerUpdateAfter),nameof(PlayerUpdateFinal));
             Patch(typeof(Player),"LookForTileInteractions",Type.EmptyTypes,null,nameof(Interactions),nameof(InteractionsFinal));
             Patch(typeof(Player),"ItemCheck",Type.EmptyTypes,nameof(Before),nameof(After),nameof(Final));
@@ -75,6 +75,7 @@ namespace JueMingR.TerrariaHost.Tools
         private static void Pick(Player __instance,ref int __0,ref bool __result){host?.Use.Pick(__instance,ref __0,ref __result);}
         private static void TargetBefore(Player __0){host?.Use.BeforeTargetResolution(__0);}
         private static void TargetAfter(Player __0){host?.Use.AfterTargetResolution(__0);}
+        private static Exception TargetFinal(Player __0,Exception __exception){if(__exception!=null)host?.Use.TargetResolutionFailed(__0);return __exception;}
         private static void PlayerUpdateAfter(Player __instance){host?.Use.FinishPlayerUpdate(__instance,null);}
         private static Exception PlayerUpdateFinal(Player __instance,Exception __exception){if(__exception!=null)host?.Use.FinishPlayerUpdate(__instance,__exception);return __exception;}
         [HarmonyPriority(Priority.First)]
