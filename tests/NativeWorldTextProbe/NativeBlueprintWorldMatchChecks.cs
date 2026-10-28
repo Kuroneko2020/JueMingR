@@ -654,7 +654,8 @@ namespace NativeWorldTextProbe
         {
             // Successful placement owns a reliable scene only after the real
             // asynchronous initial read. Keep its normal gate and wait budget.
-            NativeQuickItemChecks.Until(() => { step(); return (bool)Get(host, "ProjectionPersistenceReady"); });
+            if (!(bool)Get(host, "ProjectionPersistenceReady"))
+                NativeQuickItemChecks.Until(() => { step(); return (bool)Get(host, "ProjectionPersistenceReady"); });
             NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); Require((bool)Call(host, "Place", entry), "real Place admission");
             NativeQuickItemChecks.Until(() => { step(); return Mode(host) == "Following"; });
             var candidate = Get(host, "ProjectionCandidate"); var summary = (CaptureSummary)Get(candidate, "Summary"); int px = x + (summary.Width - 1) / 2, py = y + (summary.Height - 1) / 2;
