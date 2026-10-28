@@ -81,14 +81,15 @@ namespace JueMingR.Features.Blueprint
         {
             internal readonly Dictionary<long, ushort> Cells;
             internal readonly HashSet<int> Objects;
-            internal long Removed;
+            internal long Removed, RemovedConstruction;
             internal readonly BlueprintProjectionMask View;
-            internal ProjectionMaskBuilder(BlueprintProjectionMask source) { Cells = source.CopyCells(); Objects = source.CopyObjects(); Removed = source.RemovedLayerCount; View = new BlueprintProjectionMask(Cells, Objects, Removed); }
-            internal BlueprintProjectionMask Mask { get { return new BlueprintProjectionMask(Cells, Objects, Removed); } }
+            internal ProjectionMaskBuilder(BlueprintProjectionMask source) { Cells = source.CopyCells(); Objects = source.CopyObjects(); Removed = source.RemovedLayerCount; RemovedConstruction = source.RemovedConstructionLayerCount; View = new BlueprintProjectionMask(Cells, Objects, Removed, RemovedConstruction); }
+            internal BlueprintProjectionMask Mask { get { return new BlueprintProjectionMask(Cells, Objects, Removed, RemovedConstruction); } }
             internal void AddCell(CaptureCell visible, ushort bits)
             {
                 bits &= BlueprintProjectionMask.Layers(visible); if (bits == 0) return;
                 long key = ProjectionDirectory.Key(visible.X, visible.Y); ushort previous; Cells.TryGetValue(key, out previous); Cells[key] = (ushort)(previous | bits); Removed += BlueprintProjectionMask.Count(bits);
+                RemovedConstruction += BlueprintProjectionMask.Count(BlueprintConstructionTargets.FilterBits(bits));
             }
         }
         private ProjectionOwner CommitOwner(BlueprintProjectionIdentity identity)
@@ -155,7 +156,7 @@ namespace JueMingR.Features.Blueprint
                                 {
                                     CaptureCell member = members.Cells[i]; if (member.ObjectId != id) continue;
                                     member.X -= target.Left; member.Y -= target.Top; member = builder.View.Apply(member);
-                                    if ((member.Layers & CaptureLayer.Tile) != 0) builder.Removed++;
+                                    if ((member.Layers & CaptureLayer.Tile) != 0) { builder.Removed++; builder.RemovedConstruction++; }
                                 }
                                 yield return true;
                             }

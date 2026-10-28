@@ -899,6 +899,9 @@ namespace JueMingR.TerrariaHost
                 }
 
                 preferences = new HostPreferences(gameDirectory);
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                JueMingR.TerrariaHost.Blueprint.BlueprintBuildTrace.Initialize(gameDirectory,PackageId,Terraria.Main.versionNumber);
+#endif
                 bool quickPackage = (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || (PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || (PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal) || PackageId.StartsWith("continuous-processing-", StringComparison.Ordinal)))));
                 bool footprintPackage = (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage);
                 bool mapPackage = footprintPackage || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal);
@@ -966,6 +969,8 @@ namespace JueMingR.TerrariaHost
                     runtime.SharedRuntime.AddFeature(Movement);
                     var blueprintLibrary = new Features.Blueprint.LibraryState(new Infrastructure.Blueprint.FileBlueprintLibrary(System.IO.Path.Combine(gameDirectory, "JueMingRData", "blueprints", "templates")));
                     Blueprint = new Blueprint.HostBlueprint(gameDirectory, runtime.SharedRuntime, Input, worldTiles, blueprintLibrary);
+                    Blueprint.AttachBuildTools(Tools);
+                    if (Browser != null) Blueprint.AttachMaterialKnowledge(Browser.Knowledge, (slot, item) => Tools != null && Tools.BuildInventoryEligible(slot, item));
                     runtime.SharedRuntime.AddFeature(Blueprint);
                     View = new View.HostView(gameDirectory, runtime.SharedRuntime, Input);
                     runtime.SharedRuntime.AddFeature(View);
@@ -1007,6 +1012,9 @@ namespace JueMingR.TerrariaHost
 
             internal void UpdateRuntime()
             {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                JueMingR.TerrariaHost.Blueprint.BlueprintBuildTraceHost.Outer(Blueprint,Input,updateTick);
+#endif
                 Phase0TBiomeRuntime current = runtime;
                 if (current == null)
                 {

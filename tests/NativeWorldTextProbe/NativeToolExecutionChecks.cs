@@ -27,8 +27,7 @@ namespace NativeWorldTextProbe
             textures=graphics;
             object host=Get(context,"Tools"),input=Get(context,"Input");
             NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return ((JueMingR.Features.Tools.ToolSettings[])Get(host,"Settings")).All(s=>s.Loaded);});
-            typeof(Main).GetMethod("Initialize_TileAndNPCData1",Flags).Invoke(null,null);
-            typeof(Main).GetMethod("Initialize_TileAndNPCData2",Flags).Invoke(null,null);TileObjectData.Initialize();
+            NativeBlueprintWorldMatchChecks.InitializeMetadata();
             Terraria.GameContent.Creative.CreativePowerManager.Initialize();
             Terraria.DataStructures.ArmorSetBonuses.Initialize();Terraria.DataStructures.ArmorSetBonuses.BuildLookup();
             for(int i=1;i<Main.player.Length;i++)if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};
@@ -70,15 +69,135 @@ namespace NativeWorldTextProbe
                 }
                 Require(failures.Count==0,"full native execution: "+string.Join("; ",failures));
                 MiningManual(context,host,input);Safety(context,host,input);
+                DirectionOwnership(context,host,input);
+                MaterialsViewing(context,host,input);
                 NativeToolWaitChecks.Run(context,host,input,release);
                 Console.WriteLine("PASS G09 full Player.Update/ItemCheckWrapped: true automatic first hit, continuous effects, unsampled outer updates, focused retention and safety cancellation"+(graphics==null?"; texture-free CPU cadence, capture not run.":"; three real net textures, native rabbit AI from both sides and actual catch output."));
             }
             finally{for(int i=0;i<3;i++)NativeToolsChecks.SetMode(host,i,0);foreach(var method in watch.GetPatchedMethods().ToArray())watch.Unpatch(method,HarmonyPatchType.All,watch.Id);}
         }
         private static bool SkipOutlet(){return false;}
+        private static void MaterialsViewing(object context,object host,object input)
+        {
+            object blueprint=Get(context,"Blueprint"),shell=Get(context,"Shell"),popup=Get(shell,"BlueprintMaterialsUi"),state=Get(blueprint,"State");
+            NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return (bool)Get(blueprint,"ControlsEnabled");});
+            Call(shell,"CloseAndSubmitPosition");
+            Require(!(bool)Get(state,"Active"),"material-view comparison starts outside the real capture editor");
+            try
+            {
+                var closed=Cadence(context,host,input,ItemID.StaffofRegrowth,12,true,true,false,0);
+                Call(blueprint,"OpenMaterials");
+                Require((bool)Get(popup,"Visible") && !(bool)Get(Get(shell,"State"),"Visible"),"actual independent material entry opens without an empty F5 shell");
+                var opened=Cadence(context,host,input,ItemID.StaffofRegrowth,12,true,true,false,0);
+                Require(closed.Count==7 && opened.Count==7 && (bool)Get(popup,"Visible"),
+                    "pure material viewing preserves all seven actual automatic native harvest/replant effects");
+                Console.WriteLine("PASS material-view automatic harvest closed="+closed.Count+" open="+opened.Count+"; original Player.Update/ItemCheck, no editor-gate bypass");
+
+                Call(popup,"Close");Sample(context,input,new Vector2(480,540),false);Call(blueprint,"Toggle");
+                Require((bool)Get(state,"Active"),"actual capture toggle still owns the world editor");
+                var p=Reset(context,host,input,ItemID.StaffofRegrowth,12,0);
+                for(int x=41;x<=44;x++){Require(WorldGen.PlaceTile(x,42,78,mute:true,forced:true,plr:0),"capture barrier actual pot");NativeToolsChecks.Tile(x,41,84);}
+                NativeToolsChecks.SetMode(host,1,1);
+                for(int frame=0;frame<80;frame++){Sample(context,input,new Vector2(480,540),false);NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");}
+                Require(Enumerable.Range(41,4).All(x=>Main.tile[x,41].active() && Main.tile[x,41].type==84),
+                    "active capture retains its original automatic held-item world barrier");
+            }
+            finally{Call(popup,"Close");Call(state,"Exit");NativeToolsChecks.SetMode(host,1,0);Sample(context,input,new Vector2(480,540),false);}
+        }
         private static void Consumed(bool __runOriginal){if(__runOriginal)consumers++;}
         private static void Caught(Rectangle __1,bool __runOriginal)
         {if(!__runOriginal){catchSkipped++;return;}catchCalls++;if(watched!=null && __1.Intersects(watched.Hitbox))catchHits++;}
+        internal static void DirectionOwnership(object context,object host,object input)
+        {
+            var p=Reset(context,host,input,ItemID.WoodenChair,12,12);
+            object use=Get(host,"Use"),ownership=Get(Get(host,"Items"),"Ownership");
+            Type intentType=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Tools.ToolIntent",true);
+            object intent=Activator.CreateInstance(intentType,true);
+            var target=new Vector2(42*16+8,41*16+8);bool valid=true,resolutionFault=false;int placementCalls=0,consumerDirection=0;
+            var resolutionError=new InvalidOperationException("fixture-direction-resolution-callback");
+            Set(intent,"Kind",Enum.Parse(intentType.GetField("Kind",Flags).FieldType,"Build"));
+            Set(intent,"Slot",12);Set(intent,"Target",target);Set(intent,"PlayerDirection",-1);Set(intent,"PreciseTarget",true);
+            Set(intent,"Valid",(Func<bool>)(()=>valid));Set(intent,"Refresh",(Func<bool>)(()=>true));
+            Set(intent,"ResolvedTarget",(Func<int,int,bool>)((x,y)=>{if(resolutionFault)throw resolutionError;return x==42 && y==41;}));
+            // This component check owns only the borrowed field and real source
+            // lease. Its observer rejects placement; actual furniture results
+            // remain the responsibility of the native Blueprint checks.
+            Set(intent,"NativePlacement",(Func<bool,bool>)(wall=>{placementCalls++;consumerDirection=p.direction;return false;}));
+            Action acquire=()=>
+            {
+                Call(use,"Retire");valid=true;resolutionFault=false;Sample(context,input,new Vector2(480,540),false);NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");
+                Require(!(bool)Get(use,"Active") && (bool)Call(host,"Admit",p,false),"direction fixture starts at an admitted real input epoch without another lease");
+                Require((bool)Call(use,"Acquire",p,intent) && (bool)Call(ownership,"IsUseSlot",12),"direction fixture leases the actual carried source");
+                Main.SmartCursorWanted_Mouse=Main.SmartCursorWanted_GamePad=true;
+            };
+            Action end=()=>Call(use,"End",p,(long)Get(use,"Operation"),null,(long)Get(use,"NativeGeneration"));
+            int savedDirection=p.direction;bool savedSmartMouse=Main.SmartCursorWanted_Mouse,savedSmartPad=Main.SmartCursorWanted_GamePad;
+            try
+            {
+                acquire();p.direction=1;
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && p.direction==1 && placementCalls==0,"unentered consumer cannot borrow direction or call placement");
+                Call(use,"BeforeSync",p);
+                Require(p.direction==1 && p.controlUseItem && (long)Get(use,"pulseFrame")== (long)Get(input,"Frame"),
+                    "sync submits the existing automatic use pulse without borrowing direction");
+                int mouseX=Main.mouseX,mouseY=Main.mouseY,tileX=Player.tileTargetX,tileY=Player.tileTargetY;
+                Call(use,"BeforeTargetResolution",p);Call(use,"BeforeTargetResolution",p);
+                Require(p.direction==-1 && Player.tileTargetX==42 && Player.tileTargetY==41 && !Main.SmartCursorWanted_Mouse && !Main.SmartCursorWanted_GamePad,
+                    "lookup borrows the requested direction, precise target and cursor mode");
+                Call(use,"AfterTargetResolution",Main.player[1]);Call(use,"TargetResolutionFailed",Main.player[1]);
+                Require(p.direction==-1 && (bool)Get(use,"directionBorrowed"),"another player's normal or exceptional lookup cannot release this direction");
+                Call(use,"AfterTargetResolution",p);
+                Require(p.direction==1 && !(bool)Get(use,"directionBorrowed") && (bool)Get(use,"borrowed") && (bool)Get(use,"cursorBorrowed"),
+                    "lookup releases only direction before native movement, retaining aim and cursor for ItemCheck");
+                Call(use,"Begin",p);
+                Require(p.direction==1 && (bool)Get(use,"InNativeUse") && Main.mouseLeft,"Begin retains native facing and submits the existing mouse/use scope");
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && consumerDirection==-1 && p.direction==-1,
+                    "the admitted consumer borrows direction before its actual placement callback");
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && consumerDirection==-1,"repeated consumer callbacks keep the same direction lease");
+                end();Require(p.direction==1 && Main.mouseX==mouseX && Main.mouseY==mouseY && Player.tileTargetX==tileX && Player.tileTargetY==tileY &&
+                    Main.SmartCursorWanted_Mouse && Main.SmartCursorWanted_GamePad,"native cleanup returns direction, exact input coordinates and cursor preferences");
+
+                acquire();p.direction=1;Call(use,"BeforeSync",p);Call(use,"BeforeTargetResolution",p);
+                p.direction=1; // A different writer while lookup owns -1.
+                Call(use,"AfterTargetResolution",p);Call(use,"Begin",p);
+                Require(p.direction==1,"lookup and Begin preserve a different native writer");
+                p.direction=-1; // A same-value native startup write, with no direction lease active.
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && consumerDirection==-1,"the real consumer still observes its requested direction");
+                end();Require(p.direction==-1,"consumer cleanup retains a same-value native startup choice as its fresh baseline");
+
+                acquire();p.direction=1;Call(use,"BeforeSync",p);Call(use,"Begin",p);
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && p.direction==-1,"the qualified consumer owns its temporary direction");
+                p.direction=1;end();Require(p.direction==1,"a later different direction writer is never overwritten by consumer cleanup");
+
+                int calls=placementCalls;
+                acquire();p.direction=-1;Call(use,"BeforeSync",p);Call(use,"Begin",p);p.direction=1;valid=false;
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && p.direction==1 && placementCalls==calls,"invalid current action cannot rewrite a newer direction or reach placement");
+                valid=true;Player.tileTargetX=43;
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && p.direction==1 && placementCalls==calls,"wrong actual consumer coordinates are rejected before any direction write");
+                Require(!(bool)Call(use,"AllowBuildPlacement",false) && p.direction==1 && placementCalls==calls,"rejected native readiness cannot reborrow direction");
+                end();Require(p.direction==1,"cleanup preserves a later writer when this scope no longer owns its value");
+
+                acquire();p.direction=1;Call(use,"BeforeSync",p);Call(use,"BeforeTargetResolution",p);valid=false;Call(use,"BeforeSync",p);
+                Call(use,"AfterTargetResolution",p);
+                Require(p.direction==1 && !(bool)Get(use,"directionBorrowed") && (bool)Get(use,"borrowed"),
+                    "readiness lost during lookup still releases direction through the early-return finally");
+                Call(use,"FinishPlayerUpdate",p,null);
+
+                acquire();p.direction=1;Call(use,"BeforeSync",p);Call(use,"BeforeTargetResolution",p);resolutionFault=true;
+                Exception observed=null;
+                try{Call(use,"AfterTargetResolution",p);}catch(TargetInvocationException error){observed=error.InnerException;}
+                Require(ReferenceEquals(observed,resolutionError) && p.direction==1 && !(bool)Get(use,"directionBorrowed") &&
+                    (bool)Get(use,"borrowed") && (bool)Get(use,"cursorBorrowed"),"resolution callback failure returns direction without swallowing the fault or releasing aim/cursor");
+                resolutionFault=false;Call(use,"FinishPlayerUpdate",p,null);
+
+                acquire();p.direction=1;Call(use,"BeforeSync",p);Call(use,"BeforeTargetResolution",p);
+                Require(p.direction==-1,"target lookup owns its temporary direction before physical handoff");
+                Sample(context,input,target,true);Call(use,"BeforeSync",p);
+                Require(p.direction==1 && !(bool)Get(use,"ActionValid") && !(bool)Call(ownership,"IsUseSlot",12),
+                    "a genuine physical press restores the newer direction and immediately owns the source");
+                Console.WriteLine("PASS ToolUse direction ownership: short lookup/consumer scopes, original sync/Begin input, same-value startup baseline, later writers, consumer admission/coordinates, readiness/callback failure, other-player isolation and physical handoff; component seam only");
+            }
+            finally{Call(use,"Retire");p.direction=savedDirection;Main.SmartCursorWanted_Mouse=savedSmartMouse;Main.SmartCursorWanted_GamePad=savedSmartPad;Sample(context,input,new Vector2(480,540),false);}
+        }
         internal static void Sample(object context,object input,Vector2 world,bool held)
         {
             Call(input,"BeginUpdate");

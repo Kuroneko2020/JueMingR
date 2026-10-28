@@ -5,7 +5,7 @@ using JueMingR.Features.Blueprint;
 namespace JueMingR.TerrariaHost.F5
 {
     internal enum BlueprintLibraryCommand
-    { None, Card, Name, Rename, Delete, Previous, Next, Back, ConfirmDraft, Cancel, Exclude, PreviousObjects, NextObjects, ExcludeAll, Place }
+    { None, Card, Name, Rename, Delete, Previous, Next, Back, ConfirmDraft, Cancel, Exclude, PreviousObjects, NextObjects, ExcludeAll, Place, Materials }
 
     internal sealed class BlueprintLibraryPart
     {
@@ -14,8 +14,10 @@ namespace JueMingR.TerrariaHost.F5
         internal Guid AssetId;
         internal int ObjectId;
         internal bool Enabled, Selected, Card, Editing;
+        internal bool Fixed;
         internal string PreviewKey;
         internal string Hint;
+        internal string MaterialHint;
         internal F5Size HintSize;
         internal Color Ink = Color.White;
     }
@@ -25,17 +27,19 @@ namespace JueMingR.TerrariaHost.F5
     internal static class BlueprintLibraryLayout
     {
         internal const int PageCapacity = 6;
-        internal const float HeaderHeight = 42, HeaderGap = 6, CardHeight = 166, Gap = 8, PreviewHeight = 68;
-        internal static float Height(int count)
+        internal const float HeaderHeight = 42, HeaderGap = 6, CardHeight = 190, Gap = 8, PreviewHeight = 68;
+        internal static float Height(int count) { return HeightForCards(count, CardHeight); }
+        internal static float HeightForCards(int count, float cardHeight)
         {
             int rows = (Math.Max(0, Math.Min(PageCapacity, count)) + 1) / 2;
-            return HeaderHeight + HeaderGap + (rows == 0 ? 58 : rows * CardHeight + (rows - 1) * Gap) + 6;
+            return HeaderHeight + HeaderGap + (rows == 0 ? 58 : rows * cardHeight + (rows - 1) * Gap) + 6;
         }
-        internal static F5Rect Card(float width, int index)
+        internal static F5Rect Card(float width, int index) { return CardForHeight(width, index, CardHeight); }
+        internal static F5Rect CardForHeight(float width, int index, float cardHeight)
         {
             if (index < 0 || index >= PageCapacity) throw new ArgumentOutOfRangeException(nameof(index));
             float cardWidth = Math.Max(1, (width - Gap) / 2);
-            return new F5Rect(index % 2 * (cardWidth + Gap), HeaderHeight + HeaderGap + index / 2 * (CardHeight + Gap), cardWidth, CardHeight);
+            return new F5Rect(index % 2 * (cardWidth + Gap), HeaderHeight + HeaderGap + index / 2 * (cardHeight + Gap), cardWidth, cardHeight);
         }
         internal static F5Rect HeaderButton(float width, int index)
         {

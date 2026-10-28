@@ -115,7 +115,7 @@ $pendingItem=@($scoped.checks|Where-Object {$_.status -ceq 'NOT_EXECUTED'})[0]
 $pendingItem.status='NOT_RUN'
 $scopedStage=Read-CandidateFixture $scoped
 Assert-Candidate ($scopedStage.taskAcceptance.status -ceq 'PASS' -and $scopedStage.taskAcceptance.checkCount -eq 1 -and $scopedStage.checkCount -eq $plan.checks.Count) 'task subset passes separately while the full actual catalogue is retained'
-Assert-Candidate (@($scopedStage.regressionObservations|Where-Object {$_.name -ceq $failedName -and $_.status -ceq 'FAIL'}).Count -eq 1 -and $scopedStage.openFailures[0] -ceq $failedName) 'out-of-task failure keeps its original FAIL and bound artifact'
+Assert-Candidate (@($scopedStage.regressionObservations|Where-Object {$_.name -ceq $failedName -and $_.status -ceq 'FAIL' -and $_.acceptance -ceq 'NOT_SELECTED_FOR_AGGREGATE_ACCEPTANCE'}).Count -eq 1 -and $scopedStage.openFailures[0] -ceq $failedName) 'unselected aggregate failure keeps its original FAIL and bound artifact without claiming task irrelevance'
 Assert-Candidate (@($scopedStage.regressionObservations|Where-Object {$_.status -ceq 'NOT_RUN'}).Count -gt 0 -and $scopedStage.fullQualification -ceq 'INCOMPLETE' -and -not $scopedStage.installationAuthorized) 'unrun regression stays NOT_RUN without full qualification or installation authority'
 $bad=Copy-Candidate $scoped;$bad.taskAcceptance.responsibilities=@()
 Assert-CandidateReject {Read-CandidateFixture $bad} 'empty task acceptance subset rejected'

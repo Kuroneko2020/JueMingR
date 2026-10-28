@@ -23,6 +23,8 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "X bounded wide rows and stationary reuse", () => Shapes(Path.Combine(area, "shapes")));
             Run(failures, "open fairness latest retirement and failure", () => Scheduling(Path.Combine(area, "scheduling")));
             Run(failures, "shared instances and atomic layer/object delta", () => Scene(Path.Combine(area, "scene")));
+            Run(failures, "liquid display and construction denominators", () => LiquidDenominators(Path.Combine(area, "liquid-denominators")));
+            Run(failures, "qualified objects sibling masks and catalog revision", () => QualificationDenominators(Path.Combine(area, "qualification")));
             Run(failures, "overlap reader retirement rejects late delta", () => CommitRetirement(Path.Combine(area, "commit-retirement")));
             Run(failures, "shared request saturation and eventual progress", () => Saturation(Path.Combine(area, "saturation")));
             Run(failures, "last reference retirement during reader disposal", () => LastReferenceWake(Path.Combine(area, "last-reference-wake")));
@@ -41,6 +43,85 @@ namespace JueMingR.ArchitectureTests
         }
         private static void Run(IList<string> failures, string name, Action check) { try { check(); } catch (Exception e) { failures.Add("BlueprintProjection " + name + ": " + e); } }
         private static void Require(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
+        private static BlueprintProjectionQualificationReceipt Qualification(LibraryState state, BlueprintProjectionIdentity identity,
+            BlueprintPlacementCatalog catalog, BlueprintProjectionMask mask)
+        {
+            Require(state.RequestProjectionQualification(identity,catalog,mask),"finite immutable qualification demand admitted");
+            BlueprintProjectionQualificationReceipt receipt=null;Until(()=>state.TryTakeProjectionQualification(out receipt));
+            Require(receipt.Identity.Equals(identity) && ReferenceEquals(receipt.Catalog,catalog) && ReferenceEquals(receipt.Mask,mask) && receipt.CapabilityRevision==catalog.Revision,
+                "qualification receipt binds template/session/instance, catalog and exact mask reference");
+            return receipt;
+        }
+        private static void QualificationDenominators(string path)
+        {
+            var objects=new[]{
+                new CaptureObject{Id=1,Type=187,X=37,Y=91,Width=3,Height=2,Style=15,PlacementStyle=15,Reliable=true},
+                new CaptureObject{Id=2,Type=700,X=40,Y=91,Width=1,Height=1,Reliable=true},
+                new CaptureObject{Id=3,Type=624,X=40,Y=92,Width=1,Height=1,Reliable=true}};
+            Fixture fixture=Write(path,4,2,8,n=>
+            {
+                int x=(int)n%4,y=(int)n/4;var cell=new CaptureCell{X=37+x,Y=91+y,Layers=CaptureLayer.Tile,TileType=x==3?(ushort)(y==0?700:624):(ushort)187,ObjectId=x==3?y+2:1};
+                if(x<3){cell.FrameX=(short)(810+x*18);cell.FrameY=(short)(y*18);}
+                if(y==0 && x<2){cell.Layers|=CaptureLayer.Wall;cell.WallType=7;}
+                if(n==0){cell.Layers|=CaptureLayer.Wire|CaptureLayer.Actuator;cell.Wires=1;cell.Actuator=true;}
+                if(n==7){cell.Layers|=CaptureLayer.Liquid;cell.LiquidAmount=80;}
+                return cell;
+            },objects);
+            Fixture incoming=Write(path,1,1,1,n=>Tile(37,91));
+            Fixture wall=Write(path,1,1,1,n=>new CaptureCell{X=37,Y=91,Layers=CaptureLayer.Wall,WallType=7});
+            using(var counted=new CountedFiles(path))using(var state=new LibraryState(counted))
+            {
+                var identity=new BlueprintProjectionIdentity(fixture.Id,fixture.Revision,fixture.Hash,11,1);
+                Require(state.RequestProjectionOpen(identity),"display open remains independent of cold producer catalog");var opened=Await(state,BlueprintProjectionReceiptKind.Opened);
+                BlueprintProjectionQualificationReceipt pending;Require(opened.TotalLayerCount==13 && !state.TryTakeProjectionQualification(out pending),
+                    "original full display layers open before qualification instead of fabricating final zero targets");
+                var catalog=BlueprintQualificationChecks.Catalog();var qualified=Qualification(state,identity,catalog,BlueprintProjectionMask.Empty);
+                Require(qualified.TotalRequiredLayerCount==5 && qualified.EffectiveRequiredLayerCount==5 && qualified.EffectiveUnknownLayerCount==0 && qualified.MatchRanges.Count==2,
+                    "seven display-object Tile members disappear from construction only, replica and valid same-cell sibling layers retain five targets");
+                Require(!qualified.SourceRanges[0].IntersectsProofs(new BlueprintProjectionBounds(2,1,1,1),1,BlueprintProjectionMask.Empty) &&
+                    qualified.SourceRanges[0].IntersectsProofs(new BlueprintProjectionBounds(0,0,1,1),2,BlueprintProjectionMask.Empty),
+                    "natural object changes do not route construction proof invalidation; coincident valid walls still do");
+                Require(state.RequestProjectionSource(identity,9100,1,capabilityRevision:catalog.Revision),"qualified replica proof requests the derived range index");
+                BlueprintProjectionSourceReceipt source=null;Until(()=>state.TryTakeProjectionSource(out source));
+                Require(source.CapabilityRevision==catalog.Revision && source.Window.Objects.Single().Type==700 && source.Window.Cells.Count==1,
+                    "qualified source receipt retains original replica body and catalog identity");
+                var incomingId=Open(state,incoming,2);var incomingSummary=new CaptureSummary{Left=37,Top=91,Width=1,Height=1,ContentCount=1};
+                var previous=new BlueprintProjectionPlacement(identity,opened.Summary,100,100,1);
+                var covered=Commit(state,new BlueprintProjectionCommitRequest(11,9101,1,new BlueprintProjectionPlacement(incomingId,incomingSummary,100,100,2),new[]{previous}));
+                var mask=covered.Masks[1];var after=Qualification(state,identity,catalog,mask);
+                Require(mask.RemovedLayerCount==6 && after.EffectiveRequiredLayerCount==5 && ReferenceEquals(after.MatchRanges,qualified.MatchRanges),
+                    "covering one natural member removes the complete display object while construction count and shared derived geometry remain unchanged");
+                var wallId=Open(state,wall,3);
+                var wallCovered=Commit(state,new BlueprintProjectionCommitRequest(11,9102,2,new BlueprintProjectionPlacement(wallId,incomingSummary,100,100,3),
+                    new[]{new BlueprintProjectionPlacement(identity,opened.Summary,100,100,1,mask)}));
+                var wallMask=wallCovered.Masks[1];var afterWall=Qualification(state,identity,catalog,wallMask);
+                Require(wallMask.RemovedLayerCount==7 && afterWall.EffectiveRequiredLayerCount==4,"old target qualification intersected with raw mask removes exactly one valid wall requirement");
+                var changedCatalog=BlueprintQualificationChecks.Catalog(902,complete:false);
+                const System.Reflection.BindingFlags ownerFields=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+                var worker=typeof(LibraryState).GetField("worker",ownerFields).GetValue(state);var workerGate=worker.GetType().GetField("gate",ownerFields).GetValue(worker);
+                // Order competing accepted/rejected requests before the worker
+                // can consume either. No qualification/result state is injected.
+                lock(workerGate)
+                {
+                    Require(state.RequestProjectionQualification(identity,changedCatalog,wallMask),"catalog switch enters an explicit new qualification pass");
+                    Require(!state.RequestProjectionQualification(identity,catalog,mask),"a stale catalog cannot replace or remove the already accepted newer qualification pass");
+                    Require(!state.RequestProjectionSource(identity,9103,0,capabilityRevision:catalog.Revision),"old catalog source admission is rejected as soon as qualification changes");
+                }
+                BlueprintProjectionQualificationReceipt changed=null;Until(()=>state.TryTakeProjectionQualification(out changed));
+                Require(changed.CapabilityRevision==902 && ReferenceEquals(changed.Mask,wallMask) && changed.TotalRequiredLayerCount==12 && changed.EffectiveRequiredLayerCount==5 && changed.EffectiveUnknownLayerCount==1,
+                    "coverage loss restores real unknown responsibility only on still-unmasked content, with a new denominator and revision");
+                var raw=Window(state,identity,9104,new BlueprintProjectionBounds(0,0,4,2));
+                Require(raw.Cells.Count==8 && raw.Cells.Count(c=>c.TileType==187)==6 && raw.Cells.Any(c=>c.TileType==624 && (c.Layers&CaptureLayer.Liquid)!=0) && fixture.Hash==identity.ContentHash,
+                    "qualification, masks and revision changes never rewrite the raw display window or original v1 content identity");
+#if DEBUG
+                Require(state.DebugProjectionStatistics.SourceIndexBytes>=qualified.SourceRanges.Sum(r=>r.SourceIndexBytes)+qualified.MatchRanges.Sum(r=>r.SourceIndexBytes),
+                    "derived construction geometry is charged to the shared source index lifecycle");
+#endif
+                state.ReleaseProjection(identity);Require(!state.TryTakeProjectionQualification(out pending) && !state.RequestProjectionQualification(identity,catalog,wallMask),
+                    "retired instance cannot accept a late qualification or resurrect the original template reference");
+                state.ReleaseProjection(incomingId);state.ReleaseProjection(wallId);Until(()=>counted.ActiveIndexes==0);
+            }
+        }
         private static void Until(Func<bool> condition)
         { var clock = Stopwatch.StartNew(); while (!condition()) { if (clock.ElapsedMilliseconds > 30000) throw new TimeoutException("Projection work did not reach its bounded test boundary."); Thread.Sleep(1); } }
         private static BlueprintProjectionReceipt Await(LibraryState state, BlueprintProjectionReceiptKind kind, long generation = -1)
@@ -265,7 +346,7 @@ namespace JueMingR.ArchitectureTests
                 CaptureCell left = mask.Apply(zero), right = mask.Apply(one);
                 Require((left.Layers & CaptureLayer.Tile) == 0 && (right.Layers & CaptureLayer.Tile) == 0 && right.Layers == CaptureLayer.Wall, "one-member overlap removes entire off-overlap object Tile, preserving member Wall");
                 Require(left.Wires == 10 && (left.Layers & (CaptureLayer.Wall | CaptureLayer.Liquid | CaptureLayer.Actuator)) == (CaptureLayer.Wall | CaptureLayer.Liquid | CaptureLayer.Actuator), "only same wire colors and Tile removed; missing Wall/Liquid/Actuator transparent");
-                Require(mask.RemovedLayerCount == 4 && pa.Mask.RemovedLayerCount == 0 && pb.Mask.RemovedLayerCount == 0, "source masks remain byte-semantic unchanged until Host chooses atomic commit");
+                Require(mask.RemovedLayerCount == 4 && mask.RemovedConstructionLayerCount == 4 && pa.Mask.RemovedLayerCount == 0 && pb.Mask.RemovedLayerCount == 0, "whole-object Tile and two wire colors advance both denominators while source masks remain unchanged");
                 var moved = new BlueprintProjectionPlacement(a, summary, 101, 100, 4, mask);
                 BlueprintProjectionCommitReceipt self = Commit(state, new BlueprintProjectionCommitRequest(11, 71, 10, moved, new[] { pa }));
                 Require(self.Masks.Count == 0 && moved.Mask.Apply(one).Layers == CaptureLayer.Wall, "moving self intersection excluded, inherited permanent mask follows origin");
@@ -596,8 +677,47 @@ namespace JueMingR.ArchitectureTests
                 }
             }
         }
+        private static void LiquidDenominators(string path)
+        {
+            var mixed = Tile(37, 91); mixed.Layers |= CaptureLayer.Liquid; mixed.LiquidAmount = 40; mixed.LiquidKind = 2;
+            var liquid = new CaptureCell { X = 37, Y = 91, Layers = CaptureLayer.Liquid, LiquidAmount = 80, LiquidKind = 1 };
+            Fixture original = Write(path, 1, 1, 1, n => mixed);
+            Fixture tileOnly = Write(path, 1, 1, 1, n => Tile(37, 91));
+            Fixture liquidOnly = Write(path, 1, 1, 1, n => liquid);
+            using (var state = new LibraryState(new FileBlueprintLibrary(path)))
+            {
+                var a = new BlueprintProjectionIdentity(original.Id, original.Revision, original.Hash, 11, 1);
+                Require(state.RequestProjectionOpen(a), "mixed denominator source admitted"); var opened = Await(state, BlueprintProjectionReceiptKind.Opened);
+                Require(opened.Kind == BlueprintProjectionReceiptKind.Opened && opened.TotalLayerCount == 2 && opened.TotalConstructionLayerCount == 1,
+                    "validated old-v1 mixed source keeps two display layers but only one construction target");
+                var b = Open(state, original, 2); var tile = Open(state, tileOnly, 3); var water = Open(state, liquidOnly, 4);
+                var summary = opened.Summary;
+                var pa = new BlueprintProjectionPlacement(a, summary, 100, 100, 1, totalLayerCount: 2, totalConstructionLayerCount: 1);
+                var pb = new BlueprintProjectionPlacement(b, summary, 200, 100, 2, totalLayerCount: 2, totalConstructionLayerCount: 1);
+                var removeTile = Commit(state, new BlueprintProjectionCommitRequest(11, 120, 1,
+                    new BlueprintProjectionPlacement(tile, summary, 100, 100, 3), new[] { pa }));
+                var lastLiquid = removeTile.Masks[1]; var local = mixed; local.X = local.Y = 0;
+                Require(lastLiquid.RemovedLayerCount == 1 && lastLiquid.RemovedConstructionLayerCount == 1 &&
+                    lastLiquid.Apply(local).Layers == CaptureLayer.Liquid && removeTile.RetiredInstanceIds.Count == 0,
+                    "masking the last construction target preserves the display-only liquid instance rather than empty retirement");
+                var removeLiquid = Commit(state, new BlueprintProjectionCommitRequest(11, 121, 2,
+                    new BlueprintProjectionPlacement(water, summary, 200, 100, 4), new[] { pb }));
+                Require(removeLiquid.Masks[2].RemovedLayerCount == 1 && removeLiquid.Masks[2].RemovedConstructionLayerCount == 0 &&
+                    removeLiquid.Masks[2].Apply(local).Layers == CaptureLayer.Tile && removeLiquid.RetiredInstanceIds.Count == 0,
+                    "liquid overlap erases only the full-layer liquid count, never the independent Tile denominator");
+                var masked = new BlueprintProjectionPlacement(a, summary, 100, 100, 5, lastLiquid, 2, 1);
+                var removeAll = Commit(state, new BlueprintProjectionCommitRequest(11, 122, 3,
+                    new BlueprintProjectionPlacement(water, summary, 100, 100, 6), new[] { masked }));
+                Require(removeAll.Masks[1].RemovedLayerCount == 2 && removeAll.Masks[1].RemovedConstructionLayerCount == 1 &&
+                    removeAll.RetiredInstanceIds.SequenceEqual(new long[] { 1 }),
+                    "removing the final display layer still uses original all-layer empty retirement");
+                var restored = Window(state, a, 88, new BlueprintProjectionBounds(0, 0, 1, 1));
+                Require(restored.Cells.Single().Layers == (CaptureLayer.Tile | CaptureLayer.Liquid) && restored.Cells.Single().LiquidAmount == 40,
+                    "derived denominators and immutable masks never migrate or rewrite old saved liquid bytes");
+            }
+        }
         private static BlueprintProjectionMask SourceMask(Dictionary<long, ushort> cells, HashSet<int> objects, long count)
-        { return (BlueprintProjectionMask)typeof(BlueprintProjectionMask).GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Single().Invoke(new object[] { cells, objects, count }); }
+        { return (BlueprintProjectionMask)typeof(BlueprintProjectionMask).GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Single().Invoke(new object[] { cells, objects, count, count }); }
         private static BlueprintProjectionSourceReceipt Source(LibraryState state)
         {
             BlueprintProjectionSourceReceipt found = null;
@@ -639,14 +759,19 @@ namespace JueMingR.ArchitectureTests
                 var ordinary = batch.Parts[0];
                 Require(ordinary.LogicalObjectId == 0 && ordinary.NextOffset == cells.Count && ordinary.Window.Cells.Count == 3 && ordinary.Window.Objects.Count == 0 &&
                     ordinary.Window.Cells.Count(c => c.Layers == CaptureLayer.Wall) == 1 && ordinary.Window.Cells.Count(c => c.Layers == CaptureLayer.Wire) == 1 && ordinary.Window.Cells.Count(c => c.Layers == CaptureLayer.Tile) == 1,
-                    "ordinary WithoutTile preserves same-cell wall/wire once and raw next offset counts all physical records");
+                    "ordinary lane preserves same-cell wall/wire once and raw next offset counts all physical records");
+                Require(ordinary.Window.Cells.Single(c => c.Layers == CaptureLayer.Wall).ObjectId == 1 &&
+                    ordinary.Window.Cells.Single(c => c.Layers == CaptureLayer.Wire).ObjectId == 2,
+                    "ordinary non-Tile targets retain captured furniture identity as context, without acquiring its Tile ownership");
                 for (int i = 1; i < batch.Parts.Count; i++)
                 {
                     var part = batch.Parts[i];
                     int expectedObject = opened.MatchRanges[i].ObjectId;
                     Require(part.Range == i && part.ObjectId == 0 && part.LogicalObjectId == expectedObject && part.Offset == 0 && part.NextOffset == 0 && part.Complete &&
-                        part.Window.Cells.Count == 3 && part.Window.Objects.Count == 1 && part.Window.Objects[0].Id == expectedObject && part.Window.Cells.All(c => c.ObjectId == expectedObject && c.Layers == CaptureLayer.Tile),
-                        "each logical object is a complete Tile-only workset, independent of same-cell other layers");
+                        part.Window.Cells.Count == 3 && part.Window.Objects.Count == 1 && part.Window.Objects[0].Id == expectedObject &&
+                        part.Window.Cells.All(c => c.ObjectId == expectedObject && (c.Layers & CaptureLayer.Tile) != 0 && (c.Layers & ~(CaptureLayer.Tile | CaptureLayer.Wall)) == 0) &&
+                        part.Window.Cells.Count(c => (c.Layers & CaptureLayer.Wall) != 0) == (expectedObject == 1 ? 1 : 0),
+                        "each logical object keeps one complete Tile owner and only its original same-cell wall context; wire stays ordinary");
                 }
                 long uniqueWindows = batch.Parts.Select(p => p.Window).Distinct().Sum(w => w.EstimatedBytes);
                 Require(batch.Parts.All(p => p.WindowEstimatedBytes == p.Window.EstimatedBytes + missing.Length * 8L && p.Window.Summary.MissingPayloads.SequenceEqual(missing) && p.Window.Summary.UnreliableReasons.Length == 0) &&
@@ -673,7 +798,12 @@ namespace JueMingR.ArchitectureTests
                 Require(state.RequestProjectionSource(id, 3004, objectOne, 1), "legacy explicit positive object request remains accepted");
                 var explicitObject = Source(state);
                 Require(explicitObject.ObjectId == 1 && explicitObject.Parts[0].LogicalObjectId == 1 && explicitObject.Window.Cells.Count == 3 &&
-                    explicitObject.Window.Cells.Any(c => c.Layers == (CaptureLayer.Tile | CaptureLayer.Wall)), "explicit all-layer selection is distinct from logical Tile-only supply");
+                    explicitObject.Window.Cells.Any(c => c.Layers == (CaptureLayer.Tile | CaptureLayer.Wall)), "explicit all-layer selection keeps its original request identity and captured layers");
+                int objectTwo = Enumerable.Range(0, opened.MatchRanges.Count).Single(r => opened.MatchRanges[r].ObjectId == 2);
+                Require(state.RequestProjectionSource(id, 3007, objectTwo, 2), "legacy explicit same-cell wire request remains accepted");
+                var explicitWire = Source(state);
+                Require(explicitWire.ObjectId == 2 && explicitWire.Window.Cells.Any(c => c.Layers == (CaptureLayer.Tile | CaptureLayer.Wire)),
+                    "explicit positive object API keeps wire, whereas the logical Tile-owner transport carries only its required wall context");
                 Require(!state.RequestProjectionSources(id, 3005, new BlueprintProjectionSourceDemand[65]) && !state.RequestProjectionSources(id, 3005, Array.Empty<BlueprintProjectionSourceDemand>()),
                     "request envelope backpressure rejects empty/over-64 lists without retiring valid source identity");
                 Require(state.RequestProjectionSource(id, 3006, 64), "a still-live final logical object remains independently serviceable");

@@ -109,9 +109,15 @@ namespace JueMingR.Platform.Items
             useToken=token;return true;
         }
         public bool TryBeginUse(long generation, int slot, long token)
+        { return TryBeginUse(generation, slot, token, 0); }
+        // A native building use can also consume the first selected paint or
+        // actuator stack. The primary source remains 0..49; these additional
+        // exact inventory slots belong to that same token, not another lease.
+        public bool TryBeginUse(long generation, int slot, long token, ulong dependencies)
         {
-            if (slot < 0 || slot >= 50 || token <= 0 || generation <= 0 || generation != Session || useToken != 0 || IsProtected(slot)) return false;
-            useSlots = 1UL << slot; useToken = token; return true;
+            if (slot < 0 || slot >= 50 || token <= 0 || generation <= 0 || generation != Session || useToken != 0 ||
+                (dependencies & ~AllInventorySlots) != 0 || (ProtectedSlots & (dependencies | (1UL << slot))) != 0) return false;
+            useSlots = dependencies | (1UL << slot); useToken = token; return true;
         }
         public void EndUse(long generation, long token)
         { if (generation == Session && token == useToken) { useSlots = 0; useToken = 0; } }

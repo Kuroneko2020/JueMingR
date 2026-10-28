@@ -14,7 +14,59 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "BlueprintMaterialsAutomationVisual")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context => { using (var graphics = new ProbeGraphics(content)) { NativeToolExecutionChecks.Initialize(context, graphics); NativeToolsIntegrationChecks.Visual(context, graphics, true); } }, processing: true, shortFeedback: true); return 0;
+            }
+            if (scope == "ItemsConsumerVisual")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context => { using (var graphics = new ProbeGraphics(content)) NativePageCompositionChecks.ItemsVisual(context, graphics, output); }, processing: true, shortFeedback: true); return 0;
+            }
             if (scope == "BlueprintOriginal") return NativeViewOriginalChecks.Run(content, output, blueprint: true);
+            if (scope == "BlueprintQualificationCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(NativeBlueprintQualificationChecks.Run, processing:true,shortFeedback:true);return 0;
+            }
+            if (scope == "BlueprintBuildThroughputCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>NativeBlueprintBuildChecks.Run(context,true), processing:true,shortFeedback:true);return 0;
+            }
+            if (scope == "BlueprintPersistenceCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(NativeBlueprintPersistenceChecks.Run, processing:true,shortFeedback:true);return 0;
+            }
+            if (scope == "BlueprintBuildCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>NativeBlueprintBuildChecks.Run(context), processing: true, shortFeedback: true); return 0;
+            }
+            if (scope == "BlueprintBuildContextCpu")
+            {
+                // Cumulative native-state diagnosis, without the unrelated
+                // dense projection matrix. This is edit feedback only.
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context =>
+                {
+                    NativeBlueprintWorldMatchChecks.InitializeMetadata();
+                    Exception first = null;
+                    Action<string, Action<object>> check = (name, body) =>
+                    {
+                        bool before = Terraria.WorldGen.destroyObject;
+                        try { body(context); }
+                        catch (Exception error) { Console.Error.WriteLine("BLUEPRINT CONTEXT " + name + ": " + error); if (first == null) first = error; }
+                        finally { Console.WriteLine("BLUEPRINT CONTEXT " + name + " destroyObject=" + before + "->" + Terraria.WorldGen.destroyObject); }
+                    };
+                    using (NativeBlueprintWorldChangeChecks.ObserveFrameFaults()) check("world changes", NativeBlueprintWorldChangeChecks.Run);
+                    check("match semantics", NativeBlueprintWorldMatchSemanticChecks.Run);
+                    check("actual native construction", c=>NativeBlueprintBuildChecks.Run(c));
+                    if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
+                }, processing: true, shortFeedback: true); return 0;
+            }
             if (scope == "BlueprintWorldMatchCpu")
             {
                 // Narrow edit feedback for this existing real Host owner.
@@ -25,12 +77,44 @@ namespace NativeWorldTextProbe
             if (scope == "BlueprintInput")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context => { NativeBlueprintInputRecoveryChecks.Cpu(context); using (var graphics = new ProbeGraphics(content)) NativeBlueprintInputContinuityChecks.Run(context, graphics); }, processing: true, shortFeedback: true); return 0;
+                NativeQuickItemChecks.Run(context => { NativeBlueprintInputRecoveryChecks.Cpu(context); using (var graphics = new ProbeGraphics(content)) { NativeBlueprintInputContinuityChecks.Run(context, graphics); NativeBlueprintMaterialsUiChecks.Input(context, graphics); } }, processing: true, shortFeedback: true); return 0;
+            }
+            if (scope == "BlueprintMaterialsInput" || scope == "BlueprintMaterialsVisual")
+            {
+                // Feedback for the common material view uses the same actual
+                // composition/resources. It does not replace the complete
+                // BlueprintInput/Visual consumers or create named evidence.
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context =>
+                {
+                    using (var graphics = new ProbeGraphics(content))
+                        if (scope == "BlueprintMaterialsVisual") NativeBlueprintMaterialsUiChecks.Visual(context, graphics, output);
+                        else NativeBlueprintMaterialsUiChecks.Input(context, graphics);
+                }, processing: true, shortFeedback: true); return 0;
             }
             if (scope == "BlueprintVisual")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context => { NativeBlueprintCaptureContentChecks.Run(context); using (var graphics = new ProbeGraphics(content)) { NativeBlueprintChecks.Visual(context, graphics, output); NativeBlueprintLibraryVisualChecks.Run(context, graphics, output); NativeBlueprintProjectionVisualChecks.Run(context, graphics, output); NativeBlueprintInputRecoveryChecks.Visual(context, graphics); NativeBlueprintWorldMatchChecks.Run(context, graphics, output); } }, processing: true, shortFeedback: true); return 0;
+                NativeQuickItemChecks.Run(context =>
+                {
+                    Exception first = null;
+                    Action<string, Action> check = (name, body) =>
+                    {
+                        try { body(); }
+                        catch (Exception error) { Console.Error.WriteLine("BLUEPRINT VISUAL " + name + ": " + error); if (first == null) first = error; }
+                    };
+                    check("capture content", () => NativeBlueprintCaptureContentChecks.Run(context));
+                    using (var graphics = new ProbeGraphics(content))
+                    {
+                        check("capture", () => NativeBlueprintChecks.Visual(context, graphics, output));
+                        check("library", () => NativeBlueprintLibraryVisualChecks.Run(context, graphics, output));
+                        check("projection", () => NativeBlueprintProjectionVisualChecks.Run(context, graphics, output));
+                        check("input recovery", () => NativeBlueprintInputRecoveryChecks.Visual(context, graphics));
+                        check("world match", () => NativeBlueprintWorldMatchChecks.Run(context, graphics, output));
+                        check("materials", () => NativeBlueprintMaterialsUiChecks.Visual(context, graphics, output));
+                    }
+                    if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
+                }, processing: true, shortFeedback: true); return 0;
             }
             if (scope == "BlueprintCpu")
             {
@@ -47,6 +131,7 @@ namespace NativeWorldTextProbe
                         catch (Exception error) { Console.Error.WriteLine("BLUEPRINT CPU " + name + ": " + error); if (first == null) first = error; }
                     };
                     check("world match", c => NativeBlueprintWorldMatchChecks.Run(c));
+                    check("exact construction qualification", NativeBlueprintQualificationChecks.Run);
                     check("world changes", NativeBlueprintWorldChangeChecks.Run);
                     check("match semantics", NativeBlueprintWorldMatchSemanticChecks.Run);
                     check("capture UI", NativeBlueprintChecks.Run);
@@ -56,6 +141,9 @@ namespace NativeWorldTextProbe
                     check("placement", NativeBlueprintPlacementChecks.Run);
                     check("budgets", NativeBlueprintBudgetChecks.Run);
                     check("input recovery", NativeBlueprintInputRecoveryChecks.Cpu);
+                    check("actual native construction", c=>NativeBlueprintBuildChecks.Run(c));
+                    check("materials UI", NativeBlueprintMaterialsUiChecks.Run);
+                    check("fixed scene persistence", NativeBlueprintPersistenceChecks.Run);
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                 }, processing: true, shortFeedback: true); return 0;
             }

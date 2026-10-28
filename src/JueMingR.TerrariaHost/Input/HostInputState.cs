@@ -38,6 +38,7 @@ namespace JueMingR.TerrariaHost.Input
         internal bool RawMouseRight { get; private set; }
         internal bool NativeUseItemRequest { get; private set; }
         internal bool NativeUseTileRequest { get; private set; }
+        internal bool NativeUiTransitionRequest { get; private set; }
         internal Action BlueprintMapping;
         internal int OwnedMouseMask { get; private set; }
         internal bool MapPointerOwned { get { return OwnedMouseMask != 0 || mapWheelOwned; } }
@@ -93,6 +94,13 @@ namespace JueMingR.TerrariaHost.Input
         internal bool CanRetainIntent { get { return IsFocused && !rearming && !quarantine; } }
         internal long Frame { get; private set; }
         internal long Mapping { get; private set; }
+#if JMR_BLUEPRINT_DIAGNOSTIC
+        // Only the already-sampled scalar epoch; no focus refresh or permission
+        // evaluation is allowed through this diagnostic outlet.
+        internal long BlueprintDiagnosticState { get { return (IsFocused?1:0)|(observed?2:0)|(mapped?4:0)|(finalized?8:0)|(nativePermission?16:0)|
+            (quarantine?32:0)|(rearming?64:0)|(RawMouseLeft?128:0)|(RawMouseRight?256:0)|(HotkeyCapture?512:0)|(OwnedMouseMask!=0?1024:0); } }
+        internal uint BlueprintDiagnosticWorldAtBegin { get { return worldAtBegin; } }
+#endif
         internal bool CanPrepareText { get { return IsFocused && !rearming && !quarantine; } }
         internal HostInputState() : this(() => Main.instance == null ? IntPtr.Zero : Main.instance.Window.Handle, GetForegroundWindow) { }
         internal HostInputState(Func<IntPtr> gameWindow, Func<IntPtr> foregroundWindow)
@@ -104,6 +112,7 @@ namespace JueMingR.TerrariaHost.Input
             worldAtBegin = Main.GameUpdateCount;
             UseGesture.BeginUpdate();
             mapped = finalized = nativePermission = false;
+            NativeUiTransitionRequest = false;
             RefreshFocus();
             quarantine = !IsFocused || rearming;
             // .8's F7-F11/Alt+Enter precede its current keyboard refresh. A stale
@@ -149,6 +158,11 @@ namespace JueMingR.TerrariaHost.Input
             // native triggers so remapped Jump and inventory clicks still work.
             NativeUseItemRequest = PlayerInput.Triggers.Current.MouseLeft;
             NativeUseTileRequest = PlayerInput.Triggers.Current.MouseRight;
+            // Map/camera intent must cancel stale UI controls even when the
+            // same owned pointer or hotkey tail consumes its native trigger.
+            // This is one mapping's observation, never permission to restore
+            // input or open the map; BeginUpdate retires it before any sample.
+            NativeUiTransitionRequest = PlayerInput.Triggers.Current.MapFull || PlayerInput.Triggers.Current.ToggleCameraMode;
             BlueprintMapping?.Invoke();
             quarantine |= !IsFocused || rearming;
             if (quarantine) { ConsumeMappedInput(); ClearTextActions(); }

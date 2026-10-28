@@ -28,6 +28,7 @@ namespace NativeWorldTextProbe
                 AdmissionFailureAtomicity(host, library);
                 CompactSemantics();
                 AdmissionScanContinuation(context,host,input,library);
+                NativeBlueprintQualificationPriorityChecks.Run(context,host,input,library);
                 NarrowStrips(context, host, input, library);
                 EmptyCompletion(host, input, library);
                 Pressure(context, host, input, library, false);
@@ -247,10 +248,31 @@ namespace NativeWorldTextProbe
         private static void Stable(object host, LibraryState library, WorldTargetView view, string label)
         {
             var before = Work(host, library);
+            string beforeState = StableState(host, library);
             for (int i = 0; i < 100; i++) Tick(host, view);
-            Require(before.SequenceEqual(Work(host, library)), label + " 100 unchanged Update/Pump cause zero reads/decodes/builds/segment builds");
+            var after = Work(host, library);
+            Console.WriteLine(label+" STEADY before="+String.Join("/",before)+" after="+String.Join("/",after));
+            if(!before.SequenceEqual(after))Console.Error.WriteLine(label+" STEADY initial="+beforeState+" changed="+StableState(host,library));
+            Require(before.SequenceEqual(after), label + " 100 unchanged Update/Pump cause zero reads/decodes/builds/segment builds");
             Require((long)Get(host, "ProjectionWindowBytes") < 32L * 1024 * 1024 && (long)Get(host, "ProjectionCommandBytes") < 64L * 1024 * 1024, label + " retained DTO/commands stay within original budgets");
             Console.WriteLine(label + " reads/decoded/builds/segments=" + String.Join("/", before) + " retained=" + Get(host, "ProjectionWindowBytes") + "/" + Get(host, "ProjectionCommandBytes"));
+        }
+        private static string StableState(object host,LibraryState library)
+        {
+            var windows=library.DebugProjectionStatistics;var source=library.DebugProjectionSourceStatistics;
+            var worker=Get(library,"worker");string materialState;
+            lock(Get(worker,"gate"))materialState=" material queued/active/reading/cancelled="+((IEnumerable)Get(worker,"materialRequests")).Cast<object>().Count()+"/"+(GetOptional(worker,"materialRequest")!=null)+"/"+(GetOptional(worker,"materialReading")!=null)+"/"+Get(worker,"materialCancelled")+" command pending/result/occupied="+(GetOptional(worker,"pending")!=null)+"/"+(GetOptional(worker,"result")!=null)+"/"+Get(worker,"occupied");
+            string owners=String.Join(";",Scene(host).Select(p=>
+            {
+                var match=GetOptional(p,"Match");
+                string ranges=match==null?"none":String.Join(",",((IEnumerable)Get(match,"Ranges")).Cast<object>().Select(r=>Get(r,"Index")+":"+Get(r,"Reading")+"/"+Get(r,"Demand")+"/"+Get(r,"Offset")));
+                return ((BlueprintProjectionIdentity)Get(p,"Identity")).ProjectionGeneration+"{current="+(match==null?"none":Get(match,"Current")+"/"+((Array)Get(match,"Ranges")).Length+" demand="+Get(match,"Demands"))+",windowPending="+Get(p,"WindowPending")+",generation="+Get(p,"WindowGeneration")+",ranges="+ranges+"}";
+            }));
+            var work=((IDictionary)Get(host,"projectionMatchWork")).Values.Cast<object>();
+            return "window pending/receipts/working="+windows.PendingRequests+"/"+windows.ReceiptBytes+"/"+windows.WindowWorkingBytes+
+                " source pending/receipts/parts/working="+source.PendingRequests+"/"+source.Receipts+"/"+source.Parts+"/"+source.WorkingBytes+
+                " matchWork="+Get(host,"ProjectionMatchWorkCount")+" reading="+Get(host,"ProjectionMatchReading")+
+                " work="+String.Join(",",work.Select(w=>Get(w,"Owner")+":"+Get(w,"Pending")+"/"+((IEnumerable)Get(w,"Parts")).Cast<object>().Count()+"/"+(GetOptional(w,"Read")!=null)))+materialState+" owners="+owners;
         }
         private static void NarrowStrips(object context, object host, object input, LibraryState library)
         {
@@ -287,6 +309,25 @@ namespace NativeWorldTextProbe
             NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, scene[39],16384,8,16384,40*16384,40*8);
             NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, scene[0],16384,8,128,40*16384,40*8);
             Require((long)Get(Get(scene[0], "Match"), "WorldReads") == 128, "A first 16384-record source observes only its 128 effective strip cells; 16256 permanently erased cells spend zero world reads");
+            // The shared read/decode counters also charge immutable source
+            // work already accepted for the other thirty-eight instances.
+            // Two movable owners are not a settled forty-owner scene. Earn
+            // every remaining proof through the real scheduler, then drain
+            // its accepted source/window receipts before measuring idleness;
+            // never cancel a lane or hide its still-pending first pass.
+            for (int i = 1; i < 39; i++)
+                NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, scene[i],16384,8,128,40*16384,40*8);
+            NativeQuickItemChecks.Until(() =>
+            {
+                NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); Tick(host, view);
+                var windows = library.DebugProjectionStatistics; var source = library.DebugProjectionSourceStatistics;
+                return Scene(host).Length == 40 && scene.All(p =>
+                {
+                    var match = GetOptional(p, "Match");
+                    return match != null && (int)Get(match, "Current") == ((Array)Get(match, "Ranges")).Length && (int)Get(match, "Demands") == 0 && !(bool)Get(p, "WindowPending");
+                }) && (int)Get(host, "ProjectionMatchWorkCount") == 0 && source.PendingRequests == 0 && source.ReceiptBytes == 0 && source.WorkingBytes == 0 &&
+                    windows.PendingRequests == 0 && windows.ReceiptBytes == 0 && windows.WindowWorkingBytes == 0;
+            });
             Stable(host, library, view, "A40");
 
             // A moving copy borrows immutable DTOs. Cancel through the owning
@@ -382,19 +423,30 @@ namespace NativeWorldTextProbe
             finally{Call(host,"ClearProjection");}
         }
         private static object pointAdmissionHost,pointAdmissionTarget;
-        private static long pointAdmissionStart,pointAdmissionUnserved;
+        private static long pointAdmissionStart,pointAdmissionUnserved,pointQualificationStart,pointQualificationServices;
+        private static bool pointAdmissionReady;
+        private static void ObservePointQualification(object __instance,object item)
+        {
+            if(pointAdmissionReady || !ReferenceEquals(__instance,pointAdmissionHost) || !ReferenceEquals(item,pointAdmissionTarget) ||
+                GetOptional(item,"Match")==null || !(bool)Call(__instance,"ProjectionQualificationCurrent",item))return;
+            pointAdmissionReady=true;pointAdmissionStart=(long)Get(__instance,"ProjectionMatchOrdinaryServices");
+            pointQualificationServices=pointAdmissionStart-pointQualificationStart;
+        }
         private static void ObservePointAdmission(object __instance,bool __result)
         {
-            if(!__result || !ReferenceEquals(__instance,pointAdmissionHost))return;
+            if(!__result || !pointAdmissionReady || !ReferenceEquals(__instance,pointAdmissionHost))return;
             var state=GetOptional(pointAdmissionTarget,"Match");
-            if(state==null || (long)Get(state,"SourceRequests")==0)
+            if(state!=null && (long)Get(state,"SourceRequests")==0)
                 pointAdmissionUnserved=Math.Max(pointAdmissionUnserved,(long)Get(__instance,"ProjectionMatchOrdinaryServices")-pointAdmissionStart);
         }
         private static void AwaitPointMovable(object context,object host,object target,int instances)
         {
             var observer=new HarmonyLib.Harmony("JueMingR.Tests.Blueprint.PointSourceAdmission");
             pointAdmissionHost=host;pointAdmissionTarget=target;
-            pointAdmissionStart=(long)Get(host,"ProjectionMatchOrdinaryServices");pointAdmissionUnserved=0;
+            pointQualificationStart=(long)Get(host,"ProjectionMatchOrdinaryServices");pointAdmissionStart=pointQualificationStart;
+            pointAdmissionUnserved=pointQualificationServices=0;pointAdmissionReady=false;
+            ObservePointQualification(host,target);
+            observer.Patch(host.GetType().GetMethod("EnsureProjectionMatch",Flags),postfix:new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintBudgetChecks),nameof(ObservePointQualification)));
             observer.Patch(host.GetType().GetMethod("StartProjectionMatchRead",Flags),postfix:new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintBudgetChecks),nameof(ObservePointAdmission)));
             Exception failure=null;
             try{NativeBlueprintWorldMatchChecks.AwaitMovable(context,host,target);}catch(Exception error){failure=error;}
@@ -402,14 +454,16 @@ namespace NativeWorldTextProbe
             // These literal pressure assets have 2048 ordinary cells per
             // range. Four already occupied work slots need at most 4*8 actual
             // 256-cell services to free a source admission. Pending I/O gives
-            // no service credit. A point priority must then be supplied; it
-            // cannot wait for all preceding whole templates to finish.
+            // no service credit. A qualification-pending owner has no Match
+            // range to admit, so record that separate phase without spending
+            // the ready-slot bound. The one original click is never repeated.
+            Require(pointAdmissionReady,"point target actually reaches current qualification and Match before admission is evaluated");
             Require(pointAdmissionUnserved<=32,"point priority source admission is not skipped after a finite ready-slot round: actual ordinary services before any accepted target request="+pointAdmissionUnserved);
             if(failure!=null)System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
             var state=Get(target,"Match");int ranges=((Array)Get(state,"Ranges")).Length;
             Require((long)Get(state,"WorldReads")==16384 && (long)Get(state,"SourceRequests")==ranges && (long)Get(state,"SourceArrivals")==ranges,
                 "point identity obtains each real ordinary source range once and samples all 16384 target cells while its siblings remain incomplete");
-            Console.WriteLine("PASS Blueprint point source priority instances="+instances+" actualOrdinaryServicesBeforeFirstRequest="+pointAdmissionUnserved+" ownAcceptedRequests="+Get(state,"SourceRequests")+" ownArrivals="+Get(state,"SourceArrivals")+" ownWorldReads="+Get(state,"WorldReads")+" ranges="+ranges+" sourceWaitingNotCounted=true unchangedWaitGuard=true");
+            Console.WriteLine("PASS Blueprint point source priority instances="+instances+" qualificationPendingOrdinaryServices="+pointQualificationServices+" readyOrdinaryServicesBeforeFirstRequest="+pointAdmissionUnserved+" ownAcceptedRequests="+Get(state,"SourceRequests")+" ownArrivals="+Get(state,"SourceArrivals")+" ownWorldReads="+Get(state,"WorldReads")+" ranges="+ranges+" sourceWaitingNotCounted=true unchangedWaitGuard=true");
         }
         private static void EmptyCompletion(object host, object input, LibraryState library)
         {
@@ -492,35 +546,67 @@ namespace NativeWorldTextProbe
             Call(host, "RemoveProjection"); Require(Mode(host) == "Fixed", "same Remove command cancels remove selection");
             Call(host, "RemoveProjection"); Call(host, "RemoveAllProjections"); drain();
             Require(Mode(host) == "None" && Scene(host).Length == 0 && GetOptional(host, "ProjectionCandidate") == null && !(bool)Get(host, "CanRemoveAllProjections"), "RemoveAll clears same-template visible/offscreen scene and exits mode without late revival");
-            Require(library.TryList(91003, 0, entry.AssetId), "RemoveAll leaves library template queryable"); Require(Complete(library).Page.Entries.Any(e => e.AssetId == entry.AssetId), "RemoveAll never deletes library asset");
+            Require(library.TryList(91003, 0, entry.AssetId), "RemoveAll leaves library template queryable"); Require(Complete(library, "list generation=91003 after RemoveAll").Page.Entries.Any(e => e.AssetId == entry.AssetId), "RemoveAll never deletes library asset");
             NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return library.DebugProjectionStatistics.ActiveReferences == 0 && library.DebugProjectionStatistics.ActiveTemplates == 0; });
             Console.WriteLine("PASS operation ownership pending/Following/PlaceCommitting/SelectingMove/MoveCommitting/SelectingRemove, cross-action rejection, late receipts and RemoveAll last-reference/library preservation.");
         }
         internal static LibraryEntry Save(LibraryState library, CaptureCell[] cells, int width, int height)
         {
             var token = new CaptureToken(Guid.NewGuid(), 1, 1, 1); var handle = new ContentHandle(token.OperationId);
-            Require(library.TryBeginStage(token), "budget real stage accepted"); Complete(library);
+            Require(library.TryBeginStage(token), "budget real stage accepted"); Complete(library, "begin " + token.OperationId);
             for (int i = 0; i < cells.Length; i += CaptureChunk.MaximumRecords)
             {
                 var chunk = cells.Skip(i).Take(CaptureChunk.MaximumRecords).ToArray();
-                Require(library.TryAppendChunk(handle, new CaptureChunk(chunk, chunk.Length)), "budget bounded real chunk accepted"); Complete(library);
+                Require(library.TryAppendChunk(handle, new CaptureChunk(chunk, chunk.Length)), "budget bounded real chunk accepted"); Complete(library, "append " + i + "/" + cells.Length);
             }
-            Require(library.TrySealDraft(handle, new CaptureSummary { Width = width, Height = height, ContentCount = cells.Length }), "budget draft sealed"); Complete(library);
-            Require(library.TryCreate(handle, "预算机制样本", token), "budget asset create accepted"); var saved = Complete(library);
+            Require(library.TrySealDraft(handle, new CaptureSummary { Width = width, Height = height, ContentCount = cells.Length }), "budget draft sealed"); Complete(library, "seal " + width + "x" + height);
+            Require(library.TryCreate(handle, "预算机制样本", token), "budget asset create accepted"); var saved = Complete(library, "create " + token.OperationId);
             Require(saved.Status == LibraryStatus.Saved, "budget asset reliably saved");
             Require(library.TryList(91002, 0, saved.AssetId), "budget list targets exact newly saved asset");
-            return Complete(library).Page.Entries.Single(e => e.AssetId == saved.AssetId);
+            return Complete(library, "list generation=91002 selected=" + saved.AssetId).Page.Entries.Single(e => e.AssetId == saved.AssetId);
         }
-        private static LibraryReceipt Complete(LibraryState library)
+        private static LibraryReceipt Complete(LibraryState library, string phase = null)
         {
-            LibraryReceipt result = null; NativeQuickItemChecks.Until(() => { library.Pump(); return library.TryTakeReceipt(out result); });
+            LibraryReceipt result = null; var clock = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                if (phase != null && phase.StartsWith("list ", StringComparison.Ordinal))
+                    result = NativeBlueprintLibraryWait.AcceptedList(library, phase);
+                else NativeQuickItemChecks.Until(() => { library.Pump(); return library.TryTakeReceipt(out result); });
+            }
+            catch
+            {
+                try { Console.Error.WriteLine("BUDGET library original wait failure phase=" + phase + " ms=" + clock.ElapsedMilliseconds + " " + BudgetLibraryState(library)); }
+                catch (Exception diagnostic) { Console.Error.WriteLine("BUDGET wait snapshot unavailable: " + diagnostic.GetType().FullName); }
+                throw;
+            }
+            if (phase != null && phase.StartsWith("list ", StringComparison.Ordinal))
+                Console.WriteLine("BUDGET library completed phase=" + phase + " ms=" + clock.ElapsedMilliseconds + " returnedCommand=" + result.CommandId +
+                    " processed=" + library.Snapshot.ProcessedItems + " assets=" + result.Page?.TotalCount);
             Require(result.Status != LibraryStatus.Failed && result.Status != LibraryStatus.CommitUnconfirmed, "budget real files operation: " + result.Error); return result;
+        }
+        private static string BudgetLibraryState(LibraryState library)
+        {
+            var worker = Get(library, "worker"); var source = library.DebugProjectionSourceStatistics;
+            lock (Get(worker, "gate"))
+            {
+                var pending = GetOptional(worker, "pending"); var result = (LibraryReceipt)GetOptional(worker, "result");
+                return "accepted=" + library.AcceptedCommandId + " snapshotBusy/processed=" + library.Snapshot.Busy + "/" + library.Snapshot.ProcessedItems +
+                    " workerOccupied/processed=" + Get(worker, "occupied") + "/" + Get(worker, "processed") +
+                    " pending=" + (pending == null ? "none" : Get(pending, "Kind") + "/" + Get(pending, "CommandId")) +
+                    " result=" + (result == null ? "none" : result.Kind + "/" + result.CommandId + "/" + result.Status) +
+                    " threadAlive/stopping=" + ((System.Threading.Thread)Get(worker, "thread")).IsAlive + "/" + Get(worker, "stopping") +
+                    " sourcePending/receipts/parts=" + source.PendingRequests + "/" + source.Receipts + "/" + source.Parts;
+            }
         }
         private static void CompactSemantics()
         {
             var ctor = typeof(BlueprintProjectionMask).GetConstructors(Flags).Single();
             var removed = new Dictionary<long, ushort> { [((long)5 << 32) | 5] = 1, [((long)5 << 32) | 6] = 1 };
-            var mask = (BlueprintProjectionMask)ctor.Invoke(new object[] { removed, new HashSet<int>(), 2L });
+            // These literal masks remove Tile only, so their display and
+            // construction decrements agree. Reflection must supply the new
+            // optional constructor argument explicitly, unlike a C# call.
+            var mask = (BlueprintProjectionMask)ctor.Invoke(new object[] { removed, new HashSet<int>(), 2L, 2L });
             var id = new BlueprintProjectionIdentity(Guid.NewGuid(), Guid.NewGuid(), "halo", 1, 1);
             var cells = new[] {
                 new CaptureCell { X = 5, Y = 5, Layers = CaptureLayer.Tile | CaptureLayer.Wall | CaptureLayer.Wire, TileType = 1, WallType = 7, Wires = 2, ObjectId = 1 },
@@ -532,7 +618,7 @@ namespace NativeWorldTextProbe
             Require(effective.Bounds.Equals(raw.Bounds) && ReferenceEquals(effective.Identity, id) && effective.WindowGeneration == 7 && ReferenceEquals(effective.AppliedMask, mask), "C effective preserves halo bounds/instance/generation/applied mask identity");
             Require(effective.Cells.Count == 2 && effective.Cells[0].Layers == (CaptureLayer.Wall | CaptureLayer.Wire) && effective.Cells[0].Wires == 2 && effective.Objects.Count == 1 && effective.Objects[0].Id == 3 && effective.Objects[0].X == 0, "C Tile-only erase preserves other layers and only referenced full external-origin metadata");
             Require(raw.Cells.Count == 3 && raw.Objects.Count == 3 && raw.Cells[0].ObjectId == 1 && effective.EstimatedBytes < raw.EstimatedBytes && ReferenceEquals(mask.Apply(effective), effective), "C raw/cache snapshot unmodified; repeated applied identity reuses compact snapshot");
-            var emptyMask = (BlueprintProjectionMask)ctor.Invoke(new object[] { new Dictionary<long, ushort> { [((long)5 << 32) | 7] = 1 }, new HashSet<int>(), 1L });
+            var emptyMask = (BlueprintProjectionMask)ctor.Invoke(new object[] { new Dictionary<long, ushort> { [((long)5 << 32) | 7] = 1 }, new HashSet<int>(), 1L, 1L });
             var empty = emptyMask.Apply(new BlueprintProjectionWindow(id, 8, raw.Summary, raw.Bounds, new[] { cells[2] }, objects));
             Require(empty.Cells.Count == 0 && empty.Objects.Count == 0 && empty.Bounds.Equals(raw.Bounds), "C completed empty DTO retains coverage and no object ghost");
         }

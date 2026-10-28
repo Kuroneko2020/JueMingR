@@ -9,7 +9,8 @@ param(
     [string] $ApplicabilityRecord,
     [switch] $PrepareOnly,
     [string] $ApprovedRetainedAssets,
-    [string] $StageDevelopmentRecord
+    [string] $StageDevelopmentRecord,
+    [switch] $BlueprintDiagnostic
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,6 +26,9 @@ $harmonyReferencesDirectory = Join-Path $repositoryRoot 'external\Harmony'
 $buildRoot = Join-Path $repositoryRoot ("artifacts\build\$Configuration")
 $workRoot = Join-Path $buildRoot 'work'
 $recordPath = Join-Path $buildRoot 'build-record.json'
+if($BlueprintDiagnostic -and ($Configuration -cne 'Release' -or -not $StageDevelopmentRecord)){
+    throw 'BlueprintDiagnostic is an explicit Release owner-test candidate; its existing StageDevelopmentRecord is required.'
+}
 
 function Invoke-Git {
     param([string[]] $Arguments)
@@ -160,6 +164,7 @@ $buildArguments = @(
     "-p:TerrariaReferencesDirectory=$referencesDirectory",
     "-p:HarmonyReferencesDirectory=$harmonyReferencesDirectory",
     "-p:SourceRevisionId=$commit"
+    ('-p:JueMingRBlueprintDiagnostic='+([bool]$BlueprintDiagnostic).ToString().ToLowerInvariant())
 )
 & $dotnetCommand.Source @buildArguments
 if ($LASTEXITCODE -ne 0) {
@@ -223,6 +228,7 @@ $record = [ordered]@{
     clean = $isClean
     sdk = $sdkVersion.Trim()
     configuration = $Configuration
+    blueprintDiagnostic = [bool]$BlueprintDiagnostic
     sourceFingerprint = $sourceIdentity.fingerprint
     inputFingerprint = $inputIdentity.fingerprint
     compileFingerprint = Get-WorkloadCompileFingerprint $inputIdentity
@@ -246,11 +252,12 @@ if ($Configuration -ceq 'Release') {
         if (-not $debugRoot.StartsWith($repositoryRoot.TrimEnd('\') + '\artifacts\build\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Detection cleanup escaped its workspace output root.' }
         if ([IO.Directory]::Exists($debugRoot)) { Remove-Item -LiteralPath $debugRoot -Recurse -Force }
         $debugWork = Join-Path $debugRoot 'work'; [IO.Directory]::CreateDirectory($debugWork) | Out-Null
-        & $dotnetCommand.Source build $solutionPath --configuration Debug --no-incremental --nologo -p:Platform=x86 "-p:JueMingRBuildRoot=$debugWork" "-p:TerrariaReferencesDirectory=$referencesDirectory" "-p:HarmonyReferencesDirectory=$harmonyReferencesDirectory" "-p:SourceRevisionId=$commit"
+        & $dotnetCommand.Source build $solutionPath --configuration Debug --no-incremental --nologo -p:Platform=x86 "-p:JueMingRBuildRoot=$debugWork" "-p:TerrariaReferencesDirectory=$referencesDirectory" "-p:HarmonyReferencesDirectory=$harmonyReferencesDirectory" "-p:SourceRevisionId=$commit" -p:JueMingRBlueprintDiagnostic=false
         if ($LASTEXITCODE -ne 0) { throw 'Same-source Debug detection build failed.' }
         $debugRecord = [ordered]@{}
         foreach ($key in $record.Keys) { $debugRecord[$key] = $record[$key] }
         $debugRecord.configuration = 'Debug'
+        $debugRecord.blueprintDiagnostic = $false
         $debugRecord.outputs = @(Get-ChildItem -LiteralPath (Join-Path $debugWork 'bin') -Recurse -File | Sort-Object FullName | ForEach-Object {
             if ($forbiddenNames -icontains $_.Name -or $_.Name.StartsWith('JueMingZ', [StringComparison]::OrdinalIgnoreCase) -or $_.Name.StartsWith('TerrariaHelper', [StringComparison]::OrdinalIgnoreCase)) { throw 'Forbidden detection output.' }
             [ordered]@{ path = Get-RelativePath $debugWork $_.FullName; length = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }

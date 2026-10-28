@@ -9,6 +9,9 @@ using JueMingR.TerrariaHost.Items;
 using JueMingR.TerrariaHost.Npcs;
 using Terraria;
 using Terraria.GameInput;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+using JueMingR.TerrariaHost.Blueprint;
+#endif
 
 namespace JueMingR.TerrariaHost.Tools
 {
@@ -40,6 +43,9 @@ namespace JueMingR.TerrariaHost.Tools
         internal Action<Player,Item> FishingStarted;
         internal Action<Player,Projectile> FishingProjectile;
         internal Action FishingManualSelection;
+        internal Func<bool> BuildEnabled;
+        internal Func<Player,ToolIntent> BuildChoice;
+        internal Func<bool> BuildReady;
         internal Feedback.LocalShortFeedback Feedback;
         private bool report;
         private int roundRobin;
@@ -70,7 +76,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal Exception SetupError {get;private set;}
         internal string Error {get;private set;}
         internal Player Player {get{return Runtime.IsSessionActive?Items.World.Player:null;}}
-        public bool Enabled {get{return Mode(0)!=0 || Mode(1)!=0 || Mode(2)!=0 || Use.Active || Fishing.Active || unknown!=0 || (FishingEnabled?.Invoke()??false);}}
+        public bool Enabled {get{return Mode(0)!=0 || Mode(1)!=0 || Mode(2)!=0 || Use.Active || Fishing.Active || unknown!=0 || (FishingEnabled?.Invoke()??false) || (BuildEnabled?.Invoke()??false);}}
         internal HostTools(string directory,SingleFeatureRuntime runtime,HostItems items,HostInputState input,NativeNpcObservation npcs)
         {
             Runtime=runtime;Items=items;Input=input;Npcs=npcs;
@@ -80,6 +86,7 @@ namespace JueMingR.TerrariaHost.Tools
             priorProtection=items.World.AdditionalProtection;
             items.World.AdditionalProtection=item=>(priorProtection?.Invoke(item)??false) || Use.ProtectOriginal(item) || Fishing.ProtectRod(item) || Herbs.ProtectSeed(item);
             items.AllowsOwnedTools=Use.Owns;
+            items.OwnsBuildHeldMaterial=Use.OwnsBuildMaterial;
             try{ToolHooks.Install(this);Available=items.Available;}
             catch(Exception e){SetupError=e;ToolHooks.Uninstall();Report("自动采集暂不可用，原版操作不受影响。");}
             AppDomain.CurrentDomain.ProcessExit+=Exit;
@@ -97,7 +104,12 @@ namespace JueMingR.TerrariaHost.Tools
             if(Use.Active && ModeFor(Use.Intent.Kind)==0)Use.Cancel();
             if(Mode(0)!=1)Fishing.Cancel();if(!KeepsIntent(1))Herbs.Reset();if(!KeepsIntent(2))Mining.Clear();
         }
-        private int ModeFor(ToolKind kind){return kind>=ToolKind.FishingPull?(FishingEnabled?.Invoke()??false?1:0):Mode(kind==ToolKind.Capture || kind==ToolKind.Recast?0:kind==ToolKind.Harvest || kind==ToolKind.Seed?1:2);}
+        private int ModeFor(ToolKind kind)
+        {
+            if(kind==ToolKind.Build)return (BuildEnabled?.Invoke()??false)?1:0;
+            if(kind==ToolKind.FishingPull || kind==ToolKind.FishingCast || kind==ToolKind.FishingCut)return (FishingEnabled?.Invoke()??false)?1:0;
+            return Mode(kind==ToolKind.Capture || kind==ToolKind.Recast?0:kind==ToolKind.Harvest || kind==ToolKind.Seed?1:2);
+        }
         internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {
             for(int i=0;i<3;i++)
@@ -119,11 +131,23 @@ namespace JueMingR.TerrariaHost.Tools
             Feedback?.Show(SelectAction,message,ok,()=>Runtime.IsSessionActive,Feedback.Capture());
         }
         internal bool Admit(Player p,bool heldInventory)
-        {return Input.CanRunAutomaticActions && CanRetainUse(p,heldInventory);}
+        {return
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Gate(Input.CanRunAutomaticActions,BuildTraceReason.InputGate) &&
+#else
+            Input.CanRunAutomaticActions &&
+#endif
+            CanRetainUse(p,heldInventory);}
         // Retention never authorizes a consumer. An outer update without a
         // native input sample must not tear down a still safe continuous use.
         internal bool CanRetainUse(Player p,bool heldInventory)
-        {return CanInterface!=null && CanInterface() && CanRetainPlayer(p,heldInventory);}
+        {return CanInterface!=null &&
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Gate(CanInterface(),BuildTraceReason.InterfaceGate) && BlueprintBuildTrace.Gate(CanRetainPlayer(p,heldInventory),BuildTraceReason.ToolsGate);
+#else
+            CanInterface() && CanRetainPlayer(p,heldInventory);
+#endif
+        }
         // Equipment shares the same ownership proof as other autonomous work.
         internal bool AdmitFishingEquipment(Player p,bool interfaceAllowed)
         {return Input.CanRunAutomaticActions && interfaceAllowed && CanRetainPlayer(p,true);}
@@ -137,34 +161,70 @@ namespace JueMingR.TerrariaHost.Tools
                 !Items.World.Busy && !Items.World.HasManualOperation && !Main.mapFullscreen && !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride==null &&
                 !Main.ServerSideCharacter && (Main.ActivePlayerFileData==null || !Main.ActivePlayerFileData.ServerSideCharacter) && !WorldGen.isGeneratingOrLoadingWorld &&
-                !PlayerInput.UsingGamepadUI && p.chest==-1 && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 && (CanMouseInterface?.Invoke()??(!Input.IsFocused || !p.mouseInterface)) && Main.mouseItem!=null && Main.mouseItem.IsAir &&
+                !PlayerInput.UsingGamepadUI && p.chest==-1 && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 &&
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Gate(CanMouseInterface?.Invoke()??(!Input.IsFocused || !p.mouseInterface),BuildTraceReason.MouseGate) &&
+#else
+                (CanMouseInterface?.Invoke()??(!Input.IsFocused || !p.mouseInterface)) &&
+#endif
+                Main.mouseItem!=null && Main.mouseItem.IsAir &&
                 (!Main.playerInventory || heldInventory && p.selectedItem>=0 && p.selectedItem<10) && !ManualRight && !PlayerInput.Triggers.Current.SmartSelect;
         }
         internal bool Candidate(Player p,int i,bool seed=false)
         {return i>=0 && i<50 && p.inventory[i]!=null && !p.inventory[i].IsAir && !Items.Ownership.IsProtected(i) && !p.inventoryChestStack[i] && !Items.World.ManualMaterials.Contains(p.inventory[i]) && !(priorProtection?.Invoke(p.inventory[i])??false) && (seed || !Herbs.ProtectSeed(p.inventory[i]));}
         internal bool ProtectedAfterYield(Item item){return (priorProtection?.Invoke(item)??false) || Fishing.ProtectRod(item) || Herbs.ProtectSeed(item);}
+        // Materials and construction consume this same qualification. A live
+        // building lease may still observe its own exact source; another use
+        // token, manual transfer or pending item transaction remains protected.
+        internal bool BuildInventoryEligible(int slot,Item item)
+        {
+            var p=Player;
+            return p!=null && slot>=0 && slot<50 && item!=null && ReferenceEquals(p.inventory[slot],item) && !item.IsAir &&
+                (!Items.Ownership.IsProtected(slot) || Use.OwnsBuildSource(p.inventory,slot)) && !p.inventoryChestStack[slot] &&
+                !Items.World.ManualMaterials.Contains(item) && !(priorProtection?.Invoke(item)??false) && !Herbs.ProtectSeed(item) && !Fishing.ProtectRod(item);
+        }
         internal ToolIntent Choose(Player p)
         {
-            if(!Enabled || Use.Active || ManualLeft || p.selectedItemState.HasBufferedChange)return null;
-            var restore=Fishing.Choose(p);if(restore!=null)return restore;
-            for(int i=0;i<4;i++)
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.ToolsChoose);
+#endif
+            if(!Enabled || Use.Active || ManualLeft || p.selectedItemState.HasBufferedChange)
             {
-                int domain=(roundRobin+i)%4;ToolIntent result=domain==0?Capture.Choose(p):domain==1?Herbs.Choose(p):domain==2?Mining.Choose(p):FishingChoice?.Invoke(p);
-                if(result==null)continue;roundRobin=(domain+1)%4;return result;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.ToolsOccupied);
+#endif
+                return null;
+            }
+            var restore=Fishing.Choose(p);if(restore!=null)
+            {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(BuildTraceReason.OtherTool);
+#endif
+                return restore;
+            }
+            for(int i=0;i<5;i++)
+            {
+                int domain=(roundRobin+i)%5;ToolIntent result=domain==0?Capture.Choose(p):domain==1?Herbs.Choose(p):domain==2?Mining.Choose(p):domain==3?FishingChoice?.Invoke(p):BuildChoice?.Invoke(p);
+                if(result==null)continue;roundRobin=(domain+1)%5;
+#if JMR_BLUEPRINT_DIAGNOSTIC
+                BlueprintBuildTrace.Count(result.Kind==ToolKind.Build?BuildTraceReason.BuildChosen:BuildTraceReason.OtherTool);
+#endif
+                return result;
             }
             return null;
         }
-        internal bool Ready(){var p=Player;return p!=null && !Use.Active && (Capture.Ready(p) || Herbs.Ready(p) || Mining.Ready(p));}
+        internal bool Ready(){var p=Player;return p!=null && !Use.Active && (Capture.Ready(p) || Herbs.Ready(p) || Mining.Ready(p) || (BuildReady?.Invoke()??false));}
         internal bool Contended(ToolKind kind,out bool external)
         {
             external=false;var p=Player;if(p==null)return false;
             external=OtherUseReady?.Invoke()??false;
-            bool other=kind!=ToolKind.Capture && Capture.Ready(p) || kind!=ToolKind.Harvest && Herbs.Ready(p) || kind==ToolKind.Harvest && Herbs.SeedReady(p) || kind!=ToolKind.Mining && Mining.Ready(p);
+            bool other=kind!=ToolKind.Capture && Capture.Ready(p) || kind!=ToolKind.Harvest && Herbs.Ready(p) || kind==ToolKind.Harvest && Herbs.SeedReady(p) || kind!=ToolKind.Mining && Mining.Ready(p) || kind!=ToolKind.Build && (BuildReady?.Invoke()??false);
             return external || other;
         }
         internal void ManualSelection(){SelectionIntent++;ManualSelectionFrame=Input.Frame;Combat?.Use.ManualSelection();Combat?.Handoff.Reset();Fishing.Cancel();Use.Cancel();FishingManualSelection?.Invoke();}
         internal void Yield(){Use.Cancel();if(Player!=null && Player.selectedItemState.CanChangeSelectedItemImmediately)Use.Retire();NextUseFrame=Input.Frame+1;}
         internal void HoldUnknown(int slot){unknown|=1UL<<slot;Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);}
+        internal void HoldUnknown(ulong slots){unknown|=slots;Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);}
         public void OnSessionStarted()
         {
             object socket=Main.netMode==1?Netplay.Connection.Socket:null;

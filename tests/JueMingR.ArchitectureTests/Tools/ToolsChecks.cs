@@ -25,7 +25,14 @@ namespace JueMingR.ArchitectureTests
                 Require(owner.TryBeginUse(1,12,first),"first tool admitted");owner.EndUse(1,first);
                 Require(owner.TryBeginUse(1,13,second),"quick item admitted after tool yields");
                 owner.EndUse(1,first);Require(owner.IsUseSlot(13),"late tool finalizer cannot release quick item");
-                owner.EndUse(1,second);Require(!owner.AnyProtected,"matching lease released");
+                owner.EndUse(1,second);
+                long building=owner.NewUseToken(),later=owner.NewUseToken();
+                Require(owner.TryBeginUse(1,12,building,(1UL<<54)|(1UL<<17)),"building source and exact accessory dependencies share one lease");
+                Require(owner.IsProtected(12) && owner.IsProtected(17) && owner.IsProtected(54) && !owner.IsProtected(18) && !owner.IsUseSlot(54),"accessory ownership protects real secondary slots without changing primary 0..49 admission");
+                Require(!owner.TryBeginUse(1,18,later) && !owner.TryBeginDiscard(1,54) && !owner.TryBeginStore(1,1UL<<17),"concurrent use and intersecting item writes cannot consume native accessory sources");
+                owner.EndUse(1,later);Require(owner.HasUse,"old/foreign finalizer cannot end a building lease");
+                owner.EndUse(1,building);Require(!owner.AnyProtected && owner.TryBeginUse(1,18,later),"exact building completion releases only its own source set");
+                owner.EndUse(1,later);Require(!owner.AnyProtected,"matching lease released");
                 Require(typeof(JueMingR.Features.Processing.ProcessingOptions).Assembly.GetType("JueMingR.Features.Tools.MiningRegion")!=null,"bounded mining region is missing");
                 Policies();Storage();
             }

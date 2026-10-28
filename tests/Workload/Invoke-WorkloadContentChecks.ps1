@@ -31,9 +31,18 @@ try{
     }
     $blueprintPlan=@(Get-WorkloadPlan $fixture 'checks' 'architecture.exe' @() @('check:native-BlueprintInput'))
     Assert-Content ($blueprintPlan.Count -eq 1 -and $blueprintPlan[0].arguments[-1] -ceq 'BlueprintInput') 'single registered Blueprint input scope does not expand to either broad Blueprint group'
+    $materialBefore=Get-WorkloadNativeContentRows $fixture
+    Put-ContentFixture 'original/Content/Images/Item_26.xnb' 'changed real material icon fixture'
+    $materialAfter=Get-WorkloadNativeContentRows $fixture
+    Assert-Content ((Get-WorkloadCheckFingerprint ([pscustomobject]@{inputs=$materialBefore}) 'native-BlueprintInput') -cne (Get-WorkloadCheckFingerprint ([pscustomobject]@{inputs=$materialAfter}) 'native-BlueprintInput')) 'actual material icon byte change invalidates the consuming Blueprint input proof'
+    Assert-Content ((Get-WorkloadCheckFingerprint ([pscustomobject]@{inputs=$materialBefore}) 'native-NpcTreeBoss') -ceq (Get-WorkloadCheckFingerprint ([pscustomobject]@{inputs=$materialAfter}) 'native-NpcTreeBoss')) 'material-only icons do not invalidate unrelated native constructor proof'
+    Remove-Item -LiteralPath (Join-Path $fixture 'original/Content/Images/Item_26.xnb')
+    Reject-Content {Get-WorkloadNativeContentArgument $fixture 'BlueprintInput'} 'missing actual material icon rejects the real input consumer'
+    Assert-Content ((Get-WorkloadNativeContentArgument $fixture 'NpcTreeBoss') -ceq (Join-Path $fixture 'original/Content')) 'missing material icon does not acquire an unrelated consumer requirement'
+    Put-ContentFixture 'original/Content/Images/Item_26.xnb' 'controlled asset Images/Item_26.xnb'
     $scopeValidation=@((Get-Command (Join-Path $repository 'scripts/test-world-object-text.ps1')).Parameters['Scope'].Attributes | Where-Object {$_ -is [Management.Automation.ValidateSetAttribute]})
     Assert-Content ($scopeValidation.Count -eq 1 -and $scopeValidation[0].ValidValues -contains 'BlueprintInput') 'specialist entry admits the same Blueprint input scope'
-    foreach($path in @('tests/NativeWorldTextProbe/NativeBlueprintInputContinuityChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintInputRecoveryChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintLibraryUiChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintLibraryVisualChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintPlacementChecks.cs','scripts/workload/Workload.NativeContent.ps1')){
+    foreach($path in @('tests/NativeWorldTextProbe/NativeBlueprintInputContinuityChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintInputRecoveryChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintLibraryUiChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintLibraryVisualChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintPlacementChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintMaterialsUiChecks.cs','scripts/workload/Workload.NativeContent.ps1')){
         Assert-Content (@(Get-WorkloadPathChecks $path) -contains 'native-BlueprintInput') ('actual Blueprint input leaf remains bound '+$path)
     }
     foreach($path in @('src/JueMingR.TerrariaHost/F5/BlueprintLibraryPresentation.cs','src/JueMingR.TerrariaHost/Input/TextEditInput.cs','src/JueMingR.TerrariaHost/Input/HostInputState.cs','src/JueMingR.Infrastructure/Blueprint/FileBlueprintLibrary.cs','src/JueMingR.TerrariaHost/F5/F5Shell.cs')){

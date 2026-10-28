@@ -7,6 +7,13 @@ function Get-WorkloadNativeContentFiles {
     param([string]$Scope)
     if($Scope -cnotin @(Get-WorkloadNativeContentScopes)){return @()}
     $files=@('Fonts/Mouse_Text.xnb','Fonts/Item_Stack.xnb','Fonts/Combat_Text.xnb','Fonts/Combat_Crit.xnb','Images/Item_8.xnb','Images/Inventory_Back.xnb','Images/MagicPixel.xnb')
+    if($Scope -ceq 'BlueprintInput'){
+        # Host70 selects the first seventy distinct consumable wall identities
+        # from the fixed .8 native catalog. Bind the actual icon bytes loaded by
+        # that real popup consumer; unrelated CPU or NPC scopes do not use them.
+        $wallItems=@(26,30,93,130,132,135,138,140,142,144,146,330,392,417,418,419,420,421,479,587,592,595,605,606,608,610,615,616,617,618,622,623,624,663,720,721,722,745,746,747,750,752,764,768,769,770,825,884,927,1102,1126,1267,1268,1269,1270,1271,1272,1378,1379,1380,1381,1382,1383,1447,1448,1590,1592,1594,1723,1726)
+        $files+=@($wallItems|ForEach-Object {'Images/Item_'+$_+'.xnb'})
+    }
     if($Scope -cin @('NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage')){$files+=@('ScreenShader.xnb','Images/Misc/noise.xnb')}
     return $files
 }

@@ -41,12 +41,10 @@ namespace NativeWorldTextProbe
             Furniture(source, 60, 30, TileID.Signs, 2, 2, "sign exterior without text payload");
             Furniture(source, 70, 30, TileID.ItemFrame, 2, 2, "display exterior without held item payload");
 
-            // Earlier consumers advance the true entry counter. Starting a
-            // capture at the old literal 100 would make EndTick < StartTick
-            // and correctly fail immutable-root validation.
-            ulong tick = (ulong)Get(host,"latestTick") + 1;
-            Console.WriteLine("CAPTURE monotonic fixture firstTick=" + tick + " hostPriorTick=" + Get(host,"latestTick") + " nativeEntry=" + Main.GameUpdateCount);
-            Action pump = () => { Call(host, "Update", tick++); Call(host, "Poll"); };
+            // Every sibling uses composition's clock. A local Host counter
+            // can move latestTick ahead without advancing that owner and make
+            // a later real capture end before it started.
+            Action pump = () => { NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); Call(host, "Poll"); };
             Action begin = () => { Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); editor.Enter(); editor.Selection.ToggleRectangle(8, 8, 12, 12, 120, 120); Require((bool)Call(host, "Save"), "shared save request accepts a valid committed selection"); };
             begin();
             Require(!(bool)Get(host, "CanEdit"), "capture confirmation UI revokes world editor input");

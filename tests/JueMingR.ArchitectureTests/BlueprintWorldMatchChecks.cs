@@ -20,10 +20,10 @@ namespace JueMingR.ArchitectureTests
         {
             CaptureCell target = Mixed(), actual = target;
             var result = Compare(target, actual);
-            Require(result.TargetBits == 255 && result.MatchBits == 255 && result.TargetCount == 8 && result.MatchCount == 8, "each color and independent layer contributes exactly one effective target");
+            Require(result.TargetBits == 251 && result.MatchBits == 251 && result.TargetCount == 7 && result.MatchCount == 7, "each non-liquid layer and wire color contributes exactly one construction target");
             actual.Layers &= ~CaptureLayer.Tile; actual.WallPaint++; actual.Wires = 5; actual.LiquidAmount = 0;
             result = Compare(target, actual);
-            Require(result.MatchBits == (8 | 16 | 64) && result.ConflictBits == 2 && result.MissingBits == (1 | 4 | 32 | 128), "same-cell wall conflict does not hide missing tile/liquid or other wire colors");
+            Require(result.MatchBits == (8 | 16 | 64) && result.ConflictBits == 2 && result.MissingBits == (1 | 32 | 128), "same-cell wall conflict does not hide missing Tile or wire colors; liquid contributes no target");
             target = new CaptureCell { Layers = CaptureLayer.Wall, WallType = 7 };
             actual = Mixed(); actual.WallPaint = 0; actual.FullbrightWall = false;
             Require(Compare(target, actual).MatchBits == 2, "unrequested foreground, wires, actuator and liquid are not erase requirements");
@@ -33,16 +33,22 @@ namespace JueMingR.ArchitectureTests
                 b => b.Value.TilePaint++, b => b.Value.InvisibleTile = false, b => b.Value.FullbrightTile = true })
             { var box = new CaptureCellBox { Value = target }; change(box); Require((Compare(target, box.Value).ConflictBits & 1) != 0, "saved foreground structure and coating each blocks completion"); }
             actual = target; actual.Slope = 5; result = Compare(target, actual);
-            Require(result.UnknownBits == 1 && result.MatchBits == 254, "unrecognized slope bits are unknown, never clamped to a completed block");
+            Require(result.UnknownBits == 1 && result.MatchBits == 250, "unrecognized slope bits are unknown, never clamped to a completed block");
             actual = target; actual.FrameX = 104; actual.FrameY = 333;
-            Require(Compare(target, actual).MatchBits == 255, "ordinary block adjacency frames do not define another building");
+            Require(Compare(target, actual).MatchBits == 251, "ordinary block adjacency frames do not define another building");
             result = BlueprintWorldMatchComparer.CompareCell(target, new BlueprintWorldMatchSample(false, actual));
-            Require(result.UnknownBits == 255 && result.MatchCount == 0 && result.MissingBits == 0, "unreadable tile/section cannot claim empty or zero-match movement eligibility");
+            Require(result.UnknownBits == 251 && result.MatchCount == 0 && result.MissingBits == 0, "unreadable non-liquid tile/section cannot claim empty or zero-match movement eligibility");
+            var liquid = new CaptureCell { Layers = CaptureLayer.Liquid, LiquidAmount = 64, LiquidKind = 2 };
+            var displayOnly = BlueprintWorldMatchComparer.CompareCell(liquid, default(BlueprintWorldMatchSample));
+            Require(displayOnly.TargetCount == 0 && displayOnly.UnknownBits == 0 && displayOnly.MatchBits == 0,
+                "display-only liquid needs no world sample and never acquires a hidden Match layer");
+            Require(BlueprintConstructionTargets.Filter(target).Wires == 15 && (BlueprintConstructionTargets.Filter(target).Layers & CaptureLayer.Wire) != 0,
+                "CaptureLayer Liquid=16 filtering preserves Wire=4 and all four wire colors");
             target.ObjectId = 4;
             result = BlueprintWorldMatchComparer.CompareCell(target, new BlueprintWorldMatchSample(true, target), BlueprintWorldMatchState.Unknown);
-            Require(result.UnknownBits == 1 && result.MatchBits == 254, "whole object proof affects only its Tile bit");
+            Require(result.UnknownBits == 1 && result.MatchBits == 250, "whole object proof affects only its Tile bit");
             result = BlueprintWorldMatchComparer.CompareCell(target, new BlueprintWorldMatchSample(true, target), BlueprintWorldMatchState.Match);
-            Require(result.MatchBits == 255, "complete object grants each effective member Tile once");
+            Require(result.MatchBits == 251, "complete object grants each effective member Tile once");
             var raw = Mixed(); var unchanged = raw;
             Compare(raw, actual);
             Require(raw.Layers == unchanged.Layers && raw.Wires == unchanged.Wires && BlueprintProjectionMask.Empty.Apply(raw).Layers == raw.Layers, "matching never mutates raw targets or permanent mask");

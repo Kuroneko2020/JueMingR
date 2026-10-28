@@ -7,6 +7,7 @@ param(
     [string] $WorkloadBaseline,
     [string] $ApprovedRetainedAssets,
     [string] $StageDevelopmentRecord,
+    [switch] $BlueprintDiagnostic,
     [switch] $Rebuild
 )
 
@@ -17,7 +18,10 @@ $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).
 . (Join-Path $PSScriptRoot 'phase0s\Phase0S.ScriptSupport.ps1')
 . (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
 if($StageDevelopmentRecord -and ($Profile -cne 'ContinuousProcessing' -or $WorkloadBaseline)){throw 'This explicit stage uses the existing complete ContinuousProcessing profile without formal workload selectors.'}
-function Test-PackageBuildAdmission($Record) {
+if($BlueprintDiagnostic -and ($Profile -cne 'ContinuousProcessing' -or -not $StageDevelopmentRecord)){throw 'BlueprintDiagnostic requires the existing complete ContinuousProcessing owner-test candidate record.'}
+function Test-PackageBuildAdmission($Record,[bool]$ExpectedBlueprintDiagnostic=$false) {
+    $recordDiagnostic=$null -ne $Record -and $null -ne $Record.PSObject.Properties['blueprintDiagnostic'] -and [bool]$Record.blueprintDiagnostic
+    if($recordDiagnostic -ne $ExpectedBlueprintDiagnostic){return $false}
     if($StageDevelopmentRecord){return Test-AimStageDevelopmentBuild $repositoryRoot $Record $StageDevelopmentRecord $admission}
     return Test-WorkloadDelivery $repositoryRoot $Record $WorkloadBaseline -RetainedAssets $admission
 }
@@ -375,12 +379,13 @@ try {
 $buildRecordPath = Join-Path $repositoryRoot 'artifacts\build\Release\build-record.json'
 $existingBuild = Read-WorkloadJson $buildRecordPath
 $buildOutput = @()
-if (-not $Rebuild -and (Test-PackageBuildAdmission $existingBuild)) {
+if (-not $Rebuild -and (Test-PackageBuildAdmission $existingBuild -ExpectedBlueprintDiagnostic ([bool]$BlueprintDiagnostic))) {
     Write-Host ('REUSED verified Release build; admission='+$(if($StageDevelopmentRecord){'explicit stage, full qualification INCOMPLETE'}else{'complete applicable check evidence'}))
 } else {
     Stop-WorkloadReadWindow
     $buildArguments=@{Configuration='Release';WorkloadBaseline=$WorkloadBaseline}
     if($StageDevelopmentRecord){$buildArguments.StageDevelopmentRecord=$StageDevelopmentRecord}
+    if($BlueprintDiagnostic){$buildArguments.BlueprintDiagnostic=$true}
     if($null -eq $admission){$buildArguments.RequireClean=$true}else{$buildArguments.ApprovedRetainedAssets=$ApprovedRetainedAssets}
     $buildOutput = @(& (Join-Path $PSScriptRoot 'build.ps1') @buildArguments 2>&1)
     if (-not $?) { throw 'The locked Release build failed.' }
@@ -400,7 +405,7 @@ if ([int] $buildRecord.schemaVersion -ne 4 -or [string] $buildRecord.commit -cne
     [string] $buildRecord.configuration -cne 'Release') {
     throw 'The Release build record does not describe the clean source commit.'
 }
-if (-not (Test-PackageBuildAdmission $buildRecord)) {
+if (-not (Test-PackageBuildAdmission $buildRecord -ExpectedBlueprintDiagnostic ([bool]$BlueprintDiagnostic))) {
     throw 'The Release package requires the completed matching automatic workload gate.'
 }
 if (@($buildRecord.outputs | Where-Object { [string] $_.path -match '(?i)(^|\\)0Harmony\.dll$' }).Count -ne 0) {
@@ -554,6 +559,9 @@ try {
     )) {
         Copy-Phase0SBuilderFileCreateNew -SourcePath $sourceAndName[0] -DestinationPath (Join-Path $packageRoot $sourceAndName[1])
     }
+    if($BlueprintDiagnostic){
+        [IO.File]::AppendAllText((Join-Path $packageRoot $ownerTestCardName),"`r`n本包为自动放置一次性诊断候选，保持当前施工行为。一次性采集由本次交付在实际目录另行布防；正常启动后进入世界即开始最多120秒的观察，请尽快正常使用自动建造，约60至90秒后正常退出，再委托收集并恢复普通安装。采集机会只使用一次；它不表示自动放置已修复。`r`n",(New-Object Text.UTF8Encoding($false)))
+    }
     if($StageDevelopmentRecord){
         # Keep the strict package/runtime manifests and fixed member contract.
         # The ordinary owner card is the compatible in-ZIP disclosure surface.
@@ -596,6 +604,7 @@ try {
         packageId = $packageId
         sdk = '10.0.203'
         configuration = 'Release'
+        blueprintDiagnostic = [bool]$BlueprintDiagnostic
         targetFramework = 'net472'
         platformTarget = 'x86'
         buildEntry = 'scripts/build.ps1'
@@ -650,7 +659,7 @@ try {
     if ($sourceIdentity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint -or
         ($null -eq $admission -and @(Invoke-Phase0SGit -Arguments @('status','--porcelain=v1','--untracked-files=all')).Count -ne 0) -or
         ($admission|ConvertTo-Json -Depth 8 -Compress) -cne ($promotionAdmission|ConvertTo-Json -Depth 8 -Compress) -or
-        -not (Test-PackageBuildAdmission $buildRecord)) { throw 'Package inputs or evidence changed before promotion.' }
+        -not (Test-PackageBuildAdmission $buildRecord -ExpectedBlueprintDiagnostic ([bool]$BlueprintDiagnostic))) { throw 'Package inputs or evidence changed before promotion.' }
     [System.IO.File]::Delete($markerPath)
     $markerRemoved = $true
     if ((Get-Phase0SPathState -Path $outputRoot).exists) {

@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
+using System.IO;
 using System.Linq;
+using Microsoft.Xna.Framework;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -8,6 +10,41 @@ namespace NativeWorldTextProbe
     // The owner supplied this order independently of module registration order.
     internal static class NativePageCompositionChecks
     {
+        // Exercise the existing ItemsPresentation against the actual composition
+        // and original graphics assets. The historical synthetic receiver is not
+        // an ABI substitute for this direct shared-renderer consumer.
+        internal static void ItemsVisual(object context, ProbeGraphics graphics, string output)
+        {
+            var shell = Get(context, "Shell"); var state = Get(shell, "State");
+            var renderer = Get(shell, "renderer"); var page = Get(shell, "items");
+            try
+            {
+                Call(state, "Navigate", 0); Call(state, "RestoreVisible"); Call(renderer, "RefreshResources");
+                var screen = new Vector2(Terraria.Main.screenWidth, Terraria.Main.screenHeight);
+                Call(renderer, "Prepare", state, screen.X, screen.Y, 1f);
+                Call(page, "Prepare", true, Matrix.Identity, screen); ItemsOrder(page);
+                var types = ((IEnumerable)Get(page, "controls")).Cast<object>().Select(c => (int)Get(c, "Type")).Where(t => t > 0).Distinct().OrderBy(t => t).ToArray();
+                Require(types.Length > 0, "the actual Items page exposes its existing nonempty sale cards");
+                graphics.LoadItemTextures(types);
+                Console.WriteLine("ITEMS original resource identities=" + string.Join(",", types));
+                int builds = (int)Get(page, "LayoutBuildCount");
+                for (int i = 0; i < 120; i++) Call(page, "Prepare", true, Matrix.Identity, screen);
+                Require(builds == (int)Get(page, "LayoutBuildCount"), "stable real Items page prepares do not rebuild its controls");
+                graphics.Image(Path.Combine(output, "items-current-native-page.png"), () =>
+                {
+                    Call(renderer, "Draw", state, Matrix.Identity, false, false);
+                    var device = graphics.GraphicsDevice;
+                    var scissor = device.ScissorRectangle; var raster = device.RasterizerState;
+                    var blend = device.BlendState; var depth = device.DepthStencilState; var sampler = device.SamplerStates[0];
+                    Call(page, "Draw", null, false);
+                    Require(device.ScissorRectangle == scissor && ReferenceEquals(device.RasterizerState, raster) &&
+                        ReferenceEquals(device.BlendState, blend) && ReferenceEquals(device.DepthStencilState, depth) && ReferenceEquals(device.SamplerStates[0], sampler),
+                        "the actual ItemsPresentation Draw restores the preexisting GPU state through the shared ItemsRenderer");
+                }, Matrix.Identity, (int)screen.X, (int)screen.Y);
+                Console.WriteLine("PASS real ItemsPresentation native-resource Draw, original page order, 120 stable prepares and exact shared-renderer GPU-state restoration; no synthetic receiver or owner game execution.");
+            }
+            finally { Call(shell, "CloseAndSubmitPosition"); }
+        }
         internal static void Run(object context)
         {
             var shell=Get(context,"Shell");var state=Get(shell,"State");var renderer=Get(shell,"renderer");var page=Get(shell,"items");

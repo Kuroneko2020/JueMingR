@@ -21,8 +21,7 @@ namespace NativeWorldTextProbe
             var input = Get(context, "Input"); var editor = (BlueprintCaptureState)Get(host, "State");
             var flow = (BlueprintCaptureFlow)Get(host, "Flow"); var library = (LibraryState)Get(host, "Library");
             var originalTiles = Main.tile; int originalWidth = Main.maxTilesX, originalHeight = Main.maxTilesY;
-            ulong tick = 50000;
-            Action poll = () => { Call(host, "Update", tick++); Call(host, "Poll"); };
+            Action poll = () => { NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); Call(host, "Poll"); };
             Action finishCancel = () => { Call(host, "CancelCaptureOrDraft"); NativeQuickItemChecks.Until(() => { poll(); return !library.Snapshot.Busy && !(bool)Get(host, "discardPending"); }); Call(shell, "CloseAndSubmitPosition"); };
             try
             {

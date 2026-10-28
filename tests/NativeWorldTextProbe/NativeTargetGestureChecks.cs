@@ -66,54 +66,58 @@ namespace NativeWorldTextProbe
                 Set(gesture, "Picked", Adapt(type.GetProperty("Picked", Flags).PropertyType, value => { delivered++; result = value; }));
                 Set(gesture, "PickCancelled", (Action)(() => cancelled++));
                 Action<bool> uiPass = blocked => { Call(gesture, "BeginPass"); Main.LocalPlayer.mouseInterface = blocked; Main.mouseText = blocked; Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Main.mouseText = true; Call(gesture, "EndPass", true); };
-                Call(gesture, "Request", 1); uiPass(false); Call(gesture, "Update", 1L);
+                Call(gesture, "Request", 1); uiPass(false); UpdateGesture(gesture, 1L);
                 Require(delivered == 1 && result != null, "world tooltip flag after UI boundary is not UI遮挡");
-                Call(gesture, "Request", 1); uiPass(true); Call(gesture, "Update", 2L);
+                Call(gesture, "Request", 1); uiPass(true); UpdateGesture(gesture, 2L);
                 Require(delivered == 1 && cancelled == 1, "fresh UI boundary vetoes world target");
                 Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "Hover", new Item[] { new Item() }, 0, 0);
-                Main.LocalPlayer.mouseInterface = true; Main.mouseText = false; Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Call(gesture, "EndPass", true); Call(gesture, "Update", 3L);
+                Main.LocalPlayer.mouseInterface = true; Main.mouseText = false; Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Call(gesture, "EndPass", true); UpdateGesture(gesture, 3L);
                 Require(delivered == 2 && (bool)Get(result, "UiSlot") && (int)Get(result, "ItemType") == 0, "fresh empty slot wins over frozen world target");
                 foreach (int context in new[] { 22, 41, 42 })
                 {
                     var sample = new Item(); sample.SetDefaults(9); sample.stack = 123;
                     Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "Hover", new[] { sample }, context, 0);
-                    Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Call(gesture, "EndPass", true); Call(gesture, "Update", 3L);
+                    Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Call(gesture, "EndPass", true); UpdateGesture(gesture, 3L);
                     Require((int)Get(result, "ItemType") == 0, "craft sample context never becomes possessed stack " + context);
                 }
-                int previous = delivered; Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "EndPass", true); Call(gesture, "Update", 9L);
+                int previous = delivered; Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "EndPass", true); UpdateGesture(gesture, 9L);
                 Require(delivered == previous && !(bool)Get(gesture, "Busy"), "UI pass missing concrete hover boundary times out without fallback");
-                Call(gesture, "BeginPick"); Main.tile = new Tile[64, 64]; Call(gesture, "Update", 10L);
+                Call(gesture, "BeginPick"); Main.tile = new Tile[64, 64]; UpdateGesture(gesture, 10L);
                 Require(!(bool)Get(gesture, "Picking"), "waiting-for-click session replacement cancels old selection");
-                Call(gesture, "Request", 1); uiPass(false); Set(gesture, "CanPick", (Func<bool>)(() => false)); Call(gesture, "Update", 11L);
+                Call(gesture, "Request", 1); uiPass(false); Set(gesture, "CanPick", (Func<bool>)(() => false)); UpdateGesture(gesture, 11L);
                 Require(delivered == previous, "modal takeover before delivery vetoes frozen target"); Set(gesture, "CanPick", (Func<bool>)(() => true));
                 var goldChest = new Tile { type = 21, frameX = 36, frameY = 0 }; goldChest.active(true); goldChest.fullbrightBlock(true); Main.tile[1, 1] = goldChest;
-                Call(gesture, "Request", 1); uiPass(false); Call(gesture, "Update", 12L);
+                Call(gesture, "Request", 1); uiPass(false); UpdateGesture(gesture, 12L);
                 Require((bool)Get(gesture, "Busy") && (long)Get(coldCatalog, "PlacementReads") == 64, "cold gesture does not synchronously scan every item");
-                Set(gesture, "CanPick", (Func<bool>)(() => false)); Call(gesture, "Update", 13L);
+                long sameUpdateReads = (long)Get(coldCatalog, "PlacementReads");
+                Call(gesture, "Update", 12L);
+                Require((long)Get(coldCatalog, "PlacementReads") == sameUpdateReads,
+                    "another placement consumer in the same native game update receives no second 64-item allowance");
+                Set(gesture, "CanPick", (Func<bool>)(() => false)); UpdateGesture(gesture, 13L);
                 long cancelledReads = (long)Get(coldCatalog, "PlacementReads");
-                for (int i = 14; i < 24; i++) Call(gesture, "Update", (long)i);
+                for (int i = 14; i < 24; i++) UpdateGesture(gesture, (long)i);
                 Require(!(bool)Get(gesture, "Busy") && (long)Get(coldCatalog, "PlacementReads") == cancelledReads, "cancelled cold gesture stops placement reads");
                 Set(gesture, "CanPick", (Func<bool>)(() => true));
                 Call(gesture, "Request", 1); uiPass(false);
                 int beforeCold = delivered;
                 for (int update = 24; update < 180 && (bool)Get(gesture, "Busy"); update++)
-                { long reads = (long)Get(coldCatalog, "PlacementReads"); Call(gesture, "Update", (long)update); Require((long)Get(coldCatalog, "PlacementReads") - reads <= 64, "cold placement capture is bounded to 64 metadata entries per update"); }
+                { long reads = (long)Get(coldCatalog, "PlacementReads"); UpdateGesture(gesture, (long)update); Require((long)Get(coldCatalog, "PlacementReads") - reads <= 64, "cold placement capture is bounded to 64 metadata entries per update"); }
                 Require(delivered == beforeCold + 1 && (int)Get(result, "ItemType") == Terraria.ID.ItemID.GoldChest,
                     "first world query resolves the actual gold chest style without opening the browser; delivered=" + (delivered - beforeCold) + "; type=" + Get(result, "ItemType") + "; reads=" + Get(coldCatalog, "PlacementReads") + "; mouse=" + Main.MouseWorld);
                 Require(GetOptional(coldCatalog, "Catalog") == null && (long)Get(coldCatalog, "ItemReads") == 0 && (long)Get(coldCatalog, "RecipeReads") == 0,
                     "cold world query prepares only placement metadata, never the full catalog or recipe families");
-                long completedReads = (long)Get(coldCatalog, "PlacementReads"); for (int i = 200; i < 320; i++) Call(gesture, "Update", (long)i);
+                long completedReads = (long)Get(coldCatalog, "PlacementReads"); for (int i = 200; i < 320; i++) UpdateGesture(gesture, (long)i);
                 Require((long)Get(coldCatalog, "PlacementReads") == completedReads, "completed cold gesture has zero continuing placement work");
                 Call(coldCatalog, "Reset"); var coldWall = new Tile { wall = 4 }; coldWall.fullbrightWall(true); Main.tile[1, 1] = coldWall;
                 int announced = 0; object wallAnnouncement = null;
                 Set(gesture, "Announced", Adapt(type.GetProperty("Announced", Flags).PropertyType, value => { announced++; wallAnnouncement = value; }));
                 Call(gesture, "Request", 2); uiPass(false); long coldTick = (long)Get(gesture, "tick");
-                for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) Call(gesture, "Update", ++coldTick);
+                for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) UpdateGesture(gesture, ++coldTick);
                 Require(announced == 1 && (int)Get(wallAnnouncement, "ItemType") == (int)Call(catalog, "WallItem", (ushort)4), "cold announcement resolves a visible wall without a directory warm-up");
                 Call(coldCatalog, "Reset"); Main.tile[1, 1] = goldChest;
-                Call(gesture, "Request", 1); uiPass(false); Call(gesture, "Update", ++coldTick); goldChest.frameX = 72;
+                Call(gesture, "Request", 1); uiPass(false); UpdateGesture(gesture, ++coldTick); goldChest.frameX = 72;
                 int beforeChanged = delivered;
-                for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) Call(gesture, "Update", ++coldTick);
+                for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) UpdateGesture(gesture, ++coldTick);
                 Require(delivered == beforeChanged, "a changed furniture style cancels the frozen cold query instead of substituting another item");
                 var displayOrigin = new Terraria.DataStructures.Point16(1, 1);
                 var display = new Terraria.GameContent.Tile_Entities.TEItemFrame { Position = displayOrigin, item = new Item() };
@@ -128,13 +132,13 @@ namespace NativeWorldTextProbe
                     foreach (bool changed in new[] { true, false })
                     {
                         Call(coldCatalog, "Reset"); int before = announced; long reads = (long)Get(coldCatalog, "PlacementReads");
-                        Call(gesture, "Request", 2); uiPass(false); Call(gesture, "Update", ++coldTick);
+                        Call(gesture, "Request", 2); uiPass(false); UpdateGesture(gesture, ++coldTick);
                         Require((bool)Get(gesture, "Busy") && (long)Get(coldCatalog, "PlacementReads") - reads == 64, "carrier cold observation waits for bounded placement metadata");
                         if (changed) display.item.SetDefaults(8);
-                        for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) Call(gesture, "Update", ++coldTick);
+                        for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) UpdateGesture(gesture, ++coldTick);
                         Require(!(bool)Get(gesture, "Busy") && announced == before + (changed ? 0 : 1), "real cold gesture cancels changed contents and delivers unchanged contents");
                         if (!changed) NativeAnnouncementIconChecks.AssertMessage(JueMingR.Features.Announcements.SafeChatText.Build((List<string>)Get(wallAnnouncement, "Entries")), "这里有 放在" + Lang.GetItemNameValue(3270) + " 的1 个 " + Lang.GetItemNameValue(8) + " ", 3270, 8);
-                        long stopped = (long)Get(coldCatalog, "PlacementReads"); Call(gesture, "Update", ++coldTick);
+                        long stopped = (long)Get(coldCatalog, "PlacementReads"); UpdateGesture(gesture, ++coldTick);
                         Require((long)Get(coldCatalog, "PlacementReads") == stopped, "finished carrier gesture stops metadata reads");
                     }
                     var jar = new Terraria.GameContent.Tile_Entities.TEDeadCellsDisplayJar { Position = displayOrigin, item = new Item() }; jar.item.SetDefaults(4);
@@ -142,10 +146,10 @@ namespace NativeWorldTextProbe
                     for (int y = 0; y < 2; y++) { var tile = new Tile { type = 698, frameY = (short)(18 * y) }; tile.active(true); tile.fullbrightBlock(true); Main.tile[1, 1 + y] = tile; }
                     Main.mouseY = 36; PlayerInput.MouseInfo = new MouseState(20, 36, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
                     Call(coldCatalog, "Reset"); int beforeCoating = announced;
-                    Call(gesture, "Request", 2); uiPass(false); Call(gesture, "Update", ++coldTick);
+                    Call(gesture, "Request", 2); uiPass(false); UpdateGesture(gesture, ++coldTick);
                     Require((bool)Get(gesture, "Busy"), "jar lower-cell cold gesture waits for body identity");
                     Main.tile[1, 1].invisibleBlock(true);
-                    for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) Call(gesture, "Update", ++coldTick);
+                    for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) UpdateGesture(gesture, ++coldTick);
                     Require(announced == beforeCoating && !(bool)Get(gesture, "Busy"), "coating the real jar draw anchor cancels a pending lower-cell gesture");
                     Main.mouseY = 20; PlayerInput.MouseInfo = new MouseState(20, 20, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
                 }
@@ -170,6 +174,11 @@ namespace NativeWorldTextProbe
             }
             finally { ((IDisposable)gesture).Dispose(); ((IDisposable)coldCatalog).Dispose(); Main.mouseLeft = Main.mouseRight = false; }
         }
+        // The gesture's timeout tick is not Main.GameUpdateCount. Advance the
+        // existing native world-entry fixture as well: the shared placement
+        // provider grants its bounded declaration work once per actual update.
+        private static void UpdateGesture(object gesture, long tick)
+        { NativeQuickItemChecks.BeginWorldStep(); Call(gesture, "Update", tick); }
         private static Delegate Adapt(Type type, Action<object> callback)
         { var value = Expression.Parameter(type.GetGenericArguments()[0]); return Expression.Lambda(type, Expression.Invoke(Expression.Constant(callback), Expression.Convert(value, typeof(object))), value).Compile(); }
         private static MouseState Mouse(int button)

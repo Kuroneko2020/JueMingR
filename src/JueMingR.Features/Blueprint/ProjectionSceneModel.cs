@@ -16,7 +16,7 @@ namespace JueMingR.Features.Blueprint
         public override int GetHashCode() { unchecked { return AssetId.GetHashCode() * 397 ^ ContentRevision.GetHashCode() ^ ContentHash.GetHashCode(); } }
     }
 
-    // Masks are session facts owned by Host, never mutations of the library.
+    // Masks are committed scene facts owned by Host, never library mutations.
     // They only grow after a commit: moving/removing a covering instance cannot
     // resurrect an older layer. Object IDs are local to this mask's instance.
     public sealed class BlueprintProjectionMask
@@ -24,9 +24,13 @@ namespace JueMingR.Features.Blueprint
         private readonly Dictionary<long, ushort> cells;
         private readonly HashSet<int> objects;
         public static BlueprintProjectionMask Empty { get; } = new BlueprintProjectionMask(new Dictionary<long, ushort>(), new HashSet<int>(), 0);
-        internal BlueprintProjectionMask(Dictionary<long, ushort> cells, HashSet<int> objects, long removed)
-        { this.cells = cells; this.objects = objects; RemovedLayerCount = removed; }
+        internal BlueprintProjectionMask(Dictionary<long, ushort> cells, HashSet<int> objects, long removed, long removedConstruction = 0)
+        { this.cells = cells; this.objects = objects; RemovedLayerCount = removed; RemovedConstructionLayerCount = removedConstruction; }
         public long RemovedLayerCount { get; }
+        // Legacy non-liquid accounting for raw overlap receipts only. Producer
+        // qualification can change without changing this permanent raw mask;
+        // effective construction counts come from its catalog-bound receipt.
+        public long RemovedConstructionLayerCount { get; }
         public int CellCount { get { return cells.Count; } }
         public int ObjectCount { get { return objects.Count; } }
         // The shared source-position index carries only layer bits/object ID.
@@ -81,6 +85,8 @@ namespace JueMingR.Features.Blueprint
         }
         internal Dictionary<long, ushort> CopyCells() { return new Dictionary<long, ushort>(cells); }
         internal HashSet<int> CopyObjects() { return new HashSet<int>(objects); }
+        internal IEnumerable<KeyValuePair<long, ushort>> RawCells { get { return cells; } }
+        internal IEnumerable<int> RawObjects { get { return objects; } }
         internal static ushort Layers(CaptureCell cell)
         {
             ushort value = 0;
@@ -96,8 +102,8 @@ namespace JueMingR.Features.Blueprint
 
     public sealed class BlueprintProjectionPlacement
     {
-        public BlueprintProjectionPlacement(BlueprintProjectionIdentity identity, CaptureSummary summary, int originX, int originY, long commitOrder, BlueprintProjectionMask mask = null, long totalLayerCount = 0)
-        { Identity = identity ?? throw new ArgumentNullException(nameof(identity)); savedSummary = LibraryState.Copy(summary) ?? throw new ArgumentNullException(nameof(summary)); OriginX = originX; OriginY = originY; CommitOrder = commitOrder; Mask = mask ?? BlueprintProjectionMask.Empty; TotalLayerCount = totalLayerCount; }
+        public BlueprintProjectionPlacement(BlueprintProjectionIdentity identity, CaptureSummary summary, int originX, int originY, long commitOrder, BlueprintProjectionMask mask = null, long totalLayerCount = 0, long totalConstructionLayerCount = 0)
+        { Identity = identity ?? throw new ArgumentNullException(nameof(identity)); savedSummary = LibraryState.Copy(summary) ?? throw new ArgumentNullException(nameof(summary)); OriginX = originX; OriginY = originY; CommitOrder = commitOrder; Mask = mask ?? BlueprintProjectionMask.Empty; TotalLayerCount = totalLayerCount; TotalConstructionLayerCount = totalConstructionLayerCount; }
         public BlueprintProjectionIdentity Identity { get; }
         private readonly CaptureSummary savedSummary;
         public CaptureSummary Summary { get { return LibraryState.Copy(savedSummary); } }
@@ -106,6 +112,7 @@ namespace JueMingR.Features.Blueprint
         public long CommitOrder { get; }
         public BlueprintProjectionMask Mask { get; }
         public long TotalLayerCount { get; }
+        public long TotalConstructionLayerCount { get; }
     }
 
     public sealed class BlueprintProjectionCommitRequest

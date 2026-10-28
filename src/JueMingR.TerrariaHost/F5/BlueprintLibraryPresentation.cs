@@ -23,6 +23,17 @@ namespace JueMingR.TerrariaHost.F5
         private readonly F5Interaction shell;
         private readonly BlueprintLibraryRenderer renderer = new BlueprintLibraryRenderer();
         private readonly BlueprintLibraryPreviewCache previews = new BlueprintLibraryPreviewCache();
+        private readonly BlueprintMaterialsLayout captureMaterials = new BlueprintMaterialsLayout { ShowNames = false };
+        private readonly BlueprintMaterialsRenderer materialRenderer = new BlueprintMaterialsRenderer();
+        private readonly Dictionary<Guid, BlueprintMaterialSnapshot> pageMaterials = new Dictionary<Guid, BlueprintMaterialSnapshot>();
+        private BlueprintMaterialSnapshot draftMaterials;
+        private float captureMaterialsTop, cardHeight = BlueprintLibraryLayout.CardHeight;
+        private float materialScroll = float.NaN;
+        private float pendingMaterialScroll = float.NaN;
+        private int materialProjection, seenMaterialLayout = -1, materialResources = -1;
+        private long materialNames = -1;
+        private Vector2 materialPointer;
+        private F5Rect materialClip;
         private readonly SingleLineEditView editView = new SingleLineEditView();
         private readonly List<BlueprintLibraryPart> parts = new List<BlueprintLibraryPart>();
         private readonly HashSet<string> failedPreviews = new HashSet<string>(StringComparer.Ordinal);
@@ -84,7 +95,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             // Host owns manual admission; presentation never cancels capture.
             // Saved receipts reveal the list through their independent path.
-            EndEdit(); mode = View.Library; deleteConfirm = null; validation = null; objects = null;
+            EndEdit(); captureMaterials.Clear(); materialRenderer.Dispose(); seenMaterialLayout = -1;
+            mode = View.Library; deleteConfirm = null; validation = null; objects = null;
             failedPreviews.Clear(); failedSummaries.Clear(); RequestList(0, host.Flow.SelectedAssetId); Reveal();
         }
         internal void ShowCapture()
@@ -95,11 +107,12 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void Reveal() { focusSuspended = false; shell.RestoreVisible(); shell.Navigate(6); dirty = true; armed = null; }
         private void RequestList(int page, Guid? asset = null)
-        { CancelRead(); requestedPage = Math.Max(0, page); selectAfterList = asset; listGeneration = ++readGeneration; wantList = true; listFailed = false; dirty = true; }
+        { CancelRead(); pageMaterials.Clear(); requestedPage = Math.Max(0, page); selectAfterList = asset; listGeneration = ++readGeneration; wantList = true; listFailed = false; dirty = true; }
         internal void ShowSaved(Guid asset)
         {
             if (!Visible) { selectAfterList = asset; return; }
-            EndEdit(); mode = View.Library; selected = asset; deleteConfirm = null;
+            EndEdit(); captureMaterials.Clear(); materialRenderer.Dispose(); seenMaterialLayout = -1;
+            mode = View.Library; selected = asset; deleteConfirm = null;
             RequestList(requestedPage, asset); shell.ScrollTo(0);
         }
         internal void BeforeInput(bool active)
@@ -107,6 +120,14 @@ namespace JueMingR.TerrariaHost.F5
             // A retired capture retains its name buffer until explicit edit
             // cancellation, but its hidden field cannot keep a native IME lease.
             TextInput.BeforeSample(active && Visible && Editable);
+        }
+        internal void PauseForMaterials()
+        { TextInput.Release(false); armed = hovered = null; deleteConfirm = null; lastClickName = false; dirty = true; }
+        internal F5Rect MaterialsAnchor(Guid id)
+        {
+            foreach (var part in parts) if (part.Command == BlueprintLibraryCommand.Materials && part.AssetId == id)
+                return part.Element.Rect.Offset(view.X, view.Y - shell.Scroll);
+            return view;
         }
         private bool Editable { get { return !editProtected && (mode != View.Capture ||
             !host.Flow.ContentHandle.IsEmpty && host.Flow.Status == BlueprintCaptureStatus.DraftReady); } }
@@ -159,6 +180,9 @@ namespace JueMingR.TerrariaHost.F5
         internal void LoseFocus() { ReleasePresentation(); focusSuspended = true; if (mode == View.Library) RequestList(requestedPage); }
         private void ReleasePresentation()
         {
+            host.CancelStaticMaterialViews(); captureMaterials.Clear(); materialRenderer.Dispose(); pageMaterials.Clear(); draftMaterials = null;
+            seenMaterialLayout = materialResources = -1; materialNames = -1;
+            pendingMaterialScroll = materialScroll = float.NaN;
             CancelRead();
             EndEdit(); deleteConfirm = null; armed = hovered = null; ready = false;
             OwnsPointer = false; parts.Clear(); previews.Dispose(); renderer.Dispose(); objects = null; objectsHandle = Guid.Empty;
@@ -174,6 +198,7 @@ namespace JueMingR.TerrariaHost.F5
         internal bool RequestLeave() { Suspend(); return true; }
         internal void ProcessInput(bool active, KeyboardState keys, Vector2 point, bool geometryCurrent, bool focused, bool blocked)
         {
+            materialPointer = point;
             bool left = host.Input.RawMouseLeft, right = host.Input.RawMouseRight;
             ConsumeLeft = ConsumeRight = ConsumeWheel = OwnsPointer = false;
             PollReceipts();
@@ -195,7 +220,7 @@ namespace JueMingR.TerrariaHost.F5
             TextInput.AfterSample(textActive, null, keys, focused);
             bool inside = hitClip.Contains(point.X, point.Y);
             OwnsPointer = pointerOn && (inside || leftTail || rightTail);
-            hovered = pointerOn && inside ? Hit(point.X - view.X, point.Y - view.Y + shell.Scroll) : null;
+            hovered = pointerOn && inside ? Hit(point.X - view.X, point.Y - view.Y) : null;
             if (!pointerOn || !focused) { armed = null; if (deleteConfirm.HasValue) { deleteConfirm = null; dirty = true; } lastClickName = false; }
             else
             {
@@ -236,7 +261,10 @@ namespace JueMingR.TerrariaHost.F5
         private BlueprintLibraryPart Hit(float x, float y)
         {
             for (int i = parts.Count - 1; i >= 0; i--)
-                if (parts[i].Command != BlueprintLibraryCommand.None && parts[i].Element.Rect.Contains(x, y)) return parts[i];
+                if (parts[i].Fixed && (parts[i].Command != BlueprintLibraryCommand.None || parts[i].Hint != null || parts[i].MaterialHint != null) && parts[i].Element.Rect.Contains(x, y)) return parts[i];
+            if (mode == View.Capture && y < captureHeaderHeight + BlueprintLibraryLayout.HeaderGap) return null;
+            for (int i = parts.Count - 1; i >= 0; i--)
+                if (!parts[i].Fixed && (parts[i].Command != BlueprintLibraryCommand.None || parts[i].Hint != null || parts[i].MaterialHint != null) && parts[i].Element.Rect.Contains(x, y + shell.Scroll)) return parts[i];
             return null;
         }
         private void Execute(BlueprintLibraryPart part)
@@ -261,6 +289,10 @@ namespace JueMingR.TerrariaHost.F5
                     if (host.Place(placing)) { EndEdit(); deleteConfirm = null; validation = null; }
                     else validation = host.ProjectionActionHint;
                     dirty = true; return;
+                case BlueprintLibraryCommand.Materials:
+                    var materialEntry = Find(part.AssetId);
+                    if (materialEntry != null) host.Shell.OpenBlueprintTemplateMaterials(materialEntry, part.Element.Rect.Offset(view.X, view.Y - shell.Scroll));
+                    return;
                 case BlueprintLibraryCommand.Delete:
                     EndEdit();
                     if (deleteConfirm == part.AssetId && selected == part.AssetId)
@@ -371,6 +403,8 @@ namespace JueMingR.TerrariaHost.F5
             PollReceipts();
             if (!active || !Visible) { ready = false; return; }
             if (!renderer.Refresh()) { ready = false; return; }
+            if (!materialRenderer.Refresh()) { ready = false; return; }
+            RefreshMaterials();
             previews.Observe(renderer.Device);
             if (pendingImage != null)
             {
@@ -380,7 +414,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             var next = shell.Layout.Viewport.Offset(shell.X, shell.Y);
             bool geometry = matrix != transform || screen != dimensions || !Same(view, next) || layoutGeneration != shell.Layout.Generation || resourceGeneration != renderer.Generation || previewCacheGeneration != previews.Generation;
-            if (geometry || scroll != shell.Scroll) { projection++; armed = null; }
+            if (geometry || scroll != shell.Scroll) { projection++; materialProjection++; armed = null; }
             matrix = transform; screen = dimensions; view = next; scroll = shell.Scroll; ready = true;
             if (mode == View.Capture) MeasureCaptureHeader(out captureHeaderHeight, out captureButtonHeight);
             previewSize = mode == View.Capture ? BlueprintLibraryLayout.CapturePreviewSizeForHeader(view.Width, view.Height, matrix, captureHeaderHeight) : BlueprintLibraryLayout.PreviewSize(view.Width, matrix);
@@ -394,6 +428,7 @@ namespace JueMingR.TerrariaHost.F5
             if (shape)
             {
                 Build(); LayoutBuilds++; dirty = false; projection++; armed = null;
+                if (!float.IsNaN(pendingMaterialScroll)) { shell.ScrollTo(pendingMaterialScroll); pendingMaterialScroll = float.NaN; }
                 // Dynamic page heights are complete only here. A loading list
                 // retains its last effective height, so Ensure's temporary empty
                 // page cannot consume the user's scroll before the reply arrives.
@@ -402,6 +437,7 @@ namespace JueMingR.TerrariaHost.F5
                 seenFlow = host.Flow.Revision; seenLibrary = host.Library.Snapshot.Revision; shownMessage = Message; seenPlaceCancellation = host.OwnPlaceCancellation; seenPlaceEligibility = host.CanInvokePlace;
                 layoutGeneration = shell.Layout.Generation; resourceGeneration = renderer.Generation; previewCacheGeneration = previews.Generation;
             }
+            PrepareCaptureMaterials(shape || geometry);
             if (editor != null && editRect.Width > 0 && (shape || editRevision != editor.Revision || caretRevision != editor.CaretRevision || composition != TextInput.Composition))
             {
                 // Reserve the caret's own pixel, including at the end of a full
@@ -412,6 +448,50 @@ namespace JueMingR.TerrariaHost.F5
                 editRevision = editor.Revision; caretRevision = editor.CaretRevision; composition = TextInput.Composition;
             }
             RequestWork();
+        }
+        private void RefreshMaterials()
+        {
+            if (materialNames != host.MaterialNameRevision) { materialNames = host.MaterialNameRevision; dirty = true; }
+            if (mode == View.Capture)
+            {
+                var value = host.MaterialDraft();
+                if (!ReferenceEquals(value, draftMaterials) || materialResources != materialRenderer.Generation)
+                { draftMaterials = value; materialResources = materialRenderer.Generation; dirty = true; }
+            }
+            else
+            {
+                var page = host.Library.Snapshot.Page;
+                if (page == null || page.Generation != listGeneration || wantList) return;
+                foreach (var entry in page.Entries)
+                {
+                    var value = host.MaterialAsset(entry); BlueprintMaterialSnapshot previous;
+                    if (!pageMaterials.TryGetValue(entry.AssetId, out previous) || !ReferenceEquals(previous, value))
+                    { pageMaterials[entry.AssetId] = value; dirty = true; }
+                }
+            }
+        }
+        private void PrepareCaptureMaterials(bool changed)
+        {
+            if (mode != View.Capture)
+            {
+                materialRenderer.PrepareHint(host.Input.CanPrepareText && host.Shell.BlueprintMaterialsUi?.Visible != true ? hovered?.MaterialHint : null,
+                    hovered?.Element.Rect.Offset(view.X, view.Y - shell.Scroll) ?? default(F5Rect), view,
+                    Terraria.GameContent.FontAssets.MouseText?.Value, shell.Layout.DynamicTextSize);
+                return;
+            }
+            var clip = new F5Rect(view.X, view.Y + captureHeaderHeight + BlueprintLibraryLayout.HeaderGap, view.Width,
+                Math.Max(0, view.Height - captureHeaderHeight - BlueprintLibraryLayout.HeaderGap));
+            if (changed || seenMaterialLayout != captureMaterials.Generation || !Same(materialClip, clip) || materialScroll != shell.Scroll)
+            {
+                materialClip = clip; captureMaterials.Project(view.X + 8, view.Y + captureMaterialsTop - shell.Scroll, materialClip);
+                seenMaterialLayout = captureMaterials.Generation; materialScroll = shell.Scroll; materialProjection++;
+            }
+            materialRenderer.Prepare(captureMaterials, materialProjection);
+            var hit = host.Shell.BlueprintMaterialsUi?.Visible == true ? null : captureMaterials.Hit(materialPointer.X, materialPointer.Y, materialClip);
+            string hint = hit?.Cell.Name ?? hovered?.MaterialHint;
+            materialRenderer.PrepareHint(host.Input.CanPrepareText && host.Shell.BlueprintMaterialsUi?.Visible != true ? hint : null,
+                hit?.Rect ?? hovered?.Element.Rect.Offset(view.X, view.Y - shell.Scroll) ?? default(F5Rect), view,
+                Terraria.GameContent.FontAssets.MouseText?.Value, shell.Layout.DynamicTextSize);
         }
         private string Message
         {
@@ -427,7 +507,7 @@ namespace JueMingR.TerrariaHost.F5
                 var page = host.Library.Snapshot.Page; if (page == null || page.Generation != listGeneration) return;
                 for (int i = 0; i < page.Entries.Count; i++)
                 {
-                    var card = BlueprintLibraryLayout.Card(view.Width, i);
+                    var card = BlueprintLibraryLayout.CardForHeight(view.Width, i, cardHeight);
                     if (card.Bottom < scroll || card.Y > scroll + view.Height) continue;
                     var entry = page.Entries[i]; string key;
                     if (!pageKeys.TryGetValue(entry.AssetId, out key)) return;
@@ -524,7 +604,16 @@ namespace JueMingR.TerrariaHost.F5
             Button("下一页", BlueprintLibraryLayout.HeaderButton(view.Width, 2), BlueprintLibraryCommand.Next, current && page.PageIndex + 1 < page.PageCount && !snapshot.Busy);
             Button("返回", BlueprintLibraryLayout.HeaderButton(view.Width, 3), BlueprintLibraryCommand.Back, true);
             int count = current ? page.Entries.Count : 0;
-            float height = BlueprintLibraryLayout.Height(count);
+            cardHeight = BlueprintLibraryLayout.CardHeight;
+            if (current) foreach (var entry in page.Entries)
+            {
+                BlueprintMaterialSnapshot materials; pageMaterials.TryGetValue(entry.AssetId, out materials);
+                float summaryWidth = BlueprintLibraryLayout.Preview(BlueprintLibraryLayout.Card(view.Width, 0)).Width;
+                var lines = BlueprintMaterialsLayout.Wrap(BlueprintMaterialsLayout.Summary(materials, false), summaryWidth, .62f, Measure);
+                cardHeight = Math.Max(cardHeight, 36 + BlueprintLibraryLayout.PreviewHeight + 30 + BlueprintMaterialsLayout.BlockHeight(lines, 2) +
+                    Math.Max(36, Measure("测试Ag", .62f).Height * 2 + 6) + 8);
+            }
+            float height = BlueprintLibraryLayout.HeightForCards(count, cardHeight);
             if (count == 0)
             {
                 Panel(new F5Rect(0, 48, view.Width, 58));
@@ -533,7 +622,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             else for (int i = 0; i < count; i++)
             {
-                var entry = page.Entries[i]; var card = BlueprintLibraryLayout.Card(view.Width, i);
+                var entry = page.Entries[i]; var card = BlueprintLibraryLayout.CardForHeight(view.Width, i, cardHeight);
                 string key = AssetKey(entry); pageKeys[entry.AssetId] = key;
                 BuildCard(card, entry.AssetId, entry.Name, entry.Width, entry.Height, entry.ContentCount, entry.IsProtected ? "这个蓝图暂不可修改，原文件已保护" : null, key,
                     !snapshot.Busy && !page.IsProtected && !entry.IsProtected, false);
@@ -567,7 +656,16 @@ namespace JueMingR.TerrariaHost.F5
             var image = TextPart(count == 0 ? "没有可预览的内容" : failedPreviews.Contains(key) ? "预览暂不可用" : "正在生成预览", preview, .62f, F5ElementKind.Image); image.PreviewKey = key;
             var materials = BlueprintLibraryLayout.Materials(card);
             Label(width + "x" + height + " / 内容 " + count.ToString(CultureInfo.InvariantCulture), new F5Rect(preview.X, preview.Bottom + 5, Math.Max(1, materials.X - 4 - preview.X), 13), .62f);
-            Button("材料", materials, BlueprintLibraryCommand.None, false);
+            Button("材料", materials, BlueprintLibraryCommand.Materials, !draft && Find(id)?.IsProtected != true, id);
+            BlueprintMaterialSnapshot materialValue; pageMaterials.TryGetValue(id, out materialValue);
+            float materialTop = preview.Bottom + 30;
+            var summaryLines = BlueprintMaterialsLayout.Wrap(BlueprintMaterialsLayout.Summary(materialValue, false), preview.Width, .62f, Measure);
+            foreach (var line in summaryLines)
+            {
+                var value = Label(line.Text, line.Rect.Offset(preview.X, materialTop), .62f);
+                value.MaterialHint = MaterialReason(materialValue);
+            }
+            float errorTop = materialTop + BlueprintMaterialsLayout.BlockHeight(summaryLines, 2) + 4;
             string inlineError = (editing || selected == id) && !string.IsNullOrEmpty(Message) ? Message : null;
             // A compact card shows two readable lines; selected diagnostics are
             // also rendered in full below the cards and count toward scrolling.
@@ -575,10 +673,10 @@ namespace JueMingR.TerrariaHost.F5
             {
                 string impact = "同时移除世界蓝图 " + host.ProjectionReferenceCount(id) + " 份";
                 if (host.ProjectionCandidateReferences(id)) impact += "，并取消该模板的编辑";
-                CardMessage(impact, preview, Color.LightGoldenrodYellow);
+                CardMessage(impact, preview, Color.LightGoldenrodYellow, errorTop);
             }
-            else if (inlineError != null) CardMessage(inlineError, preview, Color.LightSalmon);
-            else if (!string.IsNullOrEmpty(missing)) CardMessage(missing, preview, Color.LightGoldenrodYellow);
+            else if (inlineError != null) CardMessage(inlineError, preview, Color.LightSalmon, errorTop);
+            else if (!string.IsNullOrEmpty(missing)) CardMessage(missing, preview, Color.LightGoldenrodYellow, errorTop);
         }
         private void BuildCapture()
         {
@@ -586,12 +684,13 @@ namespace JueMingR.TerrariaHost.F5
             MeasureCaptureHeader(out captureHeaderHeight, out captureButtonHeight);
             string saveText = flow.Status == BlueprintCaptureStatus.Saving ? "正在保存…" : "保存蓝图";
             float saveWidth = Math.Max(76, Measure(saveText, .70f).Width + 18), backWidth = Math.Max(54, Measure("返回", .70f).Width + 18);
-            Panel(BlueprintLibraryLayout.CaptureHeader(view.Width, captureHeaderHeight));
-            Label("保存采集", BlueprintLibraryLayout.CaptureTitle(view.Width, saveWidth, backWidth, captureHeaderHeight), .76f);
+            Panel(BlueprintLibraryLayout.CaptureHeader(view.Width, captureHeaderHeight)).Fixed = true;
+            Label("保存采集", BlueprintLibraryLayout.CaptureTitle(view.Width, saveWidth, backWidth, captureHeaderHeight), .76f).Fixed = true;
             var save = Button(saveText, BlueprintLibraryLayout.CaptureSave(view.Width, saveWidth, backWidth, captureHeaderHeight, captureButtonHeight), BlueprintLibraryCommand.ConfirmDraft,
                 GetDraftSaveEligibility() == null, Guid.Empty, .70f);
+            save.Fixed = true;
             if (!save.Enabled) { save.Hint = GetDraftSaveEligibility(); save.HintSize = Measure(save.Hint, .62f); }
-            Button("返回", BlueprintLibraryLayout.CaptureBack(view.Width, backWidth, captureHeaderHeight, captureButtonHeight), BlueprintLibraryCommand.Back, true, Guid.Empty, .70f);
+            Button("返回", BlueprintLibraryLayout.CaptureBack(view.Width, backWidth, captureHeaderHeight, captureButtonHeight), BlueprintLibraryCommand.Back, true, Guid.Empty, .70f).Fixed = true;
             float y = captureHeaderHeight + BlueprintLibraryLayout.HeaderGap;
             if (summary != null && !flow.ContentHandle.IsEmpty)
             {
@@ -616,6 +715,19 @@ namespace JueMingR.TerrariaHost.F5
                 string details = projected != null ? projected.Width + "x" + projected.Height + " / 内容 " + projected.ContentCount.ToString(CultureInfo.InvariantCulture) :
                     failedPreviews.Contains(draftPreviewKey) ? "预览暂不可用" : "正在准备预览";
                 Label(details, new F5Rect(8, y, view.Width - 16, 18), .62f); y += 24;
+                int materialSummaryStart = parts.Count;
+                y += AddWrapped(BlueprintMaterialsLayout.Summary(draftMaterials, false), 8, y, view.Width - 16, Color.White) + 6;
+                for (int i = materialSummaryStart; i < parts.Count; i++)
+                { parts[i].MaterialHint = MaterialReason(draftMaterials); }
+                float oldTop = captureMaterialsTop; captureMaterialsTop = y;
+                float previousMaterialScroll = Math.Max(0, shell.Scroll - oldTop);
+                float anchored = captureMaterials.Prepare(draftMaterials, false, view.Width - 16, shell.Layout.DynamicTextSize,
+                    host.MaterialName, host.MaterialNameRevision, materialRenderer.Generation, previousMaterialScroll);
+                if (oldTop > 0 && shell.Scroll >= oldTop) pendingMaterialScroll = captureMaterialsTop + anchored;
+                // This page owns a fixed header plus one ordinary scroll body.
+                // The full grid contributes real height; no global negative
+                // offset or font reduction is used to make materials fit.
+                y += captureMaterials.Height + (captureMaterials.Count == 0 ? 0 : 8);
                 if (projected != null && projected.ContentCount == 0) y += AddWrapped("没有可保存的内容", 8, y, view.Width - 16, Color.LightGoldenrodYellow) + 4;
                 if (summary.UnreliableObjectCount > 0)
                 {
@@ -636,6 +748,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             else
             {
+                captureMaterials.Clear(); captureMaterialsTop = 0;
                 string state = flow.Status == BlueprintCaptureStatus.NoContent ? "选区内没有可保存的内容" : flow.Status == BlueprintCaptureStatus.Starting || flow.Status == BlueprintCaptureStatus.Capturing || flow.Status == BlueprintCaptureStatus.Sealing ? "正在采集 " + flow.Progress + " / " + flow.Total : flow.Status == BlueprintCaptureStatus.Cancelled ? "已取消采集" : "采集未完成";
                 y += AddWrapped(state, 8, y, view.Width - 16, Color.White) + 8;
             }
@@ -674,10 +787,12 @@ namespace JueMingR.TerrariaHost.F5
             return new F5Size(size.Width - 4 + 2 * border, size.Height - 4 + 2 * border,
                 size.OffsetX + 2 - border, size.OffsetY + 2 - border);
         }
-        private void CardMessage(string text, F5Rect preview, Color ink)
+        private static string MaterialReason(BlueprintMaterialSnapshot value)
+        { return value?.Error ?? (value == null || value.Status == BlueprintMaterialStatus.Pending ? "正在核对材料" : value.Status == BlueprintMaterialStatus.Unresolved ? "部分目标的材料尚未确定" : null); }
+        private void CardMessage(string text, F5Rect preview, Color ink, float top)
         {
             var boundaries = TextElements.Boundaries(text); int start = 0;
-            float y = preview.Bottom + 25;
+            float y = top;
             for (int row = 0; row < 2 && start < boundaries.Length - 1; row++)
             {
                 int lo = start + 1, hi = boundaries.Length - 1;
@@ -714,7 +829,10 @@ namespace JueMingR.TerrariaHost.F5
             renderer.Draw(parts, view, matrix, shell.Scroll, hovered, armed, previews, editView,
                 !dirty && Editable && host.Input.CanPrepareText && TextInput.HasCurrentEditorLease && !TextInput.OtherTextOwner &&
                 Same(view, shell.Layout.Viewport.Offset(shell.X, shell.Y)) && matrix == Main.UIScaleMatrix &&
-                scroll == shell.Scroll && layoutGeneration == shell.Layout.Generation);
+                scroll == shell.Scroll && layoutGeneration == shell.Layout.Generation, mode == View.Capture ? captureHeaderHeight + BlueprintLibraryLayout.HeaderGap : 0);
+            if (mode == View.Capture)
+                materialRenderer.DrawContent(captureMaterials, matrix, materialClip);
+            if (host.Shell.BlueprintMaterialsUi?.Visible != true) materialRenderer.DrawHint(matrix, view);
             // Retain the final caller scissor, including its fractional-scale
             // rounding. A changed visible region retires any earlier press.
             if (!Same(hitClip, renderer.LastClip)) { hitClip = renderer.LastClip; projection++; armed = null; }

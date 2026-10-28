@@ -63,10 +63,11 @@ namespace NativeWorldTextProbe
                             maxReads=Math.Max(maxReads,used[0]);maxSteps=Math.Max(maxSteps,used[1]);maxServices=Math.Max(maxServices,used[2]);maxAttempts=Math.Max(maxAttempts,used[3]);maxRequests=Math.Max(maxRequests,used[4]);
                             Require(used[0]<=256 && used[1]<=256 && used[2]<=64 && used[3]<=64 && used[4]<=4 && works.Count<=4,"delete-reorder real Update retains world/source/schedule/admission/work budgets");
                         };
-                        // The first real Update admits immutable source requests
-                        // after taking receipts. Poll below never consumes those
-                        // sources or samples the world; no worker read is held.
-                        step();object work=works[identityB];
+                        // Poll/Fixed do not complete the cold qualification pass.
+                        // Stop at the first real B work admission; Take precedes
+                        // that request in this Update, so Pending is still real.
+                        NativeQuickItemChecks.Until(()=>{step();return (bool)Call(host,"ProjectionQualificationCurrent",b) && works.Contains(identityB);});
+                        object work=works[identityB];
                         Require(work!=null && (bool)Get(work,"Pending") && GetOptional(work,"Read")==null,"delete-reorder actual B request is admitted and Host remains Pending");
                         if(partial)NativeQuickItemChecks.Until(()=>
                         {
@@ -210,7 +211,7 @@ namespace NativeWorldTextProbe
                     for(int i=0;i<12;i++)step();
                     Require(Scene(host).Length==0 && Mode(host)=="None" && !(bool)Get(host,"ProjectionMatchReading") && (int)Get(host,"ProjectionMatchWatchCount")==0,"late processing cannot revive either retired instance or retain a source/watch");
                     NativeQuickItemChecks.Until(()=>library.DebugProjectionStatistics.ActiveReferences==0 && library.DebugProjectionStatistics.ActiveTemplates==0 && library.DebugProjectionStatistics.PendingRequests==0 && library.DebugProjectionStatistics.ReceiptBytes==0);
-                    Require(library.TryList(91003,0,asset.AssetId),"failed template remains in the actual library");Require(Complete(library).Page.Entries.Any(e=>e.AssetId==asset.AssetId),"identity failure preserves library metadata and original source");
+                    Require(library.TryList(91003,0,asset.AssetId),"failed template remains in the actual library");Require(Complete(library,"list identity failure selected="+asset.AssetId).Page.Entries.Any(e=>e.AssetId==asset.AssetId),"identity failure preserves library metadata and original source");
                     Console.WriteLine("PASS Host Moving identity failure lane="+(viewport?"viewport":"source")+" error="+failed.FailureCode+" actual nonresident block0/reader/worker Failed; source qualification=zero Match; both aliases/source slot/watch/windows/commands released; other template actual reads and natural retirement; old commit refused; library retained");
                     Call(host,"ClearProjection");
                     }
@@ -421,10 +422,33 @@ namespace NativeWorldTextProbe
                 Require(library.TryAppendChunk(handle,new CaptureChunk(cells,cells.Length)),"bounded dense source chunk accepted");Complete(library);
             }
             Require(library.TrySealDraft(handle,new CaptureSummary{Width=width,Height=height,ContentCount=width*height}),"dense isolated draft sealed");Complete(library);
-            Require(library.TryCreate(handle,name,token),"dense isolated asset create accepted");var saved=Complete(library);
-            Require(library.TryList(91002,0,saved.AssetId),"dense isolated asset lists");return Complete(library).Page.Entries.Single(e=>e.AssetId==saved.AssetId);
+            Require(library.TryCreate(handle,name,token),"dense isolated asset create accepted");var saved=Complete(library,"dense Create "+name);
+            Require(library.TryList(91002,0,saved.AssetId),"dense isolated asset lists");return Complete(library,"list dense selected="+saved.AssetId).Page.Entries.Single(e=>e.AssetId==saved.AssetId);
         }
-        private static LibraryReceipt Complete(LibraryState state)
-        {LibraryReceipt value=null;NativeQuickItemChecks.Until(()=>{state.Pump();return state.TryTakeReceipt(out value);});Require(value.Status==LibraryStatus.Completed || value.Status==LibraryStatus.Saved,"isolated recovery library command reliable: "+value.Error);return value;}
+        private static LibraryReceipt Complete(LibraryState state,string diagnostic=null)
+        {
+            if(diagnostic!=null && diagnostic.StartsWith("list ",StringComparison.Ordinal)) return NativeBlueprintLibraryWait.AcceptedList(state,diagnostic);
+            LibraryReceipt value=null;var clock=System.Diagnostics.Stopwatch.StartNew();long previous=-1;int reports=0;
+            try
+            {
+                NativeQuickItemChecks.Until(()=>
+                {
+                    state.Pump();long progress=state.Snapshot.ProcessedItems;
+                    if(diagnostic!=null && progress!=previous && reports++<12){previous=progress;Console.WriteLine("RECOVERY COMMAND "+diagnostic+" ms="+clock.ElapsedMilliseconds+" processed="+progress+" accepted="+state.AcceptedCommandId);}
+                    return state.TryTakeReceipt(out value);
+                });
+            }
+            catch
+            {
+                if(diagnostic!=null)
+                {
+                    object worker=Get(state,"worker"),stage=GetOptional(worker,"stage"),pending=GetOptional(worker,"pending"),result=GetOptional(worker,"result");
+                    Console.Error.WriteLine("RECOVERY COMMAND TIMEOUT "+diagnostic+" ms="+clock.ElapsedMilliseconds+" processed="+Get(worker,"Processed")+" busy="+state.Snapshot.Busy+" occupied="+Get(worker,"occupied")+" pending="+(pending!=null)+" result="+(result!=null)+" stageBlocks="+(stage==null?"null":Get(stage,"Blocks").ToString())+" thread="+((Thread)Get(worker,"thread")).ThreadState);
+                }
+                throw;
+            }
+            if(diagnostic!=null)Console.WriteLine("RECOVERY COMMAND END "+diagnostic+" ms="+clock.ElapsedMilliseconds+" processed="+state.Snapshot.ProcessedItems+" status="+value.Status);
+            Require(value.Status==LibraryStatus.Completed || value.Status==LibraryStatus.Saved,"isolated recovery library command reliable: "+value.Error);return value;
+        }
     }
 }

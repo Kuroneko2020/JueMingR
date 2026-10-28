@@ -21,7 +21,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal readonly BlueprintWorldLayer World;
         internal readonly BlueprintToolbar Toolbar;
         private readonly SingleFeatureRuntime runtime;
-        private readonly PreferenceDocument<bool> preference;
+        private readonly PreferenceDocument<BlueprintPreferences> preference;
         private readonly Stopwatch loading = Stopwatch.StartNew();
         private Player player;
         private object world, connection;
@@ -34,7 +34,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             this.runtime = runtime; Input = input;
             Library = library;
-            preference = new PreferenceDocument<bool>(new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "config", "features", "blueprint.json"), 65536, true), new BlueprintPreferenceCodec(), false);
+            preference = new PreferenceDocument<BlueprintPreferences>(new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "config", "features", "blueprint.json"), 65536, true), new BlueprintPreferenceCodec(), new BlueprintPreferences(false, false));
+            projectionHistory = new BlueprintSceneHistory(scope => new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "blueprints", "instances", scope, "scene.bin"), Int32.MaxValue, true));
             World = new BlueprintWorldLayer(this, geometry); Toolbar = new BlueprintToolbar(this);
             Pointer = new BlueprintPointerProof(this);
             try { BlueprintHooks.Install(this); Pointer.Install(); projectionChanges.Install(); ready = true; }
@@ -46,8 +47,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool HasSession { get { return ready && !failed && runtime.IsSessionActive && generation == runtime.Generation &&
             !Main.gameMenu && ReferenceEquals(player, Main.LocalPlayer) && ReferenceEquals(world, Main.ActiveWorldFileData) && ReferenceEquals(connection, Netplay.Connection); } }
         internal bool ControlsEnabled { get { return HasSession && preference.Snapshot.IsLoaded; } }
-        internal bool ToolbarEnabled { get { return preference.Snapshot.Value; } }
+        internal bool ToolbarEnabled { get { return preference.Snapshot.Value.GelToolbar; } }
         internal bool Local(Player candidate) { return candidate != null && ReferenceEquals(candidate, Main.LocalPlayer); }
+        // This is the world editor's gate. Pure material viewing owns its
+        // pointer and physical tails in F5Shell; treating visibility as an
+        // editor barrier also erases unrelated automatic held-item presses.
         internal int BlockedActions { get { State.SetInteractionBlocked(ProjectionEditing || Shell?.BlueprintUi?.WorldInteractionBlocked == true); return State.BlockedActions; } }
         internal bool WorldActionsBlocked { get { return BlockedActions != 0; } }
         internal bool NativeUiBusy { get { return Main.playerInventory || Main.mapFullscreen || Main.blockInput || Main.drawingPlayerChat ||
@@ -57,11 +61,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         // An outer Update can contain no native input stage. It revokes new
         // execution, but does not invalidate a previously frozen focused sample.
         internal bool CanRetainEdit { get { return HasSession && Input.CanRetainIntent && !NativeUiBusy && !Main.gamePaused && !player.dead && !player.ghost &&
-            !(Shell?.State.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode; } }
+            !(Shell?.State.Visible ?? false) && !(Shell?.BlueprintMaterialsUi?.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode; } }
         internal bool ShowToolbar { get { return ControlsEnabled && ToolbarEnabled && Input.CanPrepareText && !NativeUiBusy && !Main.hideUI &&
             !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
-            !(Shell?.State.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !player.dead && !player.ghost && player.HeldItem != null && player.HeldItem.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0; } }
-        internal void SetToolbar(bool value) { if (ControlsEnabled) preference.Set(value); }
+            !(Shell?.State.Visible ?? false) && !(Shell?.BlueprintMaterialsUi?.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !player.dead && !player.ghost && player.HeldItem != null && player.HeldItem.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0; } }
+        internal void SetToolbar(bool value) { if (ControlsEnabled) preference.Set(new BlueprintPreferences(value, AutoBuildEnabled)); }
         // Display and cached UI use stable business eligibility. Every action
         // entry independently checks this Update's completed input permission.
         internal bool CanOpenLibrary { get { return ManualLibraryDisabledReason == null; } }
@@ -104,6 +108,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             Action toolbar = () => SetToolbar(!ToolbarEnabled);
             if (feedback != null) toolbar = feedback.Immediate(BlueprintControls.ToolbarAction, "手持凝胶显示快捷栏", toolbar, () => ToolbarEnabled ? 1 : 0, () => ControlsEnabled);
             registry.Register(new HotkeyAction(BlueprintControls.ToolbarAction, "手持凝胶显示快捷栏", HotkeyContext.Gameplay, () => ControlsEnabled, toolbar));
+            Action automatic = () => SetAutoBuild(!AutoBuildEnabled);
+            if (feedback != null) automatic = feedback.Immediate(BlueprintControls.AutoBuildAction, "自动建造", automatic, () => AutoBuildEnabled ? 1 : 0, () => ControlsEnabled);
+            registry.Register(new HotkeyAction(BlueprintControls.AutoBuildAction, "自动建造", HotkeyContext.Gameplay, () => ControlsEnabled, automatic));
+            registry.Register(new HotkeyAction(BlueprintControls.MaterialsAction, "施工材料", HotkeyContext.Gameplay, () => CanOpenMaterials, OpenMaterials));
         }
         private void ObserveMapping()
         {
@@ -126,36 +134,58 @@ namespace JueMingR.TerrariaHost.Blueprint
         public void OnSessionStarted()
         {
             CancelOldCapture();
-            ClearProjection();
-            State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); generation = runtime.Generation; projectionChanges.SetSession(generation); player = Main.LocalPlayer; world = Main.ActiveWorldFileData; connection = Netplay.Connection; }
+            ClearProjection(); ClearBuildSession();
+            StartBuildUnknownSession();
+            State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); generation = runtime.Generation; projectionChanges.SetSession(generation); player = Main.LocalPlayer; world = Main.ActiveWorldFileData; connection = Netplay.Connection; BeginProjectionSession(); }
         public void OnSessionEnded()
         {
             CancelOldCapture();
-            ClearProjection();
+            EndProjectionSession();
+            ClearProjection(); ClearBuildSession();
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); player = null; world = connection = null; }
         public void Update(ulong updateTick)
         {
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.BlueprintUpdate);
+#endif
             AdvanceCapture(updateTick);
+            PumpProjectionPersistence();
             PumpProjection();
+            UpdateMaterials(updateTick);
             AdvanceProjectionMatch(updateTick);
+            AdvanceAutomaticBuild();
+            AcceptProjectionSceneSnapshot();
             if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad();
             if (State.Active && (!HasSession || !Input.CanRetainIntent || NativeUiBusy || player.dead || player.ghost || Shell?.State.Visible == true))
             {
                 State.Interrupt(); Pointer.Cancel(); }
         }
-        internal void Poll() { PumpLibrary(); PumpProjection(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
+        internal void Poll() { PumpLibrary(); PumpProjectionPersistence(); PumpProjection(); AcceptProjectionSceneSnapshot(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
         public void FailClosed() {
-            failed = true; CancelOldCapture(); ClearProjection(); State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); }
+#if JMR_BLUEPRINT_DIAGNOSTIC
+            BlueprintBuildTrace.Hit(BuildTraceStage.FailClosed);
+            BlueprintBuildTrace.Semantic(BuildTraceStage.FailClosed,BuildTraceReason.BlueprintFailed);
+#endif
+            failed = true; CancelOldCapture(); EndProjectionSession(); ClearProjection(); State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); }
         internal void TakeFeedback(Action<string> display)
         {
+            TakeProjectionPersistenceFeedback(display);
             if (projectionFeedback != null) { string message = projectionFeedback; projectionFeedback = null; display(message); }
             var snapshot = preference.Snapshot;
             if (!snapshot.IsLoaded || reported == snapshot.Status) return;
             if (snapshot.Status == PreferenceStatus.Missing || snapshot.Status == PreferenceStatus.Saved || snapshot.Status == PreferenceStatus.Pending) return;
-            display(snapshot.CommitUnconfirmed ? "无法确认凝胶快捷栏设置是否保存成功；本次仍可使用，原文件已保护。" : "凝胶快捷栏设置未能可靠读取或保存；当前修改仅本次有效，原文件已保留。");
+            display(snapshot.CommitUnconfirmed ? "无法确认蓝图设置是否保存成功；本次仍可使用，原文件已保护。" : "蓝图设置未能可靠读取或保存；当前修改仅本次有效，原文件已保留。");
             reported = snapshot.Status;
         }
         private void ExitProcess(object sender, EventArgs args)
-        { AppDomain.CurrentDomain.ProcessExit -= ExitProcess; CancelOldCapture(); ClearProjection(); projectionChanges.Dispose(); ProjectionRenderer.Dispose(); Library?.Stop(1500); preference.Stop(750); Toolbar.Dispose(); Pointer.Dispose(); BlueprintHooks.Uninstall(); }
+        {
+            AppDomain.CurrentDomain.ProcessExit -= ExitProcess;
+            // ProcessExit never samples live scene/edit state for persistence.
+            // It only drains immutable values accepted on the game thread.
+            var elapsed = Stopwatch.StartNew(); projectionHistory.Stop(1500);
+            CancelOldCapture(); ClearProjection(); projectionChanges.Dispose(); ProjectionRenderer.Dispose();
+            Library?.Stop(Math.Max(0, 2250 - (int)elapsed.ElapsedMilliseconds)); preference.Stop(Math.Max(0, 2250 - (int)elapsed.ElapsedMilliseconds));
+            Toolbar.Dispose(); Pointer.Dispose(); BlueprintHooks.Uninstall();
+        }
     }
 }

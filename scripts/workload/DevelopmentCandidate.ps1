@@ -93,7 +93,10 @@ function Read-DevelopmentCandidate {
             $failed=Read-WorkloadJson $failedPath
             if($null -eq $failed -or $failed.name -cne $check.name -or $failed.status -cnotin @('FAIL','FAILED')){throw 'Historical failure must retain its original named failure artifact.'}
             $failures.Add($check.name)
-            $observations.Add([ordered]@{name=$check.name;status='FAIL';reason=$item.reason;evidence=$item.evidence;acceptance='OUTSIDE_TASK'})
+            # Selection does not prove task irrelevance. A related aggregate
+            # may retain its original FAIL while finite repairs are reviewed
+            # separately; all existing admission and evidence gates stay above.
+            $observations.Add([ordered]@{name=$check.name;status='FAIL';reason=$item.reason;evidence=$item.evidence;acceptance='NOT_SELECTED_FOR_AGGREGATE_ACCEPTANCE'})
             continue
         }
         if($item.status -cnotin @('PASS','REUSED')){throw ('Failed/unknown development candidate responsibility: '+$check.name)}

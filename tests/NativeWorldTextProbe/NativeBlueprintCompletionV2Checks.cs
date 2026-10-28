@@ -16,6 +16,7 @@ namespace NativeWorldTextProbe
         private static bool CompletionV2SourceTake() { return !holdCompletionV2Sources; }
         private static object completionV2PublicationTarget;
         private static long completionV2FirstVisibleTick;
+        private static object completionReceiptContext;
         private static void CompletionV2Published(object __instance,object item)
         {
             if(!ReferenceEquals(completionV2PublicationTarget,item) || completionV2FirstVisibleTick>=0)return;
@@ -45,7 +46,7 @@ namespace NativeWorldTextProbe
         // The fixture builds original furniture on real supports, then enters
         // the production capture/save flow. No CaptureCell/Object array is
         // passed to Save, and both placement arms reuse the same saved asset.
-        private static LibraryEntry CaptureCompletionAsset(object context, object host, object input, LibraryState library,
+        internal static LibraryEntry CaptureCompletionAsset(object context, object host, object input, LibraryState library,
             Action step, int ox, int oy, int width, int height, string name)
         {
             var shell = Get(context, "Shell");
@@ -55,9 +56,17 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
             editor.Exit(); editor.Enter();
             editor.Selection.ToggleRectangle(ox, oy, ox + width - 1, oy + height - 1, Main.maxTilesX, Main.maxTilesY);
-            Require((bool)Call(host, "Save"), "completion pair enters the real Host capture admission");
-            NativeQuickItemChecks.Until(() => { step(); return flow.Status == BlueprintCaptureStatus.DraftReady || flow.Status == BlueprintCaptureStatus.Failed; });
-            Require(flow.Status == BlueprintCaptureStatus.DraftReady, "completion pair reaches actual DraftReady: " + flow.Status + " " + flow.Message);
+            var receiptProbe = new HarmonyLib.Harmony("JueMingR.Tests.Blueprint.CaptureFailureReceipt");
+            completionReceiptContext = context;
+            var applyReceipt = host.GetType().GetMethod("ApplyReceipt", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            receiptProbe.Patch(applyReceipt, prefix: new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldMatchChecks), nameof(CompletionFailureReceipt)));
+            try
+            {
+                Require((bool)Call(host, "Save"), "completion pair enters the real Host capture admission");
+                NativeQuickItemChecks.Until(() => { step(); return flow.Status == BlueprintCaptureStatus.DraftReady || flow.Status == BlueprintCaptureStatus.Failed; });
+                Require(flow.Status == BlueprintCaptureStatus.DraftReady, "completion pair reaches actual DraftReady: " + flow.Status + " " + flow.Message);
+            }
+            finally { receiptProbe.Unpatch(applyReceipt, HarmonyLib.HarmonyPatchType.All, receiptProbe.Id); completionReceiptContext = null; }
             Call(host, "SetDraftName", name); Call(host, "ConfirmSave");
             NativeQuickItemChecks.Until(() => { step(); return flow.Status == BlueprintCaptureStatus.Saved || flow.Status == BlueprintCaptureStatus.CommitUnconfirmed; });
             Require(flow.Status == BlueprintCaptureStatus.Saved && flow.SelectedAssetId.HasValue, "completion pair requires reliable Saved, never uncertain content");
@@ -68,6 +77,18 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
             Console.WriteLine("BlueprintCompletionV2 captured asset=" + id.ToString("N") + " revision=" + entry.ContentRevision + " hash=" + entry.ContentHash + " dimensions=" + entry.Width + "x" + entry.Height + " contentRecords=" + entry.ContentCount + " capture=Capture-DraftReady-ConfirmSave-Saved library=real-list");
             return entry;
+        }
+
+        private static void CompletionFailureReceipt(object __instance, LibraryReceipt __0)
+        {
+            if (__0.Status == LibraryStatus.Completed || __0.Status == LibraryStatus.Saved) return;
+            Console.Error.WriteLine("BLUEPRINT CAPTURE RECEIPT kind=" + __0.Kind + " status=" + __0.Status + " retired=" + __0.OperationRetired +
+                " operation=" + __0.OperationId + " command=" + __0.CommandId + " code=" + __0.FailureCode + " error=" + __0.Error);
+            var summary = ((BlueprintCaptureFlow)Get(__instance, "Flow")).Summary;
+            if (summary != null) Console.Error.WriteLine("BLUEPRINT CAPTURE SUMMARY xy=" + summary.Left + "," + summary.Top + " size=" + summary.Width + "x" + summary.Height +
+                " content=" + summary.ContentCount + " unreliable=" + summary.UnreliableObjectCount + " version=" + summary.TargetVersion +
+                " start=" + summary.StartTick + " end=" + summary.EndTick + " hostLatest=" + Get(__instance, "latestTick") +
+                " runtimeTick=" + Get(completionReceiptContext, "updateTick") + " nativeEntry=" + Main.GameUpdateCount);
         }
 
         private static void BuildCompletionLamps(int ox, int oy, int lamps, bool includeOrdinary)
@@ -158,6 +179,15 @@ namespace NativeWorldTextProbe
             }
         }
 
+        private static bool AwaitCompletionV2Supply(object host,object item,LibraryState library,Action step)
+        {
+            // Fixed is a commit result, not qualification or source readiness.
+            // Taking stays held while real Updates establish this actual work.
+            NativeQuickItemChecks.Until(()=>{step();return Mode(host)!="Committing" && (bool)Call(host,"ProjectionQualificationCurrent",item) &&
+                GetOptional(item,"Match")!=null && ((IDictionary)Get(host,"projectionMatchWork")).Contains(Get(item,"Identity"));});
+            bool ready=AwaitSourceSupply(host,library);
+            Require(ready,"controlled next Update has actual qualified work and real production worker output");return ready;
+        }
         private static void SmallObjectThroughput(object context, object host, object input, LibraryState library, Action step, int count)
         {
             const int ox = 20, oy = 50;
@@ -169,9 +199,8 @@ namespace NativeWorldTextProbe
                 holdCompletionV2Sources = true;
                 timing.Patch(host.GetType().GetMethod("TakeProjectionMatchSources", Flags), prefix: new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldMatchChecks), nameof(CompletionV2SourceTake)));
                 var item = ConfirmCompletion(host, input, entry, ox, oy, step);
-                NativeQuickItemChecks.Until(() => { step(); return Mode(host) != "Committing"; });
+                bool realWorkerReady=AwaitCompletionV2Supply(host,item,library,step);
                 Require(Scene(host).Contains(item), "controlled throughput begins with the real committed identity and unconsumed real worker output");
-                AwaitSourceSupply(host, library);
                 var sampled = new HashSet<int>();
                 objectSample = (x, y) => { if (x >= ox && x < ox + count * 3 && (x - ox) % 3 == 0 && y >= oy && y < oy + 3) sampled.Add((x - ox) / 3); };
                 timing.Patch(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintWorldMatchSource", true).GetMethod("TryRead", Flags), postfix: new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldMatchChecks), nameof(AfterObjectSample)));
@@ -180,7 +209,7 @@ namespace NativeWorldTextProbe
                 long used = (long)Get(host, "ProjectionMatchCellReads") - before, sourceUsed = (long)Get(host, "ProjectionMatchSourceSteps") - sourceBefore;
                 var state = GetOptional(item, "Match");
                 int completed = state == null ? count : ((IEnumerable)Get(state, "Ranges")).Cast<object>().Count(r => ((BlueprintProjectionSourceRange)Get(r, "Source")).ObjectId > 0 && (bool)Get(r, "Current") && (long)Get(r, "Matches") == (long)Get(r, "Targets") && (long)Get(r, "Targets") == 3);
-                Console.WriteLine("BlueprintCompletionV2 throughput declaredUpdates=1 objects=" + count + " independentlySampled=" + sampled.Count + " independentlyCompleted=" + completed + " worldReads=" + used + " sourceSteps=" + sourceUsed + " realWorkerReady=true injectedDto=false source=real-captured-asset retired=" + !Scene(host).Contains(item));
+                Console.WriteLine("BlueprintCompletionV2 throughput declaredUpdates=1 objects=" + count + " independentlySampled=" + sampled.Count + " independentlyCompleted=" + completed + " worldReads=" + used + " sourceSteps=" + sourceUsed + " realWorkerReady="+realWorkerReady+" injectedDto=false source=real-captured-asset retired=" + !Scene(host).Contains(item));
                 Require(used <= 256 && sourceUsed <= 256 && sampled.Count >= 2 && completed >= 2,
                     "one real Update with ready real production source completes more than one independent small object within its existing world/source allowance");
                 ulong token = (ulong)Get(host, "projectionMatchTick"); long same = (long)Get(host, "ProjectionMatchCellReads");
@@ -204,8 +233,7 @@ namespace NativeWorldTextProbe
                 holdCompletionV2Sources=true;
                 timing.Patch(host.GetType().GetMethod("TakeProjectionMatchSources",Flags),prefix:new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldMatchChecks),nameof(CompletionV2SourceTake)));
                 var item=ConfirmCompletion(host,input,entry,ox,oy,step);
-                NativeQuickItemChecks.Until(()=>{step();return Mode(host)!="Committing";});
-                AwaitSourceSupply(host,library);
+                AwaitCompletionV2Supply(host,item,library,step);
                 long requests=(long)Get(host,"ProjectionMatchSourceRequests");
                 WorldGen.paintTile(ox,oy,1,false,false);WorldGen.paintTile(ox,oy,0,false,false);
                 holdCompletionV2Sources=false;step();

@@ -76,7 +76,15 @@ function Get-WorkloadRoute {
             continue
         }
         switch -Regex ($path) {
-            '^src/[^/]+/Blueprint/|^src/JueMingR.TerrariaHost/F5/BlueprintControls\.cs$|^tests/JueMingR.ArchitectureTests/Blueprint|^tests/NativeWorldTextProbe/NativeBlueprint' { [void]$groups.Add('blueprint-host'); continue }
+            # The editor's native world gate is also consumed by the existing
+            # held-item owners. A pure blueprint-view edit must retain those
+            # direct automatic-consumer regressions, without all-group fallback.
+            '^src/JueMingR.TerrariaHost/Blueprint/(HostBlueprint|BlueprintHooks)\.cs$' { [void]$groups.Add('blueprint-host'); [void]$groups.Add('tools-host'); continue }
+            '^src/[^/]+/Blueprint/|^src/JueMingR.TerrariaHost/F5/Blueprint[^/]*\.cs$|^tests/JueMingR.ArchitectureTests/Blueprint|^tests/NativeWorldTextProbe/NativeBlueprint' { [void]$groups.Add('blueprint-host'); continue }
+            # Material identity shares the one browser catalog. Icon values
+            # are now consumed by the browser and both blueprint view modes.
+            '^src/JueMingR.TerrariaHost/ItemBrowser/(NativeItemCatalog|NativeMaterialPlacement|NativePlacementNames|HostItemKnowledge)\.cs$' { [void]$groups.Add('browser-host'); [void]$groups.Add('blueprint-host'); continue }
+            '^src/JueMingR.TerrariaHost/Items/(PreparedItemIcons|ItemsRenderer)\.cs$' { [void]$groups.Add('storage-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('blueprint-host'); continue }
             '^tests/Workload/BusinessAssertionProtocol\.cs$' { [void]$groups.Add('shared-host'); continue }
             # Shared graphics/asset fixture is consumed by the native host
             # scopes; its changes do not confer graphical execution evidence.

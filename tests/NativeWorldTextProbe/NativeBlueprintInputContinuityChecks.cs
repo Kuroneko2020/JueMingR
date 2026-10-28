@@ -65,6 +65,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !original.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
             object oldOwner = Main.CurrentInputTextTakerOverride; bool oldBlock = Main.blockInput, oldWriting = PlayerInput.WritingText;
             using (var library = new LibraryState(new FileBlueprintLibrary(Path.Combine(Terraria.Program.SavePath, "input-continuity"))))
+            using (NativeBlueprintLibraryWait.ObserveHost(library))
             using (var ime = new ImeScope(text))
             {
                 libraryField.SetValue(host, library);
@@ -74,7 +75,12 @@ namespace NativeWorldTextProbe
                     Main.CurrentInputTextTakerOverride = null; Main.blockInput = false; PlayerInput.WritingText = false;
                     for (int i = 0; i < 6; i++) NativeBlueprintPlacementChecks.Seed(library, 2, 2, "连续输入" + i);
                     Action prepare = () => { Call(host, "Poll"); Call(layout, "SetBlueprintLibraryVisible", true); Call(renderer, "RefreshResources"); Call(renderer, "Prepare", state, 960f, 640f, 1f); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(960, 640)); };
-                    Action settle = () => NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "dirty") && (int)Get(ui, "PreviewCount") > 0; });
+                    Action settle = () =>
+                    {
+                        Func<bool> ready = () => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "dirty") && (int)Get(ui, "PreviewCount") > 0; };
+                        if (Get(ui, "mode").ToString() == "Library") NativeBlueprintLibraryWait.HostCondition(library, "input library settled", ready);
+                        else NativeQuickItemChecks.Until(ready);
+                    };
                     foreach (bool capture in new[] { false, true })
                     {
                         composition = "";
@@ -147,6 +153,18 @@ namespace NativeWorldTextProbe
             var before = Anchor(ui); Frame(input, ui, state, Array.Empty<Keys>(), wheel: -120); float scroll = (float)Get(state, "Scroll");
             Require(scroll > 0 && (bool)Get(text, "Owned") && ReferenceEquals(bound, Get(text, "bound")) && (string)Get(text, "Composition") == "pinyin" && disabled == off, "real State.Update scroll before ProcessInput preserves composition lease");
             prepare(); ClearAnchor(); NativeBlueprintLibraryVisualChecks.DrawInput(ui, graphics);
+            if (Get(ui, "mode").ToString() == "Capture")
+            {
+                // The new Save/Back header stays fixed. A full forty-unit
+                // wheel legitimately puts the name's caret above its body
+                // scissor; a retained lease must not submit that old anchor.
+                Require(Anchor(ui) == null && NativeAnchor() == null && (bool)Get(text, "Owned") && ReferenceEquals(bound, Get(text, "bound")),
+                    "capture name hidden behind the fixed header retains composition but submits no IME anchor");
+                float gap = (float)ui.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.BlueprintLibraryLayout", true).GetField("HeaderGap", F).GetRawConstantValue();
+                float visibleScroll = Math.Min(scroll, Math.Max(0, (float)Get(Get(ui, "editRect"), "Y") - (float)Get(ui, "captureHeaderHeight") - gap) / 2);
+                Require(visibleScroll > 0 && visibleScroll < scroll, "actual capture geometry supplies a smaller nonzero visible-name scroll");
+                Call(state, "ScrollTo", visibleScroll); Frame(input, ui, state, Array.Empty<Keys>()); prepare(); ClearAnchor(); NativeBlueprintLibraryVisualChecks.DrawInput(ui, graphics);
+            }
             Require(Anchor(ui) != null && (Vector2)Anchor(ui) != (Vector2)before, "visible name anchor follows new scroll geometry");
             float x = (float)Get(state, "X"); Set(state, "X", x + 5);
             Frame(input, ui, state, Array.Empty<Keys>()); Require((bool)Get(text, "Owned") && disabled == off, "window projection mismatch retains current text lease");

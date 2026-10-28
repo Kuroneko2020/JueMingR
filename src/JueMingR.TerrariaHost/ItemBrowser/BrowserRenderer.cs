@@ -13,11 +13,10 @@ namespace JueMingR.TerrariaHost.ItemBrowser
     internal sealed class BrowserRenderer : IDisposable
     {
         private readonly ItemsRenderer surface = new ItemsRenderer();
-        private readonly Dictionary<int, Texture2D> icons = new Dictionary<int, Texture2D>();
-        private readonly HashSet<int> visibleTypes = new HashSet<int>();
-        private readonly List<int> removedTypes = new List<int>();
+        private readonly PreparedItemIcons icons = new PreparedItemIcons();
 #if DEBUG
-        internal long IconLoads, VisibleSetBuilds;
+        internal long IconLoads { get { return icons.IconLoads; } }
+        internal long VisibleSetBuilds { get { return icons.VisibleSetBuilds; } }
 #endif
         internal int Generation { get { return surface.Generation; } }
         internal bool Refresh() { return surface.Refresh(); }
@@ -25,26 +24,11 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         {
             if (changed)
             {
-                visibleTypes.Clear(); foreach (var part in parts) if (part.Type > 0) visibleTypes.Add(part.Type);
-                removedTypes.Clear(); foreach (int type in icons.Keys) if (!visibleTypes.Contains(type)) removedTypes.Add(type);
-                foreach (int type in removedTypes) icons.Remove(type);
-#if DEBUG
-                VisibleSetBuilds++;
-#endif
+                icons.BeginVisibleSet(); foreach (var part in parts) icons.AddVisible(part.Type); icons.EndVisibleSet();
             }
             // Stable frames only validate borrowed visible resources; no set,
             // array or texture load is recreated until its identity changes.
-            foreach (int type in visibleTypes)
-            {
-                if (type <= 0 || type >= TextureAssets.Item.Length) continue;
-                Texture2D current;
-                if (!icons.TryGetValue(type, out current) || current == null || current.IsDisposed || !ReferenceEquals(current, TextureAssets.Item[type]?.Value))
-                { Main.instance.LoadItem(type); icons[type] = TextureAssets.Item[type]?.Value;
-#if DEBUG
-                    IconLoads++;
-#endif
-                }
-            }
+            icons.Prepare();
         }
         internal void Draw(BrowserPresentation page, Matrix matrix)
         {
@@ -58,8 +42,8 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                     else surface.Label(part.Element);
                     if (part.Type > 0)
                     {
-                        Texture2D texture; var rect = part.Element.Rect; if (part.Command == 27) rect = new F5Rect(rect.X + 2, rect.Y + 2, rect.Height - 4, rect.Height - 4);
-                        if (icons.TryGetValue(part.Type, out texture)) surface.PreparedItem(part.Type, texture, rect);
+                        var rect = part.Element.Rect; if (part.Command == 27) rect = new F5Rect(rect.X + 2, rect.Y + 2, rect.Height - 4, rect.Height - 4);
+                        surface.PreparedItem(part.Type, icons.Get(part.Type), rect);
                     }
                 }
                 if (page.Editor != null)

@@ -127,7 +127,8 @@ namespace NativeWorldTextProbe
             }
             using (var reopened = new LibraryState(new FileBlueprintLibrary(directory)))
             {
-                var page = Complete(reopened, reopened.TryList(502, 0)).Page;
+                Require(reopened.TryList(502, 0), "real reopened fixed sample list accepted");
+                var page = NativeBlueprintLibraryWait.AcceptedList(reopened, "reopened fixed repair sample").Page;
                 Require(page.Entries.Count == 1 && page.Entries[0].AssetId == asset && page.Entries[0].ContentCount == captured.Item1.Count, "new library instance rereads saved asset");
                 var preview = Complete(reopened, reopened.TryPreview(503, asset, page.Entries[0].ContentHash, 231, 58));
                 Require(preview.Preview != null && preview.Summary.ContentCount == captured.Item1.Count, "saved content preview survives a worker restart");

@@ -55,6 +55,8 @@ namespace NativeWorldTextProbe
                 int maxStepReads = 0;
                 Action step = () => { long before = (long)Get(host, "ProjectionMatchCellReads"); NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); int used = checked((int)((long)Get(host, "ProjectionMatchCellReads") - before)); maxStepReads = Math.Max(maxStepReads, used); Require(used <= 256, "one original update entry has at most 256 actual match reads"); };
                 CompletionV2Progress(context, host, input, library, step);
+                MaterialProgress(context, host, input, library, step);
+                LiquidDisplayProgress(context, host, input, library, step, graphics, output);
                 LayerChurn(host, input, library, step);
                 OperatingCompletion(host, input, library, step);
                 OperatingCompletion(host, input, library, step, true);
@@ -648,8 +650,12 @@ namespace NativeWorldTextProbe
             Call(host, "ClearProjection");
             Console.WriteLine("PASS BlueprintWorldMatch cross-tick 300-target/physical-source-workset history revocation and delayed real commit delivery: no stale completion, no unrelated cancellation, safe deferred single retirement.");
         }
-        private static object Place(object host, object input, LibraryEntry entry, int x, int y, Action step)
+        internal static object Place(object host, object input, LibraryEntry entry, int x, int y, Action step)
         {
+            // Successful placement owns a reliable scene only after the real
+            // asynchronous initial read. Keep its normal gate and wait budget.
+            if (!(bool)Get(host, "ProjectionPersistenceReady"))
+                NativeQuickItemChecks.Until(() => { step(); return (bool)Get(host, "ProjectionPersistenceReady"); });
             NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); Require((bool)Call(host, "Place", entry), "real Place admission");
             NativeQuickItemChecks.Until(() => { step(); return Mode(host) == "Following"; });
             var candidate = Get(host, "ProjectionCandidate"); var summary = (CaptureSummary)Get(candidate, "Summary"); int px = x + (summary.Width - 1) / 2, py = y + (summary.Height - 1) / 2;
@@ -671,8 +677,7 @@ namespace NativeWorldTextProbe
             int previousPage=library.Snapshot.Page?.PageIndex??-1;
             bool wasVisible=library.Snapshot.Page!=null && library.Snapshot.Page.Entries.Any(e=>e.AssetId==asset);
             Require(library.TryList(77001,0,asset),"retained template list request admitted");
-            LibraryReceipt receipt=null;
-            NativeQuickItemChecks.Until(()=>{library.Pump();return library.TryTakeReceipt(out receipt);});
+            LibraryReceipt receipt=NativeBlueprintLibraryWait.AcceptedList(library,"retained selected="+asset);
             Require(receipt.Kind==LibraryCommandKind.List && receipt.Generation==77001 && receipt.Page!=null && receipt.Page.Entries.Any(e=>e.AssetId==asset),reason+"; actualPage="+receipt.Page?.PageIndex+" total="+receipt.Page?.TotalCount);
             if(!wasVisible)Console.WriteLine("PASS retained template actual list: priorPage="+previousPage+" selectedPage="+receipt.Page.PageIndex+" totalAssets="+receipt.Page.TotalCount+" sixRowsPerPage=true; prior-page absence was not deletion");
         }
@@ -723,7 +728,7 @@ namespace NativeWorldTextProbe
                         if (ready)
                         {
                             Require(currentWorld == denseEffective, "dense Move qualification observed every effective empty-world target and skipped permanently covered cells");
-                            if(commands)Require((long)Get(state,"Targets")==8L*denseEffective && ((Array)Get(state,"Ranges")).Length==32,"literal command-pressure proof covers all eight layers of 65536 cells in its 32 source blocks");
+                            if(commands)Require((long)Get(state,"Targets")==7L*denseEffective && ((Array)Get(state,"Ranges")).Length==32,"literal command-pressure source retains eight display layers while its 32 blocks prove seven construction layers per cell");
                             Console.WriteLine("PASS dense Move proof records="+denseRecords+" blocks="+denseBlocks+" cooperatingRecords="+sourceRecords+" cooperatingBlocks="+sourceBlocks+" worldReads="+world+" bodyReads="+blocks+" decoded="+decoded+" elapsedMs="+clock.ElapsedMilliseconds+"; finite work/stagnation guard, not a product latency or FPS gate"); break;
                         }
                         if (clock.ElapsedMilliseconds-progressAt > 8000 || clock.ElapsedMilliseconds > 60000) throw new Exception("Dense Move proof stalled or exceeded facility timeout");

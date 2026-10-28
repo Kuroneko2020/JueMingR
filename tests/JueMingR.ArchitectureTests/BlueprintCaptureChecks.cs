@@ -43,11 +43,25 @@ namespace JueMingR.ArchitectureTests
             state.Observe(true, false, false, false, false); state.Observe(true, false, false, false, false);
             require(state.BlockedActions == 0, "keyboard use neutral cannot self-lock behind CanEdit");
             var codec = new BlueprintPreferenceCodec();
-            require(!codec.Decode(codec.Encode(false)) && codec.Decode(codec.Encode(true)), "only toolbar preference round-trips");
+            var restored = codec.Decode(codec.Encode(new BlueprintPreferences(true, true)));
+            require(restored.GelToolbar && restored.AutoBuild && codec.Decode(codec.Encode(new BlueprintPreferences(false, false))).Equals(new BlueprintPreferences(false, false)),
+                "one blueprint preference document round-trips toolbar and automatic construction intentions");
+            var legacy = codec.Decode(System.Text.Encoding.UTF8.GetBytes("{\"format\":\"JueMingR.Blueprint\",\"version\":1,\"gelToolbar\":true}"));
+            require(legacy.GelToolbar && !legacy.AutoBuild, "old v1 preserves gel toolbar and defaults new automatic construction off");
             bool rejected = false;
             try { codec.Decode(System.Text.Encoding.UTF8.GetBytes("{\"format\":\"JueMingR.Blueprint\",\"version\":1,\"gelToolbar\":true,\"selection\":[]}")); }
             catch (JueMingR.Platform.Settings.PreferenceFormatException) { rejected = true; }
             require(rejected, "unknown configuration protects disk and cannot import selection");
+            foreach (string invalid in new[] {
+                "{\"format\":\"JueMingR.Blueprint\",\"version\":1,\"gelToolbar\":true,\"autoBuild\":1}",
+                "{\"format\":\"JueMingR.Blueprint\",\"version\":1,\"gelToolbar\":true,\"autoBuild\":true,\"autoBuild\":false}",
+                "{\"format\":\"JueMingR.Blueprint\",\"version\":2,\"gelToolbar\":true,\"autoBuild\":true}" })
+            {
+                rejected = false;
+                try { codec.Decode(System.Text.Encoding.UTF8.GetBytes(invalid)); }
+                catch (JueMingR.Platform.Settings.PreferenceFormatException) { rejected = true; }
+                require(rejected, "new automatic preference cannot bypass duplicate, type or future-version write protection");
+            }
         }
     }
 }

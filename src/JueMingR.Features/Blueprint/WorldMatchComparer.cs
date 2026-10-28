@@ -6,9 +6,17 @@ namespace JueMingR.Features.Blueprint
     public static class BlueprintWorldMatchComparer
     {
         public static BlueprintWorldMatchResult CompareCell(CaptureCell target, BlueprintWorldMatchSample world,
+            BlueprintConstructionSelection selection, BlueprintWorldMatchState objectTileState = BlueprintWorldMatchState.Unknown)
+        {
+            var result = CompareCell(selection.Apply(target), world, objectTileState);
+            ushort known = (ushort)~selection.UnknownBits;
+            return new BlueprintWorldMatchResult(result.TargetBits, (ushort)(result.MatchBits & known),
+                (ushort)(result.ConflictBits & known), (ushort)(result.UnknownBits | selection.UnknownBits));
+        }
+        public static BlueprintWorldMatchResult CompareCell(CaptureCell target, BlueprintWorldMatchSample world,
             BlueprintWorldMatchState objectTileState = BlueprintWorldMatchState.Unknown)
         {
-            ushort bits = BlueprintProjectionMask.Layers(target), matches = 0, conflicts = 0, unknown = 0;
+            ushort bits = BlueprintConstructionTargets.Layers(target), matches = 0, conflicts = 0, unknown = 0;
             if (!world.Available) return new BlueprintWorldMatchResult(bits, 0, 0, bits);
             CaptureCell actual = world.Cell;
             if ((bits & 1) != 0)
@@ -29,9 +37,6 @@ namespace JueMingR.Features.Blueprint
             if ((bits & 2) != 0)
                 Put(2, (actual.Layers & CaptureLayer.Wall) == 0 ? BlueprintWorldMatchState.Missing :
                     target.WallType == actual.WallType && target.WallPaint == actual.WallPaint && target.InvisibleWall == actual.InvisibleWall && target.FullbrightWall == actual.FullbrightWall ? BlueprintWorldMatchState.Match : BlueprintWorldMatchState.Conflict,
-                    ref matches, ref conflicts, ref unknown);
-            if ((bits & 4) != 0)
-                Put(4, actual.LiquidAmount == 0 ? BlueprintWorldMatchState.Missing : target.LiquidKind == actual.LiquidKind && target.LiquidAmount == actual.LiquidAmount ? BlueprintWorldMatchState.Match : BlueprintWorldMatchState.Conflict,
                     ref matches, ref conflicts, ref unknown);
             if ((bits & 8) != 0 && actual.Actuator) matches |= 8;
             // Wires and actuators are presence requirements. Additional colors

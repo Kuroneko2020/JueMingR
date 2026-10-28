@@ -33,13 +33,13 @@ namespace NativeWorldTextProbe
             var cards = Enumerable.Range(0, 6).Select(i => invoke("Card", new object[] { 522f, i })).ToArray();
             for (int i = 0; i < 6; i++)
             {
-                Require((float)Get(cards[i], "X") == (i % 2 == 0 ? 0 : 265) && (float)Get(cards[i], "Y") == 48 + i / 2 * 174,
+                Require((float)Get(cards[i], "X") == (i % 2 == 0 ? 0 : 265) && (float)Get(cards[i], "Y") == 48 + i / 2 * 198,
                     "six cards are left-right then three rows after 42 header + 6 gap");
-                Require((float)Get(cards[i], "Width") == 257 && (float)Get(cards[i], "Height") == 166, "card geometry follows the approved submenu, without resizing F5");
+                Require((float)Get(cards[i], "Width") == 257 && (float)Get(cards[i], "Height") == 190, "material summary adds readable card height while retaining six cards and the original two-column width");
                 var preview = invoke("Preview", new[] { cards[i] });
                 Require((float)Get(preview, "Y") == (float)Get(cards[i], "Y") + 36 && (float)Get(preview, "Height") == 68, "preview uses the live submenu's 68-height container");
             }
-            Require((float)invoke("Height", new object[] { 0 }) == 112 && (float)invoke("Height", new object[] { 6 }) == 568,
+            Require((float)invoke("Height", new object[] { 0 }) == 112 && (float)invoke("Height", new object[] { 6 }) == 640,
                 "empty and six-card content heights use real rows without virtual cards");
             Require((Point)invoke("PreviewSize", new object[] { 522f, Matrix.Identity }) == new Point(231, 58) &&
                 (Point)invoke("PreviewSize", new object[] { 522f, Matrix.CreateScale(1.5f) }) == new Point(346, 87),

@@ -18,6 +18,11 @@ namespace NativeWorldTextProbe
         { graphics.Render(() => Call(ui, "Draw"), Main.UIScaleMatrix); }
         internal static void Run(object context, ProbeGraphics graphics, string output)
         {
+            var library = (LibraryState)Get(Get(context, "Blueprint"), "Library");
+            using (NativeBlueprintLibraryWait.ObserveHost(library)) RunObserved(context, graphics, output);
+        }
+        private static void RunObserved(object context, ProbeGraphics graphics, string output)
+        {
             var host = Get(context, "Blueprint"); var library = (LibraryState)Get(host, "Library");
             var shell = Get(context, "Shell"); var state = Get(shell, "State"); var layout = Get(state, "Layout");
             var renderer = Get(shell, "renderer"); var ui = Get(shell, "BlueprintUi");
@@ -31,10 +36,10 @@ namespace NativeWorldTextProbe
                 Require(library.TrySealDraft(handle, new CaptureSummary { Left = 60 + i, Top = 80, Width = 1, Height = 1, ContentCount = 1 }), "visual fixed draft sealed"); Complete(library);
                 Require(library.TryCreate(handle, "蓝图库样本 " + (i + 1), token), "visual actual asset created"); Require(Complete(library).Status == LibraryStatus.Saved, "visual asset reliably published");
             }
-            ulong tick = (ulong)Get(host, "latestTick") + 100; Capture(context, 51, 31, ref tick);
+            Capture(context, 51, 31);
             CaptureWorkspace(context, graphics, output);
             var flow = (BlueprintCaptureFlow)Get(host, "Flow");
-            NativeQuickItemChecks.Until(() => { Call(host, "Update", tick++); Call(host, "Poll"); return flow.Status == BlueprintCaptureStatus.Saved; });
+            NativeQuickItemChecks.Until(() => { Step(context); Call(host, "Poll"); return flow.Status == BlueprintCaptureStatus.Saved; });
             Terraria.Localization.LanguageManager.Instance.SetLanguage("zh-Hans");
             Main.screenWidth = 1280; Main.screenHeight = 900;
             foreach (float scale in new[] { 1f, 1.5f })
@@ -42,7 +47,7 @@ namespace NativeWorldTextProbe
                 Main.UIScale = scale; PlayerInput.CacheOriginalScreenDimensions();
                 Call(ui, "OpenLibrary"); Call(layout, "SetBlueprintLibraryVisible", true);
                 Call(renderer, "RefreshResources"); Call(renderer, "Prepare", state, 1280f, 900f, scale);
-                NativeQuickItemChecks.Until(() =>
+                NativeBlueprintLibraryWait.HostCondition(library, "library visible previews", () =>
                 {
                     Call(host, "Poll"); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, 900));
                     return library.Snapshot.Page != null && library.Snapshot.Page.TotalCount == 6 && !library.Snapshot.Busy && (int)Get(ui, "PreviewCount") >= Math.Min(4, library.Snapshot.Page.Entries.Count);
@@ -78,14 +83,14 @@ namespace NativeWorldTextProbe
             Main.UIScale = 1f; PlayerInput.CacheOriginalScreenDimensions();
             ScrollRecovery(host, shell, state, renderer, ui, library);
             Main.tile[30, 30].active(false); Main.tile[32, 31].wall = 2;
-            Capture(context, 32, 31, ref tick, 31);
+            Capture(context, 32, 31, 31);
             Require(flow.Summary.UnreliableObjectCount == 1, "draft visual contains a real incomplete object with confirmed wall");
             Call(layout, "SetBlueprintLibraryVisible", true); Call(renderer, "RefreshResources"); Call(renderer, "Prepare", state, 1280f, 900f, 1f);
             PreviewPairing(host, ui, library, flow);
             graphics.Image(Path.Combine(output, "blueprint-draft-unconfirmed.png"), () => { Call(renderer, "Draw", state, Main.UIScaleMatrix, false, false); Call(ui, "Draw"); }, Main.UIScaleMatrix, 1280, 900);
             Call(host, "CancelCaptureOrDraft");
-            NativeQuickItemChecks.Until(() => { Call(host, "Update", tick++); Call(host, "Poll"); return !library.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
-            Main.tile[32, 31].wall = 0; Capture(context, 32, 31, ref tick, 31); Call(host, "SetExcludeUnreliable", true);
+            NativeQuickItemChecks.Until(() => { Step(context); Call(host, "Poll"); return !library.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
+            Main.tile[32, 31].wall = 0; Capture(context, 32, 31, 31); Call(host, "SetExcludeUnreliable", true);
             Call(layout, "SetBlueprintLibraryVisible", true); Call(renderer, "RefreshResources"); Call(renderer, "Prepare", state, 1280f, 900f, 1f);
             var failures = (IDictionary<string, CaptureSummary>)Get(ui, "failedSummaries"); CaptureSummary empty = null;
             NativeQuickItemChecks.Until(() => { Call(host, "Poll"); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, 900)); return !library.Snapshot.Busy && failures.TryGetValue((string)Call(ui, "DraftKey"), out empty); });
@@ -234,7 +239,7 @@ namespace NativeWorldTextProbe
                     var image = builder.Complete(); string key = "final-pixel-" + scale;
                     Require((bool)Call(cache, "Upload", key, image, new CaptureSummary { Width = 256, Height = 58, ContentCount = image.ProcessedCells }, Get(cache, "Generation")), "finite renderer sample uploaded");
                     parts.Clear(); var part = Call(ui, "TextPart", "", imageRect, .62f, kind);
-                    Action draw = () => Call(renderer, "Draw", Get(ui, "parts"), viewport, transform, 0f, null, null, cache, Get(ui, "editView"), false);
+                    Action draw = () => Call(renderer, "Draw", Get(ui, "parts"), viewport, transform, 0f, null, null, cache, Get(ui, "editView"), false, 0f);
                     var baseline = graphics.Pixels(draw, transform);
                     Set(part, "PreviewKey", key); var actual = graphics.Pixels(draw, transform);
                     var target = (Rectangle)renderer.GetType().GetMethod("PreviewTarget", flags).Invoke(null, new object[] { imageRect, transform, image.Width, image.Height });
@@ -286,12 +291,12 @@ namespace NativeWorldTextProbe
             var layout = Get(state, "Layout"); Main.screenWidth = 1280; Main.screenHeight = 520; PlayerInput.CacheOriginalScreenDimensions();
             Call(ui, "OpenLibrary"); Call(layout, "SetBlueprintLibraryVisible", true); Call(renderer, "Prepare", state, 1280f, 520f, 1f);
             Action prepare = () => { Call(host, "Poll"); Call(ui, "Prepare", true, Main.UIScaleMatrix, new Vector2(1280, Main.screenHeight)); };
-            NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && library.Snapshot.Page != null && !(bool)Get(ui, "wantList"); });
+            NativeBlueprintLibraryWait.HostCondition(library, "scroll library page", () => { prepare(); return !library.Snapshot.Busy && library.Snapshot.Page != null && !(bool)Get(ui, "wantList"); });
             Call(state, "ScrollTo", float.MaxValue); prepare(); float before = (float)Get(state, "Scroll");
             Require(before > 0, "short viewport has a real nonzero library scroll range");
             Call(ui, "RequestList", 0, null); prepare();
             Require((float)Get(state, "Scroll") == before, "temporary loading height retains the last effective content height and exact scroll");
-            NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "wantList"); });
+            NativeBlueprintLibraryWait.HostCondition(library, "scroll list refresh", () => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "wantList"); });
             var first = ((IEnumerable)Get(ui, "parts")).Cast<object>().First(); Set(ui, "armed", first);
             Main.screenHeight = 900; PlayerInput.CacheOriginalScreenDimensions(); Call(renderer, "Prepare", state, 1280f, 900f, 1f); prepare();
             Require((float)Get(state, "Scroll") <= (float)Get(layout, "MaxScroll") && (float)Get(ui, "scroll") == (float)Get(state, "Scroll") && GetOptional(ui, "armed") == null,
@@ -300,7 +305,7 @@ namespace NativeWorldTextProbe
             var entries = library.Snapshot.Page.Entries.Take(Math.Max(0, library.Snapshot.Page.Entries.Count - 2)).ToArray();
             foreach (var entry in entries) { Require(library.TryDelete(entry.AssetId, entry.MetadataIdentity), "isolated actual row-reduction delete accepted"); Complete(library); }
             Call(ui, "RequestList", 0, null);
-            NativeQuickItemChecks.Until(() => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "wantList"); });
+            NativeBlueprintLibraryWait.HostCondition(library, "deleted rows list refresh", () => { prepare(); return !library.Snapshot.Busy && !(bool)Get(ui, "wantList"); });
             Require(library.Snapshot.Page.Entries.Count == 2 && (float)Get(state, "Scroll") <= (float)Get(layout, "MaxScroll") && (float)Get(layout, "ContentHeight") < 300,
                 "actual deleted rows reduce final height and clamp the old offset to the new valid range");
             Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });
@@ -320,7 +325,7 @@ namespace NativeWorldTextProbe
                 device.SamplerStates[0] = Microsoft.Xna.Framework.Graphics.SamplerState.LinearWrap;
                 var scissor = device.ScissorRectangle; var rasterizer = device.RasterizerState;
                 var blend = device.BlendState; var depth = device.DepthStencilState; var sampler = device.SamplerStates[0];
-                try { Call(renderer, "Draw", Get(ui, "parts"), viewport, Matrix.Identity, 0f, null, null, cache, Get(ui, "editView"), false); }
+                try { Call(renderer, "Draw", Get(ui, "parts"), viewport, Matrix.Identity, 0f, null, null, cache, Get(ui, "editView"), false, 0f); }
                 catch (TargetInvocationException error) when (error.InnerException is NullReferenceException) { failed = true; }
                 Require(device.ScissorRectangle == scissor && ReferenceEquals(device.RasterizerState, rasterizer) && ReferenceEquals(device.BlendState, blend) && ReferenceEquals(device.DepthStencilState, depth) && ReferenceEquals(device.SamplerStates[0], sampler),
                     "exceptional library pass returns actual caller scissor/rasterizer/blend/depth/sampler");
@@ -330,7 +335,7 @@ namespace NativeWorldTextProbe
             {
                 var device = graphics.GraphicsDevice; var scissor = device.ScissorRectangle; var rasterizer = device.RasterizerState;
                 var blend = device.BlendState; var depth = device.DepthStencilState; var sampler = device.SamplerStates[0];
-                Call(renderer, "Draw", Get(ui, "parts"), viewport, Matrix.Identity, 0f, null, null, cache, Get(ui, "editView"), false);
+                Call(renderer, "Draw", Get(ui, "parts"), viewport, Matrix.Identity, 0f, null, null, cache, Get(ui, "editView"), false, 0f);
                 Require(device.ScissorRectangle == scissor && ReferenceEquals(device.RasterizerState, rasterizer) && ReferenceEquals(device.BlendState, blend) && ReferenceEquals(device.DepthStencilState, depth) && ReferenceEquals(device.SamplerStates[0], sampler),
                     "normal library passes also return the actual caller states and a usable begun UI batch");
             }, Matrix.Identity);
@@ -367,16 +372,21 @@ namespace NativeWorldTextProbe
             Require(summary().Width == 2 && summary().ContentCount == 2, "the late A cache remains correctly paired when explicitly revisited");
             Console.WriteLine("PASS Blueprint actual GPU preview A-B-A cache summary pairing and old-combination late receipt; fixed source untouched.");
         }
-        private static void Capture(object context, int x, int y, ref ulong tick, int left = -1)
+        private static void Step(object context)
+        {
+            // Runtime owns the capture clock. A private Host tick can put this
+            // fixture ahead of later real Runtime callbacks in the same process.
+            NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime");
+        }
+        internal static void Capture(object context, int x, int y, int left = -1)
         {
             var host = Get(context, "Blueprint"); var input = Get(context, "Input"); var shell = Get(context, "Shell");
             Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Sample(input, Array.Empty<Microsoft.Xna.Framework.Input.Keys>());
             var editor = (BlueprintCaptureState)Get(host, "State"); var flow = (BlueprintCaptureFlow)Get(host, "Flow");
             editor.Enter(); editor.Selection.ToggleRectangle(left < 0 ? x : left, y, x, y, 120, 120);
             Require((bool)Call(host, "Save"), "visual real capture accepted");
-            ulong counter = tick;
-            NativeQuickItemChecks.Until(() => { Call(host, "Update", counter++); Call(host, "Poll"); return flow.Status == BlueprintCaptureStatus.DraftReady || flow.Status == BlueprintCaptureStatus.Failed; });
-            tick = counter; var receipt = ((LibraryState)Get(host, "Library")).Snapshot.LastReceipt;
+            NativeQuickItemChecks.Until(() => { Step(context); Call(host, "Poll"); return flow.Status == BlueprintCaptureStatus.DraftReady || flow.Status == BlueprintCaptureStatus.Failed; });
+            var receipt = ((LibraryState)Get(host, "Library")).Snapshot.LastReceipt;
             Require(flow.Status == BlueprintCaptureStatus.DraftReady, "visual real capture completed: " + flow.Message + " / " + receipt?.Kind + " / " + receipt?.FailureCode);
         }
     }

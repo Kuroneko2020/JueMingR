@@ -22,6 +22,38 @@ namespace NativeWorldTextProbe
         private const long Focus = -91001, Far = -91002;
         private const int X = 31, Y = 31;
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+        internal static IDisposable ObserveFrameFaults() { return new FrameFaultScope(); }
+        private sealed class FrameFaultScope : IDisposable
+        {
+            private readonly HarmonyLib.Harmony patch = new HarmonyLib.Harmony("JueMingR.Tests.Blueprint.NativeFrameFault");
+            internal FrameFaultScope()
+            {
+                foreach (var method in typeof(WorldGen).GetMethods(Flags).Where(m => m.GetMethodBody() != null &&
+                    (m.Name.StartsWith("KillTile_", StringComparison.Ordinal) || m.Name.StartsWith("CheckTileBreakability", StringComparison.Ordinal) || m.Name == "AttemptFossilShattering")))
+                    patch.Patch(method, finalizer: new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldChangeChecks), nameof(FrameLeafFault)));
+                patch.Patch(typeof(WorldGen).GetMethod("KillTile", Flags), finalizer:
+                    new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldChangeChecks), nameof(FrameLeafFault)));
+                patch.Patch(typeof(WorldGen).GetMethod("TileFrameImportant", Flags), finalizer:
+                    new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintWorldChangeChecks), nameof(FrameFault)));
+            }
+            public void Dispose()
+            { foreach (var method in patch.GetPatchedMethods().ToArray()) patch.Unpatch(method, HarmonyLib.HarmonyPatchType.All, patch.Id); }
+        }
+        private static Exception FrameLeafFault(MethodBase __originalMethod, Exception __exception)
+        {
+            if (__exception != null) Console.Error.WriteLine("BLUEPRINT ORIGINAL FRAME LEAF " + __originalMethod.Name + " " + __exception);
+            return __exception;
+        }
+        private static Exception FrameFault(int __0, int __1, int __2, Exception __exception)
+        {
+            // TileFrame's original broad catch otherwise hides this exception
+            // and any native recursive-framing flag it failed to return. The
+            // narrow diagnostic observes the unmodified exception before that
+            // catch; it neither clears the flag nor supplies a successful call.
+            if (__exception != null) Console.Error.WriteLine("BLUEPRINT ORIGINAL FRAME FAULT xy=" + __0 + "," + __1 + " type=" + __2 +
+                " destroyObject=" + WorldGen.destroyObject + " " + __exception);
+            return __exception;
+        }
         internal static void Run(object context)
         {
             var host = Get(context, "Blueprint"); Call(host, "ClearProjection");
@@ -35,8 +67,16 @@ namespace NativeWorldTextProbe
             { saved[x, y] = Main.tile[X - 2 + x, Y - 2 + y]; Main.tile[X - 2 + x, Y - 2 + y] = new Tile(); }
             int mode = Main.netMode; WorldSections sections = Main.sectionManager;
             bool solid = Main.tileSolid[1], top = Main.tileSolidTop[1];
+            bool nativeFraming = WorldGen.destroyObject;
+            var absentPlayers = Enumerable.Range(0, Main.player.Length).Where(i => Main.player[i] == null).ToArray();
             try
             {
+                // Normal Main initializes every Player slot. A malformed lamp
+                // square genuinely frames/destroys members here; its original
+                // KillTile_DropBait -> FindClosest visits even inactive slots.
+                // Null slots otherwise throw inside TileFrame's broad catch,
+                // leaving destroyObject set and poisoning later chest replies.
+                foreach (int i in absentPlayers) Main.player[i] = new Player();
                 Main.netMode = 0; Main.tileSolid[1] = true; Main.tileSolidTop[1] = false;
                 Main.sectionManager = new WorldSections(1, 1);
                 Main.sectionManager.SetAllSectionsLoaded();
@@ -85,12 +125,17 @@ namespace NativeWorldTextProbe
                 CanonicalFrameTransactions(observer, host.GetType().Assembly);
                 CanonicalDoorTransactions(observer, host.GetType().Assembly);
                 StableCosts(observer, host.GetType().Assembly);
+                Require(WorldGen.destroyObject == nativeFraming, "real frame/destruction consumers naturally return their original recursion flag");
                 Console.WriteLine("PASS BlueprintWorldChanges: actual .8 paint/coating/shape/wall/four-wire/actuator/inactive/cached furniture/TileSquare/liquid-module/section receivers; relevant stamps, bounded merge, no-op/animation/remote stability, in-flight and exceptional receive revocation. Live network/FPS/owner gameplay NOT_RUN.");
             }
             finally
             {
                 Call(observer, "Unwatch", Focus); Call(observer, "Unwatch", Far);
                 Main.netMode = mode; Main.sectionManager = sections; Main.tileSolid[1] = solid; Main.tileSolidTop[1] = top;
+                foreach (int i in absentPlayers) Main.player[i] = null;
+                // The assertion above observes natural return first. Cleanup
+                // also owns the original fixture value on a failing path.
+                WorldGen.destroyObject = nativeFraming;
                 for (int x = 0; x < saved.GetLength(0); x++) for (int y = 0; y < saved.GetLength(1); y++) Main.tile[X - 2 + x, Y - 2 + y] = saved[x, y];
             }
         }
