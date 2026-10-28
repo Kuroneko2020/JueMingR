@@ -29,9 +29,10 @@ namespace NativeWorldTextProbe
             check("mixed paint", () => ConstructionMixedPaint(context, host, tools, input));
             check("last paint", () => ConstructionLastPaint(context, host, tools, input));
             check("coating restoration", () => ConstructionCoatingRestoration(context, host, tools, input));
+            check("same color restoration refill", () => ConstructionSameColorRestorationRefill(context, host, tools, input));
             check("unselected foreground", () => ConstructionUnselectedForeground(context, host, tools, input));
             check("platform boundary", () => ConstructionPlatformBoundary(context, host, tools, input));
-            Console.WriteLine("PASS BlueprintConstructionAppearance: native hammer repeat, protected walls, mixed original paint preparation/return, coating and cross-layer restoration, unselected foreground refusal, platform boundary; real multiplayer/GPU/FPS NOT_RUN");
+            Console.WriteLine("PASS BlueprintConstructionAppearance: native hammer repeat, protected walls, mixed original paint preparation/return, coating and cross-layer restoration with same-stack refill, unselected foreground refusal, platform boundary; real multiplayer/GPU/FPS NOT_RUN");
         }
 
         private static void DumpAppearanceCase(string name, object host, object tools)
@@ -222,6 +223,64 @@ namespace NativeWorldTextProbe
             Until(context, input, () => Scene(host).Length == 0 && Main.mouseItem.IsAir && p.inventory[12].IsAir && ReferenceEquals(p.inventory[54], oldPriority));
             Require(Main.tile[44, 42].color() == color && finalPaint.IsAir && oldPriority.stack == 7 && p.inventory[14].type == ItemID.Paintbrush,
                 "last original paint becomes native Air, cleanup returns only the unrelated priority item and cannot revive the spent source");
+        }
+
+        private static void ConstructionSameColorRestorationRefill(object context, object host, object tools, object input)
+        {
+            var p = Reset(context, host, tools, input);
+            p.inventory[10].SetDefaults(ItemID.RedPaint); p.inventory[10].stack = 1; var paint = p.inventory[10]; byte red = paint.paint;
+            p.inventory[11].SetDefaults(ItemID.BluePaint); p.inventory[11].stack = 2; var blue = p.inventory[11];
+            p.inventory[13].SetDefaults(ItemID.StoneBlock); p.inventory[13].stack = 1;
+            p.inventory[14].SetDefaults(ItemID.Paintbrush); p.inventory[15].SetDefaults(ItemID.PaintRoller); p.inventory[16].SetDefaults(ItemID.PaintScraper);
+            NativeToolsChecks.Tile(44, 42, TileID.Stone); WorldGen.PlaceWall(44, 42, WallID.Stone);
+            WorldGen.paintTile(44, 42, red, false, false); WorldGen.paintWall(44, 42, red, false, false);
+            WorldGen.paintCoatWall(44, 42, 1, false, false);
+            var target = new CaptureCell { Layers = CaptureLayer.Tile | CaptureLayer.Wall, TileType = TileID.Stone,
+                WallType = WallID.Stone, TilePaint = red, WallPaint = red };
+            var entry = Asset(host, target, new CaptureCell { X = 2, Layers = CaptureLayer.Tile, TileType = TileID.Stone });
+            Place(context, host, input, entry, 44, 42); SetAutomatic(host, input, true);
+            object waitingMaterial = null;
+            Until(context, input, () =>
+            {
+                if (!Main.tile[46, 42].active() || (bool)Get(Get(tools, "Use"), "Active")) return false;
+                var match = Scene(host).Select(scene => GetOptional(scene, "Match")).FirstOrDefault(value => value != null);
+                if (match == null) return false;
+                foreach (var range in ((System.Collections.IEnumerable)Get(match, "Ranges")).Cast<object>())
+                {
+                    var material = GetOptional(range, "Materials");
+                    if (material != null && (bool)Get(material, "BuildExhausted") && Get(material, "BuildWaits").ToString().Contains("Capability"))
+                    { waitingMaterial = material; return true; }
+                }
+                return false;
+            });
+            long started = (long)Get(host, "BuildUsesStarted");
+            for (int frame = 0; frame < 80; frame++) Step(context, input);
+            var first = Main.tile[44, 42]; var position = p.position;
+            Require(first.color() == red && first.wallColor() == red && first.fullbrightWall() &&
+                ReferenceEquals(p.inventory[10], paint) && paint.stack == 1 && p.inventory[13].IsAir &&
+                Main.tile[46, 42].type == TileID.Stone && Scene(host).Length == 1 && (long)Get(host, "BuildUsesStarted") == started &&
+                !(bool)Get(waitingMaterial, "EligibilityRetry"),
+                "one red paint cannot fund both selected restoration layers: original appearance stays intact, an independent body completes, and shortage has no native retry deadline");
+            long supplyRevision = (long)Get(host, "buildSupplyRevision");
+            var extraBlue = new Item(); extraBlue.SetDefaults(ItemID.BluePaint); extraBlue.stack = 1;
+            Require(p.GetItem(extraBlue, new GetItemSettings(NoText: true, NoSound: true)).IsAir && ReferenceEquals(p.inventory[11], blue) && blue.stack == 3,
+                "original GetItem merges a positive-stack noise control from two blue paints to three");
+            for (int frame = 0; frame < 8; frame++) Step(context, input);
+            first = Main.tile[44, 42];
+            Require((long)Get(host, "buildSupplyRevision") == supplyRevision && paint.stack == 1 && first.color() == red && first.wallColor() == red && first.fullbrightWall() &&
+                (long)Get(host, "BuildUsesStarted") == started && p.position == position,
+                "two-to-three paint noise creates no recovery serial and cannot bypass the still insufficient same-color restoration");
+            var incoming = new Item(); incoming.SetDefaults(ItemID.RedPaint); incoming.stack = 1;
+            var remainder = p.GetItem(incoming, new GetItemSettings(NoText: true, NoSound: true));
+            Require(remainder.IsAir && ReferenceEquals(p.inventory[10], paint) && paint.stack == 2 && p.position == position,
+                "original GetItem merges exactly one picked-up paint into the existing qualified stack from one to two without moving the player");
+            Until(context, input, () => Scene(host).Length == 0 && Main.mouseItem.IsAir && p.inventory[10].IsAir);
+            first = Main.tile[44, 42];
+            Require(first.color() == red && first.wallColor() == red && !first.invisibleBlock() && !first.fullbrightBlock() &&
+                !first.invisibleWall() && !first.fullbrightWall() && p.inventory[10].IsAir && paint.IsAir && p.position == position &&
+                ReferenceEquals(p.inventory[11], blue) && blue.stack == 3 &&
+                p.inventory[14].type == ItemID.Paintbrush && p.inventory[15].type == ItemID.PaintRoller && p.inventory[16].type == ItemID.PaintScraper,
+                "same-stack one-to-two pickup wakes the stationary restoration, spends exactly two paints and retires only after complete current Match");
         }
 
         private static void ConstructionUnselectedForeground(object context, object host, object tools, object input)

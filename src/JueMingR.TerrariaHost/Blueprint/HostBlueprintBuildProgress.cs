@@ -16,9 +16,17 @@ namespace JueMingR.TerrariaHost.Blueprint
         // These are current inventory types, not a history or a target index.
         // At most the existing 50 primary slots contribute. A positive type
         // retains its recovery serial through moves, merges and normal spend;
-        // only loss followed by a qualified source creates another recovery.
+        // loss followed by a qualified source or the finite restoration
+        // threshold below creates another recovery.
         private Dictionary<int, long> buildSupply = new Dictionary<int, long>();
         private Dictionary<int, long> buildNextSupply = new Dictionary<int, long>();
+        // Native wall scraping can also clear the selected foreground. Its
+        // restoration proof needs at most two of one paint/coating. Remember
+        // only 0/1/>=2 across qualified inventory publications: replenishing
+        // one to two is a real recovery, while ordinary positive-stack noise
+        // and equivalent moves must not restart exhausted source walks.
+        private Dictionary<int, int> buildAppearanceSupply = new Dictionary<int, int>();
+        private Dictionary<int, int> buildNextAppearanceSupply = new Dictionary<int, int>();
         private BlueprintMaterialInventory buildSupplyInventory;
         private Dictionary<int, int> buildItemReach = new Dictionary<int, int>();
         private Dictionary<int, int> buildNextItemReach = new Dictionary<int, int>();
@@ -94,16 +102,30 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             }
             if (ReferenceEquals(buildSupplyInventory, inventory)) return;
-            buildSupplyInventory = inventory; buildNextSupply.Clear();
+            buildSupplyInventory = inventory; buildNextSupply.Clear(); buildNextAppearanceSupply.Clear();
             if (inventory?.Ready == true) foreach (var slot in inventory.Slots)
             {
-                if (!slot.Eligible || slot.ItemType <= 0 || slot.Stack <= 0 || buildNextSupply.ContainsKey(slot.ItemType)) continue;
+                if (!slot.Eligible || slot.ItemType <= 0 || slot.Stack <= 0) continue;
                 long recovered;
-                if (!buildSupply.TryGetValue(slot.ItemType, out recovered)) recovered = ++buildSupplyRevision;
-                buildNextSupply.Add(slot.ItemType, recovered);
+                if (!buildNextSupply.TryGetValue(slot.ItemType, out recovered))
+                {
+                    if (!buildSupply.TryGetValue(slot.ItemType, out recovered)) recovered = ++buildSupplyRevision;
+                    buildNextSupply.Add(slot.ItemType, recovered);
+                }
+                var item = p?.inventory[slot.Slot];
+                if (item == null || item.type != slot.ItemType || !item.PaintOrCoating) continue;
+                int amount, previousAmount;
+                buildNextAppearanceSupply.TryGetValue(slot.ItemType, out amount);
+                int currentAmount = Math.Min(2, amount + Math.Min(2, slot.Stack));
+                buildNextAppearanceSupply[slot.ItemType] = currentAmount;
+                if (amount < 2 && currentAmount == 2 && buildSupply.ContainsKey(slot.ItemType) &&
+                    (!buildAppearanceSupply.TryGetValue(slot.ItemType, out previousAmount) || previousAmount < 2))
+                    buildNextSupply[slot.ItemType] = ++buildSupplyRevision;
             }
             var previous = buildSupply; buildSupply = buildNextSupply; buildNextSupply = previous;
             buildNextSupply.Clear();
+            var previousAppearance = buildAppearanceSupply; buildAppearanceSupply = buildNextAppearanceSupply; buildNextAppearanceSupply = previousAppearance;
+            buildNextAppearanceSupply.Clear();
         }
 
         private void CaptureBuildWalkSignals(BlueprintRangeMaterials value)
@@ -241,6 +263,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void ClearBuildProgressSignals()
         {
             buildSupply.Clear(); buildNextSupply.Clear(); buildSupplyInventory = null;
+            buildAppearanceSupply.Clear(); buildNextAppearanceSupply.Clear();
             buildItemReach.Clear(); buildNextItemReach.Clear(); buildEnvelopeBoost = 0;
             buildEligible = false;buildNearTickSet=false;
         }
