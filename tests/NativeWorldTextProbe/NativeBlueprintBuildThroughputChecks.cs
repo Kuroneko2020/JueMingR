@@ -35,13 +35,19 @@ namespace NativeWorldTextProbe
                         var manual=ThroughputSequence(context,host,tools,input,item,false,false,false);
                         CompareThroughput(manual,ThroughputSequence(context,host,tools,input,item,true,false,false),item,"platform manual cursor");
                     }
+                    else
+                    {
+                        var accelerated=ThroughputSequence(context,host,tools,input,item,false,false,false,true);
+                        CompareThroughput(accelerated,ThroughputSequence(context,host,tools,input,item,true,false,true,true),item,"native Builder buff, then natural expiry");
+                    }
                 }
             }
-            finally{Main.SmartCursorWanted_Mouse=oldMouse;Main.SmartCursorWanted_GamePad=oldPad;}
+            finally{Main.LocalPlayer.ClearBuff(BuffID.Builder);Main.SmartCursorWanted_Mouse=oldMouse;Main.SmartCursorWanted_GamePad=oldPad;}
         }
-        private static List<ThroughputEvent> ThroughputSequence(object context,object host,object tools,object input,int item,bool automatic,bool sparse,bool smart)
+        private static List<ThroughputEvent> ThroughputSequence(object context,object host,object tools,object input,int item,bool automatic,bool sparse,bool smart,bool accelerated=false)
         {
             var p=Reset(context,host,tools,input);p.position=new Vector2(47*16,646);p.velocity=Vector2.Zero;
+            p.ClearBuff(BuffID.Builder);if(accelerated)p.AddBuff(BuffID.Builder,36000);
             p.inventory[12].SetDefaults(item);p.inventory[12].stack=64;
             bool wall=item==ItemID.WoodWall,platform=item==ItemID.WoodPlatform;
             int tile=platform?TileID.Platforms:TileID.Dirt;
@@ -73,7 +79,7 @@ namespace NativeWorldTextProbe
             var result=new List<ThroughputEvent>();int total=0;
             long initialStarts=(long)Get(host,"BuildUsesStarted");
             long steps=(long)Get(host,"ProjectionMatchSourceSteps"),checks=(long)Get(host,"BuildCandidateChecks");
-            int idleWithLegalFrontier=0;
+            int idleWithLegalFrontier=0;bool removedBuff=false;
             for(int frame=0;frame<1200 && total<points.Count;frame++)
             {
                 Point next=points.First(point=>!ThroughputPresent(point,wall,tile));
@@ -87,11 +93,16 @@ namespace NativeWorldTextProbe
                 total=present;
                 result.Add(new ThroughputEvent{Frame=frame,Count=spent,Animation=p.itemAnimation,Time=p.itemTime,Token=automatic?(long)Get(Get(tools,"Use"),"Operation"):0,
                     WorldTick=Main.GameUpdateCount,InputFrame=(long)Get(input,"Frame"),HostTick=checked((long)(ulong)Get(host,"projectionMatchTick"))});
+                if(accelerated && !removedBuff && total>=6)
+                {
+                    Require(p.tileSpeed<1f && p.wallSpeed<1f,"the actual Builder buff affects native construction speed before it expires");
+                    p.ClearBuff(BuffID.Builder);removedBuff=true;
+                }
             }
             Require(total==points.Count && p.inventory[12].stack==64-points.Count && result.Count>4,
                 "sustained original Player.Update consumes every local target across multiple animations");
             Require((long)Get(host,"BuildUnknownResults")==0,"sustained sequence has no unknown consumption");
-            Console.WriteLine("BlueprintThroughput item="+item+" auto="+automatic+" sparse="+sparse+" smart="+smart+" startupUpdates="+result[0].Frame+" events="+string.Join(",",result.Select(e=>e.Frame+":"+e.Count))+
+            Console.WriteLine("BlueprintThroughput item="+item+" auto="+automatic+" sparse="+sparse+" smart="+smart+" builderThenExpiry="+accelerated+" startupUpdates="+result[0].Frame+" events="+string.Join(",",result.Select(e=>e.Frame+":"+e.Count))+
                 " sourceSteps="+((long)Get(host,"ProjectionMatchSourceSteps")-steps)+" candidateChecks="+((long)Get(host,"BuildCandidateChecks")-checks)+" betweenEventNeutral="+idleWithLegalFrontier+
                 " nativeUseTime="+p.inventory[12].useTime+" nativeAnimation="+p.inventory[12].useAnimation+" tileSpeed="+p.tileSpeed+" wallSpeed="+p.wallSpeed+" actualStarts="+((long)Get(host,"BuildUsesStarted")-initialStarts));
             Console.WriteLine("BlueprintThroughput states item="+item+" auto="+automatic+" entries=frame/world/input/host/animation/itemTime/token "+
@@ -105,8 +116,9 @@ namespace NativeWorldTextProbe
             }
             SetAutomatic(host,input,false);for(int i=0;i<40;i++)Step(context,input);
             long closedSteps=(long)Get(host,"ProjectionMatchSourceSteps"),closedChecks=(long)Get(host,"BuildCandidateChecks");
+            long closedReach=(long)Get(host,"BuildReachSourceReads");
             for(int i=0;i<20;i++)Step(context,input);
-            Require((long)Get(host,"BuildCandidateChecks")==closedChecks && (long)Get(host,"ProjectionMatchSourceSteps")==closedSteps,
+            Require((long)Get(host,"BuildCandidateChecks")==closedChecks && (long)Get(host,"ProjectionMatchSourceSteps")==closedSteps && (long)Get(host,"BuildReachSourceReads")==closedReach,
                 "disabled construction performs no candidate/source work after finite in-flight cleanup");
             return result;
         }
@@ -119,7 +131,15 @@ namespace NativeWorldTextProbe
             // Original FillEmptySpace can legitimately cover several target
             // layers in one wall consumer. Keep that event and its real count;
             // compare each actual opportunity, never insert artificial zero gaps.
-            bool sameCadence=reference.SequenceEqual(intervals) || item==ItemID.WoodWall && reference.Distinct().Count()==1 && intervals.All(value=>value==reference[0]);
+            // FillEmptySpace may merge two layers into one event in either
+            // sequence, including across a speed transition. Every actual gap
+            // must still hit that preceding native event's exact itemTime;
+            // both sequences must expose the same ordered native speed phases.
+            var expectedPhases=expected.Where((e,i)=>i==0 || e.Time!=expected[i-1].Time).Select(e=>e.Time).ToArray();
+            var actualPhases=actual.Where((e,i)=>i==0 || e.Time!=actual[i-1].Time).Select(e=>e.Time).ToArray();
+            bool wallOpportunities=item==ItemID.WoodWall && expectedPhases.SequenceEqual(actualPhases) &&
+                reference.Select((gap,i)=>gap==expected[i].Time).All(equal=>equal) && intervals.Select((gap,i)=>gap==actual[i].Time).All(equal=>equal);
+            bool sameCadence=reference.SequenceEqual(intervals) || wallOpportunities;
             Require(expected.Sum(e=>e.Count)==actual.Sum(e=>e.Count) && sameCadence,
                 "all sustained legal consumption intervals equal the paired original held baseline: "+scene+" item="+item+" expected="+string.Join(",",reference)+" actual="+string.Join(",",intervals));
             Require(actual.Select(e=>e.Token).Distinct().Count()==1 && actual[0].Token>0,"same live source continues with one use lease across the whole sequence");

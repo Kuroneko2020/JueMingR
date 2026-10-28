@@ -53,6 +53,10 @@ namespace NativeWorldTextProbe
                     };
                     check("sustained native throughput", () => SustainedNativeThroughput(context,host,tools,input));
                     check("pending build input is neutral", () => PendingBuildInput(context,host,tools,input));
+                    check("solid-backed walls use legal precise input", () => PreciseSolidBackedWalls(context,host,tools,input));
+                    check("final resolution refusal advances and recovers", () => FinalTargetRejection(context,host,tools,input,false));
+                    check("consumer target refusal advances and recovers", () => FinalTargetRejection(context,host,tools,input,true));
+                    check("native stationary reach ability changes", () => NativeReachChanges(context,host,tools,input));
                     if(!throughputOnly)
                     {
                     check("missing material fairness", () => MissingMaterialFairness(context, host, tools, input));

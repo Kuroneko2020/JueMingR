@@ -51,17 +51,57 @@ namespace NativeWorldTextProbe
 
             foreach (string exit in new[] { "remove", "delete", "session" })
             {
+                // This branch deliberately creates a reliable scope at the
+                // finite fixture's actual size. Earlier renderer specialists
+                // can swap geometry without a game-world/session transition.
+                var previousWorld = Main.ActiveWorldFileData;
+                try
+                {
+                if (exit == "session")
+                {
+                    Main.gameMenu = true; Call(context, "UpdateRuntime");
+                    Main.ActiveWorldFileData = new Terraria.IO.WorldFileData(previousWorld.Path, previousWorld.IsCloudSave) { UniqueId = Guid.NewGuid() };
+                    Main.gameMenu = false; Call(context, "UpdateRuntime");
+                    NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return (bool)Get(host, "ProjectionPersistenceReady"); });
+                }
                 p = Reset(context, host, tools, input); p.inventory[12].SetDefaults(ItemID.StoneBlock); p.inventory[12].stack = 2;
                 var removable = Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone });
-                Place(context, host, input, removable, 44, 42); SetAutomatic(host, input, true); AwaitPrepared(context, host, input);
+                object oldInstance = Place(context, host, input, removable, 44, 42); SetAutomatic(host, input, true); AwaitPrepared(context, host, input);
+                var oldIdentity = (BlueprintProjectionIdentity)Get(oldInstance, "Identity");
                 if (exit == "remove") { Call(host, "RemoveProjection"); Call(host, "RemoveAllProjections"); }
                 else if (exit == "delete") Require((bool)Call(host, "DeleteAsset", removable), "real reliable deletion is accepted after preparation");
                 else { Main.gameMenu = true; Call(context, "UpdateRuntime"); Main.gameMenu = false; Call(context, "UpdateRuntime"); }
+                if (exit == "session")
+                {
+                    // Outer updates are enough to restore scene/read ownership;
+                    // no native gameplay entry grants a new build press here.
+                    NativeQuickItemChecks.Until(() =>
+                    {
+                        Call(input, "BeginUpdate"); Call(context, "UpdateRuntime"); Call(host, "Poll");
+                        return (bool)Get(host, "ProjectionPersistenceReady") && Scene(host).Length == 1;
+                    });
+                    var recovered = Scene(host)[0]; var identity = (BlueprintProjectionIdentity)Get(recovered, "Identity");
+                    Require(identity.SessionGeneration != oldIdentity.SessionGeneration && (int)Get(recovered, "OriginX") == 44 && (int)Get(recovered, "OriginY") == 42 &&
+                        GetOptional(oldInstance, "Match") == null && GetOptional(oldInstance, "SourceRanges") == null && GetOptional(host, "preparedBuild") == null &&
+                        !(bool)Get(Get(tools, "Use"), "Active") && !(bool)Get(Get(Get(tools, "Items"), "Ownership"), "AnyProtected") && (bool)Get(host, "AutoBuildEnabled"),
+                        "session recovery retains the fixed origin and automatic preference, while retiring old prepared/native/source/watch ownership");
+                    SetAutomatic(host, input, false);
+                }
                 for (int i = 0; i < 80; i++) Step(context, input);
-                Require(Scene(host).Length == 0 && !Main.tile[44, 42].active() && p.inventory[12].stack == 2 &&
+                Require(Scene(host).Length == (exit == "session" ? 1 : 0) && !Main.tile[44, 42].active() && p.inventory[12].stack == 2 &&
                     !(bool)Get(Get(tools, "Use"), "Active") && !(bool)Get(Get(Get(tools, "Items"), "Ownership"), "AnyProtected"),
                     "prepared " + exit + " owner cannot consume or keep source/watch/use references alive");
                 Console.WriteLine("PASS BlueprintBuild prepared target exit=" + exit);
+                }
+                finally
+                {
+                    if (exit == "session")
+                    {
+                        NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); Call(host, "SetAutoBuild", false);
+                        Main.gameMenu = true; Call(context, "UpdateRuntime"); Main.ActiveWorldFileData = previousWorld; Main.gameMenu = false; Call(context, "UpdateRuntime");
+                        NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return (bool)Get(host, "ProjectionPersistenceReady"); });
+                    }
+                }
             }
             Console.WriteLine("PASS BlueprintBuild actual move, permanent overlapping mask, world removal, reliable template delete and session exit invalidate prepared targets before native consumption.");
         }

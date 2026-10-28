@@ -35,6 +35,11 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context=>NativeBlueprintBuildChecks.Run(context,true), processing:true,shortFeedback:true);return 0;
             }
+            if (scope == "BlueprintPersistenceCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(NativeBlueprintPersistenceChecks.Run, processing:true,shortFeedback:true);return 0;
+            }
             if (scope == "BlueprintBuildCpu")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
@@ -138,6 +143,7 @@ namespace NativeWorldTextProbe
                     check("input recovery", NativeBlueprintInputRecoveryChecks.Cpu);
                     check("actual native construction", c=>NativeBlueprintBuildChecks.Run(c));
                     check("materials UI", NativeBlueprintMaterialsUiChecks.Run);
+                    check("fixed scene persistence", NativeBlueprintPersistenceChecks.Run);
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                 }, processing: true, shortFeedback: true); return 0;
             }

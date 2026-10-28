@@ -182,7 +182,9 @@ namespace JueMingR.Features.Blueprint
             if (!OpenAsset(c, out value, out read, out root)) return Receipt(c, LibraryStatus.Protected, "蓝图已改变或不可写，原件已保留", true);
             if (value.Name == c.Name) return Receipt(c, LibraryStatus.Saved);
             value.Name = c.Name; value.UpdatedTicks = Math.Max(value.CreatedTicks, DateTime.UtcNow.Ticks);
-            return WriteReceipt(c, files.WriteMetadata(read.Identity, LibraryCodec.EncodeMetadata(value)));
+            var written = files.WriteMetadata(read.Identity, LibraryCodec.EncodeMetadata(value));
+            if (written.Status == PreferenceWriteStatus.Saved) foreach (var owner in projectionOwners.Values) if (owner.Identity.AssetId == c.Id) owner.Name = value.Name;
+            return WriteReceipt(c, written);
         }
         private LibraryReceipt Delete(LibraryCommand c)
         {

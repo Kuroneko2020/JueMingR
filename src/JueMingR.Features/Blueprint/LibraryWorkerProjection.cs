@@ -23,6 +23,8 @@ namespace JueMingR.Features.Blueprint
         {
             internal BlueprintProjectionIdentity Identity;
             internal bool Opened;
+            internal BlueprintProjectionMask RestoreMask;
+            internal bool RestoreQueued, RestoreValidated;
             internal ProjectionRequest Latest;
             internal long Serial;
         }
@@ -36,6 +38,7 @@ namespace JueMingR.Features.Blueprint
         {
             internal BlueprintProjectionIdentity Identity;
             internal LibraryRoot Root;
+            internal string Name;
             internal Stream Index;
             internal bool Ready;
             internal long TotalLayers, TotalConstructionLayers;
@@ -86,7 +89,7 @@ namespace JueMingR.Features.Blueprint
         internal BlueprintProjectionStatistics ProjectionStatistics
         { get { lock (gate) return new BlueprintProjectionStatistics(Interlocked.Read(ref projectionBlockReads), Interlocked.Read(ref projectionDecodedRecords), Interlocked.Read(ref projectionDirectoryComparisons), Interlocked.Read(ref projectionWindowBlocks), Interlocked.Read(ref projectionSlices), Interlocked.Read(ref projectionRetiredRequests), Interlocked.Read(ref projectionCachePeak), Interlocked.Read(ref projectionDirectoryBytes), Interlocked.Read(ref projectionDirectoryBlocks), Interlocked.Read(ref projectionCacheBytes), projectionOwners.Count, projectionReferences.Count, projectionRequests.Count + (projectionActiveRequest == null ? 0 : 1) + projectionSourceRequests.Count + (projectionSourceActive == null ? 0 : 1) + projectionQualificationRequests.Count + (projectionQualifying == null ? 0 : 1), projectionReceiptBytes, Interlocked.Read(ref projectionWindowWorkingBytes) + Interlocked.Read(ref projectionQualificationWorkingBytes), Interlocked.Read(ref projectionSourceIndexBytes)); } }
 #endif
-        internal bool RequestProjectionOpen(BlueprintProjectionIdentity identity)
+        internal bool RequestProjectionOpen(BlueprintProjectionIdentity identity, BlueprintProjectionMask restoreMask = null)
         {
             if (identity == null) throw new ArgumentNullException(nameof(identity));
             lock (gate)
@@ -96,7 +99,7 @@ namespace JueMingR.Features.Blueprint
                 if (projectionReferences.TryGetValue(identity, out found)) return true;
                 if (projectionUnopenedReferences >= ProjectionRequestLimit) return false;
                 int references; projectionTemplateReferences.TryGetValue(identity.TemplateKey, out references); projectionTemplateReferences[identity.TemplateKey] = references + 1;
-                projectionReferences.Add(identity, new ProjectionReference { Identity = identity }); projectionUnopenedReferences++; projectionWake = true; Monitor.Pulse(gate); return true;
+                projectionReferences.Add(identity, new ProjectionReference { Identity = identity, RestoreMask = restoreMask }); projectionUnopenedReferences++; projectionWake = true; Monitor.Pulse(gate); return true;
             }
         }
         internal bool RequestProjectionWindow(BlueprintProjectionIdentity identity, long generation, BlueprintProjectionBounds bounds)
@@ -172,7 +175,7 @@ namespace JueMingR.Features.Blueprint
         // A release can arrive during the previous disposal batch, before that
         // step consumes projectionWake. Retirement owns an independent wake
         // condition so the last reader cannot be stranded until a new action.
-        { return projectionRetireWake || projectionWake || ProjectionCommitHasWorkLocked() || !projectionAwaitingReceiptSpace && (projectionQualifying != null || projectionQualificationRequests.Count != 0 || projectionOpenings.Count != 0 || projectionReading != null || projectionRequests.Count != 0 || projectionFailures.Count != 0 || projectionSourceReading != null || projectionSourceRequests.Count != 0); }
+        { return projectionRetireWake || projectionWake || ProjectionCommitHasWorkLocked() || !projectionAwaitingReceiptSpace && (projectionRestoring != null || projectionRestoreRequests.Count != 0 || projectionQualifying != null || projectionQualificationRequests.Count != 0 || projectionOpenings.Count != 0 || projectionReading != null || projectionRequests.Count != 0 || projectionFailures.Count != 0 || projectionSourceReading != null || projectionSourceRequests.Count != 0); }
         private bool ProjectionCurrent(ProjectionOwner owner, ProjectionRequest request = null)
         {
             lock (gate)
@@ -212,6 +215,7 @@ namespace JueMingR.Features.Blueprint
         {
             CloseProjectionSourceWorker();
             CloseProjectionQualification();
+            CloseProjectionRestore();
             if (projectionReading != null) projectionReading.Dispose(); projectionReading = null; projectionActiveRequest = null; projectionReadingOwner = null;
             foreach (ProjectionOwner owner in projectionOwners.Values) owner.Dispose(); projectionOwners.Clear(); projectionOpenings.Clear();
             projectionCache.Clear(); projectionCacheSize = 0; UpdateProjectionWindowWorkingBytes(0); CloseProjectionCommitWorker(); UpdateProjectionStatistics();
@@ -265,7 +269,12 @@ namespace JueMingR.Features.Blueprint
                                 owner = new ProjectionOwner { Identity = reference.Identity }; projectionOwners.Add(reference.Identity.TemplateKey, owner);
                                 owner.Opening = OpenProjection(owner).GetEnumerator(); projectionOpenings.Enqueue(owner);
                             }
-                            if (owner.Ready && !reference.Opened && PublishProjection(owner, new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Opened, reference.Identity, summary: owner.Root.Summary, totalLayerCount: owner.TotalLayers, sourceRanges: owner.SourceRanges.AsReadOnly(), matchRanges: owner.MatchRanges.AsReadOnly(), totalConstructionLayerCount: owner.TotalConstructionLayers))) { reference.Opened = true; projectionUnopenedReferences--; }
+                            if (owner.Ready && !reference.Opened)
+                            {
+                                if (reference.RestoreMask != null && !reference.RestoreValidated)
+                                { if (!reference.RestoreQueued) { reference.RestoreQueued = true; projectionRestoreRequests.Enqueue(reference); } continue; }
+                                if (PublishProjection(owner, new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Opened, reference.Identity, summary: owner.Root.Summary, totalLayerCount: owner.TotalLayers, sourceRanges: owner.SourceRanges.AsReadOnly(), matchRanges: owner.MatchRanges.AsReadOnly(), totalConstructionLayerCount: owner.TotalConstructionLayers, name: owner.Name))) { reference.Opened = true; projectionUnopenedReferences--; }
+                            }
                         }
                     }
                 }
@@ -280,6 +289,7 @@ namespace JueMingR.Features.Blueprint
                 if (ProjectionCommitStep(projectionLane == 0)) return;
                 if (ProjectionQualificationStep(projectionLane == 2)) return;
                 if (ProjectionSourceStep(projectionLane == 3)) return;
+                if (ProjectionRestoreStep(projectionLane == 1)) return;
                 if (projectionOpenings.Count != 0 && (projectionLane == 1 || projectionReading == null && projectionRequests.Count == 0))
                 {
                     ProjectionOwner owner = projectionOpenings.Dequeue();
@@ -366,7 +376,7 @@ namespace JueMingR.Features.Blueprint
             if (read.Status != PreferenceReadStatus.Loaded) throw new InvalidDataException("blueprint-projection-metadata");
             LibraryMetadata metadata = LibraryCodec.DecodeMetadata(read.Contents, owner.Identity.AssetId);
             if (metadata.Deleted || metadata.ContentRevision != owner.Identity.ContentRevision || metadata.ContentHash != owner.Identity.ContentHash) throw new InvalidDataException("blueprint-projection-identity");
-            owner.Root = ReadAssetRoot(metadata); files.CloseMetadata();
+            owner.Name = metadata.Name; owner.Root = ReadAssetRoot(metadata); files.CloseMetadata();
             IBlueprintLibraryLayoutSteps layout = files as IBlueprintLibraryLayoutSteps;
             if (layout != null) foreach (int ignored in layout.ValidateLayoutSteps(owner.Identity.AssetId, false, owner.Root.BlockCount, 32)) { CheckProjection(owner); yield return true; }
             else { files.ValidateLayout(owner.Identity.AssetId, false, owner.Root.BlockCount); yield return true; }

@@ -16,16 +16,15 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(!buildNearTickSet || buildNearTick!=materialTick)
             {
                 buildNearTickSet=true;buildNearTick=materialTick;
-                var p=buildTools?.Player;int boost=0;
+                var p=buildTools?.Player;
                 if(p!=null)
                 {
                     // Use vanilla's own reach rectangle and the largest
-                    // currently supplied tool boost only as a broad phase.
-                    // Final admission still checks the exact item and native reach.
-                    if(MaterialInventory?.Ready==true)foreach(var slot in MaterialInventory.Slots)
-                        if(slot.Eligible && slot.Stack>0 && slot.ItemType>0)boost=Math.Max(boost,p.inventory[slot.Slot].tileBoost);
+                    // currently supplied tool boost from this tick's one
+                    // capability observation only as a broad phase. Final
+                    // admission checks the exact item and current native reach.
                     int left,top,right,bottom;
-                    TileReachCheckSettings.Simple.GetTileRegion(p,out left,out top,out right,out bottom,boost+p.blockRange);
+                    TileReachCheckSettings.Simple.GetTileRegion(p,out left,out top,out right,out bottom,buildEnvelopeBoost+p.blockRange);
                     buildNearWorld=new BlueprintProjectionBounds(left,top,Math.Max(0,right-left+1),Math.Max(0,bottom-top+1));
                 }
                 else buildNearWorld=default(BlueprintProjectionBounds);
@@ -125,25 +124,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(!buildNearWorld.Contains(next.WorldX,next.WorldY)){range.Materials.BuildWaits|=BlueprintBuildWait.Player;return false;}
             if(!BuildEmpty(next.Bounds.Left,next.Bounds.Top,descriptor.Kind==BlueprintPlacementKind.Wall))return false;
             next.LocalProof=next.LocalPriority=true;target=next;return true;
-        }
-        private bool TryLocalBuildTargetAt(int worldX,int worldY,int useType,out BlueprintBuildTarget target)
-        {
-            target=null;
-            for(var node=buildSources.First;node!=null;node=node.Next)
-            {
-                var source=node.Value;var part=FindBuildSource(source.Range);if(part==null)continue;
-                int x=worldX-source.Owner.OriginX,y=worldY-source.Owner.OriginY;
-                int index=part.LogicalObjectId>0?0:BuildCellLowerBound(part.Window.Cells,x,y);
-                if(index>=part.Window.Cells.Count || part.LogicalObjectId==0 && (part.Window.Cells[index].X!=x || part.Window.Cells[index].Y!=y))continue;
-                long support;if(!projectionChanges.TryGetBuildStamp(source.Range.Watch,source.Range.PartIndex,out support))continue;
-                for(int layer=0;layer<(part.LogicalObjectId>0?1:2);layer++)
-                {
-                    int ordinal=part.LogicalObjectId>0?0:(part.Offset+index)*2+layer;
-                    if(!TryCreateLocalBuildTarget(source,index,ordinal,support,out target) || target.WorldX!=worldX || target.WorldY!=worldY || target.Placement.UseItemType!=useType)continue;
-                    source.Range.Materials.Candidate=target;return true;
-                }
-            }
-            target=null;return false;
         }
         private void RememberBuildFrontier(BlueprintBuildTarget target)
         {

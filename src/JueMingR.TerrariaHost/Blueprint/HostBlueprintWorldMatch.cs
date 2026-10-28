@@ -873,7 +873,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     // under this one lock, rather than reading the template a
                     // mandatory second time or trusting only the last range.
                     foreach (var range in state.Ranges) if (!range.Current || !ProjectionMatchCurrent(range,range.Stamp)) return;
-                    RetireProjection(item); InterruptProjection(); Pointer.Cancel(); Toolbar.Cancel();
+                    RetireProjection(item); PublishProjectionScene(); InterruptProjection(); Pointer.Cancel(); Toolbar.Cancel();
                     if ((ProjectionMode == BlueprintProjectionMode.SelectingMove || ProjectionMode == BlueprintProjectionMode.SelectingRemove) && projectionScene.Count == 0) ProjectionMode = BlueprintProjectionMode.None;
 #if DEBUG
                     ProjectionMatchRetirements++;

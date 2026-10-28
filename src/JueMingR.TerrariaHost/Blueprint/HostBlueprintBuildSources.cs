@@ -133,7 +133,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 else if ((cell.Layers & CaptureLayer.Wall) != 0) descriptor = catalog.Wall(cell.WallType);
                 bool supplied=descriptor!=null && buildSupply.ContainsKey(descriptor.UseItemType);
-                bool nearby=BuildNearBounds(range.Owner).Contains(cell.X,cell.Y);
+                // Complete objects use their original click/origin, which may
+                // differ from this source member or the footprint's top-left.
+                var next=!supplied?null:CreateMaterialBuildTarget(range.Owner,range,cell,descriptor,obj,body,ordinal,support,catalog.Revision);
+                var near=BuildNearBounds(range.Owner);
+                bool nearby=next!=null && near.Contains(next.WorldX-range.Owner.OriginX,next.WorldY-range.Owner.OriginY);
                 if(descriptor!=null && !supplied)value.BuildWaits|=BlueprintBuildWait.Material;
                 // Missing material is the first failed gate. Player changes
                 // cannot recover it; recording both would resample unrelated
@@ -142,7 +146,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 ushort targetBit=part.LogicalObjectId>0 || (ordinal&1)==0?(ushort)1:(ushort)2;
                 if ((selection.UnknownBits&targetBit)==0 && descriptor != null && !descriptor.Flexible && !descriptor.RequiresSubstrate && descriptor.UseItemType > 0 && supplied && nearby)
                 {
-                    target = CreateMaterialBuildTarget(range.Owner, range, cell, descriptor, obj, body, ordinal, support, catalog.Revision);
+                    target = next;
                     // This is a local admission proof, not a whole-range Match.
                     // The unified preflight must read the actual target and its
                     // dependencies before each start and native consumer.

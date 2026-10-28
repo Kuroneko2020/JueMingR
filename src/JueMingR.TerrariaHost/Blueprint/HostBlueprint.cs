@@ -35,6 +35,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             this.runtime = runtime; Input = input;
             Library = library;
             preference = new PreferenceDocument<BlueprintPreferences>(new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "config", "features", "blueprint.json"), 65536, true), new BlueprintPreferenceCodec(), new BlueprintPreferences(false, false));
+            projectionHistory = new BlueprintSceneHistory(scope => new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "blueprints", "instances", scope, "scene.bin"), Int32.MaxValue, true));
             World = new BlueprintWorldLayer(this, geometry); Toolbar = new BlueprintToolbar(this);
             Pointer = new BlueprintPointerProof(this);
             try { BlueprintHooks.Install(this); Pointer.Install(); projectionChanges.Install(); ready = true; }
@@ -135,29 +136,33 @@ namespace JueMingR.TerrariaHost.Blueprint
             CancelOldCapture();
             ClearProjection(); ClearBuildSession();
             StartBuildUnknownSession();
-            State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); generation = runtime.Generation; projectionChanges.SetSession(generation); player = Main.LocalPlayer; world = Main.ActiveWorldFileData; connection = Netplay.Connection; }
+            State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); generation = runtime.Generation; projectionChanges.SetSession(generation); player = Main.LocalPlayer; world = Main.ActiveWorldFileData; connection = Netplay.Connection; BeginProjectionSession(); }
         public void OnSessionEnded()
         {
             CancelOldCapture();
+            EndProjectionSession();
             ClearProjection(); ClearBuildSession();
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); player = null; world = connection = null; }
         public void Update(ulong updateTick)
         {
             AdvanceCapture(updateTick);
+            PumpProjectionPersistence();
             PumpProjection();
             UpdateMaterials(updateTick);
             AdvanceProjectionMatch(updateTick);
             AdvanceAutomaticBuild();
+            AcceptProjectionSceneSnapshot();
             if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad();
             if (State.Active && (!HasSession || !Input.CanRetainIntent || NativeUiBusy || player.dead || player.ghost || Shell?.State.Visible == true))
             {
                 State.Interrupt(); Pointer.Cancel(); }
         }
-        internal void Poll() { PumpLibrary(); PumpProjection(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
+        internal void Poll() { PumpLibrary(); PumpProjectionPersistence(); PumpProjection(); AcceptProjectionSceneSnapshot(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
         public void FailClosed() {
-            failed = true; CancelOldCapture(); ClearProjection(); State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); }
+            failed = true; CancelOldCapture(); EndProjectionSession(); ClearProjection(); State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); }
         internal void TakeFeedback(Action<string> display)
         {
+            TakeProjectionPersistenceFeedback(display);
             if (projectionFeedback != null) { string message = projectionFeedback; projectionFeedback = null; display(message); }
             var snapshot = preference.Snapshot;
             if (!snapshot.IsLoaded || reported == snapshot.Status) return;
@@ -166,6 +171,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             reported = snapshot.Status;
         }
         private void ExitProcess(object sender, EventArgs args)
-        { AppDomain.CurrentDomain.ProcessExit -= ExitProcess; CancelOldCapture(); ClearProjection(); projectionChanges.Dispose(); ProjectionRenderer.Dispose(); Library?.Stop(1500); preference.Stop(750); Toolbar.Dispose(); Pointer.Dispose(); BlueprintHooks.Uninstall(); }
+        {
+            AppDomain.CurrentDomain.ProcessExit -= ExitProcess;
+            // ProcessExit never samples live scene/edit state for persistence.
+            // It only drains immutable values accepted on the game thread.
+            var elapsed = Stopwatch.StartNew(); projectionHistory.Stop(1500);
+            CancelOldCapture(); ClearProjection(); projectionChanges.Dispose(); ProjectionRenderer.Dispose();
+            Library?.Stop(Math.Max(0, 2250 - (int)elapsed.ElapsedMilliseconds)); preference.Stop(Math.Max(0, 2250 - (int)elapsed.ElapsedMilliseconds));
+            Toolbar.Dispose(); Pointer.Dispose(); BlueprintHooks.Uninstall();
+        }
     }
 }

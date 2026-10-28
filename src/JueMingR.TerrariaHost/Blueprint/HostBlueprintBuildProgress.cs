@@ -20,9 +20,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         private Dictionary<int, long> buildSupply = new Dictionary<int, long>();
         private Dictionary<int, long> buildNextSupply = new Dictionary<int, long>();
         private BlueprintMaterialInventory buildSupplyInventory;
+        private Dictionary<int, int> buildItemReach = new Dictionary<int, int>();
+        private Dictionary<int, int> buildNextItemReach = new Dictionary<int, int>();
         private long buildSupplyRevision, buildActivationRevision, buildContainerRevision;
         private float buildPlayerX, buildPlayerY;
-        private int buildRange, buildReachX, buildReachY, buildDirection, buildPulleyDirection;
+        private int buildRange, buildReachX, buildReachY, buildDirection, buildPulleyDirection, buildPlayerWidth, buildPlayerHeight, buildEnvelopeBoost;
         private bool buildEligible, buildPulley;
 
         private void ObserveBuildSignals()
@@ -37,13 +39,38 @@ namespace JueMingR.TerrariaHost.Blueprint
             int reach = p?.blockRange ?? 0, direction = p?.direction ?? 0, pulleyDirection = p?.pulleyDir ?? 0;
             bool pulley = p?.pulley == true;
             if (px != buildPlayerX || py != buildPlayerY || reach != buildRange || Player.tileRangeX != buildReachX || Player.tileRangeY != buildReachY ||
-                direction != buildDirection || pulleyDirection != buildPulleyDirection || pulley != buildPulley || eligible != buildEligible)
+                direction != buildDirection || pulleyDirection != buildPulleyDirection || pulley != buildPulley || eligible != buildEligible ||
+                (p?.width ?? 0) != buildPlayerWidth || (p?.height ?? 0) != buildPlayerHeight)
             {
                 buildPlayerX = px; buildPlayerY = py; buildRange = reach; buildReachX = Player.tileRangeX; buildReachY = Player.tileRangeY;
                 buildDirection = direction; buildPulleyDirection = pulleyDirection; buildPulley = pulley; buildEligible = eligible;
+                buildPlayerWidth = p?.width ?? 0; buildPlayerHeight = p?.height ?? 0;
                 MaterialBuildEligibilityRevision++;
             }
             var inventory = MaterialInventory;
+            // Inventory publication intentionally ignores item reach fields.
+            // Observe the actual first qualified source of each material (the
+            // same choice as TryPrepareBuild), plus the broad-phase maximum.
+            // This wakes a shorter material even if another item keeps the
+            // overall envelope unchanged; stack noise/equivalent moves do not.
+            buildNextItemReach.Clear(); int envelopeBoost = 0;
+            if (p != null && inventory?.Ready == true) foreach (var slot in inventory.Slots)
+            {
+#if DEBUG
+                BuildReachSourceReads++;
+#endif
+                if (!slot.Eligible || slot.Stack <= 0 || slot.ItemType <= 0) continue;
+                var item = p.inventory[slot.Slot];
+                if (!buildTools.BuildInventoryEligible(slot.Slot, item)) continue;
+                envelopeBoost = Math.Max(envelopeBoost, item.tileBoost);
+                if (!buildNextItemReach.ContainsKey(slot.ItemType)) buildNextItemReach.Add(slot.ItemType, item.tileBoost);
+            }
+            bool reachChanged = envelopeBoost != buildEnvelopeBoost || buildItemReach.Count != buildNextItemReach.Count;
+            if (!reachChanged) foreach (var entry in buildNextItemReach)
+            { int old; if (!buildItemReach.TryGetValue(entry.Key, out old) || old != entry.Value) { reachChanged = true; break; } }
+            var previousReach = buildItemReach; buildItemReach = buildNextItemReach; buildNextItemReach = previousReach;
+            buildEnvelopeBoost = envelopeBoost;
+            if (reachChanged) { MaterialBuildEligibilityRevision++; buildNearTickSet = false; }
             if (ReferenceEquals(buildSupplyInventory, inventory)) return;
             buildSupplyInventory = inventory; buildNextSupply.Clear();
             if (inventory?.Ready == true) foreach (var slot in inventory.Slots)
@@ -149,6 +176,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void ClearBuildProgressSignals()
         {
             buildSupply.Clear(); buildNextSupply.Clear(); buildSupplyInventory = null;
+            buildItemReach.Clear(); buildNextItemReach.Clear(); buildEnvelopeBoost = 0;
             buildEligible = false;buildNearTickSet=false;
         }
     }

@@ -16,7 +16,7 @@ namespace JueMingR.Features.Blueprint
         public override int GetHashCode() { unchecked { return AssetId.GetHashCode() * 397 ^ ContentRevision.GetHashCode() ^ ContentHash.GetHashCode(); } }
     }
 
-    // Masks are session facts owned by Host, never mutations of the library.
+    // Masks are committed scene facts owned by Host, never library mutations.
     // They only grow after a commit: moving/removing a covering instance cannot
     // resurrect an older layer. Object IDs are local to this mask's instance.
     public sealed class BlueprintProjectionMask
@@ -85,6 +85,8 @@ namespace JueMingR.Features.Blueprint
         }
         internal Dictionary<long, ushort> CopyCells() { return new Dictionary<long, ushort>(cells); }
         internal HashSet<int> CopyObjects() { return new HashSet<int>(objects); }
+        internal IEnumerable<KeyValuePair<long, ushort>> RawCells { get { return cells; } }
+        internal IEnumerable<int> RawObjects { get { return objects; } }
         internal static ushort Layers(CaptureCell cell)
         {
             ushort value = 0;
