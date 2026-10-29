@@ -12,7 +12,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal static bool TryCreate(CaptureCell cell, BlueprintObjectShape rawShape, out BlueprintWorldObject result)
         {
             result = null;
-            if ((cell.Layers & CaptureLayer.Tile) == 0 || rawShape == null) return true;
+            if ((cell.Layers & CaptureLayer.Tile) == 0) return true;
+            // A platform Set member needs its exact registered grid even when
+            // metadata is absent; it cannot fall back to an ordinary cell.
+            if (rawShape == null) return !IsPlatform(cell.TileType);
             if (!rawShape.Object.Reliable) return false;
             try
             {
@@ -38,6 +41,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                 TileObjectData basis = TileObjectData.GetTileData(value.Type, int.MaxValue);
                 if (data == null || basis == null) return false;
                 int variant = value.RandomVariant, style = value.Style;
+                if (IsPlatform(cell.TileType))
+                {
+                    // Locked .8 PlatformFrame chooses X from the 27 neighbor/
+                    // shape slots. Y alone selects material style. Prove that
+                    // exact grid before folding X in building identity; raw
+                    // capture, member layout and observation group stay intact.
+                    if (!PlatformProfile(cell, rawShape, data, basis)) return false;
+                    variant = 0;
+                }
                 // Only the original declared random placement range is folded.
                 // Other variant slots remain semantic: chair directions and
                 // selector attachment forms cannot disappear with the name.
@@ -74,6 +86,32 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (basis.GetStyleOverride == TileObjectData.GetStyle_Stalactite) return cell.FrameY >= 90 ? 90 : cell.FrameY >= 72 ? 72 : cell.FrameY >= 36 ? 36 : 0;
             return -1;
         }
+        private static bool IsPlatform(ushort type)
+        { return type < TileID.Sets.Platforms.Length && TileID.Sets.Platforms[type]; }
+        private static bool PlatformProfile(CaptureCell cell, BlueprintObjectShape shape, TileObjectData data, TileObjectData basis)
+        {
+            if (!PlatformGrid(basis) || !PlatformGrid(data) || cell.FrameX < 0 || cell.FrameY < 0 ||
+                cell.FrameX >= 27 * 18 || cell.FrameX % 18 != 0 || cell.FrameY % 18 != 0) return false;
+            CaptureObject value = shape.Object;
+            int style = cell.FrameY / 18, slot = cell.FrameX / 18;
+            return value.Type == cell.TileType && value.X == cell.X && value.Y == cell.Y && value.Width == 1 && value.Height == 1 &&
+                value.OriginX == 0 && value.OriginY == 0 && value.Direction == 0 && value.Alternate == 0 &&
+                value.Style == style && value.PlacementStyle == style * 27 + slot && value.RandomVariant == slot &&
+                !shape.IndependentMemberFrames && shape.BaseFrameX == cell.FrameX && shape.BaseFrameY == cell.FrameY &&
+                shape.ColumnStep == 18 && shape.RowOffsets != null && shape.RowOffsets.Length == 1 && shape.RowOffsets[0] == 0;
+        }
+        private static bool PlatformGrid(TileObjectData data)
+        {
+            return data.Width == 1 && data.Height == 1 && data.Origin.X == 0 && data.Origin.Y == 0 && (int)data.Direction == 0 &&
+                data.CoordinateWidth == 16 && data.CoordinatePadding == 2 && data.CoordinateFullWidth == 18 && data.CoordinateFullHeight == 18 &&
+                data.CoordinatePaddingFix.X == 0 && data.CoordinatePaddingFix.Y == 0 && data.CoordinateHeights != null &&
+                data.CoordinateHeights.Length == 1 && data.CoordinateHeights[0] == 16 && data.StyleHorizontal &&
+                data.StyleMultiplier == 27 && data.StyleWrapLimit == 27 && data.StyleLineSkip == 1 && data.Style == 0 &&
+                data.RandomStyleRange == 0 && data.GetStyleOverride == null && !data.UsesCustomCanPlace && !data.AnchorWall &&
+                NoAnchor(data.AnchorTop) && NoAnchor(data.AnchorBottom) && NoAnchor(data.AnchorLeft) && NoAnchor(data.AnchorRight);
+        }
+        private static bool NoAnchor(Terraria.DataStructures.AnchorData anchor)
+        { return (int)anchor.type == 0 && anchor.tileCount == 0 && anchor.checkStart == 0; }
         // Canonical equivalence may ignore an operating or random frame slot,
         // but all members of one current rectangle must still share a legal
         // raw group. Closed-door independent rows already share decoded bases.
@@ -93,6 +131,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Door type/presence/rectangle changes need the ordinary complete
             // object path. They cannot borrow a fixed-layout frame certificate.
             if (observed == null || observed.Family != BlueprintWorldObjectFamily.Metadata) return false;
+            // Platform body equivalence proves neither raw neighbor-frame
+            // writes nor their coverage. Keep ordinary one-cell invalidation
+            // and bounded rereads instead of inventing an operating phase set.
+            if (IsPlatform(first.TileType) || IsPlatform(observed.Kind)) return false;
             CaptureCell canonical = NormalizeOperatingFrame(first);
             var candidates = new List<BlueprintWorldObject> { observed };
             for (int axis = 0; axis < 2; axis++) foreach (int delta in operatingDisplacements)

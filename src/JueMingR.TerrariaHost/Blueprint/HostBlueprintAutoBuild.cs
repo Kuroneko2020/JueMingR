@@ -110,7 +110,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             // Receipt endpoints own cleanup after admission. Once settled or
             // unknown, retain no old projection transport through its hint.
-            if(buildMaterialPreparation?.HasWork!=true || buildMaterialPreparation.Unknown || buildMaterialPreparation.Returning)buildSupplyTarget=null;
+            if(buildMaterialPreparation?.HasWork!=true || buildMaterialPreparation.Unknown || buildMaterialPreparation.Returning)
+            ClearBuildSupplyHint();
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.Advance);
 #endif
@@ -125,7 +126,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 BlueprintBuildTrace.Count(p==null?BuildTraceReason.NoPlayer:BuildTraceReason.PreparedCleared);
 #endif
-                preparedBuild = null; deferredBuild = null; return;
+                preparedBuild = null; ClearBuildContinuation(); return;
             }
             // Main.Update can return without a world/input epoch. That is no
             // cancellation: keep the suggestion, but do no discovery/preflight.
@@ -145,7 +146,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             preparedBuild = null;
             int allowance = 64;
             BuildFlight deferred;
-            if (TryDeferredBuild(p, ref allowance, out deferred)) { preparedBuild = deferred; return; }
+            if (buildContinuation?.DebtDue == true && TryDeferredBuild(p, ref allowance, out deferred)) { preparedBuild = deferred; return; }
             // The source/match owner provides a bounded round-robin prefix.
             // A blocked first material must yield to another layer or instance.
             while (allowance > 0)
@@ -165,12 +166,41 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                     break;
                 }
+                BuildOperationPlan fallback; BlueprintBuildWait wait; ulong slots;
+                if (!TryPlanBuild(target, p, PreferredBuildSourceHint(p), out fallback, out wait, out slots))
+                { RegisterPlannedBuildWait(target, wait, slots); NotifyBuildAttempt(target); continue; }
+                BlueprintBuildTarget winner = target; BuildOperationPlan plan = fallback;
+                if (BuildContinuationCurrent(p) && !buildContinuation.DebtDue && !PlanContinuesBuild(target, fallback))
+                {
+                    BlueprintBuildTarget preferred; BuildOperationPlan preference;
+                    var search = TryPreferredBuild(p, out preferred, out preference);
+                    if (search == PreferredBuildSearch.Found)
+                    {
+                        if (deferredBuild == null) deferredBuild = new DeferredBuildSeed(target);
+                        winner = preferred; plan = preference;
+                    }
+                    else if (search == PreferredBuildSearch.PassComplete && deferredBuild != null)
+                    { if (TryDeferredBuild(p, ref allowance, out deferred)) { preparedBuild = deferred; break; } }
+                    else if ((search == PreferredBuildSearch.BudgetPending || search == PreferredBuildSearch.SourcePending) &&
+                        activeBuild?.Checked == true && BuildDiscoveryPending()) return;
+                    else if ((search == PreferredBuildSearch.BudgetPending || search == PreferredBuildSearch.SourcePending) && deferredBuild != null)
+                    {
+                        // Content remains pending; at the real native selection
+                        // boundary it cannot postpone the oldest ordinary debt.
+                        buildContinuation.DebtDue = true;
+                        if (TryDeferredBuild(p, ref allowance, out deferred)) { preparedBuild = deferred; break; }
+                    }
+                    else if (search == PreferredBuildSearch.CurrentGroupInvalid) ClearBuildContinuation();
+                }
                 BuildFlight next;
-                if (PrepareBuildCandidate(target, p, ref allowance, out next)) { PreferContinuousBuild(next, p, ref allowance); break; }
+                if (PrepareBuildCandidate(winner, p, ref allowance, out next, plan)) { preparedBuild = next; break; }
+                if (!ReferenceEquals(winner, target)) continue;
                 NotifyBuildAttempt(target);
             }
         }
         private bool TryPrepareBuild(BlueprintBuildTarget target, Player p, out BuildFlight result)
+        { return TryPrepareSelectedBuild(target, p, out result, null); }
+        private bool TryPrepareSelectedBuild(BlueprintBuildTarget target, Player p, out BuildFlight result, BuildOperationPlan plan)
         {
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.Prepare);
@@ -206,7 +236,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return false;
             }
             if (!BuildRetryReady(target)) return false;
-            if (target.Operation != null) return TryPrepareConstructionBuild(target, p, out result);
+            if (target.Operation != null) return TryPrepareConstructionBuild(target, p, out result, plan);
             // Object members can retain a foreground Body while this lane
             // places their wall. Only a Tile descriptor owns a tile type;
             // Wall deliberately uses -1 and never borrows container gating.
@@ -217,14 +247,17 @@ namespace JueMingR.TerrariaHost.Blueprint
                 DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.ContainerWaiting);
 #endif
                 return false; }
-            int slot = -1;
-            var hint = CurrentBuildSourceHint(p);
-            if (hint != null && hint.Type == target.Placement.UseItemType && hint.Slot < MaterialInventory.Slots.Count)
+            int slot = plan == null ? -1 : PlannedBuildToolSlot(p, plan);
+            // The arbiter chose an exact source. Revocation requires a new
+            // plan, never silently selecting another same-type live Item.
+            if (plan != null && slot < 0) { WaitForBuild(target, BlueprintBuildWait.Material, retryPending: true); return false; }
+            var hint = PreferredBuildSourceHint(p);
+            if (slot < 0 && hint != null && hint.Type == target.Placement.UseItemType && hint.Slot < MaterialInventory.Slots.Count)
             {
                 var snapshot = MaterialInventory.Slots[hint.Slot];
                 if (snapshot.Slot == hint.Slot && snapshot.Eligible && snapshot.ItemType == hint.Type && snapshot.Stack > 0) slot = hint.Slot;
             }
-            if (slot < 0) foreach (var source in MaterialInventory.Slots)
+                if (slot < 0) foreach (var source in MaterialInventory.Slots)
                 if (source.Eligible && source.ItemType == target.Placement.UseItemType && source.Stack > 0 &&
 #if JMR_BLUEPRINT_DIAGNOSTIC
                     DiagnosticMaterialEligible(source.ItemType,buildTools.BuildInventoryEligible(source.Slot, p.inventory[source.Slot])))
@@ -290,7 +323,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var item = p.inventory[i];
                 if (item == null || item.IsAir || !(paint && item.PaintOrCoating || actuator && item.type == ItemID.Actuator)) continue;
                 if (buildTools.Items.Ownership.IsProtected(i) && !(buildMaterialPreparation?.OwnsEndpoint(p.inventory,i)??false)) continue;
-                if(buildMaterialPreparation?.IsDisplaced(item)==true)continue;
+                // Vanilla may consume this first source, or a later one after
+                // exhausting an earlier stack. Omitting it from the lease does
+                // not hide it from the original selector: wait locally instead.
+                if(buildMaterialPreparation?.IsDisplaced(item)==true) { waiting = 1UL << i; return false; }
                 if (p.inventoryChestStack[i] || buildTools.Items.World.ManualMaterials.Contains(item) || buildTools.ProtectedAfterYield(item))
                 { waiting = 1UL << i; return false; }
                 sources.Add(SnapshotSource(i, item)); slots |= 1UL << i;
@@ -444,7 +480,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 BlueprintDiagnosticFlight=next.Generation,
 #endif
                 Valid = () => CanBuildAutomatically(p) && BuildLeaseCurrent(activeBuild ?? next),
-                Admitted = () => { next.Token = buildTools.Use.Operation; activeBuild = next; ServiceDeferredBuild(next.Target);
+                Admitted = () => { next.Token = buildTools.Use.Operation; activeBuild = next; ServiceDeferredBuild(next.Target); RememberBuildContinuation(next);
 #if JMR_BLUEPRINT_DIAGNOSTIC
                     DiagnosticFlight(next,BuildTraceStage.Acquire,BuildTraceReason.Acquired);
 #endif
@@ -521,7 +557,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // One native ItemCheck has fully returned before this handoff.
             // The lease stays, but target, baselines and cleanup responsibility
             // belong to the new flight. Original selection/timers stay intact.
-            preparedBuild = null; next.Token = current.Token; activeBuild = next; ServiceDeferredBuild(next.Target);
+            preparedBuild = null; next.Token = current.Token; activeBuild = next; ServiceDeferredBuild(next.Target); RememberBuildContinuation(next);
             ConfigurePreparedBuildBudgets(next);
 #if JMR_BLUEPRINT_DIAGNOSTIC
             intent.BlueprintDiagnosticFlight=next.Generation;
@@ -731,7 +767,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Unknown/spent outcomes retain their existing protection and
             // can never be renewed by this bounded eligibility retry.
             if (!spent && !applied) RequestBuildEligibilityRetry(flight.Target);
-            else RememberBuildFrontier(flight.Target);
+            else { RememberBuildFrontier(flight.Target); if (applied && flight.Operation?.Kind == BlueprintBuildOperationKind.Hammer) repeatedBuild = new DeferredBuildSeed(flight.Target); }
             NotifyBuildAttempt(flight.Target);
         }
         private void HoldUnconfirmedBuild(BuildFlight flight)
@@ -770,15 +806,15 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             if (flight == null || !ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation) return;
             EndWiringBuildFlight(flight,unknown);
-            ReturnPreparedBuildLease(flight);
+            ReturnPreparedBuildLease(flight,unknown);
             if (unknown) HoldUnconfirmedBuild(flight);
             else if (!flight.Checked && !flight.Rejected) WaitForBuild(flight.Target, BlueprintBuildWait.Player, retryPending: true);
             activeBuild = null; NotifyBuildAttempt(flight.Target);
         }
         internal void CancelAutomaticBuild()
-        { preparedBuild = null; deferredBuild = null; StopWiringBuild(false); buildMaterialPreparation?.RequestReturn(); if (buildTools?.Use.Building == true) buildTools.Use.Cancel(); }
+        { preparedBuild = null; ClearBuildContinuation(); StopWiringBuild(false); buildMaterialPreparation?.RequestReturn(); if (buildTools?.Use.Building == true) buildTools.Use.Cancel(); }
         internal void AutomaticBuildChanged()
-        { preparedBuild = null; deferredBuild = null; if (AutoBuildEnabled) buildActivationRevision++; else RemoveBuildSources(); MaterialBuildEligibilityRevision++; ObserveMaterialDemand(); }
+        { preparedBuild = null; ClearBuildContinuation(); if (AutoBuildEnabled) buildActivationRevision++; else RemoveBuildSources(); MaterialBuildEligibilityRevision++; ObserveMaterialDemand(); }
         private void ClearAutomaticBuild()
         {
             CancelAutomaticBuild(); if (buildTools?.Use.Building == true) buildTools.Use.Retire(); preparedBuild = activeBuild = null;
@@ -787,7 +823,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // until its decoder reply or the actual session boundary below.
             MaterialBuildEligibilityRevision++; ClearBuildProgressSignals(); RemoveBuildSources();
         }
-        private void ClearBuildSession() { buildContainer = null; StopWiringBuild(true); buildMaterialPreparation?.ClearSession(); buildSupplyTarget=null; }
+        private void ClearBuildSession() { buildContainer = null; StopWiringBuild(true); buildMaterialPreparation?.ClearSession(); ClearBuildSupplyHint(); }
         private void StartBuildUnknownSession()
         {
             // Match Tools' real identity boundary. A menu/UI interruption or
@@ -802,6 +838,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             RemoveBuildSources(identity);
             if (deferredBuild?.Identity.Equals(identity) == true) deferredBuild = null;
+            if (repeatedBuild?.Identity.Equals(identity) == true) repeatedBuild = null;
+            if (buildSupplyTarget?.Identity.Equals(identity) == true) ClearBuildSupplyHint();
             if (preparedBuild?.Target.Identity.Equals(identity) == true) preparedBuild = null;
             // Natural completion can retire the just-checked instance between
             // two legal placements. Keep only that returned lease available

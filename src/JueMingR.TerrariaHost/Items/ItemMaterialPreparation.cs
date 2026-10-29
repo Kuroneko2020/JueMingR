@@ -20,7 +20,7 @@ namespace JueMingR.TerrariaHost.Items
     // same owner. Only original ItemSlot.LeftClick moves live Items.
     internal sealed class ItemMaterialPreparation
     {
-        private enum Phase { Idle, Preparing, Ready, Using, Returning, Unknown }
+        private enum Phase { Idle, Preparing, Ready, Using, Returning, Abandoning, Unknown }
         private enum TailStep { None, Neutral, Press }
         private sealed class Endpoint
         {
@@ -40,6 +40,15 @@ namespace JueMingR.TerrariaHost.Items
         private Phase phase;
         private bool nativeClick, tailOpen, oldLeft, ownLeft, clickApplied, returnRequested;
         private bool ownsInventory, nativeInventoryChange;
+        private long receiptEpoch, tailEpoch;
+        private int nativeCalls;
+        private bool tailPending, displacedMoved;
+        // These are only live carried identities displaced by our own swap.
+        // They own no use token or projection and never delay completion.
+        private readonly List<Item> abandonedDisplaced = new List<Item>();
+        private Player guardPlayer;
+        private Item[] guardInventory;
+        private long guardSession;
         private TailStep tailStep;
         internal static ItemMaterialPreparation Current { get; private set; }
         internal bool HasWork { get { return phase != Phase.Idle; } }
@@ -47,6 +56,7 @@ namespace JueMingR.TerrariaHost.Items
         internal bool Using { get { return phase == Phase.Using; } }
         internal bool Returning { get { return phase == Phase.Returning; } }
         internal bool Unknown { get { return phase == Phase.Unknown; } }
+        internal bool Abandoning { get { return phase == Phase.Abandoning; } }
         internal Item Material { get { return material; } }
         internal string Reason { get; private set; }
         internal Func<int, int> UseConsumptionMaximum;
@@ -64,20 +74,21 @@ namespace JueMingR.TerrariaHost.Items
         internal bool TryPrepare(Player p, int sourceSlot, int destination, BlueprintProjectionIdentity identity, out int currentSlot)
         {
             currentSlot = -1;
-            if (!OnGameThread || p == null || identity == null || destination != 0 && destination != 54) return false;
+            if (!OnGameThread || p == null || identity == null || nativeCalls != 0 || tailPending || destination != 0 && destination != 54) return false;
+            ObserveInventory(p);
             if (HasWork)
             {
                 if (!SameSessionIdentity(p)) { ClearSession(); return false; }
-                if (phase == Phase.Unknown) return false;
+                if (phase == Phase.Unknown || phase == Phase.Abandoning) return false;
                 if (!InputOwnershipCurrent()) return false;
-                if (!this.identity.Equals(identity) || this.destination != destination ||
+                if (this.destination != destination ||
                     sourceSlot >= 0 && (sourceSlot >= 50 || !ReferenceEquals(p.inventory[sourceSlot], material)))
                 { RequestReturn(); return false; }
                 if (!ExpectedCurrent(phase == Phase.Using)) { LoseIdentity("material-preparation-identity-changed", PhysicalInput); return false; }
                 if (!PreparationItemsNotPending()) { Reason = "material-preparation-endpoint-pending"; return false; }
                 if (Reason == "material-preparation-endpoint-pending") Reason = null;
                 if ((phase == Phase.Ready || phase == Phase.Using) && material != null && !material.IsAir && Main.mouseItem.IsAir)
-                { currentSlot = MaterialSlot(); return currentSlot >= 0; }
+                { currentSlot = MaterialSlot(); if (currentSlot >= 0) this.identity = identity; return currentSlot >= 0; }
                 return false;
             }
             if (sourceSlot < 0 || sourceSlot >= 50 || sourceSlot >= p.inventory.Length || !StartAllowed(p) ||
@@ -104,6 +115,7 @@ namespace JueMingR.TerrariaHost.Items
                 if (buffer < 0) return false;
             }
             player = p; inventory = p.inventory; session = tools.Runtime.Generation; selection = tools.SelectionIntent;
+            receiptEpoch++; displacedMoved = false;
             this.sourceSlot = sourceSlot; this.destination = destination; this.identity = identity;
             material = desired; materialType = desired.type; displaced = destination >= 50 && sourceSlot != destination ? oldDestination : null;
             endpointCount = forwardCount = forwardCursor = historyCount = 0;
@@ -188,7 +200,7 @@ namespace JueMingR.TerrariaHost.Items
             if (Air(type, stack)) return value.IsAir;
             return ReferenceEquals(value, expected) && value.type == type && value.stack == stack;
         }
-        private bool ExpectedCurrent(bool consume)
+        private bool ExpectedCurrent(bool consume, bool update = true)
         {
             if (!SameSession(player) || !Matches(Main.mouseItem, expectedCursor, cursorType, cursorStack)) return false;
             for (int i = 0; i < endpointCount; i++)
@@ -202,6 +214,7 @@ namespace JueMingR.TerrariaHost.Items
                 bool realRemainder = ReferenceEquals(current, endpoint.Expected) && (current.IsAir || current.type == endpoint.Type) ||
                     current.IsAir && endpoint.Expected.IsAir;
                 if (maximum <= 0 || !realRemainder || remaining < 0 || remaining >= endpoint.Stack || endpoint.Stack - remaining > maximum) return false;
+                if (!update) continue;
                 // Each declared native generation has its own independent
                 // common budget. Observe its actual monotone remainder here,
                 // including held B or accessory paint, not just primary P.
@@ -223,10 +236,81 @@ namespace JueMingR.TerrariaHost.Items
                 if (ReferenceEquals(inventory[endpoints[i].Slot], material) && material.type == materialType && material.stack > 0) return endpoints[i].Slot;
             return -1;
         }
+        internal bool TryReadSupply(Player p, int type, int targetDestination, out int slot)
+        {
+            slot = -1;
+            if ((phase != Phase.Ready && phase != Phase.Using) || nativeCalls != 0 || tailPending || destination != targetDestination ||
+                material == null || material.type != type || material.stack <= 0 || !SameSession(p) || PhysicalInput ||
+                tools.SelectionIntent != selection || Main.playerInventory != ownsInventory || !ExpectedCurrent(phase == Phase.Using, false) ||
+                !PreparationItemsNotPending() || Main.mouseItem == null || !Main.mouseItem.IsAir) return false;
+            slot = MaterialSlot(); return slot >= 0;
+        }
         internal bool IsDisplaced(Item item)
-        { return HasWork && item != null && displaced != null && ReferenceEquals(item, displaced) && !item.IsAir; }
+        { return item != null && !item.IsAir && (HasWork && ReferenceEquals(item, displaced) || abandonedDisplaced.Contains(item)); }
+        internal void ObserveInventory(Player p)
+        {
+            if (!OnGameThread || abandonedDisplaced.Count == 0) return;
+            if (p == null || !ReferenceEquals(p, guardPlayer) || !ReferenceEquals(p.inventory, guardInventory) || guardSession != tools.Runtime.Generation)
+            { abandonedDisplaced.Clear(); guardPlayer = null; guardInventory = null; guardSession = 0; return; }
+            // Never sample half of a synchronous ItemSlot swap. Outside that
+            // stack one complete carried/cursor observation retires dead refs.
+            if (nativeCalls != 0 || tailPending) return;
+            for (int at = abandonedDisplaced.Count - 1; at >= 0; at--)
+            {
+                var item = abandonedDisplaced[at]; bool carried = ReferenceEquals(Main.mouseItem, item);
+                for (int slot = 0; !carried && slot < Math.Min(58, p.inventory.Length); slot++) carried = ReferenceEquals(p.inventory[slot], item);
+                if (item.IsAir || !carried) abandonedDisplaced.RemoveAt(at);
+            }
+        }
+        internal bool NativeMutation { get { return nativeClick || nativeCalls != 0; } }
+        internal void AfterManualMutation(Item beforeSlot, Item beforeCursor, Item afterSlot, Item afterCursor, bool mainInventory)
+        {
+            if (!OnGameThread || NativeMutation || !mainInventory || guardPlayer == null) return;
+            // This callback comes only from an actual physical native command,
+            // never inventory publication, release, hover or our own click.
+            for (int at = abandonedDisplaced.Count - 1; at >= 0; at--)
+            {
+                var item = abandonedDisplaced[at];
+                if (!ReferenceEquals(item, beforeSlot) && !ReferenceEquals(item, beforeCursor)) continue;
+                bool delivered = false;
+                for (int slot = 0; slot < Math.Min(50, guardInventory.Length); slot++)
+                    if (ReferenceEquals(guardInventory[slot], item) || item.IsAir && ReferenceEquals(guardInventory[slot], afterSlot))
+                    { delivered = true; break; }
+                if (delivered) abandonedDisplaced.RemoveAt(at);
+            }
+        }
+        internal sealed class ManualSortState
+        {
+            internal Item[] Items;
+            internal int[] Slots, Types, Stacks;
+            internal bool[] Favorites;
+        }
+        internal ManualSortState ManualSortItems()
+        {
+            if (abandonedDisplaced.Count == 0 || NativeMutation || guardInventory == null) return null;
+            var state = new ManualSortState { Items = abandonedDisplaced.ToArray(), Slots = new int[abandonedDisplaced.Count],
+                Types = new int[abandonedDisplaced.Count], Stacks = new int[abandonedDisplaced.Count], Favorites = new bool[abandonedDisplaced.Count] };
+            for (int at = 0; at < state.Items.Length; at++)
+            { var item = state.Items[at]; state.Slots[at] = Array.IndexOf(guardInventory, item); state.Types[at] = item.type;
+                state.Stacks[at] = item.stack; state.Favorites[at] = item.favorited; }
+            return state;
+        }
+        internal void AfterManualSort(ManualSortState involved)
+        {
+            if (!OnGameThread || NativeMutation || guardInventory == null) return;
+            for (int at = 0; at < involved.Items.Length; at++)
+            {
+                var item = involved.Items[at]; int slot = Array.IndexOf(guardInventory, item);
+                bool changed = slot != involved.Slots[at] || item.type != involved.Types[at] || item.stack != involved.Stacks[at];
+                // Sort ignores hotbar slots; SortAmmo may independently move
+                // or merge one. An unrelated sort cannot requalify an untouched
+                // hotbar Item merely because it is already in the main bag.
+                bool ordinary = involved.Slots[at] >= 10 && involved.Slots[at] < 50 && !involved.Favorites[at];
+                if ((ordinary || changed) && (item.IsAir || slot >= 0 && slot < 50)) abandonedDisplaced.Remove(item);
+            }
+        }
         internal bool OwnsEndpoint(Item[] array, int slot)
-        { return HasWork && phase != Phase.Unknown && ReferenceEquals(array, inventory) && At(slot) != null && ExpectedCurrent(phase == Phase.Using); }
+        { return HasWork && phase != Phase.Unknown && phase != Phase.Abandoning && ReferenceEquals(array, inventory) && At(slot) != null && ExpectedCurrent(phase == Phase.Using, false); }
         internal bool AllowsNativeSlot(Item[] array, int context, int slot)
         { return nativeClick && activeSlot == slot && ReferenceEquals(array, inventory) && context == (slot >= 54 ? 2 : 0) &&
             Main.mouseLeft && Main.mouseLeftRelease && OwnsEndpoint(array, slot) && PreparationItemsNotPending(); }
@@ -244,6 +328,15 @@ namespace JueMingR.TerrariaHost.Items
             token = nextToken; phase = Phase.Using; return true;
         }
         internal void ReturnUse(long oldToken)
+        { ReturnUseCore(oldToken,null); }
+        internal bool TryReturnUseReady(long oldToken,BlueprintProjectionIdentity nextIdentity)
+        {
+            if(phase!=Phase.Using || token!=oldToken || nextIdentity==null || nextIdentity.SessionGeneration!=session ||
+                nativeCalls!=0 || tailPending || ownsInventory || returnRequested)return false;
+            ReturnUseCore(oldToken,nextIdentity);
+            return phase==Phase.Ready;
+        }
+        private void ReturnUseCore(long oldToken,BlueprintProjectionIdentity nextIdentity)
         {
             if (!OnGameThread || phase != Phase.Using || token != oldToken || !SameSessionIdentity(player)) return;
             if (!InputOwnershipCurrent()) return;
@@ -260,13 +353,18 @@ namespace JueMingR.TerrariaHost.Items
             long nextToken = tools.Items.Ownership.NewUseToken();
             if (!tools.Items.Ownership.TryBeginUse(session, sourceSlot, nextToken, Slots))
             { LoseIdentity("material-preparation-return-handoff", false); return; }
-            token = nextToken; phase = Phase.Returning;
+            token = nextToken; UseConsumptionMaximum = null;
+            // Host may retain only an already current, exact next candidate.
+            // The old use is released; this token protects inventory endpoints
+            // for one Ready handoff and grants no native consumer/input lease.
+            if(nextIdentity!=null){identity=nextIdentity;phase=Phase.Ready;return;}
+            phase = Phase.Returning;
             if (historyCount == 0) FinishReturn();
         }
         internal void RequestReturn()
         {
             if (!HasWork || !OnGameThread) return;
-            if (phase == Phase.Unknown) return;
+            if (phase == Phase.Unknown || phase == Phase.Abandoning) return;
             if (!InputOwnershipCurrent()) return;
             if (phase == Phase.Using) return;
             // Invalidations can arrive from the native slot observer inside
@@ -277,7 +375,7 @@ namespace JueMingR.TerrariaHost.Items
             phase = Phase.Returning;
             if (!tailOpen && historyCount == 0) FinishReturn();
         }
-        internal bool Blocks(BlueprintProjectionIdentity value) { return HasWork && identity.Equals(value); }
+        internal bool Blocks(BlueprintProjectionIdentity value) { return HasWork && identity != null && identity.Equals(value); }
         internal void ClearSession()
         {
             if (!OnGameThread) return;
@@ -289,6 +387,7 @@ namespace JueMingR.TerrariaHost.Items
                 Main.mouseItem != null && Main.mouseItem.IsAir && OrdinaryInventoryUi(player)) CloseNativeInventory();
             ownsInventory = false;
             if (session > 0) tools.Items.Ownership.EndUse(session, token);
+            abandonedDisplaced.Clear(); guardPlayer = null; guardInventory = null; guardSession = 0;
             ResetReceipt();
         }
         private void LoseIdentity(string reason, bool manual)
@@ -306,17 +405,30 @@ namespace JueMingR.TerrariaHost.Items
                 // nonmanual changes keep only this finite source range unknown.
                 if (!manual) tools.Items.Ownership.HoldInterruptedSource(session, Slots);
             }
-            phase = Phase.Unknown; nativeClick = false; activeSlot = -1;
+            phase = manual ? Phase.Abandoning : Phase.Unknown; nativeClick = false;
+            if (manual) FinishAbandonment();
+            else activeSlot = -1;
+        }
+        private void FinishAbandonment()
+        {
+            if (phase != Phase.Abandoning || nativeCalls != 0 || tailPending) return;
+            if (displacedMoved && displaced != null && !displaced.IsAir && !ReferenceEquals(inventory[54], displaced) && !abandonedDisplaced.Contains(displaced))
+            {
+                guardPlayer = player; guardInventory = inventory; guardSession = session;
+                abandonedDisplaced.Add(displaced);
+            }
+            ResetReceipt();
         }
         private void ResetReceipt()
         {
             phase = Phase.Idle; player = null; inventory = null; material = displaced = expectedCursor = null;
+            receiptEpoch++; displacedMoved = false;
             for (int i = 0; i < endpointCount; i++) endpoints[i] = null;
             endpointCount = forwardCount = forwardCursor = historyCount = 0;
             session = token = selection = 0; identity = default(BlueprintProjectionIdentity); Reason = null;
             UseConsumptionMaximum = null;
             ownsInventory = nativeInventoryChange = false;
-            nativeClick = tailOpen = clickApplied = returnRequested = false; tailStep = TailStep.None; activeSlot = -1;
+            nativeClick = tailOpen = tailPending = clickApplied = returnRequested = false; tailStep = TailStep.None; activeSlot = -1;
         }
 
         internal static void BeforeNativeInputTail() { Current?.BeforeTail(); }
@@ -421,7 +533,7 @@ namespace JueMingR.TerrariaHost.Items
         }
         private void BeforeTail()
         {
-            if (!OnGameThread || !HasWork || phase == Phase.Using || phase == Phase.Ready || phase == Phase.Unknown) return;
+            if (!OnGameThread || !HasWork || phase == Phase.Using || phase == Phase.Ready || phase == Phase.Unknown || phase == Phase.Abandoning) return;
             // A skipped tail cannot be replaced by another scheduling call.
             // Its original input write must finish before a next native click.
             if (tailOpen) { LoseIdentity("material-preparation-native-tail-missing", false); return; }
@@ -437,34 +549,43 @@ namespace JueMingR.TerrariaHost.Items
             // the inventory is closed, so hold the actual UI until cursor Air.
             if (!OpenOwnedInventory()) return;
             tailStep = Main.mouseLeftRelease ? TailStep.Press : TailStep.Neutral;
-            oldLeft = Main.mouseLeft; ownLeft = tailStep == TailStep.Press; Main.mouseLeft = ownLeft; tailOpen = true; clickApplied = false;
+            oldLeft = Main.mouseLeft; ownLeft = tailStep == TailStep.Press; Main.mouseLeft = ownLeft; tailOpen = tailPending = true; tailEpoch = receiptEpoch; clickApplied = false;
             if (tailStep == TailStep.Neutral) return;
             activeSlot = phase == Phase.Returning ? history[historyCount - 1] : forward[forwardCursor];
-            int context = activeSlot >= 54 ? 2 : 0;
-            var beforeSlot = inventory[activeSlot]; var beforeCursor = Main.mouseItem;
+            int slot = activeSlot; long epoch = receiptEpoch;
+            var array = inventory; int context = slot >= 54 ? 2 : 0;
+            var beforeSlot = array[slot]; var beforeCursor = Main.mouseItem;
             int slotType = beforeSlot.type, slotStack = beforeSlot.stack, oldCursorType = beforeCursor.type, oldCursorStack = beforeCursor.stack;
             if (ItemSlot.PickItemMovementAction(inventory, context, activeSlot, beforeCursor) != 0 ||
                 !beforeSlot.IsAir && !beforeCursor.IsAir && Item.CanStack(beforeSlot, beforeCursor))
             { LoseIdentity("material-preparation-native-swap-not-legal", false); return; }
             try
             {
-                nativeClick = true;
-                ItemSlot.LeftClick(inventory, context, activeSlot);
+                nativeClick = true; nativeCalls++;
+                ItemSlot.LeftClick(array, context, slot);
             }
             catch { LoseIdentity("material-preparation-native-click-failed", false); throw; }
-            finally { nativeClick = false; }
-            bool swapped = Matches(inventory[activeSlot], beforeCursor, oldCursorType, oldCursorStack) &&
+            finally { nativeClick = false; nativeCalls--; }
+            bool swapped = Matches(array[slot], beforeCursor, oldCursorType, oldCursorStack) &&
                 Matches(Main.mouseItem, beforeSlot, slotType, slotStack);
+            if (epoch != receiptEpoch) return;
+            if (swapped && displaced != null && !ReferenceEquals(array[54], displaced)) displacedMoved = true;
+            // A manual callback can run inside LeftClick. Its old returning
+            // stack may prove the move, but cannot publish endpoints or Ready.
+            if (phase == Phase.Abandoning) { FinishAbandonment(); return; }
             if (swapped)
             {
-                var endpoint = At(activeSlot); endpoint.Expected = inventory[activeSlot]; endpoint.Type = inventory[activeSlot].type; endpoint.Stack = inventory[activeSlot].stack;
+                var endpoint = At(slot); endpoint.Expected = array[slot]; endpoint.Type = array[slot].type; endpoint.Stack = array[slot].stack;
                 CaptureCursor(Main.mouseItem); clickApplied = true;
             }
             else if (!ExpectedCurrent(false)) LoseIdentity("material-preparation-unexpected-native-movement", false);
         }
         private void AfterTail()
         {
-            if (!tailOpen) return;
+            if (!tailPending) { FinishAbandonment(); return; }
+            long epoch = tailEpoch; tailPending = false;
+            if (epoch != receiptEpoch) return;
+            if (phase == Phase.Abandoning) { RestoreBorrowedInput(); FinishAbandonment(); return; }
             bool nativeEdge = tailStep == TailStep.Press ? !Main.mouseLeftRelease : Main.mouseLeftRelease;
             TailStep completed = tailStep;
             RestoreBorrowedInput();

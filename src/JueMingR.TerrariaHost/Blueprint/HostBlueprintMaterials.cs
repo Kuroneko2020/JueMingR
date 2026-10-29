@@ -56,10 +56,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal long CatalogRevision;
         internal BlueprintBuildTarget Candidate;
         internal int CandidateCursor;
-        // One finite preference pass per real use lease. Ordinary discovery,
-        // near/frontier cursors and their Candidate keep their own service.
-        internal long PreferredLease;
+        // Stable absolute member/lane progress belongs to the source intent,
+        // not ToolUse's disposable token or one retained transport window.
+        internal long PreferredGroup, PreferredVisitBatch, PreferredCompletedBatch, PreferredVersion = -1, PreferredPlayer = -1, PreferredWake = -1, PreferredSupply = -1;
         internal int PreferredCursor;
+        internal bool PreferredInitialized, PreferredComplete, PreferredRevisit;
         internal long BuildEpoch, BuildWakeRevision;
         internal long BuildPlayerRevision, BuildSupplyRevision, BuildContainerRevision, BuildActivationRevision;
         internal BlueprintBuildWait BuildWaits;
@@ -280,6 +281,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ObserveMaterialInventory(ulong tick)
         {
+            buildMaterialPreparation?.ObserveInventory(player);
 #if JMR_BLUEPRINT_DIAGNOSTIC
             if(BlueprintBuildTrace.Active)BlueprintBuildTrace.Current.InventoryBegin();
 #endif
@@ -335,6 +337,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             materialAll.Expected -= state.Ranges.Length;
             foreach (var range in state.Ranges)
             {
+                RetirePreferredRange(range);
                 if ((materialCatalogTransition || materialContextTransition) && range.MaterialDemandEpoch != materialDemandEpoch && materialTransitionRemaining > 0) materialTransitionRemaining--;
                 RevokeMaterialRange(range, true);
             }
@@ -357,7 +360,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (retiring || resetBuild)
             {
                 ResetMaterialBuildWalk(range, true);
-                value.PreferredLease = 0; value.PreferredCursor = 0;
+                value.PreferredGroup = 0; value.PreferredCursor = 0; value.PreferredInitialized = value.PreferredComplete = value.PreferredRevisit = false;
             }
             value.Desired = null; QueueMaterialChange(range);
             if (retiring) value.CatalogRevision = -1;

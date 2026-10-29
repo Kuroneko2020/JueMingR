@@ -80,7 +80,6 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // This is a local wall prerequisite. Other lanes and instances
                 // keep their ordinary bounded service while the foreground is
                 // outside this projection's restoration contract.
-                RequestBuildEligibilityRetry(target);
                 return false;
             }
             if (!step.HasAction) return false;
@@ -104,12 +103,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             return true;
         }
 
-        private bool TryPrepareAppearanceBuild(BlueprintBuildTarget target, Player p, out BuildFlight result)
+        private bool TryPrepareAppearanceBuild(BlueprintBuildTarget target, Player p, out BuildFlight result, BuildOperationPlan plan)
         {
             result = null;
             var operation = target.Operation;
-            bool outsideReach;
-            int tool = FindAppearanceTool(target, p, out outsideReach);
+            bool outsideReach = false;
+            int tool = plan == null ? FindAppearanceTool(target, p, out outsideReach) : PlannedBuildToolSlot(p, plan, buildMaterialPreparation?.HasWork == true);
             if (tool < 0) { WaitForAppearanceAvailability(target, outsideReach); return false; }
             BlueprintWorldMatchSample actual;
             if (!ReadBuildCell(target.WorldX, target.WorldY, out actual) || !AppearanceRestorationReady(target, p, actual)) return false;
@@ -117,10 +116,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             int primary = -1;
             if (operation.SupplyType > 0)
             {
-                if (!TryPrepareBuildSupply(target, p, operation.SupplyType, operation.SupplyDestination, out primary)) return false;
+                if (!TryPrepareBuildSupply(target, p, operation.SupplyType, operation.SupplyDestination, out primary, plan)) return false;
+                if (!PlannedBuildSupplyCurrent(p, plan, primary)) { WaitForDynamicBuild(target); return false; }
                 // A native three-endpoint preparation may move the actual tool.
                 // Select its current real position, never the pre-swap slot.
-                tool = FindAppearanceTool(target, p, out outsideReach);
+                tool = plan == null ? FindAppearanceTool(target, p, out outsideReach) : PlannedBuildToolSlot(p, plan, true);
                 if (tool < 0) { WaitForAppearanceAvailability(target, outsideReach); return false; }
             }
             if (!TryCreateOperationFlight(target, p, tool, primary, 0, operation.PrimaryMaximum, out result)) return false;
@@ -140,12 +140,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void WaitForAppearanceAvailability(BlueprintBuildTarget target, bool outsideReach)
         { if (outsideReach) WaitForBuild(target, BlueprintBuildWait.Player); else WaitForAppearanceTool(target); }
 
-        private int FindAppearanceTool(BlueprintBuildTarget target, Player p, out bool outsideReach)
+        private int FindAppearanceTool(BlueprintBuildTarget target, Player p, out bool outsideReach, BuildSource sourceHint = null)
         {
             outsideReach = false;
             if (!EnsureAppearanceInventory(p)) return -1;
             int selected = -1, bestTime = int.MaxValue;
-            var preferred = CurrentBuildSourceHint(p);
+            var preferred = sourceHint ?? PreferredBuildSourceHint(p);
             int kind = target.Operation.Kind == BlueprintBuildOperationKind.Hammer ? 0 :
                 target.Operation.Kind == BlueprintBuildOperationKind.PaintTile ? 1 : target.Operation.Kind == BlueprintBuildOperationKind.PaintWall ? 2 : 3;
             for (int index = 0; index < appearanceToolCounts[kind]; index++)

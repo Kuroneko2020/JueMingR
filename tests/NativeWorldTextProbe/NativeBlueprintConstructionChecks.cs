@@ -7,6 +7,7 @@ using Microsoft.Xna.Framework.Input;
 using Terraria;
 using Terraria.ID;
 using Terraria.GameInput;
+using Terraria.UI;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -53,6 +54,12 @@ namespace NativeWorldTextProbe
                     check("ordinary sustained throughput",()=>SustainedNativeThroughput(context,host,tools,input));
                     check("ordinary moving furniture direction",()=>MovingFurnitureDirection(context,host,tools,input));
                     check("ordinary attached accessory budgets",()=>OriginalAccessories(context,host,tools,input));
+                    // The current four-fix acceptance is one consumer batch:
+                    // continuation shares this same real inventory input tail.
+                    check("finite same-source service and mixed appearance",()=>MaterialContinuityAndYield(context,host,tools,input));
+                    check("cross-update moving continuation",()=>ExecutionSearchFairness(context,host,tools,input,true));
+                    check("continuation beyond four cached sources",()=>BuildSourceFullContinuation(context,host,tools,input));
+                    check("large mixed ordinary and object continuation",()=>MixedSourceContinuation(context,host,tools,input));
                     }
                     if(family==null || family=="Appearance")check("appearance consumers and native preparation",()=>ConstructionAppearance(context,host,tools,input));
                     if(family==null || family=="Wiring")check("wiring and actuation consumers",()=>ConstructionWiring(context,host,tools,input));
@@ -158,11 +165,88 @@ namespace NativeWorldTextProbe
             Require((bool)Get(preparation,"HasWork") && Main.playerInventory && !Main.mouseItem.IsAir,"takeover begins with a genuine owned native cursor");
             var cursor=Main.mouseItem;long clicks=(long)Get(preparation,"NativeClicks");
             p.ToggleInv();
-            Require((bool)Get(preparation,"Unknown") && !Main.playerInventory && !(bool)Get(Get(Get(tools,"Items"),"Ownership"),"HasUse") && ReferenceEquals(Main.mouseItem,cursor),
+            Require(!(bool)Get(preparation,"HasWork") && !(bool)Get(preparation,"Unknown") && !Main.playerInventory && !(bool)Get(Get(Get(tools,"Items"),"Ownership"),"HasUse") && ReferenceEquals(Main.mouseItem,cursor),
                 "the original player inventory command takes control immediately, without automatic close/reopen or moving its cursor");
             constructionInputTail();
             Require((long)Get(preparation,"NativeClicks")==clicks && !Main.playerInventory && ReferenceEquals(Main.mouseItem,cursor),
                 "a late native draw tail cannot replay the old inventory click after player takeover");
+            // The owner returns its actual cursor through the same native slot
+            // command. No fixture restores the old Item array or stack value.
+            p.ToggleInv(); ManualPreparationClick(context,input,p,12); p.ToggleInv(); Step(context,input);
+            Require(Main.mouseItem.IsAir && p.inventory[12].type==ItemID.RedPaint,"the real manual click leaves a fresh, idle source");
+            Call(preparation,"TryPrepare",args);
+            for(int i=0;i<18 && !(bool)Get(preparation,"Ready");i++)Step(context,input);
+            Require((bool)Get(preparation,"Ready"),"same-session preparation can restart after manual handoff");
+            var blue=p.inventory[12];long oldToken=(long)Get(preparation,"token");
+            Require(blue.type==ItemID.BluePaint && blue.stack==7,"a confirmed native swap actually displaced the old slot54 identity");
+            p.ToggleInv();
+            Require(!(bool)Get(preparation,"HasWork") && (bool)Call(preparation,"IsDisplaced",blue) && !(bool)Call(preparation,"Blocks",identity),
+                "manual abandonment releases execution and projection duty while retaining the live old54 source exclusion");
+            p.ToggleInv();Step(context,input);
+            p.inventory[13].SetDefaults(ItemID.GreenPaint);p.inventory[13].stack=2;
+            object[] nextArgs={p,13,54,identity,-1};Call(preparation,"TryPrepare",nextArgs);
+            var ownership=Get(Get(tools,"Items"),"Ownership");long newToken=(long)Get(preparation,"token");
+            Require(newToken>oldToken,"fresh preparation receives a new native owner token");
+            Call(ownership,"EndUse",(long)Get(Get(tools,"Runtime"),"Generation"),oldToken);
+            Require((bool)Call(ownership,"OwnsUse",(long)Get(Get(tools,"Runtime"),"Generation"),newToken),"a late old token cannot release the fresh receipt");
+            for(int i=0;i<18 && !(bool)Get(preparation,"Ready");i++)Step(context,input);
+            Require((bool)Get(preparation,"Ready") && (bool)Call(preparation,"IsDisplaced",blue) && blue.stack==7,
+                "fresh supply really reaches Ready and cannot overwrite an earlier live displaced identity");
+            var red=p.inventory[13];p.ToggleInv();p.ToggleInv();Step(context,input);
+            Require((bool)Call(preparation,"IsDisplaced",blue) && (bool)Call(preparation,"IsDisplaced",red) &&
+                !(bool)Call(tools,"BuildInventoryEligible",12,blue) && !(bool)Call(tools,"BuildInventoryEligible",13,red),
+                "two separate manual interruptions retain both exact old54 identities without active work");
+            NativeToolsChecks.Tile(46,42,TileID.Stone);
+            var completed=Place(context,host,input,Asset(host,new CaptureCell{Layers=CaptureLayer.Tile,TileType=TileID.Stone}),46,42);
+            Until(context,input,()=>!Scene(host).Contains(completed));
+            Require(!(bool)Get(preparation,"HasWork") && blue.stack==7,"a complete projection naturally retires while the unrelated residual identity guard remains");
+            // A nonmanual inventory relocation is not a new supply grant.
+            var oldHotbar=p.inventory[2];p.inventory[2]=blue;p.inventory[12]=oldHotbar;
+            Call(preparation,"ObserveInventory",p);
+            for(int slot=55;slot<58;slot++){p.inventory[slot].SetDefaults(ItemID.MusketBall+slot-55);p.inventory[slot].stack=p.inventory[slot].maxStack;p.inventory[slot].favorited=true;}
+            NativeToolExecutionChecks.Sample(context,input,new Microsoft.Xna.Framework.Vector2(480,540),true);
+            ItemSorting.SortInventory();
+            Require(ReferenceEquals(p.inventory[2],blue) && (bool)Call(preparation,"IsDisplaced",blue),
+                "an actual sort that does not touch a hotbar guard cannot requalify that identity");
+            Require(!(bool)Call(preparation,"IsDisplaced",red),"a real main-bag sort returns its actual participating displaced source to player supply");
+            ManualPreparationClick(context,input,p,2);ManualPreparationClick(context,input,p,15);
+            Require(!(bool)Call(preparation,"IsDisplaced",blue),"actual manual pickup and delivery into the main bag requalify only the involved protected Item");
+            Call(preparation,"ClearSession");
+            ConstructionPreparationReentry(context,host,tools,input);
+        }
+        private static void ManualPreparationClick(object context,object input,Player p,int slot)
+        {
+            NativeToolExecutionChecks.Sample(context,input,new Microsoft.Xna.Framework.Vector2(480,540),false);constructionInputTail();
+            NativeToolExecutionChecks.Sample(context,input,new Microsoft.Xna.Framework.Vector2(480,540),true);
+            ItemSlot.LeftClick(p.inventory,slot>=54?2:0,slot);
+            NativeToolExecutionChecks.Sample(context,input,new Microsoft.Xna.Framework.Vector2(480,540),false);constructionInputTail();
+        }
+        private static Action preparationReentry;
+        private static void PreparationReentry(){var action=preparationReentry;preparationReentry=null;action?.Invoke();}
+        private static void ConstructionPreparationReentry(object context,object host,object tools,object input)
+        {
+            var p=Reset(context,host,tools,input);var preparation=Get(host,"buildMaterialPreparation");
+            p.inventory[12].SetDefaults(ItemID.RedPaint);p.inventory[12].stack=2;p.inventory[54].SetDefaults(ItemID.BluePaint);p.inventory[54].stack=7;
+            Step(context,input);var identity=new BlueprintProjectionIdentity(Guid.NewGuid(),Guid.NewGuid(),"native-reentrant-handoff",(long)Get(Get(tools,"Runtime"),"Generation"),2);
+            object[] args={p,12,54,identity,-1};Call(preparation,"TryPrepare",args);
+            var patch=new Harmony("JueMingR.Tests.PreparationReentry");
+            patch.Patch(typeof(ItemSlot).GetMethod("LeftClick",F,null,new[]{typeof(Item[]),typeof(int),typeof(int)},null),
+                postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(PreparationReentry)));
+            bool reentered=false;
+            preparationReentry=()=>{reentered=true;p.ToggleInv();Require((bool)Get(preparation,"Abandoning"),"a synchronous old native click keeps abandonment pending until its own tail exits");};
+            try{constructionInputTail();}
+            finally{preparationReentry=null;foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);}
+            Require(reentered && !(bool)Get(preparation,"HasWork") && !(bool)Get(preparation,"Unknown"),"the old returning LeftClick stack cannot publish Ready or poison a new receipt");
+            // Independent unexpected mutation must retain the real Unknown
+            // source protection; the manual-only exit cannot unlock it.
+            if(!Main.mouseItem.IsAir){if(!Main.playerInventory)p.ToggleInv();ManualPreparationClick(context,input,p,12);if(Main.playerInventory)p.ToggleInv();}
+            Step(context,input);Call(preparation,"TryPrepare",args);
+            Require((bool)Get(preparation,"HasWork"),"nonmanual counterexample owns a real fresh preparation");
+            p.inventory[12].stack++;
+            constructionInputTail();
+            Require((bool)Get(preparation,"Unknown") && (bool)Get(preparation,"HasWork") && (bool)Call(preparation,"Blocks",identity),
+                "an unexplained real endpoint mutation remains Unknown and keeps its original finite protection");
+            Call(preparation,"ClearSession");
         }
         private static void ConstructionMovingMixed(object context,object host,object tools,object input)
         {

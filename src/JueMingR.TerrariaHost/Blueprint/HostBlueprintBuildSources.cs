@@ -152,12 +152,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                 ProjectionMatchSourceSteps++;
 #endif
                 int ordinal = value.CandidateCursor;
-                var cell = range.Owner.Mask.Apply(part.Window.Cells[index]);
-                if (TryCreateConstructionTarget(range.Owner, range, part, index, ordinal, support, out target))
+                int following;
+                if (TryCreateConstructionTargetAndAdvance(range.Owner,range,part,index,ordinal,support,out target,out following))
                 {
                     target.LocalProof = true; value.Candidate = target; return true;
                 }
-                value.CandidateCursor = NextBuildSourceOrdinal(ordinal, cell, part.LogicalObjectId > 0);
+                value.CandidateCursor = following;
             }
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Count(BuildTraceReason.SourceBudgetEmpty);

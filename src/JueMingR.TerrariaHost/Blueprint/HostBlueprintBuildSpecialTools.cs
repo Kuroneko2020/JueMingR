@@ -33,7 +33,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     constructionSlots[slot.ItemType] = mask | 1UL << slot.Slot;
                 }
             }
-            var hint = CurrentBuildSourceHint(p);
+            var hint = PreferredBuildSourceHint(p);
             if (hint != null && hint.Type == type && hint.Slot >= 0 && hint.Slot < 50 &&
                 ReferenceEquals(p.inventory[hint.Slot], hint.Item) && buildTools.BuildInventoryEligible(hint.Slot, hint.Item)) return hint.Slot;
             ulong candidates;
@@ -80,31 +80,30 @@ namespace JueMingR.TerrariaHost.Blueprint
                 HeldMaximum = producer.ConsumesHeld ? 1 : 0, PrimaryMaximum = producer.ConsumesBucket ? 1 : 0
             };
         }
-        private bool TryPrepareSpecialBuild(BlueprintBuildTarget target, Player p, out BuildFlight flight)
+        private bool TryPrepareSpecialBuild(BlueprintBuildTarget target, Player p, out BuildFlight flight, BuildOperationPlan selectedPlan)
         {
             flight = null; var operation = target.Operation;
             if (operation == null) return false;
             if (operation.Kind == BlueprintBuildOperationKind.PlaceBase || operation.Kind == BlueprintBuildOperationKind.ConvertSubstrate)
             {
-                int slot = ConstructionItemSlot(p, operation.NativePlacement.UseItemType);
+                int slot = selectedPlan == null ? ConstructionItemSlot(p, operation.NativePlacement.UseItemType) : PlannedBuildToolSlot(p, selectedPlan);
                 if (slot < 0) { WaitForBuild(target, BlueprintBuildWait.Material); return false; }
                 return TryCreateOperationFlight(target, p, slot, -1, 1, 0, out flight);
             }
-            foreach (var placement in MaterialCatalog.Producers(target.Cell, target.Body == null ? (CaptureObject?)null : target.Object))
-            {
-                var producer = placement.Producer;
-                if (producer == null || ConstructionItemSlot(p, placement.UseItemType) < 0) continue;
-                int primary;
-                operation = SpecialOperation(placement); target.Operation = operation;
-                if (!producer.TryCycle(Player.FlexibleWandCycleOffset, out operation.Cycle)) continue;
-                if (!TryPrepareBuildSupply(target, p, producer.BucketItemType, operation.SupplyDestination, out primary)) continue;
-                int tool = ConstructionItemSlot(p, placement.UseItemType);
-                if (tool < 0) continue;
-                if (target.Body != null)
-                { target.TargetX = target.Bounds.Left + placement.OriginX; target.TargetY = target.Bounds.Top + placement.OriginY; }
-                if (TryCreateOperationFlight(target, p, tool, primary, operation.HeldMaximum, operation.PrimaryMaximum, out flight)) return true;
-            }
-            WaitForBuild(target, BlueprintBuildWait.Material); return false;
+            BuildOperationPlan plan = selectedPlan; BlueprintBuildWait wait; ulong dependencySlots;
+            if (plan == null && !TryPlanBuild(target, p, PreferredBuildSourceHint(p), out plan, out wait, out dependencySlots))
+            { RegisterPlannedBuildWait(target, wait, dependencySlots); return false; }
+            target.Operation = operation = CopyBuildOperation(plan.Operation);
+            if (PlannedBuildToolSlot(p, plan, buildMaterialPreparation?.HasWork == true) < 0) { WaitForBuild(target, BlueprintBuildWait.Material, retryPending: true); return false; }
+            int primary;
+            if (!TryPrepareBuildSupply(target, p, plan.SupplyType, plan.SupplyDestination, out primary, plan)) return false;
+            if (!PlannedBuildSupplyCurrent(p, plan, primary)) { WaitForDynamicBuild(target); return false; }
+            int tool = PlannedBuildToolSlot(p, plan, true);
+            if (tool < 0) { WaitForBuild(target, BlueprintBuildWait.Material, retryPending: true); return false; }
+            var placement = operation.NativePlacement;
+            if (target.Body != null)
+            { target.TargetX = target.Bounds.Left + placement.OriginX; target.TargetY = target.Bounds.Top + placement.OriginY; }
+            return TryCreateOperationFlight(target, p, tool, primary, operation.HeldMaximum, operation.PrimaryMaximum, out flight);
         }
         private bool SpecialBuildCurrent(BuildFlight flight)
         {

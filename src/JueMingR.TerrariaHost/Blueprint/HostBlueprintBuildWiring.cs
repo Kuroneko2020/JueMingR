@@ -41,7 +41,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             if (lane != BlueprintBuildLane.Actuation) return false;
             bool permanent = (target.Cell.Layers & CaptureLayer.Actuator) != 0 && target.Cell.Actuator;
-            var owned = CurrentOwnedActuator(target.WorldX, target.WorldY);
+            var owned = PeekOwnedActuator(target.WorldX, target.WorldY);
             if (!permanent && owned != null && owned.Confirmed && WiringBodySame(target, actual) && actual.Cell.Inactive == target.Cell.Inactive)
             {
                 operation = new BlueprintBuildOperation { Kind = BlueprintBuildOperationKind.RemoveOwnedActuator, Consumer = ToolBuildConsumer.Wiring, PrimaryMaximum = 0 };
@@ -76,43 +76,123 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             return BuildOperationBodySame(target, actual);
         }
-        private bool TryPrepareWiringBuild(BlueprintBuildTarget target, Player p, out BuildFlight flight)
+        private bool TryPrepareWiringBuild(BlueprintBuildTarget target, Player p, out BuildFlight flight, BuildOperationPlan selectedPlan)
         {
-            flight = null; var operation = target.Operation; if (operation == null) return false;
-            int tool = -1, primary = -1;
+            flight = null;
+            BuildOperationPlan plan = selectedPlan; BlueprintBuildWait wait; ulong dependencySlots;
+            if (plan == null && !TryPlanWiringTool(target, p, PreferredBuildSourceHint(p), out plan, out wait, out dependencySlots))
+            {
+                WaitForWiringOptions(target, wait, dependencySlots);
+                return false;
+            }
+            // A rejected option never changes the requested operation or its
+            // budget. Only this selected exact tool may enter real preparation.
+            target.Operation = CopyBuildOperation(plan.Operation);
+            if (PlannedBuildToolSlot(p, plan, buildMaterialPreparation?.HasWork == true) < 0) { WaitForBuild(target, BlueprintBuildWait.Material, retryPending: true); return false; }
+            int primary = plan.SupplySlot;
+            if (plan.SupplyType > 0 && !TryPrepareBuildSupply(target, p, plan.SupplyType, plan.SupplyDestination, out primary, plan)) return false;
+            if (!PlannedBuildSupplyCurrent(p, plan, primary)) { WaitForDynamicBuild(target); return false; }
+            int tool = PlannedBuildToolSlot(p, plan, true);
+            if (tool < 0) { WaitForBuild(target, BlueprintBuildWait.Material, retryPending: true); return false; }
+            return TryCreateOperationFlight(target, p, tool, primary, plan.HeldMaximum, plan.PrimaryMaximum, out flight);
+        }
+        private bool TryPlanWiringTool(BlueprintBuildTarget target, Player p, BuildSource preferred,
+            out BuildOperationPlan plan, out BlueprintBuildWait wait, out ulong dependencySlots)
+        {
+            plan = null; wait = BlueprintBuildWait.None; dependencySlots = 0;
+            if (target?.Operation == null || p == null || MaterialInventory?.Ready != true || !IsBuildTargetCurrent(target)) return false;
+            BlueprintWorldMatchSample actual;
+            if (!ReadBuildCell(target.WorldX, target.WorldY, out actual) || !p.CanDoWireStuffHere(target.WorldX, target.WorldY)) return false;
+            BlueprintBuildWait localWait; ulong localSlots; bool found = false;
+            if (preferred != null && preferred.Slot >= 0 && preferred.Slot < 50 &&
+                ReferenceEquals(p.inventory[preferred.Slot], preferred.Item) && preferred.Item.type == preferred.Type &&
+                WiringToolMatches(target.Operation, preferred.Type))
+            {
+                found = true;
+                if (TryPlanWiringOption(target, p, preferred.Slot, actual, out plan, out localWait, out localSlots)) return true;
+                wait |= localWait; dependencySlots |= localSlots;
+            }
+            // The inventory owner already indexes every eligible slot of each
+            // type. Reuse that frozen mask, then recheck each exact live Item;
+            // neither a short tool nor an ineligible twin ends the search.
+            for (int option = 0; option < 3; option++)
+            {
+                int type = WiringToolType(target.Operation, option);
+                if (type <= 0) continue;
+                ConstructionItemSlot(p, type);
+                ulong candidates;
+                if (!constructionSlots.TryGetValue(type, out candidates)) continue;
+                for (int slot = 0; slot < 50 && candidates != 0; slot++)
+                {
+                    ulong bit = 1UL << slot; if ((candidates & bit) == 0) continue; candidates &= ~bit;
+                    if (preferred != null && slot == preferred.Slot && ReferenceEquals(p.inventory[slot], preferred.Item)) continue;
+                    found = true;
+                    if (TryPlanWiringOption(target, p, slot, actual, out plan, out localWait, out localSlots))
+                    { wait = BlueprintBuildWait.None; dependencySlots = 0; return true; }
+                    wait |= localWait; dependencySlots |= localSlots;
+                }
+            }
+            if (!found && wait == BlueprintBuildWait.None) wait = BlueprintBuildWait.Material;
+            return false;
+        }
+        private bool TryPlanWiringOption(BlueprintBuildTarget target, Player p, int slot, BlueprintWorldMatchSample actual,
+            out BuildOperationPlan plan, out BlueprintBuildWait wait, out ulong dependencySlots)
+        {
+            plan = null; wait = BlueprintBuildWait.None; dependencySlots = 0;
+            var tool = p.inventory[slot];
+            if (tool == null || tool.IsAir || !WiringToolMatches(target.Operation, tool.type))
+            { wait = BlueprintBuildWait.Material; return false; }
+            if (!buildTools.BuildInventoryEligible(slot, tool))
+            { wait = BlueprintBuildWait.Dependencies; dependencySlots = 1UL << slot; return false; }
+            var requested = target.Operation;
+            var operation = new BlueprintBuildOperation { Kind = requested.Kind, Mode = requested.Mode,
+                Consumer = tool.type == 3611 ? ToolBuildConsumer.GrandDesign : ToolBuildConsumer.Wiring,
+                HeldMaximum = requested.Kind == BlueprintBuildOperationKind.AddActuator && tool.type == ItemID.Actuator ? 1 : 0,
+                PrimaryMaximum = requested.Kind == BlueprintBuildOperationKind.AddWire ||
+                    requested.Kind == BlueprintBuildOperationKind.AddActuator && tool.type == 3611 ? 1 : 0,
+                SupplyType = requested.Kind == BlueprintBuildOperationKind.AddWire ? ItemID.Wire :
+                    requested.Kind == BlueprintBuildOperationKind.AddActuator && tool.type == 3611 ? ItemID.Actuator : 0 };
+            if (!WiringToolCurrent(target, p, tool, operation, actual, out wait, out dependencySlots)) return false;
+            if (WiringToolPending(tool.type)) { wait = BlueprintBuildWait.Dynamic; return false; }
+            int supply = -1;
+            if (operation.SupplyType > 0 && !TryPlanBuildSupply(target, p, operation.SupplyType, -1, out supply, out wait, out dependencySlots)) return false;
+            plan = new BuildOperationPlan { Operation = operation, Tool = tool, ToolType = tool.type, ToolSlot = slot,
+                Supply = supply < 0 ? null : p.inventory[supply], SupplySlot = supply,
+                SupplyType = operation.SupplyType, SupplyDestination = -1,
+                HeldMaximum = operation.HeldMaximum, PrimaryMaximum = operation.PrimaryMaximum };
+            return true;
+        }
+        private static int WiringToolType(BlueprintBuildOperation operation, int option)
+        {
             switch (operation.Kind)
             {
-                case BlueprintBuildOperationKind.AddWire:
-                    tool = ConstructionItemSlot(p, WireToolType(operation.Mode));
-                    if (tool < 0) tool = ConstructionItemSlot(p, 3625);
-                    if (tool < 0) tool = ConstructionItemSlot(p, 3611);
-                    if (tool < 0 || !TryPrepareBuildSupply(target, p, ItemID.Wire, -1, out primary)) break;
-                    operation.HeldMaximum = 0; operation.PrimaryMaximum = 1;
-                    break;
-                case BlueprintBuildOperationKind.AddActuator:
-                    tool = ConstructionItemSlot(p, ItemID.Actuator);
-                    if (tool >= 0) { operation.HeldMaximum = 1; operation.PrimaryMaximum = 0; operation.SupplyType = 0; }
-                    else
-                    {
-                        tool = ConstructionItemSlot(p, 3611);
-                        if (tool >= 0 && TryPrepareBuildSupply(target, p, ItemID.Actuator, -1, out primary))
-                        { operation.HeldMaximum = 0; operation.PrimaryMaximum = 1; operation.SupplyType = ItemID.Actuator; }
-                        else tool = -1;
-                    }
-                    break;
-                case BlueprintBuildOperationKind.SetInactive: tool = ConstructionItemSlot(p, 3620); break;
-                case BlueprintBuildOperationKind.RemoveOwnedActuator:
-                    tool = ConstructionItemSlot(p, 510); if (tool < 0) tool = ConstructionItemSlot(p, 3611); break;
+                case BlueprintBuildOperationKind.AddWire: return option == 0 ? WireToolType(operation.Mode) : option == 1 ? 3625 : 3611;
+                case BlueprintBuildOperationKind.AddActuator: return option == 0 ? ItemID.Actuator : option == 1 ? 3611 : 0;
+                case BlueprintBuildOperationKind.RemoveOwnedActuator: return option == 0 ? 510 : option == 1 ? 3611 : 0;
+                case BlueprintBuildOperationKind.SetInactive: return option == 0 ? 3620 : 0;
+                default: return 0;
             }
-            if (tool < 0) { WaitForBuild(target, BlueprintBuildWait.Material); return false; }
-            if (operation.Kind == BlueprintBuildOperationKind.AddWire && primary < 0) return false;
-            bool grand = p.inventory[tool].type == 3611;
-            if (Main.netMode == 1 && (grand || p.inventory[tool].type == 3625) && (unownedWiringReplies != 0 || wiringCorrelationLost))
-            { WaitForDynamicBuild(target); return false; }
-            operation.Consumer = grand ? ToolBuildConsumer.GrandDesign : ToolBuildConsumer.Wiring;
-            if (grand && (grandBuild != null || wiringReply != null)) { WaitForDynamicBuild(target); return false; }
-            if (p.inventory[tool].type == 3625 && wiringReply != null) { WaitForDynamicBuild(target); return false; }
-            return TryCreateOperationFlight(target, p, tool, primary, operation.HeldMaximum, operation.PrimaryMaximum, out flight);
+        }
+        private static bool WiringToolMatches(BlueprintBuildOperation operation, int type)
+        {
+            for (int option = 0; option < 3; option++) if (WiringToolType(operation, option) == type) return type > 0;
+            return false;
+        }
+        private bool WiringToolPending(int type, BuildFlight ownFlight = null)
+        {
+            // Final validation of this installation may see its own active651.
+            // That exact gesture can settle before cleanup; every other live
+            // gesture and every uncorrelated reply remains a real dependency.
+            return Main.netMode == 1 && (type == 3611 || type == 3625) && (unownedWiringReplies != 0 || wiringCorrelationLost) ||
+                type == 3611 && grandBuild != null && (ownFlight == null || !ReferenceEquals(grandBuild.Flight, ownFlight)) ||
+                (type == 3611 || type == 3625) && wiringReply != null && (ownFlight == null || !ReferenceEquals(wiringReply.Flight, ownFlight));
+        }
+        private void WaitForWiringOptions(BlueprintBuildTarget target, BlueprintBuildWait wait, ulong dependencySlots)
+        {
+            if ((wait & BlueprintBuildWait.Dynamic) != 0) WaitForDynamicBuild(target);
+            wait &= ~BlueprintBuildWait.Dynamic;
+            if ((wait & BlueprintBuildWait.Material) != 0) wait |= BlueprintBuildWait.Capability;
+            if (wait != BlueprintBuildWait.None) WaitForBuild(target, wait, dependencySlots);
         }
         private static int WireToolType(int bit)
         { switch (bit) { case 1: return 509; case 2: return 850; case 4: return 851; case 8: return 3612; default: return 0; } }
@@ -139,32 +219,77 @@ namespace JueMingR.TerrariaHost.Blueprint
             var target = flight.Target; var operation = flight.Operation; var p = flight.Player; var tool = flight.Source.Item;
             BlueprintWorldMatchSample actual;
             if (!ReadBuildCell(target.WorldX, target.WorldY, out actual) || !p.CanDoWireStuffHere(target.WorldX, target.WorldY)) return false;
-            if (tool.type == 3611)
+            BlueprintBuildWait wait; ulong dependencySlots;
+            if (!WiringToolCurrent(target, p, tool, operation, actual, out wait, out dependencySlots, flight))
             {
-                if (!GrandBuildPointVisible(p, target.WorldX, target.WorldY)) return false;
+                WaitForWiringOptions(target, wait, dependencySlots);
+                return false;
             }
-            else if (!p.IsInTileInteractionRange(target.WorldX, target.WorldY, TileReachCheckSettings.Simple, tool.tileBoost + p.blockRange))
-            { WaitForBuild(target, BlueprintBuildWait.Player); return false; }
+            if (operation.Kind == BlueprintBuildOperationKind.AddWire) return WiringPrimaryCurrent(flight, ItemID.Wire);
+            if (operation.Kind == BlueprintBuildOperationKind.AddActuator) return tool.type == ItemID.Actuator || WiringPrimaryCurrent(flight, ItemID.Actuator);
+            if (operation.Kind == BlueprintBuildOperationKind.SetInactive)
+                flight.InputGesture = p.ActuationRodLock && p.ActuationRodLockSetting != actual.Cell.Inactive ? ToolInputGesture.NeutralRelease : ToolInputGesture.HeldPress;
+            return true;
+        }
+        private bool WiringToolCurrent(BlueprintBuildTarget target, Player p, Item tool, BlueprintBuildOperation operation,
+            BlueprintWorldMatchSample actual, out BlueprintBuildWait wait, out ulong dependencySlots, BuildFlight ownFlight = null)
+        {
+            wait = BlueprintBuildWait.None; dependencySlots = 0;
+            if (!WiringToolInRange(target, p, tool)) { wait = BlueprintBuildWait.Player; return false; }
             switch (operation.Kind)
             {
                 case BlueprintBuildOperationKind.AddWire:
-                    if ((target.Cell.Wires & operation.Mode) == 0 || (actual.Cell.Wires & operation.Mode) != 0 ||
-                        tool.type != WireToolType(operation.Mode) && tool.type != 3625 && tool.type != 3611) return false;
-                    return WiringPrimaryCurrent(flight, ItemID.Wire);
+                    return (target.Cell.Wires & operation.Mode) != 0 && (actual.Cell.Wires & operation.Mode) == 0 && WiringToolMatches(operation, tool.type);
                 case BlueprintBuildOperationKind.AddActuator:
-                    if (actual.Cell.Actuator || tool.type != ItemID.Actuator && tool.type != 3611) return false;
-                    if (operation.Mode == 1 && (!WiringBodySame(target, actual) || actual.Cell.Inactive == target.Cell.Inactive ||
-                        ConstructionItemSlot(p, 3620) < 0 || ConstructionItemSlot(p, 510) < 0 && ConstructionItemSlot(p, 3611) < 0)) return false;
-                    return tool.type == ItemID.Actuator || WiringPrimaryCurrent(flight, ItemID.Actuator);
+                    if (actual.Cell.Actuator || !WiringToolMatches(operation, tool.type)) return false;
+                    if (operation.Mode != 1) return true;
+                    if (!WiringBodySame(target, actual) || actual.Cell.Inactive == target.Cell.Inactive || !CanSwitchBuildInactive(target)) return false;
+                    // A temporary installation earns a cleanup obligation. Prove
+                    // the existing rod and a real removal route at this target
+                    // before creating it; future movement may still yield.
+                    if (!WiringSupportToolReady(target, p, 3620, 0, out wait, out dependencySlots, ownFlight)) return false;
+                    return WiringSupportToolReady(target, p, 510, 3611, out wait, out dependencySlots, ownFlight);
                 case BlueprintBuildOperationKind.SetInactive:
-                    if (tool.type != 3620 || !actual.Cell.Actuator || !WiringBodySame(target, actual) || actual.Cell.Inactive == target.Cell.Inactive || !CanSwitchBuildInactive(target)) return false;
-                    flight.InputGesture = p.ActuationRodLock && p.ActuationRodLockSetting != actual.Cell.Inactive ? ToolInputGesture.NeutralRelease : ToolInputGesture.HeldPress;
-                    return true;
+                    return tool.type == 3620 && actual.Cell.Actuator && WiringBodySame(target, actual) &&
+                        actual.Cell.Inactive != target.Cell.Inactive && CanSwitchBuildInactive(target);
                 case BlueprintBuildOperationKind.RemoveOwnedActuator:
-                    return (tool.type == 510 || tool.type == 3611) && actual.Cell.Actuator && WiringBodySame(target, actual) &&
-                        actual.Cell.Inactive == target.Cell.Inactive && CurrentOwnedActuator(target.WorldX, target.WorldY)?.Confirmed == true;
+                    return WiringToolMatches(operation, tool.type) && actual.Cell.Actuator && WiringBodySame(target, actual) &&
+                        actual.Cell.Inactive == target.Cell.Inactive && PeekOwnedActuator(target.WorldX, target.WorldY)?.Confirmed == true;
                 default: return false;
             }
+        }
+        private static bool WiringToolInRange(BlueprintBuildTarget target, Player p, Item tool)
+        {
+            if (tool.type == 3611)
+                return GrandBuildPointVisible(p, target.WorldX, target.WorldY);
+            return p.IsInTileInteractionRange(target.WorldX, target.WorldY, TileReachCheckSettings.Simple, tool.tileBoost + p.blockRange);
+        }
+        private bool WiringSupportToolReady(BlueprintBuildTarget target, Player p, int firstType, int alternateType,
+            out BlueprintBuildWait wait, out ulong dependencySlots, BuildFlight ownFlight)
+        {
+            wait = BlueprintBuildWait.None; dependencySlots = 0; bool found = false;
+            for (int option = 0; option < 2; option++)
+            {
+                int type = option == 0 ? firstType : alternateType;
+                if (type <= 0) continue;
+                ConstructionItemSlot(p, type);
+                ulong candidates;
+                if (!constructionSlots.TryGetValue(type, out candidates)) continue;
+                for (int slot = 0; slot < 50 && candidates != 0; slot++)
+                {
+                    ulong bit = 1UL << slot; if ((candidates & bit) == 0) continue; candidates &= ~bit;
+                    var item = p.inventory[slot];
+                    if (item == null || item.IsAir || item.type != type) continue;
+                    found = true;
+                    if (!buildTools.BuildInventoryEligible(slot, item))
+                    { wait |= BlueprintBuildWait.Dependencies; dependencySlots |= bit; continue; }
+                    if (!WiringToolInRange(target, p, item)) { wait |= BlueprintBuildWait.Player; continue; }
+                    if (WiringToolPending(type, ownFlight)) { wait |= BlueprintBuildWait.Dynamic; continue; }
+                    wait = BlueprintBuildWait.None; dependencySlots = 0; return true;
+                }
+            }
+            if (!found) wait |= BlueprintBuildWait.Material;
+            return false;
         }
         private static bool WiringPrimaryCurrent(BuildFlight flight, int type)
         {
@@ -241,12 +366,16 @@ namespace JueMingR.TerrariaHost.Blueprint
         { return tile == null ? (byte)0 : (byte)((tile.wire() ? 1 : 0) | (tile.wire2() ? 2 : 0) | (tile.wire3() ? 4 : 0) | (tile.wire4() ? 8 : 0)); }
         private OwnedBuildActuator CurrentOwnedActuator(int x, int y)
         {
-            OwnedBuildActuator receipt;
-            if (!ownedBuildActuators.TryGetValue(WiringCoordinate(x, y), out receipt)) return null;
-            if (receipt.Invalid || receipt.Removed || receipt.Session != generation || !ReferenceEquals(Main.tile[x, y], receipt.Tile) ||
-                !receipt.Tile.actuator() || !receipt.Tile.active() || receipt.Tile.type != receipt.Type)
-            { ownedBuildActuators.Remove(WiringCoordinate(x, y)); return null; }
+            var receipt = PeekOwnedActuator(x, y);
+            if (receipt == null) ownedBuildActuators.Remove(WiringCoordinate(x, y));
             return receipt;
+        }
+        private OwnedBuildActuator PeekOwnedActuator(int x, int y)
+        {
+            OwnedBuildActuator receipt;
+            return ownedBuildActuators.TryGetValue(WiringCoordinate(x, y), out receipt) && !receipt.Invalid && !receipt.Removed &&
+                receipt.Session == generation && ReferenceEquals(Main.tile[x, y], receipt.Tile) && receipt.Tile.actuator() &&
+                receipt.Tile.active() && receipt.Tile.type == receipt.Type ? receipt : null;
         }
         private void ObserveActuatorPlacement(int x, int y, bool before, bool changed)
         {

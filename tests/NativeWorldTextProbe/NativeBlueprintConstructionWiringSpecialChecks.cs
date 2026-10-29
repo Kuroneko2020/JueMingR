@@ -28,6 +28,9 @@ namespace NativeWorldTextProbe
             ConstructionConsumerCase("Grand Design native right cancel",()=>ConstructionGrandDesign(context, host, tools, input, true));
             ConstructionConsumerCase("Grand Design unauthorized SP fallback",()=>ConstructionGrandDesign(context, host, tools, input, true, true));
             ConstructionConsumerCase("Grand Design unauthorized109 fallback",()=>ConstructionGrandDesign(context, host, tools, input, true, true, true));
+            ConstructionConsumerCase("actual wire range fallback and continuous tool",()=>ConstructionWiringToolSelection(context, host, tools, input, false));
+            ConstructionConsumerCase("actual actuator range fallback and primary debit",()=>ConstructionWiringToolSelection(context, host, tools, input, true));
+            ConstructionConsumerCase("owned actuator cleanup range fallback",()=>ConstructionActuatorCleanupTool(context, host, tools, input));
             ConstructionConsumerCase("native109/110 and pending slot0",()=>ConstructionWiringNetwork(context, host, tools, input));
             ConstructionConsumerCase("native110 correlation loss",()=>ConstructionWiringNetwork(context, host, tools, input, true));
             Console.WriteLine("PASS BlueprintConstructionWiring: native colors, multi-wrench, actuator provenance, owned651 single-point/cancel, original109/server MassWire/110; sockets/friend-host-client/GPU/FPS NOT_RUN");
@@ -183,6 +186,132 @@ namespace NativeWorldTextProbe
                 if(clientSubmission){NetMessage.buffer[256]=oldBuffer;Netplay.Connection=oldConnection;}
                 Main.mouseRight = oldRight; Main.mouseRightRelease = oldRightRelease;
             }
+        }
+        private static void ConstructionWiringToolSelection(object context, object host, object tools, object input, bool actuator)
+        {
+            var p = Reset(context, host, tools, input);
+            p.inventory[13].SetDefaults(3611); var grand = p.inventory[13];
+            if (!actuator) p.inventory[12].SetDefaults(ItemID.BlueWrench);
+            p.inventory[20].SetDefaults(actuator ? ItemID.Actuator : ItemID.Wire);
+            p.inventory[20].stack = actuator ? 2 : 3; var supply = p.inventory[20];
+            var shortTool = actuator ? supply : p.inventory[12];
+            // Native color wrenches have tileBoost = 20. Point 70 is beyond
+            // their reach at player tile 40, yet inside this fixture's screen.
+            Require(!p.IsInTileInteractionRange(70, 42, TileReachCheckSettings.Simple, shortTool.tileBoost + p.blockRange) &&
+                (bool)Call(host, "GrandBuildPointVisible", p, 70, 42),
+                "the short real tool is present but out of native reach; the Grand Design point is actually visible");
+            if (actuator) NativeToolsChecks.Tile(70, 42, TileID.Stone);
+            var cells = actuator ? new[] { new CaptureCell { Layers = CaptureLayer.Tile | CaptureLayer.Actuator, TileType = TileID.Stone, Actuator = true } } :
+                new[] { new CaptureCell { Layers = CaptureLayer.Wire, Wires = 2 }, new CaptureCell { X = 1, Layers = CaptureLayer.Wire, Wires = 2 } };
+            var oldMode = WiresUI.Settings.ToolMode; var gestures = new List<object>(); bool selectedPlanChecked = false;
+            long unknown = (long)Get(host, "BuildUnknownResults");
+            Action observe = () => {
+                var use = GetOptional(host, "grandBuild"); if (use == null || gestures.Contains(use)) return;
+                gestures.Add(use); var flight = Get(use, "Flight"); var operation = Get(flight, "Operation");
+                var primary = ((IEnumerable)Get(flight, "Dependencies")).Cast<object>().Single(value => (bool)Get(value, "Primary"));
+                Require(ReferenceEquals(Get(Get(flight, "Source"), "Item"), grand) && Get(operation, "Consumer").ToString() == "GrandDesign" &&
+                    (int)Get(operation, "HeldMaximum") == 0 && (int)Get(operation, "PrimaryMaximum") == 1 &&
+                    ReferenceEquals(Get(primary, "Item"), supply) && (int)Get(primary, "Maximum") == 1,
+                    "selected native651 uses the exact Grand Design and one primary-material budget, never a leaked short-tool held budget");
+            };
+            try
+            {
+                Place(context, host, input, Asset(host, cells), 70, 42); SetAutomatic(host, input, true);
+                NativeQuickItemChecks.Until(() => {
+                    ConstructionStepWithProjectiles(context, input); observe();
+                    return GetOptional(host, "grandBuild") != null && (bool)Get(Get(host, "grandBuild"), "OriginReady");
+                });
+                if (!actuator)
+                {
+                    // Move only the isolated player after the first genuine
+                    // gesture. Both choices are now legal, so the next same
+                    // color must retain the currently feasible exact tool.
+                    p.position = new Vector2(52 * 16, p.position.Y);
+                    Require(p.IsInTileInteractionRange(70, 42, TileReachCheckSettings.Simple, shortTool.tileBoost + p.blockRange) &&
+                        p.IsInTileInteractionRange(71, 42, TileReachCheckSettings.Simple, shortTool.tileBoost + p.blockRange),
+                        "the short wrench becomes a real reachable alternative before the next continuous target");
+                }
+                NativeQuickItemChecks.Until(() => {
+                    ConstructionStepWithProjectiles(context, input); observe();
+                    if (!actuator && !selectedPlanChecked) selectedPlanChecked = CheckSelectedWiringPlan(host, p, shortTool, grand, supply);
+                    return Scene(host).Length == 0;
+                });
+                Require((actuator || selectedPlanChecked) && gestures.Count == (actuator ? 1 : 2) && supply.stack == 1 && grand.stack == 1 &&
+                    (actuator ? Main.tile[70, 42].actuator() && ((IDictionary)Get(host, "ownedBuildActuators")).Count == 0 :
+                        Main.tile[70, 42].wire2() && Main.tile[71, 42].wire2() && shortTool.stack == 1) &&
+                    WiresUI.Settings.ToolMode == oldMode && (long)Get(host, "BuildUnknownResults") == unknown,
+                    "real651 completes the far target with exact debit; the feasible current tool continues and permanent actuators earn no cleanup right; actuator=" + actuator);
+            }
+            finally { WiresUI.Settings.ToolMode = oldMode; }
+        }
+        private static bool CheckSelectedWiringPlan(object host, Player p, Item shortTool, Item grand, Item supply)
+        {
+            if (!Main.tile[70, 42].wire2() || Main.tile[71, 42].wire2() || GetOptional(host, "grandBuild") != null) return false;
+            var prepared = GetOptional(host, "preparedBuild"); if (prepared == null) return false;
+            var original = Get(prepared, "Target");
+            var hint = Call(host, "PreferredBuildSourceHint", p);
+            if ((int)Get(original, "WorldX") != 71 || hint == null || !ReferenceEquals(Get(hint, "Item"), grand) ||
+                !(bool)Call(host, "IsBuildTargetCurrent", original)) return false;
+            // Copy a currently proven description, without changing the real
+            // candidate, owner or world. This witness checks preparation only;
+            // both real651 consumptions remain the surrounding case's duty.
+            var target = original.GetType().GetMethod("MemberwiseClone", F).Invoke(original, null);
+            var preferred = Call(host, "SnapshotSource", 12, shortTool);
+            object[] planning = { target, p, preferred, null, null, 0UL };
+            Require((bool)Call(host, "TryPlanBuild", planning) && ReferenceEquals(Get(planning[3], "Tool"), shortTool),
+                "two native tools are feasible and the explicit pure winner is the short exact Item while the current hint is Grand Design");
+            int stack = supply.stack; var oldMode = WiresUI.Settings.ToolMode;
+            object[] preparing = { target, p, null, planning[3] };
+            Require((bool)Call(host, "TryPrepareSelectedBuild", preparing), "the explicit feasible tool plan passes actual final preparation");
+            var flight = preparing[2]; var operation = Get(flight, "Operation");
+            Require(ReferenceEquals(Get(Get(flight, "Source"), "Item"), shortTool) && (int)Get(Get(flight, "Source"), "Slot") == 12 &&
+                Get(operation, "Consumer").ToString() == "Wiring" && (int)Get(operation, "HeldMaximum") == 0 && (int)Get(operation, "PrimaryMaximum") == 1 &&
+                Get(Get(prepared, "Operation"), "Consumer").ToString() == "GrandDesign" && supply.stack == stack && WiresUI.Settings.ToolMode == oldMode &&
+                GetOptional(host, "grandBuild") == null,
+                "final preparation keeps the selected exact Item/consumer/budgets, does not reselect the active hint or mutate/consume the real next651 candidate");
+            Console.WriteLine("PASS BlueprintConstruction selected wiring plan actualHint=GrandDesign selectedExactShort=12 consumer=Wiring primary=1 held=0 witness=prepare-only real651SequenceUnchanged=true");
+            return true;
+        }
+        private static void ConstructionActuatorCleanupTool(object context, object host, object tools, object input)
+        {
+            var p = Reset(context, host, tools, input);
+            p.inventory[12].SetDefaults(ItemID.ActuationRod); p.inventory[13].SetDefaults(ItemID.WireCutter);
+            p.inventory[14].SetDefaults(3611); var grand = p.inventory[14];
+            p.inventory[20].SetDefaults(ItemID.Actuator); p.inventory[20].stack = 2;
+            NativeToolsChecks.Tile(44, 42, TileID.Stone); WorldGen.PlaceWire2(44, 42);
+            p.position = new Vector2(72 * 16, p.position.Y);
+            Require(!p.IsInTileInteractionRange(44, 42, TileReachCheckSettings.Simple, p.inventory[12].tileBoost + p.blockRange),
+                "the real rod is initially too far away, even though a visible Grand Design could install a precondition");
+            var instance = Place(context, host, input, Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone, Inactive = true }), 44, 42);
+            long sourceSteps = (long)Get(host, "ProjectionMatchSourceSteps");
+            SetAutomatic(host, input, true);
+            NativeQuickItemChecks.Until(() => { ConstructionStepWithProjectiles(context, input); return ProgressDormant(instance) && !(bool)Get(Get(tools, "Use"), "Active"); });
+            Require(!Main.tile[44, 42].actuator() && ((IDictionary)Get(host, "ownedBuildActuators")).Count == 0 && p.inventory[20].stack == 2,
+                "a real candidate search creates no temporary actuator debt until the current rod route is reachable");
+            Require((long)Get(host, "ProjectionMatchSourceSteps") > sourceSteps, "the negative route completed actual source discovery before sleeping, without entering a final preparation");
+            p.position = new Vector2(40 * 16, p.position.Y);
+            Until(context, input, () => Main.tile[44, 42].inActive());
+            Require(Main.tile[44, 42].actuator() && ((IDictionary)Get(host, "ownedBuildActuators")).Count == 1,
+                "a real nearby installation and rod leave exactly the proven temporary actuator to clean up");
+            p.position = new Vector2(72 * 16, p.position.Y);
+            Require(!p.IsInTileInteractionRange(44, 42, TileReachCheckSettings.Simple, p.inventory[13].tileBoost + p.blockRange) &&
+                (bool)Call(host, "GrandBuildPointVisible", p, 44, 42), "the existing cutter is now out of reach while Grand Design cleanup is legal");
+            var oldMode = WiresUI.Settings.ToolMode;
+            try
+            {
+                NativeQuickItemChecks.Until(() => {
+                    ConstructionStepWithProjectiles(context, input); return GetOptional(host, "grandBuild") != null;
+                });
+                var flight = Get(Get(host, "grandBuild"), "Flight"); var operation = Get(flight, "Operation");
+                Require(Get(operation, "Kind").ToString() == "RemoveOwnedActuator" && ReferenceEquals(Get(Get(flight, "Source"), "Item"), grand) &&
+                    (int)Get(operation, "HeldMaximum") == 0 && (int)Get(operation, "PrimaryMaximum") == 0,
+                    "the reachable cleanup alternative keeps this exact installation receipt and has no consumption budget");
+                NativeQuickItemChecks.Until(() => { ConstructionStepWithProjectiles(context, input); return Scene(host).Length == 0; });
+                Require(!Main.tile[44, 42].actuator() && Main.tile[44, 42].inActive() && Main.tile[44, 42].wire2() &&
+                    ((IDictionary)Get(host, "ownedBuildActuators")).Count == 0 && grand.stack == 1 && WiresUI.Settings.ToolMode == oldMode,
+                    "the actual single-point651 removes only the owned actuator, preserves existing blue wire and settles its cleanup receipt");
+            }
+            finally { WiresUI.Settings.ToolMode = oldMode; }
         }
         private static void ConstructionTileWand(object context, object host, object tools, object input)
         {

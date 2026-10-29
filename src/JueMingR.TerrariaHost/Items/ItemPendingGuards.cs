@@ -21,12 +21,15 @@ namespace JueMingR.TerrariaHost.Items
         {
             internal ItemHostObservation World;
             internal ItemValue Slot, Cursor;
+            internal ItemMaterialPreparation Preparation;
+            internal bool MainInventory, Physical;
         }
         private readonly struct ItemValue
         {
             private readonly Item item;
             private readonly int type, stack, prefix;
             private readonly bool favorite;
+            internal Item Item { get { return item; } }
             internal ItemValue(Item value)
             { item = value; type = value?.type ?? 0; stack = value?.stack ?? 0; prefix = value?.prefix ?? 0; favorite = value?.favorited ?? false; }
             internal bool Matches(Item value)
@@ -63,6 +66,9 @@ namespace JueMingR.TerrariaHost.Items
             Patch(harmony, typeof(Player), "ItemCheck_CheckFishingBobber_ConsumeBait", new[] { typeof(Projectile), typeof(int).MakeByRefType() }, transpiler: nameof(ItemGuardTranspilers.SelectionReads));
             Patch(harmony, typeof(Player), "PlaceThing_Tiles", new[] { typeof(bool) }, nameof(PlaceTiles));
             Patch(harmony, typeof(ItemSorting), "SortInventory", Type.EmptyTypes, nameof(Sort));
+            harmony.Patch(AccessTools.DeclaredMethod(typeof(ItemSorting), "SortInventory", Type.EmptyTypes),
+                prefix: new HarmonyMethod(typeof(ItemPendingGuards), nameof(BeforeManualSort)),
+                finalizer: new HarmonyMethod(typeof(ItemPendingGuards), nameof(AfterManualSort)));
             Patch(harmony, typeof(Player), "PlaceThing_Tiles_CheckWandUsability", new[] { typeof(bool) }, nameof(Wand));
             Patch(harmony, typeof(Player), "PlaceThing_Tiles_PlaceIt_AutoPaintAndActuate", new[] { typeof(Microsoft.Xna.Framework.Vector3[,]), typeof(int) }, transpiler: nameof(ItemGuardTranspilers.ActuatorSelection));
             Patch(harmony, typeof(Player), "ItemCheck_UseWiringTools", new[] { typeof(Item) }, nameof(Wiring));
@@ -140,12 +146,18 @@ namespace JueMingR.TerrariaHost.Items
             if (!commandEdge || !Active || array == null || slot < 0 || slot >= array.Length) return;
             int account = Account(host.World.SessionPlayer, array);
             if (account != 0 && account != 5 && account != 6) return;
-            state = new SlotMutation { World = host.World, Slot = new ItemValue(array[slot]), Cursor = new ItemValue(Main.mouseItem) };
+            state = new SlotMutation { World = host.World, Slot = new ItemValue(array[slot]), Cursor = new ItemValue(Main.mouseItem),
+                Preparation = ItemMaterialPreparation.Current, MainInventory = account == 0 && slot < 50,
+                Physical = PhysicalInventoryCommand && ItemMaterialPreparation.Current?.NativeMutation != true };
         }
         private static Exception AfterSlotMutation(Item[] __0, int __2, SlotMutation __state, Exception __exception)
         {
             if (__state.World != null && (!__state.Slot.Matches(__0[__2]) || !__state.Cursor.Matches(Main.mouseItem)))
+            {
+                if (__state.Physical) __state.Preparation?.AfterManualMutation(__state.Slot.Item, __state.Cursor.Item,
+                    __0[__2], Main.mouseItem, __state.MainInventory);
                 __state.World.InvalidateObservation();
+            }
             return __exception;
         }
         private static bool ManualLeftSlot(Item[] __0, int __1, int __2)
@@ -225,6 +237,25 @@ namespace JueMingR.TerrariaHost.Items
             return true;
         }
         private static bool Sort() { return !Active || host.Ownership.ProtectedSlots == 0; }
+        private static bool PhysicalInventoryCommand
+        {
+            get { return Terraria.GameInput.PlayerInput.MouseInfo.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed ||
+                Terraria.GameInput.PlayerInput.MouseInfo.RightButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed || GamepadEdge(); }
+        }
+        private static void BeforeManualSort(out ItemMaterialPreparation.ManualSortState __state)
+        {
+            __state = Active && PhysicalInventoryCommand && host.Ownership.ProtectedSlots == 0 ?
+                ItemMaterialPreparation.Current?.ManualSortItems() : null;
+        }
+        private static Exception AfterManualSort(ItemMaterialPreparation.ManualSortState __state, Exception __exception)
+        {
+            if (__state != null && __exception == null)
+            {
+                ItemMaterialPreparation.Current?.AfterManualSort(__state);
+                host.World.InvalidateObservation();
+            }
+            return __exception;
+        }
         private static bool Buy(Player __instance, int __1, ref bool __result)
         {
             if (!Active || !ReferenceEquals(__instance, host.World.SessionPlayer) || !host.Ownership.AnyProtected || (host.AllowsOwnedPayment?.Invoke()??false) || (host.AllowsProcessingPayment?.Invoke()??false)) return true;

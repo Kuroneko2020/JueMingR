@@ -8,7 +8,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
-            try { Layers(); Objects(); FrameWitness(); DoorAppearance(); DoorWitness(); }
+            try { Layers(); PlatformFrames(); Objects(); FrameWitness(); DoorAppearance(); DoorWitness(); }
             catch (Exception error) { failures.Add("Blueprint world matching pure values: " + error); }
         }
         private static void Require(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
@@ -55,6 +55,53 @@ namespace JueMingR.ArchitectureTests
             var natural = new CaptureCell { Layers = CaptureLayer.Tile, TileType = 5, FrameX = 22, FrameY = 198 };
             Require(BlueprintWorldMatchComparer.CompareCell(natural, new BlueprintWorldMatchSample(true, natural, null, true, 22, 198)).MatchBits == 1, "reliable ObjectId=0 natural snapshot remains supported");
             Require(BlueprintWorldMatchComparer.CompareCell(natural, new BlueprintWorldMatchSample(true, natural, null, true, 44, 198)).ConflictBits == 1, "natural content with meaningful structural frame is not blindly equal by type");
+        }
+        private static void PlatformFrames()
+        {
+            // The pure consumer uses the Host-granted kind, not a native tile
+            // number. Real metadata admission and Capture live in Appearance.
+            var target = new CaptureCell { Layers = CaptureLayer.Tile, TileType = 1234, FrameX = 396, FrameY = 36, Slope = 1 };
+            var actual = target; actual.FrameX = 468;
+            var current = new BlueprintWorldMatchSample(true, actual, compareFrames: true, semanticFrameX: 0, semanticFrameY: 36,
+                frameKind: BlueprintWorldFrameKind.Platform18);
+            var catalog = new BlueprintPlacementCatalog(1, new[] { new BlueprintPlacementRule(
+                new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, 2345, 2345, 1, 1234, 2, platform: true), false) },
+                new Dictionary<int, BlueprintPlacementDescriptor>(), new Dictionary<int, int>(), new Dictionary<int, int>(), 3456, 4567);
+            Require(BlueprintWorldMatchComparer.CompareCell(target, current).MatchBits == 1 && BlueprintMaterialSteps.SameBody(target, current) == BlueprintBodyState.Same &&
+                BlueprintMaterialSteps.SameBody(target, current, catalog) == BlueprintBodyState.Same,
+                "granted platform semantics make ObjectId0 body and complete cell Match ignore legal neighbor X slots");
+            actual.FrameY = 54;
+            var otherStyle = new BlueprintWorldMatchSample(true, actual, compareFrames: true, semanticFrameX: 0, semanticFrameY: 54,
+                frameKind: BlueprintWorldFrameKind.Platform18);
+            Require(BlueprintWorldMatchComparer.CompareCell(target, otherStyle).ConflictBits == 1 && BlueprintMaterialSteps.SameBody(target, otherStyle) == BlueprintBodyState.Conflict &&
+                BlueprintMaterialSteps.SameBody(target, otherStyle, catalog) == BlueprintBodyState.Conflict,
+                "platform Y rows retain exact material style in both ObjectId0 body and final Match");
+            var literal = new BlueprintWorldMatchSample(true, current.Cell, compareFrames: true, semanticFrameX: 468, semanticFrameY: 36);
+            Require(BlueprintWorldMatchComparer.CompareCell(target, literal).ConflictBits == 1,
+                "a tile number or frame-looking values cannot grant platform equivalence without the native value profile");
+            foreach (var frame in new[] { new short[] { -18, 36 }, new short[] { 486, 36 }, new short[] { 17, 36 }, new short[] { 396, 37 } })
+            {
+                var malformed = target; malformed.FrameX = frame[0]; malformed.FrameY = frame[1];
+                Require(BlueprintWorldMatchComparer.CompareCell(malformed, current).MatchBits == 0 && BlueprintMaterialSteps.SameBody(malformed, current) != BlueprintBodyState.Same &&
+                    BlueprintMaterialSteps.SameBody(malformed, current, catalog) != BlueprintBodyState.Same,
+                    "negative, out-of-range or unaligned raw platform targets cannot gain Match or body Same from normalization");
+            }
+            var unknown = new BlueprintWorldMatchSample(true, current.Cell, objectUnknown: true);
+            Require(BlueprintWorldMatchComparer.CompareCell(target, unknown).UnknownBits == 1 && BlueprintMaterialSteps.SameBody(target, unknown) == BlueprintBodyState.Unknown &&
+                BlueprintMaterialSteps.SameBody(target, unknown, catalog) == BlueprintBodyState.Unknown,
+                "unproved native metadata remains Unknown instead of inheriting platform identity");
+            Require(BlueprintMaterialSteps.SameBody(target, new BlueprintWorldMatchSample(true, current.Cell), catalog) == BlueprintBodyState.Unknown,
+                "a nominal platform recipe and unprofiled synthetic observation cannot grant native body identity");
+            actual = current.Cell; actual.FrameX = 17;
+            foreach (var stale in new[] {
+                new BlueprintWorldMatchSample(true, actual, compareFrames: true, semanticFrameX: 0, semanticFrameY: 36, frameKind: BlueprintWorldFrameKind.Platform18),
+                new BlueprintWorldMatchSample(true, otherStyle.Cell, compareFrames: true, semanticFrameX: 0, semanticFrameY: 36, frameKind: BlueprintWorldFrameKind.Platform18),
+                new BlueprintWorldMatchSample(true, current.Cell, frameKind: BlueprintWorldFrameKind.Platform18) })
+                Require(BlueprintWorldMatchComparer.CompareCell(target, stale).UnknownBits == 1 && BlueprintMaterialSteps.SameBody(target, stale, catalog) == BlueprintBodyState.Unknown,
+                    "malformed raw, stale semantic style and absent frame proof cannot inherit a platform tag");
+            target.ObjectId = 17;
+            Require(BlueprintWorldMatchComparer.CompareCell(target, current).UnknownBits == 1,
+                "platform frame semantics do not replace the complete positive-ObjectId proof");
         }
         private sealed class CaptureCellBox { internal CaptureCell Value; }
         private static BlueprintWorldObject Object(int x = 100, int style = 2, int direction = 1, int form = 9)

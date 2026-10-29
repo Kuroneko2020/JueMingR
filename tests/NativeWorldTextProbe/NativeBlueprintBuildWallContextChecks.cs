@@ -66,7 +66,7 @@ namespace NativeWorldTextProbe
         private static void ConstructionWallContexts(object context, object host, object tools, object input)
         {
             var patch = new Harmony("JueMingR.Tests.BlueprintWallForegroundContext");
-            var method = host.GetType().GetMethod("TryPrepareBuild", F);
+            var method = host.GetType().GetMethod("TryPrepareSelectedBuild", F);
             wallContextHost = host; preparedObjectWalls = blockedPendingContainers = 0; wallContextProbeError = null;
             patch.Patch(method, postfix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(ObserveWallContextPreparation)));
             try

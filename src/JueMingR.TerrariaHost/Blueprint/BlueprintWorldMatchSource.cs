@@ -23,10 +23,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintObjectShape shape = source.Describe(cell);
             BlueprintWorldObject obj;
             bool interpreted = BlueprintWorldObjectSemantics.TryCreate(cell, shape, out obj);
-            bool frames = shape == null && (cell.Layers & CaptureLayer.Tile) != 0 &&
+            // Legacy selected-cell platforms have no target ObjectId. Grant
+            // their X-slot equivalence only after the shared native profile
+            // proved this world member; Y still carries its material style.
+            bool platform = interpreted && obj != null && cell.TileType < TileID.Sets.Platforms.Length && TileID.Sets.Platforms[cell.TileType];
+            bool frames = platform || shape == null && (cell.Layers & CaptureLayer.Tile) != 0 &&
                 cell.TileType < Main.tileFrameImportant.Length && Main.tileFrameImportant[cell.TileType];
-            BlueprintWorldFrameKind kind = BlueprintWorldFrameKind.Literal;
-            if (frames)
+            BlueprintWorldFrameKind kind = platform ? BlueprintWorldFrameKind.Platform18 : BlueprintWorldFrameKind.Literal;
+            if (frames && !platform)
             {
                 if (cell.TileType == TileID.PalmTree) kind = BlueprintWorldFrameKind.Palm22;
                 else if (cell.TileType == TileID.MushroomTrees) kind = BlueprintWorldFrameKind.Mushroom18;

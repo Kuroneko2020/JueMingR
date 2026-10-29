@@ -12,7 +12,7 @@ namespace JueMingR.Features.Blueprint
             CaptureLayer layer = wall ? CaptureLayer.Wall : CaptureLayer.Tile;
             if ((world.Cell.Layers & layer) == 0) return BlueprintBodyState.Missing;
             if (wall) return target.WallType == world.Cell.WallType ? BlueprintBodyState.Same : BlueprintBodyState.Conflict;
-            if (world.ObjectUnknown || target.ObjectId > 0) return BlueprintBodyState.Unknown;
+            if (world.ObjectUnknown || target.ObjectId > 0 || !BlueprintWorldMatchComparer.FrameProfileCurrent(world)) return BlueprintBodyState.Unknown;
             short x, y; BlueprintWorldMatchComparer.NormalizeFrame(target, world.FrameKind, out x, out y);
             return target.TileType == world.Cell.TileType && (!world.CompareFrames || x == world.SemanticFrameX && y == world.SemanticFrameY) ? BlueprintBodyState.Same : BlueprintBodyState.Conflict;
         }
@@ -22,7 +22,13 @@ namespace JueMingR.Features.Blueprint
             var descriptor = catalog?.TileShape(target);
             if (descriptor?.RequiresObject == true && target.ObjectId == 0) return BlueprintBodyState.Unknown;
             if (descriptor?.Platform == true && world.Available && (world.Cell.Layers & CaptureLayer.Tile) != 0 && target.TileType == world.Cell.TileType)
-                return target.FrameY == world.Cell.FrameY ? BlueprintBodyState.Same : BlueprintBodyState.Conflict;
+            {
+                // A nominal platform recipe is not a native world proof. The
+                // same proved frame profile used by final Match must supply
+                // neighbor equivalence and strict material style here too.
+                if (world.ObjectUnknown || !world.CompareFrames || world.FrameKind != BlueprintWorldFrameKind.Platform18)
+                    return BlueprintBodyState.Unknown;
+            }
             return SameBody(target, world);
         }
 
