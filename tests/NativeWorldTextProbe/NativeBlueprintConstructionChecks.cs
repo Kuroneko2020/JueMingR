@@ -52,11 +52,13 @@ namespace NativeWorldTextProbe
                     if(family=="ActuatorNetwork")check("original multiplayer temporary actuator provenance",()=>ConstructionWiringActuatorNetwork(context,host,tools,input));
                     if(family=="SupplyPresentation")
                     {
+                        check("owned inventory finishes across native auto pause",()=>SupplyAutoPause(context,host,tools,input));
                         check("hidden inventory presentation and migrated Flexible tool",()=>SupplyPresentation(context,host,tools,input));
                         check("first inventory action reveals manual ownership",()=>SupplyFirstInventoryTakeover(context,host,tools,input));
                     }
                     if(family=="SupplySmartWiring")
                     {
+                        check("owned inventory finishes across native auto pause",()=>SupplyAutoPause(context,host,tools,input));
                         check("settled supply survives a finite shared-budget boundary",()=>SupplyDiscoveryBoundary(context,host,tools,input));
                         check("natural smart platform slopes and fallback",()=>ConstructionSmartPlatform(context,host,tools,input));
                         check("original multiplayer temporary actuator provenance",()=>ConstructionWiringActuatorNetwork(context,host,tools,input));

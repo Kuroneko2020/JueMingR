@@ -18,6 +18,121 @@ namespace NativeWorldTextProbe
         private static Item presentationCursor;
         private static bool supplyDiscoveryFrozen;
         private static bool FreezeSupplyDiscoveryAdvance(){return !supplyDiscoveryFrozen;}
+        // Match the locked Main.DoUpdate pause fork, not its unrelated visual
+        // initialization. Both pause methods are original Terraria bodies.
+        // Only the unpaused arm enters this fixture's existing world stage;
+        // the assignments mirror Main immediately after CanPauseGame/paused UI.
+        private static bool SupplyAutoPauseStep(object context,object input,bool inventoryIntent=false)
+        {
+            NativeToolExecutionChecks.Sample(context,input,new Vector2(480,540),false);
+            if(inventoryIntent)PlayerInput.Triggers.Current.Inventory=true;
+            uint world=Main.GameUpdateCount;int consumers=continuousPlacements.Count;
+            Require(Main.CanUpdateGameplay,"auto-pause fixture reaches the original gameplay/pause fork");
+            bool paused=(bool)typeof(Main).GetMethod("CanPauseGame",F).Invoke(null,null);
+            if(paused)
+            {
+                typeof(Main).GetMethod("DoUpdate_WhilePaused",F).Invoke(null,null);
+                Main.gamePaused=true;
+            }
+            else
+            {
+                Main.gamePaused=false;
+                NativeQuickItemChecks.BeginWorldStep();Main.LocalPlayer.Update(0);
+            }
+            Call(context,"UpdateRuntime");constructionInputTail();
+            if(paused)Require(Main.GameUpdateCount==world && continuousPlacements.Count==consumers &&
+                !(bool)Get(input,"CanRunAutomaticActions"),"original paused UI and inventory tail never enter a world step or construction consumer");
+            return paused;
+        }
+        private static void SupplyAutoPause(object context,object host,object tools,object input)
+        {
+            bool oldPause=Main.autoPause,oldPaused=Main.gamePaused,oldOptions=Main.ingameOptionsWindow;
+            var patch=new Harmony("JueMingR.Tests.SupplyAutoPause");
+            patch.Patch(typeof(WorldGen).GetMethod("paintTile",F,null,new[]{typeof(int),typeof(int),typeof(byte),typeof(bool),typeof(bool)},null),
+                postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(ContinuousPainted)));
+            try
+            {
+                var p=Reset(context,host,tools,input);var preparation=Get(host,"buildMaterialPreparation");
+                p.inventory[12].SetDefaults(ItemID.Paintbrush);
+                p.inventory[20].SetDefaults(ItemID.RedPaint);p.inventory[20].stack=3;var material=p.inventory[20];
+                p.inventory[54].SetDefaults(ItemID.BluePaint);p.inventory[54].stack=7;var priority=p.inventory[54];
+                NativeToolsChecks.Tile(44,42,TileID.Stone);
+                Place(context,host,input,Asset(host,new CaptureCell{Layers=CaptureLayer.Tile,TileType=TileID.Stone,TilePaint=material.paint}),44,42);
+                continuousHost=host;continuousUse=Get(tools,"Use");continuousPlacements.Clear();continuousWatch=continuousAutomatic=true;
+                long start=(long)Get(preparation,"NativeClicks");Main.autoPause=true;SetAutomatic(host,input,true);
+                NativeQuickItemChecks.Until(()=>{SupplyAutoPauseStep(context,input);return Main.playerInventory;});
+                Require(Main.playerInventory && !Main.mouseItem.IsAir && (long)Get(preparation,"NativeClicks")==start+1 &&
+                    (bool)typeof(Main).GetMethod("CanPauseGame",F).Invoke(null,null),
+                    "the first real preparation click opens its own inventory and actually triggers vanilla CanPauseGame");
+                uint preparationWorld=Main.GameUpdateCount;long before=(long)Get(preparation,"NativeClicks");var cursor=Main.mouseItem;
+                Main.ingameOptionsWindow=true;
+                try
+                {
+                    Require(SupplyAutoPauseStep(context,input) && (long)Get(preparation,"NativeClicks")==before && ReferenceEquals(Main.mouseItem,cursor),
+                        "a real options menu blocks even an exact owned inventory receipt while vanilla remains paused");
+                }
+                finally{Main.ingameOptionsWindow=false;}
+                Call(input,"BeginUpdate");constructionInputTail();
+                Require(!(bool)Get(input,"CanStartActions") && (long)Get(preparation,"NativeClicks")==before && ReferenceEquals(Main.mouseItem,cursor),
+                    "an outer epoch without fresh native input cannot reuse the previous paused UI permission");
+                int preparePaused=0;
+                for(int i=0;i<8 && !(bool)Get(preparation,"Ready");i++)if(SupplyAutoPauseStep(context,input))preparePaused++;
+                Console.WriteLine("BlueprintAutoPause preparation ready="+Get(preparation,"Ready")+" pausedSteps="+preparePaused+
+                    " clicks="+((long)Get(preparation,"NativeClicks")-start)+" worldDelta="+unchecked(Main.GameUpdateCount-preparationWorld)+
+                    " consumers="+continuousPlacements.Count+" inventory="+Main.playerInventory+" paused="+Main.gamePaused);
+                Require((bool)Get(preparation,"Ready") && preparePaused>0 && Main.GameUpdateCount==preparationWorld && Main.gamePaused &&
+                    !Main.playerInventory && Main.mouseItem.IsAir && ReferenceEquals(p.inventory[54],material) && priority.stack==7 &&
+                    (long)Get(preparation,"NativeClicks")==start+3 && continuousPlacements.Count==0,
+                    "paused original UI/input tails must finish exactly three preparation swaps and close owned inventory without world progress");
+                // Ready is reached in Draw's tail after Main chose pause. An
+                // extra outer callback cannot use it until vanilla next takes
+                // the unpaused world arm, even though its inventory is closed.
+                Call(context,"UpdateRuntime");constructionInputTail();
+                Require((bool)Get(preparation,"Ready") && !(bool)Get(continuousUse,"Active") && !(bool)Get(preparation,"CanClickNow") &&
+                    continuousPlacements.Count==0 && Main.GameUpdateCount==preparationWorld,
+                    "Ready grants neither inventory continuation nor ToolUse/consumer permission in the still-paused epoch");
+                Require(!SupplyAutoPauseStep(context,input) && Main.GameUpdateCount==unchecked(preparationWorld+1),
+                    "only the next original non-paused arm restores normal world eligibility after owned inventory closure");
+                int returnPaused=0;
+                for(int i=0;i<120 && ((bool)Get(preparation,"HasWork") || Scene(host).Length!=0);i++)
+                {
+                    bool returning=(bool)Get(preparation,"Returning");
+                    if((bool)Get(preparation,"Using"))Require(!(bool)Get(preparation,"CanClickNow"),"Using never receives inventory continuation permission");
+                    if(SupplyAutoPauseStep(context,input) && returning)returnPaused++;
+                }
+                Require(!(bool)Get(preparation,"HasWork") && Scene(host).Length==0 && returnPaused>0 && !Main.playerInventory && Main.mouseItem.IsAir &&
+                    continuousPlacements.Count==1 && continuousPlacements[0].Kind=="PaintTile" && ReferenceEquals(continuousPlacements[0].Supply,material) &&
+                    Main.tile[44,42].color()==material.paint && ReferenceEquals(p.inventory[20],material) && material.stack==2 &&
+                    ReferenceEquals(p.inventory[54],priority) && priority.stack==7 && (long)Get(preparation,"NativeClicks")==start+6,
+                    "one real paint consumer spends one exact material, then paused UI completes inverse swaps and returns the original54 identity and real remainder");
+                Console.WriteLine("PASS BlueprintAutoPause preparePaused="+preparePaused+" returnPaused="+returnPaused+
+                    " nativeClicks=6 paintConsumers=1 materialRemainder=2 original54=7 menuBlocked=true unsampledBlocked=true pausedWorldSteps=0");
+                Require(!SupplyAutoPauseStep(context,input),"returned inventory lets vanilla leave pause naturally");
+                SetAutomatic(host,input,false);
+                // A foreign open inventory really pauses, but cannot start a
+                // new receipt. The exception belongs only to work already held.
+                Player.OpenInventory(quiet:true);Require(SupplyAutoPauseStep(context,input),"foreign inventory triggers the original pause condition");
+                var identity=new BlueprintProjectionIdentity(Guid.NewGuid(),Guid.NewGuid(),"auto-pause-new-task",(long)Get(Get(tools,"Runtime"),"Generation"),1);
+                object[] args={p,20,54,identity,-1};
+                Require(!(bool)Call(preparation,"TryPrepare",args) && !(bool)Get(preparation,"HasWork"),"paused input cannot start a new material preparation");
+                p.ToggleInv();Require(!SupplyAutoPauseStep(context,input),"manual inventory closure resumes only through vanilla's unpaused arm");
+                Call(preparation,"TryPrepare",args);constructionInputTail();
+                Require(Main.playerInventory && !Main.mouseItem.IsAir,"takeover starts with a genuine owned preparation cursor");
+                cursor=Main.mouseItem;before=(long)Get(preparation,"NativeClicks");
+                Require(SupplyAutoPauseStep(context,input,true) && Main.playerInventory && !(bool)Get(preparation,"HasWork") &&
+                    ReferenceEquals(Main.mouseItem,cursor),"the actual paused Inventory handler immediately reveals and hands over the hidden inventory");
+                Require(SupplyAutoPauseStep(context,input) && (long)Get(preparation,"NativeClicks")==before && Main.playerInventory && ReferenceEquals(Main.mouseItem,cursor),
+                    "a later paused update/tail cannot replay old swaps or close the player's inventory after takeover");
+                ManualPreparationClick(context,input,p,20);p.ToggleInv();Require(!SupplyAutoPauseStep(context,input),"manual owner completes its real cursor move and closes its own UI");
+                Console.WriteLine("PASS BlueprintAutoPause newPreparationBlocked=true readyAndUsingNotInventoryContinuation=true nativePausedInventoryTakeover=true oldTailCannotMoveOrClose=true");
+            }
+            finally
+            {
+                continuousWatch=continuousAutomatic=false;continuousHost=continuousUse=null;continuousPlacements.Clear();
+                Main.autoPause=oldPause;Main.gamePaused=oldPaused;Main.ingameOptionsWindow=oldOptions;
+                foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);
+            }
+        }
         // This deliberate interception executes the real patched interface
         // entry/exit without a GPU body. It proves scope and cleanup, never
         // pixels; the ordinary native input tail below still moves real Items.

@@ -537,15 +537,28 @@ namespace JueMingR.TerrariaHost.Items
         {
             get
             {
-                return tools.Runtime.IsSessionActive && tools.Input.CanRunAutomaticActions && PreparationInterfaceAllowed &&
+                return tools.Runtime.IsSessionActive && (tools.Input.CanRunAutomaticActions && !Main.gamePaused || CanContinuePausedInventory) && PreparationInterfaceAllowed &&
                     !tools.Use.Active && !player.dead && !player.CCed && !player.cursed && !player.noItems && !player.isOperatingAnotherEntity &&
-                    !player.HasLockedInventory() && !Main.gamePaused && !Main.gameMenu && !Main.blockInput && !Main.mapFullscreen &&
+                    !player.HasLockedInventory() && !Main.gameMenu && !Main.blockInput && !Main.mapFullscreen &&
                     !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
                     !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride == null && !PlayerInput.UsingGamepadUI &&
                     player.chest == -1 && player.talkNPC < 0 && player.sign < 0 && Main.npcShop == 0 &&
                     !Main.LocalPlayerHasPendingInventoryActions() && player.itemAnimation == 0 && player.itemTime == 0 && player.reuseDelay == 0 &&
                     (!player.selectedItemState.HasActiveOverride || OwnsNativeCursorOverride) &&
                     !player.selectedItemState.HasBufferedChange && !Modifiers && OrdinaryInventoryUi(player);
+            }
+        }
+        private bool CanContinuePausedInventory
+        {
+            get
+            {
+                // Vanilla permits inventory UI while single-player auto pause
+                // stops the world. Finish only our already-owned ItemSlot duty
+                // using this epoch's real UI input; StartAllowed and ToolUse
+                // still require a world step, so Ready/Using cannot build here.
+                return Main.netMode == 0 && Main.autoPause && Main.gamePaused && Main.CanUpdateGameplay && tools.Input.CanStartActions &&
+                    (phase == Phase.Preparing || phase == Phase.Returning) && ownsInventory && Main.playerInventory &&
+                    !Main.InGameUI.IsVisible && SameSession(player) && ExpectedCurrent(false, false);
             }
         }
         private bool PreparationInterfaceAllowed
