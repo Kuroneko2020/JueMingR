@@ -134,7 +134,11 @@ namespace NativeWorldTextProbe
                 ReferenceEquals(p.inventory,live) && ReferenceEquals(live[12],tool) && ReferenceEquals(live[0],material) &&
                 (int)Get(Get(use,"Intent"),"Slot")==12,
                 "Using title and temporary selected icon follow the actual migrated Flexible tool, not material or permanently pinned original selection");
-            Until(context,input,()=>Scene(host).Length==0 && !(bool)Get(preparation,"HasWork") && !(bool)Get(use,"Active"));
+            // The last real return click still has vanilla's cursor58
+            // override in this draw tail. Let the following Player.Update
+            // restore it before assessing completed selection ownership.
+            Until(context,input,()=>Scene(host).Length==0 && !(bool)Get(preparation,"HasWork") && !(bool)Get(use,"Active") &&
+                p.selectedItem==1 && !p.selectedItemState.HasActiveOverride);
             Require(ReferenceEquals(p.inventory[0],tool) && ReferenceEquals(p.inventory[12],material) && material.stack==2 &&
                 Player.FlexibleWandCycleOffset==oldCycle && Main.mouseItem.IsAir && p.selectedItem==1 && !p.selectedItemState.HasActiveOverride,
                 "the actual Flexible consumer spends one material then returns exact Items, selection and cycle through native exits");
