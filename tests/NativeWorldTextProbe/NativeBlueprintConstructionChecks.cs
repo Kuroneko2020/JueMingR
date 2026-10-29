@@ -41,7 +41,7 @@ namespace NativeWorldTextProbe
                     Exception first=null;
                     Action<string,Action> check=(name,body)=>
                     {
-                        if(first!=null && family=="SupplySmartWiring")return;
+                        if(first!=null && (family=="SupplySmartWiring" || family=="SupplyPresentation"))return;
                         try{body();Console.WriteLine("PASS BlueprintConstruction case="+name);}
                         catch(Exception error){Console.Error.WriteLine("CONSTRUCTION CASE "+name+": "+error);DumpConstructionPreparation(host,tools);if(first==null)first=error;}
                     };
@@ -50,6 +50,11 @@ namespace NativeWorldTextProbe
                     {
                     if(family=="SmartPlatform")check("natural smart platform slopes and fallback",()=>ConstructionSmartPlatform(context,host,tools,input));
                     if(family=="ActuatorNetwork")check("original multiplayer temporary actuator provenance",()=>ConstructionWiringActuatorNetwork(context,host,tools,input));
+                    if(family=="SupplyPresentation")
+                    {
+                        check("hidden inventory presentation and migrated Flexible tool",()=>SupplyPresentation(context,host,tools,input));
+                        check("first inventory action reveals manual ownership",()=>SupplyFirstInventoryTakeover(context,host,tools,input));
+                    }
                     if(family=="SupplySmartWiring")
                     {
                         check("settled supply survives a finite shared-budget boundary",()=>SupplyDiscoveryBoundary(context,host,tools,input));

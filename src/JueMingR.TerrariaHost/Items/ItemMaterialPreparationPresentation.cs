@@ -77,8 +77,22 @@ namespace JueMingR.TerrariaHost.Items
         private bool PresentCursorSelection
         { get { return (phase == Phase.Preparing || phase == Phase.Returning) && player?.selectedItem == 58 &&
             presentationSlot >= 0 && presentationSlot < 50 && presentationItem != null && PresentationCurrent(); } }
+        private int PresentUsingSelection(int actual)
+        {
+            if (phase != Phase.Using || actual < 0 || actual >= 50 || player?.selectedItem != actual || !PresentationCurrent()) return actual;
+            var use = tools.Use;
+            if (!use.Building || use.Operation != token || use.Intent?.Slot != actual || !use.OwnsBuildMaterial(inventory[actual])) return actual;
+            // Flexible can move the winning tool out of slot0. The view puts
+            // Items back at their original endpoints, so its selected index
+            // must follow THIS use's actual tool by reference as well. Keep
+            // vanilla's override flag: its extra temporary slot draws this
+            // same mapped Item; the pre-preparation selection is not pinned.
+            for (int i = 0; i < endpointCount; i++)
+                if (ReferenceEquals(endpoints[i].Original, inventory[actual])) return endpoints[i].Slot;
+            return actual;
+        }
         internal static int PresentHotbarSelection(int actual)
-        { var owner = Current; return owner != null && owner.PresentCursorSelection ? owner.presentationSlot : actual; }
+        { var owner = Current; return owner == null ? actual : owner.PresentCursorSelection ? owner.presentationSlot : owner.PresentUsingSelection(actual); }
         internal static bool PresentHotbarOverride(bool actual)
         { var owner = Current; return owner != null && owner.PresentCursorSelection ? false : actual; }
         internal static Item PresentHotbarHeldItem(Item actual)

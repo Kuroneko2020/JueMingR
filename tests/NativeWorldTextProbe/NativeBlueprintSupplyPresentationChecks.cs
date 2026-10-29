@@ -96,6 +96,49 @@ namespace NativeWorldTextProbe
             Call(preparation,"ReturnUse",useToken);Until(context,input,()=>!(bool)Get(preparation,"HasWork"));
             Require(ReferenceEquals(p.inventory[0],original) && ReferenceEquals(p.inventory[12],material) && material.stack==3,"display mapping returns only actual current remainder");
             Console.WriteLine("PASS BlueprintSupplyPresentation slot0ReadyUsingReferences=true currentRemainder=true noLiveInventoryReplacement=true");
+            SupplyFlexibleToolPresentation(context,host,tools,input);
+        }
+        private static void SupplyFlexibleToolPresentation(object context,object host,object tools,object input)
+        {
+            var p=Reset(context,host,tools,input);p.inventory[0].SetDefaults(ItemID.RubblemakerSmall);var tool=p.inventory[0];
+            p.inventory[1].SetDefaults(ItemID.CopperPickaxe);var originalSelection=p.inventory[1];
+            p.selectedItemState.Select(1);p.selectedItemState.Update();
+            p.inventory[12].SetDefaults(ItemID.DirtBlock);p.inventory[12].stack=3;var material=p.inventory[12];
+            int oldCycle=Player.FlexibleWandCycleOffset;
+            Require(WorldGen.PlaceObject(60,42,650,true,8),"display counterexample has a real Flexible second-bucket object");
+            var data=Terraria.ObjectData.TileObjectData.GetTileData(650,8);
+            var entry=NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context,host,input,(LibraryState)Get(host,"Library"),()=>Step(context,input),
+                60-data.Origin.X,42-data.Origin.Y,data.Width,data.Height,"搬运后真实工具显示");
+            Place(context,host,input,entry,44,43-data.Height);SetAutomatic(host,input,true);
+            var preparation=Get(host,"buildMaterialPreparation");var use=Get(tools,"Use");
+            Until(context,input,()=>(bool)Get(preparation,"Ready"));
+            var live=p.inventory;var view=(Item[])Call(preparation,"PresentHotbarInventory",new object[]{live});
+            int shown=(int)Call(preparation,"PresentHotbarSelection",p.selectedItem);
+            Console.WriteLine("BlueprintSupplyPresentation flexible ready actualSelected="+p.selectedItem+" shown="+shown);
+            Require(ReferenceEquals(live[12],tool) && ReferenceEquals(live[0],material) && ReferenceEquals(view[1],originalSelection),
+                "real Flexible preparation moves tool0 to source12 while Ready preserves the player's different original selected Item");
+            Until(context,input,()=>(bool)Get(preparation,"Using") && (bool)Get(use,"Building") && p.selectedItem==12);
+            view=(Item[])Call(preparation,"PresentHotbarInventory",new object[]{live});
+            shown=(int)Call(preparation,"PresentHotbarSelection",p.selectedItem);
+            bool temporary=(bool)Call(preparation,"PresentHotbarOverride",p.selectedItemState.HasActiveOverride);
+            var held=(Item)Call(preparation,"PresentHotbarHeldItem",p.HeldItem);
+            bool extra=(temporary || shown>=10) && shown!=58 && !held.IsAir;
+            Console.WriteLine("BlueprintSupplyPresentation flexible actualSelected="+p.selectedItem+" shown="+shown+" override="+temporary+
+                " titleType="+view[shown].type+" heldType="+held.type+" extra="+extra+" originalSelectedType="+originalSelection.type);
+            // These are the exact title, highlight and context36 extra-slot
+            // reads in GUIHotbarDrawInner. The real ToolUse/SelectedItemState
+            // chose 12; neither the live array nor that choice is substituted.
+            Require(p.selectedItemState.HasActiveOverride && temporary && extra && shown==0 &&
+                ReferenceEquals(view[shown],tool) && ReferenceEquals(held,tool) && view[shown].AffixName()==tool.AffixName() &&
+                ReferenceEquals(view[0],tool) && ReferenceEquals(view[12],material) && !ReferenceEquals(view[shown],originalSelection) &&
+                ReferenceEquals(p.inventory,live) && ReferenceEquals(live[12],tool) && ReferenceEquals(live[0],material) &&
+                (int)Get(Get(use,"Intent"),"Slot")==12,
+                "Using title and temporary selected icon follow the actual migrated Flexible tool, not material or permanently pinned original selection");
+            Until(context,input,()=>Scene(host).Length==0 && !(bool)Get(preparation,"HasWork") && !(bool)Get(use,"Active"));
+            Require(ReferenceEquals(p.inventory[0],tool) && ReferenceEquals(p.inventory[12],material) && material.stack==2 &&
+                Player.FlexibleWandCycleOffset==oldCycle && Main.mouseItem.IsAir && p.selectedItem==1 && !p.selectedItemState.HasActiveOverride,
+                "the actual Flexible consumer spends one material then returns exact Items, selection and cycle through native exits");
+            Console.WriteLine("PASS BlueprintSupplyPresentation flexibleTool0To12=true readyOriginalItem=1 usingDisplay=0 actualSelection=12 temporaryExtraTool=true consumed=1 exactReturn=true");
         }
         private static void SupplyFirstInventoryTakeover(object context,object host,object tools,object input)
         {
