@@ -27,9 +27,21 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal object Connection;
             internal int Stage, WireCount, ActuatorCount, DecodeType, DecodeCount;
             internal bool Decoding;
+            internal PendingBuildActuator TemporaryActuator;
+        }
+        // This candidate belongs only to the one outstanding109. It is not a
+        // cleanup right: ordered17/8 + both actually debited110s must earn that.
+        private sealed class PendingBuildActuator
+        {
+            internal Tile Tile;
+            internal int X, Y, Type;
+            internal short FrameX, FrameY;
+            internal long Token;
+            internal BlueprintProjectionIdentity Identity;
+            internal bool Active, Invalid, Retired, PlacementEntered, BitObserved, SawInstall;
         }
         private GrandBuildUse grandBuild, grandKill;
-        private WiringReply wiringReply;
+        private WiringReply wiringReply, wiringInstallReceive;
         private int unownedWiringReplies, unownedWiringStage;
         private bool wiringCorrelationLost;
 
@@ -191,12 +203,16 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             if (wiringReply != null || unownedWiringReplies != 0 || wiringCorrelationLost)
             { HoldUnconfirmedBuild(flight); return false; }
-            wiringReply = new WiringReply { Flight = flight, Session = generation, Connection = connection };
+            wiringReply = new WiringReply { Flight = flight, Session = generation, Connection = connection,
+                TemporaryActuator = CapturePendingActuator(flight) };
             return true;
         }
         private Action<Exception> BeginWiringReceive(MessageBuffer buffer, int start, int length)
         {
-            if (Main.netMode != 1 || buffer.whoAmI != 256 || length < 6 || start < 0 || start > buffer.readBuffer.Length - 6 || buffer.readBuffer[start] != 110) return null;
+            if (Main.netMode != 1 || buffer == null || buffer.whoAmI != 256 || length < 1 || start < 0 ||
+                start >= buffer.readBuffer.Length || length > buffer.readBuffer.Length - start) return null;
+            if (buffer.readBuffer[start] == 17) return BeginWiringActuatorReceive(buffer, start, length);
+            if (buffer.readBuffer[start] != 110 || length < 6) return null;
             int type = (short)(buffer.readBuffer[start + 1] | buffer.readBuffer[start + 2] << 8);
             int count = (short)(buffer.readBuffer[start + 3] | buffer.readBuffer[start + 4] << 8);
             int owner = buffer.readBuffer[start + 5];
@@ -234,7 +250,30 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (spent != count) { FailWiringReply(); return; }
                 if (type == 530) reply.WireCount = count; else reply.ActuatorCount = count;
                 reply.Stage++;
-                if (reply.Stage == 2) { wiringReply = null; FinishDetachedWiring(flight, reply.WireCount + reply.ActuatorCount); }
+                if (reply.Stage == 2) { wiringReply = null; FinishDetachedWiring(flight, reply.WireCount + reply.ActuatorCount, reply); }
+            };
+        }
+        private Action<Exception> BeginWiringActuatorReceive(MessageBuffer buffer, int start, int length)
+        {
+            var reply = wiringReply; var candidate = reply?.TemporaryActuator;
+            if (candidate == null || length < 9) return null;
+            int action = buffer.readBuffer[start + 1];
+            int x = (short)(buffer.readBuffer[start + 2] | buffer.readBuffer[start + 3] << 8);
+            int y = (short)(buffer.readBuffer[start + 4] | buffer.readBuffer[start + 5] << 8);
+            if ((action != 8 && action != 9) || x != candidate.X || y != candidate.Y) return null;
+            //17 has no owner/nonce. Observe only this exact native write; its
+            // provenance still depends on the later finite, ordered110 pair.
+            if (action != 8 || reply.Stage != 0 || candidate.SawInstall || candidate.PlacementEntered ||
+                !PendingActuatorRequestCurrent(reply) || !PendingActuatorBodyCurrent(candidate) || candidate.Tile.actuator())
+            { candidate.Invalid = true; return null; }
+            if (candidate.Invalid || candidate.Retired) return null;
+            var previous = wiringInstallReceive;
+            if (previous != null) { candidate.Invalid = true; return null; }
+            wiringInstallReceive = reply; bool ended = false;
+            return error => {
+                if (ended) return; ended = true;
+                if (ReferenceEquals(wiringInstallReceive, reply)) wiringInstallReceive = previous;
+                if (error != null || !candidate.SawInstall || !PendingActuatorBodyCurrent(candidate) || !candidate.Tile.actuator()) candidate.Invalid = true;
             };
         }
         private bool WiringPendingSourcesCurrent(WiringReply reply)
@@ -293,9 +332,24 @@ namespace JueMingR.TerrariaHost.Blueprint
             wiringCorrelationLost = true;
             wiringReply = null; HoldUnconfirmedBuild(reply.Flight);
         }
-        private void FinishDetachedWiring(BuildFlight flight, int actualSpent = -1)
+        private void FinishDetachedWiring(BuildFlight flight, int actualSpent = -1, WiringReply reply = null)
         {
             if (!BuildConsumptionValid(flight)) { HoldUnconfirmedBuild(flight); return; }
+            if (reply != null && TemporaryGrandActuatorInstall(flight))
+            {
+                // The original decoder has already proved the exact debit.
+                // Zero means this request installed nothing, even when another
+                // actuator is now visible. Missing individual provenance must
+                // not reclassify known consumption as an unknown material loss.
+                if (reply.ActuatorCount == 1 && !ConfirmPendingActuator(reply))
+                    projectionFeedback = "前置致动器来源未确认（" + flight.Target.WorldX + "，" + flight.Target.WorldY + "）；已停止自动回收。";
+                bool installed = WiringBuildApplied(flight);
+                flight.Checked = true;
+                if (flight.Target.Range != null)
+                { if (installed) RememberBuildFrontier(flight.Target); else RequestBuildEligibilityRetry(flight.Target); }
+                NotifyBuildAttempt(flight.Target);
+                return;
+            }
             bool applied = WiringBuildApplied(flight);
             bool spent = actualSpent > 0;
             foreach (var source in flight.Dependencies)
@@ -317,6 +371,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             private static HostBlueprint owner;
             internal static void ObserveStore(int x, int y, int kind, int oldValue, int newValue)
             { owner?.ObserveOwnedActuatorStore(x, y, kind, oldValue, newValue); }
+            internal static void ObserveTileReplacement(int x, int y) { owner?.ObserveActuatorTileReplacement(x, y); }
             internal static void Install(HostBlueprint value)
             {
                 if (ReferenceEquals(owner, value)) return;
@@ -352,8 +407,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             private static bool MassBefore(Point __0, Point __1, Player __2) { return owner?.AllowNativeMassWire(__0, __1, __2) ?? true; }
             private static bool SendBefore(int __0, int __4, float __5, float __6, float __7, int __8)
             { return owner?.ObserveWiringSend(__0, __4, __5, __6, __7, __8) ?? true; }
-            private static void ActuatorBefore(int __0, int __1, out bool __state) { __state = Main.tile[__0, __1].actuator(); }
-            private static void ActuatorAfter(int __0, int __1, bool __state, bool __result) { owner?.ObserveActuatorPlacement(__0, __1, __state, __result); }
+            private static void ActuatorBefore(int __0, int __1, out ActuatorPlacementObservation __state)
+            { __state = owner == null ? default(ActuatorPlacementObservation) : owner.BeginActuatorPlacement(__0, __1); }
+            private static void ActuatorAfter(int __0, int __1, ActuatorPlacementObservation __state, bool __result)
+            { owner?.ObserveActuatorPlacement(__0, __1, __state, __result); }
             private static void BitBefore(Tile __instance, out bool __state) { __state = __instance.actuator(); }
             private static void BitAfter(Tile __instance, bool __state) { owner?.ObserveActuatorBit(__instance, __state, __instance.actuator()); }
             private static void ReceiveBefore(MessageBuffer __instance, int __0, int __1, out Action<Exception> __state) { __state = owner?.BeginWiringReceive(__instance, __0, __1); }

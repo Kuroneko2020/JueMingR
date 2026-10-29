@@ -64,7 +64,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // One unfinished temporary chain is enough. It may yield for
                 // range/tool recovery while unrelated construction continues;
                 // walking away must not accumulate a map of cleanup debts.
-                if (!permanent && ownedBuildActuators.Count != 0 && owned == null) return false;
+                if (!permanent && owned == null && (ownedBuildActuators.Count != 0 || wiringReply?.TemporaryActuator != null)) return false;
                 operation = new BlueprintBuildOperation { Kind = BlueprintBuildOperationKind.AddActuator, Consumer = ToolBuildConsumer.Wiring,
                     Mode = permanent ? 0 : 1, SupplyType = ItemID.Actuator, PrimaryMaximum = 0, HeldMaximum = 1 };
             }
@@ -243,6 +243,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 case BlueprintBuildOperationKind.AddActuator:
                     if (actual.Cell.Actuator || !WiringToolMatches(operation, tool.type)) return false;
                     if (operation.Mode != 1) return true;
+                    if (wiringReply?.TemporaryActuator != null && (ownFlight == null || !ReferenceEquals(wiringReply.Flight, ownFlight)))
+                    { wait = BlueprintBuildWait.Dynamic; return false; }
                     if (!WiringBodySame(target, actual) || actual.Cell.Inactive == target.Cell.Inactive || !CanSwitchBuildInactive(target)) return false;
                     // A temporary installation earns a cleanup obligation. Prove
                     // the existing rod and a real removal route at this target
@@ -377,9 +379,78 @@ namespace JueMingR.TerrariaHost.Blueprint
                 receipt.Session == generation && ReferenceEquals(Main.tile[x, y], receipt.Tile) && receipt.Tile.actuator() &&
                 receipt.Tile.active() && receipt.Tile.type == receipt.Type ? receipt : null;
         }
-        private void ObserveActuatorPlacement(int x, int y, bool before, bool changed)
+        private static bool TemporaryGrandActuatorInstall(BuildFlight flight)
         {
-            if (!changed || before) return;
+            return flight?.Operation?.Consumer == ToolBuildConsumer.GrandDesign && flight.Source.Type == 3611 &&
+                flight.Operation.Kind == BlueprintBuildOperationKind.AddActuator && flight.Operation.Mode == 1;
+        }
+        private PendingBuildActuator CapturePendingActuator(BuildFlight flight)
+        {
+            if (!TemporaryGrandActuatorInstall(flight)) return null;
+            var tile = Main.tile[flight.Target.WorldX, flight.Target.WorldY];
+            if (tile == null || !tile.active() || tile.actuator()) return null;
+            return new PendingBuildActuator { X = flight.Target.WorldX, Y = flight.Target.WorldY, Tile = tile, Type = tile.type,
+                Active = tile.active(), FrameX = tile.frameX, FrameY = tile.frameY, Token = flight.Token, Identity = flight.Target.Identity };
+        }
+        private bool PendingActuatorRequestCurrent(WiringReply reply)
+        {
+            var candidate = reply.TemporaryActuator;
+            return reply.Session == generation && ReferenceEquals(reply.Connection, connection) && ReferenceEquals(connection, Netplay.Connection) &&
+                candidate != null && reply.Flight.Token == candidate.Token && reply.Flight.Target.Identity.Equals(candidate.Identity);
+        }
+        private static bool PendingActuatorBodyCurrent(PendingBuildActuator candidate)
+        {
+            var tile = Main.tile[candidate.X, candidate.Y];
+            return ReferenceEquals(tile, candidate.Tile) && tile != null && tile.type == candidate.Type && tile.active() == candidate.Active &&
+                (!Main.tileFrameImportant[candidate.Type] || tile.frameX == candidate.FrameX && tile.frameY == candidate.FrameY);
+        }
+        private bool ConfirmPendingActuator(WiringReply reply)
+        {
+            var candidate = reply.TemporaryActuator;
+            if (candidate == null || candidate.Invalid || candidate.Retired || !candidate.SawInstall || !candidate.BitObserved ||
+                reply.Stage != 2 || reply.WireCount != 0 || reply.ActuatorCount != 1 || !PendingActuatorRequestCurrent(reply) ||
+                !PendingActuatorBodyCurrent(candidate) || !candidate.Tile.actuator() || ownedBuildActuators.Count != 0) return false;
+            bool live = false;
+            foreach (var projection in projectionScene) if (projection.Identity.Equals(candidate.Identity)) { live = true; break; }
+            if (!live) return false;
+            ownedBuildActuators[WiringCoordinate(candidate.X, candidate.Y)] = new OwnedBuildActuator {
+                X = candidate.X, Y = candidate.Y, Tile = candidate.Tile, Type = candidate.Type, Session = reply.Session,
+                Token = candidate.Token, Identity = candidate.Identity, Confirmed = true };
+            return true;
+        }
+        private struct ActuatorPlacementObservation
+        {
+            internal Tile Tile;
+            internal bool Before;
+            internal WiringReply Receive;
+        }
+        private ActuatorPlacementObservation BeginActuatorPlacement(int x, int y)
+        {
+            var tile = Main.tile[x, y];
+            var observation = new ActuatorPlacementObservation { Tile = tile, Before = tile?.actuator() == true };
+            var reply = wiringInstallReceive; var candidate = reply?.TemporaryActuator;
+            if (candidate == null || x != candidate.X || y != candidate.Y) return observation;
+            observation.Receive = reply;
+            if (candidate.PlacementEntered || observation.Before || !PendingActuatorBodyCurrent(candidate)) candidate.Invalid = true;
+            candidate.PlacementEntered = true;
+            return observation;
+        }
+        private bool ExpectedPendingActuatorInstall(PendingBuildActuator candidate)
+        {
+            return !candidate.Invalid && !candidate.Retired && candidate.PlacementEntered && !candidate.SawInstall && !candidate.BitObserved &&
+                ReferenceEquals(wiringInstallReceive, wiringReply) && ReferenceEquals(wiringInstallReceive?.TemporaryActuator, candidate);
+        }
+        private void ObserveActuatorPlacement(int x, int y, ActuatorPlacementObservation observation, bool changed)
+        {
+            var candidate = observation.Receive?.TemporaryActuator;
+            if (candidate != null)
+            {
+                if (!changed || observation.Before || !ReferenceEquals(observation.Tile, candidate.Tile) || !candidate.BitObserved ||
+                    !PendingActuatorBodyCurrent(candidate) || !candidate.Tile.actuator()) candidate.Invalid = true;
+                else if (!candidate.Invalid) candidate.SawInstall = true;
+                return;
+            }
+            if (!changed || observation.Before || wiringInstallReceive != null) return;
             var flight = wiringNativeFlight;
             if (flight == null || flight.Operation.Kind != BlueprintBuildOperationKind.AddActuator || flight.Operation.Mode != 1 ||
                 flight.Target.WorldX != x || flight.Target.WorldY != y || !CanBuildAutomatically(flight.Player)) return;
@@ -389,7 +460,14 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ObserveActuatorBit(Tile tile, bool before, bool after)
         {
-            if (before == after || ownedBuildActuators.Count == 0) return;
+            if (before == after) return;
+            var candidate = wiringReply?.TemporaryActuator;
+            if (Main.netMode == 1 && candidate != null && ReferenceEquals(candidate.Tile, tile))
+            {
+                if (!before && after && ExpectedPendingActuatorInstall(candidate)) candidate.BitObserved = true;
+                else candidate.Invalid = true;
+            }
+            if (ownedBuildActuators.Count == 0) return;
             long invalid = 0; bool remove = false;
             foreach (var receipt in ownedBuildActuators.Values)
             {
@@ -402,11 +480,33 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal static void ObserveConstructionWorldStore(int x, int y, int kind, int oldValue, int newValue)
         { ConstructionNativeHooks.ObserveStore(x, y, kind, oldValue, newValue); }
+        internal static void ObserveConstructionTileReplacement(int x, int y)
+        { ConstructionNativeHooks.ObserveTileReplacement(x, y); }
+        private void ObserveActuatorTileReplacement(int x, int y)
+        {
+            var candidate = wiringReply?.TemporaryActuator;
+            if (Main.netMode == 1 && candidate != null && candidate.X == x && candidate.Y == y) candidate.Invalid = true;
+            OwnedBuildActuator receipt;
+            if (ownedBuildActuators.TryGetValue(WiringCoordinate(x, y), out receipt))
+            { receipt.Invalid = true; ownedBuildActuators.Remove(WiringCoordinate(x, y)); }
+        }
         private void ObserveOwnedActuatorStore(int x, int y, int kind, int oldValue, int newValue)
         {
-            OwnedBuildActuator receipt;
-            if (oldValue == newValue || !ownedBuildActuators.TryGetValue(WiringCoordinate(x, y), out receipt)) return;
+            if (oldValue == newValue) return;
             int delta = oldValue ^ newValue;
+            var candidate = wiringReply?.TemporaryActuator;
+            if (Main.netMode == 1 && candidate != null && candidate.X == x && candidate.Y == y)
+            {
+                // Only the expected native17/8 false->true is exempt. Any
+                // later remove/re-add or body ABA permanently loses this
+                // candidate, even when the last observed values match again.
+                if (kind == 3 && (delta & 0x800) != 0 &&
+                    (!ExpectedPendingActuatorInstall(candidate) || (oldValue & 0x800) != 0 || (newValue & 0x800) == 0)) candidate.Invalid = true;
+                if (kind == 0 || kind == 3 && (delta & 0x20) != 0 ||
+                    (kind == 6 || kind == 7) && Main.tileFrameImportant[candidate.Type]) candidate.Invalid = true;
+            }
+            OwnedBuildActuator receipt;
+            if (!ownedBuildActuators.TryGetValue(WiringCoordinate(x, y), out receipt)) return;
             // FieldKinds is locked to .8: 0=type, 3=sTileHeader,
             // 6/7=frameX/Y. Inactive is bit0x40; actuator is0x800 and
             // active is0x20. An owned rod's Inactive write retains provenance.
@@ -429,13 +529,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                 foreach (var receipt in ownedBuildActuators.Values)
                     if (!receipt.Invalid && !receipt.Removed && receipt.Tile.actuator())
                     { projectionFeedback = "前置致动器尚未回收（" + receipt.X + "，" + receipt.Y + "）；已停止后续修改。"; break; }
-                grandBuild = null; wiringReply = null; ownedBuildActuators.Clear();
+                grandBuild = null; wiringReply = wiringInstallReceive = null; ownedBuildActuators.Clear();
                 unownedWiringReplies = unownedWiringStage = 0; wiringCorrelationLost = false;
                 constructionInventory = null; constructionPlayer = null; constructionSlots.Clear();
             }
         }
         private void CancelWiringBuildIdentity(BlueprintProjectionIdentity identity)
         {
+            var candidate = wiringReply?.TemporaryActuator;
+            if (candidate != null && candidate.Identity.Equals(identity)) candidate.Retired = true;
             var use = grandBuild;
             if (use?.Flight?.Target.Identity.Equals(identity) == true)
             {

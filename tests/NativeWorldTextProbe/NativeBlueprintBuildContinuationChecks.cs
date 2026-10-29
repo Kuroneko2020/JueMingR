@@ -649,7 +649,7 @@ namespace NativeWorldTextProbe
                     !(bool)Call(host, "BuildFlightCurrent", successor, false),
                     "actual movement revokes the exact short brush while the real long brush can still reach the unchanged target");
                 long checks = (long)Get(host, "BuildCandidateChecks"), clicks = (long)Get(preparation, "NativeClicks");
-                Require((bool)Call(host, "ContinueBuildSupply", p) && (bool)Get(preparation, "Returning") &&
+                Require((bool)Call(host, "ContinueBuildSupply", new object[]{p,64}) && (bool)Get(preparation, "Returning") &&
                     GetOptional(host, "buildSupplyTarget") == null && GetOptional(host, "buildSupplyPlan") == null &&
                     (long)Get(host, "buildSupplyReadyFlight") == 0 && (long)Get(host, "BuildCandidateChecks") == checks &&
                     (long)Get(preparation, "NativeClicks") == clicks && continuousPlacements.Count == 1 && red.stack == 2,

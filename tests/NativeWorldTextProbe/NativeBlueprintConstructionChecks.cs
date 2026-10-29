@@ -41,12 +41,23 @@ namespace NativeWorldTextProbe
                     Exception first=null;
                     Action<string,Action> check=(name,body)=>
                     {
+                        if(first!=null && family=="SupplySmartWiring")return;
                         try{body();Console.WriteLine("PASS BlueprintConstruction case="+name);}
                         catch(Exception error){Console.Error.WriteLine("CONSTRUCTION CASE "+name+": "+error);DumpConstructionPreparation(host,tools);if(first==null)first=error;}
                     };
                     check("finite original inventory input preparation",()=>ConstructionMaterialPreparation(context,host,tools,input));
                     if(!preparationOnly && first==null)
                     {
+                    if(family=="SmartPlatform")check("natural smart platform slopes and fallback",()=>ConstructionSmartPlatform(context,host,tools,input));
+                    if(family=="ActuatorNetwork")check("original multiplayer temporary actuator provenance",()=>ConstructionWiringActuatorNetwork(context,host,tools,input));
+                    if(family=="SupplySmartWiring")
+                    {
+                        check("settled supply survives a finite shared-budget boundary",()=>SupplyDiscoveryBoundary(context,host,tools,input));
+                        check("natural smart platform slopes and fallback",()=>ConstructionSmartPlatform(context,host,tools,input));
+                        check("original multiplayer temporary actuator provenance",()=>ConstructionWiringActuatorNetwork(context,host,tools,input));
+                        check("hidden inventory presentation entry and restoration",()=>SupplyPresentation(context,host,tools,input));
+                        check("first inventory action reveals manual ownership",()=>SupplyFirstInventoryTakeover(context,host,tools,input));
+                    }
                     if(family==null)
                     {
                     check("object walls preserve layer and container duties",()=>ConstructionWallContexts(context,host,tools,input));

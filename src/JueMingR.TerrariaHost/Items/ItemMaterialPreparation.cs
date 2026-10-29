@@ -18,7 +18,7 @@ namespace JueMingR.TerrariaHost.Items
     // One short native inventory preparation, not another item scheduler. Its
     // finite endpoints pass to the existing use token and return through the
     // same owner. Only original ItemSlot.LeftClick moves live Items.
-    internal sealed class ItemMaterialPreparation
+    internal sealed partial class ItemMaterialPreparation
     {
         private enum Phase { Idle, Preparing, Ready, Using, Returning, Abandoning, Unknown }
         private enum TailStep { None, Neutral, Press }
@@ -115,6 +115,7 @@ namespace JueMingR.TerrariaHost.Items
                 if (buffer < 0) return false;
             }
             player = p; inventory = p.inventory; session = tools.Runtime.Generation; selection = tools.SelectionIntent;
+            presentationSlot = p.selectedItem; presentationItem = presentationSlot >= 0 && presentationSlot < p.inventory.Length ? p.inventory[presentationSlot] : null;
             receiptEpoch++; displacedMoved = false;
             this.sourceSlot = sourceSlot; this.destination = destination; this.identity = identity;
             material = desired; materialType = desired.type; displaced = destination >= 50 && sourceSlot != destination ? oldDestination : null;
@@ -344,7 +345,13 @@ namespace JueMingR.TerrariaHost.Items
             ReturnUseCore(oldToken,nextIdentity);
             return phase==Phase.Ready;
         }
-        private void ReturnUseCore(long oldToken,BlueprintProjectionIdentity nextIdentity)
+        internal bool TryReturnUseDiscovery(long oldToken)
+        {
+            if (phase != Phase.Using || token != oldToken || nativeCalls != 0 || tailPending || ownsInventory || returnRequested) return false;
+            ReturnUseCore(oldToken, null, true);
+            return phase == Phase.Ready;
+        }
+        private void ReturnUseCore(long oldToken,BlueprintProjectionIdentity nextIdentity, bool discovery = false)
         {
             if (!OnGameThread || phase != Phase.Using || token != oldToken || !SameSessionIdentity(player)) return;
             if (!InputOwnershipCurrent()) return;
@@ -362,10 +369,10 @@ namespace JueMingR.TerrariaHost.Items
             if (!tools.Items.Ownership.TryBeginUse(session, sourceSlot, nextToken, Slots))
             { LoseIdentity("material-preparation-return-handoff", false); return; }
             token = nextToken; UseConsumptionMaximum = null;
-            // Host may retain only an already current, exact next candidate.
-            // The old use is released; this token protects inventory endpoints
-            // for one Ready handoff and grants no native consumer/input lease.
-            if(nextIdentity!=null){identity=nextIdentity;phase=Phase.Ready;return;}
+            // Ready owns inventory endpoints, never gameplay input. Discovery
+            // deliberately owns no completed projection; Host must bind a new
+            // current target before adopting the next real use token.
+            if(nextIdentity!=null || discovery){identity=nextIdentity;phase=Phase.Ready;return;}
             phase = Phase.Returning;
             if (historyCount == 0) FinishReturn();
         }
@@ -387,6 +394,7 @@ namespace JueMingR.TerrariaHost.Items
         internal void ClearSession()
         {
             if (!OnGameThread) return;
+            RestoreHiddenPresentation();
             RestoreBorrowedInput();
             // Only an unchanged, still-owned UI with an empty cursor can be
             // closed. An occupied cursor is handed to the player in the real
@@ -400,6 +408,7 @@ namespace JueMingR.TerrariaHost.Items
         }
         private void LoseIdentity(string reason, bool manual)
         {
+            RestoreHiddenPresentation();
             RestoreBorrowedInput(); Reason = reason;
             if (!manual && ownsInventory && SameSession(player) && Main.mouseItem != null && Main.mouseItem.IsAir &&
                 OrdinaryInventoryUi(player)) CloseNativeInventory();
@@ -429,6 +438,8 @@ namespace JueMingR.TerrariaHost.Items
         }
         private void ResetReceipt()
         {
+            RestoreHiddenPresentation(); presentationItem = null; presentationSlot = -1;
+            if (hotbarView != null) Array.Clear(hotbarView, 0, hotbarView.Length);
             phase = Phase.Idle; player = null; inventory = null; material = displaced = expectedCursor = null;
             receiptEpoch++; displacedMoved = false;
             for (int i = 0; i < endpointCount; i++) endpoints[i] = null;
@@ -441,14 +452,25 @@ namespace JueMingR.TerrariaHost.Items
 
         internal static void BeforeNativeInputTail() { Current?.BeforeTail(); }
         internal static void AfterNativeInputTail() { Current?.AfterTail(); }
-        internal static void BeforeNativeInventoryToggle(Player p)
+        internal static bool BeforeNativeInventoryToggle(Player p)
         {
             var current = Current;
-            if (current != null && ReferenceEquals(p, current.player)) current.ExternalInventoryChange();
+            if (current == null || current.nativeInventoryChange || !ReferenceEquals(p, current.player)) return true;
+            // The first actual Inventory action reveals our already-open
+            // logical inventory. Escape bound to Inventory has this same intent.
+            bool reveal = PlayerInput.Triggers.Current.Inventory && current.HiddenInventoryCurrent(true);
+            current.ExternalInventoryChange();
+            if (!reveal) return true;
+            current.nativeInventoryChange = true;
+            try { Player.OpenInventory(quiet: false); }
+            finally { current.nativeInventoryChange = false; }
+            return false;
         }
         internal static void BeforeNativeInventoryOpen() { Current?.ExternalInventoryChange(); }
         private void ExternalInventoryChange()
         {
+            if (nativeInventoryChange) return;
+            RestoreHiddenPresentation(); presentationIntent++;
             if (!OnGameThread || !HasWork || phase == Phase.Unknown || nativeInventoryChange || !SameSession(player)) return;
             // This prefix observes intent before ToggleInv can close the UI
             // and dropItemCheck can reinterpret its cursor in the same Update.

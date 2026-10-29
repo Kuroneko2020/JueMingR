@@ -36,6 +36,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal int ToolType;
             internal int ToolSlot = -1, SupplySlot = -1, SupplyType, SupplyDestination = -1;
             internal int HeldMaximum, PrimaryMaximum;
+            internal ToolBuildCursorMode CursorMode = ToolBuildCursorMode.Precise;
+            internal int SmartDirection;
+            internal SmartPlatformInputProof SmartProof;
         }
         private static BlueprintBuildOperation CopyBuildOperation(BlueprintBuildOperation value)
         {
@@ -128,6 +131,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 Supply = primary < 0 ? null : p.inventory[primary], SupplySlot = primary,
                 SupplyType = operation?.SupplyType ?? 0, SupplyDestination = operation?.SupplyDestination ?? -1,
                 HeldMaximum = operation?.HeldMaximum ?? (target.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1), PrimaryMaximum = operation?.PrimaryMaximum ?? 0 };
+            PlanSmartPlatformInput(target, p, plan);
             return true;
         }
         private const int BuildLaneCount = 6;
@@ -351,7 +355,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             int direction=placement?.Direction==(int)TileObjectDirection.PlaceLeft?-1:
                 placement?.Direction==(int)TileObjectDirection.PlaceRight?1:p.direction;
             flight = new BuildFlight { Target = target, Player = p, Source = source, Dependencies = dependencies.ToArray(),
-                DependencySlots = slots, Direction = direction, Generation = ++buildFlightGeneration, InputGesture = ToolInputGesture.HeldPress, AccessoryMaximum=accessoryMaximum };
+                DependencySlots = slots, Direction = direction, Generation = ++buildFlightGeneration, InputGesture = ToolInputGesture.HeldPress,
+                CursorMode = ToolBuildCursorMode.Precise, AccessoryMaximum=accessoryMaximum };
             return ConstructionBuildCurrent(flight);
         }
     }

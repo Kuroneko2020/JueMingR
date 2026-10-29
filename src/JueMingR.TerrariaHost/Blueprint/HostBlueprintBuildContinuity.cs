@@ -37,6 +37,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal BuildSource[] Dependencies;
             internal BlueprintBuildOperation Operation;
             internal ToolBuildConsumer Consumer;
+            internal ToolBuildCursorMode CursorMode;
+            internal int SmartDirection;
             internal long Session, Selection, Group, Batch, Boundary;
             internal int Remaining, SceneLimit;
             internal bool DebtDue, Pending;
@@ -93,6 +95,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             return current != null && next != null && next.Source.Slot == current.Source.Slot && ReferenceEquals(next.Source.Item, current.Source.Item) &&
                 next.Source.Type == current.Source.Type && BuildConsumer(current.Operation, current.Target) == BuildConsumer(next.Operation, next.Target) &&
+                next.CursorMode == current.CursorMode && next.SmartDirection == current.SmartDirection &&
                 next.DependencySlots == materialSlots && SameBuildContinuationOperation(current.Operation, next.Operation) && SameBuildDependencies(current, next);
         }
         private static bool SameBuildOperation(BlueprintBuildOperation a, BlueprintBuildOperation b)
@@ -135,7 +138,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             var group = buildContinuation;
             if (group == null || plan.ToolSlot != group.Source.Slot || plan.ToolType != group.Source.Type || !ReferenceEquals(plan.Tool, group.Source.Item) ||
-                BuildConsumer(plan.Operation, target) != group.Consumer || !SameBuildContinuationOperation(group.Operation, plan.Operation)) return false;
+                BuildConsumer(plan.Operation, target) != group.Consumer || plan.CursorMode != group.CursorMode || plan.SmartDirection != group.SmartDirection ||
+                !SameBuildContinuationOperation(group.Operation, plan.Operation)) return false;
             if (plan.SupplyType > 0)
             {
                 if (plan.SupplySlot < 0) return false;
@@ -150,7 +154,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void RememberBuildContinuation(BuildFlight flight)
         {
             var plan = new BuildOperationPlan { Operation = flight.Operation, Tool = flight.Source.Item, ToolType = flight.Source.Type, ToolSlot = flight.Source.Slot,
-                SupplyType = flight.Operation?.SupplyType ?? 0, SupplySlot = -1 };
+                SupplyType = flight.Operation?.SupplyType ?? 0, SupplySlot = -1, CursorMode=flight.CursorMode, SmartDirection=flight.SmartDirection };
             foreach (var dependency in flight.Dependencies) if (dependency.Primary) { plan.SupplySlot = dependency.Slot; plan.Supply = dependency.Item; }
             bool current = BuildContinuationCurrent(flight.Player), samePlan = current && PlanContinuesBuild(flight.Target, plan);
             if (samePlan) CompletePreferredAttempt(flight.Target);
@@ -177,7 +181,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return;
             }
             buildContinuation = new BuildContinuation { Player = flight.Player, Source = flight.Source, Dependencies = flight.Dependencies,
-                Operation = CopyBuildOperation(flight.Operation), Consumer = BuildConsumer(flight.Operation, flight.Target), Session = generation,
+                Operation = CopyBuildOperation(flight.Operation), Consumer = BuildConsumer(flight.Operation, flight.Target), CursorMode=flight.CursorMode, SmartDirection=flight.SmartDirection, Session = generation,
                 Selection = buildTools.SelectionIntent, Group = ++buildContinuationGroup, Batch = ++buildContinuationBatch,
                 Boundary = projectionGeneration, Remaining = materialAll.Expected, SceneLimit = projectionScene.Count };
             repeatedBuild = null;

@@ -32,6 +32,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal BuildSource[] Dependencies;
             internal ulong DependencySlots;
             internal int Direction;
+            internal ToolBuildCursorMode CursorMode;
+            internal int SmartDirection;
+            internal SmartPlatformInputProof SmartProof;
+            internal long SmartLookupFrame = -1;
+            internal bool SmartLookupValid, SettledConsumption;
             internal long Token, Generation;
             internal bool Checked, Rejected, Started, Chosen, Entered;
             internal BlueprintBuildOperation Operation { get { return Target.Operation; } }
@@ -133,7 +138,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Pick and each native consumer still validate current permission,
             // source and geometry before this prepared work can own any input.
             if (!buildTools.Input.CanRunAutomaticActions) return;
-            if(ContinueBuildSupply(p))return;
+            int allowance = 64;
+            if(ContinueBuildSupply(p,ref allowance))return;
             // Preparation has no input/selection ownership. A previous native
             // body's animation must not hide the next legal placement window.
             if (preparedBuild != null && BuildFlightCurrent(preparedBuild, false))
@@ -144,7 +150,6 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return;
             }
             preparedBuild = null;
-            int allowance = 64;
             BuildFlight deferred;
             if (buildContinuation?.DebtDue == true && TryDeferredBuild(p, ref allowance, out deferred)) { preparedBuild = deferred; return; }
             // The source/match owner provides a bounded round-robin prefix.
@@ -299,6 +304,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             foreach (var dependency in dependencies) dependency.Maximum = accessoryMaximum;
             result = new BuildFlight { Target = target, Player = p, Source = SnapshotSource(slot, item), Dependencies = dependencies, DependencySlots = slots, Direction = direction, AccessoryMaximum = accessoryMaximum,
                 Generation = ++buildFlightGeneration };
+            ApplySmartPlatformInput(result,plan);
 #if JMR_BLUEPRINT_DIAGNOSTIC
             DiagnosticFlight(result,BuildTraceStage.Prepare,BuildTraceReason.Prepared);
 #endif
@@ -474,7 +480,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             preparedBuild = null;
             var intent = new ToolIntent {
-                Kind = ToolKind.Build, Slot = next.Source.Slot, PreciseTarget = true, Target = new Vector2(next.Target.WorldX * 16 + 8, next.Target.WorldY * 16 + 8),
+                Kind = ToolKind.Build, Slot = next.Source.Slot, PreciseTarget = next.CursorMode==ToolBuildCursorMode.Precise, CursorMode=next.CursorMode, SmartDirection=next.SmartDirection,
+                Target = new Vector2(next.Target.WorldX * 16 + 8, next.Target.WorldY * 16 + 8),
                 PlayerDirection = next.Direction, MaterialSlots = next.DependencySlots, MaximumConsumption = BuildHeldMaximum(next),
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 BlueprintDiagnosticFlight=next.Generation,
@@ -495,6 +502,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                 },
                 NativeBeginning = () => BeginAutomaticBuildCheck(activeBuild),
+                NativeTargetReady = () => SmartPlatformLookupCurrent(activeBuild),
                 NativePreparing = BeginNativeBuildPreparation,
                 AcquireLease = token => AcquirePreparedBuildLease(next,token),
                 InputGesture = () => activeBuild?.InputGesture ?? next.InputGesture,
@@ -551,6 +559,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                     var cleanup = SpecialBuildReadiness(current);
                     if (cleanup != ToolReadiness.Yield) return cleanup;
                 }
+                // A settled prepared-material use releases its input lease.
+                // ReturnPreparedBuildLease may retain only one frozen search
+                // ticket; ToolUse must not idle while that discovery proceeds.
+                if(next==null && current.SettledConsumption && buildMaterialPreparation?.Using==true)return ToolReadiness.Yield;
                 return next == null && BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield;
             }
             if (!BuildFlightCurrent(next, false)) { preparedBuild = null; return BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield; }
@@ -564,6 +576,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             intent.Target = new Vector2(next.Target.WorldX * 16 + 8, next.Target.WorldY * 16 + 8);
             intent.PlayerDirection = next.Direction;
+            intent.CursorMode=next.CursorMode;intent.SmartDirection=next.SmartDirection;intent.PreciseTarget=next.CursorMode==ToolBuildCursorMode.Precise;
             intent.MaximumConsumption = BuildHeldMaximum(next);
             return ToolReadiness.Ready;
         }
@@ -583,7 +596,23 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool ResolveAutomaticBuildTarget(int x,int y)
         {
             var current=activeBuild;
-            return current!=null && !current.Checked && !current.Rejected && BuildLeaseCurrent(current) && current.Target.WorldX==x && current.Target.WorldY==y;
+            if(current==null || current.Checked || current.Rejected || !BuildLeaseCurrent(current) || current.Target.WorldX!=x || current.Target.WorldY!=y)return false;
+            if(current.CursorMode!=ToolBuildCursorMode.SmartPlatform)return true;
+            var direction=Terraria.GameContent.SmartCursorHelper.LockedDesiredDirection;
+            current.SmartLookupValid=Main.SmartCursorIsUsed && Main.SmartCursorShowing && Main.SmartCursorX==x && Main.SmartCursorY==y &&
+                direction.HasValue && direction.Value.X==current.SmartDirection && direction.Value.Y==1 && SmartPlatformInputCurrent(current);
+            current.SmartLookupFrame=buildTools.Input.Frame;
+            return current.SmartLookupValid;
+        }
+        private bool SmartPlatformLookupCurrent(BuildFlight flight)
+        {
+            if(flight==null)return false;
+            if(flight.CursorMode!=ToolBuildCursorMode.SmartPlatform)return true;
+            // Only ResolveAutomaticBuildTarget, after the original Lookup,
+            // issues this flight-local/frame-local receipt. BorrowAim is not
+            // a lookup result and cannot make a late successor consumable.
+            return ReferenceEquals(activeBuild,flight) && flight.Token==buildTools.Use.Operation && flight.SmartLookupValid &&
+                flight.SmartLookupFrame==buildTools.Input.Frame && SmartPlatformInputCurrent(flight);
         }
         private void RejectAutomaticBuildTarget(BuildFlight flight,ToolTargetRejection reason)
         {
@@ -595,7 +624,8 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if JMR_BLUEPRINT_DIAGNOSTIC
             DiagnosticFlight(flight,BuildTraceStage.ResolveAfter,reason==ToolTargetRejection.Resolution?BuildTraceReason.TargetResolution:BuildTraceReason.TargetConsumer);
 #endif
-            RequestBuildEligibilityRetry(flight.Target);NotifyBuildAttempt(flight.Target);
+            if(!RememberSmartPlatformFallback(flight))RequestBuildEligibilityRetry(flight.Target);
+            NotifyBuildAttempt(flight.Target);
         }
         private bool BuildFlightCurrent(BuildFlight flight, bool mayOwn)
         {
@@ -635,7 +665,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             if (flight == null || !ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation || flight.Checked || flight.Rejected ||
                 (flight.Target.Placement.Kind == BlueprintPlacementKind.Wall) != wall || !BuildFlightCurrent(flight, true)) return false;
-            if(Player.tileTargetX!=flight.Target.WorldX || Player.tileTargetY!=flight.Target.WorldY)return false;
+            if(Player.tileTargetX!=flight.Target.WorldX || Player.tileTargetY!=flight.Target.WorldY || !SmartPlatformLookupCurrent(flight))return false;
             if (!flight.Player.ItemTimeIsZero || flight.Player.itemAnimation <= 0 || !flight.Player.controlUseItem) return false;
             flight.Entered = true;
 #if JMR_BLUEPRINT_DIAGNOSTIC
@@ -654,6 +684,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!NativeBuildConsumer(flight, false)) return false;
             if (flight.Operation != null) return NativeSpecialBuildChoice(flight, objectType, placement, type);
             if (type != flight.Target.Placement.TileType) return false;
+            if(!SmartPlatformLookupCurrent(flight))return false;
             if (flight.Target.Placement.Platform) return !objectType && BuildPlatformForm(flight.Target, type);
             if (flight.Target.Body == null) return !objectType;
             if (!objectType) return NativeLegacyBuildChoice(flight, type);
@@ -761,6 +792,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             DiagnosticFlight(flight,BuildTraceStage.Checked,spent?BuildTraceReason.ConsumptionObserved:BuildTraceReason.NoConsumption);
 #endif
             bool applied = flight.Operation == null ? !BuildEmpty(flight.Target.Bounds.Left,flight.Target.Bounds.Top,flight.Target.Placement.Kind==BlueprintPlacementKind.Wall) : ConstructionBuildApplied(flight);
+            if(!SmartPlatformResultValid(flight))
+            {HoldUnconfirmedBuild(flight);buildTools.Use.Cancel();return;}
+            flight.SettledConsumption=spent && applied;
             if (spent && !applied)
             {
                 // Consumption without an observable body is unknown, never a

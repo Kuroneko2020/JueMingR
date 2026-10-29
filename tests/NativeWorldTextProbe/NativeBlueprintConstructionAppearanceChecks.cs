@@ -26,6 +26,7 @@ namespace NativeWorldTextProbe
             };
             check("pure difference contract", AppearanceDifferenceContract);
             check("hammer", () => ConstructionHammer(context, host, tools, input));
+            check("natural smart platform slopes and fallback", () => ConstructionSmartPlatform(context, host, tools, input));
             check("captured platform identity and hammer", () => ConstructionCapturedPlatforms(context, host, tools, input));
             check("captured smart platform native paint", () => ConstructionCapturedPlatformPaint(context, host, tools, input));
             check("mixed paint", () => ConstructionMixedPaint(context, host, tools, input));
@@ -36,7 +37,169 @@ namespace NativeWorldTextProbe
             check("unselected foreground", () => ConstructionUnselectedForeground(context, host, tools, input));
             check("platform slope3 boundary", () => ConstructionPlatformBoundary(context, host, tools, input, 3));
             check("platform slope4 boundary", () => ConstructionPlatformBoundary(context, host, tools, input, 4));
-            Console.WriteLine("PASS BlueprintConstructionAppearance: native hammer repeat, captured positive-ObjectId platform save/open and slope1/2/half completion, original smart platform capture and real native paint for existing-shape/empty destinations, strict raw/style/appearance boundaries, protected walls, mixed original paint preparation/return, coating and cross-layer restoration with same-stack refill, unselected foreground refusal, platform slope3/4 boundary; real multiplayer/GPU/FPS NOT_RUN");
+            Console.WriteLine("PASS BlueprintConstructionAppearance: natural Lookup/PlaceIt smart slope1/2 without a hammer, bounded resolution fallback and precise half/existing-shape controls, native hammer repeat, captured positive-ObjectId platform save/open and slope1/2/half completion, original smart platform capture and real native paint for existing-shape/empty destinations, strict raw/style/appearance boundaries, protected walls, mixed original paint preparation/return, coating and cross-layer restoration with same-stack refill, unselected foreground refusal, platform slope3/4 boundary; real multiplayer/GPU/FPS NOT_RUN");
+        }
+
+        private static object smartPlatformHost, smartPlatformInput;
+        private static bool smartPlatformWatch, smartPlatformProofValid;
+        private static int smartPlatformChoices, smartPlatformPreciseChoices, smartPlatformHammers, smartPlatformCorrectHammers;
+        private static readonly System.Collections.Generic.Dictionary<long, long> smartPlatformLookups = new System.Collections.Generic.Dictionary<long, long>();
+        private static readonly System.Collections.Generic.Dictionary<string, int> smartPlatformMissingLookups = new System.Collections.Generic.Dictionary<string, int>();
+        private static string SmartPlatformPoint(object target)
+        { return Get(target, "WorldX") + "," + Get(target, "WorldY"); }
+        private static object WatchedSmartPlatformFlight()
+        { return smartPlatformWatch ? GetOptional(smartPlatformHost, "activeBuild") : null; }
+        private static bool SmartPlatformLookupBefore()
+        {
+            var flight = WatchedSmartPlatformFlight();
+            if (flight == null || Get(flight, "CursorMode").ToString() != "SmartPlatform") return true;
+            string key = SmartPlatformPoint(Get(flight, "Target")); int count;
+            if (!smartPlatformMissingLookups.TryGetValue(key, out count)) return true;
+            // Fault injection removes this one original lookup opportunity.
+            // It writes neither Smart coordinates nor private continuity locks.
+            // Successful arms below always execute the complete native Lookup.
+            smartPlatformMissingLookups[key] = count + 1;
+            if (count < 4) Console.WriteLine("SMART_PLATFORM injectedLookupMiss target=" + key + " attempt=" + (count + 1) +
+                " generation=" + Get(flight, "Generation") + " frame=" + Get(smartPlatformInput, "Frame") +
+                " oldNative=" + Main.SmartCursorX + "," + Main.SmartCursorY + " showing=" + Main.SmartCursorShowing);
+            return false;
+        }
+        private static void SmartPlatformLookupAfter()
+        {
+            var flight = WatchedSmartPlatformFlight();
+            if (flight == null || Get(flight, "CursorMode").ToString() != "SmartPlatform") return;
+            var target = Get(flight, "Target"); var direction = Terraria.GameContent.SmartCursorHelper.LockedDesiredDirection;
+            int x = (int)Get(target, "WorldX"), y = (int)Get(target, "WorldY"), dx = (int)Get(flight, "SmartDirection");
+            if (Main.SmartCursorIsUsed && Main.SmartCursorShowing && Player.tileTargetX == x && Player.tileTargetY == y &&
+                Main.SmartCursorX == x && Main.SmartCursorY == y && direction.HasValue && direction.Value.X == dx && direction.Value.Y == 1)
+                smartPlatformLookups[(long)Get(flight, "Generation")] = (long)Get(smartPlatformInput, "Frame");
+        }
+        private static void SmartPlatformChoiceAfter(object __0, bool __result)
+        {
+            if (!smartPlatformWatch || !__result) return;
+            if (smartPlatformMissingLookups.Count > 0) Console.WriteLine("SMART_PLATFORM fallbackChoice target=" + SmartPlatformPoint(Get(__0, "Target")) +
+                " mode=" + Get(__0, "CursorMode") + " generation=" + Get(__0, "Generation") + " frame=" + Get(smartPlatformInput, "Frame"));
+            if (Get(__0, "CursorMode").ToString() != "SmartPlatform") { smartPlatformPreciseChoices++; return; }
+            long frame;
+            smartPlatformProofValid &= smartPlatformLookups.TryGetValue((long)Get(__0, "Generation"), out frame) &&
+                frame == (long)Get(smartPlatformInput, "Frame") && Main.SmartCursorIsUsed && Main.SmartCursorShowing &&
+                Main.SmartCursorX == Player.tileTargetX && Main.SmartCursorY == Player.tileTargetY;
+            smartPlatformChoices++;
+        }
+        private static void SmartPlatformHammerAfter(object __0, object __1, bool __result)
+        {
+            if (!smartPlatformWatch || !__result || __1.ToString() != "Hammer") return;
+            smartPlatformHammers++;
+            if (SmartPlatformPoint(Get(__0, "Target")) == "47,41") smartPlatformCorrectHammers++;
+        }
+        private static void ResetSmartPlatformCounts()
+        {
+            smartPlatformChoices = smartPlatformPreciseChoices = smartPlatformHammers = smartPlatformCorrectHammers = 0;
+            smartPlatformProofValid = true; smartPlatformLookups.Clear(); smartPlatformMissingLookups.Clear();
+        }
+        private static void SeedSmartPlatform(Item material, int x, int y, int slope)
+        {
+            Require(WorldGen.PlaceTile(x, y, material.createTile, mute: true, forced: true, plr: 0, style: material.placeStyle),
+                "initial slope endpoint is an original platform placement");
+            Require(WorldGen.SlopeTile(x, y, slope), "initial world supplies one sloped endpoint before automatic input");
+        }
+        private static CaptureCell SmartPlatformTarget(Item material, int x, int y, int slope = 0, bool half = false)
+        {
+            return new CaptureCell { X = x, Y = y, Layers = CaptureLayer.Tile, TileType = (ushort)material.createTile,
+                FrameY = (short)(material.placeStyle * 18), Slope = (byte)slope, HalfBrick = half };
+        }
+        private static void ConstructionSmartPlatform(object context, object host, object tools, object input)
+        {
+            var patch = new HarmonyLib.Harmony("JueMingR.Tests.NaturalSmartPlatform");
+            var self = typeof(NativeBlueprintBuildChecks);
+            patch.Patch(typeof(Terraria.GameContent.SmartCursorHelper).GetMethod("SmartCursorLookup", F),
+                prefix: new HarmonyLib.HarmonyMethod(self, nameof(SmartPlatformLookupBefore)),
+                postfix: new HarmonyLib.HarmonyMethod(self, nameof(SmartPlatformLookupAfter)));
+            patch.Patch(host.GetType().GetMethod("NativeBuildChoice", F), postfix: new HarmonyLib.HarmonyMethod(self, nameof(SmartPlatformChoiceAfter)));
+            patch.Patch(host.GetType().GetMethod("NativeAppearanceConsumer", F), postfix: new HarmonyLib.HarmonyMethod(self, nameof(SmartPlatformHammerAfter)));
+            bool oldMouse = Main.SmartCursorWanted_Mouse, oldPad = Main.SmartCursorWanted_GamePad;
+            smartPlatformHost = host; smartPlatformInput = input;
+            try
+            {
+                foreach (int direction in new[] { 1, -1 })
+                {
+                    var p = Reset(context, host, tools, input); p.position.X = 42 * 16;
+                    p.inventory[12].SetDefaults(ItemID.WoodPlatform); p.inventory[12].stack = 7; var material = p.inventory[12];
+                    int slope = direction == 1 ? 1 : 2, seedX = direction == 1 ? 43 : 47;
+                    SeedSmartPlatform(material, seedX, 38, slope);
+                    var cells = Enumerable.Range(0, 3).Select(i => SmartPlatformTarget(material, direction == 1 ? i : 2 - i, i, slope)).ToArray();
+                    var entry = Asset(host, cells);
+                    Place(context, host, input, entry, 44, 39);
+                    Main.SmartCursorWanted_Mouse = direction == -1; Main.SmartCursorWanted_GamePad = direction == 1;
+                    bool expectedMouse = Main.SmartCursorWanted_Mouse, expectedPad = Main.SmartCursorWanted_GamePad;
+                    ResetSmartPlatformCounts(); smartPlatformWatch = true;
+                    SetAutomatic(host, input, true);
+                    Until(context, input, () => Scene(host).Length == 0 && !(bool)Get(Get(tools, "Use"), "Active"));
+                    smartPlatformWatch = false;
+                    Require(cells.All(cell => Main.tile[44 + cell.X, 39 + cell.Y].active() &&
+                        Main.tile[44 + cell.X, 39 + cell.Y].type == material.createTile && Main.tile[44 + cell.X, 39 + cell.Y].slope() == slope &&
+                        !Main.tile[44 + cell.X, 39 + cell.Y].halfBrick()) && material.stack == 4 &&
+                        Main.tile[seedX, 38].slope() == slope && !Main.tile[seedX, 38].halfBrick(),
+                        "natural smart extension reaches all three shapes and consumes exactly three real platforms, preserving the seed; direction=" + direction);
+                    Require(smartPlatformChoices == 3 && smartPlatformHammers == 0 && smartPlatformPreciseChoices == 0 &&
+                        smartPlatformLookups.Count >= 3 && smartPlatformProofValid && p.inventory.All(item => item.hammer == 0),
+                        "every direct slope has its own natural same-frame Lookup before PlaceIt and no hammer capability/consumer; direction=" + direction);
+                    Require(Main.SmartCursorWanted_Mouse == expectedMouse && Main.SmartCursorWanted_GamePad == expectedPad,
+                        "both original Smart preference values return after the temporary input scope");
+                    long settled = (long)Get(host, "BuildUsesStarted");
+                    for (int i = 0; i < 20; i++) Step(context, input);
+                    Require((long)Get(host, "BuildUsesStarted") == settled, "completed smart shapes retire without a later hammer or placement");
+                    Console.WriteLine("SMART_PLATFORM direction=" + direction + " placed=3 Hammer=" + smartPlatformHammers +
+                        " nativeLookupGenerations=" + smartPlatformLookups.Count + " materialConsumed=3");
+                }
+                ConstructionSmartPlatformFallback(context, host, tools, input);
+            }
+            finally
+            {
+                smartPlatformWatch = false;
+                Call(host, "SetAutoBuild", false);
+                for (int i = 0; i < 80 && (bool)Get(Get(tools, "Use"), "Active"); i++) Step(context, input);
+                Main.SmartCursorWanted_Mouse = oldMouse; Main.SmartCursorWanted_GamePad = oldPad;
+                foreach (var method in patch.GetPatchedMethods().ToArray()) patch.Unpatch(method, HarmonyLib.HarmonyPatchType.All, patch.Id);
+                smartPlatformHost = smartPlatformInput = null; smartPlatformLookups.Clear(); smartPlatformMissingLookups.Clear();
+            }
+        }
+        private static void ConstructionSmartPlatformFallback(object context, object host, object tools, object input)
+        {
+            var p = Reset(context, host, tools, input); p.position.X = 44 * 16;
+            p.inventory[12].SetDefaults(ItemID.WoodPlatform); p.inventory[12].stack = 7; var material = p.inventory[12];
+            p.inventory[14].SetDefaults(ItemID.WoodenHammer);
+            SeedSmartPlatform(material, 43, 38, 1); SeedSmartPlatform(material, 49, 38, 2);
+            SeedSmartPlatform(material, 47, 41, 1);
+            WorldGen.PlaceWall(46, 41, WallID.Stone);
+            var cells = new[] { SmartPlatformTarget(material, 0, 0, 1), SmartPlatformTarget(material, 4, 0, 2),
+                SmartPlatformTarget(material, 2, 2, half: true), SmartPlatformTarget(material, 3, 2, 1) };
+            Place(context, host, input, Asset(host, cells), 44, 39);
+            ResetSmartPlatformCounts(); smartPlatformMissingLookups.Add("44,39", 0); smartPlatformMissingLookups.Add("48,39", 0);
+            bool oldMouse = Main.SmartCursorWanted_Mouse, oldPad = Main.SmartCursorWanted_GamePad;
+            smartPlatformWatch = true; SetAutomatic(host, input, true);
+            Until(context, input, () => Scene(host).Length == 0 && !(bool)Get(Get(tools, "Use"), "Active"));
+            smartPlatformWatch = false;
+            Console.WriteLine("SMART_PLATFORM fallbackActual attempts=" + string.Join(";", smartPlatformMissingLookups.Select(pair => pair.Key + ":" + pair.Value)) +
+                " smartChoices=" + smartPlatformChoices + " preciseChoices=" + smartPlatformPreciseChoices + " Hammer=" + smartPlatformHammers +
+                " correctShapeHammer=" + smartPlatformCorrectHammers + " materialRemaining=" + material.stack + " unknown=" + Get(host, "BuildUnknownResults") +
+                " world=" + string.Join(";", cells.Select(cell =>
+                {
+                    int x = 44 + cell.X, y = 39 + cell.Y; var tile = Main.tile[x, y];
+                    return x + "," + y + ":" + tile.active() + "/" + tile.type + "/" + tile.slope() + "/" + tile.halfBrick();
+                })));
+            Require(smartPlatformMissingLookups.Values.All(count => count == 1) && smartPlatformChoices == 0 && smartPlatformPreciseChoices == 3,
+                "two separately rejected Smart targets retain their own bounded fallback and proceed through Precise without a new Smart attempt");
+            Require(smartPlatformHammers > 0 && smartPlatformCorrectHammers == 0 && material.stack == 4 && cells.All(cell =>
+            {
+                var tile = Main.tile[44 + cell.X, 39 + cell.Y];
+                return tile.active() && tile.type == material.createTile && tile.slope() == cell.Slope && tile.halfBrick() == cell.HalfBrick;
+            }) && Main.tile[43, 38].slope() == 1 && Main.tile[49, 38].slope() == 2,
+                "fallback slopes and unsupported half use actual hammering, the already correct slope is untouched, and no body material is charged twice");
+            Require(Main.SmartCursorWanted_Mouse == oldMouse && Main.SmartCursorWanted_GamePad == oldPad,
+                "failed Smart inputs and later precise/hammer scopes restore both original preferences");
+            Console.WriteLine("SMART_PLATFORM fallbackTargets=2 smartAttempts=" + string.Join(",", smartPlatformMissingLookups.Values) +
+                " precisePlaced=" + smartPlatformPreciseChoices + " Hammer=" + smartPlatformHammers + " correctShapeHammer=0 materialConsumed=3");
         }
 
         private static void DumpAppearanceCase(string name, object host, object tools)

@@ -468,6 +468,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             var observer = owner;
             if (observer == null || observer.WatchCount == 0 || !ReferenceEquals(tiles, Main.tile) || !observer.HasInterest(x, y)) return;
+            // A later return to the same Tile reference cannot erase an
+            // observed replacement in this finite installation's provenance.
+            if (!ReferenceEquals(tiles[x, y], value)) HostBlueprint.ObserveConstructionTileReplacement(x, y);
             if (current != null) { current.Touch(x, y); Track(value, x, y); }
             else
             {

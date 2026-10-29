@@ -36,6 +36,10 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Player),"DropItems",new[]{typeof(bool)},nameof(Boundary));
             Patch(typeof(Player),"ToggleInv",Type.EmptyTypes,nameof(InventoryToggle));
             Patch(typeof(Player),"OpenInventory",new[]{typeof(bool)},nameof(InventoryOpen));
+            Patch(typeof(Main),"DrawInterface",new[]{typeof(Microsoft.Xna.Framework.GameTime)},nameof(InterfaceBefore),nameof(InterfaceAfter),nameof(InterfaceFinal));
+            Patch(typeof(Main),"get_MouseDisplayItem",Type.EmptyTypes,null,nameof(MouseDisplay));
+            harmony.Patch(AccessTools.Method(typeof(Main),"GUIHotbarDrawInner"),
+                transpiler:new HarmonyMethod(typeof(ToolHooks),nameof(ConstructionHotbarPresentation)));
             Patch(typeof(Player),"PickTile",new[]{typeof(int),typeof(int),typeof(int),typeof(int)},nameof(BeforePick),nameof(AfterPick));
             Patch(typeof(Player),"PlaceThing_Tiles",new[]{typeof(bool)},nameof(BeforePlant),nameof(AfterPlant),nameof(FinalPlant));
             Patch(typeof(Player),"PlaceThing_Walls",Type.EmptyTypes,nameof(BeforeWall));
@@ -86,8 +90,39 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private static Exception ConstructionDrawFinal(Exception __exception)
         {if(__exception!=null)Items.ItemMaterialPreparation.AfterNativeInputTail();return __exception;}
-        private static void InventoryToggle(Player __instance){Items.ItemMaterialPreparation.BeforeNativeInventoryToggle(__instance);}
+        private static bool InventoryToggle(Player __instance){return Items.ItemMaterialPreparation.BeforeNativeInventoryToggle(__instance);}
         private static void InventoryOpen(){Items.ItemMaterialPreparation.BeforeNativeInventoryOpen();}
+        private static void InterfaceBefore(out Items.ItemMaterialPreparation.PresentationScope __state)
+        { Items.ItemMaterialPreparation.BeginHiddenPresentation(out __state); }
+        private static void InterfaceAfter(Items.ItemMaterialPreparation.PresentationScope __state)
+        { Items.ItemMaterialPreparation.EndHiddenPresentation(__state); }
+        private static Exception InterfaceFinal(Items.ItemMaterialPreparation.PresentationScope __state,Exception __exception)
+        { Items.ItemMaterialPreparation.EndHiddenPresentation(__state);return __exception; }
+        private static void MouseDisplay(ref Item __result)
+        { __result=Items.ItemMaterialPreparation.PresentMouseItem(__result); }
+        private static IEnumerable<CodeInstruction> ConstructionHotbarPresentation(IEnumerable<CodeInstruction> instructions)
+        {
+            var inventory=AccessTools.Field(typeof(Player),nameof(Player.inventory));
+            var selected=AccessTools.PropertyGetter(typeof(Player),nameof(Player.selectedItem));
+            var selectedState=typeof(Player).GetNestedType("SelectedItemState",BindingFlags.Public|BindingFlags.NonPublic);
+            var activeOverride=AccessTools.PropertyGetter(selectedState,"HasActiveOverride");
+            var held=AccessTools.PropertyGetter(typeof(Player),"HeldItem");
+            var owner=typeof(Items.ItemMaterialPreparation);
+            int arrays=0,selections=0,overrides=0;
+            // Only this native draw method reads the mapped references. No
+            // ItemSlot.Handle/LeftClick or material consumer receives the view.
+            foreach(var instruction in instructions)
+            {
+                yield return instruction;
+                string method=null;
+                if(instruction.LoadsField(inventory)){method=nameof(Items.ItemMaterialPreparation.PresentHotbarInventory);arrays++;}
+                else if(instruction.Calls(selected)){method=nameof(Items.ItemMaterialPreparation.PresentHotbarSelection);selections++;}
+                else if(instruction.Calls(activeOverride)){method=nameof(Items.ItemMaterialPreparation.PresentHotbarOverride);overrides++;}
+                else if(instruction.Calls(held))method=nameof(Items.ItemMaterialPreparation.PresentHotbarHeldItem);
+                if(method!=null)yield return new CodeInstruction(OpCodes.Call,AccessTools.Method(owner,method));
+            }
+            if(arrays==0 || selections==0 || overrides==0)throw new InvalidOperationException("Original hotbar presentation reads changed.");
+        }
         private static void ShotBefore(Player __instance,Item __1,bool __3,out Combat.HostAttackControl.ShotReceipt __state)
         {__state=null;var attack=host?.Combat?.Attack;if(attack==null)return;Combat.CombatCursorScope cursor=null;try{cursor=attack.BeginShot(__instance,__1,__3);__state=attack.Control.BeginShot(__instance,__1,cursor);}catch(Exception error){cursor?.End();attack.FailLocal(error);}}
         private static void ShotAfter(Combat.HostAttackControl.ShotReceipt __state){__state?.Owner.EndShot(__state);}

@@ -35,6 +35,15 @@ namespace NativeWorldTextProbe
             ConstructionConsumerCase("native110 correlation loss",()=>ConstructionWiringNetwork(context, host, tools, input, true));
             Console.WriteLine("PASS BlueprintConstructionWiring: native colors, multi-wrench, actuator provenance, owned651 single-point/cancel, original109/server MassWire/110; sockets/friend-host-client/GPU/FPS NOT_RUN");
         }
+        internal static void ConstructionWiringActuatorNetwork(object context, object host, object tools, object input)
+        {
+            ConstructionConsumerCase("single-player temporary actuator regression", () => ConstructionActuator(context, host, tools, input, false));
+            ConstructionConsumerCase("client GD temporary actuator ordered native confirmation and cleanup", () => ConstructionTemporaryActuatorNetwork(context, host, tools, input, 0));
+            ConstructionConsumerCase("client GD count0 with actual existing actuator", () => ConstructionTemporaryActuatorNetwork(context, host, tools, input, 1));
+            ConstructionConsumerCase("client GD observed actuator ABA", () => ConstructionTemporaryActuatorNetwork(context, host, tools, input, 2));
+            ConstructionConsumerCase("client GD retired projection late native replies", () => ConstructionTemporaryActuatorNetwork(context, host, tools, input, 3));
+            Console.WriteLine("PASS BlueprintTemporaryActuatorNetwork: original651/109, server MassWire/17/110, client actual17 installation and110 debit, rod/cutter cleanup, count0/ABA/retired guards; sockets/friend-host-client/GPU/FPS/owner acceptance NOT_RUN");
+        }
         internal static void ConstructionSpecial(object context, object host, object tools, object input)
         {
             ConstructionConsumerCase("finite cycle and recipe contract",ConstructionCycleContract);
@@ -395,10 +404,11 @@ namespace NativeWorldTextProbe
         private static readonly List<byte[]> constructionWiringPackets = new List<byte[]>();
         private static void RecordConstructionWiringPacket(int __0, int __1)
         {
-            if (__0 != 109 && __0 != 110) return;
+            if (__0 != 109 && __0 != 110 && __0 != 17) return;
             var bytes = NetMessage.buffer[Main.netMode == 2 && __1 >= 0 ? __1 : 256].writeBuffer;
             int length = BitConverter.ToUInt16(bytes, 0);
             Require(length >= 3 && length <= bytes.Length && bytes[2] == __0, "actual wiring serializer produced the observed message");
+            if (__0 == 17 && (length < 4 || bytes[3] != 8 && bytes[3] != 9)) return;
             constructionWiringPackets.Add(bytes.Take(length).ToArray());
         }
         private static void ReplayConstructionPacket(byte[] packet, int sender)
@@ -408,6 +418,124 @@ namespace NativeWorldTextProbe
             Array.Copy(packet, 2, receiver.readBuffer, 0, packet.Length - 2);
             receiver.ResetReader(); int kind; receiver.GetData(0, packet.Length - 2, out kind);
             Require(kind == packet[2], "original wiring decoder dispatches the serialized message type");
+        }
+        private static void ConstructionTemporaryActuatorNetwork(object context, object host, object tools, object input, int scenario)
+        {
+            const int x = 50, y = 42;
+            int mode = Main.netMode; var connection = Netplay.Connection; var sections = Main.sectionManager; var client = Main.clientPlayer;
+            var tiles = Main.tile; var buffers = (MessageBuffer[])NetMessage.buffer.Clone(); var clients = (RemoteClient[])Netplay.Clients.Clone();
+            var oldWireMode = WiresUI.Settings.ToolMode;
+            var patch = new Harmony("JueMingR.Tests.TemporaryActuatorPackets"); var send = typeof(NetMessage).GetMethod("SendData", F);
+            patch.Patch(send, postfix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(RecordConstructionWiringPacket)));
+            try
+            {
+                Netplay.Connection = new RemoteServer { PendingTermination = true, State = 10 }; Main.clientPlayer = new Player();
+                for (int i = 0; i < NetMessage.buffer.Length; i++) if (NetMessage.buffer[i] == null) NetMessage.buffer[i] = new MessageBuffer();
+                NetMessage.buffer[256] = new MessageBuffer(); NetMessage.buffer[0] = new MessageBuffer();
+                Main.netMode = 1; Main.sectionManager = new WorldSections(1, 2); Main.sectionManager.SetAllSectionsLoaded(); Call(context, "UpdateRuntime");
+                var p = Reset(context, host, tools, input);
+                p.inventory[12].SetDefaults(3611); p.inventory[13].SetDefaults(ItemID.ActuationRod); p.inventory[14].SetDefaults(ItemID.WireCutter);
+                p.inventory[20].SetDefaults(ItemID.Actuator); p.inventory[20].stack = 2; var supply = p.inventory[20];
+                Require(!p.IsInTileInteractionRange(x, y, TileReachCheckSettings.Simple, supply.tileBoost + p.blockRange) &&
+                    p.IsInTileInteractionRange(x, y, TileReachCheckSettings.Simple, p.inventory[13].tileBoost + p.blockRange) &&
+                    p.IsInTileInteractionRange(x, y, TileReachCheckSettings.Simple, p.inventory[14].tileBoost + p.blockRange),
+                    "real actuator item is too short while the real rod and cutter are legal; GD is selected by capability fallback");
+                NativeToolsChecks.Tile(x, y, TileID.Stone); WorldGen.PlaceWire2(x, y);
+                Place(context, host, input, Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone, Inactive = true }), x, y);
+                long unknown = (long)Get(host, "BuildUnknownResults");
+                constructionWiringPackets.Clear(); SetAutomatic(host, input, true);
+                NativeQuickItemChecks.Until(() => { ConstructionStepWithProjectiles(context, input); return GetOptional(host, "wiringReply") != null; });
+                var request = constructionWiringPackets.Single(packet => packet[2] == 109); var reply = Get(host, "wiringReply");
+                var candidate = Get(reply, "TemporaryActuator");
+                Require(request.Length == 12 && BitConverter.ToInt16(request, 3) == x && BitConverter.ToInt16(request, 5) == y &&
+                    BitConverter.ToInt16(request, 7) == x && BitConverter.ToInt16(request, 9) == y &&
+                    request[11] == (byte)WiresUI.Settings.MultiToolMode.Actuator && !Main.tile[x, y].actuator() &&
+                    ((IDictionary)Get(host, "ownedBuildActuators")).Count == 0 && supply.stack == 2,
+                    "native651 sends only the exact single-point Actuator109; submission creates a candidate, never premature ownership or debit");
+                SetAutomatic(host, input, false);
+                Until(context, input, () => !(bool)Get(Get(tools, "Use"), "Active") && p.itemAnimation == 0 && p.itemTime == 0);
+                Require(ReferenceEquals(Get(host, "wiringReply"), reply) && !(bool)Get(candidate, "Retired"),
+                    "pausing releases ToolUse without revoking this already-sent request's observation and finite debit duty");
+
+                for (int i = 0; i < Netplay.Clients.Length; i++) if (Netplay.Clients[i] == null) Netplay.Clients[i] = new RemoteClient { Id = i, State = 10 };
+                Netplay.Clients[0] = new RemoteClient { Id = 0, State = 10 };
+                var clientTiles = Main.tile;
+                // The existing isolated decoder fixture executes both native
+                // roles. Give the authority its own target Tile so its write
+                // cannot masquerade as the later client's actual17 transition.
+                var serverTiles = (Tile[,])clientTiles.Clone(); serverTiles[x, y] = (Tile)clientTiles[x, y].Clone();
+                constructionWiringPackets.Clear();
+                try
+                {
+                    Main.netMode = 2; Main.tile = serverTiles;
+                    if (scenario == 1)
+                    {
+                        Require(WorldGen.PlaceActuator(x, y), "another original authority action installs before this request");
+                        NetMessage.SendData(17, -1, -1, null, 8, x, y);
+                    }
+                    ReplayConstructionPacket(request, 0);
+                    Require(Main.tile[x, y].actuator() && supply.stack == 2 && !clientTiles[x, y].actuator(),
+                        "original server109 writes only the authority Tile and leaves the client's actual material untouched");
+                }
+                finally { Main.tile = clientTiles; Main.netMode = 1; }
+                var ordered = constructionWiringPackets.Where(packet => packet[2] == 17 || packet[2] == 110).ToArray();
+                Require(ordered.Length == 3 && ordered[0][2] == 17 && ordered[0][3] == 8 &&
+                    ordered[1][2] == 110 && BitConverter.ToInt16(ordered[1], 3) == 530 && BitConverter.ToInt16(ordered[1], 5) == 0 &&
+                    ordered[2][2] == 110 && BitConverter.ToInt16(ordered[2], 3) == 849 && BitConverter.ToInt16(ordered[2], 5) == (scenario == 1 ? 0 : 1),
+                    "actual authority serializers establish17/8 before110 wire0 before110 actuator count; scenario=" + scenario);
+                if (scenario == 3)
+                {
+                    Call(host, "ClearProjection");
+                    Require((bool)Get(candidate, "Retired") && Scene(host).Length == 0 && Get(Get(reply, "Flight"), "Target") != null,
+                        "retirement revokes new cleanup ownership while preserving the already-sent finite decoder");
+                }
+                ReplayConstructionPacket(ordered[0], 256);
+                Require(Main.tile[x, y].actuator() && supply.stack == 2 && ((IDictionary)Get(host, "ownedBuildActuators")).Count == 0 &&
+                    !(bool)Get(Get(tools, "Use"), "Active"),
+                    "actual client17 changes false to true but grants neither cleanup nor consumer/input authority");
+                if (scenario != 3) Require((bool)Get(candidate, "SawInstall"), "the exact actual client PlaceActuator transition was observed");
+                if (scenario == 2)
+                {
+                    Require(WorldGen.KillActuator(x, y) && WorldGen.PlaceActuator(x, y), "a separate original writer removes and reinstalls the actuator");
+                    Require((bool)Get(candidate, "Invalid") && Main.tile[x, y].actuator(),
+                        "observed actuator ABA permanently revokes candidate provenance despite the identical final value");
+                }
+                ReplayConstructionPacket(ordered[1], 256);
+                Require(GetOptional(host, "wiringReply") != null && supply.stack == 2 && ((IDictionary)Get(host, "ownedBuildActuators")).Count == 0,
+                    "wire0 alone cannot claim or end this responsibility");
+                ReplayConstructionPacket(ordered[2], 256);
+                Require(GetOptional(host, "wiringReply") == null && supply.stack == (scenario == 1 ? 2 : 1) &&
+                    (long)Get(host, "BuildUnknownResults") == unknown && !(bool)Get(Get(tools, "Use"), "Active") && !(bool)Get(host, "AutoBuildEnabled"),
+                    "full native debit settles the exact protected source while passive confirmation preserves pause and known consumption");
+                var owners = (IDictionary)Get(host, "ownedBuildActuators");
+                Require(owners.Count == (scenario == 0 ? 1 : 0) && (scenario != 0 || (bool)Get(owners.Values.Cast<object>().Single(), "Confirmed")),
+                    "only the live, continuous, actually installed count1 sequence creates a confirmed cleanup owner; scenario=" + scenario);
+                SetAutomatic(host, input, true);
+                if (scenario == 3)
+                {
+                    for (int i = 0; i < 8; i++) ConstructionStepWithProjectiles(context, input);
+                    Require(Scene(host).Length == 0 && Main.tile[x, y].actuator() && !Main.tile[x, y].inActive() &&
+                        GetOptional(host, "grandBuild") == null && !(bool)Get(Get(tools, "Use"), "Active"),
+                        "late retired replies debit once but cannot revive projection, rod, cutter or old651 input");
+                }
+                else
+                {
+                    Until(context, input, () => Scene(host).Length == 0);
+                    Require(Main.tile[x, y].inActive() && Main.tile[x, y].actuator() == (scenario != 0) && Main.tile[x, y].wire2() &&
+                        owners.Count == 0 && (long)Get(host, "BuildUnknownResults") == unknown,
+                        "native rod/cutter remove only the proven installation; count0 and ABA actuators remain as existing pieces; scenario=" + scenario);
+                }
+                Console.WriteLine("PASS TemporaryActuatorNative scenario=" + scenario + " debit=" + (scenario == 1 ? 0 : 1) +
+                    " finalActuator=" + Main.tile[x, y].actuator() + " inactive=" + Main.tile[x, y].inActive());
+            }
+            finally
+            {
+                SetAutomatic(host, input, false); Call(host, "ClearProjection"); Main.tile = tiles; Main.netMode = mode;
+                Netplay.Connection = connection; Main.sectionManager = sections; Main.clientPlayer = client; WiresUI.Settings.ToolMode = oldWireMode;
+                for (int i = 0; i < buffers.Length; i++) NetMessage.buffer[i] = buffers[i];
+                for (int i = 0; i < clients.Length; i++) Netplay.Clients[i] = clients[i];
+                patch.Unpatch(send, HarmonyPatchType.All, patch.Id); Call(context, "UpdateRuntime");
+            }
         }
         private static void ConstructionWiringNetwork(object context, object host, object tools, object input,bool loseCorrelation=false)
         {
