@@ -245,6 +245,14 @@ namespace JueMingR.TerrariaHost.Items
                 !PreparationItemsNotPending() || Main.mouseItem == null || !Main.mouseItem.IsAir) return false;
             slot = MaterialSlot(); return slot >= 0;
         }
+        internal bool ObserveUseConsumption(long useToken)
+        {
+            // Planning reads do not advance this receipt. The checked native
+            // generation must settle its own real remainder before a later
+            // flight installs another one-use budget on the same lease.
+            return OnGameThread && phase == Phase.Using && token == useToken && nativeCalls == 0 && !tailPending &&
+                tools.Items.Ownership.OwnsUse(session, useToken) && SameSessionIdentity(player) && ExpectedCurrent(true);
+        }
         internal bool IsDisplaced(Item item)
         { return item != null && !item.IsAir && (HasWork && ReferenceEquals(item, displaced) || abandonedDisplaced.Contains(item)); }
         internal void ObserveInventory(Player p)

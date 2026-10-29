@@ -751,6 +751,12 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             bool spent = BuildSourceSpent(flight,flight.Source);
             foreach (var source in flight.Dependencies) spent |= BuildSourceSpent(flight,source);
+            // ToolUse has already validated this returned native generation.
+            // Settle its finite prepared endpoints now, while its exact token
+            // and consumption budget still belong to this flight. Read-only
+            // successor planning cannot perform this execution bookkeeping.
+            if (buildMaterialPreparation?.Using == true && !buildMaterialPreparation.ObserveUseConsumption(flight.Token))
+            { HoldUnconfirmedBuild(flight); buildTools.Use.Cancel(); return; }
 #if JMR_BLUEPRINT_DIAGNOSTIC
             DiagnosticFlight(flight,BuildTraceStage.Checked,spent?BuildTraceReason.ConsumptionObserved:BuildTraceReason.NoConsumption);
 #endif

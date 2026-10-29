@@ -7,6 +7,7 @@ using JueMingR.Features.Blueprint;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
+using Terraria.ID;
 using Terraria.ObjectData;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
@@ -67,6 +68,7 @@ namespace NativeWorldTextProbe
             Require(Rect(westPlatform[1]).X == 162, "opposite platform native join uses its independent source X");
             stair.Slope = 0;
             Require(Build(builder, new[] { stair }).Count == 1, "flat platform emits one raw frame");
+            PlatformJoinBoundaries(builder);
 
             Furniture(builder);
             NaturalAndLayers(builder);
@@ -75,6 +77,61 @@ namespace NativeWorldTextProbe
             Require(ReferenceEquals(Main.tile, world) && ReferenceEquals(player.inventory, inventory) && player.selectedItem == selected,
                 "pure command/cache path leaves world and inventory owners unchanged");
             Console.WriteLine("PASS Blueprint projection CPU: literal half/four slopes/platform joins, raw door/furniture members, natural extents/source flip, walls/liquid/circuits/coatings, pylon separate body, halo publication and origin-independent command cache. GPU/native-Main drawing remains separate evidence.");
+        }
+
+        private static void PlatformJoinBoundaries(Type builder)
+        {
+            // Locked .8 DrawBasicTile: slope 1 blocks below on blockType 0/5,
+            // slope 2 on 0/4. Tile.blockType gives half priority over slope.
+            // These literal cases also keep active distinct from inActive.
+            Require(TileID.Sets.BlocksStairs[TileID.Glass] && Main.tileSolid[TileID.Glass] &&
+                TileID.Sets.BlocksStairs[TileID.TrapdoorOpen] && !Main.tileSolid[TileID.TrapdoorOpen],
+                "locked native glass and open-trapdoor stair-blocking metadata");
+            var stair = Tile(19, 2, 3, 144, 36); stair.Slope = 1; stair.TilePaint = 11;
+            var below = Tile(TileID.Glass, 2, 4, 18, 18); below.TilePaint = 4;
+            var diagonal = Tile(1, 3, 4, 36, 54); diagonal.TilePaint = 2;
+            below.Inactive = true;
+            RequirePlatformJoin(builder, stair, below, diagonal, -1, "inactive full glass still blocks the join below");
+            below.Inactive = false; below.HalfBrick = true;
+            RequirePlatformJoin(builder, stair, below, diagonal, 198, "half glass is blockType 1, not full blockType 0");
+            below.Slope = 4;
+            RequirePlatformJoin(builder, stair, below, diagonal, 198, "half flag takes precedence over a stored slope");
+            below.HalfBrick = false; below.Slope = 3;
+            RequirePlatformJoin(builder, stair, below, diagonal, 198, "slope 1 permits blockType 4 below");
+            stair.Slope = 2; diagonal.X = 1;
+            RequirePlatformJoin(builder, stair, below, diagonal, -1, "slope 2 is blocked by blockType 4 below");
+            below.Slope = 4;
+            RequirePlatformJoin(builder, stair, below, diagonal, 162, "slope 2 permits blockType 5 below");
+            stair.Slope = 1; diagonal.X = 3;
+            RequirePlatformJoin(builder, stair, below, diagonal, -1, "slope 1 is blocked by blockType 5 below");
+            below = Tile(TileID.TrapdoorOpen, 2, 4, 0, 0);
+            RequirePlatformJoin(builder, stair, below, diagonal, -1, "non-solid active open trapdoor blocks directly below");
+
+            // A differently painted flat platform supplies only geometry.
+            // Projection visibility keeps actuated/invisible source content.
+            below = default(CaptureCell);
+            diagonal = Tile(19, 3, 4, 0, 90); diagonal.TilePaint = 4;
+            diagonal.Inactive = diagonal.InvisibleTile = true;
+            stair.Inactive = stair.InvisibleTile = true;
+            RequirePlatformJoin(builder, stair, below, diagonal, 324, "inactive invisible right diagonal flat platform supports join");
+            stair.Slope = 2; diagonal.X = 1;
+            RequirePlatformJoin(builder, stair, below, diagonal, 306, "inactive invisible left diagonal flat platform supports join");
+            diagonal = Tile(TileID.TrapdoorOpen, 1, 4, 0, 0);
+            RequirePlatformJoin(builder, stair, below, diagonal, -1, "non-solid open trapdoor cannot support the diagonal join");
+        }
+        private static void RequirePlatformJoin(Type builder, CaptureCell stair, CaptureCell below, CaptureCell diagonal, int sourceX, string label)
+        {
+            var commands = Build(builder, new[] { stair, below, diagonal });
+            var owned = commands.Where(c => (int)Get(c, "CellX") == 2 && (int)Get(c, "CellY") == 3 && (ushort)Get(c, "SemanticBits") == 1).ToArray();
+            Require(owned.Length == (sourceX < 0 ? 1 : 2), label + ": literal join presence and upper-cell semantic ownership");
+            if (sourceX < 0) return;
+            var body = owned[0]; var join = owned[1];
+            Require(Rect(body) == new Rectangle(144, 36, 16, 16) && Rect(join) == new Rectangle(sourceX, 36, 16, 16) &&
+                Pos(join) == new Vector2(32, 64) && Get(join, "Texture").ToString() == "Tile" &&
+                (int)Get(join, "Type") == 19 && (int)Get(join, "Paint") == 11 &&
+                (Color)Get(join, "Color") == (Color)Get(body, "Color") && ((Color)Get(join, "Color")).A > 0 &&
+                (SpriteEffects)Get(join, "Effects") == (SpriteEffects)Get(body, "Effects"),
+                label + ": native source X/Y and position retain upper platform texture, paint, ink and effects");
         }
 
         private static void Furniture(Type builder)

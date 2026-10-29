@@ -27,6 +27,7 @@ namespace NativeWorldTextProbe
             check("pure difference contract", AppearanceDifferenceContract);
             check("hammer", () => ConstructionHammer(context, host, tools, input));
             check("captured platform identity and hammer", () => ConstructionCapturedPlatforms(context, host, tools, input));
+            check("captured smart platform native paint", () => ConstructionCapturedPlatformPaint(context, host, tools, input));
             check("mixed paint", () => ConstructionMixedPaint(context, host, tools, input));
             check("missing foreground keeps wall paint", () => ConstructionMissingForegroundWallPaint(context, host, tools, input));
             check("last paint", () => ConstructionLastPaint(context, host, tools, input));
@@ -35,7 +36,7 @@ namespace NativeWorldTextProbe
             check("unselected foreground", () => ConstructionUnselectedForeground(context, host, tools, input));
             check("platform slope3 boundary", () => ConstructionPlatformBoundary(context, host, tools, input, 3));
             check("platform slope4 boundary", () => ConstructionPlatformBoundary(context, host, tools, input, 4));
-            Console.WriteLine("PASS BlueprintConstructionAppearance: native hammer repeat, captured positive-ObjectId platform save/open and slope1/2/half completion, strict raw/style/appearance boundaries, protected walls, mixed original paint preparation/return, coating and cross-layer restoration with same-stack refill, unselected foreground refusal, platform slope3/4 boundary; real multiplayer/GPU/FPS NOT_RUN");
+            Console.WriteLine("PASS BlueprintConstructionAppearance: native hammer repeat, captured positive-ObjectId platform save/open and slope1/2/half completion, original smart platform capture and real native paint for existing-shape/empty destinations, strict raw/style/appearance boundaries, protected walls, mixed original paint preparation/return, coating and cross-layer restoration with same-stack refill, unselected foreground refusal, platform slope3/4 boundary; real multiplayer/GPU/FPS NOT_RUN");
         }
 
         private static void DumpAppearanceCase(string name, object host, object tools)
@@ -219,6 +220,170 @@ namespace NativeWorldTextProbe
                 Require((long)Get(host, "BuildUsesStarted") == settled && p.inventory[12].stack == (existing == 0 ? 2 : 5) && Main.tile[44, 42].wall == WallID.Stone,
                     "complete platform Match retires without later body charges or empty hammer repeats");
             }
+        }
+
+        private static void ConstructionCapturedPlatformPaint(object context, object host, object tools, object input)
+        {
+            var p = Reset(context, host, tools, input);
+            p.inventory[12].SetDefaults(ItemID.WoodPlatform);
+            var material = p.inventory[12];
+            var color = new Item(); color.SetDefaults(ItemID.RedPaint);
+            bool oldMouse = Main.SmartCursorWanted_Mouse, oldPad = Main.SmartCursorWanted_GamePad;
+            int oldTargetX = Player.tileTargetX, oldTargetY = Player.tileTargetY;
+            try
+            {
+                // Source setup calls the original placement routine, including
+                // its smart-platform stage. The first slope is never assigned
+                // by this fixture; its diagonal neighbour selects it in vanilla.
+                Main.tile[61, 43].ClearEverything();
+                Require(WorldGen.PlaceTile(61, 43, material.createTile, mute: true, forced: true, plr: 0, style: material.placeStyle),
+                    "smart source has one original diagonal platform neighbour");
+                p.selectedItemState.Select(12); p.selectedItemState.Update();
+                Main.SmartCursorWanted_Mouse = Main.SmartCursorWanted_GamePad = true;
+                Player.tileTargetX = 60; Player.tileTargetY = 42;
+                Call(p, "PlaceThing_Tiles_PlaceIt", false, default(TileObject), material.createTile);
+                Require(Main.tile[60, 42].active() && Main.tile[60, 42].type == material.createTile && Main.tile[60, 42].slope() == 1,
+                    "original smart placement really creates slope1 before capture");
+            }
+            finally
+            {
+                Main.SmartCursorWanted_Mouse = oldMouse; Main.SmartCursorWanted_GamePad = oldPad;
+                Player.tileTargetX = oldTargetX; Player.tileTargetY = oldTargetY;
+                p.selectedItemState.Select(0); p.selectedItemState.Update();
+            }
+            for (int x = 61; x < 64; x++)
+                Require(WorldGen.PlaceTile(x, 42, material.createTile, mute: true, forced: true, plr: 0, style: material.placeStyle),
+                    "remaining source controls use original platform placement");
+            WorldGen.SlopeTile(61, 42, 2); WorldGen.PoundTile(62, 42);
+            for (int x = 60; x < 64; x++) Require(WorldGen.paintTile(x, 42, color.paint, false, false), "source setup paints before capture");
+            var library = (LibraryState)Get(host, "Library");
+            var entry = NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context, host, input, library,
+                () => Step(context, input), 60, 42, 4, 1, "正式平台刷漆");
+            BlueprintProjectionWindow saved = OpenCapturedPlatforms(library, entry);
+            Require(saved.Cells.Count == 4 && saved.Objects.Count == 4 && saved.Objects.All(o => o.Id > 0 && o.Reliable),
+                "paint targets retain real CaptureJob positive object identities after production save/open");
+            for (int i = 0; i < 4; i++)
+            {
+                CaptureCell cell = saved.Cells.Single(c => c.X == i && c.Y == 0);
+                CaptureObject obj = saved.Objects.Single(o => o.Id == cell.ObjectId);
+                Tile original = Main.tile[60 + i, 42];
+                Require(cell.ObjectId > 0 && cell.FrameX == original.frameX && cell.FrameY == original.frameY &&
+                    cell.Slope == original.slope() && cell.HalfBrick == original.halfBrick() && cell.TilePaint == original.color() &&
+                    cell.InvisibleTile == original.invisibleBlock() && cell.FullbrightTile == original.fullbrightBlock() &&
+                    obj.Style == material.placeStyle && obj.RandomVariant == cell.FrameX / 18 &&
+                    obj.PlacementStyle == material.placeStyle * 27 + cell.FrameX / 18,
+                    "paint source raw frame/shape/color/coatings and decoded metadata round-trip without rewriting the target");
+            }
+            Require(saved.Cells.Single(c => c.X == 0).Slope == 1 && saved.Cells.Single(c => c.X == 0).FrameX > 0 &&
+                saved.Cells.Single(c => c.X == 1).Slope == 2 && saved.Cells.Single(c => c.X == 2).HalfBrick &&
+                saved.Cells.Single(c => c.X == 3).Slope == 0 && !saved.Cells.Single(c => c.X == 3).HalfBrick,
+                "one smart-produced slope, opposite slope, half and flat controls keep their actual captured states");
+
+            var patch = new HarmonyLib.Harmony("JueMingR.Tests.CapturedPlatformPaint");
+            patch.Patch(host.GetType().GetMethod("CheckedAutomaticBuild", F),
+                prefix: new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(CapturedPlatformReceiptBoundary)));
+            patch.Patch(typeof(WorldGen).GetMethod("paintTile", F, null, new[] { typeof(int), typeof(int), typeof(byte), typeof(bool), typeof(bool) }, null),
+                postfix: new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(ContinuousPainted)));
+            continuousHost = host; continuousUse = Get(tools, "Use"); continuousAutomatic = true;
+            try
+            {
+                // One immutable saved asset crosses both mechanisms. Existing
+                // destinations have their final shape and have no hammer;
+                // empty destinations must place/hammer before full Match.
+                foreach (bool existing in new[] { true, false })
+                {
+                    p = Reset(context, host, tools, input); p.position.X = 42 * 16;
+                    p.inventory[12].SetDefaults(ItemID.WoodPlatform); p.inventory[12].stack = 5; var bodies = p.inventory[12];
+                    p.inventory[13].SetDefaults(ItemID.RedPaint); p.inventory[13].stack = 6; var paint = p.inventory[13];
+                    p.inventory[14].SetDefaults(ItemID.Paintbrush); var brush = p.inventory[14];
+                    if (!existing) p.inventory[15].SetDefaults(ItemID.WoodenHammer);
+                    p.inventory[54].SetDefaults(ItemID.BluePaint); p.inventory[54].stack = 7; var priority = p.inventory[54];
+                    if (existing)
+                        foreach (var cell in saved.Cells)
+                        {
+                            int x = 44 + cell.X;
+                            Require(WorldGen.PlaceTile(x, 42, material.createTile, mute: true, forced: true, plr: 0, style: material.placeStyle),
+                                "paint-only arm has the original same-material body");
+                            if (cell.HalfBrick) WorldGen.PoundTile(x, 42);
+                            else if (cell.Slope != 0) WorldGen.SlopeTile(x, 42, cell.Slope);
+                            Require(Main.tile[x, 42].color() == 0, "only paint is missing in existing-shape arm");
+                        }
+                    WorldGen.PlaceWall(44, 42, WallID.Stone);
+                    var position = p.position;
+                    var instance = Place(context, host, input, entry, 44, 42);
+                    continuousPlacements.Clear(); continuousFrame = 0; continuousWatch = true;
+                    capturedReceiptChecks = 0; capturedReceiptRejected = true;
+                    long checks = (long)Get(host, "BuildNativeChecks");
+                    SetAutomatic(host, input, true);
+                    Until(context, input, () =>
+                    {
+                        continuousFrame++;
+                        return Scene(host).Length == 0 && !(bool)Get(continuousUse, "Active") && Main.mouseItem.IsAir &&
+                            ReferenceEquals(p.inventory[13], paint) && ReferenceEquals(p.inventory[54], priority);
+                    });
+                    continuousWatch = false;
+                    Require(saved.Cells.All(cell =>
+                    {
+                        Tile actual = Main.tile[44 + cell.X, 42];
+                        return actual.active() && actual.type == cell.TileType && actual.frameY == cell.FrameY &&
+                            actual.slope() == cell.Slope && actual.halfBrick() == cell.HalfBrick && actual.color() == cell.TilePaint &&
+                            actual.invisibleBlock() == cell.InvisibleTile && actual.fullbrightBlock() == cell.FullbrightTile;
+                    }) && bodies.stack == (existing ? 5 : 1) && paint.stack == 2 && priority.stack == 7 &&
+                        ReferenceEquals(p.inventory[12], bodies) && ReferenceEquals(p.inventory[14], brush) && brush.stack == 1 &&
+                        p.position == position && Main.tile[44, 42].wall == WallID.Stone && (long)Get(host, "BuildNativeChecks") >= checks + 4,
+                        "real native paint completes each saved shape with exact body/paint debits and preserves tools, priority paint, player and wall; existing=" + existing);
+                    Require(continuousPlacements.Count == 4 && continuousPlacements.Select(v => v.X).OrderBy(x => x).SequenceEqual(new[] { 44, 45, 46, 47 }) &&
+                        continuousPlacements.All(v => ReferenceEquals(v.Owner, instance) && v.Kind == "PaintTile" && v.Consumer == "Paintbrush" &&
+                            v.Mode == color.paint && ReferenceEquals(v.Item, brush) && ReferenceEquals(v.Supply, paint) && v.SupplySlot == 54 &&
+                            v.Token > 0 && v.Native > 0 && v.Flight > 0),
+                        "each successful original paintTile is inside the exact production brush flight with its real prepared paint dependency");
+                    Require(capturedReceiptChecks == 1 && capturedReceiptRejected,
+                        "one actual native paint debit rejects a stale token and insufficient budget without advancing receipt endpoints");
+                    long settled = (long)Get(host, "BuildUsesStarted");
+                    for (int frame = 0; frame < 80; frame++) Step(context, input);
+                    Require((long)Get(host, "BuildUsesStarted") == settled && paint.stack == 2 && bodies.stack == (existing ? 5 : 1),
+                        "full current Match retires the capture without further empty brush/hammer uses or charges");
+                    Console.WriteLine("PASS CapturedPlatformPaint existing=" + existing + " asset=" + entry.AssetId + " revision=" + entry.ContentRevision +
+                        " positiveObjects=4 originalSmartSlope=1 nativePaint=4 actualPaintSpent=4 actualBodiesSpent=" + (existing ? 0 : 4) + " fullMatchRetired=true");
+                }
+            }
+            finally
+            {
+                continuousWatch = false; continuousAutomatic = false; continuousHost = continuousUse = null; continuousPlacements.Clear();
+                foreach (var method in patch.GetPatchedMethods().ToArray()) patch.Unpatch(method, HarmonyLib.HarmonyPatchType.All, patch.Id);
+            }
+        }
+
+        private static int capturedReceiptChecks;
+        private static bool capturedReceiptRejected;
+        private static void CapturedPlatformReceiptBoundary(object __instance, object flight)
+        {
+            if (!continuousWatch || capturedReceiptChecks != 0 || flight == null || (bool)Get(flight, "Checked") || !(bool)Get(flight, "Entered")) return;
+            var operation = GetOptional(flight, "Operation");
+            if (operation == null || Get(operation, "Kind").ToString() != "PaintTile") return;
+            var preparation = Get(__instance, "buildMaterialPreparation");
+            if (!(bool)Get(preparation, "Using")) return;
+            var inventory = (Item[])Get(preparation, "inventory");
+            var endpoints = ((Array)Get(preparation, "endpoints")).Cast<object>().Take((int)Get(preparation, "endpointCount")).ToArray();
+            var primary = endpoints.Single(endpoint => (int)Get(endpoint, "Slot") == 54);
+            int before = (int)Get(primary, "Stack");
+            if (before - inventory[54].stack != 1) return;
+            capturedReceiptChecks++;
+            long token = (long)Get(flight, "Token");
+            var maximum = (Func<int, int>)Get(preparation, "UseConsumptionMaximum");
+            var beforeStacks = endpoints.Select(endpoint => (int)Get(endpoint, "Stack")).ToArray();
+            try
+            {
+                capturedReceiptRejected &= !(bool)Call(preparation, "ObserveUseConsumption", token - 1);
+                // This negative call owns no native action and writes no Item.
+                // Restore the real flight budget before production acknowledges
+                // that same one-unit native debit in the method below us.
+                Set(preparation, "UseConsumptionMaximum", (Func<int, int>)(_ => 0));
+                capturedReceiptRejected &= !(bool)Call(preparation, "ObserveUseConsumption", token);
+                capturedReceiptRejected &= endpoints.Select(endpoint => (int)Get(endpoint, "Stack")).SequenceEqual(beforeStacks);
+            }
+            catch { capturedReceiptRejected = false; }
+            finally { Set(preparation, "UseConsumptionMaximum", maximum); }
         }
 
         private static BlueprintProjectionWindow OpenCapturedPlatforms(LibraryState library, LibraryEntry entry)
