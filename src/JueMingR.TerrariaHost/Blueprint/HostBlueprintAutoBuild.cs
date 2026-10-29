@@ -207,7 +207,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             if (!BuildRetryReady(target)) return false;
             if (target.Operation != null) return TryPrepareConstructionBuild(target, p, out result);
-            if (target.Body != null && TileID.Sets.IsAContainer[target.Placement.TileType] && buildContainer != null)
+            // Object members can retain a foreground Body while this lane
+            // places their wall. Only a Tile descriptor owns a tile type;
+            // Wall deliberately uses -1 and never borrows container gating.
+            if (target.Placement.Kind == BlueprintPlacementKind.Tile && target.Body != null &&
+                TileID.Sets.IsAContainer[target.Placement.TileType] && buildContainer != null)
             { WaitForBuild(target, BlueprintBuildWait.Container);
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 DiagnosticReject(target,BuildTraceStage.Prepare,BuildTraceReason.ContainerWaiting);

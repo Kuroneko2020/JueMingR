@@ -48,6 +48,7 @@ namespace NativeWorldTextProbe
                     {
                     if(family==null)
                     {
+                    check("object walls preserve layer and container duties",()=>ConstructionWallContexts(context,host,tools,input));
                     check("ordinary continuous native opportunities",()=>NativeContinuousOpportunity(context,host,tools,input));
                     check("ordinary sustained throughput",()=>SustainedNativeThroughput(context,host,tools,input));
                     check("ordinary moving furniture direction",()=>MovingFurnitureDirection(context,host,tools,input));
