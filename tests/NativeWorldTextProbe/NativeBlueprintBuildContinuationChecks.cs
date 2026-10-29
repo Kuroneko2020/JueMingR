@@ -446,7 +446,8 @@ namespace NativeWorldTextProbe
                 }
                 ContinuousMixedAppearance(context, host, tools, input);
                 ContinuousPreparedPaint(context, host, tools, input);
-                RetainedPaintSuccessorRevoked(context, host, tools, input);
+                RetainedPaintSuccessorRevoked(context, host, tools, input, false);
+                RetainedPaintSuccessorRevoked(context, host, tools, input, true);
             }
             finally
             {
@@ -591,7 +592,7 @@ namespace NativeWorldTextProbe
                 constructionChecksActive = priorChecks; constructionInputTail = priorTail;
             }
         }
-        private static void RetainedPaintSuccessorRevoked(object context, object host, object tools, object input)
+        private static void RetainedPaintSuccessorRevoked(object context, object host, object tools, object input,bool cancelledExit)
         {
             var p = Reset(context, host, tools, input); p.position = new Vector2(42 * 16, 646);
             p.inventory[12].SetDefaults(ItemID.Paintbrush); var shortBrush = p.inventory[12];
@@ -602,6 +603,10 @@ namespace NativeWorldTextProbe
             Place(context, host, input, Asset(host, Enumerable.Range(0, 2).Select(x => new CaptureCell {
                 X = x, Layers = CaptureLayer.Tile, TileType = TileID.Stone, TilePaint = red.paint }).ToArray()), 44, 42);
             var preparation = Get(host, "buildMaterialPreparation");
+            bool priorChecks=constructionChecksActive;var priorTail=constructionInputTail;
+            var tail=preparation.GetType().GetMethod("NativeInputTailForChecks",F);
+            Require(tail!=null,"retained receipt case uses the existing locked original native input tail in every existing caller");
+            constructionChecksActive=true;constructionInputTail=()=>tail.Invoke(null,null);
             continuousPlacements.Clear(); continuousFrame = 0; continuousWatch = true;
             try
             {
@@ -614,12 +619,26 @@ namespace NativeWorldTextProbe
                 });
                 var successor = Get(host, "preparedBuild"); var target = Get(successor, "Target");
                 Require(ReferenceEquals(Get(Get(successor, "Source"), "Item"), shortBrush) &&
-                    (bool)Call(host, "BuildFlightCurrent", successor, false) && ReferenceEquals(p.inventory[54], red) && red.stack == 2,
+                    (bool)Call(host, "BuildFlightCurrent", successor, false) && (bool)Call(host,"BuildContinuationCurrent",p) &&
+                    ReferenceEquals(p.inventory[54], red) && red.stack == 2,
                     "the revocation case starts with one real native debit, its real54 receipt and a current exact short-brush successor");
                 // Stimulate the existing use-retirement exit after ItemCheck
                 // returned. This verifies the lifecycle edge; the preceding
                 // fixture separately measures natural consecutive intervals.
-                Call(continuousUse, "Retire");
+                if(cancelledExit)Call(continuousUse,"Cancel");
+                Call(continuousUse,"Retire");
+                if(cancelledExit)
+                {
+                    Require(!(bool)Get(continuousUse,"Active") && (bool)Get(preparation,"Returning") &&
+                        (long)Get(host,"buildSupplyReadyFlight")==0 && continuousPlacements.Count==1 && red.stack==2,
+                        "an already cancelled checked use keeps the original Returning path and cannot retain a Ready successor receipt");
+                    SetAutomatic(host,input,false);Until(context,input,()=>!(bool)Get(preparation,"HasWork"));
+                    Require(ReferenceEquals(p.inventory[20],red) && ReferenceEquals(p.inventory[54],priority) && Main.mouseItem.IsAir &&
+                        red.stack==2 && priority.stack==7 && Main.tile[45,42].color()==0,
+                        "the cancelled use returns only its real remainder through native ItemSlot and never consumes the prepared successor");
+                    Console.WriteLine("PASS BlueprintBuild cancelled checked exit: original Returning, no Ready receipt, native remainder return");
+                    return;
+                }
                 Require(!(bool)Get(continuousUse, "Active") && (bool)Get(preparation, "Ready") &&
                     (long)Get(host, "buildSupplyReadyFlight") == (long)Get(successor, "Generation"),
                     "the real checked use exit releases ToolUse and retains only its already proven successor receipt");
@@ -642,7 +661,15 @@ namespace NativeWorldTextProbe
                     "the revoked finite receipt returns through actual native ItemSlot inputs and leaves the unexecuted target unchanged");
                 Console.WriteLine("PASS BlueprintBuild retained successor revoked: checked real paint, Retire exit, exact short out-of-reach, long reachable, no reselect, native receipt return; natural intervals measured separately");
             }
-            finally { continuousWatch = false; SetAutomatic(host, input, false); }
+            finally
+            {
+                continuousWatch = false; SetAutomatic(host, input, false);
+                // Preserve a first assertion and its real receipt. Only drain
+                // a still legal return through the existing native input tail;
+                // never reset a protected/Unknown owner to prepare a sibling.
+                try { for(int i=0;i<80 && (bool)Get(preparation,"Returning");i++)Step(context,input); }
+                finally { constructionChecksActive=priorChecks;constructionInputTail=priorTail; }
+            }
         }
         [HarmonyPriority(Priority.Last)]
         private static void LateContinuousCheck(Player __instance)

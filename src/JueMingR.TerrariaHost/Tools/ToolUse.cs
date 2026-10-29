@@ -480,7 +480,15 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal void Retire()
         {
-            if(!Active)return;Restore();Cancel();Notify(false);
+            if(!Active)return;Restore();
+            // A returned, checked Build can hand its finite receipt to one
+            // already proven successor while this exact owner is verifiable.
+            // Cancelling first makes its own held animation look foreign to
+            // inventory protection. This callback grants no native scope;
+            // manual/invalid cancellation and all other tools keep old order.
+            if(Building && checkedItem && !InNativeUse && !cancelled)
+            {try{Notify(false);}finally{Cancel();}}
+            else {Cancel();Notify(false);}
             host.Items.Ownership.EndUse(session,token);
             player=null;item=originalItem=null;drill=null;Intent=null;token=0;InNativeUse=false;
         }
