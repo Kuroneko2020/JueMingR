@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using JueMingR.Features.Blueprint;
+using Terraria;
 using Terraria.DataStructures;
 
 namespace JueMingR.TerrariaHost.Blueprint
@@ -26,6 +27,16 @@ namespace JueMingR.TerrariaHost.Blueprint
                     int left,top,right,bottom;
                     TileReachCheckSettings.Simple.GetTileRegion(p,out left,out top,out right,out bottom,buildEnvelopeBoost+p.blockRange);
                     buildNearWorld=new BlueprintProjectionBounds(left,top,Math.Max(0,right-left+1),Math.Max(0,bottom-top+1));
+                    if(buildSupply.ContainsKey(3611) && Main.screenWidth>0 && Main.screenHeight>0)
+                    {
+                        // Grand Design is a native screen gesture rather than
+                        // a wrench's Simple reach. This is only a broad phase;
+                        // its actual fixed point must remain in the viewport.
+                        int screenLeft=(int)Math.Floor(Main.screenPosition.X/16f),screenTop=(int)Math.Floor(Main.screenPosition.Y/16f);
+                        int screenRight=(int)Math.Ceiling((Main.screenPosition.X+Main.screenWidth)/16f),screenBottom=(int)Math.Ceiling((Main.screenPosition.Y+Main.screenHeight)/16f);
+                        left=Math.Min(left,screenLeft);top=Math.Min(top,screenTop);right=Math.Max(right,screenRight);bottom=Math.Max(bottom,screenBottom);
+                        buildNearWorld=new BlueprintProjectionBounds(left,top,Math.Max(0,right-left+1),Math.Max(0,bottom-top+1));
+                    }
                 }
                 else buildNearWorld=default(BlueprintProjectionBounds);
             }
@@ -76,7 +87,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 source.DiagnosticResetBefore=source.NearCursor;
 #endif
                 source.NearInitialized=true;source.NearComplete=source.NearRevisit=false;
-                source.NearCursor=source.Part.LogicalObjectId>0?0:BuildCellLowerBound(source.Part.Window.Cells,source.NearBounds.Left,source.NearBounds.Top)*2;
+                source.NearCursor=BuildMemberOrdinal(BuildCellLowerBound(source.Part.Window.Cells,source.NearBounds.Left,source.NearBounds.Top));
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 source.DiagnosticResetAfter=source.NearCursor;
                 // A merged revisit no longer has one immediate reset cause.
@@ -115,8 +126,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             while(materialBuildSourceBudget>0 && stepLimit>0)
             {
-                int index=part.LogicalObjectId>0?0:cursor/2;
-                if(index>=cells.Count || part.LogicalObjectId>0 && cursor>0)
+                int index=BuildMemberIndex(cursor);
+                if(index>=cells.Count)
                 {
 #if JMR_BLUEPRINT_DIAGNOSTIC
                     BlueprintBuildTrace.Count(BuildTraceReason.SourceEnd);
@@ -134,13 +145,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                         complete=true;return false;
                     }
                     if(cell.X<bounds.Left || cell.X>=bounds.Right || cell.Y<bounds.Top)
-                    {cursor=BuildCellLowerBound(cells,bounds.Left,cell.X>=bounds.Right?cell.Y+1:Math.Max(cell.Y,bounds.Top))*2;continue;}
+                    {cursor=BuildMemberOrdinal(BuildCellLowerBound(cells,bounds.Left,cell.X>=bounds.Right?cell.Y+1:Math.Max(cell.Y,bounds.Top)));continue;}
                 }
-                // Use the same stable Tile/Wall identity and hole skipping as
-                // forward discovery; a wall-only record costs one real step.
-                if(part.LogicalObjectId==0 && (cursor&1)==0 && (cell.Layers&CaptureLayer.Tile)==0 && (cell.Layers&CaptureLayer.Wall)!=0)cursor++;
-                int ordinal=part.LogicalObjectId>0?0:(part.Offset+index)*2+(cursor&1);
-                cursor=part.LogicalObjectId>0?1:NextBuildSourceOrdinal(cursor,cell,false);
+                int ordinal=BuildMemberOrdinal(part.Offset+index)+(int)BuildLane(cursor);
+                cursor=NextBuildOrdinal(cursor,cell);
                 materialBuildSourceBudget--;stepLimit--;
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 BlueprintBuildTrace.Count(diagnosticFrontier?BuildTraceReason.FrontierStep:BuildTraceReason.NearStep);
@@ -158,44 +166,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool TryCreateLocalBuildTarget(BuildSourcePart source,int index,int ordinal,long support,out BlueprintBuildTarget target,int preferredItemType=0)
         {
-            target=null;var range=source.Range;var part=source.Part;var catalog=MaterialCatalog;
-            if(!ProjectionQualificationCurrent(source.Owner))
-            {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                BlueprintBuildTrace.Count(BuildTraceReason.SourceNotCurrent);
-#endif
-                return false;
-            }
-            CaptureObject? obj=part.LogicalObjectId>0 && part.Window.Objects.Count==1?part.Window.Objects[0]:(CaptureObject?)null;
-            var cell=source.Owner.Mask.Apply(part.Window.Cells[index]);var selection=SelectProjectionTarget(source.Owner,cell,obj);cell=selection.Apply(cell);
-            BlueprintWorldObject body=null;BlueprintPlacementDescriptor descriptor=null;
-            if(part.LogicalObjectId>0)
-            {
-                if((cell.Layers&CaptureLayer.Tile)!=0 && obj.HasValue && projectionMatchSource.TryDescribeTarget(obj.Value,cell,source.Owner.OriginX,source.Owner.OriginY,out body))
-                    descriptor=catalog.Tile(cell,obj.Value);
-            }
-            else if((ordinal&1)==0 && (cell.Layers&CaptureLayer.Tile)!=0 && cell.ObjectId==0)descriptor=catalog.Tile(cell);
-            else if((ordinal&1)!=0 && (cell.Layers&CaptureLayer.Wall)!=0)descriptor=catalog.Wall(cell.WallType);
-            // Preference uses this same decoder, but unrelated descriptors do
-            // not need world vacancy or a complete placement preflight.
-            if(preferredItemType>0 && descriptor?.UseItemType!=preferredItemType)return false;
-            ushort targetBit=part.LogicalObjectId>0 || (ordinal&1)==0?(ushort)1:(ushort)2;
-            if((selection.UnknownBits&targetBit)!=0 || !BasicPlacement(descriptor) || descriptor.RequiresSubstrate)
-            {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                BlueprintBuildTrace.Count((selection.UnknownBits&targetBit)!=0?BuildTraceReason.Unconfirmed:BuildTraceReason.Unsupported);
-#endif
-                return false;
-            }
-            bool supplied=buildSupply.ContainsKey(descriptor.UseItemType);
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            DiagnosticSupply(descriptor.UseItemType,supplied);
-#endif
-            if(!supplied){range.Materials.BuildWaits|=BlueprintBuildWait.Material;return false;}
-            var next=CreateMaterialBuildTarget(source.Owner,range,cell,descriptor,obj,body,ordinal,support,catalog.Revision);
-            if(!buildNearWorld.Contains(next.WorldX,next.WorldY)){range.Materials.BuildWaits|=BlueprintBuildWait.Player;return false;}
-            if(!BuildEmpty(next.Bounds.Left,next.Bounds.Top,descriptor.Kind==BlueprintPlacementKind.Wall))return false;
-            next.LocalProof=next.LocalPriority=true;target=next;return true;
+            bool found=TryCreateConstructionTarget(source.Owner,source.Range,source.Part,index,ordinal,support,out target,preferredItemType);
+            if(found)target.LocalPriority=true;return found;
         }
         private void RememberBuildFrontier(BlueprintBuildTarget target)
         {
@@ -204,7 +176,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var source=node.Value;if(!ReferenceEquals(source.Range,target.Range))continue;
                 var bounds=target.Bounds.Expand(1);
                 source.FrontierBounds=new BlueprintProjectionBounds(bounds.Left-source.Owner.OriginX,bounds.Top-source.Owner.OriginY,bounds.Width,bounds.Height);
-                source.FrontierCursor=source.Part.LogicalObjectId>0?0:BuildCellLowerBound(source.Part.Window.Cells,source.FrontierBounds.Left,source.FrontierBounds.Top)*2;
+                source.FrontierCursor=BuildMemberOrdinal(BuildCellLowerBound(source.Part.Window.Cells,source.FrontierBounds.Left,source.FrontierBounds.Top));
                 source.Frontier=true;return;
             }
         }

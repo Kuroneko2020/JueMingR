@@ -159,6 +159,7 @@ namespace NativeWorldTextProbe
         {
             NativeToolExecutionChecks.Sample(context, input, new Vector2(480, 540), false);
             NativeQuickItemChecks.BeginWorldStep(); Main.LocalPlayer.Update(0); Call(context, "UpdateRuntime");
+            if(constructionChecksActive)constructionInputTail?.Invoke();
         }
         private static void Until(object context, object input, Func<bool> condition)
         {
@@ -173,6 +174,11 @@ namespace NativeWorldTextProbe
                     " use=" + Get(Get(tools, "Use"), "Active") + " selected=" + p.selectedItem + " anim/time/reuse=" + p.itemAnimation + "/" + p.itemTime + "/" + p.reuseDelay +
                     " release=" + p.releaseUseItem + " override=" + p.selectedItemState.HasActiveOverride + " buffered=" + p.selectedItemState.HasBufferedChange + " position=" + p.position +
                     " unknown=" + Get(host, "BuildUnknownResults") + " toolError=" + GetOptional(tools, "Error"));
+                var preparation=GetOptional(host,"buildMaterialPreparation");
+                if(preparation!=null)Console.Error.WriteLine("PREPARATION phase="+Get(preparation,"phase")+" reason="+GetOptional(preparation,"Reason")+
+                    " slots="+Get(preparation,"Slots")+" nativeClicks="+Get(preparation,"NativeClicks")+" neutralTails="+Get(preparation,"NativeNeutralTails")+
+                    " cursor="+Main.mouseItem.type+":"+Main.mouseItem.stack+" inventoryOpen="+Main.playerInventory+" prepared="+(GetOptional(host,"preparedBuild")!=null)+
+                    " slot12Eligible="+Call(tools,"BuildInventoryEligible",12,p.inventory[12])+" slot20Eligible="+Call(tools,"BuildInventoryEligible",20,p.inventory[20]));
                 foreach (var scene in Scene(host))
                 {
                     var match = GetOptional(scene, "Match"); if (match == null) continue;

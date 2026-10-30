@@ -5,7 +5,7 @@ namespace JueMingR.Features.Blueprint
 {
     public enum BlueprintWorldMatchState { Unknown, Missing, Conflict, Match }
     public enum BlueprintWorldObjectFamily { Metadata, Door }
-    public enum BlueprintWorldFrameKind { Literal, TreeTrunk22, Palm22, Mushroom18 }
+    public enum BlueprintWorldFrameKind { Literal, TreeTrunk22, Palm22, Mushroom18, Platform18 }
 
     // Construction observations use the permanent mask's layer units without
     // its display-only Liquid bit. A Match never mutates the permanent mask.

@@ -36,6 +36,9 @@ namespace JueMingR.TerrariaHost.Items
         internal Func<int, bool> AllowsOwnedUse;
         internal Func<Item[],int,bool> AllowsOwnedTools {get;set;}
         internal Func<Item,bool> OwnsBuildHeldMaterial;
+        internal Func<bool> HasConstructionPending;
+        internal Func<Item,bool> ConstructionPendingProtected;
+        internal Func<Item[],int,bool> AllowsOwnedConstructionMaterial;
         internal Func<Item[],int,bool> AllowsOwnedCombat {get;set;}
         internal bool ReturningSelection {get;private set;}
         // Synchronous owner scope only: explicit user Select still advances

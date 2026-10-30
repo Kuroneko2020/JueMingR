@@ -59,6 +59,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         { if (node != null) { buildSourceBytes -= BuildSourceRetainedBytes(node.Value.Part); buildSources.Remove(node); } }
         private void RemoveBuildSources(BlueprintProjectionIdentity identity = null, BlueprintProjectionMatchRange range = null)
         {
+            if(identity!=null && range==null)
+            {
+                CancelWiringBuildIdentity(identity);
+                if(buildSupplyTarget?.Identity.Equals(identity)==true){buildMaterialPreparation?.RequestReturn();buildSupplyTarget=null;}
+            }
             for (var node = buildSources.First; node != null;)
             {
                 var next = node.Next;
@@ -125,17 +130,25 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                 return false;
             }
-            var catalog = MaterialCatalog;
             while (materialBuildSourceBudget > 0 && stepLimit-- > 0)
             {
-                int index = part.LogicalObjectId > 0 ? 0 : value.CandidateCursor / 2 - part.Offset;
+                int index = BuildMemberIndex(value.CandidateCursor) - part.Offset;
                 if (index < 0) { DemandProjectionMatchRange(range);
 #if JMR_BLUEPRINT_DIAGNOSTIC
                     BlueprintBuildTrace.Count(BuildTraceReason.SourceOffset);
 #endif
                     return false; }
-                if (index >= part.Window.Cells.Count || part.LogicalObjectId > 0 && value.CandidateCursor > 0)
-                { value.BuildExhausted = part.Complete;
+                if (index >= part.Window.Cells.Count)
+                {
+                    value.BuildExhausted = part.Complete;
+                    // Cells omit positive-object Tile-only records. A bounded
+                    // ordinary prefix still advances in raw source offsets;
+                    // its filtered count cannot name the next source slice.
+                    if (!part.Complete)
+                    {
+                        value.CandidateCursor = Math.Max(value.CandidateCursor, BuildMemberOrdinal(part.NextOffset));
+                        DemandProjectionMatchRange(range);
+                    }
 #if JMR_BLUEPRINT_DIAGNOSTIC
                     BlueprintBuildTrace.Count(BuildTraceReason.SourceEnd);
 #endif
@@ -148,51 +161,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                 ProjectionMatchSourceSteps++;
 #endif
                 int ordinal = value.CandidateCursor;
-                var cell = range.Owner.Mask.Apply(part.Window.Cells[index]);
-                CaptureObject? metadata=part.LogicalObjectId>0 && part.Window.Objects.Count==1?part.Window.Objects[0]:(CaptureObject?)null;
-                var selection=SelectProjectionTarget(range.Owner,cell,metadata);
-                cell=selection.Apply(cell);
-                // A wall-only record has no Tile ordinal to inspect. Keep the
-                // stable two-slot identity without spending a second source step.
-                if(part.LogicalObjectId==0 && (ordinal&1)==0 && (cell.Layers&CaptureLayer.Tile)==0 && (cell.Layers&CaptureLayer.Wall)!=0)
-                {ordinal++;value.CandidateCursor=ordinal;}
-                CaptureObject? obj = null; BlueprintWorldObject body = null;
-                BlueprintPlacementDescriptor descriptor = null;
-                if (part.LogicalObjectId > 0)
+                int following;
+                if (TryCreateConstructionTargetAndAdvance(range.Owner,range,part,index,ordinal,support,out target,out following))
                 {
-                    if ((cell.Layers & CaptureLayer.Tile) != 0 && part.Window.Objects.Count == 1 && projectionMatchSource.TryDescribeTarget(part.Window.Objects[0], cell,
-                        range.Owner.OriginX, range.Owner.OriginY, out body))
-                    { obj = part.Window.Objects[0]; descriptor = catalog.Tile(cell, obj.Value); }
-                }
-                else if ((ordinal & 1) == 0)
-                {
-                    if ((cell.Layers & CaptureLayer.Tile) != 0 && cell.ObjectId == 0) descriptor = catalog.Tile(cell);
-                }
-                else if ((cell.Layers & CaptureLayer.Wall) != 0) descriptor = catalog.Wall(cell.WallType);
-                bool supplied=descriptor!=null && buildSupply.ContainsKey(descriptor.UseItemType);
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                if(descriptor!=null)DiagnosticSupply(descriptor.UseItemType,supplied);
-#endif
-                // Complete objects use their original click/origin, which may
-                // differ from this source member or the footprint's top-left.
-                var next=!supplied?null:CreateMaterialBuildTarget(range.Owner,range,cell,descriptor,obj,body,ordinal,support,catalog.Revision);
-                var near=BuildNearBounds(range.Owner);
-                bool nearby=next!=null && near.Contains(next.WorldX-range.Owner.OriginX,next.WorldY-range.Owner.OriginY);
-                if(descriptor!=null && !supplied)value.BuildWaits|=BlueprintBuildWait.Material;
-                // Missing material is the first failed gate. Player changes
-                // cannot recover it; recording both would resample unrelated
-                // world proofs on an edit/turn without any relevant refill.
-                if(descriptor!=null && supplied && !nearby)value.BuildWaits|=BlueprintBuildWait.Player;
-                ushort targetBit=part.LogicalObjectId>0 || (ordinal&1)==0?(ushort)1:(ushort)2;
-                if ((selection.UnknownBits&targetBit)==0 && descriptor != null && !descriptor.Flexible && !descriptor.RequiresSubstrate && descriptor.UseItemType > 0 && supplied && nearby)
-                {
-                    target = next;
-                    // This is a local admission proof, not a whole-range Match.
-                    // The unified preflight must read the actual target and its
-                    // dependencies before each start and native consumer.
                     target.LocalProof = true; value.Candidate = target; return true;
                 }
-                value.CandidateCursor = NextBuildSourceOrdinal(ordinal, cell, part.LogicalObjectId > 0);
+                value.CandidateCursor = following;
             }
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Count(BuildTraceReason.SourceBudgetEmpty);
@@ -235,11 +209,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private static int NextBuildSourceOrdinal(int ordinal, CaptureCell cell, bool logicalObject)
         {
-            // Ordinals reserve Tile/Wall positions, but absent Wall is no
-            // candidate. Skip its hole with the cell already in hand instead
-            // of loading and charging the same immutable cell a second time.
-            int step = logicalObject || (ordinal & 1) != 0 || (cell.Layers & CaptureLayer.Wall) != 0 ? 1 : 2;
-            return ordinal > int.MaxValue - step ? int.MaxValue : ordinal + step;
+            return NextBuildOrdinal(ordinal, cell);
         }
     }
 }

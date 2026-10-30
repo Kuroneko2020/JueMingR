@@ -33,6 +33,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "delete handle and commit boundaries", () => Deletion(Path.Combine(area, "deletion")));
             Run(failures, "sparse source slices remain independent of viewport latest", () => MatchSources(Path.Combine(area, "match-sources")));
             Run(failures, "source batches preserve members layers prefix and lifetime", () => SourceBatches(Path.Combine(area, "source-batches")));
+            Run(failures, "door source context survives cross-block siblings within original budgets", () => SourceDoorContexts(Path.Combine(area, "door-contexts")));
             if (before == failures.Count)
             {
                 string resolved = Path.GetFullPath(area), parent = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
@@ -774,12 +775,13 @@ namespace JueMingR.ArchitectureTests
                         "each logical object keeps one complete Tile owner and only its original same-cell wall context; wire stays ordinary");
                 }
                 long uniqueWindows = batch.Parts.Select(p => p.Window).Distinct().Sum(w => w.EstimatedBytes);
+                long contextBytes = batch.Parts.GroupBy(p => p.Window).Sum(group => group.First().DoorContextEstimatedBytes);
                 Require(batch.Parts.All(p => p.WindowEstimatedBytes == p.Window.EstimatedBytes + missing.Length * 8L && p.Window.Summary.MissingPayloads.SequenceEqual(missing) && p.Window.Summary.UnreliableReasons.Length == 0) &&
                     !ReferenceEquals(batch.Parts[0].Window.Summary.MissingPayloads, batch.Parts[1].Window.Summary.MissingPayloads) &&
                     ReferenceEquals(batch.Parts[0].Window.Summary.MissingPayloads[0], batch.Parts[1].Window.Summary.MissingPayloads[0]),
                     "actual ReadRoot summary arrays are cloned per window and charged per slot while their immutable strings remain shared");
-                Require(batch.EstimatedBytes == uniqueWindows + 128L + batch.Parts.Count * (128L + missing.Length * 8L) && batch.EstimatedBytes <= BlueprintProjectionSourceReceipt.TargetBytes,
-                    "retained batch estimate includes unique immutable windows plus real directory/descriptor ownership");
+                Require(batch.EstimatedBytes == uniqueWindows + contextBytes + 128L + batch.Parts.Count * (128L + missing.Length * 8L) && batch.EstimatedBytes <= BlueprintProjectionSourceReceipt.TargetBytes,
+                    "retained batch estimate includes unique immutable primary/context windows plus real directory/descriptor ownership");
 #if DEBUG
                 var after = state.DebugProjectionSourceStatistics;
                 Require(after.MemberBlocks - before.MemberBlocks == 1 && after.MemberRecords - before.MemberRecords == cells.Count,
@@ -792,8 +794,9 @@ namespace JueMingR.ArchitectureTests
                 Require(state.RequestProjectionSources(id, 3003, new[] { new BlueprintProjectionSourceDemand(1), new BlueprintProjectionSourceDemand(1) }), "repeated immutable demand shares one build");
                 var duplicate = Source(state);
                 Require(duplicate.Parts.Count == 2 && ReferenceEquals(duplicate.Parts[0].Window, duplicate.Parts[1].Window) &&
-                    duplicate.EstimatedBytes == duplicate.Window.EstimatedBytes + missing.Length * 8L + 384L,
-                    "two part references retain one window payload, while both descriptors remain charged");
+                    ReferenceEquals(duplicate.Parts[0].DoorContexts, duplicate.Parts[1].DoorContexts) &&
+                    duplicate.EstimatedBytes == duplicate.Window.EstimatedBytes + duplicate.Parts[0].DoorContextEstimatedBytes + missing.Length * 8L + 384L,
+                    "two part references retain one primary/context payload, while both descriptors remain charged");
                 int objectOne = Enumerable.Range(0, opened.MatchRanges.Count).Single(r => opened.MatchRanges[r].ObjectId == 1);
                 Require(state.RequestProjectionSource(id, 3004, objectOne, 1), "legacy explicit positive object request remains accepted");
                 var explicitObject = Source(state);
@@ -812,6 +815,108 @@ namespace JueMingR.ArchitectureTests
             }
             SourceBatchPrefix(Path.Combine(path, "prefix"));
             SourceBatchLifetime(Path.Combine(path, "lifetime"));
+        }
+        private static void SourceDoorContexts(string path)
+        {
+            const int width = 2050, hinge = 2047;
+            var obj = new CaptureObject { Id = 1, Type = 10, X = 37 + hinge, Y = 91, Width = 1, Height = 3, Reliable = true };
+            var fixture = Write(path, width, 3, width * 3L, n =>
+            {
+                int x = (int)(n % width), y = (int)(n / width);
+                if (x == hinge) return new CaptureCell { X = 37 + x, Y = 91 + y, ObjectId = 1, Layers = CaptureLayer.Tile,
+                    TileType = 10, FrameY = (short)(y * 18), TilePaint = 1, FullbrightTile = true };
+                var cell = Tile(37 + x, 91 + y);
+                if (x == hinge + 1 && y == 0) { cell.Layers |= CaptureLayer.Wall | CaptureLayer.Wire | CaptureLayer.Actuator; cell.WallType = 7; cell.WallPaint = 9; cell.Wires = 1; cell.Actuator = true; }
+                return cell;
+            }, new[] { obj });
+            using (var counted = new CountedFiles(path)) using (var state = new LibraryState(counted))
+            {
+                var id = new BlueprintProjectionIdentity(fixture.Id, fixture.Revision, fixture.Hash, 101, 1);
+                Require(state.RequestProjectionOpen(id), "cross-block door context asset opens"); var opened = Await(state, BlueprintProjectionReceiptKind.Opened);
+                int objectRange = Enumerable.Range(0, opened.MatchRanges.Count).Single(i => opened.MatchRanges[i].ObjectId == 1);
+                int wallRange = Enumerable.Range(0, opened.MatchRanges.Count).Single(i => opened.MatchRanges[i].ObjectId == 0 && opened.MatchRanges[i].Contains(hinge + 1, 0));
+#if DEBUG
+                long sourceIndex = state.DebugProjectionStatistics.SourceIndexBytes;
+                long reads = state.DebugProjectionStatistics.BlockReads;
+#endif
+                Require(state.RequestProjectionSource(id, 3401, objectRange), "complete door can be requested without its ordinary sibling");
+                var door = Source(state).Parts.Single();
+                Require(door.Window.Cells.Count == 3 && door.Window.Cells.All(c => c.ObjectId == 1 && c.Layers == CaptureLayer.Tile) && door.Window.Objects.Count == 1 && door.Complete,
+                    "nine-cell context never changes the complete primary members or their original layers/ordinals");
+                var context = door.DoorContexts.Single();
+                Require(context.Cells.Count == 9 && context.Bounds.Equals(new BlueprintProjectionBounds(hinge - 1, 0, 3, 3)) &&
+                    context.Cells.Count(c => c.ObjectId == 1) == 3 && context.Cells.Single(c => c.X == hinge + 1 && c.Y == 0).WallPaint == 9 &&
+                    context.Cells.Single(c => c.X == hinge + 1 && c.Y == 0).Wires == 1 && context.Cells.Single(c => c.X == hinge + 1 && c.Y == 0).Actuator,
+                    "cross-block neighbours retain original raw wall/wire/actuator coordinates separately from the door Tile proof");
+                Require(state.RequestProjectionSource(id, 3402, wallRange), "ordinary wall can be requested without any object part or viewport");
+                var ordinary = Source(state).Parts.Single();
+                Require(ordinary.Window.Objects.Count == 0 && ordinary.DoorContexts.Single().Cells.Count(c => c.ObjectId == 1) == 3 &&
+                    ordinary.DoorContexts.Single().Objects.Single().Id == 1,
+                    "ordinary source carries its selected-door permission context even after the object part is released");
+                Require(door.DoorContextEstimatedBytes == 64L + 8L + context.EstimatedBytes && door.EstimatedBytes ==
+                    128L + door.WindowEstimatedBytes + door.DoorContextEstimatedBytes && ordinary.EstimatedBytes + 128L <= BlueprintProjectionSourceReceipt.TargetBytes,
+                    "context arrays and metadata join existing part/receipt accounting within unchanged budgets");
+#if DEBUG
+                Require(state.DebugProjectionStatistics.SourceIndexBytes == sourceIndex && state.DebugProjectionStatistics.BlockReads - reads <= 5 &&
+                    state.DebugProjectionSourceStatistics.WorkingPeakBytes >= ordinary.EstimatedBytes && state.DebugProjectionSourceStatistics.ReceiptBytes == 0,
+                    "bounded context reads use existing cache/directory without adding persistent raw source state");
+#endif
+                Require(state.RequestProjectionSource(id, 3403, objectRange), "context-bearing source retirement starts normally");
+#if DEBUG
+                Until(() => state.DebugProjectionSourceStatistics.ReceiptBytes > 0);
+#endif
+                state.ReleaseProjection(id); Until(() => counted.ActiveIndexes == 0);
+#if DEBUG
+                Until(() => state.DebugProjectionSourceStatistics.WorkingBytes == 0 && state.DebugProjectionSourceStatistics.PendingRequests == 0);
+                Require(state.DebugProjectionSourceStatistics.ReceiptBytes == 0 && state.DebugProjectionStatistics.SourceIndexBytes == 0,
+                    "last reference retires queued context payload and its original shared owner");
+#endif
+                BlueprintProjectionSourceReceipt late; Require(!state.TryTakeProjectionSource(out late) && !state.RequestProjectionSource(id, 3404, objectRange), "retired door contexts cannot resurrect source identity");
+                long stopped = counted.Reads; Thread.Sleep(10); Require(counted.Reads == stopped, "retired door context lane performs no residual body IO");
+            }
+            SourceDenseDoorContexts(Path.Combine(path, "dense"));
+        }
+        private static void SourceDenseDoorContexts(string path)
+        {
+            const int doors = 2048, width = doors;
+            var objects = Enumerable.Range(0, doors).Select(i => new CaptureObject { Id = i + 1, Type = 10, X = 37 + i, Y = 91, Width = 1, Height = 3, Reliable = true }).ToArray();
+            var cells = Enumerable.Range(0, width * 3).Select(i =>
+            {
+                int x = i % width, y = i / width;
+                return new CaptureCell { X = 37 + x, Y = 91 + y, ObjectId = x + 1, Layers = CaptureLayer.Tile | (y == 1 ? CaptureLayer.Wall : 0),
+                    TileType = 10, FrameY = (short)(y * 18), WallType = (ushort)(y == 1 ? 7 : 0) };
+            }).ToArray();
+            var fixture = Write(path, width, 3, cells.Length, n => cells[(int)n], objects);
+            using (var state = new LibraryState(new FileBlueprintLibrary(path)))
+            {
+                var id = new BlueprintProjectionIdentity(fixture.Id, fixture.Revision, fixture.Hash, 102, 1);
+                Require(state.RequestProjectionOpen(id), "dense doors and independent walls open under original full proof"); var opened = Await(state, BlueprintProjectionReceiptKind.Opened);
+                long unslicedBytes = 128L + 256L + doors * 64L + 64L + doors * 8L + doors * (384L + 9 * 64L);
+                Require(opened.TotalLayerCount == cells.Length + doors && opened.MatchRanges.Count == doors + 1 && unslicedBytes > 4 * BlueprintProjectionSourceReceipt.TargetBytes,
+                    "legal cross-block middle-row context would exceed the existing one-MiB construction retention hard bound without prefixes; source denominator stays original");
+                int ordinaryRange = Enumerable.Range(0, opened.MatchRanges.Count).Single(i => opened.MatchRanges[i].ObjectId == 0);
+                int offset = 0, parts = 0, ordinaryCells = 0; var coordinates = new HashSet<long>();
+                while (offset < doors)
+                {
+                    Require(parts++ < doors && state.RequestProjectionSource(id, 3500 + parts, ordinaryRange, offset: offset), "dense ordinary prefix advances through its same raw chunk");
+                    var batch = Source(state); var part = batch.Parts.Single();
+                    Require(part.Offset == offset && part.NextOffset > offset && part.NextOffset <= doors && part.Complete == (part.NextOffset == doors) &&
+                        batch.EstimatedBytes <= BlueprintProjectionSourceReceipt.TargetBytes && part.DoorContexts.All(c => c.Cells.Count == 9 && c.Objects.Count == 1) &&
+                        part.Window.Objects.Count == 0 && part.Window.Cells.All(c => c.Layers == CaptureLayer.Wall),
+                        "dense source yields legal bounded prefixes, complete door contexts and exact ordinary ownership");
+                    foreach (var cell in part.Window.Cells) Require(coordinates.Add(((long)cell.Y << 32) | (uint)cell.X), "no ordinary wall is repeated across raw prefixes");
+                    ordinaryCells += part.Window.Cells.Count; offset = part.NextOffset;
+                }
+                Require(parts > 1 && ordinaryCells == doors && coordinates.Count == doors,
+                    "budget backpressure reaches the true raw tail and retains every independent wall once");
+                Require(state.RequestProjectionSource(id, 3599, ordinaryRange), "completed suffix does not prevent re-requesting a still-unserved early source prefix");
+                var replay = Source(state).Parts.Single();
+                Require(replay.Offset == 0 && replay.NextOffset > 0 && !replay.Complete && replay.Window.Cells.First().X == 0 &&
+                    replay.DoorContexts.Any(c => c.Cells.Any(cell => cell.X < 0 && !cell.HasContent)),
+                    "early prefix replay is real source transport; fully read out-of-summary neighbour is explicit known absence");
+                Console.WriteLine("BlueprintProjection doorContext crossBlock=true maxCells=9 denseParts=" + parts + " ordinaryWalls=" + ordinaryCells +
+                    " rawTail=" + offset + " targetBytes=" + BlueprintProjectionSourceReceipt.TargetBytes + " unslicedBytes=" + unslicedBytes + " replayFirstOffset=" + replay.Offset);
+            }
         }
         private static void SourceBatchPrefix(string path)
         {

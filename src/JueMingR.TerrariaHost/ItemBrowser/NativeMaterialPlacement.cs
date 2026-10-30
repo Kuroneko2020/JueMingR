@@ -105,14 +105,17 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 {
                     if (pair.Value == null) { materialTileSourceComplete = false; materialAbiValid = false; continue; }
                     int consumed = (int)materialConsume.GetValue(pair.Value);
-                    var options = materialOptions.GetValue(pair.Value) as IEnumerable;
+                    var options = materialOptions.GetValue(pair.Value) as IList;
                     if (options == null) { materialTileSourceComplete = false; materialAbiValid = false; continue; }
-                    foreach (FlexibleTileWand.PlacementOption option in options)
+                    for (int optionIndex = 0; optionIndex < options.Count; optionIndex++)
                     {
+                        var option = options[optionIndex] as FlexibleTileWand.PlacementOption;
                         if (option == null) { materialTileSourceComplete = false; materialAbiValid = false; continue; }
                         CompileMaterialRules(sample, option.TileIdToPlace, option.TileStyleToPlace,
                             wand.ConsumesAmmoItem ? consumed : sample.consumable ? sample.type : 0,
-                            wand.ConsumesAmmoItem || sample.consumable ? 1 : 0, true, BlueprintProducerSource.Flexible);
+                            wand.ConsumesAmmoItem || sample.consumable ? 1 : 0, true, BlueprintProducerSource.Flexible,
+                            new BlueprintSpecialProducer(BlueprintSpecialProducerKind.Flexible, consumed, wand.ConsumesAmmoItem,
+                                sample.consumable, optionIndex, options.Count));
                     }
                 }
                 // The real consumer first selects a flexible declaration; its
@@ -120,18 +123,26 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 return;
             }
             if (wand != null) { materialTileSourceComplete = false; materialAbiValid = false; return; }
+            // The original FigureOutWhatToPlace rewrites evil grass seeds on
+            // mud. Preserve these distinct final outputs instead of treating
+            // their missing direct createTile declarations as scenery.
+            if (sample.createTile == 23 || sample.createTile == 199)
+                CompileMaterialRules(sample, sample.createTile == 23 ? 661 : 662, sample.placeStyle,
+                    sample.consumable ? sample.type : 0, sample.consumable ? 1 : 0, false, BlueprintProducerSource.Direct);
             if (sample.createTile >= 0) CompileMaterialRules(sample, sample.createTile, sample.placeStyle,
                 sample.tileWand > 0 ? sample.tileWand : sample.consumable ? sample.type : 0,
                 sample.tileWand > 0 || sample.consumable ? 1 : 0, sample.tileWand > 0,
-                sample.tileWand > 0 ? BlueprintProducerSource.TileWand : BlueprintProducerSource.Direct);
+                sample.tileWand > 0 ? BlueprintProducerSource.TileWand : BlueprintProducerSource.Direct,
+                sample.tileWand > 0 ? new BlueprintSpecialProducer(BlueprintSpecialProducerKind.TileWand, sample.tileWand, true, sample.consumable) : null);
         }
-        private void CompileMaterialRules(Item sample, int tile, int style, int consumed, long units, bool flexible, BlueprintProducerSource source)
+        private void CompileMaterialRules(Item sample, int tile, int style, int consumed, long units, bool flexible, BlueprintProducerSource source,
+            BlueprintSpecialProducer producer = null)
         {
             int declaration = materialDeclarations.Count;
             materialDeclarations.Add(new BlueprintPlacementDeclaration(BlueprintPlacementKind.Tile, sample.type, tile, style, 0, source, false));
             try
             {
-                bool complete = CompileMaterialRulesCore(sample, tile, style, consumed, units, flexible);
+                bool complete = CompileMaterialRulesCore(sample, tile, style, consumed, units, flexible, producer);
                 materialDeclarations[declaration] = new BlueprintPlacementDeclaration(BlueprintPlacementKind.Tile, sample.type, tile, style, 0, source, complete);
             }
             catch (ArgumentException) { }
@@ -141,26 +152,27 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             // The retained uncompiled declaration scopes these failures. It is
             // not evidence that the corresponding player output is impossible.
         }
-        private bool CompileMaterialRulesCore(Item sample, int tile, int style, int consumed, long units, bool flexible)
+        private bool CompileMaterialRulesCore(Item sample, int tile, int style, int consumed, long units, bool flexible, BlueprintSpecialProducer producer)
         {
             if (tile < 0 || tile >= TileID.Count || style < 0) return false;
             if (tile == TileID.ClosedDoor)
             {
                 materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units,
-                    tile, style, flexible: flexible, width: 1, height: 3, originX: 0, originY: 0, requiresObject: true), false, door: true)); return true;
+                    tile, style, flexible: flexible, width: 1, height: 3, originX: 0, originY: 0, requiresObject: true, producer: producer), false, door: true)); return true;
             }
             if (tile < TileID.Sets.Platforms.Length && TileID.Sets.Platforms[tile])
-            { materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units, tile, style, flexible: flexible, platform: true), false)); return true; }
+            { materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units, tile, style, flexible: flexible, platform: true, producer: producer), false)); return true; }
             if (!Main.tileFrameImportant[tile])
             {
                 // These original PlaceThing_Tiles profiles transform an
                 // existing substrate; createTile alone is not a complete
-                // from-air body recipe. Keep the declared consumable known,
-                // with the unimplemented substrate step explicitly unresolved.
+                // from-air body recipe. Keep the declared consumable known;
+                // the finite nine recipes explain their base/conversion steps,
+                // while other substrate profiles remain explicitly unresolved.
                 bool substrate = tile == 2 || tile == 23 || tile == 199 || tile == 60 || tile == 70 || tile == 109 || tile == 633 || tile == 661 || tile == 662 ||
                     tile < Main.tileMoss.Length && Main.tileMoss[tile];
                 if (style == 0) materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units, tile, style,
-                    flexible: flexible, requiresSubstrate: substrate), true));
+                    flexible: flexible, requiresSubstrate: substrate, producer: producer), true));
                 return style == 0;
             }
             var root = TileObjectData.GetTileData(tile, style);
@@ -176,35 +188,43 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                     // supported by capture. Compile their declared regions;
                     // no selector delegate survives in the published catalog.
                     var basis = TileObjectData.GetTileData(tile, int.MaxValue);
-                    if (basis?.GetStyleOverride == TileObjectData.GetStyle_Detritus) { complete &= CompileSelector(sample, tile, style, consumed, units, flexible, basis, 0); complete &= CompileSelector(sample, tile, style, consumed, units, flexible, basis, 36); }
-                    else if (basis?.GetStyleOverride == TileObjectData.GetStyle_SmallPiles) { complete &= CompileSelector(sample, tile, style, consumed, units, flexible, basis, 0); complete &= CompileSelector(sample, tile, style, consumed, units, flexible, basis, 18); }
-                    else if (basis?.GetStyleOverride == TileObjectData.GetStyle_Stalactite) foreach (int y in new[] { 0, 36, 72, 90 }) complete &= CompileSelector(sample, tile, style, consumed, units, flexible, basis, y);
+                    if (basis?.GetStyleOverride == TileObjectData.GetStyle_Detritus) { complete &= CompileSelector(sample, tile, style, consumed, units, flexible, basis, 0, producer); complete &= CompileSelector(sample, tile, style, consumed, units, flexible, basis, 36, producer); }
+                    else if (basis?.GetStyleOverride == TileObjectData.GetStyle_SmallPiles) { complete &= CompileSelector(sample, tile, style, consumed, units, flexible, basis, 0, producer); complete &= CompileSelector(sample, tile, style, consumed, units, flexible, basis, 18, producer); }
+                    else if (basis?.GetStyleOverride == TileObjectData.GetStyle_Stalactite) foreach (int y in new[] { 0, 36, 72, 90 }) complete &= CompileSelector(sample, tile, style, consumed, units, flexible, basis, y, producer);
                     else complete = false;
                     continue;
                 }
-                if (data.SpecificRandomStyles != null)
-                    foreach (int random in data.SpecificRandomStyles) complete &= CompileGrid(sample, tile, style, consumed, units, flexible, data, alternate, random - style);
-                else for (int random = 0; random < Math.Max(1, data.RandomStyleRange); random++) complete &= CompileGrid(sample, tile, style, consumed, units, flexible, data, alternate, random);
+                // CanPlace reads its random period from the root profile,
+                // then encodes using the chosen alternate's geometry.
+                var randomData = producer?.Kind == BlueprintSpecialProducerKind.Flexible ? root : data;
+                if (randomData.SpecificRandomStyles != null)
+                    for (int index = 0; index < randomData.SpecificRandomStyles.Length; index++)
+                        complete &= CompileGrid(sample, tile, style, consumed, units, flexible, data, alternate,
+                            randomData.SpecificRandomStyles[index] - style,
+                            producer?.WithRandom(randomData.SpecificRandomStyles.Length, index, randomData.SpecificRandomStyles[index] - style));
+                else for (int random = 0; random < Math.Max(1, randomData.RandomStyleRange); random++)
+                    complete &= CompileGrid(sample, tile, style, consumed, units, flexible, data, alternate, random,
+                        producer?.WithRandom(Math.Max(1, randomData.RandomStyleRange), random, random));
             }
             return complete;
         }
-        private bool CompileSelector(Item sample, int tile, int style, int consumed, long units, bool flexible, TileObjectData basis, int regionY)
+        private bool CompileSelector(Item sample, int tile, int style, int consumed, long units, bool flexible, TileObjectData basis, int regionY, BlueprintSpecialProducer producer)
         {
             var probe = new Tile { type = (ushort)tile, frameY = (short)regionY }; probe.active(true);
             var selected = basis.GetStyleOverride(probe, basis);
             if (selected == null) return false;
-            return AddMaterialRule(sample, tile, style, consumed, units, flexible, selected, 0, checked(style * selected.CoordinateFullWidth), regionY);
+            return AddMaterialRule(sample, tile, style, consumed, units, flexible, selected, 0, checked(style * selected.CoordinateFullWidth), regionY, producer);
         }
-        private bool CompileGrid(Item sample, int tile, int style, int consumed, long units, bool flexible, TileObjectData data, int alternate, int random)
+        private bool CompileGrid(Item sample, int tile, int style, int consumed, long units, bool flexible, TileObjectData data, int alternate, int random, BlueprintSpecialProducer producer)
         {
             if (data.StyleMultiplier <= 0 || data.CoordinateFullWidth <= 0 || data.CoordinateFullHeight <= 0) return false;
             int encoded = data.CalculatePlacementStyle(style, alternate, random), cross = 0;
             if (encoded < 0) return false;
             if (data.StyleWrapLimit > 0) { cross = encoded / data.StyleWrapLimit * data.StyleLineSkip; encoded %= data.StyleWrapLimit; }
             return AddMaterialRule(sample, tile, style, consumed, units, flexible, data, alternate,
-                checked((data.StyleHorizontal ? encoded : cross) * data.CoordinateFullWidth), checked((data.StyleHorizontal ? cross : encoded) * data.CoordinateFullHeight));
+                checked((data.StyleHorizontal ? encoded : cross) * data.CoordinateFullWidth), checked((data.StyleHorizontal ? cross : encoded) * data.CoordinateFullHeight), producer);
         }
-        private bool AddMaterialRule(Item sample, int tile, int style, int consumed, long units, bool flexible, TileObjectData data, int alternate, int baseX, int baseY)
+        private bool AddMaterialRule(Item sample, int tile, int style, int consumed, long units, bool flexible, TileObjectData data, int alternate, int baseX, int baseY, BlueprintSpecialProducer producer)
         {
             if (data.Width <= 0 || data.Height <= 0 || data.CoordinateHeights == null || data.CoordinateHeights.Length != data.Height || baseX < 0 || baseY < 0 || baseX > short.MaxValue || baseY > short.MaxValue) return false;
             var rows = new int[data.Height]; int at = 0;
@@ -224,7 +244,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             }
             materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units,
                 tile, style, flexible: flexible, width: data.Width, height: data.Height, originX: data.Origin.X, originY: data.Origin.Y,
-                alternate: alternate, direction: (int)data.Direction, requiresObject: true), false, baseX, baseY, data.CoordinateWidth + data.CoordinatePadding, rows, dx, dy, operatingY2: tile == 658 ? 108 : 0));
+                alternate: alternate, direction: (int)data.Direction, requiresObject: true, producer: producer), false, baseX, baseY, data.CoordinateWidth + data.CoordinatePadding, rows, dx, dy, operatingY2: tile == 658 ? 108 : 0));
             return true;
         }
     }

@@ -8,7 +8,7 @@ namespace JueMingR.TerrariaHost.Blueprint
     [Flags]
     internal enum BlueprintBuildWait : byte
     {
-        None = 0, Material = 1, Player = 2, Dependencies = 4, Container = 8, Dynamic = 16
+        None = 0, Material = 1, Player = 2, Dependencies = 4, Container = 8, Dynamic = 16, Capability = 32
     }
 
     internal sealed partial class HostBlueprint
@@ -16,9 +16,17 @@ namespace JueMingR.TerrariaHost.Blueprint
         // These are current inventory types, not a history or a target index.
         // At most the existing 50 primary slots contribute. A positive type
         // retains its recovery serial through moves, merges and normal spend;
-        // only loss followed by a qualified source creates another recovery.
+        // loss followed by a qualified source or the finite restoration
+        // threshold below creates another recovery.
         private Dictionary<int, long> buildSupply = new Dictionary<int, long>();
         private Dictionary<int, long> buildNextSupply = new Dictionary<int, long>();
+        // Native wall scraping can also clear the selected foreground. Its
+        // restoration proof needs at most two of one paint/coating. Remember
+        // only 0/1/>=2 across qualified inventory publications: replenishing
+        // one to two is a real recovery, while ordinary positive-stack noise
+        // and equivalent moves must not restart exhausted source walks.
+        private Dictionary<int, int> buildAppearanceSupply = new Dictionary<int, int>();
+        private Dictionary<int, int> buildNextAppearanceSupply = new Dictionary<int, int>();
         private BlueprintMaterialInventory buildSupplyInventory;
         private Dictionary<int, int> buildItemReach = new Dictionary<int, int>();
         private Dictionary<int, int> buildNextItemReach = new Dictionary<int, int>();
@@ -94,16 +102,30 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             }
             if (ReferenceEquals(buildSupplyInventory, inventory)) return;
-            buildSupplyInventory = inventory; buildNextSupply.Clear();
+            buildSupplyInventory = inventory; buildNextSupply.Clear(); buildNextAppearanceSupply.Clear();
             if (inventory?.Ready == true) foreach (var slot in inventory.Slots)
             {
-                if (!slot.Eligible || slot.ItemType <= 0 || slot.Stack <= 0 || buildNextSupply.ContainsKey(slot.ItemType)) continue;
+                if (!slot.Eligible || slot.ItemType <= 0 || slot.Stack <= 0) continue;
                 long recovered;
-                if (!buildSupply.TryGetValue(slot.ItemType, out recovered)) recovered = ++buildSupplyRevision;
-                buildNextSupply.Add(slot.ItemType, recovered);
+                if (!buildNextSupply.TryGetValue(slot.ItemType, out recovered))
+                {
+                    if (!buildSupply.TryGetValue(slot.ItemType, out recovered)) recovered = ++buildSupplyRevision;
+                    buildNextSupply.Add(slot.ItemType, recovered);
+                }
+                var item = p?.inventory[slot.Slot];
+                if (item == null || item.type != slot.ItemType || !item.PaintOrCoating) continue;
+                int amount, previousAmount;
+                buildNextAppearanceSupply.TryGetValue(slot.ItemType, out amount);
+                int currentAmount = (int)Math.Min(2L, amount + Math.Min(2L, slot.Stack));
+                buildNextAppearanceSupply[slot.ItemType] = currentAmount;
+                if (amount < 2 && currentAmount == 2 && buildSupply.ContainsKey(slot.ItemType) &&
+                    (!buildAppearanceSupply.TryGetValue(slot.ItemType, out previousAmount) || previousAmount < 2))
+                    buildNextSupply[slot.ItemType] = ++buildSupplyRevision;
             }
             var previous = buildSupply; buildSupply = buildNextSupply; buildNextSupply = previous;
             buildNextSupply.Clear();
+            var previousAppearance = buildAppearanceSupply; buildAppearanceSupply = buildNextAppearanceSupply; buildNextAppearanceSupply = previousAppearance;
+            buildNextAppearanceSupply.Clear();
         }
 
         private void CaptureBuildWalkSignals(BlueprintRangeMaterials value)
@@ -126,6 +148,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if (target?.Range.Materials == null || !IsBuildTargetCurrent(target) || IsUnconfirmedTarget(target)) return;
             var value = target.Range.Materials;
+            if(reason==BlueprintBuildWait.Material && target.Operation!=null)reason|=BlueprintBuildWait.Capability;
             value.BuildWaits |= reason; value.BuildDependencyWaitSlots |= dependencySlots;
             // A prepared source may move to another qualified slot without a
             // type ever becoming unavailable. Its invalid flight gets one local
@@ -147,14 +170,14 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool BuildDependencyReleased(BlueprintRangeMaterials value)
         {
             var p = player; if (p == null || buildTools == null) return false;
-            bool paint = p.autoPaint && p.builderAccStatus[3] == 0, actuator = p.autoActuator && p.builderAccStatus[2] == 0;
             ulong waiting = value.BuildDependencyWaitSlots;
             for (int slot = 0; slot < 58 && waiting != 0; slot++)
             {
                 ulong bit = 1UL << slot; if ((waiting & bit) == 0) continue; waiting &= ~bit;
                 var item = p.inventory[slot];
-                if (item == null || item.IsAir || !(paint && item.PaintOrCoating || actuator && item.type == Terraria.ID.ItemID.Actuator) ||
-                    !p.inventoryChestStack[slot] && !buildTools.Items.World.ManualMaterials.Contains(item) && !buildTools.ProtectedAfterYield(item))
+                if (item == null || item.IsAir ||
+                    !p.inventoryChestStack[slot] && !buildTools.Items.World.ManualMaterials.Contains(item) && !buildTools.ProtectedAfterYield(item) &&
+                    !buildTools.Items.Ownership.IsProtected(slot) && !WiringPendingMaterial(item))
                     return true;
             }
             return false;
@@ -180,6 +203,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if ((value.BuildWaits & BlueprintBuildWait.Material) != 0 && value.CatalogRevision == materialPlacementIdentity && value.Desired != null)
                 foreach (var supply in buildSupply)
                     if (supply.Value > value.BuildSupplyRevision && value.Desired.ContainsKey(supply.Key)) { value.BuildRetryPending = true; break; }
+            if((value.BuildWaits&BlueprintBuildWait.Capability)!=0 && value.BuildSupplyRevision!=buildSupplyRevision)value.BuildRetryPending=true;
             if ((value.BuildWaits & BlueprintBuildWait.Player) != 0 && value.BuildPlayerRevision != MaterialBuildEligibilityRevision ||
                 (value.BuildWaits & BlueprintBuildWait.Container) != 0 && value.BuildContainerRevision != buildContainerRevision ||
                 (value.BuildWaits & BlueprintBuildWait.Dependencies) != 0 && BuildDependencyReleased(value)) value.BuildRetryPending = true;
@@ -209,6 +233,12 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                 return;
             }
+            // Keep the dirty retry, but an exhausted material-only walk has
+            // no possible consumer while this current qualified inventory is
+            // empty. Actual restock or an owned item's return reopens the same
+            // pending permission; independent world Match keeps advancing.
+            if (value.BuildWaits == BlueprintBuildWait.Material && buildSupplyInventory?.Ready == true &&
+                ReferenceEquals(buildSupplyInventory, MaterialInventory) && buildSupply.Count == 0) return;
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Semantic(BuildTraceStage.Wake,BuildTraceReason.WakePerformed,value.EligibilityRetryOrdinal,unchecked((long)materialTick),unchecked((long)value.EligibilityRetryAt),nativeDue?1:0);
 #endif
@@ -239,6 +269,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void ClearBuildProgressSignals()
         {
             buildSupply.Clear(); buildNextSupply.Clear(); buildSupplyInventory = null;
+            buildAppearanceSupply.Clear(); buildNextAppearanceSupply.Clear();
             buildItemReach.Clear(); buildNextItemReach.Clear(); buildEnvelopeBoost = 0;
             buildEligible = false;buildNearTickSet=false;
         }

@@ -296,6 +296,14 @@ namespace JueMingR.TerrariaHost.F5
         // permission excludes public UI owners without banning those contexts.
         internal bool CanProcessingInput {get{return CanProcessingActions(true) && !OwnsPointer;}}
         internal bool CanAutomaticProcessingInput {get{return CanProcessingActions(false) && CanAutomaticMouseInterface;}}
+        // Only the exact already-owned ItemSlot preparation asks this gate.
+        // Native inventory hover is not proof about mouseInterface's writer;
+        // retain every real shell/text/overlay owner and grant no gameplay use.
+        internal bool CanInventoryPreparationInput {get{return CanProcessingActions(false) && !OwnsPointer &&
+            Main.CurrentInputTextTakerOverride==null && !PlayerInput.WritingText && !notes.OtherTextOwner &&
+            !(HotkeyPopup?.Visible??false) && !(StylePopup?.Visible??false) && !(DeathPopup?.Visible??false) &&
+            !(MapPopup?.Visible??false) && !(FootprintPopup?.Visible??false) &&
+            !(FishingUi?.BlockPointer??false) && !(CaptureUi?.Captured??false);}}
         private bool CanProcessingActions(bool requireFocus){return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !NativeJourneyInputBusy &&
             !inputState.HotkeyCapture && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow;}
         // Opening F5 is not a gameplay barrier. Only its actual text/gesture

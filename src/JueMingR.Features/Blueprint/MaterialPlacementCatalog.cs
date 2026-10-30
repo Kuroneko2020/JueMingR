@@ -88,11 +88,50 @@ namespace JueMingR.Features.Blueprint
         { return Tile(cell, null); }
         public BlueprintPlacementDescriptor Tile(CaptureCell cell, CaptureObject? obj)
         { return QualifyTile(cell, obj).Placement; }
+        // The material bill may collapse equal consumption, while execution
+        // must retain every matching tool/bucket/variant identity. This finite
+        // query filters the compiled rules into a finite list; it contains no
+        // native objects or permissions and does not cache a target's result.
+        public IReadOnlyList<BlueprintPlacementDescriptor> Producers(CaptureCell cell, CaptureObject? obj = null)
+        {
+            BlueprintPlacementRule[] rules;
+            if (!tiles.TryGetValue(cell.TileType, out rules)) return Array.Empty<BlueprintPlacementDescriptor>();
+            var result = new List<BlueprintPlacementDescriptor>();
+            foreach (var rule in rules)
+                if (rule.Matches(cell) && (!obj.HasValue || rule.Door || rule.Descriptor.Width == obj.Value.Width && rule.Descriptor.Height == obj.Value.Height))
+                    result.Add(rule.Descriptor);
+            return result;
+        }
+        // The nine explicit construction recipes choose their known seed,
+        // not an arbitrary first producer. General qualification may still be
+        // ambiguous (grass also has nonconsuming regrowth tools); preserve that
+        // fact while sharing this conservative base+seed plan with billing.
+        public BlueprintPlacementDescriptor Substrate(CaptureCell cell)
+        {
+            BlueprintSubstrateRecipe recipe; BlueprintPlacementRule[] rules;
+            if (TargetVersion != "1.4.5.8" || cell.ObjectId > 0 || cell.UnreliableObject || !BlueprintSubstrateRecipe.TryGet(cell.TileType, out recipe) ||
+                !tiles.TryGetValue(cell.TileType, out rules)) return null;
+            BlueprintPlacementDeclaration[] declared;
+            if (declarations.TryGetValue(cell.TileType, out declared))
+                foreach (var value in declared)
+                    if (value.UseItemType == recipe.ConversionItem && !value.Compiled && value.Style == 0) return null;
+            foreach (var rule in rules)
+            {
+                var value = rule.Descriptor;
+                if (rule.Simple && rule.Matches(cell) && value.Kind == BlueprintPlacementKind.Tile && value.RequiresSubstrate && value.Producer == null &&
+                    !value.RequiresObject && value.Width == 1 && value.Height == 1 &&
+                    value.Style == 0 && value.UseItemType == recipe.ConversionItem && value.ConsumeItemType == recipe.ConversionItem && value.Units == 1)
+                    return value;
+            }
+            return null;
+        }
         // Body comparison may borrow compiled shape hints even when another
         // producer prevents a unique bill. This is not a placement/candidate
-        // outlet; public Tile returns only a fully explained qualification.
-        internal BlueprintPlacementDescriptor TileShape(CaptureCell cell)
-        { return ResolveTile(cell, null, out _); }
+        // outlet; Tile returns only a fully explained qualification. The Host
+        // may use these geometry hints for an already-present body, but must
+        // still prove that body and its current native operation separately.
+        public BlueprintPlacementDescriptor TileShape(CaptureCell cell)
+        { return Substrate(cell) ?? ResolveTile(cell, null, out _); }
         private BlueprintPlacementDescriptor ResolveTile(CaptureCell cell, CaptureObject? obj, out bool ambiguous)
         {
             ambiguous = false;
@@ -183,7 +222,14 @@ namespace JueMingR.Features.Blueprint
         {
             if (descriptor == null || descriptor.Units < 0 || descriptor.UseItemType <= 0) { Unresolved("目标没有唯一的直接材料解释"); return; }
             if (descriptor.Units > 0) Add(descriptor.ConsumeItemType, descriptor.Units);
-            if (descriptor.RequiresSubstrate) Unresolved("地表转换的底材步骤尚未确定");
+            if (descriptor.Producer?.ConsumesBucket == true && descriptor.Producer.ConsumesHeld && descriptor.UseItemType != descriptor.ConsumeItemType)
+                Add(descriptor.UseItemType, 1);
+            if (descriptor.RequiresSubstrate)
+            {
+                BlueprintSubstrateRecipe recipe;
+                if (BlueprintSubstrateRecipe.TryGet(descriptor.TileType, out recipe)) Add(recipe.BaseItem, 1);
+                else Unresolved("地表转换的底材步骤尚未确定");
+            }
         }
         public void Add(BlueprintTargetQualification target)
         {

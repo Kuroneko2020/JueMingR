@@ -19,7 +19,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal Dictionary<long, BlueprintWorldMatchResult> Visual;
         internal BlueprintRangeMaterials Materials;
         internal long MaterialDemandEpoch;
-        internal bool MaterialCrossLayers = true;
+        // Scheduling membership exists even before the first material sample.
+        // Retirement can settle an unvisited finite batch without allocation.
+        internal long BuildContinuationVisit;
+        internal bool MaterialCrossLayers = true, ProgressMaterialCrossLayers;
     }
     internal sealed class BlueprintProjectionMatchGroup
     {
@@ -58,6 +61,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int CellIndex, ObjectId, ObjectIndex;
         internal BlueprintProjectionWindow ObjectTargets;
         internal BlueprintWorldObject ObjectTarget;
+        internal BlueprintWorldObject ObjectObserved;
+        internal CaptureCell[] ObjectDoorTargets;
         internal IBlueprintWorldObjectWriteWitness WriteWitness;
         internal IDisposable WriteSeed;
         internal BlueprintProjectionBounds ObjectBounds;
@@ -239,7 +244,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 {
                     var part=work.Parts[i];if(part==null)continue;bytes+=128;
                     bool seen=false;for(int j=0;j<i;j++)if(ReferenceEquals(work.Parts[j]?.Window,part.Window)){seen=true;break;}
-                    if(!seen)bytes+=part.WindowEstimatedBytes;
+                    if(!seen)bytes+=part.WindowEstimatedBytes+part.DoorContextEstimatedBytes;
                 }
             }
             return bytes;
@@ -255,7 +260,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // Results.Clear retains its dictionary backing store. Its
                 // maximum entries are this token's 256 source steps, even
                 // when the live count has returned to zero after publication.
-                samples+=1024L+256L*96L+read.ObjectSamples.Capacity*128L+(read.ObjectUnion?.Capacity??0)*128L+read.Objects.Count*48L;
+                samples+=1024L+256L*96L+read.ObjectSamples.Capacity*128L+(read.ObjectUnion?.Capacity??0)*128L+read.Objects.Count*48L+
+                    (read.ObjectDoorTargets?.LongLength??0)*64L+(read.ObjectObserved?.EstimatedBytes??0);
                 // Sample values retain interpreted metadata objects and their
                 // private arrays; report them as well as list backing storage.
                 foreach(var sample in read.ObjectSamples)samples+=sample.Object?.EstimatedBytes??0;
@@ -599,10 +605,27 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!read.Sampling)
             {
                 if (!read.Range.Group.Ready || !projectionChanges.IsCurrent(read.Range.Watch, read.Range.Group.NativeStamp)) { ResetProjectionMatchRead(read.Range); return; }
+                if (read.Batch.Offset != read.Range.Offset)
+                {
+                    // A raw-world invalidation can reset an ordinary prefix
+                    // after its immutable suffix already arrived. Drop only
+                    // that wrong offset and request the real first prefix.
+                    ReleaseProjectionMatchRead(false); DemandProjectionMatchRange(read.Range); return;
+                }
+                if (read.Range.Offset != 0 && (!read.Range.Reading || !ProjectionMatchReadCurrent(read.Range, read.Range.ProgressStamp)))
+                { InvalidateProjectionMatch(read.Range); return; }
                 // Request time is not sample time: bind raw qualification only
                 // when immutable targets are ready for actual world sampling.
-                read.Sampling = read.Range.Reading = true; read.Range.ProgressStamp = read.Range.RawVersion;
-                read.Range.ProgressTargets = read.Range.ProgressMatches = read.Range.ProgressUnknown = 0;
+                // Later raw-record prefixes continue this exact generation;
+                // their last part must never stand in for the whole range.
+                read.Sampling = true;
+                if (read.Range.Offset == 0)
+                {
+                    read.Range.Reading = true; read.Range.ProgressStamp = read.Range.RawVersion;
+                    read.Range.ProgressTargets = read.Range.ProgressMatches = read.Range.ProgressUnknown = 0;
+                    read.Range.ProgressMaterialCrossLayers = false;
+                }
+                read.MaterialCrossLayerSeen = read.Range.ProgressMaterialCrossLayers;
                 BeginMaterialSample(read);
             }
             if (!ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp)) { InvalidateProjectionMatch(read.Range); return; }
@@ -664,6 +687,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp)) { InvalidateProjectionMatch(read.Range); return; }
             var range = read.Range; var state = read.Owner.Match;
             PublishProjectionMatchReadResults(read);
+            range.ProgressMaterialCrossLayers = read.MaterialCrossLayerSeen;
             range.Offset = read.Batch.NextOffset;
             if (read.Batch.Complete)
             {
@@ -721,6 +745,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var hinge = ReadProjectionWorld(read.ObjectTarget.AnchorX, read.ObjectTarget.AnchorY); reads--;
                 var actual = hinge.Object;
                 var shape = actual != null && read.ObjectTarget.SamePlacement(actual) ? actual : read.ObjectTarget;
+                read.ObjectObserved = actual != null && read.ObjectTarget.SamePlacement(actual) ? actual : null;
                 read.ObjectBounds = new BlueprintProjectionBounds(shape.WorldX, shape.WorldY, shape.Width, shape.Height);
                 var dependency = read.Range.Source.Bounds;
                 var observed = new BlueprintProjectionBounds(read.Owner.OriginX + dependency.Left, read.Owner.OriginY + dependency.Top, dependency.Width, dependency.Height);
@@ -776,7 +801,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             CompleteMaterialObject(read);
             // Keep only the complete structural result; bounded source cursor
             // consumption publishes its individual members and layer counts.
-            read.Objects[read.ObjectId]=state;read.ObjectId=read.ObjectIndex=0;read.ObjectTarget=null;read.ObjectTargets=null;read.ObjectSamples.Clear();read.ObjectUnion=null;
+            read.Objects[read.ObjectId]=state;read.ObjectId=read.ObjectIndex=0;read.ObjectTarget=null;read.ObjectObserved=null;read.ObjectDoorTargets=null;read.ObjectTargets=null;read.ObjectSamples.Clear();read.ObjectUnion=null;
         }
         private static int CountMatchBits(ushort bits) { int count = 0; while (bits != 0) { count += bits & 1; bits >>= 1; } return count; }
         private static void RemoveProjectionMatchVisual(BlueprintProjectionMatchState state,long key,ushort bits)

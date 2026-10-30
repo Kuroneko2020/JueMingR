@@ -229,14 +229,18 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!noSlope && platform && c.Slope > 0)
             {
                 result.Add(normal);
-                var below = Get(cells, c.X, c.Y + 1);
-                var side = Get(cells, c.X + (c.Slope == 1 ? 1 : -1), c.Y + 1);
-                bool blocks = Solid(below) && (below.Slope == 0 || below.Slope == (c.Slope == 1 ? 3 : 4)) && TileID.Sets.BlocksStairs[below.TileType];
-                if ((c.Slope == 1 || c.Slope == 2) && Solid(side) && !side.HalfBrick && side.Slope != (c.Slope == 1 ? 2 : 1) && !blocks)
+                if (c.Slope == 1 || c.Slope == 2)
                 {
-                    var join = normal; join.Position.Y += 16;
-                    join.Source = new Rectangle(TileID.Sets.Platforms[side.TileType] && side.Slope == 0 ? (c.Slope == 1 ? 324 : 306) : (c.Slope == 1 ? 198 : 162), fy, 16, 16);
-                    result.Add(join);
+                    var below = Get(cells, c.X, c.Y + 1);
+                    var side = Get(cells, c.X + (c.Slope == 1 ? 1 : -1), c.Y + 1);
+                    if (SupportsPlatformJoin(side, c.Slope) && !BlocksPlatformJoin(below, c.Slope))
+                    {
+                        // Native join pixels borrow this platform's material
+                        // and ink; Build keeps their semantic owner up here.
+                        var join = normal; join.Position.Y += 16;
+                        join.Source = new Rectangle(TileID.Sets.Platforms[side.TileType] && side.Slope == 0 ? (c.Slope == 1 ? 324 : 306) : (c.Slope == 1 ? 198 : 162), fy, 16, 16);
+                        result.Add(join);
+                    }
                 }
                 return;
             }
@@ -334,6 +338,25 @@ namespace JueMingR.TerrariaHost.Blueprint
         { if (width <= 0 || height <= 0) return; n.Source = new Rectangle(n.Source.X + sx, n.Source.Y + sy, width, height); n.Position += new Vector2(dx, dy); result.Add(n); }
         private static void Pixel(List<BlueprintProjectionCommand> result, int x, int y, int width, int height, Color color)
         { result.Add(new BlueprintProjectionCommand { Texture = BlueprintProjectionTexture.Pixel, Source = new Rectangle(0, 0, width, height), Position = new Vector2(x, y), Color = color }); }
+        // DrawBasicTile uses active/blockType here, not collision Solid.
+        // Captured actuated/invisible tiles remain present; Ink owns opacity.
+        // Only the diagonal support needs tileSolid, not the blocker below.
+        private static int PlatformJoinBlockType(CaptureCell cell)
+        {
+            if (cell.HalfBrick) return 1;
+            return cell.Slope == 0 ? 0 : cell.Slope + 1;
+        }
+        private static bool BlocksPlatformJoin(CaptureCell below, byte platformSlope)
+        {
+            if (!Has(below, CaptureLayer.Tile) || !TileID.Sets.BlocksStairs[below.TileType]) return false;
+            int blockType = PlatformJoinBlockType(below);
+            return blockType == 0 || blockType == (platformSlope == 1 ? 5 : 4);
+        }
+        private static bool SupportsPlatformJoin(CaptureCell diagonal, byte platformSlope)
+        {
+            return Has(diagonal, CaptureLayer.Tile) && Main.tileSolid[diagonal.TileType] && !diagonal.HalfBrick &&
+                diagonal.Slope != (platformSlope == 1 ? 2 : 1);
+        }
         private static bool Has(CaptureCell c, CaptureLayer layer) { return (c.Layers & layer) != 0; }
         private static bool Solid(CaptureCell c) { return Has(c, CaptureLayer.Tile) && !c.Inactive && Main.tileSolid[c.TileType]; }
         private static long Key(int x, int y) { return ((long)x << 32) | (uint)y; }

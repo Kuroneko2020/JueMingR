@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.Collections.Generic;
+using System.Reflection.Emit;
 using System.Reflection;
 using HarmonyLib;
 using Terraria;
@@ -31,20 +33,41 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Player),"ItemCheck_CheckCanUse_Inner",new[]{typeof(Item),typeof(bool)},nameof(PlacementCheckBefore),nameof(PlacementCheckAfter),nameof(PlacementCheckFinal));
             Patch(typeof(Player),"ItemCheck_StartActualUse",new[]{typeof(Item)},null,nameof(Started));
             Patch(typeof(Player),"ItemCheck_AutoReuseLogic",new[]{typeof(Item)},null,nameof(AfterReuse));
-            Patch(typeof(Player),"DropItems",new[]{typeof(bool)},nameof(Boundary));
+            Patch(typeof(Player),"DropItems",new[]{typeof(bool)},nameof(Boundary),null,nameof(DeathFinal));
+            Patch(typeof(Player),"KillMe",new[]{typeof(Terraria.DataStructures.PlayerDeathReason),typeof(double),typeof(int),typeof(bool)},nameof(DeathBefore),null,nameof(DeathFinal));
+            Patch(typeof(Player),"dropItemCheck",Type.EmptyTypes,nameof(CursorSyncBefore),null,nameof(CursorSyncFinal));
+            Patch(typeof(Player),"ToggleInv",Type.EmptyTypes,nameof(InventoryToggle));
+            Patch(typeof(Player),"OpenInventory",new[]{typeof(bool)},nameof(InventoryOpen));
+            Patch(typeof(Main),"DrawInterface",new[]{typeof(Microsoft.Xna.Framework.GameTime)},nameof(InterfaceBefore),nameof(InterfaceAfter),nameof(InterfaceFinal));
+            Patch(typeof(Main),"get_MouseDisplayItem",Type.EmptyTypes,null,nameof(MouseDisplay));
+            harmony.Patch(AccessTools.Method(typeof(Main),"GUIHotbarDrawInner"),
+                transpiler:new HarmonyMethod(typeof(ToolHooks),nameof(ConstructionHotbarPresentation)));
             Patch(typeof(Player),"PickTile",new[]{typeof(int),typeof(int),typeof(int),typeof(int)},nameof(BeforePick),nameof(AfterPick));
-            Patch(typeof(Player),"PlaceThing_Tiles",new[]{typeof(bool)},nameof(BeforePlant),nameof(AfterPlant));
+            Patch(typeof(Player),"PlaceThing_Tiles",new[]{typeof(bool)},nameof(BeforePlant),nameof(AfterPlant),nameof(FinalPlant));
             Patch(typeof(Player),"PlaceThing_Walls",Type.EmptyTypes,nameof(BeforeWall));
             Patch(typeof(Player),"PlaceThing_Tiles_PlaceIt",new[]{typeof(bool),typeof(TileObject),typeof(int)},nameof(BeforeTileChoice));
             Patch(typeof(Player),"PlaceThing_Tiles_BlockPlacementForAssortedThings",new[]{typeof(bool)},nameof(BeforeBuildPreparation),nameof(AfterBuildPreparation),nameof(FinalBuildPreparation));
             Patch(typeof(Player),"ItemCheck_CatchCritters",new[]{typeof(Item),typeof(Microsoft.Xna.Framework.Rectangle)},nameof(Catch));
             Patch(typeof(Player),"ItemCheck_UseMiningTools",new[]{typeof(Item)},nameof(Mine));
+            Patch(typeof(Player),"ItemCheck_UseMiningTools_TryPoundingTile",new[]{typeof(Item),typeof(int),typeof(bool).MakeByRefType(),typeof(int),typeof(int)},nameof(BeforePound));
+            Patch(typeof(Player),"ItemCheck_UseMiningTools_TryHittingWall",new[]{typeof(Item),typeof(int),typeof(int)},nameof(BeforeHitWall));
+            Patch(typeof(Player),"PlaceThing_Paintbrush",Type.EmptyTypes,nameof(BeforeBrush));
+            Patch(typeof(Player),"PlaceThing_PaintRoller",Type.EmptyTypes,nameof(BeforeRoller));
+            Patch(typeof(Player),"PlaceThing_PaintScraper_TryScraping",new[]{typeof(int),typeof(int)},nameof(BeforeScrape));
+            Patch(typeof(Player),"PlaceThing_PaintScraper_LongMoss",new[]{typeof(int),typeof(int)},nameof(BeforeScrapeMoss));
+            Patch(typeof(Player),"TryPainting",new[]{typeof(int),typeof(int),typeof(bool),typeof(bool)},nameof(BeforePainting));
+            Patch(typeof(Player),"ApplyPaint",new[]{typeof(int),typeof(int),typeof(bool),typeof(bool),typeof(Item)},nameof(BeforeApplyPaint));
+            Patch(typeof(Player),"ApplyCoating",new[]{typeof(int),typeof(int),typeof(bool),typeof(bool),typeof(Item)},nameof(BeforeApplyCoating));
+            Patch(typeof(Player),"ItemCheck_UseWiringTools",new[]{typeof(Item)},nameof(BeforeWiring),nameof(AfterWiring),nameof(FinalWiring));
             Patch(typeof(Player),"ItemCheck_UseMiningTools_ActuallyUseMiningTool",new[]{typeof(Item),typeof(bool).MakeByRefType(),typeof(int),typeof(int)},nameof(MiningEnter),nameof(MiningLeave),nameof(MiningFinal));
             Patch(typeof(Player),"TryUpdateChannel",new[]{typeof(Projectile)},null,nameof(ProjectileCreated));
             Patch(typeof(Projectile),"AI",Type.EmptyTypes,nameof(ProjectileBefore),nameof(ProjectileAfter),nameof(ProjectileFinal));
             Patch(typeof(Projectile),"Kill",Type.EmptyTypes,nameof(KillBefore),nameof(KillAfter),nameof(KillFinal));
             Patch(typeof(Projectile),"Damage",Type.EmptyTypes,nameof(DamageBefore),nameof(ShotAfter),nameof(ShotFinal));
             Patch(typeof(Main),"UpdateWorld_Projectiles",Type.EmptyTypes,nameof(BeforeProjectileWorld));
+            harmony.Patch(AccessTools.Method(typeof(Main),"DoDraw",new[]{typeof(Microsoft.Xna.Framework.GameTime)}),
+                transpiler:new HarmonyMethod(typeof(ToolHooks),nameof(ConstructionInputTail)),
+                finalizer:new HarmonyMethod(typeof(ToolHooks),nameof(ConstructionDrawFinal)));
             var selection=typeof(Player).GetNestedType("SelectedItemState",BindingFlags.Public|BindingFlags.NonPublic);
             if(selection==null)throw new MissingMemberException("SelectedItemState");
             Patch(selection,"Select",new[]{typeof(int)},nameof(Select));
@@ -57,6 +80,51 @@ namespace JueMingR.TerrariaHost.Tools
             harmony.Patch(m,Hook(prefix),Hook(postfix),null,Hook(finalizer));
         }
         private static HarmonyMethod Hook(string name){return name==null?null:new HarmonyMethod(typeof(ToolHooks).GetMethod(name,BindingFlags.Static|BindingFlags.NonPublic));}
+        private static IEnumerable<CodeInstruction> ConstructionInputTail(IEnumerable<CodeInstruction> instructions)
+        {
+            var code=instructions.ToList();int start,end;
+            Items.ItemMaterialPreparation.LocateNativeInputTail(code,out start,out end);
+            var before=new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(Items.ItemMaterialPreparation),nameof(Items.ItemMaterialPreparation.BeforeNativeInputTail)));
+            var after=new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(Items.ItemMaterialPreparation),nameof(Items.ItemMaterialPreparation.AfterNativeInputTail)));
+            before.labels.AddRange(code[start].labels);code[start].labels.Clear();
+            after.labels.AddRange(code[end].labels);code[end].labels.Clear();
+            code.Insert(end,after);code.Insert(start,before);return code;
+        }
+        private static Exception ConstructionDrawFinal(Exception __exception)
+        {if(__exception!=null)Items.ItemMaterialPreparation.AfterNativeInputTail();return __exception;}
+        private static bool InventoryToggle(Player __instance){return Items.ItemMaterialPreparation.BeforeNativeInventoryToggle(__instance);}
+        private static void InventoryOpen(){Items.ItemMaterialPreparation.BeforeNativeInventoryOpen();}
+        private static void InterfaceBefore(out Items.ItemMaterialPreparation.PresentationScope __state)
+        { Items.ItemMaterialPreparation.BeginHiddenPresentation(out __state); }
+        private static void InterfaceAfter(Items.ItemMaterialPreparation.PresentationScope __state)
+        { Items.ItemMaterialPreparation.EndHiddenPresentation(__state); }
+        private static Exception InterfaceFinal(Items.ItemMaterialPreparation.PresentationScope __state,Exception __exception)
+        { Items.ItemMaterialPreparation.EndHiddenPresentation(__state);return __exception; }
+        private static void MouseDisplay(ref Item __result)
+        { __result=Items.ItemMaterialPreparation.PresentMouseItem(__result); }
+        private static IEnumerable<CodeInstruction> ConstructionHotbarPresentation(IEnumerable<CodeInstruction> instructions)
+        {
+            var inventory=AccessTools.Field(typeof(Player),nameof(Player.inventory));
+            var selected=AccessTools.PropertyGetter(typeof(Player),nameof(Player.selectedItem));
+            var selectedState=typeof(Player).GetNestedType("SelectedItemState",BindingFlags.Public|BindingFlags.NonPublic);
+            var activeOverride=AccessTools.PropertyGetter(selectedState,"HasActiveOverride");
+            var held=AccessTools.PropertyGetter(typeof(Player),"HeldItem");
+            var owner=typeof(Items.ItemMaterialPreparation);
+            int arrays=0,selections=0,overrides=0;
+            // Only this native draw method reads the mapped references. No
+            // ItemSlot.Handle/LeftClick or material consumer receives the view.
+            foreach(var instruction in instructions)
+            {
+                yield return instruction;
+                string method=null;
+                if(instruction.LoadsField(inventory)){method=nameof(Items.ItemMaterialPreparation.PresentHotbarInventory);arrays++;}
+                else if(instruction.Calls(selected)){method=nameof(Items.ItemMaterialPreparation.PresentHotbarSelection);selections++;}
+                else if(instruction.Calls(activeOverride)){method=nameof(Items.ItemMaterialPreparation.PresentHotbarOverride);overrides++;}
+                else if(instruction.Calls(held))method=nameof(Items.ItemMaterialPreparation.PresentHotbarHeldItem);
+                if(method!=null)yield return new CodeInstruction(OpCodes.Call,AccessTools.Method(owner,method));
+            }
+            if(arrays==0 || selections==0 || overrides==0)throw new InvalidOperationException("Original hotbar presentation reads changed.");
+        }
         private static void ShotBefore(Player __instance,Item __1,bool __3,out Combat.HostAttackControl.ShotReceipt __state)
         {__state=null;var attack=host?.Combat?.Attack;if(attack==null)return;Combat.CombatCursorScope cursor=null;try{cursor=attack.BeginShot(__instance,__1,__3);__state=attack.Control.BeginShot(__instance,__1,cursor);}catch(Exception error){cursor?.End();attack.FailLocal(error);}}
         private static void ShotAfter(Combat.HostAttackControl.ShotReceipt __state){__state?.Owner.EndShot(__state);}
@@ -74,7 +142,8 @@ namespace JueMingR.TerrariaHost.Tools
         internal static void Uninstall(){foreach(var m in harmony.GetPatchedMethods().ToArray())harmony.Unpatch(m,HarmonyPatchType.All,harmony.Id);host=null;deferredSync=null;}
         private static void Pick(Player __instance,ref int __0,ref bool __result){host?.Use.Pick(__instance,ref __0,ref __result);}
         private static void TargetBefore(Player __0){host?.Use.BeforeTargetResolution(__0);}
-        private static void TargetAfter(Player __0){host?.Use.AfterTargetResolution(__0);}
+        private static void TargetAfter(Player __0,bool __runOriginal)
+        {if(__runOriginal)host?.Use.AfterTargetResolution(__0);else host?.Use.TargetResolutionSkipped(__0);}
         private static Exception TargetFinal(Player __0,Exception __exception){if(__exception!=null)host?.Use.TargetResolutionFailed(__0);return __exception;}
         private static void PlayerUpdateAfter(Player __instance){host?.Use.FinishPlayerUpdate(__instance,null);}
         private static Exception PlayerUpdateFinal(Player __instance,Exception __exception){if(__exception!=null)host?.Use.FinishPlayerUpdate(__instance,__exception);return __exception;}
@@ -138,7 +207,20 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private static void ProjectileAfter(Projectile __instance,ref ProjectileLease __state){EndProjectile(__instance,ref __state,null);}
         private static Exception ProjectileFinal(Projectile __instance,ref ProjectileLease __state,Exception __exception){if(__exception!=null)EndProjectile(__instance,ref __state,__exception);return __exception;}
-        private static void Boundary(Player __instance){if(ReferenceEquals(__instance,host?.Player))host.Use.Retire();}
+        private static void CursorSyncBefore(Player __instance,out Items.ItemMaterialPreparation.CursorSyncScope __state)
+        {__state=Items.ItemMaterialPreparation.BeforeNativeCursorSync(__instance);}
+        private static Exception CursorSyncFinal(Items.ItemMaterialPreparation.CursorSyncScope __state,Exception __exception)
+        {Items.ItemMaterialPreparation.AfterNativeCursorSync(__state,__exception);return __exception;}
+        private static void DeathBefore(Player __instance,out Items.ItemMaterialPreparation.DeathScope __state)
+        {__state=Items.ItemMaterialPreparation.EnterDeathCall(__instance);}
+        private static void Boundary(Player __instance,out Items.ItemMaterialPreparation.DeathScope __state)
+        {
+            __state=Items.ItemMaterialPreparation.EnterDeathCall(__instance);
+            Items.ItemMaterialPreparation.BeforeDeathInventory(__instance);
+            if(ReferenceEquals(__instance,host?.Items.World.SessionPlayer))host.Use.DeathInventoryBoundary(__instance);
+        }
+        private static Exception DeathFinal(Items.ItemMaterialPreparation.DeathScope __state,Exception __exception)
+        {Items.ItemMaterialPreparation.LeaveDeathCall(__state);return __exception;}
         // Reference state exists before Begin; even a Prefix exception midway
         // through temporary input borrowing reaches the same idempotent cleanup.
         private sealed class Lease {internal long Token,Generation;internal Combat.CombatInputScope Combat;internal Combat.HostAttackAim.PlacementUse Placement;internal Blueprint.BlueprintHooks.MouseLease Blueprint;}
@@ -166,12 +248,19 @@ namespace JueMingR.TerrariaHost.Tools
         {try{SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}finally{__state?.Placement?.End();__state?.Blueprint?.End();}}
         private static Exception Final(Player __instance,Lease __state,Exception __exception)
         {try{if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,__exception);}}finally{__state?.Placement?.End();__state?.Blueprint?.End();}return __exception;}
-        private static void Select(Player ___player){if(host!=null && (host.Enabled || host.Combat?.Enabled==true) && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.ManualSelection();}}
+        // Closing automation can leave an exact inventory return receipt alive.
+        // Observe selection for that finite duty without enabling world tools;
+        // native cursor override 58 otherwise consumes the buffered change
+        // before the next inventory tail can see the player's new selection.
+        private static bool PreparationSelection {get{return Items.ItemMaterialPreparation.Current?.HasWork==true;}}
+        private static void Select(Player ___player){if(host!=null && (host.Enabled || host.Combat?.Enabled==true || PreparationSelection) && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.ManualSelection();}}
         private static void SelectionUpdate(Player ___player)
         {
             host?.Combat?.Handoff.BeforeSelection(___player);
-            if(host==null || !host.Enabled || !ReferenceEquals(___player,host.Player))return;
-            host.Npcs.BeginActions(host.Input.Frame);
+            if(host==null || !ReferenceEquals(___player,host.Player))return;
+            bool enabled=host.Enabled;
+            if(!enabled && !PreparationSelection)return;
+            if(enabled)host.Npcs.BeginActions(host.Input.Frame);
             // Only a genuine Select owns a buffered manual handoff. Another
             // automatic owner returning its lease is not a new player intent.
             if(!___player.selectedItemState.HasBufferedChange)manualBuffered=false;
@@ -186,11 +275,13 @@ namespace JueMingR.TerrariaHost.Tools
         private static Exception MiningFinal(NativeMiningScope __state,Exception __exception){miningScope=__state;return __exception;}
         private static void BeforePick(Player __instance,int __0,int __1,out AutoMining.ManualHit __state){__state=ReferenceEquals(__instance,miningScope.Player) && ReferenceEquals(__instance.HeldItem,miningScope.Item) && __0==miningScope.X && __1==miningScope.Y?host.Mining.BeforePick(__instance,__0,__1):default(AutoMining.ManualHit);}
         private static void AfterPick(Player __instance,AutoMining.ManualHit __state){host?.Mining.AfterPick(__instance,__state);}
-        private static bool BeforePlant(Player __instance,out HerbHarvest.HarvestReceipt __state)
+        private struct PlantScope {internal HerbHarvest.HarvestReceipt Harvest;internal Action<Exception> Build;}
+        [HarmonyPriority(Priority.First)]
+        private static bool BeforePlant(Player __instance,out PlantScope __state)
         {
-            __state=host?.Herbs.BeforePlant(__instance)??default(HerbHarvest.HarvestReceipt);
+            __state=new PlantScope{Harvest=host?.Herbs.BeforePlant(__instance)??default(HerbHarvest.HarvestReceipt)};
             if(host==null || !ReferenceEquals(__instance,host.Player))return true;
-            if(host.Use.Building)return host.Use.AllowBuildPlacement(false);
+            if(host.Use.Building){__state.Build=host.Use.BeginBuildConsumerScope(ToolBuildConsumer.Tiles);return host.Use.AllowBuildPlacement(false);}
             return !host.Use.InNativeUse || !host.Use.Is(ToolKind.Harvest) && !host.Use.Is(ToolKind.Seed) || host.Use.ActionValid;
         }
         private static bool BeforeWall(Player __instance)
@@ -202,7 +293,31 @@ namespace JueMingR.TerrariaHost.Tools
         private static void AfterBuildPreparation(bool __result,Action<bool> __state){__state?.Invoke(__result);}
         private static Exception FinalBuildPreparation(Action<bool> __state,Exception __exception)
         {if(__exception!=null)__state?.Invoke(false);return __exception;}
-        private static void AfterPlant(Player __instance,HerbHarvest.HarvestReceipt __state){host?.Herbs.AfterPlant(__instance,__state);}
+        private static void AfterPlant(Player __instance,PlantScope __state){try{host?.Herbs.AfterPlant(__instance,__state.Harvest);}finally{__state.Build?.Invoke(null);}}
+        private static Exception FinalPlant(PlantScope __state,Exception __exception){if(__exception!=null)__state.Build?.Invoke(__exception);return __exception;}
+        private static bool BuildConsumer(Player p,ToolBuildConsumer kind,int x,int y,Item material=null,bool wall=false,bool animation=true)
+        {return host==null || !ReferenceEquals(p,host.Player) || !host.Use.Building || host.Use.AllowBuildConsumerAt(kind,x,y,material,wall,animation);}
+        private static bool BeforePound(Player __instance,int __3,int __4){return BuildConsumer(__instance,ToolBuildConsumer.Hammer,__3,__4);}
+        private static bool BeforeHitWall(Player __instance,int __1,int __2){return BuildConsumer(__instance,ToolBuildConsumer.HittingWall,__1,__2);}
+        private static bool BeforeBrush(Player __instance){return BuildConsumer(__instance,ToolBuildConsumer.Paintbrush,Player.tileTargetX,Player.tileTargetY);}
+        private static bool BeforeRoller(Player __instance){return BuildConsumer(__instance,ToolBuildConsumer.PaintRoller,Player.tileTargetX,Player.tileTargetY);}
+        private static bool BeforeScrape(Player __instance,int __0,int __1){return BuildConsumer(__instance,ToolBuildConsumer.PaintScraper,__0,__1);}
+        private static bool BeforeScrapeMoss(Player __instance,int __0,int __1){return BuildConsumer(__instance,ToolBuildConsumer.LongMoss,__0,__1);}
+        private static bool BeforePainting(Player __instance,int __0,int __1,bool __2,bool __3)
+        {return BuildConsumer(__instance,__2?ToolBuildConsumer.PaintRoller:ToolBuildConsumer.Paintbrush,__0,__1,null,__2,__3);}
+        private static bool BeforeApplyPaint(Player __instance,int __0,int __1,bool __2,bool __3,Item __4)
+        {return BuildConsumer(__instance,ToolBuildConsumer.ApplyPaint,__0,__1,__4,__2,__3);}
+        private static bool BeforeApplyCoating(Player __instance,int __0,int __1,bool __2,bool __3,Item __4)
+        {return BuildConsumer(__instance,ToolBuildConsumer.ApplyCoating,__0,__1,__4,__2,__3);}
+        [HarmonyPriority(Priority.First)]
+        private static bool BeforeWiring(Player __instance,out Action<Exception> __state)
+        {
+            __state=null;if(host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Building)return true;
+            __state=host.Use.BeginBuildConsumerScope(ToolBuildConsumer.Wiring);
+            return host.Use.AllowBuildConsumer(ToolBuildConsumer.Wiring);
+        }
+        private static void AfterWiring(Action<Exception> __state){__state?.Invoke(null);}
+        private static Exception FinalWiring(Action<Exception> __state,Exception __exception){if(__exception!=null)__state?.Invoke(__exception);return __exception;}
         private static bool Catch(Player __instance){return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Is(ToolKind.Capture) || host.Use.ActionValid;}
         private static bool Mine(Player __instance){return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Is(ToolKind.Mining) || host.Use.ActionValid;}
     }

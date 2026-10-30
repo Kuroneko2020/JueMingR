@@ -21,6 +21,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int WorldY { get { return TargetY; } }
         internal BlueprintProjectionBounds Bounds;
         internal BlueprintPlacementDescriptor Placement;
+        internal BlueprintBuildOperation Operation;
         internal bool LocalProof, LocalPriority;
     }
     internal sealed class BlueprintMaterialTotals
@@ -55,10 +56,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal long CatalogRevision;
         internal BlueprintBuildTarget Candidate;
         internal int CandidateCursor;
-        // One finite preference pass per real use lease. Ordinary discovery,
-        // near/frontier cursors and their Candidate keep their own service.
-        internal long PreferredLease;
+        // Stable absolute member/lane progress belongs to the source intent,
+        // not ToolUse's disposable token or one retained transport window.
+        internal long PreferredGroup, PreferredVisitBatch, PreferredCompletedBatch, PreferredVersion = -1, PreferredPlayer = -1, PreferredWake = -1, PreferredSupply = -1;
         internal int PreferredCursor;
+        internal bool PreferredInitialized, PreferredComplete, PreferredRevisit;
         internal long BuildEpoch, BuildWakeRevision;
         internal long BuildPlayerRevision, BuildSupplyRevision, BuildContainerRevision, BuildActivationRevision;
         internal BlueprintBuildWait BuildWaits;
@@ -66,6 +68,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool BuildRetryPending;
         internal bool BuildExhausted;
         internal bool EligibilityRetry;
+        internal Dictionary<int, BlueprintBodyState> BuildObjectBodies;
+        internal long BuildBodyVersion, BuildBodyStamp;
         internal int EligibilityRetryOrdinal;
         internal ulong EligibilityRetryAt;
         internal ulong DynamicRetryAt;
@@ -99,6 +103,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         // work. This is not a global one-range-per-delay throughput limit.
         private const ulong BuildEligibilityRetryDelay = 240;
         private BlueprintMaterialTotals materialPublishingTotals;
+        private bool materialPublishingInventoryReady;
         private IEnumerator<KeyValuePair<int, long>> materialPublishing;
         private List<BlueprintMaterialRow> materialPublishingRows = new List<BlueprintMaterialRow>();
         private long materialPublishingTotal;
@@ -276,6 +281,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ObserveMaterialInventory(ulong tick)
         {
+            buildMaterialPreparation?.ObserveInventory(player);
 #if JMR_BLUEPRINT_DIAGNOSTIC
             if(BlueprintBuildTrace.Active)BlueprintBuildTrace.Current.InventoryBegin();
 #endif
@@ -331,6 +337,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             materialAll.Expected -= state.Ranges.Length;
             foreach (var range in state.Ranges)
             {
+                RetirePreferredRange(range);
                 if ((materialCatalogTransition || materialContextTransition) && range.MaterialDemandEpoch != materialDemandEpoch && materialTransitionRemaining > 0) materialTransitionRemaining--;
                 RevokeMaterialRange(range, true);
             }
@@ -353,7 +360,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (retiring || resetBuild)
             {
                 ResetMaterialBuildWalk(range, true);
-                value.PreferredLease = 0; value.PreferredCursor = 0;
+                value.PreferredGroup = 0; value.PreferredCursor = 0; value.PreferredInitialized = value.PreferredComplete = value.PreferredRevisit = false;
             }
             value.Desired = null; QueueMaterialChange(range);
             if (retiring) value.CatalogRevision = -1;
@@ -452,11 +459,18 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (totals == null || ProjectionEditing || materialCatalogTransition || materialContextTransition || totals.Updating > 0 ||
                 projectionScene.Count > 0 && MaterialCatalog == null || materialScope == 0 && materialMatchOwners != projectionScene.Count) return;
             long inventoryRevision = materialInventory?.Revision ?? 0;
-            if (ReferenceEquals(materialPublishingTotals, totals) && materialPublishingRevision == totals.Revision && materialPublishingInventoryRevision == inventoryRevision && materialPublishing == null) return;
-            if (!ReferenceEquals(materialPublishingTotals, totals) || materialPublishingRevision != totals.Revision || materialPublishingInventoryRevision != inventoryRevision)
+            // Keep the physical 0..49 observation unchanged. During a finite
+            // preparation P may be in 54/cursor and B is cleanup-only: the UI
+            // reports unavailable inventory instead of omitting/duplicating P
+            // or granting B new supply lineage. Execution uses exact receipts.
+            bool inventoryReady=materialInventory?.Ready==true && !(buildMaterialPreparation?.HasWork==true && !buildMaterialPreparation.Unknown);
+            if (ReferenceEquals(materialPublishingTotals, totals) && materialPublishingRevision == totals.Revision && materialPublishingInventoryRevision == inventoryRevision &&
+                materialPublishingInventoryReady==inventoryReady && materialPublishing == null) return;
+            if (!ReferenceEquals(materialPublishingTotals, totals) || materialPublishingRevision != totals.Revision || materialPublishingInventoryRevision != inventoryRevision || materialPublishingInventoryReady!=inventoryReady)
             {
                 materialPublishing?.Dispose(); materialPublishingRows.Clear(); materialPublishingTotals = totals;
                 materialPublishingRevision = totals.Revision; materialPublishingInventoryRevision = inventoryRevision;
+                materialPublishingInventoryReady=inventoryReady;
                 materialPublishingTotal = 0;
                 materialPublishing = totals.Counts.GetEnumerator();
                 materialWorldSnapshot = new BlueprintMaterialSnapshot(++materialSnapshotRevision, BlueprintMaterialStatus.Pending, Array.Empty<BlueprintMaterialRow>());
@@ -466,7 +480,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var pair = materialPublishing.Current;
                 try { materialPublishingTotal = checked(materialPublishingTotal + pair.Value); }
                 catch (OverflowException) { totals.Failed = true; materialPublishing.Dispose(); materialPublishing = null; materialWorldSnapshot = new BlueprintMaterialSnapshot(++materialSnapshotRevision, BlueprintMaterialStatus.Unresolved, Array.Empty<BlueprintMaterialRow>(), false, "材料数量超出整数范围"); return; }
-                materialPublishingRows.Add(new BlueprintMaterialRow(pair.Key, pair.Value, materialInventory?.Held(pair.Key) ?? 0, materialInventory?.Ready == true));
+                materialPublishingRows.Add(new BlueprintMaterialRow(pair.Key, pair.Value, materialInventory?.Held(pair.Key) ?? 0, inventoryReady));
 #if DEBUG
                 MaterialPublicationSteps++;
 #endif
@@ -474,7 +488,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (budget < 0) return;
             materialPublishing.Dispose(); materialPublishing = null;
             var status = totals.Failed || totals.Unresolved > 0 ? BlueprintMaterialStatus.Unresolved : totals.Current < totals.Expected ? BlueprintMaterialStatus.Pending : BlueprintMaterialStatus.Exact;
-            materialWorldSnapshot = BlueprintMaterialSnapshot.FromOwnedRows(++materialSnapshotRevision, status, materialPublishingRows, materialPublishingTotal, materialInventory?.Ready == true, totals.Failed ? "材料数量超出整数范围" : null);
+            materialWorldSnapshot = BlueprintMaterialSnapshot.FromOwnedRows(++materialSnapshotRevision, status, materialPublishingRows, materialPublishingTotal, inventoryReady, totals.Failed ? "材料数量超出整数范围" : null);
             materialPublishingRows = new List<BlueprintMaterialRow>();
         }
         internal void ClearMaterials()

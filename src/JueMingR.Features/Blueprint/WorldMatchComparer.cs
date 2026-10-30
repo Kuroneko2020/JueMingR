@@ -27,7 +27,7 @@ namespace JueMingR.Features.Blueprint
                 if (target.UnreliableObject || target.Slope > 4 || target.HalfBrick && target.Slope != 0) state = BlueprintWorldMatchState.Unknown;
                 else if (target.ObjectId > 0) state = objectTileState;
                 else if ((actual.Layers & CaptureLayer.Tile) == 0) state = BlueprintWorldMatchState.Missing;
-                else if (world.ObjectUnknown || actual.Slope > 4 || actual.HalfBrick && actual.Slope != 0)
+                else if (world.ObjectUnknown || !FrameProfileCurrent(world) || actual.Slope > 4 || actual.HalfBrick && actual.Slope != 0)
                     state = BlueprintWorldMatchState.Unknown;
                 else if (!SameAppearance(target, actual) || target.TileType != actual.TileType ||
                     world.CompareFrames && (targetFrameX != world.SemanticFrameX || targetFrameY != world.SemanticFrameY)) state = BlueprintWorldMatchState.Conflict;
@@ -80,26 +80,15 @@ namespace JueMingR.Features.Blueprint
             int row = actual.Y - observed.WorldY, column = actual.X - observed.WorldX;
             if (row < 0 || row >= target.Height || column < 0 || column >= observed.Width) return false;
             if (target.Family != BlueprintWorldObjectFamily.Door) return column < target.Width && SameAppearance(expected[row * target.Width + column], actual);
-            if (target.Width == 2 && observed.Width == 2)
-            {
-                // Two open layouts retain two independently saved member
-                // appearances. Map hinge/wing roles across opening direction;
-                // do not demand both paints from either one world member.
-                int targetHinge = target.AnchorX - target.WorldX, actualHinge = observed.AnchorX - observed.WorldX;
-                if (targetHinge < 0 || targetHinge > 1 || actualHinge < 0 || actualHinge > 1) return false;
-                int expectedColumn = column == actualHinge ? targetHinge : 1 - targetHinge;
-                return SameAppearance(expected[row * 2 + expectedColumn], actual);
-            }
-            // Door wing columns are a legal operating state. Every column must
-            // match every target member of its row. Check occupied members even
-            // in a partial object: a missing neighbor cannot hide a paint error.
-            for (int x = 0; x < target.Width; x++) if (!SameAppearance(expected[row * target.Width + x], actual)) return false;
-            return true;
+            CaptureCell requirement;
+            return BlueprintDoorMembers.TryRequirement(target, expected, observed, actual.X, actual.Y, out requirement) &&
+                SameAppearance(requirement, actual);
         }
 
-        // Original natural-tree generators select decoration inside these
-        // frame families. Branch/root/top forms and palm lean remain semantic;
-        // only the independently random texture slot is folded on both sides.
+        // The Host grants these value profiles from native metadata/rules.
+        // Tree structure and palm lean remain semantic. A proved one-cell
+        // platform has 27 neighbor/shape slots in X and material style in Y;
+        // malformed raw target frames do not inherit that X equivalence.
         public static void NormalizeFrame(CaptureCell cell, BlueprintWorldFrameKind kind, out short x, out short y)
         {
             x = cell.FrameX; y = cell.FrameY;
@@ -107,6 +96,17 @@ namespace JueMingR.Features.Blueprint
             else if (kind == BlueprintWorldFrameKind.Palm22 && x % 22 == 0)
             { if (x >= 0 && x <= 44) x = 0; else if (x >= 88 && x <= 132) x = 88; }
             else if (kind == BlueprintWorldFrameKind.Mushroom18 && (x == 0 || x == 36) && y >= 0 && y <= 36 && y % 18 == 0) y = 0;
+            else if (kind == BlueprintWorldFrameKind.Platform18 && x >= 0 && x < 27 * 18 && x % 18 == 0 && y >= 0 && y % 18 == 0) x = 0;
+        }
+        // The platform tag cannot hide malformed raw observations or a style
+        // from another sample. Host creates both fields from the same gated
+        // read; pure consumers retain that relationship before granting Same.
+        internal static bool FrameProfileCurrent(BlueprintWorldMatchSample sample)
+        {
+            CaptureCell cell = sample.Cell;
+            return sample.FrameKind != BlueprintWorldFrameKind.Platform18 || sample.CompareFrames &&
+                cell.FrameX >= 0 && cell.FrameX < 27 * 18 && cell.FrameX % 18 == 0 && cell.FrameY >= 0 && cell.FrameY % 18 == 0 &&
+                sample.SemanticFrameX == 0 && sample.SemanticFrameY == cell.FrameY;
         }
 
         private static bool ValidTargetMembers(BlueprintWorldObject target, IReadOnlyList<CaptureCell> members)
