@@ -57,8 +57,8 @@ namespace JueMingR.TerrariaHost.Items
             Patch(harmony, typeof(Player), "GetItem_FillEmptyInventorySlot", fill, nameof(Fill));
             foreach (string name in new[] { "GetItem_FillIntoOccupiedSlot", "GetItem_FillEmptyInventorySlot" })
                 harmony.Patch(AccessTools.DeclaredMethod(typeof(Player), name, fill),
-                    prefix: new HarmonyMethod(typeof(ItemPendingGuards), nameof(BeforeDeathReturnFill)),
-                    finalizer: new HarmonyMethod(typeof(ItemPendingGuards), nameof(AfterDeathReturnFill)));
+                    prefix: new HarmonyMethod(typeof(ItemPendingGuards), nameof(BeforeNativeReturnFill)),
+                    finalizer: new HarmonyMethod(typeof(ItemPendingGuards), nameof(AfterNativeReturnFill)));
             Patch(harmony, typeof(Player), "FillAmmo", new[] { typeof(Item), typeof(GetItemSettings) }, transpiler: nameof(ItemGuardTranspilers.AmmoReceiver));
             Patch(harmony, typeof(Player), "PickAmmo_IterateRange", new[] { typeof(Item), typeof(Item[]), typeof(int[]), typeof(bool) }, nameof(Ammo));
             Patch(harmony, typeof(Player), "ItemCheck_TryStartUse", new[] { typeof(Item), typeof(bool) }, nameof(StartUse));
@@ -221,10 +221,10 @@ namespace JueMingR.TerrariaHost.Items
         }
         private static bool Drop(Player __instance, int __0)
         { return !ItemMaterialPreparation.BlocksNativeCursorDrop(__instance, __0) && !Protected(__instance.inventory, __0); }
-        private static void BeforeDeathReturnFill(Player __instance, Item __0, int __3, out ItemMaterialPreparation.DeathReturnScope __state)
-        { __state = ItemMaterialPreparation.BeforeDeathReturn(__instance, __0, __3); }
-        private static Exception AfterDeathReturnFill(ItemMaterialPreparation.DeathReturnScope __state, Exception __exception)
-        { ItemMaterialPreparation.AfterDeathReturn(__state, __exception); return __exception; }
+        private static void BeforeNativeReturnFill(Player __instance, Item __0, int __3, out ItemMaterialPreparation.NativeReturnScope __state)
+        { __state = ItemMaterialPreparation.BeforeNativeReturn(__instance, __0, __3); }
+        private static Exception AfterNativeReturnFill(ItemMaterialPreparation.NativeReturnScope __state, Exception __exception)
+        { ItemMaterialPreparation.AfterNativeReturn(__state, __exception); return __exception; }
         private static bool QuickStack(Player __0, MethodBase __originalMethod)
         {
             if (!Active || !ReferenceEquals(__0, host.World.SessionPlayer)) return true;

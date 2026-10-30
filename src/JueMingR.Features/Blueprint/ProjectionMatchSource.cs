@@ -222,10 +222,23 @@ namespace JueMingR.Features.Blueprint
     {
         internal const long DescriptorBytes = 128;
         internal BlueprintProjectionSourcePart(BlueprintProjectionSourceDemand demand, int logicalObjectId,
-            BlueprintProjectionWindow window, int nextOffset, bool complete)
-        { Range = demand.Range; ObjectId = demand.ObjectId; LogicalObjectId = logicalObjectId; Offset = demand.Offset; Window = window; NextOffset = nextOffset; Complete = complete; WindowEstimatedBytes = window == null ? 0 : checked(window.EstimatedBytes + SummaryReferenceBytes(window.Summary)); }
+            BlueprintProjectionWindow window, int nextOffset, bool complete, IReadOnlyList<BlueprintProjectionWindow> doorContexts = null)
+        {
+            Range = demand.Range; ObjectId = demand.ObjectId; LogicalObjectId = logicalObjectId; Offset = demand.Offset;
+            Window = window; NextOffset = nextOffset; Complete = complete;
+            WindowEstimatedBytes = window == null ? 0 : checked(window.EstimatedBytes + SummaryReferenceBytes(window.Summary));
+            DoorContexts = doorContexts ?? Array.Empty<BlueprintProjectionWindow>();
+            DoorContextEstimatedBytes = DoorContextBytes(DoorContexts);
+        }
         internal static long SummaryReferenceBytes(CaptureSummary summary)
         { return summary == null ? 0 : checked(8L * ((summary.MissingPayloads?.LongLength ?? 0) + (summary.UnreliableReasons?.LongLength ?? 0))); }
+        internal static long DoorContextBytes(IReadOnlyList<BlueprintProjectionWindow> contexts)
+        {
+            if (contexts == null || contexts.Count == 0) return 0;
+            long bytes = 64L + contexts.Count * 8L;
+            foreach (var context in contexts) bytes = checked(bytes + context.EstimatedBytes + SummaryReferenceBytes(context.Summary));
+            return bytes;
+        }
         public int Range { get; }
         public int ObjectId { get; }
         public int LogicalObjectId { get; }
@@ -233,13 +246,20 @@ namespace JueMingR.Features.Blueprint
         public int NextOffset { get; }
         public bool Complete { get; }
         public BlueprintProjectionWindow Window { get; }
+        // A door can occupy either wing outside its saved Tile members. Each
+        // context contains exactly the canonical 3x3 source area, including
+        // explicit empty cells after a complete directory read. These raw
+        // neighbours grant no layer selection and never join Window.Cells or
+        // its source ordinals. The part owns their existing bounded lifetime.
+        public IReadOnlyList<BlueprintProjectionWindow> DoorContexts { get; }
+        public long DoorContextEstimatedBytes { get; }
         // Window's legacy estimate covers its fixed headers/payload. Copy
         // clones the summary's two reference arrays; each slot is additional
         // per-window retention. The immutable strings remain shared with root.
         public long WindowEstimatedBytes { get; }
         // A standalone part estimate. A batch owner must charge the receipt,
         // which deduplicates shared windows rather than summing this property.
-        public long EstimatedBytes { get { return DescriptorBytes + WindowEstimatedBytes; } }
+        public long EstimatedBytes { get { return DescriptorBytes + WindowEstimatedBytes + DoorContextEstimatedBytes; } }
     }
 
     // A transport has immutable source ownership only. Each part still needs
@@ -261,7 +281,7 @@ namespace JueMingR.Features.Blueprint
             Identity = identity; Generation = generation; Parts = Array.AsReadOnly(parts); Error = error; CapabilityRevision = capabilityRevision;
             long bytes = DirectoryBytes + parts.LongLength * BlueprintProjectionSourcePart.DescriptorBytes;
             var windows = new HashSet<BlueprintProjectionWindow>();
-            foreach (var part in parts) if (part.Window != null && windows.Add(part.Window)) bytes = checked(bytes + part.WindowEstimatedBytes);
+            foreach (var part in parts) if (part.Window != null && windows.Add(part.Window)) bytes = checked(bytes + part.WindowEstimatedBytes + part.DoorContextEstimatedBytes);
             EstimatedBytes = bytes;
         }
         public BlueprintProjectionIdentity Identity { get; }

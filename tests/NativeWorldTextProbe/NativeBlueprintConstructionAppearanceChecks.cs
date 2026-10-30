@@ -28,6 +28,7 @@ namespace NativeWorldTextProbe
             check("hammer", () => ConstructionHammer(context, host, tools, input));
             check("ordinary non-solid shapes and locked door preflight", () => ConstructionHammerEligibility(context, host, tools, input));
             check("natural smart platform slopes and fallback", () => ConstructionSmartPlatform(context, host, tools, input));
+            check("door tile members follow actual native form", () => ConstructionPlacementDoorRepair(context, host, tools, input));
             check("captured platform identity and hammer", () => ConstructionCapturedPlatforms(context, host, tools, input));
             check("captured smart platform native paint", () => ConstructionCapturedPlatformPaint(context, host, tools, input));
             check("mixed paint", () => ConstructionMixedPaint(context, host, tools, input));
@@ -43,9 +44,14 @@ namespace NativeWorldTextProbe
 
         private static object smartPlatformHost, smartPlatformInput;
         private static bool smartPlatformWatch, smartPlatformProofValid;
+        private static object smartPlatformRejectedFlight;
+        private static long smartPlatformUnknownBaseline;
+        private static int smartPlatformNativeNeutrals;
+        private static readonly System.Collections.Generic.Dictionary<string, int> smartPlatformFailureNeutrals = new System.Collections.Generic.Dictionary<string, int>();
         private static int smartPlatformChoices, smartPlatformPreciseChoices, smartPlatformHammers, smartPlatformCorrectHammers;
         private static readonly System.Collections.Generic.Dictionary<long, long> smartPlatformLookups = new System.Collections.Generic.Dictionary<long, long>();
         private static readonly System.Collections.Generic.Dictionary<string, int> smartPlatformMissingLookups = new System.Collections.Generic.Dictionary<string, int>();
+        private static readonly System.Collections.Generic.Dictionary<string, string> smartPlatformDirections = new System.Collections.Generic.Dictionary<string, string>();
         private static string SmartPlatformPoint(object target)
         { return Get(target, "WorldX") + "," + Get(target, "WorldY"); }
         private static object WatchedSmartPlatformFlight()
@@ -54,26 +60,36 @@ namespace NativeWorldTextProbe
         {
             var flight = WatchedSmartPlatformFlight();
             if (flight == null || Get(flight, "CursorMode").ToString() != "SmartPlatform") return true;
+            if (!Main.LocalPlayer.controlUseItem) return true;
             string key = SmartPlatformPoint(Get(flight, "Target")); int count;
             if (!smartPlatformMissingLookups.TryGetValue(key, out count)) return true;
-            // Fault injection removes this one original lookup opportunity.
-            // It writes neither Smart coordinates nor private continuity locks.
+            // Fault injection skips this original Lookup. Production must
+            // reject __runOriginal=false even when an earlier neutral left
+            // accurate coordinates/Showing. The fixture changes no Smart state.
             // Successful arms below always execute the complete native Lookup.
             smartPlatformMissingLookups[key] = count + 1;
+            if(count!=0)Require(smartPlatformNativeNeutrals>smartPlatformFailureNeutrals[key],
+                "a retried forced failure needs a genuinely executed intervening native neutral Lookup");
+            smartPlatformFailureNeutrals[key]=smartPlatformNativeNeutrals;
             if (count < 4) Console.WriteLine("SMART_PLATFORM injectedLookupMiss target=" + key + " attempt=" + (count + 1) +
                 " generation=" + Get(flight, "Generation") + " frame=" + Get(smartPlatformInput, "Frame") +
                 " oldNative=" + Main.SmartCursorX + "," + Main.SmartCursorY + " showing=" + Main.SmartCursorShowing);
-            return false;
+            smartPlatformRejectedFlight = flight; return false;
         }
-        private static void SmartPlatformLookupAfter()
+        private static void SmartPlatformLookupAfter(bool __runOriginal)
         {
+            if(!__runOriginal)return;
+            if(smartPlatformWatch && !Main.LocalPlayer.controlUseItem)smartPlatformNativeNeutrals++;
             var flight = WatchedSmartPlatformFlight();
             if (flight == null || Get(flight, "CursorMode").ToString() != "SmartPlatform") return;
             var target = Get(flight, "Target"); var direction = Terraria.GameContent.SmartCursorHelper.LockedDesiredDirection;
-            int x = (int)Get(target, "WorldX"), y = (int)Get(target, "WorldY"), dx = (int)Get(flight, "SmartDirection");
+            int x = (int)Get(target, "WorldX"), y = (int)Get(target, "WorldY");
             if (Main.SmartCursorIsUsed && Main.SmartCursorShowing && Player.tileTargetX == x && Player.tileTargetY == y &&
-                Main.SmartCursorX == x && Main.SmartCursorY == y && direction.HasValue && direction.Value.X == dx && direction.Value.Y == 1)
+                Main.SmartCursorX == x && Main.SmartCursorY == y && direction.HasValue && Main.LocalPlayer.controlUseItem)
+            {
                 smartPlatformLookups[(long)Get(flight, "Generation")] = (long)Get(smartPlatformInput, "Frame");
+                smartPlatformDirections[x + "," + y] = direction.Value.X + "," + direction.Value.Y;
+            }
         }
         private static void SmartPlatformChoiceAfter(object __0, bool __result)
         {
@@ -96,7 +112,9 @@ namespace NativeWorldTextProbe
         private static void ResetSmartPlatformCounts()
         {
             smartPlatformChoices = smartPlatformPreciseChoices = smartPlatformHammers = smartPlatformCorrectHammers = 0;
-            smartPlatformProofValid = true; smartPlatformLookups.Clear(); smartPlatformMissingLookups.Clear();
+            smartPlatformProofValid = true; smartPlatformLookups.Clear(); smartPlatformMissingLookups.Clear(); smartPlatformDirections.Clear();
+            smartPlatformRejectedFlight = null; smartPlatformUnknownBaseline = (long)Get(smartPlatformHost, "BuildUnknownResults");
+            smartPlatformNativeNeutrals=0;smartPlatformFailureNeutrals.Clear();
         }
         private static void SeedSmartPlatform(Item material, int x, int y, int slope)
         {
@@ -143,7 +161,7 @@ namespace NativeWorldTextProbe
                         Main.tile[seedX, 38].slope() == slope && !Main.tile[seedX, 38].halfBrick(),
                         "natural smart extension reaches all three shapes and consumes exactly three real platforms, preserving the seed; direction=" + direction);
                     Require(smartPlatformChoices == 3 && smartPlatformHammers == 0 && smartPlatformPreciseChoices == 0 &&
-                        smartPlatformLookups.Count >= 3 && smartPlatformProofValid && p.inventory.All(item => item.hammer == 0),
+                        smartPlatformLookups.Count >= 3 && smartPlatformProofValid && smartPlatformDirections.Values.All(value => value == direction + ",1") && p.inventory.All(item => item.hammer == 0),
                         "every direct slope has its own natural same-frame Lookup before PlaceIt and no hammer capability/consumer; direction=" + direction);
                     Require(Main.SmartCursorWanted_Mouse == expectedMouse && Main.SmartCursorWanted_GamePad == expectedPad,
                         "both original Smart preference values return after the temporary input scope");
@@ -153,6 +171,7 @@ namespace NativeWorldTextProbe
                     Console.WriteLine("SMART_PLATFORM direction=" + direction + " placed=3 Hammer=" + smartPlatformHammers +
                         " nativeLookupGenerations=" + smartPlatformLookups.Count + " materialConsumed=3");
                 }
+                ConstructionSmartPlacementRepair(context, host, tools, input);
                 ConstructionSmartPlatformFallback(context, host, tools, input);
             }
             finally
@@ -189,8 +208,8 @@ namespace NativeWorldTextProbe
                     int x = 44 + cell.X, y = 39 + cell.Y; var tile = Main.tile[x, y];
                     return x + "," + y + ":" + tile.active() + "/" + tile.type + "/" + tile.slope() + "/" + tile.halfBrick();
                 })));
-            Require(smartPlatformMissingLookups.Values.All(count => count == 1) && smartPlatformChoices == 0 && smartPlatformPreciseChoices == 3,
-                "two separately rejected Smart targets retain their own bounded fallback and proceed through Precise without a new Smart attempt");
+            Require(smartPlatformMissingLookups.Values.All(count => count >= 1 && count <= 2) && smartPlatformChoices == 0 && smartPlatformPreciseChoices == 3,
+                "two separately rejected Smart targets allow at most one genuinely neutral-restored retry, then stay bounded and complete through Precise");
             Require(smartPlatformHammers > 0 && smartPlatformCorrectHammers == 0 && material.stack == 4 && cells.All(cell =>
             {
                 var tile = Main.tile[44 + cell.X, 39 + cell.Y];

@@ -142,7 +142,8 @@ namespace JueMingR.TerrariaHost.Tools
         internal static void Uninstall(){foreach(var m in harmony.GetPatchedMethods().ToArray())harmony.Unpatch(m,HarmonyPatchType.All,harmony.Id);host=null;deferredSync=null;}
         private static void Pick(Player __instance,ref int __0,ref bool __result){host?.Use.Pick(__instance,ref __0,ref __result);}
         private static void TargetBefore(Player __0){host?.Use.BeforeTargetResolution(__0);}
-        private static void TargetAfter(Player __0){host?.Use.AfterTargetResolution(__0);}
+        private static void TargetAfter(Player __0,bool __runOriginal)
+        {if(__runOriginal)host?.Use.AfterTargetResolution(__0);else host?.Use.TargetResolutionSkipped(__0);}
         private static Exception TargetFinal(Player __0,Exception __exception){if(__exception!=null)host?.Use.TargetResolutionFailed(__0);return __exception;}
         private static void PlayerUpdateAfter(Player __instance){host?.Use.FinishPlayerUpdate(__instance,null);}
         private static Exception PlayerUpdateFinal(Player __instance,Exception __exception){if(__exception!=null)host?.Use.FinishPlayerUpdate(__instance,__exception);return __exception;}
@@ -247,12 +248,19 @@ namespace JueMingR.TerrariaHost.Tools
         {try{SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}finally{__state?.Placement?.End();__state?.Blueprint?.End();}}
         private static Exception Final(Player __instance,Lease __state,Exception __exception)
         {try{if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,__exception);}}finally{__state?.Placement?.End();__state?.Blueprint?.End();}return __exception;}
-        private static void Select(Player ___player){if(host!=null && (host.Enabled || host.Combat?.Enabled==true) && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.ManualSelection();}}
+        // Closing automation can leave an exact inventory return receipt alive.
+        // Observe selection for that finite duty without enabling world tools;
+        // native cursor override 58 otherwise consumes the buffered change
+        // before the next inventory tail can see the player's new selection.
+        private static bool PreparationSelection {get{return Items.ItemMaterialPreparation.Current?.HasWork==true;}}
+        private static void Select(Player ___player){if(host!=null && (host.Enabled || host.Combat?.Enabled==true || PreparationSelection) && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.ManualSelection();}}
         private static void SelectionUpdate(Player ___player)
         {
             host?.Combat?.Handoff.BeforeSelection(___player);
-            if(host==null || !host.Enabled || !ReferenceEquals(___player,host.Player))return;
-            host.Npcs.BeginActions(host.Input.Frame);
+            if(host==null || !ReferenceEquals(___player,host.Player))return;
+            bool enabled=host.Enabled;
+            if(!enabled && !PreparationSelection)return;
+            if(enabled)host.Npcs.BeginActions(host.Input.Frame);
             // Only a genuine Select owns a buffered manual handoff. Another
             // automatic owner returning its lease is not a new player intent.
             if(!___player.selectedItemState.HasBufferedChange)manualBuffered=false;

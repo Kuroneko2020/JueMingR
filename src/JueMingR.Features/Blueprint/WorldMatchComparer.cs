@@ -80,21 +80,9 @@ namespace JueMingR.Features.Blueprint
             int row = actual.Y - observed.WorldY, column = actual.X - observed.WorldX;
             if (row < 0 || row >= target.Height || column < 0 || column >= observed.Width) return false;
             if (target.Family != BlueprintWorldObjectFamily.Door) return column < target.Width && SameAppearance(expected[row * target.Width + column], actual);
-            if (target.Width == 2 && observed.Width == 2)
-            {
-                // Two open layouts retain two independently saved member
-                // appearances. Map hinge/wing roles across opening direction;
-                // do not demand both paints from either one world member.
-                int targetHinge = target.AnchorX - target.WorldX, actualHinge = observed.AnchorX - observed.WorldX;
-                if (targetHinge < 0 || targetHinge > 1 || actualHinge < 0 || actualHinge > 1) return false;
-                int expectedColumn = column == actualHinge ? targetHinge : 1 - targetHinge;
-                return SameAppearance(expected[row * 2 + expectedColumn], actual);
-            }
-            // Door wing columns are a legal operating state. Every column must
-            // match every target member of its row. Check occupied members even
-            // in a partial object: a missing neighbor cannot hide a paint error.
-            for (int x = 0; x < target.Width; x++) if (!SameAppearance(expected[row * target.Width + x], actual)) return false;
-            return true;
+            CaptureCell requirement;
+            return BlueprintDoorMembers.TryRequirement(target, expected, observed, actual.X, actual.Y, out requirement) &&
+                SameAppearance(requirement, actual);
         }
 
         // The Host grants these value profiles from native metadata/rules.

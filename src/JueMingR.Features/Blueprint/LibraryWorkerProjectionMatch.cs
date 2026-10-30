@@ -18,11 +18,13 @@ namespace JueMingR.Features.Blueprint
             internal BlueprintProjectionBounds Bounds;
             internal long Block, PlannedBytes;
             internal int ObjectId, Offset, NextOffset, PlannedCells;
-            internal bool TileOnly;
+            internal bool TileOnly, Complete = true;
             internal CaptureObject Metadata;
             internal IReadOnlyList<long> MemberBlocks;
             internal List<CaptureCell> Cells;
             internal BlueprintProjectionWindow Window;
+            internal IReadOnlyList<BlueprintProjectionWindow> DoorContexts;
+            internal long DoorContextBytes;
         }
         private readonly struct ProjectionSourcePlan
         {
@@ -194,7 +196,11 @@ namespace JueMingR.Features.Blueprint
                     int objectId = tileOnly ? range.ObjectId : demand.ObjectId;
                     var key = objectId == 0 ? Tuple.Create(range.Block, 0, demand.Offset) : Tuple.Create(-1L, objectId, tileOnly ? 1 : 2);
                     ProjectionSourceBuild build; bool shared = unique.TryGetValue(key, out build);
-                    if (!shared) build = PlanProjectionSource(owner, range, demand, objectId, tileOnly);
+                    if (!shared)
+                    {
+                        build = PlanProjectionSource(owner, range, demand, objectId, tileOnly);
+                        foreach (bool ignored in PlanProjectionDoorContexts(owner, request, build, working + 768)) yield return true;
+                    }
                     long nextRetained = checked(retained + BlueprintProjectionSourcePart.DescriptorBytes + (shared ? 0 : build.PlannedBytes + summaryReferenceBytes));
                     // A full transport is a legal prefix, never a fatal asset
                     // error. A large first item retains the old single-window
@@ -204,7 +210,7 @@ namespace JueMingR.Features.Blueprint
                     if (!shared)
                     {
                         unique.Add(key, build); builds.Add(build);
-                        working += 768L + (long)((build.Metadata.Reason ?? "").Length + (build.Metadata.MissingPayload ?? "").Length) * 2;
+                        working += 768L + build.DoorContextBytes + (long)((build.Metadata.Reason ?? "").Length + (build.Metadata.MissingPayload ?? "").Length) * 2;
                     }
                     plans.Add(new ProjectionSourcePlan(demand, range.ObjectId, build)); retained = nextRetained; working += 128;
                     UpdateProjectionSourceWorkingBytes(working); yield return true;
@@ -263,7 +269,7 @@ namespace JueMingR.Features.Blueprint
                             if (cell.HasContent)
                             {
                                 cell.X -= summary.Left; cell.Y -= summary.Top;
-                                foreach (var build in ordinaryTargets) if (i >= build.Offset) build.Cells.Add(cell);
+                                foreach (var build in ordinaryTargets) if (i >= build.Offset && i < build.NextOffset) build.Cells.Add(cell);
                             }
                         }
                         List<ProjectionSourceBuild> objectTargets;
@@ -303,7 +309,7 @@ namespace JueMingR.Features.Blueprint
                 }
                 var parts = new BlueprintProjectionSourcePart[plans.Count];
                 for (int i = 0; i < parts.Length; i++)
-                { var plan = plans[i]; parts[i] = new BlueprintProjectionSourcePart(plan.Demand, plan.LogicalObjectId, plan.Build.Window, plan.Build.NextOffset, true); }
+                { var plan = plans[i]; parts[i] = new BlueprintProjectionSourcePart(plan.Demand, plan.LogicalObjectId, plan.Build.Window, plan.Build.NextOffset, plan.Build.Complete, plan.Build.DoorContexts); }
                 var receipt = new BlueprintProjectionSourceReceipt(request.Identity, request.Generation, parts, capabilityRevision: request.CapabilityRevision);
                 UpdateProjectionSourceWorkingBytes(working + BlueprintProjectionSourceReceipt.DirectoryBytes + parts.LongLength * BlueprintProjectionSourcePart.DescriptorBytes);
                 if (receipt.EstimatedBytes > BlueprintProjectionSourceReceipt.MaximumEstimatedBytes) throw new InvalidDataException("blueprint-projection-window-budget");

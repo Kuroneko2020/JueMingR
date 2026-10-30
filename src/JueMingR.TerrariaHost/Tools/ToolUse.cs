@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal Action<ToolTargetRejection> TargetRejected;
         internal bool PreciseTarget;
         internal ToolBuildCursorMode CursorMode;
-        internal int SmartDirection;
+        internal int SmartDirection, SmartDirectionY;
         internal Func<bool> NativeTargetReady;
         internal Action Admitted;
         internal Action Used;
@@ -306,6 +306,7 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal void AfterTargetResolution(Player p)
         {
+            if(ReferenceEquals(p,host.Player) && !p.controlUseItem)host.BuildNeutralLookup?.Invoke(p);
             if(!ReferenceEquals(p,player))return;
             try
             {
@@ -313,6 +314,11 @@ namespace JueMingR.TerrariaHost.Tools
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 DiagnosticPhase(BuildTraceStage.ResolveAfter,BuildTraceReason.DirectionPhase);
 #endif
+                // The original Lookup has observed the actual unpressed input.
+                // Features may retire a continuous segment, but cannot create
+                // a Smart receipt or turn that same frame back into a press.
+                if(nativeGesture!=ToolInputGesture.HeldPress)
+                {return;}
                 if(Intent.ResolvedTarget!=null && !Intent.ResolvedTarget(Player.tileTargetX,Player.tileTargetY))
                     RejectTarget(ToolTargetRejection.Resolution);
             }
@@ -324,6 +330,15 @@ namespace JueMingR.TerrariaHost.Tools
             // Player.Update cleanup. End only this player's direction borrow;
             // its aim/cursor still belong to the later native-use cleanup.
             if(ReferenceEquals(p,player))RestoreDirection();
+        }
+        internal void TargetResolutionSkipped(Player p)
+        {
+            if(!ReferenceEquals(p,player))return;
+            // A postfix can run after another Harmony prefix skips Lookup.
+            // Old Smart coordinates/Showing are not a receipt for this frame,
+            // and no native neutral was observed. Revoke only this flight.
+            try{if(Building && nativeReady && borrowed)RejectTarget(ToolTargetRejection.Resolution);}
+            finally{RestoreDirection();}
         }
         private void RejectTarget(ToolTargetRejection reason)
         {

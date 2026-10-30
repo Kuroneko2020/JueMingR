@@ -23,6 +23,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         // This native step may place a recipe's base rather than its final
         // target. The immutable target Cell/Body and final Match never change.
         internal BlueprintPlacementDescriptor NativePlacement;
+        // Exact current occupied pose, in addition to canonical building
+        // identity. A door opening/closing revokes this single-cell action.
+        internal BlueprintWorldObject DoorForm;
+        internal BlueprintDoorBuildProof DoorProof;
     }
     internal sealed partial class HostBlueprint
     {
@@ -38,6 +42,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal int HeldMaximum, PrimaryMaximum;
             internal ToolBuildCursorMode CursorMode = ToolBuildCursorMode.Precise;
             internal int SmartDirection;
+            internal int SmartDirectionY;
             internal SmartPlatformInputProof SmartProof;
         }
         private static BlueprintBuildOperation CopyBuildOperation(BlueprintBuildOperation value)
@@ -45,7 +50,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             return value == null ? null : new BlueprintBuildOperation { Kind = value.Kind, Consumer = value.Consumer,
                 Mode = value.Mode, SupplyType = value.SupplyType, Cycle = value.Cycle, BucketType = value.BucketType,
                 SupplyDestination = value.SupplyDestination, PrimaryMaximum = value.PrimaryMaximum,
-                HeldMaximum = value.HeldMaximum, NativePlacement = value.NativePlacement };
+                HeldMaximum = value.HeldMaximum, NativePlacement = value.NativePlacement, DoorForm = value.DoorForm, DoorProof = value.DoorProof };
         }
         private int PlannedBuildToolSlot(Player p, BuildOperationPlan plan, bool afterOwnedPreparation = false)
         {
@@ -194,14 +199,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (lane == BlueprintBuildLane.TileBody || lane == BlueprintBuildLane.WallBody)
             { if (descriptor == null) return false; }
             var next = CreateMaterialBuildTarget(owner, range, cell, descriptor, obj, body, ordinal, support, catalog.Revision);
-            if (lane != BlueprintBuildLane.TileBody)
-            {
-                next.TargetX = owner.OriginX + cell.X; next.TargetY = owner.OriginY + cell.Y;
-                next.Bounds = new BlueprintProjectionBounds(next.TargetX, next.TargetY, 1, 1);
-            }
             next.LocalProof = true;
             BlueprintWorldMatchSample actual;
-            if(!ReadBuildCell(next.WorldX,next.WorldY,out actual))return false;
+            if(!TryBindConstructionTarget(next,lane,out actual))return false;
             following=NextNeededBuildOrdinal(next,actual,ordinal,following);
             BlueprintBuildOperation operation;
             if (!TryPlanConstructionOperationFromSample(next,lane,actual,out operation)) return false;

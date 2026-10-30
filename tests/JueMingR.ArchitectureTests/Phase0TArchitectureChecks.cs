@@ -98,7 +98,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Blueprint.BlueprintBodyState", "JueMingR.Features.Blueprint.BlueprintMaterialSteps", "JueMingR.Features.Blueprint.BlueprintObjectBodyProof",
                 "JueMingR.Features.Blueprint.BlueprintConstructionTargets",
                 "JueMingR.Features.Blueprint.BlueprintAppearanceAction", "JueMingR.Features.Blueprint.BlueprintAppearanceStep",
-                "JueMingR.Features.Blueprint.BlueprintConstructionAppearance",
+                "JueMingR.Features.Blueprint.BlueprintConstructionAppearance", "JueMingR.Features.Blueprint.BlueprintDoorMembers",
                 "JueMingR.Features.Blueprint.BlueprintSpecialProducerKind", "JueMingR.Features.Blueprint.BlueprintSpecialProducer",
                 "JueMingR.Features.Blueprint.BlueprintSubstrateRecipe",
                 "JueMingR.Features.Blueprint.BlueprintTargetDisposition", "JueMingR.Features.Blueprint.BlueprintPlacementResolutionKind", "JueMingR.Features.Blueprint.BlueprintTargetReason",

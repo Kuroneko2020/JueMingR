@@ -19,11 +19,13 @@ namespace JueMingR.TerrariaHost.Items
             internal ItemMaterialPreparation Owner;
             internal Player Player;
         }
-        internal struct DeathReturnScope
+        internal struct NativeReturnScope
         {
             internal ItemMaterialPreparation Owner;
             internal Player Player;
-            internal Item Before, Incoming;
+            internal Item[] Inventory;
+            internal long Session;
+            internal Item Before;
             internal int Slot, Type, BeforeStack;
         }
         private sealed class CursorHandoff
@@ -141,28 +143,33 @@ namespace JueMingR.TerrariaHost.Items
             owner.FinishAbandonment();
             if (owner.lifecycleCalls == 0) owner.ObserveInventory(scope.Player);
         }
-        internal static DeathReturnScope BeforeDeathReturn(Player p, Item incoming, int slot)
+        internal static NativeReturnScope BeforeNativeReturn(Player p, Item incoming, int slot)
         {
             var owner = Current;
-            if (owner == null || owner.lifecycleCalls == 0 || !owner.OnGameThread || slot < 0 || slot >= 58 ||
+            if (owner == null || !owner.OnGameThread || slot < 0 || slot >= 58 ||
                 !ReferenceEquals(p, owner.tools.Items.World.SessionPlayer) ||
                 !(owner.IsDisplaced(incoming) || ReferenceEquals(p, owner.cursorPlayer) && ReferenceEquals(incoming, owner.cursorClone) &&
-                    owner.IsDisplaced(owner.cursorOriginal))) return default(DeathReturnScope);
-            return new DeathReturnScope { Owner = owner, Player = p, Slot = slot, Before = p.inventory[slot],
-                Incoming = incoming, Type = incoming.type, BeforeStack = p.inventory[slot].stack };
+                    owner.IsDisplaced(owner.cursorOriginal))) return default(NativeReturnScope);
+            // The incoming identity is either the actual displaced Item or
+            // the exact native 58 clone previously observed from that cursor.
+            // This also covers map-driven GetOrDropItem, not just death.
+            return new NativeReturnScope { Owner = owner, Player = p, Inventory = p.inventory,
+                Session = owner.tools.Runtime.Generation, Slot = slot, Before = p.inventory[slot],
+                Type = incoming.type, BeforeStack = p.inventory[slot].stack };
         }
-        internal static void AfterDeathReturn(DeathReturnScope scope, Exception error)
+        internal static void AfterNativeReturn(NativeReturnScope scope, Exception error)
         {
             var owner = scope.Owner;
-            if (owner == null || error != null || !ReferenceEquals(scope.Player, owner.tools.Items.World.SessionPlayer)) return;
+            if (owner == null || error != null || scope.Session != owner.tools.Runtime.Generation ||
+                !ReferenceEquals(scope.Player, owner.tools.Items.World.SessionPlayer) ||
+                !ReferenceEquals(scope.Inventory, scope.Player.inventory)) return;
             var delivered = scope.Player.inventory[scope.Slot];
             if (delivered == null || delivered.IsAir || delivered.type != scope.Type ||
                 ReferenceEquals(delivered, scope.Before) && delivered.stack <= scope.BeforeStack) return;
-            // KillMe returns its exact native cursor clone via GetItem. Carry
-            // the existing exclusion through only that actual fill/merge.
+            // Automatic native return is not a new player supply grant. Carry
+            // the existing exclusion through only this actual fill/merge.
             // A full occupied-slot merge leaves incoming.stack unchanged;
             // the recipient's real increase, not the input remainder, proves it.
-            // death is not a player's pickup/sort granting new supply.
             owner.guardPlayer = scope.Player; owner.guardInventory = scope.Player.inventory; owner.guardSession = owner.tools.Runtime.Generation;
             if (!owner.abandonedDisplaced.Contains(delivered)) owner.abandonedDisplaced.Add(delivered);
         }

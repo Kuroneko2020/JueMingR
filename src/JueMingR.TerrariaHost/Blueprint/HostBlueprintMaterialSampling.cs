@@ -37,6 +37,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             var context = MaterialSourceTarget(read, read.CellIndex);
             bool objectForeground = context.ObjectId > 0 && (context.Layers & CaptureLayer.Tile) != 0 &&
                 read.MaterialCatalog.QualifyTile(context).Disposition==BlueprintTargetDisposition.Construction;
+            if (!objectForeground && sample.Object?.Family == BlueprintWorldObjectFamily.Door)
+            {
+                CaptureCell mapped; BlueprintWorldObject source; BlueprintProjectionWindow sourceWindow;
+                // As for coincident saved furniture above, this delegates Tile
+                // billing to its selected complete-object range. That range
+                // supplies the body proof; this cell step adds no native reads.
+                objectForeground = TrySelectedDoorRequirement(read.Owner, read.Batch, sample, out mapped, out source, out sourceWindow);
+            }
             // Even an unselected/masked foreground can block the native wall
             // scraper. Its later removal must release that Unknown result.
             read.MaterialCrossLayerSeen |= (context.Layers & CaptureLayer.Wall) != 0;
@@ -54,33 +62,37 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (row < 0 || row >= read.ObjectTarget.Height) return;
             if (read.ObjectTarget.Family == BlueprintWorldObjectFamily.Door)
             {
-                if (read.ObjectBounds.Width == 1)
-                {
-                    for (int x = 0; x < read.ObjectTarget.Width; x++) AddMaterialObjectAppearance(read, row * read.ObjectTarget.Width + x, sample);
-                    return;
-                }
-                if (read.ObjectTarget.Width == 1)
-                {
-                    // A source closed door counts one member per row. The
-                    // current hinge appearance is its canonical material step.
-                    if (sample.Cell.X == read.ObjectTarget.AnchorX) AddMaterialObjectAppearance(read, row, sample);
-                    return;
-                }
-                int targetHinge = read.ObjectTarget.AnchorX - read.ObjectTarget.WorldX;
-                int observedHinge = read.ObjectTarget.AnchorX - read.ObjectBounds.Left;
-                column = column == observedHinge ? targetHinge : 1 - targetHinge;
+                // Bill each actual member once. Two saved open columns may
+                // collapse only when they impose the same appearance; closed
+                // source rows instead cover both currently occupied columns.
+                CaptureCell requirement;
+                read.MaterialCrossLayerSeen = true;
+                if (read.ObjectObserved == null) return;
+                if (read.ObjectDoorTargets == null && !TryDoorSourceMembers(read.Owner, read.ObjectTargets, read.ObjectTarget, out read.ObjectDoorTargets) ||
+                    !BlueprintDoorMembers.TryRequirement(read.ObjectTarget, read.ObjectDoorTargets, read.ObjectObserved, sample.Cell.X, sample.Cell.Y, out requirement))
+                { read.MaterialObjectAppearance.Unresolved("这扇门当前的开合状态无法满足图纸外观"); return; }
+                AddMaterialObjectAppearance(read, requirement, sample); return;
             }
             if (column >= 0 && column < read.ObjectTarget.Width) AddMaterialObjectAppearance(read, row * read.ObjectTarget.Width + column, sample);
         }
-        private static void AddMaterialObjectAppearance(BlueprintProjectionMatchRead read, int index, BlueprintWorldMatchSample sample)
+        private void AddMaterialObjectAppearance(BlueprintProjectionMatchRead read, int index, BlueprintWorldMatchSample sample)
+        { AddMaterialObjectAppearance(read, MaterialSourceTarget(read, index), sample); }
+        private void AddMaterialObjectAppearance(BlueprintProjectionMatchRead read, CaptureCell target, BlueprintWorldMatchSample sample)
         {
-            var target = MaterialSourceTarget(read, index);
             read.MaterialCrossLayerSeen |= (target.Layers & (CaptureLayer.Tile | CaptureLayer.Wall)) == (CaptureLayer.Tile | CaptureLayer.Wall);
             // Canonical door forms can map two saved members to one hinge.
             // Only a wall at this actual member's coordinate can require its
             // foreground restoration; a different saved wing is not that wall.
             if (target.X + read.Owner.OriginX != sample.Cell.X || target.Y + read.Owner.OriginY != sample.Cell.Y)
                 target.Layers &= ~CaptureLayer.Wall;
+            if (read.ObjectTarget.Family == BlueprintWorldObjectFamily.Door)
+            {
+                target.Layers &= ~CaptureLayer.Wall;
+                CaptureCell wall; bool known;
+                bool selected = TryCoordinateWall(read.Owner, read.Batch, sample.Cell.X, sample.Cell.Y, out wall, out known);
+                if (!known) { read.MaterialObjectAppearance.Unresolved("这扇门附近的墙面信息尚未确认"); return; }
+                if (selected) target = WithCoordinateWall(target, wall);
+            }
             BlueprintMaterialSteps.ObjectMemberAppearance(target, sample, read.MaterialCatalog, read.MaterialObjectAppearance,
                 read.ObjectTargets.Objects.Count==1?read.ObjectTargets.Objects[0]:(CaptureObject?)null);
         }
@@ -271,7 +283,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal bool IsBuildTargetCurrent(BlueprintBuildTarget target)
         {
-            return IsBuildTargetIdentityCurrent(target) && projectionChanges.IsBuildCurrent(target.Range.Watch, target.Range.PartIndex, target.SupportStamp);
+            return IsBuildTargetIdentityCurrent(target) && projectionChanges.IsBuildCurrent(target.Range.Watch, target.Range.PartIndex, target.SupportStamp) &&
+                AppearanceDoorFormCurrent(target);
         }
         private bool IsBuildTargetIdentityCurrent(BlueprintBuildTarget target)
         {

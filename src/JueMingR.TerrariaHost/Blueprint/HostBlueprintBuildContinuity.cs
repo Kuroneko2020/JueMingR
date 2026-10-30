@@ -38,7 +38,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal BlueprintBuildOperation Operation;
             internal ToolBuildConsumer Consumer;
             internal ToolBuildCursorMode CursorMode;
-            internal int SmartDirection;
+            internal int SmartDirection, SmartDirectionY;
             internal long Session, Selection, Group, Batch, Boundary;
             internal int Remaining, SceneLimit;
             internal bool DebtDue, Pending;
@@ -95,7 +95,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             return current != null && next != null && next.Source.Slot == current.Source.Slot && ReferenceEquals(next.Source.Item, current.Source.Item) &&
                 next.Source.Type == current.Source.Type && BuildConsumer(current.Operation, current.Target) == BuildConsumer(next.Operation, next.Target) &&
-                next.CursorMode == current.CursorMode && next.SmartDirection == current.SmartDirection &&
+                next.CursorMode == current.CursorMode && next.SmartDirection == current.SmartDirection && next.SmartDirectionY == current.SmartDirectionY &&
                 next.DependencySlots == materialSlots && SameBuildContinuationOperation(current.Operation, next.Operation) && SameBuildDependencies(current, next);
         }
         private static bool SameBuildOperation(BlueprintBuildOperation a, BlueprintBuildOperation b)
@@ -138,7 +138,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             var group = buildContinuation;
             if (group == null || plan.ToolSlot != group.Source.Slot || plan.ToolType != group.Source.Type || !ReferenceEquals(plan.Tool, group.Source.Item) ||
-                BuildConsumer(plan.Operation, target) != group.Consumer || plan.CursorMode != group.CursorMode || plan.SmartDirection != group.SmartDirection ||
+                BuildConsumer(plan.Operation, target) != group.Consumer || plan.CursorMode != group.CursorMode || plan.SmartDirection != group.SmartDirection || plan.SmartDirectionY != group.SmartDirectionY ||
                 !SameBuildContinuationOperation(group.Operation, plan.Operation)) return false;
             if (plan.SupplyType > 0)
             {
@@ -154,7 +154,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void RememberBuildContinuation(BuildFlight flight)
         {
             var plan = new BuildOperationPlan { Operation = flight.Operation, Tool = flight.Source.Item, ToolType = flight.Source.Type, ToolSlot = flight.Source.Slot,
-                SupplyType = flight.Operation?.SupplyType ?? 0, SupplySlot = -1, CursorMode=flight.CursorMode, SmartDirection=flight.SmartDirection };
+                SupplyType = flight.Operation?.SupplyType ?? 0, SupplySlot = -1, CursorMode=flight.CursorMode, SmartDirection=flight.SmartDirection, SmartDirectionY=flight.SmartDirectionY };
             foreach (var dependency in flight.Dependencies) if (dependency.Primary) { plan.SupplySlot = dependency.Slot; plan.Supply = dependency.Item; }
             bool current = BuildContinuationCurrent(flight.Player), samePlan = current && PlanContinuesBuild(flight.Target, plan);
             if (samePlan) CompletePreferredAttempt(flight.Target);
@@ -181,7 +181,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return;
             }
             buildContinuation = new BuildContinuation { Player = flight.Player, Source = flight.Source, Dependencies = flight.Dependencies,
-                Operation = CopyBuildOperation(flight.Operation), Consumer = BuildConsumer(flight.Operation, flight.Target), CursorMode=flight.CursorMode, SmartDirection=flight.SmartDirection, Session = generation,
+                Operation = CopyBuildOperation(flight.Operation), Consumer = BuildConsumer(flight.Operation, flight.Target), CursorMode=flight.CursorMode, SmartDirection=flight.SmartDirection, SmartDirectionY=flight.SmartDirectionY, Session = generation,
                 Selection = buildTools.SelectionIntent, Group = ++buildContinuationGroup, Batch = ++buildContinuationBatch,
                 Boundary = projectionGeneration, Remaining = materialAll.Expected, SceneLimit = projectionScene.Count };
             repeatedBuild = null;
@@ -239,6 +239,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (index >= cells.Count)
                 {
                     if (part.Complete) { value.PreferredComplete = true; value.PreferredCompletedBatch = group.Batch; CompletePreferredRange(range); return PreferredBuildSearch.PassComplete; }
+                    // The primary Cells filter object-only source records.
+                    // Continue at the immutable raw prefix boundary instead
+                    // of repeatedly asking for this same filtered tail.
+                    value.PreferredCursor = Math.Max(value.PreferredCursor, BuildMemberOrdinal(part.NextOffset));
                     DemandProjectionMatchRange(range); CompletePreferredRange(range); return PreferredBuildSearch.SourcePending;
                 }
                 var cell = cells[index];
@@ -339,11 +343,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!range.Group.Ready || !ProjectionMatchReadCurrent(range, range.RawVersion) || !projectionChanges.TryGetBuildStamp(range.Watch, range.PartIndex, out support))
             { DemandProjectionMatchRange(range); pending = true; return false; }
             target = CreateMaterialBuildTarget(seed.Owner, range, seed.Cell, seed.Placement, seed.Object, seed.Body, seed.Ordinal, support, seed.Catalog);
-            if (BuildLane(seed.Ordinal) != BlueprintBuildLane.TileBody)
-            { target.TargetX = seed.X + seed.Cell.X; target.TargetY = seed.Y + seed.Cell.Y; target.Bounds = new BlueprintProjectionBounds(target.TargetX, target.TargetY, 1, 1); }
+            BlueprintWorldMatchSample actual;
+            if (!TryBindConstructionTarget(target, BuildLane(seed.Ordinal), out actual)) return false;
             target.LocalProof = target.LocalPriority = true;
             BlueprintBuildOperation operation;
-            if (!TryPlanConstructionOperation(target, BuildLane(seed.Ordinal), out operation)) return false;
+            if (!TryPlanConstructionOperationFromSample(target, BuildLane(seed.Ordinal), actual, out operation)) return false;
             target.Operation = operation;
             BlueprintBuildWait wait; ulong slots;
             if (!TryPlanBuild(target, p, preferred, out plan, out wait, out slots)) { RegisterPlannedBuildWait(target, wait, slots); return false; }

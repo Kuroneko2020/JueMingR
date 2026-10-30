@@ -50,6 +50,8 @@ namespace NativeWorldTextProbe
                     {
                     if(family==null || family=="SupplyPresentation")
                         check("native cursor takeover and death receipt lifecycle",()=>ConstructionSupplyLifecycle(context,host,tools,input));
+                    if(family==null || family=="SupplyPresentation" || family=="SupplySmartWiring")
+                        check("disabled return selection and original map return provenance",()=>ConstructionPlacementSupplyRepair(context,host,tools,input));
                     if(family=="SmartPlatform")check("natural smart platform slopes and fallback",()=>ConstructionSmartPlatform(context,host,tools,input));
                     if(family=="ActuatorNetwork")check("original multiplayer temporary actuator provenance",()=>ConstructionWiringActuatorNetwork(context,host,tools,input));
                     if(family=="SupplyPresentation")
@@ -84,6 +86,7 @@ namespace NativeWorldTextProbe
                     if(family==null || family=="Appearance")check("appearance consumers and native preparation",()=>ConstructionAppearance(context,host,tools,input));
                     if(family==null || family=="Wiring")check("wiring and actuation consumers",()=>ConstructionWiring(context,host,tools,input));
                     if(family==null || family=="Special")check("special producers and substrates",()=>ConstructionSpecial(context,host,tools,input));
+                    if(family==null || family=="Special")check("exact native object chosen before start",()=>ConstructionExactChoiceRepair(context,host,tools,input));
                     if(family==null)check("moving mixed lanes and paint recovery",()=>ConstructionMovingMixed(context,host,tools,input));
                     }
                     if(first==null)check("native inventory manual takeover",()=>ConstructionPreparationManualTakeover(context,host,tools,input));

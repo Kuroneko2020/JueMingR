@@ -139,7 +139,16 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                     return false; }
                 if (index >= part.Window.Cells.Count)
-                { value.BuildExhausted = part.Complete;
+                {
+                    value.BuildExhausted = part.Complete;
+                    // Cells omit positive-object Tile-only records. A bounded
+                    // ordinary prefix still advances in raw source offsets;
+                    // its filtered count cannot name the next source slice.
+                    if (!part.Complete)
+                    {
+                        value.CandidateCursor = Math.Max(value.CandidateCursor, BuildMemberOrdinal(part.NextOffset));
+                        DemandProjectionMatchRange(range);
+                    }
 #if JMR_BLUEPRINT_DIAGNOSTIC
                     BlueprintBuildTrace.Count(BuildTraceReason.SourceEnd);
 #endif

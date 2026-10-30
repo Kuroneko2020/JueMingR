@@ -137,6 +137,11 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                 return false;
             }
+            // CanPlace chooses the first legal alternate. Equal footprint and
+            // origin do not prove the captured form (for example floor versus
+            // ceiling). Use the same encoded-frame interpretation as PlaceIt;
+            // metadata alternate/style numbers alone are not canonical IDs.
+            if (!ExactObjectBuildChoice(target, choice, item.createTile)) return false;
             // The copied static gates read private query coordinates, never
             // borrow the player's live aim during preparation.
             if (!BlueprintPlacementQuery.PostConditions(choice, target.WorldX, target.WorldY))
@@ -158,6 +163,20 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                 return false; }
             return true;
+        }
+        private static bool ExactObjectBuildChoice(BlueprintBuildTarget target, TileObject placement, int type)
+        {
+            var data = TileObjectData.GetTileData(type, placement.style, placement.alternate);
+            if (target?.Body == null || placement.type != type || type != target.Placement.TileType || data == null ||
+                placement.xCoord != target.Bounds.Left || placement.yCoord != target.Bounds.Top ||
+                data.Width != target.Bounds.Width || data.Height != target.Bounds.Height) return false;
+            int style = data.CalculatePlacementStyle(placement.style, placement.alternate, placement.random), line = 0;
+            if (data.StyleWrapLimit > 0) { line = style / data.StyleWrapLimit * data.StyleLineSkip; style %= data.StyleWrapLimit; }
+            var cell = new CaptureCell { X = placement.xCoord, Y = placement.yCoord, Layers = CaptureLayer.Tile, TileType = (ushort)type,
+                FrameX = checked((short)(data.CoordinateFullWidth * (data.StyleHorizontal ? style : line))),
+                FrameY = checked((short)(data.CoordinateFullHeight * (data.StyleHorizontal ? line : style))) };
+            var shape = BlueprintCaptureSource.DescribeRead(cell, BlueprintWorldObjectSemantics.TileValue(cell)); BlueprintWorldObject actual;
+            return BlueprintWorldObjectSemantics.TryCreate(cell, shape, out actual) && actual != null && target.Body.SamePlacement(actual);
         }
         private static bool BuildObjectPlayerBlocked(TileObject choice)
         {

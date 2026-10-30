@@ -72,9 +72,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return true;
             }
             if (lane != BlueprintBuildLane.Appearance) return false;
-            bool wallSame = (target.Cell.Layers & CaptureLayer.Wall) != 0 &&
-                BlueprintMaterialSteps.SameBody(target.Cell, actual, true) == BlueprintBodyState.Same;
-            var step = BlueprintConstructionAppearance.Next(target.Cell, actual.Cell, tileSame, wallSame);
+            CaptureCell expected; BlueprintWorldObject doorForm; BlueprintDoorBuildProof doorProof;
+            if (!TryAppearanceTarget(target, actual, out expected, out tileSame, out doorForm, out doorProof)) return false;
+            bool wallSame = (expected.Layers & CaptureLayer.Wall) != 0 &&
+                BlueprintMaterialSteps.SameBody(expected, actual, true) == BlueprintBodyState.Same;
+            var step = BlueprintConstructionAppearance.Next(expected, actual.Cell, tileSame, wallSame);
             if (step.Action == BlueprintAppearanceAction.BlockedForeground)
             {
                 // This is a local wall prerequisite. Other lanes and instances
@@ -87,7 +89,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 operation = new BlueprintBuildOperation {
                     Kind = BlueprintBuildOperationKind.Scrape, Consumer = ToolBuildConsumer.PaintScraper,
-                    Mode = (int)step.Action, PrimaryMaximum = 0, HeldMaximum = 0
+                    Mode = (int)step.Action, PrimaryMaximum = 0, HeldMaximum = 0, DoorForm = doorForm, DoorProof = doorProof
                 };
                 return true;
             }
@@ -98,7 +100,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 Kind = step.IsWall ? BlueprintBuildOperationKind.PaintWall : BlueprintBuildOperationKind.PaintTile,
                 Consumer = step.IsWall ? ToolBuildConsumer.PaintRoller : ToolBuildConsumer.Paintbrush,
                 Mode = step.Mode | (coating ? AppearanceCoatingMode : 0), SupplyType = supply,
-                SupplyDestination = 54, PrimaryMaximum = 1, HeldMaximum = 0
+                SupplyDestination = 54, PrimaryMaximum = 1, HeldMaximum = 0, DoorForm = doorForm, DoorProof = doorProof
             };
             return true;
         }
@@ -220,9 +222,10 @@ namespace JueMingR.TerrariaHost.Blueprint
 
         private bool AppearanceRestorationReady(BlueprintBuildTarget target, Player p, BlueprintWorldMatchSample actual)
         {
-            bool tileSame = (target.Cell.Layers & CaptureLayer.Tile) != 0 && BuildOperationBodySame(target, actual);
-            bool wallSame = (target.Cell.Layers & CaptureLayer.Wall) != 0 && BlueprintMaterialSteps.SameBody(target.Cell, actual, true) == BlueprintBodyState.Same;
-            var next = BlueprintConstructionAppearance.Next(target.Cell, actual.Cell, tileSame, wallSame);
+            CaptureCell expected; bool tileSame; BlueprintWorldObject doorForm;
+            if (!TryAppearanceTarget(target, actual, out expected, out tileSame, out doorForm)) return false;
+            bool wallSame = (expected.Layers & CaptureLayer.Wall) != 0 && BlueprintMaterialSteps.SameBody(expected, actual, true) == BlueprintBodyState.Same;
+            var next = BlueprintConstructionAppearance.Next(expected, actual.Cell, tileSame, wallSame);
             if (next.Action == BlueprintAppearanceAction.BlockedForeground) return false;
             if (!next.RequiresForegroundRestoration) return true;
             if (!EnsureAppearanceInventory(p)) return false;
@@ -235,11 +238,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if ((item.type == ItemID.Paintbrush || item.type == ItemID.SpectrePaintbrush) &&
                     p.IsInTileInteractionRange(target.WorldX, target.WorldY, TileReachCheckSettings.Simple, item.tileBoost + p.blockRange)) brush = true;
             }
-            bool wallClearCoatings = actual.Cell.InvisibleWall && !target.Cell.InvisibleWall || actual.Cell.FullbrightWall && !target.Cell.FullbrightWall;
-            if (!brush || target.Cell.TilePaint != 0 && !HasAppearanceRestoreSupply(p, MaterialCatalog.Paint(target.Cell.TilePaint),
-                    target.Cell.WallPaint == target.Cell.TilePaint ? 2 : 1) ||
-                target.Cell.FullbrightTile && !HasAppearanceRestoreSupply(p, MaterialCatalog.Coating(1), wallClearCoatings && target.Cell.FullbrightWall ? 2 : 1) ||
-                target.Cell.InvisibleTile && !HasAppearanceRestoreSupply(p, MaterialCatalog.Coating(2), wallClearCoatings && target.Cell.InvisibleWall ? 2 : 1))
+            bool wallClearCoatings = actual.Cell.InvisibleWall && !expected.InvisibleWall || actual.Cell.FullbrightWall && !expected.FullbrightWall;
+            if (!brush || expected.TilePaint != 0 && !HasAppearanceRestoreSupply(p, MaterialCatalog.Paint(expected.TilePaint),
+                    expected.WallPaint == expected.TilePaint ? 2 : 1) ||
+                expected.FullbrightTile && !HasAppearanceRestoreSupply(p, MaterialCatalog.Coating(1), wallClearCoatings && expected.FullbrightWall ? 2 : 1) ||
+                expected.InvisibleTile && !HasAppearanceRestoreSupply(p, MaterialCatalog.Coating(2), wallClearCoatings && expected.InvisibleWall ? 2 : 1))
             { WaitForAppearanceTool(target); WaitForBuild(target, BlueprintBuildWait.Player); return false; }
             return true;
         }
@@ -269,9 +272,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             else
             {
-                bool wallSame = (flight.Target.Cell.Layers & CaptureLayer.Wall) != 0 &&
-                    BlueprintMaterialSteps.SameBody(flight.Target.Cell, actual, true) == BlueprintBodyState.Same;
-                var step = BlueprintConstructionAppearance.Next(flight.Target.Cell, actual.Cell, tileSame, wallSame);
+                CaptureCell expected; BlueprintWorldObject doorForm;
+                if (!TryAppearanceTarget(flight.Target, actual, out expected, out tileSame, out doorForm)) return false;
+                bool wallSame = (expected.Layers & CaptureLayer.Wall) != 0 &&
+                    BlueprintMaterialSteps.SameBody(expected, actual, true) == BlueprintBodyState.Same;
+                var step = BlueprintConstructionAppearance.Next(expected, actual.Cell, tileSame, wallSame);
                 if (!CurrentAppearanceStep(flight.Operation, step)) return false;
             }
             if (!AppearanceToolMatches(flight.Target, flight.Source.Item) || !AppearanceRestorationReady(flight.Target, flight.Player, actual)) return false;
@@ -346,10 +351,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
         }
 
-        private static bool AppearanceResultBodySame(BlueprintBuildTarget target, BlueprintWorldMatchSample actual, bool wall)
+        private bool AppearanceResultBodySame(BlueprintBuildTarget target, BlueprintWorldMatchSample actual, bool wall)
         {
             if ((actual.Cell.Layers & (wall ? CaptureLayer.Wall : CaptureLayer.Tile)) == 0) return false;
-            if (wall) return actual.Cell.WallType == target.Cell.WallType;
+            CaptureCell expected; bool tileSame; BlueprintWorldObject doorForm;
+            if (!TryAppearanceTarget(target, actual, out expected, out tileSame, out doorForm)) return false;
+            if (wall) return (expected.Layers & CaptureLayer.Wall) != 0 && actual.Cell.WallType == expected.WallType;
+            if (doorForm != null) return tileSame;
             return target.Body != null ? actual.Object != null && target.Body.SamePlacement(actual.Object) : actual.Cell.TileType == target.Cell.TileType;
         }
     }

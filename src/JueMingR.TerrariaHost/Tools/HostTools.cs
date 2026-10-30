@@ -47,6 +47,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal Func<bool> BuildEnabled;
         internal Func<Player,ToolIntent> BuildChoice;
         internal Func<bool> BuildReady;
+        internal Action<Player> BuildNeutralLookup;
         internal Func<Item[],int,bool> BuildPreparationOwns;
         internal Func<Item,bool> BuildCleanupMaterial;
         internal Func<Item,bool> BuildPendingMaterial;
