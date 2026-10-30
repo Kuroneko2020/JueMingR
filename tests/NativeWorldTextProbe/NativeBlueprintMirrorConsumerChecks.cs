@@ -76,8 +76,9 @@ namespace NativeWorldTextProbe
                 UnknownGate(context, host, tools, input, entry, observe, step);
                 MatchedTrim(context, host, tools, input, entry, observe, step);
                 RequireSavedSource(Open(library, entry));
+                AsyncMirrorOverlap(context, host, tools, input, library, observe);
                 Console.WriteLine("PASS BlueprintMirrorConsumers asset=" + entry.AssetId + " revision=" + entry.ContentRevision +
-                    " actualCaptureSaveOpen=true HostMirror=1 materials=one-chair+one-stone naturalItemChecks=" + nativeItemChecks +
+                    " actualCaptureSaveOpen=true constructionHostMirror=1 materials=one-chair+one-stone naturalItemChecks=" + nativeItemChecks +
                     " naturalPounds=" + nativePounds + "; opposite native chair frames, asymmetric slope-two, exact consumption/retirement, old prepared target refusal, Unknown/Match mirror gates and partial-Match trim keep AutoBuild preference. Controlled CPU original consumers; GPU/OS/ordinary load/multiplayer/FPS NOT_RUN.");
             }
             finally
@@ -207,6 +208,145 @@ namespace NativeWorldTextProbe
                 player.inventory[12].stack == 4 && player.inventory[13].stack == 5 && (long)Get(host, "BuildUsesStarted") == uses,
                 "trimmed old stone candidate cannot consume after retirement; the independent built chair and inventory remain exact");
         }
+
+        private static void AsyncMirrorOverlap(object context, object host, object tools, object input, LibraryState library, Action observe)
+        {
+            var player = Reset(context, host, tools, input);
+            Require(!(bool)Get(host, "AutoBuildEnabled"), "asynchronous overlap fixture keeps automatic construction OFF");
+            Require(WorldGen.PlaceObject(60, 42, TileID.Chairs, true, style: 0, direction: 1), "overlap source contains a complete original right chair");
+            foreach (int y in new[] { 41, 42 })
+            {
+                WorldGen.PlaceWall(60, y, 7, true); WorldGen.PlaceWire(60, y); WorldGen.PlaceWire2(60, y); WorldGen.PlaceActuator(60, y);
+            }
+            Liquid(60, 41, 67, 0); Liquid(60, 42, 73, 2);
+            Require(WorldGen.PlaceTile(62, 42, TileID.Stone, mute: true, forced: true), "transparent-hole witness is an original stone placement");
+            WorldGen.PlaceWall(62, 42, 7, true); WorldGen.PlaceWire2(64, 42);
+            var oldEntry = NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context, host, input, library, observe, 60, 41, 5, 2, "镜像重叠旧对象");
+            var oldRaw = Open(library, oldEntry);
+            Require(oldRaw.Summary.Width == 5 && oldRaw.Summary.Height == 2 && oldRaw.Cells.Count == 4 && oldRaw.Objects.Count == 1 && oldRaw.Objects[0].Reliable &&
+                oldRaw.Cells.Single(c => c.X == 0 && c.Y == 0).Layers == (CaptureLayer)31 && oldRaw.Cells.Single(c => c.X == 0 && c.Y == 1).Layers == (CaptureLayer)31 &&
+                oldRaw.Cells.Single(c => c.X == 2 && c.Y == 1).TileType == TileID.Stone && oldRaw.Cells.Single(c => c.X == 2 && c.Y == 1).WallType == 7 &&
+                oldRaw.Cells.Single(c => c.X == 4 && c.Y == 1).Layers == CaptureLayer.Wire && oldRaw.Cells.Single(c => c.X == 4 && c.Y == 1).Wires == 2,
+                "real old save/open supplies the literal 5x2 chair/layers, center stone-wall and blue-wire endpoint");
+            Require(WorldGen.PlaceTile(70, 42, TileID.Dirt, mute: true, forced: true), "incoming asymmetric body is an original dirt placement");
+            WorldGen.PlaceWall(70, 42, 7, true); WorldGen.PlaceWire(70, 42); WorldGen.PlaceWire2(71, 42); WorldGen.PlaceWire3(74, 42);
+            var newEntry = NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context, host, input, library, observe, 70, 42, 5, 1, "镜像重叠新内容");
+            var newRaw = Open(library, newEntry);
+            Require(newRaw.Summary.Width == 5 && newRaw.Summary.Height == 1 && newRaw.Cells.Count == 3 && newRaw.Objects.Count == 0 &&
+                newRaw.Cells.Single(c => c.X == 0).Layers == (CaptureLayer.Tile | CaptureLayer.Wall | CaptureLayer.Wire) &&
+                newRaw.Cells.Single(c => c.X == 0).TileType == TileID.Dirt && newRaw.Cells.Single(c => c.X == 0).WallType == 7 && newRaw.Cells.Single(c => c.X == 0).Wires == 1 &&
+                newRaw.Cells.Single(c => c.X == 1).Layers == CaptureLayer.Wire && newRaw.Cells.Single(c => c.X == 1).Wires == 2 &&
+                newRaw.Cells.Single(c => c.X == 4).Layers == CaptureLayer.Wire && newRaw.Cells.Single(c => c.X == 4).Wires == 4,
+                "real incoming save/open is the literal asymmetric Dirt-wall-red, blue, hole, hole, green source row");
+
+            string worldBefore = NativeBlueprintProjectionVisualChecks.Snapshot(100, 50, 35, 2);
+            string inventoryBefore = String.Join(",", player.inventory.Select(i => i.type + ":" + i.stack));
+            long uses = (long)Get(host, "BuildUsesStarted");
+            var old = NativeBlueprintWorldMatchChecks.Place(host, input, oldEntry, 100, 50, observe);
+            var third = NativeBlueprintWorldMatchChecks.Place(host, input, oldEntry, 130, 50, observe);
+            var thirdMask = Get(third, "Mask"); long thirdOrder = (long)Get(third, "CommitOrder");
+            old = MirrorReceipt(context, host, input, library, old, 100, 50, observe, receipt =>
+                Require(receipt.Masks.Count == 0, "the opponent first enters its real mirrored pose without an unrelated overlap"));
+            long oldId = ((BlueprintProjectionIdentity)Get(old, "Identity")).ProjectionGeneration;
+            var incoming = NativeBlueprintWorldMatchChecks.Place(host, input, newEntry, 100, 51, observe);
+            long incomingId = ((BlueprintProjectionIdentity)Get(incoming, "Identity")).ProjectionGeneration;
+            Require(((BlueprintProjectionMask)Get(old, "Mask")).RemovedLayerCount == 0 && ((BlueprintProjectionMask)Get(incoming, "Mask")).RemovedLayerCount == 0,
+                "the incoming normal pose meets only different layers, so neither initial instance is erased");
+
+            // Hand-listed world/source oracle, not a view-derived answer:
+            // mirrored old source (0,0)/(0,1) -> (104,50)/(104,51);
+            // old (2,1) -> (102,51), old (4,1) -> (100,51).
+            // mirrored incoming source 0 -> (104,51), 1 -> (103,51),
+            // 4 -> (100,51); (102,51) is an actual transparent source hole.
+            incoming = MirrorReceipt(context, host, input, library, incoming, 100, 51, observe, receipt =>
+            {
+                Require(receipt.Request.Candidate.MirroredHorizontally && receipt.Request.Previous.Count == 1 &&
+                    receipt.Request.Previous[0].Identity.ProjectionGeneration == oldId && receipt.Request.Previous[0].MirroredHorizontally &&
+                    receipt.Request.Previous.All(p => p.Identity.ProjectionGeneration != incomingId) && receipt.Masks.Count == 1 &&
+                    receipt.Masks.ContainsKey(oldId) && !receipt.Masks.ContainsKey(incomingId) && receipt.RetiredInstanceIds.Count == 0,
+                    "complete real worker receipt uses both mirrored poses, excludes self and preserves the unrelated third instance");
+                Require(((BlueprintProjectionMask)Get(old, "Mask")).RemovedLayerCount == 0 && !(bool)Get(Scene(host).Single(p =>
+                    ((BlueprintProjectionIdentity)Get(p, "Identity")).ProjectionGeneration == incomingId), "MirroredHorizontally"),
+                    "completed worker reply has not prematurely changed either old mask or incoming scene pose");
+                RequireOverlapMask(receipt.Masks[oldId], oldRaw);
+            });
+            var permanent = (BlueprintProjectionMask)Get(old, "Mask"); RequireOverlapMask(permanent, oldRaw);
+            Require(((BlueprintProjectionMask)Get(incoming, "Mask")).RemovedLayerCount == 0 && (long)Get(incoming, "TotalLayerCount") == 5 &&
+                ReferenceEquals(Scene(host).Last(), incoming) && (long)Get(incoming, "CommitOrder") > (long)Get(old, "CommitOrder") &&
+                ReferenceEquals(Get(third, "Mask"), thirdMask) && (long)Get(third, "CommitOrder") == thirdOrder && !(bool)Get(third, "MirroredHorizontally"),
+                "Host atomic application keeps all incoming layers, gives it latest order and leaves the same-template third reference exact");
+
+            incoming = MirrorReceipt(context, host, input, library, incoming, 104, 51, observe, receipt =>
+                Require(receipt.Masks.Count == 0, "cover's second real mirror adds no same-layer overlap and supplies no undo"));
+            Require(ReferenceEquals(Get(old, "Mask"), permanent), "mirroring the cover away retains the exact committed permanent mask");
+            Request(host, input, "RemoveProjection"); Pointer(host, false, 100, 51); Pointer(host, true, 100, 51);
+            Require(!Scene(host).Contains(incoming) && Scene(host).Contains(old) && Scene(host).Contains(third) && ReferenceEquals(Get(old, "Mask"), permanent),
+                "real remove of the latest cover cannot restore the old chair or erase another instance");
+            old = MirrorReceipt(context, host, input, library, old, 104, 50, observe, receipt =>
+                Require(receipt.Masks.Count == 0, "old instance's second mirror uses its remaining layers without restoring object Tile"));
+            Require(!(bool)Get(old, "MirroredHorizontally") && ReferenceEquals(Get(old, "Mask"), permanent),
+                "the old source mask remains identical when its own pose is mirrored again");
+            RequireOverlapMask(permanent, oldRaw);
+            Require(Scene(host).Length == 2 && Scene(host).Contains(third) && ReferenceEquals(Get(third, "Mask"), thirdMask) &&
+                ((BlueprintProjectionMask)thirdMask).RemovedLayerCount == 0 && (long)Get(third, "CommitOrder") == thirdOrder &&
+                NativeBlueprintProjectionVisualChecks.Snapshot(100, 50, 35, 2) == worldBefore &&
+                String.Join(",", player.inventory.Select(i => i.type + ":" + i.stack)) == inventoryBefore &&
+                !(bool)Get(host, "AutoBuildEnabled") && (long)Get(host, "BuildUsesStarted") == uses,
+                "all asynchronous mirror/remove operations preserve the third instance, real finite world, inventory and OFF construction preference");
+            Call(host, "ClearProjection");
+            Console.WriteLine("PASS BlueprintMirrorOverlap actual capture/save/open assets=" + oldEntry.AssetId + "," + newEntry.AssetId +
+                "; real mirrored opponent + incoming Mirror -> complete worker receipt before Host atomic publication; source(0,0)/(0,1) Tile removal plus source(0,1) wall/red only=4, world(104,50) outer mixed layers and world(102,51) transparent hole preserved; self/order/third exact; cover second mirror/remove and old second mirror never revive permanent source mask. AutoBuild OFF; CPU original Host/worker evidence only.");
+        }
+
+        private static object MirrorReceipt(object context, object host, object input, LibraryState library, object target,
+            int pickX, int pickY, Action observe, Action<BlueprintProjectionCommitReceipt> beforeApply)
+        {
+            NativeQuickItemChecks.Until(() => { Call(host, "UpdateProjectionWindow", new WorldTargetView(96, 48, 44, 8, 0)); observe(); return GetOptional(target, "Window") != null; });
+            NativeBlueprintWorldMatchChecks.AwaitMovable(context, host, target);
+            long id = ((BlueprintProjectionIdentity)Get(target, "Identity")).ProjectionGeneration;
+            long revision = (long)Get(host, "projectionSceneRevision"), latest = Scene(host).Max(p => (long)Get(p, "CommitOrder"));
+            var mask = Get(target, "Mask"); bool mirrored = (bool)Get(target, "MirroredHorizontally");
+            Request(host, input, "MirrorProjection"); Pointer(host, false, pickX, pickY); Pointer(host, true, pickX, pickY);
+            Require(Get(host, "ProjectionMode").ToString() == "Committing", "warm real mirror click queues its actual asynchronous worker transaction; actual=" + Get(host, "ProjectionMode"));
+            var worker = Get(library, "worker"); var gate = Get(worker, "gate"); BlueprintProjectionCommitReceipt complete = null;
+            // Do not Poll/update Host during this wait. Read, but never take or
+            // replace, its real fully published worker reply under its owner lock.
+            NativeQuickItemChecks.Until(() => { lock (gate) complete = GetOptional(worker, "projectionCommitReceipt") as BlueprintProjectionCommitReceipt; return complete != null; });
+            Require(complete.Succeeded && complete.Request.Kind == BlueprintProjectionEditKind.Mirror && complete.Request.Candidate.Identity.ProjectionGeneration == id &&
+                complete.Request.Candidate.MirroredHorizontally != mirrored && Scene(host).Contains(target) && ReferenceEquals(Get(target, "Mask"), mask) &&
+                (bool)Get(target, "MirroredHorizontally") == mirrored && (long)Get(host, "projectionSceneRevision") == revision && Scene(host).Max(p => (long)Get(p, "CommitOrder")) == latest,
+                "real complete receipt leaves scene masks, pose, order and revision unchanged until the Host consumes it: " + complete.Error);
+            beforeApply(complete);
+            NativeQuickItemChecks.Until(() => { observe(); return !(bool)Get(host, "ProjectionEditing"); });
+            var result = Scene(host).Single(p => ((BlueprintProjectionIdentity)Get(p, "Identity")).ProjectionGeneration == id);
+            Require((bool)Get(result, "MirroredHorizontally") != mirrored && (long)Get(host, "projectionSceneRevision") == revision + 1 &&
+                (long)Get(result, "CommitOrder") > latest && ReferenceEquals(Scene(host).Last(), result),
+                "the same Host consumes the retained real receipt and atomically publishes one new scene/order");
+            return result;
+        }
+
+        private static void RequireOverlapMask(BlueprintProjectionMask mask, BlueprintProjectionWindow raw)
+        {
+            // These are actual committed source cells under inspection. All
+            // expected bits and their world positions above are explicit literals.
+            var outer = mask.Apply(raw.Cells.Single(c => c.X == 0 && c.Y == 0));
+            var touched = mask.Apply(raw.Cells.Single(c => c.X == 0 && c.Y == 1));
+            var hole = mask.Apply(raw.Cells.Single(c => c.X == 2 && c.Y == 1));
+            var endpoint = mask.Apply(raw.Cells.Single(c => c.X == 4 && c.Y == 1));
+            Require(mask.RemovedLayerCount == 4 && mask.RemovedConstructionLayerCount == 4 && mask.ObjectCount == 1 && mask.CellCount == 1 &&
+                outer.Layers == (CaptureLayer.Wall | CaptureLayer.Wire | CaptureLayer.Actuator | CaptureLayer.Liquid) && outer.ObjectId == 0 &&
+                outer.WallType == 7 && outer.Wires == 3 && outer.Actuator && outer.LiquidAmount == 67 && outer.LiquidKind == 0 &&
+                touched.Layers == (CaptureLayer.Wire | CaptureLayer.Actuator | CaptureLayer.Liquid) && touched.ObjectId == 0 && touched.Wires == 2 &&
+                touched.Actuator && touched.LiquidAmount == 73 && touched.LiquidKind == 2 &&
+                hole.Layers == (CaptureLayer.Tile | CaptureLayer.Wall) && hole.TileType == TileID.Stone && hole.WallType == 7 &&
+                endpoint.Layers == CaptureLayer.Wire && endpoint.Wires == 2,
+                "literal overlap oracle: whole two-member chair Tile plus touched wall/red removed; outer wall/two wires/liquid/actuator and transparent stone-wall/blue endpoint stay; removed=" + mask.RemovedLayerCount +
+                " outer=" + outer.Layers + "/wall" + outer.WallType + "/wire" + outer.Wires + "/act" + outer.Actuator + "/liquid" + outer.LiquidAmount + "," + outer.LiquidKind +
+                " touched=" + touched.Layers + "/wire" + touched.Wires + "/act" + touched.Actuator + "/liquid" + touched.LiquidAmount + "," + touched.LiquidKind +
+                " hole=" + hole.Layers + "/tile" + hole.TileType + "/wall" + hole.WallType + " endpoint=" + endpoint.Layers + "/wire" + endpoint.Wires);
+        }
+        private static void Liquid(int x, int y, byte amount, byte kind)
+        { typeof(NativeBlueprintWorldMatchChecks).GetMethod("NativeLiquidStore", F).Invoke(null, new object[] { x, y, amount, kind }); }
 
         private static void RequireSavedSource(BlueprintProjectionWindow saved)
         {

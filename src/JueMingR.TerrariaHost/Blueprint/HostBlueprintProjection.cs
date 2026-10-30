@@ -315,7 +315,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             ReleaseProjectionMatch(item); item.Renderer.Dispose(); item.Window = null; item.Windows.Clear(); item.Denied.Clear(); item.SourceRanges = item.MatchRanges = null;
             item.Opened = item.WindowPending = item.HasRequestedWindow = false;
         }
-        private void InterruptProjection() { InterruptProjectionEditorGesture(); projectionNeedsNeutral = true; projectionLeft = projectionRight = true; projectionBaseline = false; hoveredProjection = null; }
+        private void InterruptProjection() { InterruptProjectionGesture(false); }
+        private void InterruptProjectionGesture(bool retainTrimConfirmation) { InterruptProjectionEditorGesture(retainTrimConfirmation); projectionNeedsNeutral = true; projectionLeft = projectionRight = true; projectionBaseline = false; hoveredProjection = null; }
         internal void ProjectionDrawFailed(string message) { if (CurrentProjection != null) ProjectionDrawFailed(CurrentProjection, message); }
         internal void ProjectionDrawFailed(BlueprintProjectionPlacement item, string message)
         { if (ReferenceEquals(item, candidateProjection)) CancelProjection(); else { ProtectProjectionPersistence("blueprint-scene-draw-failed"); RetireProjection(item); } projectionFeedback = message ?? "世界蓝图暂不可显示，库中原文件已保留。"; }

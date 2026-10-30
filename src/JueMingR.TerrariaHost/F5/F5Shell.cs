@@ -379,7 +379,8 @@ namespace JueMingR.TerrariaHost.F5
             Vector2 point = Vector2.Transform(raw, Matrix.Invert(Main.UIScaleMatrix));
             return BlueprintMaterialsUi != null && (BlueprintMaterialsUi.Captured || BlueprintMaterialsUi.Contains(point.X, point.Y)) || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true) || FishingUi != null && (FishingUi.Captured || FishingUi.Contains(point.X,point.Y)) || CaptureUi != null && (CaptureUi.Captured || CaptureUi.Contains(point.X,point.Y)) || RecoveryUi != null && (RecoveryUi.PotionPopup.Captured || RecoveryUi.PotionPopup.Contains(point.X,point.Y)) || StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y) || DeathPopup != null && (DeathPopup.Pressed >= 0 || DeathPopup.ContainsPointer(point.X, point.Y)) || MapPopup != null && (MapPopup.Pressed >= 0 || MapPopup.ContainsPointer(point.X, point.Y)) || FootprintPopup != null && (FootprintPopup.Pressed >= 0 || FootprintPopup.ContainsPointer(point.X, point.Y));
         }
-        internal bool OwnsPointer { get { return !failed && CanPresentNow && (information != null && information.Adjustment.Dragging || inputState.HotkeyPointerOwned || BlueprintMaterialsUi != null && BlueprintMaterialsUi.OwnsPointer || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true) || BlueprintUi != null && BlueprintUi.OwnsPointer || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || MiscUi != null && MiscUi.OwnsPointer || State.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer); } }
+        private bool OtherPointerOwner { get { return information != null && information.Adjustment.Dragging || inputState.HotkeyPointerOwned || BlueprintMaterialsUi != null && BlueprintMaterialsUi.OwnsPointer || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true) || BlueprintUi != null && BlueprintUi.OwnsPointer || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || MiscUi != null && MiscUi.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer; } }
+        internal bool OwnsPointer { get { return !failed && CanPresentNow && (State.OwnsPointer || OtherPointerOwner); } }
 
         internal bool CanAdjustInformation { get { return information != null && information.PositionReady && biome.SharedRuntime.IsSessionActive && !failed && CanPresentNow && inputState.CanUseInput; } }
         internal void RequestInformationAdjustment()
@@ -672,6 +673,13 @@ namespace JueMingR.TerrariaHost.F5
             }
             catch { FailClosed(); ConsumeSample(); }
         }
+
+        // The world editor remains suspended while F5 is visible. Only an
+        // already admitted trim-confirm intent may finish its native UI proof
+        // through the existing ordinary-F5 hover admission, with all actual
+        // modal/text/gesture/tail owners still closed. Contains is not a gate.
+        internal bool CanRetainBlueprintTrimConfirmation { get { return !failed && CanPresentNow && State.Visible && !OtherPointerOwner &&
+            CanDispatchBlueprintEdit(inputState.CanRetainIntent, false, false); } }
 
         private bool CanDispatchBlueprintEdit(bool inputActive, bool materialsWasVisible, bool higherPointer)
         {

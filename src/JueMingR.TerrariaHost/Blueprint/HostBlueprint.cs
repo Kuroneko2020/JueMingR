@@ -61,8 +61,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool CanEdit { get { return Input.CanStartActions && CanRetainEdit; } }
         // An outer Update can contain no native input stage. It revokes new
         // execution, but does not invalidate a previously frozen focused sample.
-        internal bool CanRetainEdit { get { return HasSession && Input.CanRetainIntent && !NativeUiBusy && !Main.gamePaused && !player.dead && !player.ghost &&
-            !(Shell?.State.Visible ?? false) && !(Shell?.BlueprintMaterialsUi?.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode; } }
+        private bool CanRetainWorldInput { get { return HasSession && Input.CanRetainIntent && !NativeUiBusy && !Main.gamePaused && !player.dead && !player.ghost &&
+            !(Shell?.BlueprintMaterialsUi?.Visible ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode; } }
+        internal bool CanRetainEdit { get { return CanRetainWorldInput && !(Shell?.State.Visible ?? false) && !(Shell?.OwnsPointer ?? false); } }
         internal bool ShowToolbar { get { return ControlsEnabled && ToolbarEnabled && Input.CanPrepareText && !NativeUiBusy && !Main.hideUI &&
             !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
             !(Shell?.State.Visible ?? false) && !(Shell?.BlueprintMaterialsUi?.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !player.dead && !player.ghost && player.HeldItem != null && player.HeldItem.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0; } }
@@ -135,7 +136,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             // retain a held draft, never queue an uncertified click/release.
             Pointer.Consume(CanEdit);
             if (!CanEdit) {
-                State.Interrupt(); if (ProjectionEditing) InterruptProjection(); Pointer.Cancel(); return; }
+                // Ordinary F5 visibility still suspends every world gesture.
+                // Only a public Mouse1 confirm already accepted in this exact
+                // mapping may retain its native UI proof; it cannot drag/select.
+                bool confirm = CanRetainTrimConfirmation(Input.Mapping);
+                State.Interrupt(); if (ProjectionEditing) InterruptProjectionGesture(confirm);
+                if (confirm) Pointer.CaptureTrimConfirmation(); else Pointer.Cancel();
+                return; }
             Pointer.Capture();
         }
         public void OnSessionStarted()

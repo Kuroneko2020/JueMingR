@@ -77,13 +77,22 @@ namespace JueMingR.TerrariaHost.Blueprint
             trimConfirmMapping = Input.Mapping; trimConfirmChord = chord;
             trimConfirmRevision = trimPreviewRevision; trimConfirmScene = projectionSceneRevision; trimConfirmTransaction = projectionTransaction;
         }
+        internal bool CanRetainTrimConfirmation(long mapping)
+        {
+            // This is a certificate lease for one admitted public command,
+            // never a relaxation of CanRetainEdit. Its frozen preview/scene/
+            // transaction must survive both Draw and the immediately next map.
+            if (mapping != trimConfirmMapping || trimConfirmChord == null || trimConfirmChord.MainKey != 256 ||
+                (Input.Mapping != mapping && Input.Mapping != mapping + 1) || trimConfirmRevision != trimPreviewRevision ||
+                trimConfirmScene != projectionSceneRevision || trimConfirmTransaction != projectionTransaction || !CanInvokeConfirmTrim || !CanRetainWorldInput) return false;
+            return CanRetainEdit || Shell?.CanRetainBlueprintTrimConfirmation == true;
+        }
         internal bool ConsumeTrimConfirm(long mapping, bool certified)
         {
             if (trimConfirmMapping < 0) return false;
             if (mapping < trimConfirmMapping) return false;
             bool exact = mapping == trimConfirmMapping; var chord = trimConfirmChord;
-            bool current = exact && certified && chord != null && chord.MainKey == 256 && trimConfirmRevision == trimPreviewRevision &&
-                trimConfirmScene == projectionSceneRevision && trimConfirmTransaction == projectionTransaction && CanInvokeConfirmTrim;
+            bool current = exact && certified && chord != null && CanRetainTrimConfirmation(mapping);
             trimConfirmMapping = -1; trimConfirmChord = null;
             if (current) CommitTrimPreview();
             // A rejected confirm gesture never turns into a replacement drag.
@@ -252,9 +261,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             var source = view.SourceBounds(new BlueprintProjectionBounds(world.Left - originX, world.Top - originY, world.Width, world.Height));
             return new BlueprintProjectionBounds(checked(source.Left + originX), checked(source.Top + originY), source.Width, source.Height);
         }
-        private void InterruptProjectionEditorGesture()
+        private void InterruptProjectionEditorGesture(bool retainTrimConfirmation = false)
         {
-            trimConfirmMapping = -1; trimConfirmChord = null;
+            if (!retainTrimConfirmation) { trimConfirmMapping = -1; trimConfirmChord = null; }
             if (ProjectionMode == BlueprintProjectionMode.TrimDragging)
             { ProjectionMode = BlueprintProjectionMode.TrimReady; trimPlan = null; trimPlanPending = false; trimDisplayBounds = default(BlueprintProjectionBounds); trimPreviewRevision++; }
         }

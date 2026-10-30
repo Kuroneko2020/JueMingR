@@ -48,6 +48,185 @@ namespace NativeWorldTextProbe
             }
         }
 
+        // Starts from the caller's real, stable preview. Unlike the finite
+        // certificate checks, this traverses the actual Shell's sole public
+        // Dispatch before Host.ProcessInput captures any native UI proof.
+        internal static void ConfirmVisibleF5(object context, object target)
+        {
+            var host = Get(context, "Blueprint"); var input = Get(context, "Input"); var shell = Get(context, "Shell");
+            var state = Get(shell, "State"); var layout = Get(state, "Layout"); var renderer = Get(shell, "renderer");
+            var toolbar = Get(host, "Toolbar"); var pointer = Get(host, "Pointer"); var hotkeys = Get(shell, "hotkeys");
+            var registry = (HotkeyRegistry)Get(hotkeys, "Registry"); var oldBindings = (HotkeyBindings)Get(hotkeys, "Bindings");
+            var current = pointer.GetType().GetField("current", F); object oldPointer = current.GetValue(null);
+            var oldFont = FontAssets.MouseText; object oldToolbarFont = GetOptional(toolbar, "font");
+            var oldGameMatrix = Main.GameViewMatrix; var oldScreenPosition = Main.screenPosition;
+            var oldMouse = PlayerInput.MouseInfo; var oldRawScale = PlayerInput.RawMouseScale; var oldKeyboard = Main.keyState;
+            int oldWidth = Main.screenWidth, oldHeight = Main.screenHeight, oldMouseX = Main.mouseX, oldMouseY = Main.mouseY;
+            var oldInputX = PlayerInput.MouseX; var oldInputY = PlayerInput.MouseY;
+            int oldWheel = PlayerInput.ScrollWheelDelta, oldUiWheel = PlayerInput.ScrollWheelDeltaForUI;
+            float oldScale = Main.UIScale; var oldUiMatrix = Main.UIScaleMatrix;
+            bool oldInterface = Main.LocalPlayer.mouseInterface, oldMouseText = Main.mouseText;
+            bool oldLeft = Main.mouseLeft, oldRight = Main.mouseRight, oldSelected = FocusHelper.IsSelectedApplication;
+            bool oldLayers = (bool)Get(shell, "LayersReady"), oldReady = (bool)Get(state, "Ready"), oldVisible = (bool)Get(state, "Visible");
+            int oldPage = (int)Get(state, "Page"); float oldScroll = (float)Get(state, "Scroll"), oldX = (float)Get(state, "X"), oldY = (float)Get(state, "Y");
+            object oldWindow = Get(input, "gameWindow"), oldForeground = Get(input, "foregroundWindow");
+            var triggerSets = new[] { PlayerInput.Triggers.Current, PlayerInput.Triggers.Old, PlayerInput.Triggers.JustPressed, PlayerInput.Triggers.JustReleased };
+            var oldTriggers = triggerSets.Select(set => set.KeyStatus.ToDictionary(pair => pair.Key, pair => pair.Value)).ToArray();
+            var mask = (BlueprintProjectionMask)Get(target, "Mask"); long scene = (long)Get(host, "projectionSceneRevision");
+            long preview = (long)Get(host, "TrimPreviewRevision"); bool focused = true;
+            HotkeyBindings bindings = null; Exception primary = null;
+            // The native stages consume one physical sample per mapping. No
+            // dispatch flags, confirm intents or certificate bits are assigned.
+            Action<int, int, bool> shellFrame = (x, y, left) =>
+            {
+                Main.LocalPlayer.mouseInterface = Main.mouseText = false; FocusHelper.IsSelectedApplication = focused;
+                PlayerInput.MouseInfo = new MouseState(x, y, 0, left ? ButtonState.Pressed : ButtonState.Released,
+                    ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
+                Main.mouseX = PlayerInput.MouseX = x; Main.mouseY = PlayerInput.MouseY = y;
+                Main.mouseLeft = left; Main.mouseRight = false;
+                Call(input, "BeginUpdate"); Call(shell, "BeforeInput");
+                Call(input, "AfterNativeMouse", new List<string>(left ? new[] { "Mouse1" } : Array.Empty<string>()));
+                PlayerInput.Triggers.Reset(); PlayerInput.Triggers.Current.MouseLeft = left; PlayerInput.Triggers.Update();
+                PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 0;
+                Call(input, "AfterMapping"); Main.keyState = new KeyboardState(); Call(input, "AfterKeyboardRefresh");
+                Call(shell, "ProcessInput"); Require(!(bool)Get(shell, "Failed"), "actual confirm Shell.ProcessInput remains healthy");
+            };
+            Action<int, int, bool> frame = (x, y, left) => { shellFrame(x, y, left); Call(host, "ProcessInput"); };
+            Action unchanged = () => Require(ReferenceEquals(Get(target, "Mask"), mask) && (long)Get(host, "projectionSceneRevision") == scene &&
+                (long)Get(host, "TrimPreviewRevision") == preview && ReferenceEquals(GetOptional(host, "editorTarget"), target) &&
+                (bool)Get(host, "CanInvokeConfirmTrim"), "rejected public F5 confirmation retains the exact target, mask and stable preview");
+            Action<bool> draw = nativeUi =>
+            {
+                // These are controlled calls to the production observer hooks,
+                // after its own Capture. They do not execute Main.DrawInterface,
+                // an OS event, a resource renderer or any GPU work.
+                pointer.GetType().GetMethod("Begin", F).Invoke(null, null);
+                Main.mouseText = nativeUi;
+                try
+                {
+                    pointer.GetType().GetMethod("Boundary", F).Invoke(null, null);
+                    pointer.GetType().GetMethod("Resources", F).Invoke(null, new object[] { true });
+                    pointer.GetType().GetMethod("End", F).Invoke(null, new object[] { true });
+                    Require((bool)Get(pointer, "completed") && (bool)Get(pointer, "ui") == nativeUi,
+                        "production native UI hooks complete the current controlled certificate and record its real owner signal");
+                }
+                finally { Main.mouseText = false; }
+            };
+            Action accepted = () =>
+            {
+                shellFrame(1256, 450, true);
+                long mapping = (long)Get(input, "Mapping");
+                Require((long)Get(host, "trimConfirmMapping") == mapping && ReferenceEquals(Get(target, "Mask"), mask),
+                    "actual saved Mouse1 -> Shell public Dispatch admits an intent without committing in the Shell");
+                Call(host, "ProcessInput");
+                Require((long)Get(host, "trimConfirmMapping") == mapping && (bool)Get(pointer, "pending") && (long)Get(pointer, "mapping") == mapping,
+                    "public F5 confirm intent must survive actual Host.ProcessInput and create its current-mapping Pointer.Capture; the old F5 suspend path clears it");
+                unchanged();
+            };
+            try
+            {
+                Require((bool)Get(host, "CanInvokeConfirmTrim") && ReferenceEquals(GetOptional(host, "editorTarget"), target),
+                    "public F5 confirmation starts from the caller's actual nonempty stable preview");
+                var storage = new BindingStorage();
+                using (var first = new HotkeyBindings(registry, storage))
+                {
+                    Wait(first, () => first.Loaded); Save(first, EditIds[2], "Mouse1");
+                }
+                bindings = new HotkeyBindings(registry, new BindingStorage(storage.Snapshot));
+                Wait(bindings, () => bindings.Loaded);
+                Require(bindings.Get(EditIds[2])?.Text == "Mouse1", "a new isolated common-document owner reopens the acknowledged Mouse1 confirmation binding");
+                Set(hotkeys, "Bindings", bindings); current.SetValue(null, pointer);
+                Set(input, "gameWindow", (Func<IntPtr>)(() => new IntPtr(1)));
+                Set(input, "foregroundWindow", (Func<IntPtr>)(() => focused ? new IntPtr(1) : new IntPtr(2)));
+                FiniteCostChecks.SetCpuFont(10); Call(renderer, "RefreshResources"); Set(toolbar, "font", Get(renderer, "FontIdentity"));
+                Main.screenWidth = 1280; Main.screenHeight = 900; NativeBlueprintUiChecks.SetScale(1f); Main.screenPosition = Vector2.Zero;
+                Main.GameViewMatrix = new Terraria.Graphics.SpriteViewMatrix(null);
+                Main.GameViewMatrix.SetViewportOverride(new Microsoft.Xna.Framework.Graphics.Viewport(0, 0, 1280, 900));
+                PlayerInput.CacheOriginalScreenDimensions(); PlayerInput.RawMouseScale = Vector2.One;
+                Call(shell, "CloseAndSubmitPosition"); Set(shell, "LayersReady", true); Set(state, "Ready", true);
+                Call(state, "Navigate", 9); Call(state, "RestoreVisible");
+                frame(1256, 450, false); frame(1256, 450, false); Call(renderer, "Prepare", state, 1280f, 900f, 1f);
+                Require((bool)Get(state, "Visible") && (int)Get(state, "Page") == 9 && !(bool)Get(state, "OwnsPointer"),
+                    "ordinary non-blueprint F5 page is visible while the real pointer is outside its window in world space");
+
+                accepted(); // no Draw: a valid public intent is still insufficient
+                frame(1256, 450, false); unchanged();
+                Require((long)Get(host, "trimConfirmMapping") < 0 && !(bool)Get(pointer, "pending"), "missing Draw retires the public intent without replay");
+
+                // A real control press owns its physical release even when the
+                // pointer leaves the window; releasing outside executes nothing.
+                object control = Objects(Get(layout, "Elements")).First(element => Get(element, "Kind").ToString() == "Button" &&
+                    Get(element, "Command").ToString() != "None" && (float)Get(Get(element, "Rect"), "Y") < (float)Get(Get(layout, "Viewport"), "Height"));
+                var area = Get(control, "Rect"); var view = Get(layout, "Viewport");
+                int controlX = (int)((float)Get(state, "X") + (float)Get(view, "X") + (float)Get(area, "X") + 3);
+                int controlY = (int)((float)Get(state, "Y") + (float)Get(view, "Y") + (float)Get(area, "Y") - (float)Get(state, "Scroll") + 3);
+                frame(controlX, controlY, true);
+                Require(GetOptional(state, "armed") != null && (bool)Get(state, "ConsumeLeft") && (long)Get(host, "trimConfirmMapping") < 0,
+                    "an actual armed F5 control consumes Mouse1 before the public confirm action"); unchanged();
+                frame(1256, 450, false);
+                Require((bool)Get(state, "ConsumeLeft") && GetOptional(state, "ClickedControl") == null && (long)Get(host, "trimConfirmMapping") < 0,
+                    "the actual control release tail remains owned outside the window and cannot confirm"); unchanged();
+                frame(1256, 450, false);
+
+                accepted(); draw(true); frame(1256, 450, false); unchanged();
+                Require((long)Get(host, "trimConfirmMapping") < 0, "current native UI certificate rejects the admitted confirm rather than turning it into a world drag");
+
+                accepted(); draw(false); focused = false; frame(1256, 450, true); unchanged();
+                Require(!(bool)Get(input, "CanStartActions") && !(bool)Get(pointer, "pending") && (long)Get(host, "trimConfirmMapping") < 0,
+                    "real HostInput focus loss invalidates the completed certificate before the next mapping can commit");
+                focused = true; frame(1256, 450, false); frame(1256, 450, false);
+                Set(state, "Ready", true); Call(state, "Navigate", 9); Call(state, "RestoreVisible");
+                Call(renderer, "Prepare", state, 1280f, 900f, 1f); frame(1256, 450, false); unchanged();
+
+                accepted(); draw(false); long certifiedMapping = (long)Get(input, "Mapping");
+                frame(1256, 450, true);
+                var committed = (BlueprintProjectionMask)Get(target, "Mask");
+                Require((long)Get(input, "Mapping") == certifiedMapping + 1 && !ReferenceEquals(committed, mask) &&
+                    committed.RemovedLayerCount > mask.RemovedLayerCount && (long)Get(host, "projectionSceneRevision") == scene + 1 && !(bool)Get(host, "ProjectionEditing"),
+                    "the actual Shell-admitted F5 Mouse1 commits the same target exactly once at the immediately adjacent certified mapping");
+                // A held primary and repeated old observer callbacks cannot
+                // restore the retired intent or earn another scene publication.
+                pointer.GetType().GetMethod("Begin", F).Invoke(null, null);
+                pointer.GetType().GetMethod("Boundary", F).Invoke(null, null);
+                pointer.GetType().GetMethod("Resources", F).Invoke(null, new object[] { true });
+                pointer.GetType().GetMethod("End", F).Invoke(null, new object[] { true });
+                frame(1256, 450, true); frame(1256, 450, true); frame(1256, 450, false);
+                Require(ReferenceEquals(Get(target, "Mask"), committed) && (long)Get(host, "projectionSceneRevision") == scene + 1 &&
+                    (long)Get(host, "trimConfirmMapping") < 0 && !(bool)Get(pointer, "pending"), "held Mouse1 and old proof cannot repeat the completed F5 confirmation");
+                Console.WriteLine("PASS Blueprint trim public F5 Mouse1: isolated save/reopen -> actual HostInput/Shell Dispatch/Host capture, missing Draw/control tail/native UI/focus rejection, adjacent controlled certificate commits once; held/old proof cannot replay. No normal Main Draw, GPU or OS input evidence.");
+            }
+            catch (Exception error) { primary = error; throw; }
+            finally
+            {
+                Exception cleanupFault = null;
+                Action<Action> restore = action => { try { action(); } catch (Exception error) { if (cleanupFault == null) cleanupFault = error; } };
+                restore(() => Call(shell, "RestoreLeases")); restore(() => Call(shell, "CloseAndSubmitPosition"));
+                restore(() => Call(pointer, "Cancel")); restore(() => current.SetValue(null, oldPointer));
+                restore(() => Set(hotkeys, "Bindings", oldBindings)); restore(() => bindings?.Dispose());
+                restore(() => Set(input, "gameWindow", oldWindow)); restore(() => Set(input, "foregroundWindow", oldForeground));
+                restore(() => { FontAssets.MouseText = oldFont; Set(toolbar, "font", oldToolbarFont); Call(renderer, "RefreshResources"); });
+                restore(() =>
+                {
+                    Main.GameViewMatrix = oldGameMatrix; Main.screenPosition = oldScreenPosition;
+                    Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; NativeBlueprintUiChecks.SetScale(oldScale);
+                    typeof(Main).GetField("_uiScaleMatrix", F).SetValue(null, oldUiMatrix); PlayerInput.CacheOriginalScreenDimensions();
+                    PlayerInput.RawMouseScale = oldRawScale; PlayerInput.MouseInfo = oldMouse; Main.keyState = oldKeyboard;
+                    Main.mouseX = oldMouseX; Main.mouseY = oldMouseY; PlayerInput.MouseX = oldInputX; PlayerInput.MouseY = oldInputY;
+                    PlayerInput.ScrollWheelDelta = oldWheel; PlayerInput.ScrollWheelDeltaForUI = oldUiWheel;
+                    Main.LocalPlayer.mouseInterface = oldInterface; Main.mouseText = oldMouseText;
+                    Main.mouseLeft = oldLeft; Main.mouseRight = oldRight; FocusHelper.IsSelectedApplication = oldSelected;
+                    for (int i = 0; i < triggerSets.Length; i++) foreach (var pair in oldTriggers[i]) triggerSets[i].KeyStatus[pair.Key] = pair.Value;
+                });
+                restore(() =>
+                {
+                    Set(shell, "LayersReady", oldLayers); Set(state, "Ready", oldReady); Call(state, "Navigate", oldPage);
+                    Set(state, "Scroll", oldScroll); Set(state, "X", oldX); Set(state, "Y", oldY);
+                    if (oldVisible) Call(state, "RestoreVisible");
+                });
+                if (primary == null && cleanupFault != null) throw new InvalidOperationException("public F5 confirmation fixture restoration failed", cleanupFault);
+            }
+        }
+
         private static void LayoutAndTails(Assembly assembly, object renderer, object toolbar, object font)
         {
             var state = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.F5.F5Interaction", true), true);

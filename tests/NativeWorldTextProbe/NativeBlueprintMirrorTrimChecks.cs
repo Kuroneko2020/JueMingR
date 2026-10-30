@@ -21,7 +21,11 @@ namespace NativeWorldTextProbe
     internal static class NativeBlueprintMirrorTrimChecks
     {
         private const BindingFlags F=BindingFlags.Instance|BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public;
-        internal static void Run(object context)
+        internal static void Run(object context) { RunCore(context, false); }
+        // A bounded historical A/B entry uses the same new public-input check
+        // against archived Host bytes, without rerunning the other consumers.
+        internal static void RunConfirmOnly(object context) { RunCore(context, true); }
+        private static void RunCore(object context, bool confirmOnly)
         {
             var host=Get(context,"Blueprint");var input=Get(context,"Input");var shell=Get(context,"Shell");
             var oldLibrary=(LibraryState)Get(host,"Library");var oldHistory=(BlueprintSceneHistory)Get(host,"projectionHistory");
@@ -43,6 +47,15 @@ namespace NativeWorldTextProbe
                 var entry=NativeBlueprintBudgetChecks.Save(library,new[]{first,last},5,2);
                 object target=NativeBlueprintWorldMatchChecks.Place(host,input,entry,100,40,step);
                 object sibling=NativeBlueprintWorldMatchChecks.Place(host,input,entry,130,40,step);
+                if(confirmOnly)
+                {
+                    BeginTrim(host,input,target,100,40,step);Pointer(host,false,100,40);Pointer(host,true,100,40);Pointer(host,false,100,40);
+                    NativeQuickItemChecks.Until(()=>{step();return (bool)Get(host,"CanInvokeConfirmTrim");});
+                    NativeBlueprintMirrorTrimUiChecks.ConfirmVisibleF5(context,target);
+                    Require(((BlueprintProjectionMask)Get(target,"Mask")).RemovedLayerCount==6 && !(bool)Get(host,"ProjectionEditing"),
+                        "public F5 Mouse1 confirmation commits exactly the literal six-layer corner in the bounded historical A/B entry");
+                    return;
+                }
                 long identity=((BlueprintProjectionIdentity)Get(target,"Identity")).ProjectionGeneration;long order=(long)Get(target,"CommitOrder");
                 // Superseding an accepted cold pick must discard that request,
                 // even if its exact source chunk arrives during the new editor.
@@ -80,7 +93,7 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Until(()=>{step();return (bool)Get(host,"CanInvokeConfirmTrim");});
                 Certificate(host,input,true,true);Require(ReferenceEquals(Get(target,"Mask"),before) && (bool)Get(host,"CanInvokeConfirmTrim"),"current native UI ownership rejects matching Mouse1 confirmation without replacement drag");
                 Certificate(host,input,false,false);Require(ReferenceEquals(Get(target,"Mask"),before) && (bool)Get(host,"CanInvokeConfirmTrim"),"missing Draw certificate rejects rather than replaying a confirmation");
-                Certificate(host,input,false,true);
+                NativeBlueprintMirrorTrimUiChecks.ConfirmVisibleF5(context,target);
                 Require(!(bool)Get(host,"ProjectionEditing") && (long)Get(host,"projectionSceneRevision")==revision+1,"certified independent Mouse1 confirmation publishes exactly once and exits");
                 var mask=(BlueprintProjectionMask)Get(target,"Mask");Require(mask.RemovedLayerCount==6 && !mask.Apply(first).HasContent && mask.Apply(last).HasContent,"mirrored display column four permanently trims source zero all six layers, preserving other corner");
                 Require((long)Get(target,"CommitOrder")==mirroredOrder,"trim does not acquire another cover order");
