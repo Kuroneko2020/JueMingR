@@ -252,6 +252,37 @@ namespace NativeWorldTextProbe
                     " sourceSteps=" + ((long)Get(host, "ProjectionMatchSourceSteps") - source) + " sourceStepLimit=" + (8L * records) +
                     " sourceRequests=" + ((long)Get(host, "ProjectionMatchSourceRequests") - requests) + " candidateChecks=" + ((long)Get(host, "BuildCandidateChecks") - checks) +
                     " memberBlocks=" + (sourceAfter.MemberBlocks - sourceBefore.MemberBlocks) + " memberRecords=" + (sourceAfter.MemberRecords - sourceBefore.MemberRecords));
+
+                var settled = Get(ordinary, "Materials"); long settledEpoch = (long)Get(settled, "BuildEpoch");
+                long settledSteps = (long)Get(host, "ProjectionMatchSourceSteps");
+                Require((bool)Get(settled, "BuildRetryPending") && Get(settled, "BuildWaits").ToString() == "Material" &&
+                    ((IDictionary)Get(host, "buildSupply")).Count == 0 && (bool)Get(Get(host, "buildSupplyInventory"), "Ready") &&
+                    ReferenceEquals(Get(host, "buildSupplyInventory"), Get(host, "MaterialInventory")),
+                    "the exhausted original walk retains its world-dirty permission with a current ready empty qualified inventory");
+                for (int idle = 0; idle < 8; idle++)
+                {
+                    Step(context, input);
+                    Require(ProgressDormant(instance) && (long)Get(settled, "BuildEpoch") == settledEpoch && (bool)Get(settled, "BuildRetryPending") &&
+                        (long)Get(host, "ProjectionMatchSourceSteps") == settledSteps && continuousPlacements.Count == 2,
+                        "empty material-only wait keeps pending without another source traversal or native use");
+                }
+                // Restore one real inventory item for a still-missing, already
+                // selected Dirt member on the same original Wood support.
+                p.inventory[12].SetDefaults(ItemID.DirtBlock); p.inventory[12].stack = 1;
+                Until(context, input, () =>
+                {
+                    long nextSteps = (long)Get(host, "ProjectionMatchSourceSteps"), nextChecks = (long)Get(host, "BuildCandidateChecks");
+                    Require(nextSteps - previousSteps <= 256 && nextChecks - previousChecks <= 64,
+                        "real restock retains the original per-Update source and candidate budgets");
+                    previousSteps = nextSteps; previousChecks = nextChecks;
+                    return p.inventory[12].IsAir && continuousPlacements.Count == 3 && (long)Get(match, "Matches") == 3 && !(bool)Get(Get(tools, "Use"), "Active");
+                });
+                var restored = continuousPlacements[2];
+                Require((long)Get(settled, "BuildEpoch") > settledEpoch && restored.Type == ItemID.DirtBlock && restored.Slot == 12 &&
+                    restored.Native > 0 && restored.Flight > 0 && new[] { targetX - 1, targetX + 1 }.Any(x => restored.X == x && Main.tile[x, oy].active() && Main.tile[x, oy].type == TileID.Dirt) &&
+                    (long)Get(host, "BuildUnknownResults") == unknown,
+                    "real Dirt restock reopens the preserved permission and the original consumer spends exactly one on an existing selected target");
+                Console.WriteLine("PASS BlueprintMixedSource emptyMaterialStableUpdates=8 extraSourceSteps=0 pendingPreserved=true actualRestockConsumed=1 currentMatches=3 unknownDelta=0");
             }
             finally
             {

@@ -233,6 +233,12 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                 return;
             }
+            // Keep the dirty retry, but an exhausted material-only walk has
+            // no possible consumer while this current qualified inventory is
+            // empty. Actual restock or an owned item's return reopens the same
+            // pending permission; independent world Match keeps advancing.
+            if (value.BuildWaits == BlueprintBuildWait.Material && buildSupplyInventory?.Ready == true &&
+                ReferenceEquals(buildSupplyInventory, MaterialInventory) && buildSupply.Count == 0) return;
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Semantic(BuildTraceStage.Wake,BuildTraceReason.WakePerformed,value.EligibilityRetryOrdinal,unchecked((long)materialTick),unchecked((long)value.EligibilityRetryAt),nativeDue?1:0);
 #endif
