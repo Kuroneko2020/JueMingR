@@ -409,7 +409,7 @@ namespace NativeWorldTextProbe
             var bytes = NetMessage.buffer[Main.netMode == 2 && __1 >= 0 ? __1 : 256].writeBuffer;
             int length = BitConverter.ToUInt16(bytes, 0);
             Require(length >= 3 && length <= bytes.Length && bytes[2] == __0, "actual wiring serializer produced the observed message");
-            if (__0 == 17 && (length < 4 || bytes[3] != 5 && bytes[3] != 8 && bytes[3] != 9)) return;
+            if (__0 == 17 && (length < 4 || bytes[3] != 10 && bytes[3] != 8 && bytes[3] != 9)) return;
             constructionWiringPackets.Add(bytes.Take(length).ToArray());
         }
         private static void ReplayConstructionPacket(byte[] packet, int sender)

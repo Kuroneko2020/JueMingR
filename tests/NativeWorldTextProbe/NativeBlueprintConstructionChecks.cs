@@ -285,7 +285,7 @@ namespace NativeWorldTextProbe
                 new CaptureCell{X=6,Layers=CaptureLayer.Tile,TileType=(ushort)p.inventory[18].createTile});
             Place(context,host,input,entry,44,38);Call(host,"SetMaterialViewDemand",true);SetAutomatic(host,input,true);
             float minimum=p.position.X,maximum=minimum;int frames=0;bool right=true;
-            Item supplied=null;bool sawPreparedInventoryUnavailable=false;
+            Item supplied=null;bool sawPreparedInventoryUnavailable=false,sawDetachedReturn=false;
             Action move=()=>
             {
                 NativeToolExecutionChecks.Sample(context,input,new Microsoft.Xna.Framework.Vector2(480,540),false);
@@ -320,7 +320,21 @@ namespace NativeWorldTextProbe
                 p.inventory[17].stack==1 && p.inventory[20].stack==1,
                 "real movement through one mixed blueprint completes other body/shape/wire/wand lanes while its missing paint remains pending");
             p.inventory[21].SetDefaults(ItemID.RedPaint);p.inventory[21].stack=2;supplied=p.inventory[21];
-            NativeQuickItemChecks.Until(()=>{move();return Scene(host).Length==0 && !(bool)Get(Get(tools,"Use"),"Active");});
+            // Match/ToolUse retirement can precede the finite inverse ItemSlot
+            // tail. Observe that real return before asserting original slots.
+            NativeQuickItemChecks.Until(()=>
+            {
+                move();bool retired=Scene(host).Length==0;var preparation=Get(host,"buildMaterialPreparation");
+                bool returning=(bool)Get(preparation,"HasWork");
+                if(retired && returning)
+                {
+                    Require(GetOptional(preparation,"identity")==null,
+                        "only the settled shared discovery lease can outlive its completed projection; an attached preparation must block retirement");
+                    if(!sawDetachedReturn)Console.WriteLine("PASS BlueprintConstruction mixed retiredWithDetachedCleanup=true identity=null phase="+Get(preparation,"phase"));
+                    sawDetachedReturn=true;
+                }
+                return retired && !(bool)Get(Get(tools,"Use"),"Active") && !returning;
+            });
             Require(Main.tile[44,38].color()==supplied.paint && supplied.stack==1 && p.inventory[12].stack==1 && p.inventory[16].stack==1 &&
                 p.inventory[17].stack==1 && p.inventory[20].stack==1 && sawPreparedInventoryUnavailable && ReferenceEquals(p.inventory[21],supplied) &&
                 ReferenceEquals(p.inventory[54],oldPriority) && oldPriority.stack==7,

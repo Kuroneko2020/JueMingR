@@ -229,7 +229,7 @@ namespace NativeWorldTextProbe
                 if (competingInstall)
                 {
                     Require(actuator ? WorldGen.PlaceActuator(x, y) : WorldGen.PlaceWire2(x, y), "a separate original authority action fills the submitted target");
-                    NetMessage.SendData(17, -1, -1, null, actuator ? 8 : 5, x, y);
+                    NetMessage.SendData(17, -1, -1, null, actuator ? 8 : 10, x, y);
                 }
                 ReplayConstructionPacket(request, 0);
             }
@@ -239,7 +239,8 @@ namespace NativeWorldTextProbe
 
         private static void ConstructionRequireWiringPair(byte[][] ordered, bool actuator, int count)
         {
-            Require(ordered.Length == 3 && ordered[0][2] == 17 && ordered[0][3] == (actuator ? 8 : 5) &&
+            // Native17 action10 is blue/wire2; action5 installs red wire.
+            Require(ordered.Length == 3 && ordered[0][2] == 17 && ordered[0][3] == (actuator ? 8 : 10) &&
                 ordered[1][2] == 110 && BitConverter.ToInt16(ordered[1], 3) == ItemID.Wire &&
                 BitConverter.ToInt16(ordered[1], 5) == (actuator ? 0 : count) &&
                 ordered[2][2] == 110 && BitConverter.ToInt16(ordered[2], 3) == ItemID.Actuator &&
