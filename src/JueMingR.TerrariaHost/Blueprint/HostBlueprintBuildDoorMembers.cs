@@ -78,7 +78,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 CaptureCell raw;
                 if (!TryWindowSourceCell(window, body.WorldX - owner.OriginX + index % body.Width,
                     body.WorldY - owner.OriginY + index / body.Width, out raw)) return false;
-                var selected = owner.Mask.Apply(raw);
+                var selected = EffectiveProjectionCell(owner,window,raw);
                 var selection = SelectProjectionTarget(owner, selected, obj);
                 if (raw.ObjectId != obj.Id || raw.UnreliableObject || (raw.Layers & CaptureLayer.Tile) == 0 ||
                     raw.X + owner.OriginX != body.WorldX + index % body.Width || raw.Y + owner.OriginY != body.WorldY + index / body.Width ||
@@ -174,6 +174,13 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             cell = default(CaptureCell);
             if (window == null) return false;
+            if (window.View?.MirroredHorizontally == true && window.CellsInSourceOrder && window.SourceWindow != null)
+            {
+                int sourceX = window.View.SourceX(x); var originals = window.SourceWindow.Cells;
+                int original = BuildCellLowerBound(originals,sourceX,y);
+                if (original >= originals.Count || originals[original].X != sourceX || originals[original].Y != y) return false;
+                cell = window.Cells[original]; return true;
+            }
             int index = BuildCellLowerBound(window.Cells, x, y);
             if (index >= window.Cells.Count || window.Cells[index].X != x || window.Cells[index].Y != y) return false;
             cell = window.Cells[index]; return true;
@@ -213,14 +220,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 var context = FindDoorContext(part, left, top);
                 if (context != null && TryWindowSourceCell(context, x, y, out raw))
-                { known = true; return TrySelectedCoordinateWall(owner, raw, out wall); }
+                { known = true; return TrySelectedCoordinateWall(owner, raw, out wall, context); }
             }
             if (!TryWindowSourceCell(part.Window, x, y, out raw)) return false;
-            known = true; return TrySelectedCoordinateWall(owner, raw, out wall);
+            known = true; return TrySelectedCoordinateWall(owner, raw, out wall, part.Window);
         }
-        private bool TrySelectedCoordinateWall(BlueprintProjectionPlacement owner, CaptureCell raw, out CaptureCell wall)
+        private bool TrySelectedCoordinateWall(BlueprintProjectionPlacement owner, CaptureCell raw, out CaptureCell wall, BlueprintProjectionWindow window = null)
         {
-            wall = owner.Mask.Apply(raw);
+            wall = window?.View == null ? owner.Mask.Apply(raw) : raw;
             var selection = SelectProjectionTarget(owner, wall);
             return (wall.Layers & CaptureLayer.Wall) != 0 && (selection.RequiredBits & 2) != 0 && (selection.UnknownBits & 2) == 0;
         }

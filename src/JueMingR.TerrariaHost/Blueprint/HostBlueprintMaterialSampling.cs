@@ -98,12 +98,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private static CaptureCell MaterialSourceTarget(BlueprintProjectionMatchRead read, int index)
         {
-            var target = read.Batch.Window.Cells[index];
+            var target = EffectiveProjectionCell(read.Owner,read.Batch.Window,index);
             // Ordinary source cells retain only context for the separately
             // owned furniture Tile. Apply this instance's same immutable mask
             // before deciding that the foreground was actually selected.
             if (read.Batch.LogicalObjectId == 0 && target.ObjectId > 0) target.Layers |= CaptureLayer.Tile;
-            return read.Owner.Mask.Apply(target);
+            return read.Batch.Window.View == null ? read.Owner.Mask.Apply(target) : target;
         }
         private void CompleteMaterialObject(BlueprintProjectionMatchRead read)
         {

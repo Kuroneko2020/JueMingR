@@ -38,6 +38,11 @@ namespace JueMingR.TerrariaHost.F5
 
         private IMovementControls movement;
         private Blueprint.HostBlueprint blueprint;
+        private long blueprintLeaveRequest;
+        private bool blueprintLeavePending;
+        private string blueprintLeaveAction;
+        private readonly Func<HotkeyAction, HotkeyChord, bool> admitHotkey;
+        private bool dispatchGameplay, dispatchBlueprint, dispatchJourneyClose, dispatchTarget, dispatchMap;
         internal BlueprintLibraryPresentation BlueprintUi { get; private set; }
         internal BlueprintMaterialsPresentation BlueprintMaterialsUi { get; private set; }
         internal void AttachBlueprint(Blueprint.HostBlueprint owner)
@@ -50,6 +55,32 @@ namespace JueMingR.TerrariaHost.F5
             State.BeforeLeave = page => { if (beforeBlueprintLeave != null && !beforeBlueprintLeave(page)) return false; BlueprintMaterialsUi?.Close(); return BlueprintUi == null || BlueprintUi.RequestLeave(); };
             State.Layout.BlueprintAttached = owner != null;
             State.Layout.SetBlueprintMode(owner != null && owner.State.Active);
+        }
+        // Host has admitted the original input and retains the edit transaction
+        // identity. Notes alone finishes its save; its callback may run in an
+        // outer Update without a fresh input sample, so no key is replayed here.
+        internal void RequestBlueprintEditLeave(string actionId, Action acceptedExecute)
+        {
+            if (blueprint == null || blueprintLeavePending || acceptedExecute == null ||
+                actionId != BlueprintControls.MirrorAction && actionId != BlueprintControls.TrimAction) return;
+            var owner = blueprint;
+            long session = owner.UiSession, request = ++blueprintLeaveRequest;
+            blueprintLeavePending = true; blueprintLeaveAction = actionId;
+            inputState.Hotkeys.SuppressHeld(); inputState.ConsumeHotkeyActions();
+            Action<bool> completed = success =>
+            {
+                if (!blueprintLeavePending || request != blueprintLeaveRequest || blueprintLeaveAction != actionId) return;
+                blueprintLeavePending = false; blueprintLeaveAction = null;
+                if (!success || failed || !ReferenceEquals(owner, blueprint) || !owner.HasSession ||
+                    owner.UiSession != session || !CanPresentNow) return;
+                CloseAndSubmitPosition();
+                acceptedExecute();
+            };
+            if (State.Visible && State.Page == 4)
+            {
+                if (!notes.RequestSafeLeave(completed)) completed(false);
+            }
+            else completed(!State.Visible || State.BeforeLeave == null || State.BeforeLeave(-1));
         }
         internal void AttachMovement(IMovementControls owner)
         { movement = owner; renderer.MovementControls = new MovementControls(owner); State.Layout.MovementAttached = true; }
@@ -231,6 +262,7 @@ namespace JueMingR.TerrariaHost.F5
             onboardingOverlap = OverlapsOnboarding;
             State.Layout.About.Attach(new NotesClipboard(() => Main.instance.Window.Handle).TryCopy);
             this.hotkeys = hotkeys;
+            admitHotkey = AdmitHotkey;
             this.labels = labels;
             this.worldTargets = worldTargets;
             this.worldObjects = worldObjects;
@@ -269,7 +301,7 @@ namespace JueMingR.TerrariaHost.F5
             // leaving the user's current page/capture/editor.
             var rows = new System.Collections.Generic.List<F5Element>(); float y = 0;
             BlueprintControls.AddRows(rows, State.Layout.DynamicTextSize, ref y, blueprint.State.Active,
-                blueprint.OwnMoveCancellation ? 1 : blueprint.OwnRemoveCancellation ? 2 : blueprint.OwnPlaceCancellation ? 3 : 0);
+                renderer.BlueprintControls.OperationMode);
             foreach (var element in rows) if (element.Command == F5Command.BlueprintMaterials)
                 return element.Rect.Offset(State.X + State.Layout.Viewport.X, State.Y + State.Layout.Viewport.Y);
             return State.Layout.Viewport.Offset(State.X, State.Y);
@@ -559,6 +591,8 @@ namespace JueMingR.TerrariaHost.F5
                     StylePopup.Click(EntityLabelControls.Target(State.Command).Value, ControlRect(State.ClickedControl), State.Page);
                 }
                 if (OwnsPointer) LeaseMouseInterface();
+                bool uiWheelOwner = PlayerInput.ScrollWheelDeltaForUI != 0 &&
+                    (State.ConsumeWheel || notes.ConsumeWheel || Browser?.ConsumeWheel == true || items?.ConsumeWheel == true);
                 ConsumeSample();
                 SubmitPosition();
                 // Settings owns intent; the Feature still owns actual state and
@@ -612,31 +646,61 @@ namespace JueMingR.TerrariaHost.F5
                     Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !OwnsPointer &&
                     !materialsWasVisible && BlueprintMaterialsUi?.Visible != true && !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(DeathPopup != null && DeathPopup.Visible) && !(MapPopup != null && MapPopup.Visible) && !(FootprintPopup != null && FootprintPopup.Visible) && !(RecoveryUi != null && RecoveryUi.Selecting) && !(items != null && items.Selecting) &&
                     !(Main.LocalPlayer != null && Main.LocalPlayer.mouseInterface);
-                hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, gameplay);
                 // Native CreativeUI owns mouseInterface while hovered. Its own
                 // switch must still be able to close the active R session; text
                 // entry/capture continues to protect ordinary typed characters.
                 bool journeyClose = journey != null && journey.IsActive && inputActive && !journeyLeavePending &&
                     !inputState.HotkeyCapture && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText &&
                     !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible);
-                hotkeys?.Bindings.Dispatch(inputState.Hotkeys, HotkeyContext.SinglePlayer, journeyClose && Main.netMode == 0, JourneyControls.ActionId);
-                QuickItems?.AfterDispatch(gameplay);
                 // Older development profiles have no target owner or actions;
                 // do not evaluate the new native observation gate for them.
-                if (Browser != null)
-                {
-                    hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, CanTargetInput, AnnouncementControls.SendActionId);
-                    hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, CanTargetInput, "item-browser.query");
-                }
+                bool targetHotkey = Browser != null && CanTargetInput;
                 // Fullscreen map owns native mouseInterface. Admit only its
                 // registered master switch, through the same binding engine.
                 bool mapHotkey = !failed && maps != null && Main.mapFullscreen && CanPresent(true) && inputState.CanUseInput &&
                     !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode && !Main.blockInput &&
                     Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture;
-                hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, mapHotkey, MapControls.ActionId);
-                hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer, mapHotkey && footprints != null, FootprintControls.ActionId);
+                dispatchGameplay = gameplay;
+                dispatchBlueprint = !uiWheelOwner && CanDispatchBlueprintEdit(inputActive, materialsWasVisible, popupPointer);
+                dispatchJourneyClose = journeyClose && Main.netMode == 0;
+                dispatchTarget = targetHotkey; dispatchMap = mapHotkey;
+                // A single compiled-match pass owns every primary. In particular,
+                // a bound Mouse1 cannot both confirm a preview and start a drag.
+                hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer,
+                    gameplay, admit: admitHotkey);
+                QuickItems?.AfterDispatch(gameplay);
             }
             catch { FailClosed(); ConsumeSample(); }
+        }
+
+        private bool CanDispatchBlueprintEdit(bool inputActive, bool materialsWasVisible, bool higherPointer)
+        {
+            if (blueprint == null || blueprintLeavePending || !inputActive || higherPointer || inputState.HotkeyCapture ||
+                (TargetGestureBusy?.Invoke() ?? false) || information != null && information.Adjustment.Active || adjustmentPending ||
+                blueprint.NativeUiBusy || notes.OwnsPointer || notes.OtherTextOwner || State.PointerBlocked || State.ConsumeLeft || State.ConsumeRight ||
+                materialsWasVisible || BlueprintMaterialsUi?.Visible == true || BlueprintUi?.Visible == true || FishingUi?.Visible == true ||
+                HotkeyPopup?.Visible == true || StylePopup?.Visible == true || DeathPopup?.Visible == true || MapPopup?.Visible == true || FootprintPopup?.Visible == true ||
+                RecoveryUi?.Selecting == true || items?.Selecting == true || CombatInterval?.OwnsPointer == true || CombatRadius?.OwnsPointer == true ||
+                Browser?.OwnsTextToken == true || CaptureUi?.Visible == true) return false;
+            // Ordinary F5 hover is the only relaxed pointer owner. A foreign
+            // native lease, an actual UI gesture, or a world overlay still wins.
+            if (State.Visible)
+                return State.Ready && (!Main.LocalPlayer.mouseInterface || ReferenceEquals(leasedPlayer, Main.LocalPlayer) && !priorMouseInterface);
+            return !OwnsPointer && !Main.LocalPlayer.mouseInterface;
+        }
+
+        private bool AdmitHotkey(HotkeyAction action, HotkeyChord chord)
+        {
+            if (blueprint != null && blueprint.ProjectionEditing && blueprint.CanRetainEdit &&
+                (chord.MainKey == 256 || chord.MainKey == 257))
+                return dispatchBlueprint && action.Id == BlueprintControls.ConfirmTrimAction &&
+                    blueprint.CanInvokeConfirmTrim && blueprint.AcceptsWorldEditMousePrimary(chord);
+            if (action.Id == BlueprintControls.MirrorAction || action.Id == BlueprintControls.TrimAction || action.Id == BlueprintControls.ConfirmTrimAction)
+                return dispatchBlueprint;
+            if (dispatchGameplay) return true;
+            if (dispatchJourneyClose && action.Id == JourneyControls.ActionId) return true;
+            if (dispatchTarget && (action.Id == AnnouncementControls.SendActionId || action.Id == "item-browser.query")) return true;
+            return dispatchMap && (action.Id == MapControls.ActionId || footprints != null && action.Id == FootprintControls.ActionId);
         }
 
         private void ConsumeSample()

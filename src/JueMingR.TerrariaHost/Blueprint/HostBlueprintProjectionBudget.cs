@@ -11,7 +11,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private long projectionCapacityRevision;
         private BlueprintProjectionPlacement projectionPointTarget;
         private BlueprintProjectionBounds projectionPointCore;
-        private bool ProjectionPointDemandActive { get { return ProjectionMode == BlueprintProjectionMode.SelectingMove || ProjectionMode == BlueprintProjectionMode.SelectingRemove; } }
+        private bool ProjectionPointDemandActive { get { return ProjectionMode == BlueprintProjectionMode.SelectingMove || ProjectionMode == BlueprintProjectionMode.SelectingRemove || editorPickPending; } }
 
         private void ClearProjectionPoint()
         {
@@ -26,9 +26,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void SetProjectionPoint(BlueprintProjectionPlacement item, int x, int y)
         {
             var core = new BlueprintProjectionBounds(x / 16 * 16, y / 16 * 16, 16, 16);
-            if (ReferenceEquals(projectionPointTarget, item) && projectionPointCore.Equals(core)) return;
+            if (ReferenceEquals(projectionPointTarget, item) && projectionPointCore.Equals(core)) { if(editorPickPending)UpdateProjectionPoint(); return; }
             // A single explicit point owns priority. Hover never creates one;
-            // arrival only loads content and requires another physical click.
+            // Move/Remove arrival only loads content for a new click. Mirror/
+            // Trim keep their already certified one-slot business request.
             ClearProjectionPoint();
             projectionPointTarget = item; projectionPointCore = core;
             item.Denied.Remove(core);
@@ -39,10 +40,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             var item = projectionPointTarget;
             if (!ProjectionPointDemandActive || item == null || !projectionScene.Contains(item) || !item.Opened) return;
-            if (!item.Coverage.Contains(projectionPointCore.Left, projectionPointCore.Top)) return;
+            if (!editorPickPending && !item.Coverage.Contains(projectionPointCore.Left, projectionPointCore.Top)) return;
             foreach (var core in item.Windows.Keys)
                 if (ContainsCore(core, projectionPointCore)) return;
-            if (item.WindowPending || ProjectionDenied(item, projectionPointCore) || projectionWindowAdmissions >= 4) return;
+            if (item.WindowPending || ProjectionDenied(item, projectionPointCore) || !editorPickPending && projectionWindowAdmissions >= 4) return;
             item.RequestedCore = projectionPointCore;
             RequestProjectionWindow(item, projectionPointCore.Expand(item.Renderer.RequiredHalo));
         }

@@ -227,7 +227,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // this finite batch and postpone ordinary service forever.
                 CompletePreferredRange(range); return PreferredBuildSearch.PassComplete;
             }
-            var bounds = BuildNearBounds(range.Owner); var cells = part.Window.Cells;
+            var bounds = range.Owner.View.SourceBounds(BuildNearBounds(range.Owner)); var cells = ProjectionSourceCells(part.Window);
             if (!value.PreferredInitialized && part.Offset == 0)
             { value.PreferredInitialized = true; value.PreferredRevisit = false; value.PreferredCursor = BuildMemberOrdinal(BuildCellLowerBound(cells, bounds.Left, bounds.Top)); }
             if (BuildMemberIndex(value.PreferredCursor) < part.Offset)

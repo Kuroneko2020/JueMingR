@@ -11,6 +11,7 @@ namespace JueMingR.Features.Blueprint
             internal BlueprintProjectionIdentity Identity;
             internal BlueprintPlacementCatalog Catalog;
             internal BlueprintProjectionMask Mask;
+            internal BlueprintProjectionView View;
         }
         // The existing file worker owns this finite demand lane. At most one
         // request per instance is queued; superseding masks/catalogs cancel the
@@ -33,7 +34,7 @@ namespace JueMingR.Features.Blueprint
 #endif
         }
 
-        internal bool RequestProjectionQualification(BlueprintProjectionIdentity identity, BlueprintPlacementCatalog catalog, BlueprintProjectionMask mask)
+        internal bool RequestProjectionQualification(BlueprintProjectionIdentity identity, BlueprintPlacementCatalog catalog, BlueprintProjectionMask mask, BlueprintProjectionView view = null)
         {
             if (identity == null || catalog == null) return false;
             mask = mask ?? BlueprintProjectionMask.Empty;
@@ -48,13 +49,13 @@ namespace JueMingR.Features.Blueprint
                 if (projectionQualificationLatest.TryGetValue(identity, out old))
                 {
                     if (old.Catalog.Revision > catalog.Revision) return false;
-                    if (ReferenceEquals(old.Catalog, catalog) && ReferenceEquals(old.Mask, mask)) return true;
+                    if (ReferenceEquals(old.Catalog, catalog) && ReferenceEquals(old.Mask, mask) && ReferenceEquals(old.View, view)) return true;
                 }
                 int queued = projectionQualificationRequests.FindIndex(value => value.Identity.Equals(identity));
                 if (projectionRequests.Count + projectionSourceRequests.Count + projectionQualificationRequests.Count - (queued < 0 ? 0 : 1) +
                     (projectionActiveRequest == null ? 0 : 1) + (projectionSourceActive == null ? 0 : 1) + (projectionQualifying == null ? 0 : 1) >= ProjectionRequestLimit ||
                     projectionReceipts.Count + projectionSourceReceipts.Count + projectionQualificationReceipts.Count + projectionFailures.Count >= ProjectionRequestLimit) return false;
-                var request = new ProjectionQualificationRequest { Identity = identity, Catalog = catalog, Mask = mask };
+                var request = new ProjectionQualificationRequest { Identity = identity, Catalog = catalog, Mask = mask, View = view };
                 if (queued >= 0) projectionQualificationRequests.RemoveAt(queued);
                 projectionQualificationLatest[identity] = request; projectionQualificationRequests.Add(request);
                 if (owner != null)
@@ -146,14 +147,34 @@ namespace JueMingR.Features.Blueprint
             projectionQualifying.Dispose(); projectionQualifying = null; projectionQualificationOwner = null; projectionQualificationActive = null;
             return true;
         }
-        private BlueprintConstructionSelection SelectProjectionConstruction(ProjectionOwner owner, CaptureCell cell, BlueprintPlacementCatalog catalog)
+        private BlueprintConstructionSelection SelectProjectionConstruction(ProjectionOwner owner, CaptureCell cell, BlueprintPlacementCatalog catalog, BlueprintProjectionView view)
         {
-            if (cell.ObjectId <= 0) return catalog.Select(cell);
+            if (cell.ObjectId <= 0)
+            {
+                if (view?.MirroredHorizontally == true)
+                {
+                    var normalized = cell; normalized.X -= owner.Root.Summary.Left; normalized.Y -= owner.Root.Summary.Top; string reason;
+                    if (!view.Profile.TryMirrorCell(normalized, view.Width, out normalized, out reason))
+                        return new BlueprintConstructionSelection(BlueprintConstructionTargets.Layers(cell), BlueprintConstructionTargets.Layers(cell), catalog.Revision);
+                    return catalog.Select(normalized);
+                }
+                return catalog.Select(cell);
+            }
             ProjectionSourceObjectIndex entry = owner.SourceObjects[cell.ObjectId];
-            if (!ReferenceEquals(entry.QualificationCatalog, catalog))
+            if (!ReferenceEquals(entry.QualificationCatalog, catalog) || !ReferenceEquals(entry.QualificationProfile, view?.Profile) || entry.QualificationMirrored != (view?.MirroredHorizontally == true))
             {
                 var obj = ProjectionObject(owner, cell.ObjectId);
-                entry.Qualification = catalog.QualifyTile(cell, obj); entry.QualificationCatalog = catalog;
+                CaptureCell first = cell; bool interpreted = true;
+                if (view?.Profile != null)
+                {
+                    obj.X -= owner.Root.Summary.Left; obj.Y -= owner.Root.Summary.Top;
+                    var members = ProjectionObjectMembers(owner, obj.Id); string reason;
+                    if (view.MirroredHorizontally)
+                    { CaptureCell[] targets; interpreted = view.Profile.TryMirrorObject(obj, members, view.Width, out obj, out targets, out reason); if (interpreted) first = targets[0]; }
+                    else { interpreted = view.Profile.TryNormalizeObject(obj, members, out obj, out reason); first = members[0]; }
+                }
+                entry.Qualification = interpreted ? catalog.QualifyTile(first, obj) : new BlueprintTargetQualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.Unsupported, null, BlueprintTargetReason.TargetShapeUnresolved, catalog.Revision);
+                entry.QualificationCatalog = catalog; entry.QualificationProfile = view?.Profile; entry.QualificationMirrored = view?.MirroredHorizontally == true;
             }
             ushort bits = BlueprintConstructionTargets.FilterBits(BlueprintProjectionMask.Layers(cell)), unknown = 0;
             if (entry.Qualification.Disposition == BlueprintTargetDisposition.DisplayOnly) bits &= 0xfe;
@@ -172,7 +193,9 @@ namespace JueMingR.Features.Blueprint
             {
             CheckProjectionQualification(owner, request);
             var catalog = request.Catalog; var summary = owner.Root.Summary;
-            bool buildGeometry = !ReferenceEquals(owner.QualificationCatalog, catalog);
+            ProjectionQualifiedGeometry geometry;
+            bool mirrored = request.View?.MirroredHorizontally == true;
+            bool buildGeometry = !owner.QualificationViews.TryGetValue(mirrored, out geometry) || !ReferenceEquals(geometry.Catalog, catalog) || !ReferenceEquals(geometry.Profile, request.View?.Profile);
             var sources = buildGeometry ? new List<BlueprintProjectionSourceRange>() : null;
             var proofs = buildGeometry ? new List<BlueprintProjectionSourceRange>() : null;
             var indexed = buildGeometry ? new HashSet<int>() : null;
@@ -190,7 +213,7 @@ namespace JueMingR.Features.Blueprint
                 var ids = buildGeometry ? new List<int>() : null; var objectIds = buildGeometry ? new HashSet<int>() : null;
                 for (int i = 0; i < chunk.Count; i++)
                 {
-                    CaptureCell cell = chunk.Cells[i]; var selection = SelectProjectionConstruction(owner, cell, catalog);
+                    CaptureCell cell = chunk.Cells[i]; var selection = SelectProjectionConstruction(owner, cell, catalog, request.View);
                     if (summary.TargetVersion != catalog.TargetVersion) selection = new BlueprintConstructionSelection(BlueprintConstructionTargets.Layers(cell), BlueprintConstructionTargets.Layers(cell), catalog.Revision);
                     total += BlueprintProjectionMask.Count(selection.RequiredBits);
                     ushort remaining = request.Mask.RemainingLayers(cell.X - summary.Left, cell.Y - summary.Top, cell.ObjectId, selection.RequiredBits);
@@ -239,12 +262,17 @@ namespace JueMingR.Features.Blueprint
                 CheckProjectionQualification(owner, request);
                 if (buildGeometry)
                 {
-                    owner.QualificationSourceRanges = Array.AsReadOnly(sources.ToArray()); owner.QualificationMatchRanges = Array.AsReadOnly(proofs.ToArray());
-                    owner.QualificationCatalog = catalog; owner.QualificationGeometryBytes = geometryBytes + 128L + (sources.Count + proofs.Count)*64L;
+                    if (!ReferenceEquals(owner.QualificationCatalog, catalog) || !ReferenceEquals(owner.QualificationProfile, request.View?.Profile)) owner.QualificationViews.Clear();
+                    geometry = new ProjectionQualifiedGeometry { Catalog = catalog, Profile = request.View?.Profile,
+                        Sources = Array.AsReadOnly(sources.ToArray()), Proofs = Array.AsReadOnly(proofs.ToArray()), Bytes = geometryBytes + 128L + (sources.Count + proofs.Count)*64L };
+                    owner.QualificationViews[mirrored] = geometry;
                 }
+                owner.QualificationCatalog = catalog; owner.QualificationProfile = request.View?.Profile;
+                owner.QualificationSourceRanges = geometry.Sources; owner.QualificationMatchRanges = geometry.Proofs;
+                owner.QualificationGeometryBytes = 0; foreach (var cached in owner.QualificationViews.Values) owner.QualificationGeometryBytes += cached.Bytes;
             }
             var completed = new BlueprintProjectionQualificationReceipt(request.Identity,catalog,request.Mask,total,effective,unknown,
-                owner.QualificationSourceRanges,owner.QualificationMatchRanges);
+                geometry.Sources,geometry.Proofs,view: request.View);
             while (true)
             {
                 CheckProjectionQualification(owner, request);

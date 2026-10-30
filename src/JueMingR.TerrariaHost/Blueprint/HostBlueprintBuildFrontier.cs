@@ -75,7 +75,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 source.NearVersion=range.Version;source.NearWake=value.BuildWakeRevision;
                 source.NearPlayer=MaterialBuildEligibilityRevision;source.NearSupply=buildSupplyRevision;
-                source.NearBounds=BuildNearBounds(source.Owner);
+                source.NearBounds=source.Owner.View.SourceBounds(BuildNearBounds(source.Owner));
                 // These revisions invalidate candidate proofs, not the stable
                 // source ordinal. Merge a revisit and refresh the broad phase
                 // now; finish the current finite pass before wrapping once.
@@ -87,7 +87,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 source.DiagnosticResetBefore=source.NearCursor;
 #endif
                 source.NearInitialized=true;source.NearComplete=source.NearRevisit=false;
-                source.NearCursor=BuildMemberOrdinal(BuildCellLowerBound(source.Part.Window.Cells,source.NearBounds.Left,source.NearBounds.Top));
+                source.NearCursor=BuildMemberOrdinal(BuildCellLowerBound(ProjectionSourceCells(source.Part.Window),source.NearBounds.Left,source.NearBounds.Top));
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 source.DiagnosticResetAfter=source.NearCursor;
                 // A merged revisit no longer has one immediate reset cause.
@@ -114,7 +114,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             bool diagnosticFrontier=false;
             if(BlueprintBuildTrace.Active){diagnosticFrontier=source.Frontier;BlueprintBuildTrace.Hit(diagnosticFrontier?BuildTraceStage.Frontier:BuildTraceStage.Near);}
 #endif
-            target=null;complete=false;var part=source.Part;var range=source.Range;var cells=part.Window.Cells;
+            target=null;complete=false;var part=source.Part;var range=source.Range;var cells=ProjectionSourceCells(part.Window);
             long support;
             if(!range.Group.Ready || !ProjectionMatchReadCurrent(range,range.RawVersion) ||
                 !projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support))
@@ -175,8 +175,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 var source=node.Value;if(!ReferenceEquals(source.Range,target.Range))continue;
                 var bounds=target.Bounds.Expand(1);
-                source.FrontierBounds=new BlueprintProjectionBounds(bounds.Left-source.Owner.OriginX,bounds.Top-source.Owner.OriginY,bounds.Width,bounds.Height);
-                source.FrontierCursor=BuildMemberOrdinal(BuildCellLowerBound(source.Part.Window.Cells,source.FrontierBounds.Left,source.FrontierBounds.Top));
+                source.FrontierBounds=source.Owner.View.SourceBounds(new BlueprintProjectionBounds(bounds.Left-source.Owner.OriginX,bounds.Top-source.Owner.OriginY,bounds.Width,bounds.Height));
+                source.FrontierCursor=BuildMemberOrdinal(BuildCellLowerBound(ProjectionSourceCells(source.Part.Window),source.FrontierBounds.Left,source.FrontierBounds.Top));
                 source.Frontier=true;return;
             }
         }

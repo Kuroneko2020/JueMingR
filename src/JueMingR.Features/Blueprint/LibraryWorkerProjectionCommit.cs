@@ -101,6 +101,10 @@ namespace JueMingR.Features.Blueprint
         private IEnumerable<bool> ComputeProjectionCommit(BlueprintProjectionCommitRequest request)
         {
             CheckProjectionCommit(request, allReferences: true); ProjectionOwner incoming = CommitOwner(request.Candidate.Identity);
+            if (request.Kind == BlueprintProjectionEditKind.Trim)
+            { foreach (bool step in ComputeProjectionTrim(request, incoming)) yield return step; yield break; }
+            if (request.Kind == BlueprintProjectionEditKind.Mirror)
+                foreach (bool step in ValidateProjectionMirror(request, incoming)) yield return step;
             var masks = new Dictionary<long, BlueprintProjectionMask>(); var retired = new List<long>();
             foreach (BlueprintProjectionPlacement old in request.Previous)
             {
@@ -114,7 +118,8 @@ namespace JueMingR.Features.Blueprint
                 if (left >= right || top >= bottom) continue;
                 ProjectionOwner previous = CommitOwner(old.Identity); var builder = new ProjectionMaskBuilder(old.Mask);
                 CaptureSummary source = incoming.Root.Summary, target = previous.Root.Summary;
-                foreach (long number in incoming.Directory.Query(checked((int)(left - request.Candidate.OriginX + source.Left)), checked((int)(top - request.Candidate.OriginY + source.Top)), checked((int)(right - request.Candidate.OriginX + source.Left)), checked((int)(bottom - request.Candidate.OriginY + source.Top)), ProjectionComparison))
+                var incomingBounds = request.Candidate.View.SourceBounds(new BlueprintProjectionBounds(checked((int)(left - request.Candidate.OriginX)), checked((int)(top - request.Candidate.OriginY)), checked((int)(right - left)), checked((int)(bottom - top))));
+                foreach (long number in incoming.Directory.Query(checked(incomingBounds.Left + source.Left), checked(incomingBounds.Top + source.Top), checked(incomingBounds.Right + source.Left), checked(incomingBounds.Bottom + source.Top), ProjectionComparison))
                 {
                     CheckProjectionCommit(request, old.Identity); CaptureChunk chunk = ProjectionChunk(incoming, number);
                     var occupied = new Dictionary<long, ushort>(); var targetBlocks = new HashSet<long>();
@@ -122,9 +127,9 @@ namespace JueMingR.Features.Blueprint
                     {
                         CaptureCell cell = chunk.Cells[i]; cell.X -= source.Left; cell.Y -= source.Top; cell = request.Candidate.Mask.Apply(cell);
                         if (!cell.HasContent) continue;
-                        long worldX = (long)cell.X + request.Candidate.OriginX, worldY = (long)cell.Y + request.Candidate.OriginY;
+                        long worldX = (long)request.Candidate.View.DisplayX(cell.X) + request.Candidate.OriginX, worldY = (long)cell.Y + request.Candidate.OriginY;
                         if (worldX < left || worldX >= right || worldY < top || worldY >= bottom) continue;
-                        int x = checked((int)(worldX - old.OriginX + target.Left)), y = checked((int)(worldY - old.OriginY + target.Top));
+                        int x = checked(old.View.SourceX(checked((int)(worldX - old.OriginX))) + target.Left), y = checked((int)(worldY - old.OriginY + target.Top));
                         occupied[ProjectionDirectory.Key(x, y)] = BlueprintProjectionMask.Layers(cell);
                         // Exact cell intervals avoid joining distant source windows
                         // or sparse endpoints into an enormous read rectangle.

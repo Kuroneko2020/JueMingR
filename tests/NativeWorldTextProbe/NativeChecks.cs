@@ -14,6 +14,17 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="BlueprintMirrorTrimCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>
+                {
+                    NativeBlueprintWorldMatchChecks.InitializeMetadata();
+                    NativeBlueprintMirrorProfileChecks.Run(context);
+                    NativeBlueprintMirrorTrimUiChecks.Run(context);
+                    NativeBlueprintMirrorTrimChecks.Run(context);
+                },processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="BlueprintSupplyPresentationCpu" || scope=="BlueprintSmartPlatformCpu" || scope=="BlueprintActuatorNetworkCpu" || scope=="BlueprintSupplySmartWiringCpu" || scope=="BlueprintConstructionCpu" || scope=="BlueprintPreparationCpu" || scope=="BlueprintAppearanceCpu" || scope=="BlueprintWiringCpu" || scope=="BlueprintSpecialCpu")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
@@ -150,6 +161,9 @@ namespace NativeWorldTextProbe
                     check("actual native construction", c=>NativeBlueprintBuildChecks.Run(c));
                     check("materials UI", NativeBlueprintMaterialsUiChecks.Run);
                     check("fixed scene persistence", NativeBlueprintPersistenceChecks.Run);
+                    check("mirror profile capture and canonical", NativeBlueprintMirrorProfileChecks.Run);
+                    check("mirror/trim real input rows", NativeBlueprintMirrorTrimUiChecks.Run);
+                    check("mirror/trim Host transactions", NativeBlueprintMirrorTrimChecks.Run);
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                 }, processing: true, shortFeedback: true); return 0;
             }

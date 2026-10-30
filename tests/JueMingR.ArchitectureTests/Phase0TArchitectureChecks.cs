@@ -116,6 +116,8 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Blueprint.BlueprintTemplateKey", "JueMingR.Features.Blueprint.BlueprintProjectionMask", "JueMingR.Features.Blueprint.BlueprintProjectionPlacement",
                 "JueMingR.Features.Blueprint.BlueprintSceneRecord", "JueMingR.Features.Blueprint.BlueprintSceneDocument",
                 "JueMingR.Features.Blueprint.BlueprintSceneCodec", "JueMingR.Features.Blueprint.BlueprintSceneHistory",
+                "JueMingR.Features.Blueprint.BlueprintProjectionView", "JueMingR.Features.Blueprint.IBlueprintHorizontalMirrorProfile",
+                "JueMingR.Features.Blueprint.BlueprintProjectionTrimPlan", "JueMingR.Features.Blueprint.BlueprintProjectionEditKind",
                 "JueMingR.Features.Blueprint.BlueprintProjectionCommitRequest", "JueMingR.Features.Blueprint.BlueprintProjectionCommitReceipt", "JueMingR.Features.Blueprint.BlueprintPreviewBudget",
                 "JueMingR.Features.Blueprint.BlueprintProjectionSourceRange", "JueMingR.Features.Blueprint.BlueprintProjectionSourceReceipt",
                 "JueMingR.Features.Blueprint.BlueprintProjectionSourceDemand", "JueMingR.Features.Blueprint.BlueprintProjectionSourcePart",

@@ -182,7 +182,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             target = null;following=ordinal+1;var catalog = MaterialCatalog;
             if (catalog == null || index < 0 || index >= part.Window.Cells.Count || !ProjectionQualificationCurrent(owner)) return false;
             var lane = BuildLane(ordinal);
-            var raw = owner.Mask.Apply(part.Window.Cells[index]);
+            var raw = EffectiveProjectionCell(owner,part.Window,index);
             CaptureObject? obj = part.LogicalObjectId > 0 && part.Window.Objects.Count == 1 ? part.Window.Objects[0] : (CaptureObject?)null;
             var selection = SelectProjectionTarget(owner, raw, obj);
             var cell = selection.Apply(raw);

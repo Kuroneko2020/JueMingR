@@ -35,7 +35,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             this.runtime = runtime; Input = input;
             Library = library;
             preference = new PreferenceDocument<BlueprintPreferences>(new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "config", "features", "blueprint.json"), 65536, true), new BlueprintPreferenceCodec(), new BlueprintPreferences(false, false));
-            projectionHistory = new BlueprintSceneHistory(scope => new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "blueprints", "instances", scope, "scene.bin"), Int32.MaxValue, true));
+            projectionHistory = new BlueprintSceneHistory(scope => new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "blueprints", "instances", scope, "scene.bin"), Int32.MaxValue, true, ".schema1-original"),
+                (storage, value) => { if (value.SourceVersion == 1) ((AtomicFileDocument)storage).RetainLoadedSource(); });
             World = new BlueprintWorldLayer(this, geometry); Toolbar = new BlueprintToolbar(this);
             Pointer = new BlueprintPointerProof(this);
             try { BlueprintHooks.Install(this); Pointer.Install(); projectionChanges.Install(); ready = true; }
@@ -103,6 +104,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             registry.Register(new HotkeyAction(BlueprintControls.LibraryAction, "打开蓝图库", HotkeyContext.Gameplay, () => CanOpenLibrary, OpenLibrary));
             registry.Register(new HotkeyAction(BlueprintControls.MoveAction, "移动蓝图", HotkeyContext.Gameplay, () => CanInvokeMove, MoveProjection));
             registry.Register(new HotkeyAction(BlueprintControls.RemoveAction, "移除蓝图", HotkeyContext.Gameplay, () => CanInvokeRemove, RemoveProjection));
+            registry.Register(new HotkeyAction(BlueprintControls.MirrorAction, "水平镜像", HotkeyContext.Gameplay, () => CanInvokeMirror, MirrorProjection));
+            registry.Register(new HotkeyAction(BlueprintControls.TrimAction, "局部修剪", HotkeyContext.Gameplay, () => CanInvokeTrim, TrimProjection));
+            registry.Register(new HotkeyAction(BlueprintControls.ConfirmTrimAction, "确定修剪", HotkeyContext.Gameplay, () => CanInvokeConfirmTrim, RequestTrimConfirm));
             // F5 and the independent display binding share the preference owner;
             // hiding the toolbar never exits capture or releases its world gate.
             Action toolbar = () => SetToolbar(!ToolbarEnabled);
@@ -121,14 +125,17 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal void ProcessInput()
         {
+            // A current higher-owner cancellation wins before a certified old
+            // click can publish. Native right-click still comes only from its
+            // own certificate, never from raw polling of another UI's input.
+            if (CanEdit && ProjectionEditing && Input.Hotkeys.IsNew((int)Microsoft.Xna.Framework.Input.Keys.Escape))
+            { Input.Hotkeys.SuppressKey((int)Microsoft.Xna.Framework.Input.Keys.Escape); CancelProjection(); return; }
+            Toolbar.Process();
             // Consume at most the immediately preceding mapping. Draw gaps
             // retain a held draft, never queue an uncertified click/release.
             Pointer.Consume(CanEdit);
-            Toolbar.Process();
             if (!CanEdit) {
                 State.Interrupt(); if (ProjectionEditing) InterruptProjection(); Pointer.Cancel(); return; }
-            if (ProjectionEditing && Input.Hotkeys.IsNew((int)Microsoft.Xna.Framework.Input.Keys.Escape))
-            { Input.Hotkeys.SuppressKey((int)Microsoft.Xna.Framework.Input.Keys.Escape); CancelProjection(); return; }
             Pointer.Capture();
         }
         public void OnSessionStarted()
@@ -151,6 +158,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             AdvanceCapture(updateTick);
             PumpProjectionPersistence();
             PumpProjection();
+            PumpProjectionEditor();
             UpdateMaterials(updateTick);
             AdvanceProjectionMatch(updateTick);
             AdvanceAutomaticBuild();

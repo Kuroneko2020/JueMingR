@@ -55,6 +55,8 @@ namespace JueMingR.Features.Blueprint
             internal BlueprintPlacementCatalog RequestedQualificationCatalog, QualificationCatalog;
             internal IReadOnlyList<BlueprintProjectionSourceRange> QualificationSourceRanges, QualificationMatchRanges;
             internal long QualificationGeometryBytes;
+            internal IBlueprintHorizontalMirrorProfile QualificationProfile;
+            internal readonly Dictionary<bool, ProjectionQualifiedGeometry> QualificationViews = new Dictionary<bool, ProjectionQualifiedGeometry>();
             public void Dispose() { if (Opening != null) Opening.Dispose(); Opening = null; if (Index != null) Index.Dispose(); Index = null; }
         }
         private sealed class ProjectionSourceObjectIndex
@@ -63,6 +65,15 @@ namespace JueMingR.Features.Blueprint
             internal readonly List<long> Blocks = new List<long>();
             internal BlueprintPlacementCatalog QualificationCatalog;
             internal BlueprintTargetQualification Qualification;
+            internal IBlueprintHorizontalMirrorProfile QualificationProfile;
+            internal bool QualificationMirrored;
+        }
+        private sealed class ProjectionQualifiedGeometry
+        {
+            internal BlueprintPlacementCatalog Catalog;
+            internal IBlueprintHorizontalMirrorProfile Profile;
+            internal IReadOnlyList<BlueprintProjectionSourceRange> Sources, Proofs;
+            internal long Bytes;
         }
         // One files owner and one global decoded cache serve every instance.
         // References scale with actual scene instances; queued payloads do not.

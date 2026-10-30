@@ -210,7 +210,7 @@ namespace JueMingR.TerrariaHost.F5
 
         internal void Prepare(F5Interaction state, float width, float height, float scale)
         {
-            if (BlueprintControls != null) { state.Layout.SetBlueprintMode(BlueprintControls.Active); state.Layout.SetBlueprintOperation(BlueprintControls.OperationMode); }
+            if (BlueprintControls != null) { state.Layout.SetBlueprintMode(BlueprintControls.Active); state.Layout.SetBlueprintOperation(BlueprintControls.OperationMode); state.Layout.SetBlueprintPreviewRevision(BlueprintControls.PreviewRevision); }
             if(CombatObservationControls!=null)state.Layout.SetObservationOptions(CombatObservationControls.Options);
             state.Layout.Ensure(width, height, scale, state.Page, font, measure);
             if(state.Page==8 && !ReferenceEquals(intervalFont,font))
@@ -389,6 +389,9 @@ namespace JueMingR.TerrariaHost.F5
             if (hover.HotkeyTarget == F5.BlueprintControls.LibraryAction) return "双击设置打开蓝图库的快捷键";
             if (hover.HotkeyTarget == F5.BlueprintControls.MoveAction) return "双击设置移动蓝图的快捷键";
             if (hover.HotkeyTarget == F5.BlueprintControls.RemoveAction) return "双击设置移除蓝图的快捷键";
+            if (hover.HotkeyTarget == F5.BlueprintControls.MirrorAction) return "双击设置水平镜像的快捷键";
+            if (hover.HotkeyTarget == F5.BlueprintControls.TrimAction) return "双击设置局部修剪的快捷键";
+            if (hover.HotkeyTarget == F5.BlueprintControls.ConfirmTrimAction) return "双击设置确定修剪的快捷键";
             if (hover.Kind == F5ElementKind.Hotkey && hover.HotkeyTarget != null)
             {
                 if (hover.HotkeyTarget == F5.BlueprintControls.SaveAction) return "双击设置保存采集的快捷键";
@@ -411,7 +414,8 @@ namespace JueMingR.TerrariaHost.F5
             // unavailable actions still explain their real current gate.
             if (hover.Kind == F5ElementKind.Button && BlueprintControls != null && BlueprintControls.Available(hover.Command) &&
                 (hover.Command == F5Command.BlueprintCapture || hover.Command == F5Command.BlueprintSave ||
-                 hover.Command == F5Command.BlueprintMove || hover.Command == F5Command.BlueprintRemove)) return null;
+                 hover.Command == F5Command.BlueprintMove || hover.Command == F5Command.BlueprintRemove ||
+                 hover.Command == F5Command.BlueprintMirror || hover.Command == F5Command.BlueprintTrim || hover.Command == F5Command.BlueprintConfirmTrim)) return null;
             string blueprintHint = BlueprintControls?.Hint(hover.Command); if (blueprintHint != null) return blueprintHint;
             if (hover.Command == F5Command.BlueprintCapture) return BlueprintControls != null && BlueprintControls.Active ? F5.BlueprintControls.ExitHint : F5.BlueprintControls.StartHint;
             if (hover.Command == F5Command.BlueprintSave) return BlueprintControls?.Hint(hover.Command) ?? F5.BlueprintControls.SaveHint;

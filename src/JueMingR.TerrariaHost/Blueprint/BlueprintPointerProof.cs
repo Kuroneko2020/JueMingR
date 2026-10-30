@@ -84,9 +84,16 @@ namespace JueMingR.TerrariaHost.Blueprint
             // No Draw is not UI ownership. Retain a held draft across skipped
             // draws, but an unobserved release cannot be replayed later. A press
             // lost in that gap cannot become a new press from a later hold.
-            if (valid && !drawn && (!host.State.Dragging || left)) return;
-            if (valid && certified && !ui && left && !host.State.Dragging && !freshLeft) return;
-            host.AcceptProjectionPointer(valid && certified && !ui, left, right, x, y, width, height, subX, subY);
+            bool trusted = valid && certified && !ui;
+            if (right && trusted)
+            {
+                host.ConsumeTrimConfirm(mapping, false);
+                host.AcceptProjectionPointer(true, left, right, x, y, width, height, subX, subY); return;
+            }
+            if (host.ConsumeTrimConfirm(mapping, trusted)) return;
+            if (valid && !drawn && (!host.WorldEditorDragging || left)) return;
+            if (trusted && left && !host.WorldEditorDragging && !freshLeft) return;
+            host.AcceptProjectionPointer(trusted, left, right, x, y, width, height, subX, subY);
         }
         internal void Cancel() {
             pending = completed = inPass = HasPoint = false; lastMapping = -1; lastLeft = true; }

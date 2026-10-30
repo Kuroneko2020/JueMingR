@@ -5,6 +5,50 @@ namespace JueMingR.Features.Blueprint
 {
     internal sealed partial class LibraryWorker
     {
+        private BlueprintProjectionWindow TransformProjectionDoorContext(ProjectionOwner owner, BlueprintProjectionView view, BlueprintProjectionWindow source, bool rowMajor = true)
+        {
+            // Keep all nine known cells, including empty neighbours. Complete
+            // source objects are interpreted once; clip only after semantics.
+            var members = new Dictionary<long, CaptureCell>(); var metadata = new Dictionary<int, CaptureObject>();
+            var ids = new HashSet<int>();
+            foreach (var cell in source.Cells) if (view.Mask.Apply(cell).ObjectId > 0) ids.Add(cell.ObjectId);
+            foreach (int id in ids)
+            {
+                var obj = ProjectionObject(owner, id); obj.X -= owner.Root.Summary.Left; obj.Y -= owner.Root.Summary.Top;
+                var original = ProjectionObjectMembers(owner, id); CaptureObject target = obj; CaptureCell[] cells = null; string reason;
+                if (view.MirroredHorizontally)
+                {
+                    if (!view.Profile.TryMirrorObject(obj, original, view.Width, out target, out cells, out reason)) throw new System.IO.InvalidDataException(reason);
+                    foreach (var cell in cells) members.Add(ProjectionDirectory.Key(view.SourceX(cell.X), cell.Y), cell);
+                }
+                else if (view.Profile != null && !view.Profile.TryNormalizeObject(obj, original, out target, out reason)) throw new System.IO.InvalidDataException(reason);
+                metadata.Add(id, target);
+            }
+            var result = new CaptureCell[source.Cells.Count];
+            for (int i = 0; i < result.Length; i++)
+            {
+                var cell = view.Mask.Apply(source.Cells[i]);
+                if (view.MirroredHorizontally)
+                {
+                    CaptureCell transformed;
+                    if (cell.ObjectId > 0 && members.TryGetValue(ProjectionDirectory.Key(cell.X, cell.Y), out transformed))
+                    {
+                        // The full object supplies Tile appearance; every other
+                        // layer is still selected from this exact masked source.
+                        transformed.Layers = cell.Layers; transformed.WallType = cell.WallType; transformed.WallPaint = cell.WallPaint;
+                        transformed.InvisibleWall = cell.InvisibleWall; transformed.FullbrightWall = cell.FullbrightWall;
+                        transformed.Wires = cell.Wires; transformed.LiquidAmount = cell.LiquidAmount; transformed.LiquidKind = cell.LiquidKind;
+                        transformed.Actuator = cell.Actuator; cell = transformed;
+                    }
+                    else
+                    { string reason; if (!view.Profile.TryMirrorCell(cell, view.Width, out cell, out reason)) throw new System.IO.InvalidDataException(reason); }
+                }
+                result[i] = cell;
+            }
+            if (rowMajor) Array.Sort(result, (a, b) => a.Y == b.Y ? a.X.CompareTo(b.X) : a.Y.CompareTo(b.Y));
+            var objects = new List<CaptureObject>(); foreach (var obj in source.Objects) { CaptureObject target; if (metadata.TryGetValue(obj.Id, out target)) objects.Add(target); }
+            return new BlueprintProjectionWindow(source.Identity, source.WindowGeneration, source.Summary, view.DisplayBounds(source.Bounds), result, objects.ToArray(), true, view.Mask, view, source, !rowMajor);
+        }
         // Source transport must be self-contained after ordinary siblings are
         // released and without a viewport Draw. Only the three possible door
         // columns are copied. Other layers keep their original coordinates;

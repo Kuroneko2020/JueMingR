@@ -34,6 +34,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "sparse source slices remain independent of viewport latest", () => MatchSources(Path.Combine(area, "match-sources")));
             Run(failures, "source batches preserve members layers prefix and lifetime", () => SourceBatches(Path.Combine(area, "source-batches")));
             Run(failures, "door source context survives cross-block siblings within original budgets", () => SourceDoorContexts(Path.Combine(area, "door-contexts")));
+            Run(failures, "trim preview exact layers whole object and mirrored source mask", () => EditTrim(Path.Combine(area, "edit-trim")));
             if (before == failures.Count)
             {
                 string resolved = Path.GetFullPath(area), parent = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
@@ -44,6 +45,36 @@ namespace JueMingR.ArchitectureTests
         }
         private static void Run(IList<string> failures, string name, Action check) { try { check(); } catch (Exception e) { failures.Add("BlueprintProjection " + name + ": " + e); } }
         private static void Require(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
+        private static void EditTrim(string path)
+        {
+            var obj=new CaptureObject{Id=1,X=38,Y=91,Width=2,Height=1,Type=14,Reliable=true};
+            Fixture fixture=Write(path,5,1,5,n=>
+            {
+                var cell=Tile(37+(int)n,91);
+                if(n==1 || n==2){cell.ObjectId=1;cell.TileType=14;cell.FrameX=(short)((n-1)*18);cell.FrameY=0;}
+                if(n==2){cell.Layers|=CaptureLayer.Wall|CaptureLayer.Wire|CaptureLayer.Liquid|CaptureLayer.Actuator;cell.WallType=7;cell.Wires=5;cell.LiquidAmount=80;cell.Actuator=true;}
+                return cell;
+            },new[]{obj});
+            using(var files=new CountedFiles(path))using(var state=new LibraryState(files))
+            {
+                var identity=Open(state,fixture);var other=Open(state,fixture,2);
+                var summary=new CaptureSummary{Left=37,Top=91,Width=5,Height=1,ContentCount=5};
+                var placement=new BlueprintProjectionPlacement(identity,summary,100,100,1,totalLayerCount:10);
+                var request=new BlueprintProjectionCommitRequest(11,80,5,placement,Array.Empty<BlueprintProjectionPlacement>(),BlueprintProjectionEditKind.Trim,new BlueprintProjectionBounds(1,0,1,1),1);
+                var preview=Commit(state,request);var plan=preview.TrimPlan;
+                Require(preview.Succeeded && plan!=null && plan.HasContent && plan.RemovedLayerCount==2 && plan.ObjectBounds.Count==1,"touching one member expands exactly two Tile members in immutable preview");
+                var members=Window(state,identity,100,new BlueprintProjectionBounds(0,0,5,1));var outside=members.Cells.Single(c=>c.X==2);
+                var remaining=plan.Mask.Apply(outside);
+                Require((remaining.Layers&CaptureLayer.Tile)==0 && (remaining.Layers&(CaptureLayer.Wall|CaptureLayer.Wire|CaptureLayer.Liquid|CaptureLayer.Actuator))==(CaptureLayer.Wall|CaptureLayer.Wire|CaptureLayer.Liquid|CaptureLayer.Actuator) && remaining.Wires==5,"expanded outside member loses only Tile, retaining wall two wires liquid actuator");
+                Require(placement.Mask.RemovedLayerCount==0 && preview.Masks.Count==0 && preview.RetiredInstanceIds.Count==0,"preview does not mutate source scene or cover siblings");
+                var repeat=Commit(state,new BlueprintProjectionCommitRequest(11,81,5,new BlueprintProjectionPlacement(identity,summary,100,100,1,plan.Mask),Array.Empty<BlueprintProjectionPlacement>(),BlueprintProjectionEditKind.Trim,new BlueprintProjectionBounds(1,0,1,1),2));
+                Require(!repeat.TrimPlan.HasContent && repeat.TrimPlan.RemovedLayerCount==0,"already removed range cannot XOR or report a new change");
+                var mirrored=Commit(state,new BlueprintProjectionCommitRequest(11,82,5,new BlueprintProjectionPlacement(identity,summary,100,100,1,mirroredHorizontally:true),Array.Empty<BlueprintProjectionPlacement>(),BlueprintProjectionEditKind.Trim,new BlueprintProjectionBounds(3,0,1,1),3));
+                Require(mirrored.TrimPlan.RemovedLayerCount==2 && (mirrored.TrimPlan.Mask.Apply(members.Cells.Single(c=>c.X==1)).Layers&CaptureLayer.Tile)==0 && (mirrored.TrimPlan.Mask.Apply(members.Cells.Single(c=>c.X==0)).Layers&CaptureLayer.Tile)!=0,"display column three maps to source one without shifting source mask");
+                var sibling=Window(state,other,101,new BlueprintProjectionBounds(0,0,5,1));Require(sibling.Cells.Count==5 && sibling.Cells.Count(c=>(c.Layers&CaptureLayer.Tile)!=0)==5,"same object id on another instance remains whole");
+                state.ReleaseProjection(identity);state.ReleaseProjection(other);
+            }
+        }
         private static BlueprintProjectionQualificationReceipt Qualification(LibraryState state, BlueprintProjectionIdentity identity,
             BlueprintPlacementCatalog catalog, BlueprintProjectionMask mask)
         {

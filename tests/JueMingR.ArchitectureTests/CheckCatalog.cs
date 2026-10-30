@@ -22,6 +22,7 @@ namespace JueMingR.ArchitectureTests
             Add("BlueprintPreviewChecks", "blueprint-host", (root, failures) => BlueprintPreviewChecks.Check(failures));
             Add("BlueprintLibraryChecks", "blueprint-host", (root, failures) => BlueprintLibraryChecks.Check(failures));
             Add("BlueprintProjectionChecks", "blueprint-host", (root, failures) => BlueprintProjectionChecks.Check(failures));
+            Add("BlueprintMirrorTrimChecks", "blueprint-host", (root, failures) => BlueprintMirrorTrimChecks.Check(failures));
             Add("BlueprintWorldMatchChecks", "blueprint-host", (root, failures) => BlueprintWorldMatchChecks.Check(failures));
             Add("BlueprintMaterialsChecks", "blueprint-host", (root, failures) => BlueprintMaterialsChecks.Check(failures));
             Add("CombatChecks", "combat-host", (root, failures) => CombatChecks.Check(failures));
@@ -38,6 +39,7 @@ namespace JueMingR.ArchitectureTests
             Add("ExplorationChecks", "map-host", (root, failures) => ExplorationChecks.Check(failures));
             Add("MapPersistenceChecks", "map-host", (root, failures) => MapPersistenceChecks.Check(failures));
             Add("HotkeyCoreChecks", "hotkeys", (root, failures) => HotkeyCoreChecks.Check(failures));
+            Add("HotkeyAdmissionChecks", "hotkeys", (root, failures) => HotkeyAdmissionChecks.Check(failures));
             Add("DynamicHotkeyChecks", "hotkeys", (root, failures) => DynamicHotkeyChecks.Check(failures));
             Add("HotkeyStorageChecks", "hotkeys", (root, failures) => HotkeyStorageChecks.Check(root, failures));
             Add("QuickItemChecks", "quick-items-host", (root, failures) => QuickItemChecks.Check(failures));

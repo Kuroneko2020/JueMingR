@@ -37,8 +37,8 @@ namespace JueMingR.Features.Blueprint
         // it never owns the accepted capture/save command slot or its token.
         public bool RequestProjectionOpen(BlueprintProjectionIdentity identity) { return worker.RequestProjectionOpen(identity); }
         public bool RequestProjectionRestore(BlueprintProjectionIdentity identity, BlueprintProjectionMask mask) { return worker.RequestProjectionOpen(identity, mask ?? BlueprintProjectionMask.Empty); }
-        public bool RequestProjectionQualification(BlueprintProjectionIdentity identity, BlueprintPlacementCatalog catalog, BlueprintProjectionMask mask)
-        { return worker.RequestProjectionQualification(identity, catalog, mask); }
+        public bool RequestProjectionQualification(BlueprintProjectionIdentity identity, BlueprintPlacementCatalog catalog, BlueprintProjectionMask mask, BlueprintProjectionView view = null)
+        { return worker.RequestProjectionQualification(identity, catalog, mask, view); }
         public bool TryTakeProjectionQualification(out BlueprintProjectionQualificationReceipt receipt) { return worker.TryTakeProjectionQualification(out receipt); }
         public bool RequestProjectionWindow(BlueprintProjectionIdentity identity, long windowGeneration, BlueprintProjectionBounds localBounds) { return worker.RequestProjectionWindow(identity, windowGeneration, localBounds); }
         public void CloseProjection() { worker.CloseProjection(); }
@@ -48,8 +48,8 @@ namespace JueMingR.Features.Blueprint
         public void CancelProjectionCommit(long sessionGeneration, long transactionId) { worker.CancelProjectionCommit(sessionGeneration, transactionId); }
         public bool TryTakeProjectionCommit(out BlueprintProjectionCommitReceipt receipt) { return worker.TryTakeProjectionCommit(out receipt); }
         public bool TryTakeProjectionReceipt(out BlueprintProjectionReceipt value) { return worker.TryTakeProjectionReceipt(out value); }
-        public bool RequestProjectionSource(BlueprintProjectionIdentity identity, long generation, int range, int objectId = 0, int offset = 0, long capabilityRevision = 0) { return worker.RequestProjectionSource(identity, generation, range, objectId, offset, capabilityRevision); }
-        public bool RequestProjectionSources(BlueprintProjectionIdentity identity, long generation, IReadOnlyList<BlueprintProjectionSourceDemand> demands, long capabilityRevision = 0) { return worker.RequestProjectionSources(identity, generation, demands, capabilityRevision); }
+        public bool RequestProjectionSource(BlueprintProjectionIdentity identity, long generation, int range, int objectId = 0, int offset = 0, long capabilityRevision = 0, BlueprintProjectionView view = null) { return worker.RequestProjectionSource(identity, generation, range, objectId, offset, capabilityRevision, view); }
+        public bool RequestProjectionSources(BlueprintProjectionIdentity identity, long generation, IReadOnlyList<BlueprintProjectionSourceDemand> demands, long capabilityRevision = 0, BlueprintProjectionView view = null) { return worker.RequestProjectionSources(identity, generation, demands, capabilityRevision, view); }
         public void ClearProjectionSource(BlueprintProjectionIdentity identity) { worker.ClearProjectionSource(identity); }
         public bool TryTakeProjectionSource(out BlueprintProjectionSourceReceipt receipt) { return worker.TryTakeProjectionSource(out receipt); }
 #if DEBUG

@@ -23,20 +23,35 @@ namespace JueMingR.TerrariaHost.Blueprint
                 foreach (var fixedProjection in host.ProjectionScene)
                     if (!ReferenceEquals(fixedProjection, host.ProjectionMovingSource) && !DrawProjection(fixedProjection)) return;
                 var projection = host.ProjectionCandidate;
-                if (projection?.Positioned == true && !DrawProjection(projection)) return;
-                if (host.ProjectionEditing && projection?.Summary != null)
+                if (host.ProjectionCandidateVisible && projection?.Positioned == true && !DrawProjection(projection)) return;
+                foreach (var fixedProjection in host.ProjectionScene)
+                    if (!ReferenceEquals(fixedProjection,host.ProjectionMovingSource))
+                        Outline(fixedProjection.OriginX,fixedProjection.OriginY,fixedProjection.Summary.Width,fixedProjection.Summary.Height,view,
+                            ReferenceEquals(fixedProjection,host.ProjectionEditTarget) ? Color.FromNonPremultiplied(255,210,75,220) : Color.FromNonPremultiplied(90,215,240,180));
+                if (host.ProjectionEditing && host.ProjectionCandidateVisible && projection?.Summary != null)
                 {
                     int x = projection.OriginX + (projection.Summary.Width - 1) / 2, y = projection.OriginY + (projection.Summary.Height - 1) / 2;
                     Cross(x, y);
-                    Outline(projection.OriginX, projection.OriginY, projection.Summary.Width, projection.Summary.Height, view, Color.FromNonPremultiplied(100, 200, 255, 90));
+                    Outline(projection.OriginX, projection.OriginY, projection.Summary.Width, projection.Summary.Height, view, Color.FromNonPremultiplied(255,210,75,220));
                 }
-                var hover = host.ProjectionHover;
-                if (hover != null)
+                var trim = host.ProjectionEditTarget;
+                if (host.TrimPointerVisible && trim != null)
                 {
-                    var eligibility = host.ProjectionHoverMoveEligibility;
-                    var color = eligibility == BlueprintProjectionMoveEligibility.Matched ? Color.FromNonPremultiplied(255, 120, 100, 190) :
-                        eligibility == BlueprintProjectionMoveEligibility.Checking ? Color.FromNonPremultiplied(255, 205, 100, 190) : Color.FromNonPremultiplied(160, 230, 255, 190);
-                    Outline(hover.OriginX, hover.OriginY, hover.Summary.Width, hover.Summary.Height, view, color);
+                    var bounds = host.TrimDisplayBounds;
+                    if (bounds.Width > 0 && bounds.Height > 0)
+                    {
+                        FillClipped(trim.OriginX+bounds.Left,trim.OriginY+bounds.Top,bounds.Width,bounds.Height,view,Color.FromNonPremultiplied(255,55,65,65));
+                        Outline(trim.OriginX+bounds.Left,trim.OriginY+bounds.Top,bounds.Width,bounds.Height,view,Color.FromNonPremultiplied(255,65,75,220));
+                    }
+                    var plan = host.TrimPlan;
+                    if (plan != null) foreach (var source in plan.ObjectBounds)
+                    {
+                        var extension=trim.View.DisplayBounds(source);
+                        FillClipped(trim.OriginX+extension.Left,trim.OriginY+extension.Top,extension.Width,extension.Height,view,Color.FromNonPremultiplied(255,55,65,90));
+                        Outline(trim.OriginX+extension.Left,trim.OriginY+extension.Top,extension.Width,extension.Height,view,Color.FromNonPremultiplied(255,75,85,230));
+                    }
+                    if (!host.TrimDragging && host.CanRetainEdit && host.Pointer.HasPoint)
+                        FillClipped(host.Pointer.CellX,host.Pointer.CellY,1,1,view,Color.FromNonPremultiplied(255,55,65,150));
                 }
             }
             if (!host.State.Active) return;
@@ -63,7 +78,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool DrawProjection(BlueprintProjectionPlacement projection)
         {
-            projection.Renderer.Draw(projection.OriginX, projection.OriginY);
+            projection.Renderer.Draw(projection.OriginX, projection.OriginY,projection.Summary.Width,projection.MirroredHorizontally);
             string error; if (projection.Renderer.TryTakeError(out error)) { host.ProjectionDrawFailed(projection, error); return false; } return true;
         }
         private static void Cross(int x, int y)
@@ -85,6 +100,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private static void Fill(int left, int top, int right, int bottom, Color color)
         { FillPixels(left * 16f, top * 16f, right * 16f, bottom * 16f, color); }
+        private static void FillClipped(int left,int top,int width,int height,Platform.WorldTargets.WorldTargetView view,Color color)
+        {
+            int l=Math.Max(left,view.X),t=Math.Max(top,view.Y),r=Math.Min(left+width,view.X+view.Width),b=Math.Min(top+height,view.Y+view.Height);
+            if(l<r && t<b)Fill(l,t,r,b,color);
+        }
         private static void FillPixels(float left, float top, float right, float bottom, Color color)
         {
             Vector2 a = Main.ReverseGravitySupport(new Vector2(left, top) - Main.screenPosition);
