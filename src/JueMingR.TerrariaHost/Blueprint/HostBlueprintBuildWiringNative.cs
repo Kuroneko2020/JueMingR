@@ -238,13 +238,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                         ReferenceEquals(FirstSpecialMaterial(flight.Player, type), source.Item)) found = true;
                 if (!found) { FailWiringReply(); return null; }
             }
-            foreach (var source in flight.Dependencies) source.Stack = source.Item.stack;
-            flight.Source.Stack = flight.Source.Item.stack;
             reply.Decoding = true; reply.DecodeType = type; reply.DecodeCount = count; bool ended = false;
             return error => {
                 if (ended) return; ended = true; reply.Decoding = false;
                 if (!ReferenceEquals(wiringReply, reply)) return;
-                if (error != null || !BuildConsumptionValid(flight)) { FailWiringReply(); return; }
+                if (error != null || !BuildConsumptionValid(flight) || !WiringPendingSourcesCurrent(reply, type, count)) { FailWiringReply(); return; }
                 int spent = 0;
                 foreach (var source in flight.Dependencies) if (source.Type == type) spent += source.Stack - (source.Item.IsAir ? 0 : source.Item.stack);
                 if (spent != count) { FailWiringReply(); return; }
@@ -276,12 +274,21 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (error != null || !candidate.SawInstall || !PendingActuatorBodyCurrent(candidate) || !candidate.Tile.actuator()) candidate.Invalid = true;
             };
         }
-        private bool WiringPendingSourcesCurrent(WiringReply reply)
+        private bool WiringPendingSourcesCurrent(WiringReply reply, int decodingType = 0, int decodingCount = 0)
         {
             foreach (var source in reply.Flight.Dependencies)
             {
                 var current = reply.Flight.Player.inventory[source.Slot];
-                if (!ReferenceEquals(current, source.Item) || !current.IsAir && current.type != source.Type || current.stack < 0) return false;
+                // Stack remains the submitted native baseline. Only this
+                // pair's already-confirmed110s, plus the exact decoder now
+                // returning, may explain a change. Re-basing from current
+                // inventory would hide same-Item loss (including death's
+                // TurnToAir) before/between two otherwise accurate zeros.
+                int confirmed = source.Type == 530 ? reply.WireCount : source.Type == 849 ? reply.ActuatorCount : 0;
+                int spent = source.Primary ? confirmed : 0;
+                if (source.Primary && source.Type == decodingType) spent += decodingCount;
+                if (!ReferenceEquals(current, source.Item) || !current.IsAir && current.type != source.Type || current.stack < 0 ||
+                    source.Stack - spent < 0 || (current.IsAir ? 0 : current.stack) != source.Stack - spent) return false;
             }
             return true;
         }
@@ -355,7 +362,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             foreach (var source in flight.Dependencies)
             { var current = flight.Player.inventory[source.Slot]; spent |= (current.IsAir ? 0 : current.stack) < source.Stack; }
             bool needsMaterial = flight.Operation.Kind == BlueprintBuildOperationKind.AddWire || flight.Operation.Kind == BlueprintBuildOperationKind.AddActuator;
-            if (!applied && spent || applied && needsMaterial && !spent) { HoldUnconfirmedBuild(flight); return; }
+            // The correlated native decoder has proved both ordered110s and
+            // their actual debit. Zero can mean another writer won the target
+            // before this109, so its visible result needs no debit from us.
+            // This receipt releases only consumption duty, never temporary
+            // actuator ownership or success for a still-missing world bit.
+            bool confirmedZero = reply != null && ReferenceEquals(reply.Flight, flight) && reply.Stage == 2 &&
+                reply.WireCount == 0 && reply.ActuatorCount == 0 && actualSpent == 0;
+            if (!applied && spent || applied && needsMaterial && !spent && !confirmedZero) { HoldUnconfirmedBuild(flight); return; }
             flight.Checked = true;
             if (flight.Target.Range != null)
             { if (applied) RememberBuildFrontier(flight.Target); else RequestBuildEligibilityRetry(flight.Target); }

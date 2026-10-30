@@ -59,7 +59,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 int type = target.Cell.TileType;
                 if (!tileSame || target.Cell.Slope > 4 || target.Cell.HalfBrick && target.Cell.Slope != 0 ||
                     shape == null || shape.RequiresObject && !shape.Platform ||
-                    !Main.tileSolid[type] && !TileID.Sets.Platforms[type] || Main.tileHammer[type] || Main.tileAxe[type] ||
+                    !OrdinaryHammerShapeType(type) ||
                     target.Cell.Slope == actual.Cell.Slope && target.Cell.HalfBrick == actual.Cell.HalfBrick) return false;
                 // Platforms never produce slope 3/4 in their native hammer
                 // cycle. Match can retain an already correct one; manufacturing
@@ -101,6 +101,16 @@ namespace JueMingR.TerrariaHost.Blueprint
                 SupplyDestination = 54, PrimaryMaximum = 1, HeldMaximum = 0
             };
             return true;
+        }
+
+        private static bool OrdinaryHammerShapeType(int type)
+        {
+            // IsTilePoundable also admits special trap/track/pipe/pad consumers
+            // and doll poses. Only the ordinary shape branch is
+            // ours; NonSolidSaveSlopes additionally includes unpoundable 131.
+            if (type == TileID.Traps || type == TileID.MinecartTrack || type == TileID.WirePipe ||
+                type == TileID.ProjectilePressurePad || type == TileID.DisplayDoll || Main.tileHammer[type] || Main.tileAxe[type]) return false;
+            return Main.tileSolid[type] || TileID.Sets.Platforms[type] || TileID.Sets.IsLivingFire[type] || type == TileID.ChimneySmoke;
         }
 
         private bool TryPrepareAppearanceBuild(BlueprintBuildTarget target, Player p, out BuildFlight result, BuildOperationPlan plan)
@@ -190,6 +200,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                     BlueprintWorldMatchSample neighbor;
                     if (!ReadBuildCell(x, y, out neighbor) || Main.tile[x, y] == null) return false;
                 }
+            // The player's pounding consumer checks these separately from
+            // CanPoundTile, after spending item time. Wait before starting the
+            // use, with the existing world-change / bounded-retry recovery.
+            if (WorldGen.IsLockedDoor(Main.tile[target.WorldX, target.WorldY - 1]) ||
+                WorldGen.IsLockedDoor(Main.tile[target.WorldX, target.WorldY + 1]))
+            { RequestBuildEligibilityRetry(target); return false; }
             var bounds = new Rectangle(target.WorldX * 16, target.WorldY * 16, 16, 16);
             for (int index = 0; index < Main.maxPlayers; index++)
             {

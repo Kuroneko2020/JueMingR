@@ -33,7 +33,9 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Player),"ItemCheck_CheckCanUse_Inner",new[]{typeof(Item),typeof(bool)},nameof(PlacementCheckBefore),nameof(PlacementCheckAfter),nameof(PlacementCheckFinal));
             Patch(typeof(Player),"ItemCheck_StartActualUse",new[]{typeof(Item)},null,nameof(Started));
             Patch(typeof(Player),"ItemCheck_AutoReuseLogic",new[]{typeof(Item)},null,nameof(AfterReuse));
-            Patch(typeof(Player),"DropItems",new[]{typeof(bool)},nameof(Boundary));
+            Patch(typeof(Player),"DropItems",new[]{typeof(bool)},nameof(Boundary),null,nameof(DeathFinal));
+            Patch(typeof(Player),"KillMe",new[]{typeof(Terraria.DataStructures.PlayerDeathReason),typeof(double),typeof(int),typeof(bool)},nameof(DeathBefore),null,nameof(DeathFinal));
+            Patch(typeof(Player),"dropItemCheck",Type.EmptyTypes,nameof(CursorSyncBefore),null,nameof(CursorSyncFinal));
             Patch(typeof(Player),"ToggleInv",Type.EmptyTypes,nameof(InventoryToggle));
             Patch(typeof(Player),"OpenInventory",new[]{typeof(bool)},nameof(InventoryOpen));
             Patch(typeof(Main),"DrawInterface",new[]{typeof(Microsoft.Xna.Framework.GameTime)},nameof(InterfaceBefore),nameof(InterfaceAfter),nameof(InterfaceFinal));
@@ -204,7 +206,20 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private static void ProjectileAfter(Projectile __instance,ref ProjectileLease __state){EndProjectile(__instance,ref __state,null);}
         private static Exception ProjectileFinal(Projectile __instance,ref ProjectileLease __state,Exception __exception){if(__exception!=null)EndProjectile(__instance,ref __state,__exception);return __exception;}
-        private static void Boundary(Player __instance){if(ReferenceEquals(__instance,host?.Player))host.Use.Retire();}
+        private static void CursorSyncBefore(Player __instance,out Items.ItemMaterialPreparation.CursorSyncScope __state)
+        {__state=Items.ItemMaterialPreparation.BeforeNativeCursorSync(__instance);}
+        private static Exception CursorSyncFinal(Items.ItemMaterialPreparation.CursorSyncScope __state,Exception __exception)
+        {Items.ItemMaterialPreparation.AfterNativeCursorSync(__state,__exception);return __exception;}
+        private static void DeathBefore(Player __instance,out Items.ItemMaterialPreparation.DeathScope __state)
+        {__state=Items.ItemMaterialPreparation.EnterDeathCall(__instance);}
+        private static void Boundary(Player __instance,out Items.ItemMaterialPreparation.DeathScope __state)
+        {
+            __state=Items.ItemMaterialPreparation.EnterDeathCall(__instance);
+            Items.ItemMaterialPreparation.BeforeDeathInventory(__instance);
+            if(ReferenceEquals(__instance,host?.Items.World.SessionPlayer))host.Use.DeathInventoryBoundary(__instance);
+        }
+        private static Exception DeathFinal(Items.ItemMaterialPreparation.DeathScope __state,Exception __exception)
+        {Items.ItemMaterialPreparation.LeaveDeathCall(__state);return __exception;}
         // Reference state exists before Begin; even a Prefix exception midway
         // through temporary input borrowing reaches the same idempotent cleanup.
         private sealed class Lease {internal long Token,Generation;internal Combat.CombatInputScope Combat;internal Combat.HostAttackAim.PlacementUse Placement;internal Blueprint.BlueprintHooks.MouseLease Blueprint;}

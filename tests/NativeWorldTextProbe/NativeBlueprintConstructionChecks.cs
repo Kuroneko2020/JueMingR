@@ -48,6 +48,8 @@ namespace NativeWorldTextProbe
                     check("finite original inventory input preparation",()=>ConstructionMaterialPreparation(context,host,tools,input));
                     if(!preparationOnly && first==null)
                     {
+                    if(family==null || family=="SupplyPresentation")
+                        check("native cursor takeover and death receipt lifecycle",()=>ConstructionSupplyLifecycle(context,host,tools,input));
                     if(family=="SmartPlatform")check("natural smart platform slopes and fallback",()=>ConstructionSmartPlatform(context,host,tools,input));
                     if(family=="ActuatorNetwork")check("original multiplayer temporary actuator provenance",()=>ConstructionWiringActuatorNetwork(context,host,tools,input));
                     if(family=="SupplyPresentation")

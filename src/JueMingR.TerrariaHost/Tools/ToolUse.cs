@@ -49,6 +49,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal Func<ToolBuildConsumer,Item,bool,bool,bool> NativeConsumer;
         internal Func<ToolBuildConsumer,Action<Exception>> NativeConsumerScope;
         internal Func<long,bool> AcquireLease;
+        internal Action<long> ManualTaken;
 #if JMR_BLUEPRINT_DIAGNOSTIC
         internal long BlueprintDiagnosticFlight;
 #endif
@@ -70,6 +71,7 @@ namespace JueMingR.TerrariaHost.Tools
         private ToolInputGesture nativeGesture;
         private bool cursorBorrowed,oldSmartMouse,oldSmartPad,ownSmartMouse,ownSmartPad;
         private bool directionBorrowed;
+        private bool deathRetire;
         private int oldDirection,ownDirection;
         private Projectile drill;
         private int drillKey;
@@ -150,7 +152,7 @@ namespace JueMingR.TerrariaHost.Tools
             token=next;session=host.Runtime.Generation;selection=host.SelectionIntent;
             nextContention=host.Input.Frame+Math.Max(1,item.useAnimation);
             pulsed=checkedItem=started=cancelled=notified=nativeReady=nativeBaseline=targetRejected=false;
-            yieldExternal=returnRequested=false;
+            yieldExternal=returnRequested=deathRetire=false;
             candidate.Admitted?.Invoke();
             return true;
         }
@@ -196,7 +198,16 @@ namespace JueMingR.TerrariaHost.Tools
         // guard never blocks a real manual move or a newer selection intent.
         internal bool ProtectOriginal(Item source)
         {return Active && ReferenceEquals(player,host.Player) && session==host.Runtime.Generation && selection==host.SelectionIntent && originalItem!=null && ReferenceEquals(source,originalItem) && ReferenceEquals(player.inventory[original],source) && source.type==originalType && source.stack>0 && player.selectedItemState.HasActiveOverride;}
-        private void HandToManual(){Restore();Cancel();host.Items.Ownership.EndUse(session,token);}
+        internal void HandToManual()
+        {if(!Active)return;Intent.ManualTaken?.Invoke(token);Restore();Cancel();host.Items.Ownership.EndUse(session,token);}
+        internal void DeathInventoryBoundary(Player p)
+        {
+            if(!Active || !ReferenceEquals(p,player))return;
+            deathRetire=true;Restore();Cancel();
+            // A native ItemCheck owns its callback until End. Retiring on this
+            // stack would detach its receipt before death's known mutation.
+            if(!InNativeUse)Retire();
+        }
         internal void BeforeSync(Player p)
         {
             // A genuine first hit established this automatic region. After
@@ -212,7 +223,7 @@ namespace JueMingR.TerrariaHost.Tools
                 if(candidate!=null && candidate.Slot==p.selectedItem)Acquire(p,candidate);
             }
             if(!ReferenceEquals(p,player))return;
-            if(host.ManualLeft || host.ManualRight || PlayerInput.Triggers.Current.SmartSelect){
+            if(host.ManualLeft || host.ManualRight || PlayerInput.Triggers.Current.SmartSelect || PlayerInput.Triggers.Current.Throw){
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 if(Building)BlueprintBuildTrace.Count(BuildTraceReason.ManualInput);
 #endif
@@ -448,6 +459,11 @@ namespace JueMingR.TerrariaHost.Tools
         {
             if(operation==0 || operation!=token || generation!=0 && generation!=nativeGeneration || !ReferenceEquals(p,player))return;
             Restore();bool entered=InNativeUse;InNativeUse=false;if(!entered)return;checkedItem=true;
+            if(deathRetire)
+            {
+                if(error!=null){host.HoldUnknown((1UL<<Intent.Slot)|Intent.MaterialSlots);Notify(true);}
+                Retire();return;
+            }
             bool neutral=Building && !nativeBaseline;
             if(neutral){if(error!=null)Cancel();}
             else if(error!=null)

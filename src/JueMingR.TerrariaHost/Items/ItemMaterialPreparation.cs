@@ -74,7 +74,7 @@ namespace JueMingR.TerrariaHost.Items
         internal bool TryPrepare(Player p, int sourceSlot, int destination, BlueprintProjectionIdentity identity, out int currentSlot)
         {
             currentSlot = -1;
-            if (!OnGameThread || p == null || identity == null || nativeCalls != 0 || tailPending || destination != 0 && destination != 54) return false;
+            if (!OnGameThread || p == null || identity == null || nativeCalls != 0 || lifecycleCalls != 0 || tailPending || destination != 0 && destination != 54) return false;
             ObserveInventory(p);
             if (HasWork)
             {
@@ -141,7 +141,7 @@ namespace JueMingR.TerrariaHost.Items
         private bool OnGameThread { get { return Thread.CurrentThread.ManagedThreadId == tools.Items.ThreadId; } }
         private bool SameSessionIdentity(Player p)
         { return p != null && session > 0 && session == tools.Runtime.Generation && session == tools.Items.Ownership.Session && ReferenceEquals(player, p) &&
-            ReferenceEquals(p, tools.Player) && ReferenceEquals(inventory, p.inventory); }
+            ReferenceEquals(p, tools.Items.World.SessionPlayer) && ReferenceEquals(inventory, p.inventory); }
         private bool SameSession(Player p)
         { return SameSessionIdentity(p) && tools.Items.Ownership.OwnsUse(session, token); }
         private bool PhysicalInput
@@ -150,7 +150,7 @@ namespace JueMingR.TerrariaHost.Items
             {
                 return tools.ManualLeft || tools.ManualRight || PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed ||
                     PlayerInput.MouseInfo.RightButton == ButtonState.Pressed || PlayerInput.Triggers.Current.SmartSelect ||
-                    PlayerInput.Triggers.Current.Inventory || Main.keyState.IsKeyDown(Keys.Escape);
+                    PlayerInput.Triggers.Current.Inventory || PlayerInput.Triggers.Current.Throw || Main.keyState.IsKeyDown(Keys.Escape);
             }
         }
         private static bool Modifiers
@@ -404,6 +404,7 @@ namespace JueMingR.TerrariaHost.Items
             ownsInventory = false;
             if (session > 0) tools.Items.Ownership.EndUse(session, token);
             abandonedDisplaced.Clear(); guardPlayer = null; guardInventory = null; guardSession = 0;
+            cursorHandoff = null; cursorPlayer = null; cursorOriginal = cursorClone = null;
             ResetReceipt();
         }
         private void LoseIdentity(string reason, bool manual)
@@ -428,7 +429,8 @@ namespace JueMingR.TerrariaHost.Items
         }
         private void FinishAbandonment()
         {
-            if (phase != Phase.Abandoning || nativeCalls != 0 || tailPending) return;
+            if (phase != Phase.Abandoning || nativeCalls != 0 || lifecycleCalls != 0 || tailPending ||
+                tools.Use.InNativeUse && tools.Use.Operation == token) return;
             if (displacedMoved && displaced != null && !displaced.IsAir && !ReferenceEquals(inventory[54], displaced) && !abandonedDisplaced.Contains(displaced))
             {
                 guardPlayer = player; guardInventory = inventory; guardSession = session;
@@ -576,6 +578,7 @@ namespace JueMingR.TerrariaHost.Items
         }
         private void BeforeTail()
         {
+            RefreshCursorHandoff();
             if (!OnGameThread || !HasWork || phase == Phase.Using || phase == Phase.Ready || phase == Phase.Unknown || phase == Phase.Abandoning) return;
             // A skipped tail cannot be replaced by another scheduling call.
             // Its original input write must finish before a next native click.

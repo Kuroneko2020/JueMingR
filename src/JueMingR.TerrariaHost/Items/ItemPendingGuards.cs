@@ -55,6 +55,10 @@ namespace JueMingR.TerrariaHost.Items
             Type[] fill = { typeof(Item), typeof(GetItemSettings), typeof(Item), typeof(int) };
             Patch(harmony, typeof(Player), "GetItem_FillIntoOccupiedSlot", fill, nameof(Fill));
             Patch(harmony, typeof(Player), "GetItem_FillEmptyInventorySlot", fill, nameof(Fill));
+            foreach (string name in new[] { "GetItem_FillIntoOccupiedSlot", "GetItem_FillEmptyInventorySlot" })
+                harmony.Patch(AccessTools.DeclaredMethod(typeof(Player), name, fill),
+                    prefix: new HarmonyMethod(typeof(ItemPendingGuards), nameof(BeforeDeathReturnFill)),
+                    finalizer: new HarmonyMethod(typeof(ItemPendingGuards), nameof(AfterDeathReturnFill)));
             Patch(harmony, typeof(Player), "FillAmmo", new[] { typeof(Item), typeof(GetItemSettings) }, transpiler: nameof(ItemGuardTranspilers.AmmoReceiver));
             Patch(harmony, typeof(Player), "PickAmmo_IterateRange", new[] { typeof(Item), typeof(Item[]), typeof(int[]), typeof(bool) }, nameof(Ammo));
             Patch(harmony, typeof(Player), "ItemCheck_TryStartUse", new[] { typeof(Item), typeof(bool) }, nameof(StartUse));
@@ -204,6 +208,7 @@ namespace JueMingR.TerrariaHost.Items
         { if (Active && host.Ownership.ProtectedSlots != 0 && ReferenceEquals(__1, host.World.SessionPlayer.inventory)) __2 = __2.Where(i => !host.Ownership.IsProtected(i)).ToArray(); }
         private static bool StartUse(Player __instance, Item __0, ref bool __result)
         {
+            if (ItemMaterialPreparation.BlocksNativeCursorUse(__instance, __0)) { __result = false; return false; }
             bool current=ReferenceEquals(__instance,host?.World.SessionPlayer);
             // A rescue keeps both exchange endpoints protected throughout the
             // native call. Only its exact once-only use may cross this gate;
@@ -215,7 +220,11 @@ namespace JueMingR.TerrariaHost.Items
             __result=false;return false;
         }
         private static bool Drop(Player __instance, int __0)
-        { return !Protected(__instance.inventory, __0); }
+        { return !ItemMaterialPreparation.BlocksNativeCursorDrop(__instance, __0) && !Protected(__instance.inventory, __0); }
+        private static void BeforeDeathReturnFill(Player __instance, Item __0, int __3, out ItemMaterialPreparation.DeathReturnScope __state)
+        { __state = ItemMaterialPreparation.BeforeDeathReturn(__instance, __0, __3); }
+        private static Exception AfterDeathReturnFill(ItemMaterialPreparation.DeathReturnScope __state, Exception __exception)
+        { ItemMaterialPreparation.AfterDeathReturn(__state, __exception); return __exception; }
         private static bool QuickStack(Player __0, MethodBase __originalMethod)
         {
             if (!Active || !ReferenceEquals(__0, host.World.SessionPlayer)) return true;

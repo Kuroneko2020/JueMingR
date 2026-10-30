@@ -505,6 +505,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 NativeTargetReady = () => SmartPlatformLookupCurrent(activeBuild),
                 NativePreparing = BeginNativeBuildPreparation,
                 AcquireLease = token => AcquirePreparedBuildLease(next,token),
+                ManualTaken = token => buildMaterialPreparation?.HandUseToManual(token),
                 InputGesture = () => activeBuild?.InputGesture ?? next.InputGesture,
                 NativeConsumer = (consumer, material, wall, animation) => NativeConstructionConsumer(activeBuild, consumer, material, wall, animation),
                 NativeConsumerScope = consumer => BeginConstructionConsumer(activeBuild, consumer),

@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.Items
                 forwardCount == 0 || !SameSession(player) || tools.SelectionIntent != selection || !OrdinaryInventoryUi(player) ||
                 player.dead || !tools.Runtime.IsSessionActive || tools.ManualLeft || tools.ManualRight ||
                 PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed || PlayerInput.MouseInfo.RightButton == ButtonState.Pressed ||
-                PlayerInput.Triggers.Current.SmartSelect || !ignoreInventoryIntent &&
+                PlayerInput.Triggers.Current.SmartSelect || PlayerInput.Triggers.Current.Throw || !ignoreInventoryIntent &&
                 (PlayerInput.Triggers.Current.Inventory || Main.keyState.IsKeyDown(Keys.Escape)) ||
                 !PreparationItemsNotPending() || !ExpectedCurrent(phase == Phase.Using, false)) return false;
             return presentation != null ? presentation.Inventory == ownsInventory : Main.playerInventory == ownsInventory;

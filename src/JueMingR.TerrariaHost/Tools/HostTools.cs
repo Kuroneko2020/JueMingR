@@ -226,7 +226,7 @@ namespace JueMingR.TerrariaHost.Tools
             bool other=kind!=ToolKind.Capture && Capture.Ready(p) || kind!=ToolKind.Harvest && Herbs.Ready(p) || kind==ToolKind.Harvest && Herbs.SeedReady(p) || kind!=ToolKind.Mining && Mining.Ready(p) || kind!=ToolKind.Build && (BuildReady?.Invoke()??false);
             return external || other;
         }
-        internal void ManualSelection(){SelectionIntent++;ManualSelectionFrame=Input.Frame;Combat?.Use.ManualSelection();Combat?.Handoff.Reset();Fishing.Cancel();Use.Cancel();FishingManualSelection?.Invoke();}
+        internal void ManualSelection(){SelectionIntent++;ManualSelectionFrame=Input.Frame;Combat?.Use.ManualSelection();Combat?.Handoff.Reset();Fishing.Cancel();Use.HandToManual();FishingManualSelection?.Invoke();}
         internal void Yield(){Use.Cancel();if(Player!=null && Player.selectedItemState.CanChangeSelectedItemImmediately)Use.Retire();NextUseFrame=Input.Frame+1;}
         internal void HoldUnknown(int slot){unknown|=1UL<<slot;Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);}
         internal void HoldUnknown(ulong slots){unknown|=slots;Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);}

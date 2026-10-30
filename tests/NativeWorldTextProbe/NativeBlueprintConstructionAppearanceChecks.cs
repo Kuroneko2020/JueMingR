@@ -26,6 +26,7 @@ namespace NativeWorldTextProbe
             };
             check("pure difference contract", AppearanceDifferenceContract);
             check("hammer", () => ConstructionHammer(context, host, tools, input));
+            check("ordinary non-solid shapes and locked door preflight", () => ConstructionHammerEligibility(context, host, tools, input));
             check("natural smart platform slopes and fallback", () => ConstructionSmartPlatform(context, host, tools, input));
             check("captured platform identity and hammer", () => ConstructionCapturedPlatforms(context, host, tools, input));
             check("captured smart platform native paint", () => ConstructionCapturedPlatformPaint(context, host, tools, input));
@@ -37,7 +38,7 @@ namespace NativeWorldTextProbe
             check("unselected foreground", () => ConstructionUnselectedForeground(context, host, tools, input));
             check("platform slope3 boundary", () => ConstructionPlatformBoundary(context, host, tools, input, 3));
             check("platform slope4 boundary", () => ConstructionPlatformBoundary(context, host, tools, input, 4));
-            Console.WriteLine("PASS BlueprintConstructionAppearance: natural Lookup/PlaceIt smart slope1/2 without a hammer, bounded resolution fallback and precise half/existing-shape controls, native hammer repeat, captured positive-ObjectId platform save/open and slope1/2/half completion, original smart platform capture and real native paint for existing-shape/empty destinations, strict raw/style/appearance boundaries, protected walls, mixed original paint preparation/return, coating and cross-layer restoration with same-stack refill, unselected foreground refusal, platform slope3/4 boundary; real multiplayer/GPU/FPS NOT_RUN");
+            Console.WriteLine("PASS BlueprintConstructionAppearance: natural Lookup/PlaceIt smart slope1/2 without a hammer, bounded resolution fallback and precise half/existing-shape controls, native hammer repeat, all seven ordinary non-solid types and captured half/four-slope completion, upper/lower locked-door zero-start wait and unlock recovery, captured positive-ObjectId platform save/open and slope1/2/half completion, original smart platform capture and real native paint for existing-shape/empty destinations, strict raw/style/appearance boundaries, protected walls, mixed original paint preparation/return, coating and cross-layer restoration with same-stack refill, unselected foreground refusal, platform slope3/4 boundary; real multiplayer/GPU/FPS NOT_RUN");
         }
 
         private static object smartPlatformHost, smartPlatformInput;
@@ -332,7 +333,7 @@ namespace NativeWorldTextProbe
             var library = (LibraryState)Get(host, "Library");
             var entry = NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context, host, input, library,
                 () => Step(context, input), 60, 42, 3, 1, "正式平台锤形");
-            BlueprintProjectionWindow saved = OpenCapturedPlatforms(library, entry);
+            BlueprintProjectionWindow saved = OpenCapturedAppearance(library, entry);
             Require(saved.Cells.Count == 3 && saved.Objects.Count == 3 && saved.Objects.All(o => o.Id > 0 && o.Reliable && o.Width == 1 && o.Height == 1),
                 "real CaptureJob and codec reopen three reliable positive-ObjectId one-cell platforms");
             for (int i = 0; i < 3; i++)
@@ -422,7 +423,7 @@ namespace NativeWorldTextProbe
             var library = (LibraryState)Get(host, "Library");
             var entry = NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context, host, input, library,
                 () => Step(context, input), 60, 42, 4, 1, "正式平台刷漆");
-            BlueprintProjectionWindow saved = OpenCapturedPlatforms(library, entry);
+            BlueprintProjectionWindow saved = OpenCapturedAppearance(library, entry);
             Require(saved.Cells.Count == 4 && saved.Objects.Count == 4 && saved.Objects.All(o => o.Id > 0 && o.Reliable),
                 "paint targets retain real CaptureJob positive object identities after production save/open");
             for (int i = 0; i < 4; i++)
@@ -549,15 +550,15 @@ namespace NativeWorldTextProbe
             finally { Set(preparation, "UseConsumptionMaximum", maximum); }
         }
 
-        private static BlueprintProjectionWindow OpenCapturedPlatforms(LibraryState library, LibraryEntry entry)
+        private static BlueprintProjectionWindow OpenCapturedAppearance(LibraryState library, LibraryEntry entry)
         {
             var identity = new BlueprintProjectionIdentity(entry.AssetId, Guid.Parse(entry.ContentRevision), entry.ContentHash, 91001, 1);
-            Require(library.RequestProjectionOpen(identity), "saved platform enters the production projection reader");
+            Require(library.RequestProjectionOpen(identity), "saved appearance enters the production projection reader");
             try
             {
                 AwaitPlatformReceipt(library, identity, BlueprintProjectionReceiptKind.Opened);
                 Require(library.RequestProjectionWindow(identity, 1, new BlueprintProjectionBounds(0, 0, entry.Width, entry.Height)),
-                    "saved platform requests its real bounded source window");
+                    "saved appearance requests its real bounded source window");
                 return AwaitPlatformReceipt(library, identity, BlueprintProjectionReceiptKind.Window).Window;
             }
             finally { library.ReleaseProjection(identity); }
