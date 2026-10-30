@@ -23,7 +23,17 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void EnsureProjectionQualification(BlueprintProjectionPlacement item)
         {
-            if(!item.Opened || item.Summary==null || ProjectionQualificationCurrent(item))return;
+            if(!item.Opened || item.Summary==null)return;
+            // Restored scenes carry only the saved pose, never native/profile
+            // objects. Bind the game-thread snapshot before any worker view is
+            // requested; a mirrored restore must not reach a null profile. The
+            // same entry also normalizes proven aliases in ordinary old assets.
+            if(item.MirrorProfile?.Ready!=true)
+            {
+                if(!EnsureMirrorProfile())return;
+                item.MirrorProfile=mirrorProfile;
+            }
+            if(ProjectionQualificationCurrent(item))return;
             if(item.Match!=null)ReleaseProjectionMatch(item);
             var catalog=MaterialCatalog;if(catalog==null || Library==null)return;
             if(ReferenceEquals(item.QualificationRequestedMask,item.Mask) && item.QualificationRequestedRevision==catalog.Revision && ReferenceEquals(item.QualificationRequestedView,item.View))return;

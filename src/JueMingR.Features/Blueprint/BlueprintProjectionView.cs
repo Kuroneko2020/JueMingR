@@ -3,10 +3,11 @@ using System.Collections.Generic;
 
 namespace JueMingR.Features.Blueprint
 {
-    // The saved template and sparse mask always use normalized SOURCE space.
-    // Pose changes interpretation only: raw record order/offsets and cache keys
-    // remain source facts. Renderers may borrow source pixels; game consumers
-    // receive the canonical semantic target through this same immutable view.
+    // Saved templates/directories keep raw saved coordinates. Completed DTOs
+    // subtract Summary.Left/Top once; sparse masks and source cores use that
+    // normalized space. Physical offsets/ordinals never become display order.
+    // Pose changes interpretation only: renderers borrow source pixels while
+    // game consumers receive canonical semantic targets from this same view.
     public sealed class BlueprintProjectionView
     {
         public BlueprintProjectionView(CaptureSummary summary, bool mirroredHorizontally, BlueprintProjectionMask mask,

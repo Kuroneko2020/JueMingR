@@ -25,6 +25,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorProfileChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorTrimUiChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorTrimChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintMirrorConsumerChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintMirrorTrimVisualChecks.cs'=@('native-BlueprintInput')
         'tests/NativeWorldTextProbe/NativeBlueprintUiChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintLibraryUiChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput')
         'tests/NativeWorldTextProbe/NativeBlueprintInputRecoveryChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput')
@@ -426,7 +428,7 @@ function Get-WorkloadNativeScopes {
         'InputBoundary'=@('input-boundary','shared-host');
         'ToolsCpu'=@('tools-host'); 'ToolsCadence'=@('tools-host'); 'ToolsExecutionCpu'=@('tools-host'); 'ToolsWorkload'=@('tools-host');
         'BlueprintCpu'=@('blueprint-host','tools-host');
-        'BlueprintMirrorTrimCpu'=@('blueprint-host','hotkeys');
+        'BlueprintMirrorTrimCpu'=@('blueprint-host','hotkeys','tools-host');
         'BlueprintConstructionCpu'=@('blueprint-host','tools-host');
         'BlueprintPreparationCpu'=@('blueprint-host','tools-host');
         'BlueprintAppearanceCpu'=@('blueprint-host','tools-host');

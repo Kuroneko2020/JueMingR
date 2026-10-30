@@ -3,6 +3,8 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using JueMingR.Features.Blueprint;
 using JueMingR.Infrastructure.Blueprint;
 using JueMingR.Infrastructure.Storage;
@@ -18,7 +20,7 @@ namespace NativeWorldTextProbe
     // certificate consumption. No OS input, normal game startup or GPU is implied.
     internal static class NativeBlueprintMirrorTrimChecks
     {
-        private const BindingFlags F=BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public;
+        private const BindingFlags F=BindingFlags.Instance|BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public;
         internal static void Run(object context)
         {
             var host=Get(context,"Blueprint");var input=Get(context,"Input");var shell=Get(context,"Shell");
@@ -86,7 +88,28 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Until(()=>{step();return history.Saved;});
                 string scope=(string)Get(history,"requestedScope");var doc=BlueprintSceneCodec.Decode(File.ReadAllBytes(Path.Combine(root,"instances",scope,"scene.bin")),scope,512,160);
                 var record=doc.Records.Single(r=>r.Order==(long)Get(target,"CommitOrder"));Require(record.MirroredHorizontally && record.Mask.RemovedLayerCount==6,"normal reliable snapshot saves committed pose and source trim only");
-                Console.WriteLine("PASS Blueprint mirror/trim Host: cold single click in both editors, stale request/scene rejection, same instance/order/bbox, independent sibling, release preview/cancel exactness, UI/missing-Draw rejection and unique certified Mouse1 commit, all-layer source mask and v2 snapshot. Controlled CPU certificates are not real GPU/OS input.");
+                Main.gameMenu=true;Call(context,"UpdateRuntime");Main.gameMenu=false;
+                NativeQuickItemChecks.Until(()=>{step();return Scene(host).Length==2 && Scene(host).All(p=>(bool)Get(p,"Opened"));});
+                target=Scene(host).Single(p=>(long)Get(p,"CommitOrder")==mirroredOrder);
+                NativeQuickItemChecks.Until(()=>{step();var match=GetOptional(target,"Match");return (bool)Call(host,"ProjectionQualificationCurrent",target) && match!=null && (int)Get(match,"Current")==((Array)Get(match,"Ranges")).Length;});
+                Require((bool)Get(target,"MirroredHorizontally") && ((BlueprintProjectionMask)Get(target,"Mask")).RemovedLayerCount==6 &&
+                    GetOptional(target,"MirrorProfile")!=null && (long)Get(Get(target,"Match"),"Unknown")==0 && !(bool)Get(host,"ProjectionEditing"),"real same-scope session reentry binds a fresh profile and rebuilds complete non-Unknown effective targets from saved mirrored pose/source mask");
+                var oldIdentity=(BlueprintProjectionIdentity)Get(target,"Identity");
+                Require(library.RequestProjectionWindow(oldIdentity,99003,new BlueprintProjectionBounds(0,0,5,2)),"old scope has an accepted source request before the real session switch");
+                Main.gameMenu=true;Call(context,"UpdateRuntime");
+                Main.ActiveWorldFileData=new Terraria.IO.WorldFileData(Path.Combine(root,"other.wld"),false){UniqueId=Guid.NewGuid()};
+                var identityType=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Map.LocalWorldIdentity",true);
+                string v1Scope=(string)identityType.GetMethod("Observe",F).Invoke(null,null);
+                string v1Path=Path.Combine(root,"instances",v1Scope,"scene.bin");Directory.CreateDirectory(Path.GetDirectoryName(v1Path));
+                byte[] v1=FrozenV1(v1Scope,new BlueprintSceneRecord(record.Template,170,40,1,record.Mask));File.WriteAllBytes(v1Path,v1);
+                Main.gameMenu=false;
+                NativeQuickItemChecks.Until(()=>{step();return Scene(host).Length==1 && (bool)Get(Scene(host)[0],"Opened");});
+                var legacy=Scene(host)[0];
+                NativeQuickItemChecks.Until(()=>{step();var match=GetOptional(legacy,"Match");return (bool)Call(host,"ProjectionQualificationCurrent",legacy) && match!=null && (int)Get(match,"Current")==((Array)Get(match,"Ranges")).Length;});
+                Require(!(bool)Get(legacy,"MirroredHorizontally") && (int)Get(legacy,"OriginX")==170 && ((BlueprintProjectionMask)Get(legacy,"Mask")).RemovedLayerCount==6 &&
+                    (long)Get(Get(legacy,"Match"),"Unknown")==0 && ((BlueprintProjectionIdentity)Get(legacy,"Identity")).SessionGeneration!=oldIdentity.SessionGeneration &&
+                    File.ReadAllBytes(v1Path).SequenceEqual(v1) && !File.Exists(v1Path+".schema1-original"),"hand-written old v1 restores normal pose and exact source mask through the same ready profile; load does not rewrite, and late old-scope source cannot resurrect old instances");
+                Console.WriteLine("PASS Blueprint mirror/trim Host: cold single click in both editors, stale request/scene rejection, same instance/order/bbox, independent sibling, release preview/cancel exactness, UI/missing-Draw rejection and unique certified Mouse1 commit, all-layer source mask, v2 snapshot, same-scope mirrored reentry/current Match, hand-written v1 normal qualification and old-scope retirement. Controlled CPU certificates are not real GPU/OS input.");
             }
             finally
             {
@@ -116,5 +139,25 @@ namespace NativeWorldTextProbe
         private static void Pointer(object host,bool down,int x,int y) { Call(host,"AcceptWorldPointer",true,down,false,x,y,Main.maxTilesX,Main.maxTilesY); }
         private static object[] Scene(object host) { return ((IEnumerable)Get(host,"ProjectionScene")).Cast<object>().ToArray(); }
         private static void Set(object target,string field,object value) { target.GetType().GetField(field,F).SetValue(target,value); }
+        // Independent legacy writer: deliberately does not use current Encode,
+        // so upgrading the production codec cannot silently upgrade this oracle.
+        private static byte[] FrozenV1(string scope,BlueprintSceneRecord record)
+        {
+            using(var stream=new MemoryStream())
+            {
+                using(var writer=new BinaryWriter(stream,Encoding.UTF8,true))
+                {
+                    writer.Write(0x3130435342524d4aUL);writer.Write(1);
+                    for(int i=0;i<32;i++)writer.Write(Convert.ToByte(scope.Substring(i*2,2),16));
+                    writer.Write(512);writer.Write(160);writer.Write(1L);writer.Write(1);
+                    writer.Write(record.Template.AssetId.ToByteArray());writer.Write(record.Template.ContentRevision.ToByteArray());writer.Write(Convert.FromBase64String(record.Template.ContentHash));
+                    writer.Write(record.OriginX);writer.Write(record.OriginY);writer.Write(record.Order);writer.Write(record.Mask.RemovedLayerCount);writer.Write(record.Mask.RemovedConstructionLayerCount);
+                    // Literal old source mask at (0,0): Tile1, Wall2,
+                    // Liquid4, Actuator8, red16 and blue64; no object expansion.
+                    writer.Write(1);writer.Write(0L);writer.Write((ushort)95);writer.Write(0);
+                }
+                byte[] payload=stream.ToArray();using(var sha=SHA256.Create())stream.Write(sha.ComputeHash(payload),0,32);return stream.ToArray();
+            }
+        }
     }
 }
