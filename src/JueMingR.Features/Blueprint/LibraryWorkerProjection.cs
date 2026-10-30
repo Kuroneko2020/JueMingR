@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
@@ -98,7 +98,7 @@ namespace JueMingR.Features.Blueprint
 #if DEBUG
         private long projectionBlockReads, projectionDecodedRecords, projectionDirectoryComparisons, projectionWindowBlocks, projectionSlices, projectionRetiredRequests, projectionCachePeak, projectionDirectoryBytes, projectionDirectoryBlocks, projectionCacheBytes, projectionSourceIndexBytes;
         internal BlueprintProjectionStatistics ProjectionStatistics
-        { get { lock (gate) return new BlueprintProjectionStatistics(Interlocked.Read(ref projectionBlockReads), Interlocked.Read(ref projectionDecodedRecords), Interlocked.Read(ref projectionDirectoryComparisons), Interlocked.Read(ref projectionWindowBlocks), Interlocked.Read(ref projectionSlices), Interlocked.Read(ref projectionRetiredRequests), Interlocked.Read(ref projectionCachePeak), Interlocked.Read(ref projectionDirectoryBytes), Interlocked.Read(ref projectionDirectoryBlocks), Interlocked.Read(ref projectionCacheBytes), projectionOwners.Count, projectionReferences.Count, projectionRequests.Count + (projectionActiveRequest == null ? 0 : 1) + projectionSourceRequests.Count + (projectionSourceActive == null ? 0 : 1) + projectionQualificationRequests.Count + (projectionQualifying == null ? 0 : 1), projectionReceiptBytes, Interlocked.Read(ref projectionWindowWorkingBytes) + Interlocked.Read(ref projectionQualificationWorkingBytes), Interlocked.Read(ref projectionSourceIndexBytes)); } }
+        { get { lock (gate) return new BlueprintProjectionStatistics(Interlocked.Read(ref projectionBlockReads), Interlocked.Read(ref projectionDecodedRecords), Interlocked.Read(ref projectionDirectoryComparisons), Interlocked.Read(ref projectionWindowBlocks), Interlocked.Read(ref projectionSlices), Interlocked.Read(ref projectionRetiredRequests), Interlocked.Read(ref projectionCachePeak), Interlocked.Read(ref projectionDirectoryBytes), Interlocked.Read(ref projectionDirectoryBlocks), Interlocked.Read(ref projectionCacheBytes), projectionOwners.Count, projectionReferences.Count, projectionRequests.Count + (projectionActiveRequest == null ? 0 : 1) + projectionSourceRequests.Count + (projectionSourceActive == null ? 0 : 1) + projectionQualificationRequests.Count + (projectionQualifying == null ? 0 : 1), projectionReceiptBytes, Interlocked.Read(ref projectionWindowWorkingBytes) + Interlocked.Read(ref projectionQualificationWorkingBytes) + Interlocked.Read(ref projectionTrimWorkingBytes), Interlocked.Read(ref projectionSourceIndexBytes)); } }
 #endif
         internal bool RequestProjectionOpen(BlueprintProjectionIdentity identity, BlueprintProjectionMask restoreMask = null)
         {
@@ -149,6 +149,7 @@ namespace JueMingR.Features.Blueprint
         private void RemoveProjectionReferenceLocked(BlueprintProjectionIdentity identity)
         {
             ProjectionReference reference; if (!projectionReferences.TryGetValue(identity, out reference)) return;
+            RetireProjectionCommitIdentityLocked(identity);
             RetireProjectionQualification(identity);
             ClearProjectionSource(identity);
             if (!reference.Opened) projectionUnopenedReferences--; projectionReferences.Remove(identity);
@@ -290,7 +291,7 @@ namespace JueMingR.Features.Blueprint
                     }
                 }
                 if (!opened && rootFailure == null) { try { files.Open(); opened = true; } catch (Exception e) { rootFailure = Reason(e); } }
-                if (rootFailure != null) { var failedOwners = new List<ProjectionOwner>(projectionOwners.Values); foreach (ProjectionOwner failedOwner in failedOwners) FailProjection(failedOwner, null, new IOException(rootFailure)); return; }
+                if (rootFailure != null) { var failedOwners = new List<ProjectionOwner>(projectionOwners.Values); foreach (ProjectionOwner failedOwner in failedOwners) FailProjection(failedOwner, null, new IOException(rootFailure)); CloseProjectionCommitWorker(); return; }
 #if DEBUG
                 Interlocked.Increment(ref projectionSlices);
 #endif

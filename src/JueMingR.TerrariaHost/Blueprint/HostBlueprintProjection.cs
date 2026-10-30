@@ -140,6 +140,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void EndProjectionEdit(bool restoreSource)
         {
             if (!ProjectionEditing) return;
+            if (OwnTrimCancellation) trimCanceledMapping = Input.Mapping;
             bool retainRollbackPoint = restoreSource && restoreProjection != null && ReferenceEquals(projectionPointTarget, restoreProjection);
             Library?.CancelProjectionCommit(generation, projectionTransaction);
             if (pendingProjection != null) Library?.ReleaseProjection(pendingProjection.Identity);

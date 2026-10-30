@@ -28,6 +28,10 @@ namespace NativeWorldTextProbe
                     NativeBlueprintMirrorProfileChecks.Run(context);
                     NativeBlueprintMirrorTrimUiChecks.Run(context);
                     NativeBlueprintMirrorTrimChecks.Run(context);
+                    NativeBlueprintTrimAccumulationChecks.Run(context);
+                    NativeBlueprintTrimInputChecks.Run(context);
+                    NativeBlueprintMemberBatchChecks.Run(context);
+                    NativeBlueprintMirrorWaitChecks.Run(context);
                     NativeBlueprintMirrorConsumerChecks.Run(context);
                 },processing:true,shortFeedback:true);return 0;
             }
@@ -171,6 +175,10 @@ namespace NativeWorldTextProbe
                     check("mirror profile capture and canonical", NativeBlueprintMirrorProfileChecks.Run);
                     check("mirror/trim real input rows", NativeBlueprintMirrorTrimUiChecks.Run);
                     check("mirror/trim Host transactions", NativeBlueprintMirrorTrimChecks.Run);
+                    check("trim cumulative overlay and ownership", NativeBlueprintTrimAccumulationChecks.Run);
+                    check("trim cancellation arbitration", NativeBlueprintTrimInputChecks.Run);
+                    check("projection complete member batches", NativeBlueprintMemberBatchChecks.Run);
+                    check("mirror stable unknown and native recovery", NativeBlueprintMirrorWaitChecks.Run);
                     check("mirror effective materials/native consumers", NativeBlueprintMirrorConsumerChecks.Run);
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                 }, processing: true, shortFeedback: true); return 0;

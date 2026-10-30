@@ -11,9 +11,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         private IBlueprintHorizontalMirrorProfile mirrorProfile;
         private BlueprintProjectionPlacement editorTarget;
         private BlueprintProjectionMask editorMask;
+        private IBlueprintHorizontalMirrorProfile editorProfile;
         private long editorSceneRevision, editorTransaction;
         private int editorOriginX, editorOriginY;
-        private bool editorMirrored, editorPickPending, trimPlanPending;
+        private bool editorMirrored, editorPickPending;
         private BlueprintProjectionPlacement[] editorPickOrder;
         private int editorPickIndex, editorPickX, editorPickY;
         private float editorPickSubX, editorPickSubY;
@@ -21,24 +22,22 @@ namespace JueMingR.TerrariaHost.Blueprint
         private BlueprintProjectionBounds trimDisplayBounds;
         private BlueprintProjectionTrimPlan trimPlan;
         private long trimPreviewRevision;
-        private long trimConfirmMapping = -1, trimConfirmRevision, trimConfirmScene, trimConfirmTransaction;
-        private HotkeyChord trimConfirmChord;
         internal bool OwnMirrorCancellation { get { return ProjectionEditing && projectionEditKind == BlueprintProjectionEditKind.Mirror; } }
         internal bool OwnTrimCancellation { get { return ProjectionEditing && projectionEditKind == BlueprintProjectionEditKind.Trim; } }
         internal bool CanInvokeMirror { get { return ControlsEnabled && (OwnMirrorCancellation || CanMoveProjection); } }
         internal bool CanInvokeTrim { get { return ControlsEnabled && (OwnTrimCancellation || CanRemoveProjection); } }
-        internal bool CanInvokeConfirmTrim { get { return ControlsEnabled && OwnTrimCancellation && ProjectionMode == BlueprintProjectionMode.TrimPreview &&
-            !trimPlanPending && trimPlan?.HasContent == true && EditorTargetCurrent() && ReferenceEquals(trimPlan.OriginalMask, editorTarget.Mask); } }
+        internal bool CanInvokeConfirmTrim { get { return ControlsEnabled && OwnTrimCancellation && !trimFinalizing && !TrimDragging &&
+            !HasUnverifiedTrimSelection && trimSealedVersion > 0 && trimPlan?.HasContent == true && EditorTargetCurrent() && ReferenceEquals(trimPlan.OriginalMask, editorTarget.Mask); } }
         internal string MirrorDisabledReason { get { return CanInvokeMirror ? null : ProjectionActionHint; } }
         internal string TrimDisabledReason { get { return CanInvokeTrim ? null : ProjectionActionHint; } }
         internal string ConfirmTrimDisabledReason { get { return CanInvokeConfirmTrim ? null : !ControlsEnabled ? "请先进入可用世界" :
-            !OwnTrimCancellation ? "请先进入局部修剪" : trimPlanPending ? "正在核对修剪范围…" : ProjectionMode != BlueprintProjectionMode.TrimPreview ? "先拖出修剪范围并松开鼠标" :
+            !OwnTrimCancellation ? "请先进入局部修剪" : trimFinalizing ? "正在应用修剪…" : TrimDragging ? "请先完成当前拖选" :
+            HasUnverifiedTrimSelection ? "正在核对修剪范围…" : trimSealedVersion == 0 ? "先拖出修剪范围并松开鼠标" :
             trimPlan != null && !trimPlan.HasContent ? "选区内没有可修剪内容" : "请先选择可靠的修剪范围"; } }
         internal long TrimPreviewRevision { get { return trimPreviewRevision; } }
         internal BlueprintProjectionPlacement ProjectionEditTarget { get { return editorTarget ?? hoveredProjection; } }
         internal bool WorldEditorDragging { get { return State.Dragging || OwnTrimCancellation && ProjectionMode == BlueprintProjectionMode.TrimDragging; } }
-        internal bool TrimPointerVisible { get { return OwnTrimCancellation && editorTarget != null &&
-            (ProjectionMode == BlueprintProjectionMode.TrimReady || ProjectionMode == BlueprintProjectionMode.TrimDragging || ProjectionMode == BlueprintProjectionMode.TrimPreview); } }
+        internal bool TrimPointerVisible { get { return OwnTrimCancellation && editorTarget != null; } }
         internal BlueprintProjectionBounds TrimDisplayBounds { get { return trimDisplayBounds; } }
         internal BlueprintProjectionTrimPlan TrimPlan { get { return trimPlan; } }
         internal bool TrimDragging { get { return OwnTrimCancellation && ProjectionMode == BlueprintProjectionMode.TrimDragging; } }
@@ -47,6 +46,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal void TrimProjection() { RequestProjectionEditor(BlueprintProjectionEditKind.Trim); }
         private void RequestProjectionEditor(BlueprintProjectionEditKind kind)
         {
+            if (kind == BlueprintProjectionEditKind.Trim && trimCanceledMapping == Input.Mapping) return;
             if (!Input.CanStartActions || !(kind == BlueprintProjectionEditKind.Mirror ? CanInvokeMirror : CanInvokeTrim)) return;
             if (kind == projectionEditKind && ProjectionEditing) { CancelProjection(); return; }
             long session = generation, transaction = projectionTransaction, scene = projectionSceneRevision;
@@ -68,57 +68,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (chord.MainKey == 257) return false;
             return chord.MainKey != 256 || CanInvokeConfirmTrim;
         }
-        internal void RequestTrimConfirm(HotkeyChord chord)
-        {
-            if (!Input.CanStartActions || !CanInvokeConfirmTrim || chord == null) return;
-            if (chord.MainKey != 256) { ConfirmTrimProjection(); return; }
-            // Public matching establishes intent only. The very same mapping
-            // still needs the original native UI certificate before deletion.
-            trimConfirmMapping = Input.Mapping; trimConfirmChord = chord;
-            trimConfirmRevision = trimPreviewRevision; trimConfirmScene = projectionSceneRevision; trimConfirmTransaction = projectionTransaction;
-        }
-        internal bool CanRetainTrimConfirmation(long mapping)
-        {
-            // This is a certificate lease for one admitted public command,
-            // never a relaxation of CanRetainEdit. Its frozen preview/scene/
-            // transaction must survive both Draw and the immediately next map.
-            if (mapping != trimConfirmMapping || trimConfirmChord == null || trimConfirmChord.MainKey != 256 ||
-                (Input.Mapping != mapping && Input.Mapping != mapping + 1) || trimConfirmRevision != trimPreviewRevision ||
-                trimConfirmScene != projectionSceneRevision || trimConfirmTransaction != projectionTransaction || !CanInvokeConfirmTrim || !CanRetainWorldInput) return false;
-            return CanRetainEdit || Shell?.CanRetainBlueprintTrimConfirmation == true;
-        }
-        internal bool ConsumeTrimConfirm(long mapping, bool certified)
-        {
-            if (trimConfirmMapping < 0) return false;
-            if (mapping < trimConfirmMapping) return false;
-            bool exact = mapping == trimConfirmMapping; var chord = trimConfirmChord;
-            bool current = exact && certified && chord != null && CanRetainTrimConfirmation(mapping);
-            trimConfirmMapping = -1; trimConfirmChord = null;
-            if (current) CommitTrimPreview();
-            // A rejected confirm gesture never turns into a replacement drag.
-            return exact;
-        }
-        internal void ConfirmTrimProjection()
-        { if (Input.CanStartActions && CanInvokeConfirmTrim) CommitTrimPreview(); }
-        private void CommitTrimPreview()
-        {
-            if (!CanInvokeConfirmTrim) return;
-            var target = editorTarget; var plan = trimPlan;
-            if (!ReferenceEquals(target.Mask, plan.OriginalMask) || plan.RemovedLayerCount <= 0) return;
-            CancelAutomaticBuild(); ReleaseProjectionMatch(target);
-            target.Mask = plan.Mask; target.Qualification = null; target.QualificationRequestedMask = null; target.QualificationRequestedRevision = -1;
-            RebuildProjectionMask(target);
-            // Trim preserves order/origin/pose and cannot cover another instance.
-            if (target.Mask.RemovedLayerCount >= target.TotalLayerCount) RetireProjection(target, false);
-            projectionSceneRevision++; PublishProjectionScene();
-            ClearProjectionEditor(); projectionEditKind = BlueprintProjectionEditKind.None;
-            ProjectionMode = projectionScene.Count == 0 ? BlueprintProjectionMode.None : BlueprintProjectionMode.Fixed;
-            InterruptProjection(); Pointer.Cancel(); Toolbar.Cancel();
-            projectionFeedback = "蓝图已修剪"; AcceptProjectionSceneSnapshot();
-        }
         private void ClearProjectionEditor()
         {
-            editorTarget = null; editorMask = null; editorPickOrder = null; editorPickPending = trimPlanPending = false; editorPickIndex = 0;
+            ClearTrimSession();
+            editorTarget = null; editorMask = null; editorProfile = null; editorPickOrder = null; editorPickPending = false; editorPickIndex = 0;
             trimPlan = null; trimDisplayBounds = default(BlueprintProjectionBounds); trimPreviewRevision++;
             trimConfirmMapping = -1; trimConfirmChord = null;
         }
@@ -126,12 +79,14 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             return editorTarget != null && HasSession && projectionScene.Contains(editorTarget) && editorTarget.Opened &&
                 editorTransaction == projectionTransaction && editorSceneRevision == projectionSceneRevision &&
-                ReferenceEquals(editorMask, editorTarget.Mask) && editorOriginX == editorTarget.OriginX && editorOriginY == editorTarget.OriginY && editorMirrored == editorTarget.MirroredHorizontally;
+                ReferenceEquals(editorMask, editorTarget.Mask) && ReferenceEquals(editorProfile, editorTarget.MirrorProfile) &&
+                Library?.RetainsProjection(editorTarget.Identity) == true && editorOriginX == editorTarget.OriginX && editorOriginY == editorTarget.OriginY && editorMirrored == editorTarget.MirroredHorizontally;
         }
         private void LockEditorTarget(BlueprintProjectionPlacement target)
         {
-            editorTarget = target; editorMask = target.Mask; editorOriginX = target.OriginX; editorOriginY = target.OriginY; editorMirrored = target.MirroredHorizontally;
+            editorTarget = target; editorMask = target.Mask; editorProfile = target.MirrorProfile; editorOriginX = target.OriginX; editorOriginY = target.OriginY; editorMirrored = target.MirroredHorizontally;
             editorSceneRevision = projectionSceneRevision; editorTransaction = projectionTransaction;
+            if (OwnTrimCancellation) BeginTrimSession();
         }
         private bool AcceptProjectionEditorPointer(bool left, int x, int y, float subX, float subY, bool pressed, bool released)
         {
@@ -147,21 +102,19 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (OwnMirrorCancellation) ProjectionMode = BlueprintProjectionMode.MirrorPending;
                 PumpProjectionEditor(); return true;
             }
-            if (!OwnTrimCancellation || !EditorTargetCurrent()) return true;
+            if (!OwnTrimCancellation || !EditorTargetCurrent() || trimFinalizing) return true;
             if (ProjectionMode == BlueprintProjectionMode.TrimDragging)
             {
                 trimEndX = x - editorTarget.OriginX; trimEndY = y - editorTarget.OriginY; UpdateTrimRectangle();
                 if (released)
                 {
-                    ProjectionMode = BlueprintProjectionMode.TrimPreview; trimPlanPending = true;
-                    projectionFeedback = "正在核对修剪范围…"; RequestTrimPlan();
+                    ProjectionMode = BlueprintProjectionMode.TrimPreview; SealTrimRectangle();
                 }
                 return true;
             }
             if (pressed && (ProjectionMode == BlueprintProjectionMode.TrimReady || ProjectionMode == BlueprintProjectionMode.TrimPreview))
             {
-                Library?.CancelProjectionCommit(generation, projectionTransaction);
-                trimPlan = null; trimPlanPending = false; trimPreviewRevision++; trimConfirmMapping = -1; trimConfirmChord = null;
+                trimPreviewRevision++; DropUnadmittedTrimConfirmations();
                 trimStartX = trimEndX = x - editorTarget.OriginX; trimStartY = trimEndY = y - editorTarget.OriginY;
                 ProjectionMode = BlueprintProjectionMode.TrimDragging; UpdateTrimRectangle();
             }
@@ -169,24 +122,6 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void UpdateTrimRectangle()
         { trimDisplayBounds = BlueprintProjectionView.InclusiveRectangle(trimStartX, trimStartY, trimEndX, trimEndY, editorTarget.Summary.Width, editorTarget.Summary.Height); }
-        private void RequestTrimPlan()
-        {
-            if (!trimPlanPending || !EditorTargetCurrent()) return;
-            if (Library.RequestProjectionCommit(new BlueprintProjectionCommitRequest(generation, projectionTransaction, projectionSceneRevision, editorTarget.Snapshot(),
-                Array.Empty<JueMingR.Features.Blueprint.BlueprintProjectionPlacement>(), BlueprintProjectionEditKind.Trim, trimDisplayBounds, trimPreviewRevision))) trimPlanPending = false;
-        }
-        private bool TakeProjectionEditorReceipt(BlueprintProjectionCommitReceipt receipt)
-        {
-            if (receipt.Request.Kind != BlueprintProjectionEditKind.Trim) return false;
-            if (!OwnTrimCancellation || receipt.Request.SessionGeneration != generation || receipt.Request.TransactionId != projectionTransaction ||
-                receipt.Request.PreviewRevision != trimPreviewRevision || !EditorTargetCurrent() || ProjectionMode != BlueprintProjectionMode.TrimPreview) return true;
-            trimPlanPending = false;
-            if (!receipt.Succeeded || receipt.TrimPlan == null)
-            { projectionFeedback = "未能确认修剪范围，原蓝图仍保留。"; CancelProjection(); return true; }
-            trimPlan = receipt.TrimPlan;
-            projectionFeedback = trimPlan.HasContent ? "红色范围仅是预览；请在 F5 蓝图页点“确定修剪”，或使用已设置的确认键。" : "选区内没有可修剪内容";
-            return true;
-        }
         private void PumpProjectionEditor()
         {
             if (!OwnMirrorCancellation && !OwnTrimCancellation) return;
@@ -209,21 +144,26 @@ namespace JueMingR.TerrariaHost.Blueprint
                         else { hit = HitCell(item.Mask.Apply(cell), item.MirroredHorizontally ? 1f - editorPickSubX : editorPickSubX, editorPickSubY); break; }
                     }
                     if (!hit) { editorPickIndex--; continue; }
+                    if (OwnMirrorCancellation && !EnsureMirrorProfile()) { CancelProjection(); projectionFeedback = "原版镜像资料暂未就绪，原蓝图仍保留。"; return; }
                     LockEditorTarget(item); editorPickPending = false; editorPickOrder = null; hoveredProjection = item;
                     if (OwnTrimCancellation)
-                    { ProjectionMode = BlueprintProjectionMode.TrimReady; InterruptProjection(); Pointer.Cancel(); projectionFeedback = "拖出红色修剪范围，松开后在 F5 蓝图页点“确定修剪”。"; return; }
+                    { ProjectionMode = BlueprintProjectionMode.TrimReady; InterruptProjection(); Pointer.Cancel(); projectionFeedback = "拖选修剪范围，选定后点确定应用修改"; return; }
                     break;
                 }
                 if (editorPickPending) { editorPickPending = false; editorPickOrder = null; ProjectionMode = OwnMirrorCancellation ? BlueprintProjectionMode.SelectingMirror : BlueprintProjectionMode.SelectingTrim; return; }
             }
-            if (OwnTrimCancellation) { if (trimPlanPending) RequestTrimPlan(); return; }
+            if (OwnTrimCancellation) { TryDispatchTrim(); return; }
             if (editorTarget == null || ProjectionMode == BlueprintProjectionMode.Committing) return;
             if (!EnsureMirrorProfile()) { CancelProjection(); projectionFeedback = "原版镜像资料暂未就绪，原蓝图仍保留。"; return; }
-            if (!CheckProjectionMove(editorTarget))
+            // Current+Unknown is a stable result, not a permission to sample
+            // the same source again. Ensure still starts a cold proof; actual
+            // section/catalog/world invalidation owns all subsequent work.
+            var eligibility = ProjectionMoveEligibility(editorTarget);
+            if (eligibility != BlueprintProjectionMoveEligibility.Movable)
             {
-                if (ProjectionMoveEligibility(editorTarget) == BlueprintProjectionMoveEligibility.Matched)
+                if (eligibility == BlueprintProjectionMoveEligibility.Matched)
                 { CancelProjection(); projectionFeedback = "这份蓝图已有已完成部分，不能镜像"; }
-                else projectionFeedback = "正在核对这份蓝图…";
+                else { projectionMatchPriority = editorTarget; projectionFeedback = "正在核对这份蓝图…"; }
                 return;
             }
             var candidate = editorTarget.Copy(); candidate.MirrorProfile = mirrorProfile; candidate.MirroredHorizontally = !candidate.MirroredHorizontally;
@@ -263,9 +203,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void InterruptProjectionEditorGesture(bool retainTrimConfirmation = false)
         {
-            if (!retainTrimConfirmation) { trimConfirmMapping = -1; trimConfirmChord = null; }
+            if (!retainTrimConfirmation) DropUnadmittedTrimConfirmations(retainCurrentReady: true);
             if (ProjectionMode == BlueprintProjectionMode.TrimDragging)
-            { ProjectionMode = BlueprintProjectionMode.TrimReady; trimPlan = null; trimPlanPending = false; trimDisplayBounds = default(BlueprintProjectionBounds); trimPreviewRevision++; }
+            { ProjectionMode = trimSealedVersion == 0 ? BlueprintProjectionMode.TrimReady : BlueprintProjectionMode.TrimPreview; trimDisplayBounds = default(BlueprintProjectionBounds); trimPreviewRevision++; UpdateTrimFeedback(); }
         }
     }
 }

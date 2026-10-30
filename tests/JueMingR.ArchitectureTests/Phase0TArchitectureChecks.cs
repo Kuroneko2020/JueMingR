@@ -118,6 +118,8 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Blueprint.BlueprintSceneCodec", "JueMingR.Features.Blueprint.BlueprintSceneHistory",
                 "JueMingR.Features.Blueprint.BlueprintProjectionView", "JueMingR.Features.Blueprint.IBlueprintHorizontalMirrorProfile",
                 "JueMingR.Features.Blueprint.BlueprintProjectionTrimPlan", "JueMingR.Features.Blueprint.BlueprintProjectionEditKind",
+                "JueMingR.Features.Blueprint.BlueprintProjectionTrimPhase", "JueMingR.Features.Blueprint.BlueprintTrimGeometry",
+                "JueMingR.Features.Blueprint.BlueprintTrimEdge", "JueMingR.Features.Blueprint.BlueprintTrimEdgeSide",
                 "JueMingR.Features.Blueprint.BlueprintProjectionCommitRequest", "JueMingR.Features.Blueprint.BlueprintProjectionCommitReceipt", "JueMingR.Features.Blueprint.BlueprintPreviewBudget",
                 "JueMingR.Features.Blueprint.BlueprintProjectionSourceRange", "JueMingR.Features.Blueprint.BlueprintProjectionSourceReceipt",
                 "JueMingR.Features.Blueprint.BlueprintProjectionSourceDemand", "JueMingR.Features.Blueprint.BlueprintProjectionSourcePart",
@@ -128,6 +130,7 @@ namespace JueMingR.ArchitectureTests
 #if DEBUG
                 "JueMingR.Features.Blueprint.BlueprintProjectionStatistics",
                 "JueMingR.Features.Blueprint.BlueprintProjectionSourceStatistics",
+                "JueMingR.Features.Blueprint.BlueprintProjectionMemberBatchStatistics",
 #endif
                 "JueMingR.Features.Movement.MovementOptions", "JueMingR.Features.Movement.MovementPreferenceCodec",
                 "JueMingR.Features.Movement.SmartFallProtectionOptions",

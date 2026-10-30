@@ -11,6 +11,8 @@ namespace JueMingR.Features.Blueprint
         private BlueprintProjectionCommitReceipt projectionCommitReceipt;
         private IEnumerator<bool> projectionCommitting;
         private BlueprintProjectionCommitRequest projectionActiveCommit;
+        internal bool RetainsProjection(BlueprintProjectionIdentity identity)
+        { lock (gate) return identity != null && !stopping && projectionReferences.ContainsKey(identity); }
         internal bool RequestProjectionCommit(BlueprintProjectionCommitRequest request)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
@@ -18,6 +20,12 @@ namespace JueMingR.Features.Blueprint
             {
                 if (stopping || projectionCommit != null || projectionActiveCommit != null || projectionCommitReceipt != null) return false;
                 if (!projectionReferences.ContainsKey(request.Candidate.Identity)) return false;
+                if (request.Kind != BlueprintProjectionEditKind.Trim && projectionTrimLease != null) return false;
+                if (request.Kind == BlueprintProjectionEditKind.Trim)
+                {
+                    if (projectionTrimLease != null && !SameTrimOperation(projectionTrimLease, request)) return false;
+                    if (projectionTrimLease == null) projectionTrimLease = request;
+                }
                 projectionCommit = request; Monitor.Pulse(gate); return true;
             }
         }
@@ -28,23 +36,26 @@ namespace JueMingR.Features.Blueprint
                 if (projectionCommit != null && projectionCommit.SessionGeneration == session && projectionCommit.TransactionId == transaction) projectionCommit = null;
                 if (projectionActiveCommit != null && projectionActiveCommit.SessionGeneration == session && projectionActiveCommit.TransactionId == transaction) projectionActiveCommit = null;
                 if (projectionCommitReceipt != null && projectionCommitReceipt.Request.SessionGeneration == session && projectionCommitReceipt.Request.TransactionId == transaction) projectionCommitReceipt = null;
+                if (projectionTrimLease != null && projectionTrimLease.SessionGeneration == session && projectionTrimLease.TransactionId == transaction)
+                    RevokeProjectionTrimLocked();
                 Monitor.Pulse(gate);
             }
         }
         internal bool TryTakeProjectionCommit(out BlueprintProjectionCommitReceipt receipt)
         { lock (gate) { receipt = projectionCommitReceipt; projectionCommitReceipt = null; return receipt != null; } }
-        private void CancelAllProjectionCommitsLocked() { projectionCommit = null; projectionActiveCommit = null; projectionCommitReceipt = null; }
+        private void CancelAllProjectionCommitsLocked() { projectionCommit = null; projectionActiveCommit = null; projectionCommitReceipt = null; RevokeProjectionTrimLocked(); }
         private void RetireProjectionCommitAssetLocked(Guid id)
         {
-            BlueprintProjectionCommitRequest request = projectionActiveCommit ?? projectionCommit;
+            BlueprintProjectionCommitRequest request = projectionActiveCommit ?? projectionCommit ?? projectionCommitReceipt?.Request;
+            if (projectionTrimLease?.Candidate.Identity.AssetId == id) RevokeProjectionTrimLocked();
             if (request == null) return;
             bool affected = request.Candidate.Identity.AssetId == id;
             foreach (BlueprintProjectionPlacement placement in request.Previous) if (placement.Identity.AssetId == id) affected = true;
             if (affected) CancelAllProjectionCommitsLocked();
         }
         private void CloseProjectionCommitWorker()
-        { if (projectionCommitting != null) projectionCommitting.Dispose(); projectionCommitting = null; lock (gate) CancelAllProjectionCommitsLocked(); }
-        private bool ProjectionCommitHasWorkLocked() { return projectionCommit != null || projectionCommitting != null; }
+        { if (projectionCommitting != null) projectionCommitting.Dispose(); projectionCommitting = null; lock (gate) { CancelAllProjectionCommitsLocked(); projectionTrimCleanup = false; } ReleaseProjectionTrimWorker(); }
+        private bool ProjectionCommitHasWorkLocked() { return projectionCommit != null || projectionCommitting != null || projectionTrimCleanup; }
         private void CheckProjectionCommit(BlueprintProjectionCommitRequest request, BlueprintProjectionIdentity current = null, bool allReferences = false)
         {
             lock (gate)
@@ -60,19 +71,25 @@ namespace JueMingR.Features.Blueprint
         private bool ProjectionCommitStep(bool turn)
         {
             if (!turn) return false;
+            bool cleanup;
+            lock (gate) { cleanup = projectionTrimCleanup; projectionTrimCleanup = false; }
+            // Only the worker releases its mutable overlay. An idle draft is
+            // asleep; revocation supplies this one cleanup wake independently.
+            if (cleanup) ReleaseProjectionTrimWorker();
             lock (gate)
             {
                 if (projectionCommitting == null && projectionCommit != null)
                 { projectionActiveCommit = projectionCommit; projectionCommit = null; projectionCommitting = ComputeProjectionCommit(projectionActiveCommit).GetEnumerator(); }
             }
-            if (projectionCommitting == null) return false;
+            if (projectionCommitting == null) return cleanup;
             try
             {
                 if (projectionCommitting.MoveNext()) return true;
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) { ReleaseProjectionTrimWorker(); }
             catch (Exception error)
             {
+                ReleaseProjectionTrimWorker();
                 lock (gate) if (projectionActiveCommit != null) projectionCommitReceipt = new BlueprintProjectionCommitReceipt(projectionActiveCommit, new Dictionary<long, BlueprintProjectionMask>(), new List<long>(), Reason(error));
             }
             projectionCommitting.Dispose(); projectionCommitting = null; lock (gate) projectionActiveCommit = null; return true;

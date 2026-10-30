@@ -56,11 +56,12 @@ namespace NativeWorldTextProbe
                     Call(host,"ClearProjection");
                     PixelMirror(context,graphics,output);
                     TrimExtension(context,host,input,library,graphics,output,step);
+                    TrimGeometryPixels(host,graphics,output);
                     Call(host,"ClearProjection");long emptyBlocks=library.DebugProjectionStatistics.BlockReads;
                     for(int i=0;i<4;i++)Require(graphics.Pixels(draw,Matrix.Identity).All(p=>p.A==0),"last instance has no residual world pixels");
                     Require(library.DebugProjectionStatistics.BlockReads==emptyBlocks,"no instance Draw has no added source I/O");
                 }
-                Console.WriteLine("PASS Blueprint mirror/trim GPU: persistent real bbox edges including partial native Match, no invented clipped edges, original XNB whole-pixel reflection with furniture offsets/Centered pylon, complete-object red trim extension, four stable Draws and last-instance zero work. Hidden isolated XNA device only; no normal game/OS input/FPS/multiplayer/owner acceptance.");
+                Console.WriteLine("PASS Blueprint mirror/trim GPU: persistent real bbox edges including partial native Match, no invented clipped edges, original XNB whole-pixel reflection with furniture offsets/Centered pylon, cumulative separated manual regions and complete-object red trim extension, deduplicated two-layer fill/real object edges, four stable Draws and last-instance zero work. Hidden isolated XNA device only; no normal game/OS input/FPS/multiplayer/owner acceptance.");
             }
             finally
             {
@@ -105,12 +106,45 @@ namespace NativeWorldTextProbe
             Pointer(host,false,100,40);Pointer(host,true,100,40);Pointer(host,false,100,40);
             NativeQuickItemChecks.Until(()=>{step();return (bool)Get(host,"CanInvokeConfirmTrim");});
             var plan=(BlueprintProjectionTrimPlan)Get(host,"TrimPlan");Require(plan.ObjectBounds.Count==1 && plan.RemovedLayerCount==8,"one selected bed member expands complete 4x2 Tile only in preview");
+            var manual=(BlueprintTrimGeometry)Get(host,"TrimManualGeometry");var objects=(BlueprintTrimGeometry)Get(host,"TrimObjectGeometry");
+            Require(manual.Contains(0,0) && !manual.Contains(3,1) && objects.Contains(3,1),"manual all-layer selection is independent of the complete bed Tile-only extension");
             var red=graphics.Pixels(draw,Matrix.Identity);
             Require(Red(red[191*960+215]) && Red(red[184*960+223]),"red preview reaches the real bottom/right of the complete bed beyond selected one-cell rectangle");
             Require(((BlueprintProjectionMask)Get(target,"Mask")).RemovedLayerCount==0,"red actual Draw has not committed the preview");
             graphics.Image(Path.Combine(output,"mirror-trim-complete-bed-red-preview.png"),draw,Matrix.Identity);
+            Pointer(host,true,103,41);Pointer(host,false,103,41);
+            Require(manual.Contains(0,0) && manual.Contains(3,1) && !manual.Contains(2,0),"next completed drag is immediately visible as a separate region while prior geometry stays owned");
+            NativeQuickItemChecks.Until(()=>{step();return (bool)Get(host,"CanInvokeConfirmTrim");});
+            Require(((BlueprintProjectionTrimPlan)Get(host,"TrimPlan")).RemovedLayerCount==8 && objects.EnumerateVisible(0,0,4,2).Sum(span=>span.RightExclusive-span.Left)==8,"later direct selection inside an expanded object preserves cumulative count and deduplicated Tile preview");
+            var cumulative=graphics.Pixels(draw,Matrix.Identity);
+            Require(Red(cumulative[164*960+164]) && Red(cumulative[184*960+215]),"both completed red regions remain visible on the actual WorldLayer");
+            graphics.Image(Path.Combine(output,"mirror-trim-cumulative-bed-red-preview.png"),draw,Matrix.Identity);
             Call(host,"CancelProjection");var cancelled=graphics.Pixels(draw,Matrix.Identity);
             Require(!Red(cancelled[191*960+215]) && Cyan(cancelled[184*960+223]),"cancel removes red extension and returns unchanged original cyan bbox");
+            var cancelledManual=(BlueprintTrimGeometry)GetOptional(host,"TrimManualGeometry");var cancelledObjects=(BlueprintTrimGeometry)GetOptional(host,"TrimObjectGeometry");
+            Require((cancelledManual==null || !cancelledManual.HasContent) && (cancelledObjects==null || !cancelledObjects.HasContent),"cancel releases both numeric preview layers from the ended Host operation");
+        }
+        private static void TrimGeometryPixels(object host,ProbeGraphics graphics,string output)
+        {
+            var method=Get(host,"World").GetType().GetMethod("DrawTrimGeometry",F);
+            var viewport=new WorldTargetView(100,40,20,20,0);
+            var large=new BlueprintTrimGeometry(true);large.AddRectangle(new BlueprintProjectionBounds(-100,-100,300,300));
+            var clipped=graphics.Pixels(()=>method.Invoke(null,new object[]{large,100,40,viewport,Color.Transparent,Color.White}),Matrix.Identity);
+            Require(clipped.All(pixel=>pixel.A==0),"indexed preview edges do not invent viewport outlines when all real object sides are outside");
+
+            var manual=new BlueprintTrimGeometry();manual.AddRectangle(new BlueprintProjectionBounds(0,0,1,1));manual.AddRectangle(new BlueprintProjectionBounds(4,0,1,1));
+            var objects=new BlueprintTrimGeometry(true);objects.AddRectangle(new BlueprintProjectionBounds(0,0,3,2));objects.AddRectangle(new BlueprintProjectionBounds(1,0,1,2));
+            Action draw=()=>
+            {
+                method.Invoke(null,new object[]{manual,100,40,viewport,Color.FromNonPremultiplied(255,55,65,65),Color.FromNonPremultiplied(255,65,75,220)});
+                method.Invoke(null,new object[]{objects,100,40,viewport,Color.FromNonPremultiplied(255,55,65,90),Color.FromNonPremultiplied(255,75,85,230)});
+            };
+            var layered=graphics.Pixels(draw,Matrix.Identity);
+            Require(Red(layered[168*960+232]) && layered[168*960+216].A==0,"separated completed manual areas leave their literal unselected gap transparent");
+            Require(layered[184*960+200].A>layered[168*960+232].A && layered[184*960+176].A>layered[184*960+184].A,"object and manual fills retain distinct weights and nested real object sides remain visible");
+            manual.AddRectangle(new BlueprintProjectionBounds(4,0,1,1));objects.AddRectangle(new BlueprintProjectionBounds(0,0,3,2));
+            Require(layered.SequenceEqual(graphics.Pixels(draw,Matrix.Identity)),"duplicate rectangles/objects do not brighten any rendered preview pixel");
+            graphics.Image(Path.Combine(output,"mirror-trim-layered-indexed-geometry.png"),draw,Matrix.Identity);
         }
         private static void drawTo(ProbeGraphics graphics,Action draw){graphics.Pixels(draw,Matrix.Identity);}
         private static void Pointer(object host,bool held,int x,int y){Call(host,"AcceptWorldPointer",true,held,false,x,y,Main.maxTilesX,Main.maxTilesY);}

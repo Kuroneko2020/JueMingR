@@ -23,6 +23,7 @@ namespace JueMingR.ArchitectureTests
             Add("BlueprintLibraryChecks", "blueprint-host", (root, failures) => BlueprintLibraryChecks.Check(failures));
             Add("BlueprintProjectionChecks", "blueprint-host", (root, failures) => BlueprintProjectionChecks.Check(failures));
             Add("BlueprintMirrorTrimChecks", "blueprint-host", (root, failures) => BlueprintMirrorTrimChecks.Check(failures));
+            Add("BlueprintTrimGeometryChecks", "blueprint-host", (root, failures) => BlueprintTrimGeometryChecks.Check(failures));
             Add("BlueprintWorldMatchChecks", "blueprint-host", (root, failures) => BlueprintWorldMatchChecks.Check(failures));
             Add("BlueprintMaterialsChecks", "blueprint-host", (root, failures) => BlueprintMaterialsChecks.Check(failures));
             Add("CombatChecks", "combat-host", (root, failures) => CombatChecks.Check(failures));

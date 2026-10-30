@@ -37,18 +37,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var trim = host.ProjectionEditTarget;
                 if (host.TrimPointerVisible && trim != null)
                 {
+                    DrawTrimGeometry(host.TrimManualGeometry,trim.OriginX,trim.OriginY,view,
+                        Color.FromNonPremultiplied(255,55,65,65),Color.FromNonPremultiplied(255,65,75,220));
+                    DrawTrimGeometry(host.TrimObjectGeometry,trim.OriginX,trim.OriginY,view,
+                        Color.FromNonPremultiplied(255,55,65,90),Color.FromNonPremultiplied(255,75,85,230));
                     var bounds = host.TrimDisplayBounds;
-                    if (bounds.Width > 0 && bounds.Height > 0)
+                    if (host.TrimDragging && bounds.Width > 0 && bounds.Height > 0)
                     {
                         FillClipped(trim.OriginX+bounds.Left,trim.OriginY+bounds.Top,bounds.Width,bounds.Height,view,Color.FromNonPremultiplied(255,55,65,65));
                         Outline(trim.OriginX+bounds.Left,trim.OriginY+bounds.Top,bounds.Width,bounds.Height,view,Color.FromNonPremultiplied(255,65,75,220));
-                    }
-                    var plan = host.TrimPlan;
-                    if (plan != null) foreach (var source in plan.ObjectBounds)
-                    {
-                        var extension=trim.View.DisplayBounds(source);
-                        FillClipped(trim.OriginX+extension.Left,trim.OriginY+extension.Top,extension.Width,extension.Height,view,Color.FromNonPremultiplied(255,55,65,90));
-                        Outline(trim.OriginX+extension.Left,trim.OriginY+extension.Top,extension.Width,extension.Height,view,Color.FromNonPremultiplied(255,75,85,230));
                     }
                     if (!host.TrimDragging && host.CanRetainEdit && host.Pointer.HasPoint)
                         FillClipped(host.Pointer.CellX,host.Pointer.CellY,1,1,view,Color.FromNonPremultiplied(255,55,65,150));
@@ -80,6 +77,31 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             projection.Renderer.Draw(projection.OriginX, projection.OriginY,projection.Summary.Width,projection.MirroredHorizontally);
             string error; if (projection.Renderer.TryTakeError(out error)) { host.ProjectionDrawFailed(projection, error); return false; } return true;
+        }
+        private static void DrawTrimGeometry(BlueprintTrimGeometry selected,int originX,int originY,Platform.WorldTargets.WorldTargetView view,Color fill,Color edgeInk)
+        {
+            if (selected == null || !selected.HasContent) return;
+            int left=view.X-originX,top=view.Y-originY,right=left+view.Width,bottom=top+view.Height;
+            foreach (BlueprintSpan span in selected.EnumerateVisible(left,top,right,bottom))
+                Fill(originX+span.Left,originY+span.Y,originX+span.RightExclusive,originY+span.Y+1,fill);
+            // Geometry was transformed to this fixed instance pose at admission.
+            // Query its numeric visible edges; Draw never walks old selections,
+            // object IDs, or complete source footprints to discover visibility.
+            foreach (BlueprintTrimEdge edge in selected.EnumerateVisibleEdges(left,top,right,bottom))
+            {
+                if (edge.Side == BlueprintTrimEdgeSide.Top || edge.Side == BlueprintTrimEdgeSide.Bottom)
+                {
+                    float y=(originY+edge.Fixed)*16f;
+                    if (edge.Side == BlueprintTrimEdgeSide.Bottom) y--;
+                    FillPixels((originX+edge.Start)*16f,y,(originX+edge.EndExclusive)*16f,y+1,edgeInk);
+                }
+                else
+                {
+                    float x=(originX+edge.Fixed)*16f;
+                    if (edge.Side == BlueprintTrimEdgeSide.Right) x--;
+                    FillPixels(x,(originY+edge.Start)*16f,x+1,(originY+edge.EndExclusive)*16f,edgeInk);
+                }
+            }
         }
         private static void Cross(int x, int y)
         {

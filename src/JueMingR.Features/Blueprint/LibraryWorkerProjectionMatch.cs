@@ -256,11 +256,10 @@ namespace JueMingR.Features.Blueprint
                 {
                     CheckProjectionSource(owner, request); var chunk = ProjectionChunk(owner, number);
                     List<ProjectionSourceBuild> ordinaryTargets; ordinary.TryGetValue(number, out ordinaryTargets);
-#if DEBUG
-                    Interlocked.Increment(ref projectionSourceMemberBlocks); Interlocked.Add(ref projectionSourceMemberRecords, chunk.Count);
-#endif
+                    RecordProjectionObjectMemberBlock();
                     for (int i = 0; i < chunk.Count; i++)
                     {
+                        RecordProjectionObjectMemberRecord();
                         var raw = chunk.Cells[i];
                         if (ordinaryTargets != null)
                         {
@@ -299,29 +298,33 @@ namespace JueMingR.Features.Blueprint
                 {
                     CheckProjectionSource(owner, request);
                     if (build.ObjectId != 0 && build.Cells.Count != build.PlannedCells) throw new InvalidDataException("blueprint-object-member-reference");
-                    build.Cells.Sort(CellComparer.Instance);
+                    foreach (bool ignored in SortProjectionObjectMembersSteps(build.Cells, () => CheckProjectionSource(owner, request))) yield return true;
                     // ToArray briefly coexists with the mutable construction
                     // buffer. Include both arrays and metadata/string payload
                     // in the working peak, then drop this build's staging list.
                     UpdateProjectionSourceWorkingBytes(working + build.PlannedBytes + summaryReferenceBytes);
                     build.Window = new BlueprintProjectionWindow(request.Identity, request.Generation, summary, build.Bounds,
                         build.Cells.ToArray(), build.ObjectId == 0 ? Array.Empty<CaptureObject>() : new[] { build.Metadata }, true);
-                    if (request.View != null)
-                    {
-                        BlueprintProjectionWindow effective; string reason;
-                        if (build.ObjectId == 0) effective = TransformProjectionDoorContext(owner, request.View, build.Window, false);
-                        else if (!request.View.TryApply(build.Window, true, out effective, out reason, true)) throw new InvalidDataException(reason ?? "blueprint-view-source");
-                        build.Window = effective;
-                        if (build.DoorContexts != null && build.DoorContexts.Count != 0)
-                        {
-                            var contexts = new BlueprintProjectionWindow[build.DoorContexts.Count];
-                            for (int c = 0; c < contexts.Length; c++) contexts[c] = TransformProjectionDoorContext(owner, request.View, build.DoorContexts[c]);
-                            Array.Sort(contexts, (a, b) => a.Bounds.Top == b.Bounds.Top ? a.Bounds.Left.CompareTo(b.Bounds.Left) : a.Bounds.Top.CompareTo(b.Bounds.Top));
-                            build.DoorContexts = Array.AsReadOnly(contexts);
-                        }
-                    }
                     if (build.Window.EstimatedBytes > ProjectionWindowLimit) throw new InvalidDataException("blueprint-projection-window-budget");
                     working += build.Window.EstimatedBytes + summaryReferenceBytes - (64L + build.Cells.Capacity * 64L); build.Cells = null;
+                    UpdateProjectionSourceWorkingBytes(working); yield return true;
+                }
+                if (request.View != null)
+                {
+                    long rawBytes = 0;
+                    foreach (var build in builds) rawBytes += build.Window.EstimatedBytes + build.DoorContextBytes;
+                    // Discover IDs from the accepted raw prefix and all of its
+                    // contexts, then share finite complete-member batches. The
+                    // transport arrays retain their physical offset contract.
+                    foreach (bool ignored in TransformProjectionSourceViewsSteps(owner, request, builds, working)) yield return true;
+                    foreach (var build in builds)
+                    {
+                        CheckProjectionSource(owner, request);
+                        build.DoorContextBytes = BlueprintProjectionSourcePart.DoorContextBytes(build.DoorContexts);
+                        if (build.Window.EstimatedBytes > ProjectionWindowLimit) throw new InvalidDataException("blueprint-projection-window-budget");
+                        working += build.Window.EstimatedBytes + build.DoorContextBytes;
+                    }
+                    working -= rawBytes;
                     UpdateProjectionSourceWorkingBytes(working); yield return true;
                 }
                 var parts = new BlueprintProjectionSourcePart[plans.Count];

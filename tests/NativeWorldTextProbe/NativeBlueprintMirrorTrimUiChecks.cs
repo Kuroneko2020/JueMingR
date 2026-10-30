@@ -180,10 +180,14 @@ namespace NativeWorldTextProbe
 
                 accepted(); draw(false); long certifiedMapping = (long)Get(input, "Mapping");
                 frame(1256, 450, true);
+                Require((long)Get(input, "Mapping") == certifiedMapping + 1 && (bool)Get(host, "trimFinalizing") && ReferenceEquals(Get(target,"Mask"),mask),
+                    "adjacent certified mapping accepts one complete trim responsibility without synchronous publication");
+                NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return GetOptional(host,"trimFrozenPlan")!=null;});
+                frame(1256,450,true);
                 var committed = (BlueprintProjectionMask)Get(target, "Mask");
-                Require((long)Get(input, "Mapping") == certifiedMapping + 1 && !ReferenceEquals(committed, mask) &&
+                Require(!ReferenceEquals(committed, mask) &&
                     committed.RemovedLayerCount > mask.RemovedLayerCount && (long)Get(host, "projectionSceneRevision") == scene + 1 && !(bool)Get(host, "ProjectionEditing"),
-                    "the actual Shell-admitted F5 Mouse1 commits the same target exactly once at the immediately adjacent certified mapping");
+                    "the actual Shell-admitted F5 Mouse1 publishes the same accepted complete version once after Freeze, without a second physical click");
                 // A held primary and repeated old observer callbacks cannot
                 // restore the retired intent or earn another scene publication.
                 pointer.GetType().GetMethod("Begin", F).Invoke(null, null);

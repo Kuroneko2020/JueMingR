@@ -121,9 +121,13 @@ namespace JueMingR.Features.Blueprint
 
     public sealed class BlueprintProjectionCommitRequest
     {
-        public BlueprintProjectionCommitRequest(long sessionGeneration, long transactionId, long sceneRevision, BlueprintProjectionPlacement candidate, IReadOnlyList<BlueprintProjectionPlacement> previous, BlueprintProjectionEditKind kind = BlueprintProjectionEditKind.Place, BlueprintProjectionBounds? trimBounds = null, long previewRevision = 0)
+        public BlueprintProjectionCommitRequest(long sessionGeneration, long transactionId, long sceneRevision, BlueprintProjectionPlacement candidate, IReadOnlyList<BlueprintProjectionPlacement> previous, BlueprintProjectionEditKind kind = BlueprintProjectionEditKind.Place, BlueprintProjectionBounds? trimBounds = null, long previewRevision = 0,
+            BlueprintTrimGeometry trimGeometry = null, BlueprintProjectionTrimPhase trimPhase = BlueprintProjectionTrimPhase.Accumulate,
+            long expectedTrimVersion = 0, long throughTrimVersion = 1, long confirmedTrimRemovedCount = 0)
         {
             SessionGeneration = sessionGeneration; TransactionId = transactionId; SceneRevision = sceneRevision; Candidate = candidate ?? throw new ArgumentNullException(nameof(candidate)); Kind = kind; TrimBounds = trimBounds; PreviewRevision = previewRevision;
+            TrimGeometry = trimGeometry; TrimPhase = trimPhase; ExpectedTrimVersion = expectedTrimVersion;
+            ThroughTrimVersion = throughTrimVersion; ConfirmedTrimRemovedCount = confirmedTrimRemovedCount;
             var copy = new BlueprintProjectionPlacement[previous.Count]; for (int i = 0; i < copy.Length; i++) copy[i] = previous[i]; Previous = Array.AsReadOnly(copy);
         }
         public long SessionGeneration { get; }
@@ -134,6 +138,14 @@ namespace JueMingR.Features.Blueprint
         public BlueprintProjectionEditKind Kind { get; }
         public BlueprintProjectionBounds? TrimBounds { get; }
         public long PreviewRevision { get; }
+        // Successful admission transfers this numeric delta's ownership from
+        // Host to the worker. Busy admission retains no reference and the Host
+        // may continue merging its suffix; accepted geometry is never mutated.
+        public BlueprintTrimGeometry TrimGeometry { get; }
+        public BlueprintProjectionTrimPhase TrimPhase { get; }
+        public long ExpectedTrimVersion { get; }
+        public long ThroughTrimVersion { get; }
+        public long ConfirmedTrimRemovedCount { get; }
     }
     public sealed class BlueprintProjectionCommitReceipt
     {

@@ -46,7 +46,11 @@ namespace JueMingR.Features.Blueprint
         public void ClearProjectionWindow(BlueprintProjectionIdentity identity) { worker.ClearProjectionWindow(identity); }
         public bool RequestProjectionCommit(BlueprintProjectionCommitRequest request) { return worker.RequestProjectionCommit(request); }
         public void CancelProjectionCommit(long sessionGeneration, long transactionId) { worker.CancelProjectionCommit(sessionGeneration, transactionId); }
+        public bool RetainsProjection(BlueprintProjectionIdentity identity) { return worker.RetainsProjection(identity); }
         public bool TryTakeProjectionCommit(out BlueprintProjectionCommitReceipt receipt) { return worker.TryTakeProjectionCommit(out receipt); }
+#if DEBUG
+        public BlueprintProjectionMemberBatchStatistics DebugProjectionMemberBatchStatistics { get { return worker.ProjectionMemberBatchStatistics; } }
+#endif
         public bool TryTakeProjectionReceipt(out BlueprintProjectionReceipt value) { return worker.TryTakeProjectionReceipt(out value); }
         public bool RequestProjectionSource(BlueprintProjectionIdentity identity, long generation, int range, int objectId = 0, int offset = 0, long capabilityRevision = 0, BlueprintProjectionView view = null) { return worker.RequestProjectionSource(identity, generation, range, objectId, offset, capabilityRevision, view); }
         public bool RequestProjectionSources(BlueprintProjectionIdentity identity, long generation, IReadOnlyList<BlueprintProjectionSourceDemand> demands, long capabilityRevision = 0, BlueprintProjectionView view = null) { return worker.RequestProjectionSources(identity, generation, demands, capabilityRevision, view); }

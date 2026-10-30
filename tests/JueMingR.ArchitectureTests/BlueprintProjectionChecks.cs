@@ -62,14 +62,20 @@ namespace JueMingR.ArchitectureTests
                 var placement=new BlueprintProjectionPlacement(identity,summary,100,100,1,totalLayerCount:10);
                 var request=new BlueprintProjectionCommitRequest(11,80,5,placement,Array.Empty<BlueprintProjectionPlacement>(),BlueprintProjectionEditKind.Trim,new BlueprintProjectionBounds(1,0,1,1),1);
                 var preview=Commit(state,request);var plan=preview.TrimPlan;
-                Require(preview.Succeeded && plan!=null && plan.HasContent && plan.RemovedLayerCount==2 && plan.ObjectBounds.Count==1,"touching one member expands exactly two Tile members in immutable preview");
+                Require(preview.Succeeded && plan!=null && plan.HasContent && plan.RemovedLayerCount==2 && plan.ObjectBounds.Count==1 && plan.Mask==null,"touching one member expands exactly two Tile members; preview summary never exposes a mutable mask");
+                plan=Commit(state,new BlueprintProjectionCommitRequest(11,80,5,placement,Array.Empty<BlueprintProjectionPlacement>(),BlueprintProjectionEditKind.Trim,
+                    trimPhase:BlueprintProjectionTrimPhase.Freeze,expectedTrimVersion:1,throughTrimVersion:1,confirmedTrimRemovedCount:2)).TrimPlan;
                 var members=Window(state,identity,100,new BlueprintProjectionBounds(0,0,5,1));var outside=members.Cells.Single(c=>c.X==2);
                 var remaining=plan.Mask.Apply(outside);
                 Require((remaining.Layers&CaptureLayer.Tile)==0 && (remaining.Layers&(CaptureLayer.Wall|CaptureLayer.Wire|CaptureLayer.Liquid|CaptureLayer.Actuator))==(CaptureLayer.Wall|CaptureLayer.Wire|CaptureLayer.Liquid|CaptureLayer.Actuator) && remaining.Wires==5,"expanded outside member loses only Tile, retaining wall two wires liquid actuator");
                 Require(placement.Mask.RemovedLayerCount==0 && preview.Masks.Count==0 && preview.RetiredInstanceIds.Count==0,"preview does not mutate source scene or cover siblings");
+                state.CancelProjectionCommit(11,80);
                 var repeat=Commit(state,new BlueprintProjectionCommitRequest(11,81,5,new BlueprintProjectionPlacement(identity,summary,100,100,1,plan.Mask),Array.Empty<BlueprintProjectionPlacement>(),BlueprintProjectionEditKind.Trim,new BlueprintProjectionBounds(1,0,1,1),2));
                 Require(!repeat.TrimPlan.HasContent && repeat.TrimPlan.RemovedLayerCount==0,"already removed range cannot XOR or report a new change");
+                state.CancelProjectionCommit(11,81);
                 var mirrored=Commit(state,new BlueprintProjectionCommitRequest(11,82,5,new BlueprintProjectionPlacement(identity,summary,100,100,1,mirroredHorizontally:true),Array.Empty<BlueprintProjectionPlacement>(),BlueprintProjectionEditKind.Trim,new BlueprintProjectionBounds(3,0,1,1),3));
+                mirrored=Commit(state,new BlueprintProjectionCommitRequest(11,82,5,mirrored.Request.Candidate,Array.Empty<BlueprintProjectionPlacement>(),BlueprintProjectionEditKind.Trim,
+                    trimPhase:BlueprintProjectionTrimPhase.Freeze,expectedTrimVersion:1,throughTrimVersion:1,confirmedTrimRemovedCount:2));
                 Require(mirrored.TrimPlan.RemovedLayerCount==2 && (mirrored.TrimPlan.Mask.Apply(members.Cells.Single(c=>c.X==1)).Layers&CaptureLayer.Tile)==0 && (mirrored.TrimPlan.Mask.Apply(members.Cells.Single(c=>c.X==0)).Layers&CaptureLayer.Tile)!=0,"display column three maps to source one without shifting source mask");
                 var sibling=Window(state,other,101,new BlueprintProjectionBounds(0,0,5,1));Require(sibling.Cells.Count==5 && sibling.Cells.Count(c=>(c.Layers&CaptureLayer.Tile)!=0)==5,"same object id on another instance remains whole");
                 state.ReleaseProjection(identity);state.ReleaseProjection(other);

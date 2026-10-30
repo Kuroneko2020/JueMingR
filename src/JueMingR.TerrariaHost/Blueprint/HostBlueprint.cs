@@ -141,8 +141,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // mapping may retain its native UI proof; it cannot drag/select.
                 bool confirm = CanRetainTrimConfirmation(Input.Mapping);
                 State.Interrupt(); if (ProjectionEditing) InterruptProjectionGesture(confirm);
+                ArbitrateCurrentTrim();
                 if (confirm) Pointer.CaptureTrimConfirmation(); else Pointer.Cancel();
                 return; }
+            ArbitrateCurrentTrim();
             Pointer.Capture();
         }
         public void OnSessionStarted()

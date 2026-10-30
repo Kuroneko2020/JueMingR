@@ -199,7 +199,12 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { observe(); return (bool)Get(host, "CanInvokeConfirmTrim"); });
             Require(((BlueprintProjectionMask)Get(target, "Mask")).RemovedLayerCount == 0, "released real trim is still only a preview");
             NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); Call(host, "ConfirmTrimProjection");
-            NativeQuickItemChecks.Until(() => { observe(); return !Scene(host).Contains(target); });
+            // A control release belongs to this mapping. Observe samples the
+            // next mapping, so first finish the real Host input arbitration.
+            Call(host, "ProcessInput");
+            Require((bool)Get(host, "trimFinalizing") && ((BlueprintProjectionMask)Get(target, "Mask")).RemovedLayerCount == 0,
+                "one current-mapping confirmation accepts Freeze without publishing from the command itself");
+            NativeQuickItemChecks.Until(() => { observe(); Call(host,"ProcessInput"); return !Scene(host).Contains(target); });
             Require(((BlueprintProjectionMask)Get(target, "Mask")).RemovedLayerCount == 1 && (bool)Get(host, "AutoBuildEnabled"),
                 "real confirm trims the one ordinary source layer and remaining full chair Match naturally retires with preference enabled");
             long uses = (long)Get(host, "BuildUsesStarted");

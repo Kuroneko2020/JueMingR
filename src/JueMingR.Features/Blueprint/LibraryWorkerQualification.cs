@@ -161,21 +161,7 @@ namespace JueMingR.Features.Blueprint
                 return catalog.Select(cell);
             }
             ProjectionSourceObjectIndex entry = owner.SourceObjects[cell.ObjectId];
-            if (!ReferenceEquals(entry.QualificationCatalog, catalog) || !ReferenceEquals(entry.QualificationProfile, view?.Profile) || entry.QualificationMirrored != (view?.MirroredHorizontally == true))
-            {
-                var obj = ProjectionObject(owner, cell.ObjectId);
-                CaptureCell first = cell; bool interpreted = true;
-                if (view?.Profile != null)
-                {
-                    obj.X -= owner.Root.Summary.Left; obj.Y -= owner.Root.Summary.Top;
-                    var members = ProjectionObjectMembers(owner, obj.Id); string reason;
-                    if (view.MirroredHorizontally)
-                    { CaptureCell[] targets; interpreted = view.Profile.TryMirrorObject(obj, members, view.Width, out obj, out targets, out reason); if (interpreted) first = targets[0]; }
-                    else { interpreted = view.Profile.TryNormalizeObject(obj, members, out obj, out reason); first = members[0]; }
-                }
-                entry.Qualification = interpreted ? catalog.QualifyTile(first, obj) : new BlueprintTargetQualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.Unsupported, null, BlueprintTargetReason.TargetShapeUnresolved, catalog.Revision);
-                entry.QualificationCatalog = catalog; entry.QualificationProfile = view?.Profile; entry.QualificationMirrored = view?.MirroredHorizontally == true;
-            }
+            if (!ProjectionObjectQualificationCurrent(entry, catalog, view)) throw new InvalidOperationException("blueprint-object-qualification-not-prepared");
             ushort bits = BlueprintConstructionTargets.FilterBits(BlueprintProjectionMask.Layers(cell)), unknown = 0;
             if (entry.Qualification.Disposition == BlueprintTargetDisposition.DisplayOnly) bits &= 0xfe;
             else if (entry.Qualification.Disposition == BlueprintTargetDisposition.Unresolved) unknown |= 1;
@@ -186,6 +172,72 @@ namespace JueMingR.Features.Blueprint
                 else if (wall.Disposition == BlueprintTargetDisposition.Unresolved) unknown |= 2;
             }
             return new BlueprintConstructionSelection(bits, unknown, catalog.Revision);
+        }
+        private static bool ProjectionObjectQualificationCurrent(ProjectionSourceObjectIndex entry, BlueprintPlacementCatalog catalog, BlueprintProjectionView view)
+        { return ReferenceEquals(entry.QualificationCatalog, catalog) && ReferenceEquals(entry.QualificationProfile, view?.Profile) && entry.QualificationMirrored == (view?.MirroredHorizontally == true); }
+
+        private IEnumerable<bool> PrepareProjectionObjectQualificationsSteps(ProjectionOwner owner, ProjectionQualificationRequest request,
+            CaptureChunk chunk, long working)
+        {
+            var ids = new List<int>(); var firstCells = new Dictionary<int, CaptureCell>();
+            Action check = () => CheckProjectionQualification(owner, request);
+            RecordProjectionObjectMemberBlock();
+            for (int i = 0; i < chunk.Count; i++)
+            {
+                RecordProjectionObjectMemberRecord(); var cell = chunk.Cells[i]; ProjectionSourceObjectIndex entry;
+                if (cell.ObjectId > 0 && owner.SourceObjects.TryGetValue(cell.ObjectId, out entry) &&
+                    !ProjectionObjectQualificationCurrent(entry, request.Catalog, request.View) && !firstCells.ContainsKey(cell.ObjectId))
+                { ids.Add(cell.ObjectId); firstCells.Add(cell.ObjectId, cell); }
+                if ((i & 31) == 31) { check(); yield return true; }
+            }
+            long temporary = 256L + ids.Capacity * 4L + firstCells.Count * 128L;
+            UpdateProjectionQualificationWorkingBytes(working + temporary);
+            // With no profile this is the old metadata/first-cell selection;
+            // no complete body is needed or acquired merely for a cold cache.
+            if (request.View?.Profile == null)
+            {
+                foreach (int id in ids)
+                {
+                    check(); var entry = owner.SourceObjects[id];
+                    entry.Qualification = request.Catalog.QualifyTile(firstCells[id], ProjectionObject(owner, id));
+                    entry.QualificationCatalog = request.Catalog; entry.QualificationProfile = null; entry.QualificationMirrored = request.View?.MirroredHorizontally == true;
+                    yield return true;
+                }
+                yield break;
+            }
+            int next = 0;
+            while (next < ids.Count)
+            {
+                check();
+                using (var batch = PlanProjectionObjectMemberBatch(owner, ids, ref next))
+                {
+                    foreach (bool ignored in CollectProjectionObjectMembersSteps(owner, batch, check,
+                        bytes => UpdateProjectionQualificationWorkingBytes(working + temporary + bytes))) yield return true;
+                    foreach (var pair in batch.Entries)
+                    {
+                        check(); var body = pair.Value; var obj = body.Metadata; var first = body.Members[0]; string reason;
+                        bool interpreted; RecordProjectionObjectInterpretation();
+                        if (request.View.MirroredHorizontally)
+                        {
+                            CaptureCell[] targets;
+                            interpreted = request.View.Profile.TryMirrorObject(obj, body.Members, request.View.Width, out obj, out targets, out reason);
+                            if (interpreted)
+                            {
+                                if (targets == null || targets.Length != body.Members.Count) throw new System.IO.InvalidDataException("blueprint-mirror-object-members");
+                                first = targets[0];
+                            }
+                        }
+                        else interpreted = request.View.Profile.TryNormalizeObject(obj, body.Members, out obj, out reason);
+                        check(); var entry = owner.SourceObjects[pair.Key];
+                        entry.Qualification = interpreted ? request.Catalog.QualifyTile(first, obj) : new BlueprintTargetQualification(BlueprintTargetDisposition.Unresolved,
+                            BlueprintPlacementResolutionKind.Unsupported, null, BlueprintTargetReason.TargetShapeUnresolved, request.Catalog.Revision);
+                        entry.QualificationCatalog = request.Catalog; entry.QualificationProfile = request.View.Profile; entry.QualificationMirrored = request.View.MirroredHorizontally;
+                        // Only the small catalog/profile/pose result survives.
+                        // Later blocks reuse it without retaining this body.
+                        yield return true;
+                    }
+                }
+            }
         }
         private IEnumerable<bool> QualifyProjection(ProjectionOwner owner, ProjectionQualificationRequest request)
         {
@@ -207,8 +259,10 @@ namespace JueMingR.Features.Blueprint
                 // Current block staging and its temporary geometry arrays are
                 // bounded by the existing decoded block. Completed numeric
                 // geometry is charged while this incremental pass retains it.
-                if (buildGeometry) UpdateProjectionQualificationWorkingBytes(geometryBytes + chunk.Count * 256L +
-                    (sources.Capacity + proofs.Capacity) * 64L + indexed.Count * 64L + 1024L);
+                long working = geometryBytes + chunk.Count * 256L + 1024L +
+                    (buildGeometry ? (sources.Capacity + proofs.Capacity) * 64L + indexed.Count * 64L : 0L);
+                UpdateProjectionQualificationWorkingBytes(working);
+                foreach (bool ignored in PrepareProjectionObjectQualificationsSteps(owner, request, chunk, working)) yield return true;
                 var positions = buildGeometry ? new List<long>() : null; var bits = buildGeometry ? new List<ushort>() : null;
                 var ids = buildGeometry ? new List<int>() : null; var objectIds = buildGeometry ? new HashSet<int>() : null;
                 for (int i = 0; i < chunk.Count; i++)

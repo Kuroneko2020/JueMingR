@@ -131,7 +131,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     case BlueprintToolbarAction.Remove: host.RemoveProjection(); break;
                     case BlueprintToolbarAction.Mirror: host.MirrorProjection(); break;
                     case BlueprintToolbarAction.Trim: host.TrimProjection(); break;
-                    case BlueprintToolbarAction.ConfirmTrim: host.ConfirmTrimProjection(); break;
+                    case BlueprintToolbarAction.ConfirmTrim: host.ConfirmTrimToolbar(); break;
                     case BlueprintToolbarAction.CancelPlace: host.Place(null); break;
                     case BlueprintToolbarAction.RemoveAll: host.RemoveAllProjections(); break;
                     case BlueprintToolbarAction.Save: host.Save(); break;
