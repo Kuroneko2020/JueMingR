@@ -108,13 +108,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (!needsNeutral && left && !previousLeft)
                 { armed = hit >= 0 && Available(hit) ? hit : -1; armedGeneration = Layout.Generation; armedAction = Layout.Action(armed); }
             }
+            // Right cancels before a simultaneous left release becomes a
+            // command; the preview remains owned by the Host.
+            if (right) armed = -1;
             int execute = -1;
             if (armed >= 0 && !left && previousLeft)
             {
                 if (current && armedGeneration == Layout.Generation && armed == hit && armedAction == Layout.Action(hit) && Available(armed)) execute = armed;
                 armed = -1;
             }
-            if (right) armed = -1;
             // Consume before retiring each trusted release. Hiding or reflowing
             // cancels activation, while its physical tail remains UI-owned.
             Consume(leftTail, rightTail);

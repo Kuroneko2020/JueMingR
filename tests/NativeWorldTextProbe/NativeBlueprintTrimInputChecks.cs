@@ -83,13 +83,50 @@ namespace NativeWorldTextProbe
                     frame(Array.Empty<Keys>(), true, false, false, cx, cy); frame(Array.Empty<Keys>(), false, false, false, cx, cy);
                     Require((bool)Get(host, "trimFinalizing") && ReferenceEquals(Get(scene.Target, "Mask"), baseline), "actual F5 control press/release reaches the unified accepted command, never a world drag");
                     scene.WaitFrozen(); Call(host, "CancelProjection"); Call(shell, "CloseAndSubmitPosition"); keyFrame(Array.Empty<Keys>()); cancelled();
-                    ready(); ToolbarRelease(scene, frame);
+                    scene.Begin(); scene.Seal(0, 0); scene.Seal(8, 0); scene.Ready(); keyFrame(Array.Empty<Keys>());
+                    var plan = (BlueprintProjectionTrimPlan)Get(host, "TrimPlan"); var manual = (BlueprintTrimGeometry)Get(host, "TrimManualGeometry");
+                    long previewRevision = (long)Get(host, "TrimPreviewRevision"), sealedVersion = (long)Get(host, "trimSealedVersion");
+                    var latest = (BlueprintSceneDocument)Get(scene.History, "latest"); long savedRevision = latest.Revision;
+                    var worker = Get(scene.Library, "worker"); long copies = (long)Get(worker, "projectionTrimMaskCopies");
+                    Require(plan.RemovedLayerCount == 9 && sealedVersion == 2 && (long)Get(host, "trimVerifiedVersion") == 2 && GetOptional(host, "trimFlight") == null,
+                        "independent bed eight Tile layers plus the distant Tile form a ready nine-layer union");
+                    Action retained = () =>
+                    {
+                        Require(!(bool)Get(host, "trimFinalizing") && GetOptional(host, "trimFlight") == null && GetOptional(host, "trimFrozenPlan") == null &&
+                            (long)Get(host, "trimReadyMapping") < 0 && (long)Get(host, "trimConfirmMapping") < 0 && (long)Get(worker, "projectionTrimMaskCopies") == copies,
+                            "same-sample toolbar left release plus right press cancels before any confirmation or Freeze is admitted");
+                        Require(ReferenceEquals(Get(scene.Target, "Mask"), baseline) && baseline.RemovedLayerCount == 0 && baseline.CellCount == 0 && baseline.ObjectCount == 0 &&
+                            (long)Get(host, "projectionSceneRevision") == revision && NativeBlueprintTrimAccumulationChecks.Scene(host).Contains(scene.Target) &&
+                            ReferenceEquals(Get(scene.History, "latest"), latest) && latest.Revision == savedRevision,
+                            "cancelled toolbar activation leaves permanent mask, instance and scene-save offer untouched");
+                        Require((bool)Get(host, "OwnTrimCancellation") && ReferenceEquals(Get(host, "TrimPlan"), plan) && ReferenceEquals(Get(host, "TrimManualGeometry"), manual) &&
+                            plan.RemovedLayerCount == 9 && manual.Contains(0, 0) && manual.Contains(8, 0) && !manual.Contains(5, 0) &&
+                            (long)Get(host, "trimSealedVersion") == sealedVersion && (long)Get(host, "trimVerifiedVersion") == sealedVersion &&
+                            (long)Get(host, "TrimPreviewRevision") == previewRevision && (bool)Get(host, "CanInvokeConfirmTrim"),
+                            "UI right cancels only the button activation and retains both verified regions, gap and confirmation eligibility");
+                    };
+                    ToolbarGesture(scene, frame, sample =>
+                    {
+                        sample(false, false); sample(true, false);
+                        Require((int)Get(Get(host, "Toolbar"), "armed") >= 0, "actual presented toolbar is armed before the cancelling sample");
+                        sample(false, true); retained(); // Check before Poll can hide an erroneous admission.
+                        for (int n = 0; n < 3; n++) { Call(host, "Poll"); sample(false, false); retained(); }
+                        sample(true, false); sample(false, false);
+                    });
                     Require((bool)Get(host, "trimFinalizing"), "actual presented gel-toolbar release reaches the same finalizing responsibility");
                     scene.WaitFrozen(); keyFrame(Array.Empty<Keys>());
                     var final = (BlueprintProjectionMask)Get(scene.Target, "Mask");
-                    Require(final.RemovedLayerCount == 8 && (long)Get(host, "projectionSceneRevision") == revision + 1 && !(bool)Get(host, "ProjectionEditing"), "one normal controlled UI confirmation publishes once after Freeze, without another click");
-                    keyFrame(Array.Empty<Keys>()); Require(ReferenceEquals(Get(scene.Target, "Mask"), final), "later input cannot replay the accepted confirmation");
-                    Console.WriteLine("PASS trim input actual Shell -> Host: G+Esc, Mouse4+Esc, both key-code orders of confirm/cancel, prior certified world right, Freeze receipt+Esc, real F5 release and presented gel-toolbar release, one eventual publication. Controlled CPU observer calls do not prove GPU/OS input.");
+                    var committed = (BlueprintSceneDocument)Get(scene.History, "latest");
+                    Require(final.RemovedLayerCount == 9 && (long)Get(host, "projectionSceneRevision") == revision + 1 && !(bool)Get(host, "ProjectionEditing") &&
+                        (long)Get(worker, "projectionTrimMaskCopies") == copies + 1 && !ReferenceEquals(committed, latest) && committed.Revision == savedRevision + 1,
+                        "one fresh normal controlled UI confirmation publishes the entire nine-layer union and one scene-save offer after one Freeze");
+                    Require(!final.Apply(new CaptureCell { X = 0, Y = 0, ObjectId = 1, Layers = CaptureLayer.Tile }).HasContent &&
+                        !final.Apply(new CaptureCell { X = 8, Y = 0, Layers = CaptureLayer.Tile }).HasContent &&
+                        final.Apply(new CaptureCell { X = 5, Y = 0, Layers = CaptureLayer.Tile }).HasContent,
+                        "both independently selected regions are removed while their unselected gap Tile survives");
+                    keyFrame(Array.Empty<Keys>()); Require(ReferenceEquals(Get(scene.Target, "Mask"), final) && (long)Get(host, "projectionSceneRevision") == revision + 1 &&
+                        ReferenceEquals(Get(scene.History, "latest"), committed), "later input cannot replay the cancelled or accepted confirmation");
+                    Console.WriteLine("PASS trim input actual Shell -> Host: G+Esc, Mouse4+Esc, both key-code orders of confirm/cancel, prior certified world right, Freeze receipt+Esc, real F5 release, toolbar same-sample left-release/right-press cancellation with no immediate or delayed admission/save, retained disjoint preview, then one nine-layer publication after a fresh normal click. Controlled CPU observer calls do not prove GPU/OS input.");
                 }
                 finally
                 {
@@ -101,7 +138,7 @@ namespace NativeWorldTextProbe
                 }
             });
         }
-        private static void ToolbarRelease(NativeBlueprintTrimAccumulationChecks.Scenario scene, Action<Keys[], bool, bool, bool, int, int> frame)
+        private static void ToolbarGesture(NativeBlueprintTrimAccumulationChecks.Scenario scene, Action<Keys[], bool, bool, bool, int, int> frame, Action<Action<bool, bool>> gesture)
         {
             var host = scene.Host; var toolbar = Get(host, "Toolbar"); var layout = Get(toolbar, "Layout"); var player = Main.LocalPlayer;
             var oldItem = player.inventory[player.selectedItem]; bool oldEnabled = (bool)Get(host, "ToolbarEnabled");
@@ -117,7 +154,7 @@ namespace NativeWorldTextProbe
                 var buttons = ((IEnumerable)Get(layout, "Buttons")).Cast<object>().ToArray(); int index = Enumerable.Range(0, buttons.Length).Single(i => Call(layout, "Action", i).ToString() == "ConfirmTrim");
                 var rect = Get(buttons[index], "Rect"); var panel = Get(layout, "Panel");
                 int x = (int)((float)Get(panel, "X") + (float)Get(rect, "X") + 3), y = (int)((float)Get(panel, "Y") + (float)Get(rect, "Y") + 3);
-                frame(Array.Empty<Keys>(), false, false, false, x, y); frame(Array.Empty<Keys>(), true, false, false, x, y); frame(Array.Empty<Keys>(), false, false, false, x, y);
+                gesture((left, right) => frame(Array.Empty<Keys>(), left, right, false, x, y));
             }
             finally { player.inventory[player.selectedItem] = oldItem; Call(host, "SetToolbar", oldEnabled); Set(toolbar, "font", oldFont); Call(toolbar, "Cancel"); }
         }
