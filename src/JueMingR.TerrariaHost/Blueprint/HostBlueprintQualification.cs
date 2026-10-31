@@ -15,9 +15,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             return catalog.Select(cell,obj);
         }
         private bool ProjectionQualificationCurrent(BlueprintProjectionPlacement item)
+        { return ProjectionQualificationReceiptCurrent(item) && item.Qualification.Error == null; }
+        private bool ProjectionQualificationFailed(BlueprintProjectionPlacement item)
+        { return ProjectionQualificationReceiptCurrent(item) && item.Qualification.Error != null; }
+        private bool ProjectionQualificationReceiptCurrent(BlueprintProjectionPlacement item)
         {
             var value=item?.Qualification;var catalog=MaterialCatalog;
-            return value!=null && value.Error==null && catalog!=null && value.Identity.Equals(item.Identity) &&
+            return value!=null && catalog!=null && value.Identity.Equals(item.Identity) &&
                 ReferenceEquals(value.Mask,item.Mask) && ReferenceEquals(value.Catalog,catalog) && value.CapabilityRevision==catalog.Revision &&
                 value.ClassifierVersion==BlueprintPlacementCatalog.ClassifierVersion && ReferenceEquals(value.View,item.View);
         }

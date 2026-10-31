@@ -159,21 +159,36 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if DEBUG
                 ProjectionMatchSourceSteps++;
 #endif
-                if(TryCreateLocalBuildTarget(source,index,ordinal,support,out target))
+                int following;
+                if(TryCreateLocalBuildTarget(source,index,ordinal,support,out target,out following))
                 {range.Materials.Candidate=target;return true;}
+                // No target will write this sample. Consume its proven no-op
+                // lanes in this visit only; this cursor is part-relative while
+                // the shared constructor returns an absolute source ordinal.
+                cursor=following-BuildMemberOrdinal(part.Offset);
             }
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Count(BuildTraceReason.SourceBudgetEmpty);
 #endif
             return false;
         }
-        private bool TryCreateLocalBuildTarget(BuildSourcePart source,int index,int ordinal,long support,out BlueprintBuildTarget target,int preferredItemType=0)
+        private bool TryCreateLocalBuildTarget(BuildSourcePart source,int index,int ordinal,long support,out BlueprintBuildTarget target,out int following,int preferredItemType=0)
         {
-            bool found=TryCreateConstructionTarget(source.Owner,source.Range,source.Part,index,ordinal,support,out target,preferredItemType);
+            bool found=TryCreateConstructionTargetAndAdvance(source.Owner,source.Range,source.Part,index,ordinal,support,out target,out following,preferredItemType);
             if(found)target.LocalPriority=true;return found;
         }
         private void RememberBuildFrontier(BlueprintBuildTarget target)
         {
+            var preferred=target.Range.Materials;
+            if(preferred!=null && preferred.PreferredGroup==buildContinuation?.Group)
+            {
+                var world=target.Bounds.Expand(1);var owner=target.Range.Owner;
+                var next=owner.View.SourceBounds(new BlueprintProjectionBounds(world.Left-owner.OriginX,world.Top-owner.OriginY,world.Width,world.Height));
+                preferred.PreferredFrontierBounds=preferred.PreferredFrontier?BuildBoundsUnion(preferred.PreferredFrontierBounds,next):next;
+                preferred.PreferredFrontier=true;
+                var part=FindBuildSource(target.Range);
+                preferred.PreferredFrontierCursor=part==null?0:BuildMemberOrdinal(part.Offset+BuildCellLowerBound(ProjectionSourceCells(part.Window),preferred.PreferredFrontierBounds.Left,preferred.PreferredFrontierBounds.Top));
+            }
             for(var node=buildSources.First;node!=null;node=node.Next)
             {
                 var source=node.Value;if(!ReferenceEquals(source.Range,target.Range))continue;

@@ -335,6 +335,7 @@ namespace NativeWorldTextProbe
             // row. Five columns remain in that same native reach rectangle.
             int start = height == 4 ? 1019 : 1018;
             var p = SubstitutionReset(context, host, tools, input); SubstitutionCatalog(context, host, input);
+            long directoryBuilds=(long)Get(host,"BuildFocusDirectoryBuilds"),directoryConstruction=(long)Get(host,"BuildFocusDirectoryConstructionSteps");
             Call(host, "SetMaterialViewDemand", false); Call(host, "SetSameTypeReplacement", substitution);
             for (int x = ox + start - 4; x <= ox + width + 2; x++) for (int y = oy - 4; y <= oy + height + 5; y++) Main.tile[x, y].ClearEverything();
             for (int x = ox + start - 4; x <= ox + width + 2; x++) Require(WorldGen.PlaceTile(x, oy + 6, TileID.WoodBlock, true, true), "long cadence independent native player floor");
@@ -388,6 +389,12 @@ namespace NativeWorldTextProbe
                 points.All(v => Main.tile[v.X, v.Y].active() && Main.tile[v.X, v.Y].type == TileID.Stone), "every destination is a true native consume from the same exact Stone source");
             if (automatic) Require(result.Events.Select(e => e.Block).Distinct().Count() == 2 && result.Events.Select(e => e.Range).Distinct().Count() == 2,
                 "actual native consumption, rather than only metadata, crosses the real normalized source/range boundary");
+            if(automatic)
+            {
+                Require((long)Get(host,"BuildFocusDirectoryBuilds")-directoryBuilds==1 && (long)Get(host,"BuildFocusDirectoryConstructionSteps")-directoryConstruction==3,
+                    "two real normalized physical groups share one incrementally built three-node geometry directory");
+                Console.WriteLine("BlueprintFocusDirectory native records="+(width*height)+" physicalGroups=2 builds=1 constructionSteps=3 policy="+substitution);
+            }
             if (automatic && height == 4) Require(result.PartialSourceReceipt, "two full2048-record windows really cross the256KiB receipt prefix while the first world sample remains active");
             SetAutomatic(host, input, false); Call(host, "SetSameTypeReplacement", false); return result;
         }

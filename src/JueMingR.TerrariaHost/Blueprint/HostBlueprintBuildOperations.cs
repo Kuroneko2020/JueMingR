@@ -117,7 +117,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     if (!p.IsInTileInteractionRange(x, y, TileReachCheckSettings.Simple, p.inventory[slot].tileBoost + p.blockRange))
                     { failures |= BlueprintBuildWait.Player; continue; }
                     BlueprintBuildWait supplyWait; ulong supplySlots;
-                    if (!TryPlanBuildSupply(target, p, candidate.SupplyType, candidate.SupplyDestination, out primary, out supplyWait, out supplySlots))
+                    if (!TryPlanBuildSupply(target, p, candidate.SupplyType, candidate.SupplyDestination, out primary, out supplyWait, out supplySlots, intent == BuildPlanningIntent.ContinuationProbe))
                     { failures |= supplyWait; blocked |= supplySlots; continue; }
                     plan = new BuildOperationPlan { Operation = candidate, Tool = p.inventory[slot], ToolType = p.inventory[slot].type, ToolSlot = slot,
                         Supply = primary < 0 ? null : p.inventory[primary], SupplySlot = primary, SupplyType = candidate.SupplyType, SupplyDestination = candidate.SupplyDestination,
@@ -144,7 +144,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 { wait = BlueprintBuildWait.Player; return false; }
                 operation = CopyBuildOperation(operation);
             }
-            if (operation?.SupplyType > 0 && !TryPlanBuildSupply(target, p, operation.SupplyType, operation.SupplyDestination, out primary, out wait, out dependencySlots)) return false;
+            if (operation?.SupplyType > 0 && !TryPlanBuildSupply(target, p, operation.SupplyType, operation.SupplyDestination, out primary, out wait, out dependencySlots, intent == BuildPlanningIntent.ContinuationProbe)) return false;
             plan = new BuildOperationPlan { Operation = operation, Tool = p.inventory[tool], ToolType = p.inventory[tool].type, ToolSlot = tool,
                 Supply = primary < 0 ? null : p.inventory[primary], SupplySlot = primary,
                 SupplyType = operation?.SupplyType ?? 0, SupplyDestination = operation?.SupplyDestination ?? -1,
@@ -184,13 +184,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             return TryPrepareSpecialBuild(target, p, out flight, plan);
         }
         private bool TryCreateConstructionTarget(BlueprintProjectionPlacement owner, BlueprintProjectionMatchRange range,
-            BlueprintProjectionSourcePart part, int index, int ordinal, long support, out BlueprintBuildTarget target, int preferredItemType = 0)
+            BlueprintProjectionSourcePart part, int index, int ordinal, long support, out BlueprintBuildTarget target, int preferredItemType = 0, bool localPriority = false)
         {
             int following;
-            return TryCreateConstructionTargetAndAdvance(owner,range,part,index,ordinal,support,out target,out following,preferredItemType);
+            return TryCreateConstructionTargetAndAdvance(owner,range,part,index,ordinal,support,out target,out following,preferredItemType,localPriority);
         }
         private bool TryCreateConstructionTargetAndAdvance(BlueprintProjectionPlacement owner, BlueprintProjectionMatchRange range,
-            BlueprintProjectionSourcePart part, int index, int ordinal, long support, out BlueprintBuildTarget target,out int following,int preferredItemType=0)
+            BlueprintProjectionSourcePart part, int index, int ordinal, long support, out BlueprintBuildTarget target,out int following,int preferredItemType=0,bool localPriority=false)
         {
             target = null;following=ordinal+1;var catalog = MaterialCatalog;
             if (catalog == null || index < 0 || index >= part.Window.Cells.Count || !ProjectionQualificationCurrent(owner)) return false;
@@ -212,7 +212,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (lane == BlueprintBuildLane.TileBody || lane == BlueprintBuildLane.WallBody)
             { if (descriptor == null) return false; }
             var next = CreateMaterialBuildTarget(owner, range, cell, descriptor, obj, body, ordinal, support, catalog.Revision);
-            next.LocalProof = true;
+            // A preferred rejection must retain its local dependency even
+            // before binding succeeds. Logical-object bounds can intersect
+            // the Focus domain while their exact native click is outside it.
+            next.LocalProof = true;next.LocalPriority=localPriority;
             BlueprintWorldMatchSample actual;
             if(!TryBindConstructionTarget(next,lane,out actual))return false;
             following=NextNeededBuildOrdinal(next,actual,ordinal,following);
@@ -227,7 +230,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Only unfinished, supplied work can register a reach wait. An
             // already matched lane or a missing ordinary material must not
             // make movement reopen an otherwise sleeping range forever.
-            if (!BuildNearBounds(owner).Contains(next.WorldX - owner.OriginX, next.WorldY - owner.OriginY))
+            // The ordinary tick-cached envelope is only its own broad phase.
+            // Focus has already routed the live near domain; its exact plan
+            // below checks current item reach and registers a Player proof.
+            if (!localPriority && !BuildNearBounds(owner).Contains(next.WorldX - owner.OriginX, next.WorldY - owner.OriginY))
             { range.Materials.BuildWaits |= BlueprintBuildWait.Player; return false; }
             // All lanes are filtered by their actual read-only operation plan.
             // A type-only body filter would hide special producers and let an
@@ -236,13 +242,17 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private int NextNeededBuildOrdinal(BlueprintBuildTarget target,BlueprintWorldMatchSample actual,int ordinal,int following)
         {
-            // One current forward visit already proved this ordinary body is
-            // Missing. Reuse that sample only while choosing its next lane;
+            // One current source visit proves this ordinary body cannot yet
+            // host its foreground operations. Reuse that sample only while
+            // choosing its next lane;
             // no observation or skip mask survives an Update or world write.
-            // Conflict/Unknown and object members keep their complete walks.
+            // Unknown and object members keep their complete walks. A known
+            // different body, like a missing body, cannot be painted/shaped.
             var cell=target.Cell;
             if(cell.ObjectId!=0 || !actual.Available || actual.ObjectUnknown ||
-                (cell.Layers&CaptureLayer.Tile)==0 || BlueprintMaterialSteps.SameBody(cell,actual,MaterialCatalog,policy:substitutionPolicy)!=BlueprintBodyState.Missing)return following;
+                (cell.Layers&CaptureLayer.Tile)==0)return following;
+            var body=BlueprintMaterialSteps.SameBody(cell,actual,MaterialCatalog,policy:substitutionPolicy);
+            if(body!=BlueprintBodyState.Missing && body!=BlueprintBodyState.Conflict)return following;
             while(BuildMemberIndex(following)==BuildMemberIndex(ordinal))
             {
                 var lane=BuildLane(following);
@@ -359,9 +369,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                 BuildSource[] accessory;ulong accessorySlots,waiting;
                 if(!CaptureBuildDependencies(p,out accessory,out accessorySlots,out waiting))return false;
                 accessoryMaximum=Math.Max(1,target.Body?.MemberCount??1);
+                if(!BuildAccessoryRestorationReady(target,p,accessoryMaximum))return false;
                 foreach(var dependency in accessory)if(dependency.Slot!=toolSlot && (slots&(1UL<<dependency.Slot))==0)
                 {dependency.Maximum=accessoryMaximum;dependencies.Add(dependency);slots|=1UL<<dependency.Slot;}
             }
+            if(!CaptureAppearanceRestoreDependencies(target,p,dependencies,ref slots))return false;
             AddPreparedBuildEndpoints(p,dependencies,toolSlot,ref slots);
             var source = SnapshotSource(toolSlot, tool); source.Maximum = heldMaximum;
             var placement=target.Operation.NativePlacement??target.Placement;

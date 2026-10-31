@@ -53,11 +53,26 @@ namespace NativeWorldTextProbe
                     };
                     if(cadenceOnly)
                     {
+                        check("continuous material search stationary", () => ExecutionSearchFairness(context,host,tools,input,false));
+                        check("continuous material search native movement", () => ExecutionSearchFairness(context,host,tools,input,true));
+                        check("entered near strip across multiple slices", () => ExecutionSearchFairness(context,host,tools,input,true,true));
+                        check("shared physical directory bounded component", () => FocusDirectoryBudgetComponent(host));
+                        check("completed qualification failure preserves healthy service", () => FocusFailedQualification(context,host,tools,input));
+                        check("logical object native reach precedes prepared foreign", () => FocusLogicalObjectNativeReach(context,host,tools,input,false));
+                        check("retired focus releases live-range negative proofs", () => FocusLogicalObjectNativeReach(context,host,tools,input,true));
+                        check("mixed wall platform and furniture groups", () => BusinessMixedGroups(context,host,tools,input));
+                        check("prepared foreign waits for entered current material", () => BusinessPreparedForeign(context,host,tools,input));
+                        check("mixed groups beyond four source cache", () => BusinessMixedSourceGroups(context,host,tools,input));
                         check("substitution exact-source and mirrored continuation cadence", () => SubstitutionContinuationCadence(context,host,tools,input));
                         check("shared wall refusal native cadence", () => SharedWallRefusalCadence(context,host,tools,input));
                         check("long multi-range native cadence", () => LongRangeNativeCadence(context,host,tools,input));
                         check("full source cache continuation", () => BuildSourceFullContinuation(context,host,tools,input));
-                        check("material continuity and finite ordinary service", () => MaterialContinuityAndYield(context,host,tools,input));
+                        check("material continuity and current fallback", () => MaterialContinuityAndYield(context,host,tools,input));
+                        check("hammer continuous groups", () => PostProcessingHammerGroups(context,host,tools,input));
+                        check("paint layers and exact stack rollover", () => PostProcessingPaintContinuity(context,host,tools,input));
+                        check("existing wire color continuous groups", () => PostProcessingWireContinuity(context,host,tools,input));
+                        check("platform modes and repeated special recipe groups", () => ConstructionOperationGroups(context,host,tools,input));
+                        check("postprocessing original native opportunities", () => PostProcessingNativeCadence(context,host,tools,input));
                     }
                     else
                     {
@@ -71,7 +86,7 @@ namespace NativeWorldTextProbe
                     check("background empty outer and manual protection", () => BackgroundAndManualProtection(context,host,tools,input));
                     check("cross-capacity search stationary", () => ExecutionSearchFairness(context,host,tools,input,false));
                     check("cross-capacity search native movement", () => ExecutionSearchFairness(context,host,tools,input,true));
-                    check("material continuity and finite ordinary service", () => MaterialContinuityAndYield(context,host,tools,input));
+                    check("material continuity and current fallback", () => MaterialContinuityAndYield(context,host,tools,input));
                     check("legal continuous native opportunity", () => NativeContinuousOpportunity(context, host, tools, input));
                     check("direction ownership and manual return", () => NativeToolExecutionChecks.DirectionOwnership(context,tools,input));
                     check("native moving furniture direction", () => MovingFurnitureDirection(context,host,tools,input));
@@ -136,7 +151,7 @@ namespace NativeWorldTextProbe
                     }
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                 }
-                Console.WriteLine(cadenceOnly?"PASS BlueprintBuildCadence: exact-source/new selection, mirrored source-range continuation, shared wall refusal, long multi-range ON/OFF/native held opportunities, four-source/six-instance continuation and finite ordinary service. Ordinary startup/real multiplayer/GPU/FPS/owner acceptance NOT_RUN.":throughputOnly?"PASS BlueprintBuildThroughput production natural Player.Update/ItemCheck: complete paired block/wall/platform consumption sequences, nearby sparse prefix/local reentry and neutral Pending. Full build siblings/ordinary startup/real multiplayer/GPU/FPS NOT_RUN.":
+                Console.WriteLine(cadenceOnly?"PASS BlueprintBuildCadence: exact-source/new selection, mirrored source-range continuation, shared wall refusal, long multi-range ON/OFF/native held opportunities, four-source/six-instance continuation and current fallback. Ordinary startup/real multiplayer/GPU/FPS/owner acceptance NOT_RUN.":throughputOnly?"PASS BlueprintBuildThroughput production natural Player.Update/ItemCheck: complete paired block/wall/platform consumption sequences, nearby sparse prefix/local reentry and neutral Pending. Full build siblings/ordinary startup/real multiplayer/GPU/FPS NOT_RUN.":
                     "PASS BlueprintBuild production natural Player.Update/ItemCheck: real block/wall/chair material consumption, precise style/direction, first-missing fairness, supplement, distance/support resume, stop/restart, manual selection, complete current match retirement. Ordinary startup/real multiplayer/GPU/FPS NOT_RUN.");
             }
             finally

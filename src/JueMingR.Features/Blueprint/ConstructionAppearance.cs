@@ -18,6 +18,26 @@ namespace JueMingR.Features.Blueprint
         public bool HasAction { get { return Action != BlueprintAppearanceAction.None && Action != BlueprintAppearanceAction.BlockedForeground; } }
     }
 
+    // A small current-world bill, shared by material display and native
+    // restoration admission. It contains requirements, never reserved Items.
+    public readonly struct BlueprintAppearanceMaterials
+    {
+        public BlueprintAppearanceMaterials(byte tilePaint, byte wallPaint, int invisible, int fullbright)
+        { TilePaint = tilePaint; WallPaint = wallPaint; Invisible = invisible; Fullbright = fullbright; }
+        public byte TilePaint { get; }
+        public byte WallPaint { get; }
+        public int Invisible { get; }
+        public int Fullbright { get; }
+        public int Count(int type, BlueprintPlacementCatalog catalog)
+        {
+            if (type <= 0 || catalog == null) return 0;
+            return (TilePaint != 0 && catalog.Paint(TilePaint) == type ? 1 : 0) +
+                (WallPaint != 0 && catalog.Paint(WallPaint) == type ? 1 : 0) +
+                (Invisible > 0 && catalog.Coating(2) == type ? Invisible : 0) +
+                (Fullbright > 0 && catalog.Coating(1) == type ? Fullbright : 0);
+        }
+    }
+
     // A next step is derived from the current cell, never retained as a second
     // completion ledger. The native scraper has no layer selector: it clears
     // Tile paint, both Tile coatings, Wall paint, then both Wall coatings.
@@ -65,9 +85,11 @@ namespace JueMingR.Features.Blueprint
         {
             bool clear = actualInvisible && !invisible || actualFullbright && !fullbright;
             if ((paint == 0 || clear) && actualPaint != 0)
-                return new BlueprintAppearanceStep(wall ? BlueprintAppearanceAction.ScrapeWallPaint : BlueprintAppearanceAction.ScrapeTilePaint);
+                return new BlueprintAppearanceStep(wall ? BlueprintAppearanceAction.ScrapeWallPaint : BlueprintAppearanceAction.ScrapeTilePaint,
+                    0, !wall && paint != 0);
             if (clear)
-                return new BlueprintAppearanceStep(wall ? BlueprintAppearanceAction.ScrapeWallCoatings : BlueprintAppearanceAction.ScrapeTileCoatings);
+                return new BlueprintAppearanceStep(wall ? BlueprintAppearanceAction.ScrapeWallCoatings : BlueprintAppearanceAction.ScrapeTileCoatings,
+                    0, !wall && (invisible || fullbright));
             if (paint != actualPaint)
                 return new BlueprintAppearanceStep(wall ? BlueprintAppearanceAction.PaintWall : BlueprintAppearanceAction.PaintTile, paint);
             if (fullbright && !actualFullbright)
@@ -85,25 +107,50 @@ namespace JueMingR.Features.Blueprint
             bool wallScrape = wallSame && (target.Layers & CaptureLayer.Wall) != 0 &&
                 NeedsScrape(target.WallPaint, target.InvisibleWall, target.FullbrightWall, actual.WallPaint, actual.InvisibleWall, actual.FullbrightWall);
             bool foreground = (actual.Layers & CaptureLayer.Tile) != 0 && HasAppearance(actual.TilePaint, actual.InvisibleTile, actual.FullbrightTile);
-            bool restore = wallScrape && foreground && tileSame && (target.Layers & CaptureLayer.Tile) != 0;
             if (wallScrape && foreground && (target.Layers & CaptureLayer.Tile) == 0 && !foregroundHandledElsewhere)
                 into.Unresolved("墙面刮除的前景步骤尚未确定");
+            var required = RequiredMaterials(target, actual, tileSame, wallSame, tileOnly);
+            if (required.TilePaint != 0) into.Add(catalog.Paint(required.TilePaint), 1);
+            if (required.WallPaint != 0) into.Add(catalog.Paint(required.WallPaint), 1);
+            if (required.Invisible != 0) into.Add(catalog.Coating(2), required.Invisible);
+            if (required.Fullbright != 0) into.Add(catalog.Coating(1), required.Fullbright);
+        }
+
+        public static BlueprintAppearanceMaterials RequiredMaterials(CaptureCell target, CaptureCell actual,
+            bool tileSame, bool wallSame, bool tileOnly = false)
+        {
+            bool wallScrape = wallSame && (target.Layers & CaptureLayer.Wall) != 0 &&
+                NeedsScrape(target.WallPaint, target.InvisibleWall, target.FullbrightWall, actual.WallPaint, actual.InvisibleWall, actual.FullbrightWall);
+            bool restore = wallScrape && (actual.Layers & CaptureLayer.Tile) != 0 &&
+                HasAppearance(actual.TilePaint, actual.InvisibleTile, actual.FullbrightTile) &&
+                tileSame && (target.Layers & CaptureLayer.Tile) != 0;
+            int tile = 0, wall = 0;
             if ((target.Layers & CaptureLayer.Tile) != 0)
-                AddLayerMaterials(target.TilePaint, target.InvisibleTile, target.FullbrightTile,
+                tile = LayerMaterials(target.TilePaint, target.InvisibleTile, target.FullbrightTile,
                     tileSame && !restore ? actual.TilePaint : (byte)0, tileSame && !restore && actual.InvisibleTile,
-                    tileSame && !restore && actual.FullbrightTile, catalog, into);
+                    tileSame && !restore && actual.FullbrightTile);
             if (!tileOnly && (target.Layers & CaptureLayer.Wall) != 0)
-                AddLayerMaterials(target.WallPaint, target.InvisibleWall, target.FullbrightWall,
-                    wallSame ? actual.WallPaint : (byte)0, wallSame && actual.InvisibleWall, wallSame && actual.FullbrightWall, catalog, into);
+                wall = LayerMaterials(target.WallPaint, target.InvisibleWall, target.FullbrightWall,
+                    wallSame ? actual.WallPaint : (byte)0, wallSame && actual.InvisibleWall, wallSame && actual.FullbrightWall);
+            return new BlueprintAppearanceMaterials((tile & 1) != 0 ? target.TilePaint : (byte)0,
+                (wall & 1) != 0 ? target.WallPaint : (byte)0, ((tile >> 1) & 1) + ((wall >> 1) & 1),
+                ((tile >> 2) & 1) + ((wall >> 2) & 1));
         }
 
         public static void AddLayerMaterials(byte paint, bool invisible, bool fullbright, byte actualPaint, bool actualInvisible, bool actualFullbright,
             BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
         {
+            int required = LayerMaterials(paint, invisible, fullbright, actualPaint, actualInvisible, actualFullbright);
+            if ((required & 1) != 0) into.Add(catalog.Paint(paint), 1);
+            if ((required & 2) != 0) into.Add(catalog.Coating(2), 1);
+            if ((required & 4) != 0) into.Add(catalog.Coating(1), 1);
+        }
+
+        private static int LayerMaterials(byte paint, bool invisible, bool fullbright, byte actualPaint, bool actualInvisible, bool actualFullbright)
+        {
             bool clear = actualInvisible && !invisible || actualFullbright && !fullbright;
-            if (paint > 0 && (paint != actualPaint || clear && actualPaint > 0)) into.Add(catalog.Paint(paint), 1);
-            if (invisible && (clear || !actualInvisible)) into.Add(catalog.Coating(2), 1);
-            if (fullbright && (clear || !actualFullbright)) into.Add(catalog.Coating(1), 1);
+            return (paint > 0 && (paint != actualPaint || clear && actualPaint > 0) ? 1 : 0) |
+                (invisible && (clear || !actualInvisible) ? 2 : 0) | (fullbright && (clear || !actualFullbright) ? 4 : 0);
         }
     }
 }

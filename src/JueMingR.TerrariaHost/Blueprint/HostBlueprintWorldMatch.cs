@@ -19,9 +19,6 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal Dictionary<long, BlueprintWorldMatchResult> Visual;
         internal BlueprintRangeMaterials Materials;
         internal long MaterialDemandEpoch;
-        // Scheduling membership exists even before the first material sample.
-        // Retirement can settle an unvisited finite batch without allocation.
-        internal long BuildContinuationVisit;
         internal bool MaterialCrossLayers = true, ProgressMaterialCrossLayers;
     }
     internal sealed class BlueprintProjectionMatchGroup

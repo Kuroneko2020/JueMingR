@@ -87,6 +87,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!step.HasAction) return false;
             if (step.IsScrape)
             {
+                if (!AppearanceRestorationReady(target, player, actual)) return false;
                 operation = new BlueprintBuildOperation {
                     Kind = BlueprintBuildOperationKind.Scrape, Consumer = ToolBuildConsumer.PaintScraper,
                     Mode = (int)step.Action, PrimaryMaximum = 0, HeldMaximum = 0, DoorForm = doorForm, DoorProof = doorProof
@@ -102,7 +103,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 Mode = step.Mode | (coating ? AppearanceCoatingMode : 0), SupplyType = supply,
                 SupplyDestination = 54, PrimaryMaximum = 1, HeldMaximum = 0, DoorForm = doorForm, DoorProof = doorProof
             };
-            return true;
+            return AppearanceRestorationConsumptionReady(target, player, supply, 1, operation);
         }
 
         private static bool OrdinaryHammerShapeType(int type)
@@ -128,6 +129,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             int primary = -1;
             if (operation.SupplyType > 0)
             {
+                if (!AppearanceRestorationConsumptionReady(target, p, operation.SupplyType, operation.PrimaryMaximum)) return false;
                 if (!TryPrepareBuildSupply(target, p, operation.SupplyType, operation.SupplyDestination, out primary, plan)) return false;
                 if (!PlannedBuildSupplyCurrent(p, plan, primary)) { WaitForDynamicBuild(target); return false; }
                 // A native three-endpoint preparation may move the actual tool.
@@ -146,7 +148,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             // A temporary tool/supply shortage is not a native rejection.
             // The shared Material/Capability inventory revision wakes it;
             // adding a native deadline would delay later steps of this cell.
-            WaitForBuild(target, BlueprintBuildWait.Material);
+            // Planning can discover this before assigning target.Operation.
+            // Keep the explicit appearance-capability dependency even then.
+            WaitForBuild(target, BlueprintBuildWait.Material | BlueprintBuildWait.Capability);
         }
 
         private void WaitForAppearanceAvailability(BlueprintBuildTarget target, bool outsideReach)
@@ -227,8 +231,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             bool wallSame = (expected.Layers & CaptureLayer.Wall) != 0 && BlueprintMaterialSteps.SameBody(expected, actual, MaterialCatalog,true,substitutionPolicy) == BlueprintBodyState.Same;
             var next = BlueprintConstructionAppearance.Next(expected, actual.Cell, tileSame, wallSame);
             if (next.Action == BlueprintAppearanceAction.BlockedForeground) return false;
+            if (!NewAppearanceRestorationReady(target, expected, actual, next)) return false;
             if (!next.RequiresForegroundRestoration) return true;
-            if (!EnsureAppearanceInventory(p)) return false;
+            if (p == null || !EnsureAppearanceInventory(p)) { WaitForAppearanceTool(target); return false; }
             bool brush = false;
             for (int index = 0; index < appearanceToolCounts[1]; index++)
             {
@@ -238,11 +243,18 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if ((item.type == ItemID.Paintbrush || item.type == ItemID.SpectrePaintbrush) &&
                     p.IsInTileInteractionRange(target.WorldX, target.WorldY, TileReachCheckSettings.Simple, item.tileBoost + p.blockRange)) brush = true;
             }
-            bool wallClearCoatings = actual.Cell.InvisibleWall && !expected.InvisibleWall || actual.Cell.FullbrightWall && !expected.FullbrightWall;
-            if (!brush || expected.TilePaint != 0 && !HasAppearanceRestoreSupply(p, MaterialCatalog.Paint(expected.TilePaint),
-                    expected.WallPaint == expected.TilePaint ? 2 : 1) ||
-                expected.FullbrightTile && !HasAppearanceRestoreSupply(p, MaterialCatalog.Coating(1), wallClearCoatings && expected.FullbrightWall ? 2 : 1) ||
-                expected.InvisibleTile && !HasAppearanceRestoreSupply(p, MaterialCatalog.Coating(2), wallClearCoatings && expected.InvisibleWall ? 2 : 1))
+            // Billing and admission share the same current-world clear/restore
+            // rules. A foreground-only coating scrape must not be mistaken for
+            // a wall repaint, or omit its retained foreground paint entirely.
+            if (!wallSame) expected.Layers &= ~CaptureLayer.Wall;
+            var required = BlueprintConstructionAppearance.RequiredMaterials(expected, actual.Cell, tileSame, wallSame);
+            int tilePaint = required.TilePaint == 0 ? 0 : MaterialCatalog.Paint(required.TilePaint);
+            int wallPaint = required.WallPaint == 0 ? 0 : MaterialCatalog.Paint(required.WallPaint);
+            int fullbright = MaterialCatalog.Coating(1), invisible = MaterialCatalog.Coating(2);
+            if (!brush || required.TilePaint != 0 && !HasAppearanceRestoreSupply(p, tilePaint, required.Count(tilePaint, MaterialCatalog)) ||
+                required.WallPaint != 0 && !HasAppearanceRestoreSupply(p, wallPaint, required.Count(wallPaint, MaterialCatalog)) ||
+                required.Fullbright > 0 && !HasAppearanceRestoreSupply(p, fullbright, required.Count(fullbright, MaterialCatalog)) ||
+                required.Invisible > 0 && !HasAppearanceRestoreSupply(p, invisible, required.Count(invisible, MaterialCatalog)))
             { WaitForAppearanceTool(target); WaitForBuild(target, BlueprintBuildWait.Player); return false; }
             return true;
         }
@@ -250,14 +262,72 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool HasAppearanceRestoreSupply(Player p, int type, int required)
         {
             int slot;
-            if (type <= 0 || !appearancePaintHeads.TryGetValue(type, out slot)) return false;
-            for (; slot >= 0; slot = appearancePaintNext[slot])
+            if (p == null || type <= 0 || !EnsureAppearanceInventory(p)) return false;
+            if (appearancePaintHeads.TryGetValue(type, out slot)) for (; slot >= 0; slot = appearancePaintNext[slot])
             {
                 var item = p.inventory[slot];
                 if (item != null && item.type == type && item.stack > 0 && buildTools.BuildInventoryEligible(slot, item))
                 { required -= Math.Min(required, item.stack); if (required == 0) return true; }
             }
+            // A real main-bag source may currently occupy native paint slot54.
+            // Count only our exact ready/using source there. The displaced old
+            // 54 Item remains return-only and never funds restoration.
+            int prepared = -1;
+            if (buildMaterialPreparation?.TryReadSupply(p, type, 54, out prepared) != true)
+            {
+                var flight = activeBuild; var use = buildTools?.Use;
+                if (flight != null && flight.Token > 0 && flight.Token == use?.Operation && ReferenceEquals(flight.Player, p) &&
+                    flight.Target.Identity.SessionGeneration == generation && !IsUnconfirmedTarget(flight.Target))
+                    for (int index = 50; index < Math.Min(58, p.inventory.Length); index++)
+                    {
+                        var item = p.inventory[index];
+                        if (item != null && item.type == type && item.stack > 0 && ReferenceEquals(buildMaterialPreparation?.Material, item) && use.OwnsBuildMaterial(item) &&
+                            ReferenceEquals(ReadBuildPaintSlot(p, index), item)) { prepared = index; break; }
+                    }
+            }
+            if (prepared >= 50 && prepared < p.inventory.Length)
+            {
+                var item = p.inventory[prepared];
+                if (item != null && item.type == type && item.stack >= required && ReferenceEquals(ReadBuildPaintSlot(p, prepared), item)) return true;
+            }
             return false;
+        }
+
+        private bool CaptureAppearanceRestoreDependencies(BlueprintBuildTarget target, Player p, List<BuildSource> dependencies, ref ulong slots)
+        {
+            if (!p.autoPaint || target.Operation?.Kind != BlueprintBuildOperationKind.Scrape) return true;
+            BlueprintWorldMatchSample actual; CaptureCell expected; bool same; BlueprintWorldObject form;
+            if (!ReadBuildCell(target.WorldX, target.WorldY, out actual) || !TryAppearanceTarget(target, actual, out expected, out same, out form)) return false;
+            bool wallSame = (expected.Layers & CaptureLayer.Wall) != 0 &&
+                BlueprintMaterialSteps.SameBody(expected, actual, MaterialCatalog, true, substitutionPolicy) == BlueprintBodyState.Same;
+            var next = BlueprintConstructionAppearance.Next(expected, actual.Cell, same, wallSame);
+            if (!next.RequiresForegroundRestoration) return true;
+            if (!wallSame) expected.Layers &= ~CaptureLayer.Wall;
+            var required = BlueprintConstructionAppearance.RequiredMaterials(expected, actual.Cell, same, wallSame);
+            var types = new[] { MaterialCatalog.Paint(required.TilePaint), MaterialCatalog.Paint(required.WallPaint),
+                required.Fullbright > 0 ? MaterialCatalog.Coating(1) : 0, required.Invisible > 0 ? MaterialCatalog.Coating(2) : 0 };
+            for (int index = 0; index < types.Length; index++)
+            {
+                int type = types[index]; if (type <= 0) continue;
+                bool duplicate = false; for (int prior = 0; prior < index; prior++) duplicate |= types[prior] == type;
+                if (duplicate) continue;
+                int remaining = required.Count(type, MaterialCatalog), slot;
+                if (appearancePaintHeads.TryGetValue(type, out slot)) for (; slot >= 0 && remaining > 0; slot = appearancePaintNext[slot])
+                {
+                    var item = p.inventory[slot];
+                    if (item == null || item.type != type || item.stack <= 0 || !buildTools.BuildInventoryEligible(slot, item)) continue;
+                    // This exact native scrape depends on these already
+                    // qualified restoration Items. Its zero-consumption lease
+                    // prevents its own autoPaint animation from becoming a
+                    // foreign-use refusal. Manual/pending guards still apply;
+                    // the lease ends with this flight, never with the Focus.
+                    if ((slots & (1UL << slot)) == 0)
+                    { var source = SnapshotSource(slot, item); source.Maximum = 0; dependencies.Add(source); slots |= 1UL << slot; }
+                    remaining -= Math.Min(remaining, item.stack);
+                }
+                if (remaining > 0) return false;
+            }
+            return true;
         }
 
         private bool AppearanceBuildCurrent(BuildFlight flight)
@@ -280,6 +350,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (!CurrentAppearanceStep(flight.Operation, step)) return false;
             }
             if (!AppearanceToolMatches(flight.Target, flight.Source.Item) || !AppearanceRestorationReady(flight.Target, flight.Player, actual)) return false;
+            if (flight.Operation.SupplyType > 0 && !AppearanceRestorationConsumptionReady(flight.Target, flight.Player,
+                flight.Operation.SupplyType, flight.Operation.PrimaryMaximum)) return false;
             if (flight.Operation.Kind == BlueprintBuildOperationKind.Hammer)
             {
                 if (!ShapePreflight(flight.Target, flight.Player, flight.Source.Item)) return false;
@@ -322,6 +394,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 else if (consumer != operation.Consumer) return false;
             }
+            CaptureAppearanceRestorationAttempt(flight);
             flight.Entered = true;
             return true;
         }
