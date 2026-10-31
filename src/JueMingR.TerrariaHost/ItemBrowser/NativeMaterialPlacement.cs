@@ -30,12 +30,13 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private void ClearMaterialPlacement()
         {
             materialRules.Clear(); materialDeclarations.Clear(); materialWalls.Clear(); materialPaints.Clear(); materialCoatings.Clear(); materialCaptured.Clear();
+            ClearBlueprintSubstitution();
             materialTileSourceComplete = materialWallSourceComplete = materialAbiValid = true;
             materialCatalog = null; placementRevision++; materialPlacementTickSet = false;
         }
         private void PublishMaterialPlacement()
         {
-            if (!PlacementReady || materialCatalog != null) return;
+            if (!PlacementReady || materialCatalog != null && (materialCatalog.Substitution.Ready || !BlueprintSubstitutionMetadataReady)) return;
             // Negative results depend on the locked producer sources, including
             // flexible outputs. Conversion/projectile domains not compiled here
             // stay unknown instead of being mislabeled as natural decorations.
@@ -47,8 +48,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             var coverage = new BlueprintProducerCoverage(materialTileSourceComplete && version, materialWallSourceComplete && version,
                 materialAbiValid && version, tileDomains, wallDomains, "Terraria 1.4.5.8; canonical createTile/createWall + tileWand + FlexibleTileWand options; special conversion/projectile domains retained unknown",
                 TileID.Count, WallID.Count);
-            materialCatalog = new BlueprintPlacementCatalog(++placementRevision, materialRules, materialWalls, materialPaints, materialCoatings, ItemID.Wire, ItemID.Actuator,
-                declarations: materialDeclarations, coverage: coverage);
+            long revision = ++placementRevision;
+            materialCatalog = new BlueprintPlacementCatalog(revision, materialRules, materialWalls, materialPaints, materialCoatings, ItemID.Wire, ItemID.Actuator,
+                declarations: materialDeclarations, coverage: coverage, substitution: CompileBlueprintSubstitution(revision, version));
         }
         private HashSet<int> MaterialSpecialDomains(Type source)
         {
@@ -84,6 +86,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private void CaptureMaterialPlacementCore(Item sample)
         {
             if (sample.type <= 0 || !materialCaptured.Add(sample.type)) return;
+            CaptureBlueprintSubstitutionExclusion(sample);
             if (sample.paint > 0) AddMaterialIdentity(materialPaints, sample.paint, sample.type);
             if (sample.paintCoating > 0) AddMaterialIdentity(materialCoatings, sample.paintCoating, sample.type);
             if (sample.createWall > 0)
@@ -139,6 +142,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             BlueprintSpecialProducer producer = null)
         {
             int declaration = materialDeclarations.Count;
+            int firstRule = materialRules.Count;
             materialDeclarations.Add(new BlueprintPlacementDeclaration(BlueprintPlacementKind.Tile, sample.type, tile, style, 0, source, false));
             try
             {
@@ -149,6 +153,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             catch (IndexOutOfRangeException) { }
             catch (OverflowException) { }
             catch (TargetInvocationException) { }
+            for (int i = firstRule; i < materialRules.Count; i++) CaptureBlueprintSubstitutionRule(sample, materialRules[i]);
             // The retained uncompiled declaration scopes these failures. It is
             // not evidence that the corresponding player output is impossible.
         }
@@ -159,6 +164,16 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             {
                 materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units,
                     tile, style, flexible: flexible, width: 1, height: 3, originX: 0, originY: 0, requiresObject: true, producer: producer), false, door: true)); return true;
+            }
+            if (tile == TileID.PlanterBox)
+            {
+                // Locked .8 has no TileObjectData entry for this legacy cell.
+                // PlaceTile writes Y=18*style; TileFrame writes only four X
+                // connection slots. It is neither a platform nor Smart shape.
+                if ((long)style * 18 > short.MaxValue) return false;
+                materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units,
+                    tile, style, flexible: flexible, producer: producer, planterBox: true), false));
+                return true;
             }
             if (tile < TileID.Sets.Platforms.Length && TileID.Sets.Platforms[tile])
             { materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units, tile, style, flexible: flexible, platform: true, producer: producer), false)); return true; }

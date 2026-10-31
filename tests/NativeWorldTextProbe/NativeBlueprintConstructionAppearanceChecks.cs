@@ -626,7 +626,7 @@ namespace NativeWorldTextProbe
                 "the shared proved native profile also gives a selected-cell platform equivalent neighbor frames and exact material identity");
             var body = new BlueprintObjectBodyProof(target); body.Observe(current);
             Require(body.Complete() == BlueprintBodyState.Same, "shared positive-object body proof does not demand another platform material for neighbor framing");
-            object[] witness = { target, new[] { member }, new[] { current }, true, null };
+            object[] witness = { target, new[] { member }, new[] { current }, true, null, null, default(BlueprintSubstitutionPolicy) };
             Require(!(bool)type.GetMethod("TryCreateFrameWitness", F).Invoke(source, witness) && witness[4] == null,
                 "a complete platform Match does not invent an unproved operating-frame write witness");
 

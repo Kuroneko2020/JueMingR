@@ -10,6 +10,10 @@ namespace JueMingR.TerrariaHost.F5
         internal const string MoveAction = "blueprint.move", RemoveAction = "blueprint.remove";
         internal const string MirrorAction = "blueprint.mirror", TrimAction = "blueprint.trim", ConfirmTrimAction = "blueprint.trim.confirm";
         internal const string AutoBuildAction = "blueprint.autobuild", MaterialsAction = "blueprint.materials";
+        internal const string SubstitutionAction = "blueprint.substitution";
+        internal const string SubstitutionHint = "符合标准的内容允许使用同类型物品自动放置";
+        internal static readonly string[] ReplacementCategoryNames =
+        { "工作台", "桌子", "椅子", "门", "床", "种植盆", "铁砧", "秘银砧", "箱子", "火把", "平台", "墙" };
         internal const string StartHint = "点击开始键执行选区，反选取消选区。";
         internal const string ExitHint = "退出选区，并清空已有选区";
         internal const string SaveHint = "点击保存键保存世界上已有的蓝图选区。";
@@ -64,6 +68,11 @@ namespace JueMingR.TerrariaHost.F5
                 text => text == "键" ? F5Command.None : text == "开启" ? F5Command.BlueprintAutoBuildOn : F5Command.BlueprintAutoBuildOff,
                 new F5RowDescription(AutoBuildAction, AutoBuildHint));
             Key(elements, AutoBuildAction);
+            rows.Row(ref y, 0, 522, "同类替换", new[] { "配置", "开启", "关闭", "键" },
+                text => text == "键" ? F5Command.None : text == "配置" ? F5Command.BlueprintSubstitutionConfigure :
+                    text == "开启" ? F5Command.BlueprintSubstitutionOn : F5Command.BlueprintSubstitutionOff,
+                new F5RowDescription(SubstitutionAction, SubstitutionHint));
+            Key(elements, SubstitutionAction);
             rows.Row(ref y, 0, 522, "施工材料", new[] { "打开", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintMaterials,
                 new F5RowDescription(MaterialsAction, MaterialsHint));
             Key(elements, MaterialsAction);
@@ -73,9 +82,11 @@ namespace JueMingR.TerrariaHost.F5
             var key = elements[elements.Count - 1];
             elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, id);
         }
-        internal static bool Owns(F5Command command) { return command >= F5Command.BlueprintCapture && command <= F5Command.BlueprintMaterials; }
+        internal static bool Owns(F5Command command) { return command >= F5Command.BlueprintCapture && command <= F5Command.BlueprintSubstitutionOff; }
+        internal static string ReplacementHint(int index)
+        { return index == 1 ? "王朝桌除外" : index == 10 ? "云/微光平台除外" : index == 11 ? "仅安全墙" : null; }
         // UI display is phase independent; Host action entries own admission.
-        internal bool Available(F5Command command) { return owner.ControlsEnabled && (command != F5Command.BlueprintSave || owner.CanSave) &&
+        internal bool Available(F5Command command) { return Owns(command) && owner.ControlsEnabled && (command != F5Command.BlueprintSave || owner.CanSave) &&
             (command != F5Command.BlueprintLibrary || owner.CanOpenLibrary) &&
             (command != F5Command.BlueprintMove || owner.CanInvokeMove) && (command != F5Command.BlueprintRemove || owner.CanInvokeRemove) &&
             (command != F5Command.BlueprintMirror || owner.CanInvokeMirror) && (command != F5Command.BlueprintTrim || owner.CanInvokeTrim) &&
@@ -96,12 +107,18 @@ namespace JueMingR.TerrariaHost.F5
             return null;
         }
         internal Color? Selected(F5Command command)
-        { return command == F5Command.BlueprintToolbarOn && owner.ToolbarEnabled || command == F5Command.BlueprintAutoBuildOn && owner.AutoBuildEnabled ? (Color?)Color.LightGreen :
-                command == F5Command.BlueprintToolbarOff && !owner.ToolbarEnabled || command == F5Command.BlueprintAutoBuildOff && !owner.AutoBuildEnabled ? (Color?)Color.IndianRed : null; }
+        {
+            return command == F5Command.BlueprintToolbarOn && owner.ToolbarEnabled || command == F5Command.BlueprintAutoBuildOn && owner.AutoBuildEnabled ||
+                command == F5Command.BlueprintSubstitutionOn && owner.SameTypeReplacementEnabled ? (Color?)Color.LightGreen :
+                command == F5Command.BlueprintToolbarOff && !owner.ToolbarEnabled || command == F5Command.BlueprintAutoBuildOff && !owner.AutoBuildEnabled ||
+                command == F5Command.BlueprintSubstitutionOff && !owner.SameTypeReplacementEnabled ? (Color?)Color.IndianRed : null;
+        }
         internal void Execute(F5Command command)
         {
             if (!Owns(command) || !Available(command)) return;
-            if (command == F5Command.BlueprintCapture) owner.Toggle();
+            if (command == F5Command.BlueprintSubstitutionConfigure) owner.Shell?.OpenBlueprintReplacementConfiguration();
+            else if (command == F5Command.BlueprintSubstitutionOn || command == F5Command.BlueprintSubstitutionOff) owner.SetSameTypeReplacement(command == F5Command.BlueprintSubstitutionOn);
+            else if (command == F5Command.BlueprintCapture) owner.Toggle();
             else if (command == F5Command.BlueprintSave) owner.Save();
             else if (command == F5Command.BlueprintLibrary) owner.OpenLibrary();
             else if (command == F5Command.BlueprintMove) owner.MoveProjection();

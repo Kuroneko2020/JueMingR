@@ -18,6 +18,8 @@ namespace JueMingR.ArchitectureTests
         {
             Add("BlueprintSelectionChecks", "blueprint-host", (root, failures) => BlueprintSelectionChecks.Check(failures));
             Add("BlueprintCaptureChecks", "blueprint-host", (root, failures) => BlueprintCaptureChecks.Check(failures));
+            Add("BlueprintSubstitutionPreferenceChecks", "blueprint-host", (root, failures) => BlueprintSubstitutionPreferenceChecks.Check(failures));
+            Add("BlueprintSubstitutionChecks", "blueprint-host", (root, failures) => BlueprintSubstitutionChecks.Check(failures));
             Add("BlueprintContentChecks", "blueprint-host", (root, failures) => BlueprintContentChecks.Check(failures));
             Add("BlueprintPreviewChecks", "blueprint-host", (root, failures) => BlueprintPreviewChecks.Check(failures));
             Add("BlueprintLibraryChecks", "blueprint-host", (root, failures) => BlueprintLibraryChecks.Check(failures));

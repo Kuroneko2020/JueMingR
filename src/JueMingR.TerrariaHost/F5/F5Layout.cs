@@ -49,7 +49,8 @@ namespace JueMingR.TerrariaHost.F5
         MovementFallAllow8, MovementFallDeny8, MovementFallAllow9, MovementFallDeny9,
         MovementFallAllow10, MovementFallDeny10, MovementFallAllow11, MovementFallDeny11,
         BlueprintCapture, BlueprintSave, BlueprintToolbarOn, BlueprintToolbarOff, BlueprintLibrary, BlueprintMove, BlueprintRemove,
-        BlueprintMirror, BlueprintTrim, BlueprintConfirmTrim, BlueprintAutoBuildOn, BlueprintAutoBuildOff, BlueprintMaterials }
+        BlueprintMirror, BlueprintTrim, BlueprintConfirmTrim, BlueprintAutoBuildOn, BlueprintAutoBuildOff, BlueprintMaterials,
+        BlueprintSubstitutionConfigure, BlueprintSubstitutionOn, BlueprintSubstitutionOff }
 
     internal sealed class F5Element
     {
@@ -214,7 +215,10 @@ namespace JueMingR.TerrariaHost.F5
             float y = 0;
             if (currentPage == 9) BuildInformation(ref y);
             else if (currentPage == 5) About.Build(elements, DynamicTextSize, Viewport.Height, ref y);
-            else if (currentPage == 6 && BlueprintAttached && !blueprintLibraryVisible) BlueprintControls.AddRows(elements, TextSize, ref y, blueprintActive, blueprintOperation);
+            else if (currentPage == 6 && BlueprintAttached && !blueprintLibraryVisible)
+            {
+                BlueprintControls.AddRows(elements, TextSize, ref y, blueprintActive, blueprintOperation);
+            }
             else if (currentPage == 7 && !FishingAttached) BuildFishing(ref y);
             else if (currentPage == 8)
             {

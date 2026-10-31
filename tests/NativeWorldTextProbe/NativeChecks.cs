@@ -14,6 +14,32 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="BlueprintSubstitutionVisual")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content)){NativeBlueprintSubstitutionUiChecks.Visual(context,graphics,output);}},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="BlueprintSubstitutionLifecycleCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeBlueprintWorldMatchChecks.InitializeMetadata();NativeBlueprintSubstitutionLifecycleChecks.Run(context);},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="BlueprintSubstitutionCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>
+                {
+                    NativeBlueprintWorldMatchChecks.InitializeMetadata();
+                    Exception first=null;
+                    try { NativeBlueprintSubstitutionUiChecks.Run(context); }
+                    catch(Exception error) { Console.Error.WriteLine("SUBSTITUTION UI: "+error);first=error; }
+                    try { NativeBlueprintSubstitutionLifecycleChecks.Run(context); }
+                    catch(Exception error) { Console.Error.WriteLine("SUBSTITUTION LIFECYCLE: "+error);if(first==null)first=error; }
+                    try { NativeBlueprintBuildChecks.RunConstruction(context,false,"Substitution"); }
+                    catch(Exception error) { Console.Error.WriteLine("SUBSTITUTION BUILD: "+error);if(first==null)first=error; }
+                    if(first!=null)System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
+                },processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="BlueprintMirrorTrimVisual")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
@@ -104,7 +130,7 @@ namespace NativeWorldTextProbe
             if (scope == "BlueprintInput")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context => { NativeBlueprintInputRecoveryChecks.Cpu(context); using (var graphics = new ProbeGraphics(content)) { NativeBlueprintInputContinuityChecks.Run(context, graphics); NativeBlueprintMaterialsUiChecks.Input(context, graphics); NativeBlueprintMirrorTrimVisualChecks.Run(context,graphics,output); } }, processing: true, shortFeedback: true); return 0;
+                NativeQuickItemChecks.Run(context => { NativeBlueprintInputRecoveryChecks.Cpu(context); NativeBlueprintSubstitutionUiChecks.Run(context); using (var graphics = new ProbeGraphics(content)) { NativeBlueprintInputContinuityChecks.Run(context, graphics); NativeBlueprintMaterialsUiChecks.Input(context, graphics); NativeBlueprintMirrorTrimVisualChecks.Run(context,graphics,output); NativeBlueprintSubstitutionUiChecks.Visual(context,graphics,output); } }, processing: true, shortFeedback: true); return 0;
             }
             if (scope == "BlueprintMaterialsInput" || scope == "BlueprintMaterialsVisual")
             {
@@ -137,6 +163,7 @@ namespace NativeWorldTextProbe
                         check("library", () => NativeBlueprintLibraryVisualChecks.Run(context, graphics, output));
                         check("projection", () => NativeBlueprintProjectionVisualChecks.Run(context, graphics, output));
                         check("mirror/trim",()=>NativeBlueprintMirrorTrimVisualChecks.Run(context,graphics,output));
+                        check("substitution configuration",()=>NativeBlueprintSubstitutionUiChecks.Visual(context,graphics,output));
                         check("input recovery", () => NativeBlueprintInputRecoveryChecks.Visual(context, graphics));
                         check("world match", () => NativeBlueprintWorldMatchChecks.Run(context, graphics, output));
                         check("materials", () => NativeBlueprintMaterialsUiChecks.Visual(context, graphics, output));
@@ -174,6 +201,7 @@ namespace NativeWorldTextProbe
                     check("fixed scene persistence", NativeBlueprintPersistenceChecks.Run);
                     check("mirror profile capture and canonical", NativeBlueprintMirrorProfileChecks.Run);
                     check("mirror/trim real input rows", NativeBlueprintMirrorTrimUiChecks.Run);
+                    check("substitution F5/preferences",NativeBlueprintSubstitutionUiChecks.Run);
                     check("mirror/trim Host transactions", NativeBlueprintMirrorTrimChecks.Run);
                     check("trim cumulative overlay and ownership", NativeBlueprintTrimAccumulationChecks.Run);
                     check("trim cancellation arbitration", NativeBlueprintTrimInputChecks.Run);

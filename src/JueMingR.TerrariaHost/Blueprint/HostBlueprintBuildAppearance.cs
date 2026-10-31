@@ -75,7 +75,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             CaptureCell expected; BlueprintWorldObject doorForm; BlueprintDoorBuildProof doorProof;
             if (!TryAppearanceTarget(target, actual, out expected, out tileSame, out doorForm, out doorProof)) return false;
             bool wallSame = (expected.Layers & CaptureLayer.Wall) != 0 &&
-                BlueprintMaterialSteps.SameBody(expected, actual, true) == BlueprintBodyState.Same;
+                BlueprintMaterialSteps.SameBody(expected, actual, MaterialCatalog,true,substitutionPolicy) == BlueprintBodyState.Same;
             var step = BlueprintConstructionAppearance.Next(expected, actual.Cell, tileSame, wallSame);
             if (step.Action == BlueprintAppearanceAction.BlockedForeground)
             {
@@ -224,7 +224,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             CaptureCell expected; bool tileSame; BlueprintWorldObject doorForm;
             if (!TryAppearanceTarget(target, actual, out expected, out tileSame, out doorForm)) return false;
-            bool wallSame = (expected.Layers & CaptureLayer.Wall) != 0 && BlueprintMaterialSteps.SameBody(expected, actual, true) == BlueprintBodyState.Same;
+            bool wallSame = (expected.Layers & CaptureLayer.Wall) != 0 && BlueprintMaterialSteps.SameBody(expected, actual, MaterialCatalog,true,substitutionPolicy) == BlueprintBodyState.Same;
             var next = BlueprintConstructionAppearance.Next(expected, actual.Cell, tileSame, wallSame);
             if (next.Action == BlueprintAppearanceAction.BlockedForeground) return false;
             if (!next.RequiresForegroundRestoration) return true;
@@ -275,7 +275,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 CaptureCell expected; BlueprintWorldObject doorForm;
                 if (!TryAppearanceTarget(flight.Target, actual, out expected, out tileSame, out doorForm)) return false;
                 bool wallSame = (expected.Layers & CaptureLayer.Wall) != 0 &&
-                    BlueprintMaterialSteps.SameBody(expected, actual, true) == BlueprintBodyState.Same;
+                    BlueprintMaterialSteps.SameBody(expected, actual, MaterialCatalog,true,substitutionPolicy) == BlueprintBodyState.Same;
                 var step = BlueprintConstructionAppearance.Next(expected, actual.Cell, tileSame, wallSame);
                 if (!CurrentAppearanceStep(flight.Operation, step)) return false;
             }
@@ -356,9 +356,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             if ((actual.Cell.Layers & (wall ? CaptureLayer.Wall : CaptureLayer.Tile)) == 0) return false;
             CaptureCell expected; bool tileSame; BlueprintWorldObject doorForm;
             if (!TryAppearanceTarget(target, actual, out expected, out tileSame, out doorForm)) return false;
-            if (wall) return (expected.Layers & CaptureLayer.Wall) != 0 && actual.Cell.WallType == expected.WallType;
+            if (wall) return (expected.Layers & CaptureLayer.Wall) != 0 && BlueprintMaterialSteps.SameBody(expected,actual,MaterialCatalog,true,substitutionPolicy)==BlueprintBodyState.Same;
             if (doorForm != null) return tileSame;
-            return target.Body != null ? actual.Object != null && target.Body.SamePlacement(actual.Object) : actual.Cell.TileType == target.Cell.TileType;
+            return target.Body != null ? SameSubstitutionBody(target.Body,actual.Object) :
+                BlueprintMaterialSteps.SameBody(target.Cell,actual,MaterialCatalog,policy:substitutionPolicy)==BlueprintBodyState.Same;
         }
     }
 }

@@ -676,7 +676,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     if (reads == 0) return;
                     var sample = ReadProjectionWorld(read.Owner.OriginX + cell.X, read.Owner.OriginY + cell.Y); reads--;
                     materialSample = sample;
-                    result=BlueprintWorldMatchComparer.CompareCell(cell,sample,selection,objectState);
+                    result=BlueprintWorldMatchComparer.CompareCell(cell,sample,selection,objectState,MaterialCatalog,substitutionPolicy);
                 }
                 SampleMaterialObjectCell(read, cell);
                 SampleMaterialCell(read, cell, materialSample);
@@ -745,8 +745,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (reads == 0) return false;
                 var hinge = ReadProjectionWorld(read.ObjectTarget.AnchorX, read.ObjectTarget.AnchorY); reads--;
                 var actual = hinge.Object;
-                var shape = actual != null && read.ObjectTarget.SamePlacement(actual) ? actual : read.ObjectTarget;
-                read.ObjectObserved = actual != null && read.ObjectTarget.SamePlacement(actual) ? actual : null;
+                var shape = SameSubstitutionBody(read.ObjectTarget, actual) ? actual : read.ObjectTarget;
+                read.ObjectObserved = SameSubstitutionBody(read.ObjectTarget, actual) ? actual : null;
                 read.ObjectBounds = new BlueprintProjectionBounds(shape.WorldX, shape.WorldY, shape.Width, shape.Height);
                 var dependency = read.Owner.View.DisplayBounds(read.Range.Source.Bounds);
                 var observed = new BlueprintProjectionBounds(read.Owner.OriginX + dependency.Left, read.Owner.OriginY + dependency.Top, dependency.Width, dependency.Height);
@@ -761,7 +761,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             if (read.ObjectIndex != total) return false;
             var state = BlueprintWorldMatchComparer.CompareObject(read.ObjectTarget, read.ObjectTargets.Cells, read.ObjectSamples,
-                ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp));
+                ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp),MaterialCatalog,substitutionPolicy);
             if(state==BlueprintWorldMatchState.Match)
             {
                 if(read.ObjectTarget.Family==BlueprintWorldObjectFamily.Door)
@@ -785,13 +785,13 @@ namespace JueMingR.TerrariaHost.Blueprint
                             read.ObjectUnion.Add(sample);
                         }
                         BlueprintWorldDoorWitness door;
-                        if(projectionMatchSource.TryCreateDoorWitness(read.ObjectTarget,read.ObjectTargets.Cells,read.ObjectSamples,read.ObjectUnion,ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp),out door))read.WriteWitness=door;
+                        if(projectionMatchSource.TryCreateDoorWitness(read.ObjectTarget,read.ObjectTargets.Cells,read.ObjectSamples,read.ObjectUnion,ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp),out door,MaterialCatalog,substitutionPolicy))read.WriteWitness=door;
                     }
                 }
                 else
                 {
                     BlueprintWorldObjectFrameWitness frame;
-                    if(projectionMatchSource.TryCreateFrameWitness(read.ObjectTarget,read.ObjectTargets.Cells,read.ObjectSamples,ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp),out frame))read.WriteWitness=frame;
+                    if(projectionMatchSource.TryCreateFrameWitness(read.ObjectTarget,read.ObjectTargets.Cells,read.ObjectSamples,ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp),out frame,MaterialCatalog,substitutionPolicy))read.WriteWitness=frame;
                 }
             }
             ObserveProjectionMatchRetained();

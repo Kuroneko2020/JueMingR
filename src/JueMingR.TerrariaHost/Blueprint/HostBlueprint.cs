@@ -67,7 +67,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool ShowToolbar { get { return ControlsEnabled && ToolbarEnabled && Input.CanPrepareText && !NativeUiBusy && !Main.hideUI &&
             !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
             !(Shell?.State.Visible ?? false) && !(Shell?.BlueprintMaterialsUi?.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !player.dead && !player.ghost && player.HeldItem != null && player.HeldItem.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0; } }
-        internal void SetToolbar(bool value) { if (ControlsEnabled) preference.Set(new BlueprintPreferences(value, AutoBuildEnabled)); }
+        internal void SetToolbar(bool value) { if (ControlsEnabled && preference.Set(preference.Snapshot.Value.WithGelToolbar(value))) RefreshSubstitutionPolicy(); }
         // Display and cached UI use stable business eligibility. Every action
         // entry independently checks this Update's completed input permission.
         internal bool CanOpenLibrary { get { return ManualLibraryDisabledReason == null; } }
@@ -88,6 +88,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Saved completion uses ShowSaved and does not pass this manual gate.
             if (!CanOpenLibrary || !Input.CanStartActions) return;
             Pointer.Cancel(); Toolbar.Cancel(); State.Interrupt();
+            Shell?.CloseBlueprintReplacementConfiguration();
             Shell?.BlueprintUi?.OpenLibrary();
         }
         internal void Toggle()
@@ -116,6 +117,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             Action automatic = () => SetAutoBuild(!AutoBuildEnabled);
             if (feedback != null) automatic = feedback.Immediate(BlueprintControls.AutoBuildAction, "自动建造", automatic, () => AutoBuildEnabled ? 1 : 0, () => ControlsEnabled);
             registry.Register(new HotkeyAction(BlueprintControls.AutoBuildAction, "自动建造", HotkeyContext.Gameplay, () => ControlsEnabled, automatic));
+            Action substitution = () => SetSameTypeReplacement(!SameTypeReplacementEnabled);
+            if (feedback != null) substitution = feedback.Immediate(BlueprintControls.SubstitutionAction, "同类替换", substitution, () => SameTypeReplacementEnabled ? 1 : 0, () => ControlsEnabled);
+            registry.Register(new HotkeyAction(BlueprintControls.SubstitutionAction, "同类替换", HotkeyContext.Gameplay, () => ControlsEnabled, substitution));
             registry.Register(new HotkeyAction(BlueprintControls.MaterialsAction, "施工材料", HotkeyContext.Gameplay, () => CanOpenMaterials, OpenMaterials));
         }
         private void ObserveMapping()
@@ -161,6 +165,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); player = null; world = connection = null; }
         public void Update(ulong updateTick)
         {
+            // The worker may finish its first read between callbacks. Publish
+            // once through the same owner before any strategy-dependent work.
+            RefreshSubstitutionPolicy();
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.BlueprintUpdate);
 #endif
@@ -177,7 +184,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 State.Interrupt(); Pointer.Cancel(); }
         }
-        internal void Poll() { PumpLibrary(); PumpProjectionPersistence(); PumpProjection(); AcceptProjectionSceneSnapshot(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
+        internal void Poll() { RefreshSubstitutionPolicy(); PumpLibrary(); PumpProjectionPersistence(); PumpProjection(); AcceptProjectionSceneSnapshot(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
         public void FailClosed() {
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.FailClosed);

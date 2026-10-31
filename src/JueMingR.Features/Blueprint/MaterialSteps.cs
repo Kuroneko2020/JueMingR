@@ -16,27 +16,30 @@ namespace JueMingR.Features.Blueprint
             short x, y; BlueprintWorldMatchComparer.NormalizeFrame(target, world.FrameKind, out x, out y);
             return target.TileType == world.Cell.TileType && (!world.CompareFrames || x == world.SemanticFrameX && y == world.SemanticFrameY) ? BlueprintBodyState.Same : BlueprintBodyState.Conflict;
         }
-        public static BlueprintBodyState SameBody(CaptureCell target, BlueprintWorldMatchSample world, BlueprintPlacementCatalog catalog, bool wall = false)
+        public static BlueprintBodyState SameBody(CaptureCell target, BlueprintWorldMatchSample world, BlueprintPlacementCatalog catalog, bool wall = false,
+            BlueprintSubstitutionPolicy policy = default(BlueprintSubstitutionPolicy))
         {
-            if (wall) return SameBody(target, world, true);
+            var exact = SameBody(target, world, wall);
+            if (wall) return exact == BlueprintBodyState.Conflict && catalog?.Substitution.AllowsWall(target.WallType, world.Cell.WallType, policy) == true ? BlueprintBodyState.Same : exact;
             var descriptor = catalog?.TileShape(target);
             if (descriptor?.RequiresObject == true && target.ObjectId == 0) return BlueprintBodyState.Unknown;
-            if (descriptor?.Platform == true && world.Available && (world.Cell.Layers & CaptureLayer.Tile) != 0 && target.TileType == world.Cell.TileType)
+            if ((descriptor?.Platform == true || descriptor?.PlanterBox == true) && world.Available && (world.Cell.Layers & CaptureLayer.Tile) != 0 && target.TileType == world.Cell.TileType)
             {
-                // A nominal platform recipe is not a native world proof. The
-                // same proved frame profile used by final Match must supply
-                // neighbor equivalence and strict material style here too.
-                if (world.ObjectUnknown || !world.CompareFrames || world.FrameKind != BlueprintWorldFrameKind.Platform18)
+                // A nominal single-cell recipe is not a native world proof.
+                // Final Match and billing need the corresponding platform or
+                // planter profile, each with its own legal connection slots.
+                if (world.ObjectUnknown || !BlueprintWorldMatchComparer.SingleCellFrameProfile(descriptor, world))
                     return BlueprintBodyState.Unknown;
             }
-            return SameBody(target, world);
+            return exact == BlueprintBodyState.Conflict && catalog?.Substitution.AllowsTile(target, world.Cell, policy) == true ? BlueprintBodyState.Same : exact;
         }
 
         public static BlueprintBodyState SameBody(BlueprintWorldObject target, IReadOnlyList<CaptureCell> members,
-            IReadOnlyList<BlueprintWorldMatchSample> world, bool current)
+            IReadOnlyList<BlueprintWorldMatchSample> world, bool current, BlueprintPlacementCatalog catalog = null,
+            BlueprintSubstitutionPolicy policy = default(BlueprintSubstitutionPolicy))
         {
             if (!current || target == null || members == null || members.Count != target.MemberCount || world == null) return BlueprintBodyState.Unknown;
-            var proof = new BlueprintObjectBodyProof(target);
+            var proof = new BlueprintObjectBodyProof(target, catalog, policy);
             foreach (var sample in world) proof.Observe(sample);
             return proof.Complete();
         }
@@ -76,7 +79,8 @@ namespace JueMingR.Features.Blueprint
         { if (!obj.Reliable) into.Unresolved("对象尚未完整确认"); else into.Add(catalog == null ? BlueprintConstructionTargets.Pending : catalog.QualifyTile(first, obj)); }
 
         public static void RequiredSteps(CaptureCell target, BlueprintWorldMatchSample world, BlueprintPlacementCatalog catalog,
-            BlueprintMaterialAccumulator into, BlueprintBodyState? objectBody = null, bool foregroundHandledElsewhere = false, CaptureObject? obj = null)
+            BlueprintMaterialAccumulator into, BlueprintBodyState? objectBody = null, bool foregroundHandledElsewhere = false, CaptureObject? obj = null,
+            BlueprintSubstitutionPolicy policy = default(BlueprintSubstitutionPolicy))
         {
             // A confirmed display-only source has no material/world dependency.
             // Filter before Available so unreadable liquid alone is exact zero;
@@ -91,7 +95,7 @@ namespace JueMingR.Features.Blueprint
             bool tileSame = false, wallSame = false; CaptureCell appearanceTarget = target;
             if ((target.Layers & CaptureLayer.Tile) != 0)
             {
-                var body = objectBody ?? SameBody(target, world, catalog);
+                var body = objectBody ?? SameBody(target, world, catalog, policy: policy);
                 if (body == BlueprintBodyState.Unknown) { into.Unresolved("本体尚未完整确认"); appearanceTarget.Layers &= ~CaptureLayer.Tile; }
                 else if (target.ObjectId == 0 && body != BlueprintBodyState.Same)
                 {
@@ -110,7 +114,7 @@ namespace JueMingR.Features.Blueprint
             }
             if ((target.Layers & CaptureLayer.Wall) != 0)
             {
-                var body = SameBody(target, world, true);
+                var body = SameBody(target, world, catalog, true, policy);
                 if (body == BlueprintBodyState.Unknown) { into.Unresolved("墙体尚未可读"); appearanceTarget.Layers &= ~CaptureLayer.Wall; }
                 else if (body != BlueprintBodyState.Same) into.Add(catalog.QualifyWall(target.WallType));
                 wallSame = body == BlueprintBodyState.Same;
@@ -132,14 +136,15 @@ namespace JueMingR.Features.Blueprint
         // second wall body/appearance contribution. Ordinary and object lanes
         // therefore share the operation meaning without sharing a bill owner.
         public static void ObjectMemberAppearance(CaptureCell target, BlueprintWorldMatchSample world,
-            BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into, CaptureObject? obj = null)
+            BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into, CaptureObject? obj = null,
+            BlueprintSubstitutionPolicy policy = default(BlueprintSubstitutionPolicy))
         {
             var qualification = catalog == null ? BlueprintConstructionTargets.Pending : catalog.QualifyTile(target, obj);
             if (qualification.Disposition == BlueprintTargetDisposition.DisplayOnly) return;
             if ((target.Layers & CaptureLayer.Tile) == 0) return;
             if (qualification.Disposition == BlueprintTargetDisposition.Unresolved) { into.Unresolved(qualification.MaterialReason); return; }
             if (!world.Available) { into.Unresolved("世界内容尚未可读"); return; }
-            Appearance(target, world.Cell, true, SameBody(target, world, true) == BlueprintBodyState.Same, catalog, into, tileOnly: true);
+            Appearance(target, world.Cell, true, SameBody(target, world, catalog, true, policy) == BlueprintBodyState.Same, catalog, into, tileOnly: true);
         }
 
         // Paint and both coatings consume separately on each actual member and
@@ -166,10 +171,14 @@ namespace JueMingR.Features.Blueprint
     public sealed class BlueprintObjectBodyProof
     {
         private readonly BlueprintWorldObject target;
+        private readonly BlueprintPlacementCatalog catalog;
+        private readonly BlueprintSubstitutionPolicy policy;
         private BlueprintWorldObject observed;
         private bool unknown, conflict, missing, targetRectangle = true, observedRectangle = true;
         private int count, active;
-        public BlueprintObjectBodyProof(BlueprintWorldObject target) { this.target = target; }
+        public BlueprintObjectBodyProof(BlueprintWorldObject target, BlueprintPlacementCatalog catalog = null,
+            BlueprintSubstitutionPolicy policy = default(BlueprintSubstitutionPolicy))
+        { this.target = target; this.catalog = catalog; this.policy = policy; }
         public void Observe(BlueprintWorldMatchSample sample)
         {
             int index = count++;
@@ -178,7 +187,7 @@ namespace JueMingR.Features.Blueprint
             if (!sample.Available || sample.ObjectUnknown) { unknown = true; return; }
             if ((sample.Cell.Layers & CaptureLayer.Tile) == 0) { missing = true; return; }
             active++;
-            if (sample.Object == null || !target.SamePlacement(sample.Object) ||
+            if (sample.Object == null || !(target.SamePlacement(sample.Object) || catalog?.Substitution.AllowsObject(target, sample.Object, policy) == true) ||
                 (sample.Object.Family == BlueprintWorldObjectFamily.Door ? sample.Cell.TileType != 10 && sample.Cell.TileType != 11 : sample.Cell.TileType != sample.Object.Kind)) { conflict = true; return; }
             if (observed == null) observed = sample.Object;
             else if (!observed.SameObservedObject(sample.Object)) conflict = true;

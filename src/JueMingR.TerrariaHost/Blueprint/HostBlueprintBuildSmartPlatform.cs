@@ -243,7 +243,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 CaptureObject? obj = part.LogicalObjectId > 0 && part.Window.Objects.Count == 1 ? part.Window.Objects[0] : (CaptureObject?)null;
                 var selection = SelectProjectionTarget(owner, raw, obj); var cell = selection.Apply(raw);
                 cell = new BlueprintConstructionSelection((ushort)(selection.RequiredBits & ~selection.UnknownBits), 0, MaterialCatalog.Revision).Apply(cell);
-                if ((cell.Layers & CaptureLayer.Tile) == 0 || cell.TileType != before.Type || cell.FrameY != before.FrameY ||
+                var observedCell = cell; observedCell.TileType=before.Type; observedCell.FrameY=before.FrameY; observedCell.FrameX=0;
+                bool sameMaterial=cell.TileType==before.Type && cell.FrameY==before.FrameY ||
+                    MaterialCatalog.Substitution.AllowsTile(cell,observedCell,substitutionPolicy);
+                if ((cell.Layers & CaptureLayer.Tile) == 0 || !sameMaterial ||
                     cell.Slope != slope || cell.HalfBrick || cell.Inactive != before.Inactive) continue;
                 var descriptor = MaterialCatalog.Tile(cell, obj); BlueprintWorldObject body = null; long support;
                 if (descriptor?.Platform != true || obj.HasValue &&

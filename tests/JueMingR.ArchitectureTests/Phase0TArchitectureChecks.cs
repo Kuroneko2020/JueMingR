@@ -126,6 +126,9 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Blueprint.BlueprintWorldMatchState", "JueMingR.Features.Blueprint.BlueprintWorldObjectFamily", "JueMingR.Features.Blueprint.BlueprintWorldFrameKind",
                 "JueMingR.Features.Blueprint.BlueprintWorldMatchResult", "JueMingR.Features.Blueprint.BlueprintWorldObject", "JueMingR.Features.Blueprint.BlueprintWorldMatchSample", "JueMingR.Features.Blueprint.BlueprintWorldMatchComparer",
                 "JueMingR.Features.Blueprint.BlueprintWorldObjectFrameWitness",
+                "JueMingR.Features.Blueprint.BlueprintSubstitutionCategory", "JueMingR.Features.Blueprint.BlueprintSubstitutionPolicy",
+                "JueMingR.Features.Blueprint.BlueprintSubstitutionMember", "JueMingR.Features.Blueprint.BlueprintSubstitutionCatalog",
+                "JueMingR.Features.Blueprint.BlueprintMaterialAllocation",
                 "JueMingR.Features.Blueprint.IBlueprintWorldObjectWriteWitness", "JueMingR.Features.Blueprint.BlueprintWorldTileWriteState", "JueMingR.Features.Blueprint.BlueprintWorldDoorWitness",
 #if DEBUG
                 "JueMingR.Features.Blueprint.BlueprintProjectionStatistics",

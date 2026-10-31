@@ -23,6 +23,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal readonly BlueprintPlacementDescriptor Placement;
             internal DeferredBuildSeed(BlueprintBuildTarget target)
             {
+                target = target.Requirement ?? target;
                 Owner = target.Range.Owner; Range = target.Range; Identity = target.Identity; Mask = target.Mask;
                 X = target.OriginX; Y = target.OriginY; Ordinal = target.Ordinal; Catalog = target.PlacementRevision;
                 Cell = target.Cell; Object = target.Body == null ? (CaptureObject?)null : target.Object;
@@ -111,8 +112,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private static bool SameBuildTarget(BlueprintBuildTarget left, BlueprintBuildTarget right)
         {
+            left = left?.Requirement ?? left; right = right?.Requirement ?? right;
             return left != null && right != null && ReferenceEquals(left.Range, right.Range) && left.Identity.Equals(right.Identity) &&
                 ReferenceEquals(left.Mask, right.Mask) && left.OriginX == right.OriginX && left.OriginY == right.OriginY && left.PlacementRevision == right.PlacementRevision &&
+                left.PolicyRevision == right.PolicyRevision &&
                 left.Ordinal == right.Ordinal && SameBuildOperation(left.Operation, right.Operation) && left.Placement?.Kind == right.Placement?.Kind && left.WorldX == right.WorldX && left.WorldY == right.WorldY;
         }
         private bool IsUnfinishedBuildTarget(BlueprintBuildTarget target)
@@ -262,7 +265,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (TryCreateConstructionTarget(range.Owner, range, part, index, ordinal, support, out candidate) && !IsUnfinishedBuildTarget(candidate))
                 {
                     BuildOperationPlan option; BlueprintBuildWait wait; ulong slots;
-                    if (!TryPlanBuild(candidate, p, group.Source, out option, out wait, out slots)) RegisterPlannedBuildWait(candidate, wait, slots);
+                    if (!TryPlanBuild(candidate, p, group.Source, out option, out wait, out slots))
+                    { if (substitutionPlanningPending) return PreferredBuildSearch.BudgetPending; RegisterPlannedBuildWait(candidate, wait, slots); }
                     else if (PlanContinuesBuild(candidate, option))
                     {
                         // Found is only a prepared suggestion. A preceding
@@ -350,7 +354,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!TryPlanConstructionOperationFromSample(target, BuildLane(seed.Ordinal), actual, out operation)) return false;
             target.Operation = operation;
             BlueprintBuildWait wait; ulong slots;
-            if (!TryPlanBuild(target, p, preferred, out plan, out wait, out slots)) { RegisterPlannedBuildWait(target, wait, slots); return false; }
+            if (!TryPlanBuild(target, p, preferred, out plan, out wait, out slots))
+            { if (substitutionPlanningPending) { pending = true; return false; } RegisterPlannedBuildWait(target, wait, slots); return false; }
             return true;
         }
         private bool TryDeferredBuild(Player p, ref int allowance, out BuildFlight result)

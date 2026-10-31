@@ -21,6 +21,16 @@ namespace JueMingR.Features.Blueprint
         public int OperatingY { get; }
         public int OperatingY2 { get; }
         public bool Door { get; }
+        public bool TryMemberFrame(int column, int row, out short x, out short y)
+        {
+            x = y = 0;
+            if (column < 0 || row < 0 || column >= Descriptor.Width || row >= Descriptor.Height) return false;
+            long frameX = Door ? (long)(Descriptor.Style / 36) * 54 : BaseX + (long)column * ColumnStep;
+            long frameY = Door ? (long)(Descriptor.Style % 36) * 54 + row * 18 :
+                Descriptor.Platform || Descriptor.PlanterBox ? (long)Descriptor.Style * 18 : row < rows.Length ? BaseY + (long)rows[row] : -1;
+            if (frameX < 0 || frameY < 0 || frameX > short.MaxValue || frameY > short.MaxValue) return false;
+            x = (short)frameX; y = (short)frameY; return true;
+        }
         public bool Matches(CaptureCell cell)
         {
             if ((cell.Layers & CaptureLayer.Tile) == 0) return false;
@@ -32,6 +42,8 @@ namespace JueMingR.Features.Blueprint
             }
             if (cell.TileType != Descriptor.TileType) return false;
             if (Descriptor.Platform) return cell.FrameY == (long)Descriptor.Style * 18;
+            if (Descriptor.PlanterBox) return cell.FrameY == (long)Descriptor.Style * 18 &&
+                cell.FrameX >= 0 && cell.FrameX <= 54 && cell.FrameX % 18 == 0 && !cell.HalfBrick && cell.Slope == 0;
             if (Simple) return true;
             return Cell(cell.FrameX - BaseX, cell.FrameY - BaseY) || OperatingX != 0 && Cell(cell.FrameX - BaseX - OperatingX, cell.FrameY - BaseY) ||
                 OperatingY != 0 && Cell(cell.FrameX - BaseX, cell.FrameY - BaseY - OperatingY) || OperatingY2 != 0 && Cell(cell.FrameX - BaseX, cell.FrameY - BaseY - OperatingY2);
@@ -46,12 +58,14 @@ namespace JueMingR.Features.Blueprint
         private readonly Dictionary<int, BlueprintPlacementDescriptor> walls;
         private readonly Dictionary<int, int> paints, coatings;
         private readonly Dictionary<int, BlueprintPlacementDeclaration[]> declarations;
-        public const int ClassifierVersion = 2;
+        public const int ClassifierVersion = 3;
         public BlueprintPlacementCatalog(long revision, IEnumerable<BlueprintPlacementRule> rules, IDictionary<int, BlueprintPlacementDescriptor> walls,
             IDictionary<int, int> paints, IDictionary<int, int> coatings, int wire, int actuator, string targetVersion = "1.4.5.8",
-            IEnumerable<BlueprintPlacementDeclaration> declarations = null, BlueprintProducerCoverage coverage = null)
+            IEnumerable<BlueprintPlacementDeclaration> declarations = null, BlueprintProducerCoverage coverage = null,
+            BlueprintSubstitutionCatalog substitution = null)
         {
             Revision = revision; TargetVersion = targetVersion; WireItemType = wire; ActuatorItemType = actuator; Coverage = coverage;
+            Substitution = substitution ?? BlueprintSubstitutionCatalog.Empty;
             this.walls = new Dictionary<int, BlueprintPlacementDescriptor>(walls); this.paints = new Dictionary<int, int>(paints); this.coatings = new Dictionary<int, int>(coatings);
             var grouped = new Dictionary<int, List<BlueprintPlacementRule>>();
             foreach (var rule in rules)
@@ -77,6 +91,7 @@ namespace JueMingR.Features.Blueprint
         public long Revision { get; }
         public string TargetVersion { get; }
         public BlueprintProducerCoverage Coverage { get; }
+        public BlueprintSubstitutionCatalog Substitution { get; }
         public int DeclarationCount { get; }
         public int UncompiledDeclarationCount { get; }
         public int WireItemType { get; }
@@ -238,12 +253,15 @@ namespace JueMingR.Features.Blueprint
             { Unresolved(target.MaterialReason); return; }
             Add(target.Placement);
         }
-        public BlueprintMaterialSnapshot Snapshot(long revision, BlueprintMaterialInventory inventory = null, BlueprintMaterialStatus? status = null)
+        public BlueprintMaterialSnapshot Snapshot(long revision, BlueprintMaterialInventory inventory = null, BlueprintMaterialStatus? status = null,
+            BlueprintPlacementCatalog catalog = null, BlueprintSubstitutionPolicy policy = default(BlueprintSubstitutionPolicy))
         {
             try
             {
                 var keys = new List<int>(counts.Keys); keys.Sort(); var rows = new BlueprintMaterialRow[keys.Count];
-                for (int i = 0; i < keys.Count; i++) rows[i] = new BlueprintMaterialRow(keys[i], counts[keys[i]], inventory?.Held(keys[i]) ?? 0, inventory?.Ready == true);
+                var allocation = inventory?.Ready == true && policy.Enabled && catalog?.Substitution.Ready == true ?
+                    new BlueprintMaterialAllocation(counts, inventory, catalog, policy) : null;
+                for (int i = 0; i < keys.Count; i++) rows[i] = allocation?.Row(keys[i]) ?? new BlueprintMaterialRow(keys[i], counts[keys[i]], inventory?.Held(keys[i]) ?? 0, inventory?.Ready == true);
                 return new BlueprintMaterialSnapshot(revision, status ?? Status, rows, inventory?.Ready == true, Error);
             }
             catch (OverflowException) { return new BlueprintMaterialSnapshot(revision, BlueprintMaterialStatus.Unresolved, Array.Empty<BlueprintMaterialRow>(), false, "材料数量超出整数范围"); }

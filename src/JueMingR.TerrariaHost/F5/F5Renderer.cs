@@ -34,6 +34,7 @@ namespace JueMingR.TerrariaHost.F5
         internal ViewControls ViewControls { get; set; }
         internal MovementControls MovementControls { get; set; }
         internal BlueprintControls BlueprintControls { get; set; }
+        internal BlueprintReplacementPopup BlueprintReplacementPopup { get; set; }
         internal CombatControls CombatControls {get;set;}
         internal CombatObservationControls CombatObservationControls {get;set;}
         internal CombatRadiusDrag CombatRadius {get;set;}
@@ -351,6 +352,8 @@ namespace JueMingR.TerrariaHost.F5
         internal string ResolveHint(F5Interaction state, Items.ItemsPresentation items, bool blocked, bool biomeFailed, out F5Rect target, F5Rect? contentClip = null)
         {
             target = default(F5Rect);
+            if (BlueprintReplacementPopup?.Visible == true)
+                return state.Visible && BlueprintReplacementPopup.CanHint && !blocked ? BlueprintReplacementPopup.Hint(state.PointerX, state.PointerY, out target) : null;
             if(CaptureUi!=null && CaptureUi.Visible && CaptureUi.Contains(state.PointerX,state.PointerY))
                 return state.Visible && CaptureUi.CanHint && !blocked?CaptureUi.Hint(state.PointerX,state.PointerY,out target):null;
             if(FishingUi!=null && state.Page==7 && FishingUi.Visible && FishingUi.Contains(state.PointerX,state.PointerY))

@@ -175,12 +175,12 @@ namespace NativeWorldTextProbe
                 Call(layout, "SetBlueprintMode", mode);
                 Call(layout, "Ensure", 1280f, 720f, 1.5f, 6, font, measure);
                 object[] elements = ((IEnumerable)Get(layout, "Elements")).Cast<object>().ToArray();
-                Require(elements.Count(e => Get(e, "Kind").ToString() == "Panel") == 10, "blueprint F5 adds mirror and trim standard rows to its existing eight rows");
+                Require(elements.Count(e => Get(e, "Kind").ToString() == "Panel") == 11, "blueprint F5 retains ten existing rows and adds the standard substitution row");
                 var capture = elements.Single(e => GetOptional(e, "Text") as string == (mode ? "退出采集" : "采集蓝图"));
                 Require((string)Get(Get(capture, "Description"), "Text") == (mode ? "退出选区，并清空已有选区" : "点击开始键执行选区，反选取消选区。"), "F5 capture row tracks the current owner mode");
                 var save = elements.Single(e => GetOptional(e, "Text") as string == "保存采集");
                 Require((string)Get(Get(save, "Description"), "Text") == "点击保存键保存世界上已有的蓝图选区。", "F5 save row keeps the exact approved description");
-                Require(elements.Where(e => Get(e, "Kind").ToString() == "Hotkey").Select(e => (string)Get(e, "HotkeyTarget")).SequenceEqual(new[] { "blueprint.capture", "blueprint.save", "blueprint.library", "blueprint.move", "blueprint.remove", "blueprint.mirror", "blueprint.trim", "blueprint.toolbar", "blueprint.autobuild", "blueprint.materials" }), "all ten rows use stable common binder targets; start/exit still share one identity");
+                Require(elements.Where(e => Get(e, "Kind").ToString() == "Hotkey").Select(e => (string)Get(e, "HotkeyTarget")).SequenceEqual(new[] { "blueprint.capture", "blueprint.save", "blueprint.library", "blueprint.move", "blueprint.remove", "blueprint.mirror", "blueprint.trim", "blueprint.toolbar", "blueprint.autobuild", "blueprint.substitution", "blueprint.materials" }), "all eleven rows use stable common binder targets; start/exit still share one identity");
                 Require(elements.Count(e => Get(e, "Command").ToString() == "BlueprintAutoBuildOn" || Get(e, "Command").ToString() == "BlueprintAutoBuildOff" || Get(e, "Command").ToString() == "BlueprintMaterials") == 3,
                     "new rows contain two idempotent construction buttons and one material opener, plus their two existing common key controls");
                 var preference = elements.Single(e => GetOptional(e, "Text") as string == "手持凝胶显示快捷栏");

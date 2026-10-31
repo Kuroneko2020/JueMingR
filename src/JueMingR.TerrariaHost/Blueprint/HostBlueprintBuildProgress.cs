@@ -202,7 +202,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             if ((value.BuildWaits & BlueprintBuildWait.Material) != 0 && value.CatalogRevision == materialPlacementIdentity && value.Desired != null)
                 foreach (var supply in buildSupply)
-                    if (supply.Value > value.BuildSupplyRevision && value.Desired.ContainsKey(supply.Key)) { value.BuildRetryPending = true; break; }
+                    if (supply.Value > value.BuildSupplyRevision)
+                        foreach (var requirement in value.Desired)
+                            if (SubstitutionSupplyFor(requirement.Key, supply.Key)) { value.BuildRetryPending = true; break; }
             if((value.BuildWaits&BlueprintBuildWait.Capability)!=0 && value.BuildSupplyRevision!=buildSupplyRevision)value.BuildRetryPending=true;
             if ((value.BuildWaits & BlueprintBuildWait.Player) != 0 && value.BuildPlayerRevision != MaterialBuildEligibilityRevision ||
                 (value.BuildWaits & BlueprintBuildWait.Container) != 0 && value.BuildContainerRevision != buildContainerRevision ||

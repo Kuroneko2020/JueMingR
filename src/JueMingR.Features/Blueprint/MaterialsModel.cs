@@ -13,12 +13,12 @@ namespace JueMingR.Features.Blueprint
         public BlueprintPlacementDescriptor(BlueprintPlacementKind kind, int useItemType, int consumeItemType, long units,
             int tileType, int style, int wallType = 0, bool flexible = false, int width = 1, int height = 1,
             int originX = 0, int originY = 0, int alternate = 0, int direction = 0, bool requiresObject = false, bool platform = false, bool requiresSubstrate = false,
-            BlueprintSpecialProducer producer = null)
+            BlueprintSpecialProducer producer = null, bool planterBox = false)
         {
             Kind = kind; UseItemType = useItemType; ConsumeItemType = consumeItemType; Units = units;
             TileType = tileType; Style = style; WallType = wallType; Flexible = flexible;
             Width = width; Height = height; OriginX = originX; OriginY = originY; Alternate = alternate; Direction = direction;
-            RequiresObject = requiresObject; Platform = platform; RequiresSubstrate = requiresSubstrate;
+            RequiresObject = requiresObject; Platform = platform; PlanterBox = planterBox; RequiresSubstrate = requiresSubstrate;
             Producer = producer;
         }
         public BlueprintPlacementKind Kind { get; }
@@ -37,6 +37,7 @@ namespace JueMingR.Features.Blueprint
         public int Direction { get; }
         public bool RequiresObject { get; }
         public bool Platform { get; }
+        public bool PlanterBox { get; }
         public bool RequiresSubstrate { get; }
         public BlueprintSpecialProducer Producer { get; }
         public bool SameConsumption(BlueprintPlacementDescriptor other)
@@ -45,16 +46,23 @@ namespace JueMingR.Features.Blueprint
 
     public sealed class BlueprintMaterialRow
     {
-        public BlueprintMaterialRow(int itemType, long required, long held = 0, bool inventoryReady = false)
+        public BlueprintMaterialRow(int itemType, long required, long held = 0, bool inventoryReady = false,
+            long allocatedExact = -1, long substitutionAvailable = 0)
         {
-            if (itemType <= 0 || required < 0 || held < 0) throw new ArgumentOutOfRangeException(nameof(required));
+            if (itemType <= 0 || required < 0 || held < 0 || allocatedExact < -1 || substitutionAvailable < 0) throw new ArgumentOutOfRangeException(nameof(required));
             ItemType = itemType; Required = required; Held = held; InventoryReady = inventoryReady;
-            Missing = inventoryReady ? checked(required > held ? required - held : 0) : 0;
+            AllocatedExact = allocatedExact < 0 ? Math.Min(required, held) : allocatedExact;
+            if (AllocatedExact > held || AllocatedExact > required || substitutionAvailable > required - AllocatedExact)
+                throw new ArgumentOutOfRangeException(nameof(allocatedExact));
+            SubstitutionAvailable = substitutionAvailable;
+            Missing = inventoryReady ? required - AllocatedExact - SubstitutionAvailable : 0;
         }
         public int ItemType { get; }
         public long Required { get; }
         public long Needed { get { return Required; } }
         public long Held { get; }
+        public long AllocatedExact { get; }
+        public long SubstitutionAvailable { get; }
         public long Missing { get; }
         public bool InventoryReady { get; }
     }

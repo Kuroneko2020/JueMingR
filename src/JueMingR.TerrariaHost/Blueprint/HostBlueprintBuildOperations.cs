@@ -35,6 +35,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         // borrow a mode/input, acquire a token or mutate another candidate.
         private sealed class BuildOperationPlan
         {
+            internal BlueprintBuildTarget ExecutionTarget;
             internal BlueprintBuildOperation Operation;
             internal Item Tool, Supply;
             internal int ToolType;
@@ -123,6 +124,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 var placement = operation?.NativePlacement ?? target.Placement;
                 if (placement == null || !BasicPlacement(placement)) return false;
+                if (operation == null && substitutionPolicy.Enabled)
+                    return TryPlanSubstitutionBuild(target, p, preferred, out plan, out wait);
                 if (preferred != null && preferred.Type == placement.UseItemType && preferred.Slot >= 0 && preferred.Slot < 50 &&
                     ReferenceEquals(p.inventory[preferred.Slot], preferred.Item) && buildTools.BuildInventoryEligible(preferred.Slot, preferred.Item)) tool = preferred.Slot;
                 else tool = ConstructionItemSlot(p, placement.UseItemType);
@@ -209,7 +212,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // The old direct path can reject absent supplies without another
             // native preflight. Tool operations select their actual capability
             // and independent primary supply only in preparation.
-            if (operation == null && !buildSupply.ContainsKey(descriptor.UseItemType))
+            if (operation == null && !HasBuildSupply(descriptor))
             { range.Materials.BuildWaits |= BlueprintBuildWait.Material; return false; }
             // Only unfinished, supplied work can register a reach wait. An
             // already matched lane or a missing ordinary material must not
@@ -229,12 +232,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Conflict/Unknown and object members keep their complete walks.
             var cell=target.Cell;
             if(cell.ObjectId!=0 || !actual.Available || actual.ObjectUnknown ||
-                (cell.Layers&CaptureLayer.Tile)==0 || BlueprintMaterialSteps.SameBody(cell,actual,MaterialCatalog)!=BlueprintBodyState.Missing)return following;
+                (cell.Layers&CaptureLayer.Tile)==0 || BlueprintMaterialSteps.SameBody(cell,actual,MaterialCatalog,policy:substitutionPolicy)!=BlueprintBodyState.Missing)return following;
             while(BuildMemberIndex(following)==BuildMemberIndex(ordinal))
             {
                 var lane=BuildLane(following);
                 bool skip=lane==BlueprintBuildLane.Shape ||
-                    lane==BlueprintBuildLane.Appearance && ((cell.Layers&CaptureLayer.Wall)==0 || BlueprintMaterialSteps.SameBody(cell,actual,true)!=BlueprintBodyState.Same) ||
+                    lane==BlueprintBuildLane.Appearance && ((cell.Layers&CaptureLayer.Wall)==0 || BlueprintMaterialSteps.SameBody(cell,actual,MaterialCatalog,true,substitutionPolicy)!=BlueprintBodyState.Same) ||
                     lane==BlueprintBuildLane.Actuation && !((cell.Layers&CaptureLayer.Actuator)!=0 && cell.Actuator) && PeekOwnedActuator(target.WorldX,target.WorldY)==null;
                 // Independent wall body/appearance, wire, permanent actuator
                 // and owned cleanup retain their own current-world planning.
@@ -267,12 +270,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool BuildOperationBodySame(BlueprintBuildTarget target, BlueprintWorldMatchSample actual)
         {
             if (target == null || !actual.Available) return false;
-            if (target.Cell.ObjectId <= 0) return BlueprintMaterialSteps.SameBody(target.Cell, actual, MaterialCatalog) == BlueprintBodyState.Same;
+            if (target.Cell.ObjectId <= 0) return BlueprintMaterialSteps.SameBody(target.Cell, actual, MaterialCatalog,policy:substitutionPolicy) == BlueprintBodyState.Same;
             var value = target.Range?.Materials; BlueprintBodyState body;
             return value?.BuildObjectBodies != null && value.BuildBodyVersion == target.Range.Version &&
                 projectionChanges.IsMaterialCurrent(target.Range.Watch, target.Range.PartIndex, value.BuildBodyStamp) &&
                 value.BuildObjectBodies.TryGetValue(target.Cell.ObjectId, out body) && body == BlueprintBodyState.Same &&
-                actual.Object != null && (target.Body == null || target.Body.SamePlacement(actual.Object));
+                actual.Object != null && (target.Body == null || SameSubstitutionBody(target.Body, actual.Object));
         }
         private bool ConstructionBuildCurrent(BuildFlight flight)
         {
