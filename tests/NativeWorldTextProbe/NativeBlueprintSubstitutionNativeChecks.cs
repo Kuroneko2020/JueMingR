@@ -10,6 +10,153 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeBlueprintBuildChecks
     {
+        private static void SubstitutionSafeWalls(object context,object host,object tools,object input)
+        {
+            SubstitutionReset(context,host,tools,input);
+            int[] originals={ItemID.GlassWall,ItemID.PurpleStainedGlass,ItemID.WoodenFence};
+            for(int i=0;i<originals.Length;i++)
+            {
+                var item=SubstitutionItem(originals[i]);
+                Require(Main.wallHouse[item.createWall],"source safety is an initialized original wall fact");
+                WorldGen.PlaceWall(60+i,42,item.createWall);WorldGen.paintWall(60+i,42,PaintID.RedPaint,false,false);
+            }
+            var library=(LibraryState)Get(host,"Library");
+            var entry=NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context,host,input,library,()=>Step(context,input),60,42,3,1,"安全玻璃透明栅栏墙");
+            var raw=OpenCapturedAppearance(library,entry);
+            Require(raw.Objects.Count==0 && raw.Cells.Count==3 && raw.Cells.All(c=>c.Layers==CaptureLayer.Wall && c.WallPaint==PaintID.RedPaint) &&
+                Enumerable.Range(0,3).All(i=>raw.Cells[i].WallType==SubstitutionItem(originals[i]).createWall),
+                "capture/save/open retains three distinct safe wall outputs and their independent paint requirement");
+            foreach(bool manual in new[]{true,false})
+            {
+                var p=SubstitutionReset(context,host,tools,input);var stone=SubstitutionItem(ItemID.StoneWall);
+                if(manual)for(int i=0;i<3;i++)WorldGen.PlaceWall(44+i,42,stone.createWall);
+                else
+                {
+                    p.inventory[12].SetDefaults(ItemID.StoneWall);p.inventory[12].stack=3;
+                    p.inventory[14].SetDefaults(ItemID.PaintRoller);p.inventory[15].SetDefaults(ItemID.RedPaint);p.inventory[15].stack=3;
+                }
+                Place(context,host,input,entry,44,42);var bill=SubstitutionBill(context,host,input);
+                Require(bill.Rows.Single(r=>r.ItemType==ItemID.RedPaint).Required==3 && Scene(host).Length==1,
+                    "safe replacement never erases the three remaining wall-paint requirements");
+                if(manual)
+                    Require(!bill.Rows.Any(r=>originals.Contains(r.ItemType)) && !(bool)Get(host,"AutoBuildEnabled"),
+                        "automatic OFF accepts manually placed stone as all three bodies without charging another wall");
+                else foreach(int original in originals)
+                {
+                    var row=bill.Rows.Single(r=>r.ItemType==original);
+                    Require(row.Required==1 && row.Held==0 && row.SubstitutionAvailable==1 && row.Missing==0,
+                        "glass/transparent/fence nominal rows share three actual stone units while Held remains exact");
+                }
+                Call(host,"SetMaterialViewDemand",false);
+                long unknown=(long)Get(host,"BuildUnknownResults"),checks=(long)Get(host,"BuildNativeChecks"),uses=(long)Get(host,"BuildUsesStarted");
+                if(manual)
+                {
+                    for(int i=0;i<3;i++)WorldGen.paintWall(44+i,42,PaintID.RedPaint,false,false);
+                    Until(context,input,()=>Scene(host).Length==0);
+                    Require(!(bool)Get(host,"AutoBuildEnabled") && (long)Get(host,"BuildUsesStarted")==uses,
+                        "manual safe-wall appearance completes and retires while automation stays OFF");
+                }
+                else
+                {
+                    SetAutomatic(host,input,true);Until(context,input,()=>Scene(host).Length==0 && !(bool)Get(Get(tools,"Use"),"Active"));
+                    Require(SubstitutionHeld(p,ItemID.StoneWall)==0 && SubstitutionHeld(p,ItemID.RedPaint)==0 &&
+                        (long)Get(host,"BuildNativeChecks")>checks && p.inventory[14].type==ItemID.PaintRoller,
+                        "only stone stock supplies the glass target and its siblings through actual placement and paint consumers");
+                }
+                Require(Enumerable.Range(44,3).All(x=>Main.tile[x,42].wall==stone.createWall && Main.tile[x,42].wallColor()==PaintID.RedPaint) &&
+                    (long)Get(host,"BuildUnknownResults")==unknown,"final safe-wall Match preserves the selected stone output, full appearance and known consumption");
+            }
+            Require(OpenCapturedAppearance(library,entry).Cells.SequenceEqual(raw.Cells),"safe-wall replacement never rewrites captured original requirements");
+        }
+
+        private static void SubstitutionPicnicTables(object context,object host,object tools,object input)
+        {
+            foreach(int original in new[]{ItemID.PicnicTable,ItemID.PicnicTableWithCloth})
+            {
+                SubstitutionReset(context,host,tools,input);var desired=SubstitutionItem(original);
+                int alternative=original==ItemID.PicnicTable?ItemID.PicnicTableWithCloth:ItemID.PicnicTable;
+                Require(WorldGen.PlaceObject(61,42,desired.createTile,mute:true,style:desired.placeStyle),"real source picnic table uses its original style and 4x2 anchor");
+                for(int y=41;y<=42;y++)for(int x=60;x<64;x++)WorldGen.paintTile(x,y,PaintID.RedPaint,false,false);
+                var library=(LibraryState)Get(host,"Library");
+                var entry=NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context,host,input,library,()=>Step(context,input),60,41,4,2,"双向完整野餐桌 "+original);
+                var raw=OpenCapturedAppearance(library,entry);var obj=raw.Objects.Single();
+                Require(obj.Reliable && obj.Id>0 && obj.Type==TileID.PicnicTable && obj.Width==4 && obj.Height==2 && obj.Style==desired.placeStyle &&
+                    raw.Cells.Count==8 && raw.Cells.All(c=>c.ObjectId==obj.Id && c.TilePaint==PaintID.RedPaint) &&
+                    raw.Cells.Select(c=>c.FrameX).Distinct().Count()==4 && raw.Cells.Select(c=>c.FrameY).Distinct().Count()==2,
+                    "both original styles are separately captured/saved/read as eight real distinct members");
+                foreach(bool manual in new[]{true,false})
+                {
+                    var p=SubstitutionReset(context,host,tools,input);var actual=SubstitutionItem(alternative);
+                    var catalog=SubstitutionCatalog(context,host,input);
+                    if(manual)Require(WorldGen.PlaceObject(45,42,actual.createTile,mute:true,style:actual.placeStyle),"manual other-style picnic table uses real eight-member native placement");
+                    else
+                    {
+                        p.inventory[12].SetDefaults(alternative);p.inventory[12].stack=1;
+                        p.inventory[14].SetDefaults(ItemID.Paintbrush);p.inventory[15].SetDefaults(ItemID.RedPaint);p.inventory[15].stack=8;
+                    }
+                    Place(context,host,input,entry,44,41);var bill=SubstitutionBill(context,host,input);
+                    Require(bill.Rows.Single(r=>r.ItemType==ItemID.RedPaint).Required==8 && Scene(host).Length==1,
+                        "all eight source appearance requirements remain before completion for each picnic direction");
+                    long checks=(long)Get(host,"BuildNativeChecks"),unknown=(long)Get(host,"BuildUnknownResults"),uses=(long)Get(host,"BuildUsesStarted");
+                    if(manual)
+                    {
+                        Require(!bill.Rows.Any(r=>r.ItemType==original || r.ItemType==alternative) && !(bool)Get(host,"AutoBuildEnabled"),
+                            "manual alternate removes only picnic body demand with automatic OFF");
+                        SubstitutionPicnicProof(host,raw,catalog,false);
+                        p.inventory[12].SetDefaults(original);p.inventory[12].stack=2;
+                        bill=SubstitutionBill(context,host,input);
+                        Require(!bill.Rows.Any(r=>r.ItemType==original),"later exact stock does not invalidate an already accepted other-style picnic body");
+                        for(int y=41;y<=42;y++)for(int x=44;x<48;x++)WorldGen.paintTile(x,y,PaintID.RedPaint,false,false);
+                        Until(context,input,()=>Scene(host).Length==0);
+                        Require(!(bool)Get(host,"AutoBuildEnabled") && SubstitutionHeld(p,original)==2 && (long)Get(host,"BuildUsesStarted")==uses,
+                            "manual complete alternate retires without consuming later exact stock or starting automation");
+                    }
+                    else
+                    {
+                        var row=bill.Rows.Single(r=>r.ItemType==original);
+                        Require(row.Required==1 && row.Held==0 && row.SubstitutionAvailable==1 && row.Missing==0,
+                            "one real alternative table, rather than eight fake items, supplies the missing original body");
+                        Call(host,"SetMaterialViewDemand",false);SetAutomatic(host,input,true);
+                        Until(context,input,()=>Scene(host).Length==0 && !(bool)Get(Get(tools,"Use"),"Active"));
+                        Require(SubstitutionHeld(p,alternative)==0 && SubstitutionHeld(p,original)==0 && SubstitutionHeld(p,ItemID.RedPaint)==0 &&
+                            p.inventory[14].type==ItemID.Paintbrush && (long)Get(host,"BuildNativeChecks")>checks,
+                            "actual chosen alternative is consumed once and native postprocessing paints all eight members before retirement");
+                    }
+                    SubstitutionPicnicProof(host,raw,catalog,true);
+                    Require((long)Get(host,"BuildUnknownResults")==unknown,"complete picnic substitution never converts precise native consumption into an unknown result");
+                    Call(host,"SetMaterialViewDemand",false);
+                }
+                var reopened=OpenCapturedAppearance(library,entry);
+                Require(reopened.Cells.SequenceEqual(raw.Cells) && reopened.Objects.SequenceEqual(raw.Objects),"both picnic directions preserve source cells, frames and complete object metadata");
+            }
+        }
+
+        private static void SubstitutionPicnicProof(object host,BlueprintProjectionWindow raw,BlueprintPlacementCatalog catalog,bool painted)
+        {
+            var type=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintWorldMatchSource",true);
+            var reader=Activator.CreateInstance(type,F,null,new object[]{(Func<bool>)(()=>true)},null);
+            var members=raw.Cells.ToArray();object[] describe={raw.Objects.Single(),members[0],44,41,null};
+            Require((bool)type.GetMethod("TryDescribeTarget",F).Invoke(reader,describe),"saved picnic target decodes through the production canonical reader");
+            var target=(BlueprintWorldObject)describe[4];var world=new BlueprintWorldMatchSample[8];
+            for(int i=0;i<world.Length;i++)
+            {
+                object[] read={44+i%4,41+i/4,null};
+                Require((bool)type.GetMethod("TryRead",F).Invoke(reader,read),"each current picnic member is read independently through the native world gate");
+                world[i]=(BlueprintWorldMatchSample)read[2];
+            }
+            var actual=world[0].Object;var policy=new BlueprintSubstitutionPolicy(true);
+            Require(actual!=null && actual.Width==4 && actual.Height==2 && !target.SamePlacement(actual) &&
+                catalog.Substitution.AllowsObject(target,actual,policy) && catalog.Substitution.AllowsObject(actual,target,policy) &&
+                world.All(s=>s.Object!=null && actual.SameObservedObject(s.Object)) &&
+                BlueprintMaterialSteps.SameBody(target,members,world,true,catalog,policy)==BlueprintBodyState.Same &&
+                BlueprintWorldMatchComparer.CompareObject(target,members,world,true,catalog,policy)==(painted?BlueprintWorldMatchState.Match:BlueprintWorldMatchState.Conflict),
+                "eight independently read members prove a different native style, shared body and separate appearance state");
+            var duplicate=(BlueprintWorldMatchSample[])world.Clone();duplicate[7]=duplicate[0];
+            Require(BlueprintWorldMatchComparer.CompareObject(target,members,duplicate,true,catalog,policy)!=BlueprintWorldMatchState.Match &&
+                BlueprintMaterialSteps.SameBody(target,members,duplicate,true,catalog,policy)!=BlueprintBodyState.Same,
+                "duplicated picnic members cannot masquerade as a complete eight-cell object");
+        }
+
         private static void SubstitutionTorches(object context,object host,object tools,object input)
         {
             var p=SubstitutionReset(context,host,tools,input);

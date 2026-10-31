@@ -20,7 +20,7 @@ namespace NativeWorldTextProbe
         private const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
         private static object faultTools;
         private static bool reportedNativeFault;
-        internal static void Run(object context, bool throughputOnly=false)
+        internal static void Run(object context, bool throughputOnly=false, bool cadenceOnly=false)
         {
             var host = Get(context, "Blueprint"); var tools = Get(context, "Tools"); var input = Get(context, "Input");
             NativeToolExecutionChecks.Initialize(context, null);
@@ -51,6 +51,16 @@ namespace NativeWorldTextProbe
                         try { body(); Console.WriteLine("PASS BlueprintBuild case=" + name); }
                         catch (Exception error) { Console.Error.WriteLine("BUILD CASE " + name + ": " + error); if (first == null) first = error; }
                     };
+                    if(cadenceOnly)
+                    {
+                        check("substitution exact-source and mirrored continuation cadence", () => SubstitutionContinuationCadence(context,host,tools,input));
+                        check("shared wall refusal native cadence", () => SharedWallRefusalCadence(context,host,tools,input));
+                        check("long multi-range native cadence", () => LongRangeNativeCadence(context,host,tools,input));
+                        check("full source cache continuation", () => BuildSourceFullContinuation(context,host,tools,input));
+                        check("material continuity and finite ordinary service", () => MaterialContinuityAndYield(context,host,tools,input));
+                    }
+                    else
+                    {
                     check("sustained native throughput", () => SustainedNativeThroughput(context,host,tools,input));
                     check("pending build input is neutral", () => PendingBuildInput(context,host,tools,input));
                     check("solid-backed walls use legal precise input", () => PreciseSolidBackedWalls(context,host,tools,input));
@@ -123,9 +133,10 @@ namespace NativeWorldTextProbe
                     check("edit mask deletion and session", () => ProjectionLifecycle(context, host, tools, input));
                     check("native network", () => NetworkProgress(context, host, tools, input));
                     }
+                    }
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                 }
-                Console.WriteLine(throughputOnly?"PASS BlueprintBuildThroughput production natural Player.Update/ItemCheck: complete paired block/wall/platform consumption sequences, nearby sparse prefix/local reentry and neutral Pending. Full build siblings/ordinary startup/real multiplayer/GPU/FPS NOT_RUN.":
+                Console.WriteLine(cadenceOnly?"PASS BlueprintBuildCadence: exact-source/new selection, mirrored source-range continuation, shared wall refusal, long multi-range ON/OFF/native held opportunities, four-source/six-instance continuation and finite ordinary service. Ordinary startup/real multiplayer/GPU/FPS/owner acceptance NOT_RUN.":throughputOnly?"PASS BlueprintBuildThroughput production natural Player.Update/ItemCheck: complete paired block/wall/platform consumption sequences, nearby sparse prefix/local reentry and neutral Pending. Full build siblings/ordinary startup/real multiplayer/GPU/FPS NOT_RUN.":
                     "PASS BlueprintBuild production natural Player.Update/ItemCheck: real block/wall/chair material consumption, precise style/direction, first-missing fairness, supplement, distance/support resume, stop/restart, manual selection, complete current match retirement. Ordinary startup/real multiplayer/GPU/FPS NOT_RUN.");
             }
             finally

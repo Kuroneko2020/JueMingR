@@ -197,7 +197,8 @@ namespace NativeWorldTextProbe
 
         private sealed class ContinuousPlacement
         {
-            internal int Frame, Animation, X, Slot, Type, Mode, SupplySlot = -1;
+            internal int Frame, Animation, Time, X, Slot, Type, Mode, SupplySlot = -1;
+            internal uint WorldTick;
             internal long Token, Native, Flight, PreparationClicks;
             internal string Kind, Consumer;
             internal Item Item, Supply;
@@ -254,6 +255,11 @@ namespace NativeWorldTextProbe
                     "all six native goals consume once from the original exact source despite a four-part transport cache and an earlier identical type; discovery work stays finite");
                 Console.WriteLine("PASS BlueprintBuild full source continuation pinned=4 instances=6 actualStone=6 originalSource=12 earlierTwinConsumed=0 sourceRequests=" +
                     ((long)Get(host, "ProjectionMatchSourceRequests") - requests) + " sourceSteps=" + ((long)Get(host, "ProjectionMatchSourceSteps") - steps));
+                var gaps = continuousPlacements.Skip(1).Select((e, i) => unchecked(e.WorldTick - continuousPlacements[i].WorldTick)).ToArray();
+                Console.WriteLine("BlueprintCadence six-instance four-retained events=world/time/owner/token " + string.Join(";", continuousPlacements.Select(v =>
+                    v.WorldTick + "/" + v.Time + "/" + ((BlueprintProjectionIdentity)Get(v.Owner, "Identity")).ProjectionGeneration + "/" + v.Token)) + " gaps=" + string.Join(",", gaps));
+                Require(gaps.Select((gap, i) => gap == continuousPlacements[i].Time).All(equal => equal),
+                    "all six exact-source native consumers, including both initially nonresident instances, use each preceding native itemTime opportunity");
             }
             finally
             {
@@ -317,7 +323,7 @@ namespace NativeWorldTextProbe
             var flight = continuousAutomatic ? GetOptional(continuousHost, "activeBuild") : null;
             var operation = flight == null ? null : GetOptional(flight, "Operation");
             var primary = flight == null ? null : ((IEnumerable)Get(flight, "Dependencies")).Cast<object>().FirstOrDefault(value => (bool)Get(value, "Primary"));
-            var observation = new ContinuousPlacement { Frame = continuousFrame, Animation = p.itemAnimation, X = x,
+            var observation = new ContinuousPlacement { Frame = continuousFrame, Animation = p.itemAnimation, Time = p.itemTime, WorldTick = Main.GameUpdateCount, X = x,
                 Token = continuousAutomatic ? (long)Get(continuousUse, "Operation") : 0, Native = continuousAutomatic ? (long)Get(continuousUse, "NativeGeneration") : 0,
                 Flight = flight == null ? 0 : (long)Get(flight, "Generation"),
                 Slot = flight == null ? p.selectedItem : (int)Get(Get(flight, "Source"), "Slot"),

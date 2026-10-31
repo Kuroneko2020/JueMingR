@@ -205,7 +205,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (range.Owner.Identity.ProjectionGeneration > group.Boundary) return PreferredBuildSearch.PassComplete;
             if (value == null) range.Materials = value = new BlueprintRangeMaterials { OwnerTotals = range.Owner.Match.Materials, CatalogRevision = MaterialCatalog.Revision };
             if (range.BuildContinuationVisit == group.Batch && (value.PreferredGroup != group.Group || value.PreferredComplete)) return PreferredBuildSearch.PassComplete;
-            if (!BuildBoundsOverlap(range.Source.Bounds, BuildNearBounds(range.Owner)))
+            // Source ranges stay in raw local coordinates under mirroring;
+            // vanilla reach is display-local. Transform once before either
+            // the broad overlap or the source-order member walk.
+            var bounds = range.Owner.View.SourceBounds(BuildNearBounds(range.Owner));
+            if (!BuildBoundsOverlap(range.Source.Bounds, bounds))
             { CompletePreferredRange(range); return PreferredBuildSearch.PassComplete; }
             if (value.PreferredGroup != group.Group)
             {
@@ -230,7 +234,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // this finite batch and postpone ordinary service forever.
                 CompletePreferredRange(range); return PreferredBuildSearch.PassComplete;
             }
-            var bounds = range.Owner.View.SourceBounds(BuildNearBounds(range.Owner)); var cells = ProjectionSourceCells(part.Window);
+            var cells = ProjectionSourceCells(part.Window);
             if (!value.PreferredInitialized && part.Offset == 0)
             { value.PreferredInitialized = true; value.PreferredRevisit = false; value.PreferredCursor = BuildMemberOrdinal(BuildCellLowerBound(cells, bounds.Left, bounds.Top)); }
             if (BuildMemberIndex(value.PreferredCursor) < part.Offset)
@@ -265,7 +269,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (TryCreateConstructionTarget(range.Owner, range, part, index, ordinal, support, out candidate) && !IsUnfinishedBuildTarget(candidate))
                 {
                     BuildOperationPlan option; BlueprintBuildWait wait; ulong slots;
-                    if (!TryPlanBuild(candidate, p, group.Source, out option, out wait, out slots))
+                    if (!TryPlanContinuationBuild(candidate, p, group.Source, out option, out wait, out slots))
                     { if (substitutionPlanningPending) return PreferredBuildSearch.BudgetPending; RegisterPlannedBuildWait(candidate, wait, slots); }
                     else if (PlanContinuesBuild(candidate, option))
                     {
@@ -291,7 +295,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (repeatedBuild != null)
             {
                 BlueprintBuildTarget repeated; BuildOperationPlan repeatPlan; bool pending;
-                if (TryRebindBuildSeed(repeatedBuild, p, group.Source, out repeated, out repeatPlan, out pending) && PlanContinuesBuild(repeated, repeatPlan))
+                if (TryRebindBuildSeed(repeatedBuild, p, group.Source, out repeated, out repeatPlan, out pending, BuildPlanningIntent.ContinuationProbe) && PlanContinuesBuild(repeated, repeatPlan))
                 { repeatedBuild = null; target = repeated; plan = repeatPlan; return PreferredBuildSearch.Found; }
                 if (!pending) repeatedBuild = null;
             }
@@ -339,7 +343,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 ProjectionQualificationCurrent(owner) && owner.Summary.TargetVersion == MaterialCatalog.TargetVersion && owner.Match != null && range.Index >= 0 &&
                 range.Index < owner.Match.Ranges.Length && ReferenceEquals(owner.Match.Ranges[range.Index], range);
         }
-        private bool TryRebindBuildSeed(DeferredBuildSeed seed, Player p, BuildSource preferred, out BlueprintBuildTarget target, out BuildOperationPlan plan, out bool pending)
+        private bool TryRebindBuildSeed(DeferredBuildSeed seed, Player p, BuildSource preferred, out BlueprintBuildTarget target, out BuildOperationPlan plan, out bool pending,
+            BuildPlanningIntent intent = BuildPlanningIntent.NewSelection)
         {
             target = null; plan = null; pending = false;
             if (!DeferredBuildIdentityCurrent(seed)) return false;
@@ -354,7 +359,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!TryPlanConstructionOperationFromSample(target, BuildLane(seed.Ordinal), actual, out operation)) return false;
             target.Operation = operation;
             BlueprintBuildWait wait; ulong slots;
-            if (!TryPlanBuild(target, p, preferred, out plan, out wait, out slots))
+            if (!TryPlanBuildCore(target, p, preferred, intent, out plan, out wait, out slots))
             { if (substitutionPlanningPending) { pending = true; return false; } RegisterPlannedBuildWait(target, wait, slots); return false; }
             return true;
         }

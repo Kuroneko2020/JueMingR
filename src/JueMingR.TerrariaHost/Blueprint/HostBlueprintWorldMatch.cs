@@ -86,8 +86,11 @@ namespace JueMingR.TerrariaHost.Blueprint
     {
         internal BlueprintProjectionPlacement Owner;
         internal long Token;
-        internal bool Pending;
-        internal int PartCursor, Restarts, SceneIndex;
+        internal bool Pending, BuildPrefetch;
+        // Requested now contains only this work's unreceived source suffix.
+        // Keep its original bounded capacity charged after removing receipts;
+        // HashSet removal does not release its allocated backing arrays.
+        internal int PartCursor, Restarts, SceneIndex, RequestedPartCount;
         internal readonly List<BlueprintProjectionSourcePart> Parts = new List<BlueprintProjectionSourcePart>();
         internal readonly HashSet<int> Requested = new HashSet<int>();
         internal BlueprintProjectionMatchRead Read;
@@ -144,11 +147,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(projectionMatchWork.TryGetValue(read.Owner.Identity,out work) && ReferenceEquals(work.Read,read))
             {
                 work.Parts[read.SourcePart]=null;work.Read=null;
-                if(!work.Pending && !HasProjectionMatchParts(work))projectionMatchWork.Remove(read.Owner.Identity);
+                if(ProjectionMatchWorkComplete(work))projectionMatchWork.Remove(read.Owner.Identity);
             }
         }
         private static bool HasProjectionMatchParts(BlueprintProjectionMatchWork work)
         { foreach(var part in work.Parts)if(part!=null)return true;return false; }
+        private static bool ProjectionMatchWorkComplete(BlueprintProjectionMatchWork work)
+        { return !work.Pending && (!work.BuildPrefetch || work.Requested.Count==0) && !HasProjectionMatchParts(work); }
         private void ReleaseProjectionMatchWork(BlueprintProjectionIdentity identity)
         {
             BlueprintProjectionMatchWork work;
@@ -237,7 +242,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             long bytes=buildSourceBytes;
             foreach(var work in projectionMatchWork.Values)
             {
-                bytes+=256L+work.Parts.Capacity*8L+work.Requested.Count*32L;
+                bytes+=256L+work.Parts.Capacity*8L+work.RequestedPartCount*32L;
                 if(work.Pending)bytes+=reservations?BlueprintProjectionSourceReceipt.MaximumEstimatedBytes:0;
                 // Parts and ObjectTargets can refer to the same window. Charge
                 // each retained immutable allocation once, not once per alias.
@@ -456,28 +461,46 @@ namespace JueMingR.TerrariaHost.Blueprint
                 int index=prioritized?priorityIndex:(cursor+n)%count;
                 if(!prioritized)sceneScanned++;
                 var item=projectionScene[index];var state=item.Match;
-                if(state==null || state.Ranges.Length==0 || projectionMatchWork.ContainsKey(item.Identity) || state.Current==state.Ranges.Length && state.Demands==0)continue;
+                if(state==null || state.Ranges.Length==0)continue;
+                BlueprintProjectionMatchWork existing;
+                if(projectionMatchWork.TryGetValue(item.Identity,out existing))
+                {
+                    if(ContinueBuildSourcePrefetch(existing))admissions--;
+                    if(ProjectionMatchWorkComplete(existing))projectionMatchWork.Remove(item.Identity);
+                    continue;
+                }
+                if(state.Current==state.Ranges.Length && state.Demands==0)continue;
                 if(projectionMatchWork.Count>=ProjectionMatchWorkLimit && !YieldRestartedProjectionMatchWork())continue;
                 if(ProjectionMatchSourceBytes(true)+BlueprintProjectionSourceReceipt.MaximumEstimatedBytes+ProjectionMatchWorkOverhead>ProjectionMatchSourceLimit)continue;
-                var demands=new List<BlueprintProjectionSourceDemand>();int group=-1,scanned=0;
-                // At most one physical source locality and 64 logical parts.
-                // A long current prefix is advanced over finite later Updates.
+                var demands=new List<BlueprintProjectionSourceDemand>();int group=-1,groups=0,scanned=0;
+                bool buildLocality=MaterialBuildDemand?.Invoke()==true,nearbyBatch=false;
+                var near=buildLocality?item.View.SourceBounds(BuildNearBounds(item)):default(BlueprintProjectionBounds);
+                // World sampling can be restarted by every real native write.
+                // Its completion must not gate immutable source arrival for a
+                // nearby successor. Only active construction may include a
+                // finite adjacent near prefix, bounded by the existing four
+                // source slots and 64 parts; ordinary observation stays local.
                 while(scanned<Math.Min(state.Ranges.Length,BlueprintProjectionSourceReceipt.MaximumPartCount))
                 {
                     int ordinal=(state.Cursor+scanned)%state.Ranges.Length;var range=state.Ranges[ordinal];
-                    if(group>=0 && range.Source.ObservationGroup!=group)break;
+                    if(group>=0 && range.Source.ObservationGroup!=group &&
+                        (!nearbyBatch || groups>=BuildSourcePartLimit || !BuildBoundsOverlap(range.Source.Bounds,near)))break;
                     scanned++;
                     if(range.Current && !range.Demand)continue;
-                    if(group<0)group=range.Source.ObservationGroup;
+                    if(range.Source.ObservationGroup!=group)
+                    {
+                        if(group<0)nearbyBatch=buildLocality && BuildBoundsOverlap(range.Source.Bounds,near);
+                        group=range.Source.ObservationGroup;groups++;
+                    }
                     demands.Add(new BlueprintProjectionSourceDemand(ordinal,offset:range.Offset));
                 }
                 state.Cursor=(state.Cursor+scanned)%state.Ranges.Length;
                 if(demands.Count==0)continue;
-                var work=new BlueprintProjectionMatchWork{Owner=item,SceneIndex=index,Token=++projectionMatchToken,Pending=true};
+                var work=new BlueprintProjectionMatchWork{Owner=item,SceneIndex=index,Token=++projectionMatchToken,Pending=true,BuildPrefetch=groups>1,RequestedPartCount=demands.Count};
                 bool reused=ReuseBuildSources(item,demands,work);
                 if(!reused && !Library.RequestProjectionSources(item.Identity,work.Token,demands,MaterialCatalog.Revision,item.View))continue;
                 if(reused)work.Pending=false;
-                foreach(var demand in demands)work.Requested.Add(demand.Range);
+                if(!reused)foreach(var demand in demands)work.Requested.Add(demand.Range);
                 projectionMatchWork.Add(item.Identity,work);admissions--;
                 // A capacity scan can inspect a whole scene while accepting
                 // only one request. Advancing at every attempt would wrap to
@@ -496,6 +519,33 @@ namespace JueMingR.TerrariaHost.Blueprint
             // current (or unavailable), resume after that actual prefix next
             // token instead of examining the same first 64 identities forever.
             if(!ordinaryAdmitted && sceneScanned>0)projectionMatchAdmissionCursor=(cursor+sceneScanned)%count;
+        }
+        private bool ContinueBuildSourcePrefetch(BlueprintProjectionMatchWork work)
+        {
+            if(!work.BuildPrefetch)return false;
+            if(MaterialBuildDemand?.Invoke()!=true){work.BuildPrefetch=false;return false;}
+            if(work.Pending || work.Requested.Count==0)return false;
+            var near=work.Owner.View.SourceBounds(BuildNearBounds(work.Owner));
+            var demands=new List<BlueprintProjectionSourceDemand>();
+            // A byte-limited receipt may contain only the first physical part.
+            // Continue its already admitted finite prefix while that part is
+            // sampled, under the same owner/token and one pending request. No
+            // new target table, work slot, byte allowance or Update budget is
+            // created. Movement can drop a no-longer-near unreceived suffix.
+            foreach(int ordinal in work.Requested)
+            {
+                var range=work.Owner.Match.Ranges[ordinal];
+                if((!range.Current || range.Demand) && BuildBoundsOverlap(range.Source.Bounds,near))
+                    demands.Add(new BlueprintProjectionSourceDemand(ordinal,offset:range.Offset));
+            }
+            work.Requested.Clear();foreach(var demand in demands)work.Requested.Add(demand.Range);
+            if(demands.Count==0 || ProjectionMatchSourceBytes(true)+BlueprintProjectionSourceReceipt.MaximumEstimatedBytes+ProjectionMatchWorkOverhead>ProjectionMatchSourceLimit ||
+                !Library.RequestProjectionSources(work.Owner.Identity,work.Token,demands,MaterialCatalog.Revision,work.Owner.View))return false;
+            work.Pending=true;
+#if DEBUG
+            ProjectionMatchSourceRequests++;work.Owner.Match.SourceRequests++;
+#endif
+            return true;
         }
         private bool StartProjectionMatchRead()
         {
@@ -523,7 +573,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     var work=projectionMatchChoices[w];int part;
                     if(work.SceneIndex<0 || work.SceneIndex>=count || !ReferenceEquals(projectionScene[work.SceneIndex],work.Owner))continue;
                     if(!ReadyProjectionMatchPart(work,out part))
-                    {if(!work.Pending && !HasProjectionMatchParts(work))projectionMatchWork.Remove(work.Owner.Identity);continue;}
+                    {if(ProjectionMatchWorkComplete(work))projectionMatchWork.Remove(work.Owner.Identity);continue;}
                     if(ReferenceEquals(work.Owner,projectionMatchPriority)){priority=work;priorityPart=part;}
                     int distance=work.SceneIndex>=projectionMatchCursor?work.SceneIndex-projectionMatchCursor:count-projectionMatchCursor+work.SceneIndex;
                     if(distance<best){ordinary=work;ordinaryPart=part;best=distance;}
@@ -579,11 +629,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                 foreach(var part in receipt.Parts)
                 {
                     if(part.ObjectId!=0 || !work.Requested.Contains(part.Range) || part.Range<0 || part.Range>=work.Owner.Match.Ranges.Length || part.Window==null || !part.Window.Identity.Equals(work.Owner.Identity) || part.Window.WindowGeneration!=work.Token)continue;
+                    work.Requested.Remove(part.Range);
                     var range=work.Owner.Match.Ranges[part.Range];
                     if(part.LogicalObjectId!=range.Source.ObjectId || part.Offset!=range.Offset)continue;
                     work.Parts.Add(part);
                 }
-                if(!HasProjectionMatchParts(work))projectionMatchWork.Remove(receipt.Identity);
+                if(ProjectionMatchWorkComplete(work))projectionMatchWork.Remove(receipt.Identity);
 #if DEBUG
                 ProjectionMatchSourceBatches++;work.Owner.Match.SourceArrivals++;
 #endif

@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool substitutionPlanningPending;
 #if DEBUG
         internal long SubstitutionCandidateChecks { get; private set; }
+        internal long SubstitutionWallPositionChecks { get; private set; }
 #endif
 
         private void AddSubstitutionCandidates(List<BlueprintPlacementDescriptor> result, BlueprintBuildTarget target, int itemType)
@@ -25,37 +26,61 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (BasicPlacement(candidate)) result.Add(candidate);
         }
 
-        // This finite list is a planning value, never a reservation. Exact is
-        // first, then the current real source, then the frozen qualified stock.
-        // Each attempted native preflight spends the shared Update allowance;
-        // the saved ordinal/cursor makes a budget yield distinct from refusal.
+        // New selection prefers the original, then the real source hint and
+        // qualified stock. A continuation probe asks only about that exact
+        // Item/slot; choosing another original cannot answer that question.
+        // These separate finite cursors survive a budget yield independently.
+        // Neither plan reserves stock or carries geometry across an Update.
         private bool TryPlanSubstitutionBuild(BlueprintBuildTarget target, Player p, BuildSource preferred,
-            out BuildOperationPlan plan, out BlueprintBuildWait wait)
+            BuildPlanningIntent intent, out BuildOperationPlan plan, out BlueprintBuildWait wait)
         {
             plan = null; wait = BlueprintBuildWait.None; substitutionPlanningPending = false;
+            bool continuing = intent == BuildPlanningIntent.ContinuationProbe;
+            if (continuing && (preferred == null || preferred.Slot < 0 || preferred.Slot >= 50 ||
+                !ReferenceEquals(p.inventory[preferred.Slot], preferred.Item) || preferred.Item.type != preferred.Type ||
+                preferred.Item.IsAir || !buildTools.BuildInventoryEligible(preferred.Slot, preferred.Item))) return false;
+            bool wall = target.Placement.Kind == BlueprintPlacementKind.Wall;
+            // Empty/readable/cardinal support is common to all wall materials
+            // at this current target. A definite refusal is not budget Pending.
+            // Final admission and the real writer recheck it without this hint.
+            if (wall)
+            {
+#if DEBUG
+                SubstitutionWallPositionChecks++;
+#endif
+                if (!NativeWallBuildPosition(target)) return false;
+            }
             var candidates = new List<BlueprintPlacementDescriptor>();
-            if (buildSupply.ContainsKey(target.Placement.UseItemType)) candidates.Add(target.Placement);
+            if ((!continuing || preferred.Type == target.Placement.UseItemType) && buildSupply.ContainsKey(target.Placement.UseItemType))
+                candidates.Add(target.Placement);
             if (preferred != null) AddSubstitutionCandidates(candidates, target, preferred.Type);
-            foreach (var entry in buildSupply)
-                if (preferred == null || entry.Key != preferred.Type) AddSubstitutionCandidates(candidates, target, entry.Key);
+            if (!continuing) foreach (var entry in buildSupply)
+                    if (preferred == null || entry.Key != preferred.Type) AddSubstitutionCandidates(candidates, target, entry.Key);
             if (candidates.Count == 0) { wait = BlueprintBuildWait.Material; return false; }
 
-            var progress = target.Range.Materials;
-            long inventoryRevision = MaterialInventory?.Revision ?? -1;
-            if (progress.SubstitutionOrdinal != target.Ordinal || progress.SubstitutionRange != target.RangeStamp ||
-                progress.SubstitutionSupport != target.SupportStamp || progress.SubstitutionSupply != inventoryRevision ||
-                progress.SubstitutionPlayer != MaterialBuildEligibilityRevision || progress.SubstitutionPolicy != substitutionRevision)
+            var materials = target.Range.Materials;
+            var progress = continuing ? materials.SubstitutionContinuation : materials.SubstitutionSelection;
+            if (progress == null)
             {
-                progress.SubstitutionOrdinal = target.Ordinal; progress.SubstitutionCursor = 0;
-                progress.SubstitutionRange = target.RangeStamp; progress.SubstitutionSupport = target.SupportStamp;
-                progress.SubstitutionSupply = inventoryRevision; progress.SubstitutionPlayer = MaterialBuildEligibilityRevision;
-                progress.SubstitutionPolicy = substitutionRevision;
+                progress = new BlueprintSubstitutionBuildCursor();
+                if (continuing) materials.SubstitutionContinuation = progress; else materials.SubstitutionSelection = progress;
             }
-            while (progress.SubstitutionCursor < candidates.Count)
+            long inventoryRevision = MaterialInventory?.Revision ?? -1;
+            if (progress.Ordinal != target.Ordinal || progress.Range != target.RangeStamp ||
+                progress.Support != target.SupportStamp || progress.Supply != inventoryRevision ||
+                progress.Player != MaterialBuildEligibilityRevision || progress.Policy != substitutionRevision ||
+                !ReferenceEquals(progress.Source, preferred?.Item) || progress.Slot != (preferred?.Slot ?? -1) || progress.Type != (preferred?.Type ?? 0))
+            {
+                progress.Ordinal = target.Ordinal; progress.Cursor = 0;
+                progress.Range = target.RangeStamp; progress.Support = target.SupportStamp;
+                progress.Supply = inventoryRevision; progress.Player = MaterialBuildEligibilityRevision; progress.Policy = substitutionRevision;
+                progress.Source = preferred?.Item; progress.Slot = preferred?.Slot ?? -1; progress.Type = preferred?.Type ?? 0;
+            }
+            while (progress.Cursor < candidates.Count)
             {
                 if (substitutionCandidateBudget <= 0) { substitutionPlanningPending = true; return false; }
                 substitutionCandidateBudget--;
-                var candidate = candidates[progress.SubstitutionCursor++];
+                var candidate = candidates[progress.Cursor++];
 #if DEBUG
                 SubstitutionCandidateChecks++;
 #endif
@@ -70,14 +95,14 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (p.pulley && p.pulleyDir == 2 && direction != p.direction ||
                     !p.IsInTileInteractionRange(execution.WorldX, execution.WorldY, TileReachCheckSettings.Simple, item.tileBoost + p.blockRange))
                 { wait |= BlueprintBuildWait.Player; continue; }
-                if (!NativeBuildGeometry(execution, p, item, direction)) continue;
+                if (!NativeBuildGeometry(execution, p, item, direction, wall)) continue;
                 plan = new BuildOperationPlan { ExecutionTarget = execution, Tool = item, ToolType = item.type,
                     ToolSlot = slot, HeldMaximum = execution.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1 };
                 PlanSmartPlatformInput(execution, p, plan);
-                progress.SubstitutionCursor = 0;
+                progress.Cursor = 0;
                 return true;
             }
-            progress.SubstitutionCursor = 0;
+            progress.Cursor = 0;
             return false;
         }
 

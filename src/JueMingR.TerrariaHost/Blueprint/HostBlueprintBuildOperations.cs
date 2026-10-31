@@ -70,10 +70,17 @@ namespace JueMingR.TerrariaHost.Blueprint
             return plan == null || plan.SupplySlot < 0 || slot == plan.SupplySlot && slot < p.inventory.Length &&
                 ReferenceEquals(p.inventory[slot], plan.Supply) && plan.Supply.type == plan.SupplyType && plan.Supply.stack > 0;
         }
+        private enum BuildPlanningIntent { NewSelection, ContinuationProbe }
         private bool TryPlanBuild(BlueprintBuildTarget target, Player p, BuildSource preferred, out BuildOperationPlan plan,
             out BlueprintBuildWait wait, out ulong dependencySlots)
+        { return TryPlanBuildCore(target, p, preferred, BuildPlanningIntent.NewSelection, out plan, out wait, out dependencySlots); }
+        private bool TryPlanContinuationBuild(BlueprintBuildTarget target, Player p, BuildSource source, out BuildOperationPlan plan,
+            out BlueprintBuildWait wait, out ulong dependencySlots)
+        { return TryPlanBuildCore(target, p, source, BuildPlanningIntent.ContinuationProbe, out plan, out wait, out dependencySlots); }
+        private bool TryPlanBuildCore(BlueprintBuildTarget target, Player p, BuildSource preferred, BuildPlanningIntent intent,
+            out BuildOperationPlan plan, out BlueprintBuildWait wait, out ulong dependencySlots)
         {
-            plan = null; wait = BlueprintBuildWait.None; dependencySlots = 0;
+            plan = null; wait = BlueprintBuildWait.None; dependencySlots = 0; substitutionPlanningPending = false;
             if (!IsBuildTargetCurrent(target) || IsUnconfirmedTarget(target) || !ReferenceEquals(p, player)) return false;
             var operation = target.Operation;
             if (WiringOperation(operation)) return TryPlanWiringTool(target, p, preferred, out plan, out wait, out dependencySlots);
@@ -124,8 +131,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 var placement = operation?.NativePlacement ?? target.Placement;
                 if (placement == null || !BasicPlacement(placement)) return false;
-                if (operation == null && substitutionPolicy.Enabled)
-                    return TryPlanSubstitutionBuild(target, p, preferred, out plan, out wait);
+                // The frozen ChoiceSet is the applicability gate, including
+                // effective torch output. A global ON switch alone does not
+                // justify building candidate lists for unrelated exact blocks.
+                if (operation == null && (MaterialCatalog.Substitution?.Candidates(placement, substitutionPolicy).Count ?? 0) > 0)
+                    return TryPlanSubstitutionBuild(target, p, preferred, intent, out plan, out wait);
                 if (preferred != null && preferred.Type == placement.UseItemType && preferred.Slot >= 0 && preferred.Slot < 50 &&
                     ReferenceEquals(p.inventory[preferred.Slot], preferred.Item) && buildTools.BuildInventoryEligible(preferred.Slot, preferred.Item)) tool = preferred.Slot;
                 else tool = ConstructionItemSlot(p, placement.UseItemType);

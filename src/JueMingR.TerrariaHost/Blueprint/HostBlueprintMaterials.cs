@@ -47,6 +47,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             catch (OverflowException) { Failed = true; Revision++; }
         }
     }
+    internal sealed class BlueprintSubstitutionBuildCursor
+    {
+        internal int Ordinal = -1, Cursor, Slot = -1, Type;
+        internal long Range, Support, Supply, Player, Policy;
+        internal Item Source;
+    }
     internal sealed class BlueprintRangeMaterials
     {
         internal BlueprintMaterialAccumulator Progress;
@@ -77,10 +83,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int EligibilityRetryOrdinal;
         internal ulong EligibilityRetryAt;
         internal ulong DynamicRetryAt;
-        // One resumable candidate enumeration belongs to this range's current
-        // source ordinal. A budget boundary is Pending, never a rejection.
-        internal int SubstitutionOrdinal = -1, SubstitutionCursor;
-        internal long SubstitutionRange, SubstitutionSupport, SubstitutionSupply, SubstitutionPlayer, SubstitutionPolicy;
+        // New selection and exact-source continuation enumerate different
+        // lists. Keep each finite walk independently resumable, so switching
+        // callers cannot consume or rewind the other caller's pending prefix.
+        internal BlueprintSubstitutionBuildCursor SubstitutionSelection, SubstitutionContinuation;
     }
     internal sealed partial class HostBlueprint
     {

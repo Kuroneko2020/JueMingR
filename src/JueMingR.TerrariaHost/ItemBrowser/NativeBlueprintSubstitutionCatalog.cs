@@ -32,10 +32,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 // These locked-client sentinels distinguish that early array
                 // from initialized safety facts; no initializer is invoked here.
                 return typeof(Main).Assembly.GetName().Version == new Version(1, 4, 5, 8) && substitutionExclusions.Count == 3 &&
-                    Main.wallHouse != null && Main.wallHouse.Length >= WallID.Count && Main.wallHouse[WallID.Stone] && Main.wallHouse[WallID.Wood] && !Main.wallHouse[WallID.DirtUnsafe] &&
-                    WallID.Sets.Glass != null && WallID.Sets.Glass.Length >= WallID.Count &&
-                    WallID.Sets.Fences != null && WallID.Sets.Fences.Length >= WallID.Count &&
-                    WallID.Sets.Transparent != null && WallID.Sets.Transparent.Length >= WallID.Count;
+                    Main.wallHouse != null && Main.wallHouse.Length >= WallID.Count && Main.wallHouse[WallID.Stone] && Main.wallHouse[WallID.Wood] && !Main.wallHouse[WallID.DirtUnsafe];
             }
         }
         private BlueprintSubstitutionCatalog CompileBlueprintSubstitution(long revision, bool version)
@@ -46,12 +43,11 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             {
                 foreach (var member in substitutionMembers)
                     if (!substitutionExcludedOutputs.Contains(SubstitutionOutput(member.Placement.TileType, member.Placement.Style))) members.Add(member);
-                // Safety and ordinary-purpose membership are separate gates.
-                // Unsafe walls still remain in materialWalls for exact billing
-                // and construction; this additional relation cannot hide them.
+                // Initialized native safety and a reliable direct producer are
+                // the wall membership gates, including safe glass and fences.
+                // Unsafe walls remain in materialWalls for exact construction.
                 foreach (var pair in materialWalls)
-                    if (pair.Value != null && pair.Key > 0 && pair.Key < Main.wallHouse.Length && Main.wallHouse[pair.Key] &&
-                        !WallID.Sets.Glass[pair.Key] && !WallID.Sets.Fences[pair.Key] && !WallID.Sets.Transparent[pair.Key])
+                    if (pair.Value != null && pair.Key > 0 && pair.Key < Main.wallHouse.Length && Main.wallHouse[pair.Key])
                         members.Add(new BlueprintSubstitutionMember(BlueprintSubstitutionCategory.Wall,
                             new BlueprintPlacementRule(pair.Value, true), Array.Empty<int>(), safeWall: true));
             }
@@ -98,6 +94,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             {
                 case TileID.WorkBenches: category = BlueprintSubstitutionCategory.Workbench; width = 2; height = 1; break;
                 case TileID.Tables: case TileID.Tables2: category = BlueprintSubstitutionCategory.Table; width = 3; height = 2; break;
+                case TileID.PicnicTable: category = BlueprintSubstitutionCategory.Table; width = 4; height = 2; break;
                 case TileID.Chairs: category = BlueprintSubstitutionCategory.Chair; width = 1; height = 2; break;
                 case TileID.ClosedDoor: category = BlueprintSubstitutionCategory.Door; width = 1; height = 3; break;
                 case TileID.Beds: category = BlueprintSubstitutionCategory.Bed; width = 4; height = 2; break;
@@ -117,7 +114,8 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             // Real direct item output plus full metadata shape define a member,
             // rather than every housing table/chair/container flag. In .8 the
             // Dead Man's Chest is a Containers2 producer and is intentionally
-            // included; Safes/FakeContainers and picnic shapes never enter.
+            // included; Safes/FakeContainers never enter. Picnic tables share
+            // the Table category but keep their own compatible 4x2 structure.
             return p.Width == width && p.Height == height;
         }
         private static int[] BlueprintSubstitutionStructure(TileObjectData data)

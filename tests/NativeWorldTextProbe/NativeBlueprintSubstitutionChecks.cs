@@ -5,6 +5,7 @@ using System.Linq;
 using JueMingR.Features.Blueprint;
 using Terraria;
 using Terraria.ID;
+using Terraria.ObjectData;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -24,6 +25,8 @@ namespace NativeWorldTextProbe
                 check("substitution allocation changed and stable workload",()=>SubstitutionAllocationCost(context,host,tools,input));
                 check("substitution restock and local fairness",()=>SubstitutionRestock(context,host,tools,input));
                 check("substitution manual objects appearance and policy",()=>SubstitutionManual(context,host,tools,input));
+                check("substitution safe glass transparent and fence native walls",()=>SubstitutionSafeWalls(context,host,tools,input));
+                check("substitution complete picnic table pairs and native appearance",()=>SubstitutionPicnicTables(context,host,tools,input));
                 check("substitution prepared and consumed policy retirement",()=>SubstitutionSettings(context,host,tools,input));
                 check("substitution unsafe exact native consumer",()=>SubstitutionUnsafe(context,host,tools,input));
                 check("substitution captured legacy planter native consumer",()=>SubstitutionPlanters(context,host,tools,input));
@@ -74,7 +77,9 @@ namespace NativeWorldTextProbe
                 {ItemID.Bed,ItemID.BorealWoodBed},{ItemID.DayBloomPlanterBox,ItemID.MoonglowPlanterBox},
                 {ItemID.IronAnvil,ItemID.LeadAnvil},{ItemID.MythrilAnvil,ItemID.OrichalcumAnvil},
                 {ItemID.Chest,ItemID.DeadMansChest},{ItemID.Torch,ItemID.CoralTorch},
-                {ItemID.WoodPlatform,ItemID.ObsidianPlatform},{ItemID.WoodWall,ItemID.StoneWall}};
+                {ItemID.WoodPlatform,ItemID.ObsidianPlatform},{ItemID.WoodWall,ItemID.StoneWall},
+                {ItemID.GlassWall,ItemID.StoneWall},{ItemID.PurpleStainedGlass,ItemID.StoneWall},
+                {ItemID.WoodenFence,ItemID.StoneWall},{ItemID.PicnicTable,ItemID.PicnicTableWithCloth}};
             for(int i=0;i<positive.GetLength(0);i++)
             {
                 int a=positive[i,0],b=positive[i,1];
@@ -83,7 +88,8 @@ namespace NativeWorldTextProbe
             }
             int[,] excluded={{ItemID.WoodenTable,ItemID.DynastyTable},{ItemID.WoodPlatform,ItemID.CloudPlatform},
                 {ItemID.WoodPlatform,ItemID.AetheriumPlatform},{ItemID.IronAnvil,ItemID.MythrilAnvil},{ItemID.Chest,ItemID.Safe},
-                {ItemID.WoodWall,ItemID.DirtWallUnsafe},{ItemID.WoodWall,ItemID.GlassWall}};
+                {ItemID.WoodWall,ItemID.DirtWallUnsafe},{ItemID.WoodenTable,ItemID.PicnicTable},
+                {ItemID.WoodenTable,ItemID.PicnicTableWithCloth},{ItemID.PicnicTable,ItemID.DynastyTable}};
             for(int i=0;i<excluded.GetLength(0);i++)
                 Require(!catalog.Substitution.MaterialCandidates(excluded[i,0],policy).Contains(excluded[i,1]) &&
                     !catalog.Substitution.MaterialCandidates(excluded[i,1],policy).Contains(excluded[i,0]),"explicit excluded endpoint stays excluded in both directions");
@@ -96,6 +102,34 @@ namespace NativeWorldTextProbe
                 "actual locked client SetDefaults confirms all finite exclusion/Dead Man output keys");
             Require(Main.wallHouse[safe.createWall] && !Main.wallHouse[unsafeWall.createWall] && !Main.wallHouse[unsafeOther.createWall] && unsafeWall.createWall==2,
                 "initialized locked client safety values distinguish carryable unsafe from safe");
+            // The superseded oracle excluded GlassWall by purpose. These
+            // independent initialized facts now certify all three formerly
+            // filtered sets without inferring safety from their names.
+            int[] safePurposeWalls={ItemID.GlassWall,ItemID.PurpleStainedGlass,ItemID.WoodenFence};
+            foreach(int type in safePurposeWalls)
+            {
+                var wall=SubstitutionItem(type);
+                Require(wall.createWall>0 && Main.wallHouse[wall.createWall] && catalog.Wall(wall.createWall)?.UseItemType==type &&
+                    catalog.Substitution.AllowsWall(wall.createWall,safe.createWall,policy) &&
+                    catalog.Substitution.AllowsWall(safe.createWall,wall.createWall,policy),
+                    "real initialized safe glass/transparent/fence wall and reliable producer participate bidirectionally: "+type+"/"+wall.createWall);
+            }
+            Require(WallID.Sets.Glass[SubstitutionItem(ItemID.GlassWall).createWall] &&
+                WallID.Sets.Transparent[SubstitutionItem(ItemID.PurpleStainedGlass).createWall] &&
+                WallID.Sets.Fences[SubstitutionItem(ItemID.WoodenFence).createWall],"representatives actually distinguish all three removed purpose filters");
+            foreach(int type in new[]{ItemID.PicnicTable,ItemID.PicnicTableWithCloth})
+            {
+                var picnic=SubstitutionItem(type);var data=TileObjectData.GetTileData(picnic.createTile,picnic.placeStyle);
+                var member=catalog.Substitution.Members.Single(m=>m.Placement.UseItemType==type);
+                Require(picnic.createTile==TileID.PicnicTable && picnic.placeStyle==(type==ItemID.PicnicTable?0:1) &&
+                    data!=null && data.Width==4 && data.Height==2 && data.Origin.X==1 && data.Origin.Y==1 &&
+                    data.AnchorBottom.tileCount==4 && member.Category==BlueprintSubstitutionCategory.Table &&
+                    member.Placement.Width==4 && member.Placement.Height==2 && member.Placement.Style==picnic.placeStyle &&
+                    member.Prototype.Width==4 && member.Prototype.Height==2,
+                    "two real distinct picnic outputs keep their native 4x2/origin/support facts in the Table category");
+            }
+            Require(!catalog.Substitution.Members.Any(m=>m.Placement.UseItemType==ItemID.DynastyTable),
+                "Dynasty output remains excluded from every Table structural pool");
             Require(catalog.QualifyWall(unsafeWall.createWall).Disposition==BlueprintTargetDisposition.Construction &&
                 catalog.Wall(unsafeWall.createWall)?.UseItemType==ItemID.DirtWallUnsafe,
                 "unsafe exact qualification and actual producer survive the additive relation");

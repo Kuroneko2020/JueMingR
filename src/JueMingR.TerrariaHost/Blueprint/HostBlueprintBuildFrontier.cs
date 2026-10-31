@@ -46,11 +46,14 @@ namespace JueMingR.TerrariaHost.Blueprint
         {return a.Left<b.Right && b.Left<a.Right && a.Top<b.Bottom && b.Top<a.Bottom;}
         private LinkedListNode<BuildSourcePart> BuildSourceVictim(BlueprintProjectionBounds incoming,BlueprintProjectionPlacement owner)
         {
-            bool nearby=BuildBoundsOverlap(incoming,BuildNearBounds(owner));
+            // Both incoming and retained window bounds belong to their raw
+            // source view, while BuildNearBounds is display-local reach.
+            bool nearby=BuildBoundsOverlap(incoming,owner.View.SourceBounds(BuildNearBounds(owner)));
             LinkedListNode<BuildSourcePart> finished=null;
             for(var node=buildSources.First;node!=null;node=node.Next)
             {
-                if(!BuildBoundsOverlap(node.Value.Part.Window.Bounds,BuildNearBounds(node.Value.Owner)))return node;
+                var retained=node.Value;
+                if(!BuildBoundsOverlap(retained.Part.Window.Bounds,retained.Owner.View.SourceBounds(BuildNearBounds(retained.Owner))))return node;
                 if(finished==null && node.Value.Range.Materials?.BuildExhausted!=false)finished=node;
             }
             return finished ?? (nearby?buildSources.First:null);

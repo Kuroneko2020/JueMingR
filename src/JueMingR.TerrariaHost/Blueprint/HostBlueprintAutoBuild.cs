@@ -345,7 +345,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             dependencies = sources.ToArray(); return true;
         }
-        private bool NativeBuildGeometry(BlueprintBuildTarget target, Player p, Item item, int direction)
+        private bool NativeBuildGeometry(BlueprintBuildTarget target, Player p, Item item, int direction, bool wallPositionCurrent = false)
         {
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.Geometry);
@@ -362,9 +362,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             if (placement.Kind == BlueprintPlacementKind.Wall)
             {
-                if (item.createWall != placement.WallType || !BuildEmpty(target.WorldX, target.WorldY, true)) return false;
-                return BuildNeighbor(target.WorldX - 1, target.WorldY, true) || BuildNeighbor(target.WorldX + 1, target.WorldY, true) ||
-                    BuildNeighbor(target.WorldX, target.WorldY - 1, true) || BuildNeighbor(target.WorldX, target.WorldY + 1, true);
+                return item.createWall == placement.WallType && (wallPositionCurrent || NativeWallBuildPosition(target));
             }
             if (item.createTile != sourcePlacement.TileType || item.placeStyle != sourcePlacement.Style) return false;
             // The selected source and its concrete native output are separate
@@ -412,6 +410,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
             }
             return false;
+        }
+        private bool NativeWallBuildPosition(BlueprintBuildTarget target)
+        {
+            return BuildEmpty(target.WorldX, target.WorldY, true) &&
+                (BuildNeighbor(target.WorldX - 1, target.WorldY, true) || BuildNeighbor(target.WorldX + 1, target.WorldY, true) ||
+                 BuildNeighbor(target.WorldX, target.WorldY - 1, true) || BuildNeighbor(target.WorldX, target.WorldY + 1, true));
         }
         private static bool BuildUsesAnyCardinalNeighbor(int type)
         {

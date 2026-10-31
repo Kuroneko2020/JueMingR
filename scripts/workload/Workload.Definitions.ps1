@@ -50,7 +50,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintWorldChangeChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionLifecycleCpu','native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs'=@('native-BlueprintCpu','native-BlueprintInput')
-        'tests/NativeWorldTextProbe/NativeBlueprintBuildChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBuildChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSubstitutionCpu','native-BlueprintCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBuildCadenceChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintConstructionChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintPreparationCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintConstructionAppearanceChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSmartPlacementRepairChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
@@ -60,7 +61,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintConstructionWiringSpecialChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintLiquidChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildProgressChecks.cs'=@('native-BlueprintCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintBuildContinuationChecks.cs'=@('native-BlueprintCpu','native-BlueprintConstructionCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBuildContinuationChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintCpu','native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildThroughputChecks.cs'=@('native-BlueprintCpu','native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildWallContextChecks.cs'=@('native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildNativeTargetChecks.cs'=@('native-BlueprintCpu')
@@ -440,6 +441,7 @@ function Get-WorkloadNativeScopes {
         'BlueprintCpu'=@('blueprint-host','tools-host');
         'BlueprintMirrorTrimCpu'=@('blueprint-host','hotkeys','tools-host');
         'BlueprintConstructionCpu'=@('blueprint-host','tools-host');
+        'BlueprintBuildCadenceCpu'=@('blueprint-host','tools-host');
         'BlueprintPreparationCpu'=@('blueprint-host','tools-host');
         'BlueprintAppearanceCpu'=@('blueprint-host','tools-host');
         'BlueprintWiringCpu'=@('blueprint-host','tools-host');
