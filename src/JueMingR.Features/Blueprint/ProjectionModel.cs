@@ -52,20 +52,23 @@ namespace JueMingR.Features.Blueprint
     {
         public BlueprintProjectionWindow(BlueprintProjectionIdentity identity, long windowGeneration, CaptureSummary summary, BlueprintProjectionBounds bounds, CaptureCell[] cells, CaptureObject[] objects)
             : this(identity, windowGeneration, summary, bounds, cells, objects, false) { }
-        internal BlueprintProjectionWindow(BlueprintProjectionIdentity identity, long windowGeneration, CaptureSummary summary, BlueprintProjectionBounds bounds, CaptureCell[] cells, CaptureObject[] objects, bool owned, BlueprintProjectionMask appliedMask = null)
+        internal BlueprintProjectionWindow(BlueprintProjectionIdentity identity, long windowGeneration, CaptureSummary summary, BlueprintProjectionBounds bounds, CaptureCell[] cells, CaptureObject[] objects, bool owned, BlueprintProjectionMask appliedMask = null, BlueprintProjectionView view = null, BlueprintProjectionWindow sourceWindow = null, bool cellsInSourceOrder = true)
         {
-            AppliedMask = appliedMask;
+            AppliedMask = appliedMask; View = view; SourceWindow = sourceWindow; CellsInSourceOrder = cellsInSourceOrder;
             Identity = identity ?? throw new ArgumentNullException(nameof(identity)); WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary) ?? throw new ArgumentNullException(nameof(summary)); Bounds = bounds;
             Cells = Array.AsReadOnly(owned ? cells : (CaptureCell[])cells.Clone()); Objects = Array.AsReadOnly(owned ? objects : (CaptureObject[])objects.Clone());
             long bytes = checked(256L + cells.LongLength * 64L + objects.LongLength * 128L);
             foreach (CaptureObject obj in objects) bytes = checked(bytes + (long)((obj.Reason ?? "").Length + (obj.MissingPayload ?? "").Length) * 2);
-            EstimatedBytes = bytes;
+            EstimatedBytes = checked(bytes + (sourceWindow?.EstimatedBytes ?? 0));
         }
         public BlueprintProjectionIdentity Identity { get; }
         public long WindowGeneration { get; }
         // Host-effective snapshots retain the exact immutable mask identity.
         // Raw worker/cache DTOs leave this null and are never changed in place.
         public BlueprintProjectionMask AppliedMask { get; }
+        public BlueprintProjectionView View { get; }
+        public BlueprintProjectionWindow SourceWindow { get; }
+        public bool CellsInSourceOrder { get; }
         // Summary retains the saved source origin. Cell/object X/Y below have
         // ALREADY had Summary.Left/Top subtracted; raw frames remain unchanged.
         public CaptureSummary Summary { get; }

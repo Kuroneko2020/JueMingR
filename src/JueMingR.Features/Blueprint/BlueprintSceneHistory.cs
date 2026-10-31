@@ -20,6 +20,7 @@ namespace JueMingR.Features.Blueprint
         }
         private sealed class Failure { internal string Error; internal bool Unknown; internal BlueprintSceneDocument Recovery; }
         private readonly Func<string, IPreferenceStorage> storage;
+        private readonly Action<IPreferenceStorage, BlueprintSceneDocument> validatedLoad;
         private readonly Dictionary<string, Failure> failures = new Dictionary<string, Failure>(StringComparer.Ordinal);
         private Lease current, retired;
         private string requestedScope;
@@ -27,7 +28,8 @@ namespace JueMingR.Features.Blueprint
         private bool stopping;
         private long command;
         private BlueprintSceneDocument latest, sent, confirmed;
-        public BlueprintSceneHistory(Func<string, IPreferenceStorage> storage) { this.storage = storage ?? throw new ArgumentNullException(nameof(storage)); }
+        public BlueprintSceneHistory(Func<string, IPreferenceStorage> storage, Action<IPreferenceStorage, BlueprintSceneDocument> validatedLoad = null)
+        { this.storage = storage ?? throw new ArgumentNullException(nameof(storage)); this.validatedLoad = validatedLoad; }
         public long Generation { get; private set; } = -1;
         public bool Loaded { get; private set; }
         public bool Protected { get; private set; }
@@ -51,7 +53,13 @@ namespace JueMingR.Features.Blueprint
             if (failures.TryGetValue(requestedScope, out failure))
             { Loaded = true; Protected = true; Error = failure.Error; CommitUnconfirmed = failure.Unknown; Restored = failure.Recovery != null && failure.Recovery.Width == width && failure.Recovery.Height == height ? failure.Recovery : null; return; }
             string scope = requestedScope; int w = width, h = height;
-            current = new Lease { Scope = scope, Worker = new DocumentWorker<BlueprintSceneDocument>(storage(scope), bytes => BlueprintSceneCodec.Decode(bytes, scope, w, h), BlueprintSceneCodec.Encode, new BlueprintSceneDocument(scope, w, h, 0, Array.Empty<BlueprintSceneRecord>())) };
+            var file = storage(scope);
+            current = new Lease { Scope = scope, Worker = new DocumentWorker<BlueprintSceneDocument>(file, bytes =>
+            {
+                var value = BlueprintSceneCodec.Decode(bytes, scope, w, h);
+                validatedLoad?.Invoke(file, value);
+                return value;
+            }, BlueprintSceneCodec.Encode, new BlueprintSceneDocument(scope, w, h, 0, Array.Empty<BlueprintSceneRecord>())) };
         }
         public bool Offer(IReadOnlyList<BlueprintSceneRecord> records)
         {

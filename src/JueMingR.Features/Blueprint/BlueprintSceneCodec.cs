@@ -19,11 +19,12 @@ namespace JueMingR.Features.Blueprint
             {
                 using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
                 {
-                    writer.Write(Magic); writer.Write(1); writer.Write(Hex(value.Scope)); writer.Write(value.Width); writer.Write(value.Height); writer.Write(value.Revision); writer.Write(value.Records.Count);
+                    writer.Write(Magic); writer.Write(2); writer.Write(Hex(value.Scope)); writer.Write(value.Width); writer.Write(value.Height); writer.Write(value.Revision); writer.Write(value.Records.Count);
                     foreach (var record in value.Records)
                     {
                         writer.Write(record.Template.AssetId.ToByteArray()); writer.Write(record.Template.ContentRevision.ToByteArray()); writer.Write(Convert.FromBase64String(record.Template.ContentHash));
                         writer.Write(record.OriginX); writer.Write(record.OriginY); writer.Write(record.Order);
+                        writer.Write((byte)(record.MirroredHorizontally ? 1 : 0));
                         writer.Write(record.Mask.RemovedLayerCount); writer.Write(record.Mask.RemovedConstructionLayerCount);
                         var cells = record.Mask.CopyCells(); var keys = new List<long>(cells.Keys); keys.Sort(); writer.Write(keys.Count);
                         foreach (long key in keys) { writer.Write(key); writer.Write(cells[key]); }
@@ -48,10 +49,12 @@ namespace JueMingR.Features.Blueprint
             // Read only the stable format header before interpreting a version's
             // payload/checksum. Future versions are protected as unsupported,
             // rather than being mislabeled as current-format corruption.
+            int version;
             using (var header = new BinaryReader(new MemoryStream(bytes, false)))
             {
                 if (header.ReadUInt64() != Magic) throw new InvalidDataException("blueprint-scene-format");
-                if (header.ReadInt32() != 1) throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "blueprint-scene-version");
+                version = header.ReadInt32();
+                if (version != 1 && version != 2) throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "blueprint-scene-version");
             }
             if (bytes == null || bytes.Length < 96) throw new InvalidDataException("blueprint-scene-truncated");
             using (var sha = SHA256.Create())
@@ -61,11 +64,15 @@ namespace JueMingR.Features.Blueprint
             {
                 reader.ReadUInt64(); reader.ReadInt32();
                 if (Text(reader.ReadBytes(32)) != scope || reader.ReadInt32() != width || reader.ReadInt32() != height) throw new PreferenceFormatException(PreferenceStatus.Conflict, "blueprint-scene-scope");
-                long revision = reader.ReadInt64(); int count = Count(reader, 104); var records = new List<BlueprintSceneRecord>();
+                long revision = reader.ReadInt64(); int count = Count(reader, version == 1 ? 104 : 105); var records = new List<BlueprintSceneRecord>();
                 for (int n = 0; n < count; n++)
                 {
                     var template = new BlueprintTemplateKey(new Guid(reader.ReadBytes(16)), new Guid(reader.ReadBytes(16)), Convert.ToBase64String(reader.ReadBytes(32)));
-                    int x = reader.ReadInt32(), y = reader.ReadInt32(); long order = reader.ReadInt64(), removed = reader.ReadInt64(), construction = reader.ReadInt64();
+                    int x = reader.ReadInt32(), y = reader.ReadInt32(); long order = reader.ReadInt64();
+                    byte pose = version == 1 ? (byte)0 : reader.ReadByte();
+                    // Unknown pose bits are future semantics, never silently normal.
+                    if (pose > 1) throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "blueprint-scene-pose");
+                    long removed = reader.ReadInt64(), construction = reader.ReadInt64();
                     if (removed < 0 || construction < 0 || construction > removed || removed > (long)width * height * 8) throw new InvalidDataException("blueprint-scene-mask-count");
                     int cellCount = Count(reader, 10); var cells = new Dictionary<long, ushort>(); long previous = -1;
                     for (int i = 0; i < cellCount; i++)
@@ -77,10 +84,10 @@ namespace JueMingR.Features.Blueprint
                     int objectCount = Count(reader, 4); var objects = new HashSet<int>(); int priorId = 0;
                     for (int i = 0; i < objectCount; i++) { int id = reader.ReadInt32(); if (id <= priorId) throw new InvalidDataException("blueprint-scene-mask-object"); priorId = id; objects.Add(id); }
                     if (cellCount == 0 && objectCount == 0 && removed != 0 || (cellCount != 0 || objectCount != 0) && removed == 0) throw new InvalidDataException("blueprint-scene-mask-count");
-                    records.Add(new BlueprintSceneRecord(template, x, y, order, new BlueprintProjectionMask(cells, objects, removed, construction)));
+                    records.Add(new BlueprintSceneRecord(template, x, y, order, new BlueprintProjectionMask(cells, objects, removed, construction), pose == 1));
                 }
                 if (stream.Position != stream.Length) throw new InvalidDataException("blueprint-scene-trailing");
-                return new BlueprintSceneDocument(scope, width, height, revision, records);
+                return new BlueprintSceneDocument(scope, width, height, revision, records, version);
             }
         }
         private static int Count(BinaryReader reader, int minimumBytes)

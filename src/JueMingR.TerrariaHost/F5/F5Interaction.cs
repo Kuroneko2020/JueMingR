@@ -264,6 +264,14 @@ namespace JueMingR.TerrariaHost.F5
             CancelTitleGesture();
             Visible = false; capture = 0; armed = null; Command = F5Command.None;
         }
+        internal void CancelControlCapture()
+        {
+            // An overlay handoff retires controls, not the visible page or its
+            // physical gesture. Preserve the last accepted drag position just
+            // like a normal close; never synthesize another pointer sample.
+            FinishTitleDrag(); CancelTitleGesture();
+            capture = 0; armed = null; Command = F5Command.None; ClickedControl = null; ClickedHotkey = null;
+        }
         internal void CancelForFocusLoss()
         {
             // An interrupted gesture has no release command. Keep the last

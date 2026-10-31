@@ -35,6 +35,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         // borrow a mode/input, acquire a token or mutate another candidate.
         private sealed class BuildOperationPlan
         {
+            internal BlueprintBuildTarget ExecutionTarget;
             internal BlueprintBuildOperation Operation;
             internal Item Tool, Supply;
             internal int ToolType;
@@ -69,10 +70,17 @@ namespace JueMingR.TerrariaHost.Blueprint
             return plan == null || plan.SupplySlot < 0 || slot == plan.SupplySlot && slot < p.inventory.Length &&
                 ReferenceEquals(p.inventory[slot], plan.Supply) && plan.Supply.type == plan.SupplyType && plan.Supply.stack > 0;
         }
+        private enum BuildPlanningIntent { NewSelection, ContinuationProbe }
         private bool TryPlanBuild(BlueprintBuildTarget target, Player p, BuildSource preferred, out BuildOperationPlan plan,
             out BlueprintBuildWait wait, out ulong dependencySlots)
+        { return TryPlanBuildCore(target, p, preferred, BuildPlanningIntent.NewSelection, out plan, out wait, out dependencySlots); }
+        private bool TryPlanContinuationBuild(BlueprintBuildTarget target, Player p, BuildSource source, out BuildOperationPlan plan,
+            out BlueprintBuildWait wait, out ulong dependencySlots)
+        { return TryPlanBuildCore(target, p, source, BuildPlanningIntent.ContinuationProbe, out plan, out wait, out dependencySlots); }
+        private bool TryPlanBuildCore(BlueprintBuildTarget target, Player p, BuildSource preferred, BuildPlanningIntent intent,
+            out BuildOperationPlan plan, out BlueprintBuildWait wait, out ulong dependencySlots)
         {
-            plan = null; wait = BlueprintBuildWait.None; dependencySlots = 0;
+            plan = null; wait = BlueprintBuildWait.None; dependencySlots = 0; substitutionPlanningPending = false;
             if (!IsBuildTargetCurrent(target) || IsUnconfirmedTarget(target) || !ReferenceEquals(p, player)) return false;
             var operation = target.Operation;
             if (WiringOperation(operation)) return TryPlanWiringTool(target, p, preferred, out plan, out wait, out dependencySlots);
@@ -123,6 +131,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 var placement = operation?.NativePlacement ?? target.Placement;
                 if (placement == null || !BasicPlacement(placement)) return false;
+                // The frozen ChoiceSet is the applicability gate, including
+                // effective torch output. A global ON switch alone does not
+                // justify building candidate lists for unrelated exact blocks.
+                if (operation == null && (MaterialCatalog.Substitution?.Candidates(placement, substitutionPolicy).Count ?? 0) > 0)
+                    return TryPlanSubstitutionBuild(target, p, preferred, intent, out plan, out wait);
                 if (preferred != null && preferred.Type == placement.UseItemType && preferred.Slot >= 0 && preferred.Slot < 50 &&
                     ReferenceEquals(p.inventory[preferred.Slot], preferred.Item) && buildTools.BuildInventoryEligible(preferred.Slot, preferred.Item)) tool = preferred.Slot;
                 else tool = ConstructionItemSlot(p, placement.UseItemType);
@@ -182,7 +195,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             target = null;following=ordinal+1;var catalog = MaterialCatalog;
             if (catalog == null || index < 0 || index >= part.Window.Cells.Count || !ProjectionQualificationCurrent(owner)) return false;
             var lane = BuildLane(ordinal);
-            var raw = owner.Mask.Apply(part.Window.Cells[index]);
+            var raw = EffectiveProjectionCell(owner,part.Window,index);
             CaptureObject? obj = part.LogicalObjectId > 0 && part.Window.Objects.Count == 1 ? part.Window.Objects[0] : (CaptureObject?)null;
             var selection = SelectProjectionTarget(owner, raw, obj);
             var cell = selection.Apply(raw);
@@ -209,7 +222,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // The old direct path can reject absent supplies without another
             // native preflight. Tool operations select their actual capability
             // and independent primary supply only in preparation.
-            if (operation == null && !buildSupply.ContainsKey(descriptor.UseItemType))
+            if (operation == null && !HasBuildSupply(descriptor))
             { range.Materials.BuildWaits |= BlueprintBuildWait.Material; return false; }
             // Only unfinished, supplied work can register a reach wait. An
             // already matched lane or a missing ordinary material must not
@@ -229,12 +242,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Conflict/Unknown and object members keep their complete walks.
             var cell=target.Cell;
             if(cell.ObjectId!=0 || !actual.Available || actual.ObjectUnknown ||
-                (cell.Layers&CaptureLayer.Tile)==0 || BlueprintMaterialSteps.SameBody(cell,actual,MaterialCatalog)!=BlueprintBodyState.Missing)return following;
+                (cell.Layers&CaptureLayer.Tile)==0 || BlueprintMaterialSteps.SameBody(cell,actual,MaterialCatalog,policy:substitutionPolicy)!=BlueprintBodyState.Missing)return following;
             while(BuildMemberIndex(following)==BuildMemberIndex(ordinal))
             {
                 var lane=BuildLane(following);
                 bool skip=lane==BlueprintBuildLane.Shape ||
-                    lane==BlueprintBuildLane.Appearance && ((cell.Layers&CaptureLayer.Wall)==0 || BlueprintMaterialSteps.SameBody(cell,actual,true)!=BlueprintBodyState.Same) ||
+                    lane==BlueprintBuildLane.Appearance && ((cell.Layers&CaptureLayer.Wall)==0 || BlueprintMaterialSteps.SameBody(cell,actual,MaterialCatalog,true,substitutionPolicy)!=BlueprintBodyState.Same) ||
                     lane==BlueprintBuildLane.Actuation && !((cell.Layers&CaptureLayer.Actuator)!=0 && cell.Actuator) && PeekOwnedActuator(target.WorldX,target.WorldY)==null;
                 // Independent wall body/appearance, wire, permanent actuator
                 // and owned cleanup retain their own current-world planning.
@@ -267,12 +280,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool BuildOperationBodySame(BlueprintBuildTarget target, BlueprintWorldMatchSample actual)
         {
             if (target == null || !actual.Available) return false;
-            if (target.Cell.ObjectId <= 0) return BlueprintMaterialSteps.SameBody(target.Cell, actual, MaterialCatalog) == BlueprintBodyState.Same;
+            if (target.Cell.ObjectId <= 0) return BlueprintMaterialSteps.SameBody(target.Cell, actual, MaterialCatalog,policy:substitutionPolicy) == BlueprintBodyState.Same;
             var value = target.Range?.Materials; BlueprintBodyState body;
             return value?.BuildObjectBodies != null && value.BuildBodyVersion == target.Range.Version &&
                 projectionChanges.IsMaterialCurrent(target.Range.Watch, target.Range.PartIndex, value.BuildBodyStamp) &&
                 value.BuildObjectBodies.TryGetValue(target.Cell.ObjectId, out body) && body == BlueprintBodyState.Same &&
-                actual.Object != null && (target.Body == null || target.Body.SamePlacement(actual.Object));
+                actual.Object != null && (target.Body == null || SameSubstitutionBody(target.Body, actual.Object));
         }
         private bool ConstructionBuildCurrent(BuildFlight flight)
         {

@@ -103,10 +103,11 @@ namespace JueMingR.Platform.Hotkeys
             command = next; pendingAction = id; pendingWarning = warning; pendingClear = chord == null; pendingHadBinding = Get(id) != null; Busy = true;
             Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Saving, "正在保存", pendingHadBinding ? "当前快捷键保持不变" : "当前仍未设置快捷键", warning); return true;
         }
-        public void Dispatch(HotkeyInput input, HotkeyContext context, bool permitted, string onlyAction = null)
+        public void Dispatch(HotkeyInput input, HotkeyContext context, bool permitted, string onlyAction = null,
+            Func<HotkeyAction, HotkeyChord, bool> admit = null)
         {
             EnsureRegistry();
-            if (!permitted || !Loaded || effective.Count == 0 || input.SystemModifier || !input.Reliable) return;
+            if (!permitted && admit == null || !Loaded || effective.Count == 0 || input.SystemModifier || !input.Reliable) return;
             // A command may retire its own set. Keep this dispatch snapshot, but
             // each action also checks its current registration before invoking.
             var table = byKey;
@@ -114,7 +115,11 @@ namespace JueMingR.Platform.Hotkeys
             {
                 List<Bound> entries = table[key]; if (entries == null || !input.IsNew(key)) continue;
                 foreach (Bound bound in entries)
-                    if ((onlyAction == null || bound.Action.Id == onlyAction) && bound.Chord.Modifiers == input.Modifiers) bound.Action.Invoke(context, bound.Chord);
+                    if ((onlyAction == null || bound.Action.Id == onlyAction) && bound.Chord.Modifiers == input.Modifiers &&
+                        // The shell can decide narrow owners in this same pass.
+                        // Its filter replaces the coarse permission, so a world
+                        // mouse gesture can also deny otherwise-valid gameplay.
+                        (admit == null ? permitted : admit(bound.Action, bound.Chord))) bound.Action.Invoke(context, bound.Chord);
             }
         }
         private void Compile()

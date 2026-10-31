@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 
 namespace JueMingR.Features.Blueprint
 {
+    public enum BlueprintProjectionEditKind { None, Place, Move, Remove, Mirror, Trim }
     public sealed class BlueprintTemplateKey : IEquatable<BlueprintTemplateKey>
     {
         public BlueprintTemplateKey(Guid assetId, Guid contentRevision, string contentHash)
@@ -102,8 +103,8 @@ namespace JueMingR.Features.Blueprint
 
     public sealed class BlueprintProjectionPlacement
     {
-        public BlueprintProjectionPlacement(BlueprintProjectionIdentity identity, CaptureSummary summary, int originX, int originY, long commitOrder, BlueprintProjectionMask mask = null, long totalLayerCount = 0, long totalConstructionLayerCount = 0)
-        { Identity = identity ?? throw new ArgumentNullException(nameof(identity)); savedSummary = LibraryState.Copy(summary) ?? throw new ArgumentNullException(nameof(summary)); OriginX = originX; OriginY = originY; CommitOrder = commitOrder; Mask = mask ?? BlueprintProjectionMask.Empty; TotalLayerCount = totalLayerCount; TotalConstructionLayerCount = totalConstructionLayerCount; }
+        public BlueprintProjectionPlacement(BlueprintProjectionIdentity identity, CaptureSummary summary, int originX, int originY, long commitOrder, BlueprintProjectionMask mask = null, long totalLayerCount = 0, long totalConstructionLayerCount = 0, bool mirroredHorizontally = false, IBlueprintHorizontalMirrorProfile mirrorProfile = null)
+        { Identity = identity ?? throw new ArgumentNullException(nameof(identity)); savedSummary = LibraryState.Copy(summary) ?? throw new ArgumentNullException(nameof(summary)); OriginX = originX; OriginY = originY; CommitOrder = commitOrder; Mask = mask ?? BlueprintProjectionMask.Empty; TotalLayerCount = totalLayerCount; TotalConstructionLayerCount = totalConstructionLayerCount; MirroredHorizontally = mirroredHorizontally; MirrorProfile = mirrorProfile; View = new BlueprintProjectionView(savedSummary, mirroredHorizontally, Mask, mirrorProfile); }
         public BlueprintProjectionIdentity Identity { get; }
         private readonly CaptureSummary savedSummary;
         public CaptureSummary Summary { get { return LibraryState.Copy(savedSummary); } }
@@ -113,13 +114,20 @@ namespace JueMingR.Features.Blueprint
         public BlueprintProjectionMask Mask { get; }
         public long TotalLayerCount { get; }
         public long TotalConstructionLayerCount { get; }
+        public bool MirroredHorizontally { get; }
+        public IBlueprintHorizontalMirrorProfile MirrorProfile { get; }
+        public BlueprintProjectionView View { get; }
     }
 
     public sealed class BlueprintProjectionCommitRequest
     {
-        public BlueprintProjectionCommitRequest(long sessionGeneration, long transactionId, long sceneRevision, BlueprintProjectionPlacement candidate, IReadOnlyList<BlueprintProjectionPlacement> previous)
+        public BlueprintProjectionCommitRequest(long sessionGeneration, long transactionId, long sceneRevision, BlueprintProjectionPlacement candidate, IReadOnlyList<BlueprintProjectionPlacement> previous, BlueprintProjectionEditKind kind = BlueprintProjectionEditKind.Place, BlueprintProjectionBounds? trimBounds = null, long previewRevision = 0,
+            BlueprintTrimGeometry trimGeometry = null, BlueprintProjectionTrimPhase trimPhase = BlueprintProjectionTrimPhase.Accumulate,
+            long expectedTrimVersion = 0, long throughTrimVersion = 1, long confirmedTrimRemovedCount = 0)
         {
-            SessionGeneration = sessionGeneration; TransactionId = transactionId; SceneRevision = sceneRevision; Candidate = candidate ?? throw new ArgumentNullException(nameof(candidate));
+            SessionGeneration = sessionGeneration; TransactionId = transactionId; SceneRevision = sceneRevision; Candidate = candidate ?? throw new ArgumentNullException(nameof(candidate)); Kind = kind; TrimBounds = trimBounds; PreviewRevision = previewRevision;
+            TrimGeometry = trimGeometry; TrimPhase = trimPhase; ExpectedTrimVersion = expectedTrimVersion;
+            ThroughTrimVersion = throughTrimVersion; ConfirmedTrimRemovedCount = confirmedTrimRemovedCount;
             var copy = new BlueprintProjectionPlacement[previous.Count]; for (int i = 0; i < copy.Length; i++) copy[i] = previous[i]; Previous = Array.AsReadOnly(copy);
         }
         public long SessionGeneration { get; }
@@ -127,15 +135,27 @@ namespace JueMingR.Features.Blueprint
         public long SceneRevision { get; }
         public BlueprintProjectionPlacement Candidate { get; }
         public IReadOnlyList<BlueprintProjectionPlacement> Previous { get; }
+        public BlueprintProjectionEditKind Kind { get; }
+        public BlueprintProjectionBounds? TrimBounds { get; }
+        public long PreviewRevision { get; }
+        // Successful admission transfers this numeric delta's ownership from
+        // Host to the worker. Busy admission retains no reference and the Host
+        // may continue merging its suffix; accepted geometry is never mutated.
+        public BlueprintTrimGeometry TrimGeometry { get; }
+        public BlueprintProjectionTrimPhase TrimPhase { get; }
+        public long ExpectedTrimVersion { get; }
+        public long ThroughTrimVersion { get; }
+        public long ConfirmedTrimRemovedCount { get; }
     }
     public sealed class BlueprintProjectionCommitReceipt
     {
-        internal BlueprintProjectionCommitReceipt(BlueprintProjectionCommitRequest request, Dictionary<long, BlueprintProjectionMask> masks, List<long> retired, string error = null)
-        { Request = request; Masks = new ReadOnlyDictionary<long, BlueprintProjectionMask>(masks); RetiredInstanceIds = retired.AsReadOnly(); Error = error; }
+        internal BlueprintProjectionCommitReceipt(BlueprintProjectionCommitRequest request, Dictionary<long, BlueprintProjectionMask> masks, List<long> retired, string error = null, BlueprintProjectionTrimPlan trimPlan = null)
+        { Request = request; Masks = new ReadOnlyDictionary<long, BlueprintProjectionMask>(masks); RetiredInstanceIds = retired.AsReadOnly(); Error = error; TrimPlan = trimPlan; }
         public BlueprintProjectionCommitRequest Request { get; }
         public IReadOnlyDictionary<long, BlueprintProjectionMask> Masks { get; }
         public IReadOnlyList<long> RetiredInstanceIds { get; }
         public string Error { get; }
         public bool Succeeded { get { return Error == null; } }
+        public BlueprintProjectionTrimPlan TrimPlan { get; }
     }
 }

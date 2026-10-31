@@ -141,6 +141,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Pick and each native consumer still validate current permission,
             // source and geometry before this prepared work can own any input.
             if (!buildTools.Input.CanRunAutomaticActions) return;
+            substitutionCandidateBudget = 64;
+            substitutionPlanningPending = false;
             int allowance = 64;
             if(ContinueBuildSupply(p,ref allowance))return;
             // Preparation has no input/selection ownership. A previous native
@@ -176,7 +178,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 BuildOperationPlan fallback; BlueprintBuildWait wait; ulong slots;
                 if (!TryPlanBuild(target, p, PreferredBuildSourceHint(p), out fallback, out wait, out slots))
-                { RegisterPlannedBuildWait(target, wait, slots); NotifyBuildAttempt(target); continue; }
+                { if (substitutionPlanningPending) return; RegisterPlannedBuildWait(target, wait, slots); NotifyBuildAttempt(target); continue; }
                 BlueprintBuildTarget winner = target; BuildOperationPlan plan = fallback;
                 if (BuildContinuationCurrent(p) && !buildContinuation.DebtDue && !PlanContinuesBuild(target, fallback))
                 {
@@ -210,6 +212,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         { return TryPrepareSelectedBuild(target, p, out result, null); }
         private bool TryPrepareSelectedBuild(BlueprintBuildTarget target, Player p, out BuildFlight result, BuildOperationPlan plan)
         {
+            target = plan?.ExecutionTarget ?? target;
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.Prepare);
             DiagnosticTarget(target,BuildTraceStage.Prepare,BuildTraceReason.Candidate);
@@ -342,13 +345,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             dependencies = sources.ToArray(); return true;
         }
-        private bool NativeBuildGeometry(BlueprintBuildTarget target, Player p, Item item, int direction)
+        private bool NativeBuildGeometry(BlueprintBuildTarget target, Player p, Item item, int direction, bool wallPositionCurrent = false)
         {
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.Geometry);
 #endif
             var placement = target.Placement;
-            if (item == null || item.IsAir || item.type != placement.UseItemType || item.GetFlexibleTileWand() != null || item.tileWand > 0 ||
+            var sourcePlacement = target.SourcePlacement ?? placement;
+            if (item == null || item.IsAir || item.type != sourcePlacement.UseItemType || item.GetFlexibleTileWand() != null || item.tileWand > 0 ||
                 !p.IsInTileInteractionRange(target.WorldX, target.WorldY, TileReachCheckSettings.Simple, item.tileBoost + p.blockRange))
             {
 #if JMR_BLUEPRINT_DIAGNOSTIC
@@ -358,14 +362,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             if (placement.Kind == BlueprintPlacementKind.Wall)
             {
-                if (item.createWall != placement.WallType || !BuildEmpty(target.WorldX, target.WorldY, true)) return false;
-                return BuildNeighbor(target.WorldX - 1, target.WorldY, true) || BuildNeighbor(target.WorldX + 1, target.WorldY, true) ||
-                    BuildNeighbor(target.WorldX, target.WorldY - 1, true) || BuildNeighbor(target.WorldX, target.WorldY + 1, true);
+                return item.createWall == placement.WallType && (wallPositionCurrent || NativeWallBuildPosition(target));
             }
-            if (item.createTile != placement.TileType || item.placeStyle != placement.Style) return false;
-            // These original helpers only derive the current biome style.
-            // Refuse a substitution that differs from the captured body, while
-            // allowing ordinary surface torches with Torch God's Favor on.
+            if (item.createTile != sourcePlacement.TileType || item.placeStyle != sourcePlacement.Style) return false;
+            // The selected source and its concrete native output are separate
+            // identities. Re-run the original helper at admission and writer;
+            // it must still equal this plan's frozen output, never any group.
             int nativeType = item.createTile, nativeStyle = item.placeStyle;
             if (nativeType == TileID.Torches) p.BiomeTorchPlaceStyle(ref nativeType, ref nativeStyle);
             if (nativeType == TileID.Campfire) p.BiomeCampfirePlaceStyle(ref nativeType, ref nativeStyle);
@@ -380,13 +382,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (platform && !BuildPlatformForm(target, nativeType)) return false;
             if (target.Body != null && !platform)
             {
-                var data = TileObjectData.GetTileData(item.createTile, item.placeStyle, placement.Alternate);
+                var data = TileObjectData.GetTileData(placement.TileType, placement.Style, placement.Alternate);
                 if (data == null || target.Bounds.Width != data.Width || target.Bounds.Height != data.Height ||
                     target.WorldX - data.Origin.X != target.Bounds.Left || target.WorldY - data.Origin.Y != target.Bounds.Top) return false;
                 return PreflightBuildObject(target, p, item, direction);
             }
             if (!BuildEmpty(target.WorldX, target.WorldY, false)) return false;
-            if (Main.tileFrameImportant[item.createTile] && !TileID.Sets.Platforms[item.createTile]) return false;
+            if (Main.tileFrameImportant[item.createTile] && !TileID.Sets.Platforms[item.createTile] && !placement.PlanterBox) return false;
             if (!PreflightBuildOrdinary(target, item)) return false;
             // Player's special four-neighbour branch accepts every active
             // Tile (including non-solid furniture), but not a wall only in
@@ -408,6 +410,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
             }
             return false;
+        }
+        private bool NativeWallBuildPosition(BlueprintBuildTarget target)
+        {
+            return BuildEmpty(target.WorldX, target.WorldY, true) &&
+                (BuildNeighbor(target.WorldX - 1, target.WorldY, true) || BuildNeighbor(target.WorldX + 1, target.WorldY, true) ||
+                 BuildNeighbor(target.WorldX, target.WorldY - 1, true) || BuildNeighbor(target.WorldX, target.WorldY + 1, true));
         }
         private static bool BuildUsesAnyCardinalNeighbor(int type)
         {
@@ -795,7 +803,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if JMR_BLUEPRINT_DIAGNOSTIC
             DiagnosticFlight(flight,BuildTraceStage.Checked,spent?BuildTraceReason.ConsumptionObserved:BuildTraceReason.NoConsumption);
 #endif
-            bool applied = flight.Operation == null ? !BuildEmpty(flight.Target.Bounds.Left,flight.Target.Bounds.Top,flight.Target.Placement.Kind==BlueprintPlacementKind.Wall) : ConstructionBuildApplied(flight);
+            bool applied = flight.Operation == null ? DirectBuildApplied(flight) : ConstructionBuildApplied(flight);
             if(!SmartPlatformResultValid(flight))
             {HoldUnconfirmedBuild(flight);buildTools.Use.Cancel();return;}
             flight.SettledConsumption=spent && applied;

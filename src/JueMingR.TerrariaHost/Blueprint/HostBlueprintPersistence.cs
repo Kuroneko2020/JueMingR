@@ -52,7 +52,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var identity = new BlueprintProjectionIdentity(record.Template.AssetId, record.Template.ContentRevision, record.Template.ContentHash, generation, projectionGeneration + 1);
                 if (!Library.RequestProjectionRestore(identity, record.Mask)) break;
                 projectionGeneration++;
-                persistedProjectionRestore.Add(new BlueprintProjectionPlacement { Identity = identity, OriginX = record.OriginX, OriginY = record.OriginY, CommitOrder = record.Order, Mask = record.Mask, Positioned = true });
+                persistedProjectionRestore.Add(new BlueprintProjectionPlacement { Identity = identity, OriginX = record.OriginX, OriginY = record.OriginY, CommitOrder = record.Order, Mask = record.Mask, MirroredHorizontally = record.MirroredHorizontally, Positioned = true });
                 projectionRestoreCursor++;
             }
             FinishProjectionRestore();
@@ -101,7 +101,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (loaded == null || loaded.Width != Main.maxTilesX || loaded.Height != Main.maxTilesY)
             { ProtectProjectionPersistence("blueprint-scene-world-dimensions-changed"); return; }
             var records = new List<BlueprintSceneRecord>(projectionScene.Count);
-            foreach (var item in projectionScene) records.Add(new BlueprintSceneRecord(item.Identity.TemplateKey, item.OriginX, item.OriginY, item.CommitOrder, item.Mask));
+            foreach (var item in projectionScene) records.Add(new BlueprintSceneRecord(item.Identity.TemplateKey, item.OriginX, item.OriginY, item.CommitOrder, item.Mask, item.MirroredHorizontally));
             projectionHistory.Offer(records); projectionSceneDirty = false;
         }
         private void TakeProjectionPersistenceFeedback(Action<string> display)

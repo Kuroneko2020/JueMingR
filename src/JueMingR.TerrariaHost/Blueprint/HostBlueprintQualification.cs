@@ -19,18 +19,28 @@ namespace JueMingR.TerrariaHost.Blueprint
             var value=item?.Qualification;var catalog=MaterialCatalog;
             return value!=null && value.Error==null && catalog!=null && value.Identity.Equals(item.Identity) &&
                 ReferenceEquals(value.Mask,item.Mask) && ReferenceEquals(value.Catalog,catalog) && value.CapabilityRevision==catalog.Revision &&
-                value.ClassifierVersion==BlueprintPlacementCatalog.ClassifierVersion;
+                value.ClassifierVersion==BlueprintPlacementCatalog.ClassifierVersion && ReferenceEquals(value.View,item.View);
         }
         private void EnsureProjectionQualification(BlueprintProjectionPlacement item)
         {
-            if(!item.Opened || item.Summary==null || ProjectionQualificationCurrent(item))return;
+            if(!item.Opened || item.Summary==null)return;
+            // Restored scenes carry only the saved pose, never native/profile
+            // objects. Bind the game-thread snapshot before any worker view is
+            // requested; a mirrored restore must not reach a null profile. The
+            // same entry also normalizes proven aliases in ordinary old assets.
+            if(item.MirrorProfile?.Ready!=true)
+            {
+                if(!EnsureMirrorProfile())return;
+                item.MirrorProfile=mirrorProfile;
+            }
+            if(ProjectionQualificationCurrent(item))return;
             if(item.Match!=null)ReleaseProjectionMatch(item);
             var catalog=MaterialCatalog;if(catalog==null || Library==null)return;
-            if(ReferenceEquals(item.QualificationRequestedMask,item.Mask) && item.QualificationRequestedRevision==catalog.Revision)return;
+            if(ReferenceEquals(item.QualificationRequestedMask,item.Mask) && item.QualificationRequestedRevision==catalog.Revision && ReferenceEquals(item.QualificationRequestedView,item.View))return;
             // Display Open and its immutable raw geometry do not wait for this
             // bounded derived pass. Unknown qualification is never final zero.
-            if(Library.RequestProjectionQualification(item.Identity,catalog,item.Mask))
-            {item.QualificationRequestedMask=item.Mask;item.QualificationRequestedRevision=catalog.Revision;}
+            if(Library.RequestProjectionQualification(item.Identity,catalog,item.Mask,item.View))
+            {item.QualificationRequestedMask=item.Mask;item.QualificationRequestedRevision=catalog.Revision;item.QualificationRequestedView=item.View;}
         }
         private void TakeProjectionQualifications()
         {
@@ -47,7 +57,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void AcceptProjectionQualification(BlueprintProjectionPlacement item,BlueprintProjectionQualificationReceipt receipt)
         {
             if(!item.Identity.Equals(receipt.Identity) || !ReferenceEquals(item.Mask,receipt.Mask) ||
-                !ReferenceEquals(item.QualificationRequestedMask,receipt.Mask) || item.QualificationRequestedRevision!=receipt.CapabilityRevision)return;
+                !ReferenceEquals(item.QualificationRequestedMask,receipt.Mask) || item.QualificationRequestedRevision!=receipt.CapabilityRevision || !ReferenceEquals(receipt.View,item.View) || !ReferenceEquals(item.QualificationRequestedView,item.View))return;
             if(receipt.Error!=null)
             {
                 // Preserve display and raw source on a real qualification read

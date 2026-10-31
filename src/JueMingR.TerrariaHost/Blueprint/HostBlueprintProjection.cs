@@ -4,7 +4,7 @@ using JueMingR.Features.Blueprint;
 
 namespace JueMingR.TerrariaHost.Blueprint
 {
-    internal enum BlueprintProjectionMode { None, Following, Fixed, SelectingMove, SelectingRemove, Moving, Committing }
+    internal enum BlueprintProjectionMode { None, Following, Fixed, SelectingMove, SelectingRemove, Moving, Committing, SelectingMirror, MirrorPending, SelectingTrim, TrimReady, TrimDragging, TrimPreview }
     internal sealed class BlueprintProjectionPlacement
     {
         internal BlueprintProjectionIdentity Identity;
@@ -17,9 +17,25 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal IReadOnlyList<BlueprintProjectionSourceRange> MatchRanges;
         internal BlueprintProjectionQualificationReceipt Qualification;
         internal BlueprintProjectionMask QualificationRequestedMask;
+        internal BlueprintProjectionView QualificationRequestedView;
         internal long QualificationRequestedRevision=-1;
         internal BlueprintProjectionMatchState Match;
         internal BlueprintProjectionMask Mask = BlueprintProjectionMask.Empty;
+        internal bool MirroredHorizontally;
+        internal IBlueprintHorizontalMirrorProfile MirrorProfile;
+        internal BlueprintProjectionView EffectiveView;
+        internal BlueprintProjectionView View
+        {
+            get
+            {
+                if (Summary == null) return null;
+                if (EffectiveView == null || EffectiveView.MirroredHorizontally != MirroredHorizontally ||
+                    !ReferenceEquals(EffectiveView.Mask, Mask) || !ReferenceEquals(EffectiveView.Profile, MirrorProfile) ||
+                    EffectiveView.Width != Summary.Width || EffectiveView.Height != Summary.Height)
+                    EffectiveView = new BlueprintProjectionView(Summary, MirroredHorizontally, Mask, MirrorProfile);
+                return EffectiveView;
+            }
+        }
         internal BlueprintProjectionWindow Window;
         internal readonly Dictionary<BlueprintProjectionBounds, BlueprintProjectionWindow> Windows = new Dictionary<BlueprintProjectionBounds, BlueprintProjectionWindow>();
         internal readonly Dictionary<BlueprintProjectionBounds, BlueprintProjectionDenial> Denied = new Dictionary<BlueprintProjectionBounds, BlueprintProjectionDenial>();
@@ -30,11 +46,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintProjectionPlacement Copy()
         {
             var copy = new BlueprintProjectionPlacement { Identity = Identity, Summary = Summary, Name = Name, OriginX = OriginX, OriginY = OriginY, CommitOrder = CommitOrder, TotalLayerCount = TotalLayerCount, TotalConstructionLayerCount = TotalConstructionLayerCount, Mask = Mask, Window = Window, Opened = Opened, Positioned = Positioned, Coverage = Coverage, CoreSize = CoreSize, SourceRanges = SourceRanges, MatchRanges = MatchRanges,
-                Qualification=Qualification,QualificationRequestedMask=QualificationRequestedMask,QualificationRequestedRevision=QualificationRequestedRevision };
+                Qualification=Qualification,QualificationRequestedMask=QualificationRequestedMask,QualificationRequestedRevision=QualificationRequestedRevision,QualificationRequestedView=QualificationRequestedView,
+                MirroredHorizontally=MirroredHorizontally,MirrorProfile=MirrorProfile,EffectiveView=EffectiveView };
             foreach (var pair in Windows) copy.Windows.Add(pair.Key, pair.Value); return copy;
         }
         internal JueMingR.Features.Blueprint.BlueprintProjectionPlacement Snapshot()
-        { return new JueMingR.Features.Blueprint.BlueprintProjectionPlacement(Identity, Summary, OriginX, OriginY, CommitOrder, Mask, TotalLayerCount, TotalConstructionLayerCount); }
+        { return new JueMingR.Features.Blueprint.BlueprintProjectionPlacement(Identity, Summary, OriginX, OriginY, CommitOrder, Mask, TotalLayerCount, TotalConstructionLayerCount, MirroredHorizontally, MirrorProfile); }
     }
     internal sealed class BlueprintProjectionDenial
     {
@@ -52,6 +69,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private readonly Queue<BlueprintProjectionPlacement> projectionRestoreAdmissions = new Queue<BlueprintProjectionPlacement>();
         private readonly BlueprintProjectionRenderer emptyProjectionRenderer = new BlueprintProjectionRenderer();
         private BlueprintProjectionPlacement candidateProjection, pendingProjection, restoreProjection, hoveredProjection;
+        private BlueprintProjectionEditKind projectionEditKind;
         private long projectionGeneration, projectionTransaction, projectionSceneRevision, projectionOrder, commitSceneRevision;
         private int projectionMouseX, projectionMouseY, projectionBaseX, projectionBaseY;
         private bool projectionNeedsNeutral = true, projectionLeft = true, projectionRight = true, projectionBaseline, deletePending;
@@ -66,18 +84,19 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintProjectionRenderer ProjectionRenderer { get { return CurrentProjection?.Renderer ?? emptyProjectionRenderer; } }
         internal IReadOnlyList<BlueprintProjectionPlacement> ProjectionScene { get { return projectionScene; } }
         internal BlueprintProjectionPlacement ProjectionCandidate { get { return candidateProjection; } }
-        internal BlueprintProjectionPlacement ProjectionMovingSource { get { return restoreProjection; } }
+        internal BlueprintProjectionPlacement ProjectionMovingSource { get { return projectionEditKind == BlueprintProjectionEditKind.Move ? restoreProjection : null; } }
+        internal bool ProjectionCandidateVisible { get { return projectionEditKind != BlueprintProjectionEditKind.Mirror && projectionEditKind != BlueprintProjectionEditKind.Trim; } }
         internal BlueprintProjectionPlacement ProjectionHover { get { return hoveredProjection; } }
         internal bool ProjectionVisible { get { return projectionScene.Count != 0 || candidateProjection?.Positioned == true; } }
-        internal bool ProjectionEditing { get { return pendingProjection != null || ProjectionMode == BlueprintProjectionMode.Following || ProjectionMode == BlueprintProjectionMode.Moving || ProjectionMode == BlueprintProjectionMode.SelectingMove || ProjectionMode == BlueprintProjectionMode.SelectingRemove || ProjectionMode == BlueprintProjectionMode.Committing; } }
+        internal bool ProjectionEditing { get { return pendingProjection != null || ProjectionMode != BlueprintProjectionMode.None && ProjectionMode != BlueprintProjectionMode.Fixed; } }
         internal bool WorldPointerActive { get { return State.Active || ProjectionEditing; } }
         internal bool ProjectionCaptureBlocked { get { return State.Selection.HasSelection || discardPending || capture != null || Flow.Status == BlueprintCaptureStatus.Starting || Flow.Status == BlueprintCaptureStatus.Capturing || Flow.Status == BlueprintCaptureStatus.Sealing || Flow.Status == BlueprintCaptureStatus.DraftReady || Flow.Status == BlueprintCaptureStatus.Saving || !Flow.ContentHandle.IsEmpty && Flow.Status == BlueprintCaptureStatus.CommitUnconfirmed; } }
         internal bool CanPlaceProjection { get { return ControlsEnabled && Library != null && ProjectionPersistenceReady && !ProjectionCaptureBlocked && !ProjectionEditing && !deletePending; } }
         internal bool CanMoveProjection { get { return CanPlaceProjection && projectionScene.Count != 0; } }
         internal bool CanRemoveProjection { get { return CanPlaceProjection && projectionScene.Count != 0; } }
-        internal bool OwnMoveCancellation { get { return ProjectionMode == BlueprintProjectionMode.SelectingMove || ProjectionMode == BlueprintProjectionMode.Moving || ProjectionMode == BlueprintProjectionMode.Committing && restoreProjection != null; } }
-        internal bool OwnRemoveCancellation { get { return ProjectionMode == BlueprintProjectionMode.SelectingRemove; } }
-        internal bool OwnPlaceCancellation { get { return pendingProjection != null || ProjectionMode == BlueprintProjectionMode.Following || ProjectionMode == BlueprintProjectionMode.Committing && restoreProjection == null; } }
+        internal bool OwnMoveCancellation { get { return ProjectionEditing && projectionEditKind == BlueprintProjectionEditKind.Move; } }
+        internal bool OwnRemoveCancellation { get { return ProjectionEditing && projectionEditKind == BlueprintProjectionEditKind.Remove; } }
+        internal bool OwnPlaceCancellation { get { return ProjectionEditing && projectionEditKind == BlueprintProjectionEditKind.Place; } }
         internal bool CanInvokeMove { get { return ControlsEnabled && (OwnMoveCancellation || CanMoveProjection); } }
         internal bool CanInvokeRemove { get { return ControlsEnabled && (OwnRemoveCancellation || CanRemoveProjection); } }
         internal bool CanInvokePlace { get { return ControlsEnabled && (OwnPlaceCancellation || CanPlaceProjection); } }
@@ -100,7 +119,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             Guid revision; if (!Guid.TryParseExact(entry.ContentRevision, "N", out revision)) return false;
             var next = new BlueprintProjectionPlacement { Identity = new BlueprintProjectionIdentity(entry.AssetId, revision, entry.ContentHash, generation, ++projectionGeneration), Name = entry.Name };
             if (!Library.RequestProjectionOpen(next.Identity)) return false;
-            projectionTransaction++; pendingProjection = next; if (State.Active) State.Exit();
+            projectionTransaction++; projectionEditKind = BlueprintProjectionEditKind.Place; pendingProjection = next; if (State.Active) State.Exit();
             InterruptProjection(); Pointer.Cancel(); Toolbar.Cancel(); projectionFeedback = null; return true;
         }
         internal void MoveProjection() { if (!CanInvokeMove || !Input.CanStartActions) return; if (OwnMoveCancellation) CancelProjection(); else BeginProjectionSelection(BlueprintProjectionMode.SelectingMove, "点击需要移动的蓝图"); }
@@ -110,7 +129,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void BeginProjectionSelection(BlueprintProjectionMode mode, string message)
         {
             if (!(mode == BlueprintProjectionMode.SelectingRemove ? CanRemoveProjection : CanMoveProjection) || !Input.CanStartActions) return;
-            if (State.Active) State.Exit(); projectionTransaction++; ProjectionMode = mode; projectionFeedback = message;
+            if (State.Active) State.Exit(); projectionTransaction++; projectionEditKind = mode == BlueprintProjectionMode.SelectingRemove ? BlueprintProjectionEditKind.Remove : BlueprintProjectionEditKind.Move; ProjectionMode = mode; projectionFeedback = message;
             InterruptProjection(); Pointer.Cancel(); Toolbar.Cancel(); Shell?.CloseAndSubmitPosition();
         }
         // Explicit navigation cancels Open; focus/UI suspension only retires
@@ -121,6 +140,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void EndProjectionEdit(bool restoreSource)
         {
             if (!ProjectionEditing) return;
+            if (OwnTrimCancellation) trimCanceledMapping = Input.Mapping;
             bool retainRollbackPoint = restoreSource && restoreProjection != null && ReferenceEquals(projectionPointTarget, restoreProjection);
             Library?.CancelProjectionCommit(generation, projectionTransaction);
             if (pendingProjection != null) Library?.ReleaseProjection(pendingProjection.Identity);
@@ -138,6 +158,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (alias != null && restoreProjection.Windows.ContainsValue(alias)) restoreProjection.Window = alias;
             }
             restoreProjection = null;
+            ClearProjectionEditor(); projectionEditKind = BlueprintProjectionEditKind.None;
             // A point-loaded moving source is part of the exact rollback
             // snapshot, including its completed 16core. Cancellation keeps it.
             if (!retainRollbackPoint) ClearProjectionPoint();
@@ -152,7 +173,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             projectionSceneDirty = false;
             ClearAutomaticBuild();
             projectionCapacityRevision++; ClearProjectionPoint();
-            Library?.CloseProjection(); projectionTransaction++; projectionSceneRevision++;
+            Library?.CloseProjection(); projectionTransaction++; projectionSceneRevision++; ClearProjectionEditor(); projectionEditKind = BlueprintProjectionEditKind.None;
             foreach (var item in projectionScene) DisposeProjectionData(item); projectionScene.Clear();
             ClearProjectionMatchWork(); projectionChanges.Clear(); projectionMatchWatches.Clear(); projectionMatchPriority = null; projectionMatchTickSet = false;
             projectionMatchSource = null; projectionMatchTiles = projectionMatchSections = null;
@@ -217,7 +238,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 else if (receipt.Kind == BlueprintProjectionReceiptKind.Window && receipt.Window != null && item.WindowGeneration == receipt.WindowGeneration)
                 {
                     if (!item.WindowPending) continue; item.WindowPending = false;
-                    if (!item.Coverage.Contains(item.RequestedCore.Left, item.RequestedCore.Top)) continue;
+                    if (!item.Coverage.Contains(item.RequestedCore.Left, item.RequestedCore.Top) && !(editorPickPending && ReferenceEquals(projectionPointTarget,item) && item.RequestedCore.Equals(projectionPointCore))) continue;
                     AdmitProjectionWindow(item, item.RequestedCore, item.Mask.Apply(receipt.Window));
                     string error; if (item.Renderer.TryTakeError(out error)) ProjectionDrawFailed(item, error);
                 }
@@ -225,6 +246,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintProjectionCommitReceipt commit;
             while (Library.TryTakeProjectionCommit(out commit))
             {
+                if (TakeProjectionEditorReceipt(commit)) continue;
                 var request = commit.Request;
                 if (request.SessionGeneration != generation || request.TransactionId != projectionTransaction || ProjectionMode != BlueprintProjectionMode.Committing) continue;
                 if (request.SceneRevision != projectionSceneRevision || request.SceneRevision != commitSceneRevision || candidateProjection == null)
@@ -233,7 +255,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (restoreProjection != null)
                 {
                     if (!TryRunProjectionMovable(restoreProjection, () => ApplyProjectionCommit(commit)))
-                    { CancelProjection(); projectionFeedback = "原位置的建造情况已变化，本次移动已取消。"; }
+                    { bool mirror = projectionEditKind == BlueprintProjectionEditKind.Mirror; CancelProjection(); projectionFeedback = mirror ? "原位置的建造情况已变化，本次镜像已取消。" : "原位置的建造情况已变化，本次移动已取消。"; }
                     continue;
                 }
                 ApplyProjectionCommit(commit);
@@ -250,8 +272,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                     if (ReferenceEquals(projectionPointTarget, restoreProjection)) projectionPointTarget = candidateProjection;
                     RemoveProjectionSceneItem(restoreProjection); DisposeProjectionData(restoreProjection);
                 }
-                candidateProjection.CommitOrder = ++projectionOrder; projectionScene.Add(candidateProjection); candidateProjection = restoreProjection = hoveredProjection = null;
+                bool mirrored = projectionEditKind == BlueprintProjectionEditKind.Mirror;
+                candidateProjection.CommitOrder = ++projectionOrder; projectionScene.Add(candidateProjection);
+                if (mirrored) RebuildProjectionMask(candidateProjection);
+                candidateProjection = restoreProjection = hoveredProjection = null; ClearProjectionEditor(); projectionEditKind = BlueprintProjectionEditKind.None;
                 projectionSceneRevision++; ProjectionMode = BlueprintProjectionMode.Fixed; PublishProjectionScene(); InterruptProjection(); Pointer.Cancel();
+                if (mirrored) projectionFeedback = "蓝图已水平镜像";
         }
         private BlueprintProjectionPlacement FindProjection(BlueprintProjectionIdentity id)
         { if (pendingProjection?.Identity.Equals(id) == true) return pendingProjection; if (candidateProjection?.Identity.Equals(id) == true) return candidateProjection; return projectionScene.Find(p => p.Identity.Equals(id)); }
@@ -274,7 +300,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // edit. Cancel before releasing its worker reference: cancellation
             // also restores the moving source and rejects any published delta.
             // Successful atomic application retires with revision=false.
-            if (revision && ProjectionMode == BlueprintProjectionMode.Committing) CancelProjection();
+            if (revision && (ProjectionMode == BlueprintProjectionMode.Committing || ReferenceEquals(editorTarget, item))) CancelProjection();
             RemoveProjectionSceneItem(item); DisposeProjectionData(item); Library?.ReleaseProjection(item.Identity);
             projectionCapacityRevision++; if (ReferenceEquals(projectionPointTarget, item)) ClearProjectionPoint();
             if (ReferenceEquals(hoveredProjection, item)) hoveredProjection = null;
@@ -290,7 +316,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             ReleaseProjectionMatch(item); item.Renderer.Dispose(); item.Window = null; item.Windows.Clear(); item.Denied.Clear(); item.SourceRanges = item.MatchRanges = null;
             item.Opened = item.WindowPending = item.HasRequestedWindow = false;
         }
-        private void InterruptProjection() { projectionNeedsNeutral = true; projectionLeft = projectionRight = true; projectionBaseline = false; hoveredProjection = null; }
+        private void InterruptProjection() { InterruptProjectionGesture(false); }
+        private void InterruptProjectionGesture(bool retainTrimConfirmation) { InterruptProjectionEditorGesture(retainTrimConfirmation); projectionNeedsNeutral = true; projectionLeft = projectionRight = true; projectionBaseline = false; hoveredProjection = null; }
         internal void ProjectionDrawFailed(string message) { if (CurrentProjection != null) ProjectionDrawFailed(CurrentProjection, message); }
         internal void ProjectionDrawFailed(BlueprintProjectionPlacement item, string message)
         { if (ReferenceEquals(item, candidateProjection)) CancelProjection(); else { ProtectProjectionPersistence("blueprint-scene-draw-failed"); RetireProjection(item); } projectionFeedback = message ?? "世界蓝图暂不可显示，库中原文件已保留。"; }
@@ -309,8 +336,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (!left && !right && Input.KeyboardSample.GetPressedKeys().Length == 0) { projectionNeedsNeutral = false; projectionLeft = projectionRight = false; if (ProjectionMode == BlueprintProjectionMode.Moving && !projectionBaseline) SetProjectionBaseline(x, y); }
                 return;
             }
-            bool confirm = left && !projectionLeft, cancel = right && !projectionRight; projectionLeft = left; projectionRight = right;
+            bool confirm = left && !projectionLeft, cancel = right && !projectionRight, released = !left && projectionLeft; projectionLeft = left; projectionRight = right;
             if (cancel) { CancelProjection(); return; }
+            if (AcceptProjectionEditorPointer(left, x, y, subX, subY, confirm, released)) return;
             if (ProjectionMode == BlueprintProjectionMode.SelectingMove || ProjectionMode == BlueprintProjectionMode.SelectingRemove)
             {
                 hoveredProjection = HitProjection(x, y, subX, subY, confirm); if (!confirm || hoveredProjection == null) return; var target = hoveredProjection;
@@ -338,7 +366,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             foreach (var old in projectionScene) if (!ReferenceEquals(old, restoreProjection) && Intersects(current, old))
             { if (!old.Opened) { projectionFeedback = "正在恢复蓝图，请稍后确认位置"; return; } previous.Add(old.Snapshot()); }
             commitSceneRevision = projectionSceneRevision;
-            if (Library.RequestProjectionCommit(new BlueprintProjectionCommitRequest(generation, projectionTransaction, projectionSceneRevision, current.Snapshot(), previous))) ProjectionMode = BlueprintProjectionMode.Committing;
+            if (Library.RequestProjectionCommit(new BlueprintProjectionCommitRequest(generation, projectionTransaction, projectionSceneRevision, current.Snapshot(), previous, projectionEditKind))) ProjectionMode = BlueprintProjectionMode.Committing;
         }
         private void SetProjectionBaseline(int x, int y) { projectionMouseX = x; projectionMouseY = y; projectionBaseX = candidateProjection.OriginX; projectionBaseY = candidateProjection.OriginY; projectionBaseline = true; }
         private static bool Intersects(BlueprintProjectionPlacement a, BlueprintProjectionPlacement b) { return a.OriginX < (long)b.OriginX + b.Summary.Width && b.OriginX < (long)a.OriginX + a.Summary.Width && a.OriginY < (long)b.OriginY + b.Summary.Height && b.OriginY < (long)a.OriginY + a.Summary.Height; }
@@ -346,14 +374,14 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             for (int i = projectionScene.Count - 1; i >= 0; i--)
             {
-                var item = projectionScene[i]; int lx = x - item.OriginX, ly = y - item.OriginY; if (lx < 0 || ly < 0 || lx >= item.Summary.Width || ly >= item.Summary.Height) continue;
+                var item = projectionScene[i]; int lx = item.View.SourceX(x - item.OriginX), ly = y - item.OriginY; if (lx < 0 || ly < 0 || lx >= item.Summary.Width || ly >= item.Summary.Height) continue;
                 // Unknown is not air. A bounded point request stops selection
                 // from falling through a higher instance that is not loaded.
                 BlueprintProjectionWindow loaded = null;
                 foreach (var pair in item.Windows) if (pair.Key.Contains(lx, ly)) { loaded = pair.Value; break; }
                 if (loaded == null) { if (explicitPoint) SetProjectionPoint(item, lx, ly); projectionFeedback = "正在读取目标位置，请稍后点击"; return null; }
                 int low = 0, high = loaded.Cells.Count - 1;
-                while (low <= high) { int mid = low + (high - low) / 2; var c = loaded.Cells[mid]; int compare = c.Y == ly ? c.X.CompareTo(lx) : c.Y.CompareTo(ly); if (compare < 0) { low = mid + 1; continue; } if (compare > 0) { high = mid - 1; continue; } if (HitCell(item.Mask.Apply(c), subX, subY)) return item; break; }
+                while (low <= high) { int mid = low + (high - low) / 2; var c = loaded.Cells[mid]; int compare = c.Y == ly ? c.X.CompareTo(lx) : c.Y.CompareTo(ly); if (compare < 0) { low = mid + 1; continue; } if (compare > 0) { high = mid - 1; continue; } if (HitCell(item.Mask.Apply(c), item.MirroredHorizontally ? 1f - subX : subX, subY)) return item; break; }
             }
             return null;
         }
@@ -371,9 +399,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void UpdateInstanceWindow(BlueprintProjectionPlacement item, Platform.WorldTargets.WorldTargetView view)
         {
             if (!item.Opened || item.Summary == null) return; int halo = item.Renderer.RequiredHalo;
+            if (editorPickPending && ReferenceEquals(item,projectionPointTarget)) return;
             int size = item.CoreSize;
             int left = Math.Max(-halo, view.X - item.OriginX - halo), top = Math.Max(-halo, view.Y - item.OriginY - halo), right = Math.Min(item.Summary.Width + halo, view.X + view.Width - item.OriginX + halo), bottom = Math.Min(item.Summary.Height + halo, view.Y + view.Height - item.OriginY + halo);
             if (left >= right || top >= bottom) { if (item.HasRequestedWindow || item.Denied.Count != 0) DropProjectionWindows(item); item.Coverage = default(BlueprintProjectionBounds); return; }
+            if (item.MirroredHorizontally) { int sourceLeft = checked(item.Summary.Width - right); right = checked(item.Summary.Width - left); left = sourceLeft; }
             // Stable coverage and per-segment commands retain useful in-flight
             // intersections instead of invalidating everything per mouse tile.
             left = Math.Max(0, (int)Math.Floor(left / (double)size) * size); top = Math.Max(0, (int)Math.Floor(top / (double)size) * size);

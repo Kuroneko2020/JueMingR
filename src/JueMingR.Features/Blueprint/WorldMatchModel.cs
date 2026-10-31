@@ -5,7 +5,7 @@ namespace JueMingR.Features.Blueprint
 {
     public enum BlueprintWorldMatchState { Unknown, Missing, Conflict, Match }
     public enum BlueprintWorldObjectFamily { Metadata, Door }
-    public enum BlueprintWorldFrameKind { Literal, TreeTrunk22, Palm22, Mushroom18, Platform18 }
+    public enum BlueprintWorldFrameKind { Literal, TreeTrunk22, Palm22, Mushroom18, Platform18, PlanterBox18 }
 
     // Construction observations use the permanent mask's layer units without
     // its display-only Liquid bit. A Match never mutates the permanent mask.
@@ -250,10 +250,11 @@ namespace JueMingR.Features.Blueprint
         // raw seed. A source open door with two different row appearances may
         // match an open layout but cannot preserve that target across closing.
         public static bool TryCreate(BlueprintWorldObject target, IReadOnlyList<CaptureCell> targets, BlueprintWorldObject observed,
-            IReadOnlyList<BlueprintWorldMatchSample> union, out BlueprintWorldDoorWitness witness)
+            IReadOnlyList<BlueprintWorldMatchSample> union, out BlueprintWorldDoorWitness witness,
+            BlueprintPlacementCatalog catalog = null, BlueprintSubstitutionPolicy policy = default(BlueprintSubstitutionPolicy))
         {
             witness = null;
-            if (target == null || observed == null || !target.SamePlacement(observed) || target.Family != BlueprintWorldObjectFamily.Door ||
+            if (target == null || observed == null || !(target.SamePlacement(observed) || catalog?.Substitution.AllowsObject(target, observed, policy) == true) || target.Family != BlueprintWorldObjectFamily.Door ||
                 target.Height != 3 || target.Width < 1 || target.Width > 2 || observed.Height != 3 || observed.Width < 1 || observed.Width > 2 ||
                 observed.WorldY != observed.AnchorY || observed.AnchorX < observed.WorldX || (long)observed.AnchorX >= (long)observed.WorldX + observed.Width ||
                 targets == null || targets.Count != target.MemberCount || union == null || union.Count != 9 || observed.Style < 0 ||
@@ -277,7 +278,7 @@ namespace JueMingR.Features.Blueprint
                 states[i] = sample.WriteState.Value;
                 if (observed.Contains(x, y)) occupied.Add(sample);
             }
-            if (BlueprintWorldMatchComparer.CompareObject(target, targets, occupied, true) != BlueprintWorldMatchState.Match) return false;
+            if (BlueprintWorldMatchComparer.CompareObject(target, targets, occupied, true, catalog, policy) != BlueprintWorldMatchState.Match) return false;
             var candidate = new BlueprintWorldDoorWitness(observed.AnchorX - 1, observed.AnchorY, (int)closed, (int)open, (int)yBase, rows, states);
             if (!candidate.Complete(states)) return false;
             witness = candidate; return true;

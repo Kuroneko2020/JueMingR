@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     BlueprintCaptureSource.DescribeRead(semantic, TileValue(semantic));
                 if (shape == null || !shape.Object.Reliable || shape.Object.X != raw.X || shape.Object.Y != raw.Y || shape.Object.Width != raw.Width || shape.Object.Height != raw.Height) return false;
                 CaptureObject value = shape.Object;
-                TileObjectData data = TileObjectData.GetTileData(TileValue(semantic));
+                TileObjectData data = BlueprintHorizontalMirrorResolver.NativeData(semantic);
                 TileObjectData basis = TileObjectData.GetTileData(value.Type, int.MaxValue);
                 if (data == null || basis == null) return false;
                 int variant = value.RandomVariant, style = value.Style;
@@ -158,47 +158,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         // Wiring.Toggle* in locked .8, not a furniture support allowlist. Shape,
         // direction, material style and every saved member coating remain live.
         private static CaptureCell NormalizeOperatingFrame(CaptureCell cell)
-        {
-            int x = cell.FrameX, y = cell.FrameY;
-            switch (cell.TileType)
-            {
-                case 33: case 49: case 174: case 372: case 646: // ToggleCandle
-                case 42: case 93: case 92: case 593: // lantern, lamp, lamp post, switch
-                    if (x >= 18 && x < 36) x -= 18;
-                    break;
-                case 95: case 100: case 126: case 173: case 564: // Toggle2x2Light
-                case 35: case 139: case 565: case 594: // music box and 2x2 switches
-                    if (x >= 36 && x < 72) x -= 36;
-                    break;
-                case 34: // ToggleChandelier: six X columns per material style
-                    if (x % 108 >= 54) x -= 54;
-                    break;
-                case 4: // Torch: the first 66px retains attachment direction
-                    if (x >= 66 && x < 132) x -= 66;
-                    break;
-                case 149: // Holiday light: color remains in the first 54px
-                case 405: case 244: // fireplace and lever
-                    if (x >= 54 && x < 108) x -= 54;
-                    break;
-                case 136: case 144: // switch/timer state in Y, timer style in X
-                    if (y >= 18 && y < 36) y -= 18;
-                    break;
-                case 207:
-                    if (y >= 72 && y < 144) y -= 72;
-                    break;
-                case 410:
-                    if (y >= 56 && y < 112) y -= 56;
-                    break;
-                case 480: case 509: case 657: case 720: case 721: case 725: case 733:
-                    if (y >= 54 && y < 108) y -= 54;
-                    break;
-                case 658:
-                    if (y >= 54 && y < 162) y %= 54;
-                    break;
-            }
-            if (cell.TileType < TileID.Sets.Campfires.Length && TileID.Sets.Campfires[cell.TileType] && y >= 36 && y < 72) y -= 36;
-            cell.FrameX = checked((short)x); cell.FrameY = checked((short)y); return cell;
-        }
+        { return BlueprintHorizontalMirrorResolver.NormalizeOperatingFrame(cell); }
         internal static Tile TileValue(CaptureCell cell)
         {
             var tile = new Tile { type = cell.TileType, frameX = cell.FrameX, frameY = cell.FrameY };

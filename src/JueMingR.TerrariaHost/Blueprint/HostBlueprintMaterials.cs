@@ -11,7 +11,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintProjectionIdentity Identity;
         internal BlueprintProjectionMask Mask;
         internal BlueprintProjectionMatchRange Range;
-        internal long RangeStamp, SupportStamp, PlacementRevision;
+        internal long RangeStamp, SupportStamp, PlacementRevision, PolicyRevision;
         internal int OriginX, OriginY, TargetX, TargetY, Ordinal;
         internal CaptureCell Cell;
         internal CaptureObject Object;
@@ -22,6 +22,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintProjectionBounds Bounds;
         internal BlueprintPlacementDescriptor Placement;
         internal BlueprintBuildOperation Operation;
+        // An execution view is private to one exact candidate. Source records
+        // and the range's nominal requirement are never rewritten for material.
+        internal BlueprintBuildTarget Requirement;
+        internal BlueprintPlacementDescriptor SourcePlacement;
         internal bool LocalProof, LocalPriority;
     }
     internal sealed class BlueprintMaterialTotals
@@ -42,6 +46,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             catch (OverflowException) { Failed = true; Revision++; }
         }
+    }
+    internal sealed class BlueprintSubstitutionBuildCursor
+    {
+        internal int Ordinal = -1, Cursor, Slot = -1, Type;
+        internal long Range, Support, Supply, Player, Policy;
+        internal Item Source;
     }
     internal sealed class BlueprintRangeMaterials
     {
@@ -73,6 +83,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int EligibilityRetryOrdinal;
         internal ulong EligibilityRetryAt;
         internal ulong DynamicRetryAt;
+        // New selection and exact-source continuation enumerate different
+        // lists. Keep each finite walk independently resumable, so switching
+        // callers cannot consume or rewind the other caller's pending prefix.
+        internal BlueprintSubstitutionBuildCursor SubstitutionSelection, SubstitutionContinuation;
     }
     internal sealed partial class HostBlueprint
     {
@@ -105,6 +119,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private BlueprintMaterialTotals materialPublishingTotals;
         private bool materialPublishingInventoryReady;
         private IEnumerator<KeyValuePair<int, long>> materialPublishing;
+        private BlueprintMaterialAllocation materialPublishingAllocation;
         private List<BlueprintMaterialRow> materialPublishingRows = new List<BlueprintMaterialRow>();
         private long materialPublishingTotal;
         private long materialPublishingRevision, materialPublishingInventoryRevision;
@@ -261,6 +276,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (dynamicDemand || materialStaticDemand || projectionScene.Count>0) materialKnowledge?.Native.StepPlacement();
             materialStaticDemand = false;
             var catalog = MaterialCatalog;
+            RefreshSubstitutionPolicy();
             if (catalog == null && projectionScene.Count > 0) CancelMaterialPublication();
             if (catalog != null && materialPlacementIdentity != catalog.Revision)
             {
@@ -442,7 +458,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void CancelMaterialPublication()
         {
-            materialPublishing?.Dispose(); materialPublishing = null; materialPublishingRows.Clear(); materialPublishingTotals = null;
+            materialPublishing?.Dispose(); materialPublishing = null; materialPublishingAllocation = null; materialPublishingRows.Clear(); materialPublishingTotals = null;
             if (materialWorldSnapshot.Status == BlueprintMaterialStatus.Pending && materialWorldSnapshot.Rows.Count == 0) return;
             materialWorldSnapshot = new BlueprintMaterialSnapshot(++materialSnapshotRevision, BlueprintMaterialStatus.Pending, Array.Empty<BlueprintMaterialRow>());
         }
@@ -472,6 +488,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 materialPublishingRevision = totals.Revision; materialPublishingInventoryRevision = inventoryRevision;
                 materialPublishingInventoryReady=inventoryReady;
                 materialPublishingTotal = 0;
+                materialPublishingAllocation = substitutionPolicy.Enabled ?
+                    new BlueprintMaterialAllocation(totals.Counts,materialInventory,MaterialCatalog,substitutionPolicy,inventoryReady) : null;
                 materialPublishing = totals.Counts.GetEnumerator();
                 materialWorldSnapshot = new BlueprintMaterialSnapshot(++materialSnapshotRevision, BlueprintMaterialStatus.Pending, Array.Empty<BlueprintMaterialRow>());
             }
@@ -480,7 +498,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var pair = materialPublishing.Current;
                 try { materialPublishingTotal = checked(materialPublishingTotal + pair.Value); }
                 catch (OverflowException) { totals.Failed = true; materialPublishing.Dispose(); materialPublishing = null; materialWorldSnapshot = new BlueprintMaterialSnapshot(++materialSnapshotRevision, BlueprintMaterialStatus.Unresolved, Array.Empty<BlueprintMaterialRow>(), false, "材料数量超出整数范围"); return; }
-                materialPublishingRows.Add(new BlueprintMaterialRow(pair.Key, pair.Value, materialInventory?.Held(pair.Key) ?? 0, inventoryReady));
+                materialPublishingRows.Add(materialPublishingAllocation?.Row(pair.Key) ??
+                    new BlueprintMaterialRow(pair.Key, pair.Value, materialInventory?.Held(pair.Key) ?? 0, inventoryReady));
 #if DEBUG
                 MaterialPublicationSteps++;
 #endif

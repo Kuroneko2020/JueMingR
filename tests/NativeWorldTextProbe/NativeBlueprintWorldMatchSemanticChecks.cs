@@ -104,7 +104,7 @@ namespace NativeWorldTextProbe
         }
         private static BlueprintWorldObjectFrameWitness FrameWitness(object source, Target target, BlueprintWorldMatchSample[] world, bool current = true)
         {
-            object[] args = { target.Object, target.Cells, world, current, null };
+            object[] args = { target.Object, target.Cells, world, current, null, null, default(BlueprintSubstitutionPolicy) };
             bool created = (bool)source.GetType().GetMethod("TryCreateFrameWitness", F).Invoke(source, args);
             Require(created == (args[4] != null), "frame witness factory has one explicit success result");
             return (BlueprintWorldObjectFrameWitness)args[4];
@@ -118,7 +118,7 @@ namespace NativeWorldTextProbe
         private static BlueprintWorldDoorWitness DoorWitness(object source, Target target, BlueprintWorldMatchSample[] union, bool current = true)
         {
             var hinge = Read(source, target.Object.AnchorX, target.Object.AnchorY);
-            object[] args = { target.Object, target.Cells, Members(source, hinge.Object ?? target.Object), union, current, null };
+            object[] args = { target.Object, target.Cells, Members(source, hinge.Object ?? target.Object), union, current, null, null, default(BlueprintSubstitutionPolicy) };
             bool created = (bool)source.GetType().GetMethod("TryCreateDoorWitness", F).Invoke(source, args);
             Require(created == (args[5] != null), "door witness factory has one explicit success result");
             return (BlueprintWorldDoorWitness)args[5];
