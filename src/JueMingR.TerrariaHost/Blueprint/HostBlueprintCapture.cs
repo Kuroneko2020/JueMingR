@@ -116,6 +116,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void ApplyReceipt(LibraryReceipt receipt)
         {
+            Shell?.BlueprintPlacedUi?.AcceptPreviewReceipt(receipt);
             ApplyProjectionMutation(receipt);
             if (receipt.OperationId != Flow.Token.OperationId) return;
             // The sealed capture summary is fixed. Filtered preview summaries

@@ -191,6 +191,7 @@ namespace NativeWorldTextProbe
                     check("external modal", () => NativeBlueprintExternalModalChecks.Cpu(context));
                     check("exchange Host lifecycle", () => NativeBlueprintExchangeLifecycleChecks.Run(context));
                     check("placed list", () => NativeBlueprintPlacedListChecks.Run(context));
+                    check("seed substrate catalog", () => NativeBlueprintWorldMatchChecks.SubstrateSeedCatalog(context));
                     check("pinned materials and scene", () => NativeBlueprintWorldMatchChecks.PlacedMaterialTargets(context));
                     check("owned preparation", () => NativeBlueprintBuildChecks.RunConstruction(context, false, "ExternalModal"));
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();

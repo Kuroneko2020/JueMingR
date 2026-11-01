@@ -97,8 +97,8 @@ namespace JueMingR.Features.Blueprint
 
     public sealed class BlueprintMaterialInstance
     {
-        public BlueprintMaterialInstance(long session, long projection, long sequence, string name, int x, int y, int width = 0, int height = 0, long commitOrder = 0)
-        { SessionGeneration = session; ProjectionGeneration = projection; Sequence = sequence; Name = name ?? "蓝图"; OriginX = x; OriginY = y; Width = width; Height = height; CommitOrder = commitOrder; }
+        public BlueprintMaterialInstance(long session, long projection, long sequence, string name, int x, int y, int width = 0, int height = 0, long commitOrder = 0, BlueprintTemplateKey template = null)
+        { SessionGeneration = session; ProjectionGeneration = projection; Sequence = sequence; Name = name ?? "蓝图"; OriginX = x; OriginY = y; Width = width; Height = height; CommitOrder = commitOrder; Template = template; }
         public long SessionGeneration { get; }
         public long ProjectionGeneration { get; }
         public long Sequence { get; }
@@ -108,6 +108,7 @@ namespace JueMingR.Features.Blueprint
         public int Width { get; }
         public int Height { get; }
         public long CommitOrder { get; }
+        public BlueprintTemplateKey Template { get; }
     }
 
     // Fifty value slots are frozen together once per demanded game update.

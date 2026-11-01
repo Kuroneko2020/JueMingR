@@ -333,10 +333,12 @@ namespace JueMingR.TerrariaHost.F5
                     else { selected = part.AssetId; deleteConfirm = part.AssetId; }
                     dirty = true; return;
                 case BlueprintLibraryCommand.Card:
+                    ExchangePresentationGeneration++;
                     if (selected != part.AssetId) { EndEdit(); selected = part.AssetId; }
                     deleteConfirm = null; dirty = true; return;
                 case BlueprintLibraryCommand.Name:
                     if (part.Editing) return;
+                    ExchangePresentationGeneration++;
                     if (mode == View.Capture)
                     { BeginEdit(Guid.Empty, host.Flow.DraftName); lastClickName = false; return; }
                     int now = Environment.TickCount;
@@ -351,6 +353,7 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void NavigatePage(int delta)
         {
+            ExchangePresentationGeneration++;
             var page = host.Library.Snapshot.Page; EndEdit(); deleteConfirm = null; lastClickName = false;
             int next = Math.Max(0, (page?.PageIndex ?? requestedPage) + delta);
             RequestList(next); shell.ScrollTo(0); failedPreviews.Clear(); failedSummaries.Clear();

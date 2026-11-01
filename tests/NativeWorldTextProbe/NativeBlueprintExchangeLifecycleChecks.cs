@@ -56,6 +56,24 @@ namespace NativeWorldTextProbe
                 dialog.Select(); NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !(bool)Get(host, "ExchangeBusy"); });
                 Require(((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId == sentinel, "explicitly retired UI generation cannot be stolen by healthy duplicate receipt");
                 neutral();
+                var otherWindow = new BlueprintProjectionWindow(new BlueprintProjectionIdentity(Guid.NewGuid(), Guid.NewGuid(), "fixture-other", 1, 2), 1,
+                    new CaptureSummary { Width = 1, Height = 1, ContentCount = 1 }, new BlueprintProjectionBounds(0, 0, 1, 1), new[] { new CaptureCell { Layers = CaptureLayer.Tile, TileType = 2 } }, Array.Empty<CaptureObject>());
+                var other = NativeBlueprintProjectionVisualChecks.Save(library, otherWindow);
+                foreach (string intent in new[] { "Card", "Name", "Page" })
+                {
+                    neutral(); Call(ui, "OpenLibrary"); Call(host, "BeginImport"); Require(dialog.Request != null, "new import starts for later " + intent + " intent");
+                    long frozen = (long)Get(ui, "ExchangePresentationGeneration"); dialog.Select(); Call(host, "PumpExchange"); neutral();
+                    if (intent == "Page") Call(ui, "NavigatePage", 1);
+                    else
+                    {
+                        var partType = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.BlueprintLibraryPart", true);
+                        object part = Activator.CreateInstance(partType, true); Set(part, "AssetId", other.AssetId);
+                        Set(part, "Command", Enum.Parse(partType.GetField("Command", F).FieldType, intent)); Call(ui, "Execute", part);
+                    }
+                    Require((long)Get(ui, "ExchangePresentationGeneration") > frozen, "later " + intent + " retires the frozen display intent");
+                    NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !(bool)Get(host, "ExchangeBusy"); });
+                    Require(intent == "Page" ? (int)Get(ui, "requestedPage") == 1 : (Guid)Get(ui, "selected") == other.AssetId, "late imported receipt cannot steal later " + intent);
+                }
                 Console.WriteLine("PASS exchange Host lifecycle: real CancelForFocusLoss -> native Selected ticket -> streaming import -> receipt retains pending selection, no F5 reopen; explicit UI retirement rejects old selection.");
             }
             finally

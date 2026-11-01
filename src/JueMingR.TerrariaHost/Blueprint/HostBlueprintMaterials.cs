@@ -363,7 +363,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 string name = item.Name ?? "蓝图";
                 materialInstanceOwners.Add(item.Identity.ProjectionGeneration, item);
                 result.Add(new BlueprintMaterialInstance(item.Identity.SessionGeneration, item.Identity.ProjectionGeneration,
-                    item.Identity.ProjectionGeneration, name, item.OriginX, item.OriginY, item.Summary?.Width ?? 0, item.Summary?.Height ?? 0, item.CommitOrder));
+                    item.Identity.ProjectionGeneration, name, item.OriginX, item.OriginY, item.Summary?.Width ?? 0, item.Summary?.Height ?? 0, item.CommitOrder, item.Identity.TemplateKey));
             }
             result.Sort((left, right) => left.CommitOrder.CompareTo(right.CommitOrder));
             materialInstances = result.AsReadOnly(); CancelMaterialPublication();

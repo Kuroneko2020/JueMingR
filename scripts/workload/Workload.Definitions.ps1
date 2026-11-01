@@ -29,6 +29,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintPlacedListChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintExternalModalChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintExternalModalPreparationChecks.cs'=@('native-BlueprintExchangeCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintPreviewCooperationChecks.cs'=@('native-BlueprintExchangeCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPlacedMaterialsChecks.cs'=@('native-BlueprintExchangeCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintExchangeLifecycleChecks.cs'=@('native-BlueprintExchangeCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorProfileChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')

@@ -12,19 +12,23 @@ namespace JueMingR.TerrariaHost.F5
 {
     // A lightweight projection of the one committed scene. Only directory or
     // font/width changes measure all names. Stable frames project visible rows;
-    // neither opening nor scrolling requests body, world or persistence work.
+    // visible template thumbnails use the existing finite library Preview lane,
+    // never instance overlays, world reads or persistence work.
     internal sealed class BlueprintPlacedListPresentation : IDisposable
     {
         private sealed class Row
         {
             internal BlueprintMaterialInstance Instance;
-            internal float Top, Height, RelativeY;
+            internal float Top, Height, RelativeY, TextWidth;
             internal readonly List<BlueprintLibraryPart> Parts = new List<BlueprintLibraryPart>();
-            internal BlueprintLibraryPart Materials, Remove, Relative;
+            internal BlueprintLibraryPart Materials, Remove, Preview;
+            internal List<BlueprintLibraryPart> Relative;
         }
         private readonly HostBlueprint host;
         private readonly F5Interaction shell;
         private readonly BlueprintLibraryRenderer renderer = new BlueprintLibraryRenderer();
+        private readonly BlueprintLibraryPreviewCache previews = new BlueprintLibraryPreviewCache();
+        private readonly HashSet<string> failedPreviews = new HashSet<string>(StringComparer.Ordinal);
         private readonly List<Row> rows = new List<Row>();
         private readonly List<BlueprintLibraryPart> visible = new List<BlueprintLibraryPart>();
         private IReadOnlyList<BlueprintMaterialInstance> directory;
@@ -38,6 +42,22 @@ namespace JueMingR.TerrariaHost.F5
         private Vector2 screen;
         private bool ready, leftTail, rightTail, previousLeft = true, previousRight = true;
         private string shownRemoveReason;
+        private float previewWidth;
+        private const float PreviewHeight = 112;
+        private Point previewSize;
+        // Library/capture UI uses positive read generations. This owner keeps
+        // a monotonic negative namespace across openings, so CancelRead or a
+        // late receipt cannot attach to the other content view's newer read.
+        private long previewReadGeneration, activePreviewGeneration;
+        private int previewDevice, previewCacheGeneration = -1;
+        private string pendingPreviewKey;
+        private BlueprintPreviewImage pendingPreviewImage;
+        private CaptureSummary pendingPreviewSummary;
+        internal int PreviewCount { get { return previews.Count; } }
+        internal long PreviewBytes { get { return previews.PixelBytes; } }
+#if DEBUG
+        internal long PreviewRequests;
+#endif
         internal bool Opened { get; private set; }
         internal bool Visible { get { return Opened && shell.Visible && shell.Page == 6; } }
         internal bool OwnsPointer { get; private set; }
@@ -56,13 +76,14 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void Close()
         {
+            CancelPreviewRead(); previews.Dispose(); failedPreviews.Clear();
             Opened = ready = OwnsPointer = false; armed = hovered = null;
             rows.Clear(); visible.Clear(); directory = null; firstVisible = lastVisible = -1;
             renderer.Dispose(); resources = layout = -1; generation++; drawnGeneration = -1;
             // Visibility/focus do not prove physical release. The shared owner
             // and these tails consume it later, even after the last row retires.
         }
-        internal void PauseForMaterials() { armed = hovered = null; savedScroll = shell.Scroll; ready = false; drawnGeneration = -1; }
+        internal void PauseForMaterials() { CancelPreviewRead(); armed = hovered = null; savedScroll = shell.Scroll; ready = false; drawnGeneration = -1; }
         internal void ResumeAfterMaterials() { if (Visible) { shell.ScrollTo(savedScroll); ready = false; drawnGeneration = -1; } }
         private void CheckSession()
         { if (Opened && (!host.HasSession || session != host.UiSession)) Close(); }
@@ -132,12 +153,24 @@ namespace JueMingR.TerrariaHost.F5
             CheckSession(); if (!Visible) { ready = false; return; }
             if (!active || !renderer.Refresh()) { ready = false; armed = null; return; }
             if (host.Shell?.BlueprintMaterialsUi?.Visible == true) { ready = false; return; }
+            int oldDevice = previewCacheGeneration; previews.Observe(renderer.Device);
+            if (oldDevice != previews.Generation) { CancelPreviewRead(); failedPreviews.Clear(); }
+            previewCacheGeneration = previews.Generation;
+            if (pendingPreviewImage != null)
+            {
+                try { previews.Upload(pendingPreviewKey, pendingPreviewImage, pendingPreviewSummary, previewDevice); }
+                catch { RememberPreviewFailure(pendingPreviewKey); }
+                pendingPreviewKey = null; pendingPreviewImage = null; pendingPreviewSummary = null;
+            }
             var next = shell.Layout.Viewport.Offset(shell.X, shell.Y);
             var instances = host.MaterialInstances;
             bool rebuild = !ReferenceEquals(directory, instances) || measuredWidth != next.Width || resources != renderer.Generation;
-            bool geometry = rebuild || !F5PopupPlacement.SameAnchor(view, next) || matrix != transform || screen != dimensions || layout != shell.Layout.Generation || scroll != shell.Scroll;
+            bool geometry = rebuild || oldDevice != previews.Generation || !F5PopupPlacement.SameAnchor(view, next) || matrix != transform || screen != dimensions || layout != shell.Layout.Generation || scroll != shell.Scroll;
             matrix = transform; screen = dimensions; view = next; resources = renderer.Generation; layout = shell.Layout.Generation;
             if (rebuild) { directory = instances; Build(); }
+            var requestedSize = new Point(Math.Max(1, Math.Min(BlueprintPreviewBudget.LibraryWidth, (int)Math.Floor((previewWidth - 10) * Math.Abs(transform.M11)))),
+                Math.Max(1, Math.Min(BlueprintPreviewBudget.LibraryHeight, (int)Math.Floor((PreviewHeight - 10) * Math.Abs(transform.M22)))));
+            if (previewSize != requestedSize) { CancelPreviewRead(); previewSize = requestedSize; geometry = true; }
             shell.Layout.SetBlueprintContentHeight(contentHeight);
             shell.ClampScroll();
             geometry |= scroll != shell.Scroll;
@@ -150,6 +183,7 @@ namespace JueMingR.TerrariaHost.F5
                 Project(px, py, geometry || moved);
             playerX = px; playerY = py; ready = true;
             hitClip = F5ControlRenderer.LogicalClip(F5ControlRenderer.ContentClip(view, matrix, new Rectangle(0, 0, (int)dimensions.X, (int)dimensions.Y)), matrix);
+            PrepareVisiblePreviews();
         }
         private void Build()
         {
@@ -157,29 +191,36 @@ namespace JueMingR.TerrariaHost.F5
             DirectoryBuilds++;
 #endif
             rows.Clear(); measuredWidth = view.Width;
+            previewWidth = Math.Min(168, Math.Max(104, view.Width * .30f));
+            float textWidth = Math.Max(100, view.Width - previewWidth - 32);
             float backWidth = Math.Max(70, measure("返回", .70f).Width + 16), backHeight = Math.Max(30, measure("返回", .70f).Height + 8);
             headerHeight = Math.Max(44, Math.Max(backHeight + 14, measure("已放置列表", .70f).Height + 16));
             back = Part(F5ElementKind.Button, new F5Rect(view.Width - backWidth - 2, 7, backWidth, backHeight), "返回", BlueprintLibraryCommand.Back); back.Fixed = true;
             float top = headerHeight + Gap;
             foreach (var item in directory)
             {
-                var row = new Row { Instance = item, Top = top };
+                var row = new Row { Instance = item, Top = top, TextWidth = textWidth };
                 float y = top + 8;
                 string label = item.Name + " · #" + item.Sequence.ToString(CultureInfo.InvariantCulture);
-                foreach (var line in Wrap(label, view.Width - 20)) { row.Parts.Add(Text(line, 10, y, view.Width - 20)); y += Math.Max(22, measure(line, .70f).Height + 2) + 3; }
+                foreach (var line in Wrap(label, textWidth)) { row.Parts.Add(Text(line, 10, y, textWidth)); y += Math.Max(22, measure(line, .70f).Height + 2) + 3; }
                 string size = item.Width > 0 && item.Height > 0 ? "尺寸 " + item.Width + "×" + item.Height + " 格" : "正在恢复尺寸";
-                foreach (var line in Wrap(size + " · 左上角（" + item.OriginX + "，" + item.OriginY + "）", view.Width - 20))
-                { row.Parts.Add(Text(line, 10, y, view.Width - 20)); y += Math.Max(22, measure(line, .70f).Height + 2) + 3; }
-                row.RelativeY = y; y += Math.Max(22, measure("左上方 · 距中心约 12345 格", .70f).Height + 2) + 6;
+                foreach (var line in Wrap(size + " · 左上角（" + item.OriginX + "，" + item.OriginY + "）", textWidth))
+                { row.Parts.Add(Text(line, 10, y, textWidth)); y += Math.Max(22, measure(line, .70f).Height + 2) + 3; }
+                row.RelativeY = y;
+                // Reserve the longest finite coordinate vocabulary once. A
+                // player crossing a decimal boundary cannot reflow row actions.
+                foreach (var line in Wrap("左上方 · 距中心约 9999999999 格", textWidth)) y += Math.Max(22, measure(line, .70f).Height + 2) + 3;
+                y += 3;
                 float buttonHeight = Math.Max(30, measure("材料 移除", .70f).Height + 8);
                 float materialWidth = Math.Max(76, measure("材料", .70f).Width + 16), removeWidth = Math.Max(76, measure("移除", .70f).Width + 16);
                 row.Materials = Part(F5ElementKind.Button, new F5Rect(10, y, materialWidth, buttonHeight), "材料", BlueprintLibraryCommand.PlacedMaterials);
-                bool wrapButtons = materialWidth + removeWidth + 8 > view.Width - 20;
+                bool wrapButtons = materialWidth + removeWidth + 8 > textWidth;
                 if (wrapButtons) y += buttonHeight + 6;
                 row.Remove = Part(F5ElementKind.Button, new F5Rect(wrapButtons ? 10 : 18 + materialWidth, y, removeWidth, buttonHeight), "移除", BlueprintLibraryCommand.PlacedRemove);
-                row.Height = y + buttonHeight + 10 - top;
+                row.Height = Math.Max(y + buttonHeight + 10 - top, PreviewHeight + 16);
+                row.Preview = Part(F5ElementKind.Image, new F5Rect(view.Width - previewWidth - 10, top + (row.Height - PreviewHeight) / 2, previewWidth, PreviewHeight), "正在生成预览", BlueprintLibraryCommand.None);
                 row.Parts.Insert(0, Part(F5ElementKind.Panel, new F5Rect(0, top, view.Width, row.Height), "", BlueprintLibraryCommand.None));
-                row.Parts.Add(row.Materials); row.Parts.Add(row.Remove); rows.Add(row); top += row.Height + Gap;
+                row.Parts.Add(row.Materials); row.Parts.Add(row.Remove); row.Parts.Add(row.Preview); rows.Add(row); top += row.Height + Gap;
             }
             contentHeight = rows.Count == 0 ? headerHeight + 70 : top;
             firstVisible = lastVisible = -1;
@@ -203,13 +244,66 @@ namespace JueMingR.TerrariaHost.F5
                 row.Materials.Enabled = host.CanOpenMaterials;
                 if (relative || row.Relative == null)
                 {
-                    row.Relative = Text(RelativePosition(row.Instance, px, py), 10, row.RelativeY, view.Width - 20);
+                    row.Relative = new List<BlueprintLibraryPart>(); float relativeY = row.RelativeY;
+                    foreach (var line in Wrap(RelativePosition(row.Instance, px, py), row.TextWidth))
+                    { var part = Text(line, 10, relativeY, row.TextWidth); row.Relative.Add(part); relativeY += part.Element.Rect.Height + 3; }
 #if DEBUG
                     RelativeUpdates++;
 #endif
                 }
-                visible.AddRange(row.Parts); visible.Add(row.Relative);
+                row.Preview.PreviewKey = PreviewKey(row.Instance.Template);
+                visible.AddRange(row.Parts); visible.AddRange(row.Relative);
             }
+        }
+        private string PreviewKey(BlueprintTemplateKey template)
+        { return template == null ? null : "a:" + template.ContentHash + ":" + BlueprintPreviewBuilder.RendererVersion + ":" + previewSize.X + ":" + previewSize.Y + ":g" + previews.Generation; }
+        private void CancelPreviewRead()
+        {
+            if (activePreviewGeneration != 0) host.Library?.CancelRead(activePreviewGeneration);
+            activePreviewGeneration = 0; pendingPreviewKey = null; pendingPreviewImage = null; pendingPreviewSummary = null;
+        }
+        private void RememberPreviewFailure(string key)
+        {
+            if (key == null) return;
+            if (failedPreviews.Count >= BlueprintLibraryPreviewCache.MaximumCount) failedPreviews.Clear();
+            failedPreviews.Add(key);
+        }
+        // Routed by the Host's existing library receipt owner. It stores one
+        // finite value result; GPU upload stays in Prepare on the UI thread.
+        internal void AcceptPreviewReceipt(LibraryReceipt receipt)
+        {
+            if (receipt == null || receipt.Kind != LibraryCommandKind.Preview || receipt.Generation != activePreviewGeneration ||
+                activePreviewGeneration == 0 || pendingPreviewKey == null || !Visible || session != host.UiSession) return;
+            activePreviewGeneration = 0;
+            if (receipt.Preview != null) { pendingPreviewImage = receipt.Preview; pendingPreviewSummary = receipt.Summary; }
+            else { RememberPreviewFailure(pendingPreviewKey); pendingPreviewKey = null; }
+        }
+        private void PrepareVisiblePreviews()
+        {
+            bool canRequest = activePreviewGeneration == 0 && pendingPreviewImage == null && host.Library != null && !host.Library.Snapshot.Busy;
+            bool pendingVisible = false;
+            for (int i = Math.Max(0, firstVisible); i <= lastVisible && i < rows.Count; i++)
+            {
+                var row = rows[i];
+                // Overscan aids row projection only. It cannot request bodies
+                // for a row hidden behind the fixed header or below the clip.
+                if (row.Top + row.Height <= scroll + headerHeight || row.Top >= scroll + view.Height) continue;
+                string key = row.Preview.PreviewKey;
+                bool cached = previews.Touch(key), failed = key == null || failedPreviews.Contains(key);
+                string text = failed ? "预览暂不可用" : "正在生成预览";
+                if (row.Preview.Element.Text != text)
+                    row.Preview.Element = new F5Element(F5ElementKind.Image, row.Preview.Element.Rect, text, measure(text, .70f), .70f, F5Command.None);
+                pendingVisible |= key != null && key == pendingPreviewKey;
+                if (!canRequest || cached || failed) continue;
+                var template = row.Instance.Template;
+                long request = --previewReadGeneration;
+                if (!host.Library.TryPreview(request, template.AssetId, template.ContentHash, previewSize.X, previewSize.Y)) continue;
+                activePreviewGeneration = request; pendingPreviewKey = key; previewDevice = previews.Generation; pendingVisible = true; canRequest = false;
+#if DEBUG
+                PreviewRequests++;
+#endif
+            }
+            if (activePreviewGeneration != 0 && !pendingVisible) CancelPreviewRead();
         }
         // Coordinates use tile boundaries for both centers. A 1x1 blueprint in
         // the player's tile is distance zero; even sizes center on tile seams.
@@ -245,7 +339,7 @@ namespace JueMingR.TerrariaHost.F5
         internal void Draw()
         {
             if (!Visible || !ready || host.Shell?.BlueprintMaterialsUi?.Visible == true || matrix != Main.UIScaleMatrix || !renderer.ResourcesCurrent) { drawnGeneration = -1; return; }
-            renderer.Draw(visible, view, matrix, scroll, hovered, armed, null, null, false, headerHeight);
+            renderer.Draw(visible, view, matrix, scroll, hovered, armed, previews, null, false, headerHeight);
             if (!F5PopupPlacement.SameAnchor(hitClip, renderer.LastClip)) { hitClip = renderer.LastClip; generation++; armed = null; }
             drawnGeneration = generation;
         }

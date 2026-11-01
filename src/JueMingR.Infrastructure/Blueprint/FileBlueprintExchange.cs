@@ -19,6 +19,8 @@ namespace JueMingR.Infrastructure.Blueprint
         private bool occupied, stopping;
         private Stream stream;
         private readonly Func<string, FileMode, FileAccess, FileShare, Stream> open;
+        private readonly Action<string> fault;
+        private BlueprintExchangeOwnedFile ownedCandidate;
         private WindowsBlueprintFileTicket ticket;
         private string candidate, backup;
         private byte[] expectedTarget;
@@ -26,7 +28,8 @@ namespace JueMingR.Infrastructure.Blueprint
         public FileBlueprintExchange() : this((path, mode, access, share) => new FileStream(path, mode, access, share, 65536, FileOptions.SequentialScan)) { }
         // Isolated tests wrap the actual external stream to hold a single OS
         // boundary; the production queue/worker/scheduler remain unchanged.
-        internal FileBlueprintExchange(Func<string, FileMode, FileAccess, FileShare, Stream> open) { this.open = open ?? throw new ArgumentNullException(nameof(open)); }
+        internal FileBlueprintExchange(Func<string, FileMode, FileAccess, FileShare, Stream> open) : this(open, null) { }
+        internal FileBlueprintExchange(Func<string, FileMode, FileAccess, FileShare, Stream> open, Action<string> fault) { this.open = open ?? throw new ArgumentNullException(nameof(open)); this.fault = fault; }
         public bool TrySubmit(BlueprintExchangeIoCommand command, Action wake)
         {
             lock (gate)
@@ -80,7 +83,8 @@ namespace JueMingR.Infrastructure.Blueprint
                     // CreateNew is the proof of ownership. An existing path is
                     // never adopted as this request's temporary material.
                     if (File.Exists(candidate) || Directory.Exists(candidate)) { candidate = null; throw new InvalidDataException("blueprint-exchange-candidate-conflict"); }
-                    stream = open(candidate, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+                    stream = open(candidate, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read | FileShare.Delete);
+                    ownedCandidate = new BlueprintExchangeOwnedFile(); ownedCandidate.Capture(stream);
                     return new BlueprintExchangeIoReceipt { Success = true };
                 case BlueprintExchangeIoKind.Write:
                     if (stream == null || candidate == null || command.Buffer == null || command.Count < 0 || command.Count > command.Buffer.Length || command.Count > 65536) throw new InvalidDataException("blueprint-exchange-write-range");
@@ -89,7 +93,7 @@ namespace JueMingR.Infrastructure.Blueprint
                     if (stream == null || candidate == null) throw new InvalidOperationException("blueprint-exchange-no-candidate");
                     var durable = stream as FileStream; if (durable != null) durable.Flush(true); else stream.Flush(); stream.Position = 0; byte[] expectedCandidate = command.ExpectedDigest; long length = command.ExpectedLength;
                     if (expectedCandidate == null || expectedCandidate.Length != 32 || stream.Length != length || !Equal(Hash(stream), expectedCandidate)) throw new InvalidDataException("blueprint-exchange-written-bytes-mismatch");
-                    stream.Dispose(); stream = null;
+                    ownedCandidate.Capture(stream); stream.Dispose(); stream = null;
                     using (var readback = new FileStream(candidate, FileMode.Open, FileAccess.Read, FileShare.Read))
                         if (readback.Length != length || !Equal(expectedCandidate, Hash(readback))) throw new InvalidDataException("blueprint-exchange-candidate-readback");
                     Guard(ticket.NormalizedPath); Guard(candidate);
@@ -102,23 +106,30 @@ namespace JueMingR.Infrastructure.Blueprint
                             if (!Equal(Hash(target), expectedTarget)) throw new InvalidDataException("blueprint-exchange-target-changed");
                             backup = candidate + ".backup";
                             if (File.Exists(backup) || Directory.Exists(backup)) { backup = null; throw new InvalidDataException("blueprint-exchange-backup-conflict"); }
-                            ThrowIfStopping(); attempted = true; File.Replace(candidate, ticket.NormalizedPath, backup, false);
+                            ThrowIfStopping(); fault?.Invoke("BeforeCommit"); attempted = true; File.Replace(candidate, ticket.NormalizedPath, backup, false); fault?.Invoke("AfterCommit");
                             using (var old = new FileStream(backup, FileMode.Open, FileAccess.Read, FileShare.Read)) if (!Equal(Hash(old, false), expectedTarget)) throw new InvalidDataException("blueprint-exchange-replaced-object-changed");
                             VerifyFinal(length, expectedCandidate);
                         }
                     }
-                    else { ThrowIfStopping(); attempted = true; File.Move(candidate, ticket.NormalizedPath); VerifyFinal(length, expectedCandidate); }
+                    else { ThrowIfStopping(); fault?.Invoke("BeforeCommit"); attempted = true; File.Move(candidate, ticket.NormalizedPath); fault?.Invoke("AfterCommit"); VerifyFinal(length, expectedCandidate); }
                     committed = true; candidate = null;
                     if (backup != null)
                     {
                         Guard(backup);
                         using (var original = new FileStream(backup, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
-                        { if (!Equal(Hash(original, false), expectedTarget)) throw new InvalidDataException("blueprint-exchange-backup-changed"); File.Delete(backup); }
+                        {
+                            if (!Equal(Hash(original, false), expectedTarget)) throw new InvalidDataException("blueprint-exchange-backup-changed");
+                            // The verified recovery object may have been moved
+                            // under delete sharing. Retire that exact object,
+                            // never a replacement now occupying its pathname.
+                            var ownedBackup = new BlueprintExchangeOwnedFile(); ownedBackup.Capture(original);
+                            if (!ownedBackup.Delete(backup, true)) throw new InvalidDataException("blueprint-exchange-backup-changed");
+                        }
                         backup = null;
                     }
                     return new BlueprintExchangeIoReceipt { Success = true, FileCommitted = true, Length = length };
                 case BlueprintExchangeIoKind.Close:
-                    Close(); return new BlueprintExchangeIoReceipt { Success = true };
+                    bool retained = Close(); return new BlueprintExchangeIoReceipt { Success = true, ErrorCode = retained ? "blueprint-exchange-cleanup-retained" : null };
                 default: throw new ArgumentOutOfRangeException();
             }
         }
@@ -128,14 +139,18 @@ namespace JueMingR.Infrastructure.Blueprint
             ticket = value as WindowsBlueprintFileTicket ?? throw new ArgumentException("blueprint-exchange-ticket");
             attempted = committed = false;
         }
-        private void Close()
+        private bool Close()
         {
+            bool retained = false;
+            if (candidate != null && !attempted && ownedCandidate != null)
+            {
+                if (stream != null) ownedCandidate.Capture(stream);
+                try { retained = !ownedCandidate.Delete(candidate, stream != null); } catch { retained = true; }
+            }
             stream?.Dispose(); stream = null;
-            // An incomplete/failed external candidate is recovery material.
-            // Closing then deleting by path would permit a replacement race;
-            // retain it rather than delete a file we can no longer pin. Normal
-            // success has already moved the candidate and verified its backup.
-            candidate = backup = null; expectedTarget = null; ticket?.Dispose(); ticket = null; attempted = committed = false;
+            // Attempted/unknown commits and changed/unprovable candidate
+            // objects remain recovery material. Never adopt an existing tmp.
+            candidate = backup = null; ownedCandidate = null; expectedTarget = null; ticket?.Dispose(); ticket = null; attempted = committed = false; return retained;
         }
         private static void Guard(string path)
         {

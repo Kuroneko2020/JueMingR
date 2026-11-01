@@ -168,16 +168,31 @@ namespace NativeWorldTextProbe
                 Require(Main.rand.Next() == randomBefore, "pure material resolution and native forced frame oracle do not consume gameplay RNG");
                 Require(catalog.Paint(1) > 0 && catalog.Coating(1) > 0 && catalog.Coating(2) == ItemID.EchoCoating,
                     "paint and independent coating IDs come from actual item declarations");
-                var seeded = new CaptureCell { Layers = CaptureLayer.Tile, TileType = 23 };
-                var seed = catalog.Tile(seeded); var seededMaterials = new BlueprintMaterialAccumulator();
-                BlueprintMaterialSteps.StaticCell(seeded, catalog, seededMaterials);
-                Require(seed != null && seed.RequiresSubstrate && seed.ConsumeItemType == 59 &&
-                    seededMaterials.Status == BlueprintMaterialStatus.Unresolved && seededMaterials.Snapshot(1).Rows.Any(r => r.ItemType == 59),
-                    "original Corrupt Seeds createTile declaration remains known without claiming its missing substrate as a free block");
+                VerifySubstrateSeedCatalog(catalog);
                 Console.WriteLine("BlueprintMaterials native declared furniture member variants=" + checks + " catalogRevision=" + catalog.Revision);
                 return profiles;
             }
             finally { Main.rand = originalRandom; }
+        }
+        internal static void SubstrateSeedCatalog(object context)
+        {
+            var host = Get(context, "Blueprint"); InitializeMetadata();
+            Call(host, "SetMaterialViewDemand", true);
+            try { NativeQuickItemChecks.Until(() => { NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); return GetOptional(host, "MaterialCatalog") != null; }); VerifySubstrateSeedCatalog((BlueprintPlacementCatalog)Get(host, "MaterialCatalog")); }
+            finally { Call(host, "SetMaterialViewDemand", false); }
+        }
+        private static void VerifySubstrateSeedCatalog(BlueprintPlacementCatalog catalog)
+        {
+                var seeded = new CaptureCell { Layers = CaptureLayer.Tile, TileType = 23 };
+                var seed = catalog.Tile(seeded); var seededMaterials = new BlueprintMaterialAccumulator();
+                BlueprintMaterialSteps.StaticCell(seeded, catalog, seededMaterials);
+                var seededSnapshot = seededMaterials.Snapshot(1); var substrate = catalog.Substrate(seeded);
+                Console.WriteLine("BlueprintMaterials seed native consume=" + seed?.ConsumeItemType + " requiresSubstrate=" + seed?.RequiresSubstrate + " plan=" + substrate?.ConsumeItemType +
+                    " status=" + seededMaterials.Status + " rows=" + String.Join(",", seededSnapshot.Rows.Select(row => row.ItemType + "x" + row.Required)));
+                Require(seed != null && seed.RequiresSubstrate && seed.ConsumeItemType == 59 && substrate != null &&
+                    seededMaterials.Status == BlueprintMaterialStatus.Exact && seededSnapshot.Total == 2 && seededSnapshot.Rows.Count == 2 &&
+                    seededSnapshot.Rows.Any(r => r.ItemType == 59 && r.Required == 1) && seededSnapshot.Rows.Any(r => r.ItemType == 2 && r.Required == 1),
+                    "original Corrupt Seeds require both exact seed59 and dirt2; finite substrate recipes never claim a free block");
         }
         private static bool MaterialNativeReplay(IBlueprintCaptureSource source, BlueprintPlacementDescriptor descriptor,
             CaptureCell original, int random, int memberX, int memberY, out string result)

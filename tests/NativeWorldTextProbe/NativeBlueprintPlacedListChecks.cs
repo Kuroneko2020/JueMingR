@@ -124,7 +124,10 @@ namespace NativeWorldTextProbe
             using (NativeBlueprintWorldMatchChecks.EmptyWorld(host, 1024, 160)) try
             {
                 Call(shell, "CloseAndSubmitPosition"); Call(host, "SetAutoBuild", false);
-                Main.screenWidth = 960; Main.screenHeight = 640; Main.UIScale = 1f; PlayerInput.CacheOriginalScreenDimensions();
+                // Match the existing world-match fixture's original framing
+                // setup before invoking the real PlaceWall retirement writer.
+                NativeBlueprintWorldMatchChecks.InitializeMetadata(); Framing.Initialize(); Main.SetupTileMerge();
+                Main.screenWidth = 960; Main.screenHeight = 640; NativeBlueprintUiChecks.SetScale(1f); PlayerInput.CacheOriginalScreenDimensions();
                 Action step = () => { NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); };
                 var cells = new[] { new CaptureCell { Layers = CaptureLayer.Wall, WallType = 7 }, new CaptureCell { X = 1, Y = 3, Layers = CaptureLayer.Wall, WallType = 7 } };
                 var entry = NativeBlueprintProjectionVisualChecks.Save(library, new BlueprintProjectionWindow(
@@ -138,10 +141,30 @@ namespace NativeWorldTextProbe
                 // instances and remaining-material scope stay on real owners.
                 string longName = string.Concat(Enumerable.Repeat("同名中文长蓝图", 6));
                 Set(first, "Name", longName); Set(second, "Name", longName); Set(host, "materialSceneIdentity", -1L);
-                NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); Call(host, "OpenPlacedList");
+                NativeBlueprintMaterialsUiChecks.Frame(shell, input, 0, 0, false);
+                NativeBlueprintMaterialsUiChecks.Frame(shell, input, 0, 0, false); Call(host, "OpenPlacedList");
                 Action draw = () => Call(shell, "DrawLayer");
-                Action prepare = () => { Call(shell, "AfterUpdate"); graphics.Pixels(draw, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight); Require(!(bool)Get(shell, "Failed"), "placed-list production prepare/draw stays healthy"); };
-                prepare(); graphics.Image(Path.Combine(output, "blueprint-placed-list-two-copies.png"), draw, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
+                Action prepare = () =>
+                {
+                    Exception observed = null;
+                    EventHandler<System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs> observe = (sender, args) => observed = args.Exception;
+                    AppDomain.CurrentDomain.FirstChanceException += observe;
+                    try { Call(shell, "AfterUpdate"); graphics.Pixels(draw, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight); }
+                    finally { AppDomain.CurrentDomain.FirstChanceException -= observe; }
+                    Require(!(bool)Get(shell, "Failed"), "placed-list production prepare/draw stays healthy; screen=" + PlayerInput.OriginalScreenSize + " matrix=" + Main.UIScaleMatrix.M11 + "; original=" + observed);
+                };
+                NativeQuickItemChecks.Until(() => { Call(host, "Poll"); prepare(); return (int)Get(list, "PreviewCount") > 0; });
+                Require((int)Get(list, "PreviewCount") == 1 && (long)Get(list, "PreviewRequests") == 1,
+                    "two visible copies reuse the same original-template hash/size/device preview");
+                for (int i = 0; i < 8; i++) prepare();
+                Require((long)Get(list, "PreviewRequests") == 1, "stable production Prepare never rereads the template body");
+                foreach (var visibleRow in Rows(list))
+                {
+                    var previewRect = Get(Get(Get(visibleRow, "Preview"), "Element"), "Rect");
+                    var materialRect = Get(Get(Get(visibleRow, "Materials"), "Element"), "Rect");
+                    Require((float)Get(previewRect, "X") > (float)Get(materialRect, "Right"), "original-template image occupies the row right column without overlapping controls");
+                }
+                graphics.Image(Path.Combine(output, "blueprint-placed-list-two-copies.png"), draw, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
                 var row = Rows(list).Single(value => ((BlueprintMaterialInstance)Get(value, "Instance")).ProjectionGeneration == firstId);
                 Action<object> click = part =>
                 {
@@ -162,7 +185,13 @@ namespace NativeWorldTextProbe
                 NativeBlueprintMaterialsUiChecks.Frame(shell, input, oldPoint.X, oldPoint.Y, false); prepare(); NativeBlueprintMaterialsUiChecks.Frame(shell, input, oldPoint.X, oldPoint.Y, true);
                 Require(ReferenceEquals(GetOptional(list, "armed"), remove), "actual list remove control is armed only after its real draw");
                 WorldGen.PlaceWall(40, 70, 7, true); WorldGen.PlaceWall(41, 73, 7, true);
-                NativeQuickItemChecks.Until(() => { step(); return !((IEnumerable)Get(host, "ProjectionScene")).Cast<object>().Contains(first); });
+                try { NativeQuickItemChecks.Until(() => { step(); return !((IEnumerable)Get(host, "ProjectionScene")).Cast<object>().Contains(first); }); }
+                catch
+                {
+                    var match = GetOptional(first, "Match");
+                    Console.WriteLine("LIST retirement evidence wall=" + Main.tile[40, 70].wall + "/" + Main.tile[41, 73].wall + " paint=" + Main.tile[40, 70].wallColor() + "/" + Main.tile[41, 73].wallColor() + " origin=" + Get(first, "OriginX") + "/" + Get(first, "OriginY") + " mode=" + Get(host, "ProjectionMode") + " current=" + GetOptional(match, "Current") + " targets=" + GetOptional(match, "Targets") + " matches=" + GetOptional(match, "Matches") + " unknown=" + GetOptional(match, "Unknown") + " reads=" + GetOptional(match, "WorldReads") + " sourceRead=" + Get(host, "ProjectionMatchReading"));
+                    throw;
+                }
                 prepare(); NativeBlueprintMaterialsUiChecks.Frame(shell, input, oldPoint.X, oldPoint.Y, false); prepare();
                 Require(((IEnumerable)Get(host, "ProjectionScene")).Cast<object>().Single() == second, "natural completion between press and release cannot remove the sibling shifted into its row");
                 row = Rows(list).Single(value => ((BlueprintMaterialInstance)Get(value, "Instance")).ProjectionGeneration == secondId);
@@ -171,11 +200,15 @@ namespace NativeWorldTextProbe
                     "real surviving-row removal preserves original built walls and empties only the committed scene");
                 graphics.Image(Path.Combine(output, "blueprint-placed-list-empty.png"), draw, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
                 LargeNumberVisual(host, shell, graphics, output);
+                Call(shell, "CloseAndSubmitPosition"); long closedRequests = (long)Get(list, "PreviewRequests");
+                for (int i = 0; i < 4; i++) { Call(host, "Poll"); Call(shell, "AfterUpdate"); }
+                Require((int)Get(list, "PreviewCount") == 0 && (long)Get(list, "PreviewBytes") == 0 && (long)Get(list, "PreviewRequests") == closedRequests,
+                    "closing releases all list-owned preview textures and starts no new body read");
             }
             finally
             {
                 Call(shell, "CloseAndSubmitPosition"); Call(host, "SetAutoBuild", auto);
-                Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; Main.UIScale = oldScale; PlayerInput.CacheOriginalScreenDimensions();
+                Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; NativeBlueprintUiChecks.SetScale(oldScale); PlayerInput.CacheOriginalScreenDimensions();
             }
             Console.WriteLine("PASS Blueprint placed-list native UI: two same-template instances, wrapped names, short viewport/final clip, real Draw-to-release materials return, natural-retirement stale release, accurate removal and empty state. OS and multiplayer are separate evidence.");
         }

@@ -20,7 +20,7 @@ namespace JueMingR.ArchitectureTests
         internal static void Check(IList<string> failures)
         {
             string area = Path.Combine(Path.GetTempPath(), "JueMingR-exchange-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(area);
-            try { RoundTrip(area); Corruption(area); MultiBlockAndFlood(area); PublishFaults(area); CounterFailure(area); SlowLane(area); foreach (string mode in new[] { "Read", "Write", "Flush" }) BlockedStreamLane(area, mode); Console.WriteLine("BlueprintExchange: literal byte vector, identity, dedup, reliable files, naming and blocked external lane passed."); }
+            try { RoundTrip(area); Corruption(area); MultiBlockAndFlood(area); PreviewCooperation(area); PublishFaults(area); CounterFailure(area); MechanicalTargets(area); SlowLane(area); foreach (string mode in new[] { "Read", "Write", "Flush" }) BlockedStreamLane(area, mode); Console.WriteLine("BlueprintExchange: literal byte vector, identity, dedup, reliable files, naming and blocked external lane passed."); }
             catch (Exception error) { failures.Add("BlueprintExchange " + error + "; retained=" + area); }
         }
         private static void Need(bool value, string reason) { if (!value) throw new InvalidOperationException(reason); }
@@ -135,6 +135,51 @@ namespace JueMingR.ArchitectureTests
                 Need(Ordinary(state, state.TryList(3001, 0)).Page.TotalCount == 1, "bad multiblock never publishes");
             }
         }
+        private static void PreviewCooperation(string area)
+        {
+            const int blocks = 128, records = 2048; byte[] root, first;
+            Literal("large-preview", Guid.NewGuid(), 0, out root, out first);
+            byte[][] chunks = Enumerable.Range(0, blocks).Select(y =>
+            {
+                using (var stream = new MemoryStream()) using (var writer = new BinaryWriter(stream))
+                {
+                    writer.Write(first, 0, 8); writer.Write(records); writer.Write(0);
+                    for (int x = 0; x < records; x++) { writer.Write(x); writer.Write(y + 5); writer.Write(first, 24, first.Length - 24); }
+                    return stream.ToArray();
+                }
+            }).ToArray();
+            byte[] index = chunks.SelectMany(Hash).ToArray();
+            Buffer.BlockCopy(BitConverter.GetBytes((long)blocks), 0, root, 24, 8);
+            Buffer.BlockCopy(BitConverter.GetBytes(records), 0, root, 72, 4); Buffer.BlockCopy(BitConverter.GetBytes(blocks), 0, root, 76, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes((long)blocks * records), 0, root, 80, 8); Array.Copy(Hash(index), 0, root, 32, 32);
+            string path = Path.Combine(area, "preview-cooperation"), source = Path.Combine(area, "preview-large.jmbp"), small = Path.Combine(area, "preview-small.jmbp");
+            File.WriteAllBytes(source, Pack("large-preview", root, index, chunks)); File.WriteAllBytes(small, Literal("small-preview", Guid.NewGuid(), 4, out root, out first));
+            using (var state = State(path, Path.Combine(area, "preview-counter.json")))
+            {
+                Need(Import(state, source).Status == BlueprintExchangeStatus.Completed && Import(state, small).Status == BlueprintExchangeStatus.Completed, "actual multi-block preview fixture imported");
+                var entries = Ordinary(state, state.TryList(19, 0)).Page.Entries;
+                var large = entries.Single(x => x.Name == "large-preview"); var little = entries.Single(x => x.Name == "small-preview");
+                long generation = -77;
+                Need(state.TryPreview(generation, large.AssetId, large.ContentHash, 160, 100), "normal preview occupies existing ordinary slot");
+                var identity = new BlueprintProjectionIdentity(little.AssetId, Guid.Parse(little.ContentRevision), little.ContentHash, 31, 1);
+                var catalog = BlueprintMaterialsChecks.Catalog(); var key = new BlueprintMaterialKey(little.AssetId, false, identity.ContentRevision, little.ContentHash, false, null, catalog.Revision);
+                Need(state.RequestProjectionOpen(identity) && state.RequestMaterials(key, catalog), "projection/material request while preview in flight");
+                var timer = Stopwatch.StartNew(); bool projected = false; LibraryReceipt early;
+                while (timer.ElapsedMilliseconds < 5000)
+                {
+                    BlueprintProjectionReceipt next; if (state.TryTakeProjectionReceipt(out next)) projected = next.Kind == BlueprintProjectionReceiptKind.Opened;
+                    state.Pump(); Need(!state.TryTakeReceipt(out early), "large preview remains unfinished while other lanes earn their own receipts");
+                    if (projected && state.Materials(key).Status == BlueprintMaterialStatus.Exact) break;
+                    Thread.Sleep(1);
+                }
+                Need(projected && state.Materials(key).Status == BlueprintMaterialStatus.Exact, "real projection and material consumers advance before the large preview finishes");
+                Need(!state.TryList(20, 0), "cooperative execution does not create a second ordinary command slot");
+                state.CancelRead(generation); Need(Ordinary(state, true).Status == LibraryStatus.Cancelled, "negative list generation cancels bounded template read");
+                var image = Ordinary(state, state.TryPreview(-78, little.AssetId, little.ContentHash, 160, 100));
+                Need(image.Status == LibraryStatus.Completed && image.Preview != null && image.Summary.ContentCount == 1, "subsequent original library preview keeps actual image and summary semantics");
+                Console.WriteLine("PASS preview cooperation: 262144 real cells/128 immutable blocks, projection and Exact materials before preview receipt, one command slot, cancellation and next original preview.");
+            }
+        }
         private static void PublishFaults(string area)
         {
             byte[] root, chunk; string source = Path.Combine(area, "fault-source.jmbp"); byte[] bytes = Literal("故障原件", Guid.NewGuid(), 4, out root, out chunk); File.WriteAllBytes(source, bytes);
@@ -171,6 +216,65 @@ namespace JueMingR.ArchitectureTests
             public PreferenceReadResult Read() { return new PreferenceReadResult(PreferenceReadStatus.Missing, null, "missing", null); }
             public PreferenceWriteResult Write(string expected, byte[] contents) { return new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, null, "controlled-counter-failure"); }
             public void Dispose() { }
+        }
+        private static BlueprintExchangeIoReceipt Io(IBlueprintExchangeIo io, BlueprintExchangeIoCommand command)
+        {
+            using (var signal = new ManualResetEvent(false))
+            {
+                Need(io.TrySubmit(command, () => signal.Set()) && signal.WaitOne(5000), "one mechanical IO command acknowledged");
+                BlueprintExchangeIoReceipt result; Need(io.TryTake(out result), "take exact IO acknowledgement"); return result;
+            }
+        }
+        private static FileBlueprintExchange FaultIo(string boundary)
+        {
+            Func<string, FileMode, FileAccess, FileShare, Stream> factory = (path, mode, access, share) => new FileStream(path, mode, access, share);
+            Action<string> fault = stage => { if (stage == boundary) throw new IOException("controlled-" + boundary); };
+            return (FileBlueprintExchange)Activator.CreateInstance(typeof(FileBlueprintExchange), BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { factory, fault }, null);
+        }
+        private static void MechanicalTargets(string area)
+        {
+            byte[] old = Encoding.UTF8.GetBytes("原件绝不按新路径许可覆盖"), bytes = Encoding.UTF8.GetBytes("本次完整候选字节");
+            string target = Path.Combine(area, "target-tests.jmbp");
+            foreach (string arm in new[] { "cancel", "collision", "changed", "replace", "BeforeCommit", "AfterCommit", "foreign-temp" })
+            {
+                if (File.Exists(target)) File.Delete(target);
+                bool replace = arm == "changed" || arm == "replace" || arm == "BeforeCommit" || arm == "AfterCommit";
+                if (replace || arm == "collision") File.WriteAllBytes(target, old);
+                Guid request = Guid.NewGuid(); var ticket = Ticket(replace ? "CaptureOverwrite" : "NewTarget", request, target);
+                if (arm == "changed") File.AppendAllText(target, "外改"); byte[] actualOriginal = File.Exists(target) ? File.ReadAllBytes(target) : null;
+                var io = arm == "BeforeCommit" || arm == "AfterCommit" ? FaultIo(arm) : new FileBlueprintExchange();
+                string candidate = Path.Combine(area, "." + Path.GetFileName(target) + "." + request.ToString("N") + ".tmp");
+                try
+                {
+                    var begun = Io(io, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.BeginTarget, Ticket = ticket });
+                    if (arm == "collision" || arm == "changed")
+                    {
+                        Need(!begun.Success && !begun.CommitUnconfirmed && File.ReadAllBytes(target).SequenceEqual(actualOriginal), "unconfirmed CreateNew collision or changed consent object preserves exact target");
+                        Io(io, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.Close }); continue;
+                    }
+                    Need(begun.Success, "target candidate opened " + arm);
+                    Need(Io(io, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.Write, Buffer = bytes, Count = bytes.Length }).Success, "target bytes written " + arm);
+                    if (arm == "cancel")
+                    {
+                        var closed = Io(io, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.Close });
+                        Need(closed.Success && closed.ErrorCode == null && !File.Exists(candidate) && !File.Exists(target), "known uncommitted exact CreateNew object removed on normal cancellation"); continue;
+                    }
+                    if (arm == "foreign-temp")
+                    {
+                        string moved = candidate + ".moved"; File.Move(candidate, moved); File.WriteAllBytes(candidate, old);
+                        var closed = Io(io, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.Close });
+                        Need(closed.ErrorCode != null && File.ReadAllBytes(candidate).SequenceEqual(old) && File.ReadAllBytes(moved).SequenceEqual(bytes), "replaced tmp object is retained, never pathname-deleted"); continue;
+                    }
+                    var result = Io(io, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.CommitTarget, ExpectedDigest = Hash(bytes), ExpectedLength = bytes.Length });
+                    if (arm == "replace") Need(result.Success && result.FileCommitted && File.ReadAllBytes(target).SequenceEqual(bytes) && !File.Exists(candidate + ".backup"), "explicit consent mechanical replacement and verified backup cleanup");
+                    else if (arm == "BeforeCommit") Need(!result.Success && !result.CommitUnconfirmed && File.ReadAllBytes(target).SequenceEqual(old), "precommit failure never changes original target");
+                    else Need(!result.Success && result.CommitUnconfirmed && File.ReadAllBytes(target).SequenceEqual(bytes) && File.ReadAllBytes(candidate + ".backup").SequenceEqual(old), "after-attempt Unknown retains both actual target and original backup bytes");
+                    Io(io, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.Close });
+                    if (arm == "BeforeCommit") Need(!File.Exists(candidate), "precommit failure precisely cleans its same-object candidate");
+                    if (arm == "AfterCommit") Need(File.ReadAllBytes(candidate + ".backup").SequenceEqual(old), "Unknown Close never removes recovery backup");
+                }
+                finally { io.Stop(3000); }
+            }
         }
         private sealed class FaultFiles : IBlueprintLibraryFiles, IBlueprintLibraryLayoutSteps, IBlueprintLibraryExchangeSteps
         {

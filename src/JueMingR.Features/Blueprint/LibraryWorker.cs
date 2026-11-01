@@ -44,16 +44,23 @@ namespace JueMingR.Features.Blueprint
                 while (true)
                 {
                     LibraryCommand command;
-                    lock (gate) { while (pending == null && !ProjectionHasWorkLocked() && !MaterialHasWorkLocked() && !ExchangeHasWorkLocked() && !stopping) Monitor.Wait(gate); if (pending == null && stopping) break; command = pending; pending = null; }
+                    lock (gate) { while (pending == null && previewReading == null && !ProjectionHasWorkLocked() && !MaterialHasWorkLocked() && !ExchangeHasWorkLocked() && !stopping) Monitor.Wait(gate); if (pending == null && stopping) break; command = pending; pending = null; }
                     // Accepted library commands have priority over the next
                     // projection slice. Their receipt/operation slot is separate.
-                    if (command == null) { if (ExchangeTurn()) ExchangeStep(); else if (MaterialTurn()) MaterialStep(); else ProjectionStep(); continue; }
+                    if (command == null) { BackgroundStep(); continue; }
                     LibraryReceipt completed;
                     try
                     {
                         ReleaseRetiredProjection();
                         if (!opened && rootFailure == null) { try { files.Open(); opened = true; } catch (Exception e) { rootFailure = Reason(e); } }
                         if (rootFailure != null) completed = Receipt(command, LibraryStatus.Protected, rootFailure, true);
+                        else if (command.Kind == LibraryCommandKind.Preview && !command.Stage)
+                        {
+                            // Keep the ordinary single occupied slot until its
+                            // receipt is consumed; only execution yields.
+                            previewCommand = command; previewReading = ReadTemplatePreview(command).GetEnumerator();
+                            continue;
+                        }
                         else completed = Execute(command);
                     }
                     catch (OperationCanceledException)
@@ -81,7 +88,7 @@ namespace JueMingR.Features.Blueprint
                 if (stage != null && !stage.Promoted)
                     try { Cleanup(stage.Physical, true, stage.Blocks); } catch { }
             }
-            finally { CloseExchangeWorker(); CloseMaterialWorker(); CloseProjectionWorker(); files.Dispose(); }
+            finally { previewReading?.Dispose(); CloseExchangeWorker(); CloseMaterialWorker(); CloseProjectionWorker(); files.Dispose(); }
         }
         private LibraryReceipt Execute(LibraryCommand c)
         {

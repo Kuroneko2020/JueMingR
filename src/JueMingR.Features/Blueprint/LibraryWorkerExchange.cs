@@ -352,6 +352,7 @@ namespace JueMingR.Features.Blueprint
             }
             if (operation.Request.Kind != BlueprintExchangeKind.PrepareExport)
                 foreach (bool step in Io(operation, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.Close })) yield return step;
+            if (operation.Io?.ErrorCode == "blueprint-exchange-cleanup-retained" && operation.Completion != null) operation.Completion.Message += "；未能确认临时文件清理，相关文件已保留";
             operation.Request.Ticket?.Dispose();
             operation.OutputDigest?.Dispose();
         }
