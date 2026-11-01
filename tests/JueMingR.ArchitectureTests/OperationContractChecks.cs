@@ -37,6 +37,9 @@ namespace JueMingR.ArchitectureTests
             {
                 "JueMingR.Platform.Blueprint.IBlueprintLibraryFiles",
                 "JueMingR.Platform.Blueprint.IBlueprintLibraryLayoutSteps",
+                "JueMingR.Platform.Blueprint.IBlueprintLibraryExchangeSteps",
+                "JueMingR.Platform.Blueprint.BlueprintExchangeIoCommand", "JueMingR.Platform.Blueprint.BlueprintExchangeIoKind", "JueMingR.Platform.Blueprint.BlueprintExchangeIoReceipt", "JueMingR.Platform.Blueprint.IBlueprintExchangeIo",
+                "JueMingR.Platform.Blueprint.BlueprintFileDialogKind", "JueMingR.Platform.Blueprint.BlueprintFileDialogOutcome", "JueMingR.Platform.Blueprint.BlueprintFileDialogRequest", "JueMingR.Platform.Blueprint.BlueprintFileDialogResult", "JueMingR.Platform.Blueprint.BlueprintTargetDisposition", "JueMingR.Platform.Blueprint.IBlueprintExchangeTicket", "JueMingR.Platform.Blueprint.IBlueprintFileDialog",
                 "JueMingR.Platform.Blueprint.BlueprintCleanupProof",
                 "JueMingR.Platform.Combat.NpcIdentity", "JueMingR.Platform.Combat.PredictionAssumption", "JueMingR.Platform.Combat.PredictionStop",
                 "JueMingR.Platform.Combat.PredictionStrategy", "JueMingR.Platform.Combat.PredictionQuality", "JueMingR.Platform.Combat.PredictionFailureLayer",

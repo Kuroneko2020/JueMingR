@@ -6,7 +6,7 @@ namespace JueMingR.Features.Blueprint
 {
     // The game-thread owner sees immutable pages/receipts, never file handles.
     // Closing a UI or retiring a world cannot cancel an accepted asset mutation.
-    public sealed class LibraryState : IDisposable
+    public sealed partial class LibraryState : IDisposable
     {
         private readonly LibraryWorker worker;
         private LibrarySnapshot snapshot = new LibrarySnapshot(0, false, null, null);

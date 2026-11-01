@@ -23,6 +23,9 @@ namespace JueMingR.ArchitectureTests
             Add("BlueprintContentChecks", "blueprint-host", (root, failures) => BlueprintContentChecks.Check(failures));
             Add("BlueprintPreviewChecks", "blueprint-host", (root, failures) => BlueprintPreviewChecks.Check(failures));
             Add("BlueprintLibraryChecks", "blueprint-host", (root, failures) => BlueprintLibraryChecks.Check(failures));
+            Add("BlueprintExchangeChecks", "blueprint-host", (root, failures) => BlueprintExchangeChecks.Check(failures));
+            Add("BlueprintDialogChecks", "blueprint-host", (root, failures) => BlueprintDialogChecks.Check(failures));
+            Add("BlueprintDialogNativeSmoke", "blueprint-host", (root, failures) => BlueprintDialogChecks.NativeSmoke(failures));
             Add("BlueprintProjectionChecks", "blueprint-host", (root, failures) => BlueprintProjectionChecks.Check(failures));
             Add("BlueprintMirrorTrimChecks", "blueprint-host", (root, failures) => BlueprintMirrorTrimChecks.Check(failures));
             Add("BlueprintTrimGeometryChecks", "blueprint-host", (root, failures) => BlueprintTrimGeometryChecks.Check(failures));

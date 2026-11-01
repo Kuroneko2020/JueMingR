@@ -56,6 +56,7 @@ namespace NativeWorldTextProbe
                 var identities = ((System.Collections.Generic.IReadOnlyList<BlueprintMaterialInstance>)Get(host, "MaterialInstances")).ToArray();
                 long secondSequence = identities.Single(i => i.ProjectionGeneration == secondId).Sequence;
                 Require(identities.Select(i => i.Sequence).Distinct().Count() == 2, "same template instances have distinct stable session sequence identities");
+                NativeBlueprintPlacedListChecks.AssertPinned(context, firstId, secondId);
                 NativeBlueprintMaterialsUiChecks.BeginInstanceScope(context, firstId, secondId);
 
                 Require(WorldGen.PlaceTile(40, 70, TileID.Stone, true, true), "independent original world placement establishes one matched body");
@@ -78,6 +79,7 @@ namespace NativeWorldTextProbe
                 Require((long)Get(host, "MaterialInventoryReads") == reads && (long)Get(host, "MaterialContributionSteps") == merges && (long)Get(host, "MaterialPublicationSteps") == publishes,
                     "closed material view and disabled build have no inventory observation, contribution merging or publication work");
 
+                NativeBlueprintPlacedListChecks.RemoveAndRetire(context, secondId);
                 Call(host, "ClearProjection");
                 host.GetType().GetField("materialKnowledge", Flags).SetValue(host, null);
                 var complete = Small(library, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone });

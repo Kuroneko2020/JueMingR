@@ -76,6 +76,8 @@ namespace JueMingR.TerrariaHost.F5
         private bool lastClickName;
         public TextEditBuffer Editor { get { return editor; } }
         internal bool Submenu { get { return mode != View.None; } }
+        internal long ExchangePresentationGeneration { get; private set; }
+        private bool seenExchangeBusy;
         internal bool Visible { get { return Submenu && shell.Visible && shell.Page == 6; } }
         internal bool WorldInteractionBlocked { get { return Visible; } }
         internal bool OwnsTextToken { get { return TextInput.OwnsTextToken; } }
@@ -93,6 +95,8 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void OpenLibrary()
         {
+            ExchangePresentationGeneration++;
+            host.Shell?.BeforeBlueprintLibraryOpen();
             // Host owns manual admission; presentation never cancels capture.
             // Saved receipts reveal the list through their independent path.
             EndEdit(); captureMaterials.Clear(); materialRenderer.Dispose(); seenMaterialLayout = -1;
@@ -101,6 +105,8 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void ShowCapture()
         {
+            ExchangePresentationGeneration++;
+            host.Shell?.BeforeBlueprintLibraryOpen();
             CancelRead();
             EndEdit(); mode = View.Capture; selected = Guid.Empty; deleteConfirm = null; validation = null; objectIndex = 0; objects = null;
             objectsHandle = Guid.Empty; objectFailed = false; failedPreviews.Clear(); failedSummaries.Clear(); Reveal(); shell.ScrollTo(0);
@@ -114,6 +120,21 @@ namespace JueMingR.TerrariaHost.F5
             EndEdit(); captureMaterials.Clear(); materialRenderer.Dispose(); seenMaterialLayout = -1;
             mode = View.Library; selected = asset; deleteConfirm = null;
             RequestList(requestedPage, asset); shell.ScrollTo(0);
+        }
+        internal void AcceptExchangeAsset(Guid asset, long presentationGeneration)
+        {
+            // A successful library commit remains real after UI retirement,
+            // but its old display intent cannot reopen or steal a new page.
+            if (mode != View.Library || presentationGeneration != ExchangePresentationGeneration || shell.Page != 6) return;
+            if (Visible) { ShowSaved(asset); return; }
+            if (focusSuspended)
+            {
+                // Native Show may hide F5 through the shared focus-loss path.
+                // Preserve this exact library intent for explicit reopening,
+                // without reopening F5 or borrowing a newer page's selection.
+                selected = asset; host.Flow.SelectedAssetId = asset;
+                RequestList(requestedPage, asset);
+            }
         }
         internal void BeforeInput(bool active)
         {
@@ -149,7 +170,7 @@ namespace JueMingR.TerrariaHost.F5
                 // returns to this draft/focus rather than rebuilding its text.
                 TryConfirmDraft(); return false;
             }
-            if (!editId.HasValue || host.Library.Snapshot.Busy || pendingMutation.HasValue) return false;
+            if (!editId.HasValue || host.Library.Snapshot.Busy || host.ExchangeBusy || pendingMutation.HasValue) return false;
             var entry = Find(editId.Value); if (entry == null || entry.IsProtected) { validation = "这个蓝图暂不可修改，原文件已保护"; dirty = true; return false; }
             if (host.Library.TryRename(entry.AssetId, entry.MetadataIdentity, editor.Text))
             {
@@ -171,6 +192,7 @@ namespace JueMingR.TerrariaHost.F5
         // writes retain their receipt association and complete in the owner.
         internal void Suspend()
         {
+            ExchangePresentationGeneration++;
             host.CancelProjectionOpen();
             if (mode == View.Capture) host.CancelCaptureOrDraft();
             ReleasePresentation(); mode = View.None;
@@ -272,6 +294,13 @@ namespace JueMingR.TerrariaHost.F5
             if (part.Command != BlueprintLibraryCommand.Name) lastClickName = false;
             switch (part.Command)
             {
+                case BlueprintLibraryCommand.Import:
+                    EndEdit(); CancelRead(); host.BeginImport(); dirty = true; return;
+                case BlueprintLibraryCommand.Export:
+                    var export = Find(part.AssetId); Guid revision;
+                    if (export == null || export.IsProtected || !Guid.TryParse(export.ContentRevision, out revision)) return;
+                    var template = new BlueprintTemplateKey(export.AssetId, revision, export.ContentHash);
+                    EndEdit(); CancelRead(); host.BeginExport(template, export.Name); dirty = true; return;
                 case BlueprintLibraryCommand.Back: Back(); return;
                 case BlueprintLibraryCommand.Cancel: Back(); return;
                 case BlueprintLibraryCommand.Previous: NavigatePage(-1); return;
@@ -423,7 +452,7 @@ namespace JueMingR.TerrariaHost.F5
                 new Rectangle(0, 0, (int)dimensions.X, (int)dimensions.Y)), matrix);
             // Stable placement eligibility is a real cache dependency. Input
             // sampling phase is intentionally absent from this dependency.
-            bool shape = dirty || geometry || seenFlow != host.Flow.Revision || seenLibrary != host.Library.Snapshot.Revision || shownMessage != Message || seenPlaceCancellation != host.OwnPlaceCancellation || seenPlaceEligibility != host.CanInvokePlace ||
+            bool shape = dirty || geometry || seenExchangeBusy != host.ExchangeBusy || seenFlow != host.Flow.Revision || seenLibrary != host.Library.Snapshot.Revision || shownMessage != Message || seenPlaceCancellation != host.OwnPlaceCancellation || seenPlaceEligibility != host.CanInvokePlace ||
                 mode == View.Capture && editor != null && (editRevision != editor.Revision || composition != TextInput.Composition);
             if (shape)
             {
@@ -435,6 +464,7 @@ namespace JueMingR.TerrariaHost.F5
                 shell.ClampScroll();
                 if (scroll != shell.Scroll) { scroll = shell.Scroll; projection++; armed = null; }
                 seenFlow = host.Flow.Revision; seenLibrary = host.Library.Snapshot.Revision; shownMessage = Message; seenPlaceCancellation = host.OwnPlaceCancellation; seenPlaceEligibility = host.CanInvokePlace;
+                seenExchangeBusy = host.ExchangeBusy;
                 layoutGeneration = shell.Layout.Generation; resourceGeneration = renderer.Generation; previewCacheGeneration = previews.Generation;
             }
             PrepareCaptureMaterials(shape || geometry);
@@ -599,7 +629,8 @@ namespace JueMingR.TerrariaHost.F5
             Panel(new F5Rect(0, 0, view.Width, 42));
             Label("蓝图库", new F5Rect(10, 5, 220, 16), .76f);
             Label("共保存" + (current ? page.TotalCount : 0).ToString(CultureInfo.InvariantCulture) + "个蓝图", new F5Rect(10, 24, 235, 16), .62f);
-            Button("导入", BlueprintLibraryLayout.HeaderButton(view.Width, 0), BlueprintLibraryCommand.None, false);
+            var import = Button("导入", BlueprintLibraryLayout.HeaderButton(view.Width, 0), BlueprintLibraryCommand.Import, host.ExchangeDisabledReason == null);
+            if (!import.Enabled) { import.Hint = host.ExchangeDisabledReason; if (import.Hint != null) import.HintSize = Measure(import.Hint, .62f); }
             Button("上一页", BlueprintLibraryLayout.HeaderButton(view.Width, 1), BlueprintLibraryCommand.Previous, current && page.PageIndex > 0 && !snapshot.Busy);
             Button("下一页", BlueprintLibraryLayout.HeaderButton(view.Width, 2), BlueprintLibraryCommand.Next, current && page.PageIndex + 1 < page.PageCount && !snapshot.Busy);
             Button("返回", BlueprintLibraryLayout.HeaderButton(view.Width, 3), BlueprintLibraryCommand.Back, true);
@@ -637,11 +668,11 @@ namespace JueMingR.TerrariaHost.F5
             var panel = Panel(card); panel.Card = true; panel.Selected = draft || selected == id; panel.Command = BlueprintLibraryCommand.Card; panel.AssetId = id; panel.Enabled = true;
             bool editing = editor != null && editId == id;
             var nameRect = BlueprintLibraryLayout.Name(card);
-            var namePart = Button(editing ? "" : name, nameRect, BlueprintLibraryCommand.Name, draft ? host.Flow.Status == BlueprintCaptureStatus.DraftReady && !host.Library.Snapshot.Busy : enabled || editing, id);
+            var namePart = Button(editing ? "" : name, nameRect, BlueprintLibraryCommand.Name, draft ? host.Flow.Status == BlueprintCaptureStatus.DraftReady && !host.Library.Snapshot.Busy : !host.ExchangeBusy && (enabled || editing), id);
             namePart.Editing = editing;
             if (editing) editRect = nameRect;
             var action = Button(draft ? "保存" : editing ? "保存" : host.OwnPlaceCancellation ? "取消" : "放置", BlueprintLibraryLayout.Action(card, 0), draft ? BlueprintLibraryCommand.ConfirmDraft : editing ? BlueprintLibraryCommand.Rename : BlueprintLibraryCommand.Place,
-                draft ? enabled : editing ? enabled && !editProtected : (host.OwnPlaceCancellation || enabled) && host.CanInvokePlace, id);
+                draft ? enabled : editing ? enabled && !editProtected && !host.ExchangeBusy : (host.OwnPlaceCancellation || enabled) && host.CanInvokePlace, id);
             if (!draft && !editing && action.Enabled && host.OwnPlaceCancellation) { action.Hint = "取消摆放"; action.HintSize = Measure(action.Hint, .62f); }
             if (!draft && !editing && !action.Enabled)
             {
@@ -650,8 +681,9 @@ namespace JueMingR.TerrariaHost.F5
                     Find(id)?.IsProtected == true ? "这个蓝图暂不可修改，原文件已保护" : host.ProjectionActionHint;
                 action.HintSize = Measure(action.Hint, .62f);
             }
-            Button("导出", BlueprintLibraryLayout.Action(card, 1), BlueprintLibraryCommand.None, false, id);
-            Button(draft ? "取消" : deleteConfirm == id ? "确认" : "删除", BlueprintLibraryLayout.Action(card, 2), draft ? BlueprintLibraryCommand.Cancel : BlueprintLibraryCommand.Delete, draft || enabled, id);
+            var exporting = Button("导出", BlueprintLibraryLayout.Action(card, 1), BlueprintLibraryCommand.Export, !draft && enabled && host.ExchangeDisabledReason == null, id);
+            if (!exporting.Enabled && !draft) { exporting.Hint = host.ExchangeDisabledReason; if (exporting.Hint != null) exporting.HintSize = Measure(exporting.Hint, .62f); }
+            Button(draft ? "取消" : deleteConfirm == id ? "确认" : "删除", BlueprintLibraryLayout.Action(card, 2), draft ? BlueprintLibraryCommand.Cancel : BlueprintLibraryCommand.Delete, draft || enabled && !host.ExchangeBusy, id);
             var preview = BlueprintLibraryLayout.Preview(card);
             var image = TextPart(count == 0 ? "没有可预览的内容" : failedPreviews.Contains(key) ? "预览暂不可用" : "正在生成预览", preview, .62f, F5ElementKind.Image); image.PreviewKey = key;
             var materials = BlueprintLibraryLayout.Materials(card);

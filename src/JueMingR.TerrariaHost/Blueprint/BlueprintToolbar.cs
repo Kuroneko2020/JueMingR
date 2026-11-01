@@ -9,7 +9,7 @@ using Terraria.GameInput;
 
 namespace JueMingR.TerrariaHost.Blueprint
 {
-    internal enum BlueprintToolbarAction { None, Capture, Save, ExitCapture, Library, Move, Remove, Mirror, Trim, ConfirmTrim, CancelPlace, RemoveAll, Materials }
+    internal enum BlueprintToolbarAction { None, Capture, Save, ExitCapture, Library, Move, Remove, Mirror, Trim, ConfirmTrim, CancelPlace, RemoveAll, Materials, PlacedList }
     // Presentation owns only button rectangles and their UI gesture. Mode,
     // selection, world-action tails and preference all remain on HostBlueprint.
     internal sealed class BlueprintToolbar : IDisposable
@@ -48,6 +48,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool GeometryCurrent()
         {
             Layout.SetPreviewRevision(host.TrimPreviewRevision);
+            Layout.SetPlacedListVisible(host.ProjectionScene.Count != 0);
             return presented && host.ShowToolbar && drawnMatrix == Main.UIScaleMatrix &&
                 Layout.MatchesProjection(PlayerInput.OriginalScreenSize.X, PlayerInput.OriginalScreenSize.Y,
                     Main.UIScaleMatrix.M11, FontAssets.MouseText?.Value, host.State.Active, ProjectionMode) &&
@@ -68,6 +69,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!Layout.Available(index)) return false;
             switch (Layout.Action(index))
             {
+                case BlueprintToolbarAction.PlacedList: return host.CanOpenPlacedList;
                 case BlueprintToolbarAction.Materials: return host.CanOpenMaterials;
                 case BlueprintToolbarAction.Save: return host.CanSave;
                 case BlueprintToolbarAction.Capture: return !host.ProjectionEditing;
@@ -128,6 +130,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 switch (Layout.Action(execute))
                 {
+                    case BlueprintToolbarAction.PlacedList: host.OpenPlacedList(); break;
                     case BlueprintToolbarAction.Materials: host.OpenMaterialsFromToolbar(Layout.Buttons[execute].Rect.Offset(Layout.Panel.X, Layout.Panel.Y)); break;
                     case BlueprintToolbarAction.Move: host.MoveProjection(); break;
                     case BlueprintToolbarAction.Remove: host.RemoveProjection(); break;
@@ -179,6 +182,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!ReferenceEquals(skin, nextSkin) || !ReferenceEquals(pixel, nextPixel) || matrix != drawnMatrix) Cancel();
             font = nextFont; skin = nextSkin; pixel = nextPixel;
             Layout.SetPreviewRevision(host.TrimPreviewRevision);
+            Layout.SetPlacedListVisible(host.ProjectionScene.Count != 0);
             int oldGeneration = Layout.Generation;
             if (!Layout.EnsureProjection(screen.X, screen.Y, matrix.M11, font, measure, host.State.Active, ProjectionMode)) { Cancel(); return; }
             if (oldGeneration != Layout.Generation) Cancel();
@@ -224,7 +228,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void DrawHint(SpriteBatch batch, F5Rect bounds, int hovered)
         {
             var action = Layout.Action(hovered);
-            string value = action == BlueprintToolbarAction.Materials ? host.MaterialsDisabledReason ?? BlueprintControls.MaterialsHint :
+            string value = action == BlueprintToolbarAction.PlacedList ? host.PlacedListDisabledReason :
+                action == BlueprintToolbarAction.Materials ? host.MaterialsDisabledReason ?? BlueprintControls.MaterialsHint :
                 action == BlueprintToolbarAction.Move ? host.CanInvokeMove ? host.OwnMoveCancellation ? "取消移动，保留原蓝图" : "点击需要移动的蓝图" : host.MoveDisabledReason :
                 action == BlueprintToolbarAction.Remove ? host.CanInvokeRemove ? host.OwnRemoveCancellation ? "退出移除选择" : "点击需要移除的蓝图" : host.RemoveDisabledReason :
                 action == BlueprintToolbarAction.Mirror ? host.CanInvokeMirror ? host.OwnMirrorCancellation ? "取消镜像，保留原蓝图" : "点击需要镜像的蓝图" : host.MirrorDisabledReason :
@@ -285,14 +290,15 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int Generation { get; private set; }
         private float width, height, scale;
         private object font;
-        private bool active;
+        private bool active, placedListVisible, builtPlacedListVisible;
+        internal void SetPlacedListVisible(bool value) { placedListVisible = value; }
         private int projectionMode;
         private long previewRevision, builtPreviewRevision;
         internal void SetPreviewRevision(long value) { previewRevision = value; }
         internal bool Matches(float w, float h, float s, object f, bool mode)
         { return MatchesProjection(w, h, s, f, mode, 0); }
         internal bool MatchesProjection(float w, float h, float s, object f, bool mode, int projection)
-        { return Generation > 0 && w == width && h == height && s == scale && ReferenceEquals(f, font) && mode == active && projection == projectionMode && previewRevision == builtPreviewRevision; }
+        { return Generation > 0 && w == width && h == height && s == scale && ReferenceEquals(f, font) && mode == active && projection == projectionMode && previewRevision == builtPreviewRevision && placedListVisible == builtPlacedListVisible; }
         internal bool Ensure(float w, float h, float s, object f, Func<string, float, F5Size> measure, bool mode)
         { return EnsureProjection(w, h, s, f, measure, mode, 0); }
         internal bool EnsureProjection(float w, float h, float s, object f, Func<string, float, F5Size> measure, bool mode, int projection)
@@ -309,6 +315,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     BlueprintToolbarAction.Mirror, BlueprintToolbarAction.Trim, BlueprintToolbarAction.ConfirmTrim, BlueprintToolbarAction.Materials } :
                 new[] { BlueprintToolbarAction.Capture, BlueprintToolbarAction.Library, BlueprintToolbarAction.Move, BlueprintToolbarAction.Remove,
                     BlueprintToolbarAction.Mirror, BlueprintToolbarAction.Trim, BlueprintToolbarAction.Materials };
+            if (placedListVisible) { Array.Resize(ref nextActions, nextActions.Length + 1); nextActions[nextActions.Length - 1] = BlueprintToolbarAction.PlacedList; }
             var text = new string[nextActions.Length]; var sizes = new F5Size[text.Length]; var widths = new double[text.Length];
             double maximum = (double)w / s - 16, total = 16 + 4 * (text.Length - 1); float bh = 30;
             for (int i = 0; i < text.Length; i++)
@@ -333,7 +340,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!Finite(pw) || !Finite(ph) || ph > h / s - 32) return false;
             Panel = new F5Rect((w / s - pw) / 2, h / s - ph - 24, pw, ph);
             Buttons = nextButtons; actions = nextActions;
-            width = w; height = h; scale = s; font = f; active = mode; projectionMode = projection; builtPreviewRevision = previewRevision; Generation++;
+            width = w; height = h; scale = s; font = f; active = mode; projectionMode = projection; builtPreviewRevision = previewRevision; builtPlacedListVisible = placedListVisible; Generation++;
             return true;
         }
         internal int Hit(float x, float y)
@@ -349,6 +356,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 case BlueprintToolbarAction.ExitCapture: return "退出采集";
                 case BlueprintToolbarAction.Capture: return "采集蓝图";
                 case BlueprintToolbarAction.Library: return "打开蓝图库";
+                case BlueprintToolbarAction.PlacedList: return "已放置列表";
                 case BlueprintToolbarAction.Move: return projection == 3 ? "取消移动" : "移动蓝图";
                 case BlueprintToolbarAction.Remove: return projection == 4 ? "取消移除" : "移除蓝图";
                 case BlueprintToolbarAction.Mirror: return projection == 5 ? "取消镜像" : "水平镜像";

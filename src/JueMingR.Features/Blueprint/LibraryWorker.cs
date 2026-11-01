@@ -32,7 +32,7 @@ namespace JueMingR.Features.Blueprint
         { this.files = files ?? throw new ArgumentNullException(nameof(files)); thread = new Thread(Run) { IsBackground = true, Name = "JueMingR blueprint library" }; thread.Start(); }
         internal bool Busy { get { lock (gate) return occupied; } }
         internal long Processed { get { return Interlocked.Read(ref processed); } }
-        internal bool TrySubmit(LibraryCommand command) { lock (gate) { if (occupied || stopping) return false; pending = command; occupied = true; Interlocked.Exchange(ref processed, 0); Monitor.Pulse(gate); return true; } }
+        internal bool TrySubmit(LibraryCommand command) { lock (gate) { if (occupied || stopping || ExchangeBlocks(command.Kind)) return false; pending = command; occupied = true; Interlocked.Exchange(ref processed, 0); Monitor.Pulse(gate); return true; } }
         internal bool TryTake(out LibraryReceipt value) { lock (gate) { value = result; if (value == null) return false; result = null; occupied = false; return true; } }
         internal void CancelRead(long generation) { Interlocked.Exchange(ref cancelledRead, generation); }
         internal void BeginStop() { lock (gate) { stopping = true; Monitor.Pulse(gate); } }
@@ -44,10 +44,10 @@ namespace JueMingR.Features.Blueprint
                 while (true)
                 {
                     LibraryCommand command;
-                    lock (gate) { while (pending == null && !ProjectionHasWorkLocked() && !MaterialHasWorkLocked() && !stopping) Monitor.Wait(gate); if (pending == null && stopping) break; command = pending; pending = null; }
+                    lock (gate) { while (pending == null && !ProjectionHasWorkLocked() && !MaterialHasWorkLocked() && !ExchangeHasWorkLocked() && !stopping) Monitor.Wait(gate); if (pending == null && stopping) break; command = pending; pending = null; }
                     // Accepted library commands have priority over the next
                     // projection slice. Their receipt/operation slot is separate.
-                    if (command == null) { if (MaterialTurn()) MaterialStep(); else ProjectionStep(); continue; }
+                    if (command == null) { if (ExchangeTurn()) ExchangeStep(); else if (MaterialTurn()) MaterialStep(); else ProjectionStep(); continue; }
                     LibraryReceipt completed;
                     try
                     {
@@ -70,6 +70,10 @@ namespace JueMingR.Features.Blueprint
                     }
                     finally { files.CloseMetadata(); }
                     lock (gate) result = completed;
+                    // A stream of accepted List/Preview commands must not starve
+                    // an independent exchange. One ordinary command stays first,
+                    // then the same bounded lane rotation receives one slice.
+                    if (exchange != null) { if (ExchangeTurn()) ExchangeStep(); else if (MaterialTurn()) MaterialStep(); else ProjectionStep(); }
                 }
                 // Accepted create/rename/delete finished before this point.
                 // Stop gives cleanup back at a safe boundary; unfinished private
@@ -77,7 +81,7 @@ namespace JueMingR.Features.Blueprint
                 if (stage != null && !stage.Promoted)
                     try { Cleanup(stage.Physical, true, stage.Blocks); } catch { }
             }
-            finally { CloseMaterialWorker(); CloseProjectionWorker(); files.Dispose(); }
+            finally { CloseExchangeWorker(); CloseMaterialWorker(); CloseProjectionWorker(); files.Dispose(); }
         }
         private LibraryReceipt Execute(LibraryCommand c)
         {

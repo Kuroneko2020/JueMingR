@@ -548,7 +548,7 @@ namespace JueMingR.TerrariaHost.Items
         {
             get
             {
-                return tools.Runtime.IsSessionActive && (tools.Input.CanRunAutomaticActions && !Main.gamePaused || CanContinuePausedInventory) && PreparationInterfaceAllowed &&
+                return tools.Runtime.IsSessionActive && ((tools.Input.CanRunAutomaticActions || CanContinueExternalModal) && !Main.gamePaused || CanContinuePausedInventory) && PreparationInterfaceAllowed &&
                     !tools.Use.Active && !player.dead && !player.CCed && !player.cursed && !player.noItems && !player.isOperatingAnotherEntity &&
                     !player.HasLockedInventory() && !Main.gameMenu && !Main.blockInput && !Main.mapFullscreen &&
                     !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
@@ -559,6 +559,19 @@ namespace JueMingR.TerrariaHost.Items
                     !player.selectedItemState.HasBufferedChange && !Modifiers && OrdinaryInventoryUi(player);
             }
         }
+        private bool CanContinueExternalModal
+        {
+            get
+            {
+                // A native file window blocks discovery and StartAllowed, but
+                // cannot strand the one already-owned Item on the cursor. Only
+                // this accepted finite endpoint path may finish/return; Ready
+                // and Using never gain a new world action from this exception.
+                return tools.Input.ExternalModalBusy && tools.Input.CanRunOwnedContinuation &&
+                    (phase == Phase.Preparing || phase == Phase.Returning) && SameSession(player) &&
+                    !PhysicalInput && ExpectedCurrent(false, false);
+            }
+        }
         private bool CanContinuePausedInventory
         {
             get
@@ -567,7 +580,8 @@ namespace JueMingR.TerrariaHost.Items
                 // stops the world. Finish only our already-owned ItemSlot duty
                 // using this epoch's real UI input; StartAllowed and ToolUse
                 // still require a world step, so Ready/Using cannot build here.
-                return Main.netMode == 0 && Main.autoPause && Main.gamePaused && Main.CanUpdateGameplay && tools.Input.CanStartActions &&
+                return Main.netMode == 0 && Main.autoPause && Main.gamePaused && Main.CanUpdateGameplay &&
+                    (tools.Input.CanStartActions || tools.Input.CanContinueModalInventory) &&
                     (phase == Phase.Preparing || phase == Phase.Returning) && ownsInventory && Main.playerInventory &&
                     !Main.InGameUI.IsVisible && SameSession(player) && ExpectedCurrent(false, false);
             }

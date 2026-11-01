@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 
 namespace JueMingR.TerrariaHost.F5
 {
+    internal enum BlueprintContentMode { None, Library, PlacedList }
     internal sealed class BlueprintControls
     {
         internal const string CaptureAction = "blueprint.capture", SaveAction = "blueprint.save", ToolbarAction = "blueprint.toolbar", LibraryAction = "blueprint.library";
@@ -42,6 +43,7 @@ namespace JueMingR.TerrariaHost.F5
             Key(elements, SaveAction);
             rows.Row(ref y, 0, 522, "蓝图库", new[] { "打开", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintLibrary);
             Key(elements, LibraryAction);
+            rows.Row(ref y, 0, 522, "已放置列表", new[] { "打开" }, text => F5Command.BlueprintPlacedList);
             rows.Row(ref y, 0, 522, operation == 1 ? "取消移动" : "移动蓝图", new[] { operation == 1 ? "取消" : "移动", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintMove,
                 new F5RowDescription(MoveAction, MoveHint));
             Key(elements, MoveAction);
@@ -82,7 +84,7 @@ namespace JueMingR.TerrariaHost.F5
             var key = elements[elements.Count - 1];
             elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, id);
         }
-        internal static bool Owns(F5Command command) { return command >= F5Command.BlueprintCapture && command <= F5Command.BlueprintSubstitutionOff; }
+        internal static bool Owns(F5Command command) { return command >= F5Command.BlueprintCapture && command <= F5Command.BlueprintPlacedList; }
         internal static string ReplacementHint(int index)
         { return index == 1 ? "王朝桌除外" : index == 10 ? "云/微光平台除外" : index == 11 ? "仅安全墙" : null; }
         // UI display is phase independent; Host action entries own admission.
@@ -92,12 +94,14 @@ namespace JueMingR.TerrariaHost.F5
             (command != F5Command.BlueprintMirror || owner.CanInvokeMirror) && (command != F5Command.BlueprintTrim || owner.CanInvokeTrim) &&
             (command != F5Command.BlueprintConfirmTrim || owner.CanInvokeConfirmTrim) &&
             (command != F5Command.BlueprintMaterials || owner.CanOpenMaterials) &&
+            (command != F5Command.BlueprintPlacedList || owner.CanOpenPlacedList) &&
             (command != F5Command.BlueprintCapture || owner.State.Active || !owner.ProjectionEditing); }
         internal string Hint(F5Command command)
         {
             if (command == F5Command.BlueprintSave) return owner.CanSave ? null : owner.SaveDisabledReason;
             if (command == F5Command.BlueprintLibrary) return owner.ManualLibraryDisabledReason;
             if (command == F5Command.BlueprintMaterials) return owner.MaterialsDisabledReason;
+            if (command == F5Command.BlueprintPlacedList) return owner.PlacedListDisabledReason;
             if (command == F5Command.BlueprintMove) return owner.CanInvokeMove ? owner.OwnMoveCancellation ? "取消移动，保留原蓝图" : "点击需要移动的蓝图" : owner.MoveDisabledReason;
             if (command == F5Command.BlueprintRemove) return owner.CanInvokeRemove ? owner.OwnRemoveCancellation ? "退出移除选择" : "点击需要移除的蓝图" : owner.RemoveDisabledReason;
             if (command == F5Command.BlueprintMirror) return owner.CanInvokeMirror ? owner.OwnMirrorCancellation ? "取消镜像，保留原蓝图" : "点击需要镜像的蓝图" : owner.MirrorDisabledReason;
@@ -128,6 +132,7 @@ namespace JueMingR.TerrariaHost.F5
             else if (command == F5Command.BlueprintConfirmTrim) owner.ConfirmTrimProjection();
             else if (command == F5Command.BlueprintAutoBuildOn || command == F5Command.BlueprintAutoBuildOff) owner.SetAutoBuild(command == F5Command.BlueprintAutoBuildOn);
             else if (command == F5Command.BlueprintMaterials) owner.OpenMaterials();
+            else if (command == F5Command.BlueprintPlacedList) owner.OpenPlacedList();
             else if (command == F5Command.BlueprintToolbarOn || command == F5Command.BlueprintToolbarOff) owner.SetToolbar(command == F5Command.BlueprintToolbarOn);
         }
     }

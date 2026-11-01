@@ -48,6 +48,7 @@ namespace NativeWorldTextProbe
                     check("finite original inventory input preparation",()=>ConstructionMaterialPreparation(context,host,tools,input));
                     if(!preparationOnly && first==null)
                     {
+                    if(family=="ExternalModal")check("external modal finite owned inventory",()=>ConstructionExternalModal(context,host,tools,input));
                     if(family==null || family=="SupplyPresentation")
                         check("native cursor takeover and death receipt lifecycle",()=>ConstructionSupplyLifecycle(context,host,tools,input));
                     if(family==null || family=="SupplyPresentation" || family=="SupplySmartWiring")

@@ -7,7 +7,7 @@ using Microsoft.Xna.Framework;
 
 namespace JueMingR.TerrariaHost.F5
 {
-    internal enum BlueprintMaterialsSource { World, F5, Library }
+    internal enum BlueprintMaterialsSource { World, F5, Library, PlacedList }
 
     // This modal owns only its source, selected identity, geometry and gestures.
     // Viewing a scope never selects or pauses an automatic construction target.
@@ -39,6 +39,7 @@ namespace JueMingR.TerrariaHost.F5
         private IReadOnlyList<BlueprintMaterialInstance> observedInstances;
         private BlueprintMaterialsSource source;
         private long session, selected;
+        private bool strictInstance;
         private Matrix matrix;
         private Vector2 screen;
         private F5Rect anchor, preparedAnchor, panel, body, selector, scopePanel, summaryRect;
@@ -81,6 +82,15 @@ namespace JueMingR.TerrariaHost.F5
         { this.host = host; this.shell = shell; measure = shell.Layout.DynamicTextSize; measureHeader = MeasureHeader; }
         internal void OpenWorld(BlueprintMaterialsSource origin, F5Rect entry)
         { Open(origin, entry, null); host.SetMaterialViewDemand(true); }
+        internal bool OpenWorldInstance(F5Rect entry, long requestedSession, long instance)
+        {
+            if (!host.PlacedInstanceExists(requestedSession, instance)) return false;
+            // Open clears the old scope. Bind only after that lifecycle reset,
+            // before the first remaining-demand request can publish all-scene data.
+            Open(BlueprintMaterialsSource.PlacedList, entry, null);
+            strictInstance = true; selected = instance;
+            host.MaterialWorld(instance); return true;
+        }
         internal void OpenAsset(LibraryEntry entry, F5Rect position)
         { if (entry != null) Open(BlueprintMaterialsSource.Library, position, entry); }
         private void Open(BlueprintMaterialsSource origin, F5Rect entry, LibraryEntry template)
@@ -107,6 +117,7 @@ namespace JueMingR.TerrariaHost.F5
             if (Visible) { host.SetMaterialViewDemand(false); host.Input.Hotkeys.SuppressHeld(); host.Input.ConsumeHotkeyActions(); }
             Visible = ready = dropDown = OwnsPointer = false; armed = hovered = null; hoveredItem = 0;
             asset = null; snapshot = null; shownInstances = observedInstances = null; labels.Clear(); buttons.Clear(); scopes.Clear(); visibleScopes.Clear(); scopeLabels.Clear();
+            strictInstance = false;
             content.Clear(); renderer.Dispose(); shownContent = resource = layout = -1; dirty = true;
             summaryHeight = bodyTop = 0;
             dragging = userPositioned = positionDirty = scrollDirty = false;
@@ -211,7 +222,7 @@ namespace JueMingR.TerrariaHost.F5
             if (!active) { Close(); return; }
             if (!renderer.Refresh()) { Close(); return; }
             if (WorldMode) host.SetMaterialViewDemand(true);
-            var value = ReadSnapshot(); var instances = observedInstances;
+            var value = ReadSnapshot(); if (!Visible) return; var instances = observedInstances;
             bool geometry = matrix != transform || screen != dimensions || resource != renderer.Generation || layout != shell.Layout.Generation ||
                 !F5PopupPlacement.SameAnchor(anchor, preparedAnchor);
             bool changed = !ReferenceEquals(snapshot, value) || !ReferenceEquals(shownInstances, instances) || names != host.MaterialNameRevision;
@@ -274,6 +285,9 @@ namespace JueMingR.TerrariaHost.F5
                 if (!exists) return false;
             }
             if (selected != identity) content.Clear();
+            // An explicit range choice intentionally leaves the pinned detail;
+            // only an automatic disappearance must return to its original list.
+            strictInstance = false;
             selected = identity; dropDown = false; scroll = 0; snapshot = null; dirty = true; return true;
         }
         // Scope recovery is a pure UI consumer of the Host's current committed
@@ -285,7 +299,11 @@ namespace JueMingR.TerrariaHost.F5
             {
                 bool found = false; foreach (var item in observedInstances)
                     if (item.ProjectionGeneration == selected && item.SessionGeneration == session) { found = true; break; }
-                if (!found) { selected = 0; snapshot = null; content.Clear(); dirty = true; }
+                if (!found)
+                {
+                    if (strictInstance) { Close(); host.PlacedInstanceNoLongerAvailable(); return BlueprintMaterialSnapshot.Pending; }
+                    selected = 0; snapshot = null; content.Clear(); dirty = true;
+                }
             }
             return WorldMode ? host.MaterialWorld(selected) : host.MaterialAsset(asset);
         }

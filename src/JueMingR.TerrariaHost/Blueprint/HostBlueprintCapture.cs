@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             get {
                 if (!ControlsEnabled) return "蓝图当前不可用";
                 if (Library == null) return "蓝图库暂不可用";
+                if (ExchangeBusy) return "正在处理蓝图文件，请稍候";
                 if (Flow.Status == BlueprintCaptureStatus.Saving) return "正在保存蓝图，请稍候";
                 if (Flow.Status == BlueprintCaptureStatus.CommitUnconfirmed && !Flow.ContentHandle.IsEmpty) return "无法确认提交结果，相关文件已保护";
                 if (discardPending) return "正在清理采集草稿，请稍候";
