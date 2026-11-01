@@ -39,19 +39,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !oldLibrary.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
             ((BlueprintCaptureState)Get(host, "State")).Exit();
             string area = Path.Combine(Terraria.Program.SavePath, graphics == null ? "exchange-lifecycle" : "exchange-lifecycle-visual"); Directory.CreateDirectory(area); string source = Path.Combine(area, "source.jmbp");
-            string seedRoot = Path.Combine(area, "seed");
-            using (var seed = new LibraryState(new FileBlueprintLibrary(seedRoot)))
-            {
-                var identity = new BlueprintProjectionIdentity(Guid.NewGuid(), Guid.NewGuid(), "fixture", 1, 1);
-                var window = new BlueprintProjectionWindow(identity, 1, new CaptureSummary { Width = 1, Height = 1, ContentCount = 1 }, new BlueprintProjectionBounds(0, 0, 1, 1), new[] { new CaptureCell { Layers = CaptureLayer.Tile, TileType = 1 } }, Array.Empty<CaptureObject>());
-                var entry = NativeBlueprintProjectionVisualChecks.Save(seed, window); string content = Path.Combine(seedRoot, entry.AssetId.ToString("N"), "content");
-                byte[] root = File.ReadAllBytes(Path.Combine(content, "root.bin")), index = File.ReadAllBytes(Path.Combine(content, "index.bin"));
-                string chunk = Directory.EnumerateFiles(Path.Combine(content, "chunks"), "*.bin", SearchOption.AllDirectories).Single();
-                using (var memory = new MemoryStream()) using (var writer = new BinaryWriter(memory, Encoding.UTF8, true))
-                {
-                    writer.Write(new byte[] { 0x4A, 0x4D, 0x52, 0x4A, 0x4D, 0x42, 0x50, 0 }); writer.Write(1); byte[] name = Encoding.UTF8.GetBytes(entry.Name); writer.Write((uint)name.Length); writer.Write(name); writer.Write((uint)root.Length); writer.Write(root); writer.Write((long)index.Length); writer.Write(index); byte[] bytes = File.ReadAllBytes(chunk); writer.Write((uint)bytes.Length); writer.Write(bytes); writer.Flush(); using (var hash = SHA256.Create()) writer.Write(hash.ComputeHash(memory.ToArray())); writer.Flush(); File.WriteAllBytes(source, memory.ToArray());
-                }
-            }
+            WriteSource(Path.Combine(area, "seed"), source, 1);
             var files = new HeldSource();
             var library = new LibraryState(new FileBlueprintLibrary(Path.Combine(area, "templates"))); library.ConfigureExchange(files.Io, new AtomicFileDocument(Path.Combine(area, "counter.json"), 65536, true));
             var dialog = new Dialog(source); host.GetType().GetField("<Library>k__BackingField", F).SetValue(host, library); Set(host, "exchangeDialog", dialog);
@@ -258,6 +246,98 @@ namespace NativeWorldTextProbe
                     else Require(!(bool)Get(ui, "Submenu"), "late receipt cannot recreate retired library after " + intent);
                     Require(((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId != imported, "late success cannot overwrite newer world selection after " + intent);
                 }
+                if (graphics == null)
+                {
+                    // Direct owner handoff with real files/input/Shell updates.
+                    // The established CPU font/layout seam supplies legal page
+                    // geometry only; no device, fake Ready or native click is
+                    // claimed for these two materials handoff cases.
+                    var originalFont = Terraria.GameContent.FontAssets.MouseText;
+                    try
+                    {
+                        FiniteCostChecks.SetCpuFont(10);
+                        foreach (bool queued in new[] { false, true })
+                        {
+                            string incoming = Path.Combine(area, queued ? "materials-queued.jmbp" : "materials-late.jmbp");
+                            WriteSource(Path.Combine(area, queued ? "materials-queued-seed" : "materials-late-seed"), incoming, (ushort)(queued ? 9 : 8));
+                            Call(shell, "CloseAndSubmitPosition"); neutral();
+                            Require(library.TryList(9300, 0), "materials fixture loads a real full parent page");
+                            var parent = NativeBlueprintLibraryWait.AcceptedList(library, "materials parent page").Page;
+                            Require(parent.Entries.Count == 6, "materials parent has six real entries for meaningful scroll");
+                            LibraryEntry a = parent.Entries.First();
+                            Call(ui, "OpenLibrary"); Call(ui, "ShowSaved", a.AssetId); Call(ui, "RequestWork");
+                            NativeQuickItemChecks.Until(() =>
+                            {
+                                Call(host, "Poll"); Call(ui, "PollReceipts");
+                                return !library.Snapshot.Busy && library.Snapshot.Page?.Generation == (long)Get(ui, "listGeneration");
+                            });
+                            object layout = Get(state, "Layout"), painter = Get(shell, "renderer");
+                            Call(layout, "SetBlueprintLibraryVisible", true); Call(painter, "RefreshResources");
+                            Call(painter, "Prepare", state, (float)Main.screenWidth, (float)Main.screenHeight, Main.UIScaleMatrix.M11);
+                            var layoutType = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.BlueprintLibraryLayout", true);
+                            float parentHeight = (float)layoutType.GetMethod("Height", F).Invoke(null, new object[] { library.Snapshot.Page.Entries.Count });
+                            Call(layout, "SetBlueprintContentHeight", parentHeight);
+                            Call(state, "ScrollTo", (float)Get(layout, "MaxScroll") / 2);
+                            Require((float)Get(state, "Scroll") > 0, "public CPU layout produces a legal nonzero parent scroll");
+
+                            Set(host, "exchangeDialog", new Dialog(incoming));
+                            var materialsDialog = (Dialog)Get(host, "exchangeDialog");
+                            files.Hold(); Call(host, "BeginImport");
+                            Require(materialsDialog.Request != null, "new distinct B import is accepted before the materials handoff");
+                            Guid request = materialsDialog.Request.RequestId;
+                            step(); materialsDialog.Select(); step(); NativeQuickItemChecks.Until(() => files.Entered.IsSet);
+                            step(); Require(!(bool)Get(input, "CanStartActions") && !(bool)Get(state, "Visible"), "single trustworthy neutral sample does not issue a materials action");
+                            frame(new[] { Keys.F5 }, 0); step();
+                            Require((bool)Get(input, "CanStartActions") && (bool)Get(state, "Visible") && (bool)Get(host, "ExchangeBusy"), "F5 reopens the same parent while B IO remains held");
+                            // Freeze the real post-F5 baseline, rather than
+                            // assuming import-time setup survived the Shell.
+                            int parentPage = (int)Get(ui, "requestedPage"), parentTab = (int)Get(state, "Page");
+                            float parentScroll = (float)Get(state, "Scroll"); Guid? parentSelection = (Guid?)GetOptional(ui, "selected");
+                            Require(parentPage == library.Snapshot.Page.PageIndex && parentSelection == a.AssetId && parentScroll > 0 && parentScroll <= (float)Get(layout, "MaxScroll"),
+                                "materials handoff starts on the actual valid post-F5 page, nonzero scroll and A selection");
+                            long beforeMaterials = (long)Get(ui, "ExchangePresentationGeneration");
+                            BlueprintExchangeReceipt completed = null;
+                            Action awaitResult = () =>
+                            {
+                                // Observe the real immutable result without
+                                // taking it away from its normal Host consumer.
+                                NativeQuickItemChecks.Until(() =>
+                                {
+                                    if (library.ExchangePhase != BlueprintExchangePhase.Completed) return false;
+                                    completed = GetOptional(Get(library, "worker"), "exchangeReceipt") as BlueprintExchangeReceipt; return completed != null;
+                                });
+                                Require(completed.RequestId == request && completed.Kind == BlueprintExchangeKind.Import && completed.Status == BlueprintExchangeStatus.Completed &&
+                                    completed.AssetId != a.AssetId && completed.AssetId != imported && File.Exists(Path.Combine(area, "templates", completed.AssetId.ToString("N"), "metadata.json")),
+                                    "distinct B really commits a new asset; materials navigation does not cancel or disguise a duplicate");
+                                Require((Guid)Get(host, "exchangeRequest") == request, "materials retirement leaves the exact file request with its normal Host owner");
+                                Call(host, "Poll");
+                                Require(!(bool)Get(host, "ExchangeBusy") && (Guid)Get(host, "exchangeRequest") == Guid.Empty && (string)GetOptional(host, "projectionFeedback") == "蓝图已导入",
+                                    "normal Host result consumption retires its request and retains reliable B success feedback");
+                            };
+                            if (queued)
+                            {
+                                files.Release(); awaitResult();
+                                Require((Guid)Get(ui, "pendingExchangeAsset") == completed.AssetId, "B positioning is genuinely queued before the newer materials request");
+                            }
+                            // Direct Materials: no intervening Card, Name or
+                            // page operation may accidentally retire B first.
+                            Call(shell, "OpenBlueprintTemplateMaterials", a, Call(ui, "MaterialsAnchor", a.AssetId));
+                            object materials = Get(shell, "BlueprintMaterialsUi");
+                            Require((bool)Get(materials, "Visible") && Get(materials, "Source").ToString() == "Library" && (Guid)Get(materials, "AssetId") == a.AssetId &&
+                                (long)Get(ui, "ExchangePresentationGeneration") > beforeMaterials && (Guid)Get(ui, "pendingExchangeAsset") == Guid.Empty,
+                                "accepted A materials retires only the old import positioning intent");
+                            if (!queued) { files.Release(); awaitResult(); }
+                            Action parentUnchanged = () => Require((bool)Get(state, "Visible") && (bool)Get(ui, "Submenu") && (int)Get(state, "Page") == parentTab &&
+                                (int)Get(ui, "requestedPage") == parentPage && (float)Get(state, "Scroll") == parentScroll && (Guid?)GetOptional(ui, "selected") == parentSelection,
+                                "normal UI processing and materials close preserve the exact parent page, scroll and selection");
+                            step(); step(); Call(materials, "ReadSnapshot");
+                            Require((bool)Get(materials, "Visible") && (Guid)Get(materials, "AssetId") == a.AssetId, "B success cannot replace the materials source A");
+                            parentUnchanged(); Call(materials, "Close"); step(); parentUnchanged();
+                        }
+                    }
+                    finally { Terraria.GameContent.FontAssets.MouseText = originalFont; Call(Get(shell, "renderer"), "RefreshResources"); }
+                    Console.WriteLine("PASS direct template materials CPU owner handoff: distinct B Completed before/after A materials acceptance; Host success retained, queued positioning retired, valid post-F5 page/nonzero scroll/A selection preserved through normal processing and close. GPU/physical Materials click NOT_EXECUTED.");
+                }
                 Console.WriteLine("PASS exchange Host lifecycle (" + (graphics == null ? "CPU unavailable Shell consumers and direct view commands; active GPU path separate" : "complete Shell update/pointer/real Draw and enabled view clicks; Name owner command only") + "): observed focus loss, focused modal, both real-IO/neutral orders, success/healthy duplicate/local name, all Mouse1-5 tails, cancel/failure, actual F5 and newer Back/Card/Name/Page/PlacedList/session intent.");
             }
             finally
@@ -274,6 +354,25 @@ namespace NativeWorldTextProbe
         }
         private static void AssertSelected(object state, object ui, object host, Guid asset, string reason)
         { Require((bool)Get(state, "Visible") && ((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId == asset && (Guid?)GetOptional(ui, "selected") == asset, reason); }
+        private static void WriteSource(string seedRoot, string source, ushort tile)
+        {
+            using (var seed = new LibraryState(new FileBlueprintLibrary(seedRoot)))
+            {
+                var identity = new BlueprintProjectionIdentity(Guid.NewGuid(), Guid.NewGuid(), "fixture-" + tile, 1, 1);
+                var window = new BlueprintProjectionWindow(identity, 1, new CaptureSummary { Width = 1, Height = 1, ContentCount = 1 }, new BlueprintProjectionBounds(0, 0, 1, 1),
+                    new[] { new CaptureCell { Layers = CaptureLayer.Tile, TileType = tile } }, Array.Empty<CaptureObject>());
+                var entry = NativeBlueprintProjectionVisualChecks.Save(seed, window); string content = Path.Combine(seedRoot, entry.AssetId.ToString("N"), "content");
+                byte[] root = File.ReadAllBytes(Path.Combine(content, "root.bin")), index = File.ReadAllBytes(Path.Combine(content, "index.bin"));
+                string chunk = Directory.EnumerateFiles(Path.Combine(content, "chunks"), "*.bin", SearchOption.AllDirectories).Single();
+                using (var memory = new MemoryStream()) using (var writer = new BinaryWriter(memory, Encoding.UTF8, true))
+                {
+                    writer.Write(new byte[] { 0x4A, 0x4D, 0x52, 0x4A, 0x4D, 0x42, 0x50, 0 }); writer.Write(1); byte[] name = Encoding.UTF8.GetBytes(entry.Name);
+                    writer.Write((uint)name.Length); writer.Write(name); writer.Write((uint)root.Length); writer.Write(root); writer.Write((long)index.Length); writer.Write(index);
+                    byte[] bytes = File.ReadAllBytes(chunk); writer.Write((uint)bytes.Length); writer.Write(bytes); writer.Flush();
+                    using (var hash = SHA256.Create()) writer.Write(hash.ComputeHash(memory.ToArray())); writer.Flush(); File.WriteAllBytes(source, memory.ToArray());
+                }
+            }
+        }
         private sealed class HeldSource : IDisposable
         {
             internal readonly ManualResetEventSlim Entered = new ManualResetEventSlim();

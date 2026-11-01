@@ -134,6 +134,11 @@ namespace JueMingR.TerrariaHost.F5
             pendingExchangeAsset = asset; pendingExchangeSession = host.UiSession; pendingExchangeGeneration = presentationGeneration;
         }
         internal long BeginExchangeIntent()
+        { return RetireExchangeIntent(); }
+        // A newer view operation may revoke only import positioning, retaining
+        // the current library, selection and return scroll. File work belongs
+        // to Host/Library and is unaffected by this presentation retirement.
+        internal long RetireExchangeIntent()
         { pendingExchangeAsset = Guid.Empty; return ++ExchangePresentationGeneration; }
         private void RevealPendingExchange(bool active)
         {

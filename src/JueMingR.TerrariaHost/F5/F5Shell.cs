@@ -373,6 +373,10 @@ namespace JueMingR.TerrariaHost.F5
             CloseBlueprintReplacementConfiguration();
             matrix = Main.UIScaleMatrix;
             HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close();
+            // Accepting this template's materials is a newer view intent. Keep
+            // its parent location; retire only older import positioning, never
+            // the already accepted file operation or its success feedback.
+            BlueprintUi?.RetireExchangeIntent();
             BlueprintUi?.PauseForMaterials(); BlueprintMaterialsUi.OpenAsset(entry, anchor);
         }
         internal void BeforeBlueprintLibraryOpen() { BlueprintPlacedUi?.Close(); }
