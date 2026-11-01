@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
             internal GenerationProgress Progress;
             internal volatile bool Entered;
             internal volatile bool Entering;
+            internal volatile bool Retired;
         }
         private readonly HostInputState input;
         private Generation generation;
@@ -36,10 +37,18 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
                 Volatile.Write(ref current.Progress, WorldGenerator.CurrentGenerationProgress);
         }
         internal void Retire(Generation value)
-        { Interlocked.CompareExchange(ref generation, null, value); }
+        { if (value != null) value.Retired = true; }
+        internal void Finish(Generation value)
+        {
+            Retire(value);
+            // Closing revokes availability before native visibility/cleanup,
+            // but its invocation still owns the early native F5 branch until
+            // the finalizer. Do not expose the old native statics in between.
+            Interlocked.CompareExchange(ref generation, null, value);
+        }
         internal bool IsCurrent(Generation current)
         {
-            if (!Ready || current == null || current.Controller == null) return false;
+            if (!Ready || current == null || current.Retired || current.Controller == null) return false;
             var progress = Volatile.Read(ref current.Progress);
             // Native generation retires these statics on its background task.
             // Keep the token's objects for every dereference; a successful
@@ -47,7 +56,7 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
             return progress != null && WorldGen.generatingWorld && WorldGen.isGeneratingOrLoadingWorld &&
                 ReferenceEquals(current.Controller, WorldGenerator.CurrentController) &&
                 ReferenceEquals(progress, WorldGenerator.CurrentGenerationProgress) &&
-                !current.Controller.QueuedAbort && ReferenceEquals(Volatile.Read(ref generation), current);
+                !current.Controller.QueuedAbort && ReferenceEquals(Volatile.Read(ref generation), current) && !current.Retired;
         }
         private Generation Capture()
         { var current = Volatile.Read(ref generation); return IsCurrent(current) ? current : null; }

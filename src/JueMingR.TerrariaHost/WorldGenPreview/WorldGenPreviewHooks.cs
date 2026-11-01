@@ -115,7 +115,15 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
         private static HarmonyMethod Hook(string method)
         { return method == null ? null : new HarmonyMethod(typeof(WorldGenPreviewHooks).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Static)); }
         private static bool EntryAllowed()
-        { return DebugOptions.enableDebugCommands && !(current != null && current.Owner.OwnsGeneration); }
+        {
+            // Native Update may already have passed its outer non-null check.
+            // Keep owned closing calls suppressed; if their finalizer completed,
+            // the old controller must not be borrowed across native cleanup.
+            var controller = WorldGenerator.CurrentController;
+            return DebugOptions.enableDebugCommands && controller != null &&
+                !(current != null && current.Owner.OwnsGeneration) &&
+                ReferenceEquals(controller, WorldGenerator.CurrentController);
+        }
         internal void ProcessInput()
         {
             try
@@ -207,7 +215,7 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
         private static Exception GenerationEnd(Exception __exception, GenerationCall __state)
         {
             if (__state != null)
-            { current?.Owner.Retire(__state.Token); if (ReferenceEquals(generatingCall, __state)) generatingCall = __state.Parent; }
+            { current?.Owner.Finish(__state.Token); if (ReferenceEquals(generatingCall, __state)) generatingCall = __state.Parent; }
             return __exception;
         }
         private static bool AllowException(bool original, WorldGenerator.Controller controller)

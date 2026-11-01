@@ -1,7 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.Serialization;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
@@ -27,6 +29,28 @@ namespace NativeWorldTextProbe
         private static int opened;
         private static WorldGenerator.Controller observedController;
         private static bool clearAfterIdentity;
+        private static bool clearAfterOuter;
+        private static object closingOwner, closingToken;
+        private static void ClearAfterOuter()
+        {
+            if (!clearAfterOuter) return;
+            clearAfterOuter = false;
+            WorldGenerator.CurrentGenerationProgress = null; WorldGenerator.CurrentController = null;
+            Call(closingOwner, "Finish", closingToken);
+        }
+        private static IEnumerable<CodeInstruction> OuterTail(IEnumerable<CodeInstruction> source)
+        {
+            int matches = 0;
+            foreach (var instruction in source)
+            {
+                var method = instruction.operand as MethodInfo;
+                if (instruction.LoadsField(typeof(DebugOptions).GetField("enableDebugCommands")) ||
+                    method != null && method.Name == "EntryAllowed" && method.DeclaringType.FullName == "JueMingR.TerrariaHost.WorldGenPreview.WorldGenPreviewHooks")
+                { yield return new CodeInstruction(OpCodes.Call, typeof(NativeWorldGenPreviewChecks).GetMethod(nameof(ClearAfterOuter), Flags)); matches++; }
+                yield return instruction;
+            }
+            Require(matches == 1, "Outer-condition retirement hook binds the sole early debug gate.");
+        }
         private static void ClearAfterIdentity(bool __result)
         {
             if (!clearAfterIdentity || !__result) return;
@@ -37,6 +61,7 @@ namespace NativeWorldTextProbe
         }
         private static bool ObserveOpen()
         { opened++; observedController = WorldGenerator.CurrentController; Main.MenuUI.SetState(new UIState()); return false; }
+        private static bool ObserveClosing() { return false; }
         internal static void Run(object context, string output)
         {
             Assembly host = context.GetType().Assembly;
@@ -54,6 +79,8 @@ namespace NativeWorldTextProbe
                 File.WriteAllLines(Path.Combine(output, "patched-methods.txt"), patched.Select(m => m.DeclaringType.FullName + "." + m.Name + " | " + m));
                 Require(patched.Any(m => m.DeclaringType == typeof(UIWorldLoad) && m.Name == "Update") && patched.Any(m => m.DeclaringType == typeof(WorldGenerator) && m.Name == "GenerateWorld"), "Actual Harmony targets include native entry and generator.");
                 observer.Patch(typeof(UIWorldGenDebug).GetMethod("Open"), prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewChecks).GetMethod(nameof(ObserveOpen), Flags)));
+                observer.Patch(typeof(WorldGenerator).GetMethod("SetDebugWorldGenUIVisibility", Flags), prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewChecks).GetMethod(nameof(ObserveClosing), Flags)));
+                observer.Patch(typeof(UIWorldLoad).GetMethod("Update"), transpiler: new HarmonyMethod(typeof(NativeWorldGenPreviewChecks).GetMethod(nameof(OuterTail), Flags)));
                 DebugOptions.enableDebugCommands = false;
                 Main.MenuUI = new UserInterface(); Main.gameMenu = true;
                 // Constructor asset reads are avoided through its native server
@@ -116,6 +143,23 @@ namespace NativeWorldTextProbe
                     Main.MenuUI.SetState(page); PlayerInput.Triggers.Current.Inventory = true; page.Update(new GameTime());
                     Require(controller.QueuedAbort && !(bool)Call(owner, "CanShow", page), "Actual native Inventory consumer queues abort and immediately retires the banner.");
                     PlayerInput.Triggers.Current.Inventory = false; controller.QueuedAbort = false;
+                    int beforeClosing = opened;
+                    closingOwner = owner; closingToken = Get(owner, "generation");
+                    DebugOptions.enableDebugCommands = true;
+                    Main.keyState = new KeyboardState(Keys.F5);
+                    typeof(WorldGenerator).GetMethod("SetDebugWorldGenUIVisibility", Flags).Invoke(null, new object[] { false });
+                    page.Update(new GameTime());
+                    Console.WriteLine("CLOSING FRAME OBSERVATION extra-open=" + (opened - beforeClosing));
+                    Require(opened == beforeClosing && (bool)Get(owner, "Ready"), "Exact production closing seam keeps early native debug F5 suppressed until static cleanup.");
+                    Require(!(bool)Get(owner, "IsGenerationAvailable") && Get(owner, "generation") != null, "Closing revokes admission while retaining the original call's early-entry ownership.");
+                    clearAfterOuter = true; page.Update(new GameTime());
+                    Require(!clearAfterOuter && opened == beforeClosing && (bool)Get(owner, "Ready") && GetOptional(hooks, "Failure") == null, "Native outer condition may read the old Controller; cleanup/finalizer before the gate still cannot open.");
+                    var unowned = new WorldGenerator.Controller();
+                    WorldGenerator.CurrentController = unowned; WorldGenerator.CurrentGenerationProgress = new GenerationProgress();
+                    page.Update(new GameTime());
+                    Require(opened == beforeClosing + 1 && ReferenceEquals(observedController, unowned), "A stable native debug context never claimed by this owner retains its original entry.");
+                    Main.MenuUI.SetState(page); WorldGenerator.CurrentGenerationProgress = null; WorldGenerator.CurrentController = null;
+                    DebugOptions.enableDebugCommands = false;
                     Require(!DebugOptions.enableDebugCommands, "Entry, lifecycle and layout do not enable global debug commands.");
                     TextChecks(host);
                     Main.MenuUI.SetState(new UIState());
@@ -156,7 +200,7 @@ namespace NativeWorldTextProbe
                 {
                     try
                     {
-                        Call(owner, "Retire", retiredToken);
+                        Call(owner, "Finish", retiredToken);
                         Main.MenuUI.SetState(page); int before = opened;
                         frames.Frame(); frames.Frame(); frames.Frame(Keys.F5);
                         Require(opened == before + 1 && ReferenceEquals(observedController, nextController) && (bool)Get(owner, "Ready"), "A later real generation opens after retirement; old-token cleanup cannot cancel its publication.");
