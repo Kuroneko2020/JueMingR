@@ -26,6 +26,13 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionLifecycleChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionLifecycleCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionUiChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput','native-BlueprintVisual','native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionVisual')
         'tests/NativeWorldTextProbe/NativeBlueprintChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintPlacedListChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintExternalModalChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintExternalModalPreparationChecks.cs'=@('native-BlueprintExchangeCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintPreviewCooperationChecks.cs'=@('native-BlueprintExchangeCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintPlacedMaterialsChecks.cs'=@('native-BlueprintExchangeCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintExchangeLifecycleChecks.cs'=@('native-BlueprintExchangeCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintExchangeFollowupChecks.cs'=@('native-BlueprintExchangeFollowupCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorProfileChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorTrimUiChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorTrimChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
@@ -374,6 +381,17 @@ function Get-WorkloadLeafChecks {
         'tests/Workload/Invoke-WorkloadRoutingChecks.ps1'=@('workload-Routing')
         'tests/Workload/Invoke-WorkloadEvidenceChecks.ps1'=@('workload-Evidence')
     }
+    # The exchange owner-test slice reuses real BlueprintCpu/world-match and
+    # construction helpers. Conservatively bind their existing leaf inputs;
+    # this expands fingerprint responsibility without executing sibling scopes.
+    foreach($path in @($leaves.Keys)){
+        if(@($leaves[$path] | Where-Object {$_ -in @('native-BlueprintCpu','native-BlueprintConstructionCpu')}).Count){
+            $leaves[$path]=@($leaves[$path])+@('native-BlueprintExchangeCpu')
+        }
+    }
+    foreach($path in @('tests/NativeWorldTextProbe/NativeBlueprintExchangeLifecycleChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintPlacedListChecks.cs')){
+        $leaves[$path]=@($leaves[$path])+@('native-BlueprintExchangeFollowupCpu')
+    }
     return $leaves
 }
 function Get-WorkloadNativeScopes {
@@ -449,6 +467,8 @@ function Get-WorkloadNativeScopes {
         'BlueprintSubstitutionCpu'=@('blueprint-host','tools-host','browser-host');
         'BlueprintSubstitutionLifecycleCpu'=@('blueprint-host');
         'BlueprintCpu'=@('blueprint-host','tools-host');
+        'BlueprintExchangeCpu'=@('blueprint-host','tools-host','shared-host');
+        'BlueprintExchangeFollowupCpu'=@('blueprint-host','shared-host','hotkeys');
         'BlueprintMirrorTrimCpu'=@('blueprint-host','hotkeys','tools-host');
         'BlueprintConstructionCpu'=@('blueprint-host','tools-host');
         'BlueprintBuildCadenceCpu'=@('blueprint-host','tools-host');

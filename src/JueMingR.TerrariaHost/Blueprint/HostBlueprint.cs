@@ -34,6 +34,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             this.runtime = runtime; Input = input;
             Library = library;
+            InitializeExchange(directory);
             preference = new PreferenceDocument<BlueprintPreferences>(new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "config", "features", "blueprint.json"), 65536, true), new BlueprintPreferenceCodec(), new BlueprintPreferences(false, false));
             projectionHistory = new BlueprintSceneHistory(scope => new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "blueprints", "instances", scope, "scene.bin"), Int32.MaxValue, true, ".schema1-original"),
                 (storage, value) => { if (value.SourceVersion == 1) ((AtomicFileDocument)storage).RetainLoadedSource(); });
@@ -94,6 +95,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal void Toggle()
         {
             if (!ControlsEnabled || !Input.CanStartActions) return;
+            if (ExchangeBusy) { projectionFeedback = "正在处理蓝图文件，请稍候"; return; }
             if (ProjectionEditing || pendingProjection != null) { projectionFeedback = "请先完成或取消当前摆放"; return; }
             Pointer.Cancel(); Toolbar.Cancel();
             if (State.Active) State.Exit();
@@ -104,6 +106,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             registry.Register(new HotkeyAction(BlueprintControls.CaptureAction, "采集蓝图", HotkeyContext.Gameplay, () => ControlsEnabled, Toggle));
             registry.Register(new HotkeyAction(BlueprintControls.SaveAction, "保存采集", HotkeyContext.Gameplay, () => CanSave, () => Save()));
             registry.Register(new HotkeyAction(BlueprintControls.LibraryAction, "打开蓝图库", HotkeyContext.Gameplay, () => CanOpenLibrary, OpenLibrary));
+            registry.Register(new HotkeyAction(BlueprintControls.PlacedListAction, "已放置列表", HotkeyContext.Gameplay, () => CanOpenPlacedList, OpenPlacedList));
             registry.Register(new HotkeyAction(BlueprintControls.MoveAction, "移动蓝图", HotkeyContext.Gameplay, () => CanInvokeMove, MoveProjection));
             registry.Register(new HotkeyAction(BlueprintControls.RemoveAction, "移除蓝图", HotkeyContext.Gameplay, () => CanInvokeRemove, RemoveProjection));
             registry.Register(new HotkeyAction(BlueprintControls.MirrorAction, "水平镜像", HotkeyContext.Gameplay, () => CanInvokeMirror, MirrorProjection));
@@ -153,18 +156,21 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         public void OnSessionStarted()
         {
+            CancelSessionExchange();
             CancelOldCapture();
             ClearProjection(); ClearBuildSession();
             StartBuildUnknownSession();
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); generation = runtime.Generation; projectionChanges.SetSession(generation); player = Main.LocalPlayer; world = Main.ActiveWorldFileData; connection = Netplay.Connection; BeginProjectionSession(); }
         public void OnSessionEnded()
         {
+            CancelSessionExchange();
             CancelOldCapture();
             EndProjectionSession();
             ClearProjection(); ClearBuildSession();
             State.Exit(); Pointer.Cancel(); Toolbar.Cancel(); player = null; world = connection = null; }
         public void Update(ulong updateTick)
         {
+            PumpExchange();
             // The worker may finish its first read between callbacks. Publish
             // once through the same owner before any strategy-dependent work.
             RefreshSubstitutionPolicy();
@@ -184,8 +190,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 State.Interrupt(); Pointer.Cancel(); }
         }
-        internal void Poll() { RefreshSubstitutionPolicy(); PumpLibrary(); PumpProjectionPersistence(); PumpProjection(); AcceptProjectionSceneSnapshot(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
+        internal void Poll() { PumpExchange(); RefreshSubstitutionPolicy(); PumpLibrary(); PumpProjectionPersistence(); PumpProjection(); AcceptProjectionSceneSnapshot(); if (!preference.Snapshot.IsLoaded && loading.ElapsedMilliseconds >= 2000) preference.AbandonSlowLoad(); }
         public void FailClosed() {
+            CancelSessionExchange();
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.FailClosed);
             BlueprintBuildTrace.Semantic(BuildTraceStage.FailClosed,BuildTraceReason.BlueprintFailed);
@@ -204,6 +211,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void ExitProcess(object sender, EventArgs args)
         {
             AppDomain.CurrentDomain.ProcessExit -= ExitProcess;
+            exchangeDialog?.BeginStop(); CancelSessionExchange();
             // ProcessExit never samples live scene/edit state for persistence.
             // It only drains immutable values accepted on the game thread.
             var elapsed = Stopwatch.StartNew(); projectionHistory.Stop(1500);

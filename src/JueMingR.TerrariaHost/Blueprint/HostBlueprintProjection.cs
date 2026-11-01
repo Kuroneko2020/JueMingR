@@ -222,6 +222,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 {
                     ReleaseProjectionMatch(item);item.Qualification=null;item.QualificationRequestedMask=null;item.QualificationRequestedRevision=-1;
                     item.Summary = receipt.Summary; item.Name = receipt.Name ?? item.Name; item.TotalLayerCount = receipt.TotalLayerCount; item.TotalConstructionLayerCount = receipt.TotalConstructionLayerCount; item.SourceRanges = receipt.SourceRanges; item.MatchRanges = receipt.MatchRanges; item.Opened = true;
+                    materialSceneIdentity = -1; // Summary/name readiness also changes the shared light directory.
                     if (restoreProjection?.Identity.Equals(receipt.Identity) == true)
                     {
                         // FindProjection selects the moving copy first. Keep
@@ -342,7 +343,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (ProjectionMode == BlueprintProjectionMode.SelectingMove || ProjectionMode == BlueprintProjectionMode.SelectingRemove)
             {
                 hoveredProjection = HitProjection(x, y, subX, subY, confirm); if (!confirm || hoveredProjection == null) return; var target = hoveredProjection;
-                if (ProjectionMode == BlueprintProjectionMode.SelectingRemove) { RetireProjection(target); PublishProjectionScene(); AcceptProjectionSceneSnapshot(); ProjectionMode = projectionScene.Count == 0 ? BlueprintProjectionMode.None : BlueprintProjectionMode.Fixed; InterruptProjection(); Pointer.Cancel(); return; }
+                if (ProjectionMode == BlueprintProjectionMode.SelectingRemove) { RemoveCommittedProjection(target); return; }
                 if (!CheckProjectionMove(target)) return;
                 Library.ClearProjectionWindow(target.Identity); target.WindowPending = false;
                 restoreProjection = target; candidateProjection = target.Copy();

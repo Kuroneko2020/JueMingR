@@ -150,6 +150,18 @@ namespace NativeWorldTextProbe
                         else NativeBlueprintMaterialsUiChecks.Input(context, graphics);
                 }, processing: true, shortFeedback: true); return 0;
             }
+            if (scope == "BlueprintExchangeVisual")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context =>
+                {
+                    using (var graphics = new ProbeGraphics(content))
+                    {
+                        NativeBlueprintExchangeLifecycleChecks.Visual(context, graphics, output);
+                        NativeBlueprintPlacedListChecks.Visual(context, graphics, output);
+                    }
+                }, processing: true, shortFeedback: true); return 0;
+            }
             if (scope == "BlueprintVisual")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
@@ -173,6 +185,27 @@ namespace NativeWorldTextProbe
                         check("world match", () => NativeBlueprintWorldMatchChecks.Run(context, graphics, output));
                         check("materials", () => NativeBlueprintMaterialsUiChecks.Visual(context, graphics, output));
                     }
+                    if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
+                }, processing: true, shortFeedback: true); return 0;
+            }
+            if (scope == "BlueprintExchangeFollowupCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(NativeBlueprintExchangeFollowupChecks.Run, processing: true, shortFeedback: true); return 0;
+            }
+            if (scope == "BlueprintExchangeCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context =>
+                {
+                    Exception first = null;
+                    Action<string, Action> check = (name, body) => { try { body(); } catch (Exception error) { Console.Error.WriteLine("EXCHANGE CASE " + name + ": " + error); if (first == null) first = error; } };
+                    check("external modal", () => NativeBlueprintExternalModalChecks.Cpu(context));
+                    check("exchange Host lifecycle", () => NativeBlueprintExchangeLifecycleChecks.Run(context));
+                    check("placed list", () => NativeBlueprintPlacedListChecks.Run(context));
+                    check("seed substrate catalog", () => NativeBlueprintWorldMatchChecks.SubstrateSeedCatalog(context));
+                    check("pinned materials and scene", () => NativeBlueprintWorldMatchChecks.PlacedMaterialTargets(context));
+                    check("owned preparation", () => NativeBlueprintBuildChecks.RunConstruction(context, false, "ExternalModal"));
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                 }, processing: true, shortFeedback: true); return 0;
             }
@@ -201,6 +234,8 @@ namespace NativeWorldTextProbe
                     check("placement", NativeBlueprintPlacementChecks.Run);
                     check("budgets", NativeBlueprintBudgetChecks.Run);
                     check("input recovery", NativeBlueprintInputRecoveryChecks.Cpu);
+                    check("external modal input", NativeBlueprintExternalModalChecks.Cpu);
+                    check("placed list", NativeBlueprintPlacedListChecks.Run);
                     check("actual native construction", c=>NativeBlueprintBuildChecks.Run(c));
                     check("materials UI", NativeBlueprintMaterialsUiChecks.Run);
                     check("fixed scene persistence", NativeBlueprintPersistenceChecks.Run);

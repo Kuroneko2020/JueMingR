@@ -131,6 +131,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private readonly BlueprintMaterialTotals materialAll = new BlueprintMaterialTotals();
         private readonly LinkedList<BlueprintProjectionMatchRange> materialChanges = new LinkedList<BlueprintProjectionMatchRange>();
         private IReadOnlyList<BlueprintMaterialInstance> materialInstances = Array.Empty<BlueprintMaterialInstance>();
+        private readonly Dictionary<long, BlueprintProjectionPlacement> materialInstanceOwners = new Dictionary<long, BlueprintProjectionPlacement>();
         private int materialDemandSceneCursor, materialBuildSceneCursor, materialBuildSearchBudget;
         private int materialMatchOwners;
         // A native placement condition can depend on another player's remote
@@ -210,8 +211,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             SetMaterialViewDemand(true); EnsureMaterialInstances();
             if (projectionGeneration != 0)
             {
-                bool exists = false; foreach (var instance in materialInstances) if (instance.ProjectionGeneration == projectionGeneration) { exists = true; break; }
-                if (!exists) projectionGeneration = 0;
+                if (!materialInstanceOwners.ContainsKey(projectionGeneration)) projectionGeneration = 0;
             }
             if (materialScope != projectionGeneration) { materialScope = projectionGeneration; CancelMaterialPublication(); }
             if (projectionScene.Count > 0 && (MaterialCatalog == null || materialScope == 0 && materialMatchOwners != projectionScene.Count)) CancelMaterialPublication();
@@ -355,15 +355,17 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void EnsureMaterialInstances()
         {
             if (materialSceneIdentity == projectionSceneRevision) return;
-            materialSceneIdentity = projectionSceneRevision; var result = new List<BlueprintMaterialInstance>();
+            materialSceneIdentity = projectionSceneRevision; var result = new List<BlueprintMaterialInstance>(); materialInstanceOwners.Clear();
             foreach (var item in projectionScene)
             {
                 // The moving candidate and its restore are never two entries.
                 // During editing the last fixed scene remains a pending view.
                 string name = item.Name ?? "蓝图";
+                materialInstanceOwners.Add(item.Identity.ProjectionGeneration, item);
                 result.Add(new BlueprintMaterialInstance(item.Identity.SessionGeneration, item.Identity.ProjectionGeneration,
-                    item.Identity.ProjectionGeneration, name, item.OriginX, item.OriginY));
+                    item.Identity.ProjectionGeneration, name, item.OriginX, item.OriginY, item.Summary?.Width ?? 0, item.Summary?.Height ?? 0, item.CommitOrder, item.Identity.TemplateKey));
             }
+            result.Sort((left, right) => left.CommitOrder.CompareTo(right.CommitOrder));
             materialInstances = result.AsReadOnly(); CancelMaterialPublication();
         }
         private void InitializeMaterialMatch(BlueprintProjectionPlacement item)
@@ -496,7 +498,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             EnsureMaterialInstances(); BlueprintMaterialTotals totals = materialAll;
             if (materialScope != 0)
             {
-                foreach (var item in projectionScene) if (item.Identity.ProjectionGeneration == materialScope) { totals = item.Match?.Materials; break; }
+                // The shared directory's Host-only index avoids a scene walk
+                // on every stable single-instance material publication tick.
+                BlueprintProjectionPlacement item;
+                totals = materialInstanceOwners.TryGetValue(materialScope, out item) ? item.Match?.Materials : null;
             }
             // A fixed scene can precede its first Match owner/source arrival.
             // Missing ownership or a rebuilding catalog is Pending, not an
@@ -550,7 +555,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             materialMatchOwners = 0;
             materialAll.Counts.Clear(); materialAll.Expected = materialAll.Current = materialAll.Unresolved = materialAll.Updating = 0; materialAll.Failed = false; materialAll.Revision++;
             foreach (var range in materialChanges) range.Materials.Change?.Dispose(); materialChanges.Clear();
-            materialInstances = Array.Empty<BlueprintMaterialInstance>(); materialSceneIdentity = -1;
+            materialInstances = Array.Empty<BlueprintMaterialInstance>(); materialInstanceOwners.Clear(); materialSceneIdentity = -1;
             materialDraftKey = null; materialDraftExclusions = null; materialDraftSnapshot = BlueprintMaterialSnapshot.Pending; materialAssetKeys.Clear();
             materialDemandSceneCursor = materialBuildSceneCursor = materialBuildSearchBudget = 0;
             Library?.CancelMaterials(); CancelMaterialPublication();

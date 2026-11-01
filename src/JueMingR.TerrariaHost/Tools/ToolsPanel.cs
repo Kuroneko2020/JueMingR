@@ -36,12 +36,6 @@ namespace JueMingR.TerrariaHost.Tools
                     var e=rows[i][n];
                     if(e.Kind==F5ElementKind.Hotkey || e.Kind==F5ElementKind.Field)rows[i][n]=new F5Element(e.Kind,e.Rect,e.Text,e.TextSize,e.TextScale,e.Command,e.Kind==F5ElementKind.Field?HostTools.SelectAction:HostTools.Actions[i]);
                 }
-                if(i==2)
-                {
-                    new F5RowLayout(rows[i],measure).Row(ref y,0,width,"选择挖矿区域",new[]{"键"});
-                    int last=rows[i].Count-1;var e=rows[i][last];
-                    rows[i][last]=new F5Element(e.Kind,e.Rect,e.Text,e.TextSize,e.TextScale,e.Command,HostTools.SelectAction);
-                }
             }
             Height=y;
         }

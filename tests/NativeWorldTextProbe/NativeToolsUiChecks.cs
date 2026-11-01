@@ -57,9 +57,12 @@ namespace NativeWorldTextProbe
             Call(popup,"Close");Mouse(point,false);Call(popup,"Process",true,new KeyboardState(),point,Matrix.Identity,new Vector2(960,760),true);
             Require(command==settings.AcceptedCommandId && (bool)Get(popup,"ConsumeLeft"),"close cancels pending category and consumes the release tail");
             Require(settings.Set(settings.Value.WithCategories(saved)),"restore isolated category fixture");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});
-            Prepare(context,1,960,760,1);var mining=Get(shell,"MiningUi");var all=Controls(mining);
-            Require(all.Count(c=>Get(c,"Command").ToString()=="Hotkey")==3,"separate mining mode and select action binding controls");
-            Require(all.Where(c=>Get(c,"Command").ToString()=="Hotkey").Select(c=>(string)Get(Get(c,"Element"),"HotkeyTarget")).Distinct().OrderBy(x=>x).SequenceEqual(new[]{"tools.mining","tools.mining.select"}),"both keys route to exact shared registry IDs");
+            Prepare(context,1,960,760,1);var mining=Get(shell,"MiningUi");
+            var miningRows=(IEnumerable[])Get(Get(mining,"panel"),"rows");
+            Call(state,"ScrollTo",Get(Get(miningRows[2].Cast<object>().First(),"Rect"),"Y"));Prepare(context,1,960,760,1);
+            var all=Controls(mining);
+            Require(ExactMiningBindings(all),"one select Field and one independent mining Hotkey route to their exact shared IDs");
+            Require(!miningRows[2].Cast<object>().Any(e=>(string)GetOptional(e,"Text")=="选择挖矿区域"),"removed select row contributes no text, layout or hidden hit target");
             var on=all.First(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==21);point=Point(Get(on,"Rect"));var miningSetting=((ToolSettings[])Get(host,"Settings"))[2];command=miningSetting.AcceptedCommandId;
             Mouse(point,false);Call(mining,"ProcessInput",true,point,true,true,false);Mouse(point,true);Call(mining,"ProcessInput",true,point,true,true,false);Mouse(point,false);Call(mining,"ProcessInput",true,point,false,true,false);
             Require(miningSetting.AcceptedCommandId==command,"changed native viewport cancels armed mining action before layout catches up");
@@ -67,6 +70,12 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS G09 UI: real configuration/category persistence, modal hints, close tails, distinct shared mining bindings and stale-geometry rejection.");
         }
         internal static object[] Controls(object ui){return ((IEnumerable)Get(ui,"controls")).Cast<object>().ToArray();}
+        private static bool ExactMiningBindings(object[] controls)
+        {
+            var bindings=controls.Where(c=>Get(c,"Command").ToString()=="Hotkey").Select(c=>Get(c,"Element")).ToArray();
+            return bindings.Length==2 && bindings.Count(e=>(string)Get(e,"HotkeyTarget")=="tools.mining.select" && Get(e,"Kind").ToString()=="Field")==1 &&
+                bindings.Count(e=>(string)Get(e,"HotkeyTarget")=="tools.mining" && Get(e,"Kind").ToString()=="Hotkey")==1;
+        }
         internal static void FullBindings(object context,ProbeGraphics graphics,string output)
         {
             object host=Get(context,"Tools"),shell=Get(context,"Shell"),state=Get(shell,"State"),input=Get(context,"Input"),mining=Get(shell,"MiningUi"),popup=Get(shell,"HotkeyPopup");
@@ -83,10 +92,10 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(state,"Visible"),"real F5 opens complete G09 shell");
                 Nav(context,1);var layout=Get(state,"Layout");if(size[1]==440)Require((float)Get(layout,"MaxScroll")>0,"short populated Reforge produces genuine misc scrolling");
                 var view=Get(layout,"Viewport");var inside=(Point(view)+new Vector2((float)Get(state,"X"),(float)Get(state,"Y")))*Main.UIScale;
-                for(int n=0;n<80 && (Controls(mining).Count(c=>Get(c,"Command").ToString()=="Hotkey")<3 || (float)Get(state,"Scroll")==0 && (float)Get(layout,"MaxScroll")>0);n++)
+                for(int n=0;n<80 && (!ExactMiningBindings(Controls(mining)) || (float)Get(state,"Scroll")==0 && (float)Get(layout,"MaxScroll")>0);n++)
                 {UiFrame(context,inside,false,new Keys[0],-120);}
                 var icons=Controls(mining).Where(c=>Get(c,"Command").ToString()=="Hotkey").ToArray();
-                Require(icons.Length==3 && ((float)Get(layout,"MaxScroll")==0 || (float)Get(state,"Scroll")>0),"both independent mining controls reached through actual scroll input: icons="+icons.Length+" scroll="+Get(state,"Scroll")+" max="+Get(layout,"MaxScroll"));
+                Require(ExactMiningBindings(Controls(mining)) && ((float)Get(layout,"MaxScroll")==0 || (float)Get(state,"Scroll")>0),"exact select Field and main Hotkey reached through actual scroll input: icons="+icons.Length+" scroll="+Get(state,"Scroll")+" max="+Get(layout,"MaxScroll"));
                 var mode=Controls(mining).Single(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==21);
                 var select=icons.Single(c=>Get(Get(c,"Element"),"Kind").ToString()=="Field");
                 var modeRect=Get(mode,"Rect");var selectRect=Get(select,"Rect");
@@ -106,10 +115,8 @@ namespace NativeWorldTextProbe
                     PopupClick(context,popup,"Close");UiFrame(context,Vector2.Zero,false);
                 }
                 Require(((string)Get(Get(mining,"bindingDisplay"),"Text")).Contains("F10"),"saved action key is visibly displayed in the adjacent box");
-                var second=Controls(mining).Single(c=>Get(Get(c,"Element"),"Kind").ToString()=="Hotkey" && (string)Get(Get(c,"Element"),"HotkeyTarget")=="tools.mining.select");
-                Vector2 secondPoint=Point(Get(second,"Rect"))*Main.UIScale;Click(context,secondPoint);Click(context,secondPoint);
-                Require((bool)Get(popup,"Visible") && (string)Get(popup,"Target")=="tools.mining.select","retained second row opens the same select binding after real scrolling");
-                PopupClick(context,popup,"Close");UiFrame(context,Vector2.Zero,false);
+                Require(ExactMiningBindings(Controls(mining)) && !((IEnumerable[])Get(Get(mining,"panel"),"rows"))[2].Cast<object>().Any(e=>(string)GetOptional(e,"Text")=="选择挖矿区域"),
+                    "adjacent Field is the only select entry; no duplicate row or select keyboard hotspot remains");
                 graphics.Image(Path.Combine(output,"tools-bound-misc-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);
                 if(size[1]==760)
                 {
@@ -127,7 +134,7 @@ namespace NativeWorldTextProbe
                     var changedFont=Terraria.GameContent.FontAssets.ItemStack.Value;Require(!ReferenceEquals(changedFont,graphics.Font),"font identity actually changes");graphics.SetMouseFont(changedFont);UiFrame(context,point,false);UiFrame(context,Vector2.Zero,false);
                     Require(!(bool)Get(popup,"Visible") && ReferenceEquals(Get(mining,"bindingFont"),changedFont),"font replacement refits dynamic binding and cancels a stale second click");
                     graphics.SetMouseFont(graphics.Font);UiFrame(context,Vector2.Zero,false);UiFrame(context,Vector2.Zero,false);
-                    Require(Controls(mining).Count(c=>Get(c,"Command").ToString()=="Hotkey")==3,"font restore retains both action controls");
+                    Require(ExactMiningBindings(Controls(mining)),"font restore retains the exact select Field and independent main Hotkey");
                 }
                 Nav(context,0);Nav(context,1);UiFrame(context,Vector2.Zero,false);
                 Require((float)Get(Get(state,"Layout"),"ContentHeight")> (float)Get(mining,"Height"),"page return preserves all blocks after Mining and the merchant footer");
@@ -136,7 +143,7 @@ namespace NativeWorldTextProbe
             NativeProcessingUiChecks.Save(reforge,new ProcessingOptions(false,new string[0]));
             Main.screenWidth=960;Main.screenHeight=760;Main.UIScale=1;PlayerInput.CacheOriginalScreenDimensions();
             UiFrame(context,Vector2.Zero,false,Keys.F5);UiFrame(context,Vector2.Zero,false);Nav(context,1);
-            Require((float)Get(state,"Scroll")<=(float)Get(Get(state,"Layout"),"MaxScroll") && Controls(mining).Count(c=>Get(c,"Command").ToString()=="Hotkey")==3,"removing Reforge cards clamps scroll and leaves both bindings reachable");
+            Require((float)Get(state,"Scroll")<=(float)Get(Get(state,"Layout"),"MaxScroll") && ExactMiningBindings(Controls(mining)),"removing Reforge cards clamps scroll and leaves both exact bindings reachable");
             Call(shell,"CloseAndSubmitPosition");UiFrame(context,Vector2.Zero,false);
             DispatchBindings(context);
             Console.WriteLine("PASS G09 full F5: populated Reforge scroll, adjacent action binding box and independent toggle, real double-click/Record/save paths, short and actual 150% windows, font replacement, Off hint clearing, stable cache, page return, reopen and content shrink.");

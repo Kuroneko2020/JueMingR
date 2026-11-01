@@ -11,7 +11,7 @@ namespace JueMingR.Infrastructure.Blueprint
 {
     // The stable library lease spans every asset operation, including the final
     // removal of an asset lock. Unknown entries and links are never cleanup work.
-    public sealed partial class FileBlueprintLibrary : IBlueprintLibraryFiles
+    public sealed partial class FileBlueprintLibrary : IBlueprintLibraryFiles, IBlueprintLibraryExchangeSteps
     {
         public const int MaximumBlockBytes = 1048576;
         private readonly string directory;
@@ -99,10 +99,12 @@ namespace JueMingR.Infrastructure.Blueprint
         public Stream OpenIndex(Guid id, bool stage)
         { Ready(); string path = Path.Combine(Content(id, stage), "index.bin"); Guard(path); return new FileStream(path, FileMode.Open, FileAccess.Read, stage && stageWriter == id && stageIndex != null ? FileShare.ReadWrite : FileShare.Read); }
         public void SealStage(Guid id, byte[] root)
+        { foreach (int ignored in SealStageSteps(id, root, 32)) { } }
+        public IEnumerable<int> SealStageSteps(Guid id, byte[] root, int budget)
         {
             Ready(); if (root == null || root.Length < 1 || root.Length > 65536) throw new ArgumentException("blueprint-root-size");
             StageOwner owner = ReadOwner(id); if (owner.Root != null) throw new InvalidDataException("blueprint-stage-already-sealed");
-            using (Stream index = OpenIndex(id, true)) VerifyStageIndex(index, owner);
+            using (Stream index = OpenIndex(id, true)) foreach (int count in VerifyStageIndexSteps(index, owner, budget)) yield return count;
             string path = Path.Combine(Content(id, true), "root.bin"); Guard(path);
             using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { stream.Write(root, 0, root.Length); stream.Flush(true); }
             if (!Equal(ReadBounded(path, 65536), root)) throw new InvalidDataException("blueprint-root-readback");
@@ -121,13 +123,18 @@ namespace JueMingR.Infrastructure.Blueprint
             foreach (int ignored in ValidateLayoutSteps(id, stage, blockCount, 64)) { }
         }
         public void PromoteStage(Guid stageId, Guid assetId)
+        { foreach (int ignored in PromoteStageSteps(stageId, assetId, 32)) { } }
+        public IEnumerable<int> PromoteStageSteps(Guid stageId, Guid assetId, int budget)
         {
             Ready(); string source = Content(stageId, true), asset = Asset(assetId); Guard(source); Guard(asset);
             StageOwner owner = ReadOwner(stageId); if (owner.Root == null) throw new InvalidDataException("blueprint-stage-not-sealed");
             ValidateCleanupNames(stageId, true);
             VerifyFile(Path.Combine(source, "root.bin"), owner.Root, false);
-            using (Stream index = OpenIndex(stageId, true)) VerifyStageIndex(index, owner);
+            using (Stream index = OpenIndex(stageId, true)) foreach (int count in VerifyStageIndexSteps(index, owner, budget)) yield return count;
             if (Directory.Exists(asset) || File.Exists(asset)) throw new InvalidDataException("blueprint-asset-conflict");
+            // Negative progress marks the next MoveNext as the irreversible
+            // owner-removal/promotion boundary; consumers latch the stable ID.
+            yield return -1;
             DeleteVerified(Path.Combine(source, ".owner.bin"), owner.OwnerIdentity, false);
             Directory.CreateDirectory(asset); Guard(asset);
             Directory.Move(source, Path.Combine(asset, "content"));
@@ -184,10 +191,13 @@ namespace JueMingR.Infrastructure.Blueprint
             owner.OwnerIdentity = Hash(bytes);
         }
         private void VerifyStageIndex(Stream index, StageOwner owner)
+        { foreach (int ignored in VerifyStageIndexSteps(index, owner, 32)) { } }
+        private IEnumerable<int> VerifyStageIndexSteps(Stream index, StageOwner owner, int budget)
         {
+            if (budget < 1 || budget > 64) throw new ArgumentOutOfRangeException(nameof(budget));
             if (index.Length != checked(owner.Blocks * 32L)) throw new InvalidDataException("blueprint-stage-index-length");
             index.Position = 0; byte[] chain = new byte[32], hash = new byte[32];
-            for (long number = 0; number < owner.Blocks; number++) { ReadExactly(index, hash); chain = Chain(chain, hash); }
+            for (long number = 0; number < owner.Blocks; number++) { ReadExactly(index, hash); chain = Chain(chain, hash); if (number % budget == budget - 1) yield return budget; }
             if (!Equal(chain, owner.Chain)) throw new InvalidDataException("blueprint-stage-index-identity");
         }
         private void ValidateCleanupNames(Guid id, bool stage)

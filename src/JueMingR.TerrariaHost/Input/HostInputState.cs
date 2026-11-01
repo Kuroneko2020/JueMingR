@@ -14,6 +14,28 @@ namespace JueMingR.TerrariaHost.Input
     {
         private readonly Func<IntPtr> gameWindow, foregroundWindow;
         private bool observed, rearming, quarantine, mapped, finalized, nativePermission;
+        internal enum ExternalModalPhase { None, ModalOwned, AwaitFocusedNeutral }
+        private Guid externalModalRequest;
+        internal ExternalModalPhase ExternalModalState { get; private set; }
+        internal bool ExternalModalBusy { get { return ExternalModalState != ExternalModalPhase.None; } }
+        internal IntPtr CaptureGameWindow() { return gameWindow(); }
+        internal bool TryAcquireExternalModal(Guid requestId)
+        {
+            if (requestId == Guid.Empty || ExternalModalBusy) return false;
+            externalModalRequest = requestId; ExternalModalState = ExternalModalPhase.ModalOwned;
+            // The accepted button is consumed before another native consumer can
+            // see it. Physical ownership stays until trusted samples retire it.
+            Hotkeys.SuppressHeld(); quarantine = true; ConsumeMappedInput();
+            return true;
+        }
+        internal void ReturnExternalModal(Guid requestId)
+        {
+            if (externalModalRequest != requestId || ExternalModalState != ExternalModalPhase.ModalOwned) return;
+            // Explicitly rearm even when Windows never produced an observable
+            // unfocused epoch. Returning a path is not physical release proof.
+            ExternalModalState = ExternalModalPhase.AwaitFocusedNeutral; rearming = quarantine = true;
+            Hotkeys.SuppressHeld(); ConsumeMappedInput();
+        }
         private uint worldAtBegin;
         private Dictionary<string, bool> mappedKeys;
         private string[] keys = new string[0];
@@ -52,7 +74,7 @@ namespace JueMingR.TerrariaHost.Input
             PhysicalMapX = (int)(sample.X * PlayerInput.RawMouseScale.X); PhysicalMapY = (int)(sample.Y * PlayerInput.RawMouseScale.Y);
             int down = (sample.LeftButton == ButtonState.Pressed ? 1 : 0) | (sample.RightButton == ButtonState.Pressed ? 2 : 0) |
                 (sample.MiddleButton == ButtonState.Pressed ? 4 : 0) | (sample.XButton1 == ButtonState.Pressed ? 8 : 0) | (sample.XButton2 == ButtonState.Pressed ? 16 : 0);
-            bool reliable = IsFocused && FocusHelper.IsSelectedApplication && !rearming;
+            bool reliable = IsFocused && FocusHelper.IsSelectedApplication && !rearming && !ExternalModalBusy;
             bool claims = reliable && ClaimsMapPointer != null && ClaimsMapPointer();
             if (claims) mouseTail |= down & ~previousMouse;
             if (reliable && !claims && ClaimsReadOnlyGesture != null) readOnlyTail |= ClaimsReadOnlyGesture(down, down & ~previousMouse) & down & ~previousMouse & 31;
@@ -73,12 +95,12 @@ namespace JueMingR.TerrariaHost.Input
         internal bool HotkeyPointerOwned { get { return HotkeyCapture || Hotkeys.HasSuppressedKeys || hotkeyTailSample; } }
         internal bool IsFocused { get; private set; }
         internal bool SampleFocused { get { return mapped && IsFocused && nativePermission; } }
-        internal bool CanUseInput { get { return SampleFocused && finalized && !quarantine; } }
+        internal bool CanUseInput { get { return SampleFocused && finalized && !quarantine && !ExternalModalBusy; } }
         internal bool CanStartActions { get { return CanUseInput; } }
         // UpdateViewZoomKeys runs after mapping but before keyboard finalization.
         // Its only source is the already-filtered native triggers; this grants
         // no permission to later action consumers or to reread physical keys.
-        internal bool CanUseMappedViewInput { get { return SampleFocused && !quarantine && !rearming && !HotkeyPointerOwned && !HotkeyCapture; } }
+        internal bool CanUseMappedViewInput { get { return SampleFocused && !quarantine && !rearming && !ExternalModalBusy && !HotkeyPointerOwned && !HotkeyCapture; } }
         // Automation observes game state, not an OS gesture. A background
         // simulation may continue, but it never proves a physical release or
         // rearms hotkeys. An empty outer Update cannot start work: the native
@@ -86,12 +108,22 @@ namespace JueMingR.TerrariaHost.Input
         // Input runs before native pause/step checks, so sampling alone is not
         // proof. This gates new consumers, never receipts or retained ownership.
         // Equality also handles the native uint counter wrapping naturally.
-        internal bool CanRunAutomaticActions { get { return mapped && finalized && Main.CanUpdateGameplay && !Main.gamePaused && Main.GameUpdateCount != worldAtBegin && (!IsFocused || CanStartActions); } }
+        internal bool CanRunAutomaticActions { get { return !ExternalModalBusy && CanRunOwnedContinuation; } }
+        // Only an existing exact owner may use this outlet for finite cleanup.
+        // It preserves the original gameplay-step gate while a native modal
+        // blocks all NEW targets. It is not a general automation permission.
+        internal bool CanRunOwnedContinuation { get { return mapped && finalized && Main.CanUpdateGameplay && !Main.gamePaused && Main.GameUpdateCount != worldAtBegin && (ExternalModalBusy || !IsFocused || CanStartActions); } }
+        // Native single-player auto-pause still runs its inventory UI tail.
+        // This epoch proof belongs exclusively to an already-held inventory
+        // endpoint path; it proves neither a world step nor physical release.
+        internal bool CanContinueModalInventory { get { return ExternalModalBusy && mapped && finalized && Main.CanUpdateGameplay; } }
         internal bool CanRetainAutomaticIntent { get { return IsFocused ? CanRetainIntent : Main.CanUpdateGameplay && !Main.gamePaused; } }
         // Main.Update can finish without DoUpdate sampling input (frame skip
         // off). That revokes execution for this epoch, not an existing intent.
-        // Focus loss/reactivation quarantine still revokes both permissions.
-        internal bool CanRetainIntent { get { return IsFocused && !rearming && !quarantine; } }
+        // Ordinary focus loss/reactivation still revokes both permissions. An
+        // explicit external modal instead retains the accepted owner while its
+        // separate new-action barrier and trusted-neutral tail remain closed.
+        internal bool CanRetainIntent { get { return IsFocused && (ExternalModalBusy || !rearming && !quarantine); } }
         internal long Frame { get; private set; }
         internal long Mapping { get; private set; }
 #if JMR_BLUEPRINT_DIAGNOSTIC
@@ -101,7 +133,7 @@ namespace JueMingR.TerrariaHost.Input
             (quarantine?32:0)|(rearming?64:0)|(RawMouseLeft?128:0)|(RawMouseRight?256:0)|(HotkeyCapture?512:0)|(OwnedMouseMask!=0?1024:0); } }
         internal uint BlueprintDiagnosticWorldAtBegin { get { return worldAtBegin; } }
 #endif
-        internal bool CanPrepareText { get { return IsFocused && !rearming && !quarantine; } }
+        internal bool CanPrepareText { get { return IsFocused && !rearming && !quarantine && !ExternalModalBusy; } }
         internal HostInputState() : this(() => Main.instance == null ? IntPtr.Zero : Main.instance.Window.Handle, GetForegroundWindow) { }
         internal HostInputState(Func<IntPtr> gameWindow, Func<IntPtr> foregroundWindow)
         { this.gameWindow = gameWindow; this.foregroundWindow = foregroundWindow; }
@@ -114,7 +146,7 @@ namespace JueMingR.TerrariaHost.Input
             mapped = finalized = nativePermission = false;
             NativeUiTransitionRequest = false;
             RefreshFocus();
-            quarantine = !IsFocused || rearming;
+            quarantine = !IsFocused || rearming || ExternalModalBusy;
             // .8's F7-F11/Alt+Enter precede its current keyboard refresh. A stale
             // cached sample must not operate the game on loss or reactivation.
             if (quarantine || HotkeyCapture || Hotkeys.HasSuppressedKeys)
@@ -164,7 +196,7 @@ namespace JueMingR.TerrariaHost.Input
             // input or open the map; BeginUpdate retires it before any sample.
             NativeUiTransitionRequest = PlayerInput.Triggers.Current.MapFull || PlayerInput.Triggers.Current.ToggleCameraMode;
             BlueprintMapping?.Invoke();
-            quarantine |= !IsFocused || rearming;
+            quarantine |= !IsFocused || rearming || ExternalModalBusy;
             if (quarantine) { ConsumeMappedInput(); ClearTextActions(); }
             else if (HotkeyCapture || Hotkeys.HasSuppressedKeys || ClaimsHotkeyPointer != null && ClaimsHotkeyPointer()) ConsumeHotkeyActions();
 #if JMR_INPUT_DIAGNOSTIC
@@ -200,7 +232,12 @@ namespace JueMingR.TerrariaHost.Input
             MouseState mouse = PlayerInput.MouseInfo;
             if (SampleFocused && mouse.LeftButton == ButtonState.Released && mouse.RightButton == ButtonState.Released &&
                 mouse.MiddleButton == ButtonState.Released && mouse.XButton1 == ButtonState.Released && mouse.XButton2 == ButtonState.Released &&
-                sample.GetPressedKeys().Length == 0) rearming = false;
+                sample.GetPressedKeys().Length == 0 && ExternalModalState != ExternalModalPhase.ModalOwned)
+            {
+                rearming = false;
+                if (ExternalModalState == ExternalModalPhase.AwaitFocusedNeutral)
+                { ExternalModalState = ExternalModalPhase.None; externalModalRequest = Guid.Empty; }
+            }
             // The neutral/activation sample itself remains consumed. Next fresh
             // input can act, without replaying a key, wheel delta or old target.
 #if JMR_INPUT_DIAGNOSTIC

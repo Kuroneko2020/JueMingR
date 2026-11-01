@@ -390,6 +390,7 @@ namespace JueMingR.TerrariaHost.F5
             if (hover.HotkeyTarget == F5.AnnouncementControls.SendActionId) return AnnouncementControls?.SendHint;
             if (hover.HotkeyTarget == F5.BlueprintControls.SaveAction) return "双击设置保存采集的快捷键";
             if (hover.HotkeyTarget == F5.BlueprintControls.LibraryAction) return "双击设置打开蓝图库的快捷键";
+            if (hover.HotkeyTarget == F5.BlueprintControls.PlacedListAction) return "双击设置已放置列表的快捷键";
             if (hover.HotkeyTarget == F5.BlueprintControls.MoveAction) return "双击设置移动蓝图的快捷键";
             if (hover.HotkeyTarget == F5.BlueprintControls.RemoveAction) return "双击设置移除蓝图的快捷键";
             if (hover.HotkeyTarget == F5.BlueprintControls.MirrorAction) return "双击设置水平镜像的快捷键";

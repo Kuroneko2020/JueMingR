@@ -50,7 +50,7 @@ namespace JueMingR.TerrariaHost.F5
         MovementFallAllow10, MovementFallDeny10, MovementFallAllow11, MovementFallDeny11,
         BlueprintCapture, BlueprintSave, BlueprintToolbarOn, BlueprintToolbarOff, BlueprintLibrary, BlueprintMove, BlueprintRemove,
         BlueprintMirror, BlueprintTrim, BlueprintConfirmTrim, BlueprintAutoBuildOn, BlueprintAutoBuildOff, BlueprintMaterials,
-        BlueprintSubstitutionConfigure, BlueprintSubstitutionOn, BlueprintSubstitutionOff }
+        BlueprintSubstitutionConfigure, BlueprintSubstitutionOn, BlueprintSubstitutionOff, BlueprintPlacedList }
 
     internal sealed class F5Element
     {
