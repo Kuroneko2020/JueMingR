@@ -31,6 +31,7 @@ namespace NativeWorldTextProbe
             object host = Get(context, "Blueprint"), input = Get(context, "Input"), shell = Get(context, "Shell"), ui = Get(shell, "BlueprintUi");
             object state = Get(shell, "State"); bool focused = true, priorSelected = FocusHelper.IsSelectedApplication;
             Vector2 pointer = Vector2.Zero;
+            int wheel = 0, absoluteWheel = 0;
             int oldWidth = Main.screenWidth, oldHeight = Main.screenHeight; float oldScale = Main.UIScale;
             bool scaleChanged = false;
             var oldLibrary = (LibraryState)Get(host, "Library"); object oldDialog = Get(host, "exchangeDialog"), oldWindow = Get(input, "gameWindow"), oldForeground = Get(input, "foregroundWindow");
@@ -57,7 +58,11 @@ namespace NativeWorldTextProbe
             Set(input, "gameWindow", (Func<IntPtr>)(() => new IntPtr(3))); Set(input, "foregroundWindow", (Func<IntPtr>)(() => focused ? new IntPtr(3) : new IntPtr(4)));
             try
             {
-                Main.screenWidth = 960; Main.screenHeight = 760;
+                // Render uses the probe's real backbuffer-sized canvas. A
+                // taller logical screen would put layout targets outside the
+                // actual Draw clip even though they still exist in parts.
+                Main.screenWidth = graphics == null ? 960 : graphics.GraphicsDevice.PresentationParameters.BackBufferWidth;
+                Main.screenHeight = graphics == null ? 760 : graphics.GraphicsDevice.PresentationParameters.BackBufferHeight;
                 // The native scale setter updates graphics state. CPU owns no
                 // device and retains its existing scale; only Visual changes
                 // it, and a failed setup must not retry that setter in finally.
@@ -69,10 +74,11 @@ namespace NativeWorldTextProbe
                     Call(input, "BeginUpdate");
                     if (!(bool)Get(input, "IsFocused")) Call(shell, "CancelForFocusLoss");
                     Call(shell, "BeforeInput");
-                    PlayerInput.MouseInfo = new MouseState((int)pointer.X, (int)pointer.Y, 0, (mask & 1) != 0 ? ButtonState.Pressed : ButtonState.Released,
+                    absoluteWheel += wheel;
+                    PlayerInput.MouseInfo = new MouseState((int)pointer.X, (int)pointer.Y, absoluteWheel, (mask & 1) != 0 ? ButtonState.Pressed : ButtonState.Released,
                         (mask & 4) != 0 ? ButtonState.Pressed : ButtonState.Released, (mask & 2) != 0 ? ButtonState.Pressed : ButtonState.Released,
                         (mask & 8) != 0 ? ButtonState.Pressed : ButtonState.Released, (mask & 16) != 0 ? ButtonState.Pressed : ButtonState.Released);
-                    PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 0;
+                    PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = wheel;
                     PlayerInput.Triggers.Reset(); PlayerInput.Triggers.Current.Up = true;
                     // The real MouseInput postfix freezes the physical sample
                     // before general mapping can consume its game actions.
@@ -101,6 +107,41 @@ namespace NativeWorldTextProbe
                 };
                 Action step = () => frame(Array.Empty<Keys>(), 0);
                 Action neutral = () => { step(); step(); };
+                Action<string, Guid?> clickVisible = (command, asset) =>
+                {
+                    // All three real controls use the same actual scroll and
+                    // clipping prerequisites. Reacquire parts after each wheel
+                    // frame; offscreen parts are layout, not clickable proof.
+                    bool reached = false;
+                    for (int scrollFrame = 0; scrollFrame < 80; scrollFrame++)
+                    {
+                        // Scrolling exposes real preview work. Let that current
+                        // page finish before freezing a new press geometry;
+                        // this waits before the only click, never retries it.
+                        NativeQuickItemChecks.Until(() => { step(); return (bool)Get(ui, "ready") && !(bool)Get(ui, "dirty") && !library.Snapshot.Busy; });
+                        object part = ((IEnumerable)Get(ui, "parts")).Cast<object>().First(p => Get(p, "Command").ToString() == command && (bool)Get(p, "Enabled") &&
+                            (!asset.HasValue || (Guid)Get(p, "AssetId") == asset.Value));
+                        object rect = Get(Get(part, "Element"), "Rect"), view = Get(ui, "view"), clip = Get(ui, "hitClip");
+                        float left = (float)Get(view, "X") + (float)Get(rect, "X"), top = (float)Get(view, "Y") + (float)Get(rect, "Y") -
+                            ((bool)Get(part, "Fixed") ? 0 : (float)Get(state, "Scroll"));
+                        float width = (float)Get(rect, "Width"), height = (float)Get(rect, "Height");
+                        float clipLeft = (float)Get(clip, "X"), clipTop = (float)Get(clip, "Y"), clipWidth = (float)Get(clip, "Width"), clipHeight = (float)Get(clip, "Height");
+                        float x = left + (command == "Card" ? 5 : width / 2), y = top + height / 2;
+                        bool fits = height + 4 <= clipHeight ? top >= clipTop + 2 && top + height <= clipTop + clipHeight - 2 : y >= clipTop + 2 && y < clipTop + clipHeight - 2;
+                        if (fits && x >= clipLeft && x < clipLeft + clipWidth)
+                        { pointer = new Vector2(x, y); reached = true; break; }
+                        pointer = new Vector2(clipLeft + clipWidth / 2, clipTop + clipHeight / 2);
+                        float beforeScroll = (float)Get(state, "Scroll");
+                        wheel = y < clipTop + clipHeight / 2 ? 120 : -120; step(); wheel = 0;
+                        Require((float)Get(state, "Scroll") != beforeScroll, "actual shell wheel must advance toward the clipped " + command + " control");
+                    }
+                    Require(reached, "the " + command + " control becomes reachable through actual shell scrolling");
+                    step(); object hovered = GetOptional(ui, "hovered");
+                    Require((bool)Get(input, "CanStartActions") && hovered != null && Get(hovered, "Command").ToString() == command && (bool)Get(hovered, "Enabled") &&
+                        (!asset.HasValue || (Guid)Get(hovered, "AssetId") == asset.Value),
+                        "the actual drawn " + command + " control is enabled and hit by the current physical pointer before press");
+                    frame(Array.Empty<Keys>(), 1); step(); pointer = Vector2.Zero;
+                };
                 Action open = () =>
                 {
                     focused = true; neutral(); Call(ui, "OpenLibrary");
@@ -123,7 +164,18 @@ namespace NativeWorldTextProbe
                     "real neutral sample itself remains consumed and does not reopen");
                 step(); AssertSelected(state, ui, host, imported, "success before neutral reveals exact asset at next legal sample");
                 neutral(); AssertSelected(state, ui, host, imported, "completed return remains stable across later complete frames");
-                if (graphics != null) graphics.Image(Path.Combine(output, "exchange-return-success.png"), () => Call(shell, "DrawLayer"), Main.UIScaleMatrix, 960, 760);
+                if (graphics != null)
+                {
+                    NativeQuickItemChecks.Until(() =>
+                    {
+                        step(); var current = library.Snapshot.Page;
+                        return (bool)Get(ui, "ready") && !(bool)Get(ui, "dirty") && !(bool)Get(ui, "wantList") && !library.Snapshot.Busy && current != null &&
+                            current.Generation == (long)Get(ui, "listGeneration") && current.Entries.Any(entry => entry.AssetId == imported) &&
+                            ((IEnumerable)Get(ui, "parts")).Cast<object>().Any(part => (bool)Get(part, "Card") && (Guid)Get(part, "AssetId") == imported);
+                    });
+                    AssertSelected(state, ui, host, imported, "the rendered current-generation library page contains the exact returned asset");
+                    graphics.Image(Path.Combine(output, "exchange-return-success.png"), () => Call(shell, "DrawLayer"), Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
+                }
                 NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });
                 Require(library.TryRename(imported, page.Entries.Single().MetadataIdentity, "保留的本地名称"), "fixture reliably renames the already imported local asset");
                 NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });
@@ -191,18 +243,7 @@ namespace NativeWorldTextProbe
                             Set(part, "Command", Enum.Parse(partType.GetField("Command", F).FieldType, command)); Call(ui, "Execute", part);
                         }
                         else
-                        {
-                            object part = ((IEnumerable)Get(ui, "parts")).Cast<object>().First(p => Get(p, "Command").ToString() == command && (bool)Get(p, "Enabled") &&
-                                (intent != "Card" && intent != "Name" || (Guid)Get(p, "AssetId") == other.AssetId));
-                            object rect = Get(Get(part, "Element"), "Rect"), view = Get(ui, "view");
-                            pointer = new Vector2((float)Get(view, "X") + (float)Get(rect, "X") + (intent == "Card" ? 5 : (float)Get(rect, "Width") / 2),
-                                (float)Get(view, "Y") + (float)Get(rect, "Y") + (float)Get(rect, "Height") / 2 - ((bool)Get(part, "Fixed") ? 0 : (float)Get(state, "Scroll")));
-                            step();
-                            object hovered = GetOptional(ui, "hovered");
-                            Require((bool)Get(input, "CanStartActions") && hovered != null && Get(hovered, "Command").ToString() == command && (bool)Get(hovered, "Enabled"),
-                                "the actual drawn " + command + " control is enabled and hit by the current physical pointer before press");
-                            frame(Array.Empty<Keys>(), 1); step(); pointer = Vector2.Zero;
-                        }
+                            clickVisible(command, intent == "Card" ? (Guid?)other.AssetId : null);
                     }
                     else if (intent == "PlacedList") Call(host, "OpenPlacedList");
                     else if (intent == "Session")
