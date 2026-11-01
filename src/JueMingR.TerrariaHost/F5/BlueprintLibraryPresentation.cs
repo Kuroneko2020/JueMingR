@@ -77,6 +77,8 @@ namespace JueMingR.TerrariaHost.F5
         public TextEditBuffer Editor { get { return editor; } }
         internal bool Submenu { get { return mode != View.None; } }
         internal long ExchangePresentationGeneration { get; private set; }
+        private Guid pendingExchangeAsset;
+        private long pendingExchangeSession, pendingExchangeGeneration;
         private bool seenExchangeBusy;
         internal bool Visible { get { return Submenu && shell.Visible && shell.Page == 6; } }
         internal bool WorldInteractionBlocked { get { return Visible; } }
@@ -123,18 +125,24 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void AcceptExchangeAsset(Guid asset, long presentationGeneration)
         {
-            // A successful library commit remains real after UI retirement,
-            // but its old display intent cannot reopen or steal a new page.
+            // The owner now requests automatic library reveal after import.
+            // Only this exact live intent may reveal, after the real external
+            // modal neutral tail; later navigation or a new session revokes it.
             if (mode != View.Library || presentationGeneration != ExchangePresentationGeneration || shell.Page != 6) return;
-            if (Visible) { ShowSaved(asset); return; }
-            if (focusSuspended)
-            {
-                // Native Show may hide F5 through the shared focus-loss path.
-                // Preserve this exact library intent for explicit reopening,
-                // without reopening F5 or borrowing a newer page's selection.
-                selected = asset; host.Flow.SelectedAssetId = asset;
-                RequestList(requestedPage, asset);
-            }
+            if (!Visible && !focusSuspended) return;
+            pendingExchangeAsset = asset; pendingExchangeSession = host.UiSession; pendingExchangeGeneration = presentationGeneration;
+        }
+        internal long BeginExchangeIntent()
+        { pendingExchangeAsset = Guid.Empty; return ++ExchangePresentationGeneration; }
+        private void RevealPendingExchange(bool active)
+        {
+            if (pendingExchangeAsset == Guid.Empty) return;
+            if (!host.HasSession || pendingExchangeSession != host.UiSession || pendingExchangeGeneration != ExchangePresentationGeneration || mode != View.Library || shell.Page != 6 || !Visible && !focusSuspended)
+            { pendingExchangeAsset = Guid.Empty; return; }
+            if (!active || !host.Input.CanStartActions) return;
+            Guid asset = pendingExchangeAsset; pendingExchangeAsset = Guid.Empty;
+            host.Input.Hotkeys.SuppressHeld(); host.Input.ConsumeHotkeyActions();
+            Reveal(); host.Flow.SelectedAssetId = asset; ShowSaved(asset);
         }
         internal void BeforeInput(bool active)
         {
@@ -193,6 +201,7 @@ namespace JueMingR.TerrariaHost.F5
         internal void Suspend()
         {
             ExchangePresentationGeneration++;
+            pendingExchangeAsset = Guid.Empty;
             host.CancelProjectionOpen();
             if (mode == View.Capture) host.CancelCaptureOrDraft();
             ReleasePresentation(); mode = View.None;
@@ -224,6 +233,7 @@ namespace JueMingR.TerrariaHost.F5
             bool left = host.Input.RawMouseLeft, right = host.Input.RawMouseRight;
             ConsumeLeft = ConsumeRight = ConsumeWheel = OwnsPointer = false;
             PollReceipts();
+            if (!Visible) RevealPendingExchange(active && focused);
             bool ownGeometry = Same(view, shell.Layout.Viewport.Offset(shell.X, shell.Y)) && matrix == Main.UIScaleMatrix &&
                 scroll == shell.Scroll && layoutGeneration == shell.Layout.Generation;
             bool pointerOn = active && Visible && ready && geometryCurrent && ownGeometry && !dirty && !blocked;
@@ -279,6 +289,9 @@ namespace JueMingR.TerrariaHost.F5
             if (!left && focused) leftTail = false;
             if (!right && focused) rightTail = false;
             previousLeft = left;
+            // Dispatch an actual card/name/page gesture first, so its newer
+            // intent can retire an import that finished during this frame.
+            RevealPendingExchange(active && focused);
         }
         private BlueprintLibraryPart Hit(float x, float y)
         {

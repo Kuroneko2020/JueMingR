@@ -152,7 +152,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             CheckSession(); if (!Visible) { ready = false; return; }
             if (!active || !renderer.Refresh()) { ready = false; armed = null; return; }
-            if (host.Shell?.BlueprintMaterialsUi?.Visible == true) { ready = false; return; }
+            bool materialsVisible = host.Shell?.BlueprintMaterialsUi?.Visible == true;
             int oldDevice = previewCacheGeneration; previews.Observe(renderer.Device);
             if (oldDevice != previews.Generation) { CancelPreviewRead(); failedPreviews.Clear(); }
             previewCacheGeneration = previews.Generation;
@@ -183,7 +183,10 @@ namespace JueMingR.TerrariaHost.F5
                 Project(px, py, geometry || moved);
             playerX = px; playerY = py; ready = true;
             hitClip = F5ControlRenderer.LogicalClip(F5ControlRenderer.ContentClip(view, matrix, new Rectangle(0, 0, (int)dimensions.X, (int)dimensions.Y)), matrix);
-            PrepareVisiblePreviews();
+            // A material modal pauses commands and new preview demand, not
+            // the list's background layout/drawing. Continuous shell frames
+            // must keep its rows visible behind the exact-instance popup.
+            if (!materialsVisible) PrepareVisiblePreviews();
         }
         private void Build()
         {
@@ -338,7 +341,7 @@ namespace JueMingR.TerrariaHost.F5
         { return new BlueprintLibraryPart { Element = new F5Element(kind, rect, text, measure(text, .70f), .70f, F5Command.None), Command = command, Enabled = true }; }
         internal void Draw()
         {
-            if (!Visible || !ready || host.Shell?.BlueprintMaterialsUi?.Visible == true || matrix != Main.UIScaleMatrix || !renderer.ResourcesCurrent) { drawnGeneration = -1; return; }
+            if (!Visible || !ready || matrix != Main.UIScaleMatrix || !renderer.ResourcesCurrent) { drawnGeneration = -1; return; }
             renderer.Draw(visible, view, matrix, scroll, hovered, armed, previews, null, false, headerHeight);
             if (!F5PopupPlacement.SameAnchor(hitClip, renderer.LastClip)) { hitClip = renderer.LastClip; generation++; armed = null; }
             drawnGeneration = generation;

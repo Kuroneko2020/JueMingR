@@ -175,6 +175,17 @@ namespace NativeWorldTextProbe
                 };
                 float savedScroll = (float)Get(state, "Scroll"); click(Get(row, "Materials"));
                 Require((bool)Get(popup, "Visible") && (long)Get(popup, "Selected") == firstId && Get(popup, "Source").ToString() == "PlacedList", "real clipped row release opens the exact material popup without all-scope reset");
+                long pausedRequests = (long)Get(list, "PreviewRequests");
+                for (int frame = 0; frame < 6; frame++)
+                {
+                    NativeBlueprintMaterialsUiChecks.Frame(shell, input, 0, 0, false);
+                    Set(list, "drawnGeneration", -1L); prepare();
+                    Require((bool)Get(popup, "Visible") && (bool)Get(list, "ready") && (long)Get(list, "drawnGeneration") == (long)Get(list, "generation") && Rows(list).Length == 2,
+                        "material popup keeps real list body prepared and rendered on continuous Shell frame " + frame);
+                    Require(GetOptional(list, "armed") == null && (long)Get(list, "PreviewRequests") == pausedRequests && (float)Get(state, "Scroll") == savedScroll,
+                        "popup suspends list actions/new preview demand while preserving background scroll");
+                }
+                graphics.Image(Path.Combine(output, "blueprint-placed-list-materials-background.png"), draw, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
                 var close = ((IEnumerable)Get(popup, "buttons")).Cast<object>().First(); var closeRect = Get(close, "Rect");
                 float cx = (float)Get(closeRect, "X") + (float)Get(closeRect, "Width") / 2, cy = (float)Get(closeRect, "Y") + (float)Get(closeRect, "Height") / 2;
                 NativeBlueprintMaterialsUiChecks.Frame(shell, input, cx, cy, false); prepare(); NativeBlueprintMaterialsUiChecks.Frame(shell, input, cx, cy, true); NativeBlueprintMaterialsUiChecks.Frame(shell, input, cx, cy, false); prepare();

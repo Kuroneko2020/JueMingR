@@ -8,6 +8,7 @@ using JueMingR.Features.Blueprint;
 using JueMingR.Infrastructure.Blueprint;
 using JueMingR.Infrastructure.Storage;
 using JueMingR.Platform.Blueprint;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -50,7 +51,27 @@ namespace NativeWorldTextProbe
                 dialog.Select(); NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !(bool)Get(host, "ExchangeBusy"); });
                 Require(library.TryList(901, 0), "completed import frees ordinary slot"); var page = NativeBlueprintLibraryWait.AcceptedList(library, "exchange import result").Page;
                 Require(page.TotalCount == 1, "real import published one healthy asset: " + GetOptional(host, "projectionFeedback")); Guid imported = page.Entries.Single().AssetId;
-                Require(!(bool)Get(Get(shell, "State"), "Visible") && ((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId == imported, "real imported receipt preserves pending exact selection without reopening F5");
+                Action frame = () => Call(ui, "ProcessInput", true, Main.keyState, Vector2.Zero, false, true, false);
+                NativeQuickItemChecks.Sample(input, new[] { Keys.A }); frame();
+                Require(!(bool)Get(Get(shell, "State"), "Visible"), "successful import waits for trustworthy real release before opening");
+                neutral(); frame();
+                Require((bool)Get(Get(shell, "State"), "Visible") && ((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId == imported && (Guid)Get(ui, "selected") == imported, "real successful import automatically opens library and locates its asset after neutral");
+                neutral(); Call(host, "BeginImport"); Call(shell, "CancelForFocusLoss"); dialog.Select();
+                NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !(bool)Get(host, "ExchangeBusy"); }); neutral(); frame();
+                Require((bool)Get(Get(shell, "State"), "Visible") && (Guid)Get(ui, "selected") == imported, "healthy duplicate import also opens library at the original healthy asset");
+                foreach (bool failure in new[] { false, true })
+                {
+                    neutral(); Call(host, "BeginImport"); Call(shell, "CancelForFocusLoss"); dialog.End(failure);
+                    NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !(bool)Get(host, "ExchangeBusy"); }); neutral(); frame();
+                    Require(!(bool)Get(Get(shell, "State"), "Visible"), "cancelled/failed import never opens library");
+                    Call(ui, "OpenLibrary");
+                }
+                // A success queued while visible cannot undo State.Update's
+                // explicit F5 close before this presentation gets its turn.
+                neutral(); Call(host, "BeginImport"); dialog.Select();
+                NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !(bool)Get(host, "ExchangeBusy"); });
+                Call(Get(shell, "State"), "Close"); neutral(); frame();
+                Require(!(bool)Get(Get(shell, "State"), "Visible") && !(bool)Get(ui, "Submenu"), "same-frame explicit close retires a queued success instead of reopening F5");
                 neutral(); Call(ui, "OpenLibrary"); Call(host, "BeginImport"); Require(dialog.Request != null, "second import starts after trustworthy neutral");
                 Call(ui, "Suspend"); Guid sentinel = Guid.NewGuid(); ((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId = sentinel;
                 dialog.Select(); NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !(bool)Get(host, "ExchangeBusy"); });
@@ -72,9 +93,10 @@ namespace NativeWorldTextProbe
                     }
                     Require((long)Get(ui, "ExchangePresentationGeneration") > frozen, "later " + intent + " retires the frozen display intent");
                     NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !(bool)Get(host, "ExchangeBusy"); });
+                    frame();
                     Require(intent == "Page" ? (int)Get(ui, "requestedPage") == 1 : (Guid)Get(ui, "selected") == other.AssetId, "late imported receipt cannot steal later " + intent);
                 }
-                Console.WriteLine("PASS exchange Host lifecycle: real CancelForFocusLoss -> native Selected ticket -> streaming import -> receipt retains pending selection, no F5 reopen; explicit UI retirement rejects old selection.");
+                Console.WriteLine("PASS exchange Host lifecycle: real focus loss -> selected ticket -> streaming import; success and healthy duplicate reveal exact asset only after trustworthy neutral; cancel/failure/explicit close/new Card/Name/Page intent do not steal UI.");
             }
             finally
             {
@@ -93,6 +115,7 @@ namespace NativeWorldTextProbe
                 result = new BlueprintFileDialogResult(Request, BlueprintFileDialogOutcome.Selected, ticket, 0, null);
             }
             public bool TryTake(out BlueprintFileDialogResult value) { value = result; if (value == null) return false; result = null; Request = null; return true; }
+            internal void End(bool failure) { result = new BlueprintFileDialogResult(Request, failure ? BlueprintFileDialogOutcome.Failed : BlueprintFileDialogOutcome.Cancelled, null, 0, failure ? "fixture" : null); }
             public void RequestClose(Guid id) { if (Request != null && Request.RequestId == id) result = new BlueprintFileDialogResult(Request, BlueprintFileDialogOutcome.Cancelled, null, 0, null); }
             public void BeginStop() { }
         }

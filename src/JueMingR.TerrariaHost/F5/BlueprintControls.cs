@@ -11,6 +11,7 @@ namespace JueMingR.TerrariaHost.F5
         internal const string MoveAction = "blueprint.move", RemoveAction = "blueprint.remove";
         internal const string MirrorAction = "blueprint.mirror", TrimAction = "blueprint.trim", ConfirmTrimAction = "blueprint.trim.confirm";
         internal const string AutoBuildAction = "blueprint.autobuild", MaterialsAction = "blueprint.materials";
+        internal const string PlacedListAction = "blueprint.placed-list";
         internal const string SubstitutionAction = "blueprint.substitution";
         internal const string SubstitutionHint = "符合标准的内容允许使用同类型物品自动放置";
         internal static readonly string[] ReplacementCategoryNames =
@@ -43,7 +44,8 @@ namespace JueMingR.TerrariaHost.F5
             Key(elements, SaveAction);
             rows.Row(ref y, 0, 522, "蓝图库", new[] { "打开", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintLibrary);
             Key(elements, LibraryAction);
-            rows.Row(ref y, 0, 522, "已放置列表", new[] { "打开" }, text => F5Command.BlueprintPlacedList);
+            rows.Row(ref y, 0, 522, "已放置列表", new[] { "打开", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintPlacedList);
+            Key(elements, PlacedListAction);
             rows.Row(ref y, 0, 522, operation == 1 ? "取消移动" : "移动蓝图", new[] { operation == 1 ? "取消" : "移动", "键" }, text => text == "键" ? F5Command.None : F5Command.BlueprintMove,
                 new F5RowDescription(MoveAction, MoveHint));
             Key(elements, MoveAction);

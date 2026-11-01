@@ -40,7 +40,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void BeginExchange(BlueprintTemplateKey key, string name)
         {
             if (ExchangeDisabledReason != null || !Input.CanStartActions) return;
-            exchangeRequest = Guid.NewGuid(); exchangeSession = generation; exchangeUi = Shell?.BlueprintUi?.ExchangePresentationGeneration ?? -1;
+            exchangeRequest = Guid.NewGuid(); exchangeSession = generation; exchangeUi = Shell?.BlueprintUi?.BeginExchangeIntent() ?? -1;
             // versionNumber is display text (it may contain a leading 'v').
             // The verified host assembly owns the canonical target identity.
             exchangeTemplate = key; exchangeName = name; exchangeVersion = typeof(Main).Assembly.GetName().Version.ToString(); exchangeProposal = null;
@@ -90,8 +90,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return;
             }
             // Durable results remain facts in menus or a later session. Only
-            // the still-current presentation can change selection; no receipt
-            // reopens F5 or starts a placement on behalf of an old world.
+            // the still-current presentation may now auto-open the library,
+            // after trustworthy input release, never on an old world's behalf.
             if (!String.IsNullOrEmpty(receipt.Message)) projectionFeedback = receipt.Message;
             if (owns && exchangeSession == generation && HasSession && receipt.Kind == BlueprintExchangeKind.Import &&
                 (receipt.Status == BlueprintExchangeStatus.Completed || receipt.Status == BlueprintExchangeStatus.AlreadyExists))

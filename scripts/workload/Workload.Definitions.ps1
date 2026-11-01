@@ -32,6 +32,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintPreviewCooperationChecks.cs'=@('native-BlueprintExchangeCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPlacedMaterialsChecks.cs'=@('native-BlueprintExchangeCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintExchangeLifecycleChecks.cs'=@('native-BlueprintExchangeCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintExchangeFollowupChecks.cs'=@('native-BlueprintExchangeFollowupCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorProfileChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorTrimUiChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorTrimChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
@@ -388,6 +389,9 @@ function Get-WorkloadLeafChecks {
             $leaves[$path]=@($leaves[$path])+@('native-BlueprintExchangeCpu')
         }
     }
+    foreach($path in @('tests/NativeWorldTextProbe/NativeBlueprintExchangeLifecycleChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintPlacedListChecks.cs')){
+        $leaves[$path]=@($leaves[$path])+@('native-BlueprintExchangeFollowupCpu')
+    }
     return $leaves
 }
 function Get-WorkloadNativeScopes {
@@ -464,6 +468,7 @@ function Get-WorkloadNativeScopes {
         'BlueprintSubstitutionLifecycleCpu'=@('blueprint-host');
         'BlueprintCpu'=@('blueprint-host','tools-host');
         'BlueprintExchangeCpu'=@('blueprint-host','tools-host','shared-host');
+        'BlueprintExchangeFollowupCpu'=@('blueprint-host','shared-host','hotkeys');
         'BlueprintMirrorTrimCpu'=@('blueprint-host','hotkeys','tools-host');
         'BlueprintConstructionCpu'=@('blueprint-host','tools-host');
         'BlueprintBuildCadenceCpu'=@('blueprint-host','tools-host');
