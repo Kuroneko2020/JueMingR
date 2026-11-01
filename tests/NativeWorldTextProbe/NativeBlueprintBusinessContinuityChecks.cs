@@ -70,6 +70,9 @@ namespace NativeWorldTextProbe
             private readonly List<BusinessEvent> pending = new List<BusinessEvent>();
             internal BusinessGoal[] Goals = Array.Empty<BusinessGoal>();
             internal BusinessSource[] Sources = Array.Empty<BusinessSource>();
+            // A fixture with dependent supports or liquid supplies its own
+            // real-world/native oracle; production Focus is never an oracle.
+            internal Func<BusinessGoal, bool> RunnableOracle;
             internal bool Watching, Automatic;
             internal int CurrentType;
             private long unknown;
@@ -96,6 +99,7 @@ namespace NativeWorldTextProbe
             }
             internal bool Runnable(BusinessGoal goal)
             {
+                if (RunnableOracle != null) return RunnableOracle(goal);
                 var p = Main.LocalPlayer;
                 var source = Sources.FirstOrDefault(value => value.Type == goal.Type && ReferenceEquals(p.inventory[value.Slot], value.Item) &&
                     value.Item.type == value.Type && !value.Item.IsAir && value.Item.stack > 0);
@@ -271,7 +275,10 @@ namespace NativeWorldTextProbe
                     if (p.selectedItem != source.Slot)
                     {
                         if (!p.selectedItemState.HasBufferedChange) p.selectedItemState.Select(source.Slot);
-                        scope.Step(); return false;
+                        // Before vanilla can consume the buffered selection,
+                        // held at the new target would still use the OLD Item.
+                        // The first legal selection frame below is not empty.
+                        if (!p.selectedItemState.CanChangeSelectedItemImmediately) { scope.Step(); return false; }
                     }
                     int before = scope.Events.Count;
                     bool held = p.itemAnimation > 0 || p.releaseUseItem || source.Item.autoReuse;
@@ -284,9 +291,8 @@ namespace NativeWorldTextProbe
                     (native, actual) => native.Type == actual.Type && native.Count == actual.Count && native.ChangedGoals.SequenceEqual(actual.ChangedGoals)).All(same => same),
                     "same initial mixed world/inventory and legal original input reproduce all three consumers' exact goals and item costs");
                 for (int i = 1; i < automatic.Length; i++)
-                    if (automatic[i - 1].Type == automatic[i].Type)
-                        Require(unchecked(automatic[i].World - automatic[i - 1].World) == unchecked(scope.Events[i].World - scope.Events[i - 1].World),
-                            "each stable material segment in the mixed competition matches its same-tool original input interval");
+                    Require(unchecked(automatic[i].World - automatic[i - 1].World) == unchecked(scope.Events[i].World - scope.Events[i - 1].World),
+                        "each mixed competition handoff, including a real material change, matches its original input interval");
             }
         }
 

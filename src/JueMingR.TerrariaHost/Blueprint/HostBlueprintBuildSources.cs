@@ -162,10 +162,13 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                 int ordinal = value.CandidateCursor;
                 int following;
-                if (TryCreateConstructionTargetAndAdvance(range.Owner,range,part,index,ordinal,support,out target,out following))
+                var readiness=CreateConstructionCandidate(range.Owner,range,part,index,ordinal,support,out target,out following,false);
+                if (readiness==BlueprintBuildReadiness.Ready)
                 {
                     target.LocalProof = true; value.Candidate = target; return true;
                 }
+                if(readiness==BlueprintBuildReadiness.Deferred)
+                {DemandProjectionMatchRange(range);return false;}
                 value.CandidateCursor = following;
             }
 #if JMR_BLUEPRINT_DIAGNOSTIC

@@ -160,8 +160,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                 ProjectionMatchSourceSteps++;
 #endif
                 int following;
-                if(TryCreateLocalBuildTarget(source,index,ordinal,support,out target,out following))
-                {range.Materials.Candidate=target;return true;}
+                var readiness=CreateConstructionCandidate(source.Owner,source.Range,source.Part,index,ordinal,support,out target,out following,false);
+                if(readiness==BlueprintBuildReadiness.Ready)
+                {target.LocalPriority=true;range.Materials.Candidate=target;return true;}
+                if(readiness==BlueprintBuildReadiness.Deferred)
+                {cursor=ordinal-BuildMemberOrdinal(part.Offset);DemandProjectionMatchRange(range);return false;}
                 // No target will write this sample. Consume its proven no-op
                 // lanes in this visit only; this cursor is part-relative while
                 // the shared constructor returns an absolute source ordinal.
@@ -171,11 +174,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintBuildTrace.Count(BuildTraceReason.SourceBudgetEmpty);
 #endif
             return false;
-        }
-        private bool TryCreateLocalBuildTarget(BuildSourcePart source,int index,int ordinal,long support,out BlueprintBuildTarget target,out int following,int preferredItemType=0)
-        {
-            bool found=TryCreateConstructionTargetAndAdvance(source.Owner,source.Range,source.Part,index,ordinal,support,out target,out following,preferredItemType);
-            if(found)target.LocalPriority=true;return found;
         }
         private void RememberBuildFrontier(BlueprintBuildTarget target)
         {

@@ -15,7 +15,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             BuildEligibilityReads++;
 #endif
             sample = default(BlueprintWorldMatchSample);
-            return projectionMatchSource != null && projectionMatchSource.TryRead(x, y, out sample) && sample.Available;
+            bool available=projectionMatchSource != null && projectionMatchSource.TryRead(x, y, out sample) && sample.Available;
+            if(!available)buildUnavailableReads++;
+            return available;
         }
         private bool PreflightBuildObject(BlueprintBuildTarget target, Player p, Item item, int direction)
         {

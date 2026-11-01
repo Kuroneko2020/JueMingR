@@ -102,7 +102,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             plan = null; wait = BlueprintBuildWait.None; dependencySlots = 0;
             if (target?.Operation == null || p == null || MaterialInventory?.Ready != true || !IsBuildTargetCurrent(target)) return false;
             BlueprintWorldMatchSample actual;
-            if (!ReadBuildCell(target.WorldX, target.WorldY, out actual) || !p.CanDoWireStuffHere(target.WorldX, target.WorldY)) return false;
+            if (!ReadBuildCell(target.WorldX, target.WorldY, out actual))return DeferBuildTarget(target);
+            if(!p.CanDoWireStuffHere(target.WorldX,target.WorldY))return BlockBuildTarget(target);
             BlueprintBuildWait localWait; ulong localSlots; bool found = false;
             if (preferred != null && preferred.Slot >= 0 && preferred.Slot < 50 &&
                 ReferenceEquals(p.inventory[preferred.Slot], preferred.Item) && preferred.Item.type == preferred.Type &&
@@ -133,6 +134,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
             }
             if (!found && wait == BlueprintBuildWait.None) wait = BlueprintBuildWait.Material;
+            if(wait==BlueprintBuildWait.None)return BlockBuildTarget(target);
             return false;
         }
         private bool TryPlanWiringOption(BlueprintBuildTarget target, Player p, int slot, BlueprintWorldMatchSample actual,

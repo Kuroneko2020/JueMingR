@@ -6,6 +6,9 @@ using Terraria;
 
 namespace JueMingR.TerrariaHost.Blueprint
 {
+    // Pre-admission only. Unknown native consumption remains with its receipt
+    // owner and is never settled by this discovery result.
+    internal enum BlueprintBuildReadiness { Deferred, Ready, BlockedNow, DoneInvalid }
     internal sealed class BlueprintBuildTarget
     {
         internal BlueprintProjectionIdentity Identity;
@@ -27,6 +30,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintBuildTarget Requirement;
         internal BlueprintPlacementDescriptor SourcePlacement;
         internal bool LocalProof, LocalPriority;
+        internal BlueprintBuildReadiness Readiness;
     }
     internal sealed class BlueprintMaterialTotals
     {
@@ -52,6 +56,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int Ordinal = -1, Cursor, Slot = -1, Type;
         internal long Range, Support, Supply, Player, Policy;
         internal Item Source;
+        internal bool Deferred;
     }
     internal sealed class BlueprintBuildPositionNegative
     {
@@ -78,13 +83,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int CandidateCursor;
         // Stable absolute member/lane progress belongs to the source intent,
         // not ToolUse's disposable token or one retained transport window.
-        internal long PreferredGroup, PreferredCompletedBatch, PreferredVersion = -1, PreferredPlayer = -1, PreferredWake = -1, PreferredSupply = -1;
+        internal long PreferredGroup, PreferredCompletedBatch, PreferredVersion = -1, PreferredPlayer = -1, PreferredWake = -1, PreferredSupply = -1, PreferredSupport = -1;
         internal int PreferredCursor;
         internal bool PreferredInitialized, PreferredComplete, PreferredRevisit;
-        internal bool PreferredPassUnknown;
         internal HashSet<int> PreferredNegativeOrdinals;
         internal Dictionary<int,BlueprintBuildPositionNegative> PreferredPositionNegatives;
-        internal int PreferredAttemptNegativeOrdinal = -1;
         internal BlueprintProjectionBounds PreferredBounds, PreferredCoveredBounds, PreferredPassCovered, PreferredFrontierBounds;
         internal int PreferredFrontierCursor;
         internal bool PreferredFrontier;
@@ -272,6 +275,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void RequestBuildEligibilityRetry(BlueprintBuildTarget target)
         {
+            if(target!=null)target.Readiness=BlueprintBuildReadiness.BlockedNow;
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.Retry);
 #endif
@@ -280,7 +284,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (value.EligibilityRetry) return;
             value.EligibilityRetry = true; value.EligibilityRetryOrdinal = target.Ordinal;
             value.EligibilityRetryAt = materialTick + BuildEligibilityRetryDelay;
-            if(target.LocalPriority && value.PreferredGroup==buildContinuation?.Group)value.PreferredAttemptNegativeOrdinal=target.Ordinal;
             if (target.LocalPriority && value.PreferredGroup == buildContinuation?.Group &&
                 (value.PreferredRetryAt == 0 || value.EligibilityRetryAt < value.PreferredRetryAt)) value.PreferredRetryAt = value.EligibilityRetryAt;
 #if JMR_BLUEPRINT_DIAGNOSTIC

@@ -53,6 +53,26 @@ namespace NativeWorldTextProbe
                     };
                     if(cadenceOnly)
                     {
+                        check("scheduler rooted dependency vertical", () => SchedulerDependencyChain(context,host,tools,input));
+                        check("scheduler rooted dependency horizontal", () => SchedulerDependencyChain(context,host,tools,input,true));
+                        check("scheduler immediate writer freshness", () => SchedulerImmediateWriterFreshness(context,host,tools,input));
+                        check("scheduler late current source", () => SchedulerLateCurrentSource(context,host,tools,input));
+                        check("scheduler known positive with late source", () => SchedulerKnownPositiveWhileSourcePending(context,host,tools,input));
+                        check("scheduler cold known positive native", () => SchedulerColdKnownPositiveRuntime(context,host,tools,input));
+                        check("scheduler exact native handoff", () => SchedulerNativeHandoffCadence(context,host,tools,input));
+                        check("scheduler known wall refusal", () => SchedulerKnownRefusalCompetition(context,host,tools,input,0));
+                        check("scheduler known anchor refusal", () => SchedulerKnownRefusalCompetition(context,host,tools,input,1));
+                        check("scheduler known liquid refusal", () => SchedulerKnownRefusalCompetition(context,host,tools,input,2));
+                        check("scheduler warm nine members", () => SchedulerWarmMemberBoundary(context,host,tools,input,9));
+                        check("scheduler warm seventeen members", () => SchedulerWarmMemberBoundary(context,host,tools,input,17));
+                        check("scheduler warm eighteen members", () => SchedulerWarmMemberBoundary(context,host,tools,input,18));
+                        check("scheduler postprocessing handoff", () => SchedulerPostProcessingCadence(context,host,tools,input));
+                        check("scheduler cold directory cost", () => SchedulerColdDirectoryCost(host));
+                        check("scheduler native cost and exit", () => SchedulerNativeCostExit(context,host,tools,input));
+                        check("scheduler deferred selection read recovery", () => SchedulerDeferredSelectionReadRecovery(context,host,tools,input));
+                        check("scheduler substitution deferred budget", () => SchedulerSubstitutionDeferredBudget(context,host,tools,input));
+                        check("scheduler substitution deferred material tail", () => SchedulerSubstitutionDeferredBudget(context,host,tools,input,false,true));
+                        check("scheduler substitution deferred positive tail", () => SchedulerSubstitutionDeferredBudget(context,host,tools,input,true));
                         check("continuous material search stationary", () => ExecutionSearchFairness(context,host,tools,input,false));
                         check("continuous material search native movement", () => ExecutionSearchFairness(context,host,tools,input,true));
                         check("entered near strip across multiple slices", () => ExecutionSearchFairness(context,host,tools,input,true,true));

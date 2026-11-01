@@ -30,7 +30,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 Body = target.Body; Placement = target.Placement;
             }
         }
-        private enum PreferredBuildSearch { Found, BudgetPending, SourcePending, NoRunnable, CurrentGroupInvalid }
+        private enum PreferredBuildSearch { Found, BudgetPending, SourcePending, OwnerPending, NoRunnable, CurrentGroupInvalid }
         private BlueprintBuildLane? PreferredBuildLane()
         {
             var consumer=buildContinuation.Consumer;
@@ -159,8 +159,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             BuildCandidateChecks++;
 #endif
             if (plan != null) target.Operation = CopyBuildOperation(plan.Operation);
-            if(target.LocalPriority && target.Range.Materials!=null)target.Range.Materials.PreferredAttemptNegativeOrdinal=-1;
+            target.Readiness=BlueprintBuildReadiness.Deferred;
             bool ready = TryPrepareSelectedBuild(target, p, out result, plan);
+            if(plan?.ExecutionTarget!=null)target.Readiness=plan.ExecutionTarget.Readiness;
+            if(ready)target.Readiness=BlueprintBuildReadiness.Ready;
             if (!ready) CompletePreferredAttempt(target);
             return ready;
         }
@@ -168,14 +170,17 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             var value = target?.Range.Materials; var group = buildContinuation;
             if (target?.LocalPriority != true || group == null || value == null || value.PreferredGroup != group.Group) return;
+            // A missing read/source retains this exact unserved ordinal. The
+            // caller yields to that request owner instead of restarting an
+            // Unknown pass or preparing the same failed plan 64 times.
+            if(rejected && target.Readiness==BlueprintBuildReadiness.Deferred)return;
             int next = NextBuildSourceOrdinal(target.Ordinal, target.Cell, target.Body != null);
             if (value.PreferredCursor == target.Ordinal) value.PreferredCursor = next;
             if (value.PreferredFrontier && value.PreferredFrontierCursor == target.Ordinal) value.PreferredFrontierCursor = next;
             // A rejected preparation may have a current dependency or native
             // refusal. Cache only that negative permission, never completion.
-            if (rejected && value.PreferredAttemptNegativeOrdinal == target.Ordinal)
+            if (rejected && (target.Readiness==BlueprintBuildReadiness.BlockedNow || target.Readiness==BlueprintBuildReadiness.DoneInvalid))
                 value.PreferredNegativeOrdinals?.Add(target.Ordinal);
-            else value.PreferredPassUnknown = true;
         }
         private bool PlanContinuesBuild(BlueprintBuildTarget target, BuildOperationPlan plan)
         {return plan!=null && OperationContinuesBuild(target,plan.Operation,plan.ToolType,plan.SupplyType);}
@@ -233,6 +238,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(range.Materials!=null)range.Materials.PreferredNegativeOrdinals=null;
             if(range.Materials!=null)range.Materials.PreferredPositionNegatives=null;
             discovery.Members.Remove(range);discovery.Ranges.Remove(range);
+            discovery.Results.Remove(range);
         }
         private void ClearBuildContinuation()
         {
@@ -284,6 +290,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                 value.PreferredNegativeOrdinals?.Clear();
                 value.PreferredPositionNegatives?.Clear();
             }
+            // The native writer revokes this route before Host drains its
+            // change queue. A cached negative must see that same immediate
+            // authority, without reacquiring an evicted immutable transport.
+            long support;
+            if(!ProjectionMatchReadCurrent(range,range.RawVersion) ||
+                !projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support))
+            {DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
+            if(value.PreferredSupport!=support)
+            {value.PreferredSupport=support;ReopenPreferredRange(range);}
             // A completed negative result needs no transport pin. Only its
             // actual local dependencies can reopen it; eviction is not a new
             // discovery obligation and a lease boundary is not a new group.
@@ -296,15 +311,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (value.PreferredRevisit) { value.PreferredWaits=BlueprintBuildWait.None;value.PreferredRetryAt=value.PreferredDependencySlots=0; }
                 value.PreferredCompletedBatch++;value.PreferredComplete=value.PreferredInitialized=value.PreferredRevisit=false;value.PreferredCursor=0;
             }
-            var part=FindBuildSource(range);long support;
+            var part=FindBuildSource(range);
             if(part==null || !range.Group.Ready || !ProjectionMatchReadCurrent(range,range.RawVersion) ||
                 !projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support))
             {DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
             var cells=ProjectionSourceCells(part.Window);
+            value.PreferredPassCovered=IntersectBuildBounds(value.PreferredPassCovered,bounds);
             if(!value.PreferredInitialized && part.Offset==0)
             {
                 value.PreferredBounds=NextBuildFocusCoverage(value,bounds);value.PreferredPassCovered=value.PreferredBounds;
-                value.PreferredPassUnknown=false;
                 value.PreferredInitialized=true;value.PreferredRevisit=false;
                 value.PreferredCursor=BuildMemberOrdinal(BuildCellLowerBound(cells,value.PreferredBounds.Left,value.PreferredBounds.Top));
             }
@@ -314,7 +329,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var frontier=value.PreferredFrontierBounds;
                 if(BuildMemberIndex(value.PreferredFrontierCursor)<part.Offset){DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
                 var result=WalkPreferredSource(range,part,p,frontier,ref value.PreferredFrontierCursor,ref steps,support,out target,out plan);
-                if(result==PreferredBuildSearch.Found || result==PreferredBuildSearch.BudgetPending || result==PreferredBuildSearch.SourcePending)return result;
+                if(result!=PreferredBuildSearch.NoRunnable)return result;
                 value.PreferredFrontier=false;
             }
             if(BuildMemberIndex(value.PreferredCursor)<part.Offset)
@@ -328,7 +343,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 value.PreferredCompletedBatch++;value.PreferredInitialized=value.PreferredRevisit=false;value.PreferredCursor=0;
                 return PreferredBuildSearch.BudgetPending;
             }
-            if(!value.PreferredPassUnknown)CompleteBuildFocusCoverage(value);
+            CompleteBuildFocusCoverage(value);
             value.PreferredComplete=true;value.PreferredCompletedBatch++;
             return BuildBoundsContain(value.PreferredCoveredBounds,bounds)?PreferredBuildSearch.NoRunnable:PreferredBuildSearch.BudgetPending;
         }
@@ -368,16 +383,25 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
                 if(value.PreferredNegativeOrdinals?.Contains(ordinal)==true){cursor=next;continue;}
                 if(part.LogicalObjectId==0 && (cell.X<near.Left || cell.X>=near.Right || cell.Y<near.Top || cell.Y>=near.Bottom))
-                {value.PreferredPassUnknown=true;cursor=next;continue;}
+                {cursor=next;continue;}
                 BlueprintBuildTarget candidate;
                 // Reuse only this visit's known Missing/Conflict sample to skip
                 // dependent no-op lanes. A found/prepared target returns with
                 // its ordinal intact; its later real write is never skipped.
-                if(TryCreateConstructionTargetAndAdvance(range.Owner,range,part,index,ordinal,support,out candidate,out next,localPriority:true) && !IsUnfinishedBuildTarget(candidate) && CandidateMayContinueBuild(candidate))
+                var readiness=CreateConstructionCandidate(range.Owner,range,part,index,ordinal,support,out candidate,out next,true);
+                if(readiness==BlueprintBuildReadiness.Deferred)
+                {DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
+                if(readiness==BlueprintBuildReadiness.Ready && IsUnfinishedBuildTarget(candidate))return PreferredBuildSearch.OwnerPending;
+                if(readiness==BlueprintBuildReadiness.Ready && CandidateMayContinueBuild(candidate))
                 {
                     BuildOperationPlan option;BlueprintBuildWait wait;ulong slots;
                     if(!TryPlanContinuationBuild(candidate,p,PreferredBuildSourceHint(p),out option,out wait,out slots))
-                    {if(substitutionPlanningPending)return PreferredBuildSearch.BudgetPending;RegisterPlannedBuildWait(candidate,wait,slots);}
+                    {
+                        if(substitutionPlanningPending)return PreferredBuildSearch.OwnerPending;
+                        if(candidate.Readiness==BlueprintBuildReadiness.Deferred)
+                        {DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
+                        RegisterPlannedBuildWait(candidate,wait,slots);
+                    }
                     else if(PlanContinuesBuild(candidate,option))
                     {candidate.LocalPriority=true;target=candidate;plan=option;return PreferredBuildSearch.Found;}
                 }
@@ -401,25 +425,49 @@ namespace JueMingR.TerrariaHost.Blueprint
                 {repeatedBuild=null;target=repeated;plan=repeatPlan;group.Pending=true;return PreferredBuildSearch.Found;}
                 if(!pending)repeatedBuild=null;
             }
-            bool pendingSource=!nearCurrent,pendingWalk=false;var discovery=group.Discovery;
-            // Prefer live nearby transports, then the complete geometric near
-            // domain. The latter includes fifth/sixth sources not in the cache.
-            for(var node=buildSources.First;node!=null && materialBuildSourceBudget>0;node=node.Next)
+            var discovery=group.Discovery;
+            // Known local transports are positive search routes even while
+            // the shared directory is cold. The directory still owns complete
+            // near coverage: these hints alone can never prove absence.
+            for(var node=buildSources.First;node!=null;node=node.Next)
             {
-                if(!discovery.Members.Contains(node.Value.Range))continue;
-                var result=TryPreferredRange(node.Value.Range,p,out target,out plan);
-                if(result==PreferredBuildSearch.Found){group.Pending=true;return result;}
-                pendingSource|=result==PreferredBuildSearch.SourcePending;pendingWalk|=result==PreferredBuildSearch.BudgetPending;
+                var range=node.Value.Range;var owner=range.Owner;
+                if(!discovery.NearOwnerSet.Contains(owner) || !ProjectionQualificationCurrent(owner) ||
+                    owner.Match==null || range.Index<0 || range.Index>=owner.Match.Ranges.Length ||
+                    !ReferenceEquals(owner.Match.Ranges[range.Index],range) ||
+                    !BuildBoundsOverlap(range.Source.Bounds,BuildFocusBounds(owner,p)))continue;
+                if(discovery.Members.Add(range))discovery.Ranges.Add(range);
             }
-            int count=discovery.Ranges.Count,visits=count;
-            while(visits-->0 && count>0 && materialBuildSourceBudget>0)
+            discovery.Results.Clear();
+            int count=discovery.Ranges.Count,idle=0;
+            // Even a zero remaining source allowance may validate already
+            // covered negatives at Acquire. Unfinished ranges return one
+            // budget wait without a read; they cannot spin or grant absence.
+            while(count>0 && idle<count)
             {
                 discovery.Cursor%=count;var range=discovery.Ranges[discovery.Cursor];discovery.Cursor=(discovery.Cursor+1)%count;
+                PreferredBuildSearch previous;
+                if(discovery.Results.TryGetValue(range,out previous) && previous!=PreferredBuildSearch.BudgetPending)
+                {idle++;continue;}
+                int before=materialBuildSourceBudget;
                 var result=TryPreferredRange(range,p,out target,out plan);
+                discovery.Results[range]=result;
+                discovery.ResultPeakCount=Math.Max(discovery.ResultPeakCount,discovery.Results.Count);
                 if(result==PreferredBuildSearch.Found){group.Pending=true;return result;}
-                pendingSource|=result==PreferredBuildSearch.SourcePending;pendingWalk|=result==PreferredBuildSearch.BudgetPending;
+                // A slice is fairness, not a Host-update boundary. Continue
+                // CPU work while the shared budget pays for real progress;
+                // source waits and finished ranges get no repeated polling.
+                if(before!=materialBuildSourceBudget || result!=PreferredBuildSearch.BudgetPending)idle=0;
+                else idle++;
             }
-            if(visits>=0)pendingWalk=true;
+            bool pendingSource=!nearCurrent,pendingWalk=false;
+            foreach(var range in discovery.Ranges)
+            {
+                PreferredBuildSearch result;
+                if(!discovery.Results.TryGetValue(range,out result)){pendingWalk=true;continue;}
+                pendingSource|=result==PreferredBuildSearch.SourcePending;
+                pendingWalk|=result==PreferredBuildSearch.BudgetPending || result==PreferredBuildSearch.OwnerPending;
+            }
             // A current native consumer is a real obligation, not proof that
             // its unfinished target is absent from this business group.
             pendingWalk|=activeBuild!=null && !activeBuild.Checked && !activeBuild.Rejected;
@@ -448,15 +496,21 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!range.Group.Ready || !ProjectionMatchReadCurrent(range, range.RawVersion) || !projectionChanges.TryGetBuildStamp(range.Watch, range.PartIndex, out support))
             { DemandProjectionMatchRange(range); pending = true; return false; }
             target = CreateMaterialBuildTarget(seed.Owner, range, seed.Cell, seed.Placement, seed.Object, seed.Body, seed.Ordinal, support, seed.Catalog);
+            long reads=buildUnavailableReads;
             BlueprintWorldMatchSample actual;
-            if (!TryBindConstructionTarget(target, BuildLane(seed.Ordinal), out actual)) return false;
+            if (!TryBindConstructionTarget(target, BuildLane(seed.Ordinal), out actual))
+            {pending=reads!=buildUnavailableReads;if(pending)DemandProjectionMatchRange(range);return false;}
+            if(actual.ObjectUnknown && BuildLane(seed.Ordinal)!=BlueprintBuildLane.WallBody)
+            {DemandProjectionMatchRange(range);pending=true;return false;}
             target.LocalProof = target.LocalPriority = true;
             BlueprintBuildOperation operation;
-            if (!TryPlanConstructionOperationFromSample(target, BuildLane(seed.Ordinal), actual, out operation)) return false;
+            reads=buildUnavailableReads;
+            if (!TryPlanConstructionOperationFromSample(target, BuildLane(seed.Ordinal), actual, out operation))
+            {pending=reads!=buildUnavailableReads;if(pending)DemandProjectionMatchRange(range);return false;}
             target.Operation = operation;
             BlueprintBuildWait wait; ulong slots;
-            if (!TryPlanBuildCore(target, p, preferred, intent, out plan, out wait, out slots))
-            { if (substitutionPlanningPending) { pending = true; return false; } RegisterPlannedBuildWait(target, wait, slots); return false; }
+            if (!EvaluateBuildPlan(target, p, preferred, intent, out plan, out wait, out slots))
+            { if (substitutionPlanningPending || target.Readiness==BlueprintBuildReadiness.Deferred) { pending = true; return false; } RegisterPlannedBuildWait(target, wait, slots); return false; }
             return true;
         }
     }

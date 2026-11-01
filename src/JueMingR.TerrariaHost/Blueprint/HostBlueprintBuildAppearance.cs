@@ -124,8 +124,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             int tool = plan == null ? FindAppearanceTool(target, p, out outsideReach) : PlannedBuildToolSlot(p, plan, buildMaterialPreparation?.HasWork == true);
             if (tool < 0) { WaitForAppearanceAvailability(target, outsideReach); return false; }
             BlueprintWorldMatchSample actual;
-            if (!ReadBuildCell(target.WorldX, target.WorldY, out actual) || !AppearanceRestorationReady(target, p, actual)) return false;
-            if (operation.Kind == BlueprintBuildOperationKind.Hammer && !ShapePreflight(target, p, p.inventory[tool])) return false;
+            if (!ReadBuildCell(target.WorldX, target.WorldY, out actual))return DeferBuildTarget(target);
+            long reads=buildUnavailableReads;
+            if(!AppearanceRestorationReady(target,p,actual))return FinishBuildPredicate(target,false,reads);
+            reads=buildUnavailableReads;
+            if (operation.Kind == BlueprintBuildOperationKind.Hammer && !ShapePreflight(target, p, p.inventory[tool]))
+                return FinishBuildPredicate(target,false,reads);
             int primary = -1;
             if (operation.SupplyType > 0)
             {
@@ -297,7 +301,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if (!p.autoPaint || target.Operation?.Kind != BlueprintBuildOperationKind.Scrape) return true;
             BlueprintWorldMatchSample actual; CaptureCell expected; bool same; BlueprintWorldObject form;
-            if (!ReadBuildCell(target.WorldX, target.WorldY, out actual) || !TryAppearanceTarget(target, actual, out expected, out same, out form)) return false;
+            if (!ReadBuildCell(target.WorldX, target.WorldY, out actual))return DeferBuildTarget(target);
+            long reads=buildUnavailableReads;
+            if(!TryAppearanceTarget(target,actual,out expected,out same,out form))return FinishBuildPredicate(target,false,reads);
             bool wallSame = (expected.Layers & CaptureLayer.Wall) != 0 &&
                 BlueprintMaterialSteps.SameBody(expected, actual, MaterialCatalog, true, substitutionPolicy) == BlueprintBodyState.Same;
             var next = BlueprintConstructionAppearance.Next(expected, actual.Cell, same, wallSame);
@@ -325,7 +331,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     { var source = SnapshotSource(slot, item); source.Maximum = 0; dependencies.Add(source); slots |= 1UL << slot; }
                     remaining -= Math.Min(remaining, item.stack);
                 }
-                if (remaining > 0) return false;
+                if (remaining > 0)return BlockBuildTarget(target,BlueprintBuildWait.Material|BlueprintBuildWait.Capability);
             }
             return true;
         }

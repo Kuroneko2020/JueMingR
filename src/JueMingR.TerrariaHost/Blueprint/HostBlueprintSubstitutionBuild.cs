@@ -38,7 +38,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             bool continuing = intent == BuildPlanningIntent.ContinuationProbe;
             if (continuing && (preferred == null || preferred.Slot < 0 || preferred.Slot >= 50 ||
                 !ReferenceEquals(p.inventory[preferred.Slot], preferred.Item) || preferred.Item.type != preferred.Type ||
-                preferred.Item.IsAir || !buildTools.BuildInventoryEligible(preferred.Slot, preferred.Item))) return false;
+                preferred.Item.IsAir || !buildTools.BuildInventoryEligible(preferred.Slot, preferred.Item)))
+            {wait=BlueprintBuildWait.Material;return false;}
             bool wall = target.Placement.Kind == BlueprintPlacementKind.Wall;
             // Empty/readable/cardinal support is common to all wall materials
             // at this current target. A definite refusal is not budget Pending.
@@ -71,11 +72,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                 progress.Player != MaterialBuildEligibilityRevision || progress.Policy != substitutionRevision ||
                 !ReferenceEquals(progress.Source, preferred?.Item) || progress.Slot != (preferred?.Slot ?? -1) || progress.Type != (preferred?.Type ?? 0))
             {
-                progress.Ordinal = target.Ordinal; progress.Cursor = 0;
+                progress.Ordinal = target.Ordinal; progress.Cursor = 0; progress.Deferred = false;
                 progress.Range = target.RangeStamp; progress.Support = target.SupportStamp;
                 progress.Supply = inventoryRevision; progress.Player = MaterialBuildEligibilityRevision; progress.Policy = substitutionRevision;
                 progress.Source = preferred?.Item; progress.Slot = preferred?.Slot ?? -1; progress.Type = preferred?.Type ?? 0;
             }
+            // This pass can outlive its shared CPU allowance. An unresolved
+            // earlier candidate is not a negative proof: retain that bit only
+            // under the exact cursor stamps above until success/full pass or
+            // invalidation. A later known positive may still serve at once.
             while (progress.Cursor < candidates.Count)
             {
                 if (substitutionCandidateBudget <= 0) { substitutionPlanningPending = true; return false; }
@@ -95,14 +100,22 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (p.pulley && p.pulleyDir == 2 && direction != p.direction ||
                     !p.IsInTileInteractionRange(execution.WorldX, execution.WorldY, TileReachCheckSettings.Simple, item.tileBoost + p.blockRange))
                 { wait |= BlueprintBuildWait.Player; continue; }
-                if (!NativeBuildGeometry(execution, p, item, direction, wall)) continue;
+                if (!NativeBuildGeometry(execution, p, item, direction, wall))
+                {progress.Deferred|=execution.Readiness==BlueprintBuildReadiness.Deferred;continue;}
                 plan = new BuildOperationPlan { ExecutionTarget = execution, Tool = item, ToolType = item.type,
                     ToolSlot = slot, HeldMaximum = execution.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1 };
                 PlanSmartPlatformInput(execution, p, plan);
-                progress.Cursor = 0;
+                progress.Cursor = 0; progress.Deferred = false;
                 return true;
             }
-            progress.Cursor = 0;
+            bool deferred=progress.Deferred;
+            progress.Cursor = 0; progress.Deferred = false;
+            // Tail refusals describe only those candidates, not the unresolved
+            // prefix. Do not let the outer bool adapter upgrade this explicit
+            // Deferred to Blocked from a remaining Material/Player wait.
+            if(deferred){wait=BlueprintBuildWait.None;return DeferBuildTarget(target);}
+            target.Readiness=BlueprintBuildReadiness.BlockedNow;
+            if(wait==BlueprintBuildWait.None)wait=BlueprintBuildWait.World;
             return false;
         }
 

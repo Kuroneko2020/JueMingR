@@ -8,7 +8,7 @@ namespace JueMingR.TerrariaHost.Blueprint
     [Flags]
     internal enum BlueprintBuildWait : byte
     {
-        None = 0, Material = 1, Player = 2, Dependencies = 4, Container = 8, Dynamic = 16, Capability = 32, Restoration = 64
+        None = 0, Material = 1, Player = 2, Dependencies = 4, Container = 8, Dynamic = 16, Capability = 32, Restoration = 64, World = 128
     }
 
     internal sealed partial class HostBlueprint
@@ -155,13 +155,13 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void WaitForBuild(BlueprintBuildTarget target, BlueprintBuildWait reason, ulong dependencySlots = 0, bool retryPending = false)
         {
+            if(target!=null)target.Readiness=BlueprintBuildReadiness.BlockedNow;
             if (target?.Range.Materials == null || !IsBuildTargetCurrent(target) || IsUnconfirmedTarget(target)) return;
             var value = target.Range.Materials;
             if(reason==BlueprintBuildWait.Material && target.Operation!=null)reason|=BlueprintBuildWait.Capability;
             value.BuildWaits |= reason; value.BuildDependencyWaitSlots |= dependencySlots;
             if (target.LocalPriority && value.PreferredGroup == buildContinuation?.Group)
             {
-                value.PreferredAttemptNegativeOrdinal=target.Ordinal;
                 value.PreferredWaits |= reason; value.PreferredDependencySlots |= dependencySlots;
                 if ((reason & BlueprintBuildWait.Player) != 0)
                 {
@@ -289,6 +289,9 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 DiagnosticReject(target,BuildTraceStage.Retry,BuildTraceReason.RetryWaiting);
 #endif
+                target.Readiness=BlueprintBuildReadiness.BlockedNow;
+                if(target.LocalPriority && value.PreferredGroup==buildContinuation?.Group)
+                    value.PreferredRetryAt=value.EligibilityRetryAt;
                 return false;
             }
 #if JMR_BLUEPRINT_DIAGNOSTIC

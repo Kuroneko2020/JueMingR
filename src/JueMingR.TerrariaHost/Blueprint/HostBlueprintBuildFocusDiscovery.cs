@@ -54,10 +54,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal readonly Dictionary<BlueprintProjectionPlacement,BuildFocusNearQuery> Owners=new Dictionary<BlueprintProjectionPlacement,BuildFocusNearQuery>();
             internal readonly List<BlueprintProjectionMatchRange> Ranges=new List<BlueprintProjectionMatchRange>();
             internal readonly HashSet<BlueprintProjectionMatchRange> Members=new HashSet<BlueprintProjectionMatchRange>();
+            // One final result per near range, reused by the current query.
+            // A CPU slice can be revisited; a pending source is not polled.
+            internal readonly Dictionary<BlueprintProjectionMatchRange,PreferredBuildSearch> Results=new Dictionary<BlueprintProjectionMatchRange,PreferredBuildSearch>();
             internal readonly List<BlueprintProjectionPlacement> Retired=new List<BlueprintProjectionPlacement>();
             internal readonly List<BlueprintProjectionPlacement> NearOwners=new List<BlueprintProjectionPlacement>();
             internal readonly HashSet<BlueprintProjectionPlacement> NearOwnerSet=new HashSet<BlueprintProjectionPlacement>();
-            internal int Cursor, OwnerCursor;
+            internal int Cursor, OwnerCursor, ResultPeakCount;
             internal ulong Tick;
             internal bool TickSet;
             internal BlueprintProjectionBounds World;
@@ -90,7 +93,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             get
             {
                 var discovery=buildContinuation?.Discovery;if(discovery==null)return 0;
-                long bytes=128+discovery.Ranges.Capacity*8L+discovery.Members.Count*32L+discovery.Ranges.Count*192L;
+                // Collection estimates include reusable result storage even
+                // after Clear retained its buckets for the next near query.
+                long bytes=224+discovery.Ranges.Capacity*8L+discovery.Members.Count*32L+discovery.Ranges.Count*192L+discovery.ResultPeakCount*80L;
                 bytes+=discovery.NearOwners.Capacity*8L+discovery.NearOwnerSet.Count*32L+discovery.Retired.Capacity*8L;
                 foreach(var range in discovery.Ranges)
                 {bytes+=range.Materials?.PreferredNegativeOrdinals?.Count*32L??0;bytes+=range.Materials?.PreferredPositionNegatives?.Count*112L??0;}
@@ -204,7 +209,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 BuildFocusNearQuery query;bool known=discovery.Owners.TryGetValue(owner,out query);
                 if(!projectionScene.Contains(owner) || owner.Match==null || range.Index>=owner.Match.Ranges.Length ||
                     !ReferenceEquals(owner.Match.Ranges[range.Index],range) || !known ||
-                    !(query.Complete && BuildBoundsOverlap(range.Source.Bounds,query.Covered) || query.Started && BuildBoundsOverlap(range.Source.Bounds,query.Query)))
+                    !(BuildBoundsOverlap(range.Source.Bounds,BuildFocusBounds(owner,p)) ||
+                      query.Complete && BuildBoundsOverlap(range.Source.Bounds,query.Covered) || query.Started && BuildBoundsOverlap(range.Source.Bounds,query.Query)))
                 {if(range.Materials!=null){range.Materials.PreferredNegativeOrdinals=null;range.Materials.PreferredPositionNegatives=null;}discovery.Members.Remove(range);discovery.Ranges.RemoveAt(i);}
             }
             foreach(var owner in discovery.NearOwners)
