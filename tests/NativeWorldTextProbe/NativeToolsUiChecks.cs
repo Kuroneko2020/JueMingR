@@ -62,7 +62,7 @@ namespace NativeWorldTextProbe
             Call(state,"ScrollTo",Get(Get(miningRows[2].Cast<object>().First(),"Rect"),"Y"));Prepare(context,1,960,760,1);
             var all=Controls(mining);
             Require(ExactMiningBindings(all),"one select Field and one independent mining Hotkey route to their exact shared IDs");
-            Require(!miningRows[2].Cast<object>().Any(e=>(string)Get(e,"Text")=="选择挖矿区域"),"removed select row contributes no text, layout or hidden hit target");
+            Require(!miningRows[2].Cast<object>().Any(e=>(string)GetOptional(e,"Text")=="选择挖矿区域"),"removed select row contributes no text, layout or hidden hit target");
             var on=all.First(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==21);point=Point(Get(on,"Rect"));var miningSetting=((ToolSettings[])Get(host,"Settings"))[2];command=miningSetting.AcceptedCommandId;
             Mouse(point,false);Call(mining,"ProcessInput",true,point,true,true,false);Mouse(point,true);Call(mining,"ProcessInput",true,point,true,true,false);Mouse(point,false);Call(mining,"ProcessInput",true,point,false,true,false);
             Require(miningSetting.AcceptedCommandId==command,"changed native viewport cancels armed mining action before layout catches up");
@@ -115,7 +115,7 @@ namespace NativeWorldTextProbe
                     PopupClick(context,popup,"Close");UiFrame(context,Vector2.Zero,false);
                 }
                 Require(((string)Get(Get(mining,"bindingDisplay"),"Text")).Contains("F10"),"saved action key is visibly displayed in the adjacent box");
-                Require(ExactMiningBindings(Controls(mining)) && !((IEnumerable[])Get(Get(mining,"panel"),"rows"))[2].Cast<object>().Any(e=>(string)Get(e,"Text")=="选择挖矿区域"),
+                Require(ExactMiningBindings(Controls(mining)) && !((IEnumerable[])Get(Get(mining,"panel"),"rows"))[2].Cast<object>().Any(e=>(string)GetOptional(e,"Text")=="选择挖矿区域"),
                     "adjacent Field is the only select entry; no duplicate row or select keyboard hotspot remains");
                 graphics.Image(Path.Combine(output,"tools-bound-misc-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);
                 if(size[1]==760)
