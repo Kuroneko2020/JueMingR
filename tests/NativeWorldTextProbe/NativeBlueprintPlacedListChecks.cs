@@ -51,9 +51,96 @@ namespace NativeWorldTextProbe
                 var rows = ((IEnumerable)Get(ui, "rows")).Cast<object>().ToArray();
                 Require(rows.Select(row => ((BlueprintMaterialInstance)Get(row, "Instance")).ProjectionGeneration).SequenceEqual(many.Select(item => item.ProjectionGeneration)), "player movement leaves the stable committed order unchanged");
                 Toolbar(host, assembly);
+                MaterialsReturn(context);
             }
             finally { if (ui != null) ((IDisposable)ui).Dispose(); FontAssets.MouseText = oldFont; Call(Get(shell, "renderer"), "RefreshResources"); }
             Console.WriteLine("PASS Blueprint placed list CPU: explicit empty state, literal tile-center geometry, stable instance order, bounded visible rows and toolbar presence across capture/edit modes. Native Draw/OS input remain separate evidence.");
+        }
+        private static void MaterialsReturn(object context)
+        {
+            object host = Get(context, "Blueprint"), shell = Get(context, "Shell"), input = Get(context, "Input"), state = Get(shell, "State");
+            object list = Get(shell, "BlueprintPlacedUi"), popup = Get(shell, "BlueprintMaterialsUi"), layout = Get(state, "Layout"), painter = Get(shell, "renderer");
+            var scene = (IList)Get(host, "projectionScene");
+            Require(scene.Count == 0, "materials-return CPU fixture starts with the existing isolated empty scene");
+            long oldRevision = (long)Get(host, "projectionSceneRevision");
+            int oldWidth = Main.screenWidth, oldHeight = Main.screenHeight;
+            var owned = new List<object>();
+            Action<Keys[]> frame = keys => NativeBlueprintMaterialsUiChecks.Frame(shell, input, 0, 0, false, 0, keys);
+            Action closeThroughShell = () =>
+            {
+                frame(Array.Empty<Keys>()); Require((bool)Get(popup, "Visible"), "material modal is visible before the normal Shell close transition");
+                frame(new[] { Keys.F5 }); frame(Array.Empty<Keys>());
+                Require(!(bool)Get(popup, "Visible") && (bool)Get(list, "Visible"), "normal Shell modal close passes through its materialsWasVisible/resume outlet");
+            };
+            try
+            {
+                Call(shell, "CloseAndSubmitPosition");
+                Main.screenWidth = 960; Main.screenHeight = 640; PlayerInput.CacheOriginalScreenDimensions();
+                var placementType = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintProjectionPlacement", true);
+                long session = (long)Get(host, "UiSession");
+                // The existing retained-scene CPU seam supplies valid current
+                // operands. It does not claim persisted placement, a GPU draw
+                // certificate or a physical row click.
+                for (int i = 1; i <= 12; i++)
+                {
+                    object item = Activator.CreateInstance(placementType, true);
+                    Set(item, "Identity", new BlueprintProjectionIdentity(Guid.NewGuid(), Guid.NewGuid(), "materials-return-" + i, session, i));
+                    Set(item, "Name", "材料返回实例 " + i); Set(item, "Summary", new CaptureSummary { Width = 1, Height = 1, ContentCount = 1 });
+                    Set(item, "OriginX", 10 + i); Set(item, "OriginY", 20); Set(item, "CommitOrder", (long)i);
+                    Set(item, "Opened", true); Set(item, "Positioned", true); scene.Add(item); owned.Add(item);
+                }
+                Set(host, "projectionSceneRevision", oldRevision + 1);
+                frame(Array.Empty<Keys>()); frame(Array.Empty<Keys>()); Call(host, "OpenPlacedList");
+                Require((bool)Get(list, "Visible"), "actual Host/Shell opener retains the CPU placed-list parent");
+                Action prepareBody = () =>
+                {
+                    // Reuse the actual CPU row measurement and current public
+                    // scroll owner. The GPU-only resource/Draw gates are left
+                    // unavailable; no Ready or drawnGeneration is fabricated.
+                    Call(layout, "SetBlueprintLibraryVisible", true); Call(painter, "RefreshResources");
+                    Call(painter, "Prepare", state, (float)Main.screenWidth, (float)Main.screenHeight, Main.UIScaleMatrix.M11);
+                    Set(list, "view", Call(Get(layout, "Viewport"), "Offset", (float)Get(state, "X"), (float)Get(state, "Y")));
+                    Set(list, "directory", Get(host, "MaterialInstances")); Call(list, "Build");
+                    Call(layout, "SetBlueprintContentHeight", Get(list, "contentHeight")); Call(state, "ClampScroll");
+                    Set(list, "scroll", Get(state, "Scroll")); Call(list, "Project", 10, 20, true);
+                };
+                prepareBody(); float max = (float)Get(layout, "MaxScroll");
+                Require(max > 0, "measured real row content produces a scrollable CPU parent");
+                Call(state, "ScrollTo", max / 4); prepareBody(); float positionA = (float)Get(state, "Scroll");
+                float bodyTop = positionA + (float)Get(list, "headerHeight"), bodyBottom = positionA + (float)Get(Get(layout, "Viewport"), "Height");
+                object row = Rows(list).First(value => (float)Get(value, "Top") >= bodyTop && (float)Get(value, "Top") + (float)Get(value, "Height") < bodyBottom);
+                var instance = (BlueprintMaterialInstance)Get(row, "Instance");
+                object anchor = Call(Get(Get(Get(row, "Materials"), "Element"), "Rect"), "Offset", (float)Get(Get(list, "view"), "X"), (float)Get(Get(list, "view"), "Y") - positionA);
+                Require(positionA > 0 && (bool)Call(host, "OpenPlacedInstanceMaterials", session, instance.ProjectionGeneration, anchor), "visible row operand opens exact-instance materials through the real Host admission");
+                Require(Get(popup, "Source").ToString() == "PlacedList" && (long)Get(popup, "Selected") == instance.ProjectionGeneration, "row materials keeps its exact original instance scope");
+                closeThroughShell(); Require((float)Get(state, "Scroll") == positionA, "row materials closes at parent position A");
+
+                Call(state, "ScrollTo", max * .70f); prepareBody(); float positionB = (float)Get(state, "Scroll");
+                Require(positionB > positionA && positionB <= (float)Get(layout, "MaxScroll"), "public ScrollTo establishes a different valid current position B");
+                Call(host, "OpenMaterials");
+                Require((bool)Get(popup, "Visible") && Get(popup, "Source").ToString() == "F5" && (long)Get(popup, "Selected") == 0 && (Guid)Get(popup, "AssetId") == Guid.Empty,
+                    "ordinary real Host entry keeps all-world scope on the visible list parent");
+                Require(GetOptional(list, "armed") == null && GetOptional(list, "hovered") == null && (long)Get(list, "activePreviewGeneration") == 0,
+                    "ordinary material acceptance pauses list gestures and its exact preview responsibility");
+                closeThroughShell(); Require((float)Get(state, "Scroll") == positionB, "ordinary materials closes at B instead of restoring the earlier row-material position A");
+
+                Call(host, "OpenMaterials"); Require((bool)Get(popup, "Visible"), "ordinary modal remains available before real directory shrink");
+                while (scene.Count > 1 && (float)Get(layout, "MaxScroll") >= positionB)
+                {
+                    scene.RemoveAt(scene.Count - 1); Set(host, "projectionSceneRevision", (long)Get(host, "projectionSceneRevision") + 1); prepareBody();
+                }
+                float clamped = (float)Get(state, "Scroll");
+                Require(clamped < positionB && clamped <= (float)Get(layout, "MaxScroll"), "the current smaller measured directory legitimately clamps the parent while materials is open");
+                closeThroughShell(); Require((float)Get(state, "Scroll") == clamped, "modal resume preserves the current clamp rather than replaying a historical scroll");
+                Console.WriteLine("PASS placed-list materials CPU handoff: measured legal A/B scroll, exact row Host scope then ordinary Host all-world scope, normal Shell modal close/resume and real shorter-directory clamp. Retained scene/CPU geometry only; GPU/physical row click NOT_EXECUTED.");
+            }
+            finally
+            {
+                Call(shell, "CloseAndSubmitPosition"); scene.Clear(); Set(host, "projectionSceneRevision", oldRevision); Call(host, "ClearMaterials");
+                foreach (object item in owned) ((IDisposable)Get(item, "Renderer")).Dispose();
+                Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; PlayerInput.CacheOriginalScreenDimensions();
+                frame(Array.Empty<Keys>()); frame(Array.Empty<Keys>());
+            }
         }
         private static void Toolbar(object host, Assembly assembly)
         {

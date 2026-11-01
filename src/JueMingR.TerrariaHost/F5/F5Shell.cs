@@ -364,6 +364,10 @@ namespace JueMingR.TerrariaHost.F5
             matrix = Main.UIScaleMatrix;
             HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close();
             FishingUi?.CloseOverlay(); CaptureUi?.Close(); RecoveryUi?.PotionPopup.Close();
+            // Ordinary materials is also a new view intent. Revoke old import
+            // positioning without cancelling file work or leaving its parent.
+            BlueprintUi?.RetireExchangeIntent();
+            if (BlueprintPlacedUi?.Visible == true) BlueprintPlacedUi.PauseForMaterials();
             BlueprintUi?.PauseForMaterials(); CombatInterval?.Cancel(); CombatRadius?.Cancel();
             BlueprintMaterialsUi.OpenWorld(source, anchor);
         }

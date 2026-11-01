@@ -36,7 +36,7 @@ namespace JueMingR.TerrariaHost.F5
         private BlueprintLibraryPart back, hovered, armed;
         private long session, pressedSession, pressedInstance, generation, pressedGeneration, drawnGeneration = -1;
         private int resources = -1, layout = -1, firstVisible = -1, lastVisible = -1, playerX = int.MinValue, playerY = int.MinValue;
-        private float measuredWidth, contentHeight, scroll = -1, savedScroll, headerHeight = 44;
+        private float measuredWidth, contentHeight, scroll = -1, headerHeight = 44;
         private F5Rect view, hitClip;
         private Matrix matrix;
         private Vector2 screen;
@@ -83,8 +83,11 @@ namespace JueMingR.TerrariaHost.F5
             // Visibility/focus do not prove physical release. The shared owner
             // and these tails consume it later, even after the last row retires.
         }
-        internal void PauseForMaterials() { CancelPreviewRead(); armed = hovered = null; savedScroll = shell.Scroll; ready = false; drawnGeneration = -1; }
-        internal void ResumeAfterMaterials() { if (Visible) { shell.ScrollTo(savedScroll); ready = false; drawnGeneration = -1; } }
+        // Materials owns its own scrolling. The parent keeps the one current
+        // shell.Scroll, including any legitimate clamp as its directory changes;
+        // closing the modal must not restore a historical copy over that value.
+        internal void PauseForMaterials() { CancelPreviewRead(); armed = hovered = null; ready = false; drawnGeneration = -1; }
+        internal void ResumeAfterMaterials() { if (Visible) { ready = false; drawnGeneration = -1; } }
         private void CheckSession()
         { if (Opened && (!host.HasSession || session != host.UiSession)) Close(); }
         internal void ProcessInput(bool active, KeyboardState keys, Vector2 point, bool geometryCurrent, bool focused, bool blocked)

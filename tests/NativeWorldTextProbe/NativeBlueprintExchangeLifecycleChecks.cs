@@ -251,15 +251,20 @@ namespace NativeWorldTextProbe
                     // Direct owner handoff with real files/input/Shell updates.
                     // The established CPU font/layout seam supplies legal page
                     // geometry only; no device, fake Ready or native click is
-                    // claimed for these two materials handoff cases.
+                    // claimed for these materials handoff cases.
                     var originalFont = Terraria.GameContent.FontAssets.MouseText;
                     try
                     {
                         FiniteCostChecks.SetCpuFont(10);
-                        foreach (bool queued in new[] { false, true })
+                        foreach (int handoff in Enumerable.Range(0, 4))
                         {
-                            string incoming = Path.Combine(area, queued ? "materials-queued.jmbp" : "materials-late.jmbp");
-                            WriteSource(Path.Combine(area, queued ? "materials-queued-seed" : "materials-late-seed"), incoming, (ushort)(queued ? 9 : 8));
+                            bool ordinary = handoff >= 2, queued = (handoff & 1) != 0;
+                            string stem = (ordinary ? "world-materials-" : "materials-") + (queued ? "queued" : "late");
+                            string incoming = Path.Combine(area, stem + ".jmbp");
+                            // Two adjacent ordinary ore cells are distinct from
+                            // the earlier one-cell assets, without incomplete
+                            // furniture/object fixtures masquerading as imports.
+                            WriteSource(Path.Combine(area, stem + "-seed"), incoming, (ushort)(ordinary ? queued ? 7 : 6 : queued ? 9 : 8), ordinary ? 2 : 1);
                             Call(shell, "CloseAndSubmitPosition"); neutral();
                             Require(library.TryList(9300, 0), "materials fixture loads a real full parent page");
                             var parent = NativeBlueprintLibraryWait.AcceptedList(library, "materials parent page").Page;
@@ -319,24 +324,29 @@ namespace NativeWorldTextProbe
                                 files.Release(); awaitResult();
                                 Require((Guid)Get(ui, "pendingExchangeAsset") == completed.AssetId, "B positioning is genuinely queued before the newer materials request");
                             }
-                            // Direct Materials: no intervening Card, Name or
-                            // page operation may accidentally retire B first.
-                            Call(shell, "OpenBlueprintTemplateMaterials", a, Call(ui, "MaterialsAnchor", a.AssetId));
+                            // No intervening Card, Name or page operation may
+                            // accidentally retire B before the material request.
+                            if (ordinary) Call(host, "OpenMaterials");
+                            else Call(shell, "OpenBlueprintTemplateMaterials", a, Call(ui, "MaterialsAnchor", a.AssetId));
                             object materials = Get(shell, "BlueprintMaterialsUi");
-                            Require((bool)Get(materials, "Visible") && Get(materials, "Source").ToString() == "Library" && (Guid)Get(materials, "AssetId") == a.AssetId &&
+                            Require((bool)Get(materials, "Visible") && Get(materials, "Source").ToString() == (ordinary ? "F5" : "Library") &&
+                                (Guid)Get(materials, "AssetId") == (ordinary ? Guid.Empty : a.AssetId) && (!ordinary || (long)Get(materials, "Selected") == 0) &&
                                 (long)Get(ui, "ExchangePresentationGeneration") > beforeMaterials && (Guid)Get(ui, "pendingExchangeAsset") == Guid.Empty,
-                                "accepted A materials retires only the old import positioning intent");
+                                "accepted template or ordinary Host materials retires old positioning while keeping its original scope");
                             if (!queued) { files.Release(); awaitResult(); }
                             Action parentUnchanged = () => Require((bool)Get(state, "Visible") && (bool)Get(ui, "Submenu") && (int)Get(state, "Page") == parentTab &&
                                 (int)Get(ui, "requestedPage") == parentPage && (float)Get(state, "Scroll") == parentScroll && (Guid?)GetOptional(ui, "selected") == parentSelection,
                                 "normal UI processing and materials close preserve the exact parent page, scroll and selection");
                             step(); step(); Call(materials, "ReadSnapshot");
-                            Require((bool)Get(materials, "Visible") && (Guid)Get(materials, "AssetId") == a.AssetId, "B success cannot replace the materials source A");
-                            parentUnchanged(); Call(materials, "Close"); step(); parentUnchanged();
+                            Require((bool)Get(materials, "Visible") && (Guid)Get(materials, "AssetId") == (ordinary ? Guid.Empty : a.AssetId) &&
+                                Get(materials, "Source").ToString() == (ordinary ? "F5" : "Library"), "B success cannot replace the accepted material source");
+                            parentUnchanged(); frame(new[] { Keys.F5 }, 0); step();
+                            Require(!(bool)Get(materials, "Visible"), "normal Shell F5 close consumes the modal transition before parent resume");
+                            parentUnchanged();
                         }
                     }
                     finally { Terraria.GameContent.FontAssets.MouseText = originalFont; Call(Get(shell, "renderer"), "RefreshResources"); }
-                    Console.WriteLine("PASS direct template materials CPU owner handoff: distinct B Completed before/after A materials acceptance; Host success retained, queued positioning retired, valid post-F5 page/nonzero scroll/A selection preserved through normal processing and close. GPU/physical Materials click NOT_EXECUTED.");
+                    Console.WriteLine("PASS template and ordinary Host materials CPU handoff: distinct B Completed before/after materials acceptance; Host success retained, queued positioning retired, valid post-F5 page/nonzero scroll/A selection preserved through normal processing and Shell modal close/resume. GPU/physical Materials click NOT_EXECUTED.");
                 }
                 Console.WriteLine("PASS exchange Host lifecycle (" + (graphics == null ? "CPU unavailable Shell consumers and direct view commands; active GPU path separate" : "complete Shell update/pointer/real Draw and enabled view clicks; Name owner command only") + "): observed focus loss, focused modal, both real-IO/neutral orders, success/healthy duplicate/local name, all Mouse1-5 tails, cancel/failure, actual F5 and newer Back/Card/Name/Page/PlacedList/session intent.");
             }
@@ -354,13 +364,13 @@ namespace NativeWorldTextProbe
         }
         private static void AssertSelected(object state, object ui, object host, Guid asset, string reason)
         { Require((bool)Get(state, "Visible") && ((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId == asset && (Guid?)GetOptional(ui, "selected") == asset, reason); }
-        private static void WriteSource(string seedRoot, string source, ushort tile)
+        private static void WriteSource(string seedRoot, string source, ushort tile, int cellCount = 1)
         {
             using (var seed = new LibraryState(new FileBlueprintLibrary(seedRoot)))
             {
                 var identity = new BlueprintProjectionIdentity(Guid.NewGuid(), Guid.NewGuid(), "fixture-" + tile, 1, 1);
-                var window = new BlueprintProjectionWindow(identity, 1, new CaptureSummary { Width = 1, Height = 1, ContentCount = 1 }, new BlueprintProjectionBounds(0, 0, 1, 1),
-                    new[] { new CaptureCell { Layers = CaptureLayer.Tile, TileType = tile } }, Array.Empty<CaptureObject>());
+                var window = new BlueprintProjectionWindow(identity, 1, new CaptureSummary { Width = cellCount, Height = 1, ContentCount = cellCount }, new BlueprintProjectionBounds(0, 0, cellCount, 1),
+                    Enumerable.Range(0, cellCount).Select(x => new CaptureCell { X = x, Layers = CaptureLayer.Tile, TileType = tile }).ToArray(), Array.Empty<CaptureObject>());
                 var entry = NativeBlueprintProjectionVisualChecks.Save(seed, window); string content = Path.Combine(seedRoot, entry.AssetId.ToString("N"), "content");
                 byte[] root = File.ReadAllBytes(Path.Combine(content, "root.bin")), index = File.ReadAllBytes(Path.Combine(content, "index.bin"));
                 string chunk = Directory.EnumerateFiles(Path.Combine(content, "chunks"), "*.bin", SearchOption.AllDirectories).Single();
