@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -73,6 +74,14 @@ namespace NativeWorldTextProbe
                         (mask & 8) != 0 ? ButtonState.Pressed : ButtonState.Released, (mask & 16) != 0 ? ButtonState.Pressed : ButtonState.Released);
                     PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 0;
                     PlayerInput.Triggers.Reset(); PlayerInput.Triggers.Current.Up = true;
+                    // The real MouseInput postfix freezes the physical sample
+                    // before general mapping can consume its game actions.
+                    // Library gestures read that owner, not MouseInfo directly.
+                    var mouseKeys = new List<string>();
+                    for (int button = 0; button < 5; button++) if ((mask & (1 << button)) != 0) mouseKeys.Add("Mouse" + (button + 1));
+                    Call(input, "AfterNativeMouse", mouseKeys);
+                    Require((bool)Get(input, "RawMouseLeft") == ((mask & 1) != 0) && (bool)Get(input, "RawMouseRight") == ((mask & 2) != 0),
+                        "real native mouse stage publishes the exact physical left/right sample before mapping");
                     Call(input, "AfterMapping"); Main.keyState = new KeyboardState(keys); Call(input, "AfterKeyboardRefresh");
                     Call(shell, "ProcessInput"); Call(context, "UpdateRuntime");
                     // CPU has no graphics device. It executes the actual entire
@@ -188,7 +197,11 @@ namespace NativeWorldTextProbe
                             object rect = Get(Get(part, "Element"), "Rect"), view = Get(ui, "view");
                             pointer = new Vector2((float)Get(view, "X") + (float)Get(rect, "X") + (intent == "Card" ? 5 : (float)Get(rect, "Width") / 2),
                                 (float)Get(view, "Y") + (float)Get(rect, "Y") + (float)Get(rect, "Height") / 2 - ((bool)Get(part, "Fixed") ? 0 : (float)Get(state, "Scroll")));
-                            step(); frame(Array.Empty<Keys>(), 1); step(); pointer = Vector2.Zero;
+                            step();
+                            object hovered = GetOptional(ui, "hovered");
+                            Require((bool)Get(input, "CanStartActions") && hovered != null && Get(hovered, "Command").ToString() == command && (bool)Get(hovered, "Enabled"),
+                                "the actual drawn " + command + " control is enabled and hit by the current physical pointer before press");
+                            frame(Array.Empty<Keys>(), 1); step(); pointer = Vector2.Zero;
                         }
                     }
                     else if (intent == "PlacedList") Call(host, "OpenPlacedList");
