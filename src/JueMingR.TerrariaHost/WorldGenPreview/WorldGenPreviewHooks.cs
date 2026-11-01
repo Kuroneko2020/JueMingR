@@ -46,6 +46,7 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
                 if (progressTextures.Any(f => f == null || f.IsStatic || f.FieldType != typeof(Asset<Texture2D>)))
                     throw new MissingFieldException("World generation native progress texture footprint changed.");
                 Patch(Exact(typeof(UIWorldLoad), "Update", false, typeof(void), typeof(GameTime)), after: nameof(LoadUpdated), transpiler: nameof(LoadEntry));
+                Patch(Exact(typeof(UIWorldGenDebug), "Open", true, typeof(void)), before: nameof(NativeEntryBegin), finalizer: nameof(NativeEntryEnd));
                 Patch(Exact(typeof(WorldGenerator), "GenerateWorld", false, typeof(bool)), before: nameof(GenerationBegin), transpiler: nameof(GenerationPublication), finalizer: nameof(GenerationEnd));
                 Patch(Exact(typeof(WorldGenerator.Controller), "ReportException", false, typeof(void), typeof(string), typeof(Exception), typeof(bool)), transpiler: nameof(ExceptionGate));
                 // Exactly one compiler-generated native control action owns this
@@ -97,11 +98,9 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
             try
             {
                 UIWorldGenDebug.Open();
-                hooks?.Owner.CompleteEntry(Main.MenuUI?.CurrentState is UIWorldGenDebug);
             }
             catch (Exception e)
             {
-                hooks?.Owner.CompleteEntry(false);
                 if (controller != null && ReferenceEquals(controller, WorldGenerator.CurrentController)) controller.SnapshotFrequency = frequency;
                 hooks?.Fail(e);
                 // Native construction precedes SetState, but activation may
@@ -109,6 +108,20 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
                 if (previous is UIWorldLoad && Main.MenuUI != null && Main.MenuUI.CurrentState is UIWorldGenDebug)
                     Main.MenuUI.SetState(previous);
             }
+        }
+        private static void NativeEntryBegin(out HostWorldGenPreview.Generation __state)
+        { __state = current?.Owner.BeginNativeEntry(); }
+        private static Exception NativeEntryEnd(Exception __exception, HostWorldGenPreview.Generation __state)
+        {
+            if (__state != null)
+            {
+                // A finalizer also runs on constructor/activation failure. Never
+                // adopt a later generation or leave construction scope behind.
+                if (current != null) current.Owner.CompleteNativeEntry(__state,
+                    __exception == null && Main.MenuUI?.CurrentState is UIWorldGenDebug);
+                else { __state.Entering = false; __state.Entered = false; }
+            }
+            return __exception;
         }
         private static void LoadUpdated(UIWorldLoad __instance, UIGenProgressBar ____progressBar)
         {

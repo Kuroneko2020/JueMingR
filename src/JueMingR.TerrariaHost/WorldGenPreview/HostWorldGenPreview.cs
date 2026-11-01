@@ -18,7 +18,7 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
             internal Generation(WorldGenerator.Controller controller) { Controller = controller; }
             internal GenerationProgress Progress;
             internal volatile bool Entered;
-            internal bool Entering;
+            internal volatile bool Entering;
         }
         private readonly HostInputState input;
         private Generation generation;
@@ -62,17 +62,25 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
             // already advanced before MenuUI.Update; no second keyboard reader
             // or synthetic release may create a second entry across pages.
             input.Hotkeys.ConsumePress((int)Keys.F5);
-            var current = Volatile.Read(ref generation);
-            if (current == null) return false;
-            current.Entering = true;
             return true;
         }
-        internal void CompleteEntry(bool success)
+        internal Generation BeginNativeEntry()
         {
             var current = Volatile.Read(ref generation);
-            if (current == null) return;
-            current.Entering = false;
-            if (success) current.Entered = true;
+            if (!IsGenerationAvailable || current == null || !Main.gameMenu || Main.netMode == 2 ||
+                Main.MenuUI == null || current.Controller.QueuedAbort) return null;
+            // Both the load-page F5 and native quickload regeneration call Open.
+            // Construction needs display scope; operations wait for activation.
+            current.Entered = false;
+            current.Entering = true;
+            return current;
+        }
+        internal void CompleteNativeEntry(Generation entry, bool success)
+        {
+            if (entry == null) return;
+            entry.Entering = false;
+            entry.Entered = success && ReferenceEquals(Volatile.Read(ref generation), entry) &&
+                IsGenerationAvailable && Main.gameMenu && Main.netMode != 2 && !entry.Controller.QueuedAbort;
         }
         internal bool HasPreviewContext
         {

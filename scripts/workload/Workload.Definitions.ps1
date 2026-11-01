@@ -20,7 +20,6 @@ function Get-WorkloadLeafChecks {
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
     $leaves = @{
-        'tests/NativeWorldTextProbe/NativeWorldGenPreviewVisualChecks.cs'=@('native-WorldGenPreviewVisual')
         'tests/NativeWorldTextProbe/NativeWorldGenPreviewChecks.cs'=@('native-WorldGenPreviewCpu')
         'tests/NativeWorldTextProbe/NativeCombatWorkerAssetChecks.cs'=$workerAssetConsumers
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionChecks.cs'=@('native-BlueprintSubstitutionCpu')

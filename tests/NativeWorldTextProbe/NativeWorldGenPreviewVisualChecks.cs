@@ -27,6 +27,14 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
         private static int quickloadCalls;
+        private static bool failConstruction;
+        private static object previewOwner;
+        private static void ConstructionProbe()
+        {
+            if (!failConstruction) return;
+            Require((bool)Get(previewOwner, "HasPreviewContext") && !(bool)Get(previewOwner, "CanSaveQuickload"), "Native construction has display scope before operation admission.");
+            throw new InvalidOperationException("test-native-preview-construction-failure");
+        }
         private static bool QuickloadSink(DebugMessage __0, ref bool __result)
         { Require(__0.CommandName == "quickload-regen", "Only the native menu quickload command reaches the persistence sink."); quickloadCalls++; __result = true; return false; }
         private static bool VisibilitySink() { return false; }
@@ -51,6 +59,9 @@ namespace NativeWorldTextProbe
                 try
                 {
                     Call(hooks, "Install", typeof(Main).Assembly); Require(GetOptional(hooks, "Failure") == null, "Actual original UI hooks install.");
+                    previewOwner = Get(hooks, "Owner");
+                    Require(Call(previewOwner, "BeginNativeEntry") == null, "Unpublished generation cannot be adopted by native Open.");
+                    sinks.Patch(typeof(UIWorldGenDebug).GetConstructor(Type.EmptyTypes), prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(ConstructionProbe), Flags)));
                     sinks.Patch(typeof(ToolkitDebugCommands).GetMethod("QuickLoadRegenCommand"), prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(QuickloadSink), Flags)));
                     sinks.Patch(typeof(WorldGenerator).GetMethod("SetDebugWorldGenUIVisibility", Flags), prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(VisibilitySink), Flags)));
                     Main.MenuUI = new UserInterface(); Main.gameMenu = true; Main.netMode = 0; DebugOptions.enableDebugCommands = false;
@@ -79,6 +90,28 @@ namespace NativeWorldTextProbe
                             Require(!((Rectangle)Get(banner, "Bounds")).Intersects((Rectangle)Get(banner, "ProgressBounds")), "Scaled native logical layout clears all ornament textures.");
                             Require((int)Get(banner, "Measurements") == 1 && (int)Get(banner, "Layouts") == 3, "Viewport/scale changes relayout without remeasuring stable font.");
                             Viewport(960, 640, 1);
+                            Main.gameMenu = false;
+                            Require(Call(previewOwner, "BeginNativeEntry") == null && !(bool)Get(previewOwner, "HasPreviewContext"), "Native gameplay preview stays outside this menu-generation scope.");
+                            Main.gameMenu = true;
+                            failConstruction = true;
+                            try { UIWorldGenDebug.Open(); throw new Exception("Expected native construction failure."); }
+                            catch (InvalidOperationException e) { Require(e.Message == "test-native-preview-construction-failure", "Native auto-open preserves the original construction exception."); }
+                            finally { failConstruction = false; }
+                            Require(!(bool)Get(previewOwner, "HasPreviewContext") && !(bool)Get(previewOwner, "CanSaveQuickload") && !(bool)Call(previewOwner, "OwnsController", controller), "Failed native construction leaves neither entering nor operation ownership.");
+                            // This is the same original Open called by native
+                            // quickload regeneration, without a preceding F5.
+                            UIWorldGenDebug.Open();
+                            var automatic = Main.MenuUI.CurrentState as UIWorldGenDebug;
+                            Require(automatic != null && (bool)Call(previewOwner, "OwnsController", controller), "Native automatic Open adopts only its published generation after activation.");
+                            var automaticTips = Descendants(automatic).Where(e => e.GetType().Name == "TooltipElement").ToArray();
+                            Require(automaticTips.Any(t => Title(t) == "操作说明") && ((string)Call(automatic, "GetControls")).Contains("暂停/继续"), "Native automatic preview receives Chinese controls and help without F5.");
+                            Require(quickloadCalls == 0 && !DebugOptions.enableDebugCommands, "Automatic Open does not save or enable global debug.");
+                            var automaticSave = automaticTips.First(t => Title(t).StartsWith("保存快速加载设置：", StringComparison.Ordinal)).Parent;
+                            automaticSave.LeftClick(new UIMouseEvent(automaticSave, Vector2.Zero));
+                            Require(quickloadCalls == 1, "Actual native automatic-preview save action reaches the original command terminal.");
+                            typeof(WorldGenerator.Controller).GetMethod("ReportException", Flags).Invoke(controller, new object[] { "Exception in Pass: Terrain", null, true });
+                            Require(controller.Paused, "Automatic preview retains the same-controller native exception behavior."); controller.Paused = false;
+                            UIWorldGenDebug.Close(); Main.MenuUI.SetState(load);
                             NativeQuickItemChecks.Sample(input, new[] { Keys.F5 }); load.Update(new GameTime());
                             var ui = Main.MenuUI.CurrentState as UIWorldGenDebug;
                             Require(ui != null && ReferenceEquals(WorldGenerator.CurrentController, controller), "Actual native F5 Open constructs and activates original preview with the right controller.");
@@ -98,9 +131,9 @@ namespace NativeWorldTextProbe
                             var pause = tooltips.First(t => Title(t) == "暂停").Parent;
                             pause.LeftClick(new UIMouseEvent(pause, Vector2.Zero)); Require(controller.Paused, "Original pause button action remains connected.");
                             pause.LeftClick(new UIMouseEvent(pause, Vector2.Zero)); Require(!controller.Paused, "Original resume action remains connected.");
-                            Require(quickloadCalls == 0, "Opening/painting the preview does not save quickload settings.");
+                            Require(quickloadCalls == 1, "F5 opening/painting adds no quickload save to the earlier explicit automatic-preview action.");
                             var save = tooltips.First(t => Title(t).StartsWith("保存快速加载设置：", StringComparison.Ordinal)).Parent;
-                            save.LeftClick(new UIMouseEvent(save, Vector2.Zero)); Require(quickloadCalls == 1, "Only the actual native save-button action reaches its original command sink.");
+                            save.LeftClick(new UIMouseEvent(save, Vector2.Zero)); Require(quickloadCalls == 2, "Only the actual native save-button action reaches its original command sink.");
                             typeof(WorldGenerator.Controller).GetMethod("ReportException", Flags).Invoke(controller, new object[] { "Exception in Pass: Terrain", null, true });
                             Require(controller.Paused, "Actual owned Controller.ReportException keeps its native pause behavior."); controller.Paused = false;
                             var unrelated = new WorldGenerator.Controller(); typeof(WorldGenerator.Controller).GetMethod("ReportException", Flags).Invoke(unrelated, new object[] { "unrelated", null, true });
@@ -117,6 +150,8 @@ namespace NativeWorldTextProbe
                     generator.Append(new PassLegacy("Jungle", (p, c) => { }));
                     generator.GenerateWorld();
                     if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+                    WorldGenerator.CurrentController = controller; WorldGenerator.CurrentGenerationProgress = progress;
+                    Require(Call(previewOwner, "BeginNativeEntry") == null && !(bool)Get(previewOwner, "HasPreviewContext") && !(bool)Call(previewOwner, "OwnsController", controller), "Retired token cannot be adopted even when native statics retain the same controller/progress.");
                     Console.WriteLine("WORLDGEN VISUAL PASS: real XNB/font/device, original load and complete preview construction, native child rendering, original control/delegate/exception/button consumers. Map/chat background render, OS physical input and owner startup NOT_EVALUATED; quickload persistence terminal intercepted.");
                 }
                 finally
@@ -124,6 +159,7 @@ namespace NativeWorldTextProbe
                     Main.MenuUI.SetState(new UIState()); WorldGen.generatingWorld = WorldGen.isGeneratingOrLoadingWorld = false;
                     WorldGenerator.CurrentController = null; WorldGenerator.CurrentGenerationProgress = null;
                     sinks.UnpatchAll(sinks.Id); ((IDisposable)hooks).Dispose();
+                    previewOwner = null; failConstruction = false;
                 }
             }
         }
