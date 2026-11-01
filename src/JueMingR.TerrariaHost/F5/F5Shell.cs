@@ -562,6 +562,15 @@ namespace JueMingR.TerrariaHost.F5
                 // The shell and Notes must yield the same newly sampled input.
                 bool inputActive = !failed && CanPresentNow && inputState.CanUseInput && !inputState.NativeUiTransitionRequest &&
                     !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode;
+                // State.Update still closes actual controls on unavailable
+                // input. Preserve the reason before its hidden-view consumer
+                // runs, including a modal that never produced a focus-loss
+                // sample. Real navigation and other unavailable causes retire.
+                if (!inputActive)
+                {
+                    if (TemporaryPresentationUnavailable) BlueprintUi?.LoseFocus();
+                    else if (BlueprintUi?.Submenu == true) BlueprintUi.Suspend();
+                }
                 Vector2 pointer = Vector2.Transform(raw, Matrix.Invert(matrix));
                 bool materialsWasVisible = BlueprintMaterialsUi?.Visible == true;
                 BlueprintMaterialsUi?.Process(inputActive, pointer, inputState.SampleFocused, PlayerInput.ScrollWheelDeltaForUI, f5);
@@ -859,8 +868,8 @@ namespace JueMingR.TerrariaHost.F5
                     }
                     return;
                 }
-                if (!CanPresentNow)
-                { CloseAndSubmitPosition(); notes.Prepare(false, matrix, PlayerInput.OriginalScreenSize); renderer.Dispose(); return; }
+                if (PresentationUnavailable)
+                { CloseForUnavailablePresentation(); notes.Prepare(false, matrix, PlayerInput.OriginalScreenSize); renderer.Dispose(); return; }
                 // Documents finish independently; a protected/failed read still
                 // finishes loading and permits in-memory use of that document.
                 if (movement != null) { State.Layout.SetMovementMode(movement.DashMode); State.Layout.SetMovementConfiguration(renderer.MovementControls.ConfigurationExpanded); }
@@ -903,7 +912,7 @@ namespace JueMingR.TerrariaHost.F5
             try
             {
                 RestoreLeases();
-                if (!CanPresentNow) { CloseAndSubmitPosition(); return true; }
+                if (PresentationUnavailable) { CloseForUnavailablePresentation(); return true; }
                 if (OwnsPointer || blueprint?.Toolbar.HitCurrent() == true)
                 {
                     // AfterUpdate already cleared the old bubble before Emote.
@@ -954,7 +963,7 @@ namespace JueMingR.TerrariaHost.F5
             ShortFeedback?.Draw();
             try
             {
-                if (!CanPresentNow) { CloseAndSubmitPosition(); RestoreLeases(); }
+                if (PresentationUnavailable) { CloseForUnavailablePresentation(); RestoreLeases(); }
                 else if (!failed)
                 {
                     notes.DrawPins();
@@ -1087,6 +1096,18 @@ namespace JueMingR.TerrariaHost.F5
             MiscUi?.PrepareLayout(matrix,miscStart);RecoveryUi?.PrepareLayout(matrix);
             if(CaptureUi!=null && MiscUi!=null){CaptureUi.MoveAnchor(MiscUi.ConfigurationAnchor,State.Layout.Generation);CaptureUi.Prepare(matrix,screen,resources);}
         }
+        // Only the sampled focus/modal boundary is temporary. Menu/map/text
+        // owners, native transitions and failures retain explicit retirement;
+        // ExchangeBusy alone grants no exception. The consumed neutral sample
+        // may have retired the modal already, while input is still quarantined.
+        private bool TemporaryPresentationUnavailable { get { return !failed && CanPresent(false, false) &&
+            !inputState.NativeUiTransitionRequest && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
+            (!inputState.IsFocused || inputState.ExternalModalBusy || BlueprintUi?.TemporarilySuspended == true && !inputState.CanUseInput); } }
+        private bool PresentationUnavailable { get { return !CanPresentNow || inputState.ExternalModalBusy ||
+            BlueprintUi?.TemporarilySuspended == true && !inputState.CanUseInput; } }
+        private void CloseForUnavailablePresentation()
+        { if (TemporaryPresentationUnavailable) CancelForFocusLoss(); else CloseAndSubmitPosition(); }
+
         internal void CloseAndSubmitPosition() { CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
 
         internal void CancelForFocusLoss()

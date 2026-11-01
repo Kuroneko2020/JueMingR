@@ -76,6 +76,7 @@ namespace JueMingR.TerrariaHost.F5
         private bool lastClickName;
         public TextEditBuffer Editor { get { return editor; } }
         internal bool Submenu { get { return mode != View.None; } }
+        internal bool TemporarilySuspended { get { return Submenu && focusSuspended; } }
         internal long ExchangePresentationGeneration { get; private set; }
         private Guid pendingExchangeAsset;
         private long pendingExchangeSession, pendingExchangeGeneration;
@@ -202,13 +203,21 @@ namespace JueMingR.TerrariaHost.F5
         {
             ExchangePresentationGeneration++;
             pendingExchangeAsset = Guid.Empty;
+            focusSuspended = false;
             host.CancelProjectionOpen();
             if (mode == View.Capture) host.CancelCaptureOrDraft();
             ReleasePresentation(); mode = View.None;
         }
-        // Focus is an input/resource boundary, not a capture cancellation.
-        // Preserve the submenu so a valid accepted job can finish and reappear.
-        internal void LoseFocus() { ReleasePresentation(); focusSuspended = true; if (mode == View.Library) RequestList(requestedPage); }
+        // Focus/modal unavailability is an input/resource boundary, not an
+        // intent cancellation. Update and both draw gates can visit this in
+        // one frame; release/request once, retaining the exact return intent
+        // through file IO and even after Host retires its completed request.
+        internal void LoseFocus()
+        {
+            if (focusSuspended) return;
+            ReleasePresentation(); focusSuspended = true;
+            if (mode == View.Library) RequestList(requestedPage);
+        }
         private void ReleasePresentation()
         {
             host.CancelStaticMaterialViews(); captureMaterials.Clear(); materialRenderer.Dispose(); pageMaterials.Clear(); draftMaterials = null;

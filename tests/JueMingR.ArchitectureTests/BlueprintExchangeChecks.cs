@@ -20,7 +20,7 @@ namespace JueMingR.ArchitectureTests
         internal static void Check(IList<string> failures)
         {
             string area = Path.Combine(Path.GetTempPath(), "JueMingR-exchange-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(area);
-            try { RoundTrip(area); Corruption(area); MultiBlockAndFlood(area); PreviewCooperation(area); PublishFaults(area); CounterFailure(area); MechanicalTargets(area); SlowLane(area); foreach (string mode in new[] { "Read", "Write", "Flush" }) BlockedStreamLane(area, mode); Console.WriteLine("BlueprintExchange: literal byte vector, identity, dedup, reliable files, naming and blocked external lane passed."); }
+            try { RoundTrip(area); Corruption(area); MultiBlockAndFlood(area); PreviewCooperation(area); PublishFaults(area); CounterFailure(area); ExportOutcomes(area); MechanicalTargets(area); SlowLane(area); foreach (string mode in new[] { "Read", "Write", "Flush" }) BlockedStreamLane(area, mode); Console.WriteLine("BlueprintExchange: literal byte vector, continuous identity, dedup, reliable files, upper-owner outcomes, naming and blocked external lane passed."); }
             catch (Exception error) { failures.Add("BlueprintExchange " + error + "; retained=" + area); }
         }
         private static void Need(bool value, string reason) { if (!value) throw new InvalidOperationException(reason); }
@@ -67,17 +67,36 @@ namespace JueMingR.ArchitectureTests
                 Need(state.TryBeginExchange(new BlueprintExchangeRequest { RequestId = request, Kind = BlueprintExchangeKind.Export, Ticket = Ticket("NewTarget", request, target), SupportedTargetVersion = "1.4.5.8", Proposal = proposal, CounterCandidate = proposal.CounterCandidate, Name = entry.Name, TemplateKey = new BlueprintTemplateKey(entry.AssetId, Guid.ParseExact(entry.ContentRevision, "N"), entry.ContentHash) }), "export admitted");
                 var exported = Await(state); Need(exported.Status == BlueprintExchangeStatus.Completed && exported.FileCommitted && exported.CounterCommitted, "file and counter separately reliable");
                 Need(File.ReadAllBytes(target).SequenceEqual(literal), "export matches independently constructed entire literal container");
+                CounterBytes(counter, 1);
                 request = Guid.NewGuid(); Need(state.TryBeginExchange(new BlueprintExchangeRequest { RequestId = request, Kind = BlueprintExchangeKind.PrepareExport }), "second prepare"); Need(Await(state).Proposal.CounterCandidate == 2, "counter advances only after success"); state.CancelExchange(request);
+                // Reuse the same LibraryState and real AtomicFileDocument. A
+                // rebuild between exports would hide stale initial-read identity.
+                string secondDirectory = Path.Combine(area, "second-directory"); Directory.CreateDirectory(secondDirectory);
+                for (int sequence = 2; sequence <= 3; sequence++)
+                {
+                    request = Guid.NewGuid(); Need(state.TryBeginExchange(new BlueprintExchangeRequest { RequestId = request, Kind = BlueprintExchangeKind.PrepareExport }), "continuous proposal " + sequence);
+                    proposal = Await(state).Proposal; Need(proposal.CounterCandidate == sequence, "cancel consumes no number; cross-directory counter " + sequence);
+                    target = Path.Combine(sequence == 2 ? secondDirectory : area, proposal.SuggestedLeaf);
+                    Need(state.TryBeginExchange(new BlueprintExchangeRequest { RequestId = request, Kind = BlueprintExchangeKind.Export, Ticket = Ticket("NewTarget", request, target), SupportedTargetVersion = "1.4.5.8", Proposal = proposal, CounterCandidate = proposal.CounterCandidate, Name = entry.Name, TemplateKey = new BlueprintTemplateKey(entry.AssetId, Guid.Parse(entry.ContentRevision), entry.ContentHash) }), "continuous export " + sequence);
+                    exported = Await(state);
+                    Need(exported.Status == BlueprintExchangeStatus.Completed && exported.FileCommitted && exported.CounterCommitted && File.ReadAllBytes(target).SequenceEqual(literal), "same-owner complete file and counter commit " + sequence);
+                    CounterBytes(counter, sequence);
+                }
             }
             using (var state = State(path, counter))
             {
-                Guid request = Guid.NewGuid(); Need(state.TryBeginExchange(new BlueprintExchangeRequest { RequestId = request, Kind = BlueprintExchangeKind.PrepareExport }), "restart prepare"); Need(Await(state).Proposal.CounterCandidate == 2, "restart and cancelled proposal preserve committed counter"); state.CancelExchange(request);
+                Guid request = Guid.NewGuid(); Need(state.TryBeginExchange(new BlueprintExchangeRequest { RequestId = request, Kind = BlueprintExchangeKind.PrepareExport }), "restart prepare"); Need(Await(state).Proposal.CounterCandidate == 4, "restart continues all three committed exports"); state.CancelExchange(request);
                 // Same claimed hash with a missing body must never hide a valid import.
                 string asset = Directory.EnumerateDirectories(path).First(p => Path.GetFileName(p).Length == 32); string body = Path.Combine(asset, "content");
                 File.Delete(Directory.EnumerateFiles(body, "*.bin", SearchOption.AllDirectories).First(p => Path.GetFileName(p) != "root.bin" && Path.GetFileName(p) != "index.bin"));
                 Need(Import(state, source).Status == BlueprintExchangeStatus.Completed, "broken same-hash candidate cannot dedup");
             }
             Need(BlueprintExportNameProposal.Leaf(new DateTime(2026, 11, 1), 1000) == "JM11011000.jmbp", "999 never wraps");
+        }
+        private static void CounterBytes(string path, int sequence)
+        {
+            string expected = "{\"format\":\"JueMingR.BlueprintExchangeState\",\"version\":1,\"localDate\":\"2026-11-01\",\"lastSequence\":" + sequence + "}\n";
+            Need(File.ReadAllBytes(path).SequenceEqual(new UTF8Encoding(false, true).GetBytes(expected)), "actual counter file preserves date and committed sequence " + sequence);
         }
         private static void Corruption(string area)
         {
@@ -216,6 +235,48 @@ namespace JueMingR.ArchitectureTests
             public PreferenceReadResult Read() { return new PreferenceReadResult(PreferenceReadStatus.Missing, null, "missing", null); }
             public PreferenceWriteResult Write(string expected, byte[] contents) { return new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, null, "controlled-counter-failure"); }
             public void Dispose() { }
+        }
+        private static void ExportOutcomes(string area)
+        {
+            foreach (string boundary in new[] { "BeforeCommit", "AfterCommit", "Cleanup" })
+            {
+                string folder = Path.Combine(area, "upper-" + boundary); Directory.CreateDirectory(folder);
+                string source = Path.Combine(folder, "source.jmbp"), target = Path.Combine(folder, "target.jmbp"), counter = Path.Combine(folder, "counter.json");
+                byte[] root, chunk, old = Encoding.UTF8.GetBytes("原正式文件"); byte[] literal = Literal("上层回执", Guid.NewGuid(), 4, out root, out chunk);
+                File.WriteAllBytes(source, literal); File.WriteAllBytes(target, old);
+                Guid request = Guid.NewGuid(); string candidate = Path.Combine(folder, ".target.jmbp." + request.ToString("N") + ".tmp"), backup = candidate + ".backup";
+                FileStream recoveryLease = null;
+                Func<string, FileMode, FileAccess, FileShare, Stream> factory = (path, mode, access, share) => new FileStream(path, mode, access, share);
+                Action<string> fault = stage =>
+                {
+                    if (boundary == stage) throw new IOException("controlled-upper-" + boundary);
+                    // Keep the actual verified backup readable but deny delete.
+                    // Publication succeeds; only its later cleanup must fail.
+                    if (boundary == "Cleanup" && stage == "AfterCommit") recoveryLease = new FileStream(backup, FileMode.Open, FileAccess.Read, FileShare.Read);
+                };
+                var io = (FileBlueprintExchange)Activator.CreateInstance(typeof(FileBlueprintExchange), BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { factory, fault }, null);
+                try
+                {
+                    using (var state = State(Path.Combine(folder, "templates"), counter, io))
+                    {
+                        Need(Import(state, source).Status == BlueprintExchangeStatus.Completed, "upper outcome import seed");
+                        var entry = Ordinary(state, state.TryList(1, 0)).Page.Entries[0];
+                        Need(state.TryBeginExchange(new BlueprintExchangeRequest { RequestId = request, Kind = BlueprintExchangeKind.PrepareExport }), "upper outcome prepare"); var proposal = Await(state).Proposal;
+                        Need(state.TryBeginExchange(new BlueprintExchangeRequest { RequestId = request, Kind = BlueprintExchangeKind.Export, Ticket = Ticket("CaptureOverwrite", request, target), SupportedTargetVersion = "1.4.5.8", Proposal = proposal, CounterCandidate = proposal.CounterCandidate, Name = entry.Name, TemplateKey = new BlueprintTemplateKey(entry.AssetId, Guid.Parse(entry.ContentRevision), entry.ContentHash) }), "upper outcome export");
+                        var result = Await(state);
+                        if (boundary == "BeforeCommit")
+                            Need(result.Status == BlueprintExchangeStatus.Failed && !result.FileCommitted && !result.CounterCommitted && !File.Exists(counter) && File.ReadAllBytes(target).SequenceEqual(old) && !File.Exists(candidate) && !File.Exists(backup), "owner known-uncommitted failure preserves original and precisely removes candidate");
+                        else if (boundary == "AfterCommit")
+                            Need(result.Status == BlueprintExchangeStatus.CommitUnconfirmed && !result.FileCommitted && !result.CounterCommitted && !File.Exists(counter) && File.ReadAllBytes(target).SequenceEqual(literal) && File.ReadAllBytes(backup).SequenceEqual(old), "owner real attempted-unknown retains target and original recovery backup without consuming number");
+                        else
+                        {
+                            Need(result.Status == BlueprintExchangeStatus.Completed && result.FileCommitted && result.CounterCommitted && File.ReadAllBytes(target).SequenceEqual(literal) && File.ReadAllBytes(backup).SequenceEqual(old) && result.Message.Contains("恢复文件已保留"), "owner keeps reliable publication and counter despite real backup cleanup failure");
+                            CounterBytes(counter, 1);
+                        }
+                    }
+                }
+                finally { recoveryLease?.Dispose(); Need(io.Stop(3000), "upper outcome lane stopped"); }
+            }
         }
         private static BlueprintExchangeIoReceipt Io(IBlueprintExchangeIo io, BlueprintExchangeIoCommand command)
         {

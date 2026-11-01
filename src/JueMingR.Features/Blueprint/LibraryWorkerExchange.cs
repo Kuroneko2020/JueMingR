@@ -11,6 +11,7 @@ namespace JueMingR.Features.Blueprint
 {
     internal sealed partial class LibraryWorker
     {
+        private enum ExportCommitKnowledge { NotSubmitted, InFlight, NotCommitted, Unconfirmed, Committed }
         private sealed class ExchangeOperation
         {
             internal BlueprintExchangeRequest Request;
@@ -18,6 +19,7 @@ namespace JueMingR.Features.Blueprint
             internal Guid Stage, Asset;
             internal long Blocks, Position, SourceLength;
             internal bool Promoted, Publishing, Cancelled, Finishing, AwaitingIo;
+            internal ExportCommitKnowledge ExportCommit;
             internal BlueprintExchangeReceipt Completion;
             internal readonly byte[] Buffer = new byte[65536];
             internal byte[] Read;
@@ -31,9 +33,11 @@ namespace JueMingR.Features.Blueprint
         private ExchangeOperation exchange;
         private Guid exchangeReservation;
         private BlueprintExchangeReceipt exchangeReceipt;
-        private bool exchangeReady, exchangeWasTurn, exchangeCounterProtected;
+        private bool exchangeReady, exchangeWasTurn, exchangeCounterProtected, exchangeCounterLoaded;
         private BlueprintExchangePhase exchangePhase;
         private string exchangeCounterIdentity;
+        private DateTime exchangeSavedDate;
+        private long exchangeSavedSequence;
         private DateTime exchangeHighDate;
         private long exchangeHighSequence;
         internal bool ExchangeBusy { get { lock (gate) return exchangeReservation != Guid.Empty || exchange != null || exchangeReceipt != null; } }
@@ -114,8 +118,14 @@ namespace JueMingR.Features.Blueprint
                     lock (gate) { exchangeReceipt = operation.Completion; exchange = null; exchangeReservation = Guid.Empty; }
                     return;
                 }
-                operation.Completion = ExchangeResult(operation, operation.Publishing ? BlueprintExchangeStatus.CommitUnconfirmed : error is OperationCanceledException ? BlueprintExchangeStatus.Cancelled : BlueprintExchangeStatus.Failed,
-                    operation.Publishing ? "无法确认是否保存成功，相关文件已保留" : error is OperationCanceledException ? "文件操作已取消" : "蓝图文件格式、版本或读写校验失败，原件已保留");
+                // Publishing blocks cancellation, but only the CommitTarget
+                // acknowledgement knows whether export publication was attempted.
+                // Import promotion/metadata retain their existing unknown boundary.
+                bool unknown = operation.Request.Kind == BlueprintExchangeKind.Export
+                    ? operation.ExportCommit == ExportCommitKnowledge.InFlight || operation.ExportCommit == ExportCommitKnowledge.Unconfirmed
+                    : operation.Publishing;
+                operation.Completion = ExchangeResult(operation, unknown ? BlueprintExchangeStatus.CommitUnconfirmed : error is OperationCanceledException ? BlueprintExchangeStatus.Cancelled : BlueprintExchangeStatus.Failed,
+                    unknown ? "无法确认是否保存成功，相关文件已保留" : error is OperationCanceledException ? "文件操作已取消" : "蓝图文件格式、版本或读写校验失败，原件已保留");
                 operation.Finishing = true; operation.Steps = FinishExchange(operation).GetEnumerator(); WakeExchange();
             }
             finally { files.CloseMetadata(); }
@@ -124,10 +134,15 @@ namespace JueMingR.Features.Blueprint
         {
             operation.AwaitingIo = true;
             if (!exchangeIo.TrySubmit(command, WakeExchange)) { operation.AwaitingIo = false; throw new InvalidOperationException("blueprint-exchange-io-busy"); }
+            bool exportCommit = operation.Request.Kind == BlueprintExchangeKind.Export && command.Kind == BlueprintExchangeIoKind.CommitTarget;
+            if (exportCommit) operation.ExportCommit = ExportCommitKnowledge.InFlight;
             yield return false;
             BlueprintExchangeIoReceipt value;
             if (!exchangeIo.TryTake(out value)) throw new InvalidOperationException("blueprint-exchange-ack-missing");
             operation.AwaitingIo = false; operation.Io = value;
+            // Close/read/write receipts must not overwrite the settled commit
+            // fact, including reliable publication followed by cleanup failure.
+            if (exportCommit) operation.ExportCommit = value.FileCommitted ? ExportCommitKnowledge.Committed : value.CommitUnconfirmed ? ExportCommitKnowledge.Unconfirmed : ExportCommitKnowledge.NotCommitted;
             if (!value.Success && !value.FileCommitted) { if (value.CommitUnconfirmed) operation.Publishing = true; throw new IOException(value.ErrorCode); }
             if (operation.Cancelled && !operation.Publishing && !operation.Finishing) throw new OperationCanceledException();
         }
@@ -161,11 +176,18 @@ namespace JueMingR.Features.Blueprint
             if (request.Kind == BlueprintExchangeKind.PrepareExport)
             {
                 if (exchangeCounterProtected) throw new InvalidDataException("blueprint-exchange-counter-protected");
-                PreferenceReadResult read = exchangeCounter.Read(); DateTime date = exchangeClock().Date, savedDate = default(DateTime); long saved = 0;
-                if (read.Status == PreferenceReadStatus.Loaded)
-                { try { BlueprintExchangeCounter.Decode(read.Contents, out savedDate, out saved); } catch { exchangeCounterProtected = true; throw; } }
-                else if (read.Status != PreferenceReadStatus.Missing) { exchangeCounterProtected = true; throw new InvalidDataException("blueprint-exchange-counter-unreadable"); }
-                exchangeCounterIdentity = read.Identity; long candidate = checked(Math.Max(savedDate == date ? saved : 0, exchangeHighDate == date ? exchangeHighSequence : 0) + 1);
+                if (!exchangeCounterLoaded)
+                {
+                    // Read is the storage's initial snapshot. The sequential
+                    // owner keeps current identity only from reliable Saved acks.
+                    PreferenceReadResult read = exchangeCounter.Read();
+                    if (read.Status == PreferenceReadStatus.Loaded)
+                    { try { BlueprintExchangeCounter.Decode(read.Contents, out exchangeSavedDate, out exchangeSavedSequence); } catch { exchangeCounterProtected = true; throw; } }
+                    else if (read.Status != PreferenceReadStatus.Missing) { exchangeCounterProtected = true; throw new InvalidDataException("blueprint-exchange-counter-unreadable"); }
+                    exchangeCounterIdentity = read.Identity; exchangeCounterLoaded = true;
+                }
+                DateTime date = exchangeClock().Date;
+                long candidate = checked(Math.Max(exchangeSavedDate == date ? exchangeSavedSequence : 0, exchangeHighDate == date ? exchangeHighSequence : 0) + 1);
                 operation.Completion = ExchangeResult(operation, BlueprintExchangeStatus.Completed, null);
                 operation.Completion.Proposal = new BlueprintExportNameProposal { RequestId = request.RequestId, ExportDate = date, CounterCandidate = candidate }; yield break;
             }
@@ -336,7 +358,9 @@ namespace JueMingR.Features.Blueprint
             {
                 PreferenceWriteResult written = exchangeCounter.Write(exchangeCounterIdentity, BlueprintExchangeCounter.Encode(exchangeHighDate, exchangeHighSequence));
                 operation.Completion.CounterCommitted = written.Status == PreferenceWriteStatus.Saved;
-                if (!operation.Completion.CounterCommitted) exchangeCounterProtected = true;
+                if (operation.Completion.CounterCommitted)
+                { exchangeCounterIdentity = written.Identity; exchangeSavedDate = exchangeHighDate; exchangeSavedSequence = exchangeHighSequence; }
+                else exchangeCounterProtected = true;
             }
             catch { exchangeCounterProtected = true; }
             if (!operation.Completion.CounterCommitted) operation.Completion.Message = "文件已导出，但未能保存编号；下次默认编号可能重新避让";
