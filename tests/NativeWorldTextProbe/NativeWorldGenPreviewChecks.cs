@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -25,6 +26,15 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
         private static int opened;
         private static WorldGenerator.Controller observedController;
+        private static bool clearAfterIdentity;
+        private static void ClearAfterIdentity(bool __result)
+        {
+            if (!clearAfterIdentity || !__result) return;
+            clearAfterIdentity = false;
+            // Match GenerateWorld's ordinary-page native retirement order.
+            WorldGenerator.CurrentGenerationProgress = null;
+            WorldGenerator.CurrentController = null;
+        }
         private static bool ObserveOpen()
         { opened++; observedController = WorldGenerator.CurrentController; Main.MenuUI.SetState(new UIState()); return false; }
         internal static void Run(object context, string output)
@@ -50,6 +60,8 @@ namespace NativeWorldTextProbe
                 // branch; all later Update/layout behavior remains the original.
                 Main.netMode = 2; Main.dedServ = true; var page = new UIWorldLoad(); Main.dedServ = false; Main.netMode = 0;
                 Main.MenuUI.SetState(page);
+                using (var frames = new NativeWorldGenPreviewFrames(context, hooks, output))
+                {
                 Set(input, "gameWindow", (Func<IntPtr>)(() => new IntPtr(7))); Set(input, "foregroundWindow", (Func<IntPtr>)(() => new IntPtr(7)));
                 NativeQuickItemChecks.Sample(input, new Keys[0]); NativeQuickItemChecks.Sample(input, new Keys[0]);
                 Require(!(bool)Get(owner, "IsGenerationAvailable"), "Page class alone cannot promise a usable generation.");
@@ -72,19 +84,35 @@ namespace NativeWorldTextProbe
                     object banner = page.Children.First(c => c.GetType().Name == "WorldGenPreviewBanner");
                     for (int i = 0; i < 100; i++) page.Update(new GameTime());
                     Require((int)Get(banner, "Measurements") == 0 && (int)Get(banner, "Layouts") == 0 && page.Children.Count(c => c.GetType().Name == "WorldGenPreviewBanner") == 1, "Unavailable native texture footprint avoids font/layout work and duplicate nodes.");
-                    NativeQuickItemChecks.Sample(input, new[] { Keys.F5 }); Call(shell, "ProcessInput"); page.Update(new GameTime());
-                    Require(opened == 1 && ReferenceEquals(observedController, controller), "Actual load Update dispatches its one native Open with the correct controller.");
-                    Main.MenuUI.SetState(page); NativeQuickItemChecks.Sample(input, new[] { Keys.F5 }); Call(shell, "ProcessInput"); page.Update(new GameTime());
+                    frames.Frame(); frames.Frame(); frames.Frame(Keys.F5);
+                    Console.WriteLine("MENU FRAME OBSERVATION open=" + opened + " permission=" + Get(input, "CanStartActions"));
+                    Require(opened == 1 && ReferenceEquals(observedController, controller), "Production post-input dispatch opens exactly once with the correct controller.");
+                    Main.MenuUI.SetState(page); frames.Frame(Keys.F5);
                     Require(opened == 1, "Held F5 across a page transition does not reopen.");
-                    NativeQuickItemChecks.Sample(input, new Keys[0]); Call(shell, "ProcessInput"); page.Update(new GameTime());
-                    NativeQuickItemChecks.Sample(input, new[] { Keys.F5 }); Call(shell, "ProcessInput"); page.Update(new GameTime());
+                    frames.Frame();
+                    frames.Frame(Keys.F5);
                     Require(opened == 2, "A genuine release admits the next fresh F5.");
                     Main.MenuUI.SetState(page); Set(input, "foregroundWindow", (Func<IntPtr>)(() => new IntPtr(8)));
-                    NativeQuickItemChecks.Sample(input, new[] { Keys.F5 }); page.Update(new GameTime()); Require(opened == 2, "Unfocused input cannot enter.");
+                    frames.Frame(Keys.F5); Require(opened == 2, "Unfocused input cannot enter.");
                     Set(input, "foregroundWindow", (Func<IntPtr>)(() => new IntPtr(7)));
-                    NativeQuickItemChecks.Sample(input, new[] { Keys.F5 }); page.Update(new GameTime()); Require(opened == 2, "Refocus does not synthesize a fresh press.");
-                    NativeQuickItemChecks.Sample(input, new Keys[0]); page.Update(new GameTime());
-                    NativeQuickItemChecks.Sample(input, new[] { Keys.F5 }); page.Update(new GameTime()); Require(opened == 3, "Focused neutral sample restores the first legal F5.");
+                    frames.Frame(Keys.F5); Require(opened == 2, "Refocus does not synthesize a fresh press.");
+                    frames.Frame();
+                    frames.Frame(Keys.F5); Require(opened == 3, "Focused neutral sample restores the first legal F5.");
+                    Main.MenuUI.SetState(page); frames.Frame();
+                    frames.SkipInput = true; frames.Frame(Keys.F5);
+                    Require(opened == 3 && !(bool)Get(input, "CanStartActions"), "Skipped native input cannot reuse the previous epoch's permission.");
+                    frames.SkipInput = false; frames.Frame(); frames.Frame(Keys.F5);
+                    Require(opened == 4, "A new sampled edge recovers after the skipped epoch.");
+                    Main.MenuUI.SetState(page); frames.Frame(); Main.blockInput = true; frames.Frame(Keys.F5);
+                    Require(opened == 4, "Native input block prevents entry."); Main.blockInput = false; frames.Frame();
+                    Main.drawingPlayerChat = true; frames.Frame(Keys.F5); Require(opened == 4, "Text/chat ownership prevents entry."); Main.drawingPlayerChat = false; frames.Frame();
+                    var modal = Guid.NewGuid(); Require((bool)Call(input, "TryAcquireExternalModal", modal), "External modal acquired.");
+                    frames.Frame(Keys.F5); Require(opened == 4, "External modal prevents preview entry.");
+                    Call(input, "ReturnExternalModal", modal); frames.Frame(); frames.Frame();
+                    DebugOptions.enableDebugCommands = true; frames.Frame(Keys.F5);
+                    Require(opened == 5, "Owned generation suppresses the early native debug branch; post-input entry remains unique.");
+                    frames.Frame(Keys.F5); Require(opened == 5, "Enabled native debug cannot reopen the owned generation on held F5.");
+                    DebugOptions.enableDebugCommands = false;
                     Main.MenuUI.SetState(page); PlayerInput.Triggers.Current.Inventory = true; page.Update(new GameTime());
                     Require(controller.QueuedAbort && !(bool)Call(owner, "CanShow", page), "Actual native Inventory consumer queues abort and immediately retires the banner.");
                     PlayerInput.Triggers.Current.Inventory = false; controller.QueuedAbort = false;
@@ -100,11 +128,49 @@ namespace NativeWorldTextProbe
                 if (passFailure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(passFailure).Throw();
                 Require(completed, "Original bounded generation completes normally.");
                 Require(!(bool)Get(owner, "IsGenerationAvailable"), "Native normal finalization retires the generation token.");
+                object retiredToken = null;
+                var identity = owner.GetType().GetMethod("IsCurrent", Flags);
+                observer.Patch(identity, postfix: new HarmonyMethod(typeof(NativeWorldGenPreviewChecks).GetMethod(nameof(ClearAfterIdentity), Flags)));
+                WorldGen.Manifest = new WorldManifest();
+                var retiring = new WorldGenerator.Controller();
+                var retiringGenerator = new WorldGenerator(20, WorldGenConfiguration.FromEmbeddedPath("Terraria.GameContent.WorldBuilding.Configuration.json"), new GenerationProgress(), retiring);
+                retiringGenerator.Append(new PassLegacy("Reset", (p, c) =>
+                {
+                    try
+                    {
+                        Main.MenuUI.SetState(page); retiredToken = Get(owner, "generation");
+                        clearAfterIdentity = true;
+                        Call(owner, "CanShow", page);
+                        int before = opened; frames.Frame(); frames.Frame(); frames.Frame(Keys.F5);
+                        Require(opened == before && (bool)Get(owner, "Ready") && GetOptional(hooks, "Failure") == null, "Deterministic check/use retirement neither opens nor fails the owner.");
+                        Require(Harmony.GetPatchInfo(typeof(UIWorldLoad).GetMethod("Update")).Owners.Contains("JueMingR.WorldGenPreview"), "Normal retirement retains feature hooks.");
+                        Main.MenuUI.SetState(new UIState());
+                    }
+                    catch (Exception e) { passFailure = e; retiring.QueuedAbort = true; }
+                }));
+                retiringGenerator.GenerateWorld();
+                if (passFailure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(passFailure).Throw();
+                WorldGen.Manifest = new WorldManifest(); var nextController = new WorldGenerator.Controller();
+                var nextGenerator = new WorldGenerator(21, WorldGenConfiguration.FromEmbeddedPath("Terraria.GameContent.WorldBuilding.Configuration.json"), new GenerationProgress(), nextController);
+                nextGenerator.Append(new PassLegacy("Reset", (p, c) =>
+                {
+                    try
+                    {
+                        Call(owner, "Retire", retiredToken);
+                        Main.MenuUI.SetState(page); int before = opened;
+                        frames.Frame(); frames.Frame(); frames.Frame(Keys.F5);
+                        Require(opened == before + 1 && ReferenceEquals(observedController, nextController) && (bool)Get(owner, "Ready"), "A later real generation opens after retirement; old-token cleanup cannot cancel its publication.");
+                        Main.MenuUI.SetState(new UIState());
+                    }
+                    catch (Exception e) { passFailure = e; nextController.QueuedAbort = true; }
+                }));
+                nextGenerator.GenerateWorld();
+                if (passFailure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(passFailure).Throw();
                 WorldGen.generatingWorld = WorldGen.isGeneratingOrLoadingWorld = false; Main.gameMenu = false;
-                NativeQuickItemChecks.Sample(input, new[] { Keys.F5 }); Call(shell, "ProcessInput");
+                frames.Frame(Keys.F5);
                 Require(!(bool)Get(Get(shell, "State"), "Visible"), "Held generation F5 does not open the world shell across the boundary.");
-                NativeQuickItemChecks.Sample(input, new Keys[0]); Call(shell, "ProcessInput");
-                NativeQuickItemChecks.Sample(input, new[] { Keys.F5 }); Call(shell, "ProcessInput");
+                frames.Frame();
+                frames.Frame(Keys.F5);
                 Require((bool)Get(Get(shell, "State"), "Visible"), "The next real release/press opens the ordinary world shell.");
                 Main.gameMenu = true; Call(shell, "ProcessInput"); WorldGen.generatingWorld = WorldGen.isGeneratingOrLoadingWorld = true;
                 WorldGenerator.CurrentController = controller; WorldGenerator.CurrentGenerationProgress = new GenerationProgress();
@@ -119,6 +185,7 @@ namespace NativeWorldTextProbe
                 Require(!new WorldGenerator(19, WorldGenConfiguration.FromEmbeddedPath("Terraria.GameContent.WorldBuilding.Configuration.json"), new GenerationProgress(), cancelled).GenerateWorld(), "Original cancellation result is retained.");
                 Require(!(bool)Get(owner, "IsGenerationAvailable") && !DebugOptions.enableDebugCommands, "Repeated generation/cancel cleanup releases identity without global flag writes.");
                 Console.WriteLine("WORLDGEN CPU PASS: exact Harmony installation, original generator publication/normal/cancel/exception, actual load-page entry consumer, input/focus edges, bounded banner cache, text semantics. Native preview construction/render and physical input NOT_EVALUATED.");
+                }
             }
             finally
             {
@@ -137,5 +204,50 @@ namespace NativeWorldTextProbe
             var pass = new PassLegacy("Terrain", (p, c) => { }); step(pass.Name); Require(pass.Name == "Terrain", "Display translation never mutates native GenPass.Name.");
             Require(display("User Terrain seed Reset 123") == "User Terrain seed Reset 123", "Ordinary user content is not globally replaced.");
         }
+    }
+
+    // Preserve the independently verified client order while excluding the
+    // expensive Main body. Production prefix/input prefix+postfix, native input
+    // mapping and the real current menu page run; no input permission is written.
+    internal sealed class NativeWorldGenPreviewFrames : IDisposable
+    {
+        private const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+        private static NativeWorldGenPreviewFrames active;
+        private readonly Harmony patch = new Harmony("JueMingR.Tests.WorldGenPreview.MenuFrame");
+        private readonly Type worker;
+        private readonly Main main = (Main)FormatterServices.GetUninitializedObject(typeof(Main));
+        private readonly object context;
+        private KeyboardState keyboard;
+        internal bool SkipInput { get; set; }
+        internal NativeWorldGenPreviewFrames(object context, object hooks, string output)
+        {
+            this.context = context; active = this;
+            worker = context.GetType().Assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker", true);
+            Set(context, "worldGenPreview", hooks);
+            worker.GetField("postfixContext", F).SetValue(null, context); worker.GetField("hookCommitted", F).SetValue(null, 1);
+            Terraria.Initializers.UILinksInitializer.Load(); Main.ChromaPainter = new Terraria.GameContent.ChromaHotkeyPainter();
+            Patch(typeof(Keyboard).GetMethod("GetState", Type.EmptyTypes), nameof(Keyboard));
+            Patch(typeof(Mouse).GetMethod("GetState", Type.EmptyTypes), nameof(Mouse));
+            Patch(typeof(PlayerInput).GetMethod("GamePadInput", F), nameof(NoGamepad));
+            var update = typeof(Main).GetMethod("Update", F, null, new[] { typeof(GameTime) }, null);
+            patch.Patch(update, new HarmonyMethod(worker.GetMethod("UpdatePrefix", F)));
+            var body = new HarmonyMethod(typeof(NativeWorldGenPreviewFrames).GetMethod(nameof(Body), F)) { priority = Priority.Last };
+            patch.Patch(update, body);
+            patch.Patch(typeof(Main).GetMethod("DoUpdate_HandleInput", F), new HarmonyMethod(worker.GetMethod("InputPrefix", F)), new HarmonyMethod(worker.GetMethod("InputPostfix", F)));
+            // Original IL (not patched bodies) binds the fixture order and the
+            // normal tail to the exact EXE already authenticated by Run.
+            var methods = new MethodBase[] { typeof(Main).GetMethod("DoUpdate", F), typeof(Main).GetMethod("UpdateUIStates", F), typeof(Main).GetMethod("DoUpdate_HandleInput", F), typeof(WorldGenerator).GetMethod("GenerateWorld", F), typeof(WorldGenerator).GetMethod("SetDebugWorldGenUIVisibility", F), typeof(UIWorldGenDebug).GetMethod("Open", F), typeof(UIWorldGenDebug).GetConstructor(Type.EmptyTypes), typeof(UIWorldGenDebug).GetMethod("OnActivate", F) };
+            File.WriteAllLines(Path.Combine(output, "locked-client-seams.txt"), new[] { "MVID=" + typeof(Main).Assembly.ManifestModule.ModuleVersionId }.Concat(methods.SelectMany(m => new[] { "METHOD " + m }.Concat(PatchProcessor.GetOriginalInstructions(m).Select((i, n) => n + " " + i)))));
+        }
+        private void Patch(MethodInfo m, string name) { patch.Patch(m, new HarmonyMethod(typeof(NativeWorldGenPreviewFrames).GetMethod(name, F))); }
+        internal void Frame(params Keys[] keys)
+        { keyboard = new KeyboardState(keys); typeof(Main).GetMethod("Update", F, null, new[] { typeof(GameTime) }, null).Invoke(main, new object[] { new GameTime() }); }
+        private static bool Body()
+        { Main.MenuUI?.CurrentState?.Update(new GameTime()); if (!active.SkipInput) typeof(Main).GetMethod("DoUpdate_HandleInput", F).Invoke(active.main, null); return false; }
+        private static bool Keyboard(ref KeyboardState __result) { __result = active.keyboard; return false; }
+        private static bool Mouse(ref MouseState __result) { __result = new MouseState(); return false; }
+        private static bool NoGamepad(ref bool __result) { __result = false; return false; }
+        public void Dispose()
+        { patch.UnpatchAll(patch.Id); Set(context, "worldGenPreview", null); worker.GetField("postfixContext", F).SetValue(null, null); worker.GetField("hookCommitted", F).SetValue(null, 0); active = null; }
     }
 }

@@ -24,6 +24,28 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
     {
         private const string PatchOwner = "JueMingR.WorldGenPreview";
         private static WorldGenPreviewHooks current;
+        [ThreadStatic] private static HostWorldGenPreview.Generation requestedEntry;
+        [ThreadStatic] private static NativeEntry activeEntry;
+        [ThreadStatic] private static GenerationCall generatingCall;
+        private sealed class GenerationCall
+        {
+            internal HostWorldGenPreview.Generation Token;
+            internal GenerationCall Parent;
+        }
+        private sealed class NativeEntry
+        {
+            internal WorldGenPreviewHooks Hooks;
+            internal HostWorldGenPreview.Generation Generation;
+            internal Terraria.UI.UIState Previous;
+            internal UIWorldGenDebug Page;
+            internal WorldGenerator.SnapshotFrequency Frequency;
+            internal NativeEntry Parent;
+        }
+        private sealed class GenerationRetiredException : Exception
+        {
+            internal readonly HostWorldGenPreview.Generation Generation;
+            internal GenerationRetiredException(HostWorldGenPreview.Generation generation) { Generation = generation; }
+        }
         private readonly Harmony harmony = new Harmony(PatchOwner);
         private readonly Action<Exception> report;
         private bool ownsPatchScope;
@@ -47,7 +69,10 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
                     throw new MissingFieldException("World generation native progress texture footprint changed.");
                 Patch(Exact(typeof(UIWorldLoad), "Update", false, typeof(void), typeof(GameTime)), after: nameof(LoadUpdated), transpiler: nameof(LoadEntry));
                 Patch(Exact(typeof(UIWorldGenDebug), "Open", true, typeof(void)), before: nameof(NativeEntryBegin), finalizer: nameof(NativeEntryEnd));
+                harmony.Patch(typeof(UIWorldGenDebug).GetConstructor(Type.EmptyTypes), transpiler: Hook(nameof(EntryControllerReads)));
+                Patch(Exact(typeof(UIWorldGenDebug), "OnActivate", false, typeof(void)), before: nameof(NativeActivating), transpiler: nameof(EntryControllerReads));
                 Patch(Exact(typeof(WorldGenerator), "GenerateWorld", false, typeof(bool)), before: nameof(GenerationBegin), transpiler: nameof(GenerationPublication), finalizer: nameof(GenerationEnd));
+                Patch(Exact(typeof(WorldGenerator), "SetDebugWorldGenUIVisibility", true, typeof(void), typeof(bool)), before: nameof(GenerationClosing));
                 Patch(Exact(typeof(WorldGenerator.Controller), "ReportException", false, typeof(void), typeof(string), typeof(Exception), typeof(bool)), transpiler: nameof(ExceptionGate));
                 // Exactly one compiler-generated native control action owns this
                 // call. No global command processor or Toolkit is registered.
@@ -89,37 +114,69 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
         }
         private static HarmonyMethod Hook(string method)
         { return method == null ? null : new HarmonyMethod(typeof(WorldGenPreviewHooks).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Static)); }
-        private static bool EntryAllowed() { try { return current != null && current.Owner.AdmitEntry(); } catch (Exception e) { current?.Fail(e); return false; } }
-        private static void OpenPreview()
+        private static bool EntryAllowed()
+        { return DebugOptions.enableDebugCommands && !(current != null && current.Owner.OwnsGeneration); }
+        internal void ProcessInput()
         {
-            var hooks = current; var previous = Main.MenuUI?.CurrentState;
-            var controller = WorldGenerator.CurrentController;
-            var frequency = controller == null ? WorldGenerator.SnapshotFrequency.None : controller.SnapshotFrequency;
             try
             {
-                UIWorldGenDebug.Open();
+                var entry = Owner.AdmitEntry();
+                if (entry != null) OpenPreview(entry);
             }
-            catch (Exception e)
-            {
-                if (controller != null && ReferenceEquals(controller, WorldGenerator.CurrentController)) controller.SnapshotFrequency = frequency;
-                hooks?.Fail(e);
-                // Native construction precedes SetState, but activation may
-                // fail after state assignment. Restore only this entry's page.
-                if (previous is UIWorldLoad && Main.MenuUI != null && Main.MenuUI.CurrentState is UIWorldGenDebug)
-                    Main.MenuUI.SetState(previous);
-            }
+            catch (Exception e) { Fail(e); }
         }
-        private static void NativeEntryBegin(out HostWorldGenPreview.Generation __state)
-        { __state = current?.Owner.BeginNativeEntry(); }
-        private static Exception NativeEntryEnd(Exception __exception, HostWorldGenPreview.Generation __state)
+        private void OpenPreview(HostWorldGenPreview.Generation entry)
+        {
+            if (!Owner.IsCurrent(entry)) return;
+            var previous = requestedEntry; requestedEntry = entry;
+            try { UIWorldGenDebug.Open(); }
+            finally { requestedEntry = previous; }
+        }
+        private static bool NativeEntryBegin(out NativeEntry __state)
+        {
+            __state = null;
+            var hooks = current;
+            if (requestedEntry != null && (hooks == null || !hooks.Owner.IsCurrent(requestedEntry))) return false;
+            var entry = hooks?.Owner.BeginNativeEntry();
+            if (requestedEntry != null && !ReferenceEquals(entry, requestedEntry))
+            { if (entry != null) hooks.Owner.CompleteNativeEntry(entry, false); return false; }
+            if (entry == null) return true;
+            __state = new NativeEntry { Hooks = hooks, Generation = entry, Previous = Main.MenuUI?.CurrentState,
+                Frequency = entry.Controller.SnapshotFrequency, Parent = activeEntry };
+            activeEntry = __state;
+            return true;
+        }
+        private static void NativeActivating(UIWorldGenDebug __instance)
+        { if (activeEntry != null) activeEntry.Page = __instance; }
+        private static WorldGenerator.Controller EntryController()
+        {
+            var entry = activeEntry;
+            if (entry == null) return WorldGenerator.CurrentController;
+            // These exact constructor/activation reads are not a lifetime lock.
+            // Return the captured object, or signal only our own normal retirement;
+            // resource/constructor errors retain their original failure semantics.
+            if (!entry.Hooks.Owner.IsCurrent(entry.Generation)) throw new GenerationRetiredException(entry.Generation);
+            return entry.Generation.Controller;
+        }
+        private static Exception NativeEntryEnd(Exception __exception, NativeEntry __state)
         {
             if (__state != null)
             {
-                // A finalizer also runs on constructor/activation failure. Never
-                // adopt a later generation or leave construction scope behind.
-                if (current != null) current.Owner.CompleteNativeEntry(__state,
-                    __exception == null && Main.MenuUI?.CurrentState is UIWorldGenDebug);
-                else { __state.Entering = false; __state.Entered = false; }
+                var owner = __state.Hooks.Owner;
+                var retired = __exception as GenerationRetiredException;
+                bool normalRetirement = retired != null && ReferenceEquals(retired.Generation, __state.Generation) && !owner.IsCurrent(__state.Generation);
+                bool completed = __exception == null && owner.IsCurrent(__state.Generation) && Main.MenuUI?.CurrentState is UIWorldGenDebug;
+                owner.CompleteNativeEntry(__state.Generation, completed);
+                activeEntry = __state.Parent;
+                if (!completed)
+                {
+                    if (ReferenceEquals(__state.Generation.Controller, WorldGenerator.CurrentController))
+                        __state.Generation.Controller.SnapshotFrequency = __state.Frequency;
+                    // Do not reclaim another page or a later generation's UI.
+                    if (__state.Previous is UIWorldLoad && ReferenceEquals(Main.MenuUI?.CurrentState, __state.Page) && owner.CanRestore(__state.Generation))
+                        Main.MenuUI.SetState(__state.Previous);
+                }
+                if (normalRetirement) return null;
             }
             return __exception;
         }
@@ -137,11 +194,22 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
             }
             catch (Exception e) { hooks.Fail(e); }
         }
-        private static void GenerationBegin(WorldGenerator.Controller ____controller, out HostWorldGenPreview.Generation __state)
-        { __state = current == null ? null : current.Owner.Begin(____controller); }
-        private static void Published() { current?.Owner.Published(); }
-        private static Exception GenerationEnd(Exception __exception, HostWorldGenPreview.Generation __state)
-        { if (__state != null) current?.Owner.Retire(__state); return __exception; }
+        private static void GenerationBegin(WorldGenerator.Controller ____controller, out GenerationCall __state)
+        {
+            __state = current == null ? null : new GenerationCall { Token = current.Owner.Begin(____controller), Parent = generatingCall };
+            if (__state != null) generatingCall = __state;
+        }
+        private static void Published() { if (generatingCall != null) current?.Owner.Published(generatingCall.Token); }
+        // Retire BEFORE the native visibility check, not after its static-null
+        // tail. An entry already activated is then closed by native main-thread
+        // handoff; one still constructing must fail its scoped read/final check.
+        private static void GenerationClosing(bool __0) { if (!__0 && generatingCall != null) current?.Owner.Retire(generatingCall.Token); }
+        private static Exception GenerationEnd(Exception __exception, GenerationCall __state)
+        {
+            if (__state != null)
+            { current?.Owner.Retire(__state.Token); if (ReferenceEquals(generatingCall, __state)) generatingCall = __state.Parent; }
+            return __exception;
+        }
         private static bool AllowException(bool original, WorldGenerator.Controller controller)
         { return original || current != null && current.Owner.OwnsController(controller); }
         private static void SaveQuickload(string command)
@@ -158,8 +226,15 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
             { instruction.opcode = OpCodes.Call; instruction.operand = typeof(WorldGenPreviewHooks).GetMethod(nameof(EntryAllowed), BindingFlags.NonPublic | BindingFlags.Static); matches++; }
             if (matches != 1 || code.Count(i => i.Calls(typeof(UIWorldGenDebug).GetMethod("Open"))) != 1)
                 throw new InvalidOperationException("World generation native F5 entry shape changed.");
-            foreach (var instruction in code) if (instruction.Calls(typeof(UIWorldGenDebug).GetMethod("Open")))
-                instruction.operand = typeof(WorldGenPreviewHooks).GetMethod(nameof(OpenPreview), BindingFlags.NonPublic | BindingFlags.Static);
+            return code;
+        }
+        private static IEnumerable<CodeInstruction> EntryControllerReads(IEnumerable<CodeInstruction> source, MethodBase __originalMethod)
+        {
+            var code = source.ToList(); int matches = 0;
+            var getter = typeof(UIWorldGenDebug).GetProperty("Controller", BindingFlags.NonPublic | BindingFlags.Static).GetGetMethod(true);
+            foreach (var instruction in code) if (instruction.Calls(getter))
+            { instruction.operand = typeof(WorldGenPreviewHooks).GetMethod(nameof(EntryController), BindingFlags.NonPublic | BindingFlags.Static); matches++; }
+            if (matches != (__originalMethod is ConstructorInfo ? 1 : 2)) throw new InvalidOperationException("World generation entry Controller reads changed.");
             return code;
         }
         private static IEnumerable<CodeInstruction> GenerationPublication(IEnumerable<CodeInstruction> source)

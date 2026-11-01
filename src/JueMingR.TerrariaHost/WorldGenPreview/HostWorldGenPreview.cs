@@ -30,45 +30,58 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
             Volatile.Write(ref generation, next);
             return next;
         }
-        internal void Published()
+        internal void Published(Generation current)
         {
-            var current = Volatile.Read(ref generation);
-            if (current != null && ReferenceEquals(current.Controller, WorldGenerator.CurrentController))
+            if (current != null && ReferenceEquals(Volatile.Read(ref generation), current) && ReferenceEquals(current.Controller, WorldGenerator.CurrentController))
                 Volatile.Write(ref current.Progress, WorldGenerator.CurrentGenerationProgress);
         }
         internal void Retire(Generation value)
-        { if (ReferenceEquals(Volatile.Read(ref generation), value)) Volatile.Write(ref generation, null); }
+        { Interlocked.CompareExchange(ref generation, null, value); }
+        internal bool IsCurrent(Generation current)
+        {
+            if (!Ready || current == null || current.Controller == null) return false;
+            var progress = Volatile.Read(ref current.Progress);
+            // Native generation retires these statics on its background task.
+            // Keep the token's objects for every dereference; a successful
+            // identity check never leases the lifetime of a static field.
+            return progress != null && WorldGen.generatingWorld && WorldGen.isGeneratingOrLoadingWorld &&
+                ReferenceEquals(current.Controller, WorldGenerator.CurrentController) &&
+                ReferenceEquals(progress, WorldGenerator.CurrentGenerationProgress) &&
+                !current.Controller.QueuedAbort && ReferenceEquals(Volatile.Read(ref generation), current);
+        }
+        private Generation Capture()
+        { var current = Volatile.Read(ref generation); return IsCurrent(current) ? current : null; }
         internal bool IsGenerationAvailable
         {
             get
             {
-                var current = Volatile.Read(ref generation);
-                return Ready && current != null && Volatile.Read(ref current.Progress) != null &&
-                    WorldGen.generatingWorld && WorldGen.isGeneratingOrLoadingWorld &&
-                    ReferenceEquals(current.Controller, WorldGenerator.CurrentController) &&
-                    ReferenceEquals(current.Progress, WorldGenerator.CurrentGenerationProgress);
+                return Capture() != null;
             }
         }
         internal bool CanShow(UIWorldLoad page)
-        { return IsGenerationAvailable && Main.gameMenu && Main.netMode != 2 &&
-            Main.MenuUI != null && ReferenceEquals(Main.MenuUI.CurrentState, page) && !WorldGenerator.CurrentController.QueuedAbort; }
-        internal bool AdmitEntry()
+        { return Capture() != null && Main.gameMenu && Main.netMode != 2 &&
+            Main.MenuUI != null && ReferenceEquals(Main.MenuUI.CurrentState, page); }
+        // An owned generation's early native F5 branch must yield even when
+        // global debug is enabled. Only the post-input callback dispatches it.
+        internal bool OwnsGeneration { get { return Ready && Volatile.Read(ref generation) != null; } }
+        internal bool CanRestore(Generation entry)
+        { var current = Volatile.Read(ref generation); return current == null || ReferenceEquals(current, entry); }
+        internal Generation AdmitEntry()
         {
+            var current = Capture();
             var page = Main.MenuUI == null ? null : Main.MenuUI.CurrentState as UIWorldLoad;
-            if (page == null || !CanShow(page) || !input.CanStartActions ||
+            if (current == null || page == null || !Main.gameMenu || Main.netMode == 2 || !input.CanStartActions ||
                 Main.drawingPlayerChat || Main.blockInput || Terraria.GameInput.PlayerInput.WritingText ||
-                !input.Hotkeys.IsNew((int)Keys.F5)) return false;
-            // Reuse the native open call below this gate. The shared sample has
-            // already advanced before MenuUI.Update; no second keyboard reader
-            // or synthetic release may create a second entry across pages.
+                !input.Hotkeys.IsNew((int)Keys.F5) || !IsCurrent(current)) return null;
+            // MenuUI.Update precedes native input in the locked client. This
+            // consumer runs only after the shared production input postfix.
             input.Hotkeys.ConsumePress((int)Keys.F5);
-            return true;
+            return current;
         }
         internal Generation BeginNativeEntry()
         {
-            var current = Volatile.Read(ref generation);
-            if (!IsGenerationAvailable || current == null || !Main.gameMenu || Main.netMode == 2 ||
-                Main.MenuUI == null || current.Controller.QueuedAbort) return null;
+            var current = Capture();
+            if (current == null || !Main.gameMenu || Main.netMode == 2 || Main.MenuUI == null) return null;
             // Both the load-page F5 and native quickload regeneration call Open.
             // Construction needs display scope; operations wait for activation.
             current.Entered = false;
@@ -80,20 +93,20 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
             if (entry == null) return;
             entry.Entering = false;
             entry.Entered = success && ReferenceEquals(Volatile.Read(ref generation), entry) &&
-                IsGenerationAvailable && Main.gameMenu && Main.netMode != 2 && !entry.Controller.QueuedAbort;
+                IsCurrent(entry) && Main.gameMenu && Main.netMode != 2;
         }
         internal bool HasPreviewContext
         {
             get
             {
-                var current = Volatile.Read(ref generation);
-                return IsGenerationAvailable && current != null && (current.Entered || current.Entering);
+                var current = Capture();
+                return current != null && (current.Entered || current.Entering);
             }
         }
         internal bool OwnsController(WorldGenerator.Controller controller)
         {
-            var current = Volatile.Read(ref generation);
-            return IsGenerationAvailable && current != null && current.Entered && ReferenceEquals(current.Controller, controller);
+            var current = Capture();
+            return current != null && current.Entered && ReferenceEquals(current.Controller, controller);
         }
         internal bool CanSaveQuickload
         { get { return Main.gameMenu && Main.netMode == 0 && Main.MenuUI != null && Main.MenuUI.CurrentState is UIWorldGenDebug && OwnsController(WorldGenerator.CurrentController); } }
