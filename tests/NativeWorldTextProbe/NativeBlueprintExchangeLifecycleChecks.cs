@@ -31,6 +31,7 @@ namespace NativeWorldTextProbe
             object state = Get(shell, "State"); bool focused = true, priorSelected = FocusHelper.IsSelectedApplication;
             Vector2 pointer = Vector2.Zero;
             int oldWidth = Main.screenWidth, oldHeight = Main.screenHeight; float oldScale = Main.UIScale;
+            bool scaleChanged = false;
             var oldLibrary = (LibraryState)Get(host, "Library"); object oldDialog = Get(host, "exchangeDialog"), oldWindow = Get(input, "gameWindow"), oldForeground = Get(input, "foregroundWindow");
             Call(shell, "CloseAndSubmitPosition"); Call(host, "CancelCaptureOrDraft"); Call(host, "ClearProjection");
             NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !oldLibrary.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
@@ -55,7 +56,12 @@ namespace NativeWorldTextProbe
             Set(input, "gameWindow", (Func<IntPtr>)(() => new IntPtr(3))); Set(input, "foregroundWindow", (Func<IntPtr>)(() => focused ? new IntPtr(3) : new IntPtr(4)));
             try
             {
-                Main.screenWidth = 960; Main.screenHeight = 760; Main.UIScale = 1; PlayerInput.CacheOriginalScreenDimensions();
+                Main.screenWidth = 960; Main.screenHeight = 760;
+                // The native scale setter updates graphics state. CPU owns no
+                // device and retains its existing scale; only Visual changes
+                // it, and a failed setup must not retry that setter in finally.
+                if (graphics != null) { Main.UIScale = 1; scaleChanged = true; }
+                PlayerInput.CacheOriginalScreenDimensions();
                 Action<Keys[], int> frame = (keys, mask) =>
                 {
                     FocusHelper.IsSelectedApplication = focused;
@@ -146,9 +152,16 @@ namespace NativeWorldTextProbe
                         new CaptureSummary { Width = 1, Height = 1, ContentCount = 1 }, new BlueprintProjectionBounds(0, 0, 1, 1), new[] { new CaptureCell { Layers = CaptureLayer.Tile, TileType = (ushort)tile } }, Array.Empty<CaptureObject>()));
                 foreach (string intent in new[] { "F5", "Back", "Card", "Name", "Page", "PlacedList", "Session" })
                 {
-                    files.Hold(); open(); step(); dialog.Select(); step(); NativeQuickItemChecks.Until(() => files.Entered.IsSet); neutral();
-                    frame(new[] { Keys.F5 }, 0); step();
-                    Require((bool)Get(state, "Visible"), "real F5 reopens controls while selected-file IO is still running");
+                    files.Hold(); open(); step(); dialog.Select(); step(); NativeQuickItemChecks.Until(() => files.Entered.IsSet);
+                    // Exactly one trustworthy neutral sample must suffice.
+                    // A second empty frame would conceal later Shell cleanup
+                    // overwriting State.Update's already sampled F5 release.
+                    step(); Require(!(bool)Get(input, "ExternalModalBusy") && !(bool)Get(input, "CanStartActions") && !(bool)Get(state, "Visible") && (bool)Get(host, "ExchangeBusy"),
+                        "one real neutral frame stays consumed and hidden while source IO is held");
+                    frame(new[] { Keys.F5 }, 0);
+                    Require((bool)Get(input, "CanStartActions") && (bool)Get(state, "Visible") && (bool)Get(host, "ExchangeBusy"),
+                        "the immediate first legal F5 opens controls after that single neutral frame, before IO completes");
+                    step();
                     // Select a real visible page for the other-card gesture.
                     // This is read preparation; it does not perform navigation.
                     if (intent == "Card" || intent == "Name") Call(ui, "RequestList", 0, (Guid?)other.AssetId);
@@ -200,7 +213,9 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
                 Call(shell, "CloseAndSubmitPosition");
                 Set(host, "exchangeDialog", oldDialog); host.GetType().GetField("<Library>k__BackingField", F).SetValue(host, oldLibrary); Set(input, "gameWindow", oldWindow); Set(input, "foregroundWindow", oldForeground); library.Dispose(); files.Dispose();
-                FocusHelper.IsSelectedApplication = priorSelected; Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; Main.UIScale = oldScale; PlayerInput.CacheOriginalScreenDimensions();
+                FocusHelper.IsSelectedApplication = priorSelected; Main.screenWidth = oldWidth; Main.screenHeight = oldHeight;
+                if (scaleChanged) Main.UIScale = oldScale;
+                PlayerInput.CacheOriginalScreenDimensions();
             }
         }
         private static void AssertSelected(object state, object ui, object host, Guid asset, string reason)
