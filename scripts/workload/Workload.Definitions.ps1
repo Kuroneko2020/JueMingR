@@ -20,6 +20,8 @@ function Get-WorkloadLeafChecks {
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
     $leaves = @{
+        'tests/NativeWorldTextProbe/NativeWorldGenPreviewVisualChecks.cs'=@('native-WorldGenPreviewVisual')
+        'tests/NativeWorldTextProbe/NativeWorldGenPreviewChecks.cs'=@('native-WorldGenPreviewCpu')
         'tests/NativeWorldTextProbe/NativeCombatWorkerAssetChecks.cs'=$workerAssetConsumers
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionChecks.cs'=@('native-BlueprintSubstitutionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionNativeChecks.cs'=@('native-BlueprintSubstitutionCpu')
@@ -400,6 +402,7 @@ function Get-WorkloadNativeScopes {
     # in test-world-object-text. Impact/AimUi/Visual need matching real Content
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
+        'WorldGenPreviewCpu'=@('worldgen-preview','shared-host');
         'MovementJumpCpu'=@('movement-host');
         # The rescue leaf directly consumes the fishing overlap owner and its
         # existing native tool/fishing fixture initialization. Bind those inputs
