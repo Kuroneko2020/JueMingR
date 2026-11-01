@@ -53,6 +53,7 @@ namespace NativeWorldTextProbe
                     if(family==null || family=="SupplyPresentation" || family=="SupplySmartWiring")
                         check("disabled return selection and original map return provenance",()=>ConstructionPlacementSupplyRepair(context,host,tools,input));
                     if(family=="SmartPlatform")check("natural smart platform slopes and fallback",()=>ConstructionSmartPlatform(context,host,tools,input));
+                    if(family=="Substitution")ConstructionSubstitution(context,host,tools,input,check);
                     if(family=="ActuatorNetwork")check("original multiplayer temporary actuator provenance",()=>ConstructionWiringActuatorNetwork(context,host,tools,input));
                     if(family=="SupplyPresentation")
                     {

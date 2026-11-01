@@ -38,11 +38,11 @@ namespace NativeWorldTextProbe
                 long identity = (long)Get(value, "PreferredGroup"); if (identity <= 0) continue;
                 var current = new PreferredWalkObservation { Group = identity, Cursor = (int)Get(value, "PreferredCursor"),
                     CompletedBatch = (long)Get(value, "PreferredCompletedBatch"), Complete = (bool)Get(value, "PreferredComplete") };
-                // Found also retains a resumable intent. A budget pause needs
-                // an unfinished saved ordinal, the actual shared allowance at
-                // zero and no ready successor from this exact wall source.
+                // A pending slice retains its unfinished absolute ordinal.
+                // One range's bounded slice can finish before the shared
+                // 64-step allowance; a nonzero remainder is not NoRunnable.
                 current.BudgetPaused = group != null && (long)Get(group, "Group") == identity && (bool)Get(group, "Pending") &&
-                    !current.Complete && current.Cursor > 0 && (int)Get(host, "materialBuildSourceBudget") == 0 && !preparedSameSource;
+                    !current.Complete && current.Cursor > 0 && !preparedSameSource;
                 PreferredWalkObservation previous;
                 if (prior.TryGetValue(range, out previous) && previous.Group == current.Group && previous.CompletedBatch == current.CompletedBatch &&
                     !previous.Complete && !current.Complete)
@@ -53,51 +53,108 @@ namespace NativeWorldTextProbe
                 pending |= current.BudgetPaused; maxCursor = Math.Max(maxCursor, current.Cursor); prior[range] = current;
             }
         }
-        private static void ExecutionSearchFairness(object context,object host,object tools,object input,bool moving)
+        private static void ExecutionSearchFairness(object context,object host,object tools,object input,bool moving,bool denseEdge=false)
         {
             var p=Reset(context,host,tools,input);p.position=new Vector2(48*16,646);
+            // Set up just before the next real vanilla reach edge. Faster
+            // legal service must not wait for movement to travel twelve pixels
+            // merely to satisfy this entered-strip fixture's premise.
+            if(denseEdge)p.position.X=(float)(Math.Ceiling((p.position.X+p.width)/16d)*16d-p.width)-0.04f;
             p.inventory[12].SetDefaults(ItemID.WoodWall);p.inventory[12].stack=4;
             p.inventory[14].SetDefaults(ItemID.StoneBlock);p.inventory[14].stack=2;
+            Item stoneSource=p.inventory[14];if(denseEdge)p.inventory[14].TurnToAir();
             // Both WoodWall endpoints fit vanilla reach. After the first real
             // use, its successor lies behind 64 missing StoneWall records:
             // beyond one shared 64-step source allowance even without holes.
             // Row 37 is inside native Y reach 3; row 36 is not an early goal.
-            var cells=Enumerable.Range(0,77).Select(i=>new CaptureCell{X=i%11,Y=i/11,Layers=CaptureLayer.Wall,
-                WallType=i==11 || i==76?(ushort)WallID.Wood:(ushort)WallID.Stone}).ToArray();
+            int sourceX=43,width=11,firstIndex=11,lastIndex=76;
+            if(denseEdge)
+            {
+                int left,top,rightEdge,bottom;
+                TileReachCheckSettings.Simple.GetTileRegion(p,out left,out top,out rightEdge,out bottom,p.inventory[12].tileBoost+p.blockRange);
+                sourceX=left-2;width=17;firstIndex=width+2;lastIndex=6*width+12;
+            }
+            int firstX=denseEdge?sourceX+2:sourceX,lateX=denseEdge?sourceX+12:sourceX+10,stoneX=lateX-1;
+            var cells=Enumerable.Range(0,width*7).Select(i=>new CaptureCell{X=i%width,Y=i/width,
+                Layers=denseEdge && i/width<4?CaptureLayer.Tile|CaptureLayer.Wall:CaptureLayer.Wall,
+                TileType=denseEdge && i/width<4?(ushort)TileID.Stone:(ushort)0,
+                WallType=i==firstIndex || i==lastIndex?(ushort)WallID.Wood:(ushort)WallID.Stone}).ToArray();
+            if(denseEdge)foreach(var cell in cells.Where(cell=>(cell.Layers&CaptureLayer.Tile)!=0))NativeToolsChecks.Tile(sourceX+cell.X,36+cell.Y,TileID.Stone);
             int endOrdinal = (int)Call(host, "BuildMemberOrdinal", cells.Length);
-            var instance=Place(context,host,input,Asset(host,cells),43,36);
-            Place(context,host,input,Asset(host,new CaptureCell{Layers=CaptureLayer.Tile,TileType=TileID.Stone}),52,42);
-            WorldGen.PlaceWall(53,43,WallID.Wood,true);
-            WorldGen.PlaceWall(42,37,WallID.Wood,true);
-            Require(Main.tile[53,43].wall==WallID.Wood && Main.tile[42,37].wall==WallID.Wood,"both separated wall endpoints have legal native supports");
+            var instance=Place(context,host,input,Asset(host,cells),sourceX,36);
+            Place(context,host,input,Asset(host,new CaptureCell{Layers=CaptureLayer.Tile,TileType=TileID.Stone}),stoneX,42);
+            WorldGen.PlaceWall(lateX,43,WallID.Wood,true);
+            WorldGen.PlaceWall(firstX-1,37,WallID.Wood,true);
+            Require(Main.tile[lateX,43].wall==WallID.Wood && Main.tile[firstX-1,37].wall==WallID.Wood,"both separated wall endpoints have legal native supports");
             SetAutomatic(host,input,true);
-            int updates=0,maxNear=0,maxForward=0,maxSources=0,boundsChanges=0;bool right=true;
+            int updates=0,maxNear=0,maxForward=0,maxSources=0,boundsChanges=0,nativeBoundsChanges=0;bool right=true;
             object priorBounds=null;float startX=p.position.X,minX=startX,maxX=startX;bool moved=false;
+            Rectangle? priorNativeBounds=null;
             var preferredWalks = new Dictionary<object, PreferredWalkObservation>();
             bool preferredPending = false, preferredResumed = false; int maxPreferred = 0;
+            var actualOrder = new List<string>(); bool firstWallSeen = false, lateWallSeen = false, stoneSeen = false;
             try{NativeQuickItemChecks.Until(()=>
             {
                 NativeToolExecutionChecks.Sample(context,input,new Vector2(480,540),false);
                 // Sample initializes neutral keyboard state. Apply real native
                 // movement AFTER it, and feed both original controls/triggers.
-                if(moving)
+                if(moving && (!denseEdge || firstWallSeen))
                 {
                     // Alternate real controls across an interior tile edge.
                     // Staying near vanilla's 640px world clamp could stop all
                     // motion at the left limit and never change broad bounds.
-                    right=p.position.X<48*16;
+                    if(denseEdge)
+                    {if(right && p.position.X>=49*16-1)right=false;else if(!right && p.position.X<=48*16-1)right=true;}
+                    else right=p.position.X<48*16;
                     p.controlLeft=!right;p.controlRight=right;
                     PlayerInput.Triggers.Current.Left=!right;PlayerInput.Triggers.Current.Right=right;
                 }
                 long before=(long)Get(host,"ProjectionMatchSourceSteps");
+                float beforeNativeX=p.position.X;
                 NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(context,"UpdateRuntime");updates++;
+                int nativeLeft,nativeTop,nativeRight,nativeBottom;
+                TileReachCheckSettings.Simple.GetTileRegion(p,out nativeLeft,out nativeTop,out nativeRight,out nativeBottom,p.inventory[12].tileBoost+p.blockRange);
+                var nativeBounds=new Rectangle(nativeLeft,nativeTop,nativeRight-nativeLeft+1,nativeBottom-nativeTop+1);
+                if(priorNativeBounds.HasValue && priorNativeBounds.Value!=nativeBounds)nativeBoundsChanges++;
+                priorNativeBounds=nativeBounds;
+                bool firstWall = Main.tile[firstX,37].wall==WallID.Wood, lateWall = Main.tile[lateX,42].wall==WallID.Wood;
+                bool stone = Main.tile[stoneX,42].active();
+                if(firstWall && !firstWallSeen)
+                {
+                    actualOrder.Add("wall:first@"+Main.GameUpdateCount);
+                    if(denseEdge)
+                    {
+                        var incoming=new Item();incoming.SetDefaults(ItemID.StoneBlock);incoming.stack=2;
+                        Require(p.GetItem(incoming,new GetItemSettings(NoText:true,NoSound:true)).IsAir,"only after the first real WoodWall does original GetItem enable the competing Stone");
+                        stoneSource=p.inventory.Take(50).Single(item=>item.type==ItemID.StoneBlock && item.stack==2);
+                        Console.WriteLine("BlueprintExecutionSearch dense competing Stone real pickup world="+Main.GameUpdateCount+" firstWall=true movementStartsNextUpdate=true");
+                    }
+                }
+                if(lateWall && !lateWallSeen)actualOrder.Add("wall:late@"+Main.GameUpdateCount);
+                if(stone && !stoneSeen)
+                {
+                    actualOrder.Add("stone@"+Main.GameUpdateCount);
+                    // The fixture's two wall positions have independently
+                    // installed native supports and remain within exact reach.
+                    // Final completion used to accept wall -> stone -> wall;
+                    // the owner's continuous-material contract forbids it.
+                    Require(!firstWallSeen || lateWall,
+                        "a known reachable, supplied WoodWall successor must precede another material; actual="+string.Join(",",actualOrder));
+                    if(denseEdge)Require(firstWallSeen && lateWall && nativeBoundsChanges>0 && moved && p.position.X!=beforeNativeX,
+                        "the first competing Stone actually consumes during native movement, after changed near bounds and both current-group walls");
+                }
+                firstWallSeen=firstWall;lateWallSeen=lateWall;stoneSeen=stone;
                 moved|=p.position.X!=startX;minX=Math.Min(minX,p.position.X);maxX=Math.Max(maxX,p.position.X);
-                Require(p.IsInTileInteractionRange(53,42,TileReachCheckSettings.Simple,p.inventory[12].tileBoost+p.blockRange),
+                Require(p.IsInTileInteractionRange(lateX,42,TileReachCheckSettings.Simple,p.inventory[12].tileBoost+p.blockRange),
                     "the late target stays inside actual native reach during the complete moving walk");
                 Require((long)Get(host,"ProjectionMatchSourceSteps")-before<=256 && (int)Get(host,"materialBuildSourceBudget")>=0,
                     "local, forward and match still share the original per-update source budget");
                 var sources=((IEnumerable)Get(host,"buildSources")).Cast<object>().ToArray();maxSources=Math.Max(maxSources,sources.Length);
-                ObservePreferredContinuation(host, EligibilityRanges(instance), preferredWalks, ref preferredPending, ref preferredResumed, ref maxPreferred);
+                // A standalone cold Cadence scope can precede publication of
+                // this instance's Match. Observe it only once it exists; the
+                // world/input sequence and source discovery remain unmodified.
+                if(GetOptional(instance,"Match")!=null)
+                    ObservePreferredContinuation(host, EligibilityRanges(instance), preferredWalks, ref preferredPending, ref preferredResumed, ref maxPreferred);
                 foreach(var source in sources.Where(s=>ReferenceEquals(Get(s,"Owner"),instance)))
                 {
                     var value=Get(Get(source,"Range"),"Materials");int cursor=(int)Get(value,"CandidateCursor");
@@ -107,38 +164,53 @@ namespace NativeWorldTextProbe
                         "a finite local/forward slice is not mistaken for source exhaustion");
                 }
                 NativeToolExecutionChecks.Outer(context,input,1+updates%2);
-                return Main.tile[43,37].wall==WallID.Wood && Main.tile[53,42].wall==WallID.Wood && Main.tile[52,42].active() && ProgressDormant(instance) && !(bool)Get(Get(tools,"Use"),"Active") &&
-                    maxNear>128 && maxForward>0 && (!moving || boundsChanges>0);
+                return Main.tile[firstX,37].wall==WallID.Wood && Main.tile[lateX,42].wall==WallID.Wood && Main.tile[stoneX,42].active() &&
+                    (denseEdge || ProgressDormant(instance)) && !(bool)Get(Get(tools,"Use"),"Active") &&
+                    (denseEdge?maxPreferred>128 && nativeBoundsChanges>0:maxNear>128 && maxForward>0 && (!moving || boundsChanges>0));
             });}
             catch
             {
                 Console.Error.WriteLine("EXECUTION SEARCH state moving="+moving+" updates="+updates+" position="+p.position+" velocity="+p.velocity+
                     " maxNear="+maxNear+" maxForward="+maxForward+" boundsChanges="+boundsChanges+" maxSources="+maxSources+" moved="+moved+
-                    " woodWall="+Main.tile[53,42].wall+" stone="+Main.tile[52,42].active()+" dormant="+ProgressDormant(instance)+" use="+Get(Get(tools,"Use"),"Active")+
-                    " minX="+minX+" maxX="+maxX+" stocks="+p.inventory[12].stack+"/"+p.inventory[14].stack);
-                foreach(var source in ((IEnumerable)Get(host,"buildSources")).Cast<object>())Console.Error.WriteLine("EXECUTION SEARCH source near="+Get(source,"NearCursor")+
-                    " nearComplete="+Get(source,"NearComplete")+" revisit="+Get(source,"NearRevisit")+" bounds="+Get(source,"NearBounds")+
-                    " forward="+Get(Get(Get(source,"Range"),"Materials"),"CandidateCursor")+" exhausted="+Get(Get(Get(source,"Range"),"Materials"),"BuildExhausted"));
+                    " woodWall="+Main.tile[lateX,42].wall+" stone="+Main.tile[stoneX,42].active()+" dormant="+ProgressDormant(instance)+" use="+Get(Get(tools,"Use"),"Active")+
+                    " minX="+minX+" maxX="+maxX+" nativeBoundsChanges="+nativeBoundsChanges+" stocks="+p.inventory[12].stack+"/"+stoneSource.stack);
+                foreach(var source in ((IEnumerable)Get(host,"buildSources")).Cast<object>())
+                {
+                    var value=Get(Get(source,"Range"),"Materials");
+                    Console.Error.WriteLine("EXECUTION SEARCH source near="+Get(source,"NearCursor")+
+                        " nearComplete="+Get(source,"NearComplete")+" revisit="+Get(source,"NearRevisit")+" bounds="+Get(source,"NearBounds")+
+                        " forward="+Get(value,"CandidateCursor")+" exhausted="+Get(value,"BuildExhausted")+
+                        " preferred="+Get(value,"PreferredCursor")+"/"+Get(value,"PreferredCompletedBatch")+"/"+Get(value,"PreferredComplete")+
+                        " revisit="+Get(value,"PreferredRevisit")+" waits="+Get(value,"BuildWaits")+
+                        " frontier="+Get(value,"PreferredFrontier")+"/"+Get(value,"PreferredFrontierCursor"));
+                }
                 throw;
             }
-            Require(p.inventory[12].stack==2 && p.inventory[14].stack==1 && maxNear>128 && maxForward>0 && maxSources>=2 &&
+            Console.WriteLine("BlueprintExecutionSearch completion moving="+moving+" denseEdge="+denseEdge+" sourceX="+sourceX+" updates="+updates+" stocks="+p.inventory[12].stack+"/"+stoneSource.stack+
+                " near="+maxNear+" forward="+maxForward+" sources="+maxSources+" preferred="+maxPreferred+" pending="+preferredPending+" resumed="+preferredResumed+
+                " boundsChanges="+boundsChanges+" nativeBoundsChanges="+nativeBoundsChanges+" order="+string.Join(",",actualOrder));
+            Require(p.inventory[12].stack==2 && stoneSource.stack==1 && (denseEdge || maxNear>128 && maxForward>0) && maxSources>=2 &&
                 preferredPending && preferredResumed && maxPreferred>128 &&
-                (!moving || moved && boundsChanges>0),
+                (!moving || moved && (denseEdge?nativeBoundsChanges>0:boundsChanges>0)),
                 "the preferred tail resumes across real Updates without cursor rewind, while both wall endpoints and another source really consume under stationary/continuous movement");
             p.controlLeft=p.controlRight=false;
+            PlayerInput.Triggers.Current.Left=PlayerInput.Triggers.Current.Right=false;
+            int settling=0;
+            if(denseEdge)Until(context,input,()=>{settling++;return ProgressDormant(instance);});
             for(int i=0;i<40;i++)Step(context,input);
+            Require(ProgressDormant(instance),"after genuine movement stops, the complete remaining unsupplied scene becomes dormant");
             long settled=(long)Get(host,"ProjectionMatchSourceSteps");
             for(int i=0;i<20;i++)Step(context,input);
             Require(settled==(long)Get(host,"ProjectionMatchSourceSteps"),"completed near/forward passes sleep while their real signals remain unchanged");
             p.inventory[13].SetDefaults(ItemID.StoneWall);p.inventory[13].stack=1;
             Until(context,input,()=>p.inventory[13].IsAir);
-            Require(cells.Where(c=>c.WallType==WallID.Stone).Any(c=>Main.tile[43+c.X,36+c.Y].wall==WallID.Stone) && Main.tile[43,37].wall==WallID.Wood && Main.tile[53,42].wall==WallID.Wood &&
-                p.inventory[12].stack==2 && p.inventory[14].stack==1 && (long)Get(host,"BuildUnknownResults")==0,
+            Require(cells.Where(c=>c.WallType==WallID.Stone).Any(c=>Main.tile[sourceX+c.X,36+c.Y].wall==WallID.Stone) && Main.tile[firstX,37].wall==WallID.Wood && Main.tile[lateX,42].wall==WallID.Wood &&
+                p.inventory[12].stack==2 && stoneSource.stack==1 && (long)Get(host,"BuildUnknownResults")==0,
                 "a later real refill revisits the already passed prefix without duplicate spending or an automatic toggle");
-            Console.WriteLine("PASS BlueprintExecutionSearch moving="+moving+" records=77 missingStone=75 betweenWood=64 updates="+updates+" maxNear="+maxNear+
+            Console.WriteLine("PASS BlueprintExecutionSearch moving="+moving+" denseEdge="+denseEdge+" records="+cells.Length+" missingStone="+(cells.Length-2)+" betweenWood="+(lastIndex-firstIndex-1)+" updates="+updates+" maxNear="+maxNear+
                 " maxForward="+maxForward+" retainedSources="+maxSources+" boundsChanges="+boundsChanges+" minX="+minX+" maxX="+maxX+
                 " maxPreferred="+maxPreferred+" preferredBudgetPaused="+preferredPending+" preferredResumed="+preferredResumed+
-                " nativeWoodWall=2 nativeStone=1 refillStoneWall=1 stablePassSleeping=true");
+                " nativeWoodWall=2 nativeStone=1 refillStoneWall=1 stablePassSleeping=true settling="+settling+" order="+string.Join(",",actualOrder));
         }
         private static void BudgetPrefixContinuation(object context, object host, object tools, object input, bool warm, bool shared)
         {
@@ -197,7 +269,8 @@ namespace NativeWorldTextProbe
 
         private sealed class ContinuousPlacement
         {
-            internal int Frame, Animation, X, Slot, Type, Mode, SupplySlot = -1;
+            internal int Frame, Animation, Time, X, Slot, Type, Mode, SupplySlot = -1;
+            internal uint WorldTick;
             internal long Token, Native, Flight, PreparationClicks;
             internal string Kind, Consumer;
             internal Item Item, Supply;
@@ -226,21 +299,29 @@ namespace NativeWorldTextProbe
             // twin cannot turn cache replacement into a different Item source.
             p.inventory[11].SetDefaults(ItemID.StoneBlock); p.inventory[11].stack = 3; var earlier = p.inventory[11];
             long requests = (long)Get(host, "ProjectionMatchSourceRequests"), steps = (long)Get(host, "ProjectionMatchSourceSteps");
+            long directoryBuilds=(long)Get(host,"BuildFocusDirectoryBuilds"),directoryConstruction=(long)Get(host,"BuildFocusDirectoryConstructionSteps"),
+                directoryQueries=(long)Get(host,"BuildFocusDirectorySteps"),directoryRoutes=(long)Get(host,"BuildFocusDirectoryRoutes"),
+                sharedDirectoryBytes=(long)Get(host,"BuildFocusDirectorySharedBytes"),temporaryDirectoryBytes=(long)Get(host,"BuildFocusDirectoryTemporaryBytes");
+            long peakDirectoryBytes=0,peakSharedDirectoryBytes=sharedDirectoryBytes;
             var initiallyRetained = pinned.Select(r => Get(r, "Owner")).ToArray();
             var patch = new Harmony("JueMingR.Tests.BlueprintFullSourceContinuation");
             patch.Patch(typeof(Player).GetMethod("PlaceThing_Tiles_PlaceIt", F), postfix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(ContinuousPlaced)));
             continuousPlacements.Clear(); continuousFrame = 0; continuousHost = host; continuousUse = Get(tools, "Use");
             continuousAutomatic = continuousWatch = true;
-            long previousSteps = steps, previousChecks = (long)Get(host, "BuildCandidateChecks");
+            long previousSteps = steps, previousChecks = (long)Get(host, "BuildCandidateChecks"),previousQueries=directoryQueries,previousConstruction=directoryConstruction;
             try
             {
                 Until(context, input, () => {
                     continuousFrame++;
                     long currentSteps = (long)Get(host, "ProjectionMatchSourceSteps"), currentChecks = (long)Get(host, "BuildCandidateChecks");
                     Require((int)Get(Get(host, "buildSources"), "Count") <= 4 && (int)Get(host, "materialBuildSourceBudget") >= 0 &&
-                        currentSteps - previousSteps <= 256 && currentChecks - previousChecks <= 64,
+                        currentSteps - previousSteps <= 256 && currentChecks - previousChecks <= 64 &&
+                        (long)Get(host,"BuildFocusDirectorySteps")-previousQueries+(long)Get(host,"BuildFocusDirectoryConstructionSteps")-previousConstruction<=64,
                         "six-instance same-group discovery and execution keep the shared per-Update budgets and four retained transports");
-                    previousSteps = currentSteps; previousChecks = currentChecks;
+                    previousSteps = currentSteps; previousChecks = currentChecks;previousQueries=(long)Get(host,"BuildFocusDirectorySteps");
+                    previousConstruction=(long)Get(host,"BuildFocusDirectoryConstructionSteps");
+                    peakDirectoryBytes=Math.Max(peakDirectoryBytes,(long)Get(host,"BuildFocusDirectoryBytes"));
+                    peakSharedDirectoryBytes=Math.Max(peakSharedDirectoryBytes,(long)Get(host,"BuildFocusDirectorySharedBytes"));
                     return Scene(host).Length == 0 && !(bool)Get(continuousUse, "Active");
                 });
                 Require(continuousPlacements.Count == 6 && continuousPlacements.Select(v => v.Owner).Distinct().Count() == 6 &&
@@ -254,6 +335,24 @@ namespace NativeWorldTextProbe
                     "all six native goals consume once from the original exact source despite a four-part transport cache and an earlier identical type; discovery work stays finite");
                 Console.WriteLine("PASS BlueprintBuild full source continuation pinned=4 instances=6 actualStone=6 originalSource=12 earlierTwinConsumed=0 sourceRequests=" +
                     ((long)Get(host, "ProjectionMatchSourceRequests") - requests) + " sourceSteps=" + ((long)Get(host, "ProjectionMatchSourceSteps") - steps));
+                var gaps = continuousPlacements.Skip(1).Select((e, i) => unchecked(e.WorldTick - continuousPlacements[i].WorldTick)).ToArray();
+                Console.WriteLine("BlueprintCadence six-instance four-retained events=world/time/owner/token " + string.Join(";", continuousPlacements.Select(v =>
+                    v.WorldTick + "/" + v.Time + "/" + ((BlueprintProjectionIdentity)Get(v.Owner, "Identity")).ProjectionGeneration + "/" + v.Token)) + " gaps=" + string.Join(",", gaps));
+                Require(gaps.Select((gap, i) => gap == continuousPlacements[i].Time).All(equal => equal),
+                    "all six exact-source native consumers, including both initially nonresident instances, use each preceding native itemTime opportunity");
+                long built=(long)Get(host,"BuildFocusDirectoryBuilds")-directoryBuilds,
+                    construction=(long)Get(host,"BuildFocusDirectoryConstructionSteps")-directoryConstruction;
+                Require(built>0 && built<=6 && construction==built && peakDirectoryBytes<=1024+6*1024 &&
+                    peakSharedDirectoryBytes-sharedDirectoryBytes<=1024+6*256 && (long)Get(host,"BuildFocusDirectoryTemporaryBytes")<=Math.Max(temporaryDirectoryBytes,28),
+                    "six one-group qualified instances build at most six shared geometry directories once; construction and retained/temporary bytes are accounted independently of source transport");
+                long stableBuilds=(long)Get(host,"BuildFocusDirectoryBuilds"),stableConstruction=(long)Get(host,"BuildFocusDirectoryConstructionSteps");
+                for(int i=0;i<12;i++)Step(context,input);
+                Require(stableBuilds==(long)Get(host,"BuildFocusDirectoryBuilds") && stableConstruction==(long)Get(host,"BuildFocusDirectoryConstructionSteps"),
+                    "stable callbacks do not rebuild the geometry directory");
+                Console.WriteLine("BlueprintFocusDirectory instances=6 builds="+built+" constructionSteps="+construction+
+                    " queryNodes="+((long)Get(host,"BuildFocusDirectorySteps")-directoryQueries)+" routedLogicalParts="+((long)Get(host,"BuildFocusDirectoryRoutes")-directoryRoutes)+
+                    " activeEstimatedBytesPeak="+peakDirectoryBytes+" sharedEstimatedBytes="+sharedDirectoryBytes+"->"+peakSharedDirectoryBytes+
+                    " temporaryOrderBytesPeak="+Get(host,"BuildFocusDirectoryTemporaryBytes")+" stableRebuilds=0");
             }
             finally
             {
@@ -317,7 +416,7 @@ namespace NativeWorldTextProbe
             var flight = continuousAutomatic ? GetOptional(continuousHost, "activeBuild") : null;
             var operation = flight == null ? null : GetOptional(flight, "Operation");
             var primary = flight == null ? null : ((IEnumerable)Get(flight, "Dependencies")).Cast<object>().FirstOrDefault(value => (bool)Get(value, "Primary"));
-            var observation = new ContinuousPlacement { Frame = continuousFrame, Animation = p.itemAnimation, X = x,
+            var observation = new ContinuousPlacement { Frame = continuousFrame, Animation = p.itemAnimation, Time = p.itemTime, WorldTick = Main.GameUpdateCount, X = x,
                 Token = continuousAutomatic ? (long)Get(continuousUse, "Operation") : 0, Native = continuousAutomatic ? (long)Get(continuousUse, "NativeGeneration") : 0,
                 Flight = flight == null ? 0 : (long)Get(flight, "Generation"),
                 Slot = flight == null ? p.selectedItem : (int)Get(Get(flight, "Source"), "Slot"),
@@ -352,8 +451,8 @@ namespace NativeWorldTextProbe
                     var instance = Place(context, host, input, Asset(host, cells), 44, 42);
                     if (blocked) foreach (int x in new[] { 46, 47 }) Require(WorldGen.PlaceTile(x, 42, TileID.Stone, true, true), "preference obstacles are real original world bodies");
                     continuousPlacements.Clear(); continuousWatch = true; SetAutomatic(host, input, true);
-                    bool earlier = false, debtAcrossWrites = false, preparedDebtCurrent = false;
-                    object seed = null;
+                    bool earlier = false, focusAcrossWrites = false, preparedFallbackCurrent = false;
+                    object focus = null;
                     for (continuousFrame = 0; continuousFrame < 300 && continuousPlacements.Count < (blocked ? 2 : 4); continuousFrame++)
                     {
                         NativeToolExecutionChecks.Sample(context, input, new Vector2(480, 540), false);
@@ -370,17 +469,17 @@ namespace NativeWorldTextProbe
                         Require((long)Get(host, "ProjectionMatchSourceSteps") - steps <= 256 && (int)Get(host, "materialBuildSourceBudget") >= 0 &&
                             (long)Get(host, "BuildCandidateChecks") - checks <= 64,
                             "ordinary, preference and deferred work share the original source and full-preflight allowances");
-                        var pendingSeed = GetOptional(host, "deferredBuild"); var prepared = GetOptional(host, "preparedBuild");
-                        if (pendingSeed != null && seed == null) seed = pendingSeed;
-                        if (!blocked && continuousPlacements.Count >= 2 && continuousPlacements.All(v => v.Type == ItemID.DirtBlock) && pendingSeed != null)
+                        var currentFocus = GetOptional(host, "buildContinuation"); var prepared = GetOptional(host, "preparedBuild");
+                        if (currentFocus != null && focus == null) focus = currentFocus;
+                        if (!blocked && continuousPlacements.Count >= 2 && continuousPlacements.All(v => v.Type == ItemID.DirtBlock) && currentFocus != null)
                         {
-                            Require(ReferenceEquals(seed, pendingSeed), "the earliest ordinary debt survives multiple real same-source writes while its world proof becomes stale");
-                            debtAcrossWrites = true;
+                            Require(ReferenceEquals(focus, currentFocus), "the business material preference survives multiple real writes while each target receives fresh world proof");
+                            focusAcrossWrites = true;
                         }
-                        if (pendingSeed != null && prepared != null && (int)Get(Get(prepared, "Target"), "WorldX") == 45)
+                        if (prepared != null && (int)Get(Get(prepared, "Target"), "WorldX") == 45)
                         {
-                            Require((bool)Call(host, "IsBuildTargetCurrent", Get(prepared, "Target")), "ordinary debt is prepared with a newly current world/support proof");
-                            preparedDebtCurrent = true;
+                            Require((bool)Call(host, "IsBuildTargetCurrent", Get(prepared, "Target")), "the later ordinary fallback is prepared with a newly current world/support proof");
+                            preparedFallbackCurrent = true;
                         }
                         if (!blocked && continuousPlacements.Count == 1)
                         {
@@ -388,26 +487,26 @@ namespace NativeWorldTextProbe
                             Require(reach.TryGetValue(ItemID.DirtBlock, out actualBoost) && actualBoost == p.inventory[12].tileBoost && (int)Get(host, "buildEnvelopeBoost") == 1,
                                 "one capability observation retains the exact active source reach while the earlier stack only expands the broad envelope");
                         }
-                        // Empty outer callbacks preserve one debt and do no
+                        // Empty outer callbacks preserve business intent and do no
                         // new preparation, preference scanning or native spend.
-                        int count = continuousPlacements.Count; object kept = GetOptional(host, "deferredBuild");
+                        int count = continuousPlacements.Count;
                         var keptGroup = GetOptional(host, "buildContinuation");
                         long outerChecks = (long)Get(host, "BuildCandidateChecks");
                         var cursorOwners = GetOptional(instance, "Match") == null ? Array.Empty<object>() :
                             EligibilityRanges(instance).Select(r => GetOptional(r, "Materials")).Where(v => v != null).ToArray();
                         var preferenceCursors = cursorOwners.Select(v => (int)Get(v, "PreferredCursor")).ToArray();
                         NativeToolExecutionChecks.Outer(context, input, 2);
-                        Require(continuousPlacements.Count == count && ReferenceEquals(kept, GetOptional(host, "deferredBuild")) &&
+                        Require(continuousPlacements.Count == count &&
                             ReferenceEquals(keptGroup, GetOptional(host, "buildContinuation")) &&
                             outerChecks == (long)Get(host, "BuildCandidateChecks") && cursorOwners.Select((v, i) => (int)Get(v, "PreferredCursor") == preferenceCursors[i]).All(v => v),
-                            "empty outer does not reset fairness or spend another preparation allowance");
+                            "empty outer does not reset the business preference or spend another preparation allowance");
                     }
                     continuousWatch = false;
                     Require(continuousPlacements.Count >= 2 && continuousPlacements[0].X == 44 && continuousPlacements[0].Type == ItemID.DirtBlock,
                         "mixed sequence starts by the ordinary real Dirt placement");
                     if (blocked)
                     {
-                        Require(continuousPlacements[1].X == 45 && p.inventory[13].stack == 1 && GetOptional(host, "deferredBuild") == null,
+                        Require(continuousPlacements[1].X == 45 && p.inventory[13].stack == 1,
                             "when current-material targets are blocked, the first prepared legal Stone fallback actually consumes next");
                         foreach (int x in new[] { 46, 47 }) WorldGen.KillTile(x, 42, false, false, true);
                         Until(context, input, () => Scene(host).Length == 0);
@@ -425,24 +524,23 @@ namespace NativeWorldTextProbe
                             Console.Error.WriteLine("MATERIAL CONTINUITY events=" + string.Join(",", continuousPlacements.Select(v =>
                                 v.Frame + ":" + v.X + "/" + v.Type + "@" + v.Slot + "#" + v.Token + "/" + v.Flight + " itemIsDirt=" + ReferenceEquals(v.Item, dirt))) +
                                 " groupSource=" + (source == null ? "none" : Get(source, "Slot").ToString()) +
-                                " group/batch/remaining/debt/pending=" + (group == null ? "none" : Get(group, "Group") + "/" + Get(group, "Batch") + "/" +
-                                    Get(group, "Remaining") + "/" + Get(group, "DebtDue") + "/" + Get(group, "Pending")) +
+                                " group/pending=" + (group == null ? "none" : Get(group, "Group") + "/" + Get(group, "Pending")) +
                                 " dirt/earlier/stone=" + dirt.stack + "/" + p.inventory[11].stack + "/" + p.inventory[13].stack);
                         }
                         Require(continuous,
-                            "the finite ready local group continues beyond one overtake on the exact stack/lease, then really serves ordinary Stone");
-                        Require(seed != null && debtAcrossWrites && preparedDebtCurrent && GetOptional(host, "deferredBuild") == null &&
+                            "all current legal Dirt successors continue on the exact stack/lease before actual ordinary Stone service");
+                        Require(focus != null && focusAcrossWrites && preparedFallbackCurrent &&
                             p.inventory[11].stack == 3 && ReferenceEquals(p.inventory[12], dirt) && dirt.stack == 5 &&
                             p.inventory[11].stack + p.inventory[12].stack == 8 && p.inventory[13].stack == 1,
-                            "one debt survives actual world invalidations, rebinds current support and clears on native admission; an earlier same-type Item never steals the ongoing source");
+                            "the material preference survives actual writes; the fallback binds current support and an earlier same-type Item never steals the ongoing exact source");
                         Until(context, input, () => Scene(host).Length == 0);
                     }
                     Console.WriteLine("PASS BlueprintBuild material continuity blocked=" + blocked + " placements=" +
                         string.Join(",", continuousPlacements.Select(v => v.X + ":" + v.Type + "@" + v.Slot + "#" + v.Token)) +
-                        " debtAcrossWrites=" + debtAcrossWrites + " reboundCurrentDebt=" + preparedDebtCurrent + " originalBudgets=true");
+                        " focusAcrossWrites=" + focusAcrossWrites + " reboundCurrentFallback=" + preparedFallbackCurrent + " originalBudgets=true");
                     SetAutomatic(host, input, false);
-                    Require(GetOptional(host, "deferredBuild") == null && (int)Get(Get(host, "buildSources"), "Count") == 0,
-                        "turning construction off releases preference transports and its sole deferred description");
+                    Require(GetOptional(host, "buildContinuation") == null && (int)Get(Get(host, "buildSources"), "Count") == 0,
+                        "turning construction off releases the preference and source transports");
                 }
                 ContinuousMixedAppearance(context, host, tools, input);
                 ContinuousPreparedPaint(context, host, tools, input);
@@ -473,7 +571,7 @@ namespace NativeWorldTextProbe
                 long checks = (long)Get(host, "BuildCandidateChecks"), steps = (long)Get(host, "ProjectionMatchSourceSteps"),
                     clicks = (long)Get(Get(host, "buildMaterialPreparation"), "NativeClicks");
                 Require(continuousPlacements.Count(v => v.Kind == "Body") == 4 || paint.stack == 6 && clicks == initialClicks,
-                    "the unrelated ready paint candidate cannot start supply preparation or spend paint while this finite body group still has successors");
+                    "the unrelated ready paint candidate cannot start supply preparation or spend paint while this body group still has successors");
                 Require((int)Get(host, "materialBuildSourceBudget") >= 0 && checks - previousChecks <= 64 && steps - previousSteps <= 256,
                     "mixed native consumers retain the shared preparation and source budgets");
                 previousChecks = checks; previousSteps = steps;

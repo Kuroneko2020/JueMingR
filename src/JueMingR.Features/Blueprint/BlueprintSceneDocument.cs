@@ -6,24 +6,26 @@ namespace JueMingR.Features.Blueprint
 {
     public sealed class BlueprintSceneRecord
     {
-        public BlueprintSceneRecord(BlueprintTemplateKey template, int originX, int originY, long order, BlueprintProjectionMask mask)
-        { Template = template ?? throw new ArgumentNullException(nameof(template)); OriginX = originX; OriginY = originY; Order = order; Mask = mask ?? BlueprintProjectionMask.Empty; }
+        public BlueprintSceneRecord(BlueprintTemplateKey template, int originX, int originY, long order, BlueprintProjectionMask mask, bool mirroredHorizontally = false)
+        { Template = template ?? throw new ArgumentNullException(nameof(template)); OriginX = originX; OriginY = originY; Order = order; Mask = mask ?? BlueprintProjectionMask.Empty; MirroredHorizontally = mirroredHorizontally; }
         public BlueprintTemplateKey Template { get; }
         public int OriginX { get; }
         public int OriginY { get; }
         public long Order { get; }
         public BlueprintProjectionMask Mask { get; }
+        public bool MirroredHorizontally { get; }
     }
 
     // Only committed scene facts cross the file boundary. Template summaries,
     // world Match, input/source ownership and execution generations are rebuilt.
     public sealed class BlueprintSceneDocument
     {
-        public BlueprintSceneDocument(string scope, int width, int height, long revision, IReadOnlyList<BlueprintSceneRecord> records)
+        public BlueprintSceneDocument(string scope, int width, int height, long revision, IReadOnlyList<BlueprintSceneRecord> records, int sourceVersion = 2)
         {
             ValidateScope(scope);
             if (width <= 0 || height <= 0 || revision < 0 || records == null) throw new ArgumentException("blueprint-scene-header");
             Scope = scope; Width = width; Height = height; Revision = revision;
+            SourceVersion = sourceVersion;
             var copy = new BlueprintSceneRecord[records.Count]; long order = 0;
             for (int i = 0; i < copy.Length; i++)
             {
@@ -41,6 +43,9 @@ namespace JueMingR.Features.Blueprint
         public int Width { get; }
         public int Height { get; }
         public long Revision { get; }
+        // SourceVersion is a validated decode fact, not a requested writer mode.
+        // A real committed mutation writes v2; merely loading v1 never rewrites it.
+        public int SourceVersion { get; }
         public IReadOnlyList<BlueprintSceneRecord> Records { get; }
         public static void ValidateScope(string value)
         {

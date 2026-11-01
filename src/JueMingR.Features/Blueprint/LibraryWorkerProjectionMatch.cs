@@ -12,6 +12,7 @@ namespace JueMingR.Features.Blueprint
             internal BlueprintProjectionIdentity Identity;
             internal long Generation, Serial, CapabilityRevision;
             internal BlueprintProjectionSourceDemand[] Demands;
+            internal BlueprintProjectionView View;
         }
         private sealed class ProjectionSourceBuild
         {
@@ -57,9 +58,9 @@ namespace JueMingR.Features.Blueprint
         }
 #endif
 
-        internal bool RequestProjectionSource(BlueprintProjectionIdentity identity, long generation, int range, int objectId, int offset, long capabilityRevision = 0)
-        { return RequestProjectionSources(identity, generation, new[] { new BlueprintProjectionSourceDemand(range, objectId, offset) }, capabilityRevision); }
-        internal bool RequestProjectionSources(BlueprintProjectionIdentity identity, long generation, IReadOnlyList<BlueprintProjectionSourceDemand> demands, long capabilityRevision = 0)
+        internal bool RequestProjectionSource(BlueprintProjectionIdentity identity, long generation, int range, int objectId, int offset, long capabilityRevision = 0, BlueprintProjectionView view = null)
+        { return RequestProjectionSources(identity, generation, new[] { new BlueprintProjectionSourceDemand(range, objectId, offset) }, capabilityRevision, view); }
+        internal bool RequestProjectionSources(BlueprintProjectionIdentity identity, long generation, IReadOnlyList<BlueprintProjectionSourceDemand> demands, long capabilityRevision = 0, BlueprintProjectionView view = null)
         {
             if (identity == null) throw new ArgumentNullException(nameof(identity));
             if (demands == null) throw new ArgumentNullException(nameof(demands));
@@ -73,7 +74,7 @@ namespace JueMingR.Features.Blueprint
                     projectionReceipts.Count + projectionSourceReceipts.Count + projectionQualificationReceipts.Count + projectionFailures.Count >= ProjectionRequestLimit) return false;
                 ProjectionOwner owner;
                 if (capabilityRevision != 0 && (!projectionOwners.TryGetValue(identity.TemplateKey, out owner) || owner.QualificationCatalog?.Revision != capabilityRevision || owner.RequestedQualificationCatalog?.Revision != capabilityRevision)) return false;
-                var request = new ProjectionSourceRequest { Identity = identity, Generation = generation, Demands = owned, Serial = ++projectionSourceSerial, CapabilityRevision = capabilityRevision };
+                var request = new ProjectionSourceRequest { Identity = identity, Generation = generation, Demands = owned, Serial = ++projectionSourceSerial, CapabilityRevision = capabilityRevision, View = view };
 #if DEBUG
                 Interlocked.Increment(ref projectionSourceRequestsAccepted);
 #endif
@@ -189,7 +190,9 @@ namespace JueMingR.Features.Blueprint
                 foreach (var demand in request.Demands)
                 {
                     CheckProjectionSource(owner, request);
-                    var matchRanges = request.CapabilityRevision == 0 ? (IReadOnlyList<BlueprintProjectionSourceRange>)owner.MatchRanges : owner.QualificationMatchRanges;
+                    ProjectionQualifiedGeometry qualified;
+                    var matchRanges = request.CapabilityRevision == 0 ? (IReadOnlyList<BlueprintProjectionSourceRange>)owner.MatchRanges :
+                        owner.QualificationViews.TryGetValue(request.View?.MirroredHorizontally == true, out qualified) && ReferenceEquals(qualified.Profile, request.View?.Profile) ? qualified.Proofs : owner.QualificationMatchRanges;
                     if (demand.Range < 0 || demand.Range >= matchRanges.Count) throw new InvalidDataException("blueprint-source-range");
                     var range = matchRanges[demand.Range];
                     bool tileOnly = demand.ObjectId == 0 && range.ObjectId > 0;
@@ -253,11 +256,10 @@ namespace JueMingR.Features.Blueprint
                 {
                     CheckProjectionSource(owner, request); var chunk = ProjectionChunk(owner, number);
                     List<ProjectionSourceBuild> ordinaryTargets; ordinary.TryGetValue(number, out ordinaryTargets);
-#if DEBUG
-                    Interlocked.Increment(ref projectionSourceMemberBlocks); Interlocked.Add(ref projectionSourceMemberRecords, chunk.Count);
-#endif
+                    RecordProjectionObjectMemberBlock();
                     for (int i = 0; i < chunk.Count; i++)
                     {
+                        RecordProjectionObjectMemberRecord();
                         var raw = chunk.Cells[i];
                         if (ordinaryTargets != null)
                         {
@@ -296,7 +298,7 @@ namespace JueMingR.Features.Blueprint
                 {
                     CheckProjectionSource(owner, request);
                     if (build.ObjectId != 0 && build.Cells.Count != build.PlannedCells) throw new InvalidDataException("blueprint-object-member-reference");
-                    build.Cells.Sort(CellComparer.Instance);
+                    foreach (bool ignored in SortProjectionObjectMembersSteps(build.Cells, () => CheckProjectionSource(owner, request))) yield return true;
                     // ToArray briefly coexists with the mutable construction
                     // buffer. Include both arrays and metadata/string payload
                     // in the working peak, then drop this build's staging list.
@@ -307,10 +309,28 @@ namespace JueMingR.Features.Blueprint
                     working += build.Window.EstimatedBytes + summaryReferenceBytes - (64L + build.Cells.Capacity * 64L); build.Cells = null;
                     UpdateProjectionSourceWorkingBytes(working); yield return true;
                 }
+                if (request.View != null)
+                {
+                    long rawBytes = 0;
+                    foreach (var build in builds) rawBytes += build.Window.EstimatedBytes + build.DoorContextBytes;
+                    // Discover IDs from the accepted raw prefix and all of its
+                    // contexts, then share finite complete-member batches. The
+                    // transport arrays retain their physical offset contract.
+                    foreach (bool ignored in TransformProjectionSourceViewsSteps(owner, request, builds, working)) yield return true;
+                    foreach (var build in builds)
+                    {
+                        CheckProjectionSource(owner, request);
+                        build.DoorContextBytes = BlueprintProjectionSourcePart.DoorContextBytes(build.DoorContexts);
+                        if (build.Window.EstimatedBytes > ProjectionWindowLimit) throw new InvalidDataException("blueprint-projection-window-budget");
+                        working += build.Window.EstimatedBytes + build.DoorContextBytes;
+                    }
+                    working -= rawBytes;
+                    UpdateProjectionSourceWorkingBytes(working); yield return true;
+                }
                 var parts = new BlueprintProjectionSourcePart[plans.Count];
                 for (int i = 0; i < parts.Length; i++)
                 { var plan = plans[i]; parts[i] = new BlueprintProjectionSourcePart(plan.Demand, plan.LogicalObjectId, plan.Build.Window, plan.Build.NextOffset, plan.Build.Complete, plan.Build.DoorContexts); }
-                var receipt = new BlueprintProjectionSourceReceipt(request.Identity, request.Generation, parts, capabilityRevision: request.CapabilityRevision);
+                var receipt = new BlueprintProjectionSourceReceipt(request.Identity, request.Generation, parts, capabilityRevision: request.CapabilityRevision, view: request.View);
                 UpdateProjectionSourceWorkingBytes(working + BlueprintProjectionSourceReceipt.DirectoryBytes + parts.LongLength * BlueprintProjectionSourcePart.DescriptorBytes);
                 if (receipt.EstimatedBytes > BlueprintProjectionSourceReceipt.MaximumEstimatedBytes) throw new InvalidDataException("blueprint-projection-window-budget");
                 while (true)

@@ -276,9 +276,9 @@ namespace JueMingR.Features.Blueprint
         // transport bound, not an extension of reliable-object proof capacity.
         public const long MaximumEstimatedBytes = 32L * 1024 * 1024 + DirectoryBytes + BlueprintProjectionSourcePart.DescriptorBytes + 16L * 8;
         internal BlueprintProjectionSourceReceipt(BlueprintProjectionIdentity identity, long generation,
-            BlueprintProjectionSourcePart[] parts, string error = null, long capabilityRevision = 0)
+            BlueprintProjectionSourcePart[] parts, string error = null, long capabilityRevision = 0, BlueprintProjectionView view = null)
         {
-            Identity = identity; Generation = generation; Parts = Array.AsReadOnly(parts); Error = error; CapabilityRevision = capabilityRevision;
+            Identity = identity; Generation = generation; Parts = Array.AsReadOnly(parts); Error = error; CapabilityRevision = capabilityRevision; View = view;
             long bytes = DirectoryBytes + parts.LongLength * BlueprintProjectionSourcePart.DescriptorBytes;
             var windows = new HashSet<BlueprintProjectionWindow>();
             foreach (var part in parts) if (part.Window != null && windows.Add(part.Window)) bytes = checked(bytes + part.WindowEstimatedBytes + part.DoorContextEstimatedBytes);
@@ -287,6 +287,7 @@ namespace JueMingR.Features.Blueprint
         public BlueprintProjectionIdentity Identity { get; }
         public long Generation { get; }
         public long CapabilityRevision { get; }
+        public BlueprintProjectionView View { get; }
         public IReadOnlyList<BlueprintProjectionSourcePart> Parts { get; }
         public long EstimatedBytes { get; }
         // Compatibility accessors describe the first requested part, including

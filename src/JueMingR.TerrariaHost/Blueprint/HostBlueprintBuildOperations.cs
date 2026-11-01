@@ -35,6 +35,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         // borrow a mode/input, acquire a token or mutate another candidate.
         private sealed class BuildOperationPlan
         {
+            internal BlueprintBuildTarget ExecutionTarget;
             internal BlueprintBuildOperation Operation;
             internal Item Tool, Supply;
             internal int ToolType;
@@ -69,11 +70,30 @@ namespace JueMingR.TerrariaHost.Blueprint
             return plan == null || plan.SupplySlot < 0 || slot == plan.SupplySlot && slot < p.inventory.Length &&
                 ReferenceEquals(p.inventory[slot], plan.Supply) && plan.Supply.type == plan.SupplyType && plan.Supply.stack > 0;
         }
+        private enum BuildPlanningIntent { NewSelection, ContinuationProbe }
         private bool TryPlanBuild(BlueprintBuildTarget target, Player p, BuildSource preferred, out BuildOperationPlan plan,
             out BlueprintBuildWait wait, out ulong dependencySlots)
+        { return EvaluateBuildPlan(target, p, preferred, BuildPlanningIntent.NewSelection, out plan, out wait, out dependencySlots); }
+        private bool TryPlanContinuationBuild(BlueprintBuildTarget target, Player p, BuildSource source, out BuildOperationPlan plan,
+            out BlueprintBuildWait wait, out ulong dependencySlots)
+        { return EvaluateBuildPlan(target, p, source, BuildPlanningIntent.ContinuationProbe, out plan, out wait, out dependencySlots); }
+        private bool EvaluateBuildPlan(BlueprintBuildTarget target,Player p,BuildSource source,BuildPlanningIntent intent,
+            out BuildOperationPlan plan,out BlueprintBuildWait wait,out ulong slots)
         {
-            plan = null; wait = BlueprintBuildWait.None; dependencySlots = 0;
-            if (!IsBuildTargetCurrent(target) || IsUnconfirmedTarget(target) || !ReferenceEquals(p, player)) return false;
+            target.Readiness=BlueprintBuildReadiness.Deferred;
+            long reads=buildUnavailableReads;
+            bool ready=TryPlanBuildCore(target,p,source,intent,out plan,out wait,out slots);
+            if(ready){target.Readiness=BlueprintBuildReadiness.Ready;return true;}
+            if(substitutionPlanningPending || reads!=buildUnavailableReads)return DeferBuildTarget(target);
+            if(wait!=BlueprintBuildWait.None)target.Readiness=BlueprintBuildReadiness.BlockedNow;
+            return false;
+        }
+        private bool TryPlanBuildCore(BlueprintBuildTarget target, Player p, BuildSource preferred, BuildPlanningIntent intent,
+            out BuildOperationPlan plan, out BlueprintBuildWait wait, out ulong dependencySlots)
+        {
+            plan = null; wait = BlueprintBuildWait.None; dependencySlots = 0; substitutionPlanningPending = false;
+            if (!IsBuildTargetCurrent(target) || !ReferenceEquals(p, player)) return DeferBuildTarget(target);
+            if(IsUnconfirmedTarget(target)){target.Readiness=BlueprintBuildReadiness.BlockedNow;return false;}
             var operation = target.Operation;
             if (WiringOperation(operation)) return TryPlanWiringTool(target, p, preferred, out plan, out wait, out dependencySlots);
             int tool = -1, primary = -1;
@@ -109,7 +129,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     if (!p.IsInTileInteractionRange(x, y, TileReachCheckSettings.Simple, p.inventory[slot].tileBoost + p.blockRange))
                     { failures |= BlueprintBuildWait.Player; continue; }
                     BlueprintBuildWait supplyWait; ulong supplySlots;
-                    if (!TryPlanBuildSupply(target, p, candidate.SupplyType, candidate.SupplyDestination, out primary, out supplyWait, out supplySlots))
+                    if (!TryPlanBuildSupply(target, p, candidate.SupplyType, candidate.SupplyDestination, out primary, out supplyWait, out supplySlots, intent == BuildPlanningIntent.ContinuationProbe))
                     { failures |= supplyWait; blocked |= supplySlots; continue; }
                     plan = new BuildOperationPlan { Operation = candidate, Tool = p.inventory[slot], ToolType = p.inventory[slot].type, ToolSlot = slot,
                         Supply = primary < 0 ? null : p.inventory[primary], SupplySlot = primary, SupplyType = candidate.SupplyType, SupplyDestination = candidate.SupplyDestination,
@@ -122,7 +142,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             else
             {
                 var placement = operation?.NativePlacement ?? target.Placement;
-                if (placement == null || !BasicPlacement(placement)) return false;
+                if (placement == null || !BasicPlacement(placement)) return InvalidBuildTarget(target);
+                // The frozen ChoiceSet is the applicability gate, including
+                // effective torch output. A global ON switch alone does not
+                // justify building candidate lists for unrelated exact blocks.
+                if (operation == null && (MaterialCatalog.Substitution?.Candidates(placement, substitutionPolicy).Count ?? 0) > 0)
+                    return TryPlanSubstitutionBuild(target, p, preferred, intent, out plan, out wait);
                 if (preferred != null && preferred.Type == placement.UseItemType && preferred.Slot >= 0 && preferred.Slot < 50 &&
                     ReferenceEquals(p.inventory[preferred.Slot], preferred.Item) && buildTools.BuildInventoryEligible(preferred.Slot, preferred.Item)) tool = preferred.Slot;
                 else tool = ConstructionItemSlot(p, placement.UseItemType);
@@ -131,7 +156,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 { wait = BlueprintBuildWait.Player; return false; }
                 operation = CopyBuildOperation(operation);
             }
-            if (operation?.SupplyType > 0 && !TryPlanBuildSupply(target, p, operation.SupplyType, operation.SupplyDestination, out primary, out wait, out dependencySlots)) return false;
+            if (operation?.SupplyType > 0 && !TryPlanBuildSupply(target, p, operation.SupplyType, operation.SupplyDestination, out primary, out wait, out dependencySlots, intent == BuildPlanningIntent.ContinuationProbe)) return false;
             plan = new BuildOperationPlan { Operation = operation, Tool = p.inventory[tool], ToolType = p.inventory[tool].type, ToolSlot = tool,
                 Supply = primary < 0 ? null : p.inventory[primary], SupplySlot = primary,
                 SupplyType = operation?.SupplyType ?? 0, SupplyDestination = operation?.SupplyDestination ?? -1,
@@ -170,71 +195,69 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (WiringOperation(target.Operation)) return TryPrepareWiringBuild(target, p, out flight, plan);
             return TryPrepareSpecialBuild(target, p, out flight, plan);
         }
-        private bool TryCreateConstructionTarget(BlueprintProjectionPlacement owner, BlueprintProjectionMatchRange range,
-            BlueprintProjectionSourcePart part, int index, int ordinal, long support, out BlueprintBuildTarget target, int preferredItemType = 0)
+        private BlueprintBuildReadiness CreateConstructionCandidate(BlueprintProjectionPlacement owner,BlueprintProjectionMatchRange range,
+            BlueprintProjectionSourcePart part,int index,int ordinal,long support,out BlueprintBuildTarget target,out int following,bool localPriority)
         {
-            int following;
-            return TryCreateConstructionTargetAndAdvance(owner,range,part,index,ordinal,support,out target,out following,preferredItemType);
-        }
-        private bool TryCreateConstructionTargetAndAdvance(BlueprintProjectionPlacement owner, BlueprintProjectionMatchRange range,
-            BlueprintProjectionSourcePart part, int index, int ordinal, long support, out BlueprintBuildTarget target,out int following,int preferredItemType=0)
-        {
-            target = null;following=ordinal+1;var catalog = MaterialCatalog;
-            if (catalog == null || index < 0 || index >= part.Window.Cells.Count || !ProjectionQualificationCurrent(owner)) return false;
-            var lane = BuildLane(ordinal);
-            var raw = owner.Mask.Apply(part.Window.Cells[index]);
-            CaptureObject? obj = part.LogicalObjectId > 0 && part.Window.Objects.Count == 1 ? part.Window.Objects[0] : (CaptureObject?)null;
-            var selection = SelectProjectionTarget(owner, raw, obj);
-            var cell = selection.Apply(raw);
+            target=null;following=ordinal+1;var catalog=MaterialCatalog;
+            if(catalog==null || !ProjectionQualificationCurrent(owner))return BlueprintBuildReadiness.Deferred;
+            if(index<0 || index>=part.Window.Cells.Count)return BlueprintBuildReadiness.Deferred;
+            var lane=BuildLane(ordinal);var raw=EffectiveProjectionCell(owner,part.Window,index);
+            CaptureObject? obj=part.LogicalObjectId>0 && part.Window.Objects.Count==1?part.Window.Objects[0]:(CaptureObject?)null;
+            var selection=SelectProjectionTarget(owner,raw,obj);var cell=selection.Apply(raw);
             following=NextBuildSourceOrdinal(ordinal,raw,part.LogicalObjectId>0);
-            // Unknown declarations grant no automatic action. Independent
-            // confirmed layers on the same member still retain their lanes.
-            cell = new BlueprintConstructionSelection((ushort)(selection.RequiredBits & ~selection.UnknownBits),0,catalog.Revision).Apply(cell);
-            if (!BuildLanePresent(cell, lane) || part.LogicalObjectId > 0 && lane == BlueprintBuildLane.TileBody && index != 0 ||
-                part.LogicalObjectId == 0 && cell.ObjectId > 0 && (lane == BlueprintBuildLane.TileBody || lane == BlueprintBuildLane.Shape)) return false;
-            BlueprintWorldObject body = null;
-            if (obj.HasValue && (cell.Layers & CaptureLayer.Tile) != 0 && !projectionMatchSource.TryDescribeTarget(obj.Value, cell, owner.OriginX, owner.OriginY, out body)) return false;
-            BlueprintPlacementDescriptor descriptor = lane == BlueprintBuildLane.WallBody ? catalog.Wall(cell.WallType) :
-                (cell.Layers & CaptureLayer.Tile) != 0 ? catalog.Substrate(cell) ?? catalog.Tile(cell, obj) : null;
-            if (lane == BlueprintBuildLane.TileBody || lane == BlueprintBuildLane.WallBody)
-            { if (descriptor == null) return false; }
-            var next = CreateMaterialBuildTarget(owner, range, cell, descriptor, obj, body, ordinal, support, catalog.Revision);
-            next.LocalProof = true;
-            BlueprintWorldMatchSample actual;
-            if(!TryBindConstructionTarget(next,lane,out actual))return false;
+            cell=new BlueprintConstructionSelection((ushort)(selection.RequiredBits&~selection.UnknownBits),0,catalog.Revision).Apply(cell);
+            if(!BuildLanePresent(cell,lane) || part.LogicalObjectId>0 && lane==BlueprintBuildLane.TileBody && index!=0 ||
+                part.LogicalObjectId==0 && cell.ObjectId>0 && (lane==BlueprintBuildLane.TileBody || lane==BlueprintBuildLane.Shape))
+                return BlueprintBuildReadiness.DoneInvalid;
+            BlueprintWorldObject body=null;
+            if(obj.HasValue && (cell.Layers&CaptureLayer.Tile)!=0 && !projectionMatchSource.TryDescribeTarget(obj.Value,cell,owner.OriginX,owner.OriginY,out body))
+                return BlueprintBuildReadiness.DoneInvalid; // Qualified immutable description is unsupported, not a world read.
+            var descriptor=lane==BlueprintBuildLane.WallBody?catalog.Wall(cell.WallType):
+                (cell.Layers&CaptureLayer.Tile)!=0?catalog.Substrate(cell)??catalog.Tile(cell,obj):null;
+            if((lane==BlueprintBuildLane.TileBody || lane==BlueprintBuildLane.WallBody) && descriptor==null)return BlueprintBuildReadiness.DoneInvalid;
+            var next=CreateMaterialBuildTarget(owner,range,cell,descriptor,obj,body,ordinal,support,catalog.Revision);
+            next.LocalProof=true;next.LocalPriority=localPriority;
+            long reads=buildUnavailableReads;BlueprintWorldMatchSample actual;
+            if(!TryBindConstructionTarget(next,lane,out actual))
+            {
+                // Door source context has its own transport owner. Ordinary
+                // binding reads the exact cell; known pose/no-action results
+                // can be excluded, but failed reads/context cannot.
+                if(reads!=buildUnavailableReads || next.Body?.Family==BlueprintWorldObjectFamily.Door && DoorSourceWindow(range)==null)
+                    return BlueprintBuildReadiness.Deferred;
+                return BlueprintBuildReadiness.BlockedNow;
+            }
+            if(actual.ObjectUnknown && lane!=BlueprintBuildLane.WallBody)return BlueprintBuildReadiness.Deferred;
             following=NextNeededBuildOrdinal(next,actual,ordinal,following);
             BlueprintBuildOperation operation;
-            if (!TryPlanConstructionOperationFromSample(next,lane,actual,out operation)) return false;
-            next.Operation = operation;
-            // The old direct path can reject absent supplies without another
-            // native preflight. Tool operations select their actual capability
-            // and independent primary supply only in preparation.
-            if (operation == null && !buildSupply.ContainsKey(descriptor.UseItemType))
-            { range.Materials.BuildWaits |= BlueprintBuildWait.Material; return false; }
-            // Only unfinished, supplied work can register a reach wait. An
-            // already matched lane or a missing ordinary material must not
-            // make movement reopen an otherwise sleeping range forever.
-            if (!BuildNearBounds(owner).Contains(next.WorldX - owner.OriginX, next.WorldY - owner.OriginY))
-            { range.Materials.BuildWaits |= BlueprintBuildWait.Player; return false; }
-            // All lanes are filtered by their actual read-only operation plan.
-            // A type-only body filter would hide special producers and let an
-            // unrelated brush/wire candidate terminate the continuous walk.
-            target = next; return true;
+            reads=buildUnavailableReads;
+            if(!TryPlanConstructionOperationFromSample(next,lane,actual,out operation))
+                return reads!=buildUnavailableReads?BlueprintBuildReadiness.Deferred:BlueprintBuildReadiness.BlockedNow;
+            next.Operation=operation;
+            if(operation==null && !HasBuildSupply(descriptor))
+            {WaitForBuild(next,BlueprintBuildWait.Material);return BlueprintBuildReadiness.BlockedNow;}
+            if(!localPriority && !BuildNearBounds(owner).Contains(next.WorldX-owner.OriginX,next.WorldY-owner.OriginY))
+            {WaitForBuild(next,BlueprintBuildWait.Player);return BlueprintBuildReadiness.BlockedNow;}
+            target=next;target.Readiness=BlueprintBuildReadiness.Ready;return BlueprintBuildReadiness.Ready;
         }
         private int NextNeededBuildOrdinal(BlueprintBuildTarget target,BlueprintWorldMatchSample actual,int ordinal,int following)
         {
-            // One current forward visit already proved this ordinary body is
-            // Missing. Reuse that sample only while choosing its next lane;
+            // One current source visit proves this ordinary body cannot yet
+            // host its foreground operations. Reuse that sample only while
+            // choosing its next lane;
             // no observation or skip mask survives an Update or world write.
-            // Conflict/Unknown and object members keep their complete walks.
+            // Unknown and object members keep their complete walks. A known
+            // different body, like a missing body, cannot be painted/shaped.
             var cell=target.Cell;
             if(cell.ObjectId!=0 || !actual.Available || actual.ObjectUnknown ||
-                (cell.Layers&CaptureLayer.Tile)==0 || BlueprintMaterialSteps.SameBody(cell,actual,MaterialCatalog)!=BlueprintBodyState.Missing)return following;
+                (cell.Layers&CaptureLayer.Tile)==0)return following;
+            var body=BlueprintMaterialSteps.SameBody(cell,actual,MaterialCatalog,policy:substitutionPolicy);
+            if(body!=BlueprintBodyState.Missing && body!=BlueprintBodyState.Conflict)return following;
             while(BuildMemberIndex(following)==BuildMemberIndex(ordinal))
             {
                 var lane=BuildLane(following);
                 bool skip=lane==BlueprintBuildLane.Shape ||
-                    lane==BlueprintBuildLane.Appearance && ((cell.Layers&CaptureLayer.Wall)==0 || BlueprintMaterialSteps.SameBody(cell,actual,true)!=BlueprintBodyState.Same) ||
+                    lane==BlueprintBuildLane.Appearance && ((cell.Layers&CaptureLayer.Wall)==0 || BlueprintMaterialSteps.SameBody(cell,actual,MaterialCatalog,true,substitutionPolicy)!=BlueprintBodyState.Same) ||
                     lane==BlueprintBuildLane.Actuation && !((cell.Layers&CaptureLayer.Actuator)!=0 && cell.Actuator) && PeekOwnedActuator(target.WorldX,target.WorldY)==null;
                 // Independent wall body/appearance, wire, permanent actuator
                 // and owned cleanup retain their own current-world planning.
@@ -267,12 +290,18 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool BuildOperationBodySame(BlueprintBuildTarget target, BlueprintWorldMatchSample actual)
         {
             if (target == null || !actual.Available) return false;
-            if (target.Cell.ObjectId <= 0) return BlueprintMaterialSteps.SameBody(target.Cell, actual, MaterialCatalog) == BlueprintBodyState.Same;
+            if (target.Cell.ObjectId <= 0) return BlueprintMaterialSteps.SameBody(target.Cell, actual, MaterialCatalog,policy:substitutionPolicy) == BlueprintBodyState.Same;
             var value = target.Range?.Materials; BlueprintBodyState body;
-            return value?.BuildObjectBodies != null && value.BuildBodyVersion == target.Range.Version &&
-                projectionChanges.IsMaterialCurrent(target.Range.Watch, target.Range.PartIndex, value.BuildBodyStamp) &&
-                value.BuildObjectBodies.TryGetValue(target.Cell.ObjectId, out body) && body == BlueprintBodyState.Same &&
-                actual.Object != null && (target.Body == null || target.Body.SamePlacement(actual.Object));
+            if(value?.BuildObjectBodies==null || value.BuildBodyVersion!=target.Range.Version ||
+                !projectionChanges.IsMaterialCurrent(target.Range.Watch,target.Range.PartIndex,value.BuildBodyStamp) ||
+                !value.BuildObjectBodies.TryGetValue(target.Cell.ObjectId,out body) || actual.ObjectUnknown)
+            {
+                // Object-wide body work belongs to the existing material read.
+                // Its absent/currently stale result is not a known body mismatch.
+                buildUnavailableReads++;DemandProjectionMatchRange(target.Range);return false;
+            }
+            return body==BlueprintBodyState.Same && actual.Object!=null &&
+                (target.Body==null || SameSubstitutionBody(target.Body,actual.Object));
         }
         private bool ConstructionBuildCurrent(BuildFlight flight)
         {
@@ -326,16 +355,20 @@ namespace JueMingR.TerrariaHost.Blueprint
             int heldMaximum, int primaryMaximum, out BuildFlight flight)
         {
             flight = null;
-            if (target.Operation == null || toolSlot < 0 || toolSlot >= 50 || !IsBuildTargetCurrent(target) || !BuildRetryReady(target)) return false;
+            if(target.Operation==null)return InvalidBuildTarget(target);
+            if(!IsBuildTargetCurrent(target))return DeferBuildTarget(target);
+            if(!BuildRetryReady(target))return false;
+            if(toolSlot<0 || toolSlot>=50)return BlockBuildTarget(target,BlueprintBuildWait.Material);
             var tool = p.inventory[toolSlot];
-            if (tool == null || tool.IsAir || !buildTools.BuildInventoryEligible(toolSlot, tool)) return false;
+            if (tool == null || tool.IsAir || !buildTools.BuildInventoryEligible(toolSlot, tool))return BlockBuildTarget(target,BlueprintBuildWait.Material|BlueprintBuildWait.Dependencies);
             var dependencies = new List<BuildSource>(); ulong slots = 0;
             if (primarySlot >= 0 && primarySlot != toolSlot)
             {
-                if (primarySlot >= 58) return false;
+                if (primarySlot >= 58)return InvalidBuildTarget(target);
                 var material = p.inventory[primarySlot];
                 if (material == null || material.IsAir || p.inventoryChestStack[primarySlot] ||
-                    buildTools.Items.World.ManualMaterials.Contains(material) || buildTools.ProtectedAfterYield(material)) return false;
+                    buildTools.Items.World.ManualMaterials.Contains(material) || buildTools.ProtectedAfterYield(material))
+                    return BlockBuildTarget(target,BlueprintBuildWait.Dependencies);
                 var primary = SnapshotSource(primarySlot, material); primary.Maximum = primaryMaximum; primary.Primary = true;
                 dependencies.Add(primary); slots |= 1UL << primarySlot;
             }
@@ -344,11 +377,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(target.Operation.Consumer==ToolBuildConsumer.Tiles)
             {
                 BuildSource[] accessory;ulong accessorySlots,waiting;
-                if(!CaptureBuildDependencies(p,out accessory,out accessorySlots,out waiting))return false;
+                if(!CaptureBuildDependencies(p,out accessory,out accessorySlots,out waiting))
+                {WaitForBuild(target,BlueprintBuildWait.Dependencies,waiting);return false;}
                 accessoryMaximum=Math.Max(1,target.Body?.MemberCount??1);
+                if(!BuildAccessoryRestorationReady(target,p,accessoryMaximum))return false;
                 foreach(var dependency in accessory)if(dependency.Slot!=toolSlot && (slots&(1UL<<dependency.Slot))==0)
                 {dependency.Maximum=accessoryMaximum;dependencies.Add(dependency);slots|=1UL<<dependency.Slot;}
             }
+            if(!CaptureAppearanceRestoreDependencies(target,p,dependencies,ref slots))return false;
             AddPreparedBuildEndpoints(p,dependencies,toolSlot,ref slots);
             var source = SnapshotSource(toolSlot, tool); source.Maximum = heldMaximum;
             var placement=target.Operation.NativePlacement??target.Placement;
@@ -357,7 +393,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             flight = new BuildFlight { Target = target, Player = p, Source = source, Dependencies = dependencies.ToArray(),
                 DependencySlots = slots, Direction = direction, Generation = ++buildFlightGeneration, InputGesture = ToolInputGesture.HeldPress,
                 CursorMode = ToolBuildCursorMode.Precise, AccessoryMaximum=accessoryMaximum };
-            return ConstructionBuildCurrent(flight);
+            long reads=buildUnavailableReads;
+            return FinishBuildPredicate(target,ConstructionBuildCurrent(flight),reads);
         }
     }
 }

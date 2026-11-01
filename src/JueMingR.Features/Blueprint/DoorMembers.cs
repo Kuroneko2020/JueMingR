@@ -8,12 +8,13 @@ namespace JueMingR.Features.Blueprint
     public static class BlueprintDoorMembers
     {
         public static bool TryRequirement(BlueprintWorldObject source, IReadOnlyList<CaptureCell> members,
-            BlueprintWorldObject observed, int x, int y, out CaptureCell expected)
+            BlueprintWorldObject observed, int x, int y, out CaptureCell expected,
+            BlueprintPlacementCatalog catalog = null, BlueprintSubstitutionPolicy policy = default(BlueprintSubstitutionPolicy))
         {
             expected = default(CaptureCell);
             if (source == null || observed == null || members == null || members.Count != source.MemberCount ||
                 source.Family != BlueprintWorldObjectFamily.Door || observed.Family != BlueprintWorldObjectFamily.Door ||
-                !source.SamePlacement(observed) || source.Height != 3 || observed.Height != 3 ||
+                !(source.SamePlacement(observed) || catalog?.Substitution.AllowsObject(source, observed, policy) == true) || source.Height != 3 || observed.Height != 3 ||
                 source.Width < 1 || source.Width > 2 || observed.Width < 1 || observed.Width > 2 ||
                 !observed.Contains(x, y)) return false;
             int row = y - observed.WorldY, column = x - observed.WorldX;

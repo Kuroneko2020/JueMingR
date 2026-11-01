@@ -50,7 +50,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 int x = observed.WorldX + column, y = observed.WorldY + row;
                 CaptureCell requirement;
-                if (!BlueprintDoorMembers.TryRequirement(target.Body, members, observed, x, y, out requirement)) return false;
+                if (!BlueprintDoorMembers.TryRequirement(target.Body, members, observed, x, y, out requirement,MaterialCatalog,substitutionPolicy)) return false;
                 if (target.Body.Width == 2 && observed.Width == 2 && requirement.X != target.Cell.X) continue;
                 // Equal source columns collapse to one actual step. Only the
                 // first source column owns it, avoiding a duplicate candidate.
@@ -66,9 +66,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintWorldObject body, out CaptureCell[] members)
         {
             members = null;
-            if (owner == null || window == null || body?.Family != BlueprintWorldObjectFamily.Door ||
+            if(window==null || body!=null && window.Cells.Count!=body.MemberCount && !CompleteDoorContext(window))
+            {buildUnavailableReads++;return false;}
+            if (owner == null || body?.Family != BlueprintWorldObjectFamily.Door ||
                 !window.Identity.Equals(owner.Identity) || window.Objects.Count != 1 ||
-                window.Cells.Count != body.MemberCount && !CompleteDoorContext(window) ||
                 !ProjectionQualificationCurrent(owner)) return false;
             var obj = window.Objects[0];
             if (!obj.Reliable || obj.Id <= 0) return false;
@@ -77,8 +78,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 CaptureCell raw;
                 if (!TryWindowSourceCell(window, body.WorldX - owner.OriginX + index % body.Width,
-                    body.WorldY - owner.OriginY + index / body.Width, out raw)) return false;
-                var selected = owner.Mask.Apply(raw);
+                    body.WorldY - owner.OriginY + index / body.Width, out raw))
+                {buildUnavailableReads++;return false;}
+                var selected = EffectiveProjectionCell(owner,window,raw);
                 var selection = SelectProjectionTarget(owner, selected, obj);
                 if (raw.ObjectId != obj.Id || raw.UnreliableObject || (raw.Layers & CaptureLayer.Tile) == 0 ||
                     raw.X + owner.OriginX != body.WorldX + index % body.Width || raw.Y + owner.OriginY != body.WorldY + index / body.Width ||
@@ -92,16 +94,21 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool TryReadCompleteDoor(BlueprintWorldObject source, out BlueprintWorldObject observed)
         {
             observed = null; BlueprintWorldMatchSample hinge;
-            if (source?.Family != BlueprintWorldObjectFamily.Door || !ReadBuildCell(source.AnchorX, source.AnchorY, out hinge) ||
-                hinge.ObjectUnknown || hinge.Object == null || !source.SamePlacement(hinge.Object)) return false;
+            if (source?.Family != BlueprintWorldObjectFamily.Door || !ReadBuildCell(source.AnchorX, source.AnchorY, out hinge))return false;
+            // Raw cell availability is not a complete door description. Carry
+            // this unresolved object through the same Deferred read channel.
+            if(hinge.ObjectUnknown){buildUnavailableReads++;return false;}
+            if(hinge.Object==null || !SameSubstitutionBody(source,hinge.Object))return false;
             var form = hinge.Object;
             if (form.Height != 3 || form.Width < 1 || form.Width > 2) return false;
-            var proof = new BlueprintObjectBodyProof(source);
+            var proof = new BlueprintObjectBodyProof(source,MaterialCatalog,substitutionPolicy);
             for (int row = 0; row < form.Height; row++)
             for (int column = 0; column < form.Width; column++)
             {
                 BlueprintWorldMatchSample sample;
-                if (!ReadBuildCell(form.WorldX + column, form.WorldY + row, out sample) || sample.Object == null ||
+                if (!ReadBuildCell(form.WorldX + column, form.WorldY + row, out sample))return false;
+                if(sample.ObjectUnknown){buildUnavailableReads++;return false;}
+                if (sample.Object == null ||
                     !form.SameObservedObject(sample.Object)) return false;
                 proof.Observe(sample);
             }
@@ -117,10 +124,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             var obj = window.Objects[0]; CaptureCell first;
             if (!TryWindowSourceCell(window, obj.X, obj.Y, out first) ||
                 !projectionMatchSource.TryDescribeTarget(obj, first, owner.OriginX, owner.OriginY, out source) ||
-                !source.SamePlacement(actual.Object)) return false;
+                !SameSubstitutionBody(source,actual.Object)) return false;
             CaptureCell[] members;
             return TryDoorSourceMembers(owner, window, source, out members) &&
-                BlueprintDoorMembers.TryRequirement(source, members, actual.Object, actual.Cell.X, actual.Cell.Y, out requirement);
+                BlueprintDoorMembers.TryRequirement(source, members, actual.Object, actual.Cell.X, actual.Cell.Y, out requirement,MaterialCatalog,substitutionPolicy);
         }
 
         private bool TrySelectedDoorRequirement(BlueprintProjectionPlacement owner, BlueprintWorldMatchSample actual,
@@ -174,6 +181,13 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             cell = default(CaptureCell);
             if (window == null) return false;
+            if (window.View?.MirroredHorizontally == true && window.CellsInSourceOrder && window.SourceWindow != null)
+            {
+                int sourceX = window.View.SourceX(x); var originals = window.SourceWindow.Cells;
+                int original = BuildCellLowerBound(originals,sourceX,y);
+                if (original >= originals.Count || originals[original].X != sourceX || originals[original].Y != y) return false;
+                cell = window.Cells[original]; return true;
+            }
             int index = BuildCellLowerBound(window.Cells, x, y);
             if (index >= window.Cells.Count || window.Cells[index].X != x || window.Cells[index].Y != y) return false;
             cell = window.Cells[index]; return true;
@@ -213,14 +227,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 var context = FindDoorContext(part, left, top);
                 if (context != null && TryWindowSourceCell(context, x, y, out raw))
-                { known = true; return TrySelectedCoordinateWall(owner, raw, out wall); }
+                { known = true; return TrySelectedCoordinateWall(owner, raw, out wall, context); }
             }
             if (!TryWindowSourceCell(part.Window, x, y, out raw)) return false;
-            known = true; return TrySelectedCoordinateWall(owner, raw, out wall);
+            known = true; return TrySelectedCoordinateWall(owner, raw, out wall, part.Window);
         }
-        private bool TrySelectedCoordinateWall(BlueprintProjectionPlacement owner, CaptureCell raw, out CaptureCell wall)
+        private bool TrySelectedCoordinateWall(BlueprintProjectionPlacement owner, CaptureCell raw, out CaptureCell wall, BlueprintProjectionWindow window = null)
         {
-            wall = owner.Mask.Apply(raw);
+            wall = window?.View == null ? owner.Mask.Apply(raw) : raw;
             var selection = SelectProjectionTarget(owner, wall);
             return (wall.Layers & CaptureLayer.Wall) != 0 && (selection.RequiredBits & 2) != 0 && (selection.UnknownBits & 2) == 0;
         }
@@ -248,7 +262,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 else if (!TryDoorSourceMembers(target.Range.Owner, DoorSourceWindow(target.Range), target.Body, out members)) return false;
                 if (proof != null && !target.Body.SameObservedObject(proof.Source) ||
                     !TryReadCompleteDoor(target.Body, out observed) || actual.Object == null || !observed.SameObservedObject(actual.Object) ||
-                    !BlueprintDoorMembers.TryRequirement(target.Body, members, observed, actual.Cell.X, actual.Cell.Y, out expected)) return false;
+                    !BlueprintDoorMembers.TryRequirement(target.Body, members, observed, actual.Cell.X, actual.Cell.Y, out expected,MaterialCatalog,substitutionPolicy)) return false;
                 if (proof == null) proof = new BlueprintDoorBuildProof(target.Body, members);
                 doorForm = observed; tileSame = true;
                 // Only Tile requirements follow the operating pose. The wall
@@ -262,7 +276,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 else
                 {
                     bool known; bool selected = TryCoordinateWall(target.Range.Owner, actual.Cell.X, actual.Cell.Y, out wall, out known);
-                    if (!known) return false;
+                    if (!known){buildUnavailableReads++;return false;}
                     if (selected) expected = WithCoordinateWall(expected, wall);
                     proof = new BlueprintDoorBuildProof(proof.Source, proof.Members, selected ? wall : (CaptureCell?)null, actual.Cell.X, actual.Cell.Y, true);
                 }
@@ -276,7 +290,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (proof != null)
                 {
                     source = proof.Source;
-                    if (!BlueprintDoorMembers.TryRequirement(source, proof.Members, actual.Object, actual.Cell.X, actual.Cell.Y, out mapped) ||
+                    if (!BlueprintDoorMembers.TryRequirement(source, proof.Members, actual.Object, actual.Cell.X, actual.Cell.Y, out mapped,MaterialCatalog,substitutionPolicy) ||
                         !TryReadCompleteDoor(source, out observed) || !observed.SameObservedObject(actual.Object)) return false;
                     expected = WithCoordinateWall(mapped, expected); tileSame = true; doorForm = observed;
                 }

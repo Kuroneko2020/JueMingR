@@ -49,7 +49,8 @@ namespace JueMingR.TerrariaHost.F5
         MovementFallAllow8, MovementFallDeny8, MovementFallAllow9, MovementFallDeny9,
         MovementFallAllow10, MovementFallDeny10, MovementFallAllow11, MovementFallDeny11,
         BlueprintCapture, BlueprintSave, BlueprintToolbarOn, BlueprintToolbarOff, BlueprintLibrary, BlueprintMove, BlueprintRemove,
-        BlueprintAutoBuildOn, BlueprintAutoBuildOff, BlueprintMaterials }
+        BlueprintMirror, BlueprintTrim, BlueprintConfirmTrim, BlueprintAutoBuildOn, BlueprintAutoBuildOff, BlueprintMaterials,
+        BlueprintSubstitutionConfigure, BlueprintSubstitutionOn, BlueprintSubstitutionOff }
 
     internal sealed class F5Element
     {
@@ -96,6 +97,8 @@ namespace JueMingR.TerrariaHost.F5
         internal void SetBlueprintMode(bool value) { blueprintActive = value; }
         private int blueprintOperation, builtBlueprintOperation;
         internal void SetBlueprintOperation(int value) { blueprintOperation = value; }
+        private long blueprintPreviewRevision, builtBlueprintPreviewRevision;
+        internal void SetBlueprintPreviewRevision(long value) { blueprintPreviewRevision = value; }
         internal void SetBlueprintLibraryVisible(bool value) { blueprintLibraryVisible = value; }
         internal void SetBlueprintContentHeight(float height) { if (page == 6) ContentHeight = Math.Max(0, height); }
         internal void SetMovementMode(Features.Movement.ContinuousDashMode value) { movementMode = value; }
@@ -164,7 +167,7 @@ namespace JueMingR.TerrariaHost.F5
         // Qualification changes affect both pages that own hidden names. A
         // stable qualification remains a cache hit even while the pointer moves.
         internal bool Matches(float width, float height, float scale, int currentPage)
-        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 6 || builtBlueprintActive == blueprintActive && builtBlueprintOperation == blueprintOperation && builtBlueprintAttached == BlueprintAttached && builtBlueprintLibraryVisible == blueprintLibraryVisible) && (currentPage != 11 || builtMovementMode == movementMode && builtMovementConfiguration == movementConfiguration) && (currentPage != 1 && currentPage != 8 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
+        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 6 || builtBlueprintActive == blueprintActive && builtBlueprintOperation == blueprintOperation && builtBlueprintPreviewRevision == blueprintPreviewRevision && builtBlueprintAttached == BlueprintAttached && builtBlueprintLibraryVisible == blueprintLibraryVisible) && (currentPage != 11 || builtMovementMode == movementMode && builtMovementConfiguration == movementConfiguration) && (currentPage != 1 && currentPage != 8 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
 
         internal void Ensure(float width, float height, float scale, int currentPage,
             object font, Func<string, F5Size> measureText)
@@ -212,7 +215,10 @@ namespace JueMingR.TerrariaHost.F5
             float y = 0;
             if (currentPage == 9) BuildInformation(ref y);
             else if (currentPage == 5) About.Build(elements, DynamicTextSize, Viewport.Height, ref y);
-            else if (currentPage == 6 && BlueprintAttached && !blueprintLibraryVisible) BlueprintControls.AddRows(elements, TextSize, ref y, blueprintActive, blueprintOperation);
+            else if (currentPage == 6 && BlueprintAttached && !blueprintLibraryVisible)
+            {
+                BlueprintControls.AddRows(elements, TextSize, ref y, blueprintActive, blueprintOperation);
+            }
             else if (currentPage == 7 && !FishingAttached) BuildFishing(ref y);
             else if (currentPage == 8)
             {
@@ -229,10 +235,11 @@ namespace JueMingR.TerrariaHost.F5
             if (currentPage == 2) AnnouncementControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 11 && MovementAttached) MovementControls.AddRows(elements, TextSize, ref y, movementMode, movementConfiguration);
             builtMovementMode = movementMode;
-            // Only the mode changes row identities. XOR selection edits never
-            // invalidate page geometry or a binding editor's anchor.
+            // Capture XOR edits do not affect these rows. The editor source and
+            // preview revision retire held confirmation targets before release.
             builtBlueprintActive = blueprintActive;
             builtBlueprintOperation = blueprintOperation;
+            builtBlueprintPreviewRevision = blueprintPreviewRevision;
             builtBlueprintAttached = BlueprintAttached;
             builtBlueprintLibraryVisible = blueprintLibraryVisible;
             builtMovementConfiguration = movementConfiguration;

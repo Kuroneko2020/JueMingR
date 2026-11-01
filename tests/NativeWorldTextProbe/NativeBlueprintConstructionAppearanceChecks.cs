@@ -14,6 +14,7 @@ namespace NativeWorldTextProbe
         // every destination change after SetAutomatic comes from production.
         internal static void ConstructionAppearance(object context, object host, object tools, object input)
         {
+            ConstructionAppearanceRestoration(context, host, tools, input);
             Action<string, Action> check = (name, body) =>
             {
                 try { body(); Console.WriteLine("PASS BlueprintConstructionAppearance case=" + name); }
@@ -310,8 +311,16 @@ namespace NativeWorldTextProbe
                 "unselected painted foreground is an explicit local blocker, never inferred as authorized restoration");
             var oneLayer = target; oneLayer.Layers = CaptureLayer.Tile;
             var both = oneLayer; both.InvisibleTile = true;
-            Require(BlueprintConstructionAppearance.Next(oneLayer, both, true, false).Action == BlueprintAppearanceAction.ScrapeTilePaint,
-                "retaining one coating while removing another requires clearing paint then both coatings");
+            next = BlueprintConstructionAppearance.Next(oneLayer, both, true, false);
+            Require(next.Action == BlueprintAppearanceAction.ScrapeTilePaint && next.RequiresForegroundRestoration,
+                "retaining one coating while removing another requires clearing paint then both coatings with funded foreground restoration");
+            var required = BlueprintConstructionAppearance.RequiredMaterials(oneLayer, both, true, false);
+            Require(required.TilePaint == 1 && required.WallPaint == 0 && required.Fullbright == 1 && required.Invisible == 0,
+                "foreground-only clear bills exactly the retained red and glow, independent of a wall's coincident color");
+            both.TilePaint = 0;
+            next = BlueprintConstructionAppearance.Next(oneLayer, both, true, false);
+            Require(next.Action == BlueprintAppearanceAction.ScrapeTileCoatings && next.RequiresForegroundRestoration,
+                "clearing both foreground coatings retains the restoration requirement after the paint is already gone");
         }
 
         private static void ConstructionHammer(object context, object host, object tools, object input)
@@ -626,7 +635,7 @@ namespace NativeWorldTextProbe
                 "the shared proved native profile also gives a selected-cell platform equivalent neighbor frames and exact material identity");
             var body = new BlueprintObjectBodyProof(target); body.Observe(current);
             Require(body.Complete() == BlueprintBodyState.Same, "shared positive-object body proof does not demand another platform material for neighbor framing");
-            object[] witness = { target, new[] { member }, new[] { current }, true, null };
+            object[] witness = { target, new[] { member }, new[] { current }, true, null, null, default(BlueprintSubstitutionPolicy) };
             Require(!(bool)type.GetMethod("TryCreateFrameWitness", F).Invoke(source, witness) && witness[4] == null,
                 "a complete platform Match does not invent an unproved operating-frame write witness");
 

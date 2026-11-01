@@ -11,6 +11,8 @@ namespace JueMingR.Features.Blueprint
         private BlueprintProjectionCommitReceipt projectionCommitReceipt;
         private IEnumerator<bool> projectionCommitting;
         private BlueprintProjectionCommitRequest projectionActiveCommit;
+        internal bool RetainsProjection(BlueprintProjectionIdentity identity)
+        { lock (gate) return identity != null && !stopping && projectionReferences.ContainsKey(identity); }
         internal bool RequestProjectionCommit(BlueprintProjectionCommitRequest request)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
@@ -18,6 +20,12 @@ namespace JueMingR.Features.Blueprint
             {
                 if (stopping || projectionCommit != null || projectionActiveCommit != null || projectionCommitReceipt != null) return false;
                 if (!projectionReferences.ContainsKey(request.Candidate.Identity)) return false;
+                if (request.Kind != BlueprintProjectionEditKind.Trim && projectionTrimLease != null) return false;
+                if (request.Kind == BlueprintProjectionEditKind.Trim)
+                {
+                    if (projectionTrimLease != null && !SameTrimOperation(projectionTrimLease, request)) return false;
+                    if (projectionTrimLease == null) projectionTrimLease = request;
+                }
                 projectionCommit = request; Monitor.Pulse(gate); return true;
             }
         }
@@ -28,23 +36,26 @@ namespace JueMingR.Features.Blueprint
                 if (projectionCommit != null && projectionCommit.SessionGeneration == session && projectionCommit.TransactionId == transaction) projectionCommit = null;
                 if (projectionActiveCommit != null && projectionActiveCommit.SessionGeneration == session && projectionActiveCommit.TransactionId == transaction) projectionActiveCommit = null;
                 if (projectionCommitReceipt != null && projectionCommitReceipt.Request.SessionGeneration == session && projectionCommitReceipt.Request.TransactionId == transaction) projectionCommitReceipt = null;
+                if (projectionTrimLease != null && projectionTrimLease.SessionGeneration == session && projectionTrimLease.TransactionId == transaction)
+                    RevokeProjectionTrimLocked();
                 Monitor.Pulse(gate);
             }
         }
         internal bool TryTakeProjectionCommit(out BlueprintProjectionCommitReceipt receipt)
         { lock (gate) { receipt = projectionCommitReceipt; projectionCommitReceipt = null; return receipt != null; } }
-        private void CancelAllProjectionCommitsLocked() { projectionCommit = null; projectionActiveCommit = null; projectionCommitReceipt = null; }
+        private void CancelAllProjectionCommitsLocked() { projectionCommit = null; projectionActiveCommit = null; projectionCommitReceipt = null; RevokeProjectionTrimLocked(); }
         private void RetireProjectionCommitAssetLocked(Guid id)
         {
-            BlueprintProjectionCommitRequest request = projectionActiveCommit ?? projectionCommit;
+            BlueprintProjectionCommitRequest request = projectionActiveCommit ?? projectionCommit ?? projectionCommitReceipt?.Request;
+            if (projectionTrimLease?.Candidate.Identity.AssetId == id) RevokeProjectionTrimLocked();
             if (request == null) return;
             bool affected = request.Candidate.Identity.AssetId == id;
             foreach (BlueprintProjectionPlacement placement in request.Previous) if (placement.Identity.AssetId == id) affected = true;
             if (affected) CancelAllProjectionCommitsLocked();
         }
         private void CloseProjectionCommitWorker()
-        { if (projectionCommitting != null) projectionCommitting.Dispose(); projectionCommitting = null; lock (gate) CancelAllProjectionCommitsLocked(); }
-        private bool ProjectionCommitHasWorkLocked() { return projectionCommit != null || projectionCommitting != null; }
+        { if (projectionCommitting != null) projectionCommitting.Dispose(); projectionCommitting = null; lock (gate) { CancelAllProjectionCommitsLocked(); projectionTrimCleanup = false; } ReleaseProjectionTrimWorker(); }
+        private bool ProjectionCommitHasWorkLocked() { return projectionCommit != null || projectionCommitting != null || projectionTrimCleanup; }
         private void CheckProjectionCommit(BlueprintProjectionCommitRequest request, BlueprintProjectionIdentity current = null, bool allReferences = false)
         {
             lock (gate)
@@ -60,19 +71,25 @@ namespace JueMingR.Features.Blueprint
         private bool ProjectionCommitStep(bool turn)
         {
             if (!turn) return false;
+            bool cleanup;
+            lock (gate) { cleanup = projectionTrimCleanup; projectionTrimCleanup = false; }
+            // Only the worker releases its mutable overlay. An idle draft is
+            // asleep; revocation supplies this one cleanup wake independently.
+            if (cleanup) ReleaseProjectionTrimWorker();
             lock (gate)
             {
                 if (projectionCommitting == null && projectionCommit != null)
                 { projectionActiveCommit = projectionCommit; projectionCommit = null; projectionCommitting = ComputeProjectionCommit(projectionActiveCommit).GetEnumerator(); }
             }
-            if (projectionCommitting == null) return false;
+            if (projectionCommitting == null) return cleanup;
             try
             {
                 if (projectionCommitting.MoveNext()) return true;
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) { ReleaseProjectionTrimWorker(); }
             catch (Exception error)
             {
+                ReleaseProjectionTrimWorker();
                 lock (gate) if (projectionActiveCommit != null) projectionCommitReceipt = new BlueprintProjectionCommitReceipt(projectionActiveCommit, new Dictionary<long, BlueprintProjectionMask>(), new List<long>(), Reason(error));
             }
             projectionCommitting.Dispose(); projectionCommitting = null; lock (gate) projectionActiveCommit = null; return true;
@@ -101,6 +118,10 @@ namespace JueMingR.Features.Blueprint
         private IEnumerable<bool> ComputeProjectionCommit(BlueprintProjectionCommitRequest request)
         {
             CheckProjectionCommit(request, allReferences: true); ProjectionOwner incoming = CommitOwner(request.Candidate.Identity);
+            if (request.Kind == BlueprintProjectionEditKind.Trim)
+            { foreach (bool step in ComputeProjectionTrim(request, incoming)) yield return step; yield break; }
+            if (request.Kind == BlueprintProjectionEditKind.Mirror)
+                foreach (bool step in ValidateProjectionMirror(request, incoming)) yield return step;
             var masks = new Dictionary<long, BlueprintProjectionMask>(); var retired = new List<long>();
             foreach (BlueprintProjectionPlacement old in request.Previous)
             {
@@ -114,7 +135,8 @@ namespace JueMingR.Features.Blueprint
                 if (left >= right || top >= bottom) continue;
                 ProjectionOwner previous = CommitOwner(old.Identity); var builder = new ProjectionMaskBuilder(old.Mask);
                 CaptureSummary source = incoming.Root.Summary, target = previous.Root.Summary;
-                foreach (long number in incoming.Directory.Query(checked((int)(left - request.Candidate.OriginX + source.Left)), checked((int)(top - request.Candidate.OriginY + source.Top)), checked((int)(right - request.Candidate.OriginX + source.Left)), checked((int)(bottom - request.Candidate.OriginY + source.Top)), ProjectionComparison))
+                var incomingBounds = request.Candidate.View.SourceBounds(new BlueprintProjectionBounds(checked((int)(left - request.Candidate.OriginX)), checked((int)(top - request.Candidate.OriginY)), checked((int)(right - left)), checked((int)(bottom - top))));
+                foreach (long number in incoming.Directory.Query(checked(incomingBounds.Left + source.Left), checked(incomingBounds.Top + source.Top), checked(incomingBounds.Right + source.Left), checked(incomingBounds.Bottom + source.Top), ProjectionComparison))
                 {
                     CheckProjectionCommit(request, old.Identity); CaptureChunk chunk = ProjectionChunk(incoming, number);
                     var occupied = new Dictionary<long, ushort>(); var targetBlocks = new HashSet<long>();
@@ -122,9 +144,9 @@ namespace JueMingR.Features.Blueprint
                     {
                         CaptureCell cell = chunk.Cells[i]; cell.X -= source.Left; cell.Y -= source.Top; cell = request.Candidate.Mask.Apply(cell);
                         if (!cell.HasContent) continue;
-                        long worldX = (long)cell.X + request.Candidate.OriginX, worldY = (long)cell.Y + request.Candidate.OriginY;
+                        long worldX = (long)request.Candidate.View.DisplayX(cell.X) + request.Candidate.OriginX, worldY = (long)cell.Y + request.Candidate.OriginY;
                         if (worldX < left || worldX >= right || worldY < top || worldY >= bottom) continue;
-                        int x = checked((int)(worldX - old.OriginX + target.Left)), y = checked((int)(worldY - old.OriginY + target.Top));
+                        int x = checked(old.View.SourceX(checked((int)(worldX - old.OriginX))) + target.Left), y = checked((int)(worldY - old.OriginY + target.Top));
                         occupied[ProjectionDirectory.Key(x, y)] = BlueprintProjectionMask.Layers(cell);
                         // Exact cell intervals avoid joining distant source windows
                         // or sparse endpoints into an enormous read rectangle.

@@ -14,12 +14,13 @@ namespace JueMingR.TerrariaHost.Blueprint
         private BuildOperationPlan buildSupplyPlan;
         private long buildSupplyReadyFlight;
         private bool buildPendingProtectionInstalled;
-        // One settled use buys one remaining frozen content pass. This ticket
-        // owns no old target/world proof or ToolUse; only exact live Items and
-        // the existing continuation's scalar boundary survive the handoff.
+        // One settled use may retain a finite calculation allowance, never
+        // the lifetime of the business Focus. Source I/O, exhausted allowance,
+        // revoked exact endpoints or contention immediately return inventory.
         private sealed class BuildSupplyDiscovery
         {
-            internal long Group, Batch, Boundary, Catalog;
+            internal long Group, Catalog;
+            internal int Remaining;
             internal Item Tool, Supply;
             internal int ToolSlot, ToolType, SupplySlot, SupplyType, Destination;
             internal ToolBuildConsumer Consumer;
@@ -36,6 +37,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(buildMaterialPreparation==null)buildMaterialPreparation=new ItemMaterialPreparation(buildTools);
             buildTools.BuildPreparationOwns=(array,slot)=>buildMaterialPreparation.OwnsEndpoint(array,slot);
             buildTools.BuildCleanupMaterial=item=>buildMaterialPreparation.IsDisplaced(item);
+            buildTools.BuildPreparationRetainsIntent=p=>buildMaterialPreparation.RetainsBuildIntent(p);
             if(!buildPendingProtectionInstalled)
             {
                 buildPendingProtectionInstalled=true;var previous=buildTools.Items.World.AdditionalProtection;
@@ -87,7 +89,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             return ready;
         }
         private bool TryPlanBuildSupply(BlueprintBuildTarget target, Player p, int type, int destination,
-            out int slot, out BlueprintBuildWait wait, out ulong dependencySlots)
+            out int slot, out BlueprintBuildWait wait, out ulong dependencySlots, bool continuationProbe = false)
         {
             slot = -1; wait = BlueprintBuildWait.None; dependencySlots = 0;
             if (p == null || type <= 0 || buildMaterialPreparation == null) { wait = BlueprintBuildWait.Material; return false; }
@@ -104,7 +106,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             int first = destination == 54 ? Array.IndexOf(p.inventory, FirstBuildPaint(p)) : destination == 0 ? 0 : FirstBuildMaterialSlot(p, type);
             if (first == source) { slot = source; return true; }
             if (preparation.HasWork)
-            { wait = preparation.Unknown ? BlueprintBuildWait.Dependencies : BlueprintBuildWait.Dynamic; dependencySlots = preparation.Slots; return false; }
+            {
+                // Business discovery may require a different real preparation.
+                // Our own finite receipt cannot turn a qualified supplied
+                // successor into absence. This plan owns no endpoints; exact
+                // preparation still returns the old receipt before selection.
+                if (continuationProbe && !preparation.Unknown && !preparation.Abandoning && destination >= 0) return true;
+                wait = preparation.Unknown ? BlueprintBuildWait.Dependencies : BlueprintBuildWait.Dynamic; dependencySlots = preparation.Slots; return false;
+            }
             if (destination < 0) { wait = BlueprintBuildWait.Dependencies; dependencySlots = first >= 0 ? 1UL << first : 0; return false; }
             // A legal main-bag source exists, but the selector needs a real
             // native preparation. This is a selectable fallback, never proof
@@ -144,6 +153,17 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(preparation?.HasWork!=true || preparation.Using || preparation.Unknown)return false;
             if(preparation.Abandoning || preparation.Returning){ClearBuildSupplyHint();return true;}
             if(buildSupplyDiscovery!=null)return ContinueBuildSupplyDiscovery(p,ref allowance);
+            if (buildSupplyTarget != null && BuildContinuationCurrent(p))
+            {
+                var operation = buildSupplyPlan?.Operation ?? buildSupplyTarget.Operation;
+                int type = buildSupplyPlan?.ToolType ?? preparedBuild?.Source.Type ?? buildSupplyTarget.Placement.UseItemType;
+                if (!OperationContinuesBuild(buildSupplyTarget, operation, type, operation?.SupplyType ?? 0))
+                {
+                    BlueprintBuildTarget preferred; BuildOperationPlan plan;
+                    if (TryPreferredBuild(p, out preferred, out plan) != PreferredBuildSearch.NoRunnable)
+                    { preparation.RequestReturn(); preparedBuild = null; ClearBuildSupplyHint(); return true; }
+                }
+            }
             // A naturally ended use may leave only a checked, ready successor
             // and its finite inventory receipt. No old completed target is
             // replayed, and a revoked successor immediately starts return.
@@ -167,15 +187,18 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool ContinueBuildSupplyDiscovery(Player p,ref int allowance)
         {
             var ticket=buildSupplyDiscovery;var group=buildContinuation;var preparation=buildMaterialPreparation;bool external;
-            if(!preparation.Ready || !CanBuildAutomatically(p) || !BuildContinuationCurrent(p) || group.DebtDue ||
-                group.Group!=ticket.Group || group.Batch!=ticket.Batch || group.Boundary!=ticket.Boundary || MaterialCatalog.Revision!=ticket.Catalog ||
+            if(!preparation.Ready || !CanBuildAutomatically(p) || !BuildContinuationCurrent(p) || ticket.Remaining<=0 ||
+                group.Group!=ticket.Group || MaterialCatalog.Revision!=ticket.Catalog ||
                 !ReferenceEquals(p.inventory[ticket.ToolSlot],ticket.Tool) || ticket.Tool.type!=ticket.ToolType || ticket.Tool.stack<=0 ||
                 !ReferenceEquals(p.inventory[ticket.SupplySlot],ticket.Supply) || ticket.Supply.type!=ticket.SupplyType || ticket.Supply.stack<=0 ||
                 buildTools.Contended(ToolKind.Build,out external))
             {preparation.RequestReturn();ClearBuildSupplyHint();return true;}
             BlueprintBuildTarget target;BuildOperationPlan plan;
+            int beforeSource=materialBuildSourceBudget,beforeSearch=materialBuildSearchBudget;
             var result=TryPreferredBuild(p,out target,out plan);
-            if(result==PreferredBuildSearch.BudgetPending)return true;
+            int cost=beforeSource-materialBuildSourceBudget+beforeSearch-materialBuildSearchBudget;
+            ticket.Remaining-=Math.Max(1,cost);
+            if(result==PreferredBuildSearch.BudgetPending && ticket.Remaining>0)return true;
             if(result==PreferredBuildSearch.Found && plan.ToolSlot==ticket.ToolSlot && plan.ToolType==ticket.ToolType && ReferenceEquals(plan.Tool,ticket.Tool) &&
                 plan.SupplySlot==ticket.SupplySlot && plan.SupplyType==ticket.SupplyType && ReferenceEquals(plan.Supply,ticket.Supply) &&
                 plan.Operation?.SupplyDestination==ticket.Destination && BuildConsumer(plan.Operation,target)==ticket.Consumer &&
@@ -236,7 +259,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             var next=preparedBuild;int supply;
             bool other;
             if(!unknown && flight.Checked && !flight.Rejected && CanBuildAutomatically(flight.Player) &&
-                !IsUnconfirmedTarget(flight.Target) && BuildContinuationCurrent(flight.Player) && !buildContinuation.DebtDue &&
+                !IsUnconfirmedTarget(flight.Target) && BuildContinuationCurrent(flight.Player) &&
                 next!=null && next.Operation?.SupplyType>0 && SameBuildSource(flight,next,flight.DependencySlots) && BuildFlightCurrent(next,false) &&
                 preparation.TryReadSupply(flight.Player,next.Operation.SupplyType,next.Operation.SupplyDestination,out supply) &&
                 !buildTools.Contended(ToolKind.Build,out other) && preparation.TryReturnUseReady(flight.Token,next.Target.Identity))
@@ -247,12 +270,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                 buildSupplyTarget=next.Target;buildSupplyPlan=null;buildSupplyReadyFlight=next.Generation;return;
             }
             if(!unknown && flight.SettledConsumption && !flight.Rejected && next==null && CanBuildAutomatically(flight.Player) &&
-                !IsUnconfirmedTarget(flight.Target) && BuildContinuationCurrent(flight.Player) && !buildContinuation.DebtDue &&
+                !IsUnconfirmedTarget(flight.Target) && BuildContinuationCurrent(flight.Player) &&
                 flight.Operation?.SupplyType>0 && preparation.TryReadSupply(flight.Player,flight.Operation.SupplyType,flight.Operation.SupplyDestination,out supply) &&
                 !buildTools.Contended(ToolKind.Build,out other) && preparation.TryReturnUseDiscovery(flight.Token))
             {
                 buildSupplyTarget=null;buildSupplyPlan=null;buildSupplyReadyFlight=0;
-                buildSupplyDiscovery=new BuildSupplyDiscovery { Group=buildContinuation.Group,Batch=buildContinuation.Batch,Boundary=buildContinuation.Boundary,
+                buildSupplyDiscovery=new BuildSupplyDiscovery { Group=buildContinuation.Group,Remaining=64,
                     Catalog=MaterialCatalog.Revision,Tool=flight.Source.Item,ToolSlot=flight.Source.Slot,ToolType=flight.Source.Type,
                     Supply=preparation.Material,SupplySlot=supply,SupplyType=flight.Operation.SupplyType,Destination=flight.Operation.SupplyDestination,
                     Consumer=BuildConsumer(flight.Operation,flight.Target),CursorMode=flight.CursorMode,SmartDirection=flight.SmartDirection };

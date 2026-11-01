@@ -6,12 +6,15 @@ using Terraria;
 
 namespace JueMingR.TerrariaHost.Blueprint
 {
+    // Pre-admission only. Unknown native consumption remains with its receipt
+    // owner and is never settled by this discovery result.
+    internal enum BlueprintBuildReadiness { Deferred, Ready, BlockedNow, DoneInvalid }
     internal sealed class BlueprintBuildTarget
     {
         internal BlueprintProjectionIdentity Identity;
         internal BlueprintProjectionMask Mask;
         internal BlueprintProjectionMatchRange Range;
-        internal long RangeStamp, SupportStamp, PlacementRevision;
+        internal long RangeStamp, SupportStamp, PlacementRevision, PolicyRevision;
         internal int OriginX, OriginY, TargetX, TargetY, Ordinal;
         internal CaptureCell Cell;
         internal CaptureObject Object;
@@ -22,7 +25,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintProjectionBounds Bounds;
         internal BlueprintPlacementDescriptor Placement;
         internal BlueprintBuildOperation Operation;
+        // An execution view is private to one exact candidate. Source records
+        // and the range's nominal requirement are never rewritten for material.
+        internal BlueprintBuildTarget Requirement;
+        internal BlueprintPlacementDescriptor SourcePlacement;
         internal bool LocalProof, LocalPriority;
+        internal BlueprintBuildReadiness Readiness;
     }
     internal sealed class BlueprintMaterialTotals
     {
@@ -43,6 +51,23 @@ namespace JueMingR.TerrariaHost.Blueprint
             catch (OverflowException) { Failed = true; Revision++; }
         }
     }
+    internal sealed class BlueprintSubstitutionBuildCursor
+    {
+        internal int Ordinal = -1, Cursor, Slot = -1, Type;
+        internal long Range, Support, Supply, Player, Policy;
+        internal Item Source;
+        internal bool Deferred;
+    }
+    internal sealed class BlueprintBuildPositionNegative
+    {
+        internal int X,Y;
+        internal long Player;
+        internal Microsoft.Xna.Framework.Vector2 Position;
+        internal BlueprintProjectionBounds Reach;
+        internal int Width,Height,Direction,PulleyDirection;
+        internal bool Pulley;
+        internal bool OutOfReach,Active;
+    }
     internal sealed class BlueprintRangeMaterials
     {
         internal BlueprintMaterialAccumulator Progress;
@@ -58,11 +83,20 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int CandidateCursor;
         // Stable absolute member/lane progress belongs to the source intent,
         // not ToolUse's disposable token or one retained transport window.
-        internal long PreferredGroup, PreferredVisitBatch, PreferredCompletedBatch, PreferredVersion = -1, PreferredPlayer = -1, PreferredWake = -1, PreferredSupply = -1;
+        internal long PreferredGroup, PreferredCompletedBatch, PreferredVersion = -1, PreferredPlayer = -1, PreferredWake = -1, PreferredSupply = -1, PreferredSupport = -1;
         internal int PreferredCursor;
         internal bool PreferredInitialized, PreferredComplete, PreferredRevisit;
+        internal HashSet<int> PreferredNegativeOrdinals;
+        internal Dictionary<int,BlueprintBuildPositionNegative> PreferredPositionNegatives;
+        internal BlueprintProjectionBounds PreferredBounds, PreferredCoveredBounds, PreferredPassCovered, PreferredFrontierBounds;
+        internal int PreferredFrontierCursor;
+        internal bool PreferredFrontier;
+        internal BlueprintBuildWait PreferredWaits;
+        internal ulong PreferredDependencySlots, PreferredRetryAt;
+        internal long PreferredContainer, PreferredRestoration, PreferredPermission;
         internal long BuildEpoch, BuildWakeRevision;
         internal long BuildPlayerRevision, BuildSupplyRevision, BuildContainerRevision, BuildActivationRevision;
+        internal long BuildRestorationRevision;
         internal BlueprintBuildWait BuildWaits;
         internal ulong BuildDependencyWaitSlots;
         internal bool BuildRetryPending;
@@ -73,6 +107,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int EligibilityRetryOrdinal;
         internal ulong EligibilityRetryAt;
         internal ulong DynamicRetryAt;
+        // New selection and exact-source continuation enumerate different
+        // lists. Keep each finite walk independently resumable, so switching
+        // callers cannot consume or rewind the other caller's pending prefix.
+        internal BlueprintSubstitutionBuildCursor SubstitutionSelection, SubstitutionContinuation;
     }
     internal sealed partial class HostBlueprint
     {
@@ -105,6 +143,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private BlueprintMaterialTotals materialPublishingTotals;
         private bool materialPublishingInventoryReady;
         private IEnumerator<KeyValuePair<int, long>> materialPublishing;
+        private BlueprintMaterialAllocation materialPublishingAllocation;
         private List<BlueprintMaterialRow> materialPublishingRows = new List<BlueprintMaterialRow>();
         private long materialPublishingTotal;
         private long materialPublishingRevision, materialPublishingInventoryRevision;
@@ -227,6 +266,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (value != null)
             {
                 value.BuildWakeRevision++; value.Candidate = null;
+                ReopenPreferredRange(range);
                 value.BuildRetryPending = true; value.EligibilityRetry = false;
             }
             // This demand uses the original bounded source/world scheduler.
@@ -235,6 +275,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void RequestBuildEligibilityRetry(BlueprintBuildTarget target)
         {
+            if(target!=null)target.Readiness=BlueprintBuildReadiness.BlockedNow;
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.Retry);
 #endif
@@ -243,6 +284,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (value.EligibilityRetry) return;
             value.EligibilityRetry = true; value.EligibilityRetryOrdinal = target.Ordinal;
             value.EligibilityRetryAt = materialTick + BuildEligibilityRetryDelay;
+            if (target.LocalPriority && value.PreferredGroup == buildContinuation?.Group &&
+                (value.PreferredRetryAt == 0 || value.EligibilityRetryAt < value.PreferredRetryAt)) value.PreferredRetryAt = value.EligibilityRetryAt;
 #if JMR_BLUEPRINT_DIAGNOSTIC
             if(BlueprintBuildTrace.Active)
             {
@@ -261,6 +304,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (dynamicDemand || materialStaticDemand || projectionScene.Count>0) materialKnowledge?.Native.StepPlacement();
             materialStaticDemand = false;
             var catalog = MaterialCatalog;
+            RefreshSubstitutionPolicy();
             if (catalog == null && projectionScene.Count > 0) CancelMaterialPublication();
             if (catalog != null && materialPlacementIdentity != catalog.Revision)
             {
@@ -347,6 +391,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void RevokeMaterialRange(BlueprintProjectionMatchRange range, bool retiring = false, bool resetBuild = false)
         {
             var value = range.Materials; if (value == null) return;
+            if(!retiring)ReopenPreferredRange(range);
             if (value.Current)
             {
                 value.Current = false;
@@ -442,7 +487,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void CancelMaterialPublication()
         {
-            materialPublishing?.Dispose(); materialPublishing = null; materialPublishingRows.Clear(); materialPublishingTotals = null;
+            materialPublishing?.Dispose(); materialPublishing = null; materialPublishingAllocation = null; materialPublishingRows.Clear(); materialPublishingTotals = null;
             if (materialWorldSnapshot.Status == BlueprintMaterialStatus.Pending && materialWorldSnapshot.Rows.Count == 0) return;
             materialWorldSnapshot = new BlueprintMaterialSnapshot(++materialSnapshotRevision, BlueprintMaterialStatus.Pending, Array.Empty<BlueprintMaterialRow>());
         }
@@ -472,6 +517,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 materialPublishingRevision = totals.Revision; materialPublishingInventoryRevision = inventoryRevision;
                 materialPublishingInventoryReady=inventoryReady;
                 materialPublishingTotal = 0;
+                materialPublishingAllocation = substitutionPolicy.Enabled ?
+                    new BlueprintMaterialAllocation(totals.Counts,materialInventory,MaterialCatalog,substitutionPolicy,inventoryReady) : null;
                 materialPublishing = totals.Counts.GetEnumerator();
                 materialWorldSnapshot = new BlueprintMaterialSnapshot(++materialSnapshotRevision, BlueprintMaterialStatus.Pending, Array.Empty<BlueprintMaterialRow>());
             }
@@ -480,7 +527,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var pair = materialPublishing.Current;
                 try { materialPublishingTotal = checked(materialPublishingTotal + pair.Value); }
                 catch (OverflowException) { totals.Failed = true; materialPublishing.Dispose(); materialPublishing = null; materialWorldSnapshot = new BlueprintMaterialSnapshot(++materialSnapshotRevision, BlueprintMaterialStatus.Unresolved, Array.Empty<BlueprintMaterialRow>(), false, "材料数量超出整数范围"); return; }
-                materialPublishingRows.Add(new BlueprintMaterialRow(pair.Key, pair.Value, materialInventory?.Held(pair.Key) ?? 0, inventoryReady));
+                materialPublishingRows.Add(materialPublishingAllocation?.Row(pair.Key) ??
+                    new BlueprintMaterialRow(pair.Key, pair.Value, materialInventory?.Held(pair.Key) ?? 0, inventoryReady));
 #if DEBUG
                 MaterialPublicationSteps++;
 #endif

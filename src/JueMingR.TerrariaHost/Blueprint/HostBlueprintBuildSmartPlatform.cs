@@ -236,14 +236,17 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (!ReferenceEquals(owner, center.Range.Owner) || !ReferenceEquals(source.Mask, owner.Mask) ||
                     source.X != owner.OriginX || source.Y != owner.OriginY || source.Catalog != MaterialCatalog.Revision ||
                     !ProjectionQualificationCurrent(owner)) continue;
-                var part = source.Part; int index = BuildCellLowerBound(part.Window.Cells, x - owner.OriginX, y - owner.OriginY);
+                var part = source.Part; int index = BuildCellLowerBound(ProjectionSourceCells(part.Window), owner.View.SourceX(x - owner.OriginX), y - owner.OriginY);
                 if (index >= part.Window.Cells.Count) continue;
-                var raw = owner.Mask.Apply(part.Window.Cells[index]);
+                var raw = EffectiveProjectionCell(owner,part.Window,index);
                 if (raw.X != x - owner.OriginX || raw.Y != y - owner.OriginY) continue;
                 CaptureObject? obj = part.LogicalObjectId > 0 && part.Window.Objects.Count == 1 ? part.Window.Objects[0] : (CaptureObject?)null;
                 var selection = SelectProjectionTarget(owner, raw, obj); var cell = selection.Apply(raw);
                 cell = new BlueprintConstructionSelection((ushort)(selection.RequiredBits & ~selection.UnknownBits), 0, MaterialCatalog.Revision).Apply(cell);
-                if ((cell.Layers & CaptureLayer.Tile) == 0 || cell.TileType != before.Type || cell.FrameY != before.FrameY ||
+                var observedCell = cell; observedCell.TileType=before.Type; observedCell.FrameY=before.FrameY; observedCell.FrameX=0;
+                bool sameMaterial=cell.TileType==before.Type && cell.FrameY==before.FrameY ||
+                    MaterialCatalog.Substitution.AllowsTile(cell,observedCell,substitutionPolicy);
+                if ((cell.Layers & CaptureLayer.Tile) == 0 || !sameMaterial ||
                     cell.Slope != slope || cell.HalfBrick || cell.Inactive != before.Inactive) continue;
                 var descriptor = MaterialCatalog.Tile(cell, obj); BlueprintWorldObject body = null; long support;
                 if (descriptor?.Platform != true || obj.HasValue &&

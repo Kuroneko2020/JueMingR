@@ -83,7 +83,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool TryPrepareSpecialBuild(BlueprintBuildTarget target, Player p, out BuildFlight flight, BuildOperationPlan selectedPlan)
         {
             flight = null; var operation = target.Operation;
-            if (operation == null) return false;
+            if (operation == null) return InvalidBuildTarget(target);
             if (operation.Kind == BlueprintBuildOperationKind.PlaceBase || operation.Kind == BlueprintBuildOperationKind.ConvertSubstrate)
             {
                 int slot = selectedPlan == null ? ConstructionItemSlot(p, operation.NativePlacement.UseItemType) : PlannedBuildToolSlot(p, selectedPlan);

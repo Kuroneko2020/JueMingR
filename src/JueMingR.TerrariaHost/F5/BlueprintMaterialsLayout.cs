@@ -20,8 +20,8 @@ namespace JueMingR.TerrariaHost.F5
         internal string Name;
         internal F5Rect Rect, Icon;
         internal float NaturalHeight;
-        internal List<F5Element> NameLines, RequiredLines, HeldLines, MissingLines;
-        internal string RequiredText, HeldText, MissingText;
+        internal List<F5Element> NameLines, RequiredLines, HeldLines, MissingLines, SubstitutionLines;
+        internal string RequiredText, HeldText, MissingText, SubstitutionText;
         internal F5Size UnknownSize;
         internal readonly List<BlueprintMaterialGlyph> Glyphs = new List<BlueprintMaterialGlyph>();
         internal readonly List<BlueprintMaterialGlyph> PendingGlyphs = new List<BlueprintMaterialGlyph>();
@@ -124,7 +124,7 @@ namespace JueMingR.TerrariaHost.F5
                 bool existed = previous.TryGetValue(row.ItemType, out cell);
                 float minimumHeight = sameSet && existed ? cell.NaturalHeight : 0;
                 bool reusable = existed && oldNumberWidth == NumberWidth && cell.Rect.Width == cellWidth && cell.Name == itemName && prior != null &&
-                    prior.Required == row.Required && (!world || prior.Held == row.Held && prior.Missing == row.Missing &&
+                    prior.Required == row.Required && (!world || prior.Held == row.Held && prior.Missing == row.Missing && prior.SubstitutionAvailable == row.SubstitutionAvailable &&
                     prior.InventoryReady == row.InventoryReady && old.InventoryReady == value.InventoryReady && old.Status == value.Status);
                 var measured = existed && oldNumberWidth == NumberWidth && cell.Rect.Width == cellWidth && cell.Name == itemName ? cell : null;
                 if (!reusable) cell = Build(row, itemName, world, cellWidth, measure, value.InventoryReady, value.Status == BlueprintMaterialStatus.Exact, minimumHeight, measured);
@@ -198,12 +198,17 @@ namespace JueMingR.TerrariaHost.F5
                 // all materials and inventory are current, zero here would be
                 // an unsupported sufficiency claim for the unknown remainder.
                 bool missingReady = complete && inventoryReady && row.InventoryReady;
+                cell.SubstitutionText = missingReady && row.SubstitutionAvailable > 0 ? "同类可补 " + Number(row.SubstitutionAvailable) : "";
+                var substitution = cell.SubstitutionLines = cell.SubstitutionText.Length == 0 ? null :
+                    Reuse(cell.SubstitutionText,prior?.SubstitutionText,prior?.SubstitutionLines,Math.Max(1,RequiredX-38),.60f,measure);
                 cell.MissingText = missingReady ? Number(row.Missing) : "—";
                 var missing = cell.MissingLines = Reuse(cell.MissingText, prior?.MissingText, prior?.MissingLines, NumberWidth, .70f, measure);
-                float height = Math.Max(minimumHeight, Math.Max(24, Math.Max(Math.Max(BlockHeight(label, 2), BlockHeight(required, 2)), Math.Max(BlockHeight(held, 2), BlockHeight(missing, 2)))) + 6);
+                float nameHeight = BlockHeight(label,2) + (substitution == null ? 0 : BlockHeight(substitution,2)+3);
+                float height = Math.Max(minimumHeight, Math.Max(24, Math.Max(Math.Max(nameHeight, BlockHeight(required, 2)), Math.Max(BlockHeight(held, 2), BlockHeight(missing, 2)))) + 6);
                 cell.Rect = new F5Rect(0, 0, cellWidth, height); cell.Icon = new F5Rect(0, (height - 24) / 2, 24, 24);
-                Add(cell, label, 30, (height - BlockHeight(label, 2)) / 2, .70f, Color.White, false, true);
+                Add(cell, label, 30, (height - nameHeight) / 2, .70f, Color.White, false, true);
                 foreach (var glyph in cell.Glyphs) cell.PendingGlyphs.Add(new BlueprintMaterialGlyph { Element = glyph.Element, Ink = glyph.Ink, Name = true });
+                if(substitution != null) Add(cell,substitution,30,(height-nameHeight)/2+BlockHeight(label,2)+3,.60f,Color.LightGray,false,true);
                 Add(cell, required, RequiredX + NumberWidth, (height - BlockHeight(required, 2)) / 2, .70f, Color.White, true);
                 Add(cell, held, HeldX + NumberWidth, (height - BlockHeight(held, 2)) / 2, .70f, Color.White, true);
                 Add(cell, missing, MissingX + NumberWidth, (height - BlockHeight(missing, 2)) / 2, .70f,

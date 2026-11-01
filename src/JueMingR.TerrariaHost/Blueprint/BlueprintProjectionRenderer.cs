@@ -32,9 +32,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         private Texture2D[] textures = Array.Empty<Texture2D>();
         private string pendingError;
         private IReadOnlyDictionary<long, BlueprintWorldMatchResult> matchView;
+        private bool mirroredHorizontally;
+        private int poseWidth;
+        internal void SetPose(int width, bool mirrored) { poseWidth = width; mirroredHorizontally = mirrored; }
         internal void SetMatchView(IReadOnlyDictionary<long, BlueprintWorldMatchResult> value) { matchView = value; }
         internal bool TryGetMatch(int x, int y, out BlueprintWorldMatchResult value)
-        { if (matchView != null) return matchView.TryGetValue(Key(x, y), out value); value = default(BlueprintWorldMatchResult); return false; }
+        { if (mirroredHorizontally) x = poseWidth - 1 - x; if (matchView != null) return matchView.TryGetValue(Key(x, y), out value); value = default(BlueprintWorldMatchResult); return false; }
         internal Exception Failure { get; private set; }
         internal long BuildCount { get; private set; }
         internal long SegmentBuildCount { get; private set; }
@@ -228,8 +231,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         private static bool Equal<T>(T[] a, T[] b)
         { if (a.Length != b.Length) return false; var comparer = EqualityComparer<T>.Default; for (int i = 0; i < a.Length; i++) if (!comparer.Equals(a[i], b[i])) return false; return true; }
 
-        internal void Draw(int originX, int originY)
+        internal void Draw(int originX, int originY, int width = 0, bool mirrored = false)
         {
+            SetPose(width,mirrored);
             try { DrawCore(originX, originY); }
             catch (Exception error) when (LocalFailure(error))
             { Fail(error, "蓝图绘制资源暂不可用，已停止投影并保留原文件。"); }
@@ -261,6 +265,14 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 if (source.X < 0 || source.Y < 0 || source.Width <= 0 || source.Height <= 0 || source.Right > texture.Width || source.Bottom > texture.Height) continue;
                 var effects = command.Effects;
+                // Reflect the complete SOURCE pixel rectangle, after native
+                // texture-sized bodies and offsets are resolved. Semantic
+                // counterpart frames belong to Match/build, not source parity.
+                if (mirroredHorizontally)
+                {
+                    position.X = offset.X + poseWidth * 16f - (position.X - offset.X) - source.Width * scale.X;
+                    effects ^= SpriteEffects.FlipHorizontally;
+                }
                 if (!BlueprintProjectionRendererCommands.Clip(ref position, ref source, ref scale, effects,
                     command.Texture == BlueprintProjectionTexture.Pixel, Main.maxTilesX * 16f, Main.maxTilesY * 16f)) continue;
                 bool reverse = Main.LocalPlayer != null && Main.LocalPlayer.gravDir == -1f;
@@ -279,7 +291,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 var command = commands[i]; BlueprintWorldMatchResult value;
                 if (command.ConflictMarker && TryGetMatch(command.CellX, command.CellY, out value) && (value.ConflictBits & command.SemanticBits) != 0)
-                    DrawConflictMarker(originX + command.CellX, originY + command.CellY);
+                    DrawConflictMarker(originX + (mirroredHorizontally ? poseWidth - 1 - command.CellX : command.CellX), originY + command.CellY);
             }
         }
 

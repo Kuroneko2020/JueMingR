@@ -20,7 +20,7 @@ namespace NativeWorldTextProbe
         private const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
         private static object faultTools;
         private static bool reportedNativeFault;
-        internal static void Run(object context, bool throughputOnly=false)
+        internal static void Run(object context, bool throughputOnly=false, bool cadenceOnly=false)
         {
             var host = Get(context, "Blueprint"); var tools = Get(context, "Tools"); var input = Get(context, "Input");
             NativeToolExecutionChecks.Initialize(context, null);
@@ -51,6 +51,51 @@ namespace NativeWorldTextProbe
                         try { body(); Console.WriteLine("PASS BlueprintBuild case=" + name); }
                         catch (Exception error) { Console.Error.WriteLine("BUILD CASE " + name + ": " + error); if (first == null) first = error; }
                     };
+                    if(cadenceOnly)
+                    {
+                        check("scheduler rooted dependency vertical", () => SchedulerDependencyChain(context,host,tools,input));
+                        check("scheduler rooted dependency horizontal", () => SchedulerDependencyChain(context,host,tools,input,true));
+                        check("scheduler immediate writer freshness", () => SchedulerImmediateWriterFreshness(context,host,tools,input));
+                        check("scheduler late current source", () => SchedulerLateCurrentSource(context,host,tools,input));
+                        check("scheduler known positive with late source", () => SchedulerKnownPositiveWhileSourcePending(context,host,tools,input));
+                        check("scheduler cold known positive native", () => SchedulerColdKnownPositiveRuntime(context,host,tools,input));
+                        check("scheduler exact native handoff", () => SchedulerNativeHandoffCadence(context,host,tools,input));
+                        check("scheduler known wall refusal", () => SchedulerKnownRefusalCompetition(context,host,tools,input,0));
+                        check("scheduler known anchor refusal", () => SchedulerKnownRefusalCompetition(context,host,tools,input,1));
+                        check("scheduler known liquid refusal", () => SchedulerKnownRefusalCompetition(context,host,tools,input,2));
+                        check("scheduler warm nine members", () => SchedulerWarmMemberBoundary(context,host,tools,input,9));
+                        check("scheduler warm seventeen members", () => SchedulerWarmMemberBoundary(context,host,tools,input,17));
+                        check("scheduler warm eighteen members", () => SchedulerWarmMemberBoundary(context,host,tools,input,18));
+                        check("scheduler postprocessing handoff", () => SchedulerPostProcessingCadence(context,host,tools,input));
+                        check("scheduler cold directory cost", () => SchedulerColdDirectoryCost(host));
+                        check("scheduler native cost and exit", () => SchedulerNativeCostExit(context,host,tools,input));
+                        check("scheduler deferred selection read recovery", () => SchedulerDeferredSelectionReadRecovery(context,host,tools,input));
+                        check("scheduler substitution deferred budget", () => SchedulerSubstitutionDeferredBudget(context,host,tools,input));
+                        check("scheduler substitution deferred material tail", () => SchedulerSubstitutionDeferredBudget(context,host,tools,input,false,true));
+                        check("scheduler substitution deferred positive tail", () => SchedulerSubstitutionDeferredBudget(context,host,tools,input,true));
+                        check("continuous material search stationary", () => ExecutionSearchFairness(context,host,tools,input,false));
+                        check("continuous material search native movement", () => ExecutionSearchFairness(context,host,tools,input,true));
+                        check("entered near strip across multiple slices", () => ExecutionSearchFairness(context,host,tools,input,true,true));
+                        check("shared physical directory bounded component", () => FocusDirectoryBudgetComponent(host));
+                        check("completed qualification failure preserves healthy service", () => FocusFailedQualification(context,host,tools,input));
+                        check("logical object native reach precedes prepared foreign", () => FocusLogicalObjectNativeReach(context,host,tools,input,false));
+                        check("retired focus releases live-range negative proofs", () => FocusLogicalObjectNativeReach(context,host,tools,input,true));
+                        check("mixed wall platform and furniture groups", () => BusinessMixedGroups(context,host,tools,input));
+                        check("prepared foreign waits for entered current material", () => BusinessPreparedForeign(context,host,tools,input));
+                        check("mixed groups beyond four source cache", () => BusinessMixedSourceGroups(context,host,tools,input));
+                        check("substitution exact-source and mirrored continuation cadence", () => SubstitutionContinuationCadence(context,host,tools,input));
+                        check("shared wall refusal native cadence", () => SharedWallRefusalCadence(context,host,tools,input));
+                        check("long multi-range native cadence", () => LongRangeNativeCadence(context,host,tools,input));
+                        check("full source cache continuation", () => BuildSourceFullContinuation(context,host,tools,input));
+                        check("material continuity and current fallback", () => MaterialContinuityAndYield(context,host,tools,input));
+                        check("hammer continuous groups", () => PostProcessingHammerGroups(context,host,tools,input));
+                        check("paint layers and exact stack rollover", () => PostProcessingPaintContinuity(context,host,tools,input));
+                        check("existing wire color continuous groups", () => PostProcessingWireContinuity(context,host,tools,input));
+                        check("platform modes and repeated special recipe groups", () => ConstructionOperationGroups(context,host,tools,input));
+                        check("postprocessing original native opportunities", () => PostProcessingNativeCadence(context,host,tools,input));
+                    }
+                    else
+                    {
                     check("sustained native throughput", () => SustainedNativeThroughput(context,host,tools,input));
                     check("pending build input is neutral", () => PendingBuildInput(context,host,tools,input));
                     check("solid-backed walls use legal precise input", () => PreciseSolidBackedWalls(context,host,tools,input));
@@ -61,7 +106,7 @@ namespace NativeWorldTextProbe
                     check("background empty outer and manual protection", () => BackgroundAndManualProtection(context,host,tools,input));
                     check("cross-capacity search stationary", () => ExecutionSearchFairness(context,host,tools,input,false));
                     check("cross-capacity search native movement", () => ExecutionSearchFairness(context,host,tools,input,true));
-                    check("material continuity and finite ordinary service", () => MaterialContinuityAndYield(context,host,tools,input));
+                    check("material continuity and current fallback", () => MaterialContinuityAndYield(context,host,tools,input));
                     check("legal continuous native opportunity", () => NativeContinuousOpportunity(context, host, tools, input));
                     check("direction ownership and manual return", () => NativeToolExecutionChecks.DirectionOwnership(context,tools,input));
                     check("native moving furniture direction", () => MovingFurnitureDirection(context,host,tools,input));
@@ -123,9 +168,10 @@ namespace NativeWorldTextProbe
                     check("edit mask deletion and session", () => ProjectionLifecycle(context, host, tools, input));
                     check("native network", () => NetworkProgress(context, host, tools, input));
                     }
+                    }
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                 }
-                Console.WriteLine(throughputOnly?"PASS BlueprintBuildThroughput production natural Player.Update/ItemCheck: complete paired block/wall/platform consumption sequences, nearby sparse prefix/local reentry and neutral Pending. Full build siblings/ordinary startup/real multiplayer/GPU/FPS NOT_RUN.":
+                Console.WriteLine(cadenceOnly?"PASS BlueprintBuildCadence: exact-source/new selection, mirrored source-range continuation, shared wall refusal, long multi-range ON/OFF/native held opportunities, four-source/six-instance continuation and current fallback. Ordinary startup/real multiplayer/GPU/FPS/owner acceptance NOT_RUN.":throughputOnly?"PASS BlueprintBuildThroughput production natural Player.Update/ItemCheck: complete paired block/wall/platform consumption sequences, nearby sparse prefix/local reentry and neutral Pending. Full build siblings/ordinary startup/real multiplayer/GPU/FPS NOT_RUN.":
                     "PASS BlueprintBuild production natural Player.Update/ItemCheck: real block/wall/chair material consumption, precise style/direction, first-missing fairness, supplement, distance/support resume, stop/restart, manual selection, complete current match retirement. Ordinary startup/real multiplayer/GPU/FPS NOT_RUN.");
             }
             finally

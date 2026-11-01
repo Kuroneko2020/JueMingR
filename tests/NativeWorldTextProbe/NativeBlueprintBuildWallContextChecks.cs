@@ -54,8 +54,8 @@ namespace NativeWorldTextProbe
             var range = Get(source, "Range"); var part = Get(source, "Part");
             object[] supportArgs = { Get(range, "Watch"), Get(range, "PartIndex"), 0L };
             Require((bool)Call(Get(host, "projectionChanges"), "TryGetBuildStamp", supportArgs), "actual object source has a current support proof");
-            object[] candidateArgs = { owner, range, part, 0, 1, supportArgs[2], null, 0 };
-            Require((bool)Call(host, "TryCreateConstructionTarget", candidateArgs), "real object-member wall candidate is currently admissible before writes");
+            object[] candidateArgs = { owner, range, part, 0, 1, supportArgs[2], null, 0, false };
+            Require(Call(host, "CreateConstructionCandidate", candidateArgs).ToString()=="Ready", "real object-member wall candidate is currently admissible before writes");
             var target = candidateArgs[6];
             Require(GetOptional(target, "Body") != null && ((BlueprintPlacementDescriptor)Get(target, "Placement")).Kind == BlueprintPlacementKind.Wall,
                 "production wall target retains the captured foreground context");

@@ -27,10 +27,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             // their X-slot equivalence only after the shared native profile
             // proved this world member; Y still carries its material style.
             bool platform = interpreted && obj != null && cell.TileType < TileID.Sets.Platforms.Length && TileID.Sets.Platforms[cell.TileType];
-            bool frames = platform || shape == null && (cell.Layers & CaptureLayer.Tile) != 0 &&
+            // Planter boxes are an independent legacy one-cell writer, with
+            // four connection X frames and style in Y; they have no native
+            // TileObjectData and never acquire platform/Smart permissions.
+            bool planter = interpreted && shape == null && (cell.Layers & CaptureLayer.Tile) != 0 && cell.TileType == TileID.PlanterBox;
+            bool frames = platform || planter || shape == null && (cell.Layers & CaptureLayer.Tile) != 0 &&
                 cell.TileType < Main.tileFrameImportant.Length && Main.tileFrameImportant[cell.TileType];
-            BlueprintWorldFrameKind kind = platform ? BlueprintWorldFrameKind.Platform18 : BlueprintWorldFrameKind.Literal;
-            if (frames && !platform)
+            BlueprintWorldFrameKind kind = platform ? BlueprintWorldFrameKind.Platform18 : planter ? BlueprintWorldFrameKind.PlanterBox18 : BlueprintWorldFrameKind.Literal;
+            if (frames && !platform && !planter)
             {
                 if (cell.TileType == TileID.PalmTree) kind = BlueprintWorldFrameKind.Palm22;
                 else if (cell.TileType == TileID.MushroomTrees) kind = BlueprintWorldFrameKind.Mushroom18;
@@ -46,11 +50,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         // in-flight samples cannot gain a certificate. This reads no world cell
         // and retains neither the target DTO nor the observed member values.
         internal bool TryCreateFrameWitness(BlueprintWorldObject target, IReadOnlyList<CaptureCell> targets,
-            IReadOnlyList<BlueprintWorldMatchSample> world, bool currentAndComplete, out BlueprintWorldObjectFrameWitness witness)
+            IReadOnlyList<BlueprintWorldMatchSample> world, bool currentAndComplete, out BlueprintWorldObjectFrameWitness witness,
+            BlueprintPlacementCatalog catalog = null, BlueprintSubstitutionPolicy policy = default(BlueprintSubstitutionPolicy))
         {
             witness = null;
             if (Thread.CurrentThread.ManagedThreadId != metadataThread ||
-                BlueprintWorldMatchComparer.CompareObject(target, targets, world, currentAndComplete) != BlueprintWorldMatchState.Match) return false;
+                BlueprintWorldMatchComparer.CompareObject(target, targets, world, currentAndComplete, catalog, policy) != BlueprintWorldMatchState.Match) return false;
             return BlueprintWorldObjectSemantics.TryCreateFrameWitness(world[0].Cell, world[0].Object, out witness);
         }
 
@@ -59,12 +64,13 @@ namespace JueMingR.TerrariaHost.Blueprint
         // required, and raw seeds must include inactive slots' actual residues.
         internal bool TryCreateDoorWitness(BlueprintWorldObject target, IReadOnlyList<CaptureCell> targets,
             IReadOnlyList<BlueprintWorldMatchSample> occupied, IReadOnlyList<BlueprintWorldMatchSample> union,
-            bool currentAndComplete, out BlueprintWorldDoorWitness witness)
+            bool currentAndComplete, out BlueprintWorldDoorWitness witness,
+            BlueprintPlacementCatalog catalog = null, BlueprintSubstitutionPolicy policy = default(BlueprintSubstitutionPolicy))
         {
             witness = null;
             if (Thread.CurrentThread.ManagedThreadId != metadataThread ||
-                BlueprintWorldMatchComparer.CompareObject(target, targets, occupied, currentAndComplete) != BlueprintWorldMatchState.Match) return false;
-            return BlueprintWorldDoorWitness.TryCreate(target, targets, occupied[0].Object, union, out witness);
+                BlueprintWorldMatchComparer.CompareObject(target, targets, occupied, currentAndComplete, catalog, policy) != BlueprintWorldMatchState.Match) return false;
+            return BlueprintWorldDoorWitness.TryCreate(target, targets, occupied[0].Object, union, out witness, catalog, policy);
         }
 
         // A target member is already in normalized template coordinates.

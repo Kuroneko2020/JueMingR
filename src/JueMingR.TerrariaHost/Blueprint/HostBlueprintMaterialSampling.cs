@@ -50,12 +50,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             read.MaterialCrossLayerSeen |= (context.Layers & CaptureLayer.Wall) != 0;
             if (target.ObjectId > 0) target = target.WithoutTile();
             if (!target.HasContent) return;
-            BlueprintMaterialSteps.RequiredSteps(target, sample, read.MaterialCatalog, read.Materials, foregroundHandledElsewhere: objectForeground);
+            BlueprintMaterialSteps.RequiredSteps(target, sample, read.MaterialCatalog, read.Materials, foregroundHandledElsewhere: objectForeground, policy: substitutionPolicy);
         }
         private void SampleMaterialObjectRead(BlueprintProjectionMatchRead read, BlueprintWorldMatchSample sample)
         {
             if (read.Materials == null || read.MaterialCatalog == null || read.ObjectTarget == null || read.ObjectTargets == null) return;
-            if (read.MaterialObjectProof == null) { read.MaterialObjectProof = new BlueprintObjectBodyProof(read.ObjectTarget); read.MaterialObjectAppearance = new BlueprintMaterialAccumulator(); }
+            if (read.MaterialObjectProof == null) { read.MaterialObjectProof = new BlueprintObjectBodyProof(read.ObjectTarget,read.MaterialCatalog,substitutionPolicy); read.MaterialObjectAppearance = new BlueprintMaterialAccumulator(); }
             read.MaterialObjectProof.Observe(sample);
             if (!sample.Available) return;
             int row = sample.Cell.Y - read.ObjectBounds.Top, column = sample.Cell.X - read.ObjectBounds.Left;
@@ -69,7 +69,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 read.MaterialCrossLayerSeen = true;
                 if (read.ObjectObserved == null) return;
                 if (read.ObjectDoorTargets == null && !TryDoorSourceMembers(read.Owner, read.ObjectTargets, read.ObjectTarget, out read.ObjectDoorTargets) ||
-                    !BlueprintDoorMembers.TryRequirement(read.ObjectTarget, read.ObjectDoorTargets, read.ObjectObserved, sample.Cell.X, sample.Cell.Y, out requirement))
+                    !BlueprintDoorMembers.TryRequirement(read.ObjectTarget, read.ObjectDoorTargets, read.ObjectObserved, sample.Cell.X, sample.Cell.Y, out requirement,read.MaterialCatalog,substitutionPolicy))
                 { read.MaterialObjectAppearance.Unresolved("这扇门当前的开合状态无法满足图纸外观"); return; }
                 AddMaterialObjectAppearance(read, requirement, sample); return;
             }
@@ -94,16 +94,16 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (selected) target = WithCoordinateWall(target, wall);
             }
             BlueprintMaterialSteps.ObjectMemberAppearance(target, sample, read.MaterialCatalog, read.MaterialObjectAppearance,
-                read.ObjectTargets.Objects.Count==1?read.ObjectTargets.Objects[0]:(CaptureObject?)null);
+                read.ObjectTargets.Objects.Count==1?read.ObjectTargets.Objects[0]:(CaptureObject?)null,substitutionPolicy);
         }
         private static CaptureCell MaterialSourceTarget(BlueprintProjectionMatchRead read, int index)
         {
-            var target = read.Batch.Window.Cells[index];
+            var target = EffectiveProjectionCell(read.Owner,read.Batch.Window,index);
             // Ordinary source cells retain only context for the separately
             // owned furniture Tile. Apply this instance's same immutable mask
             // before deciding that the foreground was actually selected.
             if (read.Batch.LogicalObjectId == 0 && target.ObjectId > 0) target.Layers |= CaptureLayer.Tile;
-            return read.Owner.Mask.Apply(target);
+            return read.Batch.Window.View == null ? read.Owner.Mask.Apply(target) : target;
         }
         private void CompleteMaterialObject(BlueprintProjectionMatchRead read)
         {
@@ -130,7 +130,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (body == BlueprintBodyState.Same) return;
             cell.Layers = CaptureLayer.Tile;
             BlueprintMaterialSteps.RequiredSteps(cell, new BlueprintWorldMatchSample(true, new CaptureCell()), read.MaterialCatalog, read.Materials, body,
-                obj:read.Batch.Window.Objects.Count==1?read.Batch.Window.Objects[0]:(CaptureObject?)null);
+                obj:read.Batch.Window.Objects.Count==1?read.Batch.Window.Objects[0]:(CaptureObject?)null,policy:substitutionPolicy);
         }
         private void CompleteMaterialSample(BlueprintProjectionMatchRead read)
         {
@@ -213,7 +213,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             ResetProjectionMatchRead(range); range.Reading = false; range.Offset = 0;
             RevokeMaterialRange(range); DemandProjectionMatchRange(range);
         }
-        private static BlueprintBuildTarget CreateMaterialBuildTarget(BlueprintProjectionPlacement owner, BlueprintProjectionMatchRange range,
+        private BlueprintBuildTarget CreateMaterialBuildTarget(BlueprintProjectionPlacement owner, BlueprintProjectionMatchRange range,
             CaptureCell cell, BlueprintPlacementDescriptor descriptor, CaptureObject? obj, BlueprintWorldObject body, int ordinal, long support, long catalog)
         {
             int x = owner.OriginX + cell.X, y = owner.OriginY + cell.Y;
@@ -234,7 +234,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 y = checked(owner.OriginY + obj.Value.Y + descriptor.OriginY);
             }
             return new BlueprintBuildTarget { Identity = owner.Identity, Mask = owner.Mask, Range = range,
-                RangeStamp = range.Version, SupportStamp = support, PlacementRevision = catalog, OriginX = owner.OriginX, OriginY = owner.OriginY,
+                RangeStamp = range.Version, SupportStamp = support, PlacementRevision = catalog, PolicyRevision = substitutionRevision, OriginX = owner.OriginX, OriginY = owner.OriginY,
                 TargetX = x, TargetY = y, Ordinal = ordinal, Cell = cell, Object = obj ?? default(CaptureObject), Body = body,
                 Bounds = bounds, Placement = descriptor };
         }
@@ -292,7 +292,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // native torch-preparation receipt may replace the support stamp;
             // scene/mask/catalog/raw-target identity is still mandatory.
             if (target == null || !HasSession || MaterialBuildDemand?.Invoke() != true || ProjectionEditing || ProjectionCaptureBlocked ||
-                target.Identity.SessionGeneration != generation || target.PlacementRevision != MaterialCatalog?.Revision) return false;
+                target.Identity.SessionGeneration != generation || target.PlacementRevision != MaterialCatalog?.Revision || target.PolicyRevision != substitutionRevision) return false;
             var owner = target.Range?.Owner;
             return owner != null && ProjectionQualificationCurrent(owner) && owner.Summary.TargetVersion==MaterialCatalog.TargetVersion && projectionScene.Contains(owner) && owner.Identity.Equals(target.Identity) && ReferenceEquals(owner.Mask, target.Mask) &&
                 owner.OriginX == target.OriginX && owner.OriginY == target.OriginY && owner.Match != null && (target.LocalProof || target.Range.Current) &&
@@ -300,6 +300,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal void NotifyBuildAttempt(BlueprintBuildTarget target)
         {
+            target = target?.Requirement ?? target;
             if (target == null || target.Range?.Materials == null) return;
             var value = target.Range.Materials;
             if (!ReferenceEquals(value.Candidate, target)) return;

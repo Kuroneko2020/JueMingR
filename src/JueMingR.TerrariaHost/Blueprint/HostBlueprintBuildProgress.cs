@@ -8,7 +8,7 @@ namespace JueMingR.TerrariaHost.Blueprint
     [Flags]
     internal enum BlueprintBuildWait : byte
     {
-        None = 0, Material = 1, Player = 2, Dependencies = 4, Container = 8, Dynamic = 16, Capability = 32
+        None = 0, Material = 1, Player = 2, Dependencies = 4, Container = 8, Dynamic = 16, Capability = 32, Restoration = 64, World = 128
     }
 
     internal sealed partial class HostBlueprint
@@ -31,6 +31,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private Dictionary<int, int> buildItemReach = new Dictionary<int, int>();
         private Dictionary<int, int> buildNextItemReach = new Dictionary<int, int>();
         private long buildSupplyRevision, buildActivationRevision, buildContainerRevision;
+        private long buildFocusPermissionRevision;
         private float buildPlayerX, buildPlayerY;
         private int buildRange, buildReachX, buildReachY, buildDirection, buildPulleyDirection, buildPlayerWidth, buildPlayerHeight, buildEnvelopeBoost;
         private bool buildEligible, buildPulley;
@@ -41,6 +42,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintBuildTrace.Hit(BuildTraceStage.Signals);
 #endif
             if (MaterialBuildDemand?.Invoke() != true || projectionScene.Count == 0) return;
+            ObserveAppearanceRestorationSignals();
             var p = buildTools?.Player;
             // Eligibility describes persistent business permission, not whether
             // this outer callback happened to contain a native execution epoch.
@@ -65,6 +67,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 (p?.width ?? 0) != buildPlayerWidth || (p?.height ?? 0) != buildPlayerHeight)
 #endif
             {
+                if (reach != buildRange || Player.tileRangeX != buildReachX || Player.tileRangeY != buildReachY ||
+                    direction != buildDirection || pulleyDirection != buildPulleyDirection || pulley != buildPulley || eligible != buildEligible ||
+                    (p?.width ?? 0) != buildPlayerWidth || (p?.height ?? 0) != buildPlayerHeight) buildFocusPermissionRevision++;
                 buildPlayerX = px; buildPlayerY = py; buildRange = reach; buildReachX = Player.tileRangeX; buildReachY = Player.tileRangeY;
                 buildDirection = direction; buildPulleyDirection = pulleyDirection; buildPulley = pulley; buildEligible = eligible;
                 buildPlayerWidth = p?.width ?? 0; buildPlayerHeight = p?.height ?? 0;
@@ -96,7 +101,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             { int old; if (!buildItemReach.TryGetValue(entry.Key, out old) || old != entry.Value) { reachChanged = true; break; } }
             var previousReach = buildItemReach; buildItemReach = buildNextItemReach; buildNextItemReach = previousReach;
             buildEnvelopeBoost = envelopeBoost;
-            if (reachChanged) { MaterialBuildEligibilityRevision++; buildNearTickSet = false;
+            if (reachChanged) { MaterialBuildEligibilityRevision++; buildFocusPermissionRevision++; buildNearTickSet = false;
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 BlueprintBuildTrace.Count(BuildTraceReason.SignalItemReach);
 #endif
@@ -134,6 +139,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             value.BuildSupplyRevision = buildSupplyRevision;
             value.BuildContainerRevision = buildContainerRevision;
             value.BuildActivationRevision = buildActivationRevision;
+            value.BuildRestorationRevision = appearanceRestorationRevision;
         }
         private void ResetMaterialBuildWalk(BlueprintProjectionMatchRange range, bool resetNativeRetry)
         {
@@ -142,14 +148,33 @@ namespace JueMingR.TerrariaHost.Blueprint
             value.BuildExhausted = value.BuildRetryPending = false;
             value.BuildWaits = BlueprintBuildWait.None; value.BuildDependencyWaitSlots = 0;
             CaptureBuildWalkSignals(value);
+            // Eligibility recovery invalidates this range's negative Focus
+            // result too; it does not replace the business preference.
+            ReopenPreferredRange(range);
             if (resetNativeRetry) value.EligibilityRetry = false;
         }
         private void WaitForBuild(BlueprintBuildTarget target, BlueprintBuildWait reason, ulong dependencySlots = 0, bool retryPending = false)
         {
+            if(target!=null)target.Readiness=BlueprintBuildReadiness.BlockedNow;
             if (target?.Range.Materials == null || !IsBuildTargetCurrent(target) || IsUnconfirmedTarget(target)) return;
             var value = target.Range.Materials;
             if(reason==BlueprintBuildWait.Material && target.Operation!=null)reason|=BlueprintBuildWait.Capability;
             value.BuildWaits |= reason; value.BuildDependencyWaitSlots |= dependencySlots;
+            if (target.LocalPriority && value.PreferredGroup == buildContinuation?.Group)
+            {
+                value.PreferredWaits |= reason; value.PreferredDependencySlots |= dependencySlots;
+                if ((reason & BlueprintBuildWait.Player) != 0)
+                {
+                    if(value.PreferredPositionNegatives==null)value.PreferredPositionNegatives=new Dictionary<int,BlueprintBuildPositionNegative>();
+                    BlueprintBuildPositionNegative proof;
+                    if(!value.PreferredPositionNegatives.TryGetValue(target.Ordinal,out proof))
+                        value.PreferredPositionNegatives.Add(target.Ordinal,proof=new BlueprintBuildPositionNegative());
+                    var world=BuildFocusWorldBounds(player);
+                    proof.X=target.WorldX;proof.Y=target.WorldY;proof.Active=true;CapturePreferredPositionNegative(proof,player,world);
+                    proof.OutOfReach=proof.X<world.Left || proof.X>=world.Right || proof.Y<world.Top || proof.Y>=world.Bottom;
+                }
+                if ((reason & BlueprintBuildWait.Dynamic) != 0 && (value.PreferredRetryAt == 0 || materialTick + 8 < value.PreferredRetryAt)) value.PreferredRetryAt = materialTick + 8;
+            }
             // A prepared source may move to another qualified slot without a
             // type ever becoming unavailable. Its invalid flight gets one local
             // merged retry, while later ordinals still finish this same walk.
@@ -168,9 +193,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (target.Range?.Materials != null) target.Range.Materials.DynamicRetryAt = materialTick + 8;
         }
         private bool BuildDependencyReleased(BlueprintRangeMaterials value)
+        { return BuildDependencyReleased(value.BuildDependencyWaitSlots); }
+        private bool BuildDependencyReleased(ulong waiting)
         {
             var p = player; if (p == null || buildTools == null) return false;
-            ulong waiting = value.BuildDependencyWaitSlots;
             for (int slot = 0; slot < 58 && waiting != 0; slot++)
             {
                 ulong bit = 1UL << slot; if ((waiting & bit) == 0) continue; waiting &= ~bit;
@@ -202,8 +228,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             if ((value.BuildWaits & BlueprintBuildWait.Material) != 0 && value.CatalogRevision == materialPlacementIdentity && value.Desired != null)
                 foreach (var supply in buildSupply)
-                    if (supply.Value > value.BuildSupplyRevision && value.Desired.ContainsKey(supply.Key)) { value.BuildRetryPending = true; break; }
+                    if (supply.Value > value.BuildSupplyRevision)
+                        foreach (var requirement in value.Desired)
+                            if (SubstitutionSupplyFor(requirement.Key, supply.Key)) { value.BuildRetryPending = true; break; }
             if((value.BuildWaits&BlueprintBuildWait.Capability)!=0 && value.BuildSupplyRevision!=buildSupplyRevision)value.BuildRetryPending=true;
+            if((value.BuildWaits&BlueprintBuildWait.Restoration)!=0 && value.BuildRestorationRevision!=appearanceRestorationRevision)
+            {value.BuildRestorationRevision=appearanceRestorationRevision;value.BuildRetryPending=true;ReopenPreferredRange(range);}
             if ((value.BuildWaits & BlueprintBuildWait.Player) != 0 && value.BuildPlayerRevision != MaterialBuildEligibilityRevision ||
                 (value.BuildWaits & BlueprintBuildWait.Container) != 0 && value.BuildContainerRevision != buildContainerRevision ||
                 (value.BuildWaits & BlueprintBuildWait.Dependencies) != 0 && BuildDependencyReleased(value)) value.BuildRetryPending = true;
@@ -259,6 +289,9 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 DiagnosticReject(target,BuildTraceStage.Retry,BuildTraceReason.RetryWaiting);
 #endif
+                target.Readiness=BlueprintBuildReadiness.BlockedNow;
+                if(target.LocalPriority && value.PreferredGroup==buildContinuation?.Group)
+                    value.PreferredRetryAt=value.EligibilityRetryAt;
                 return false;
             }
 #if JMR_BLUEPRINT_DIAGNOSTIC

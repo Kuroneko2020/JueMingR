@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private readonly HostBlueprint host;
         private static BlueprintPointerProof current;
         private readonly Harmony harmony = new Harmony("JueMingR.Blueprint.Pointer");
-        private bool pending, completed, inPass, boundary, resources, ui, left, right, drawn, freshLeft, lastLeft = true;
+        private bool pending, completed, inPass, boundary, resources, ui, left, right, drawn, freshLeft, confirmationOnly, lastLeft = true;
         private long mapping, lastMapping = -1;
         private int x, y, width, height;
         private float subX, subY;
@@ -52,11 +52,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             harmony.Patch(method, Hook(before), Hook(after), null, Hook(final));
         }
         private static HarmonyMethod Hook(string name) { return name == null ? null : new HarmonyMethod(typeof(BlueprintPointerProof).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)); }
-        internal void Capture()
+        internal void Capture() { CapturePointer(false); }
+        internal void CaptureTrimConfirmation() { CapturePointer(true); }
+        private void CapturePointer(bool onlyTrimConfirmation)
         {
             if (!host.WorldPointerActive) return;
             if (pending && mapping == host.Input.Mapping) return;
-            pending = true; completed = inPass = drawn = false; mapping = host.Input.Mapping;
+            pending = true; completed = inPass = drawn = false; mapping = host.Input.Mapping; confirmationOnly = onlyTrimConfirmation;
             raw = new Vector2(PlayerInput.MouseInfo.X, PlayerInput.MouseInfo.Y); screen = PlayerInput.OriginalScreenSize; scale = PlayerInput.RawMouseScale;
             uiMatrix = Main.UIScaleMatrix; zoom = Main.GameViewMatrix.ZoomMatrix; gravity = Main.LocalPlayer.gravDir;
             HasPoint = false;
@@ -84,9 +86,24 @@ namespace JueMingR.TerrariaHost.Blueprint
             // No Draw is not UI ownership. Retain a held draft across skipped
             // draws, but an unobserved release cannot be replayed later. A press
             // lost in that gap cannot become a new press from a later hold.
-            if (valid && !drawn && (!host.State.Dragging || left)) return;
-            if (valid && certified && !ui && left && !host.State.Dragging && !freshLeft) return;
-            host.AcceptProjectionPointer(valid && certified && !ui, left, right, x, y, width, height, subX, subY);
+            bool trusted = (valid || confirmationOnly && host.CanRetainTrimConfirmation(mapping)) && certified && !ui;
+            // F5's one-command lease certifies only the admitted confirmation.
+            // Rejection, missing Draw and right-click cannot become a world
+            // drag, selection or cancellation through this narrow channel.
+            if (confirmationOnly) { host.ConsumeTrimConfirm(mapping, trusted && !right); return; }
+            if (right && trusted)
+            {
+                host.ConsumeTrimConfirm(mapping, false);
+                host.AcceptProjectionPointer(true, left, right, x, y, width, height, subX, subY); return;
+            }
+            if (host.ConsumeTrimConfirm(mapping, trusted)) return;
+            // The Host owns suspension when world editing is unavailable. Do
+            // not let an older rejected world sample erase a different confirm
+            // that public dispatch has just admitted in the current mapping.
+            if (!canEdit) return;
+            if (valid && !drawn && (!host.WorldEditorDragging || left)) return;
+            if (trusted && left && !host.WorldEditorDragging && !freshLeft) return;
+            host.AcceptProjectionPointer(trusted, left, right, x, y, width, height, subX, subY);
         }
         internal void Cancel() {
             pending = completed = inPass = HasPoint = false; lastMapping = -1; lastLeft = true; }
@@ -95,7 +112,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             // Camera travel is not a UI-geometry change: keep the frozen world
             // point and certify this mapping's raw pointer at the native UI pass.
-            return pending && host.CanRetainEdit && host.Input.Mapping == mapping &&
+            return pending && (confirmationOnly ? host.CanRetainTrimConfirmation(mapping) : host.CanRetainEdit) && host.Input.Mapping == mapping &&
                 raw == new Vector2(PlayerInput.MouseInfo.X, PlayerInput.MouseInfo.Y) && screen == PlayerInput.OriginalScreenSize && scale == PlayerInput.RawMouseScale &&
                 uiMatrix == Main.UIScaleMatrix && zoom == Main.GameViewMatrix.ZoomMatrix && gravity == Main.LocalPlayer.gravDir;
         }
@@ -108,7 +125,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             var p = current;
             if (p == null || !p.inPass) return;
             p.boundary = true; p.ui |= Main.LocalPlayer.mouseInterface || Main.mouseText || p.host.NativeUiBusy ||
-                p.host.Shell?.State.Visible == true || p.host.Toolbar.HitCurrent();
+                (p.confirmationOnly ? !p.host.CanRetainTrimConfirmation(p.mapping) : p.host.Shell?.State.Visible == true) || p.host.Toolbar.HitCurrent();
         }
         private static void Resources(bool __runOriginal)
         { var p = current;

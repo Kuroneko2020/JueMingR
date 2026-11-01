@@ -50,6 +50,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal Action<Player> BuildNeutralLookup;
         internal Func<Item[],int,bool> BuildPreparationOwns;
         internal Func<Item,bool> BuildCleanupMaterial;
+        internal Func<Player,bool> BuildPreparationRetainsIntent;
         internal Func<Item,bool> BuildPendingMaterial;
         internal Feedback.LocalShortFeedback Feedback;
         private bool report;
@@ -153,10 +154,15 @@ namespace JueMingR.TerrariaHost.Tools
             CanInterface() && CanRetainPlayer(p,heldInventory);
 #endif
         }
+        // Inventory/cursor are exempt only for the builder's exact native
+        // preparation owner. This is a preference-retention query, never an
+        // automatic action or input-retention permit.
+        internal bool CanRetainBuildPreparationIntent(Player p)
+        { return BuildPreparationRetainsIntent?.Invoke(p) == true && CanInterface?.Invoke() == true && CanRetainPlayer(p, false, true); }
         // Equipment shares the same ownership proof as other autonomous work.
         internal bool AdmitFishingEquipment(Player p,bool interfaceAllowed)
         {return Input.CanRunAutomaticActions && interfaceAllowed && CanRetainPlayer(p,true);}
-        private bool CanRetainPlayer(Player p,bool heldInventory)
+        private bool CanRetainPlayer(Player p,bool heldInventory,bool buildPreparationIntent=false)
         {
             // Draw-owned mouseInterface can be stale while the window is not
             // drawn. Actual menus, text, manual items and operation owners below
@@ -172,8 +178,8 @@ namespace JueMingR.TerrariaHost.Tools
 #else
                 (CanMouseInterface?.Invoke()??(!Input.IsFocused || !p.mouseInterface)) &&
 #endif
-                Main.mouseItem!=null && Main.mouseItem.IsAir &&
-                (!Main.playerInventory || heldInventory && p.selectedItem>=0 && p.selectedItem<10) && !ManualRight && !PlayerInput.Triggers.Current.SmartSelect;
+                Main.mouseItem!=null && (buildPreparationIntent || Main.mouseItem.IsAir) &&
+                (!Main.playerInventory || buildPreparationIntent || heldInventory && p.selectedItem>=0 && p.selectedItem<10) && !ManualRight && !PlayerInput.Triggers.Current.SmartSelect;
         }
         internal bool Candidate(Player p,int i,bool seed=false)
         {return i>=0 && i<50 && p.inventory[i]!=null && !p.inventory[i].IsAir && !Items.Ownership.IsProtected(i) && !p.inventoryChestStack[i] && !Items.World.ManualMaterials.Contains(p.inventory[i]) && !(priorProtection?.Invoke(p.inventory[i])??false) && (seed || !Herbs.ProtectSeed(p.inventory[i]));}

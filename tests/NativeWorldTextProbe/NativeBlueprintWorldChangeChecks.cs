@@ -670,7 +670,7 @@ namespace NativeWorldTextProbe
                 Require((bool)type.GetMethod("TryRead", Flags).Invoke(source, read), "game-thread source read actual complete lamp member");
                 samples[row] = (BlueprintWorldMatchSample)read[2]; targets[row] = samples[row].Cell; targets[row].ObjectId = 1;
             }
-            object[] args = { samples[0].Object, targets, samples, true, null };
+            object[] args = { samples[0].Object, targets, samples, true, null, null, default(BlueprintSubstitutionPolicy) };
             Require((bool)type.GetMethod("TryCreateFrameWitness", Flags).Invoke(source, args) && args[4] != null, "real game-thread complete Match compiles the immutable frame witness");
             Require((bool)Call(observer, "TrySetWitness", Focus, stamp, 0, args[4]), "witness publication succeeds only at the exact current native stamp");
             return (BlueprintWorldObjectFrameWitness)args[4];
@@ -927,7 +927,7 @@ namespace NativeWorldTextProbe
                 union[row * 3 + column] = (BlueprintWorldMatchSample)read[2];
                 if (column == 1) { occupied[row] = union[row * 3 + column]; targets[row] = occupied[row].Cell; targets[row].ObjectId = 1; }
             }
-            object[] args = { occupied[0].Object, targets, occupied, union, true, null };
+            object[] args = { occupied[0].Object, targets, occupied, union, true, null, null, default(BlueprintSubstitutionPolicy) };
             Require((bool)type.GetMethod("TryCreateDoorWitness", Flags).Invoke(source, args) && args[5] != null, "actual complete door Match and true union seed compile an occupancy witness");
             if (publish) Require((bool)Call(observer, "TrySetWitness", Focus, stamp, 0, args[5]), "door witness publishes at the current native gate only");
             return (BlueprintWorldDoorWitness)args[5];

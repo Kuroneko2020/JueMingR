@@ -57,6 +57,15 @@ namespace JueMingR.TerrariaHost.Items
         internal bool Returning { get { return phase == Phase.Returning; } }
         internal bool Unknown { get { return phase == Phase.Unknown; } }
         internal bool Abandoning { get { return phase == Phase.Abandoning; } }
+        // Retain only business intent across this owner's native inventory
+        // sequence. This grants no ToolUse, source or consumer permission;
+        // every action still requires its ordinary closed/empty-cursor gate.
+        internal bool RetainsBuildIntent(Player p)
+        {
+            return OnGameThread && (phase == Phase.Preparing || phase == Phase.Returning) && ReferenceEquals(p, player) &&
+                SameSessionIdentity(p) && tools.Items.Ownership.OwnsUse(session, token) && !PhysicalInput &&
+                tools.SelectionIntent == selection && Main.playerInventory == ownsInventory;
+        }
         internal Item Material { get { return material; } }
         internal string Reason { get; private set; }
         internal Func<int, int> UseConsumptionMaximum;
