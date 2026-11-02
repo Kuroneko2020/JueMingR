@@ -60,7 +60,13 @@ namespace NativeWorldTextProbe
             NativeRecoveryChecks.Save(buffs,new RecoveryOptions());
             Call(state,"ScrollTo",60f);prepare();float scroll=(float)Get(state,"Scroll");prepare();Require((float)Get(state,"Scroll")==scroll,"dynamic page preparation preserves scroll");
             Call(state,"Navigate",1);prepare();Require(((IEnumerable)Get(ui,"logical")).Cast<object>().Any(p=>(string)GetOptional(Get(p,"Element"),"Text")=="自动收税"),"tax remains on misc page");
-            KeyboardHints(context,ui,()=>NativeProcessingUiChecks.Prepare(context,960,760,1),new[]{5});
+            // RecoveryCpu intentionally has no processing/tools adapters. Use
+            // the real shell's optional composition rather than requiring G09.
+            KeyboardHints(context,ui,()=>
+            {
+                Call(renderer,"Prepare",state,960f,760f,1f);
+                Call(shell,"PrepareMisc",true,Matrix.Identity,new Vector2(960,760),false);
+            },new[]{5});
             Call(state,"Close");Call(ui,"Suspend");NativeRecoveryChecks.Save(settings,new RecoveryOptions());
             Console.WriteLine("PASS G07 UI: real composition controls, full catalogue, stable off/pending/saved heights and scroll.");
         }
