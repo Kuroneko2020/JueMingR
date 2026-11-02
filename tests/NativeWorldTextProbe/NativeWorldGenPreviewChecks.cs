@@ -263,13 +263,14 @@ namespace NativeWorldTextProbe
         private readonly object context;
         private KeyboardState keyboard;
         internal bool SkipInput { get; set; }
-        internal NativeWorldGenPreviewFrames(object context, object hooks, string output)
+        internal NativeWorldGenPreviewFrames(object context, object hooks, string output, bool initializeNavigation = true)
         {
             this.context = context; active = this;
             worker = context.GetType().Assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker", true);
             Set(context, "worldGenPreview", hooks);
             worker.GetField("postfixContext", F).SetValue(null, context); worker.GetField("hookCommitted", F).SetValue(null, 1);
-            Terraria.Initializers.UILinksInitializer.Load(); Main.ChromaPainter = new Terraria.GameContent.ChromaHotkeyPainter();
+            if (initializeNavigation) Terraria.Initializers.UILinksInitializer.Load();
+            Main.ChromaPainter = new Terraria.GameContent.ChromaHotkeyPainter();
             Patch(typeof(Keyboard).GetMethod("GetState", Type.EmptyTypes), nameof(Keyboard));
             Patch(typeof(Mouse).GetMethod("GetState", Type.EmptyTypes), nameof(Mouse));
             Patch(typeof(PlayerInput).GetMethod("GamePadInput", F), nameof(NoGamepad));

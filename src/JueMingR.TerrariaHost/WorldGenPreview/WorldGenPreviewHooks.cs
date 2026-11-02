@@ -67,10 +67,17 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
                     .Select(n => typeof(UIGenProgressBar).GetField(n, BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)).ToArray();
                 if (progressTextures.Any(f => f == null || f.IsStatic || f.FieldType != typeof(Asset<Texture2D>)))
                     throw new MissingFieldException("World generation native progress texture footprint changed.");
+                // Install the shared getter before patching/compiling callers.
+                // Synchronous GenPassElement construction also reads Controller;
+                // counting only top-level constructor reads misses that chain.
+                var controllerGetter = Exact(typeof(UIWorldGenDebug), "get_Controller", true, typeof(WorldGenerator.Controller));
+                var getterCode = PatchProcessor.GetOriginalInstructions(controllerGetter);
+                if (getterCode.Count != 2 || !getterCode[0].LoadsField(typeof(WorldGenerator).GetField("CurrentController")) || getterCode[1].opcode != OpCodes.Ret)
+                    throw new InvalidOperationException("World generation native Controller getter changed.");
+                Patch(controllerGetter, before: nameof(NativeController));
                 Patch(Exact(typeof(UIWorldLoad), "Update", false, typeof(void), typeof(GameTime)), after: nameof(LoadUpdated), transpiler: nameof(LoadEntry));
                 Patch(Exact(typeof(UIWorldGenDebug), "Open", true, typeof(void)), before: nameof(NativeEntryBegin), finalizer: nameof(NativeEntryEnd));
-                harmony.Patch(typeof(UIWorldGenDebug).GetConstructor(Type.EmptyTypes), transpiler: Hook(nameof(EntryControllerReads)));
-                Patch(Exact(typeof(UIWorldGenDebug), "OnActivate", false, typeof(void)), before: nameof(NativeActivating), transpiler: nameof(EntryControllerReads));
+                Patch(Exact(typeof(UIWorldGenDebug), "OnActivate", false, typeof(void)), before: nameof(NativeActivating));
                 Patch(Exact(typeof(WorldGenerator), "GenerateWorld", false, typeof(bool)), before: nameof(GenerationBegin), transpiler: nameof(GenerationPublication), finalizer: nameof(GenerationEnd));
                 Patch(Exact(typeof(WorldGenerator), "SetDebugWorldGenUIVisibility", true, typeof(void), typeof(bool)), before: nameof(GenerationClosing));
                 Patch(Exact(typeof(WorldGenerator.Controller), "ReportException", false, typeof(void), typeof(string), typeof(Exception), typeof(bool)), transpiler: nameof(ExceptionGate));
@@ -156,15 +163,16 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
         }
         private static void NativeActivating(UIWorldGenDebug __instance)
         { if (activeEntry != null) activeEntry.Page = __instance; }
-        private static WorldGenerator.Controller EntryController()
+        private static bool NativeController(ref WorldGenerator.Controller __result)
         {
             var entry = activeEntry;
-            if (entry == null) return WorldGenerator.CurrentController;
-            // These exact constructor/activation reads are not a lifetime lock.
-            // Return the captured object, or signal only our own normal retirement;
-            // resource/constructor errors retain their original failure semantics.
+            if (entry == null) return true;
+            // One thread-local Open scope covers the whole synchronous chain,
+            // including child Index/color helpers. Outside it, run the original
+            // getter body; never recurse into this patched getter for fallback.
             if (!entry.Hooks.Owner.IsCurrent(entry.Generation)) throw new GenerationRetiredException(entry.Generation);
-            return entry.Generation.Controller;
+            __result = entry.Generation.Controller;
+            return false;
         }
         private static Exception NativeEntryEnd(Exception __exception, NativeEntry __state)
         {
@@ -234,15 +242,6 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
             { instruction.opcode = OpCodes.Call; instruction.operand = typeof(WorldGenPreviewHooks).GetMethod(nameof(EntryAllowed), BindingFlags.NonPublic | BindingFlags.Static); matches++; }
             if (matches != 1 || code.Count(i => i.Calls(typeof(UIWorldGenDebug).GetMethod("Open"))) != 1)
                 throw new InvalidOperationException("World generation native F5 entry shape changed.");
-            return code;
-        }
-        private static IEnumerable<CodeInstruction> EntryControllerReads(IEnumerable<CodeInstruction> source, MethodBase __originalMethod)
-        {
-            var code = source.ToList(); int matches = 0;
-            var getter = typeof(UIWorldGenDebug).GetProperty("Controller", BindingFlags.NonPublic | BindingFlags.Static).GetGetMethod(true);
-            foreach (var instruction in code) if (instruction.Calls(getter))
-            { instruction.operand = typeof(WorldGenPreviewHooks).GetMethod(nameof(EntryController), BindingFlags.NonPublic | BindingFlags.Static); matches++; }
-            if (matches != (__originalMethod is ConstructorInfo ? 1 : 2)) throw new InvalidOperationException("World generation entry Controller reads changed.");
             return code;
         }
         private static IEnumerable<CodeInstruction> GenerationPublication(IEnumerable<CodeInstruction> source)

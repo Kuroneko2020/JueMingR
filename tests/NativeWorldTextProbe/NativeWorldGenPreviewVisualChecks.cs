@@ -31,6 +31,144 @@ namespace NativeWorldTextProbe
         private static bool retireConstruction;
         private static bool retireActivation;
         private static object previewOwner;
+        private sealed class SyncCase
+        {
+            internal string Name;
+            internal Harmony Seams;
+            internal bool Armed, Retired, ScopeAtAttempt, SignalTokenMatched;
+            internal Type HooksType;
+            internal string OpenException;
+            internal int IndexEntered, IndexReturned, ColorsEntered, TargetEntered, ReadsAfterRetirement;
+        }
+        private static SyncCase syncCase;
+        // Install observation seams after production has had the opportunity to
+        // patch the tiny Controller getter, but before localization compiles its
+        // native constructor callers. No production action is supplied here.
+        private static void BeforeLocalization()
+        {
+            if (syncCase == null) return;
+            var pass = typeof(UIWorldGenDebug).GetNestedType("GenPassElement", Flags);
+            var observer = syncCase.Seams;
+            observer.Patch(typeof(UIWorldGenDebug).GetProperty("Controller", Flags).GetGetMethod(true),
+                prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(SyncControllerRead), Flags)) { priority = Priority.First });
+            observer.Patch(pass.GetProperty("Index", Flags).GetGetMethod(true),
+                prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(SyncIndexBegin), Flags)),
+                postfix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(SyncIndexEnd), Flags)));
+            observer.Patch(pass.GetMethod("SetColorsToNotHovered", Flags), prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(SyncColors), Flags)));
+            observer.Patch(typeof(UIWorldGenDebug).GetProperty("CurrentTargetPass", Flags).GetGetMethod(true), prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(SyncTarget), Flags)));
+        }
+        private static void SyncIndexBegin()
+        { if (syncCase.Armed) { syncCase.IndexEntered++; syncCase.ScopeAtAttempt = syncCase.HooksType.GetField("activeEntry", Flags).GetValue(null) != null; Require(syncCase.ScopeAtAttempt, "Actual child Index executes inside the production Open scope."); if (syncCase.Name == "A") RetireSyncCase(); } }
+        private static void SyncIndexEnd() { if (syncCase.Armed) syncCase.IndexReturned++; }
+        private static void SyncColors() { if (syncCase.Armed) syncCase.ColorsEntered++; }
+        private static void SyncTarget()
+        {
+            if (!syncCase.Armed) return;
+            syncCase.TargetEntered++;
+            if (syncCase.Name == "B")
+            {
+                Require(syncCase.IndexReturned > 0 && syncCase.ColorsEntered > 0, "B reaches CurrentTargetPass after actual Index return and color helper entry.");
+                RetireSyncCase();
+            }
+        }
+        private static void SyncControllerRead() { if (syncCase.Armed && syncCase.Retired) syncCase.ReadsAfterRetirement++; }
+        private static Exception SyncOpenException(Exception __exception)
+        {
+            if (syncCase.Armed && __exception != null)
+            {
+                syncCase.OpenException = __exception.GetType().Name;
+                if (syncCase.OpenException == "GenerationRetiredException")
+                {
+                    object scope = syncCase.HooksType.GetField("activeEntry", Flags).GetValue(null);
+                    syncCase.SignalTokenMatched = scope != null && ReferenceEquals(Get(scope, "Generation"), __exception.GetType().GetField("Generation", Flags).GetValue(__exception));
+                }
+            }
+            return __exception;
+        }
+        private static void RetireSyncCase()
+        {
+            if (syncCase.Retired) return;
+            syncCase.Retired = true;
+            typeof(WorldGenerator).GetMethod("SetDebugWorldGenUIVisibility", Flags).Invoke(null, new object[] { false });
+            WorldGenerator.CurrentGenerationProgress = null;
+            WorldGenerator.CurrentController = null;
+        }
+        private static void SyncConstructionCases(object context, string output)
+        {
+            var failures = new List<string>();
+            foreach (string name in new[] { "A", "B" })
+            {
+                string caseOutput = Path.Combine(output, "sync-" + name); Directory.CreateDirectory(caseOutput);
+                var host = context.GetType().Assembly; object input = Get(context, "Input");
+                var hooks = Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.WorldGenPreview.WorldGenPreviewHooks"), Flags, null,
+                    new object[] { input, (Action<Exception>)(e => Console.WriteLine("SYNC " + name + " PREVIEW FAILURE " + e)) }, null);
+                var seams = new Harmony("JueMingR.Tests.WorldGenPreview.Sync." + name);
+                syncCase = new SyncCase { Name = name, Seams = seams, HooksType = host.GetType("JueMingR.TerrariaHost.WorldGenPreview.WorldGenPreviewHooks") };
+                try
+                {
+                    seams.Patch(host.GetType("JueMingR.TerrariaHost.WorldGenPreview.WorldGenPreviewLocalization").GetMethod("Install", Flags), prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(BeforeLocalization), Flags)));
+                    seams.Patch(typeof(WorldGenerator).GetMethod("SetDebugWorldGenUIVisibility", Flags), prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(VisibilitySink), Flags)));
+                    Call(hooks, "Install", typeof(Main).Assembly);
+                    Require(GetOptional(hooks, "Failure") == null, "Sync " + name + " production hooks install before original construction.");
+                    seams.Patch(typeof(UIWorldGenDebug).GetMethod("Open"), finalizer: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(SyncOpenException), Flags)) { priority = Priority.First });
+                    object owner = Get(hooks, "Owner");
+                    Main.MenuUI = new UserInterface(); Main.gameMenu = true; Main.netMode = 0; DebugOptions.enableDebugCommands = false;
+                    Set(input, "gameWindow", (Func<IntPtr>)(() => new IntPtr(7))); Set(input, "foregroundWindow", (Func<IntPtr>)(() => new IntPtr(7)));
+                    using (var frames = new NativeWorldGenPreviewFrames(context, hooks, caseOutput, initializeNavigation: name == "A"))
+                    {
+                        WorldGen.generatingWorld = WorldGen.isGeneratingOrLoadingWorld = true; WorldGen.Manifest = new WorldManifest();
+                        var controller = new WorldGenerator.Controller(); var progress = new GenerationProgress();
+                        var generator = new WorldGenerator(41, WorldGenConfiguration.FromEmbeddedPath("Terraria.GameContent.WorldBuilding.Configuration.json"), progress, controller);
+                        Exception assertion = null;
+                        generator.Append(new PassLegacy("Terrain", (p, c) =>
+                        {
+                            try
+                            {
+                                var load = new UIWorldLoad(); Main.MenuUI.SetState(load);
+                                frames.Frame(); frames.Frame(); syncCase.Armed = true; frames.Frame(Keys.F5); syncCase.Armed = false;
+                                string failure = (string)GetOptional(hooks, "Failure");
+                                string observation = "SYNC " + name + " scope=ORIGINAL_CONSTRUCTION activeEntry=" + syncCase.ScopeAtAttempt + " index=" + syncCase.IndexEntered + "/" + syncCase.IndexReturned + " colors=" + syncCase.ColorsEntered + " target=" + syncCase.TargetEntered + " retiredReads=" + syncCase.ReadsAfterRetirement + " ready=" + Get(owner, "Ready") + " openException=" + (syncCase.OpenException ?? "none") + " signalSameToken=" + syncCase.SignalTokenMatched + " failure=" + (failure ?? "none");
+                                Console.WriteLine(observation); File.WriteAllText(Path.Combine(caseOutput, "observation.txt"), observation);
+                                Require(syncCase.Retired && syncCase.ReadsAfterRetirement > 0, "Exact synchronous helper reaches the real Controller getter after retirement.");
+                                Require((bool)Get(owner, "Ready") && failure == null && ReferenceEquals(Main.MenuUI.CurrentState, load), "Sync " + name + " retirement abandons only this Open, retaining load page and feature.");
+                                Require(syncCase.OpenException == "GenerationRetiredException" && syncCase.SignalTokenMatched, "The actual native helper exception reaches Open's finalizer with the same generation token.");
+                                Require(Harmony.GetPatchInfo(typeof(UIWorldGenDebug).GetMethod("Open")).Owners.Contains("JueMingR.WorldGenPreview"), "Normal synchronous retirement retains production hooks.");
+                                Require(host.GetType("JueMingR.TerrariaHost.WorldGenPreview.WorldGenPreviewHooks").GetField("activeEntry", Flags).GetValue(null) == null, "Open finalizer restores its parent construction scope.");
+                                Require(typeof(UIWorldGenDebug).GetProperty("Controller", Flags).GetValue(null, null) == null, "Outside Open, the original getter returns the actual null static.");
+                            }
+                            catch (Exception e) { assertion = e; }
+                            finally { syncCase.Armed = false; controller.Paused = false; controller.SnapshotFrequency = WorldGenerator.SnapshotFrequency.None; Main.MenuUI.SetState(new UIState()); }
+                        }));
+                        generator.GenerateWorld();
+                        if (assertion != null) { failures.Add(name + ": " + assertion.Message); continue; }
+                        // Recovery is an actual new GenerateWorld invocation,
+                        // not restoration of the retired token or its statics.
+                        WorldGen.Manifest = new WorldManifest(); var recovered = new WorldGenerator.Controller();
+                        var next = new WorldGenerator(42, WorldGenConfiguration.FromEmbeddedPath("Terraria.GameContent.WorldBuilding.Configuration.json"), new GenerationProgress(), recovered);
+                        next.Append(new PassLegacy("Terrain", (p, c) =>
+                        {
+                            try
+                            {
+                                Main.MenuUI.SetState(new UIWorldLoad()); frames.Frame(); frames.Frame(); frames.Frame(Keys.F5);
+                                Require(Main.MenuUI.CurrentState is UIWorldGenDebug && (bool)Call(owner, "OwnsController", recovered), "Sync " + name + " next native generation opens through production F5 with its new Controller.");
+                                Require(ReferenceEquals(typeof(UIWorldGenDebug).GetProperty("Controller", Flags).GetValue(null, null), recovered), "Outside the completed Open, the original getter follows the current native Controller.");
+                                Console.WriteLine("SYNC " + name + " RECOVERY PASS new-controller=True scope-original=True");
+                            }
+                            catch (Exception e) { assertion = e; }
+                            finally { recovered.Paused = false; recovered.SnapshotFrequency = WorldGenerator.SnapshotFrequency.None; Main.MenuUI.SetState(new UIState()); }
+                        }));
+                        next.GenerateWorld(); if (assertion != null) failures.Add(name + ": " + assertion.Message);
+                    }
+                }
+                finally
+                {
+                    ((IDisposable)hooks).Dispose(); seams.UnpatchAll(seams.Id); syncCase = null;
+                    WorldGenerator.CurrentGenerationProgress = null; WorldGenerator.CurrentController = null;
+                    WorldGen.generatingWorld = WorldGen.isGeneratingOrLoadingWorld = false; Main.MenuUI?.SetState(new UIState());
+                }
+            }
+            Require(failures.Count == 0, "Synchronous construction retirement cases: " + string.Join(" | ", failures));
+        }
         private static void ConstructionProbe()
         {
             if (retireConstruction)
@@ -65,6 +203,7 @@ namespace NativeWorldTextProbe
                 // Main's normal initializer creates the navigator pages before
                 // UIWorldLoad.DrawSelf consumes its 3000 squiggle point.
                 // The shared production-frame fixture initializes navigation once.
+                SyncConstructionCases(context, output);
                 var host = context.GetType().Assembly; object input = Get(context, "Input");
                 var hooks = Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.WorldGenPreview.WorldGenPreviewHooks"), Flags, null,
                     new object[] { input, (Action<Exception>)(e => Console.WriteLine("PREVIEW FAILURE " + e)) }, null);
@@ -79,7 +218,7 @@ namespace NativeWorldTextProbe
                     sinks.Patch(typeof(ToolkitDebugCommands).GetMethod("QuickLoadRegenCommand"), prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(QuickloadSink), Flags)));
                     sinks.Patch(typeof(WorldGenerator).GetMethod("SetDebugWorldGenUIVisibility", Flags), prefix: new HarmonyMethod(typeof(NativeWorldGenPreviewVisualChecks).GetMethod(nameof(VisibilitySink), Flags)));
                     Main.MenuUI = new UserInterface(); Main.gameMenu = true; Main.netMode = 0; DebugOptions.enableDebugCommands = false;
-                    using (var frames = new NativeWorldGenPreviewFrames(context, hooks, output))
+                    using (var frames = new NativeWorldGenPreviewFrames(context, hooks, output, initializeNavigation: false))
                     {
                     Set(input, "gameWindow", (Func<IntPtr>)(() => new IntPtr(7))); Set(input, "foregroundWindow", (Func<IntPtr>)(() => new IntPtr(7)));
                     WorldGen.generatingWorld = WorldGen.isGeneratingOrLoadingWorld = true; WorldGen.Manifest = new WorldManifest();
