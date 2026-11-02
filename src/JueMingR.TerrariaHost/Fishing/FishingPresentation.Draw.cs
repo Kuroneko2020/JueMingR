@@ -98,7 +98,7 @@ namespace JueMingR.TerrariaHost.Fishing
                 var hit=p.Element.Description!=null?p.Element.HintRect:p.Element.Rect;
                 if(!region.Contains(x,y) || !hit.Contains(x,y))continue;
                 rect=F5HintLayout.Intersect(region,hit);
-                if(p.Command==Command.Hotkey)return "双击设置快捷键";
+                if(p.Command==Command.Hotkey)return F5HotkeyHints.Toggle;
                 return p.Hint;
             }
             return null;

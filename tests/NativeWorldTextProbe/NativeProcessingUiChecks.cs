@@ -25,7 +25,11 @@ namespace NativeWorldTextProbe
             var ime=new Ime(imeField.FieldType);imeField.SetValue(Get(ui,"TextInput"),ime.GetTransparentProxy());
             Action prepare=()=>Prepare(context,960,760,1);
             prepare();
+            GroupGeometry(shell,ui);
+            float compactReforgeHeight=(float)Get(ui,"Height");
             Require(Parts(ui).Any(p=>(string)GetOptional(Get(p,"Element"),"Text")=="自动重铸"),"reforge uses existing Misc page");
+            var key=Parts(ui).Single(p=>(int)Get(p,"Command")==6);
+            NativeQuickUiChecks.FinalHint(shell,Get(key,"Element"),"双击设置功能开关快捷键");
             float height=(float)Get(layout,"ContentHeight");
             Save(settings,new ProcessingOptions(true));prepare();Require(height==(float)Get(layout,"ContentHeight"),"toggle does not add waiting/status rows");
             long builds=(long)Get(ui,"LayoutBuilds"),measures=(long)Get(ui,"EditMeasurements");for(int i=0;i<120;i++)prepare();
@@ -53,6 +57,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(()=>{settings.Poll();return !settings.Busy;});
             Require(settings.Value.Names.SequenceEqual(new[]{name}),"fresh Enter persists one complete target");
             Step(context,ui,false,new Vector2(-10,-10),new KeyboardState());Require(!Main.blockInput && !PlayerInput.WritingText,"editor completion releases keyboard tail");prepare();
+            GroupGeometry(shell,ui);Require((float)Get(ui,"Height")>compactReforgeHeight,"single prefix expands its owning group");
             DoubleClick(context,ui);Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(),"not-a-prefix");
             Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.Enter),"\r");
             Require(GetOptional(ui,"Editor")!=null && settings.Value.Names.Count==1,"invalid target retains draft and does not save");
@@ -65,6 +70,7 @@ namespace NativeWorldTextProbe
             Require(settings.Value.Names.Count==2,"changed list revision revokes old removal press");
             prepare();
             var cards=Parts(ui).Where(p=>(int)Get(p,"Command")==7).ToArray();
+            GroupGeometry(shell,ui);
             Require(cards.Length==2 && Y(cards[0])==Y(cards[1]) && X(cards[1])>X(cards[0]),"prefix cards flow horizontally");
             var card=Get(Get(cards[0],"Element"),"Rect");
             Require((float)Get(card,"Width")==47 && (float)Get(card,"Height")==34,"prefix cards use the existing item-list size");
@@ -75,9 +81,16 @@ namespace NativeWorldTextProbe
                     Math.Abs((float)Get(label,"Y")+(float)Get(label,"Height")/2-(float)Get(r,"Y")-(float)Get(r,"Height")/2)<.01f,"prefix glyph bounds are centered in each item-size card");
             }
             Click(context,ui,cards[0]);Require(settings.Value.Names.Count==2,"card body does not delete a target");
+            var group=Get(Get(((IEnumerable)Get(ui,"logical")).Cast<object>().First(),"Element"),"Rect");
+            var ownerView=Get(ui,"view");var blank=new Vector2((float)Get(ownerView,"X")+(float)Get(group,"Right")-1,
+                (float)Get(ownerView,"Y")+(float)Get(group,"Bottom")-(float)Get(state,"Scroll")-1);
+            long beforeBlank=settings.AcceptedCommandId;
+            Step(context,ui,false,blank,new KeyboardState());Step(context,ui,true,blank,new KeyboardState());Step(context,ui,false,blank,new KeyboardState());
+            Require(settings.AcceptedCommandId==beforeBlank && GetOptional(ui,"Editor")==null,"group padding cannot toggle, edit, add or remove");
             prepare=()=>Prepare(context,960,440,1);
             var names=Lang.prefix.Skip(1).Select(p=>p.Value).Where(s=>!string.IsNullOrEmpty(s)).Distinct().ToArray();Save(settings,new ProcessingOptions(false,names));prepare();
             Call(state,"ScrollTo",Math.Max(0,(float)Get(ui,"Height")-(float)Get(Get(Get(state,"Layout"),"Viewport"),"Height")));prepare();float bottom=(float)Get(state,"Scroll");Require(bottom>0,"full list owns shared Misc scroll height");
+            GroupGeometry(shell,ui);
             for(int i=0;i<20;i++)prepare();Require(bottom==(float)Get(state,"Scroll"),"tax preparation cannot reset reforge list scroll");
             remove=Parts(ui).Last(p=>(int)Get(p,"Command")==3);string identity=(string)Get(remove,"Name");Click(context,ui,remove);
             NativeQuickItemChecks.Until(()=>{settings.Poll();return !settings.Busy;});Require(!settings.Value.Names.Contains(identity) && settings.Value.Names.Count==names.Length-1,"visible bottom removes exact whole-name identity");
@@ -85,6 +98,7 @@ namespace NativeWorldTextProbe
             // A mouse-down in one layout must not delete after a scale reflow.
             remove=Parts(ui).First(p=>(int)Get(p,"Command")==3);point=Point(remove);int count=settings.Value.Names.Count;
             Step(context,ui,true,point,new KeyboardState());Prepare(context,1280,720,1.5f);Step(context,ui,false,point,new KeyboardState());
+            GroupGeometry(shell,ui);
             Require(count==settings.Value.Names.Count,"scale change invalidates armed corner delete");
             prepare();Click(context,ui,Parts(ui).First(p=>(int)Get(p,"Command")==1));
             Call(ui,"ProcessInput",true,new KeyboardState(),point,true,false,false);prepare();
@@ -94,8 +108,30 @@ namespace NativeWorldTextProbe
             Require(GetOptional(ui,"Editor")!=null,"fresh same-field double click works after focus return");
             Call(ui,"ProcessInput",true,new KeyboardState(),point,true,true,true);prepare();
             Require(GetOptional(ui,"Editor")==null && !(bool)Get(ui,"OwnsTextToken"),"higher popup yields editor and keyboard ownership");
+            Save(settings,new ProcessingOptions());prepare();GroupGeometry(shell,ui);
+            Require((float)Get(ui,"Height")==compactReforgeHeight,"clearing prefix content restores compact group and following layout");
             Call(state,"Close");Call(ui,"Suspend");Save(settings,new ProcessingOptions());
             Console.WriteLine("PASS G08 UI: physical editor/list controls, isolated IME boundary, whole-name persistence, stable height/measurement, movement keys and shared scroll.");
+        }
+        private static void GroupGeometry(object shell,object ui)
+        {
+            var logical=((IEnumerable)Get(ui,"logical")).Cast<object>().ToArray();
+            var panels=logical.Where(p=>Get(Get(p,"Element"),"Kind").ToString()=="Panel").ToArray();
+            Require(panels.Length==1 && (int)Get(panels[0],"Command")==0,"reforge has exactly one non-command background");
+            var rect=Get(Get(panels[0],"Element"),"Rect");float bottom=(float)Get(rect,"Bottom");
+            Require(logical.Skip(1).All(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Bottom")<=bottom),"header and complete prefix grid stay in their own single group");
+            var cards=logical.Where(p=>(int)Get(p,"Command")==7).ToArray();
+            float last=logical.Skip(1).Max(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Bottom"));
+            Require(cards.Length==0?bottom-last>=0 && bottom-last<=4:bottom-last==6,"reforge empty group keeps only header padding; populated group has one bottom inset");
+            Require((float)Get(ui,"Height")==bottom+6 && (float)Get(Get(shell,"MiningUi"),"start")==bottom+6,
+                "only one group gap separates complete reforge from mining");
+            var state=Get(shell,"State");var view=Get(ui,"view");
+            float projectedY=(float)Get(rect,"Y")+(float)Get(view,"Y")-(float)Get(state,"Scroll");
+            if(projectedY+(float)Get(rect,"Height")>(float)Get(view,"Y") && projectedY<(float)Get(view,"Bottom"))
+            {
+                var visible=Parts(ui).Single(p=>Get(Get(p,"Element"),"Kind").ToString()=="Panel");var projected=Get(Get(visible,"Element"),"Rect");
+                Require((float)Get(projected,"Y")==projectedY && (float)Get(projected,"Height")== (float)Get(rect,"Height"),"scroll/scale projects full reforge surface for the original viewport clip");
+            }
         }
         internal static void Prepare(object context,float width,float height,float scale)
         {

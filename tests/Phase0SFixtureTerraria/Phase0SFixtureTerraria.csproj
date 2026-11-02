@@ -69,6 +69,7 @@
     <Compile Include="..\Phase0V\PreferenceFeedbackChecks.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5RowLayout.cs" Link="Production\F5RowLayout.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5HintLayout.cs" Link="Production\F5HintLayout.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\F5HotkeyHints.cs" Link="Production\F5HotkeyHints.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\EntityLabelControls.cs" Link="Production\EntityLabelControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\GuidanceControls.cs" Link="Production\GuidanceControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\JourneyControls.cs" />

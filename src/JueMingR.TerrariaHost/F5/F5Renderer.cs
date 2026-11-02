@@ -399,7 +399,7 @@ namespace JueMingR.TerrariaHost.F5
             if (hover.Kind == F5ElementKind.Hotkey && hover.HotkeyTarget != null)
             {
                 if (hover.HotkeyTarget == F5.BlueprintControls.SaveAction) return "双击设置保存采集的快捷键";
-                return hover.HotkeyTarget == Hotkeys.HotkeyActionIds.AdjustInformation ? "双击设置调整信息窗位置的快捷键" : "双击设置功能开关快捷键";
+                return hover.HotkeyTarget == Hotkeys.HotkeyActionIds.AdjustInformation ? "双击设置调整信息窗位置的快捷键" : F5HotkeyHints.Toggle;
             }
             return ButtonHint(hover, biomeFailed);
         }

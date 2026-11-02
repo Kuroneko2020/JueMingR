@@ -97,7 +97,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             rect=default(F5Rect);
             if(!ready || NeedsBuild || generation!=shell.Layout.Generation || scroll!=shell.Scroll || !view.Contains(x,y) || clip.HasValue && !clip.Value.Contains(x,y))return null;
-            foreach(var c in controls)if(c.Command==ItemUiCommand.Hotkey && c.Rect.Contains(x,y)){rect=c.Rect;return "双击设置快捷键";}
+            foreach(var c in controls)if(c.Command==ItemUiCommand.Hotkey && c.Rect.Contains(x,y)){rect=clip.HasValue?F5HintLayout.Intersect(c.Rect,clip.Value):c.Rect;return c.Element.HotkeyTarget==Tools.HostTools.SelectAction?F5HotkeyHints.MiningSelection:F5HotkeyHints.Toggle;}
             string hint=ToolsPanel?.Hint(x,y,out rect);
             return hint??CoinPanel?.Hint(x,y,out rect);
         }

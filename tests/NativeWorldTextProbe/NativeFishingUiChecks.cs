@@ -34,7 +34,8 @@ namespace NativeWorldTextProbe
             Require((long)Get(ui,"LayoutBuilds")==layouts && (long)Get(Get(host,"Catalog"),"RuleChecks")==rules && (long)Get(Get(host,"Catalog"),"TileReads")==tiles,"stable CPU layout preparations do not rebuild or query fish/water");
             Require(!((IEnumerable)Get(Get(state,"Layout"),"Elements")).Cast<object>().Any(),"actual fishing page retires the static pressure layout");
             var hotkey=Part(ui,"Hotkey");var hr=Get(Get(hotkey,"Element"),"Rect");var hintArgs=new object[]{(float)Get(hr,"X")+2,(float)Get(hr,"Y")+2,null,null};
-            Require((string)Call(ui,"Hint",hintArgs)=="双击设置快捷键","background row panels do not swallow keyboard hints");
+            Require((string)Call(ui,"Hint",hintArgs)=="双击设置功能开关快捷键","background row panels do not swallow keyboard hints");
+            NativeQuickUiChecks.FinalHint(shell,Get(hotkey,"Element"),"双击设置功能开关快捷键");
             Click(context,Part(ui,"Plus"));Require((bool)Get(ui,"Visible") && GetOptional(ui,"Editor")!=null,"plus enters real search draft and candidate overlay");
             Require(((FishKey[])Get(ui,"candidates")).Length==0,"blank search opens without global expansion");
             Step(context,false,new Vector2(0,0),"#2290");Prepare(context);

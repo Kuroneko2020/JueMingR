@@ -24,6 +24,8 @@ namespace NativeWorldTextProbe
             NativePageCompositionChecks.MiscOrder(shell);
             var panel=Get(misc,"ToolsPanel");var rows=(IEnumerable[])Get(panel,"rows");var first=rows[0].Cast<object>().First();
             Call(state,"ScrollTo",Get(Get(first,"Rect"),"Y"));Prepare(context,1,960,760,1);
+            var toggle=Controls(misc).First(c=>Get(c,"Command").ToString()=="Hotkey");
+            NativeQuickUiChecks.FinalHint(shell,Get(toggle,"Element"),"双击设置功能开关快捷键");
             var config=Controls(misc).First(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==3);var point=Point(Get(config,"Rect"));
             foreach(bool left in new[]{false,true,false}){Mouse(point,left);Call(misc,"ProcessInput",true,new KeyboardState(),point,true,true,false);}
             Require((bool)Get(popup,"Visible"),"actual Misc configuration button opens capture window");Call(popup,"Prepare",Matrix.Identity,new Vector2(960,760),true);
@@ -61,6 +63,8 @@ namespace NativeWorldTextProbe
             var miningRows=(IEnumerable[])Get(Get(mining,"panel"),"rows");
             Call(state,"ScrollTo",Get(Get(miningRows[2].Cast<object>().First(),"Rect"),"Y"));Prepare(context,1,960,760,1);
             var all=Controls(mining);
+            foreach(var key in all.Where(c=>Get(c,"Command").ToString()=="Hotkey"))
+                NativeQuickUiChecks.FinalHint(shell,Get(key,"Element"),(string)Get(Get(key,"Element"),"HotkeyTarget")=="tools.mining.select"?"双击设置选择挖矿区域的快捷键":"双击设置功能开关快捷键");
             Require(ExactMiningBindings(all),"one select Field and one independent mining Hotkey route to their exact shared IDs");
             Require(!miningRows[2].Cast<object>().Any(e=>(string)GetOptional(e,"Text")=="选择挖矿区域"),"removed select row contributes no text, layout or hidden hit target");
             var on=all.First(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==21);point=Point(Get(on,"Rect"));var miningSetting=((ToolSettings[])Get(host,"Settings"))[2];command=miningSetting.AcceptedCommandId;
@@ -68,6 +72,27 @@ namespace NativeWorldTextProbe
             Require(miningSetting.AcceptedCommandId==command,"changed native viewport cancels armed mining action before layout catches up");
             Call(shell,"CloseAndSubmitPosition");Require(!(bool)Get(popup,"Visible") && !(bool)Get(mining,"ready"),"explicit shell exit releases both G09 views");
             Console.WriteLine("PASS G09 UI: real configuration/category persistence, modal hints, close tails, distinct shared mining bindings and stale-geometry rejection.");
+        }
+        internal static void KeyboardHints(object context)
+        {
+            var shell=Get(context,"Shell");var state=Get(shell,"State");var renderer=Get(shell,"renderer");
+            Set(state,"Ready",true);Call(state,"Navigate",1);Call(state,"RestoreVisible");Call(renderer,"RefreshResources");
+            Action prepare=()=>NativeProcessingUiChecks.Prepare(context,960,760,1);
+            prepare();
+            foreach(string owner in new[]{"MiscUi","MiningUi"})
+            {
+                var ui=Get(shell,owner);var panel=owner=="MiscUi"?Get(ui,"ToolsPanel"):Get(ui,"panel");
+                var rows=(IEnumerable[])Get(panel,"rows");int row=owner=="MiscUi"?0:2;
+                var bindings=rows[row].Cast<object>().Where(e=>GetOptional(e,"HotkeyTarget")!=null).ToArray();
+                Require(bindings.Length==(row==2?2:1),"real tools row exposes its expected binding identities");
+                foreach(var binding in bindings)
+                {
+                    string id=(string)Get(binding,"HotkeyTarget");Call(state,"ScrollTo",Get(Get(binding,"Rect"),"Y"));prepare();
+                    var key=Controls(ui).Single(c=>(string)GetOptional(Get(c,"Element"),"HotkeyTarget")==id);
+                    NativeQuickUiChecks.FinalHint(shell,Get(key,"Element"),id=="tools.mining.select"?"双击设置选择挖矿区域的快捷键":"双击设置功能开关快捷键");
+                }
+            }
+            Call(state,"Close");
         }
         internal static object[] Controls(object ui){return ((IEnumerable)Get(ui,"controls")).Cast<object>().ToArray();}
         private static bool ExactMiningBindings(object[] controls)

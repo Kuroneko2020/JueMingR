@@ -3,7 +3,9 @@ using System.Collections.Generic;
 
 namespace JueMingR.Features.QuickItems
 {
-    public enum QuickItemMode { Use, SetState, SetStateAndUse }
+    // Numeric 2 remains a readable/writable legacy value with the same use
+    // semantics as Use; it is no longer a separate visible editor mode.
+    public enum QuickItemMode { Use = 0, SetState = 1, SetStateAndUse = 2 }
     public sealed class QuickItemEntry
     {
         public string Id { get; }
@@ -56,7 +58,7 @@ namespace JueMingR.Features.QuickItems
         }
         public static bool SamePhysicalFamily(int a, int b) { int family = Family(a==5437?5358:a); return a == b || family >= 0 && family == Family(b==5437?5358:b); }
         public static QuickItemMode DefaultMode(int type)
-        { return Family(type) == 8 ? QuickItemMode.SetStateAndUse : HasState(type) ? QuickItemMode.SetState : QuickItemMode.Use; }
+        { return Family(type) == 8 ? QuickItemMode.Use : HasState(type) ? QuickItemMode.SetState : QuickItemMode.Use; }
         private static int Family(int type)
         { for (int i = 0; i < states.Length; i++) foreach (int value in states[i]) if (value == type) return i; return -1; }
         private static int[] Purpose(int target)

@@ -13,10 +13,12 @@ internal static class SetupServiceChecks
     private static string root, terraria;
     private static SetupPayload payload;
     private static readonly byte[] Foreign = Encoding.UTF8.GetBytes("<configuration><runtime><appDomainManagerAssembly value=\"OtherTool\"/><appDomainManagerType value=\"OtherTool.Manager\"/></runtime><appSettings><add key=\"x\" value=\"keep\"/></appSettings></configuration>");
+    [STAThread]
     private static int Main(string[] args)
     {
         try
         {
+            if (args.Length == 1 && args[0] == "--form-contract") { SetupFormChecks.Run(); return 0; }
             if (args.Length == 1 && args[0] == "--wait") { Console.WriteLine("ready"); Console.ReadLine(); return 0; }
             if (args.Length == 2 && args[0] == "--path-snapshot") { Console.WriteLine(PathSnapshot(args[1])); return 0; }
             if (args.Length == 2 && args[0] == "--path-contract")
@@ -34,6 +36,7 @@ internal static class SetupServiceChecks
             byte[] dll = File.ReadAllBytes(args[2]), config = File.ReadAllBytes(args[3]);
             payload = new SetupPayload { Dll = dll, Config = config, DllHash = SetupPayload.Hash(dll), ConfigHash = SetupPayload.Hash(config), Version = "isolated-service-test" };
             Directory.CreateDirectory(root);
+            if (args.Length == 5 && args[4] == "--presentation") { PresentationChecks(); Console.WriteLine(new JavaScriptSerializer().Serialize(new { status = "PASS", checks = count, scope = "isolated production pair reader and result projection; no game started" })); return 0; }
             if (args.Length == 5 && args[4] == "--ui-increment") { IncrementChecks(); Console.WriteLine(new JavaScriptSerializer().Serialize(new { status = "PASS", checks = count, scope = "Steam discovery and exact preference reset only" })); return 0; }
             string target = Fresh("中文 新装");
             byte[] data = Encoding.UTF8.GetBytes("笔记、蓝图和未来格式原样保留"), outsider = Encoding.UTF8.GetBytes("third-party-harmony");
@@ -110,6 +113,46 @@ internal static class SetupServiceChecks
     }
 
     private static InstallService Service() { return new InstallService(() => payload, null); }
+    private static void PresentationChecks()
+    {
+        string empty = Fresh("pair-empty");
+        Check(SetupTargetState.Read(empty).Pair == SetupPairState.NotInstalled, "state-no-pair");
+        File.WriteAllBytes(Path.Combine(empty, "Terraria.exe.config"), Foreign);
+        Check(SetupTargetState.Read(empty).Pair == SetupPairState.NotInstalled, "state-foreign-config-no-r");
+        string manual = Fresh("pair-manual"); File.WriteAllBytes(Path.Combine(manual, "JueMingR.dll"), payload.Dll); File.WriteAllBytes(Path.Combine(manual, "Terraria.exe.config"), payload.Config);
+        var state = SetupTargetState.Read(manual);
+        Check(state.Pair == SetupPairState.Installed && state.CanMaintain && state.CanInstall && !File.Exists(Path.Combine(manual, "JueMingR.install.json")), "state-manual-pair-without-receipt-or-runtime");
+        File.Delete(Path.Combine(manual, "Terraria.exe.config"));
+        Check(SetupTargetState.Read(manual).Pair == SetupPairState.Incomplete, "state-only-dll");
+        File.WriteAllBytes(Path.Combine(manual, "Terraria.exe.config"), Foreign);
+        Check(SetupTargetState.Read(manual).Pair == SetupPairState.Incomplete, "state-known-r-dll-foreign-entry");
+        File.WriteAllText(Path.Combine(manual, "Terraria.exe.config"), Encoding.UTF8.GetString(payload.Config).Replace("</configuration>", "<appSettings><add key=\"external\" value=\"keep\"/></appSettings></configuration>"));
+        Check(SetupTargetState.Read(manual).Pair == SetupPairState.Unknown, "state-shared-extra-settings-not-called-damaged");
+        File.WriteAllBytes(Path.Combine(manual, "Terraria.exe.config"), payload.Config); File.Delete(Path.Combine(manual, "JueMingR.dll"));
+        Check(SetupTargetState.Read(manual).Pair == SetupPairState.Incomplete, "state-only-r-config");
+        File.WriteAllText(Path.Combine(manual, "JueMingR.dll"), "unrecognized");
+        Check(SetupTargetState.Read(manual).Pair == SetupPairState.Unknown, "state-unrecognized-dll-not-absence");
+        File.WriteAllBytes(Path.Combine(manual, "JueMingR.dll"), payload.Dll);
+        using (new FileStream(Path.Combine(manual, "Terraria.exe.config"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            Check(SetupTargetState.Read(manual).Pair == SetupPairState.Unknown && SetupTargetState.Read(manual).CanMaintain, "state-unreadable-config-still-maintainable");
+        using (var append = new FileStream(Path.Combine(manual, "Terraria.exe"), FileMode.Append)) append.WriteByte(0);
+        state = SetupTargetState.Read(manual);
+        Check(state.CanMaintain && !state.CanInstall && state.Pair == SetupPairState.Installed, "state-updated-game-maintenance-independent");
+        var removed = Service().Execute("uninstall", manual);
+        Check(removed.status == "success" && SetupTargetState.Read(manual).CanMaintain && SetupTargetState.Read(manual).Pair == SetupPairState.NotInstalled, "state-after-uninstall-clear-remains-available");
+        string partial = Fresh("pair-partial"); File.WriteAllBytes(Path.Combine(partial, "Terraria.exe.config"), Foreign);
+        var failed = new InstallService(() => payload, step => { if (step == "replace-config") throw new IOException("controlled-config-failure"); }).Execute("install", partial);
+        Check(failed.status == "partial" && SetupTargetState.Read(partial).Pair == SetupPairState.Incomplete && SetupResultPresentation.Summary(failed).Contains("只完成了一部分") && SetupResultPresentation.Details(failed, partial).Contains("replace-dll") && SetupResultPresentation.Details(failed, partial).Contains("replace-config"), "state-partial-pair-and-real-result");
+        string receipt = Fresh("pair-receipt-failure");
+        var receiptFailed = new InstallService(() => payload, step => { if (step == "write-receipt") throw new IOException("controlled-receipt-failure"); }).Execute("install", receipt);
+        Check(receiptFailed.status == "partial" && SetupTargetState.Read(receipt).Pair == SetupPairState.Installed && SetupResultPresentation.Summary(receiptFailed).Contains("只完成了一部分") && SetupResultPresentation.Details(receiptFailed, receipt).Contains("write-receipt"), "state-complete-pair-does-not-erase-partial-receipt-result");
+        var result = new SetupResult { operation = "uninstall", status = "success", gameDirectory = receipt, message = "removed" }; result.retained.Add("keep-external"); result.completed.Add("future-step");
+        Check(SetupResultPresentation.Summary(result).Contains("已保留") && SetupResultPresentation.Details(result, "other").Contains(receipt) && SetupResultPresentation.Details(result, "other").Contains("future-step") && SetupResultPresentation.Details(result, "other").Contains("keep-external"), "result-retained-target-and-unknown-steps-preserved");
+        result.operation = "clear-config"; result.status = "noop";
+        Check(SetupResultPresentation.Summary(result).Contains("无需处理"), "result-noop-neutral");
+        result.status = "failure"; result.gameDirectory = null; result.message = "specific-failure";
+        Check(SetupResultPresentation.Summary(result).Contains("specific-failure") && SetupResultPresentation.Details(result, "selected").Contains("目标核验未完成"), "result-failure-reason-and-unverified-target");
+    }
     private static void PathChecks()
     {
         foreach (Func<string, string> normalize in new Func<string, string>[] { TargetSafety.NormalizeDirectory, JueMingR.Bootstrap.BundlePreparation.NormalizeDirectory })

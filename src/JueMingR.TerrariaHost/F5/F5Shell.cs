@@ -983,7 +983,7 @@ namespace JueMingR.TerrariaHost.F5
                         // HandleInput call. That revokes actions, not a focused
                         // hover's read-only text; focus quarantine still applies.
                         bool hintsBlocked = !inputState.CanPrepareText || BlueprintMaterialsUi?.Visible == true || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible || FootprintPopup != null && FootprintPopup.Visible;
-                        items?.Draw(drawKeyboard, !hintsBlocked && State.CanShowHint);
+                        items?.Draw(drawKeyboard);
                         RecoveryUi?.Draw(drawKeyboard,!hintsBlocked && State.CanShowHint);
                         ReforgeUi?.Draw(drawKeyboard);
                         MiningUi?.Draw(drawKeyboard);

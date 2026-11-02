@@ -8,82 +8,214 @@ namespace JueMingR.Setup
 {
     internal sealed class SetupForm : Form
     {
-        private static readonly Color Ink = Color.FromArgb(32, 43, 61), Muted = Color.FromArgb(100, 112, 132), Accent = Color.FromArgb(41, 99, 220);
-        private readonly ComboBox directory = new ComboBox { Dock = DockStyle.Fill, Name = "GameDirectory", DropDownStyle = ComboBoxStyle.DropDown, IntegralHeight = false, DropDownHeight = 160 };
-        private readonly Label identity = Caption("请选择包含 Terraria.exe 的目录。", "GameIdentity");
-        private readonly Label discovery = Caption("", "DiscoveryStatus");
-        private readonly TextBox outcome = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Name = "OperationResult", BorderStyle = BorderStyle.None, BackColor = Color.White, ForeColor = Ink, Text = "就绪。" };
+        private static readonly Color Ink = Color.FromArgb(36, 45, 49), Muted = Color.FromArgb(98, 108, 112), Accent = Color.FromArgb(30, 115, 97);
+        private readonly ComboBox directory = new ComboBox { Dock = DockStyle.Fill, Name = "GameDirectory", AccessibleName = "游戏目录", DropDownStyle = ComboBoxStyle.DropDown, IntegralHeight = false, DropDownHeight = 160, TabIndex = 0 };
+        private readonly TextBox identity = ReadableText("GameIdentity", "目录和安装状态");
+        private readonly TextBox summary = ReadableText("OperationSummary", "操作结果摘要");
+        private readonly TextBox details = ReadableText("OperationDetails", "操作结果详情");
         private readonly Button install = ActionButton("安装 / 更新", "InstallButton", true);
-        private readonly Button uninstall = ActionButton("卸载决明", "UninstallButton", false);
-        private readonly Button clear = ActionButton("清空配置", "ClearConfigurationButton", false);
-        private readonly Button browse = ActionButton("浏览…", "BrowseButton", false);
-        private bool busy;
+        private readonly Button maintenance = ActionButton("维护 ▾", "MaintenanceButton", false);
+        private readonly Button browse = ActionButton("选择目录…", "BrowseButton", false);
+        private readonly LinkLabel toggleDetails = new LinkLabel { Text = "详情", Name = "ToggleDetails", AccessibleName = "展开操作详情", AutoSize = true, Margin = new Padding(0, 4, 0, 4), TabIndex = 0 };
+        private readonly ContextMenuStrip maintenanceMenu = new ContextMenuStrip { Name = "MaintenanceMenu", ShowImageMargin = false };
+        private readonly ToolStripMenuItem uninstall = new ToolStripMenuItem("卸载决明") { Name = "UninstallMenuItem", ToolTipText = "保留全部按键、偏好、笔记和蓝图库。" };
+        private readonly ToolStripMenuItem clear = new ToolStripMenuItem("清空配置…") { Name = "ClearConfigurationMenuItem", ToolTipText = "重置按键、窗口与功能偏好，保留笔记和蓝图库。" };
+        private readonly TableLayoutPanel resultPanel = new TableLayoutPanel { Name = "OperationResult", Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Visible = false, Margin = new Padding(0, 12, 0, 12) };
+        private readonly Timer checkDelay = new Timer { Interval = 350 };
+        private readonly Func<string, SetupTargetState> inspect;
+        private readonly Func<string, string, SetupResult> execute;
+        private readonly string emptyTargetPrompt;
+        private SetupTargetState target;
+        private bool busy, checking, expanded, closing, resourcesDisposed;
+        private int targetGeneration;
+        private int resultHeight;
 
         internal SetupForm(string initialDirectory = null)
+            : this(initialDirectory, SteamDiscovery.FindInstalled(), SetupTargetState.Read, (operation, path) => new InstallService().Execute(operation, path)) { }
+
+        // The internal seams let isolated STA checks exercise this production Form without
+        // discovering a real installation or directing a service operation at player data.
+        internal SetupForm(string initialDirectory, string[] candidates, Func<string, SetupTargetState> inspect, Func<string, string, SetupResult> execute)
         {
+            this.inspect = inspect; this.execute = execute;
+            emptyTargetPrompt = candidates.Length > 1 ? "找到多个游戏目录，请选择。" : "请先选择游戏目录，可输入路径或选择目录。";
             Text = "决明安装程序"; Name = "JueMingRSetup"; Font = new Font("Microsoft YaHei UI", 9.5F);
-            ForeColor = Ink; BackColor = Color.FromArgb(243, 246, 251); AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(720, 460); MinimumSize = new Size(680, 490); StartPosition = FormStartPosition.CenterScreen;
-            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28, 22, 28, 20), ColumnCount = 1, RowCount = 5 };
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 1, Margin = new Padding(0, 0, 0, 18) };
+            ForeColor = Ink; BackColor = Color.FromArgb(247, 249, 248); AutoScaleMode = AutoScaleMode.Dpi;
+            ClientSize = new Size(660, 330); MinimumSize = new Size(540, 350); StartPosition = FormStartPosition.CenterScreen;
             using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Icon")) Icon = new Icon(stream);
-            FormClosed += (sender, args) => Icon.Dispose();
-            heading.Controls.Add(new Label { Text = "决明", AutoSize = true, Anchor = AnchorStyles.Left, Font = new Font(Font.FontFamily, 25F, FontStyle.Bold), Margin = new Padding(0) }, 0, 0); layout.Controls.Add(heading);
-            var card = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(18), ColumnCount = 1, Margin = new Padding(0, 0, 0, 16) };
-            card.Controls.Add(new Label { Text = "游戏目录", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(0, 0, 0, 10) });
-            var pathRow = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, Margin = new Padding(0) };
+            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(26, 20, 26, 20), ColumnCount = 1, RowCount = 5 };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            for (int i = 0; i < 5; i++) layout.RowStyles.Add(new RowStyle(i == 3 ? SizeType.Percent : SizeType.AutoSize, i == 3 ? 100 : 0));
+            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 0, 0, 18) };
+            heading.Controls.Add(new Label { Text = "决明", Name = "ProductTitle", AutoSize = true, Font = new Font(Font.FontFamily, 25F, FontStyle.Bold), Margin = Padding.Empty });
+            heading.Controls.Add(new Label { Text = "Terraria 客户端辅助工具", AutoSize = true, ForeColor = Muted, Margin = new Padding(0, 4, 0, 0) });
+            layout.Controls.Add(heading, 0, 0);
+            var pathArea = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
+            pathArea.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            pathArea.Controls.Add(new Label { Text = "游戏目录", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(0, 0, 0, 8) });
+            var pathRow = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
             pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            directory.Margin = new Padding(0, 6, 10, 0); pathRow.Controls.Add(directory); browse.Margin = new Padding(0); pathRow.Controls.Add(browse); card.Controls.Add(pathRow);
-            discovery.Margin = new Padding(0, 9, 0, 0); card.Controls.Add(discovery);
-            identity.Margin = new Padding(0, 6, 0, 0); card.Controls.Add(identity); layout.Controls.Add(card);
-            var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 16), WrapContents = true };
-            actions.Controls.Add(install); actions.Controls.Add(uninstall); actions.Controls.Add(clear); layout.Controls.Add(actions);
-            var status = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(18, 12, 18, 12), Margin = new Padding(0) };
-            status.Controls.Add(outcome); layout.Controls.Add(status);
-            var footer = Caption("卸载保留笔记、蓝图库和决明R设置。", "RetentionNotice"); footer.Margin = new Padding(0, 14, 0, 0); layout.Controls.Add(footer); Controls.Add(layout);
-            browse.Click += (sender, args) => { using (var dialog = new FolderBrowserDialog { Description = "选择包含 Terraria.exe 的游戏目录", ShowNewFolderButton = false, SelectedPath = directory.Text }) if (dialog.ShowDialog(this) == DialogResult.OK) directory.Text = dialog.SelectedPath; };
-            directory.TextChanged += (sender, args) => ShowIdentity();
+            directory.Margin = new Padding(0, 5, 10, 0); pathRow.Controls.Add(directory, 0, 0); browse.Margin = Padding.Empty; browse.TabIndex = 1; pathRow.Controls.Add(browse, 1, 0); pathArea.Controls.Add(pathRow);
+            layout.Controls.Add(pathArea, 0, 1);
+            identity.ForeColor = Muted; identity.Margin = new Padding(0, 10, 0, 8); identity.TabIndex = 2; layout.Controls.Add(identity, 0, 2);
+            resultPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            resultPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); resultPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); resultPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            summary.Margin = Padding.Empty; summary.TabIndex = 0; resultPanel.Controls.Add(summary, 0, 0); resultPanel.Controls.Add(toggleDetails, 0, 1);
+            details.ScrollBars = ScrollBars.Vertical; details.BackColor = Color.White; details.BorderStyle = BorderStyle.FixedSingle; details.Visible = false; details.TabIndex = 1; resultPanel.Controls.Add(details, 0, 2); resultPanel.TabIndex = 3;
+            layout.Controls.Add(resultPanel, 0, 3);
+            var actions = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 12, 0, 0), TabIndex = 4 };
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); actions.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            maintenance.Anchor = AnchorStyles.Left; maintenance.TabIndex = 0; install.TabIndex = 1; install.Margin = Padding.Empty;
+            actions.Controls.Add(maintenance, 0, 0); actions.Controls.Add(install, 1, 0); layout.Controls.Add(actions, 0, 4); Controls.Add(layout);
+            maintenanceMenu.Items.Add(uninstall); maintenanceMenu.Items.Add(clear);
+            maintenance.Click += (sender, args) => { if (!busy) maintenanceMenu.Show(maintenance, new Point(0, maintenance.Height)); };
+            browse.Click += (sender, args) =>
+            {
+                if (busy) return;
+                using (var dialog = new FolderBrowserDialog { Description = "选择包含 Terraria.exe 的游戏目录", ShowNewFolderButton = false, SelectedPath = directory.Text })
+                    if (dialog.ShowDialog(this) == DialogResult.OK) directory.Text = dialog.SelectedPath;
+            };
+            directory.TextChanged += (sender, args) => QueueCheck(true);
             install.Click += async (sender, args) => await RunOperation("install");
             uninstall.Click += async (sender, args) => await RunOperation("uninstall");
             clear.Click += async (sender, args) =>
             {
-                if (MessageBox.Show(this, "清空决明按键和偏好设置？笔记和蓝图库将保留。", "清空配置", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.OK) await RunOperation("clear-config");
+                if (busy || target == null || !target.CanMaintain) return;
+                string selected = directory.Text;
+                if (MessageBox.Show(this, "清空决明按键、窗口与功能偏好设置？笔记和蓝图库将保留。", "清空配置", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.OK && directory.Text == selected)
+                    await RunOperation("clear-config");
             };
-            FormClosing += (sender, args) => { if (busy) args.Cancel = true; };
-            string[] candidates = SteamDiscovery.FindInstalled(); directory.Items.AddRange(candidates);
-            discovery.Text = candidates.Length == 0 ? "未找到游戏目录，可浏览选择。" : candidates.Length == 1 ? "已自动找到。" : "找到多个目录，请选择。";
-            directory.Text = initialDirectory ?? SteamDiscovery.AutomaticSelection(candidates); ShowIdentity();
+            toggleDetails.LinkClicked += (sender, args) => { expanded = !expanded; UpdateResultLayout(); };
+            checkDelay.Tick += async (sender, args) => { checkDelay.Stop(); await CheckTarget(); };
+            Resize += (sender, args) => UpdateTextHeights();
+            FormClosing += (sender, args) => { if (busy) args.Cancel = true; else { closing = true; targetGeneration++; checkDelay.Stop(); } };
+            directory.Items.AddRange(candidates);
+            directory.Text = initialDirectory ?? SteamDiscovery.AutomaticSelection(candidates);
+            QueueCheck(false);
+            UpdateTextHeights();
         }
 
-        private static Label Caption(string text, string name) { return new Label { Text = text, Name = name, AutoSize = true, ForeColor = Muted, Dock = DockStyle.Fill, Margin = new Padding(0, 4, 0, 0) }; }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && !resourcesDisposed)
+            {
+                resourcesDisposed = true;
+                closing = true; targetGeneration++; checkDelay.Stop(); checkDelay.Dispose(); maintenanceMenu.Dispose();
+                if (Icon != null) { Icon.Dispose(); Icon = null; }
+            }
+            base.Dispose(disposing);
+        }
+
+        private static TextBox ReadableText(string name, string accessibleName)
+        {
+            return new TextBox { Multiline = true, ReadOnly = true, WordWrap = true, BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(247, 249, 248), ForeColor = Ink, Dock = DockStyle.Fill, Name = name, AccessibleName = accessibleName, ScrollBars = ScrollBars.Vertical };
+        }
+
         private static Button ActionButton(string text, string name, bool primary)
         {
-            var button = new Button { Text = text, Name = name, AutoSize = true, MinimumSize = new Size(112, 38), Padding = new Padding(12, 3, 12, 3), Margin = new Padding(0, 0, 10, 0), FlatStyle = FlatStyle.Flat, BackColor = primary ? Accent : Color.White, ForeColor = primary ? Color.White : Ink, UseVisualStyleBackColor = false, Cursor = Cursors.Hand };
-            button.FlatAppearance.BorderColor = primary ? Accent : Color.FromArgb(215, 222, 234); button.FlatAppearance.BorderSize = 1; return button;
+            var button = new Button { Text = text, Name = name, AccessibleName = text, AutoSize = true, MinimumSize = new Size(112, 38), Padding = new Padding(12, 3, 12, 3), Margin = Padding.Empty, FlatStyle = FlatStyle.Flat, BackColor = primary ? Accent : Color.White, ForeColor = primary ? Color.White : Ink, UseVisualStyleBackColor = false };
+            button.FlatAppearance.BorderColor = primary ? Accent : Color.FromArgb(214, 222, 218); return button;
         }
-        private void ShowIdentity()
+
+        private void QueueCheck(bool clearResult)
         {
+            targetGeneration++; checkDelay.Stop(); target = null;
+            if (clearResult) { expanded = false; resultPanel.Visible = false; ChangeResultHeight(0); }
+            if (busy || closing) return;
+            identity.Text = string.IsNullOrWhiteSpace(directory.Text) ? emptyTargetPrompt : "正在检查所选目录…";
+            ApplyEligibility(); UpdateTextHeights();
+            // Text editing only schedules one finite read after the quiet interval; no polling.
+            if (!string.IsNullOrWhiteSpace(directory.Text)) checkDelay.Start();
+        }
+
+        private async Task CheckTarget()
+        {
+            if (busy || closing || checking) return;
+            int generation = targetGeneration; string selected = directory.Text; checking = true;
             try
             {
-                string root = TargetSafety.ValidateGameDirectory(directory.Text, false);
-                string current = Path.Combine(root, "JueMingR.dll");
-                string state = File.Exists(current) && System.Reflection.AssemblyName.GetAssemblyName(current).Name == "JueMingR" ? "决明已安装" : "未安装决明";
-                identity.Text = "Terraria " + System.Diagnostics.FileVersionInfo.GetVersionInfo(Path.Combine(root, "Terraria.exe")).FileVersion + "  ·  " + state;
+                SetupTargetState read = await Task.Run(() => inspect(selected));
+                // A's late read must never publish into B, restore buttons during an operation,
+                // or access controls after this window has closed.
+                if (closing || IsDisposed || busy || generation != targetGeneration) return;
+                target = read; identity.Text = read.Caption; ApplyEligibility(); UpdateTextHeights();
             }
-            catch (Exception error) when (error is IOException || error is ArgumentException || error is UnauthorizedAccessException || error is BadImageFormatException) { identity.Text = string.IsNullOrWhiteSpace(directory.Text) ? "请选择包含 Terraria.exe 的目录。" : "目录不可用，请选择包含 Terraria.exe 的游戏目录。"; }
+            catch (Exception error) when (!(error is OutOfMemoryException || error is StackOverflowException))
+            {
+                if (!closing && !IsDisposed && !busy && generation == targetGeneration)
+                { target = null; identity.Text = "状态暂无法确认：" + error.Message; ApplyEligibility(); UpdateTextHeights(); }
+            }
+            finally
+            {
+                checking = false;
+                if (!closing && !IsDisposed && !busy && generation != targetGeneration) checkDelay.Start();
+            }
         }
+
         private async Task RunOperation(string operation)
         {
-            string selected = directory.Text; busy = true; SetEnabled(false); outcome.Text = "正在处理，请稍候…";
+            if (busy || closing || target == null || (operation == "install" ? !target.CanInstall : !target.CanMaintain)) return;
+            // Freeze both inputs before yielding. Disabling controls alone does not prevent
+            // a queued/reentrant callback from launching another operation.
+            string selected = directory.Text; string acceptedOperation = operation;
+            busy = true; targetGeneration++; checkDelay.Stop(); maintenanceMenu.Close(); ApplyEligibility();
+            expanded = false; resultPanel.Visible = true; toggleDetails.Visible = false; details.Visible = false;
+            summary.ForeColor = Ink; summary.Text = "正在" + SetupResultPresentation.OperationName(operation) + "，请稍候…"; UpdateResultLayout();
             try
             {
-                SetupResult result = await Task.Run(() => new InstallService().Execute(operation, selected));
-                outcome.Text = result.message + (result.retained.Count == 0 ? "" : Environment.NewLine + string.Join(Environment.NewLine, result.retained));
+                SetupResult result = await Task.Run(() => execute(acceptedOperation, selected));
+                summary.Text = SetupResultPresentation.Summary(result); details.Text = SetupResultPresentation.Details(result, selected);
+                summary.ForeColor = result.status == "partial" || result.status == "failure" ? Color.FromArgb(149, 54, 36) : Ink;
             }
-            finally { busy = false; SetEnabled(true); ShowIdentity(); }
+            catch (Exception error) when (!(error is OutOfMemoryException || error is StackOverflowException))
+            {
+                var result = new SetupResult { operation = acceptedOperation, status = "failure", exitCode = 2, message = error.Message };
+                summary.Text = SetupResultPresentation.Summary(result); details.Text = SetupResultPresentation.Details(result, selected); summary.ForeColor = Color.FromArgb(149, 54, 36);
+            }
+            finally
+            {
+                busy = false; toggleDetails.Visible = true; UpdateResultLayout();
+                // Refresh current files independently. A failed state read must not replace
+                // the service's success/partial/failure result or its actual target.
+                QueueCheck(false);
+            }
         }
-        private void SetEnabled(bool enabled) { install.Enabled = uninstall.Enabled = clear.Enabled = browse.Enabled = directory.Enabled = enabled; }
+
+        private void ApplyEligibility()
+        {
+            directory.Enabled = browse.Enabled = !busy;
+            maintenance.Enabled = !busy;
+            install.Enabled = !busy && target != null && target.CanInstall;
+            uninstall.Enabled = clear.Enabled = !busy && target != null && target.CanMaintain;
+            install.Text = target != null && target.Pair == SetupPairState.NotInstalled ? "安装决明" : "安装 / 更新";
+            install.AccessibleName = install.Text;
+        }
+
+        private void UpdateTextHeights()
+        {
+            identity.Height = TextHeight(identity, 88); summary.Height = TextHeight(summary, 104);
+        }
+
+        private int TextHeight(TextBox box, int maximum)
+        {
+            int width = Math.Max(80, box.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
+            int measured = TextRenderer.MeasureText(box.Text.Length == 0 ? " " : box.Text, box.Font, new Size(width, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height + 5;
+            return Math.Min((int)(maximum * DeviceDpi / 96F), measured);
+        }
+
+        private void UpdateResultLayout()
+        {
+            details.Visible = expanded; toggleDetails.Text = expanded ? "收起" : "详情"; toggleDetails.AccessibleName = expanded ? "收起操作详情" : "展开操作详情";
+            UpdateTextHeights(); ChangeResultHeight((int)((expanded ? 270 : 92) * DeviceDpi / 96F));
+        }
+
+        private void ChangeResultHeight(int desired)
+        {
+            if (resultHeight == desired) return;
+            int delta = desired - resultHeight; resultHeight = desired;
+            Rectangle work = Screen.FromControl(this).WorkingArea;
+            Height = Math.Max(MinimumSize.Height, Math.Min(work.Height, Height + delta));
+            if (Bottom > work.Bottom) Top = Math.Max(work.Top, work.Bottom - Height);
+        }
     }
 }

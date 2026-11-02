@@ -51,6 +51,24 @@ namespace JueMingR.ArchitectureTests
             var round = QuickItemDocument.Decode(QuickItemDocument.Encode(new QuickItemDocument(true,true,new[]{use(5359,true)})));
             if (!round.KeepFavorited || !round.Enabled || round.Entries.Count!=1 || round.Entries[0].Id!=id || round.Entries[0].Target!=5359)
                 failures.Add("Quick config: value roundtrip changed stable identity or world-spawn target.");
+            // Decode numeric legacy input independently of the encoder, then
+            // exercise its unchanged use semantics and preservation on rewrite.
+            var legacyBytes = System.Text.Encoding.UTF8.GetBytes("{\"format\":\"JueMingR.QuickItems\",\"version\":1,\"keepFavorited\":true,\"enabled\":false,\"entries\":[{\"id\":\"" + id + "\",\"target\":5358,\"mode\":2,\"compatible\":false,\"enabled\":true}]}");
+            var legacy = QuickItemDocument.Decode(legacyBytes);
+            var legacyRound = QuickItemDocument.Decode(QuickItemDocument.Encode(legacy));
+            if (legacyRound.Entries[0].Mode != QuickItemMode.SetStateAndUse || legacyRound.Entries[0].Id != id || legacyRound.Entries[0].Target != 5358 ||
+                legacyRound.Entries[0].Compatible || !legacyRound.Entries[0].Enabled || !legacyRound.KeepFavorited || legacyRound.Enabled)
+                failures.Add("Quick config: legacy numeric 2 roundtrip changed entry or toggles.");
+            foreach (var candidates in new[] { new[] { item(17,5361) }, new[] { item(2,50), item(23,5358) } })
+            {
+                var oldChoice = QuickItemRules.Choose(legacy.Entries[0], candidates, 2);
+                var useChoice = QuickItemRules.Choose(use(5358,false), candidates, 2);
+                if (oldChoice.Slot != useChoice.Slot || oldChoice.OriginalType != useChoice.OriginalType || oldChoice.TargetType != useChoice.TargetType || oldChoice.Use != useChoice.Use)
+                    failures.Add("Quick rules: legacy use differs from ordinary use.");
+            }
+            if (QuickItemRules.DefaultMode(5358) != QuickItemMode.Use || QuickItemRules.DefaultMode(5361) != QuickItemMode.Use ||
+                QuickItemRules.DefaultMode(2611) != QuickItemMode.SetState || QuickItemRules.DefaultMode(50) != QuickItemMode.Use)
+                failures.Add("Quick rules: new defaults do not distinguish phone, state-only and ordinary item.");
             ExerciseStorage(failures, use(50,true));
         }
         private static void Wait(QuickItemSettings settings, Func<bool> done)

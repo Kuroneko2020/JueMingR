@@ -5,6 +5,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="SetupServiceChecks.cs" />
+    <Compile Include="SetupFormChecks.cs" />
+    <Compile Include="../../src/JueMingR.Setup/SetupPresentation.cs" Link="SetupPresentation.cs" />
+    <Compile Include="../../src/JueMingR.Setup/SetupForm.cs" Link="SetupForm.cs" />
     <Compile Include="../../src/JueMingR.Setup/InstallService.cs" Link="InstallService.cs" />
     <Compile Include="../../src/JueMingR.Setup/SetupPayload.cs" Link="SetupPayload.cs" />
     <Compile Include="../../src/JueMingR.Setup/TargetSafety.cs" Link="TargetSafety.cs" />
@@ -12,6 +15,7 @@
     <Compile Include="../../src/JueMingR.Setup/SteamDiscovery.cs" Link="SteamDiscovery.cs" />
     <Compile Include="../../src/JueMingR.Setup/OwnedFiles.cs" Link="OwnedFiles.cs" />
     <Compile Include="../../src/JueMingR.Bootstrap/BundlePreparation.cs" Link="BundlePreparation.cs" />
-    <Reference Include="System.Web.Extensions" /><Reference Include="System.Xml.Linq" /><Reference Include="System.IO.Compression" />
+    <Reference Include="System.Web.Extensions" /><Reference Include="System.Xml.Linq" /><Reference Include="System.IO.Compression" /><Reference Include="System.Windows.Forms" /><Reference Include="System.Drawing" />
+    <EmbeddedResource Include="../../src/JueMingR.Setup/Assets/juemingr-installer.ico" LogicalName="JueMingR.Setup.Brand.Icon" />
   </ItemGroup>
 </Project>

@@ -162,7 +162,7 @@ namespace JueMingR.TerrariaHost.Recovery
                 if(e.Text=="配置" || e.Text=="名单设置" || e.Text=="收起名单"){command=-2;value=feature==4?2:feature;}
                 if(e.Kind==F5ElementKind.Hotkey)command=-1;
                 var element=e.Kind==F5ElementKind.Hotkey?new F5Element(e.Kind,e.Rect,null,e.TextSize,e.TextScale,F5Command.None,HostRecovery.Actions[feature]):e;
-                string hint=e.Text=="快速"?"掉血后立即选择合适的物品进行恢复":e.Text=="智能"?"掉血后会等待合适的阈值使用合适的药品":e.Description==null?null:host.Hint(feature)??help[feature];
+                string hint=e.Kind==F5ElementKind.Hotkey?F5HotkeyHints.Toggle:e.Text=="快速"?"掉血后立即选择合适的物品进行恢复":e.Text=="智能"?"掉血后会等待合适的阈值使用合适的药品":e.Description==null?null:host.Hint(feature)??help[feature];
                 logical.Add(new Part{Element=element,Command=command,Value=value,Enabled=host.Controls(feature),Selected=command>=0 && e.Kind==F5ElementKind.Button && host.Value(feature)==value,Hint=hint});
             }
         }

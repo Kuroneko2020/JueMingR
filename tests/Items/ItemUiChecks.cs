@@ -54,7 +54,8 @@ namespace Terraria
             var panels = ((System.Collections.Generic.List<F5Element>)typeof(ItemsPresentation).GetField("elements", Fields).GetValue(p)).Where(e => e.Kind == F5ElementKind.Panel).ToArray();
             Check(panels.Length == 3 && panels.All(e => e.Rect.Width == shell.Layout.Viewport.Width), "three complete common row panels");
             var a = Rect(Control(p, "Replace", (int)ItemListKind.Sell, 2337)); var b = Rect(Control(p, "Replace", (int)ItemListKind.Sell, 2338));
-            Check(a.Y == b.Y && b.X > a.Right && a.Width > a.Height && a.Y > panels[1].Rect.Bottom && a.Bottom < panels[2].Rect.Y, "compact sale icons belong between sale and discard rows");
+            Check(a.Y == b.Y && b.X > a.Right && a.Width > a.Height && a.Y > Rect(Control(p, "Enable", 1)).Bottom &&
+                a.Bottom < panels[1].Rect.Bottom && panels[1].Rect.Bottom + 6 == panels[2].Rect.Y, "compact sale icons belong inside their single group below the header controls");
             int builds = p.LayoutBuildCount; for (int i = 0; i < 100; i++) prepare(); Check(p.LayoutBuildCount == builds, "stable frames do not rebuild controls");
             F5NameHintChecks.Items(host, shell, p);
             Click(p, Control(p, "Enable", 1)); prepare(); long revision = host.Preferences.Revision;
@@ -100,11 +101,112 @@ namespace Terraria
             host.Change(ItemAutomationSettings.Default); prepare(); Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare(); notesMayLeave = true;
             Check(shell.BeforeLeave(9) && !p.Selecting, "accepted Notes leave cancels draft"); p.Suspend();
             Main.CurrentInputTextTakerOverride = null; PlayerInput.WritingText = false; Main.keyState = new KeyboardState();
+            RunCardHints(host);
+            RunGroupGeometry(host);
             RunGridGeometry(host);
             RunInlineGeometry(host);
             RunFeedbackGeometry(host);
             ItemSelectionChecks.Run(host);
             Console.WriteLine("PASS: Items production geometry, explicit commands, legacy keys inert, inline selection/cancel, input tails, visible cards and stable-frame cache. No graphics device used.");
+        }
+        private static void RunGroupGeometry(HostItems host)
+        {
+            foreach (float width in new[] { 300f, 522f }) foreach (float glyphHeight in new[] { 24f, 38f })
+            {
+                Func<string, float, F5Size> measure = (text, scale) => new F5Size(text.Length * 18 * scale, glyphHeight * scale, -2, 3);
+                var selection = new ItemSelection(host); var layout = new ItemsLayout();
+                var elements = new System.Collections.Generic.List<F5Element>(); var controls = new System.Collections.Generic.List<ItemUiControl>();
+                var view = new F5Rect(10, 20, width, 5000);
+                var empty = ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, new int[0]).WithTypes(ItemListKind.Discard, new int[0]);
+                layout.Build(width, 38, empty, selection, true, false, measure); layout.Project(view, 0, elements, controls);
+                var compact = elements.Where(e => e.Kind == F5ElementKind.Panel).Select(e => e.Rect).ToArray();
+                foreach (int count in new[] { 1, 21 })
+                {
+                    var value = empty.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, count)).WithTypes(ItemListKind.Discard, Enumerable.Range(2000, count));
+                    layout.Build(width, 38, value, selection, true, true, measure); layout.Project(view, 0, elements, controls);
+                    var groups = elements.Where(e => e.Kind == F5ElementKind.Panel).ToArray();
+                    Check(groups.Length == 3 && groups.All(e => e.Command == F5Command.None), "each feature has exactly one decorative group");
+                    Check(groups[0].Rect.Height == compact[0].Height && groups[1].Rect.Height > compact[1].Height && groups[2].Rect.Height > compact[2].Height,
+                        "only populated lists grow beyond their compact header");
+                    for (int i = 0; i < 2; i++)
+                    {
+                        var panel = groups[i + 1].Rect; var cards = controls.Where(c => c.Command == ItemUiCommand.Replace && c.Argument == i).ToArray();
+                        var header = controls.Where(c => (c.Command == ItemUiCommand.Enable || c.Command == ItemUiCommand.Disable) && c.Argument == i + 1).ToArray();
+                        Check(cards.Length == count && cards.All(c => c.Rect.Y > header.Max(h => h.Rect.Bottom) && c.Rect.X >= panel.X && c.Rect.Right <= panel.Right && c.Rect.Bottom < panel.Bottom),
+                            "single/multirow list remains wholly inside its owner below measured header controls");
+                        Check(panel.Bottom - cards.Max(c => c.Rect.Bottom) == 6, "group bottom padding excludes grid stride trailing gap");
+                        float blankX = panel.Right - 1, blankY = panel.Bottom - 1;
+                        Check(!controls.Any(c => c.Rect.Contains(blankX, blankY)), "group padding is not an executable control");
+                        Check(!elements.Any(e => e.Description != null && e.HintRect.Contains(blankX, blankY)), "name hint stays on actual header text");
+                    }
+                    Check(groups[1].Rect.Bottom + 6 == groups[2].Rect.Y && layout.Error.Y >= groups[2].Rect.Bottom + 6 - view.Y,
+                        "next group and page error stay outside the completed owner surface");
+                    var sale = groups[1].Rect; float scroll = controls.First(c => c.Command == ItemUiCommand.Replace).Rect.Y - view.Y + 10;
+                    layout.Project(new F5Rect(view.X, view.Y, width, 17), scroll, elements, controls);
+                    var clipped = elements.Single(e => e.Kind == F5ElementKind.Panel).Rect;
+                    Check(clipped.Y < view.Y && clipped.Height == sale.Height && clipped.Bottom > view.Y + 17,
+                        "short viewport projects the full group through both clip edges without synthetic surface ends");
+                    Check(controls.Count < count * 4 + 20 && controls.Any(c => c.Command == ItemUiCommand.Replace), "body remains visible after its header scrolls out");
+                }
+                layout.Build(width, 38, empty, selection, true, false, measure); layout.Project(view, 0, elements, controls);
+                Check(elements.Where(e => e.Kind == F5ElementKind.Panel).Select(e => e.Rect.Height).SequenceEqual(compact.Select(r => r.Height)), "last-item removal restores compact surfaces");
+            }
+        }
+        private static void RunCardHints(HostItems host)
+        {
+            var shell = new F5Interaction { Ready = true }; var page = new ItemsPresentation(host, shell);
+            var renderer = new F5Renderer(); object font = new object(); var previous = host.Preferences.Value;
+            shell.Update(new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, F5 = true }); shell.Navigate(0);
+            Action prepare = () => { shell.Layout.Ensure(1920, 1080, 1, 0, font, t => new F5Size(t.Length * 18, 24)); page.PrepareLayout(Matrix.Identity, new Vector2(1920, 1080)); };
+            Func<string, float, F5Size> measure = (text, scale) => new F5Size(text.Length * 18 * scale, 24 * scale);
+            Action<ItemUiControl, string> hint = (control, suffix) =>
+            {
+                var view = shell.Layout.Viewport.Offset(shell.X, shell.Y); var hit = F5HintLayout.Intersect(control.Rect, view);
+                shell.Update(new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1,
+                    X = hit.X + 1, Y = hit.Bottom - 1 });
+                long revision = host.Preferences.Revision; int layouts = page.LayoutBuildCount;
+                renderer.PrepareHints(shell, page, false, false, new F5Rect(8, 8, 1904, 1064), view, font, measure);
+                Check(renderer.HintLayout.Visible && string.Concat(renderer.HintLayout.Lines.Select(e => e.Text)) == Lang.GetItemNameValue(control.Type) + suffix,
+                    "projected " + control.Command + " reaches the final visible consumer: " + control.Type);
+                var panel = renderer.HintLayout.Panel;
+                Check(panel.X >= 8 && panel.Right <= 1912 && panel.Y >= 8 && panel.Bottom <= 1072, "card hint remains in allowed screen bounds");
+                int builds = renderer.HintLayout.BuildCount;
+                for (int i = 0; i < 20; i++) renderer.PrepareHints(shell, page, false, false, new F5Rect(8, 8, 1904, 1064), view, font, measure);
+                Check(renderer.HintLayout.BuildCount == builds && page.LayoutBuildCount == layouts && host.Preferences.Revision == revision, "card hover reuses layout and never saves/reflows");
+            };
+            try
+            {
+                foreach (ItemListKind list in new[] { ItemListKind.Sell, ItemListKind.Discard })
+                {
+                    shell.ScrollTo(0); host.Change(ItemAutomationSettings.Default.WithTypes(list, Enumerable.Range(1000, 20))); prepare();
+                    var cards = ((System.Collections.Generic.List<ItemUiControl>)typeof(ItemsPresentation).GetField("controls", Fields).GetValue(page))
+                        .Where(c => c.Command == ItemUiCommand.Replace && c.Argument == (int)list).ToArray();
+                    Check(cards.Select(c => c.Rect.Y).Distinct().Count() >= 2, "hint regression uses real multirow list geometry");
+                    foreach (var card in new[] { cards[0], cards[4], cards[9], cards[10], cards[19] })
+                    {
+                        hint(card, "·点击替换");
+                        hint((ItemUiControl)Control(page, "Remove", (int)list, card.Type), "·点击移除");
+                    }
+                    Click(page, Control(page, "Replace", (int)list, 1009)); prepare();
+                    hint((ItemUiControl)Control(page, "Select", type: 8), "·点击立即替换");
+                    Click(page, Control(page, "Cancel")); prepare();
+                    Click(page, Control(page, "Add", (int)list)); prepare();
+                    hint((ItemUiControl)Control(page, "Select", type: 8), "·点击选择或取消，确定后添加");
+                    Click(page, Control(page, "Cancel")); prepare();
+                }
+                host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 200))); prepare();
+                shell.ScrollTo(100); prepare();
+                var visible = ((System.Collections.Generic.List<ItemUiControl>)typeof(ItemsPresentation).GetField("controls", Fields).GetValue(page))
+                    .First(c => c.Command == ItemUiCommand.Replace && c.Rect.Y >= shell.Y + shell.Layout.Viewport.Y);
+                hint(visible, "·点击替换");
+                var clip = shell.Layout.Viewport.Offset(shell.X, shell.Y);
+                shell.Update(new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, X = clip.Right + 1, Y = clip.Y + 1 });
+                renderer.PrepareHints(shell, page, false, false, new F5Rect(8, 8, 1904, 1064), clip, font, measure);
+                Check(!renderer.HintLayout.Visible, "scrollbar/outside content clears prior card hint");
+                shell.Close(); renderer.PrepareHints(shell, page, false, false, new F5Rect(8, 8, 1904, 1064), clip, font, measure);
+                Check(!renderer.HintLayout.Visible, "closed page cannot retain card help");
+            }
+            finally { page.Suspend(); host.Change(previous); renderer.Dispose(); }
         }
         private static void RunFeedbackGeometry(HostItems host)
         {
@@ -185,6 +287,8 @@ namespace Terraria
             host.Change(ItemAutomationSettings.Default); prepare();
             var state = (ItemSelection)typeof(ItemsPresentation).GetField("selection", Fields).GetValue(p);
             var geometry = (ItemsLayout)typeof(ItemsPresentation).GetField("layout", Fields).GetValue(p);
+            Func<F5Element[]> groups = () => ((System.Collections.Generic.List<F5Element>)typeof(ItemsLayout).GetField("rows", Fields).GetValue(geometry)).Where(e => e.Kind == F5ElementKind.Panel).ToArray();
+            float originalSaleHeight = groups()[1].Rect.Height;
             float originalDiscardY = Rect(Control(p, "Add", (int)ItemListKind.Discard)).Y;
             var originalAdd = Control(p, "Add", (int)ItemListKind.Sell);
             var originalOn = Rect(Control(p, "Enable", (int)ItemActionKind.Sell));
@@ -194,6 +298,13 @@ namespace Terraria
             var confirm = Rect(Control(p, "Confirm"));
             Check(!(bool)Control(p, "Confirm").GetType().GetField("Enabled", Fields).GetValue(Control(p, "Confirm")), "zero selection retains weak inactive confirm");
             Check(Rect(Control(p, "Add", (int)ItemListKind.Discard)).Y > originalDiscardY && geometry.Header.Y > geometry.RowY[1], "inline content expands under owner and shifts following row");
+            Check(groups().Length == 3 && groups()[1].Rect.Height > originalSaleHeight && geometry.Header.Y > geometry.RowY[1] &&
+                geometry.Title.Bottom < groups()[1].Rect.Bottom && geometry.RevealBottom < groups()[1].Rect.Bottom && groups()[1].Rect.Bottom + 6 == geometry.RowY[2],
+                "expanded selector metadata stays inside one owning group before the next feature");
+            Click(p, Control(p, "Cancel")); prepare();
+            Check(groups()[1].Rect.Height == originalSaleHeight && Rect(Control(p, "Add", (int)ItemListKind.Discard)).Y == originalDiscardY,
+                "selector cancel restores its compact group and following controls");
+            Click(p, Control(p, "Add", (int)ItemListKind.Sell)); prepare();
             Click(p, Control(p, "Select", type: 8)); prepare();
             var selectedConfirm = Rect(Control(p, "Confirm"));
             Check(confirm.X == selectedConfirm.X && confirm.Width == selectedConfirm.Width && state.Count == 1, "count changes do not move confirm");
@@ -224,10 +335,6 @@ namespace Terraria
             Check(Rect(remove).Width == 18 && Rect(remove).Right == body.Right && Rect(remove).Y == body.Y, "visible cross has bounded top-right hit region");
             Click(p, remove); prepare(); Check(!p.Selecting && !host.Preferences.Value.SellTypes.Contains(2337) && p.ConsumeLeft, "cross wins over body and consumes release after card shift");
             Pointer(p, remove, false); prepare(); Check(host.Preferences.Value.SellTypes.Contains(2338) && !p.Selecting, "same gesture cannot activate shifted neighbor");
-            var bounds = shell.Layout.Viewport.Offset(shell.X, shell.Y);
-            var target = new F5Rect(bounds.X + 100, bounds.Y + 4, 50, 34);
-            var hint = ItemsPresentation.Tooltip(target, bounds, 300, 60);
-            Check(hint.Y > target.Bottom && hint.Right <= bounds.Right && hint.Bottom <= bounds.Bottom, "tooltip flips below and stays away from target within bounds");
             host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 5000))); prepare(); shell.ScrollTo(700); prepare();
             float oldScroll = shell.Scroll; font = new object(); measure = t => new F5Size(t.Length * 20, 26, -3, 8); prepare();
             Check(shell.Scroll == oldScroll, "font reflow does not reset valid dynamic page offset");
@@ -314,7 +421,7 @@ namespace Terraria
                 Check(shellRenderer.HintLayout.BuildCount == hintBuilds, "stable real item draws reuse the same prepared hint");
                 Pointer(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 8), false);
                 Draw(graphics, shellRenderer, shell, presentation, null);
-                Check(!shellRenderer.HintLayout.Visible, "moving from a name to an item leaves only the original item help");
+                Check(shellRenderer.HintLayout.Visible && string.Concat(shellRenderer.HintLayout.Lines.Select(e => e.Text)) == Lang.GetItemNameValue(8) + "·点击替换", "moving from name to item consumes its shared final hint");
                 // A taller offset font and skin replacement use the same real
                 // draw pass, clipping, texture ownership and input rectangles.
                 FontAssets.MouseText = graphics.Asset("item-offset-font", graphics.CreateFont(12, 26, -3, 8, 39)); prepare();

@@ -16,10 +16,23 @@ namespace JueMingR.TerrariaHost.F5
     internal sealed class F5RowLayout
     {
         private const float HotkeySlotWidth = 22;
+        internal const float GroupGap = 6;
+        private const float GroupBottomPadding = 6;
         private readonly List<F5Element> elements;
         private readonly Func<string, float, F5Size> TextSize;
         internal F5RowLayout(List<F5Element> elements, Func<string, float, F5Size> measure)
         { this.elements = elements; TextSize = measure; }
+        // Call after this feature's logical body is complete, before composing
+        // the next feature. Body bottom excludes its old row/grid trailing gap.
+        // Keep the original header controls/name bounds and project this full
+        // decorative rectangle; clipping it here would invent nine-slice ends.
+        internal static F5Element CompleteGroup(F5Element header, float bodyBottom)
+        {
+            var r = header.Rect;
+            float bottom = bodyBottom > r.Bottom ? bodyBottom + GroupBottomPadding : r.Bottom;
+            return new F5Element(F5ElementKind.Panel, new F5Rect(r.X, r.Y, r.Width, bottom - r.Y),
+                null, default(F5Size), 0, F5Command.None);
+        }
         internal void Row(ref float y, float x, float width, string label, string[] actions, Func<string, F5Command> commandFor = null, F5RowDescription description = null, float fieldWidth = 120)
         {
             float actionWidth = 0;
