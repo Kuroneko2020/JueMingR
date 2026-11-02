@@ -41,6 +41,7 @@ namespace NativeWorldTextProbe
                         ReferenceEquals(device.BlendState, blend) && ReferenceEquals(device.DepthStencilState, depth) && ReferenceEquals(device.SamplerStates[0], sampler),
                         "the actual ItemsPresentation Draw restores the preexisting GPU state through the shared ItemsRenderer");
                 }, Matrix.Identity, (int)screen.X, (int)screen.Y);
+                NativePageCompositionPickerInputChecks.Visual(context,graphics,output);
                 Console.WriteLine("PASS real ItemsPresentation native-resource Draw, original page order, 120 stable prepares and exact shared-renderer GPU-state restoration; no synthetic receiver or owner game execution.");
             }
             finally { Call(shell, "CloseAndSubmitPosition"); }
@@ -60,6 +61,7 @@ namespace NativeWorldTextProbe
             NativeHiddenEntryChecks.RevealForComposition(context);
             Call(state,"Navigate",1);Call(renderer,"Prepare",state,1200f,1200f,1f);prepare();MiscOrder(shell);
             NativeItemsHintChecks.Run(context);
+            NativePageCompositionPickerInputChecks.Run(context);
             Call(shell,"CloseAndSubmitPosition");Console.WriteLine("PASS complete Items/Misc composition order, unchanged identities, final footer and stable layout work.");
         }
         private static void Input(object context, Action prepare)

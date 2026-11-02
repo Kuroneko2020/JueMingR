@@ -91,7 +91,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Sample(input,keys.GetPressedKeys());
             Call(ui,"ProcessInput",true,keys,new Vector2(-10,-10),true,true,false);
             Call(Get(context,"Shell"),"ConsumeSample");
-            Require(!Terraria.Main.blockInput && !Terraria.GameInput.PlayerInput.WritingText && !(bool)Get(ui,"OwnsTextToken"),"inline buff list does not acquire the native movement-blocking text lease");
+            Require(!Terraria.Main.blockInput && !Terraria.GameInput.PlayerInput.WritingText && Terraria.Main.CurrentInputTextTakerOverride==null,"inline buff list does not acquire the native movement-blocking text lease");
             Require(Terraria.Main.keyState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Space),"inline list keeps movement keyboard sample");
             NativeQuickItemChecks.Sample(input,new Microsoft.Xna.Framework.Input.Keys[0]);
         }

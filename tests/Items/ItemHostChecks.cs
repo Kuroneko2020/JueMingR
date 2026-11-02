@@ -484,28 +484,9 @@ namespace Terraria
                 X = nav.X + 2, Y = nav.Y + 2, Left = true });
             Check(shell.Page == 0 && shell.ConsumeLeft, "inline page allows navigation and consumes its press");
             NewSession(0); Configure(false, false, false);
-            var input = new ItemPickerInput();
-            var before = host.Preferences.Value;
-            Main.keyState = new KeyboardState(Keys.F1, Keys.F2, Keys.F6);
-            input.Sample(Main.keyState, true);
-            Check(host.Preferences.Value.Equals(before) && Main.keyState.IsKeyDown(Keys.F6), "no picker means no item key commands or native key consumption");
-            Main.blockInput = false; input.BeforeInput(true);
-            Check(Main.blockInput && input.OwnsTextToken && PlayerInput.WritingText, "picker acquires minimal text/block lease");
-            input.Sample(new KeyboardState(Keys.Escape), true); input.Release();
-            PlayerInput.WritingText = false; input.BeforeInput(false);
-            Check(PlayerInput.WritingText && !Main.blockInput, "released picker retains held key tail, restores block lease");
-            input.Sample(new KeyboardState(), true); PlayerInput.WritingText = false; input.BeforeInput(false);
-            Check(!PlayerInput.WritingText, "real release ends keyboard tail");
-            input.BeforeInput(true); var foreign = new object(); Main.CurrentInputTextTakerOverride = foreign;
-            input.Sample(new KeyboardState(Keys.Escape), false);
-            Check(!Main.blockInput && ReferenceEquals(Main.CurrentInputTextTakerOverride, foreign), "focus interruption preserves foreign token and restores block lease");
-            Main.keyState = new KeyboardState(Keys.A); input.Sample(Main.keyState, true);
-            Check(Main.keyState.IsKeyDown(Keys.A), "picker tail never consumes a foreign text owner sample");
-            Main.CurrentInputTextTakerOverride = null; input.Sample(new KeyboardState(), true);
-            input.BeforeInput(true); input.Sample(new KeyboardState(), true); input.BeforeInput(false);
-            input.Sample(new KeyboardState(), false); PlayerInput.WritingText = false; input.BeforeInput(false);
-            Check(PlayerInput.WritingText, "prefix-before-sample focus loss retains release tail");
-            Main.CurrentInputTextTakerOverride = null; input.Sample(new KeyboardState(), true); PlayerInput.WritingText = false;
+            // Pointer-only selectors do not own a text/whole-keyboard lease.
+            // Their original mapping/control gate and Escape tail are exercised
+            // by NativePageCompositionPickerInputChecks against the real Host.
         }
         private static void Reply(int slot, int type, int amount)
         {

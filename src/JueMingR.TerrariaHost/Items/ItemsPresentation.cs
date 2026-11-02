@@ -23,7 +23,6 @@ namespace JueMingR.TerrariaHost.Items
         private readonly ItemsRenderer renderer = new ItemsRenderer();
         private readonly ItemsLayout layout = new ItemsLayout();
         private readonly ItemSelection selection;
-        private readonly ItemPickerInput input = new ItemPickerInput();
         internal QuickItems.QuickItemPanel QuickPanel { get; private set; }
         internal Processing.ProcessingPanel ProcessingPanel {get;private set;}
         internal void AttachProcessing(Processing.HostProcessing owner){ProcessingPanel=new Processing.ProcessingPanel(owner);dirty=true;}
@@ -45,7 +44,6 @@ namespace JueMingR.TerrariaHost.Items
         internal int LayoutBuildCount { get; private set; }
         internal bool Selecting { get { return selection.Active || QuickPanel != null && QuickPanel.Editing; } }
         internal bool OwnsPointer { get { return ready && ownPointer; } }
-        internal bool OwnsTextToken { get { return input.OwnsTextToken || QuickPanel != null && QuickPanel.OwnsTextToken; } }
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
         internal bool ConsumeWheel { get; private set; }
@@ -59,15 +57,16 @@ namespace JueMingR.TerrariaHost.Items
         internal static string Name(ItemActionKind action)
         { return action == ItemActionKind.Stack ? "自动堆叠" : action == ItemActionKind.Sell ? "自动出售" : "自动丢弃"; }
         private void ValidateSession()
-        { if (!selection.ValidateSession()) { armed = null; dirty = true; input.Release(); revealRow = -1; } }
+        { if (!selection.ValidateSession()) { armed = null; dirty = true; revealRow = -1; } }
+        // This icon chooser owns pointer gestures, not native text/keyboard.
+        // Escape ownership is claimed by the shell before child cancellation.
         internal void BeforeInput(bool active)
-        { ValidateSession(); input.BeforeInput(active && shell.Visible && shell.Page == 0 && selection.Active); QuickPanel?.BeforeInput(active); }
+        { ValidateSession(); QuickPanel?.BeforeInput(active); }
         internal void ProcessInput(bool active, KeyboardState sample, Vector2 pointer, bool geometryCurrent = true, bool focused = true, bool blockPointer = false)
         {
             ValidateSession(); pointerPosition = pointer;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
             bool pageActive = active && focused && shell.Visible && shell.Page == 0;
-            input.Sample(sample, focused);
             QuickPanel?.Process(pageActive, sample, focused);
             if (QuickPanel != null && QuickPanel.NeedsBuild) { armed = null; dirty = true; }
             if (ProcessingPanel != null && ProcessingPanel.NeedsBuild) { armed=null;dirty=true; }
@@ -134,7 +133,7 @@ namespace JueMingR.TerrariaHost.Items
                 case ItemUiCommand.Confirm: selection.Confirm(); break;
                 case ItemUiCommand.Cancel: CancelPicker(); break;
             }
-            if (wasSelecting && !Selecting) { input.Release(); revealRow = -1; }
+            if (wasSelecting && !Selecting) revealRow = -1;
         }
         private void OpenPicker(ItemListKind list, int target)
         {
@@ -143,7 +142,7 @@ namespace JueMingR.TerrariaHost.Items
             float oldY = layout.RowY[row] - shell.Scroll;
             if (selection.Open(list, target)) { revealRow = row; anchorY = oldY; armed = null; }
         }
-        private void CancelPicker() { selection.Cancel(); revealRow = -1; armed = null; dirty = true; input.Release(); }
+        private void CancelPicker() { selection.Cancel(); revealRow = -1; armed = null; dirty = true; }
         internal void Suspend()
         { ready = false; ownPointer = false; CancelPicker(); QuickPanel?.Suspend(); commandMessage = null; controls.Clear(); elements.Clear(); renderer.Dispose(); }
         internal void Prepare(bool active, Matrix transform, Vector2 screen)

@@ -89,8 +89,8 @@ namespace Terraria
             Check(host.Preferences.Value.DiscardTypes.Count == 0, "cancel does not submit");
             Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare(); Main.CurrentInputTextTakerOverride = null; p.BeforeInput(true);
             Main.keyState = new KeyboardState(Keys.Escape); p.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();
-            Check(!p.Selecting && Main.keyState.GetPressedKeys().Length == 0 && HasControl(p, "Add", argument: (int)ItemListKind.Discard), "Esc closes picker, restores add and consumes sample");
-            PlayerInput.WritingText = false; p.BeforeInput(true); Check(PlayerInput.WritingText, "Esc tail blocks next mapping");
+            Check(!p.Selecting && Main.keyState.IsKeyDown(Keys.Escape) && HasControl(p, "Add", argument: (int)ItemListKind.Discard), "child cancels picker without consuming the whole keyboard snapshot");
+            PlayerInput.WritingText = false; p.BeforeInput(true); Check(!PlayerInput.WritingText, "pointer chooser never starts a text tail");
             p.ProcessInput(true, new KeyboardState(), Vector2.Zero); PlayerInput.WritingText = false;
             host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 5000))); prepare();
             Check(((ICollection)typeof(ItemsPresentation).GetField("controls", Fields).GetValue(p)).Count < 360, "only visible cards are constructed");
@@ -424,11 +424,11 @@ namespace Terraria
                 Check(host.Preferences.Value.SellTypes.SequenceEqual(new[] { 8, 102 }), "remove changes only selected list member");
                 Click(presentation, Control(presentation, "Add", (int)ItemListKind.Discard)); prepare();
                 Main.CurrentInputTextTakerOverride = null; presentation.BeforeInput(true);
-                bool inventoryTriggered = !PlayerInput.WritingText; PlayerInput.WritingText = false;
+                Check(!PlayerInput.WritingText && !Main.blockInput, "icon selection does not acquire text/block ownership");
                 Main.keyState = new KeyboardState(Keys.Escape); presentation.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();
-                Check(!inventoryTriggered && !presentation.Selecting && Main.keyState.GetPressedKeys().Length == 0, "Esc cancels picker without native inventory action");
+                Check(!presentation.Selecting && Main.keyState.IsKeyDown(Keys.Escape), "child cancellation preserves the physical snapshot; the production shell owns Escape consumption");
                 Main.CurrentInputTextTakerOverride = null; presentation.BeforeInput(true);
-                Check(PlayerInput.WritingText, "held Esc tail blocks next original input mapping");
+                Check(!PlayerInput.WritingText, "closed icon selection has no whole-keyboard mapping tail");
                 PlayerInput.WritingText = false; Main.keyState = new KeyboardState(); presentation.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();
                 Main.CurrentInputTextTakerOverride = null; presentation.BeforeInput(true);
                 notesMayLeave = true;

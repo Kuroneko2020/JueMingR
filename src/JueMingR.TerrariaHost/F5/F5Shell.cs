@@ -530,7 +530,7 @@ namespace JueMingR.TerrariaHost.F5
                     (!requireFocus || inputState.IsFocused) && !PlayerInput.UsingGamepad && !PlayerInput.ShouldFastUseItem &&
                     (!Main.mapFullscreen || allowMap) && !Main.hideUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                     !Main.inFancyUI && capture != null && !capture.Active &&
-                    (!notes.OtherTextOwner || (BlueprintUi != null && BlueprintUi.OwnsTextToken || FishingUi != null && FishingUi.OwnsTextToken || ReforgeUi != null && ReforgeUi.OwnsTextToken || RecoveryUi != null && RecoveryUi.OwnsTextToken || items != null && items.OwnsTextToken || Browser != null && Browser.OwnsTextToken || StylePopup != null && StylePopup.TextInput.OwnsTextToken || MapPopup != null && MapPopup.TextInput.OwnsTextToken) && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest);
+                    (!notes.OtherTextOwner || (BlueprintUi != null && BlueprintUi.OwnsTextToken || FishingUi != null && FishingUi.OwnsTextToken || ReforgeUi != null && ReforgeUi.OwnsTextToken || Browser != null && Browser.OwnsTextToken || StylePopup != null && StylePopup.TextInput.OwnsTextToken || MapPopup != null && MapPopup.TextInput.OwnsTextToken) && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest);
             }
 
         // Input may be taken over by vanilla after this frame's button release.
@@ -546,7 +546,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void BeforeInput()
-        { try { hotkeys?.PollHiddenRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && BlueprintMaterialsUi?.Visible != true); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); RecoveryUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
+        { try { hotkeys?.PollHiddenRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && BlueprintMaterialsUi?.Visible != true); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
 
         internal void ProcessInput()
         {
@@ -628,11 +628,17 @@ namespace JueMingR.TerrariaHost.F5
                 FishingUi?.ProcessPopup(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,PlayerInput.ScrollWheelDeltaForUI);
                 bool higherPointer = BlueprintReplacementPopup?.BlockPointer == true || materialsWasVisible || BlueprintMaterialsUi?.BlockPointer == true || FishingUi!=null && FishingUi.BlockPointer || CaptureUi!=null && (CaptureUi.OwnsPointer || CaptureUi.ConsumeLeft || CaptureUi.ConsumeRight) || RecoveryUi != null && RecoveryUi.PotionPopup.OwnsPointer || HotkeyPopup != null && HotkeyPopup.BlockPointer || StylePopup != null && StylePopup.BlockPointer || DeathPopup != null && DeathPopup.BlockPointer || MapPopup != null && MapPopup.BlockPointer || FootprintPopup != null && FootprintPopup.BlockPointer;
                 bool popupPointer=higherPointer || inputState.HotkeyPointerOwned;
-                bool cancelCombat=inputState.Hotkeys.IsNew((int)Keys.Escape);
-                if(inputActive && (CombatInterval?.Captured==true || CombatRadius?.Captured==true) && cancelCombat)
-                {inputState.Hotkeys.SuppressKey((int)Keys.Escape);inputState.ConsumeHotkeyActions();}
-                CombatInterval?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelCombat,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
-                CombatRadius?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelCombat,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
+                bool cancelGesture=inputState.Hotkeys.IsNew((int)Keys.Escape);
+                if(inputActive && (CombatInterval?.Captured==true || CombatRadius?.Captured==true || items?.Selecting==true) && cancelGesture)
+                {
+                    // A pointer-only chooser owns only its actual Escape tail.
+                    // Consume this frame's mapped actions before cancellation
+                    // can expose Inventory/Enter/a new binding underneath it;
+                    // unlike a text lease, held movement never delays retirement.
+                    inputState.Hotkeys.SuppressKey((int)Keys.Escape);inputState.ConsumeHotkeyActions();
+                }
+                CombatInterval?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelGesture,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
+                CombatRadius?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelGesture,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
                 popupPointer|=(CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true);
                 State.Update(new F5Input
                 {

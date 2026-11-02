@@ -13,7 +13,8 @@ namespace JueMingR.TerrariaHost.QuickItems
 {
     // The existing Items page owns scrolling, pointer gestures and clipping.
     // This section owns only its draft and a one-time inventory picker snapshot;
-    // keyboard binding and input capture stay with the public hotkey owner.
+    // keyboard binding and cancellation tails stay with the public hotkey
+    // owner. Inventory/mode editing never acquires a native text lease.
     internal sealed class QuickItemPanel
     {
         private enum Command { None, FavoriteOn, FavoriteOff, QuickOn, QuickOff, Add, Edit, Enable, Delete, Cancel, Pick, Mode, Policy, RetryCleanup }
@@ -27,7 +28,6 @@ namespace JueMingR.TerrariaHost.QuickItems
         }
         private readonly HostQuickItems host;
         private readonly F5Interaction shell;
-        private readonly ItemPickerInput input=new ItemPickerInput();
         private readonly List<Part> logical=new List<Part>(),visible=new List<Part>();
         private readonly List<int> candidates=new List<int>(),removed=new List<int>();
         private readonly Dictionary<int,Texture2D> icons=new Dictionary<int,Texture2D>();
@@ -43,7 +43,6 @@ namespace JueMingR.TerrariaHost.QuickItems
         internal float Height {get;private set;}
         internal bool RevealRequested {get;set;}
         internal float SelectorTop {get;private set;}
-        internal bool OwnsTextToken {get{return input.OwnsTextToken;}}
 #if DEBUG
         internal long PickerReads {get;private set;}
         internal long IconLoads {get;private set;}
@@ -53,11 +52,11 @@ namespace JueMingR.TerrariaHost.QuickItems
             builtFavoriteCapability!=host.FavoriteAvailable || builtQuickCapability!=host.Available || builtCleanup!=host.CanRetryCleanup;}}
         internal QuickItemPanel(HostQuickItems host,F5Interaction shell) {this.host=host;this.shell=shell;}
         internal void BeforeInput(bool active)
-        {if(Editing && editSession!=host.Runtime.Generation)Suspend();input.BeforeInput(active && shell.Visible && shell.Page==0 && Editing);}
+        {if(Editing && editSession!=host.Runtime.Generation)Suspend();}
         internal void Process(bool active,KeyboardState sample,bool focused)
-        {input.Sample(sample,focused);if(!active || !focused)Suspend();}
+        {if(!active || !focused)Suspend();}
         internal void Suspend()
-        {input.Release();Editing=false;logical.Clear();visible.Clear();icons.Clear();visibleTypes.Clear();candidates.Clear();dirty=true;}
+        {Editing=false;logical.Clear();visible.Clear();icons.Clear();visibleTypes.Clear();candidates.Clear();dirty=true;}
         internal void Execute(ItemUiControl control)
         {
             if(control.Generation!=generation || control.Argument<0 || control.Argument>=logical.Count)return;
