@@ -33,14 +33,16 @@ namespace JueMingR.TerrariaHost.F5
             return new F5Element(F5ElementKind.Panel, new F5Rect(r.X, r.Y, r.Width, bottom - r.Y),
                 null, default(F5Size), 0, F5Command.None);
         }
-        // Populated groups borrow the existing header/body gap. This surface
-        // adds no height, command, hint target or resource; wrap-aware header
-        // bounds keep it below all header controls rather than a fixed row Y.
+        // The divider occupies the original header's final logical pixel.
+        // For a single-band row its edge center and the top edge center bracket
+        // the original name/button center; placing it in the body gap made the
+        // band taller only below controls. Wrapped rows use the full header end.
+        // Body origin, group height, commands, hints and resources stay unchanged.
         internal static F5Element GroupDivider(F5Element header)
         {
             var r = header.Rect;
             return new F5Element(F5ElementKind.Divider,
-                new F5Rect(r.X + 12, r.Bottom + (GroupGap - 1) / 2, r.Width - 24, 1),
+                new F5Rect(r.X + 12, r.Bottom - 1, r.Width - 24, 1),
                 null, default(F5Size), 0, F5Command.None);
         }
         internal void Row(ref float y, float x, float width, string label, string[] actions, Func<string, F5Command> commandFor = null, F5RowDescription description = null, float fieldWidth = 120)

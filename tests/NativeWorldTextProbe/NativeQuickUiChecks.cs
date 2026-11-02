@@ -244,10 +244,15 @@ namespace NativeWorldTextProbe
             if(hasBody)
             {
                 var line=Get(Get(dividers[0],"Element"),"Rect");
+                var toggle=children.First(p=>Get(p,"Command").ToString()=="QuickOn");var toggleRect=Get(Get(toggle,"Element"),"Rect");
+                var title=children.First(p=>GetOptional(Get(p,"Element"),"Description")!=null);var titleRect=Get(Get(title,"Element"),"Rect");
+                if((float)Get(toggleRect,"Y")<(float)Get(titleRect,"Bottom"))
+                    Require(Math.Abs((float)Get(toggleRect,"Y")+(float)Get(toggleRect,"Height")/2-((float)Get(rect,"Y")+(float)Get(line,"Bottom"))/2)<.01f,
+                        "actual quick header controls remain centered inside the top-edge/divider band");
                 float bodyTop=(bool)Get(panel,"Editing")?(float)Get(panel,"SelectorTop"):bodies.Min(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Y"));
                 Require((float)Get(line,"Height")==1 && (float)Get(line,"X")== (float)Get(rect,"X")+12 && (float)Get(line,"Right")==right-12 &&
-                    Math.Abs(bodyTop-(float)Get(line,"Bottom")-2.5f)<.01f && Get(dividers[0],"Command").ToString()=="None" && GetOptional(Get(dividers[0],"Element"),"Description")==null,
-                    "quick divider is inset in the existing wrap-aware header/body gap and has no action or hint");
+                    Math.Abs(bodyTop-(float)Get(line,"Bottom")-6f)<.01f && Get(dividers[0],"Command").ToString()=="None" && GetOptional(Get(dividers[0],"Element"),"Description")==null,
+                    "quick divider closes the measured header before the unchanged body gap and has no action or hint");
             }
             Require(children.All(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Bottom")<=bottom),"all quick header/editor/retry/cards remain inside their sole group");
             var rows=(float[])Get(Get(page,"layout"),"RowY");

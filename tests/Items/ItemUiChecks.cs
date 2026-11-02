@@ -114,6 +114,21 @@ namespace Terraria
             foreach (float width in new[] { 300f, 522f }) foreach (float glyphHeight in new[] { 24f, 38f })
             {
                 Func<string, float, F5Size> measure = (text, scale) => new F5Size(text.Length * 18 * scale, glyphHeight * scale, -2, 3);
+                var headerElements = new System.Collections.Generic.List<F5Element>(); float afterHeader = 0;
+                new F5RowLayout(headerElements, measure).Row(ref afterHeader, 0, width, "自动重铸", new[] { null, "添加", "开启", "关闭", "键" });
+                var rawHeader = headerElements[0].Rect; var headerLine = F5RowLayout.GroupDivider(headerElements[0]).Rect;
+                var headerControls = headerElements.Where(e => e.Kind == F5ElementKind.Button || e.Kind == F5ElementKind.Field || e.Kind == F5ElementKind.Hotkey).ToArray();
+                var headerText = headerElements.Where(e => e.Kind == F5ElementKind.Text).ToArray();
+                Check(headerLine.Bottom == rawHeader.Bottom && afterHeader == rawHeader.Bottom + 6 && headerControls.All(e => e.Rect.Bottom <= headerLine.Y),
+                    "divider occupies the measured header final pixel, preserving body origin and clearing wrapped controls");
+                bool wrappedActions = headerControls.Min(e => e.Rect.Y) >= headerText.Max(e => e.Rect.Bottom);
+                if (!wrappedActions) foreach (float uiScale in new[] { 1f, 1.5f })
+                {
+                    float edgeCenter = ((rawHeader.Y + .5f) + (headerLine.Y + .5f)) / 2 * uiScale;
+                    Check(headerControls.All(e => Math.Abs((e.Rect.Y + e.Rect.Height / 2) * uiScale - edgeCenter) < .01f) &&
+                        headerControls.Where(e => e.Kind == F5ElementKind.Button).All(e => Math.Abs((F5Layout.ButtonSurface(e).Y + F5Layout.ButtonSurface(e).Height / 2) * uiScale - edgeCenter) < .01f),
+                        "100/150 percent row and button surfaces stay centered between symmetric one-pixel header edges");
+                }
                 var selection = new ItemSelection(host); var layout = new ItemsLayout();
                 var elements = new System.Collections.Generic.List<F5Element>(); var controls = new System.Collections.Generic.List<ItemUiControl>();
                 var view = new F5Rect(10, 20, width, 5000);
@@ -138,8 +153,8 @@ namespace Terraria
                         Check(panel.Bottom - cards.Max(c => c.Rect.Bottom) == 6, "group bottom padding excludes grid stride trailing gap");
                         var divider = elements.Single(e => e.Kind == F5ElementKind.Divider && e.Rect.Y > panel.Y && e.Rect.Bottom < panel.Bottom);
                         Check(divider.Rect.Height == 1 && divider.Rect.X == panel.X + 12 && divider.Rect.Right == panel.Right - 12 &&
-                            Math.Abs(cards.Min(c => c.Rect.Y) - divider.Rect.Bottom - 2.5f) < .01f && divider.Command == F5Command.None && divider.Description == null,
-                            "one inset single-pixel divider borrows the header/body gap without a command or name target");
+                            Math.Abs(cards.Min(c => c.Rect.Y) - divider.Rect.Bottom - 6f) < .01f && divider.Command == F5Command.None && divider.Description == null,
+                            "one inset single-pixel divider closes the header without a command or name target");
                         Check(!controls.Any(c => c.Rect.Contains(divider.Rect.X + 1, divider.Rect.Y + .5f)), "divider does not add a hit target");
                         float blankX = panel.Right - 1, blankY = panel.Bottom - 1;
                         Check(!controls.Any(c => c.Rect.Contains(blankX, blankY)), "group padding is not an executable control");

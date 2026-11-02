@@ -126,9 +126,14 @@ namespace NativeWorldTextProbe
             if(cards.Length>0)
             {
                 var line=Get(Get(dividers[0],"Element"),"Rect");
+                var header=logical.First(p=>(int)Get(p,"Command")==1);var headerRect=Get(Get(header,"Element"),"Rect");
+                var title=logical.First(p=>GetOptional(Get(p,"Element"),"Description")!=null);var titleRect=Get(Get(title,"Element"),"Rect");
+                if((float)Get(headerRect,"Y")<(float)Get(titleRect,"Bottom"))
+                    Require(Math.Abs((float)Get(headerRect,"Y")+(float)Get(headerRect,"Height")/2-((float)Get(rect,"Y")+(float)Get(line,"Bottom"))/2)<.01f,
+                        "actual reforge input/toggle band is centered between the top frame and divider bottom edge");
                 Require((float)Get(line,"Height")==1 && (float)Get(line,"X")== (float)Get(rect,"X")+12 && (float)Get(line,"Right")== (float)Get(rect,"Right")-12 &&
-                    Math.Abs(cards.Min(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Y"))-(float)Get(line,"Bottom")-2.5f)<.01f && (int)Get(dividers[0],"Command")==0,
-                    "reforge divider borrows header/grid gap, leaves both ends inset and cannot issue a command");
+                    Math.Abs(cards.Min(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Y"))-(float)Get(line,"Bottom")-6f)<.01f && (int)Get(dividers[0],"Command")==0,
+                    "reforge divider closes the header, leaves both ends inset and cannot issue a command");
             }
             float last=logical.Skip(1).Max(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Bottom"));
             Require(cards.Length==0?bottom-last>=0 && bottom-last<=4:bottom-last==6,"reforge empty group keeps only header padding; populated group has one bottom inset");

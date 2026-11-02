@@ -132,8 +132,11 @@ namespace NativeWorldTextProbe
                         Require(Math.Abs(F(panel,"Bottom")+dy-cards.Max(c=>F(R(c),"Bottom"))-6)<.01f,"list group has exactly its bottom inset, without a trailing grid stride");
                         var divider=dividers.Single(e=>F(R(e),"Y")>F(panel,"Y") && F(R(e),"Bottom")<F(panel,"Bottom"));var line=R(divider);
                         Require(F(line,"Height")==1 && F(line,"X")==F(panel,"X")+12 && F(line,"Right")==F(panel,"Right")-12 &&
-                            Math.Abs(cards.Min(c=>F(R(c),"Y"))-dy-F(line,"Bottom")-2.5f)<.01f && Get(divider,"Command").ToString()=="None" && GetOptional(divider,"Description")==null,
-                            "one softly rendered inset divider uses the existing measured header/body gap");
+                            Math.Abs(cards.Min(c=>F(R(c),"Y"))-dy-F(line,"Bottom")-6f)<.01f && Get(divider,"Command").ToString()=="None" && GetOptional(divider,"Description")==null,
+                            "one softly rendered inset divider closes the measured header before the unchanged body gap");
+                        var headerControls=Controls.Where(c=>(Command(c)=="Enable" || Command(c)=="Disable") && (int)Get(c,"Argument")==i+1).ToArray();
+                        Require(headerControls.All(c=>Math.Abs(F(R(c),"Y")+F(R(c),"Height")/2-dy-(F(panel,"Y")+F(line,"Bottom"))/2)<.01f),
+                            "actual Sell/Discard controls remain centered between symmetric header edge centers");
                         float lx=F(line,"X")+F(View,"X")+1,ly=F(line,"Y")+dy+.5f;long lineRevision=Revision;
                         Require(!Controls.Any(c=>(bool)Call(R(c),"Contains",lx,ly)),"divider never becomes an interactive control");
                         Pointer(lx,ly,false);Pointer(lx,ly,true);Pointer(lx,ly,false);Prepare();Sample(lx,ly);Final(null);
