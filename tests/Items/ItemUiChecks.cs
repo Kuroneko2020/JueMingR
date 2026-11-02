@@ -120,6 +120,7 @@ namespace Terraria
                 var empty = ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, new int[0]).WithTypes(ItemListKind.Discard, new int[0]);
                 layout.Build(width, 38, empty, selection, true, false, measure); layout.Project(view, 0, elements, controls);
                 var compact = elements.Where(e => e.Kind == F5ElementKind.Panel).Select(e => e.Rect).ToArray();
+                Check(!elements.Any(e => e.Kind == F5ElementKind.Divider), "empty Items groups have no divider");
                 foreach (int count in new[] { 1, 21 })
                 {
                     var value = empty.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, count)).WithTypes(ItemListKind.Discard, Enumerable.Range(2000, count));
@@ -135,6 +136,11 @@ namespace Terraria
                         Check(cards.Length == count && cards.All(c => c.Rect.Y > header.Max(h => h.Rect.Bottom) && c.Rect.X >= panel.X && c.Rect.Right <= panel.Right && c.Rect.Bottom < panel.Bottom),
                             "single/multirow list remains wholly inside its owner below measured header controls");
                         Check(panel.Bottom - cards.Max(c => c.Rect.Bottom) == 6, "group bottom padding excludes grid stride trailing gap");
+                        var divider = elements.Single(e => e.Kind == F5ElementKind.Divider && e.Rect.Y > panel.Y && e.Rect.Bottom < panel.Bottom);
+                        Check(divider.Rect.Height == 1 && divider.Rect.X == panel.X + 12 && divider.Rect.Right == panel.Right - 12 &&
+                            Math.Abs(cards.Min(c => c.Rect.Y) - divider.Rect.Bottom - 2.5f) < .01f && divider.Command == F5Command.None && divider.Description == null,
+                            "one inset single-pixel divider borrows the header/body gap without a command or name target");
+                        Check(!controls.Any(c => c.Rect.Contains(divider.Rect.X + 1, divider.Rect.Y + .5f)), "divider does not add a hit target");
                         float blankX = panel.Right - 1, blankY = panel.Bottom - 1;
                         Check(!controls.Any(c => c.Rect.Contains(blankX, blankY)), "group padding is not an executable control");
                         Check(!elements.Any(e => e.Description != null && e.HintRect.Contains(blankX, blankY)), "name hint stays on actual header text");
@@ -150,6 +156,7 @@ namespace Terraria
                 }
                 layout.Build(width, 38, empty, selection, true, false, measure); layout.Project(view, 0, elements, controls);
                 Check(elements.Where(e => e.Kind == F5ElementKind.Panel).Select(e => e.Rect.Height).SequenceEqual(compact.Select(r => r.Height)), "last-item removal restores compact surfaces");
+                Check(!elements.Any(e => e.Kind == F5ElementKind.Divider), "clearing a list retires its divider");
             }
         }
         private static void RunCardHints(HostItems host)

@@ -151,6 +151,7 @@ namespace JueMingR.TerrariaHost.Processing
                     AddCard(rect,name,host.Controls(2));index++;
                 }
                 float bodyBottom=index>0?y+(float)Math.Ceiling(index/(double)columns)*(ItemsLayout.CardHeight+ItemsLayout.Gap)-ItemsLayout.Gap:logical[0].Element.Rect.Bottom;
+                if(index>0)logical.Add(new Part{Element=F5RowLayout.GroupDivider(logical[0].Element)});
                 logical[0].Element=F5RowLayout.CompleteGroup(logical[0].Element,bodyBottom);
                 Height=logical[0].Element.Rect.Bottom+F5RowLayout.GroupGap;start=contentStart;revision=host.Settings[2].Revision;available=host.Controls(2);session=host.Runtime.Generation;generation=shell.Layout.Generation;skin=renderer.Generation;dirty=false;
             }
@@ -217,6 +218,7 @@ namespace JueMingR.TerrariaHost.Processing
                     var e=p.Element;
                     if(p.Command==6)keyboard?.Invoke(e.Rect);
                     else if(e.Kind==F5ElementKind.Panel)renderer.Panel(e.Rect);
+                    else if(e.Kind==F5ElementKind.Divider)renderer.Divider(e.Rect);
                     else if(p.Command==3)continue;
                     else if(p.Command==7)
                     {

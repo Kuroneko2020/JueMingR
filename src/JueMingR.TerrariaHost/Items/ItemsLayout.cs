@@ -95,6 +95,7 @@ namespace JueMingR.TerrariaHost.Items
                     if (count > 0) y += (float)Math.Ceiling(count / (double)Columns(width, CardWidth)) * (CardHeight + Gap) - Gap;
                     else y = rows[start].Rect.Bottom;
                 }
+                if (y > rows[start].Rect.Bottom) rows.Add(F5RowLayout.GroupDivider(rows[start]));
                 rows[start] = F5RowLayout.CompleteGroup(rows[start], y);
                 y = rows[start].Rect.Bottom + F5RowLayout.GroupGap;
             }

@@ -118,6 +118,8 @@ namespace NativeWorldTextProbe
                 var empty=new ItemAutomationSettings(false,false,false,new int[0],new int[0]);
                 Change(empty.WithTypes(ItemListKind.Sell,Enumerable.Range(1000,count)).WithTypes(ItemListKind.Discard,Enumerable.Range(2000,count)));Scroll(0);
                 var groups=Panels;Require(groups.Length==3 && groups.All(p=>Get(p,"Command").ToString()=="None"),"one command-free full logical group per Items feature");
+                var dividers=((IEnumerable)Get(layout,"rows")).Cast<object>().Where(e=>Get(e,"Kind").ToString()=="Divider").ToArray();
+                Require(dividers.Length==(count>0?2:0),"only populated Sell/Discard groups have a header divider");
                 for(int i=0;i<2;i++)
                 {
                     var panel=R(groups[i+1]);
@@ -128,6 +130,14 @@ namespace NativeWorldTextProbe
                         float dy=F(View,"Y")-(float)Get(state,"Scroll");
                         Require(cards.All(c=>Contains(Call(panel,"Offset",F(View,"X"),dy),R(c))),"single/multirow cards remain wholly inside their owner");
                         Require(Math.Abs(F(panel,"Bottom")+dy-cards.Max(c=>F(R(c),"Bottom"))-6)<.01f,"list group has exactly its bottom inset, without a trailing grid stride");
+                        var divider=dividers.Single(e=>F(R(e),"Y")>F(panel,"Y") && F(R(e),"Bottom")<F(panel,"Bottom"));var line=R(divider);
+                        Require(F(line,"Height")==1 && F(line,"X")==F(panel,"X")+12 && F(line,"Right")==F(panel,"Right")-12 &&
+                            Math.Abs(cards.Min(c=>F(R(c),"Y"))-dy-F(line,"Bottom")-2.5f)<.01f && Get(divider,"Command").ToString()=="None" && GetOptional(divider,"Description")==null,
+                            "one softly rendered inset divider uses the existing measured header/body gap");
+                        float lx=F(line,"X")+F(View,"X")+1,ly=F(line,"Y")+dy+.5f;long lineRevision=Revision;
+                        Require(!Controls.Any(c=>(bool)Call(R(c),"Contains",lx,ly)),"divider never becomes an interactive control");
+                        Pointer(lx,ly,false);Pointer(lx,ly,true);Pointer(lx,ly,false);Prepare();Sample(lx,ly);Final(null);
+                        Require(Revision==lineRevision && !(bool)Get(Page,"Selecting"),"clicking the real projected divider cannot toggle or open content");
                     }
                     var projected=Call(panel,"Offset",F(View,"X"),F(View,"Y")-(float)Get(state,"Scroll"));
                     float x=F(projected,"Right")-1,y=F(projected,"Bottom")-1;long revision=Revision;
@@ -152,10 +162,13 @@ namespace NativeWorldTextProbe
                     var before=Panels;float h=F(R(before[(int)list+1]),"Height");
                     Click(Control("Add",list));var expanded=Panels;
                     Require(F(R(expanded[(int)list+1]),"Height")>h,"opening the selector expands its owning complete group");
+                    var editorDividers=((IEnumerable)Get(layout,"rows")).Cast<object>().Where(e=>Get(e,"Kind").ToString()=="Divider").ToArray();
+                    Require(editorDividers.Length==1 && F(R(editorDividers[0]),"Bottom")<F(Get(layout,"Header"),"Y"),"an expanded selector owns one divider before its title without another frame");
                     if(list==ItemListKind.Sell)Require(F(R(expanded[1]),"Bottom")+6==F(R(expanded[2]),"Y"),"expanded sale selector pushes the next group outside");
                     var owner=Call(R(expanded[(int)list+1]),"Offset",F(View,"X"),F(View,"Y")-(float)Get(state,"Scroll"));
                     Require(Controls.Where(c=>Command(c)=="Select" && (int)Get(c,"Argument")== (int)list).All(c=>Contains(owner,R(c))),"selector candidates remain in their owner group");
                     Click(Control("Cancel",list));Require(F(R(Panels[(int)list+1]),"Height")==h,"cancelling selector restores original compact height");
+                    Require(!((IEnumerable)Get(layout,"rows")).Cast<object>().Any(e=>Get(e,"Kind").ToString()=="Divider"),"cancelled empty selector leaves no divider behind");
                 }
             }
             internal void CardsAndSelection()
@@ -184,6 +197,12 @@ namespace NativeWorldTextProbe
             internal void ScrollAndVisibility()
             {
                 Change(new ItemAutomationSettings(false,false,false,Enumerable.Range(1000,200),new int[0]));Scroll(0);
+                var logicalDivider=((IEnumerable)Get(layout,"rows")).Cast<object>().Single(e=>Get(e,"Kind").ToString()=="Divider");
+                Scroll(F(R(logicalDivider),"Y")+.5f);
+                var projectedDivider=((IEnumerable)Get(Page,"elements")).Cast<object>().Single(e=>Get(e,"Kind").ToString()=="Divider");
+                Require(F(R(projectedDivider),"Y")==F(View,"Y")-.5f && F(R(projectedDivider),"Height")==1 && F(R(projectedDivider),"Width")==F(R(logicalDivider),"Width"),
+                    "partly clipped divider keeps its full logical rectangle for the original scissor");
+                Scroll(0);
                 var first=Controls.First(c=>Command(c)=="Replace");float y=F(R(first),"Y")-F(View,"Y")+6;Scroll(y);
                 var card=Controls.First(c=>Command(c)=="Replace" && F(R(c),"Y")<F(View,"Y"));
                 var r=R(card);float x=F(r,"X")+2,py=F(View,"Y")+2;int old=(int)Get(card,"Type");

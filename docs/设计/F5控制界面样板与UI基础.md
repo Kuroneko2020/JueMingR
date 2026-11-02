@@ -81,6 +81,8 @@
 
 [#153](https://github.com/Kuroneko2020/JueMingR/issues/153) 的快捷物品、自动出售、自动丢弃和自动重铸各以单一完整背景包含主行与所属名单，空内容保持紧凑；展开编辑保留归属。`F5RowLayout.CompleteGroup(header, bodyBottom)` 用实际子控件底边封口，只扩展原 Panel，不移动主行文字、HintRect 或按钮；底内边距与组间距分别为 6 logical。背景不承载命令。显示、命中、滚动及内容高度消费同一最终布局；投影只判断相交，保留完整组矩形交实际 viewport 裁切，不通过裁短原矩形改变几何。只覆盖 `ItemsLayout`、`QuickItemPanel` 和 `ReforgePanel` 三个实际消费者，其它复杂副窗保留原结构。实现、实际图形与体验分别回该任务核实。
 
+有下方内容时，主行与内容之间加一条柔和细分隔线，左右各内收 12 logical；空组不画。`F5RowLayout.GroupDivider` 取原主行底边后既有 6 高空隙的中央，生成高 1 logical 的完整矩形，不增加组高、改变后续起点或占用 HintRect。三个消费者复用既有 `ItemsRenderer.Divider` 样式绘制，投影后仍由原内容 scissor 裁切；线没有命令、绑键目标或提示，不进入可交互 controls。快捷物品打开编辑或出现必要清键内容时属于有内容，取消到真正空组后撤线。红色仅用于所有者附图标出位置，产品沿原柔和边线，不新增纹理或资源。
+
 ## 玩家可见文案
 
 本节长期原则已获所有者正式接受，随 [PR #78](https://github.com/Kuroneko2020/JueMingR/pull/78) 合并进入 `main` 后生效；[Issue #77](https://github.com/Kuroneko2020/JueMingR/issues/77#issuecomment-5676082124)记录接受依据。既有开发与独立审查入口继续通过短路由落实，不改变此前有效规则。

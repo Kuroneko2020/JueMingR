@@ -132,6 +132,7 @@ namespace JueMingR.TerrariaHost.QuickItems
             // any grid/button trailing gap or the eventual page footer.
             float bodyBottom=logical[0].Element.Rect.Bottom;
             for(int i=firstBody;i<logical.Count;i++)bodyBottom=Math.Max(bodyBottom,logical[i].Element.Rect.Bottom);
+            if(bodyBottom>logical[0].Element.Rect.Bottom)logical.Add(new Part{Element=F5RowLayout.GroupDivider(logical[0].Element)});
             logical[0].Element=F5RowLayout.CompleteGroup(logical[0].Element,bodyBottom);
             y=logical[0].Element.Rect.Bottom+F5RowLayout.GroupGap;
             Height=y;builtRevision=host.Settings.Revision;builtBindings=host.BindingRevision;
@@ -233,6 +234,7 @@ namespace JueMingR.TerrariaHost.QuickItems
                     else renderer.Button(e,part.Selected,part.Enabled,false,hover);
                 }
                 else if(e.Kind==F5ElementKind.Panel)renderer.Panel(e.Rect);
+                else if(e.Kind==F5ElementKind.Divider)renderer.Divider(e.Rect);
                 else renderer.Label(e);
             }
         }

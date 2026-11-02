@@ -121,6 +121,15 @@ namespace NativeWorldTextProbe
             var rect=Get(Get(panels[0],"Element"),"Rect");float bottom=(float)Get(rect,"Bottom");
             Require(logical.Skip(1).All(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Bottom")<=bottom),"header and complete prefix grid stay in their own single group");
             var cards=logical.Where(p=>(int)Get(p,"Command")==7).ToArray();
+            var dividers=logical.Where(p=>Get(Get(p,"Element"),"Kind").ToString()=="Divider").ToArray();
+            Require(dividers.Length==(cards.Length>0?1:0),"reforge has one divider only while prefixes populate the group");
+            if(cards.Length>0)
+            {
+                var line=Get(Get(dividers[0],"Element"),"Rect");
+                Require((float)Get(line,"Height")==1 && (float)Get(line,"X")== (float)Get(rect,"X")+12 && (float)Get(line,"Right")== (float)Get(rect,"Right")-12 &&
+                    Math.Abs(cards.Min(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Y"))-(float)Get(line,"Bottom")-2.5f)<.01f && (int)Get(dividers[0],"Command")==0,
+                    "reforge divider borrows header/grid gap, leaves both ends inset and cannot issue a command");
+            }
             float last=logical.Skip(1).Max(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Bottom"));
             Require(cards.Length==0?bottom-last>=0 && bottom-last<=4:bottom-last==6,"reforge empty group keeps only header padding; populated group has one bottom inset");
             Require((float)Get(ui,"Height")==bottom+6 && (float)Get(Get(shell,"MiningUi"),"start")==bottom+6,
@@ -131,6 +140,19 @@ namespace NativeWorldTextProbe
             {
                 var visible=Parts(ui).Single(p=>Get(Get(p,"Element"),"Kind").ToString()=="Panel");var projected=Get(Get(visible,"Element"),"Rect");
                 Require((float)Get(projected,"Y")==projectedY && (float)Get(projected,"Height")== (float)Get(rect,"Height"),"scroll/scale projects full reforge surface for the original viewport clip");
+            }
+            foreach(var divider in dividers)
+            {
+                var line=Get(Get(divider,"Element"),"Rect");float lineY=(float)Get(line,"Y")+(float)Get(view,"Y")-(float)Get(state,"Scroll");
+                var shown=Parts(ui).Where(p=>Get(Get(p,"Element"),"Kind").ToString()=="Divider").ToArray();
+                bool inView=lineY+1>(float)Get(view,"Y") && lineY<(float)Get(view,"Bottom");
+                Require(shown.Length==(inView?1:0),"reforge divider is projected only when it intersects the viewport");
+                if(inView)
+                {
+                    var projected=Get(Get(shown[0],"Element"),"Rect");float x=(float)Get(projected,"X")+1,y=Math.Max(lineY,(float)Get(view,"Y"))+.25f;
+                    Require((float)Get(projected,"Y")==lineY && (float)Get(projected,"Height")==1 && (float)Get(projected,"Width")== (float)Get(line,"Width") &&
+                        !Parts(ui).Any(p=>(int)Get(p,"Command")!=0 && (bool)Call(Get(Get(p,"Element"),"Rect"),"Contains",x,y)),"reforge divider keeps unclipped bounds and no interactive hit region");
+                }
             }
         }
         internal static void Prepare(object context,float width,float height,float scale)

@@ -237,6 +237,18 @@ namespace NativeWorldTextProbe
             float bottom=(float)Get(rect,"Bottom"),right=(float)Get(rect,"Right");
             Require(Get(group,"Command").ToString()=="None" && Get(backgrounds[0],"Command").ToString()=="None","quick group remains decoration");
             var children=parts.TakeWhile(p=>!ReferenceEquals(p,backgrounds[1])).Skip(1).ToArray();
+            var dividers=children.Where(p=>Get(Get(p,"Element"),"Kind").ToString()=="Divider").ToArray();
+            var bodies=children.Where(p=>Get(p,"Command").ToString()=="Edit" || Get(p,"Command").ToString()=="RetryCleanup").ToArray();
+            bool hasBody=(bool)Get(panel,"Editing") || bodies.Length>0;
+            Require(dividers.Length==(hasBody?1:0),"quick group gets one divider for entries/editor/cleanup, none when empty");
+            if(hasBody)
+            {
+                var line=Get(Get(dividers[0],"Element"),"Rect");
+                float bodyTop=(bool)Get(panel,"Editing")?(float)Get(panel,"SelectorTop"):bodies.Min(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Y"));
+                Require((float)Get(line,"Height")==1 && (float)Get(line,"X")== (float)Get(rect,"X")+12 && (float)Get(line,"Right")==right-12 &&
+                    Math.Abs(bodyTop-(float)Get(line,"Bottom")-2.5f)<.01f && Get(dividers[0],"Command").ToString()=="None" && GetOptional(Get(dividers[0],"Element"),"Description")==null,
+                    "quick divider is inset in the existing wrap-aware header/body gap and has no action or hint");
+            }
             Require(children.All(p=>(float)Get(Get(Get(p,"Element"),"Rect"),"Bottom")<=bottom),"all quick header/editor/retry/cards remain inside their sole group");
             var rows=(float[])Get(Get(page,"layout"),"RowY");
             Require(bottom+6==rows[0] && (float)Get(favorite,"Y")>=bottom+6 && (float)Get(panel,"Height")==(float)Get(favorite,"Bottom")+6,
@@ -251,6 +263,20 @@ namespace NativeWorldTextProbe
                 object visible=((IEnumerable)Get(panel,"visible")).Cast<object>().First(p=>Get(Get(p,"Element"),"Kind").ToString()=="Panel");
                 Require((float)Get(Get(Get(visible,"Element"),"Rect"),"Height")== (float)Get(rect,"Height") &&
                     (float)Get(Get(Get(visible,"Element"),"Rect"),"Y")==projectedY,"visible quick background retains its full logical bounds across viewport clipping");
+            }
+            foreach(var divider in dividers)
+            {
+                var line=Get(Get(divider,"Element"),"Rect");float lineY=(float)Get(line,"Y")+(float)Get(view,"Y")-(float)Get(Get(page,"shell"),"Scroll");
+                var projected=((IEnumerable)Get(panel,"visible")).Cast<object>().Where(p=>Get(Get(p,"Element"),"Kind").ToString()=="Divider").ToArray();
+                bool inView=lineY+1>(float)Get(view,"Y") && lineY<(float)Get(view,"Bottom");
+                Require(projected.Length==(inView?1:0),"quick divider follows the same viewport intersection as content");
+                if(inView)
+                {
+                    var visibleLine=Get(Get(projected[0],"Element"),"Rect");
+                    Require((float)Get(visibleLine,"Y")==lineY && (float)Get(visibleLine,"Height")==1 && (float)Get(visibleLine,"Width")== (float)Get(line,"Width"),"quick divider preserves full bounds for scissor clipping");
+                    float x=(float)Get(visibleLine,"X")+1,y=Math.Max(lineY,(float)Get(view,"Y"))+.25f;
+                    Require(!Controls(page).Any(c=>(bool)Call(Get(c,"Rect"),"Contains",x,y)),"projected quick divider is never a command target");
+                }
             }
         }
         private static object[] Controls(object page){return ((IEnumerable)Get(page,"controls")).Cast<object>().ToArray();}

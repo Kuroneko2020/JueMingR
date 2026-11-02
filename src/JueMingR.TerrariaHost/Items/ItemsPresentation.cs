@@ -258,7 +258,7 @@ namespace JueMingR.TerrariaHost.Items
             renderer.Pass(matrix, view, () =>
             {
                 foreach (var e in elements)
-                { if (e.Kind == F5ElementKind.Panel) renderer.Panel(e.Rect); else if (e.Kind == F5ElementKind.Text) renderer.Label(e); }
+                { if (e.Kind == F5ElementKind.Panel) renderer.Panel(e.Rect); else if (e.Kind == F5ElementKind.Divider) renderer.Divider(e.Rect); else if (e.Kind == F5ElementKind.Text) renderer.Label(e); }
                 if (selection.Active)
                 {
                     string list = selection.List == ItemListKind.Sell ? "出售" : "丢弃";
