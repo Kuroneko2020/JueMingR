@@ -21,18 +21,24 @@ namespace JueMingR.Setup
 
         internal SetupForm(string initialDirectory = null)
         {
-            Text = "决明 R 安装程序"; Name = "JueMingRSetup"; Font = new Font("Microsoft YaHei UI", 9.5F);
+            Text = "决明安装程序"; Name = "JueMingRSetup"; Font = new Font("Microsoft YaHei UI", 9.5F);
             ForeColor = Ink; BackColor = Color.FromArgb(243, 246, 251); AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(720, 430); MinimumSize = new Size(680, 460); StartPosition = FormStartPosition.CenterScreen;
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28, 22, 28, 20), ColumnCount = 1, RowCount = 5 };
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, Margin = new Padding(0, 0, 0, 18) };
-            heading.Controls.Add(new Label { Text = "决明 R", AutoSize = true, Font = new Font(Font.FontFamily, 25F, FontStyle.Bold), Margin = new Padding(0) });
+            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Margin = new Padding(0, 0, 0, 18) };
+            var brand = new PictureBox { Size = new Size(62, 62), SizeMode = PictureBoxSizeMode.Zoom, Margin = new Padding(0, 2, 16, 0) };
+            using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Logo"))
+            using (Image image = Image.FromStream(stream)) brand.Image = new Bitmap(image);
+            using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Icon")) Icon = new Icon(stream);
+            FormClosed += (sender, args) => { brand.Image.Dispose(); Icon.Dispose(); };
+            heading.Controls.Add(brand, 0, 0); heading.SetRowSpan(brand, 2);
+            heading.Controls.Add(new Label { Text = "决明", AutoSize = true, Font = new Font(Font.FontFamily, 25F, FontStyle.Bold), Margin = new Padding(0) }, 1, 0);
             string package;
             try { package = "安装包 · " + SetupPayload.Read().PayloadId.Substring(0, 12); }
             catch (Exception error) when (error is IOException || error is ArgumentException || error is System.Reflection.TargetInvocationException) { package = "安装包未就绪"; }
-            heading.Controls.Add(Caption(package, "PackageIdentity")); layout.Controls.Add(heading);
+            heading.Controls.Add(Caption(package, "PackageIdentity"), 1, 1); layout.Controls.Add(heading);
             var card = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(18), ColumnCount = 1, Margin = new Padding(0, 0, 0, 16) };
             card.Controls.Add(new Label { Text = "游戏目录", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(0, 0, 0, 10) });
             var pathRow = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, Margin = new Padding(0) };

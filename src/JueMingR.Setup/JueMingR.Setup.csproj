@@ -8,8 +8,11 @@
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ApplicationIcon>Assets/juemingr-installer.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Assets/juemingr-installer-logo.png" LogicalName="JueMingR.Setup.Brand.Logo" />
+    <EmbeddedResource Include="Assets/juemingr-installer.ico" LogicalName="JueMingR.Setup.Brand.Icon" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Web.Extensions" />
