@@ -122,8 +122,12 @@ internal static class SetupServiceChecks
         string manual = Fresh("pair-manual"); File.WriteAllBytes(Path.Combine(manual, "JueMingR.dll"), payload.Dll); File.WriteAllBytes(Path.Combine(manual, "Terraria.exe.config"), payload.Config);
         var state = SetupTargetState.Read(manual);
         Check(state.Pair == SetupPairState.Installed && state.CanMaintain && state.CanInstall && !File.Exists(Path.Combine(manual, "JueMingR.install.json")), "state-manual-pair-without-receipt-or-runtime");
+        string installedVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(Path.Combine(manual, "JueMingR.dll")).ProductVersion;
+        Check(!string.IsNullOrWhiteSpace(installedVersion) && state.InstalledVersion == installedVersion && state.Caption.Contains("决明版本：" + installedVersion), "state-version-read-from-selected-installed-dll");
+        Check(new SetupTargetState { CanMaintain = true, CanInstall = true, Pair = SetupPairState.Installed }.Caption.Contains("决明版本：无法确认") && new SetupTargetState { CanMaintain = true, CanInstall = true, Pair = SetupPairState.Installed, InstalledVersion = "0.0.0.0" }.Caption.Contains("决明版本：无法确认"), "state-missing-product-version-not-replaced-by-setup-version");
         File.Delete(Path.Combine(manual, "Terraria.exe.config"));
-        Check(SetupTargetState.Read(manual).Pair == SetupPairState.Incomplete, "state-only-dll");
+        state = SetupTargetState.Read(manual);
+        Check(state.Pair == SetupPairState.Incomplete && state.InstalledVersion == null && !state.Caption.Contains("决明版本："), "state-only-dll-not-labelled-installed-version");
         File.WriteAllBytes(Path.Combine(manual, "Terraria.exe.config"), Foreign);
         Check(SetupTargetState.Read(manual).Pair == SetupPairState.Incomplete, "state-known-r-dll-foreign-entry");
         File.WriteAllText(Path.Combine(manual, "Terraria.exe.config"), Encoding.UTF8.GetString(payload.Config).Replace("</configuration>", "<appSettings><add key=\"external\" value=\"keep\"/></appSettings></configuration>"));

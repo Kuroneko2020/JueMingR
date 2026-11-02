@@ -21,12 +21,13 @@ namespace JueMingR.Setup
         private readonly ToolStripMenuItem uninstall = new ToolStripMenuItem("卸载决明") { Name = "UninstallMenuItem", ToolTipText = "保留全部按键、偏好、笔记和蓝图库。" };
         private readonly ToolStripMenuItem clear = new ToolStripMenuItem("清空配置…") { Name = "ClearConfigurationMenuItem", ToolTipText = "重置按键、窗口与功能偏好，保留笔记和蓝图库。" };
         private readonly TableLayoutPanel resultPanel = new TableLayoutPanel { Name = "OperationResult", Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Visible = false, Margin = new Padding(0, 12, 0, 12) };
+        private readonly TableLayoutPanel layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(26, 20, 26, 20), ColumnCount = 1, RowCount = 5, AutoScroll = true };
         private readonly Timer checkDelay = new Timer { Interval = 350 };
         private readonly Func<string, SetupTargetState> inspect;
         private readonly Func<string, string, SetupResult> execute;
         private readonly string emptyTargetPrompt;
         private SetupTargetState target;
-        private bool busy, checking, expanded, closing, resourcesDisposed;
+        private bool busy, checking, expanded, closing, resourcesDisposed, measuringLayout;
         private int targetGeneration;
         private int resultHeight;
 
@@ -43,7 +44,6 @@ namespace JueMingR.Setup
             ForeColor = Ink; BackColor = Color.FromArgb(247, 249, 248); AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(660, 330); MinimumSize = new Size(540, 350); StartPosition = FormStartPosition.CenterScreen;
             using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Icon")) Icon = new Icon(stream);
-            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(26, 20, 26, 20), ColumnCount = 1, RowCount = 5 };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             for (int i = 0; i < 5; i++) layout.RowStyles.Add(new RowStyle(i == 3 ? SizeType.Percent : SizeType.AutoSize, i == 3 ? 100 : 0));
             var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 0, 0, 18) };
@@ -120,7 +120,7 @@ namespace JueMingR.Setup
         private void QueueCheck(bool clearResult)
         {
             targetGeneration++; checkDelay.Stop(); target = null;
-            if (clearResult) { expanded = false; resultPanel.Visible = false; ChangeResultHeight(0); }
+            if (clearResult) { expanded = false; resultPanel.Visible = false; details.Visible = false; UpdateLayoutMetrics(true); }
             if (busy || closing) return;
             identity.Text = string.IsNullOrWhiteSpace(directory.Text) ? emptyTargetPrompt : "正在检查所选目录…";
             ApplyEligibility(); UpdateTextHeights();
@@ -193,7 +193,7 @@ namespace JueMingR.Setup
 
         private void UpdateTextHeights()
         {
-            identity.Height = TextHeight(identity, 88); summary.Height = TextHeight(summary, 104);
+            UpdateLayoutMetrics(false);
         }
 
         private int TextHeight(TextBox box, int maximum)
@@ -206,16 +206,39 @@ namespace JueMingR.Setup
         private void UpdateResultLayout()
         {
             details.Visible = expanded; toggleDetails.Text = expanded ? "收起" : "详情"; toggleDetails.AccessibleName = expanded ? "收起操作详情" : "展开操作详情";
-            UpdateTextHeights(); ChangeResultHeight((int)((expanded ? 270 : 92) * DeviceDpi / 96F));
+            UpdateLayoutMetrics(true);
         }
 
-        private void ChangeResultHeight(int desired)
+        private void UpdateLayoutMetrics(bool adjustHeight)
         {
-            if (resultHeight == desired) return;
-            int delta = desired - resultHeight; resultHeight = desired;
-            Rectangle work = Screen.FromControl(this).WorkingArea;
-            Height = Math.Max(MinimumSize.Height, Math.Min(work.Height, Height + delta));
-            if (Bottom > work.Bottom) Top = Math.Max(work.Top, work.Bottom - Height);
+            if (measuringLayout || closing || layout.RowStyles.Count == 0) return;
+            measuringLayout = true;
+            try
+            {
+                layout.PerformLayout();
+                identity.MinimumSize = new Size(0, TextHeight(identity, 88));
+                summary.MinimumSize = new Size(0, TextHeight(summary, 104));
+                // Percent rows only receive leftover space. Reserve measured text/link
+                // heights as real minima so shrinking cannot erase a partial/failure result.
+                int detailViewport = expanded ? details.Font.Height * 4 + SystemInformation.BorderSize.Height * 2 : 0;
+                details.MinimumSize = new Size(0, detailViewport);
+                int resultMinimum = resultPanel.Visible ? summary.MinimumSize.Height + (toggleDetails.Visible ? toggleDetails.GetPreferredSize(Size.Empty).Height + toggleDetails.Margin.Vertical : 0) + detailViewport + (expanded ? details.Margin.Vertical : 0) : 0;
+                resultPanel.MinimumSize = new Size(0, resultMinimum);
+                layout.PerformLayout();
+                int fixedHeight = layout.Padding.Vertical;
+                int[] rows = layout.GetRowHeights();
+                for (int i = 0; i < rows.Length; i++) if (i != 3) fixedHeight += rows[i];
+                int desired = resultPanel.Visible ? resultMinimum + resultPanel.Margin.Vertical : 0;
+                int previousHeight = Height, delta = desired - resultHeight; resultHeight = desired;
+                Rectangle work = Screen.FromControl(this).WorkingArea;
+                int requiredHeight = SizeFromClientSize(new Size(0, fixedHeight + desired)).Height;
+                MinimumSize = new Size((int)(540 * DeviceDpi / 96F), Math.Min(work.Height, Math.Max((int)(350 * DeviceDpi / 96F), requiredHeight)));
+                // On a shorter work area the root can scroll and detail text scrolls in its
+                // own viewport. Do not demand a minimum window taller than the screen.
+                if (adjustHeight) Height = Math.Max(MinimumSize.Height, Math.Min(work.Height, previousHeight + delta));
+                if (Bottom > work.Bottom) Top = Math.Max(work.Top, work.Bottom - Height);
+            }
+            finally { measuringLayout = false; }
         }
     }
 }

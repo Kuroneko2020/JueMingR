@@ -14,6 +14,7 @@ namespace JueMingR.Setup
     {
         internal string Directory;
         internal string Version;
+        internal string InstalledVersion;
         internal string Problem;
         internal string InstallProblem;
         internal bool CanMaintain;
@@ -26,7 +27,8 @@ namespace JueMingR.Setup
             {
                 if (!CanMaintain) return Problem;
                 string state = Pair == SetupPairState.Installed ? "已安装决明" : Pair == SetupPairState.NotInstalled ? "未安装决明" : Pair == SetupPairState.Incomplete ? "安装不完整" : "安装状态无法确认";
-                return "Terraria " + Version + " · " + state + (CanInstall ? "" : Environment.NewLine + InstallProblem) + (string.IsNullOrEmpty(Problem) ? "" : Environment.NewLine + Problem);
+                string installedVersion = Pair == SetupPairState.Installed ? Environment.NewLine + "决明版本：" + (string.IsNullOrWhiteSpace(InstalledVersion) || InstalledVersion == "0.0.0.0" ? "无法确认" : InstalledVersion) : "";
+                return "Terraria " + Version + " · " + state + installedVersion + (CanInstall ? "" : Environment.NewLine + InstallProblem) + (string.IsNullOrEmpty(Problem) ? "" : Environment.NewLine + Problem);
             }
         }
 
@@ -42,6 +44,12 @@ namespace JueMingR.Setup
                 try { TargetSafety.ValidateGameDirectory(state.Directory, true); state.CanInstall = true; }
                 catch (Exception error) when (IsReadError(error)) { state.InstallProblem = error.Message; }
                 state.ReadPair();
+                if (state.Pair == SetupPairState.Installed)
+                {
+                    // Read the selected installed DLL's informational/product version, not
+                    // this Setup's version or the uninformative assembly/file 0.0.0.0.
+                    state.InstalledVersion = FileVersionInfo.GetVersionInfo(Path.Combine(state.Directory, "JueMingR.dll")).ProductVersion;
+                }
             }
             catch (Exception error) when (IsReadError(error))
             {

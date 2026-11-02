@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.Threading;
 using System.Windows.Forms;
 using JueMingR.Setup;
@@ -34,9 +35,22 @@ internal static class SetupFormChecks
             Pump(() => install.Enabled && Find<TextBox>(form, "OperationSummary").Text.Contains("只完成了一部分"));
             Check(Find<TextBox>(form, "GameIdentity").Text.Contains("已安装决明") && Find<TextBox>(form, "OperationSummary").Text.Contains("受控配置失败"), "form-current-state-does-not-erase-partial-result");
             Check(!Find<TextBox>(form, "OperationDetails").Visible && Find<TextBox>(form, "OperationDetails").Text.Contains("replace-config") && Find<TextBox>(form, "OperationDetails").Text.Contains("目标：A"), "form-details-collapsed-real-fields-and-target");
+            form.Size = form.MinimumSize; Application.DoEvents();
+            var resultSummary = Find<TextBox>(form, "OperationSummary");
+            var detailsLink = Find<LinkLabel>(form, "ToggleDetails");
+            Check(SummaryReasonVisible(resultSummary, "受控配置失败") && FullyVisible(detailsLink) && FullyVisible(install), "form-minimum-result-reason-and-details-entry-visible");
+            int collapsedMinimum = form.MinimumSize.Height;
+            ActivateLink(detailsLink); form.Size = form.MinimumSize; Application.DoEvents();
+            var resultDetails = Find<TextBox>(form, "OperationDetails");
+            Check(resultDetails.Visible && FullyVisible(resultDetails) && resultDetails.ClientSize.Height >= resultDetails.Font.Height * 2 && resultDetails.ScrollBars == ScrollBars.Vertical && SummaryReasonVisible(resultSummary, "受控配置失败") && FullyVisible(detailsLink) && FullyVisible(install), "form-expanded-minimum-readable-scrollable-details");
+            int expandedMinimum = form.MinimumSize.Height;
+            ActivateLink(detailsLink); Application.DoEvents();
+            Check(!resultDetails.Visible && form.MinimumSize.Height < expandedMinimum && form.MinimumSize.Height <= collapsedMinimum && SummaryReasonVisible(resultSummary, "受控配置失败"), "form-collapse-retains-summary-and-compact-result");
+            int resultMinimum = form.MinimumSize.Height;
             path.Text = "B";
             Check(!Find<Control>(form, "OperationResult").Visible && !install.Enabled, "form-target-change-clears-old-result-and-eligibility");
             Pump(() => install.Enabled);
+            Check(form.MinimumSize.Height < resultMinimum, "form-target-change-retires-result-minimum-height");
             form.Close();
             });
         }
@@ -66,7 +80,30 @@ internal static class SetupFormChecks
 
     private static SetupTargetState Ready(string path)
     {
-        return new SetupTargetState { Directory = path, Version = "1.4.5.8", CanInstall = true, CanMaintain = true, Pair = SetupPairState.Installed };
+        return new SetupTargetState { Directory = path, Version = "1.4.5.8", InstalledVersion = "0.0.0-dev+installed-target", CanInstall = true, CanMaintain = true, Pair = SetupPairState.Installed };
+    }
+
+    private static bool FullyVisible(Control control)
+    {
+        if (!control.Visible || control.ClientSize.Width <= 0 || control.ClientSize.Height <= 0) return false;
+        Rectangle visible = control.RectangleToScreen(control.ClientRectangle);
+        for (Control parent = control.Parent; parent != null; parent = parent.Parent)
+            if (!parent.RectangleToScreen(parent.ClientRectangle).Contains(visible)) return false;
+        return true;
+    }
+
+    private static bool SummaryReasonVisible(TextBox summary, string reason)
+    {
+        int start = summary.Text.IndexOf(reason, StringComparison.Ordinal);
+        if (start < 0 || !FullyVisible(summary)) return false;
+        Point first = summary.GetPositionFromCharIndex(0), last = summary.GetPositionFromCharIndex(start + reason.Length - 1);
+        return first.Y >= 0 && last.Y + summary.Font.Height <= summary.ClientSize.Height;
+    }
+
+    private static void ActivateLink(LinkLabel link)
+    {
+        typeof(LinkLabel).GetMethod("OnLinkClicked", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .Invoke(link, new object[] { new LinkLabelLinkClickedEventArgs(null) });
     }
 
     private static void Observe(SetupForm form, string scenario, Action observation)
