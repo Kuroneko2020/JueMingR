@@ -10,7 +10,7 @@ using System.Web.Script.Serialization;
 namespace JueMingR.Setup
 {
     internal sealed class OwnedFile { internal string Path; internal string Hash; internal long Length; }
-    internal sealed class OwnedSet { internal readonly List<OwnedFile> Files = new List<OwnedFile>(); internal string Directory; internal string Receipt; internal string ReceiptHash; internal string ConfigHash; }
+    internal sealed class OwnedSet { internal readonly List<OwnedFile> Files = new List<OwnedFile>(); internal string Directory; internal string Receipt; internal string ConfigHash; }
 
     // Evidence grants ownership of exact bytes only; unknown entries and all user data remain untouched.
     internal static class OwnedFiles
@@ -37,7 +37,7 @@ namespace JueMingR.Setup
                 if ((string)target["simpleName"] != "Terraria" || (string)target["version"] != "1.4.5.8" || (string)target["mvid"] != "2c29f6c3-4bd9-4add-9c58-da159804e083" || (string)target["sha256"] != TargetSafety.TerrariaHash) throw new InvalidDataException();
                 object[] entries = ((System.Collections.IEnumerable)document["payload"]).Cast<object>().ToArray();
                 if (entries.Length != LegacyNames.Length) throw new InvalidDataException();
-                var set = new OwnedSet { Directory = directory, Receipt = receipt, ReceiptHash = SetupPayload.FileHash(receipt) };
+                var set = new OwnedSet { Directory = directory, Receipt = receipt };
                 for (int i = 0; i < entries.Length; i++)
                 {
                     var entry = (Dictionary<string, object>)entries[i];
@@ -101,12 +101,15 @@ namespace JueMingR.Setup
             }
             try
             {
-                if (set.Receipt != null && File.Exists(set.Receipt) && SetupPayload.FileHash(set.Receipt) == set.ReceiptHash && set.Files.All(f => !File.Exists(f.Path))) File.Delete(set.Receipt);
+                // Migration owns the old program bytes, not the historical
+                // installation evidence. Keep the original receipt in place
+                // after both upgrade and later uninstall; this is no backup.
+                if (set.Receipt != null && File.Exists(set.Receipt)) result.retained.Add("历史安装回执：原样保留。");
                 if (Directory.Exists(set.Directory))
                 {
                     TargetSafety.CheckPath(set.Directory, true, false);
                     if (!Directory.EnumerateFileSystemEntries(set.Directory).Any()) Directory.Delete(set.Directory);
-                    else result.retained.Add(System.IO.Path.GetFileName(set.Directory) + "：保留未确认的非活动文件。");
+                    else result.retained.Add(System.IO.Path.GetFileName(set.Directory) + "：保留历史记录或未确认的非活动文件。");
                 }
             }
             catch (IOException) { result.retained.Add("程序目录仍有占用或未知内容，已保留。"); }

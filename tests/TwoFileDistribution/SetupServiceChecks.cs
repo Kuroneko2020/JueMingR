@@ -87,8 +87,12 @@ internal static class SetupServiceChecks
             Check(Service().Execute("install", updated).exitCode == 2 && Service().Execute("uninstall", updated).exitCode == 0 && !File.Exists(Path.Combine(updated, "JueMingR.dll")), "updated-game-can-uninstall-not-install");
 
             string legacy = Fresh("legacy"); WriteLegacy(legacy);
+            string legacyReceipt = Path.Combine(legacy, "JueMingR.Validation", "phase-0-s-install-manifest.json");
+            byte[] originalLegacyReceipt = File.ReadAllBytes(legacyReceipt);
             var migrated = Service().Execute("install", legacy);
             Check(migrated.exitCode == 0 && Pair(legacy) && !File.Exists(Path.Combine(legacy, "JueMingR.Bootstrap.dll")) && !File.Exists(Path.Combine(legacy, "JueMingR.Validation", "JueMingR.Features.dll")) && File.Exists(Path.Combine(legacy, "JueMingR.Validation", "unknown.txt")) && migrated.retained.Count != 0, "legacy-known-clean-unknown-preserved");
+            Check(File.ReadAllBytes(legacyReceipt).SequenceEqual(originalLegacyReceipt), "legacy-receipt-original-bytes-preserved-after-migration");
+            Check(Service().Execute("uninstall", legacy).exitCode == 0 && File.ReadAllBytes(legacyReceipt).SequenceEqual(originalLegacyReceipt), "legacy-receipt-original-bytes-preserved-after-uninstall");
             string unknown = Fresh("unknown-legacy"); Directory.CreateDirectory(Path.Combine(unknown, "JueMingR.Validation")); File.WriteAllText(Path.Combine(unknown, "JueMingR.Validation", "unknown.txt"), "keep");
             Check(Service().Execute("install", unknown).exitCode == 0 && File.Exists(Path.Combine(unknown, "JueMingR.Validation", "unknown.txt")), "no-receipt-migration-no-fallback");
             string collision = Fresh("ordinary-file-check"); Directory.CreateDirectory(Path.Combine(collision, "JueMingR.dll"));

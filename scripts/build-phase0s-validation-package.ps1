@@ -196,7 +196,7 @@ foreach($path in @($hostOutput,$platformOutput,$featuresOutput,$infrastructureOu
 }
 Copy-Phase0SBuilderFileCreateNew $harmonyLicensePath (Join-Path $internal 'Harmony-2.4.2-LICENSE.txt')
 Copy-Phase0SBuilderFileCreateNew (Join-Path $repositoryRoot 'THIRD-PARTY-NOTICES.md') (Join-Path $internal 'THIRD-PARTY-NOTICES.md')
-Write-JmrRuntimeManifest -Internal $internal -SourceCommit $sourceCommit -PackageId $packageId
+Write-JmrRuntimeManifest -Internal $internal -SourceCommit $sourceCommit -PackageId $packageId -HostIdentity $hostIdentity -HarmonyIdentity $harmonyIdentity
 $standard=Join-Path $stagingRoot $packageDirectoryName
 $bundle=New-JmrTwoFileBundle -RepositoryRoot $repositoryRoot -InputDirectory $internal -WorkDirectory (Join-Path $stagingRoot '.build/bundle') -StandardDirectory $standard -SourceCommit $sourceCommit
 $zipFileName=$packageDirectoryName+'.zip'

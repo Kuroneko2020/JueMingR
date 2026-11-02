@@ -76,9 +76,17 @@ function New-JmrTwoFileZip {
 }
 
 function Write-JmrRuntimeManifest {
-    param([string]$Internal,[string]$SourceCommit,[string]$PackageId)
-    $hostIdentity=Get-Phase0SAssemblyFileIdentity (Join-Path $Internal 'JueMingR.TerrariaHost.dll')
-    $harmonyIdentity=Get-Phase0SAssemblyFileIdentity (Join-Path $Internal '0Harmony.dll')
+    param([string]$Internal,[string]$SourceCommit,[string]$PackageId,$HostIdentity,$HarmonyIdentity)
+    if($null -eq $HostIdentity){$HostIdentity=Get-Phase0SAssemblyFileIdentity (Join-Path $Internal 'JueMingR.TerrariaHost.dll')}
+    if($null -eq $HarmonyIdentity){$HarmonyIdentity=Get-Phase0SAssemblyFileIdentity (Join-Path $Internal '0Harmony.dll')}
+    # The normal builder already inspected the exact source files and verified
+    # every copied byte. Framework reflection-only binding forbids loading that
+    # same identity from the second path; reuse its MVID only after exact hash
+    # and file-name identity verification, never a simple-name cache lookup.
+    foreach($pair in @(@('JueMingR.TerrariaHost.dll',$HostIdentity),@('0Harmony.dll',$HarmonyIdentity))){
+        $path=Join-Path $Internal $pair[0];$identity=$pair[1]
+        if((Get-Phase0SFileSha256 $path) -cne $identity.sha256 -or [Reflection.AssemblyName]::GetAssemblyName($path).FullName -cne $identity.fullName){throw 'Copied runtime bytes differ from their previously inspected identity.'}
+    }
 $runtimeLines=@(
     'schemaVersion=2',('packageId='+$packageId),('sourceCommit='+$sourceCommit),
     'targetAssemblySimpleName=Terraria','targetAssemblyVersion=1.4.5.8',
