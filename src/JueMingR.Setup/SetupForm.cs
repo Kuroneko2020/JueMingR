@@ -27,18 +27,14 @@ namespace JueMingR.Setup
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28, 22, 28, 20), ColumnCount = 1, RowCount = 5 };
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Margin = new Padding(0, 0, 0, 18) };
+            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 0, 0, 18) };
             var brand = new PictureBox { Size = new Size(62, 62), SizeMode = PictureBoxSizeMode.Zoom, Margin = new Padding(0, 2, 16, 0) };
             using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Logo"))
             using (Image image = Image.FromStream(stream)) brand.Image = new Bitmap(image);
             using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Icon")) Icon = new Icon(stream);
             FormClosed += (sender, args) => { brand.Image.Dispose(); Icon.Dispose(); };
-            heading.Controls.Add(brand, 0, 0); heading.SetRowSpan(brand, 2);
-            heading.Controls.Add(new Label { Text = "决明", AutoSize = true, Font = new Font(Font.FontFamily, 25F, FontStyle.Bold), Margin = new Padding(0) }, 1, 0);
-            string package;
-            try { package = "安装包 · " + SetupPayload.Read().PayloadId.Substring(0, 12); }
-            catch (Exception error) when (error is IOException || error is ArgumentException || error is System.Reflection.TargetInvocationException) { package = "安装包未就绪"; }
-            heading.Controls.Add(Caption(package, "PackageIdentity"), 1, 1); layout.Controls.Add(heading);
+            heading.Controls.Add(brand, 0, 0);
+            heading.Controls.Add(new Label { Text = "决明", AutoSize = true, Anchor = AnchorStyles.Left, Font = new Font(Font.FontFamily, 25F, FontStyle.Bold), Margin = new Padding(0) }, 1, 0); layout.Controls.Add(heading);
             var card = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(18), ColumnCount = 1, Margin = new Padding(0, 0, 0, 16) };
             card.Controls.Add(new Label { Text = "游戏目录", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(0, 0, 0, 10) });
             var pathRow = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, Margin = new Padding(0) };
@@ -57,7 +53,7 @@ namespace JueMingR.Setup
             uninstall.Click += async (sender, args) => await RunOperation("uninstall");
             clear.Click += async (sender, args) =>
             {
-                if (MessageBox.Show(this, "清空决明R按键和偏好设置？笔记和蓝图库将保留。", "清空配置", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.OK) await RunOperation("clear-config");
+                if (MessageBox.Show(this, "清空决明按键和偏好设置？笔记和蓝图库将保留。", "清空配置", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.OK) await RunOperation("clear-config");
             };
             FormClosing += (sender, args) => { if (busy) args.Cancel = true; };
             string[] candidates = SteamDiscovery.FindInstalled(); directory.Items.AddRange(candidates);
@@ -77,7 +73,7 @@ namespace JueMingR.Setup
             {
                 string root = TargetSafety.ValidateGameDirectory(directory.Text, false);
                 string current = Path.Combine(root, "JueMingR.dll");
-                string state = File.Exists(current) && System.Reflection.AssemblyName.GetAssemblyName(current).Name == "JueMingR" ? "决明R已安装" : "未安装决明R";
+                string state = File.Exists(current) && System.Reflection.AssemblyName.GetAssemblyName(current).Name == "JueMingR" ? "决明已安装" : "未安装决明";
                 identity.Text = "Terraria " + System.Diagnostics.FileVersionInfo.GetVersionInfo(Path.Combine(root, "Terraria.exe")).FileVersion + "  ·  " + state;
             }
             catch (Exception error) when (error is IOException || error is ArgumentException || error is UnauthorizedAccessException || error is BadImageFormatException) { identity.Text = string.IsNullOrWhiteSpace(directory.Text) ? "请选择包含 Terraria.exe 的目录。" : "目录不可用，请选择包含 Terraria.exe 的游戏目录。"; }

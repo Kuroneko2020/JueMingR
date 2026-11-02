@@ -51,7 +51,7 @@ namespace JueMingR.Setup
             }
             result.status = files.Count == 0 ? "noop" : "success";
             result.exitCode = 0;
-            result.message = files.Count == 0 ? "没有需要清空的决明R配置。" : "决明R配置已清空，笔记和蓝图库保留。";
+            result.message = files.Count == 0 ? "没有需要清空的决明配置。" : "决明配置已清空，笔记和蓝图库保留。";
         }
     }
 }
