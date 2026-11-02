@@ -119,8 +119,33 @@ namespace NativeWorldTextProbe
             Call(shell,"EndPointerLayer");p.mouseInterface=false;frame();Require(p.inventory[8].stack==1 && p.FindBuffIndex(BuffID.Regeneration)>=0,"same real source resumes after foreign UI releases");
             p.ClearBuff(BuffID.Regeneration);
             var button=((System.Collections.IEnumerable)Get(ui,"visible")).Cast<object>().First(part=>(int)Get(part,"Command")==-2 && (int)Get(part,"Value")==0);
-            Call(ui,"Execute",button);prepare();frame();Require((bool)Get(Get(ui,"PotionPopup"),"Visible") && p.inventory[8].stack==1 && p.FindBuffIndex(BuffID.Regeneration)<0,"real medication editor still owns input and blocks automatic consumption");
-            Call(Get(ui,"PotionPopup"),"Close");frame();frame();Require(p.FindBuffIndex(BuffID.Regeneration)>=0,"closing the actual popup resumes the pending buff: admit="+Call(host,"AdmitBuff",p)+" interface="+Get(shell,"CanAutomaticBuff")+" input="+Get(input,"CanStartActions")+" text="+Main.blockInput+" writing="+PlayerInput.WritingText+" stack="+p.inventory[8].stack);
+            var buffUse=Get(host,"BuffUse");long calls=(long)Get(buffUse,"NativeCalls");
+            // G10 permits configuration browsing. This icon-only popup must
+            // not borrow a text lease merely to stop automatic consumers.
+            Call(ui,"Execute",button);prepare();frame();
+            Require((bool)Get(Get(ui,"PotionPopup"),"Visible") && Main.CurrentInputTextTakerOverride==null && !Main.blockInput && !PlayerInput.WritingText &&
+                p.inventory[8].stack==0 && p.FindBuffIndex(BuffID.Regeneration)>=0 && (long)Get(buffUse,"NativeCalls")==calls+1,
+                "real icon-only medication popup has no text lease and permits one native buff consumption");
+            Call(Get(ui,"PotionPopup"),"Close");p.ClearBuff(BuffID.Regeneration);p.inventory[8].SetDefaults(ItemID.RegenerationPotion);p.inventory[8].stack=2;
+            calls=(long)Get(buffUse,"NativeCalls");
+            bool priorChat=Main.drawingPlayerChat,priorWriting=PlayerInput.WritingText,priorHook=p.releaseHook,priorThrow=p.releaseThrow,priorEscape=Main.inputTextEscape;
+            int priorKeyCount=Main.keyCount;
+            try
+            {
+                // Establish the original game's actual chat owner, rather than
+                // faking a popup token or weakening its production safety gate.
+                Main.OpenPlayerChat();frame();
+                Require(Main.drawingPlayerChat && !(bool)Call(host,"AdmitBuff",p) && p.inventory[8].stack==2 && p.FindBuffIndex(BuffID.Regeneration)<0 && (long)Get(buffUse,"NativeCalls")==calls,
+                    "actual native chat text ownership blocks the same pending automatic buff");
+            }
+            finally
+            {
+                Main.ClosePlayerChat();Main.drawingPlayerChat=priorChat;PlayerInput.WritingText=priorWriting;
+                p.releaseHook=priorHook;p.releaseThrow=priorThrow;Main.keyCount=priorKeyCount;Main.inputTextEscape=priorEscape;
+            }
+            Call(state,"RestoreVisible");frame();frame();
+            Require(p.FindBuffIndex(BuffID.Regeneration)>=0 && p.inventory[8].stack==1 && (long)Get(buffUse,"NativeCalls")==calls+1,
+                "retiring actual chat ownership resumes the same source exactly once under ordinary F5");
             NativeRecoveryChecks.Save(buffs,new RecoveryOptions());Call(state,"Close");Call(shell,"EndPointerLayer");p.mouseInterface=false;
             Console.WriteLine("PASS G10 foreground F5 actual hover lease/native buff and healing, foreign interface and text ownership boundaries.");
         }
