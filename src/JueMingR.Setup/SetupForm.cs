@@ -27,14 +27,10 @@ namespace JueMingR.Setup
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28, 22, 28, 20), ColumnCount = 1, RowCount = 5 };
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 0, 0, 18) };
-            var brand = new PictureBox { Size = new Size(62, 62), SizeMode = PictureBoxSizeMode.Zoom, Margin = new Padding(0, 2, 16, 0) };
-            using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Logo"))
-            using (Image image = Image.FromStream(stream)) brand.Image = new Bitmap(image);
+            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 1, Margin = new Padding(0, 0, 0, 18) };
             using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Icon")) Icon = new Icon(stream);
-            FormClosed += (sender, args) => { brand.Image.Dispose(); Icon.Dispose(); };
-            heading.Controls.Add(brand, 0, 0);
-            heading.Controls.Add(new Label { Text = "决明", AutoSize = true, Anchor = AnchorStyles.Left, Font = new Font(Font.FontFamily, 25F, FontStyle.Bold), Margin = new Padding(0) }, 1, 0); layout.Controls.Add(heading);
+            FormClosed += (sender, args) => Icon.Dispose();
+            heading.Controls.Add(new Label { Text = "决明", AutoSize = true, Anchor = AnchorStyles.Left, Font = new Font(Font.FontFamily, 25F, FontStyle.Bold), Margin = new Padding(0) }, 0, 0); layout.Controls.Add(heading);
             var card = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(18), ColumnCount = 1, Margin = new Padding(0, 0, 0, 16) };
             card.Controls.Add(new Label { Text = "游戏目录", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(0, 0, 0, 10) });
             var pathRow = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, Margin = new Padding(0) };
