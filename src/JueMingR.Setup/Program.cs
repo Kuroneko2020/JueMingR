@@ -11,10 +11,10 @@ namespace JueMingR.Setup
         [STAThread]
         private static int Main(string[] args)
         {
-            if (args.Length == 0)
+            if (args.Length == 0 || (args.Length == 3 && args[0] == "--ui" && args[1] == "--game-dir"))
             {
                 Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new SetupForm()); return 0;
+                Application.Run(new SetupForm(args.Length == 3 ? args[2] : null)); return 0;
             }
             AttachConsole(unchecked((uint)-1));
             SetupResult result;
@@ -30,11 +30,11 @@ namespace JueMingR.Setup
                 for (int i = 0; i < args.Length; i++)
                 {
                     if (args[i] == "--json" && !json) json = true;
-                    else if ((args[i] == "--install" || args[i] == "--uninstall") && operation == null) operation = args[i].Substring(2);
+                    else if ((args[i] == "--install" || args[i] == "--uninstall" || args[i] == "--clear-config") && operation == null) operation = args[i].Substring(2);
                     else if (args[i] == "--game-dir" && directory == null && ++i < args.Length) directory = args[i];
-                    else throw new ArgumentException("参数无效。用法：--install 或 --uninstall --game-dir <游戏目录> [--json]");
+                    else throw new ArgumentException("参数无效。用法：--install、--uninstall 或 --clear-config --game-dir <游戏目录> [--json]");
                 }
-                if (operation == null || directory == null) throw new ArgumentException("请指定 --install 或 --uninstall，以及 --game-dir <游戏目录>。");
+                if (operation == null || directory == null) throw new ArgumentException("请指定 --install、--uninstall 或 --clear-config，以及 --game-dir <游戏目录>。");
                 result = new InstallService().Execute(operation, directory);
                 Console.WriteLine(json ? new JavaScriptSerializer().Serialize(result) : result.message);
                 return result.exitCode;

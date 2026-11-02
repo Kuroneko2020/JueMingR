@@ -16,6 +16,7 @@ namespace JueMingR.Setup
         internal string DllHash;
         internal string ConfigHash;
         internal string Version;
+        internal string PayloadId;
 
         internal static SetupPayload Read()
         {
@@ -26,15 +27,16 @@ namespace JueMingR.Setup
             if (lines.Length != 3 || lines[0] != "schema=JueMingR.Setup.Payload.1" || lines[1] != "dll.sha256=" + Hash(dll) || lines[2] != "config.sha256=" + Hash(config))
                 throw new InvalidDataException("安装程序内的文件校验失败，请重新取得安装程序。");
             if (!ConfigOwnership.IsR(config)) throw new InvalidDataException("安装程序的加载配置无效。");
+            string payloadId;
             AppDomain domain = AppDomain.CreateDomain("JueMingR.Setup.Verify." + Guid.NewGuid().ToString("N"));
             try
             {
                 var reader = (BundleMetadataReader)domain.CreateInstanceFromAndUnwrap(typeof(BundleMetadataReader).Assembly.Location, typeof(BundleMetadataReader).FullName);
                 if (reader.AssemblyName(dll) != "JueMingR" || !reader.ReadBytes(dll, "JueMingR.Bundle.config").SequenceEqual(config)) throw new InvalidDataException("安装程序的两文件不属于同一载荷。");
-                reader.ReadBytes(dll, "JueMingR.Bundle.index");
+                payloadId = Hash(reader.ReadBytes(dll, "JueMingR.Bundle.index")).ToLowerInvariant();
             }
             finally { AppDomain.Unload(domain); }
-            return new SetupPayload { Dll = dll, Config = config, DllHash = Hash(dll), ConfigHash = Hash(config), Version = source.GetCustomAttribute<AssemblyInformationalVersionAttribute>().InformationalVersion };
+            return new SetupPayload { Dll = dll, Config = config, DllHash = Hash(dll), ConfigHash = Hash(config), PayloadId = payloadId, Version = "payload-" + payloadId };
         }
 
         internal static byte[] Resource(Assembly source, string name)

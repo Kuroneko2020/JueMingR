@@ -28,6 +28,7 @@ internal static class SetupServiceChecks
             byte[] dll = File.ReadAllBytes(args[2]), config = File.ReadAllBytes(args[3]);
             payload = new SetupPayload { Dll = dll, Config = config, DllHash = SetupPayload.Hash(dll), ConfigHash = SetupPayload.Hash(config), Version = "isolated-service-test" };
             Directory.CreateDirectory(root);
+            if (args.Length == 5 && args[4] == "--ui-increment") { IncrementChecks(); Console.WriteLine(new JavaScriptSerializer().Serialize(new { status = "PASS", checks = count, scope = "Steam discovery and exact preference reset only" })); return 0; }
             string target = Fresh("中文 新装");
             byte[] data = Encoding.UTF8.GetBytes("笔记、蓝图和未来格式原样保留"), outsider = Encoding.UTF8.GetBytes("third-party-harmony");
             Directory.CreateDirectory(Path.Combine(target, "JueMingRData", "blueprints"));
@@ -103,6 +104,52 @@ internal static class SetupServiceChecks
     }
 
     private static InstallService Service() { return new InstallService(() => payload, null); }
+    private static void IncrementChecks()
+    {
+        string target = Fresh("configuration-reset");
+        string configRoot = Path.Combine(target, "JueMingRData", "config");
+        foreach (string doc in ConfigurationReset.Documents)
+        foreach (string suffix in new[] { "", ".bak", ".tmp", ".lock" }) Write(Path.Combine(configRoot, doc) + suffix, "preference");
+        foreach (string doc in new[] { "guidance", "information-display", "item-automation", "recovery-potions" }) Write(Path.Combine(configRoot, "features", doc + ".json.schema1-original"), "source");
+        string[] retained = { "notes/notes.json", "notes/notes.json.bak", "blueprints/exchange-state.json", "blueprints/instances/a/scene.bin.schema1-original", "behavior/onboarding/a.json", "config/future.json", "config/features/future.json", "config/features/combat.json.unknown", "records/a.bin" };
+        foreach (string path in retained) Write(Path.Combine(target, "JueMingRData", path), "keep-" + path);
+        Write(Path.Combine(target, "Terraria.exe.config"), "keep-game-config");
+        var reset = Service().Execute("clear-config", target);
+        Check(reset.exitCode == 0 && reset.status == "success" && reset.completed.Count == ConfigurationReset.Documents.Length * 4 + 4, "all-real-preferences-and-recovery-material-cleared");
+        Check(retained.All(path => File.ReadAllText(Path.Combine(target, "JueMingRData", path)) == "keep-" + path) && File.ReadAllText(Path.Combine(target, "Terraria.exe.config")) == "keep-game-config", "notes-blueprints-onboarding-unknown-and-game-config-preserved");
+        Check(Service().Execute("clear-config", target).status == "noop", "repeated-clear-is-noop");
+        string blocked = Fresh("locked-preferences");
+        string first = Path.Combine(blocked, "JueMingRData/config/ui.json"), locked = Path.Combine(blocked, "JueMingRData/config/hotkeys.json.lock");
+        Write(first, "original"); Write(locked, "lease");
+        using (new FileStream(locked, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            Check(Service().Execute("clear-config", blocked).status == "failure" && File.ReadAllText(first) == "original", "occupied-lease-rejected-before-any-deletion");
+        string odd = Fresh("non-file-recovery"); Write(Path.Combine(odd, "JueMingRData/config/ui.json"), "keep"); Directory.CreateDirectory(Path.Combine(odd, "JueMingRData/config/hotkeys.json.bak"));
+        Check(Service().Execute("clear-config", odd).exitCode == 2 && File.Exists(Path.Combine(odd, "JueMingRData/config/ui.json")), "nonordinary-recovery-rejected-before-any-deletion");
+        string partial = Fresh("partial-reset"); Write(Path.Combine(partial, "JueMingRData/config/ui.json"), "first"); Write(Path.Combine(partial, "JueMingRData/config/hotkeys.json"), "second");
+        int deletions = 0;
+        var interrupted = new InstallService(() => payload, path => { if (++deletions == 2) throw new IOException("injected delete boundary"); }).Execute("clear-config", partial);
+        Check(interrupted.exitCode == 3 && interrupted.status == "partial" && interrupted.completed.Count == 1 && File.Exists(Path.Combine(partial, "JueMingRData/config/hotkeys.json")), "partial-reset-reports-actual-completed-file");
+        string steam = Path.Combine(root, "Steam"), library = Path.Combine(root, "Other Library 中文");
+        string app1 = Path.GetFullPath(Path.Combine(steam, "steamapps/common/Terraria")), app2 = Path.GetFullPath(Path.Combine(library, "steamapps/common/Custom Terraria"));
+        Directory.CreateDirectory(app1); File.Copy(terraria, Path.Combine(app1, "Terraria.exe"));
+        Directory.CreateDirectory(app2); File.Copy(terraria, Path.Combine(app2, "Terraria.exe"));
+        Write(Path.Combine(steam, "steamapps/libraryfolders.vdf"), "\"libraryfolders\" { \"0\" { \"path\" \"" + Vdf(steam) + "\" } \"1\" { \"path\" \"" + Vdf(library) + "\" } }");
+        Write(Path.Combine(steam, "steamapps/appmanifest_105600.acf"), "\"AppState\" { \"appid\" \"105600\" \"installdir\" \"Terraria\" }");
+        Write(Path.Combine(library, "steamapps/appmanifest_105600.acf"), "\"AppState\" { \"appid\" \"105600\" \"installdir\" \"Custom Terraria\" }");
+        var found = SteamDiscovery.FindInstalled(new[] { steam, steam });
+        Check(found.Length == 2 && found.Contains(app1) && found.Contains(app2) && SteamDiscovery.AutomaticSelection(found) == "", "multiple-libraries-manifest-folder-and-explicit-choice");
+        Check(SteamDiscovery.AutomaticSelection(new[] { app2 }) == app2 && SteamDiscovery.AutomaticSelection(new string[0]) == "", "single-auto-select-zero-manual-browse");
+        Write(Path.Combine(steam, "steamapps/libraryfolders.vdf"), "\"libraryfolders\" { \"1\" \"" + Vdf(library) + "\" }");
+        Check(SteamDiscovery.FindInstalled(new[] { steam }).Length == 2, "legacy-libraryfolders-layout");
+        Write(Path.Combine(library, "steamapps/appmanifest_105600.acf"), "\"AppState\" { \"appid\" \"other\" \"installdir\" \"Custom Terraria\" }");
+        Check(SteamDiscovery.FindInstalled(new[] { steam }).SequenceEqual(new[] { app1 }), "wrong-appid-rejected");
+        Write(Path.Combine(steam, "steamapps/appmanifest_105600.acf"), "\"AppState\" { \"appid\" \"105600\" \"installdir\" \"../escape\" }");
+        Check(SteamDiscovery.FindInstalled(new[] { steam }).Length == 0, "manifest-traversal-rejected");
+        File.Delete(Path.Combine(steam, "steamapps/appmanifest_105600.acf")); File.WriteAllText(Path.Combine(app1, "Terraria.exe"), "not-a-game");
+        Check(SteamDiscovery.FindInstalled(new[] { steam }).Length == 0, "game-identity-not-just-exe-filename");
+    }
+    private static string Vdf(string path) { return path.Replace("\\", "\\\\"); }
+    private static void Write(string path, string value) { Directory.CreateDirectory(Path.GetDirectoryName(path)); File.WriteAllText(path, value); }
     private static string Fresh(string name) { string path = Path.Combine(root, name); if (Directory.Exists(path)) throw new IOException("Test target already exists: " + path); Directory.CreateDirectory(path); File.Copy(terraria, Path.Combine(path, "Terraria.exe")); return path; }
     private static bool Pair(string target) { return SetupPayload.FileHash(Path.Combine(target, "JueMingR.dll")) == payload.DllHash && SetupPayload.FileHash(Path.Combine(target, "Terraria.exe.config")) == payload.ConfigHash; }
     private static void Check(bool ok, string name) { if (!ok) throw new Exception("FAIL " + name); count++; Console.WriteLine("PASS " + name); }

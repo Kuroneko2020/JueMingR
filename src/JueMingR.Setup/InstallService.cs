@@ -44,6 +44,12 @@ namespace JueMingR.Setup
                 gate = new Mutex(false, @"Local\JueMingR.Setup." + SetupPayload.Hash(Encoding.UTF8.GetBytes(root.ToUpperInvariant())));
                 try { gateHeld = gate.WaitOne(0); } catch (AbandonedMutexException) { gateHeld = true; }
                 if (!gateHeld) throw new IOException("该游戏目录已有安装或卸载正在进行，请等待它完成。");
+                if (operation == "clear-config")
+                {
+                    ConfigurationReset.Execute(root, result, path => { if (beforeStep != null) beforeStep(path); });
+                    result.failedStep = null;
+                    return result;
+                }
                 string dll = Path.Combine(root, "JueMingR.dll"), config = Path.Combine(root, "Terraria.exe.config");
                 string receipt = Path.Combine(root, "JueMingR.install.json");
                 TargetSafety.CheckUnlocked(dll);
@@ -107,7 +113,7 @@ namespace JueMingR.Setup
                     OwnedFiles.RemoveConfirmed(legacy, result);
                     if (OwnedFiles.IsOwnReceipt(receipt)) { File.Delete(receipt); result.completed.Add("remove-receipt"); }
                     result.status = result.completed.Count == 0 ? "noop" : "success"; result.exitCode = 0;
-                    result.message = result.completed.Count == 0 ? "未发现可移除的决明程序。" : "决明已移除。笔记、蓝图库、设置和游戏存档均保留；不会恢复其他工具。";
+                    result.message = result.completed.Count == 0 ? "未发现可移除的决明程序。" : "决明已移除。卸载保留笔记、蓝图库和决明R设置。";
                 }
                 else throw new ArgumentException("未知操作。");
                 result.failedStep = null;

@@ -10,6 +10,16 @@ namespace JueMingR.Setup
 
         internal static string Validate(string directory, bool installing)
         {
+            string root = ValidateGameDirectory(directory, installing);
+            foreach (string name in new[] { "JueMingR.dll", "Terraria.exe.config", "JueMingR.install.json" }) CheckPath(Path.Combine(root, name), false, true);
+            CheckProcesses(root);
+            return root;
+        }
+
+        // Discovery and operations share the same game identity/path rule. Discovery is read-only
+        // and may still list a running installation; the operation enforces the process gate.
+        internal static string ValidateGameDirectory(string directory, bool installing)
+        {
             if (string.IsNullOrWhiteSpace(directory)) throw new IOException("请选择 Terraria 游戏目录。");
             string root = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             if (!Directory.Exists(root)) throw new IOException("游戏目录不存在。");
@@ -19,8 +29,6 @@ namespace JueMingR.Setup
             if (installing && SetupPayload.FileHash(exe) != TerrariaHash) throw new IOException("该目录的 Terraria 不是当前已验证的 Windows 1.4.5.8 客户端。");
             // Removal remains available after a Steam update; this does not claim the new game is supported.
             if (!installing && System.Reflection.AssemblyName.GetAssemblyName(exe).Name != "Terraria") throw new IOException("该目录不是可识别的 Terraria 客户端目录。");
-            foreach (string name in new[] { "JueMingR.dll", "Terraria.exe.config", "JueMingR.install.json" }) CheckPath(Path.Combine(root, name), false, true);
-            CheckProcesses(root);
             return root;
         }
 

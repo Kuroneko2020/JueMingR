@@ -8,6 +8,8 @@
     <Compile Include="../../src/JueMingR.Setup/InstallService.cs" Link="InstallService.cs" />
     <Compile Include="../../src/JueMingR.Setup/SetupPayload.cs" Link="SetupPayload.cs" />
     <Compile Include="../../src/JueMingR.Setup/TargetSafety.cs" Link="TargetSafety.cs" />
+    <Compile Include="../../src/JueMingR.Setup/ConfigurationReset.cs" Link="ConfigurationReset.cs" />
+    <Compile Include="../../src/JueMingR.Setup/SteamDiscovery.cs" Link="SteamDiscovery.cs" />
     <Compile Include="../../src/JueMingR.Setup/OwnedFiles.cs" Link="OwnedFiles.cs" />
     <Reference Include="System.Web.Extensions" /><Reference Include="System.Xml.Linq" /><Reference Include="System.IO.Compression" />
   </ItemGroup>
