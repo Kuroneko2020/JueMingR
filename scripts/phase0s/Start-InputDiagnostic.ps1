@@ -9,6 +9,10 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
+# Retained metadata reader for the original distributed diagnostic fixture only.
+# New diagnostic delivery uses the common two-file bundle and standalone Setup.
+if ($Launch -or -not ($CandidateOnly -or $MetadataOnly)) { throw 'This historical diagnostic launcher is retired; use the current two-file Setup route. Historical metadata inspection requires -CandidateOnly.' }
+
 . (Join-Path $PSScriptRoot 'Phase0S.ScriptSupport.ps1')
 if ($Launch -and ($CandidateOnly -or $MetadataOnly)) { throw 'Candidate-only validation cannot launch.' }
 $package = Read-Phase0SPackage -PackageRoot $PackageRoot

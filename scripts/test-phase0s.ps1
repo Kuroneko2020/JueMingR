@@ -8,7 +8,9 @@ param(
     [string] $ExpectedZipSha256,
     [string] $ApprovedRetainedAssets,
     [switch] $DeferGraphics,
-    [string] $GraphicsDeferralReason
+    [string] $GraphicsDeferralReason,
+    [string] $SetupPath,
+    [string] $OutputRoot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,11 +22,24 @@ if ($Scope -eq 'PackageIntegrity') {
     if ($DeferGraphics -or $GraphicsDeferralReason) { throw 'PackageIntegrity does not run graphical checks.' }
     $arguments=@('-ZipPath',$ZipPath,'-BuildRecordPath',$BuildRecordPath,'-ExpectedSourceCommit',$ExpectedSourceCommit,'-ExpectedZipSha256',$ExpectedZipSha256)
     if($ApprovedRetainedAssets){$arguments+=@('-ApprovedRetainedAssets',$ApprovedRetainedAssets)}
+    if($SetupPath){$arguments+=@('-SetupPath',$SetupPath)}
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'verify-existing-package.ps1') @arguments
     exit $LASTEXITCODE
 }
 if ($ZipPath -or $BuildRecordPath -or $ExpectedSourceCommit -or $ExpectedZipSha256 -or $ApprovedRetainedAssets) {throw 'Package arguments require -Scope PackageIntegrity.'}
 if ($Scope -eq 'InstallRecovery' -and ($DeferGraphics -or $GraphicsDeferralReason)) {throw 'InstallRecovery does not run graphical checks.'}
+if($Scope -ne 'LegacySynthetic' -and ($DeferGraphics -or $GraphicsDeferralReason)){throw 'Graphics deferral belongs only to the explicit historical LegacySynthetic scope.'}
+
+# Installation evidence now exercises the actual standalone production service.
+# No historical CONFIG_EXISTS/Restore fixture can certify this protocol.
+if($Scope -eq 'InstallRecovery'){
+    if(-not $SetupPath){throw 'InstallRecovery requires -SetupPath for the final standalone two-file installer.'}
+    $suite=Join-Path $PSScriptRoot '../tests/TwoFileDistribution/SetupChecks.ps1'
+    $arguments=@('-SetupExecutable',$SetupPath)
+    if($OutputRoot){$arguments+=@('-OutputRoot',$OutputRoot)}
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $suite @arguments
+    exit $LASTEXITCODE
+}
 
 if ($DeferGraphics -and [string]::IsNullOrWhiteSpace($GraphicsDeferralReason)) {
     throw '-DeferGraphics requires an explicitly classified environment reason and task authorization.'
@@ -69,13 +84,17 @@ if ($missing.Count -ne 0) {
 try {
     $suites = switch ($Scope) {
         'LegacySynthetic' { 'Invoke-LoadChainFixture.ps1' }
-        'InstallRecovery' { 'Invoke-InstallRecoveryTests.ps1' }
-        default { 'Invoke-LoadChainFixture.ps1'; 'Invoke-InstallRecoveryTests.ps1' }
+        default { 'Invoke-TwoFileColdStartChecks.ps1'; '../TwoFileDistribution/SetupChecks.ps1' }
     }
     Write-Output ('SCOPE: ' + $Scope + '; synthetic/file-boundary evidence only; normal Terraria loading requires owner execution.')
     $failedSuites = @()
     foreach ($suiteScript in $suites) {
         $suiteArguments = @('-Run', '-RepositoryRoot', $repositoryRoot)
+        if($suiteScript -ceq '../TwoFileDistribution/SetupChecks.ps1'){
+            if(-not $SetupPath){throw 'AllSynthetic requires -SetupPath for production Setup installation checks.'}
+            $suiteArguments=@('-SetupExecutable',$SetupPath)
+            if($OutputRoot){$suiteArguments+=@('-OutputRoot',$OutputRoot)}
+        }
         if ($DeferGraphics -and $suiteScript -ceq 'Invoke-LoadChainFixture.ps1') {
             $suiteArguments += @('-DeferGraphics', '-GraphicsDeferralReason', $GraphicsDeferralReason)
         }

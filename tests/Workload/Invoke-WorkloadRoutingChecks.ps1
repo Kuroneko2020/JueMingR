@@ -18,6 +18,11 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+foreach($path in @('src/JueMingR.Bootstrap/BundlePayload.cs','src/JueMingR.Setup/InstallService.cs','scripts/TwoFileBundle.Support.ps1','tests/TwoFileDistribution/SetupChecks.ps1','tests/TwoFileColdStart/Program.cs','tests/Phase0S/Invoke-TwoFileColdStartChecks.ps1')){
+    $route=Get-WorkloadRoute @($path)
+    Assert-Route ($route.unknown.Count -eq 0 -and $route.groups -contains 'package-tools' -and $route.groups -contains 'workload-tools') ('two-file deployment input has its actual tool consumer route: '+$path)
+    Assert-Route ($route.groups -notcontains 'shared-host' -and $route.groups -notcontains 'legacy-worker') ('deployment shape does not invalidate unrelated game behavior: '+$path)
+}
 # Graphics remains an explicit specialist. Editing its inputs must still select
 # the registered module CPU responsibility rather than an unknown native leaf.
 $previewVisual='tests/NativeWorldTextProbe/NativeWorldGenPreviewVisualChecks.cs'

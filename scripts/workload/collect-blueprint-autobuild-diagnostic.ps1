@@ -2,22 +2,27 @@
 .SYNOPSIS
 Collect this one-shot blueprint diagnostic only after the owner has exited Terraria.
 .DESCRIPTION
-Stage B seals the selected run before invoking the original package Restore/Install.
+Historical fixture collector only; the old Stage B Restore/Install path is retired.
 It never starts Terraria, consumes/recreates an arm, or searches historical runs.
 PrepareOnly and CollectOnly accept synthetic inputs exclusively below collector-checks.
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][string] $StageADeliveryPath,
-    [Parameter(Mandatory = $true)][string] $OutputDirectory,
-    [Parameter(Mandatory = $true)][string] $OwnerFeedback,
+    [string] $StageADeliveryPath,
+    [string] $OutputDirectory,
+    [string] $OwnerFeedback,
     [switch] $OwnerTestingComplete,
     [string] $RunId,
-    [ValidateSet('StageB', 'PrepareOnly', 'CollectOnly')][string] $Mode = 'StageB'
+    [ValidateSet('StageB', 'PrepareOnly', 'CollectOnly', 'CurrentIdentity')][string] $Mode = 'StageB',
+    [string] $TerrariaDirectory
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
+# The original one-shot task is closed. Keep its isolated reader fixtures, but
+# never let this historical Restore/Install protocol become a new default.
+if ($Mode -eq 'StageB') { throw 'Historical StageB installation is retired. New diagnostic candidates and replacement use the common two-file Setup route.' }
+
 $script:Utf8 = New-Object System.Text.UTF8Encoding($false, $true)
 $script:RawLimit = 1048576L
 $script:ZipLimit = 2097152L
@@ -297,6 +302,19 @@ function New-VerifiedZip {
     } finally { $archive.Dispose() }
 }
 
+if($Mode -eq 'CurrentIdentity'){
+    # This read-only entry also serves future authorized diagnostic candidates.
+    # Selection comes from the installed pair, never a newest-directory search.
+    . (Join-Path $PSScriptRoot '../phase0s/Phase0S.ScriptSupport.ps1')
+    $identity=Read-JmrInstalledIdentity -TerrariaDirectory $TerrariaDirectory
+    [ordered]@{schema='jmr-installed-evidence-1';distributionFormat='two-file-1';packageId=$identity.packageId;sourceCommit=$identity.sourceCommit;
+        payloadId=$identity.payloadId;hostPath=$identity.hostPath;hostSha256=$identity.hostSha256;hostMvid=$identity.hostMvid;
+        runtimeManifest=$identity.runtimePath;evidence=$identity.evidencePath;receipt=$identity.receiptPath;
+        diagnosticLogRoot=(Join-Path ([IO.Path]::GetFullPath($TerrariaDirectory)) 'JueMingRData/logs/blueprint-autobuild-diagnostic');
+        operation='READ_ONLY';installation='NOT_EXECUTED'} | ConvertTo-Json -Depth 4
+    return
+}
+if([string]::IsNullOrWhiteSpace($StageADeliveryPath) -or [string]::IsNullOrWhiteSpace($OutputDirectory) -or [string]::IsNullOrWhiteSpace($OwnerFeedback)){throw 'Historical fixture collection requires its StageADeliveryPath, OutputDirectory and OwnerFeedback.'}
 Assert-Exited
 if (-not $OwnerTestingComplete -and $Mode -ne 'PrepareOnly') { throw 'Stage B requires the owner testing-complete instruction (-OwnerTestingComplete).' }
 if ($OwnerFeedback.Length -gt 4096) { throw 'Keep owner feedback to the short observation requested by this task.' }

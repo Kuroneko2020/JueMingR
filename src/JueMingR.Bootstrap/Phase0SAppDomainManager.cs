@@ -25,6 +25,7 @@ namespace JueMingR.Bootstrap
         private Assembly reLogicAssembly;
         private RuntimeManifest manifest;
         private string evidencePath;
+        private string preparedDirectory;
         private bool evidenceCreated;
         private int errorRecorded;
 
@@ -38,6 +39,13 @@ namespace JueMingR.Bootstrap
                 }
 
                 initialized = true;
+                try { preparedDirectory = BundlePreparation.Prepare(); }
+                catch (Exception exception)
+                {
+                    BundlePreparation.RecordPreparationFailure(exception);
+                    Fail(exception, "BUNDLE_PREPARE", "VERIFY_FAILED");
+                    return;
+                }
                 // Subscribe before scanning, but do not select an install until the scan ends.
                 scanning = true;
                 AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
@@ -228,7 +236,7 @@ namespace JueMingR.Bootstrap
             }
 
             string baseDirectory = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory);
-            string sidecarDirectory = Path.Combine(baseDirectory, "JueMingR.Validation");
+            string sidecarDirectory = preparedDirectory;
             manifest = RuntimeManifest.Read(Path.Combine(sidecarDirectory, "phase-0-s-runtime.manifest"));
             evidencePath = Path.Combine(sidecarDirectory, manifest.EvidenceFileName);
         }
@@ -304,7 +312,7 @@ namespace JueMingR.Bootstrap
             try
             {
                 string baseDirectory = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory);
-                string sidecarDirectory = Path.Combine(baseDirectory, "JueMingR.Validation");
+                string sidecarDirectory = preparedDirectory;
                 string hostPath = Path.Combine(sidecarDirectory, "JueMingR.TerrariaHost.dll");
                 AssemblyIdentity.VerifyFileNameAndVersion(
                     hostPath,

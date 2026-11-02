@@ -56,7 +56,7 @@ $checks=@($plan.checks|ForEach-Object {if($_.name -ceq $first.name){[ordered]@{n
 $record=[pscustomobject][ordered]@{schema='development-candidate-1';purpose='OWNER_TEST';taskReference='https://github.com/Kuroneko2020/JueMingR/issues/999999';testPurpose='Synthetic schema contract only';
     candidateCommit=$commit;sourceFingerprint=$identity.fingerprint;inputFingerprint=$inputs.fingerprint;productBase=$script:candidateAncestor;
     fullQualification='INCOMPLETE';releaseEligible=$false;openFailures=@();authorization=[ordered]@{reference='https://github.com/Kuroneko2020/JueMingR/issues/999999';artifact=$auth};
-    package=[ordered]@{profile='ContinuousProcessing';content='ORDINARY_COMPLETE';packageId=('continuous-processing-'+$commit)};
+    package=[ordered]@{profile='ContinuousProcessing';content='ORDINARY_COMPLETE';distributionFormat='two-file-1';packageId=('continuous-processing-'+$commit)};
     planFingerprint=$plan.fingerprint;checks=$checks;unfinishedResponsibilities=@($checks|Where-Object {$_.status -ceq 'NOT_EXECUTED'}|ForEach-Object {$_.name});
     reviews=@([ordered]@{result='APPROVED_FOR_STAGE';sourceFingerprint=$identity.fingerprint;coverage='Synthetic formal plan and incomplete qualification';artifact=$review});limits=@('Synthetic only; no game, product package, install or actual task qualification')}
 $recordPath=Join-Path $testRoot '.local/candidate.json'
@@ -66,6 +66,8 @@ Assert-Candidate ($stage.mode -ceq 'DevelopmentCandidate' -and $stage.checkCount
 Assert-Candidate ($stage.fullQualification -ceq 'INCOMPLETE' -and -not $stage.releaseEligible -and -not $stage.installationAuthorized) 'legal owner-test record never grants complete qualification, release or automatic installation'
 Assert-Candidate (-not (Test-WorkloadCoverage ([pscustomobject]$stage) @($plan.checks.name) $inputs.fingerprint)) 'ordinary complete qualification consumer rejects the stage result'
 function Read-CandidateFixture($Value){Write-WorkloadJson $recordPath $Value;Read-AimStageDevelopment $testRoot $recordPath $identity $inputs}
+$bad=Copy-Candidate $record;$bad.package.distributionFormat='historical-phase0s'
+Assert-CandidateReject {Read-CandidateFixture $bad} 'ordinary candidate cannot select the historical distributed format'
 $bad=Copy-Candidate $record;$bad.checks=@($bad.checks|Where-Object {$_.name -ceq $first.name})
 Assert-CandidateReject {Read-CandidateFixture $bad} 'narrowed caller check list cannot replace formal route responsibility'
 $bad=Copy-Candidate $record;$bad|Add-Member requiredChecks @($first.name)

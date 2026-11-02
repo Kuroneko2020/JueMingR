@@ -76,6 +76,10 @@ function Get-WorkloadRoute {
             continue
         }
         switch -Regex ($path) {
+            # Deployment changes select package/tool consumers, not every game
+            # feature. The production CLR/Setup mechanisms have explicit fixture
+            # evidence; Host/Worker edits retain their own routes below.
+            '^src/JueMingR.Bootstrap/|^src/JueMingR.Setup/|^tests/(TwoFileDistribution|TwoFileColdStart)/|^tests/Phase0S/Invoke-TwoFileColdStartChecks\.ps1$|^scripts/TwoFileBundle.Support\.ps1$|^scripts/distribution/|^scripts/phase0s/(Install-Phase0S|Restore-Phase0S|Phase0S.ScriptSupport|Start-InputDiagnostic)\.ps1$' { [void]$groups.Add('package-tools'); [void]$groups.Add('workload-tools'); continue }
             # The editor's native world gate is also consumed by the existing
             # held-item owners. A pure blueprint-view edit must retain those
             # direct automatic-consumer regressions, without all-group fallback.

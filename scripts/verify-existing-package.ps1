@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory=$true)][string] $BuildRecordPath,
     [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{40}$')][string] $ExpectedSourceCommit,
     [Parameter(Mandatory=$true)][ValidatePattern('^[0-9A-Fa-f]{64}$')][string] $ExpectedZipSha256,
-    [string] $ApprovedRetainedAssets
+    [string] $ApprovedRetainedAssets,
+    [string] $SetupPath
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2.0
@@ -35,12 +36,22 @@ try {
     $count=Test-RecordedPackageArchive $zip $record
     $temporary=Join-Path ([IO.Path]::GetTempPath()) ('JueMingR-verify-package-'+[Guid]::NewGuid().ToString('N'))
     [IO.Compression.ZipFile]::ExtractToDirectory($zip,$temporary)
-    $packageRoot=Join-Path $temporary $record.packageDirectory.name
-    $package=Read-Phase0SPackage -PackageRoot $packageRoot
+    $twoFile=$null -ne $record.PSObject.Properties['distributionFormat'] -and $record.distributionFormat -ceq 'two-file-1'
+    if($twoFile){
+        $packageRoot=$temporary
+        if(-not $SetupPath){$SetupPath=Join-Path ([IO.Path]::GetDirectoryName($recordPath)) $record.setup.fileName}
+        $package=Read-TwoFilePackage -PackageRoot $packageRoot -Record $record -SetupPath $SetupPath
+    } else {
+        # Historical archives remain readable; no installer or old package code
+        # is executed. New builds can only emit the standard two-file format.
+        $packageRoot=Join-Path $temporary $record.packageDirectory.name
+        $package=Read-Phase0SPackage -PackageRoot $packageRoot
+    }
     if ($package.sourceCommit -cne $ExpectedSourceCommit -or $package.packageId -cne $record.packageId) {throw 'PACKAGE_IDENTITY_MISMATCH'}
     # Guard the evidence window; metadata-only checks never turn this into a
     # current-HEAD build, a synthetic load PASS or an owner gameplay result.
     if ((Get-WorkloadFileHash -LiteralPath $zip).Hash -cne $zipHash -or (Get-WorkloadFileHash -LiteralPath $recordPath).Hash -cne $recordHash) {throw 'INPUT_CHANGED_DURING_VERIFICATION'}
+    if($twoFile -and (Get-WorkloadFileHash -LiteralPath $SetupPath).Hash -cne $record.setup.sha256){throw 'SETUP_CHANGED_DURING_VERIFICATION'}
     $tools=@('verify-existing-package.ps1','phase0s/PackageVerification.Support.ps1','phase0s/Phase0S.ScriptSupport.ps1','workload/Workload.Support.ps1','workload/Workload.Evidence.ps1','workload/Workload.Definitions.ps1','workload/Workload.NativeContent.ps1','workload/Workload.ReadWindow.ps1','workload/Workload.Workspace.ps1','workload/Workload.Cleanup.ps1','workload/AimStage.Development.ps1','workload/DevelopmentCandidate.ps1','workload/Workload.Planning.ps1') | ForEach-Object {
         [ordered]@{path=$_;sha256=(Get-WorkloadFileHash -LiteralPath (Join-Path $PSScriptRoot $_)).Hash}
     }
@@ -51,7 +62,8 @@ try {
         fullQualification=$(if($stage){'INCOMPLETE'}else{'UNCHANGED_ORIGINAL_RECORD'});
         taskAcceptance=$(if($stage -and $null -ne $record.workload.PSObject.Properties['taskAcceptance']){$record.workload.taskAcceptance}else{$null});
         regressionObservations=$(if($stage -and $null -ne $record.workload.PSObject.Properties['regressionObservations']){@($record.workload.regressionObservations)}else{@()});
-        realGameLoad='NOT_EXECUTED';productChecks='NOT_RERUN'} | ConvertTo-Json -Depth 5
+        distributionFormat=$(if($twoFile){'two-file-1'}else{'historical-phase0s'});
+        setupVerified=$twoFile;realGameLoad='NOT_EXECUTED';productChecks='NOT_RERUN'} | ConvertTo-Json -Depth 5
 } catch {
     [Console]::Out.WriteLine(([ordered]@{status='FAIL';scope='archive-and-package-identity';error=$_.Exception.Message;milliseconds=$watch.ElapsedMilliseconds}|ConvertTo-Json -Compress))
     exit 1

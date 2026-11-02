@@ -1,11 +1,33 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, ValueFromPipeline = $false)]
-    [string] $TerrariaDirectory
+    [string] $TerrariaDirectory,
+    [string] $SetupPath,
+    [switch] $HistoricalFixture
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
+# Normal installation delegates to the same standalone production service used
+# by the UI. The old protocol below exists only for explicit historical fixtures.
+if (-not $HistoricalFixture) {
+    if ([string]::IsNullOrWhiteSpace($SetupPath)) { throw 'Specify -SetupPath for the standalone two-file installer; historical Restore is not an installation prerequisite.' }
+    $setup = Get-Item -LiteralPath ([IO.Path]::GetFullPath($SetupPath)) -Force -ErrorAction Stop
+    if ($setup.PSIsContainer -or ($setup.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Setup must be an ordinary executable file.' }
+    $start=New-Object Diagnostics.ProcessStartInfo
+    $start.FileName=$setup.FullName
+    $quoted='"'+[regex]::Replace([regex]::Replace($TerrariaDirectory,'(\\*)"','$1$1\"'),'(\\+)$','$1$1')+'"'
+    $start.Arguments='--install --game-dir '+$quoted+' --json'
+    $start.UseShellExecute=$false;$start.CreateNoWindow=$true
+    $start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
+    $process=New-Object Diagnostics.Process;$process.StartInfo=$start
+    try {
+        [void]$process.Start();$stdout=$process.StandardOutput.ReadToEndAsync();$stderr=$process.StandardError.ReadToEndAsync()
+        $process.WaitForExit();[Console]::Out.Write($stdout.GetAwaiter().GetResult());[Console]::Error.Write($stderr.GetAwaiter().GetResult())
+        $code=$process.ExitCode
+    } finally {$process.Dispose()}
+    exit $code
+}
 
 try {
     . (Join-Path $PSScriptRoot 'Phase0S.ScriptSupport.ps1')

@@ -50,6 +50,7 @@ function Read-DevelopmentCandidate {
     $retained=if($null -ne $script:WorkloadRetainedAssets){@($script:WorkloadRetainedAssets.files.path)}else{@()}
     if(@((Get-WorkloadChanges $Root 'HEAD').paths | Where-Object {$_ -cnotin $retained}).Count){throw 'Development candidate has uncommitted or unknown inputs.'}
     if($Record.package.profile -cne 'ContinuousProcessing' -or $Record.package.content -cne 'ORDINARY_COMPLETE' -or
+        $null -eq $Record.package.PSObject.Properties['distributionFormat'] -or $Record.package.distributionFormat -cne 'two-file-1' -or
         $Record.package.packageId -cne ('continuous-processing-'+$Identity.commit)){throw 'Development candidate must use the ordinary complete package and current product identity.'}
     $formal=Get-DevelopmentCandidatePlan $Root $Record.productBase $Identity $InputIdentity
     $required=@($formal.checks.name)
@@ -129,7 +130,7 @@ function Read-DevelopmentCandidate {
         installationAuthorized=$false;taskReference=$Record.taskReference;purpose=$Record.testPurpose;productBase=$Record.productBase;
         recordPath=$Relative;recordSha256=(Get-WorkloadFileHash -LiteralPath $Path).Hash;planFingerprint=$formal.fingerprint;
         necessaryScopes=$accepted;catalogueScopes=$required;limits=@($Record.limits);checkCount=$required.Count;provedCheckCount=$proved;
-        unfinishedResponsibilities=@($pending);packageId=$Record.package.packageId;
+        unfinishedResponsibilities=@($pending);packageId=$Record.package.packageId;distributionFormat='two-file-1';
         taskAcceptance=$(if($scoped){[ordered]@{status='PASS';checkCount=$accepted.Count;responsibilities=@($Record.taskAcceptance.responsibilities)}}else{$null});
         regressionObservations=@($observations.ToArray());openFailures=@($failures.ToArray())}
 }

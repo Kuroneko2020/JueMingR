@@ -160,6 +160,8 @@ $buildArguments = @(
     '--no-incremental',
     '--nologo',
     '-p:Platform=x86',
+    '-p:JueMingRBundleLogicOnly=true',
+    '-p:JueMingRSetupLogicOnly=true',
     "-p:JueMingRBuildRoot=$workRoot",
     "-p:TerrariaReferencesDirectory=$referencesDirectory",
     "-p:HarmonyReferencesDirectory=$harmonyReferencesDirectory",
@@ -252,7 +254,7 @@ if ($Configuration -ceq 'Release') {
         if (-not $debugRoot.StartsWith($repositoryRoot.TrimEnd('\') + '\artifacts\build\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Detection cleanup escaped its workspace output root.' }
         if ([IO.Directory]::Exists($debugRoot)) { Remove-Item -LiteralPath $debugRoot -Recurse -Force }
         $debugWork = Join-Path $debugRoot 'work'; [IO.Directory]::CreateDirectory($debugWork) | Out-Null
-        & $dotnetCommand.Source build $solutionPath --configuration Debug --no-incremental --nologo -p:Platform=x86 "-p:JueMingRBuildRoot=$debugWork" "-p:TerrariaReferencesDirectory=$referencesDirectory" "-p:HarmonyReferencesDirectory=$harmonyReferencesDirectory" "-p:SourceRevisionId=$commit" -p:JueMingRBlueprintDiagnostic=false
+        & $dotnetCommand.Source build $solutionPath --configuration Debug --no-incremental --nologo -p:Platform=x86 -p:JueMingRBundleLogicOnly=true -p:JueMingRSetupLogicOnly=true "-p:JueMingRBuildRoot=$debugWork" "-p:TerrariaReferencesDirectory=$referencesDirectory" "-p:HarmonyReferencesDirectory=$harmonyReferencesDirectory" "-p:SourceRevisionId=$commit" -p:JueMingRBlueprintDiagnostic=false
         if ($LASTEXITCODE -ne 0) { throw 'Same-source Debug detection build failed.' }
         $debugRecord = [ordered]@{}
         foreach ($key in $record.Keys) { $debugRecord[$key] = $record[$key] }
