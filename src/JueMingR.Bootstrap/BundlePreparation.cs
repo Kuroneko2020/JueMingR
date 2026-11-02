@@ -25,7 +25,7 @@ namespace JueMingR.Bootstrap
         internal static string Prepare()
         {
             Assembly container = typeof(BundlePreparation).Assembly;
-            string root = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory);
+            string root = NormalizeDirectory(AppDomain.CurrentDomain.BaseDirectory);
             if (!String.Equals(Path.GetFullPath(container.Location), Path.Combine(root, "JueMingR.dll"), StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("The entry container is outside the application root.");
             byte[] index = ReadResource(container, "JueMingR.Bundle.index", 16384);
@@ -33,7 +33,7 @@ namespace JueMingR.Bootstrap
             string payloadId = Hash(index).ToLowerInvariant();
             byte[] config = ReadResource(container, "JueMingR.Bundle.config", 32768);
             string configPath = Path.GetFullPath(AppDomain.CurrentDomain.SetupInformation.ConfigurationFile);
-            if (!String.Equals(Path.GetDirectoryName(configPath), root.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+            if (!DirectoryEquals(Path.GetDirectoryName(configPath), root))
                 throw new InvalidDataException("The application configuration path is unexpected.");
             RequireOrdinaryFile(configPath);
             if (!String.Equals(Hash(File.ReadAllBytes(configPath)), Hash(config), StringComparison.Ordinal))
@@ -125,6 +125,22 @@ namespace JueMingR.Bootstrap
                 // A read-only target may prevent local evidence as well. The
                 // Trace outlet remains available and activation stays terminal.
             }
+        }
+
+        internal static string NormalizeDirectory(string directory)
+        {
+            string full = Path.GetFullPath(directory);
+            int minimumLength = Path.GetPathRoot(full).Length;
+            int length = full.Length;
+            // Preserve the root itself: trimming D:\ into D: changes where files resolve.
+            while (length > minimumLength &&
+                (full[length - 1] == Path.DirectorySeparatorChar || full[length - 1] == Path.AltDirectorySeparatorChar)) length--;
+            return length == full.Length ? full : full.Substring(0, length);
+        }
+
+        internal static bool DirectoryEquals(string left, string right)
+        {
+            return String.Equals(NormalizeDirectory(left), NormalizeDirectory(right), StringComparison.OrdinalIgnoreCase);
         }
 
         private static List<Member> ParseIndex(byte[] bytes)

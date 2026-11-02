@@ -43,9 +43,10 @@ function New-ColdRoot([string]$Name){
     if(Test-Path -LiteralPath (Join-Path $directory 'JueMingR.Runtime')){throw 'A cold scenario already contains the private runtime.'}
     return $directory
 }
-function Invoke-ColdDriver([string]$Directory,[string]$Name,[string]$Argument,[string]$ExpectedFailure=''){
+function Invoke-ColdDriver([string]$Directory,[string]$Name,[string]$Argument,[string]$ExpectedFailure='',[string]$WorkingDirectory=''){
     $stdout=Join-Path $logs ($Name+'.stdout.txt');$stderr=Join-Path $logs ($Name+'.stderr.txt')
-    $process=Start-Process -FilePath (Join-Path $Directory 'ColdStartDriver.exe') -ArgumentList $Argument -WorkingDirectory $Directory -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+    if(-not $WorkingDirectory){$WorkingDirectory=$Directory}
+    $process=Start-Process -FilePath (Join-Path $Directory 'ColdStartDriver.exe') -ArgumentList $Argument -WorkingDirectory $WorkingDirectory -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
     $null=$process.Handle
     if(-not $process.WaitForExit(150000)){$process.Kill();throw 'The owned cold-start test process exceeded its deadline.'}
     $process.WaitForExit()
@@ -66,6 +67,10 @@ $blocked=New-ColdRoot 'blocked'
 Invoke-ColdDriver $blocked 'blocked-preparation' '--binding-only' 'bundle directory is a file'
 $cold=New-ColdRoot 'cold'
 Invoke-ColdDriver $cold 'cold-worker' '--worker'
+$differentCwd=Join-Path $scenarioRoot 'different-working-directory';[IO.Directory]::CreateDirectory($differentCwd)|Out-Null
+$cwdCold=New-ColdRoot 'application-with-other-cwd'
+Invoke-ColdDriver $cwdCold 'different-cwd-cold-bootstrap' '--binding-only' '' $differentCwd
+if(Test-Path -LiteralPath (Join-Path $differentCwd 'JueMingR.Runtime')){throw 'The container expanded relative to the process CWD.'}
 $payload=Join-Path $cold ('JueMingR.Runtime/'+$bundle.payloadId)
 $before=@(foreach($member in $bundle.members){(Get-Item -LiteralPath (Join-Path $payload $member.path)).LastWriteTimeUtc.Ticks})
 Invoke-ColdDriver $cold 'valid-cache-reuse' '--binding-only'
@@ -93,4 +98,4 @@ if($NativeContentDirectory){
     [IO.File]::Copy($nativeLibrary,(Join-Path $native 'ReLogic.Native.dll'))
     Invoke-ColdDriver $native 'native-original-update' '--native'
 }
-[ordered]@{status='PASS';scope='production-clr-cold-bootstrap';sourceCommit=$source;workspaceDirty=([bool](& git -C $RepositoryRoot status --porcelain));payloadId=$bundle.payloadId;evidenceRoot=$root;scenarioRoot=$scenarioRoot;rootSameNameForeignDependency='0Harmony, Version=1.0.0.0';cacheReuse='PASS';cacheRepair='PASS';worker='READY_AND_CLOSED';nativeOriginalUpdate=$(if($NativeContentDirectory){'PASS'}else{'NOT_EXECUTED'});ownerGame='NOT_EXECUTED'}|ConvertTo-Json -Depth 4
+[ordered]@{status='PASS';scope='production-clr-cold-bootstrap';sourceCommit=$source;workspaceDirty=([bool](& git -C $RepositoryRoot status --porcelain));payloadId=$bundle.payloadId;evidenceRoot=$root;scenarioRoot=$scenarioRoot;rootSameNameForeignDependency='0Harmony, Version=1.0.0.0';differentWorkingDirectory='PASS';cacheReuse='PASS';cacheRepair='PASS';worker='READY_AND_CLOSED';nativeOriginalUpdate=$(if($NativeContentDirectory){'PASS'}else{'NOT_EXECUTED'});ownerGame='NOT_EXECUTED'}|ConvertTo-Json -Depth 4

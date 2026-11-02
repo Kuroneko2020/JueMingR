@@ -15,6 +15,7 @@ internal static class Program
         try
         {
             Console.OutputEncoding=new System.Text.UTF8Encoding(false);
+            Console.WriteLine("PATHS base="+AppDomain.CurrentDomain.BaseDirectory+" cwd="+Environment.CurrentDirectory);
             Console.WriteLine("MANAGER "+AppDomain.CurrentDomain.DomainManager.GetType().Assembly.FullName);
             AppDomain.CurrentDomain.AssemblyResolve += ResolveReLogic;
             target=Assembly.Load("Terraria, Version=1.4.5.8, Culture=neutral, PublicKeyToken=null");

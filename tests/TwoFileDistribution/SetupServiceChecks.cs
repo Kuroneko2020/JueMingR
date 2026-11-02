@@ -18,6 +18,12 @@ internal static class SetupServiceChecks
         try
         {
             if (args.Length == 1 && args[0] == "--wait") { Console.WriteLine("ready"); Console.ReadLine(); return 0; }
+            if (args.Length == 2 && args[0] == "--path-snapshot") { Console.WriteLine(PathSnapshot(args[1])); return 0; }
+            if (args.Length == 2 && args[0] == "--path-contract")
+            {
+                root = Path.GetFullPath(args[1]); Directory.CreateDirectory(root); PathChecks();
+                Console.WriteLine(new JavaScriptSerializer().Serialize(new { status = "PASS", checks = count, scope = "production pure Windows path contracts; no root/share filesystem access" })); return 0;
+            }
             if (args.Length == 3 && args[0] == "--extract")
             {
                 Assembly source = Assembly.ReflectionOnlyLoad(File.ReadAllBytes(args[1]));
@@ -44,7 +50,7 @@ internal static class SetupServiceChecks
             Check(Service().Execute("install", target).exitCode == 0 && Pair(target), "update-and-mismatch-repair");
 
             string running = Fresh("running-test-owned-worker");
-            string helper = Path.Combine(running, "JueMingR.PredictionWorker.exe"); File.Copy(Assembly.GetExecutingAssembly().Location, helper);
+            string helper = Path.Combine(running, "JueMingR.Runtime", "test-payload", "Worker", "JueMingR.PredictionWorker.exe"); Directory.CreateDirectory(Path.GetDirectoryName(helper)); File.Copy(Assembly.GetExecutingAssembly().Location, helper);
             using (var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(helper, "--wait") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true }))
             {
                 if (process.StandardOutput.ReadLine() != "ready") throw new Exception("Test-owned helper did not start.");
@@ -104,6 +110,44 @@ internal static class SetupServiceChecks
     }
 
     private static InstallService Service() { return new InstallService(() => payload, null); }
+    private static void PathChecks()
+    {
+        foreach (Func<string, string> normalize in new Func<string, string>[] { TargetSafety.NormalizeDirectory, JueMingR.Bootstrap.BundlePreparation.NormalizeDirectory })
+        {
+            Check(normalize(@"D:\") == @"D:\" && normalize("D:/") == @"D:\", "drive-root-remains-absolute");
+            Check(normalize(@"D:\Games\Terraria\") == @"D:\Games\Terraria" && normalize(@"D:\Games\.\Terraria\") == @"D:\Games\Terraria", "ordinary-directory-normalization");
+            Check(normalize(@"\\server\share") == normalize(@"\\server\share\") && Path.IsPathRooted(normalize(@"\\server\share")), "unc-root-equivalence");
+            foreach (string leaf in new[] { "Terraria.exe", "JueMingR.dll", "Terraria.exe.config", @"JueMingRData\config" })
+                Check(Path.Combine(normalize(@"D:\"), leaf) == @"D:\" + leaf, "root-combination-" + leaf);
+        }
+        Check(JueMingR.Bootstrap.BundlePreparation.DirectoryEquals(Path.GetDirectoryName(@"D:\Terraria.exe.config"), @"D:\"), "bootstrap-root-config-directory-equal");
+        Check(!JueMingR.Bootstrap.BundlePreparation.DirectoryEquals(Path.GetDirectoryName(@"D:\child\Terraria.exe.config"), @"D:\"), "bootstrap-child-config-directory-rejected");
+        Check(JueMingR.Bootstrap.BundlePreparation.DirectoryEquals(@"D:\Games\Terraria\", @"d:\games\terraria"), "bootstrap-ordinary-case-and-separator-equal");
+        Check(!JueMingR.Bootstrap.BundlePreparation.DirectoryEquals(@"\\server\share2", @"\\server\share"), "bootstrap-unc-share-boundary");
+        Check(TargetSafety.IsProcessInDirectory(@"D:\", @"D:\Terraria.exe") && TargetSafety.IsProcessInDirectory(@"D:\", @"D:\JueMingR.Runtime\id\Worker\JueMingR.PredictionWorker.exe"), "root-process-and-runtime-worker-owned");
+        Check(!TargetSafety.IsProcessInDirectory(@"D:\", @"E:\Terraria.exe"), "different-drive-not-owned");
+        Check(!TargetSafety.IsProcessInDirectory(@"D:\Games\Terraria", @"D:\Games\Terraria2\Terraria.exe"), "adjacent-game-directory-not-owned");
+        Check(!TargetSafety.IsProcessInDirectory(@"\\server\share", @"\\server\share2\Terraria.exe") && TargetSafety.IsProcessInDirectory(@"\\server\share\", @"\\server\share\runtime\Worker.exe"), "unc-process-share-boundary");
+        string first = Path.Combine(root, "cwd-A"), second = Path.Combine(root, "cwd-B"); Directory.CreateDirectory(first); Directory.CreateDirectory(second);
+        string volume = Path.GetPathRoot(root);
+        Check(ChildSnapshot(first, volume) == ChildSnapshot(second, volume) && ChildSnapshot(first, volume) == PathSnapshot(volume), "absolute-root-independent-of-two-child-working-directories");
+    }
+    private static string PathSnapshot(string input)
+    {
+        return string.Join("|", new[] { TargetSafety.NormalizeDirectory(input), JueMingR.Bootstrap.BundlePreparation.NormalizeDirectory(input),
+            Path.GetFullPath(Path.Combine(TargetSafety.NormalizeDirectory(input), "Terraria.exe")),
+            Path.GetFullPath(Path.Combine(JueMingR.Bootstrap.BundlePreparation.NormalizeDirectory(input), "Terraria.exe.config")) });
+    }
+    private static string ChildSnapshot(string cwd, string volume)
+    {
+        // The test workspace's local volume root contains no spaces or quotes. No mapping
+        // or root files are created; only the child process's owned CWD differs.
+        using (var child = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Assembly.GetExecutingAssembly().Location, "--path-snapshot " + volume)
+            { WorkingDirectory = cwd, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true }))
+        {
+            string output = child.StandardOutput.ReadToEnd().Trim(); child.WaitForExit(); if (child.ExitCode != 0) throw new Exception("Path child failed."); return output;
+        }
+    }
     private static void IncrementChecks()
     {
         string target = Fresh("configuration-reset");

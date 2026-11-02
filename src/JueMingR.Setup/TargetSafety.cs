@@ -21,7 +21,7 @@ namespace JueMingR.Setup
         internal static string ValidateGameDirectory(string directory, bool installing)
         {
             if (string.IsNullOrWhiteSpace(directory)) throw new IOException("请选择 Terraria 游戏目录。");
-            string root = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string root = NormalizeDirectory(directory);
             if (!Directory.Exists(root)) throw new IOException("游戏目录不存在。");
             CheckPath(root, true, false);
             string exe = Path.Combine(root, "Terraria.exe");
@@ -62,7 +62,7 @@ namespace JueMingR.Setup
                 try
                 {
                     string executable = process.MainModule.FileName;
-                    if (executable.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    if (IsProcessInDirectory(root, executable))
                         throw new IOException("游戏或预测进程仍在使用该目录，请正常退出游戏后重试。");
                 }
                 catch (InvalidOperationException) { }
@@ -75,5 +75,24 @@ namespace JueMingR.Setup
             CheckPath(path, false, true);
             if (File.Exists(path)) using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
         }
+
+        internal static string NormalizeDirectory(string directory)
+        {
+            string full = Path.GetFullPath(directory);
+            int minimumLength = Path.GetPathRoot(full).Length;
+            int length = full.Length;
+            // A drive root must never become drive-relative (D:\ -> D:).
+            while (length > minimumLength && IsSeparator(full[length - 1])) length--;
+            return length == full.Length ? full : full.Substring(0, length);
+        }
+
+        internal static bool IsProcessInDirectory(string directory, string executable)
+        {
+            string root = NormalizeDirectory(directory);
+            string prefix = IsSeparator(root[root.Length - 1]) ? root : root + Path.DirectorySeparatorChar;
+            return Path.GetFullPath(executable).StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsSeparator(char value) { return value == Path.DirectorySeparatorChar || value == Path.AltDirectorySeparatorChar; }
     }
 }

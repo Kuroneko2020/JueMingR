@@ -105,10 +105,11 @@ foreach ($path in @('scripts/verify-existing-package.ps1','scripts/phase0s/Packa
 # Fishing/Combat CPU scopes run the prepared native probe, not installation or
 # package readers. Deployment bytes still invalidate their real tool consumers;
 # this does not exempt shared native source, unknown inputs or launch recipes.
-foreach ($path in @('scripts/phase0s/Install-Phase0S.ps1','scripts/phase0s/Restore-Phase0S.ps1','scripts/phase0s/Phase0S.ScriptSupport.ps1')) {
+foreach ($path in @('scripts/phase0s/Install-Phase0S.ps1','scripts/phase0s/Restore-Phase0S.ps1','scripts/phase0s/Phase0S.ScriptSupport.ps1','scripts/build-setup-from-existing-pair.ps1','scripts/phase0s/Read-TwoFilePackageMetadata.ps1')) {
     $route=Get-WorkloadRoute @($path)
-    Assert-Evidence (($route.groups -join ',') -ceq 'core,package-tools,workload-tools') ('deployment has exact tool responsibility: '+$path)
+    Assert-Evidence ($route.unknown.Count -eq 0 -and ($route.groups -join ',') -ceq 'core,package-tools,workload-tools' -and -not (Test-WorkloadNonExecutableInput $path)) ('deployment remains an executable with exact tool responsibility: '+$path)
     $old=[pscustomobject]@{inputs=@($path+':A')};$new=[pscustomobject]@{inputs=@($path+':B')}
+    Assert-Evidence ((Get-WorkloadHash $old.inputs) -cne (Get-WorkloadHash $new.inputs)) ('complete identity still binds deployment bytes: '+$path)
     foreach($name in @('workload-PackageVerification','workload-Evidence','workload-Routing','workload-Failure','workload-DevelopmentCandidate')){
         Assert-Evidence ((Get-WorkloadCheckFingerprint $old $name) -cne (Get-WorkloadCheckFingerprint $new $name)) ('deployment changes invalidate their actual tool consumer: '+$path+' -> '+$name)
     }
