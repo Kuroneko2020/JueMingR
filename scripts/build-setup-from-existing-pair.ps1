@@ -10,7 +10,7 @@ if($LASTEXITCODE -ne 0){throw 'Git repository is required.'}
 $source=(& git -C $repositoryRoot rev-parse HEAD).Trim()
 # Only the installer is rebuilt. An unrelated preserved workspace asset does not become
 # installer source; uncommitted installer/build-entry changes must not be labelled as HEAD.
-$owned=@('src/JueMingR.Setup','scripts/build-setup-from-existing-pair.ps1','scripts/phase0s/PackageVerification.Support.ps1','Directory.Build.props','global.json')
+$owned=@('src/JueMingR.Setup','scripts/build-setup-from-existing-pair.ps1','scripts/phase0s/PackageVerification.Support.ps1','scripts/phase0s/Read-TwoFilePackageMetadata.ps1','Directory.Build.props','global.json')
 & git -C $repositoryRoot diff --quiet HEAD -- @owned
 if($LASTEXITCODE -ne 0){throw 'Commit the installer and its build entry before delivery.'}
 $untracked=@(& git -C $repositoryRoot ls-files --others --exclude-standard -- @owned)
@@ -28,9 +28,10 @@ while($ancestor){
 }
 $record=Get-Content -LiteralPath $PayloadBuildRecord -Raw -Encoding UTF8 | ConvertFrom-Json
 if($record.distributionFormat -cne 'two-file-1'){throw 'Only a verified two-file payload can be reused.'}
-. (Join-Path $PSScriptRoot 'phase0s/PackageVerification.Support.ps1')
+$reader=Join-Path $PSScriptRoot 'phase0s/Read-TwoFilePackageMetadata.ps1'
 $originalSetup=Join-Path (Split-Path -Parent $PayloadBuildRecord) $record.setup.fileName
-$verified=Read-TwoFilePackage -PackageRoot $StandardDirectory -Record $record -SetupPath $originalSetup
+$verified=@(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $reader -StandardDirectory $StandardDirectory -BuildRecordPath $PayloadBuildRecord -SetupPath $originalSetup)
+if($LASTEXITCODE -ne 0){throw 'Original frozen pair/Setup verification failed.'}
 $originalRecordHash=(Get-FileHash -LiteralPath $PayloadBuildRecord -Algorithm SHA256).Hash
 [void][IO.Directory]::CreateDirectory($OutputDirectory)
 $buildRoot=Join-Path $OutputDirectory '.build'
@@ -46,8 +47,11 @@ $record.setup.length=(Get-Item -LiteralPath $setupPath).Length
 $record.setup.sha256=(Get-FileHash -LiteralPath $setupPath -Algorithm SHA256).Hash
 $record | Add-Member -NotePropertyName installerSource -NotePropertyValue $source -Force
 $record | Add-Member -NotePropertyName payloadSource -NotePropertyValue $record.sourceCommit -Force
-$samePair=Read-TwoFilePackage -PackageRoot $StandardDirectory -Record $record -SetupPath $setupPath
-$record | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'payload-package-record.json') -Encoding UTF8
+$updatedRecord=Join-Path $OutputDirectory 'payload-package-record.json'
+$record | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $updatedRecord -Encoding UTF8
+$samePair=@(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $reader -StandardDirectory $StandardDirectory -BuildRecordPath $updatedRecord -SetupPath $setupPath)
+if($LASTEXITCODE -ne 0){throw 'New Setup differs from the frozen pair.'}
+$samePair | Set-Content -LiteralPath (Join-Path $OutputDirectory 'embedded-pair-verification.json') -Encoding UTF8
 $result=[ordered]@{
     schema='setup-rebuild-1';status='PASS';payloadSource=$record.sourceCommit;installerSource=$source
     payloadBuildRecord=$PayloadBuildRecord;payloadBuildRecordSha256=$originalRecordHash
