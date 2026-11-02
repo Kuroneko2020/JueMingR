@@ -1,4 +1,4 @@
-﻿Set-StrictMode -Version 2.0
+Set-StrictMode -Version 2.0
 
 $script:Phase0SUtf8NoBom = New-Object System.Text.UTF8Encoding($false, $true)
 $script:Phase0SExpectedPayloadPaths = @(
@@ -512,7 +512,7 @@ function Read-JmrInstalledIdentity {
         $path=Resolve-Phase0SContainedPath -Root $runtimeRoot -RelativePath $entry.path
         if(-not (Test-Phase0SOrdinaryFile -Path $path) -or (Get-Phase0SFileSha256 -Path $path) -cne $entry.sha256){throw 'Installed runtime member differs from current container.'}
     }
-    $host=Join-Path $runtimeRoot 'JueMingR.TerrariaHost.dll'
+    $hostPath=Join-Path $runtimeRoot 'JueMingR.TerrariaHost.dll'
     $receipt=Join-Path $target 'JueMingR.install.json'
     $receiptOwned=$false
     if(Test-Phase0SOrdinaryFile -Path $receipt){
@@ -524,7 +524,7 @@ function Read-JmrInstalledIdentity {
         } catch {$receiptOwned=$false}
     }
     return [pscustomobject]@{packageId=$package.packageId;sourceCommit=$package.sourceCommit;payloadId=$package.payloadId;runtimeRoot=$runtimeRoot;runtimeRelativePath=$package.runtimeRelativePath;
-        hostPath=$host;hostSha256=(Get-Phase0SFileSha256 $host);hostMvid=(Get-Phase0SAssemblyMvid $host);
+        hostPath=$hostPath;hostSha256=(Get-Phase0SFileSha256 $hostPath);hostMvid=(Get-Phase0SAssemblyMvid $hostPath);
         runtimePath=(Join-Path $runtimeRoot 'phase-0-s-runtime.manifest');evidencePath=(Join-Path $runtimeRoot 'phase-0-s-evidence.log');
         receiptPath=$(if($receiptOwned){$receipt}else{$null});payloadReadback=$true}
 }

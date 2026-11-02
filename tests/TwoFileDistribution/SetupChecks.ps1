@@ -1,9 +1,29 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $SetupExecutable,
     [string] $OutputRoot
 )
 $ErrorActionPreference = 'Stop'
+function ConvertTo-SetupProcessArgument {
+    param([AllowEmptyString()][string] $Value)
+    # ProcessStartInfo.Arguments works on Framework and Core. Quote each argv item using
+    # Windows CRT rules: double backslashes only before quotes and the closing quote.
+    $quoted = [Text.StringBuilder]::new()
+    [void]$quoted.Append([char]34)
+    $slashes = 0
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq [char]92) { $slashes++; continue }
+        if ($character -eq [char]34) {
+            [void]$quoted.Append([char]92, (2 * $slashes + 1))
+        }
+        else { [void]$quoted.Append([char]92, $slashes) }
+        [void]$quoted.Append($character)
+        $slashes = 0
+    }
+    [void]$quoted.Append([char]92, (2 * $slashes))
+    [void]$quoted.Append([char]34)
+    return $quoted.ToString()
+}
 function Invoke-SetupCli {
     param([string] $Executable, [string[]] $Arguments)
     $start = [Diagnostics.ProcessStartInfo]::new()
@@ -12,7 +32,7 @@ function Invoke-SetupCli {
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
     $start.CreateNoWindow = $true
-    foreach ($argument in $Arguments) { [void]$start.ArgumentList.Add($argument) }
+    $start.Arguments = (($Arguments | ForEach-Object { ConvertTo-SetupProcessArgument -Value $_ }) -join ' ')
     $process = [Diagnostics.Process]::Start($start)
     try { $stdout = $process.StandardOutput.ReadToEnd(); $stderr = $process.StandardError.ReadToEnd(); $process.WaitForExit(); return [pscustomobject]@{ exitCode = $process.ExitCode; stdout = $stdout; stderr = $stderr } }
     finally { $process.Dispose() }
