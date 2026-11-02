@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using HarmonyLib;
 using JueMingR.Features.Items;
+using JueMingR.Platform.Hotkeys;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -167,8 +168,81 @@ namespace NativeWorldTextProbe
                 }
                 finally{observing=false;AppDomain.CurrentDomain.FirstChanceException-=capture;}
             }
+            private void OpenCancellationOwner(int owner)
+            {
+                if(owner<2)
+                {
+                    Open(0);
+                    if(owner==0)Click(Control("Add",0));
+                    else
+                    {
+                        var quick=Get(page,"QuickPanel");
+                        Click(((IEnumerable)Get(page,"controls")).Cast<object>().First(c=>Get(c,"Command").ToString()=="Quick" && Get(((IList)Get(quick,"logical"))[(int)Get(c,"Argument")],"Command").ToString()=="Add"));
+                    }
+                    Require((bool)Get(page,"Selecting"),"actual Items/Quick chooser is active before cancellation dispatch check");
+                }
+                else
+                {
+                    Open(10);var recovery=Get(shell,"RecoveryUi");
+                    var configure=((IEnumerable)Get(recovery,"visible")).Cast<object>().First(p=>(int)Get(p,"Command")==-2 && (int)Get(p,"Value")==0);
+                    var rect=Get(Get(configure,"Element"),"Rect");point=new Vector2(F(rect,"X")+2,F(rect,"Y")+2);
+                    Frame("potion-cancel-open",new Keys[0]);Frame("potion-cancel-open",new Keys[0],true);Frame("potion-cancel-open",new Keys[0]);
+                    Require((bool)Get(Get(recovery,"PotionPopup"),"Visible"),"actual medication overlay is active before cancellation dispatch check");
+                }
+                point=new Vector2(-10,-10);
+            }
+            private void CancellationDispatch()
+            {
+                // Use the existing registered query action and actual Shell
+                // admission/dispatch, not the new cancellation helper: the same
+                // test must reach a behavioral failure on the previous product.
+                var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");
+                var original=bindings.Get("item-browser.query");var browser=Get(context,"Browser");var targets=Get(browser,"Targets");
+                var hotkeys=(HotkeyInput)Get(input,"Hotkeys");
+                var chat=typeof(Main).GetMethod("DoUpdate_Enter_ToggleChat",Flags);
+                Require(chat!=null && (bool)Get(targets,"Ready"),"actual native chat outlet and registered query consumer are available");
+                bool oldChat=Main.drawingPlayerChat,oldChatRelease=Main.chatRelease;
+                try
+                {
+                    NativeQuickGestureChecks.Bind(bindings,"item-browser.query","LeftControl+LeftShift+NumPad8");
+                    var chord=new[]{Keys.LeftControl,Keys.LeftShift,Keys.NumPad8};
+                    foreach(int owner in new[]{0,1,2})
+                    {
+                        string label=new[]{"items","quick","potion"}[owner];OpenCancellationOwner(owner);
+                        Frame(label+"-cancel-held-cache",Movement);Frame(label+"-cancel-held",Movement);
+                        Main.drawingPlayerChat=false;Main.chatRelease=true;
+                        Frame(label+"-cancel-and-fresh-query",Movement.Concat(chord).Concat(new[]{Keys.Escape,Keys.Enter}).ToArray());
+                        bool closed=owner<2?!(bool)Get(page,"Selecting"):!(bool)Get(Get(Get(shell,"RecoveryUi"),"PotionPopup"),"Visible");
+                        bool pending=(bool)Get(targets,"Busy");
+                        Console.WriteLine("PICKER CANCEL "+label+" closed="+closed+" queryPending="+pending+" nativeInventory="+PlayerInput.Triggers.Current.Inventory+" nativeEnter="+Main.keyState.IsKeyDown(Keys.Enter)+" heldA="+hotkeys.IsDown((int)Keys.A)+" suppressedA="+hotkeys.IsSuppressed((int)Keys.A));
+                        Check(closed && !pending,"accepted "+label+" Escape blocks the same frame's actual registered query dispatch");
+                        Check(!PlayerInput.Triggers.Current.Inventory && !Main.keyState.IsKeyDown(Keys.Enter),label+" cancellation consumes already-mapped inventory and native Enter");
+                        chat.Invoke(null,null);Check(!Main.drawingPlayerChat,label+" cancellation cannot open chat through the original Enter consumer");
+                        Check(hotkeys.IsDown((int)Keys.A) && !hotkeys.IsSuppressed((int)Keys.A) && hotkeys.IsSuppressed((int)Keys.Escape),label+" cancellation owns only Escape's physical tail");
+                        // Retire a leaked old-product request so remaining cases
+                        // still exercise their own real dispatch admission.
+                        if(pending)Call(targets,"Cancel",new object[]{null});
+                        Frame(label+"-cancel-release-cache",Movement);Frame(label+"-cancel-release-held",Movement,inspect:true);
+                        Check(!hotkeys.IsSuppressed((int)Keys.Escape),label+" Escape release retires while movement stays held");
+                        Require((bool)Call(browser,"CanQuery"),"fresh query admission is available after "+label+" cancellation");
+                        Frame(label+"-fresh-query-after-cancel",Movement.Concat(chord).ToArray());
+                        Check((bool)Get(targets,"Busy"),"fresh registered query works after "+label+" cancellation without releasing movement");
+                        Call(targets,"Cancel",new object[]{null});Call(shell,"CloseAndSubmitPosition");Frame(label+"-cancel-neutral",new Keys[0]);
+                    }
+                }
+                finally
+                {
+                    Call(targets,"Cancel",new object[]{null});Call(shell,"CloseAndSubmitPosition");
+                    long command;string reason;
+                    Require(bindings.TrySet("item-browser.query",original,null,out command,out reason),"restore original query binding: "+reason);
+                    NativeQuickUseMatrix.Until(()=>{bindings.Poll();return !bindings.Busy;});
+                    Require(bindings.CompletionSucceeded,"original query binding restoration persisted");
+                    Main.drawingPlayerChat=oldChat;Main.chatRelease=oldChatRelease;
+                }
+            }
             internal void Run()
             {
+                CancellationDispatch();
                 foreach(int list in new[]{0,1})
                 {
                     Open(0);Click(Control("Add",list));Check((bool)Get(page,"Selecting"),"real Add release opens list "+list);

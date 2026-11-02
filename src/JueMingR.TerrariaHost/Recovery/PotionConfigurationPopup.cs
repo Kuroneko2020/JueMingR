@@ -80,7 +80,7 @@ namespace JueMingR.TerrariaHost.Recovery
             bool current=matrix==transform && screen==physical && revision==host.Potions.Revision;
             if(icons.Count>0 && (!renderer.Refresh() || renderer.Generation!=skin))current=false;
             OwnsPointer=Captured || Contains(point.X,point.Y);
-            if(escape && !previousEscape){host.Input.Hotkeys.SuppressKey((int)Keys.Escape);host.Input.ConsumeHotkeyActions();Close();}
+            if(escape && !previousEscape){host.Input.ConsumeCancellation((int)Keys.Escape);Close();}
             previousEscape=escape;
             int hit=-1;if(current){if(close.Contains(point.X,point.Y))hit=-2;else for(int i=0;i<cells.Count;i++)if(cells[i].Contains(point.X,point.Y)){hit=firstRow*columns+i;break;}}
             if(left && !previousLeft)armed=hit;

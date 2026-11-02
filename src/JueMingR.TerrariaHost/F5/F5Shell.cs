@@ -631,11 +631,10 @@ namespace JueMingR.TerrariaHost.F5
                 bool cancelGesture=inputState.Hotkeys.IsNew((int)Keys.Escape);
                 if(inputActive && (CombatInterval?.Captured==true || CombatRadius?.Captured==true || items?.Selecting==true) && cancelGesture)
                 {
-                    // A pointer-only chooser owns only its actual Escape tail.
-                    // Consume this frame's mapped actions before cancellation
-                    // can expose Inventory/Enter/a new binding underneath it;
-                    // unlike a text lease, held movement never delays retirement.
-                    inputState.Hotkeys.SuppressKey((int)Keys.Escape);inputState.ConsumeHotkeyActions();
+                    // Claim Escape before child cancellation exposes controls
+                    // underneath it; the input owner consumes native actions
+                    // and every current dispatch edge, retaining only this tail.
+                    inputState.ConsumeCancellation((int)Keys.Escape);
                 }
                 CombatInterval?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelGesture,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
                 CombatRadius?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelGesture,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);

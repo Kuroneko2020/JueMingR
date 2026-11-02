@@ -270,6 +270,16 @@ namespace JueMingR.TerrariaHost.Input
             ConsumeHotkeyActions();
             PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 0;
         }
+        internal void ConsumeCancellation(int key)
+        {
+            // An accepted child cancellation owns this frame across every
+            // dispatch admission, including target/journey/blueprint shortcuts.
+            // Retain only its actual key tail: consuming frozen edges must not
+            // suppress held movement until those unrelated keys are released.
+            Hotkeys.SuppressKey(key);
+            for (int i = 1; i < HotkeyChord.KeyCount; i++) Hotkeys.ConsumePress(i);
+            ConsumeHotkeyActions();
+        }
         internal void ConsumeHotkeyActions()
         {
             var pack = PlayerInput.Triggers;
