@@ -18,6 +18,13 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+# Graphics remains an explicit specialist. Editing its inputs must still select
+# the registered module CPU responsibility rather than an unknown native leaf.
+$previewVisual='tests/NativeWorldTextProbe/NativeWorldGenPreviewVisualChecks.cs'
+$previewRoute=Get-WorkloadRoute @($previewVisual)
+Assert-Route ($previewRoute.unknown.Count -eq 0 -and $previewRoute.groups -contains 'worldgen-preview') 'preview visual input selects the registered module group'
+$previewPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $previewRoute.groups|ForEach-Object {$_.name})
+Assert-Route ($previewPlan -contains 'native-WorldGenPreviewCpu' -and $previewPlan -notcontains 'native-WorldGenPreviewVisual' -and $previewPlan -notcontains 'native-NpcEyeBoss') 'preview visual edit selects CPU responsibility without implicit graphics or unrelated NPC work'
 # The selection leaf also owns Step, a native update/purity fixture consumed
 # by actual Effects/Aim/Control/Mechanics and visual callers. A private-test
 # edit still changes this shared file under the current whole-file proof.

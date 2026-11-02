@@ -286,6 +286,9 @@ namespace JueMingR.TerrariaHost
                 harmony.Patch(npcHoverMethod, new HarmonyMethod(npcHoverPrefixMethod), null, null, null);
                 VerifyExactPatchInfo(npcHoverMethod, npcHoverPrefixMethod, manifest.PatchOwner, true);
                 Input.HostInputHooks.Install(harmony, inputTargets, postfixContext.Input);
+                // Menu generation precedes any world Session. Optional preview
+                // hooks bind here, after assembly readiness, under their own owner.
+                postfixContext.InstallWorldGenPreview(targetAssembly);
                 postfixContext.InstallInformationSources();
                 // Publish readiness only after every exact patch and its evidence have succeeded.
                 EvidenceWriter.AppendEvent(evidencePath, manifest.PackageId, 3, "HOOK_INSTALLED");
@@ -294,6 +297,7 @@ namespace JueMingR.TerrariaHost
             catch (Exception primaryException)
             {
                 postfixContext?.DisposeInformationSources();
+                postfixContext?.DisposeWorldGenPreview();
                 Exception cleanupException = null;
                 if (patchAttempted)
                 {
@@ -486,7 +490,7 @@ namespace JueMingR.TerrariaHost
         {
             PostfixContext context = postfixContext;
             if (Volatile.Read(ref hookCommitted) == 1 && context != null)
-            { context.Input.AfterKeyboardRefresh(); context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.MapFeatures?.Layer.ProcessInput(); context.Movement?.ObserveInput(); context.Combat?.Sample(); context.CombatObservation?.SampleMouse(); context.Blueprint?.ProcessInput(); }
+            { context.Input.AfterKeyboardRefresh(); context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.ProcessWorldGenPreviewInput(); context.MapFeatures?.Layer.ProcessInput(); context.Movement?.ObserveInput(); context.Combat?.Sample(); context.CombatObservation?.SampleMouse(); context.Blueprint?.ProcessInput(); }
 #if JMR_INPUT_DIAGNOSTIC
             if (Volatile.Read(ref hookCommitted) == 1 && context != null) context.Input.ObserveDiagnostics(3);
 #endif
@@ -861,6 +865,14 @@ namespace JueMingR.TerrariaHost
             private Npcs.NativeNpcObservation nativeNpcs;
             internal readonly Information.InformationReadiness InformationReadiness = new Information.InformationReadiness();
             private Information.InformationSourceHooks informationHooks;
+            private WorldGenPreview.WorldGenPreviewHooks worldGenPreview;
+            internal void InstallWorldGenPreview(Assembly target)
+            {
+                worldGenPreview = new WorldGenPreview.WorldGenPreviewHooks(Input, error => RecordBiomeFailure("WORLDGEN_PREVIEW", error));
+                worldGenPreview.Install(target);
+            }
+            internal void DisposeWorldGenPreview() { worldGenPreview?.Dispose(); }
+            internal void ProcessWorldGenPreviewInput() { worldGenPreview?.ProcessInput(); }
             internal void InstallInformationSources()
             {
                 if (!(PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || PackageId.StartsWith("death-history-", StringComparison.Ordinal) || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || (PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || (PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal) || PackageId.StartsWith("continuous-processing-", StringComparison.Ordinal))))))) || informationHooks != null) return;
