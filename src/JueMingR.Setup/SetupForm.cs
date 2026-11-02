@@ -23,7 +23,7 @@ namespace JueMingR.Setup
         {
             Text = "决明安装程序"; Name = "JueMingRSetup"; Font = new Font("Microsoft YaHei UI", 9.5F);
             ForeColor = Ink; BackColor = Color.FromArgb(243, 246, 251); AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(720, 430); MinimumSize = new Size(680, 460); StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(720, 460); MinimumSize = new Size(680, 490); StartPosition = FormStartPosition.CenterScreen;
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28, 22, 28, 20), ColumnCount = 1, RowCount = 5 };
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -48,9 +48,8 @@ namespace JueMingR.Setup
             identity.Margin = new Padding(0, 6, 0, 0); card.Controls.Add(identity); layout.Controls.Add(card);
             var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 16), WrapContents = true };
             actions.Controls.Add(install); actions.Controls.Add(uninstall); actions.Controls.Add(clear); layout.Controls.Add(actions);
-            var status = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(18, 12, 18, 12), ColumnCount = 1, RowCount = 2, Margin = new Padding(0) };
-            status.RowStyles.Add(new RowStyle(SizeType.AutoSize)); status.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            status.Controls.Add(new Label { Text = "状态", AutoSize = true, ForeColor = Muted, Margin = new Padding(0, 0, 0, 7) }); status.Controls.Add(outcome); layout.Controls.Add(status);
+            var status = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(18, 12, 18, 12), Margin = new Padding(0) };
+            status.Controls.Add(outcome); layout.Controls.Add(status);
             var footer = Caption("卸载保留笔记、蓝图库和决明R设置。", "RetentionNotice"); footer.Margin = new Padding(0, 14, 0, 0); layout.Controls.Add(footer); Controls.Add(layout);
             browse.Click += (sender, args) => { using (var dialog = new FolderBrowserDialog { Description = "选择包含 Terraria.exe 的游戏目录", ShowNewFolderButton = false, SelectedPath = directory.Text }) if (dialog.ShowDialog(this) == DialogResult.OK) directory.Text = dialog.SelectedPath; };
             directory.TextChanged += (sender, args) => ShowIdentity();
