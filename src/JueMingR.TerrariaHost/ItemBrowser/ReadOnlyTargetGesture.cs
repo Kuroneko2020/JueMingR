@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using HarmonyLib;
 using JueMingR.Platform.Hotkeys;
@@ -24,6 +25,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private readonly HostInputState input;
         private readonly NativeItemCatalog catalog;
         private long tick, expires;
+        private long placementDeadline, placementGeneration;
+        private int placementProgress;
+        private const int PlacementStallSeconds = 10;
         private int pending;
         private bool picking, released, rawPick, inPass, completed, seenSlot, uiBlocked;
         private bool uiBoundary, resourceBoundary, preparingPlacement;
@@ -57,7 +61,13 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 current = this;
                 Patch(typeof(Main), "DrawInterface", new[] { typeof(GameTime) }, nameof(BeginPass), nameof(EndPass), nameof(PassFinally));
                 Patch(typeof(Main), "DrawInterface_39_MouseOver", Type.EmptyTypes, nameof(BeforeWorldHover), null);
-                Patch(typeof(Terraria.GameContent.UI.ResourceSets.PlayerResourceSetsManager), "TryToHoverOverResources", Type.EmptyTypes, null, nameof(AfterResources));
+                // The tiny manager wrapper may already be inlined in a caller
+                // prepared before our late installation. Observe the active
+                // resource implementation's real normal return, at the same UI
+                // boundary before world tooltips can change mouseText.
+                Patch(typeof(Terraria.GameContent.UI.ResourceSets.ClassicPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(AfterResources));
+                Patch(typeof(Terraria.GameContent.UI.ResourceSets.FancyClassicPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(AfterResources));
+                Patch(typeof(Terraria.GameContent.UI.ResourceSets.HorizontalBarsPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(AfterResources));
                 Patch(typeof(ItemSlot), "MouseHover", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(Hover), null);
                 Patch(typeof(ItemSlot), "LeftClick", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(Left), null);
                 Patch(typeof(ItemSlot), "RightClick", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(Right), null);
@@ -111,11 +121,16 @@ namespace JueMingR.TerrariaHost.ItemBrowser
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
             if (picking || pending != 0) Trace(12, (input.CanStartActions ? 1 : 0) | (input.Hotkeys.IsNew(27) ? 2 : 0) | (input.Hotkeys.IsNew(257) ? 4 : 0) | (rawPick ? 8 : 0));
 #endif
-            if (picking && (!SessionMatches() || !input.CanStartActions || CanPick != null && !CanPick() || input.Hotkeys.IsNew(27))) { Cancel("点选已取消"); return; }
+            if (picking && (!SessionMatches() || !input.CanStartActions || CanPick != null && !CanPick())) { Cancel("点选已取消"); return; }
+            // Only an accepted physical cancellation owns this input frame.
+            // System retirement stays in Cancel without consuming unrelated
+            // keys. Retain the existing read-only mouse tail until real release.
+            if (Busy && input.CanStartActions && SessionMatches() && input.Hotkeys.IsNew(27))
+            { input.ConsumeCancellation(27); Cancel(picking ? "点选已取消" : pending == 2 ? "宣告已取消" : "目标查询已取消"); return; }
             if (picking && rawPick)
             {
                 rawPick = false;
-                if (input.Hotkeys.IsNew(257)) { Cancel("点选已取消"); return; }
+                if (input.Hotkeys.IsNew(257)) { input.ConsumeCancellation(257); Cancel("点选已取消"); return; }
                 if (input.Hotkeys.IsNew(256) && (input.ReadOnlyMouseMask & 1) != 0) { picking = false; Request(1); }
             }
         }
@@ -256,10 +271,14 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal void Update(long currentTick)
         {
             tick = currentTick;
+            bool timedOut = preparingPlacement ? Stopwatch.GetTimestamp() >= placementDeadline : tick > expires;
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
-            if (Busy) Trace(9, (tick > expires ? 1 : 0) | (Main.gameMenu ? 2 : 0) | (!input.IsFocused ? 4 : 0) | (!SessionMatches() ? 8 : 0));
+            if (Busy) Trace(9, (timedOut ? 1 : 0) | (Main.gameMenu ? 2 : 0) | (!input.IsFocused ? 4 : 0) | (!SessionMatches() ? 8 : 0));
 #endif
-            if (Busy && (tick > expires || Main.gameMenu || !input.IsFocused || !SessionMatches() || picking && CanPick != null && !CanPick())) { Cancel("未取得有效的新目标，点选或宣告已取消"); return; }
+            // Proof/pick leases use the outer clock. Once proof exists, only
+            // actual catalog cursor progress renews a separate monotonic stall
+            // lease: skipped outer Updates spend no preparation work allowance.
+            if (Busy && (timedOut || Main.gameMenu || !input.IsFocused || !SessionMatches() || picking && CanPick != null && !CanPick())) { Cancel("未取得有效的新目标，点选或宣告已取消"); return; }
             if (pending == 0 || !completed) return;
             int kind = pending; bool valid = Matches() && (kind == 1 ? CanPick == null || CanPick() : CanAnnounce != null && CanAnnounce()); TargetValue target = seenSlot ? hovered : uiBlocked ? null : frozen;
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
@@ -267,19 +286,27 @@ namespace JueMingR.TerrariaHost.ItemBrowser
 #endif
             if (valid && target != null && target.Placement != null)
             {
-                if (!preparingPlacement) { preparingPlacement = true; expires = tick + 180; Feedback?.Invoke("正在准备物品对应资料；移动指针或 Esc 可取消"); }
-                if (input.Hotkeys.IsNew(27)) { Cancel("目标查询已取消"); return; }
+                bool firstPlacementStep = !preparingPlacement;
+                if (firstPlacementStep)
+                {
+                    preparingPlacement = true; placementDeadline = Stopwatch.GetTimestamp() + PlacementStallSeconds * Stopwatch.Frequency;
+                    Feedback?.Invoke("正在准备物品对应资料；移动指针或 Esc 可取消");
+                }
                 try
                 {
                     catalog.StepPlacement();
-                    if (!catalog.PlacementReady)
+                    if (!firstPlacementStep && placementGeneration != catalog.PlacementGeneration) valid = false;
+                    if (firstPlacementStep || catalog.PlacementProgress > placementProgress)
+                        placementDeadline = Stopwatch.GetTimestamp() + PlacementStallSeconds * Stopwatch.Frequency;
+                    placementProgress = catalog.PlacementProgress; placementGeneration = catalog.PlacementGeneration;
+                    if (valid && !catalog.PlacementReady)
                     {
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
                         Trace(14, 0);
 #endif
                         return;
                     }
-                    valid = NativeTargetObservation.ResolvePlacement(target, catalog);
+                    if (valid) valid = NativeTargetObservation.ResolvePlacement(target, catalog);
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
                     Trace(14, valid ? 2 : 1);
 #endif
@@ -295,7 +322,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
             Trace(10, (valid ? 1 : 0) | (target != null ? 2 : 0) | (target?.Placement != null ? 4 : 0));
 #endif
-            pending = 0; completed = false; frozen = hovered = null;
+            pending = 0; preparingPlacement = completed = false; frozen = hovered = null;
             if (!valid || target == null) { Feedback?.Invoke("目标已变化或被界面遮挡，请重新操作"); if (kind == 1) PickCancelled?.Invoke(); return; }
             if (kind == 1) Picked?.Invoke(target); else Announced?.Invoke(target);
         }
@@ -304,8 +331,10 @@ namespace JueMingR.TerrariaHost.ItemBrowser
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
             Trace(11);
 #endif
-            bool returnPick = Picking; picking = rawPick = inPass = completed = false; pending = 0; frozen = hovered = null; if (message != null) Feedback?.Invoke(message); if (returnPick) PickCancelled?.Invoke();
+            bool returnPick = Picking; picking = rawPick = inPass = completed = preparingPlacement = false; pending = 0; frozen = hovered = null; if (message != null) Feedback?.Invoke(message); if (returnPick) PickCancelled?.Invoke();
         }
+        // Each observed native method can have Blueprint's independent owner.
+        // Retiring this lease removes only our own patches and request state.
         public void Dispose()
         { Ready = false; Cancel(); input.ClaimsReadOnlyGesture = null; foreach (var patch in patches) harmony.Unpatch(patch, HarmonyPatchType.All, Owner); patches.Clear(); if (ReferenceEquals(current, this)) current = null; }
     }

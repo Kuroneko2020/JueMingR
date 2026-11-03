@@ -19,6 +19,7 @@ namespace NativeWorldTextProbe
             NativeAnnouncementIconChecks.Draw(graphics, output);
             var assembly = Assembly.LoadFrom(Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
             object host = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.HostItemKnowledge"), true);
+            long catalogMapping=0;Call(Get(host,"Native"),"BindPlacementClock",(Func<long>)(()=>catalogMapping));
             object shell = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.F5.F5Interaction"), true);
             object input = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Input.HostInputState"), true);
             object renderer = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.F5.F5Renderer"), true);
@@ -50,7 +51,7 @@ namespace NativeWorldTextProbe
                     }
                 };
                 draw(960, 760, 1, "browser-loading.png");
-                for (int i = 0; i < 1800; i++) Call(host, "Step", true);
+                for (int i = 0; i < 1800; i++) { catalogMapping++;Call(host, "Step", true); }
                 Require((bool)Get(Get(host, "Native"), "Ready"), "visual native catalog ready");
                 draw(960, 760, 1, "browser-two-panes.png"); draw(960, 580, 1, "browser-compact-detail.png");
                 draw(1280, 720, 1.5f, "browser-720p-150-detail.png");

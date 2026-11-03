@@ -21,14 +21,14 @@ namespace NativeWorldTextProbe
     internal static class NativeViewOriginalChecks
     {
         private const BindingFlags F = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
-        internal static int Run(string content, string output,bool waterRepair=false,bool zoomSpeed=false,bool movement=false,bool blueprint=false)
+        internal static int Run(string content, string output,bool waterRepair=false,bool zoomSpeed=false,bool movement=false,bool blueprint=false,bool targets=false)
         {
             output = Path.GetFullPath(output); Directory.CreateDirectory(output);
             Terraria.Program.SavePath = Path.Combine(output, "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath);
-            return RunNative(content, output,waterRepair,zoomSpeed,movement,blueprint);
+            return RunNative(content, output,waterRepair,zoomSpeed,movement,blueprint,targets);
         }
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        private static int RunNative(string content, string output,bool waterRepair,bool zoomSpeed,bool movement,bool blueprint)
+        private static int RunNative(string content, string output,bool waterRepair,bool zoomSpeed,bool movement,bool blueprint,bool targets)
         {
             NativeTestAudio.Install(typeof(Main).Assembly);
             if (movement) Console.WriteLine("MOVEMENT startup=audio-installed");
@@ -50,7 +50,7 @@ namespace NativeWorldTextProbe
             try
             {
                 Environment.CurrentDirectory = output;
-                using (var game = new ViewGame(content, output,waterRepair,zoomSpeed,movement,blueprint))
+                using (var game = new ViewGame(content, output,waterRepair,zoomSpeed,movement,blueprint,targets))
                 {
                     if (movement) Console.WriteLine("MOVEMENT startup=start-game-loop-before");
                     // XNA's nonblocking entry performs CreateDevice and the
@@ -74,7 +74,7 @@ namespace NativeWorldTextProbe
             private object context, input, view;
             private int frame;
             private bool prepared;
-            private readonly bool waterRepair,zoomSpeed,movement,blueprint;
+            private readonly bool waterRepair,zoomSpeed,movement,blueprint,targets;
             private bool ordinaryImage, wideImage, retainedImage;
             private readonly HashSet<string> images = new HashSet<string>();
             private readonly Dictionary<string, int> stableRebuilds = new Dictionary<string, int>();
@@ -92,9 +92,10 @@ namespace NativeWorldTextProbe
             private static bool movementMouseDown;
             private static RenderTarget2D capture;
             private static bool redirectOutput;
-            internal ViewGame(string content, string output,bool waterRepair,bool zoomSpeed,bool movement,bool blueprint)
+            internal ViewGame(string content, string output,bool waterRepair,bool zoomSpeed,bool movement,bool blueprint,bool targets)
             {
                 this.output = output; this.content = content;this.waterRepair=waterRepair;this.zoomSpeed=zoomSpeed;this.movement=movement;this.blueprint=blueprint;
+                this.targets=targets;
                 // Caller supplies a local Content directory alias rooted in the
                 // test output because native XnaContentSource takes relative URI.
                 Content.RootDirectory = "Content";
@@ -159,8 +160,11 @@ namespace NativeWorldTextProbe
                 // consumption, native world mouse conversion and final sample.
                 typeof(Main).GetMethod("DoUpdate_HandleInput", F).Invoke(this, null);
                 Call(context, "UpdateRuntime");
+                if(targets)Call(context,"UpdateShell");
                 if(frame==70 && blueprint)
                 { NativeBlueprintOriginalChecks.Run(this,context,()=>InputStep(),()=>Draw(new GameTime()),()=>capture,output,(x,y,down)=>{movementMouseX=x;movementMouseY=y;movementMouseDown=down;});Complete=true;Exit();return; }
+                if(frame==70 && targets)
+                { NativeTargetOriginalChecks.Run(context,k=>InputStep(k),()=>Draw(new GameTime()),(x,y,down)=>{movementMouseX=x;movementMouseY=y;movementMouseDown=down;});Complete=true;Exit();return; }
                 if(frame==70 && movement)
                 { NativeMovementOriginalChecks.Run(this,context,k=>InputStep(k),()=>Draw(new GameTime()),output,(x,y,down)=>{movementMouseX=x;movementMouseY=y;movementMouseDown=down;});Complete=true;Exit();return; }
                 if (frame == 70) { Require((bool)Call(view, "SetUnlockEnabled", true), "Native view enabled after document load"); Require(GameZoomTarget == 1f, "ON does not jump target"); }
@@ -243,14 +247,26 @@ namespace NativeWorldTextProbe
             }
             private void Compose()
             {
-                if (blueprint) NativeBlueprintOriginalChecks.PrepareCallerBeforeHost();
+                if (blueprint || targets) NativeBlueprintOriginalChecks.PrepareCallerBeforeHost();
                 string candidate = Environment.GetEnvironmentVariable("JUEMINGR_VIEW_NETWORK_CANDIDATE");
                 var assembly = Assembly.LoadFrom(String.IsNullOrEmpty(candidate) ? Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll") : candidate);
                 var worker = assembly.GetType("JueMingR.TerrariaHost.Phase0SHarmonyWorker");
-                context = Activator.CreateInstance(worker.GetNestedType("PostfixContext",F),F,null,new object[]{"continuous-processing-"+new string('6',40),Path.Combine(output,"evidence.log"),output},null);
+                // The target specialist also exercises the existing library
+                // worker. Keep its owned data inside this process's SavePath
+                // so the normal list/asset isolation guard remains meaningful.
+                string dataRoot=targets?Path.Combine(Terraria.Program.SavePath,"composition"):output;
+                if(targets)
+                {
+                    Directory.CreateDirectory(dataRoot);
+                    // Projection persistence requires a real local player/world
+                    // identity, even though this specialist never saves a game.
+                    Main.ActivePlayerFileData=new Terraria.IO.PlayerFileData(Path.Combine(dataRoot,"fixture.plr"),false){Player=Main.LocalPlayer};
+                    Main.ActiveWorldFileData=new Terraria.IO.WorldFileData(Path.Combine(dataRoot,"fixture.wld"),false){UniqueId=Guid.NewGuid()};
+                }
+                context = Activator.CreateInstance(worker.GetNestedType("PostfixContext",F),F,null,new object[]{"continuous-processing-"+new string('6',40),Path.Combine(output,"evidence.log"),dataRoot},null);
                 Call(context,"InitializeRuntime",true); input = Get(context,"Input"); view = Get(context,"View");
                 Set(Get(context,"Shell"),"LayersReady",true);
-                if(blueprint)
+                if(blueprint || targets)
                 {
                     // Reuse the production insertion into the real native
                     // interface list so world preview, bar and hit ownership
@@ -289,7 +305,8 @@ namespace NativeWorldTextProbe
                 Call(activeGame.input,"AfterKeyboardRefresh");
                 // Only the blueprint specialist adds its actual late owner
                 // entry, in the same order as the ordinary InputPostfix.
-                if(activeGame.blueprint){Call(Get(activeGame.context,"Shell"),"ProcessInput");Call(Get(activeGame.context,"Blueprint"),"ProcessInput");}
+                if(activeGame.targets)Call(Get(Get(activeGame.context,"Browser"),"Targets"),"ProcessInput");
+                if(activeGame.blueprint || activeGame.targets){Call(Get(activeGame.context,"Shell"),"ProcessInput");Call(Get(activeGame.context,"Blueprint"),"ProcessInput");}
             }
             private void NetworkDraw()
             {
@@ -382,9 +399,10 @@ namespace NativeWorldTextProbe
                 // This specialist skips Main.DoUpdate. Each declared native
                 // input/update step still needs the original world's entry
                 // counter; repeated Draw and empty callbacks do not renew it.
-                if(blueprint) NativeQuickItemChecks.BeginWorldStep();
+                if(blueprint || targets) NativeQuickItemChecks.BeginWorldStep();
                 Call(input,"BeginUpdate");keyboard=new KeyboardState(keys);
                 typeof(Main).GetMethod("DoUpdate_HandleInput",F).Invoke(this,null);Call(context,"UpdateRuntime");
+                if(targets)Call(context,"UpdateShell");
                 if(frame>=820)Console.WriteLine("VIEW input witness keys="+String.Join(",",keys)+" before="+before+" after="+GameZoomTarget+" chat="+chat+"->"+Main.drawingPlayerChat+" map="+Main.mapFullscreen+" writing="+PlayerInput.WritingText);
             }
             private void CheckInputOwnership()

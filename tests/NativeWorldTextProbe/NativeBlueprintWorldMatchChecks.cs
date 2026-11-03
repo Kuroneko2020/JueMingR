@@ -50,10 +50,20 @@ namespace NativeWorldTextProbe
                     new BlueprintProjectionBounds(0, 0, 260, 1), new[] { target, new CaptureCell { X = 259, Y = 0, Layers = CaptureLayer.Tile, TileType = 1 } }, Array.Empty<CaptureObject>());
                 var entry = NativeBlueprintProjectionVisualChecks.Save(library, asset);
                 // This scope executes selected original entries rather than
-                // Main.DoUpdate. Advance its real entry counter once per step;
-                // Poll and Draw deliberately do not provide another allowance.
+                // Main.DoUpdate. Each declared world step first samples the
+                // already-staged keys/mouse/triggers through the host's input
+                // phases, then advances the world counter. A world-only step
+                // supplies no new Mapping allowance to the shared provider.
+                // Preserve explicit Place/control samples; neutral Sample here
+                // would overwrite the scenario's existing press/hold intent.
                 int maxStepReads = 0;
-                Action step = () => { long before = (long)Get(host, "ProjectionMatchCellReads"); NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); int used = checked((int)((long)Get(host, "ProjectionMatchCellReads") - before)); maxStepReads = Math.Max(maxStepReads, used); Require(used <= 256, "one original update entry has at most 256 actual match reads"); };
+                Action step = () =>
+                {
+                    long before = (long)Get(host, "ProjectionMatchCellReads");
+                    Call(input,"BeginUpdate");Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");
+                    NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime");
+                    int used = checked((int)((long)Get(host, "ProjectionMatchCellReads") - before)); maxStepReads = Math.Max(maxStepReads, used); Require(used <= 256, "one original update entry has at most 256 actual match reads");
+                };
                 CompletionV2Progress(context, host, input, library, step);
                 MaterialProgress(context, host, input, library, step);
                 LiquidDisplayProgress(context, host, input, library, step, graphics, output);

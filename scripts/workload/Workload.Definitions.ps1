@@ -102,6 +102,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintMaterialNameChecks.cs'=@('native-BlueprintInput')
         'tests/NativeWorldTextProbe/NativeBlueprintMaterialsDragChecks.cs'=@('native-BlueprintInput')
         'tests/NativeWorldTextProbe/NativeBrowserCompositionChecks.cs'=@('native-BrowserCpu')
+        'tests/NativeWorldTextProbe/NativeTargetPlacementBudgetChecks.cs'=@('native-BrowserCpu')
         'tests/NativeWorldTextProbe/NativeTargetDiagnosticRequestChecks.cs'=@('native-TargetGestureDiagnostic')
         'tests/NativeWorldTextProbe/NativeTargetDiagnosticChecks.cs'=@('native-TargetGestureDiagnostic')
         'tests/NativeWorldTextProbe/NativeTargetCancellationChecks.cs'=@('native-BrowserCpu')

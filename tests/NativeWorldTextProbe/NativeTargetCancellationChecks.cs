@@ -20,6 +20,7 @@ namespace NativeWorldTextProbe
             var bindings = (HotkeyBindings)Get(Get(shell, "hotkeys"), "Bindings");
             var oldSend = bindings.Get("announcement.send"); var oldQuery = bindings.Get("item-browser.query");
             var announcements = Get(browser, "Announcements"); bool wasEnabled = (bool)Get(announcements, "Enabled");
+            bool layersReady=(bool)Get(shell,"LayersReady");
             HotkeyChord mouse; string reason;
             Require(HotkeyChord.TryParse("Mouse2", out mouse, out reason), "native Mouse2 binding parses");
             Action<string, HotkeyChord> bind = (id, chord) =>
@@ -42,6 +43,9 @@ namespace NativeWorldTextProbe
             };
             try
             {
+                // This CPU composition never invokes the native layer builder;
+                // establish the same isolated readiness as NativeQuickItemChecks.
+                Set(shell,"LayersReady",true);
                 Call(announcements, "SetEnabled", true);
                 bind("announcement.send", null); bind("item-browser.query", null);
                 foreach (string action in new[] { "announcement.send", "item-browser.query" })
@@ -77,6 +81,7 @@ namespace NativeWorldTextProbe
                 bind("announcement.send", null); bind("item-browser.query", null);
                 bind("announcement.send", oldSend); bind("item-browser.query", oldQuery);
                 Call(announcements, "SetEnabled", wasEnabled);
+                Set(shell,"LayersReady",layersReady);
                 Main.keyState = new KeyboardState(); Main.mouseRight = false;
             }
         }

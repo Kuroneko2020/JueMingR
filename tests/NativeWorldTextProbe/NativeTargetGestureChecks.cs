@@ -38,6 +38,7 @@ namespace NativeWorldTextProbe
             FocusHelper.IsSelectedApplication = true; Call(input, "BeginUpdate"); Call(input, "AfterMapping"); Call(input, "AfterKeyboardRefresh");
             var type = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.ReadOnlyTargetGesture");
             object coldCatalog = Activator.CreateInstance(catalog.GetType(), true);
+            Call(coldCatalog, "BindPlacementClock", (Func<long>)(() => (long)Get(input, "Mapping")));
             object gesture = Activator.CreateInstance(type, Flags, null, new[] { input, coldCatalog }, null);
             try
             {
@@ -92,7 +93,7 @@ namespace NativeWorldTextProbe
                 long sameUpdateReads = (long)Get(coldCatalog, "PlacementReads");
                 Call(gesture, "Update", 12L);
                 Require((long)Get(coldCatalog, "PlacementReads") == sameUpdateReads,
-                    "another placement consumer in the same native game update receives no second 64-item allowance");
+                    "another placement consumer in the same input Mapping receives no second 64-item allowance");
                 Set(gesture, "CanPick", (Func<bool>)(() => false)); UpdateGesture(gesture, 13L);
                 long cancelledReads = (long)Get(coldCatalog, "PlacementReads");
                 for (int i = 14; i < 24; i++) UpdateGesture(gesture, (long)i);
@@ -101,19 +102,19 @@ namespace NativeWorldTextProbe
                 Call(gesture, "Request", 1); uiPass(false);
                 int beforeCold = delivered;
                 // A legal empty outer Update consumes no native declaration
-                // allowance. Alternate it with real world entries: 6195 IDs
+                // allowance. Alternate it with real input mappings: 6195 IDs
                 // need 97 opportunities and must survive >180 outer callbacks.
                 for (int update = 24; update < 360 && (bool)Get(gesture, "Busy"); update++)
                 {
                     long reads = (long)Get(coldCatalog, "PlacementReads");
-                    if ((update & 1) == 0) NativeQuickItemChecks.BeginWorldStep();
+                    if ((update & 1) == 0) Opportunity(gesture);
                     Call(gesture, "Update", (long)update);
-                    Require((long)Get(coldCatalog, "PlacementReads") - reads <= 64, "cold placement capture is bounded to 64 metadata entries per actual world entry");
+                    Require((long)Get(coldCatalog, "PlacementReads") - reads <= 64, "cold placement capture is bounded to 64 metadata entries per input Mapping");
                     long sharedReads = (long)Get(coldCatalog, "PlacementReads");
                     // This is the same production entry used by the blueprint
                     // material consumer, against the same shared provider.
                     Call(coldCatalog, "StepPlacement");
-                    Require((long)Get(coldCatalog, "PlacementReads") == sharedReads, "second placement consumer shares the world's existing allowance");
+                    Require((long)Get(coldCatalog, "PlacementReads") == sharedReads, "second placement consumer shares the current Mapping allowance");
                 }
                 Require(delivered == beforeCold + 1 && (int)Get(result, "ItemType") == Terraria.ID.ItemID.GoldChest,
                     "first world query resolves the actual gold chest style without opening the browser; delivered=" + (delivered - beforeCold) + "; type=" + Get(result, "ItemType") + "; reads=" + Get(coldCatalog, "PlacementReads") + "; mouse=" + Main.MouseWorld);
@@ -121,6 +122,39 @@ namespace NativeWorldTextProbe
                     "cold world query prepares only placement metadata, never the full catalog or recipe families");
                 long completedReads = (long)Get(coldCatalog, "PlacementReads"); for (int i = 200; i < 320; i++) UpdateGesture(gesture, (long)i);
                 Require((long)Get(coldCatalog, "PlacementReads") == completedReads, "completed cold gesture has zero continuing placement work");
+                // A paused world can still sample native input; the production
+                // provider uses that mapping opportunity without advancing time.
+                Call(coldCatalog,"Reset");Main.tile[1,1]=goldChest;
+                Call(gesture,"Request",1);uiPass(false);uint pausedGame=Main.GameUpdateCount;
+                long pauseTick=(long)Get(gesture,"tick");int pauseDelivered=delivered;
+                for(int i=0;i<110&&(bool)Get(gesture,"Busy");i++)
+                {
+                    Call(input,"BeginUpdate");Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");
+                    Call(gesture,"Update",++pauseTick);
+                }
+                Require(Main.GameUpdateCount==pausedGame&&delivered==pauseDelivered+1,"cold request completes from legal paused-world mapping opportunities");
+                Call(coldCatalog,"Reset");Call(gesture,"Request",1);uiPass(false);int directoryDelivered=delivered;
+                long generation=(long)Get(coldCatalog,"PlacementGeneration");
+                for(int i=0;i<110&&(bool)Get(gesture,"Busy");i++)
+                {
+                    Call(input,"BeginUpdate");Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");
+                    Call(coldCatalog,"Step",true);Call(gesture,"Update",++pauseTick);
+                }
+                Require(delivered==directoryDelivered+1&&GetOptional(coldCatalog,"Catalog")!=null&&
+                    (long)Get(coldCatalog,"PlacementGeneration")==generation,"normal directory producer completion publishes Catalog without invalidating the waiting frozen target");
+                Call(coldCatalog,"Reset");Call(gesture,"Request",1);uiPass(false);UpdateGesture(gesture,++pauseTick);
+                Require((bool)Get(gesture,"preparingPlacement"),"stall counterexample enters real cold preparation");
+                Set(gesture,"placementDeadline",0L);Call(gesture,"Update",++pauseTick);
+                Require(!(bool)Get(gesture,"Busy"),"expired monotonic cold-preparation deadline exits without new mapping or world progress");
+                Call(coldCatalog,"Reset");Call(gesture,"Request",1);uiPass(false);UpdateGesture(gesture,++pauseTick);
+                Main.keyState=new KeyboardState(Keys.W,Keys.Escape);Call(input,"BeginUpdate");Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");
+                Call(gesture,"ProcessInput");
+                Require(!(bool)Get(gesture,"Busy")&&!(bool)Call(Get(input,"Hotkeys"),"IsNew",27),"cold Escape retires its request and consumes the frozen edge before later Shell dispatch");
+                Main.keyState=new KeyboardState(Keys.W);Call(input,"BeginUpdate");Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");
+                long sharedAfterCancel=(long)Get(coldCatalog,"PlacementReads");Call(coldCatalog,"StepPlacement");
+                Require((long)Get(coldCatalog,"PlacementReads")>sharedAfterCancel,"cancelled target does not dispose shared provider or stop another consumer's next legal demand");
+                Main.keyState=new KeyboardState();
+                NativeTargetPlacementBudgetChecks.Run(coldCatalog.GetType());
                 Call(coldCatalog, "Reset"); var coldWall = new Tile { wall = 4 }; coldWall.fullbrightWall(true); Main.tile[1, 1] = coldWall;
                 int announced = 0; object wallAnnouncement = null;
                 Set(gesture, "Announced", Adapt(type.GetProperty("Announced", Flags).PropertyType, value => { announced++; wallAnnouncement = value; }));
@@ -187,11 +221,16 @@ namespace NativeWorldTextProbe
             }
             finally { ((IDisposable)gesture).Dispose(); ((IDisposable)coldCatalog).Dispose(); Main.mouseLeft = Main.mouseRight = false; }
         }
-        // The gesture's timeout tick is not Main.GameUpdateCount. Advance the
-        // existing native world-entry fixture as well: the shared placement
-        // provider grants its bounded declaration work once per actual update.
+        // Each explicit input opportunity advances the same Mapping clock
+        // bound to the shared provider. Empty outer calls below do neither.
         private static void UpdateGesture(object gesture, long tick)
-        { NativeQuickItemChecks.BeginWorldStep(); Call(gesture, "Update", tick); }
+        { Opportunity(gesture); Call(gesture, "Update", tick); }
+        private static void Opportunity(object gesture)
+        {
+            var input = Get(gesture, "input");
+            Call(input, "BeginUpdate"); Call(input, "AfterMapping"); Call(input, "AfterKeyboardRefresh");
+            NativeQuickItemChecks.BeginWorldStep();
+        }
         private static Delegate Adapt(Type type, Action<object> callback)
         { var value = Expression.Parameter(type.GetGenericArguments()[0]); return Expression.Lambda(type, Expression.Invoke(Expression.Constant(callback), Expression.Convert(value, typeof(object))), value).Compile(); }
         private static MouseState Mouse(int button)

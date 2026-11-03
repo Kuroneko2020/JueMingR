@@ -57,7 +57,7 @@ namespace NativeWorldTextProbe
                 long secondSequence = identities.Single(i => i.ProjectionGeneration == secondId).Sequence;
                 Require(identities.Select(i => i.Sequence).Distinct().Count() == 2, "same template instances have distinct stable session sequence identities");
                 NativeBlueprintPlacedListChecks.AssertPinned(context, firstId, secondId);
-                NativeBlueprintMaterialsUiChecks.BeginInstanceScope(context, firstId, secondId);
+                NativeBlueprintMaterialsUiChecks.BeginInstanceScope(context, firstId, secondId, step);
 
                 Require(WorldGen.PlaceTile(40, 70, TileID.Stone, true, true), "independent original world placement establishes one matched body");
                 p.inventory[0].stack--;

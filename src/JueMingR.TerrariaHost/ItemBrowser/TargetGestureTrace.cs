@@ -203,7 +203,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                         " point=" + errorPoint.ToString(CultureInfo.InvariantCulture) + " stage=" + errorStage);
                     if (metadataErrorType != null) text.AppendLine("metadataErrors=" + metadataErrors.ToString(CultureInfo.InvariantCulture) +
                         " firstType=" + metadataErrorType + " hresult=" + metadataErrorHResult.ToString(CultureInfo.InvariantCulture) + " stage=" + metadataErrorStage);
-                    text.AppendLine("points=1-install,2-request,3-begin,4-mouseover,5-wrapper,6-resource,7-end,8-finalizer,9-update,10-delivery,11-cancel,12-input,13-admission,14-placement");
+                    text.AppendLine("points=1-install,2-request,3-begin,4-mouseover,5-target-resource,6-independent-resource,7-end,8-finalizer,9-update,10-delivery,11-cancel,12-input,13-admission,14-placement");
                     text.AppendLine("state=pending:0..2,picking:4,completed:8,inPass:16,slot:32,uiBlocked:64,uiBoundary:128,resourceBoundary:256,preparing:512");
                     text.AppendLine("reasons=focus:1,player:2,world:4,tile:8,connection:16,raw:32,screen:64,uiMatrix:128,zoom:256,mouseScale:512,camera:1024,gravity:2048,inventory:4096,chest:8192,noPending:16384");
                     text.AppendLine("resourceDetail=implementation:1-classic/2-fancy/3-horizontal,original:16;updateDetail=expired:1,menu:2,focus:4,session:8;deliveryDetail=valid:1,target:2,placement:4");

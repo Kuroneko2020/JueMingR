@@ -23,6 +23,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal HostItemBrowser(string directory, WorldTileObservation world, HostInputState input)
         {
             this.input = input; Locator = new HostChestLocator(world, Knowledge);
+            Knowledge.Native.BindPlacementClock(() => input.Mapping);
             Announcements = new HostAnnouncements(directory);
             Targets = new ReadOnlyTargetGesture(input, Knowledge.Native);
             AppDomain.CurrentDomain.ProcessExit += OnExit;

@@ -31,7 +31,7 @@ namespace NativeWorldTextProbe
         private static Matrix expectedImageMatrix, actualImageMatrix, mismatchedImageMatrix;
         private static int imagePasses;
         private static bool imageMatrixMismatch;
-        internal static void BeginInstanceScope(object context, long firstId, long secondId)
+        internal static void BeginInstanceScope(object context, long firstId, long secondId, Action step)
         {
             var host = Get(context, "Blueprint"); var shell = Get(context, "Shell"); var popup = Get(shell, "BlueprintMaterialsUi");
             NativeQuickItemChecks.Sample(Get(context, "Input"), Array.Empty<Keys>()); Call(host, "OpenMaterials");
@@ -39,6 +39,10 @@ namespace NativeWorldTextProbe
             var instances = (IReadOnlyList<BlueprintMaterialInstance>)Get(host, "MaterialInstances");
             secondSequence = instances.Single(i => i.ProjectionGeneration == secondId).Sequence;
             Require((bool)Call(popup, "SelectScope", firstId), "the real popup range command selects the first exact instance identity");
+            // Closing the preceding placed-list popup retires its material
+            // demand/publication. Reopening requests new work; advance the
+            // existing mapped runtime step before requiring its exact result.
+            NativeQuickItemChecks.Until(() => { step(); return ((BlueprintMaterialSnapshot)Call(popup, "ReadSnapshot")).Status == BlueprintMaterialStatus.Exact; });
             var value = (BlueprintMaterialSnapshot)Call(popup, "ReadSnapshot");
             Require((long)Get(popup, "Selected") == firstId && value.Status == BlueprintMaterialStatus.Exact && value.Rows.Any(r => r.Required == 50 && r.Held == 80 && r.Missing == 0),
                 "actual popup scope consumes the independently established single-instance 50/80/0 result");

@@ -122,6 +122,9 @@ function Get-WorkloadRoute {
             '^src/[^/]+/(About|Onboarding)/|^tests/(About|Onboarding)/|^tests/Phase0U/AboutChecks\.cs$|^tests/JueMingR.ArchitectureTests/Onboarding|^tests/NativeWorldTextProbe/NativeAbout' { [void]$groups.Add('about-host'); continue }
             '^src/[^/]+/CoinDeposit/|^tests/JueMingR.ArchitectureTests/CoinDeposit/|^tests/CoinDeposit/|^tests/NativeWorldTextProbe/NativeCoin' { [void]$groups.Add('coin-deposit-host'); continue }
             '^src/[^/]+/(QuickItems|KeepFavorited)/|^tests/JueMingR.ArchitectureTests/(QuickItems|KeepFavorited)/|^tests/NativeWorldTextProbe/Native(Quick|Favorite)' { if($path.StartsWith('src/')){[void]$groups.Add('tools-host')}; [void]$groups.Add('quick-items-host'); continue }
+            # Native target GPU checks remain explicit specialists, while their
+            # compiled fixture inputs conservatively retain the browser group.
+            '^tests/NativeWorldTextProbe/(NativeBrowserChecks|NativeBrowserVisualChecks|NativeTargetOriginalChecks)\.cs$' { [void]$groups.Add('browser-host'); continue }
             '^src/[^/]+/(ItemCatalog|ItemBrowser|ChestLocator|Announcements)/|^tests/(ItemBrowser|ChestLocator|Announcements)/' { [void]$groups.Add('browser-host'); continue }
             # About copies via NotesClipboard; onboarding consults prepared
             # Notes overlap geometry. Neither consumes the Notes text editor.
