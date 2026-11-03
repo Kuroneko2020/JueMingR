@@ -62,7 +62,7 @@ namespace JueMingR.TerrariaHost.Tools
             foreach(var e in projected)
             {
                 if(!(e.Description!=null?e.HintRect:e.Rect).Contains(x,y))continue;rect=e.Description!=null?e.HintRect:e.Rect;
-                if(e.HotkeyTarget!=null)return e.HotkeyTarget==HostTools.SelectAction?"双击设置选择挖矿区域的快捷键":mining?"双击设置自动挖矿开关快捷键":"双击设置快捷键";
+                if(e.HotkeyTarget!=null)return e.HotkeyTarget==HostTools.SelectAction?F5HotkeyHints.MiningSelection:F5HotkeyHints.Toggle;
                 if(e.Description!=null){int domain=e.Description.Id==HostTools.Actions[0]?0:e.Description.Id==HostTools.Actions[1]?1:2;return host.Error??host.Settings[domain].Message??e.Description.Text;}
                 if(e.Kind==F5ElementKind.Button)
                 {

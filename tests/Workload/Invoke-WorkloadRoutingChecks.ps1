@@ -18,6 +18,31 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+$twoFileTools=@('scripts/build-setup-from-existing-pair.ps1','scripts/phase0s/Read-TwoFilePackageMetadata.ps1')
+$deploymentGroups=@('core','package-tools','workload-tools')
+foreach($path in (@('src/JueMingR.Bootstrap/BundlePayload.cs','src/JueMingR.Setup/InstallService.cs','scripts/TwoFileBundle.Support.ps1','tests/TwoFileDistribution/SetupChecks.ps1','tests/TwoFileColdStart/Program.cs','tests/Phase0S/Invoke-TwoFileColdStartChecks.ps1')+$twoFileTools)){
+    $route=Get-WorkloadRoute @($path)
+    Assert-Route ($route.unknown.Count -eq 0 -and (($route.groups|Sort-Object)-join ',') -ceq (($deploymentGroups|Sort-Object)-join ',')) ('two-file deployment input has its complete tool responsibility: '+$path)
+}
+# Isolated tool-only inputs have exactly five consumers. This is not the plan
+# for a full task that also changes Bootstrap, Setup, or shared Host behavior.
+$toolChecks=@('workload-Routing','workload-Evidence','workload-Failure','workload-DevelopmentCandidate','workload-PackageVerification')
+foreach($toolInput in @(
+    @{label='existing-pair Setup';paths=@($twoFileTools[0])},
+    @{label='isolated metadata reader';paths=@($twoFileTools[1])},
+    @{label='combined pair tools';paths=$twoFileTools}
+)){
+    $route=Get-WorkloadRoute $toolInput.paths
+    Assert-Route ($route.unknown.Count -eq 0 -and (($route.groups|Sort-Object)-join ',') -ceq (($deploymentGroups|Sort-Object)-join ',')) ('exact deployment groups: '+$toolInput.label)
+    $toolPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $route.groups)
+    Assert-Route ($toolPlan.Count -eq $toolChecks.Count -and (($toolPlan.name|Sort-Object)-join ',') -ceq (($toolChecks|Sort-Object)-join ',')) ('actual five-check tool plan, each once: '+$toolInput.label)
+}
+$unregisteredTool='scripts/unregistered-two-file-helper.ps1'
+$unknownToolRoute=Get-WorkloadRoute @($unregisteredTool)
+Assert-Route ($unknownToolRoute.unknown.Count -eq 1 -and $unknownToolRoute.unknown[0] -ceq $unregisteredTool) 'unregistered top-level executable still blocks delivery'
+$mixedToolRoute=Get-WorkloadRoute ($twoFileTools+@('src/JueMingR.TerrariaHost/Input/HostInputState.cs'))
+$mixedToolPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $mixedToolRoute.groups)
+Assert-Route ($mixedToolRoute.unknown.Count -eq 0 -and $mixedToolRoute.groups -contains 'package-tools' -and $mixedToolRoute.groups -contains 'workload-tools' -and $mixedToolRoute.groups -contains 'shared-host' -and $mixedToolPlan.name -contains 'native-FishingCpu' -and $mixedToolPlan.name -contains 'native-CombatCpu') 'pair tools plus shared Host input retain real business propagation'
 # Graphics remains an explicit specialist. Editing its inputs must still select
 # the registered module CPU responsibility rather than an unknown native leaf.
 $previewVisual='tests/NativeWorldTextProbe/NativeWorldGenPreviewVisualChecks.cs'

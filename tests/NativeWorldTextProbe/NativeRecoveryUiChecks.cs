@@ -16,6 +16,7 @@ namespace NativeWorldTextProbe
             Action prepare=()=>{Call(renderer,"Prepare",state,960f,760f,1f);Call(ui,"PrepareLayout",Matrix.Identity);};prepare();
             var rows=((IEnumerable)Get(ui,"logical")).Cast<object>().Where(p=>GetOptional(Get(p,"Element"),"Description")!=null).Select(p=>(string)Get(Get(p,"Element"),"Text")).ToArray();
             Require(string.Join("|",rows)=="自动回血|自动回蓝|自动护士|家具增益|自动增益","actual F5 recovery order");
+            KeyboardHints(context,ui,prepare,Enumerable.Range(0,5).ToArray());
             float height=(float)Get(layout,"ContentHeight");var settings=(RecoverySettings)Get(Get(context,"Recovery"),"Potions");
             Require(settings.Set(new RecoveryOptions(2)),"UI save starts");prepare();Require((float)Get(layout,"ContentHeight")==height,"pending settings no reserved row");
             NativeQuickItemChecks.Until(()=>{settings.Poll();return !settings.Busy;});prepare();Require((float)Get(layout,"ContentHeight")==height,"saved settings no flash height");
@@ -59,8 +60,28 @@ namespace NativeWorldTextProbe
             NativeRecoveryChecks.Save(buffs,new RecoveryOptions());
             Call(state,"ScrollTo",60f);prepare();float scroll=(float)Get(state,"Scroll");prepare();Require((float)Get(state,"Scroll")==scroll,"dynamic page preparation preserves scroll");
             Call(state,"Navigate",1);prepare();Require(((IEnumerable)Get(ui,"logical")).Cast<object>().Any(p=>(string)GetOptional(Get(p,"Element"),"Text")=="自动收税"),"tax remains on misc page");
+            // RecoveryCpu intentionally has no processing/tools adapters. Use
+            // the real shell's optional composition rather than requiring G09.
+            KeyboardHints(context,ui,()=>
+            {
+                Call(renderer,"Prepare",state,960f,760f,1f);
+                Call(shell,"PrepareMisc",true,Matrix.Identity,new Vector2(960,760),false);
+            },new[]{5});
             Call(state,"Close");Call(ui,"Suspend");NativeRecoveryChecks.Save(settings,new RecoveryOptions());
             Console.WriteLine("PASS G07 UI: real composition controls, full catalogue, stable off/pending/saved heights and scroll.");
+        }
+        private static void KeyboardHints(object context,object ui,Action prepare,int[] features)
+        {
+            var shell=Get(context,"Shell");var state=Get(shell,"State");
+            var actions=(string[])Get(context,"Recovery").GetType().GetField("Actions",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic).GetValue(null);
+            foreach(int feature in features)
+            {
+                prepare();var logical=((IEnumerable)Get(ui,"logical")).Cast<object>().First(p=>(string)GetOptional(Get(p,"Element"),"HotkeyTarget")==actions[feature]);
+                Call(state,"ScrollTo",Get(Get(Get(logical,"Element"),"Rect"),"Y"));prepare();
+                var key=((IEnumerable)Get(ui,"visible")).Cast<object>().Single(p=>(string)GetOptional(Get(p,"Element"),"HotkeyTarget")==actions[feature]);
+                NativeQuickUiChecks.FinalHint(shell,Get(key,"Element"),"双击设置功能开关快捷键");
+            }
+            Call(state,"ScrollTo",0f);prepare();
         }
         private static void ListMovement(object context,object ui)
         {
@@ -70,7 +91,7 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Sample(input,keys.GetPressedKeys());
             Call(ui,"ProcessInput",true,keys,new Vector2(-10,-10),true,true,false);
             Call(Get(context,"Shell"),"ConsumeSample");
-            Require(!Terraria.Main.blockInput && !Terraria.GameInput.PlayerInput.WritingText && !(bool)Get(ui,"OwnsTextToken"),"inline buff list does not acquire the native movement-blocking text lease");
+            Require(!Terraria.Main.blockInput && !Terraria.GameInput.PlayerInput.WritingText && Terraria.Main.CurrentInputTextTakerOverride==null,"inline buff list does not acquire the native movement-blocking text lease");
             Require(Terraria.Main.keyState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Space),"inline list keeps movement keyboard sample");
             NativeQuickItemChecks.Sample(input,new Microsoft.Xna.Framework.Input.Keys[0]);
         }

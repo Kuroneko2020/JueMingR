@@ -37,6 +37,7 @@ namespace NativeWorldTextProbe
             Require(((MiningRegion)Get(mining,"Region")).Count==1,"native temporary tool override preserves mining region");
             SetMode(host,2,0);for(int i=0;i<40;i++)Frame(context,input);
             NativeHerbChecks.Run(context);NativeMiningChecks.Run(context);NativeFishingBorrowChecks.Run(context);NativeToolsIntegrationChecks.Cpu(context);NativeSeedDiscoveryChecks.Run(context);
+            NativeToolsUiChecks.KeyboardHints(context);
             Console.WriteLine("PASS G09 real Host defaults, Boss classification and native temporary selection isolation.");
         }
         internal static void SetMode(object host,int domain,int mode)

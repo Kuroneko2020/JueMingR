@@ -36,11 +36,12 @@ namespace NativeWorldTextProbe
                     var device = graphics.GraphicsDevice;
                     var scissor = device.ScissorRectangle; var raster = device.RasterizerState;
                     var blend = device.BlendState; var depth = device.DepthStencilState; var sampler = device.SamplerStates[0];
-                    Call(page, "Draw", null, false);
+                    Call(page, "Draw", new object[] { null });
                     Require(device.ScissorRectangle == scissor && ReferenceEquals(device.RasterizerState, raster) &&
                         ReferenceEquals(device.BlendState, blend) && ReferenceEquals(device.DepthStencilState, depth) && ReferenceEquals(device.SamplerStates[0], sampler),
                         "the actual ItemsPresentation Draw restores the preexisting GPU state through the shared ItemsRenderer");
                 }, Matrix.Identity, (int)screen.X, (int)screen.Y);
+                NativePageCompositionPickerInputChecks.Visual(context,graphics,output);
                 Console.WriteLine("PASS real ItemsPresentation native-resource Draw, original page order, 120 stable prepares and exact shared-renderer GPU-state restoration; no synthetic receiver or owner game execution.");
             }
             finally { Call(shell, "CloseAndSubmitPosition"); }
@@ -59,6 +60,8 @@ namespace NativeWorldTextProbe
             Input(context, prepare);
             NativeHiddenEntryChecks.RevealForComposition(context);
             Call(state,"Navigate",1);Call(renderer,"Prepare",state,1200f,1200f,1f);prepare();MiscOrder(shell);
+            NativeItemsHintChecks.Run(context);
+            NativePageCompositionPickerInputChecks.Run(context);
             Call(shell,"CloseAndSubmitPosition");Console.WriteLine("PASS complete Items/Misc composition order, unchanged identities, final footer and stable layout work.");
         }
         private static void Input(object context, Action prepare)
@@ -112,6 +115,12 @@ namespace NativeWorldTextProbe
                 .Select(e=>(string)Get(e,"Text")).ToArray();
             Require(labels.SequenceEqual(new[]{"快捷物品","自动堆叠","自动出售","自动丢弃","持续开袋","自动提炼","保持收藏"}),
                 "actual Items feature order and no migrated rows: "+string.Join(" > ",labels));
+            var quick=Get(page,"QuickPanel");var logical=((IEnumerable)Get(quick,"logical")).Cast<object>().ToArray();
+            var backgrounds=logical.Where(p=>Get(Get(p,"Element"),"Kind").ToString()=="Panel").ToArray();
+            var first=Get(Get(backgrounds[0],"Element"),"Rect");var last=Get(Get(backgrounds[1],"Element"),"Rect");
+            var rowStarts=(float[])Get(Get(page,"layout"),"RowY");
+            Require(backgrounds.Length==2 && (float)Get(first,"Bottom")+6==rowStarts[0] && (float)Get(last,"Y")>(float)Get(first,"Bottom") &&
+                (float)Get(quick,"Height")== (float)Get(last,"Bottom")+6,"complete page keeps quick group sealed before stack and favorite as its independent footer");
         }
     }
 }

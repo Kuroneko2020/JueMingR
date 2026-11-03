@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string] $OutputDirectory,
@@ -25,34 +25,6 @@ function Test-PackageBuildAdmission($Record,[bool]$ExpectedBlueprintDiagnostic=$
     if($StageDevelopmentRecord){return Test-AimStageDevelopmentBuild $repositoryRoot $Record $StageDevelopmentRecord $admission}
     return Test-WorkloadDelivery $repositoryRoot $Record $WorkloadBaseline -RetainedAssets $admission
 }
-$ownerTestCardName = if ($Profile -eq 'ContinuousProcessing') { 'Continuous-Processing-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'Recovery-Buffs-Services-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'AboutHelpFeedback') { 'About-Help-Feedback-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'CoinDeposit') { 'Coin-Deposit-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'Keep-Favorited-Quick-Items-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'ItemBrowser') { 'Item-Browser-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'Footprints') { 'Footprints-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'MapMarkersExploration') { 'Map-Markers-Exploration-Owner-Test-Card.zh-CN.md' } elseif ($Profile -eq 'DeathHistory') {
-    'Death-History-Owner-Test-Card.zh-CN.md'
-} elseif ($Profile -eq 'DirectionEquipment') {
-    'Direction-Equipment-Owner-Test-Card.zh-CN.md'
-} elseif ($Profile -eq 'InformationSummary') {
-    'Information-Summary-Owner-Test-Card.zh-CN.md'
-} elseif ($Profile -eq 'WorldObjectText') {
-    'World-Object-Text-Owner-Test-Card.zh-CN.md'
-} elseif ($Profile -eq 'WorldTargets') {
-    'World-Targets-Owner-Test-Card.zh-CN.md'
-} elseif ($Profile -eq 'EntityLabels') {
-    'Entity-Labels-Owner-Test-Card.zh-CN.md'
-} elseif ($Profile -eq 'UnifiedHotkeys') {
-    'Unified-Hotkeys-Owner-Test-Card.zh-CN.md'
-} elseif ($Profile -eq 'ItemAutomation') {
-    'Item-Automation-Owner-Test-Card.zh-CN.md'
-} elseif ($Profile -eq 'Phase0WNotes') {
-    'Phase0W-Notes-Owner-Test-Card.zh-CN.md'
-} elseif ($Profile -eq 'Phase0VSettings') {
-    'Phase0V-Settings-Owner-Test-Card.zh-CN.md'
-} elseif ($Profile -eq 'Phase0UF5UI') {
-    'Phase0U-F5UI-Owner-Test-Card.zh-CN.md'
-} elseif ($Profile -eq 'Phase0TBiome') {
-    'Phase0T-Biome-Owner-Test-Card.zh-CN.md'
-} else {
-    'Phase0S-Owner-Test-Card.zh-CN.md'
-}
-
 function Invoke-Phase0SGit {
     param([Parameter(Mandatory = $true)][string[]] $Arguments)
 
@@ -115,227 +87,6 @@ function Get-Phase0SBuildOutputPath {
         throw 'A required Release build output is missing.'
     }
     return $path
-}
-
-function Get-Phase0SRelativeForwardPath {
-    param(
-        [Parameter(Mandatory = $true)][string] $Root,
-        [Parameter(Mandatory = $true)][string] $Path
-    )
-
-    $rootUri = New-Object System.Uri(([System.IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'))
-    $pathUri = New-Object System.Uri([System.IO.Path]::GetFullPath($Path))
-    return [System.Uri]::UnescapeDataString($rootUri.MakeRelativeUri($pathUri).ToString())
-}
-
-function Get-Phase0SPackageTreeRecords {
-    param([Parameter(Mandatory = $true)][string] $PackageRoot)
-
-    $records = New-Object System.Collections.Generic.List[object]
-    $queue = New-Object 'System.Collections.Generic.Queue[string]'
-    $queue.Enqueue($PackageRoot)
-    while ($queue.Count -gt 0) {
-        $directory = $queue.Dequeue()
-        foreach ($item in @(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Sort-Object Name)) {
-            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw 'The package tree contains a reparse point.'
-            }
-            if ($item.PSIsContainer) {
-                $queue.Enqueue($item.FullName)
-            }
-            else {
-                $records.Add([pscustomobject][ordered]@{
-                    path = Get-Phase0SRelativeForwardPath -Root $PackageRoot -Path $item.FullName
-                    length = [int64] $item.Length
-                    sha256 = Get-Phase0SFileSha256 -Path $item.FullName
-                })
-            }
-        }
-    }
-    $recordsByPath = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::Ordinal)
-    $paths = New-Object System.Collections.Generic.List[string]
-    foreach ($record in $records.ToArray()) {
-        $recordsByPath.Add([string] $record.path, $record)
-        $paths.Add([string] $record.path)
-    }
-    $sortedPaths = $paths.ToArray()
-    [Array]::Sort($sortedPaths, [System.StringComparer]::Ordinal)
-    return @($sortedPaths | ForEach-Object { $recordsByPath[$_] })
-}
-
-function Assert-Phase0SFixedPackageTree {
-    param([Parameter(Mandatory = $true)][string] $PackageRoot)
-
-    $expectedFiles = @(
-        'Harmony-2.4.2-LICENSE.txt',
-        'Install-Phase0S.ps1',
-        $ownerTestCardName,
-        'Phase0S.ScriptSupport.ps1',
-        'Restore-Phase0S.ps1',
-        'THIRD-PARTY-NOTICES.md',
-        'payload/JueMingR.Bootstrap.dll',
-        'payload/JueMingR.Validation/0Harmony.dll',
-        'payload/JueMingR.Validation/JueMingR.Features.dll',
-        'payload/JueMingR.Validation/JueMingR.Infrastructure.dll',
-        'payload/JueMingR.Validation/JueMingR.Platform.dll',
-        'payload/JueMingR.Validation/JueMingR.PredictionWorker.exe',
-        'payload/JueMingR.Validation/JueMingR.PredictionWorker.exe.config',
-        'payload/JueMingR.Validation/JueMingR.TerrariaHost.dll',
-        'payload/JueMingR.Validation/phase-0-s-runtime.manifest',
-        'payload/Terraria.exe.config',
-        'phase-0-s-package.manifest.json'
-    )
-    [Array]::Sort($expectedFiles, [System.StringComparer]::Ordinal)
-    $records = @(Get-Phase0SPackageTreeRecords -PackageRoot $PackageRoot)
-    $actualFiles = @($records | ForEach-Object { $_.path })
-    if (($actualFiles -join '|') -cne ($expectedFiles -join '|')) {
-        throw 'The final package tree has missing or unexpected files.'
-    }
-    $expectedRootNames = @(
-        'Harmony-2.4.2-LICENSE.txt', 'Install-Phase0S.ps1', $ownerTestCardName,
-        'Phase0S.ScriptSupport.ps1', 'Restore-Phase0S.ps1', 'THIRD-PARTY-NOTICES.md',
-        'payload', 'phase-0-s-package.manifest.json'
-    ) | Sort-Object
-    $actualRootNames = @(Get-ChildItem -LiteralPath $PackageRoot -Force -ErrorAction Stop | Sort-Object Name | ForEach-Object { $_.Name })
-    if (($actualRootNames -join '|') -cne ($expectedRootNames -join '|') -or
-        -not (Test-Phase0SOrdinaryDirectory -Path (Join-Path $PackageRoot 'payload')) -or
-        -not (Test-Phase0SOrdinaryDirectory -Path (Join-Path $PackageRoot 'payload\JueMingR.Validation'))) {
-        throw 'The final package tree has missing or unexpected root objects.'
-    }
-    return $records
-}
-
-function Read-Phase0SPackageTextForPathScan {
-    param([string] $Path, [int] $MaximumLength)
-
-    # These fixed script/card sources retain their BOM for Windows PowerShell 5.1.
-    # This affects only the path scan; manifest/receipt canonical UTF-8 stays strict,
-    # and the archive continues to contain the exact source bytes.
-    if ([IO.Path]::GetFileName($Path) -notin @('Phase0S.ScriptSupport.ps1')) {
-        return Get-Phase0SStrictUtf8Text -Path $Path -MaximumLength $MaximumLength
-    }
-    $bytes = [IO.File]::ReadAllBytes($Path)
-    if ($bytes.Length -gt $MaximumLength) { throw 'Package text length exceeds limit.' }
-    $offset = 0
-    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $offset = 3 }
-    return (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes, $offset, $bytes.Length - $offset)
-}
-
-function Assert-Phase0SPackageHasNoPrivatePath {
-    param([Parameter(Mandatory = $true)][string] $PackageRoot)
-
-    $sensitiveValues = New-Object System.Collections.Generic.List[string]
-    foreach ($value in @($repositoryRoot, $repositoryRoot.Replace('\', '/'), [Environment]::GetFolderPath('UserProfile'))) {
-        if (-not [string]::IsNullOrWhiteSpace($value)) {
-            $sensitiveValues.Add($value)
-        }
-    }
-    $textExtensions = @('.ps1', '.md', '.txt', '.json', '.config', '.manifest')
-    foreach ($record in @(Get-Phase0SPackageTreeRecords -PackageRoot $PackageRoot)) {
-        $filePath = Resolve-Phase0SContainedPath -Root $PackageRoot -RelativePath $record.path
-        $file = Get-Item -LiteralPath $filePath -Force -ErrorAction Stop
-        if ($textExtensions -notcontains $file.Extension) {
-            continue
-        }
-        $text = Read-Phase0SPackageTextForPathScan -Path $file.FullName -MaximumLength 1048576
-        foreach ($value in $sensitiveValues) {
-            if ($text.IndexOf($value, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                throw 'A package text file contains a private absolute path.'
-            }
-        }
-        if ($text -match '(?i)[A-Z]:[\\/](?:Users|Documents)[\\/]' -or $text -match '(?i)/home/[^/]+/') {
-            throw 'A package text file contains a user-specific absolute path.'
-        }
-    }
-}
-
-function New-Phase0SDeterministicZip {
-    param(
-        [Parameter(Mandatory = $true)][string] $PackageRoot,
-        [Parameter(Mandatory = $true)][string] $PackageDirectoryName,
-        [Parameter(Mandatory = $true)][string] $ZipPath
-    )
-
-    Add-Type -AssemblyName System.IO.Compression -ErrorAction Stop
-    $stream = [System.IO.File]::Open($ZipPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
-    try {
-        $archive = New-Object System.IO.Compression.ZipArchive($stream, [System.IO.Compression.ZipArchiveMode]::Create, $true, [System.Text.Encoding]::UTF8)
-        try {
-            $timestamp = New-Object System.DateTimeOffset(1980, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
-            foreach ($record in @(Get-Phase0SPackageTreeRecords -PackageRoot $PackageRoot)) {
-                $entryName = $PackageDirectoryName + '/' + $record.path
-                $entry = $archive.CreateEntry($entryName, [System.IO.Compression.CompressionLevel]::Optimal)
-                $entry.LastWriteTime = $timestamp
-                $entryStream = $entry.Open()
-                try {
-                    $sourcePath = Resolve-Phase0SContainedPath -Root $PackageRoot -RelativePath $record.path
-                    $source = [System.IO.File]::Open($sourcePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
-                    try {
-                        $source.CopyTo($entryStream)
-                    }
-                    finally {
-                        $source.Dispose()
-                    }
-                }
-                finally {
-                    $entryStream.Dispose()
-                }
-            }
-        }
-        finally {
-            $archive.Dispose()
-        }
-        $stream.Flush($true)
-    }
-    finally {
-        $stream.Dispose()
-    }
-}
-
-function Assert-Phase0SZipMatchesPackage {
-    param(
-        [Parameter(Mandatory = $true)][string] $PackageRoot,
-        [Parameter(Mandatory = $true)][string] $PackageDirectoryName,
-        [Parameter(Mandatory = $true)][string] $ZipPath
-    )
-
-    $records = @(Get-Phase0SPackageTreeRecords -PackageRoot $PackageRoot)
-    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
-    $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
-    try {
-        $entries = @($archive.Entries)
-        if ($entries.Count -ne $records.Count) {
-            throw 'ZIP entry count differs from the package tree.'
-        }
-        for ($index = 0; $index -lt $records.Count; $index++) {
-            $entry = $entries[$index]
-            $record = $records[$index]
-            $expectedName = $PackageDirectoryName + '/' + $record.path
-            if ($entry.FullName -cne $expectedName -or [int64] $entry.Length -ne [int64] $record.length) {
-                throw 'ZIP entry identity differs from the package tree.'
-            }
-            $entryStream = $entry.Open()
-            try {
-                $sha = [System.Security.Cryptography.SHA256]::Create()
-                try {
-                    $hashBytes = $sha.ComputeHash($entryStream)
-                    $hash = ($hashBytes | ForEach-Object { $_.ToString('X2') }) -join ''
-                }
-                finally {
-                    $sha.Dispose()
-                }
-            }
-            finally {
-                $entryStream.Dispose()
-            }
-            if ($hash -cne [string] $record.sha256) {
-                throw 'ZIP entry hash differs from the package tree.'
-            }
-        }
-    }
-    finally {
-        $archive.Dispose()
-    }
 }
 
 $gitRoot = [string] (Invoke-Phase0SGit -Arguments @('rev-parse', '--show-toplevel') | Select-Object -First 1)
@@ -412,7 +163,7 @@ if (@($buildRecord.outputs | Where-Object { [string] $_.path -match '(?i)(^|\\)0
     throw 'Ordinary Release output unexpectedly contains Harmony.'
 }
 
-$bootstrapOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Bootstrap' -FileName 'JueMingR.Bootstrap.dll'
+
 $hostOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.TerrariaHost' -FileName 'JueMingR.TerrariaHost.dll'
 $platformOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Platform' -FileName 'JueMingR.Platform.dll'
 $featuresOutput = Get-Phase0SBuildOutputPath -ProjectName 'JueMingR.Features' -FileName 'JueMingR.Features.dll'
@@ -435,262 +186,55 @@ if ($harmonyIdentity.fullName -cne '0Harmony, Version=2.4.2.0, Culture=neutral, 
 }
 
 $packageDirectoryName = $(if ($Profile -eq 'ContinuousProcessing') { 'JueMingR-Continuous-Processing-' } elseif ($Profile -eq 'RecoveryBuffsServices') { 'JueMingR-Recovery-Buffs-Services-' } elseif ($Profile -eq 'AboutHelpFeedback') { 'JueMingR-About-Help-Feedback-' } elseif ($Profile -eq 'CoinDeposit') { 'JueMingR-Coin-Deposit-' } elseif ($Profile -eq 'KeepFavoritedQuickItems') { 'JueMingR-Keep-Favorited-Quick-Items-' } elseif ($Profile -eq 'ItemBrowser') { 'JueMingR-Item-Browser-' } elseif ($Profile -eq 'Footprints') { 'JueMingR-Footprints-' } elseif ($Profile -eq 'MapMarkersExploration') { 'JueMingR-Map-Markers-Exploration-' } elseif ($Profile -eq 'DeathHistory') { 'JueMingR-Death-History-' } elseif ($Profile -eq 'DirectionEquipment') { 'JueMingR-Direction-Equipment-' } elseif ($Profile -eq 'InformationSummary') { 'JueMingR-Information-Summary-' } elseif ($Profile -eq 'WorldObjectText') { 'JueMingR-World-Object-Text-' } elseif ($Profile -eq 'WorldTargets') { 'JueMingR-World-Targets-' } elseif ($Profile -eq 'EntityLabels') { 'JueMingR-Entity-Labels-' } elseif ($Profile -eq 'UnifiedHotkeys') { 'JueMingR-Unified-Hotkeys-' } elseif ($Profile -eq 'ItemAutomation') { 'JueMingR-Item-Automation-' } elseif ($Profile -eq 'Phase0WNotes') { 'JueMingR-Phase0W-Notes-' } elseif ($Profile -eq 'Phase0VSettings') { 'JueMingR-Phase0V-Settings-' } elseif ($Profile -eq 'Phase0UF5UI') { 'JueMingR-Phase0U-F5UI-' } elseif ($Profile -eq 'Phase0TBiome') { 'JueMingR-Phase0T-Biome-' } else { 'JueMingR-Phase0S-' }) + $sourceCommit
-$zipFileName = $packageDirectoryName + '.zip'
-$stagingToken = [Guid]::NewGuid().ToString('N')
-$stagingRoot = Join-Path $outputParent ((Split-Path -Leaf $outputRoot) + '.phase0s-stage-' + $stagingToken)
-$markerPath = Join-Path $stagingRoot '.phase0s-builder-stage'
-$stagingCreated = $false
-$markerRemoved = $false
-try {
-    if ((Get-Phase0SPathState -Path $stagingRoot).exists) {
-        throw 'Builder staging path already exists.'
-    }
-    [System.IO.Directory]::CreateDirectory($stagingRoot) | Out-Null
-    $stagingCreated = $true
-    Write-Phase0SBuilderTextCreateNew -Path $markerPath -Text ($stagingToken + [Environment]::NewLine)
-
-    $packageRoot = Join-Path $stagingRoot $packageDirectoryName
-    $payloadRoot = Join-Path $packageRoot 'payload'
-    $sidecarPayloadRoot = Join-Path $payloadRoot 'JueMingR.Validation'
-    [System.IO.Directory]::CreateDirectory($sidecarPayloadRoot) | Out-Null
-
-    $configText = @(
-        '<?xml version="1.0" encoding="utf-8"?>',
-        '<configuration>',
-        '  <runtime>',
-        '    <appDomainManagerAssembly value="JueMingR.Bootstrap, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null" />',
-        '    <appDomainManagerType value="JueMingR.Bootstrap.Phase0SAppDomainManager" />',
-        '    <assemblyBinding xmlns="urn:schemas-microsoft-com:asm.v1">',
-        '      <probing privatePath="JueMingR.Validation" />',
-        '    </assemblyBinding>',
-        '  </runtime>',
-        '</configuration>'
-    ) -join [Environment]::NewLine
-    $configText += [Environment]::NewLine
-    Write-Phase0SBuilderTextCreateNew -Path (Join-Path $payloadRoot 'Terraria.exe.config') -Text $configText
-
-    Copy-Phase0SBuilderFileCreateNew -SourcePath $bootstrapOutput -DestinationPath (Join-Path $payloadRoot 'JueMingR.Bootstrap.dll')
-    Copy-Phase0SBuilderFileCreateNew -SourcePath $hostOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.TerrariaHost.dll')
-    Copy-Phase0SBuilderFileCreateNew -SourcePath $platformOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Platform.dll')
-    Copy-Phase0SBuilderFileCreateNew -SourcePath $featuresOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Features.dll')
-    Copy-Phase0SBuilderFileCreateNew -SourcePath $infrastructureOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.Infrastructure.dll')
-    Copy-Phase0SBuilderFileCreateNew -SourcePath $workerOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.PredictionWorker.exe')
-    Copy-Phase0SBuilderFileCreateNew -SourcePath $workerConfigOutput -DestinationPath (Join-Path $sidecarPayloadRoot 'JueMingR.PredictionWorker.exe.config')
-    Copy-Phase0SBuilderFileCreateNew -SourcePath $harmonyPath -DestinationPath (Join-Path $sidecarPayloadRoot '0Harmony.dll')
-
-    $runtimeLines = @(
-        'schemaVersion=2',
-        ('packageId=' + $packageId),
-        ('sourceCommit=' + $sourceCommit),
-        'targetAssemblySimpleName=Terraria',
-        'targetAssemblyVersion=1.4.5.8',
-        'targetAssemblyMvid=2c29f6c3-4bd9-4add-9c58-da159804e083',
-        'targetAssemblySha256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3',
-        'reLogicAssemblySimpleName=ReLogic',
-        'reLogicAssemblyVersion=1.0.0.0',
-        'reLogicAssemblyPublicKeyToken=null',
-        'reLogicAssemblyMvid=ee258be9-88a4-423d-b3ce-84b6c35b141a',
-        'reLogicResourceName=Terraria.Libraries.ReLogic.ReLogic.dll',
-        'reLogicResourceSha256=E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29',
-        'targetTypeName=Terraria.Main',
-        'targetMethodName=Update',
-        'targetMethodMetadataToken=0x06000D16',
-        'targetMethodIsStatic=false',
-        'targetMethodReturnType=System.Void',
-        'targetMethodParameterCount=1',
-        'targetMethodParameterType=Microsoft.Xna.Framework.GameTime',
-        'hostAssemblySimpleName=JueMingR.TerrariaHost',
-        'hostAssemblyVersion=0.0.0.0',
-        ('hostAssemblyMvid=' + $hostIdentity.mvid),
-        ('hostAssemblySha256=' + $hostIdentity.sha256),
-        'harmonyAssemblySimpleName=0Harmony',
-        'harmonyAssemblyVersion=2.4.2.0',
-        'harmonyAssemblyMvid=024a0e6e-c8c2-437e-ad04-7b6279389c23',
-        'harmonyAssemblySha256=7B9E756306FA3D7620E02A857C8927A6AB04973F9BD8A77D3866700A6DEAC55C',
-        'patchOwner=JueMingR.Phase0S.MainUpdate',
-        'evidenceFileName=phase-0-s-evidence.log'
-    )
-    if ($runtimeLines.Count -ne 30) {
-        throw 'Runtime manifest construction did not produce 30 lines.'
-    }
-    $runtimeText = ($runtimeLines -join [Environment]::NewLine) + [Environment]::NewLine
-    $runtimePath = Join-Path $sidecarPayloadRoot 'phase-0-s-runtime.manifest'
-    Write-Phase0SBuilderTextCreateNew -Path $runtimePath -Text $runtimeText
-    $runtimeCheck = Read-Phase0SRuntimeManifest -Path $runtimePath
-    if ($runtimeCheck.packageId -cne $packageId -or $runtimeCheck.sourceCommit -cne $sourceCommit -or
-        $runtimeCheck.targetMethodMetadataToken -cne '0x06000D16' -or
-        $runtimeCheck.hostAssemblyMvid -cne $hostIdentity.mvid -or
-        $runtimeCheck.hostAssemblySha256 -cne $hostIdentity.sha256) {
-        throw 'Runtime manifest round-trip verification failed.'
-    }
-
-    $payloadEntries = New-Object System.Collections.Generic.List[object]
-    foreach ($relativePath in $script:Phase0SExpectedPayloadPaths) {
-        $path = Resolve-Phase0SContainedPath -Root $payloadRoot -RelativePath $relativePath
-        $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
-        $payloadEntries.Add([pscustomobject][ordered]@{
-            installRelativePath = $relativePath
-            length = [int64] $item.Length
-            sha256 = Get-Phase0SFileSha256 -Path $path
-        })
-    }
-    $manifest = [pscustomobject][ordered]@{
-        schemaVersion = 1
-        packageId = $packageId
-        sourceCommit = $sourceCommit
-        target = [pscustomobject][ordered]@{
-            simpleName = 'Terraria'
-            version = '1.4.5.8'
-            mvid = '2c29f6c3-4bd9-4add-9c58-da159804e083'
-            sha256 = '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3'
-        }
-        payload = $payloadEntries.ToArray()
-    }
-    $manifestPath = Join-Path $packageRoot 'phase-0-s-package.manifest.json'
-    Write-Phase0SBuilderTextCreateNew -Path $manifestPath -Text (ConvertTo-Phase0SCanonicalPackageManifestText -Manifest $manifest)
-
-    foreach ($sourceAndName in @(
-        @((Join-Path $repositoryRoot 'scripts\phase0s\Install-Phase0S.ps1'), 'Install-Phase0S.ps1'),
-        @((Join-Path $repositoryRoot 'scripts\phase0s\Restore-Phase0S.ps1'), 'Restore-Phase0S.ps1'),
-        @((Join-Path $repositoryRoot 'scripts\phase0s\Phase0S.ScriptSupport.ps1'), 'Phase0S.ScriptSupport.ps1'),
-        @((Join-Path $repositoryRoot ('scripts\phase0s\' + $ownerTestCardName)), $ownerTestCardName),
-        @((Join-Path $repositoryRoot 'THIRD-PARTY-NOTICES.md'), 'THIRD-PARTY-NOTICES.md'),
-        @($harmonyLicensePath, 'Harmony-2.4.2-LICENSE.txt')
-    )) {
-        Copy-Phase0SBuilderFileCreateNew -SourcePath $sourceAndName[0] -DestinationPath (Join-Path $packageRoot $sourceAndName[1])
-    }
-    if($BlueprintDiagnostic){
-        [IO.File]::AppendAllText((Join-Path $packageRoot $ownerTestCardName),"`r`n本包为自动放置一次性诊断候选，保持当前施工行为。一次性采集由本次交付在实际目录另行布防；正常启动后进入世界即开始最多120秒的观察，请尽快正常使用自动建造，约60至90秒后正常退出，再委托收集并恢复普通安装。采集机会只使用一次；它不表示自动放置已修复。`r`n",(New-Object Text.UTF8Encoding($false)))
-    }
-    if($StageDevelopmentRecord){
-        # Keep the strict package/runtime manifests and fixed member contract.
-        # The ordinary owner card is the compatible in-ZIP disclosure surface.
-        $card=Join-Path $packageRoot $ownerTestCardName
-        if($buildRecord.workload.mode -ceq 'DevelopmentCandidate'){
-            # Stable records disclose their own task without inheriting a
-            # historical #114/#124 installation permission from a mode name.
-            [IO.File]::AppendAllText($card,"`r`n本包为本人待测候选；任务：$($buildRecord.workload.taskReference)。普通完整文件与 Release 载荷齐全；全量累计资格 INCOMPLETE、releaseEligible=false。未完成责任见包旁构建记录；候选记录不授予安装权限，实际换装按本次独立授权和现有安全门处理。`r`n",(New-Object Text.UTF8Encoding($false)))
-            if($null -ne $buildRecord.workload.PSObject.Properties['taskAcceptance'] -and $null -ne $buildRecord.workload.taskAcceptance){
-                [IO.File]::AppendAllText($card,"本次任务范围工程验收：$($buildRecord.workload.taskAcceptance.status)。广泛回归的原 FAIL、未运行状态及对应责任保留在包旁构建记录中；任务验收通过不代表广泛回归通过。`r`n",(New-Object Text.UTF8Encoding($false)))
-            }
-        } else {
-        $viewStage=$buildRecord.workload.mode -cin @('ExplicitViewUnlock20261018','ExplicitViewCacheRange20261018')
-        $installationBoundary=if($viewStage -or $buildRecord.workload.mode -ceq 'ExplicitAimContinuation20261013'){'本轮已授权在准入和载荷身份检查后，核无所有者进程占用、轻量备份并用正式工具换装；回执另行读回，正常游戏启动和体验由所有者操作。'}else{'交包后停止，安装和体验由所有者另行决定。'}
-        $taskBoundary=if($viewStage){'视距解锁续办开发测试包；含已接受旅行和既有完整功能。实际范围、证据复用及设备／多人／FPS边界见 Issue #124。'}else{'辅助瞄准阶段开发测试包；未完成机制及实机／多人／FPS边界见 Issue #114。'}
-        [IO.File]::AppendAllText($card,"`r`n本包为已授权的$taskBoundary 完整文件与 Release 载荷齐全；全量累计资格 INCOMPLETE、releaseEligible=false，不是正式发布候选。$installationBoundary`r`n",(New-Object Text.UTF8Encoding($false)))
-        }
-    }
-
-    $validatedPackage = Read-Phase0SPackage -PackageRoot $packageRoot
-    if ($validatedPackage.packageId -cne $packageId -or $validatedPackage.sourceCommit -cne $sourceCommit) {
-        throw 'Final package identity verification failed.'
-    }
-    $packageFiles = @(Assert-Phase0SFixedPackageTree -PackageRoot $packageRoot)
-    Assert-Phase0SPackageHasNoPrivatePath -PackageRoot $packageRoot
-
-    $zipPath = Join-Path $stagingRoot $zipFileName
-    New-Phase0SDeterministicZip -PackageRoot $packageRoot -PackageDirectoryName $packageDirectoryName -ZipPath $zipPath
-    Assert-Phase0SZipMatchesPackage -PackageRoot $packageRoot -PackageDirectoryName $packageDirectoryName -ZipPath $zipPath
-    $zipItem = Get-Item -LiteralPath $zipPath -Force -ErrorAction Stop
-
-    $externalBuildRecord = [ordered]@{
-        schemaVersion = 1
-        sourceCommit = $sourceCommit
-        clean = ($null -eq $admission)
-        workspaceDirty = ($null -ne $admission)
-        committedProductSourceClean = $true
-        releaseEligible = ($null -eq $admission -and -not $StageDevelopmentRecord)
-        workspace = $admission
-        packageId = $packageId
-        sdk = '10.0.203'
-        configuration = 'Release'
-        blueprintDiagnostic = [bool]$BlueprintDiagnostic
-        targetFramework = 'net472'
-        platformTarget = 'x86'
-        buildEntry = 'scripts/build.ps1'
-        solution = 'JueMingR.sln'
-        sourceBuildRecordSha256 = Get-Phase0SFileSha256 -Path $buildRecordPath
-        sourceFingerprint = $buildRecord.sourceFingerprint
-        workload = $buildRecord.workload
-        target = [ordered]@{
-            simpleName = 'Terraria'
-            version = '1.4.5.8'
-            mvid = '2c29f6c3-4bd9-4add-9c58-da159804e083'
-            sha256 = '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3'
-        }
-        harmony = [ordered]@{
-            package = 'Lib.Harmony'
-            version = '2.4.2'
-            assemblyMvid = $harmonyIdentity.mvid
-            assemblySha256 = $harmonyIdentity.sha256
-            licenseSha256 = Get-Phase0SFileSha256 -Path $harmonyLicensePath
-        }
-        packageDirectory = [ordered]@{
-            name = $packageDirectoryName
-            files = $packageFiles
-        }
-        archive = [ordered]@{
-            fileName = $zipFileName
-            length = [int64] $zipItem.Length
-            sha256 = Get-Phase0SFileSha256 -Path $zipPath
-        }
-        generatedAtUtc = [DateTime]::UtcNow.ToString('O', [System.Globalization.CultureInfo]::InvariantCulture)
-    }
-    $externalBuildRecordPath = Join-Path $stagingRoot 'phase-0-s-build-record.json'
-    Write-Phase0SBuilderTextCreateNew -Path $externalBuildRecordPath -Text (($externalBuildRecord | ConvertTo-Json -Depth 10) + [Environment]::NewLine)
-    $recordText = Get-Phase0SStrictUtf8Text -Path $externalBuildRecordPath -MaximumLength 1048576
-    if ($recordText.IndexOf($repositoryRoot, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
-        $recordText -match '(?i)[A-Z]:[\\/](?:Users|Documents)[\\/]') {
-        throw 'External build record contains a private absolute path.'
-    }
-
-    $rootNames = @(Get-ChildItem -LiteralPath $stagingRoot -Force -ErrorAction Stop | Sort-Object Name | ForEach-Object { $_.Name })
-    $expectedRootNames = @('.phase0s-builder-stage', $packageDirectoryName, 'phase-0-s-build-record.json', $zipFileName) | Sort-Object
-    if (($rootNames -join '|') -cne ($expectedRootNames -join '|')) {
-        throw 'Builder staging has an unexpected final object.'
-    }
-    if ([System.IO.File]::ReadAllText($markerPath).Trim() -cne $stagingToken) {
-        throw 'Builder staging marker changed.'
-    }
-    # Recheck live inputs, exact Release bytes and every required evidence item
-    # before promoting a staged package. A parseable old PASS cannot authorize it.
-    Start-WorkloadReadWindow
-    $promotionAdmission=Initialize-WorkloadWorkspace $repositoryRoot $ApprovedRetainedAssets -RequireCommitted
-    if ($sourceIdentity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint -or
-        ($null -eq $admission -and @(Invoke-Phase0SGit -Arguments @('status','--porcelain=v1','--untracked-files=all')).Count -ne 0) -or
-        ($admission|ConvertTo-Json -Depth 8 -Compress) -cne ($promotionAdmission|ConvertTo-Json -Depth 8 -Compress) -or
-        -not (Test-PackageBuildAdmission $buildRecord -ExpectedBlueprintDiagnostic ([bool]$BlueprintDiagnostic))) { throw 'Package inputs or evidence changed before promotion.' }
-    [System.IO.File]::Delete($markerPath)
-    $markerRemoved = $true
-    if ((Get-Phase0SPathState -Path $outputRoot).exists) {
-        throw 'OutputDirectory appeared before final promotion.'
-    }
-    [System.IO.Directory]::Move($stagingRoot, $outputRoot)
-    $stagingCreated = $false
-
-    $summary = [ordered]@{
-        schemaVersion = 1
-        status = 'success'
-        packageId = $packageId
-        directoryName = $packageDirectoryName
-        archiveFileName = $zipFileName
-        archiveSha256 = [string] $externalBuildRecord.archive.sha256
-        buildRecordFileName = 'phase-0-s-build-record.json'
-    }
-    Write-Output ($summary | ConvertTo-Json -Compress)
+. (Join-Path $PSScriptRoot 'TwoFileBundle.Support.ps1')
+$stagingRoot=Join-Path $outputParent ((Split-Path -Leaf $outputRoot)+'.bundle-new-'+[Guid]::NewGuid().ToString('N'))
+[IO.Directory]::CreateDirectory($stagingRoot)|Out-Null
+$internal=Join-Path $stagingRoot '.build/internal'
+[IO.Directory]::CreateDirectory($internal)|Out-Null
+foreach($path in @($hostOutput,$platformOutput,$featuresOutput,$infrastructureOutput,$workerOutput,$workerConfigOutput,$harmonyPath)){
+    Copy-Phase0SBuilderFileCreateNew $path (Join-Path $internal (Split-Path -Leaf $path))
 }
-finally {
-    if ($stagingCreated -and -not $markerRemoved -and [System.IO.Directory]::Exists($stagingRoot) -and
-        [System.IO.File]::Exists($markerPath)) {
-        $marker = [System.IO.File]::ReadAllText($markerPath).Trim()
-        $parentPrefix = [System.IO.Path]::GetFullPath($outputParent).TrimEnd('\') + '\'
-        $stagingFullPath = [System.IO.Path]::GetFullPath($stagingRoot)
-        if ($marker -ceq $stagingToken -and
-            $stagingFullPath.StartsWith($parentPrefix, [System.StringComparison]::OrdinalIgnoreCase) -and
-            (Split-Path -Leaf $stagingFullPath).EndsWith('.phase0s-stage-' + $stagingToken, [System.StringComparison]::Ordinal)) {
-            Remove-Item -LiteralPath $stagingRoot -Recurse -Force
-        }
-    }
+Copy-Phase0SBuilderFileCreateNew $harmonyLicensePath (Join-Path $internal 'Harmony-2.4.2-LICENSE.txt')
+Copy-Phase0SBuilderFileCreateNew (Join-Path $repositoryRoot 'THIRD-PARTY-NOTICES.md') (Join-Path $internal 'THIRD-PARTY-NOTICES.md')
+Write-JmrRuntimeManifest -Internal $internal -SourceCommit $sourceCommit -PackageId $packageId -HostIdentity $hostIdentity -HarmonyIdentity $harmonyIdentity
+$standard=Join-Path $stagingRoot $packageDirectoryName
+$bundle=New-JmrTwoFileBundle -RepositoryRoot $repositoryRoot -InputDirectory $internal -WorkDirectory (Join-Path $stagingRoot '.build/bundle') -StandardDirectory $standard -SourceCommit $sourceCommit
+$zipFileName=$packageDirectoryName+'.zip'
+$zipPath=Join-Path $stagingRoot $zipFileName
+New-JmrTwoFileZip $standard $zipPath
+$setupBuildRoot=Join-Path $stagingRoot '.build/setup'
+$setupOutput=@(& dotnet.exe build (Join-Path $repositoryRoot 'src/JueMingR.Setup/JueMingR.Setup.csproj') --configuration Release --nologo -p:Platform=x86 "-p:SourceRevisionId=$sourceCommit" "-p:JueMingRSetupPayloadDirectory=$standard" "-p:JueMingRBuildRoot=$setupBuildRoot" 2>&1)
+$setupOutput|ForEach-Object{Write-Host $_}
+if($LASTEXITCODE -ne 0){throw 'The final single-file Setup did not build.'}
+$setupFileName=$packageDirectoryName+'-Setup.exe'
+$setupPath=Join-Path $stagingRoot $setupFileName
+Copy-Phase0SBuilderFileCreateNew (Join-Path $setupBuildRoot 'bin/JueMingR.Setup/x86/Release/net472/JueMingR.Setup.exe') $setupPath
+$setupResources=@(foreach($file in $bundle.files){[ordered]@{name=('JueMingR.Setup.Payload.'+$file.path);path=$file.path;length=$file.length;sha256=$file.sha256}})
+$externalBuildRecord=[ordered]@{
+    schemaVersion=1;distributionFormat='two-file-1';sourceCommit=$sourceCommit;clean=($null -eq $admission);
+    workspaceDirty=($null -ne $admission);committedProductSourceClean=$true;releaseEligible=($null -eq $admission -and -not $StageDevelopmentRecord);
+    workspace=$admission;packageId=$packageId;sdk='10.0.203';configuration='Release';blueprintDiagnostic=[bool]$BlueprintDiagnostic;
+    targetFramework='net472';platformTarget='x86';buildEntry='scripts/build.ps1';solution='JueMingR.sln';
+    sourceBuildRecordSha256=(Get-Phase0SFileSha256 $buildRecordPath);sourceFingerprint=$buildRecord.sourceFingerprint;workload=$buildRecord.workload;
+    target=[ordered]@{simpleName='Terraria';version='1.4.5.8';mvid='2c29f6c3-4bd9-4add-9c58-da159804e083';sha256='960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3'};
+    harmony=[ordered]@{package='Lib.Harmony';version='2.4.2';assemblyMvid=$harmonyIdentity.mvid;assemblySha256=$harmonyIdentity.sha256;licenseSha256=(Get-Phase0SFileSha256 $harmonyLicensePath)};
+    packageDirectory=[ordered]@{name='';files=@($bundle.files)};bundle=$bundle;
+    archive=[ordered]@{fileName=$zipFileName;length=[long](Get-Item -LiteralPath $zipPath).Length;sha256=(Get-Phase0SFileSha256 $zipPath)};
+    setup=[ordered]@{fileName=$setupFileName;length=[long](Get-Item -LiteralPath $setupPath).Length;sha256=(Get-Phase0SFileSha256 $setupPath);resources=$setupResources};
+    generatedAtUtc=[DateTime]::UtcNow.ToString('O',[Globalization.CultureInfo]::InvariantCulture)
 }
-
+$recordPath=Join-Path $stagingRoot 'phase-0-s-build-record.json'
+Write-Phase0SBuilderTextCreateNew $recordPath (($externalBuildRecord|ConvertTo-Json -Depth 12)+"`n")
+# The public consumer verifies both independently produced channels before promotion.
+& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'verify-existing-package.ps1') -BuildRecordPath $recordPath -ZipPath $zipPath -SetupPath $setupPath -ExpectedSourceCommit $sourceCommit -ExpectedZipSha256 $externalBuildRecord.archive.sha256 -ApprovedRetainedAssets $ApprovedRetainedAssets
+if($LASTEXITCODE -ne 0){throw 'The two distribution channels failed their public consumer.'}
+Stop-WorkloadReadWindow
+Start-WorkloadReadWindow
+$promotionAdmission=Initialize-WorkloadWorkspace $repositoryRoot $ApprovedRetainedAssets -RequireCommitted
+if($sourceIdentity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint -or
+    ($admission|ConvertTo-Json -Depth 8 -Compress) -cne ($promotionAdmission|ConvertTo-Json -Depth 8 -Compress) -or
+    -not (Test-PackageBuildAdmission $buildRecord -ExpectedBlueprintDiagnostic ([bool]$BlueprintDiagnostic))){throw 'Package inputs or evidence changed before promotion.'}
+# Keep build intermediates and verification as package-external developer evidence.
+[IO.Directory]::Move($stagingRoot,$outputRoot)
+[ordered]@{schemaVersion=1;status='success';packageId=$packageId;directoryName=$packageDirectoryName;archiveFileName=$zipFileName;archiveSha256=$externalBuildRecord.archive.sha256;setupFileName=$setupFileName;setupSha256=$externalBuildRecord.setup.sha256;buildRecordFileName='phase-0-s-build-record.json'}|ConvertTo-Json -Compress
 } finally { Stop-WorkloadReadWindow }

@@ -92,8 +92,12 @@ namespace JueMingR.TerrariaHost.Items
                 else
                 {
                     int count = ItemSelection.Types(value, list).Count;
-                    if (count > 0) y += (float)Math.Ceiling(count / (double)Columns(width, CardWidth)) * (CardHeight + Gap) + 2;
+                    if (count > 0) y += (float)Math.Ceiling(count / (double)Columns(width, CardWidth)) * (CardHeight + Gap) - Gap;
+                    else y = rows[start].Rect.Bottom;
                 }
+                if (y > rows[start].Rect.Bottom) rows.Add(F5RowLayout.GroupDivider(rows[start]));
+                rows[start] = F5RowLayout.CompleteGroup(rows[start], y);
+                y = rows[start].Rect.Bottom + F5RowLayout.GroupGap;
             }
             if (error) { Error = new F5Rect(8, y, width - 16, rowHeight * 2); y = Error.Bottom; }
             Height = y;
@@ -121,9 +125,8 @@ namespace JueMingR.TerrariaHost.Items
             { Risk = new F5Rect(8, y, width - 16, row); y += row + Gap; }
             listY[(int)list] = y;
             if (selection.Candidates.Count == 0) { Empty = new F5Rect(8, y, width - 16, row); y += row; }
-            else y += (float)Math.Ceiling(selection.Candidates.Count / (double)Columns(width, CandidateWidth)) * (CandidateSize + Gap);
+            else y += (float)Math.Ceiling(selection.Candidates.Count / (double)Columns(width, CandidateWidth)) * (CandidateSize + Gap) - Gap;
             RevealBottom = Math.Min(y, listY[(int)list] + CandidateSize);
-            y += 6;
         }
         private ItemUiControl Make(ItemUiCommand command, int list, int type, F5Rect rect, string text, bool selected, bool enabled)
         { return new ItemUiControl { Command = command, Argument = list, Type = type, Rect = rect, Generation = selection.Generation,

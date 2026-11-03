@@ -3,10 +3,21 @@
     <TargetFramework>net472</TargetFramework>
     <PlatformTarget>x86</PlatformTarget>
     <OutputType>Library</OutputType>
-    <AssemblyName>JueMingR.Bootstrap</AssemblyName>
+    <AssemblyName>JueMingR</AssemblyName>
     <RootNamespace>JueMingR.Bootstrap</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(JueMingRBundleDirectory)' != ''">
+    <EmbeddedResource Include="$(JueMingRBundleDirectory)/bundle.index" LogicalName="JueMingR.Bundle.index" />
+    <EmbeddedResource Include="$(JueMingRBundleDirectory)/payload.zip" LogicalName="JueMingR.Bundle.payload.zip" />
+    <EmbeddedResource Include="$(JueMingRBundleDirectory)/Terraria.exe.config" LogicalName="JueMingR.Bundle.config" />
+  </ItemGroup>
+  <Target Name="RequireExplicitBundleInput" BeforeTargets="CoreCompile">
+    <Error Condition="'$(JueMingRBundleDirectory)' == '' And '$(JueMingRBundleLogicOnly)' != 'true'" Text="Provide this build's JueMingRBundleDirectory, or explicitly use JueMingRBundleLogicOnly=true for a non-distributable logic build." />
+  </Target>
 </Project>

@@ -102,7 +102,22 @@ foreach ($path in @('scripts/verify-existing-package.ps1','scripts/phase0s/Packa
         Assert-Evidence ((Get-WorkloadCheckFingerprint $old $name) -ceq (Get-WorkloadCheckFingerprint $new $name)) 'unrelated CPU inputs remain equal'
     }
 }
-foreach ($path in @('scripts/phase0s/Install-Phase0S.ps1','scripts/phase0s/Restore-Phase0S.ps1','scripts/phase0s/Phase0S.ScriptSupport.ps1','tests/NativeWorldTextProbe/NativeChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','environment:runtime')) {
+# Fishing/Combat CPU scopes run the prepared native probe, not installation or
+# package readers. Deployment bytes still invalidate their real tool consumers;
+# this does not exempt shared native source, unknown inputs or launch recipes.
+foreach ($path in @('scripts/phase0s/Install-Phase0S.ps1','scripts/phase0s/Restore-Phase0S.ps1','scripts/phase0s/Phase0S.ScriptSupport.ps1','scripts/build-setup-from-existing-pair.ps1','scripts/phase0s/Read-TwoFilePackageMetadata.ps1')) {
+    $route=Get-WorkloadRoute @($path)
+    Assert-Evidence ($route.unknown.Count -eq 0 -and ($route.groups -join ',') -ceq 'core,package-tools,workload-tools' -and -not (Test-WorkloadNonExecutableInput $path)) ('deployment remains an executable with exact tool responsibility: '+$path)
+    $old=[pscustomobject]@{inputs=@($path+':A')};$new=[pscustomobject]@{inputs=@($path+':B')}
+    Assert-Evidence ((Get-WorkloadHash $old.inputs) -cne (Get-WorkloadHash $new.inputs)) ('complete identity still binds deployment bytes: '+$path)
+    foreach($name in @('workload-PackageVerification','workload-Evidence','workload-Routing','workload-Failure','workload-DevelopmentCandidate')){
+        Assert-Evidence ((Get-WorkloadCheckFingerprint $old $name) -cne (Get-WorkloadCheckFingerprint $new $name)) ('deployment changes invalidate their actual tool consumer: '+$path+' -> '+$name)
+    }
+    foreach($name in @('native-FishingCpu','native-CombatCpu')){
+        Assert-Evidence ((Get-WorkloadCheckFingerprint $old $name) -ceq (Get-WorkloadCheckFingerprint $new $name)) ('deployment does not alter independent native CPU inputs: '+$path+' -> '+$name)
+    }
+}
+foreach ($path in @('tests/NativeWorldTextProbe/NativeChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','environment:runtime')) {
     $old = [pscustomobject]@{inputs=@($path+':A')}; $new = [pscustomobject]@{inputs=@($path+':B')}
     Assert-Evidence ((Get-WorkloadCheckFingerprint $old 'native-FishingCpu') -cne (Get-WorkloadCheckFingerprint $new 'native-FishingCpu')) ('shared inputs remain strict: ' + $path)
 }
@@ -617,7 +632,7 @@ throw 'Incorrectly returned from a failed process.'
             $tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $recipeRoot 'scripts/build.ps1'),[ref]$tokens,[ref]$errors)
             $owner=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ieq '$buildArguments'},$true))
             if($errors.Count -or $owner.Count -lt 1){throw 'Tiny recipe parameter owner is ambiguous.'}
-            $solutionPath=$project;$Configuration='Debug';$workRoot=Join-Path $recipeRoot 'artifacts/build/Debug/work';$referencesDirectory='unused';$harmonyReferencesDirectory='unused';$commit='fixture'
+            $solutionPath=$project;$Configuration='Debug';$workRoot=Join-Path $recipeRoot 'artifacts/build/Debug/work';$referencesDirectory='unused';$harmonyReferencesDirectory='unused';$commit='fixture';$BlueprintDiagnostic=$false
             $extra=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ceq '$extraOption'},$true))
             if($extra.Count -eq 1){. ([scriptblock]::Create($extra[0].Extent.Text))}
             foreach($assignment in $owner){. ([scriptblock]::Create($assignment.Extent.Text))}
@@ -686,7 +701,7 @@ throw 'Incorrectly returned from a failed process.'
             if($case -ceq 'output-only'){$candidateBuild+="`nWrite-Host 'unrelated tool report wording'`n"}
             if($case -ceq 'status-report'){$candidateBuild=$candidateBuild.Replace('$sdkCommandSucceeded = $?',"Write-Host 'literal report'`n"+'$sdkCommandSucceeded = $?')}
             if($case -ceq 'compiler-option'){$candidateBuild=$candidateBuild.Replace("'-p:Platform=x86',","'-p:Platform=x86', '-p:DefineConstants=BEHAVIOR_CHANGED',")}
-            if($case -ceq 'release-debug-option'){$candidateBuild=$candidateBuild.Replace('-p:Platform=x86 "-p:JueMingRBuildRoot=$debugWork"','-p:Platform=x86 -p:DefineConstants=BEHAVIOR_CHANGED "-p:JueMingRBuildRoot=$debugWork"')}
+            if($case -ceq 'release-debug-option'){$candidateBuild=$candidateBuild.Replace('-p:Platform=x86 -p:JueMingRBundleLogicOnly=true -p:JueMingRSetupLogicOnly=true "-p:JueMingRBuildRoot=$debugWork"','-p:Platform=x86 -p:DefineConstants=BEHAVIOR_CHANGED -p:JueMingRBundleLogicOnly=true -p:JueMingRSetupLogicOnly=true "-p:JueMingRBuildRoot=$debugWork"')}
             if($case -ceq 'case-append'){$candidateBuild=$candidateBuild.Replace('& $dotnetCommand.Source @buildArguments',"`$BuildArguments += '-p:DefineConstants=BEHAVIOR_CHANGED'`n& `$dotnetCommand.Source @buildArguments")}
             if($case -ceq 'indirect-option'){$candidateBuild=$candidateBuild.Replace('$buildArguments = @(',"`$extraOption='-p:DefineConstants=BEHAVIOR_CHANGED'`n`$buildArguments = @(").Replace("'-p:Platform=x86',","'-p:Platform=x86', `$extraOption,")}
             [IO.File]::WriteAllText((Join-Path $recipeRoot 'scripts/build.ps1'),$candidateBuild,(New-Object Text.UTF8Encoding($false)))

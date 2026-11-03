@@ -19,7 +19,6 @@ namespace JueMingR.TerrariaHost.Recovery
         private readonly HostRecovery host;
         private readonly F5Interaction shell;
         private readonly ItemsRenderer renderer=new ItemsRenderer();
-        private readonly ItemPickerInput input=new ItemPickerInput();
         private readonly List<Part> logical=new List<Part>(),visible=new List<Part>();
         private readonly Dictionary<int,Texture2D> icons=new Dictionary<int,Texture2D>();
         private int editor=-1,page=-1,generation=-1,skin=-1,armedGeneration;
@@ -27,7 +26,7 @@ namespace JueMingR.TerrariaHost.Recovery
         private int[] candidates=new int[0];
         private readonly HashSet<int> stock=new HashSet<int>();
         private ulong nextStockScan;
-        private bool ready,dirty=true,leftTail,rightTail,previousLeft,previousEscape;
+        private bool ready,dirty=true,leftTail,rightTail,previousLeft;
         private float scroll;
         private F5Rect view;
         private Vector2 pointer;
@@ -41,9 +40,8 @@ namespace JueMingR.TerrariaHost.Recovery
         private float builtMiscStart=-1;
         private bool pagePointer,pageLeft,pageRight;
         internal bool OwnsPointer {get{return pagePointer || PotionPopup.OwnsPointer;}}
-        internal bool OwnsTextToken {get{return input.OwnsTextToken;}}
-        // The inline list is mouse UI, not a text editor. Only the separate
-        // medication overlay keeps the existing modal keyboard lease.
+        // Both the inline list and medication overlay are pointer-only UI.
+        // The overlay owns its mouse gesture and Escape tail, never text input.
         internal bool Selecting {get{return PotionPopup.Visible;}}
         internal bool ConsumeLeft {get{return pageLeft || PotionPopup.ConsumeLeft;}}
         internal bool ConsumeRight {get{return pageRight || PotionPopup.ConsumeRight;}}
@@ -61,17 +59,14 @@ namespace JueMingR.TerrariaHost.Recovery
             this.host=host;this.shell=shell;PotionPopup=new PotionConfigurationPopup(host,shell.Layout.TextSize);var prior=shell.BeforeLeave;
             shell.BeforeLeave=p=>{if(prior!=null && !prior(p))return false;Suspend();return true;};
         }
-        internal void BeforeInput(bool active){input.BeforeInput(active && shell.Visible && shell.Page==10 && Selecting);}
         internal void ProcessInput(bool active,KeyboardState keys,Vector2 point,bool geometryCurrent,bool focused,bool blocked)
         {
-            pointer=point;input.Sample(keys,focused);
+            pointer=point;
             bool left=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,right=PlayerInput.MouseInfo.RightButton==ButtonState.Pressed;
             pageLeft=leftTail;pageRight=rightTail;pagePointer=false;
             bool on=active && focused && shell.Visible && (shell.Page==10 || shell.Page==1);
-            if(!on || session!=host.Runtime.Generation){Suspend();if(focused){if(!left)leftTail=false;if(!right)rightTail=false;}previousLeft=focused?left:true;previousEscape=focused?keys.IsKeyDown(Keys.Escape):true;return;}
+            if(!on || session!=host.Runtime.Generation){Suspend();if(focused){if(!left)leftTail=false;if(!right)rightTail=false;}previousLeft=focused?left:true;return;}
             if(!geometryCurrent || generation!=shell.Layout.Generation || revision!=Revision || scroll!=shell.Scroll || page!=shell.Page || view.X!=shell.Layout.Viewport.X+shell.X || view.Y!=shell.Layout.Viewport.Y+shell.Y){armed=null;dirty=true;}
-            if(keys.IsKeyDown(Keys.Escape) && !previousEscape && Selecting){input.Release();armed=null;}
-            previousEscape=keys.IsKeyDown(Keys.Escape);
             pagePointer=ready && view.Contains(point.X,point.Y);
             if(pagePointer)
             {
@@ -89,8 +84,8 @@ namespace JueMingR.TerrariaHost.Recovery
             if(p.Command>=0)host.Set(p.Command,p.Value);
             // Retain the hidden list toggle/close commands at the owner's
             // request; normal page entry always starts with the list visible.
-            else if(p.Command==-2){if(p.Value<2){PotionPopup.Open(p.Value,p.Element.Rect);}else{PotionPopup.Close();editor=editor==2?-1:2;if(editor==2)Refresh();else input.Release();}}
-            else if(p.Command==-3){editor=-1;input.Release();}
+            else if(p.Command==-2){if(p.Value<2){PotionPopup.Open(p.Value,p.Element.Rect);}else{PotionPopup.Close();editor=editor==2?-1:2;if(editor==2)Refresh();}}
+            else if(p.Command==-3){editor=-1;}
             else if(p.Command==-4)Refresh();
             else if(p.Command==-5)host.Buffs.Set(host.Buffs.Value.ClearBuffs());
             else if(p.Command==-6)
@@ -162,7 +157,7 @@ namespace JueMingR.TerrariaHost.Recovery
                 if(e.Text=="配置" || e.Text=="名单设置" || e.Text=="收起名单"){command=-2;value=feature==4?2:feature;}
                 if(e.Kind==F5ElementKind.Hotkey)command=-1;
                 var element=e.Kind==F5ElementKind.Hotkey?new F5Element(e.Kind,e.Rect,null,e.TextSize,e.TextScale,F5Command.None,HostRecovery.Actions[feature]):e;
-                string hint=e.Text=="快速"?"掉血后立即选择合适的物品进行恢复":e.Text=="智能"?"掉血后会等待合适的阈值使用合适的药品":e.Description==null?null:host.Hint(feature)??help[feature];
+                string hint=e.Kind==F5ElementKind.Hotkey?F5HotkeyHints.Toggle:e.Text=="快速"?"掉血后立即选择合适的物品进行恢复":e.Text=="智能"?"掉血后会等待合适的阈值使用合适的药品":e.Description==null?null:host.Hint(feature)??help[feature];
                 logical.Add(new Part{Element=element,Command=command,Value=value,Enabled=host.Controls(feature),Selected=command>=0 && e.Kind==F5ElementKind.Button && host.Value(feature)==value,Hint=hint});
             }
         }
@@ -226,6 +221,6 @@ namespace JueMingR.TerrariaHost.Recovery
             if(ready && v.Contains(x,y))foreach(var p in visible){var r=p.Element.Description!=null?p.Element.HintRect:p.Element.Rect;if(r.Contains(x,y) && p.Hint!=null){rect=F5HintLayout.Intersect(r,v);return p.Hint;}}
             rect=default(F5Rect);return null;
         }
-        internal void Suspend(){ready=false;armed=null;pagePointer=false;editor=-1;page=-1;dirty=true;input.Release();PotionPopup.Close();visible.Clear();logical.Clear();icons.Clear();renderer.Dispose();}
+        internal void Suspend(){ready=false;armed=null;pagePointer=false;editor=-1;page=-1;dirty=true;PotionPopup.Close();visible.Clear();logical.Clear();icons.Clear();renderer.Dispose();}
     }
 }

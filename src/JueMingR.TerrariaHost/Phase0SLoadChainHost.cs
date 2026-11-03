@@ -41,7 +41,7 @@ namespace JueMingR.TerrariaHost
             try
             {
                 string baseDirectory = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory);
-                string sidecarDirectory = Path.Combine(baseDirectory, "JueMingR.Validation");
+                string sidecarDirectory = Path.GetDirectoryName(Path.GetFullPath(typeof(Phase0SLoadChainHost).Assembly.Location));
                 string manifestPath = Path.Combine(sidecarDirectory, "phase-0-s-runtime.manifest");
                 manifest = RuntimeManifest.Read(manifestPath);
                 evidencePath = Path.Combine(sidecarDirectory, manifest.EvidenceFileName);
@@ -256,7 +256,7 @@ namespace JueMingR.TerrariaHost
             }
 
             string evidencePath = Path.Combine(
-                Path.Combine(Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory), "JueMingR.Validation"),
+                Path.GetDirectoryName(Path.GetFullPath(typeof(Phase0SLoadChainHost).Assembly.Location)),
                 manifest.EvidenceFileName);
             // Install has already verified the exact target assembly and path.
             postfixContext = new PostfixContext(manifest.PackageId, evidencePath,

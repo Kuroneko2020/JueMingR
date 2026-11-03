@@ -23,12 +23,19 @@ namespace NativeWorldTextProbe
             Call(state,"Navigate",1);Call(state,"RestoreVisible");Call(renderer,"RefreshResources");
             foreach(var size in new[]{new[]{960,760,100},new[]{1280,720,150},new[]{960,440,100}})
             {
-                float scale=size[2]/100f;NativeProcessingUiChecks.Prepare(context,size[0],size[1],scale);Call(Get(shell,"RecoveryUi"),"Prepare",true,Matrix.CreateScale(scale),new Vector2(size[0],size[1]));Call(ui,"Prepare",true,Matrix.CreateScale(scale),Get(Get(shell,"RecoveryUi"),"ContentBottom"));
-                graphics.Image(Path.Combine(output,"processing-misc-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>{Call(renderer,"Draw",state,Matrix.CreateScale(scale),false,false);Call(Get(shell,"RecoveryUi"),"Draw",Get(shell,"drawKeyboard"),true);Call(ui,"Draw",Get(shell,"drawKeyboard"));},Matrix.CreateScale(scale),size[0],size[1]);
+                float scale=size[2]/100f;var matrix=Matrix.CreateScale(scale);var screen=new Vector2(size[0],size[1]);
+                Call(state,"ScrollTo",0f);Call(renderer,"Prepare",state,(float)size[0],(float)size[1],scale);
+                // Use the real complete page owner. Preparing reforge again at
+                // the recovery footer would change both its origin and height.
+                Call(shell,"PrepareMisc",true,matrix,screen,true);
+                Action draw=()=>{Call(renderer,"Draw",state,matrix,false,false);Call(ui,"Draw",Get(shell,"drawKeyboard"));Call(Get(shell,"MiningUi"),"Draw",Get(shell,"drawKeyboard"));Call(Get(shell,"MiscUi"),"Draw",Get(shell,"drawKeyboard"),true);Call(Get(shell,"RecoveryUi"),"Draw",Get(shell,"drawKeyboard"),true);};
+                graphics.Image(Path.Combine(output,"processing-misc-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),draw,matrix,size[0],size[1]);
+                if(size[1]==440)
+                {Call(state,"ScrollTo",80f);Call(shell,"PrepareMisc",true,matrix,screen,true);graphics.Image(Path.Combine(output,"processing-misc-short-scrolled.png"),draw,matrix,size[0],size[1]);}
             }
             Call(state,"Navigate",0);var items=Get(shell,"items");Call(renderer,"Prepare",state,960f,760f,1f);Call(items,"Prepare",true,Matrix.Identity,new Vector2(960,760));
             graphics.LoadItemTextures(((System.Collections.IEnumerable)Get(items,"controls")).Cast<object>().Select(p=>(int)Get(p,"Type")).Where(t=>t>0));
-            graphics.Image(Path.Combine(output,"processing-items.png"),()=>{Call(renderer,"Draw",state,Matrix.Identity,false,false);Call(items,"Draw",Get(shell,"drawKeyboard"),true);},Matrix.Identity,960,760);
+            graphics.Image(Path.Combine(output,"processing-items.png"),()=>{Call(renderer,"Draw",state,Matrix.Identity,false,false);Call(items,"Draw",Get(shell,"drawKeyboard"));},Matrix.Identity,960,760);
             Call(state,"Close");Call(ui,"Suspend");Call(items,"Suspend");
             NativeReforgeOuterChecks.Run(context,graphics,output);
             Console.WriteLine("PASS G08 graphics: real F5 Chinese controls at normal/150/short viewports and complete original DrawInventory reforge seam.");

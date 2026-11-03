@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net472</TargetFramework><OutputType>Exe</OutputType><PlatformTarget>x86</PlatformTarget><AssemblyName>ColdStartDriver</AssemblyName></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Terraria"><HintPath>../../external/TerrariaRefs/Terraria.exe</HintPath><Private>false</Private></Reference>
+    <Reference Include="Microsoft.Xna.Framework"><HintPath>../../external/TerrariaRefs/Microsoft.Xna.Framework.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Microsoft.Xna.Framework.Game"><HintPath>../../external/TerrariaRefs/Microsoft.Xna.Framework.Game.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Microsoft.Xna.Framework.Graphics"><HintPath>../../external/TerrariaRefs/Microsoft.Xna.Framework.Graphics.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>../../external/Harmony/0Harmony.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

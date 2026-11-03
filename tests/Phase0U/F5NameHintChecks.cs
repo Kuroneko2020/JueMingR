@@ -213,8 +213,9 @@ namespace Terraria
             Check(presentation.Selecting && renderer.HintLayout.Visible, "inline picker preserves visible ordinary names through the shared path");
             input.X = candidate.X + 1; input.Y = candidate.Y + 1; shell.Update(input);
             Prepare(renderer, shell, presentation, font, measure);
-            Check(!renderer.HintLayout.Visible && presentation.Selecting && revision == host.Preferences.Revision && builds == presentation.LayoutBuildCount,
-                "candidate grid yields to its original item help without changing selection or settings");
+            Check(renderer.HintLayout.Visible && string.Concat(renderer.HintLayout.Lines.Select(e => e.Text)).EndsWith("·点击选择或取消，确定后添加") &&
+                presentation.Selecting && revision == host.Preferences.Revision && builds == presentation.LayoutBuildCount,
+                "candidate reaches the shared final hint without changing selection or settings");
         }
         private sealed class InformationState : IInformationControls
         {

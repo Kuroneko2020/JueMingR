@@ -150,7 +150,7 @@ function Invoke-Phase0SPackageScript {
         [Parameter(Mandatory = $true)][string] $TerrariaDirectory
     )
 
-    return Invoke-Phase0SWindowsPowerShell -ScriptPath (Join-Path $PackageRoot $ScriptName) -Arguments @('-TerrariaDirectory', $TerrariaDirectory)
+    return Invoke-Phase0SWindowsPowerShell -ScriptPath (Join-Path $PackageRoot $ScriptName) -Arguments @('-TerrariaDirectory', $TerrariaDirectory, '-HistoricalFixture')
 }
 
 function Assert-Phase0SCompactJsonResult {

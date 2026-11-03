@@ -40,6 +40,21 @@ try {
         $failed=$false; try { $null=Test-RecordedPackageArchive $copy $record } catch {$failed=$true}
         Assert-PackageCheck $failed ('unsafe, duplicate or extra member rejected: '+$bad)
     }
+    $twoZip=Join-Path $root 'two.zip'
+    $archive=[IO.Compression.ZipFile]::Open($twoZip,'Create')
+    try {foreach($name in @('JueMingR.dll','Terraria.exe.config')){$writer=New-Object IO.StreamWriter($archive.CreateEntry($name).Open());try{$writer.Write('proof')}finally{$writer.Dispose()}}} finally{$archive.Dispose()}
+    $twoRecord=[pscustomobject]@{distributionFormat='two-file-1';packageDirectory=[pscustomobject]@{name='';files=@(
+        [pscustomobject]@{path='JueMingR.dll';length=5;sha256=$hash},[pscustomobject]@{path='Terraria.exe.config';length=5;sha256=$hash})}}
+    Assert-PackageCheck ((Test-RecordedPackageArchive $twoZip $twoRecord) -eq 2) 'normal pair is accepted at archive root'
+    foreach($bad in @('LICENSE','nested/JueMingR.dll','JueMingR.dll')){
+        $copy=Join-Path $root ([Guid]::NewGuid().ToString('N')+'.zip');[IO.File]::Copy($twoZip,$copy)
+        $archive=[IO.Compression.ZipFile]::Open($copy,'Update');try{$null=$archive.CreateEntry($bad)}finally{$archive.Dispose()}
+        $failed=$false;try{$null=Test-RecordedPackageArchive $copy $twoRecord}catch{$failed=$true}
+        Assert-PackageCheck $failed ('two-file archive rejects extra/nested/duplicate member: '+$bad)
+    }
+    $twoRecord.packageDirectory.name='nested'
+    $failed=$false;try{$null=Test-RecordedPackageArchive $twoZip $twoRecord}catch{$failed=$true}
+    Assert-PackageCheck $failed 'two-file record cannot authorize a containing directory'
     # The public entry must reject the wrong expected hash with a real nonzero
     # process exit, before extraction or any product/build invocation.
     $recordPath=Join-Path $root 'record.json'
@@ -55,12 +70,12 @@ try {
     $harnessText=@'
 param([string] $Scope)
 function global:powershell.exe {
-    $suite=($args | Where-Object { $_ -like '*Invoke-*Tests.ps1' -or $_ -like '*Invoke-LoadChainFixture.ps1' })
+    $suite=($args | Where-Object { $_ -like '*SetupChecks.ps1' -or $_ -like '*Invoke-TwoFileColdStartChecks.ps1' })
     Add-Content -LiteralPath '__LOG__' -Value ([IO.Path]::GetFileName($suite))
     $global:LASTEXITCODE=0
-    if ($suite -like '*Invoke-LoadChainFixture.ps1') {$global:LASTEXITCODE=13}
+    if ($suite -like '*Invoke-TwoFileColdStartChecks.ps1') {$global:LASTEXITCODE=13}
 }
-& '__ENTRY__' -Scope $Scope
+& '__ENTRY__' -Scope $Scope -SetupPath 'dispatch-only.exe'
 exit $LASTEXITCODE
 '@
     [IO.File]::WriteAllText($harness,$harnessText.Replace('__LOG__',$logLiteral).Replace('__ENTRY__',$entry))
@@ -74,11 +89,11 @@ exit $LASTEXITCODE
     } finally {$ErrorActionPreference=$savedPreference}
     Assert-PackageCheck ($aggregateExit -ne 0) 'aggregate preserves failed synthetic result'
     $calls=@(Get-Content -LiteralPath $dispatchLog)
-    Assert-PackageCheck ($calls.Count -eq 2 -and $calls[0] -ceq 'Invoke-LoadChainFixture.ps1' -and $calls[1] -ceq 'Invoke-InstallRecoveryTests.ps1') 'recovery still dispatched after synthetic failure'
+    Assert-PackageCheck ($calls.Count -eq 2 -and $calls[0] -ceq 'Invoke-TwoFileColdStartChecks.ps1' -and $calls[1] -ceq 'SetupChecks.ps1') 'production Setup checks still dispatched after cold-start failure'
     [IO.File]::WriteAllText($dispatchLog,'')
     $null=@(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $harness -Scope installrecovery 2>&1)
     $calls=@(Get-Content -LiteralPath $dispatchLog)
-    Assert-PackageCheck ($LASTEXITCODE -eq 0 -and $calls.Count -eq 1 -and $calls[0] -ceq 'Invoke-InstallRecoveryTests.ps1') 'recovery can run without legacy synthetic precondition'
+    Assert-PackageCheck ($LASTEXITCODE -eq 0 -and $calls.Count -eq 1 -and $calls[0] -ceq 'SetupChecks.ps1') 'installation checks use production Setup without legacy synthetic precondition'
     $savedPreference=$ErrorActionPreference
     try {
         $ErrorActionPreference='Continue'

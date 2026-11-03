@@ -69,6 +69,7 @@ namespace JueMingR.ArchitectureTests
             CheckBuildProperties(model, failures);
             CheckPackages(model, failures);
             CheckNeutralProjects(model, failures);
+            CheckDistributionProjects(model, failures);
             CheckGameReferenceBoundary(model, failures);
             CheckLegacyNames(model, failures);
             CheckTrackedFiles(model, failures);
@@ -161,10 +162,27 @@ namespace JueMingR.ArchitectureTests
                 XDocument project;
                 if (model.Projects.TryGetValue(path, out project) &&
                     (Elements(project, "ProjectReference").Any() || Elements(project, "Reference").Any(reference =>
-                        path != ExpectedProjects[1].Value || (string)reference.Attribute("Include") != "System.Runtime.Serialization" || reference.Elements().Any())))
+                        !((path == ExpectedProjects[1].Value && (string)reference.Attribute("Include") == "System.Runtime.Serialization") ||
+                          (path == ExpectedProjects[0].Value && new[] { "System.IO.Compression", "System.IO.Compression.FileSystem" }.Contains((string)reference.Attribute("Include")))) || reference.Elements().Any())))
                 {
                     failures.Add(path + " must not have project or explicit assembly references.");
                 }
+            }
+        }
+
+        private static void CheckDistributionProjects(RepositoryModel model, IList<string> failures)
+        {
+            XDocument bootstrap, setup;
+            if (model.Projects.TryGetValue(ExpectedProjects[0].Value, out bootstrap) &&
+                !PropertyValues(bootstrap, "AssemblyName").SequenceEqual(new[] { "JueMingR" }))
+                failures.Add("Bootstrap must expose the JueMingR container assembly identity.");
+            if (model.Projects.TryGetValue(ExpectedProjects[5].Value, out setup))
+            {
+                var allowed = new[] { "System", "System.Core", "System.Drawing", "System.Windows.Forms", "System.Xml", "System.Xml.Linq", "System.Security", "System.Web.Extensions", "System.Runtime.Serialization", "System.IO.Compression", "System.IO.Compression.FileSystem" };
+                if (!PropertyValues(setup, "OutputType").SequenceEqual(new[] { "WinExe" }) ||
+                    Elements(setup, "ProjectReference").Any() ||
+                    Elements(setup, "Reference").Any(reference => !allowed.Contains(GetSimpleReferenceName(reference)) || reference.Elements().Any()))
+                    failures.Add("Setup must be a standalone WinExe with Framework-only references and no game/product dependencies.");
             }
         }
 

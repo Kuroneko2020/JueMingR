@@ -2,11 +2,31 @@
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <PlatformTarget>x86</PlatformTarget>
-    <OutputType>Library</OutputType>
+    <OutputType>WinExe</OutputType>
     <AssemblyName>JueMingR.Setup</AssemblyName>
     <RootNamespace>JueMingR.Setup</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ApplicationIcon>Assets/juemingr-installer.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets/juemingr-installer.ico" LogicalName="JueMingR.Setup.Brand.Icon" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Xml.Linq" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(JueMingRSetupPayloadDirectory)' != ''">
+    <EmbeddedResource Include="$(JueMingRSetupPayloadDirectory)/JueMingR.dll" LogicalName="JueMingR.Setup.Payload.JueMingR.dll" />
+    <EmbeddedResource Include="$(JueMingRSetupPayloadDirectory)/Terraria.exe.config" LogicalName="JueMingR.Setup.Payload.Terraria.exe.config" />
+    <EmbeddedResource Include="$(IntermediateOutputPath)setup-payload.identity" LogicalName="JueMingR.Setup.Payload.identity" />
+  </ItemGroup>
+  <Target Name="PrepareSetupPayload" BeforeTargets="PrepareResources;CoreCompile">
+    <Error Condition="'$(JueMingRSetupPayloadDirectory)' == '' and '$(JueMingRSetupLogicOnly)' != 'true'" Text="Setup requires this build's frozen JueMingRSetupPayloadDirectory. Use JueMingRSetupLogicOnly=true only for non-deliverable logic builds." />
+    <Error Condition="'$(JueMingRSetupPayloadDirectory)' != '' and (!Exists('$(JueMingRSetupPayloadDirectory)/JueMingR.dll') or !Exists('$(JueMingRSetupPayloadDirectory)/Terraria.exe.config'))" Text="The frozen Setup pair is incomplete." />
+    <GetFileHash Condition="'$(JueMingRSetupPayloadDirectory)' != ''" Files="$(JueMingRSetupPayloadDirectory)/JueMingR.dll" Algorithm="SHA256"><Output TaskParameter="Hash" PropertyName="_SetupDllHash" /></GetFileHash>
+    <GetFileHash Condition="'$(JueMingRSetupPayloadDirectory)' != ''" Files="$(JueMingRSetupPayloadDirectory)/Terraria.exe.config" Algorithm="SHA256"><Output TaskParameter="Hash" PropertyName="_SetupConfigHash" /></GetFileHash>
+    <WriteLinesToFile Condition="'$(JueMingRSetupPayloadDirectory)' != ''" File="$(IntermediateOutputPath)setup-payload.identity" Lines="schema=JueMingR.Setup.Payload.1;dll.sha256=$(_SetupDllHash);config.sha256=$(_SetupConfigHash)" Overwrite="true" Encoding="UTF-8" WriteOnlyWhenDifferent="true" />
+  </Target>
 </Project>

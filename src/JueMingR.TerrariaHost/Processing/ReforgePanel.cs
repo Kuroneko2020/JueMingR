@@ -150,8 +150,10 @@ namespace JueMingR.TerrariaHost.Processing
                     Add(new F5Rect(rect.Right-ItemsLayout.CrossSize,rect.Y,ItemsLayout.CrossSize,ItemsLayout.CrossSize),"",3,name,host.Controls(2));
                     AddCard(rect,name,host.Controls(2));index++;
                 }
-                if(index>0)y+=(float)Math.Ceiling(index/(double)columns)*(ItemsLayout.CardHeight+ItemsLayout.Gap)+2;
-                Height=y+6;start=contentStart;revision=host.Settings[2].Revision;available=host.Controls(2);session=host.Runtime.Generation;generation=shell.Layout.Generation;skin=renderer.Generation;dirty=false;
+                float bodyBottom=index>0?y+(float)Math.Ceiling(index/(double)columns)*(ItemsLayout.CardHeight+ItemsLayout.Gap)-ItemsLayout.Gap:logical[0].Element.Rect.Bottom;
+                if(index>0)logical.Add(new Part{Element=F5RowLayout.GroupDivider(logical[0].Element)});
+                logical[0].Element=F5RowLayout.CompleteGroup(logical[0].Element,bodyBottom);
+                Height=logical[0].Element.Rect.Bottom+F5RowLayout.GroupGap;start=contentStart;revision=host.Settings[2].Revision;available=host.Controls(2);session=host.Runtime.Generation;generation=shell.Layout.Generation;skin=renderer.Generation;dirty=false;
             }
             if(rebuild || scroll!=shell.Scroll)
             {
@@ -198,7 +200,7 @@ namespace JueMingR.TerrariaHost.Processing
             {
                 var rect=p.Element.Description!=null?p.Element.HintRect:p.Element.Rect;if(!rect.Contains(x,y))continue;
                 target=F5HintLayout.Intersect(rect,visible);
-                if(p.Command==6)return "双击设置快捷键";
+                if(p.Command==6)return F5HotkeyHints.Toggle;
                 if(p.Command==3)return "从名单移除「"+p.Name+"」";
                 if(p.Command==7)return p.Name;
                 if(p.Command==1 || p.Command==2)return message??TextInput.Error??draft.Error??"双击输入完整词缀名，按回车或点击添加。";
@@ -216,6 +218,7 @@ namespace JueMingR.TerrariaHost.Processing
                     var e=p.Element;
                     if(p.Command==6)keyboard?.Invoke(e.Rect);
                     else if(e.Kind==F5ElementKind.Panel)renderer.Panel(e.Rect);
+                    else if(e.Kind==F5ElementKind.Divider)renderer.Divider(e.Rect);
                     else if(p.Command==3)continue;
                     else if(p.Command==7)
                     {

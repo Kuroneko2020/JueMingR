@@ -1,4 +1,4 @@
-﻿Set-StrictMode -Version 2.0
+Set-StrictMode -Version 2.0
 
 $script:Phase0SUtf8NoBom = New-Object System.Text.UTF8Encoding($false, $true)
 $script:Phase0SExpectedPayloadPaths = @(
@@ -499,8 +499,43 @@ function Test-Phase0SPackagePayloadTree {
     }
 }
 
+function Read-JmrInstalledIdentity {
+    param([Parameter(Mandatory=$true)][string] $TerrariaDirectory,$ExpectedPackage)
+    $target=Get-Phase0SValidatedTerrariaDirectory -TerrariaDirectory $TerrariaDirectory
+    . (Join-Path $PSScriptRoot 'PackageVerification.Support.ps1')
+    $package=Read-TwoFilePackage -PackageRoot $target
+    if($null -ne $ExpectedPackage -and ($package.packageId -cne $ExpectedPackage.packageId -or $package.sourceCommit -cne $ExpectedPackage.sourceCommit)) {throw 'Installed container differs from expected package.'}
+    # The installed container selects its one exact runtime. Never infer the
+    # active version from directory timestamps or the newest cached payload.
+    $runtimeRoot=Resolve-Phase0SContainedPath -Root $target -RelativePath $package.runtimeRelativePath
+    foreach($entry in $package.payload){
+        $path=Resolve-Phase0SContainedPath -Root $runtimeRoot -RelativePath $entry.path
+        if(-not (Test-Phase0SOrdinaryFile -Path $path) -or (Get-Phase0SFileSha256 -Path $path) -cne $entry.sha256){throw 'Installed runtime member differs from current container.'}
+    }
+    $hostPath=Join-Path $runtimeRoot 'JueMingR.TerrariaHost.dll'
+    $receipt=Join-Path $target 'JueMingR.install.json'
+    $receiptOwned=$false
+    if(Test-Phase0SOrdinaryFile -Path $receipt){
+        try{
+            $record=[IO.File]::ReadAllText($receipt)|ConvertFrom-Json
+            $receiptOwned=$record.schema -ceq 'JueMingR.Install.1' -and
+                $record.dllSha256 -ceq (Get-Phase0SFileSha256 (Join-Path $target 'JueMingR.dll')) -and
+                $record.configSha256 -ceq (Get-Phase0SFileSha256 (Join-Path $target 'Terraria.exe.config'))
+        } catch {$receiptOwned=$false}
+    }
+    return [pscustomobject]@{packageId=$package.packageId;sourceCommit=$package.sourceCommit;payloadId=$package.payloadId;runtimeRoot=$runtimeRoot;runtimeRelativePath=$package.runtimeRelativePath;
+        hostPath=$hostPath;hostSha256=(Get-Phase0SFileSha256 $hostPath);hostMvid=(Get-Phase0SAssemblyMvid $hostPath);
+        runtimePath=(Join-Path $runtimeRoot 'phase-0-s-runtime.manifest');evidencePath=(Join-Path $runtimeRoot 'phase-0-s-evidence.log');
+        receiptPath=$(if($receiptOwned){$receipt}else{$null});payloadReadback=$true}
+}
+
 function Read-Phase0SPackage {
     param([Parameter(Mandatory = $true)][string] $PackageRoot)
+
+    if([IO.File]::Exists((Join-Path $PackageRoot 'JueMingR.dll'))){
+        . (Join-Path $PSScriptRoot 'PackageVerification.Support.ps1')
+        return Read-TwoFilePackage -PackageRoot $PackageRoot
+    }
 
     $fullPackageRoot = [System.IO.Path]::GetFullPath($PackageRoot)
     if (-not (Test-Phase0SOrdinaryDirectory -Path $fullPackageRoot)) {

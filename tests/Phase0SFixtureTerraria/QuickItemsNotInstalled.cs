@@ -13,6 +13,10 @@ namespace JueMingR.TerrariaHost.QuickItems
 {
     internal sealed class HostQuickItems
     {
+        // Only stable binding identities are shared with the source-linked
+        // Items hint adapter; this fixture still cannot install G05.
+        internal const string ToggleAction = "items.quick-items.toggle";
+        internal const string FavoriteAction = "items.keep-favorited.toggle";
         internal HostQuickItems(HostItems items)
         {items.AllowsOwnedUse=null;throw new InvalidOperationException("G05 cannot be installed in the receiver fixture.");}
         internal void TakeFeedback(Action<string> display){throw new InvalidOperationException("Use the real G05 native fixture.");}
