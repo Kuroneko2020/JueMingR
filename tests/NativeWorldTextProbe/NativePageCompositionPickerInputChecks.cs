@@ -6,8 +6,10 @@ using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Threading;
 using HarmonyLib;
 using JueMingR.Features.Items;
+using JueMingR.Features.QuickItems;
 using JueMingR.Platform.Hotkeys;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -23,6 +25,29 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic;
         private static readonly Keys[] Movement={Keys.A,Keys.W,Keys.Space,Keys.D1};
+        // Observe only these isolated documents' real storage calls. Keep the
+        // worker/commit path intact, and detach even when a business check fails.
+        private sealed class WriteAudit:IDisposable
+        {
+            private static WriteAudit current;
+            private readonly object[] stores;
+            private readonly int[] counts;
+            private readonly Harmony patch=new Harmony("JueMingR.Tests.PickerCancellationWrites");
+            internal WriteAudit(params object[] stores)
+            {
+                this.stores=stores;counts=new int[stores.Length];current=this;
+                try
+                {
+                    foreach(var method in stores.Select(s=>s.GetType().GetMethod("Write",Flags)).Distinct())
+                        patch.Patch(method,prefix:new HarmonyMethod(typeof(WriteAudit).GetMethod(nameof(Observe),Flags)));
+                }
+                catch { Dispose();throw; }
+            }
+            private static void Observe(object __instance)
+            {var audit=current;if(audit!=null)for(int i=0;i<audit.stores.Length;i++)if(ReferenceEquals(__instance,audit.stores[i]))Interlocked.Increment(ref audit.counts[i]);}
+            internal int Count(int index){return Volatile.Read(ref counts[index]);}
+            public void Dispose(){patch.UnpatchAll(patch.Id);current=null;}
+        }
         internal static void Run(object context)
         {
             var test=new Consumer(context);var native=typeof(Player).GetMethod("Update",new[]{typeof(int)});
@@ -38,6 +63,7 @@ namespace NativeWorldTextProbe
                 Main.CurrentInputTextTakerOverride=null;Main.blockInput=false;PlayerInput.WritingText=false;
                 Main.LocalPlayer.inventory[0]=new Item();Main.LocalPlayer.inventory[0].SetDefaults(8);
                 Main.LocalPlayer.inventory[1]=new Item();Main.LocalPlayer.inventory[1].SetDefaults(50);
+                Main.LocalPlayer.inventory[2]=new Item();Main.LocalPlayer.inventory[2].SetDefaults(5358);
                 test.Run();
             }
             finally
@@ -107,6 +133,13 @@ namespace NativeWorldTextProbe
                 Call(renderer,"Prepare",state,screen.X,screen.Y,1f);
                 if((int)Get(state,"Page")==0)Call(page,"PrepareLayout",Matrix.Identity,screen);
                 else if((int)Get(state,"Page")==10){Call(Get(shell,"RecoveryUi"),"PrepareLayout",Matrix.Identity);Call(Get(shell,"RecoveryUi"),"PreparePopup",Matrix.Identity,screen,false);}
+                var popup=Get(shell,"HotkeyPopup");
+                if((bool)Get(popup,"Visible"))
+                {
+                    var prepare=popup.GetType().GetMethod("Prepare",Flags);
+                    var measure=Delegate.CreateDelegate(prepare.GetParameters()[3].ParameterType,renderer,renderer.GetType().GetMethod("PopupMeasure",Flags));
+                    prepare.Invoke(popup,new object[]{screen.X,screen.Y,Get(renderer,"FontIdentity"),measure,Get(renderer,"SkinGeneration")});
+                }
             }
             private void Frame(string label,Keys[] keys,bool left=false,bool inspect=false)
             {
@@ -134,6 +167,175 @@ namespace NativeWorldTextProbe
             {var rect=Get(control,"Rect");point=new Vector2(F(rect,"X")+2,F(rect,"Y")+2);keys=keys??new Keys[0];Frame("pointer",keys);Frame("pointer",keys,true);Frame("pointer",keys);point=new Vector2(-10,-10);}
             private void Open(int pageNumber)
             {Set(state,"Ready",true);Call(state,"Navigate",pageNumber);Call(state,"RestoreVisible");Prepare();Frame("neutral",new Keys[0]);Frame("neutral",new Keys[0]);}
+            private void Settle()
+            {
+                NativeQuickUseMatrix.Until(()=>
+                {
+                    Call(Get(page,"host"),"PollPreferences");Call(Get(context,"QuickItems"),"Poll");
+                    var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");bindings.Poll();
+                    var snapshot=Get(Get(page,"host"),"Preferences");
+                    return (bool)Get(snapshot,"IsLoaded") && Get(snapshot,"Status").ToString()!="Pending" &&
+                        !(bool)Get(Get(Get(context,"QuickItems"),"Settings"),"Busy") && !bindings.Busy;
+                });
+                Prepare();
+            }
+            private void RevealItems(int row)
+            {Call(state,"ScrollTo",((float[])Get(Get(page,"layout"),"RowY"))[row]);Prepare();}
+            private object QuickControl(string command,int type=0)
+            {
+                var panel=Get(page,"QuickPanel");
+                var logical=(IList)Get(panel,"logical");
+                var part=logical.Cast<object>().First(p=>Get(p,"Command").ToString()==command && (type==0 || (int)Get(p,"Type")==type));
+                Call(state,"ScrollTo",F(Get(Get(part,"Element"),"Rect"),"Y")-20);Prepare();
+                return ((IEnumerable)Get(page,"controls")).Cast<object>().First(c=>Get(c,"Command").ToString()=="Quick" &&
+                    Get(logical[(int)Get(c,"Argument")],"Command").ToString()==command && (type==0 || (int)Get(logical[(int)Get(c,"Argument")],"Type")==type));
+            }
+            private void PopupClick(string command)
+            {
+                var popup=Get(shell,"HotkeyPopup");var layout=Get(popup,"Layout");var commands=(IList)Get(layout,"Commands");
+                int index=Enumerable.Range(0,commands.Count).First(i=>commands[i].ToString()==command);
+                var rect=Get(((IList)Get(layout,"Buttons"))[index],"Rect");var panel=Get(layout,"Panel");
+                point=new Vector2(F(panel,"X")+F(rect,"X")+4,F(panel,"Y")+F(rect,"Y")+4);
+                Frame("popup-"+command,new Keys[0]);Frame("popup-"+command,new Keys[0],true);Frame("popup-"+command,new Keys[0]);point=new Vector2(-10,-10);
+            }
+            private void Record(object control)
+            {
+                // Start at the projected row, including the real double click
+                // callback. A direct OpenHotkey/Capturing assignment cannot
+                // establish that the lower editor actually coexists with it.
+                Click(control);Click(control);Prepare();
+                var popup=Get(shell,"HotkeyPopup");Require((bool)Get(popup,"Visible"),"actual projected key entry opens public popup");
+                PopupClick("Record");
+                Require((bool)Get(popup,"Capturing") && (bool)Get(input,"HotkeyCapture"),"actual Record press/release acquires public capture");
+            }
+            private int[] Selected()
+            {return ((IEnumerable)Get(Get(page,"selection"),"selected")).Cast<int>().OrderBy(t=>t).ToArray();}
+            private bool CancelRecording(string label)
+            {
+                Frame(label+"-record-escape",new[]{Keys.Escape});
+                var popup=Get(shell,"HotkeyPopup");
+                Check(!(bool)Get(popup,"Capturing") && !(bool)Get(input,"HotkeyCapture") && (bool)Get(popup,"Visible"),label+" Escape only ends capture and retains result popup");
+                bool retained=(bool)Get(page,"Selecting");Check(retained,label+" upper capture cancellation preserves lower editor");
+                return retained;
+            }
+            private void CloseRecordedPopup()
+            {
+                Frame("record-escape-held",new[]{Keys.Escape});Frame("record-escape-release",new Keys[0]);
+                PopupClick("Close");Frame("popup-tail-release",new Keys[0]);
+            }
+            private void ReleaseWithEscape(object control,string label)
+            {
+                var rect=Get(control,"Rect");point=new Vector2(F(rect,"X")+2,F(rect,"Y")+2);
+                Frame(label+"-hover",new Keys[0]);Frame(label+"-armed",new Keys[0],true);
+                Require(GetOptional(page,"armed")!=null,label+" real pointer press arms the lower control");
+                Frame(label+"-release-and-escape",new[]{Keys.Escape});point=new Vector2(-10,-10);
+            }
+            private void NestedCancellation()
+            {
+                var host=Get(page,"host");var quick=Get(context,"QuickItems");var panel=Get(page,"QuickPanel");
+                var settings=(QuickItemSettings)Get(quick,"Settings");var original=settings.Current;
+                var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");
+                var entry=new QuickItemEntry("c34d58fc56234fb9a84105bf5358caae",5358,QuickItemMode.SetStateAndUse,true,true);
+                string itemAction=null;bool itemBound=false;HotkeyChord oldItem=null,oldEntry=bindings.Get(entry.ActionId);
+                var itemDocument=Get(host,"preferences");
+                Settle();
+                var originalItems=(ItemAutomationSettings)Get(Get(host,"Preferences"),"Value");
+                using(var writes=new WriteAudit(Get(itemDocument,"storage"),Get(Get(settings,"worker"),"storage"),Get(Get(bindings,"worker"),"storage")))
+                try
+                {
+                    string reason;
+                    Require(settings.TryChange(new QuickItemDocument(original.KeepFavorited,original.Enabled,new[]{entry}),null,out reason),"existing legacy-mode Quick fixture admitted");Settle();
+                    foreach(bool commit in new[]{false,true})
+                    {
+                        Open(0);
+                        var value=(ItemAutomationSettings)Get(Get(host,"Preferences"),"Value");
+                        Call(host,"Change",value.WithTypes(ItemListKind.Sell,new int[0]));Settle();RevealItems(1);
+                        Click(Control("Add",0));
+                        foreach(int type in new[]{8,50})Click(((IEnumerable)Get(page,"controls")).Cast<object>().First(c=>Get(c,"Command").ToString()=="Select" && (int)Get(c,"Type")==type));
+                        var selection=Get(page,"selection");
+                        Require((int)Get(selection,"Count")==2 && Selected().SequenceEqual(new[]{8,50}) && Get(selection,"List").ToString()=="Sell" && (int)Get(selection,"Target")==0,"actual sale Add clicks create two selected types in the expected draft");
+                        RevealItems(1);var key=Control("Hotkey",1);itemAction=(string)Get(Get(key,"Element"),"HotkeyTarget");
+                        if(!itemBound){oldItem=bindings.Get(itemAction);NativeQuickGestureChecks.Bind(bindings,itemAction,"LeftControl+LeftShift+NumPad7");itemBound=true;Settle();}
+                        var bound=bindings.Get(itemAction);long revision=(long)Get(Get(host,"Preferences"),"Revision"),command=(long)Get(bindings,"nextCommand");
+                        int itemWrites=writes.Count(0),keyWrites=writes.Count(2);
+                        Record(Control("Hotkey",1));Require((int)Get(selection,"Count")==2,"draft remains populated when Record starts");
+                        bool retained=CancelRecording("sale");
+                        Check(Selected().SequenceEqual(new[]{8,50}) && (int)Get(selection,"Count")==2 && GetOptional(selection,"List")?.ToString()=="Sell" && (int)Get(selection,"Target")==0,"sale capture Escape preserves exact list, target and selected types");
+                        Settle();
+                        Check((long)Get(Get(host,"Preferences"),"Revision")==revision && writes.Count(0)==itemWrites && writes.Count(2)==keyWrites && (long)Get(bindings,"nextCommand")==command && bound.Equals(bindings.Get(itemAction)),"sale capture cancellation submits no settings or binding write and preserves effective binding");
+                        CloseRecordedPopup();
+                        Check(!retained || (int)Get(selection,"Count")==2,"held recording Escape does not cancel the retained draft a second time");
+                        if(retained)
+                        {
+                            if(commit)
+                            {
+                                RevealItems(1);Click(Control("Confirm",0));Settle();
+                                var saved=(ItemAutomationSettings)Get(Get(host,"Preferences"),"Value");
+                                Check(!((bool)Get(page,"Selecting")) && saved.SellTypes.SequenceEqual(new[]{8,50}) && (long)Get(Get(host,"Preferences"),"Revision")==revision+1 && writes.Count(0)==itemWrites+1,"the same retained sale draft confirms once through its real storage writer");
+                            }
+                            else
+                            {
+                                RevealItems(1);ReleaseWithEscape(Control("Confirm",0),"sale-confirm");Settle();
+                                Check(!(bool)Get(page,"Selecting") && !PlayerInput.Triggers.Current.Inventory && writes.Count(0)==itemWrites && (long)Get(Get(host,"Preferences"),"Revision")==revision && GetOptional(page,"armed")==null,"fresh selector Escape retires armed Confirm before its release without saving or opening inventory");
+                                Frame("fresh-lower-escape-release",new Keys[0]);
+                            }
+                        }
+                        Call(shell,"CloseAndSubmitPosition");Frame("sale-neutral",new Keys[0]);
+                    }
+                    // Replacement owns a target, not a selected set. Protect
+                    // its identity through the same real upper capture path.
+                    Open(0);var prior=(ItemAutomationSettings)Get(Get(host,"Preferences"),"Value");
+                    Call(host,"Change",prior.WithTypes(ItemListKind.Discard,new[]{8}));Settle();RevealItems(2);Click(Control("Replace",1));RevealItems(2);
+                    Record(Control("Hotkey",2));bool replace=CancelRecording("discard-replacement");
+                    Check(GetOptional(Get(page,"selection"),"List")?.ToString()=="Discard" && (int)Get(Get(page,"selection"),"Target")==8,"recording cancellation preserves the discard replacement target");
+                    CloseRecordedPopup();
+                    if(replace)
+                    {
+                        RevealItems(2);Click(((IEnumerable)Get(page,"controls")).Cast<object>().First(c=>Get(c,"Command").ToString()=="Select" && (int)Get(c,"Type")==50));Settle();
+                        Check(((ItemAutomationSettings)Get(Get(host,"Preferences"),"Value")).DiscardTypes.SequenceEqual(new[]{50}),"retained replacement updates only its original target");
+                    }
+                    Call(shell,"CloseAndSubmitPosition");Frame("replace-neutral",new Keys[0]);
+                    Open(0);Click(QuickControl("Edit"));Require((bool)Get(panel,"Editing") && (string)Get(panel,"draftId")==entry.Id,"actual existing Quick icon enters stable-ID edit");
+                    Call(state,"ScrollTo",0f);Prepare();
+                    NativeQuickGestureChecks.Bind(bindings,entry.ActionId,"LeftControl+LeftShift+NumPad6");Settle();
+                    var entryBinding=bindings.Get(entry.ActionId);long accepted=settings.AcceptedCommandId,quickRevision=settings.Revision,keyCommand=(long)Get(bindings,"nextCommand");
+                    int quickWrites=writes.Count(1),bindingWrites=writes.Count(2);
+                    // Reacquire geometry after the binding publication rebuilt
+                    // the projected panel; no stale control object is clicked.
+                    var quickKey=((IEnumerable)Get(page,"controls")).Cast<object>().First(c=>Get(c,"Command").ToString()=="QuickHotkey" && (string)Get(Get(c,"Element"),"HotkeyTarget")=="items.quick-items.toggle");
+                    Record(quickKey);bool quickRetained=CancelRecording("existing-quick");Settle();
+                    var savedEntry=settings.Current.Find(entry.Id);
+                    Check((bool)Get(panel,"Editing") && (string)Get(panel,"draftId")==entry.Id && (int)Get(panel,"target")==5358 && Get(panel,"mode").ToString()=="Use","capture Escape retains the existing Quick edit identity, target and visible mode");
+                    Check(savedEntry!=null && savedEntry.ActionId==entry.ActionId && savedEntry.Mode==QuickItemMode.SetStateAndUse && entryBinding.Equals(bindings.Get(entry.ActionId)),"capture cancellation preserves legacy mode-2 durable identity and effective binding");
+                    Check(settings.AcceptedCommandId==accepted && settings.Revision==quickRevision && (long)Get(bindings,"nextCommand")==keyCommand && writes.Count(1)==quickWrites && writes.Count(2)==bindingWrites,"Quick capture cancellation accepts no command, publishes no revision and performs no document write");
+                    CloseRecordedPopup();
+                    if(quickRetained)
+                    {
+                        Frame("quick-independent-escape",new[]{Keys.Escape});Settle();
+                        Check(!(bool)Get(panel,"Editing") && settings.AcceptedCommandId==accepted && writes.Count(1)==quickWrites && settings.Current.Find(entry.Id).Mode==QuickItemMode.SetStateAndUse,"independent Quick Escape exits without persisting mode normalization");
+                        Frame("quick-independent-release",new Keys[0]);
+                        Click(QuickControl("Edit"));ReleaseWithEscape(QuickControl("Mode"),"quick-mode");Settle();
+                        Check(!(bool)Get(panel,"Editing") && GetOptional(page,"armed")==null && settings.AcceptedCommandId==accepted && settings.Revision==quickRevision && writes.Count(1)==quickWrites,"Quick cancellation retires the Items-owned armed mode control before its same-frame release");
+                        Frame("quick-mode-release",new Keys[0]);
+                        Click(QuickControl("Edit"));Click(QuickControl("Mode",0));Settle();
+                        Check(settings.AcceptedCommandId==accepted+1 && writes.Count(1)==quickWrites+1 && settings.Current.Find(entry.Id).Mode==QuickItemMode.Use && entryBinding.Equals(bindings.Get(entry.ActionId)),"one real Quick mode click saves once and retains stable binding identity");
+                    }
+                }
+                finally
+                {
+                    Call(shell,"CloseAndSubmitPosition");
+                    long command;string reason;
+                    if(itemAction!=null){Require(bindings.TrySet(itemAction,oldItem,null,out command,out reason),"restore nested sale action binding: "+reason);Settle();}
+                    Require(bindings.TrySet(entry.ActionId,oldEntry,null,out command,out reason),"restore nested Quick entry binding: "+reason);Settle();
+                    Require(settings.TryChange(original,null,out reason),"restore nested Quick document: "+reason);Settle();
+                    // This prefix commits real list edits. Return its own input
+                    // state before the following Add/replace/F5 consumers run;
+                    // otherwise all inventory candidates can already be listed.
+                    if(!originalItems.Equals(Get(Get(host,"Preferences"),"Value")))Call(host,"Change",originalItems);
+                    Settle();
+                    Frame("nested-cleanup-neutral",new Keys[0]);
+                }
+            }
             internal void Visual(ProbeGraphics graphics,string output)
             {
                 Directory.CreateDirectory(output);var exceptions=new List<string>();bool observing=false;string phase="";
@@ -242,6 +444,7 @@ namespace NativeWorldTextProbe
             }
             internal void Run()
             {
+                NestedCancellation();
                 CancellationDispatch();
                 foreach(int list in new[]{0,1})
                 {

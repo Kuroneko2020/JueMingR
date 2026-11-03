@@ -84,7 +84,10 @@ namespace NativeWorldTextProbe
             Require(!(bool)Get(panel,"Editing") && settings.Current.Entries.Count==97,"inventory single click immediately saves chosen item");
             Reveal(panel,state,"Edit");prepare(960,760,1);ClickControl(page,Controls(page).First(c=>Get(c,"Command").ToString()=="Quick" && GetPart(panel,c,"Command")=="Edit"));prepare(960,760,1);
             Call(page,"ProcessInput",true,new KeyboardState(Keys.Escape),Vector2.Zero,true,true,false);prepare(960,760,1);
-            Require(!(bool)Get(panel,"Editing"),"escape closes inventory selector without mutation");            // Shared key button uses the one real popup callback/target.
+            Require((bool)Get(panel,"Editing"),"raw Escape sample cannot independently cancel a Quick editor");
+            Call(page,"CancelSelection");prepare(960,760,1);
+            Require(!(bool)Get(panel,"Editing"),"Shell-authorized cancellation closes inventory selector without mutation");
+            // Shared key button uses the one real popup callback/target.
             Reveal(panel,state,"Edit");prepare(960,760,1);
             var entryKey=Controls(page).First(c=>Get(c,"Command").ToString()=="QuickHotkey" && (string)Get(Get(c,"Element"),"HotkeyTarget")==entries[0].ActionId);
             ClickControl(page,entryKey);ClickControl(page,entryKey);

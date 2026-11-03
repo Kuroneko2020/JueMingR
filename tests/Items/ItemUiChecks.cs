@@ -89,7 +89,9 @@ namespace Terraria
             Check(host.Preferences.Value.DiscardTypes.Count == 0, "cancel does not submit");
             Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare(); Main.CurrentInputTextTakerOverride = null; p.BeforeInput(true);
             Main.keyState = new KeyboardState(Keys.Escape); p.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();
-            Check(!p.Selecting && Main.keyState.IsKeyDown(Keys.Escape) && HasControl(p, "Add", argument: (int)ItemListKind.Discard), "child cancels picker without consuming the whole keyboard snapshot");
+            Check(p.Selecting, "raw Escape does not authorize cancellation in the child");
+            p.CancelSelection(); prepare();
+            Check(!p.Selecting && Main.keyState.IsKeyDown(Keys.Escape) && HasControl(p, "Add", argument: (int)ItemListKind.Discard), "Shell-authorized cancellation preserves the physical keyboard snapshot");
             PlayerInput.WritingText = false; p.BeforeInput(true); Check(!PlayerInput.WritingText, "pointer chooser never starts a text tail");
             p.ProcessInput(true, new KeyboardState(), Vector2.Zero); PlayerInput.WritingText = false;
             host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 5000))); prepare();
@@ -379,7 +381,9 @@ namespace Terraria
             Check(state.Count == 1, "old geometry outside small viewport cannot toggle selection");
             shell.ScrollTo(kept); small(); Check(state.Count == 1 && p.Selecting, "ordinary small-view scroll preserves valid selection");
             p.BeforeInput(true); p.ProcessInput(true, new KeyboardState(Keys.Escape), Vector2.Zero); small();
-            Check(!p.Selecting, "Esc cancels from actual small viewport");
+            Check(p.Selecting, "small-view child does not reinterpret raw Escape");
+            p.CancelSelection(); small();
+            Check(!p.Selecting, "authorized cancellation closes the actual small viewport selector");
             p.Suspend(); Main.CurrentInputTextTakerOverride = null; PlayerInput.WritingText = false;
         }
         internal static void Run(HostItems host, string content = null, string output = null)
@@ -426,7 +430,9 @@ namespace Terraria
                 Main.CurrentInputTextTakerOverride = null; presentation.BeforeInput(true);
                 Check(!PlayerInput.WritingText && !Main.blockInput, "icon selection does not acquire text/block ownership");
                 Main.keyState = new KeyboardState(Keys.Escape); presentation.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();
-                Check(!presentation.Selecting && Main.keyState.IsKeyDown(Keys.Escape), "child cancellation preserves the physical snapshot; the production shell owns Escape consumption");
+                Check(presentation.Selecting, "physical snapshot alone cannot cancel an icon draft");
+                presentation.CancelSelection(); prepare();
+                Check(!presentation.Selecting && Main.keyState.IsKeyDown(Keys.Escape), "explicit child cancellation preserves the physical snapshot; the production shell owns Escape consumption");
                 Main.CurrentInputTextTakerOverride = null; presentation.BeforeInput(true);
                 Check(!PlayerInput.WritingText, "closed icon selection has no whole-keyboard mapping tail");
                 PlayerInput.WritingText = false; Main.keyState = new KeyboardState(); presentation.ProcessInput(true, Main.keyState, Vector2.Zero); prepare();

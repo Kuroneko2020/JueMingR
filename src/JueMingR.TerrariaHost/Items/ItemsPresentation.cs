@@ -32,7 +32,7 @@ namespace JueMingR.TerrariaHost.Items
         private ItemAutomationSettings laidOutValue;
         private int layoutGeneration = -1, skinGeneration = -1;
         private float laidOutScroll;
-        private bool dirty = true, laidOutEnabled, ready, previousLeft, previousEscape, leftTail, rightTail, ownPointer;
+        private bool dirty = true, laidOutEnabled, ready, previousLeft, leftTail, rightTail, ownPointer;
         private string laidOutMessage, commandMessage;
         private F5Rect view;
         private Vector2 pointerPosition;
@@ -75,7 +75,7 @@ namespace JueMingR.TerrariaHost.Items
             {
                 Suspend();
                 if (focused) { if (!left) leftTail = false; if (!right) rightTail = false; }
-                previousLeft = focused ? left : true; previousEscape = focused ? sample.IsKeyDown(Keys.Escape) : true; return;
+                previousLeft = focused ? left : true; return;
             }
             // Input precedes reflow. Never submit rectangles from a previous
             // screen/font/scroll/settings generation; physical tails still live.
@@ -83,8 +83,6 @@ namespace JueMingR.TerrariaHost.Items
                 !ReferenceEquals(laidOutValue, host.Preferences.Value) || laidOutScroll != shell.Scroll ||
                 view.X != shell.Layout.Viewport.X + shell.X || view.Y != shell.Layout.Viewport.Y + shell.Y)
             { armed = null; dirty = true; }
-            if (sample.IsKeyDown(Keys.Escape) && !previousEscape && Selecting) { if (selection.Active) CancelPicker(); else QuickPanel.Suspend(); }
-            previousEscape = sample.IsKeyDown(Keys.Escape);
             ownPointer = view.Contains(pointer.X, pointer.Y);
             if (ownPointer)
             {
@@ -143,6 +141,15 @@ namespace JueMingR.TerrariaHost.Items
             if (selection.Open(list, target)) { revealRow = row; anchorY = oldY; armed = null; }
         }
         private void CancelPicker() { selection.Cancel(); revealRow = -1; armed = null; dirty = true; }
+        // Shell delivers an already-owned cancellation after consuming native
+        // actions/new edges. Retire Items' armed target before pointer release,
+        // including Quick editing; cancellation never submits a settings command.
+        internal void CancelSelection()
+        {
+            if (!Selecting) return;
+            if (selection.Active) CancelPicker();
+            else { QuickPanel.Suspend(); revealRow = -1; armed = null; dirty = true; }
+        }
         internal void Suspend()
         { ready = false; ownPointer = false; CancelPicker(); QuickPanel?.Suspend(); commandMessage = null; controls.Clear(); elements.Clear(); renderer.Dispose(); }
         internal void Prepare(bool active, Matrix transform, Vector2 screen)

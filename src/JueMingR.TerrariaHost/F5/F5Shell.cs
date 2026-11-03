@@ -629,12 +629,17 @@ namespace JueMingR.TerrariaHost.F5
                 bool higherPointer = BlueprintReplacementPopup?.BlockPointer == true || materialsWasVisible || BlueprintMaterialsUi?.BlockPointer == true || FishingUi!=null && FishingUi.BlockPointer || CaptureUi!=null && (CaptureUi.OwnsPointer || CaptureUi.ConsumeLeft || CaptureUi.ConsumeRight) || RecoveryUi != null && RecoveryUi.PotionPopup.OwnsPointer || HotkeyPopup != null && HotkeyPopup.BlockPointer || StylePopup != null && StylePopup.BlockPointer || DeathPopup != null && DeathPopup.BlockPointer || MapPopup != null && MapPopup.BlockPointer || FootprintPopup != null && FootprintPopup.BlockPointer;
                 bool popupPointer=higherPointer || inputState.HotkeyPointerOwned;
                 bool cancelGesture=inputState.Hotkeys.IsNew((int)Keys.Escape);
-                if(inputActive && (CombatInterval?.Captured==true || CombatRadius?.Captured==true || items?.Selecting==true) && cancelGesture)
+                // Upper owners run first: Record -> Escape has already consumed
+                // its edge. Freeze the remaining Items intent before the shared
+                // barrier clears edges; never ask the child to replay raw keys.
+                bool cancelItems=inputActive && State.Visible && State.Page==0 && items?.Selecting==true && cancelGesture;
+                if(inputActive && (CombatInterval?.Captured==true || CombatRadius?.Captured==true || cancelItems) && cancelGesture)
                 {
                     // Claim Escape before child cancellation exposes controls
                     // underneath it; the input owner consumes native actions
                     // and every current dispatch edge, retaining only this tail.
                     inputState.ConsumeCancellation((int)Keys.Escape);
+                    if(cancelItems)items.CancelSelection();
                 }
                 CombatInterval?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelGesture,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
                 CombatRadius?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelGesture,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
