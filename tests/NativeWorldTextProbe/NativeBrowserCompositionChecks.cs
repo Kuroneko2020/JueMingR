@@ -54,6 +54,7 @@ namespace NativeWorldTextProbe
                 CheckSharedBindings(bindings);
                 CheckBindingPresentation(Get(context, "Shell"));
                 NativeAnnouncementInputChecks.Run(context);
+                NativeTargetCancellationChecks.Run(context);
 
                 // Execute production Submit and native message construction while
                 // intercepting both final outlets: no local/public chat is sent.

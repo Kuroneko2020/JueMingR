@@ -8,6 +8,7 @@ param(
     [string] $ApprovedRetainedAssets,
     [string] $StageDevelopmentRecord,
     [switch] $BlueprintDiagnostic,
+    [switch] $TargetGestureDiagnostic,
     [switch] $Rebuild
 )
 
@@ -19,7 +20,10 @@ $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).
 . (Join-Path $PSScriptRoot 'workload/Workload.Support.ps1')
 if($StageDevelopmentRecord -and ($Profile -cne 'ContinuousProcessing' -or $WorkloadBaseline)){throw 'This explicit stage uses the existing complete ContinuousProcessing profile without formal workload selectors.'}
 if($BlueprintDiagnostic -and ($Profile -cne 'ContinuousProcessing' -or -not $StageDevelopmentRecord)){throw 'BlueprintDiagnostic requires the existing complete ContinuousProcessing owner-test candidate record.'}
-function Test-PackageBuildAdmission($Record,[bool]$ExpectedBlueprintDiagnostic=$false) {
+if($TargetGestureDiagnostic -and ($Profile -cne 'ContinuousProcessing' -or -not $StageDevelopmentRecord -or $BlueprintDiagnostic)){throw 'TargetGestureDiagnostic requires its separate complete ContinuousProcessing owner-test candidate record.'}
+function Test-PackageBuildAdmission($Record,[bool]$ExpectedBlueprintDiagnostic=$false,[bool]$ExpectedTargetGestureDiagnostic=$false) {
+    $recordTargetDiagnostic=$null -ne $Record -and $null -ne $Record.PSObject.Properties['targetGestureDiagnostic'] -and [bool]$Record.targetGestureDiagnostic
+    if($recordTargetDiagnostic -ne $ExpectedTargetGestureDiagnostic){return $false}
     $recordDiagnostic=$null -ne $Record -and $null -ne $Record.PSObject.Properties['blueprintDiagnostic'] -and [bool]$Record.blueprintDiagnostic
     if($recordDiagnostic -ne $ExpectedBlueprintDiagnostic){return $false}
     if($StageDevelopmentRecord){return Test-AimStageDevelopmentBuild $repositoryRoot $Record $StageDevelopmentRecord $admission}
@@ -130,13 +134,14 @@ try {
 $buildRecordPath = Join-Path $repositoryRoot 'artifacts\build\Release\build-record.json'
 $existingBuild = Read-WorkloadJson $buildRecordPath
 $buildOutput = @()
-if (-not $Rebuild -and (Test-PackageBuildAdmission $existingBuild -ExpectedBlueprintDiagnostic ([bool]$BlueprintDiagnostic))) {
+if (-not $Rebuild -and (Test-PackageBuildAdmission $existingBuild -ExpectedBlueprintDiagnostic ([bool]$BlueprintDiagnostic) -ExpectedTargetGestureDiagnostic ([bool]$TargetGestureDiagnostic))) {
     Write-Host ('REUSED verified Release build; admission='+$(if($StageDevelopmentRecord){'explicit stage, full qualification INCOMPLETE'}else{'complete applicable check evidence'}))
 } else {
     Stop-WorkloadReadWindow
     $buildArguments=@{Configuration='Release';WorkloadBaseline=$WorkloadBaseline}
     if($StageDevelopmentRecord){$buildArguments.StageDevelopmentRecord=$StageDevelopmentRecord}
     if($BlueprintDiagnostic){$buildArguments.BlueprintDiagnostic=$true}
+    if($TargetGestureDiagnostic){$buildArguments.TargetGestureDiagnostic=$true}
     if($null -eq $admission){$buildArguments.RequireClean=$true}else{$buildArguments.ApprovedRetainedAssets=$ApprovedRetainedAssets}
     $buildOutput = @(& (Join-Path $PSScriptRoot 'build.ps1') @buildArguments 2>&1)
     if (-not $?) { throw 'The locked Release build failed.' }
@@ -156,7 +161,7 @@ if ([int] $buildRecord.schemaVersion -ne 4 -or [string] $buildRecord.commit -cne
     [string] $buildRecord.configuration -cne 'Release') {
     throw 'The Release build record does not describe the clean source commit.'
 }
-if (-not (Test-PackageBuildAdmission $buildRecord -ExpectedBlueprintDiagnostic ([bool]$BlueprintDiagnostic))) {
+if (-not (Test-PackageBuildAdmission $buildRecord -ExpectedBlueprintDiagnostic ([bool]$BlueprintDiagnostic) -ExpectedTargetGestureDiagnostic ([bool]$TargetGestureDiagnostic))) {
     throw 'The Release package requires the completed matching automatic workload gate.'
 }
 if (@($buildRecord.outputs | Where-Object { [string] $_.path -match '(?i)(^|\\)0Harmony\.dll$' }).Count -ne 0) {
@@ -213,7 +218,7 @@ $setupResources=@(foreach($file in $bundle.files){[ordered]@{name=('JueMingR.Set
 $externalBuildRecord=[ordered]@{
     schemaVersion=1;distributionFormat='two-file-1';sourceCommit=$sourceCommit;clean=($null -eq $admission);
     workspaceDirty=($null -ne $admission);committedProductSourceClean=$true;releaseEligible=($null -eq $admission -and -not $StageDevelopmentRecord);
-    workspace=$admission;packageId=$packageId;sdk='10.0.203';configuration='Release';blueprintDiagnostic=[bool]$BlueprintDiagnostic;
+    workspace=$admission;packageId=$packageId;sdk='10.0.203';configuration='Release';blueprintDiagnostic=[bool]$BlueprintDiagnostic;targetGestureDiagnostic=[bool]$TargetGestureDiagnostic;
     targetFramework='net472';platformTarget='x86';buildEntry='scripts/build.ps1';solution='JueMingR.sln';
     sourceBuildRecordSha256=(Get-Phase0SFileSha256 $buildRecordPath);sourceFingerprint=$buildRecord.sourceFingerprint;workload=$buildRecord.workload;
     target=[ordered]@{simpleName='Terraria';version='1.4.5.8';mvid='2c29f6c3-4bd9-4add-9c58-da159804e083';sha256='960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3'};
@@ -233,7 +238,7 @@ Start-WorkloadReadWindow
 $promotionAdmission=Initialize-WorkloadWorkspace $repositoryRoot $ApprovedRetainedAssets -RequireCommitted
 if($sourceIdentity.fingerprint -cne (Get-WorkloadIdentity $repositoryRoot).fingerprint -or
     ($admission|ConvertTo-Json -Depth 8 -Compress) -cne ($promotionAdmission|ConvertTo-Json -Depth 8 -Compress) -or
-    -not (Test-PackageBuildAdmission $buildRecord -ExpectedBlueprintDiagnostic ([bool]$BlueprintDiagnostic))){throw 'Package inputs or evidence changed before promotion.'}
+    -not (Test-PackageBuildAdmission $buildRecord -ExpectedBlueprintDiagnostic ([bool]$BlueprintDiagnostic) -ExpectedTargetGestureDiagnostic ([bool]$TargetGestureDiagnostic))){throw 'Package inputs or evidence changed before promotion.'}
 # Keep build intermediates and verification as package-external developer evidence.
 [IO.Directory]::Move($stagingRoot,$outputRoot)
 [ordered]@{schemaVersion=1;status='success';packageId=$packageId;directoryName=$packageDirectoryName;archiveFileName=$zipFileName;archiveSha256=$externalBuildRecord.archive.sha256;setupFileName=$setupFileName;setupSha256=$externalBuildRecord.setup.sha256;buildRecordFileName='phase-0-s-build-record.json'}|ConvertTo-Json -Compress

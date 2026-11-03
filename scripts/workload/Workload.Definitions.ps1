@@ -101,6 +101,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintMaterialGeometryChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMaterialNameChecks.cs'=@('native-BlueprintInput')
         'tests/NativeWorldTextProbe/NativeBlueprintMaterialsDragChecks.cs'=@('native-BlueprintInput')
+        'tests/NativeWorldTextProbe/NativeTargetDiagnosticChecks.cs'=@('native-TargetGestureDiagnostic')
+        'tests/NativeWorldTextProbe/NativeTargetCancellationChecks.cs'=@('native-BrowserCpu')
         'tests/NativeWorldTextProbe/NativeTargetGestureChecks.cs'=@('native-BrowserCpu')
         # This owner authenticates only actual Content consumers; CPU fixtures
         # keep their original argument and proof projection.
@@ -401,6 +403,7 @@ function Get-WorkloadNativeScopes {
     # in test-world-object-text. Impact/AimUi/Visual need matching real Content
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
+        'TargetGestureDiagnostic'=@('browser-host');
         'WorldGenPreviewCpu'=@('worldgen-preview','shared-host');
         'MovementJumpCpu'=@('movement-host');
         # The rescue leaf directly consumes the fishing overlap owner and its

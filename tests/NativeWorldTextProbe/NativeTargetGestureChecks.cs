@@ -100,8 +100,21 @@ namespace NativeWorldTextProbe
                 Set(gesture, "CanPick", (Func<bool>)(() => true));
                 Call(gesture, "Request", 1); uiPass(false);
                 int beforeCold = delivered;
-                for (int update = 24; update < 180 && (bool)Get(gesture, "Busy"); update++)
-                { long reads = (long)Get(coldCatalog, "PlacementReads"); UpdateGesture(gesture, (long)update); Require((long)Get(coldCatalog, "PlacementReads") - reads <= 64, "cold placement capture is bounded to 64 metadata entries per update"); }
+                // A legal empty outer Update consumes no native declaration
+                // allowance. Alternate it with real world entries: 6195 IDs
+                // need 97 opportunities and must survive >180 outer callbacks.
+                for (int update = 24; update < 360 && (bool)Get(gesture, "Busy"); update++)
+                {
+                    long reads = (long)Get(coldCatalog, "PlacementReads");
+                    if ((update & 1) == 0) NativeQuickItemChecks.BeginWorldStep();
+                    Call(gesture, "Update", (long)update);
+                    Require((long)Get(coldCatalog, "PlacementReads") - reads <= 64, "cold placement capture is bounded to 64 metadata entries per actual world entry");
+                    long sharedReads = (long)Get(coldCatalog, "PlacementReads");
+                    // This is the same production entry used by the blueprint
+                    // material consumer, against the same shared provider.
+                    Call(coldCatalog, "StepPlacement");
+                    Require((long)Get(coldCatalog, "PlacementReads") == sharedReads, "second placement consumer shares the world's existing allowance");
+                }
                 Require(delivered == beforeCold + 1 && (int)Get(result, "ItemType") == Terraria.ID.ItemID.GoldChest,
                     "first world query resolves the actual gold chest style without opening the browser; delivered=" + (delivered - beforeCold) + "; type=" + Get(result, "ItemType") + "; reads=" + Get(coldCatalog, "PlacementReads") + "; mouse=" + Main.MouseWorld);
                 Require(GetOptional(coldCatalog, "Catalog") == null && (long)Get(coldCatalog, "ItemReads") == 0 && (long)Get(coldCatalog, "RecipeReads") == 0,
