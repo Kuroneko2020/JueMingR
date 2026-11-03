@@ -20,14 +20,19 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private static readonly Row[] rows = new Row[512];
         private static int count, request, kind;
         private static long deadline, pass;
-        private static bool initialized, active, exported, requestActive;
+        private static bool initialized, active, exported, requestActive, claimed;
         private static string output, identity, reason;
+        private static string errorType, errorStage;
+        private static int errorPoint, errorHResult;
+        private static string metadataErrorType, metadataErrorStage;
+        private static int metadataErrorHResult, metadataErrors;
         private static Timer timer;
         internal static bool Active { get { lock (gate) return active; } }
         internal static bool RequestActive { get { lock (gate) return active && requestActive; } }
 
         internal static void Install(int stage)
         {
+            string phase = "install.preload-state";
             try
             {
                 bool skip = Main.SkipAssemblyLoad, loaded = Terraria.Program.LoadedEverything;
@@ -36,6 +41,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                     if (!initialized)
                     {
                         initialized = true;
+                        phase = "install.arm";
                         string directory = Path.Combine(Path.GetDirectoryName(typeof(Main).Assembly.Location), "JueMingRData", "diagnostics", "target-gesture");
                         string arm = Path.Combine(directory, "armed");
                         if (!File.Exists(arm)) return;
@@ -44,19 +50,23 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                         output = Path.Combine(directory, run.ToString("N") + ".log");
                         // The durable claim survives ordinary restart. Reusing
                         // the same explicit arm never starts another recording.
+                        phase = "install.claim";
                         using (new FileStream(Path.Combine(directory, run.ToString("N") + ".claimed"), FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+                        claimed = true;
+                        phase = "install.identity";
                         identity = "host=" + typeof(TargetGestureTrace).Assembly.ManifestModule.ModuleVersionId +
                             " hostVersion=" + typeof(TargetGestureTrace).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion +
                             " native=" + typeof(Main).Module.ModuleVersionId + " bits=" + (IntPtr.Size * 8) + " clr=" + Environment.Version +
                             " resourceExceptions=unobserved diagnosticInitialization=gate-read-claim-metadata-before-target-patch\n";
                         active = true; deadline = Stopwatch.GetTimestamp() + 600L * Stopwatch.Frequency;
+                        phase = "install.timer";
                         AppDomain.CurrentDomain.ProcessExit += Exit;
                         timer = new Timer(_ => Stop("time-limit"), null, 600000, Timeout.Infinite);
                     }
                 }
                 Record(1, 0, 0, 0, 0, stage | (skip ? 4 : 0) | (loaded ? 8 : 0));
             }
-            catch { Fail(); }
+            catch (Exception error) { Fail(error, 1, phase); }
         }
         private static string PatchOwners(Type type, string name)
         {
@@ -69,9 +79,26 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 }
             return "owners=" + type.FullName + "." + name + ":missing\n";
         }
+        private static void AppendOwners(Type type, string name, string phase)
+        {
+            try { identity += PatchOwners(type, name); }
+            catch (Exception error)
+            {
+                // Harmony's optional patch introspection must not erase the
+                // business event stream. Keep the first fixed-stage failure;
+                // there are only six one-time metadata entries, no retry loop.
+                metadataErrors++;
+                if (metadataErrorType == null)
+                {
+                    metadataErrorType = error.GetType().FullName;
+                    metadataErrorHResult = error.HResult; metadataErrorStage = phase;
+                }
+            }
+        }
 
         internal static void Request(int requestKind, long tick, long mapping, long expires)
         {
+            string phase = "request.admission";
             try
             {
                 lock (gate)
@@ -82,27 +109,33 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                     // revive an expired recorder or extend its installation
                     // limit; the first-request window can only shorten it.
                     if (now >= deadline) { Stop("time-limit"); return; }
-                    if (request >= 4) { Stop("four-requests"); return; }
+                    if (request >= 2) { Stop("two-requests"); return; }
                     request++; kind = requestKind; requestActive = true;
+                    if (request == 1) deadline = Math.Min(deadline, now + 120L * Stopwatch.Frequency);
+                    // Keep proof that the real business Request arrived even
+                    // if optional Harmony metadata subsequently fails.
+                    phase = "request.row";
+                    Record(2, tick, mapping, 0, 0, (int)(expires - tick));
+                    if (!active) return;
                     if (request == 1)
                     {
-                        deadline = Math.Min(deadline, now + 120L * Stopwatch.Frequency);
                         // Blueprint installs later than Targets. Snapshot the
                         // final owner set once at the first real request, not
                         // midway through Runtime construction.
-                        identity += PatchOwners(typeof(Main), "DrawInterface") + PatchOwners(typeof(Main), "DrawInterface_39_MouseOver") +
-                            PatchOwners(typeof(Terraria.GameContent.UI.ResourceSets.PlayerResourceSetsManager), "TryToHoverOverResources") +
-                            PatchOwners(typeof(Terraria.GameContent.UI.ResourceSets.ClassicPlayerResourcesDisplaySet), "TryToHover") +
-                            PatchOwners(typeof(Terraria.GameContent.UI.ResourceSets.FancyClassicPlayerResourcesDisplaySet), "TryToHover") +
-                            PatchOwners(typeof(Terraria.GameContent.UI.ResourceSets.HorizontalBarsPlayerResourcesDisplaySet), "TryToHover");
+                        AppendOwners(typeof(Main), "DrawInterface", "request.owners.DrawInterface");
+                        AppendOwners(typeof(Main), "DrawInterface_39_MouseOver", "request.owners.MouseOver");
+                        AppendOwners(typeof(Terraria.GameContent.UI.ResourceSets.PlayerResourceSetsManager), "TryToHoverOverResources", "request.owners.Manager");
+                        AppendOwners(typeof(Terraria.GameContent.UI.ResourceSets.ClassicPlayerResourcesDisplaySet), "TryToHover", "request.owners.Classic");
+                        AppendOwners(typeof(Terraria.GameContent.UI.ResourceSets.FancyClassicPlayerResourcesDisplaySet), "TryToHover", "request.owners.Fancy");
+                        AppendOwners(typeof(Terraria.GameContent.UI.ResourceSets.HorizontalBarsPlayerResourcesDisplaySet), "TryToHover", "request.owners.Horizontal");
+                        phase = "request.timer";
                         long remaining = deadline - Stopwatch.GetTimestamp();
                         if (remaining <= 0) { Stop("time-limit"); return; }
                         timer.Change((int)Math.Ceiling(remaining * 1000.0 / Stopwatch.Frequency), Timeout.Infinite);
                     }
                 }
-                Record(2, tick, mapping, 0, 0, (int)(expires - tick));
             }
-            catch { Fail(); }
+            catch (Exception error) { Fail(error, 2, phase); }
         }
 
         internal static void Record(int point, long tick, long mapping, int state, int reasons, int detail)
@@ -119,21 +152,39 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                     // never a certificate supplied to the target owner.
                     if (point != 1 && !requestActive) return;
                     if (point == 3) pass++;
-                    rows[count++] = new Row { Time = Stopwatch.GetTimestamp(), Tick = tick, Mapping = mapping, Game = Main.GameUpdateCount,
+                    rows[count] = new Row { Time = Stopwatch.GetTimestamp(), Tick = tick, Mapping = mapping, Game = Main.GameUpdateCount,
                         Request = request, Kind = kind, Pass = pass, Point = point, State = state, Reasons = reasons, Detail = detail };
+                    count++;
                     // Every native Draw boundary is explicit in the stream;
                     // resource rows are correlated with that nearest boundary.
                     if (point == 10 || point == 11) requestActive = false;
-                    stop = count == rows.Length || !requestActive && request == 4;
+                    // The owner card has two actions. Export on their second
+                    // terminal event instead of depending on a late ProcessExit
+                    // handler behind other components' bounded shutdown work.
+                    stop = count == rows.Length || !requestActive && request == 2;
                 }
-                if (stop) Stop(count == rows.Length ? "512-rows" : "four-requests");
+                if (stop) Stop(count == rows.Length ? "512-rows" : "two-requests");
             }
-            catch { Fail(); }
+            catch (Exception error) { Fail(error, point, "record"); }
         }
         internal static void Resource(bool original, int implementation)
         { Record(6, 0, 0, 0, 0, implementation | (original ? 16 : 0)); }
-        internal static void Fail()
-        { lock (gate) { active = false; try { timer?.Dispose(); } catch { } } }
+        internal static void Fail(Exception error, int point, string phase)
+        {
+            try
+            {
+                lock (gate)
+                {
+                    if (!claimed || exported) return;
+                    errorType = error.GetType().FullName; errorHResult = error.HResult; errorPoint = point; errorStage = phase;
+                    // A failed observer retires sampling but must preserve its
+                    // bounded prefix. Stop owns the single export attempt;
+                    // export failure never recursively calls this method.
+                    Stop("observer-failure");
+                }
+            }
+            catch { lock (gate) { active = false; try { timer?.Dispose(); } catch { } } }
+        }
         private static void Exit(object sender, EventArgs args) { Stop("process-exit"); }
         private static void Stop(string why)
         {
@@ -141,13 +192,17 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             {
                 lock (gate)
                 {
-                    if (!active || exported) return;
+                    if (!claimed || exported) return;
                     active = false; exported = true; reason = why; timer?.Dispose();
                     // A single bounded export, including on normal process
                     // exit. The capacity-ending callback can do this one I/O;
                     // sampling itself owns no per-frame strings or file writes.
                     var text = new StringBuilder(identity);
                     text.AppendLine("stop=" + reason + " rows=" + count.ToString(CultureInfo.InvariantCulture));
+                    if (errorType != null) text.AppendLine("observerErrorType=" + errorType + " hresult=" + errorHResult.ToString(CultureInfo.InvariantCulture) +
+                        " point=" + errorPoint.ToString(CultureInfo.InvariantCulture) + " stage=" + errorStage);
+                    if (metadataErrorType != null) text.AppendLine("metadataErrors=" + metadataErrors.ToString(CultureInfo.InvariantCulture) +
+                        " firstType=" + metadataErrorType + " hresult=" + metadataErrorHResult.ToString(CultureInfo.InvariantCulture) + " stage=" + metadataErrorStage);
                     text.AppendLine("points=1-install,2-request,3-begin,4-mouseover,5-wrapper,6-resource,7-end,8-finalizer,9-update,10-delivery,11-cancel,12-input,13-admission,14-placement");
                     text.AppendLine("state=pending:0..2,picking:4,completed:8,inPass:16,slot:32,uiBlocked:64,uiBoundary:128,resourceBoundary:256,preparing:512");
                     text.AppendLine("reasons=focus:1,player:2,world:4,tile:8,connection:16,raw:32,screen:64,uiMatrix:128,zoom:256,mouseScale:512,camera:1024,gravity:2048,inventory:4096,chest:8192,noPending:16384");
@@ -165,7 +220,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                     using (var writer = new StreamWriter(stream, new UTF8Encoding(false))) writer.Write(text.ToString());
                 }
             }
-            catch { Fail(); }
+            // The export attempt was claimed before touching the file. Never
+            // retry or recursively export a failing export, even on shutdown.
+            catch { lock (gate) { active = false; try { timer?.Dispose(); } catch { } } }
         }
     }
 }

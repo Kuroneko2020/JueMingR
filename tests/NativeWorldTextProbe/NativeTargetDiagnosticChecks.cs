@@ -43,6 +43,10 @@ namespace NativeWorldTextProbe
                 ((Timer)get("timer"))?.Dispose();
                 set("count", 0); set("request", 0); set("kind", 0); set("pass", 0L);
                 set("active", true); set("exported", false); set("requestActive", false);
+                trace.GetField("claimed", F)?.SetValue(null, true);
+                trace.GetField("errorType", F)?.SetValue(null, null);
+                trace.GetField("metadataErrorType", F)?.SetValue(null, null);
+                trace.GetField("metadataErrors", F)?.SetValue(null, 0);
                 set("output", file); set("identity", "owned collector fixture\n");
                 set("deadline", Stopwatch.GetTimestamp() + 600L * Stopwatch.Frequency);
                 set("timer", new Timer(_ => { }, null, Timeout.Infinite, Timeout.Infinite));
@@ -51,6 +55,10 @@ namespace NativeWorldTextProbe
             string path = Path.Combine(output, "bounded.log");
             try
             {
+                // Run the business boundary before new observer-only APIs, so
+                // the original package fails on missing synchronous evidence,
+                // rather than on a fixture call to a later-added helper.
+                NativeTargetDiagnosticRequestChecks.Run(assembly, trace, output);
                 reset(path);
                 call("Resource", new object[] { true, 1 });
                 Require((int)get("count") == 0, "resource events outside a target request are discarded");
@@ -62,9 +70,10 @@ namespace NativeWorldTextProbe
                 call("Stop", new object[] { "second-stop" }); call("Request", new object[] { 1, 99L, 99L, 103L });
                 Require(File.ReadAllText(path) == first && (int)get("request") == 1, "stopped recorder cannot append, rearm or export twice");
                 reset(Path.Combine(output, "requests.log"));
-                for (int i = 0; i < 4; i++)
+                for (int i = 0; i < 2; i++)
                 { call("Request", new object[] { 1, (long)i, (long)i, (long)i + 4 }); call("Record", new object[] { 11, (long)i, (long)i, 0, 0, 0 }); }
-                Require(!(bool)get("active") && (int)get("request") == 4 && (int)get("count") == 8, "four terminal requests stop without waiting for a fifth action");
+                Require(!(bool)get("active") && (int)get("request") == 2 && (int)get("count") == 4 &&
+                    File.Exists(Path.Combine(output, "requests.log")), "two terminal requests synchronously stop and export without waiting for process exit");
                 reset(Path.Combine(output, "deadline.log")); set("deadline", 0L);
                 call("Record", new object[] { 1, 0L, 0L, 0, 0, 0 });
                 Require(!(bool)get("active") && (int)get("count") == 0, "expired monotonic deadline stops before collecting another row");
@@ -92,7 +101,7 @@ namespace NativeWorldTextProbe
                 Require(Main.GameUpdateCount == world && Main.mouseX == x && Main.mouseY == y, "observer calls neither advance native time nor move the target pointer");
                 Console.WriteLine("PASS diagnostic collector: inactive-request discard, fixed capacity, terminal-request/deadline bounds, one export, failure isolation; no business proof or ordinary-load claim.");
             }
-            finally { call("Fail", Array.Empty<object>()); }
+            finally { set("active", false); ((Timer)get("timer"))?.Dispose(); }
         }
     }
 }

@@ -156,30 +156,31 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private void Trace(int point, int detail = 0)
         {
             if (!TargetGestureTrace.RequestActive) return;
+            string phase = "target.local-player";
             try
             {
                 int reasons = 0;
                 var local = Main.LocalPlayer;
-                if (!input.IsFocused) reasons |= 1;
-                if (!ReferenceEquals(player, local)) reasons |= 2;
-                if (!ReferenceEquals(world, Main.ActiveWorldFileData)) reasons |= 4;
-                if (!ReferenceEquals(tiles, Main.tile)) reasons |= 8;
-                if (!ReferenceEquals(connection, Netplay.Connection)) reasons |= 16;
-                if (raw.X != PlayerInput.MouseInfo.X || raw.Y != PlayerInput.MouseInfo.Y) reasons |= 32;
-                if (screen != PlayerInput.OriginalScreenSize) reasons |= 64;
-                if (matrix != Main.UIScaleMatrix) reasons |= 128;
-                if (zoom != Main.GameViewMatrix.ZoomMatrix) reasons |= 256;
-                if (mouseScale != PlayerInput.RawMouseScale) reasons |= 512;
-                if (camera != Main.screenPosition) reasons |= 1024;
-                if (local == null || gravity != local.gravDir) reasons |= 2048;
-                if (inventory != Main.playerInventory) reasons |= 4096;
-                if (local == null || chest != local.chest) reasons |= 8192;
+                phase = "target.focus"; if (!input.IsFocused) reasons |= 1;
+                phase = "target.player"; if (!ReferenceEquals(player, local)) reasons |= 2;
+                phase = "target.world"; if (!ReferenceEquals(world, Main.ActiveWorldFileData)) reasons |= 4;
+                phase = "target.tiles"; if (!ReferenceEquals(tiles, Main.tile)) reasons |= 8;
+                phase = "target.connection"; if (!ReferenceEquals(connection, Netplay.Connection)) reasons |= 16;
+                phase = "target.raw"; if (raw.X != PlayerInput.MouseInfo.X || raw.Y != PlayerInput.MouseInfo.Y) reasons |= 32;
+                phase = "target.screen"; if (screen != PlayerInput.OriginalScreenSize) reasons |= 64;
+                phase = "target.matrix"; if (matrix != Main.UIScaleMatrix) reasons |= 128;
+                phase = "target.zoom"; if (zoom != Main.GameViewMatrix.ZoomMatrix) reasons |= 256;
+                phase = "target.mouse-scale"; if (mouseScale != PlayerInput.RawMouseScale) reasons |= 512;
+                phase = "target.camera"; if (camera != Main.screenPosition) reasons |= 1024;
+                phase = "target.gravity"; if (local == null || gravity != local.gravDir) reasons |= 2048;
+                phase = "target.inventory"; if (inventory != Main.playerInventory) reasons |= 4096;
+                phase = "target.chest"; if (local == null || chest != local.chest) reasons |= 8192;
                 if (pending == 0) reasons |= 16384;
                 int state = pending | (picking ? 4 : 0) | (completed ? 8 : 0) | (inPass ? 16 : 0) | (seenSlot ? 32 : 0) |
                     (uiBlocked ? 64 : 0) | (uiBoundary ? 128 : 0) | (resourceBoundary ? 256 : 0) | (preparingPlacement ? 512 : 0);
-                TargetGestureTrace.Record(point, tick, input.Mapping, state, reasons, detail);
+                phase = "target.record"; TargetGestureTrace.Record(point, tick, input.Mapping, state, reasons, detail);
             }
-            catch { TargetGestureTrace.Fail(); }
+            catch (Exception error) { TargetGestureTrace.Fail(error, point, phase); }
         }
 #endif
         private bool SessionMatches() { return ReferenceEquals(player, Main.LocalPlayer) && ReferenceEquals(world, Main.ActiveWorldFileData) && ReferenceEquals(tiles, Main.tile) && ReferenceEquals(connection, Netplay.Connection); }
