@@ -13,22 +13,24 @@ namespace NativeWorldTextProbe
     internal static class NativeTargetDiagnosticChecks
     {
         private const BindingFlags F = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
-        internal static void Run(string output)
+        internal static void Run(string output, bool allowCandidate = false)
         {
             // Formal workload evidence always describes its own prepared Host.
             // Explicit diagnostic candidates belong to a separate specialist
             // process whose raw record binds that candidate's actual bytes.
-            bool formal = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_ASSERTION_CONTEXT"));
-            string candidate = formal ? null : Environment.GetEnvironmentVariable("JMR_TARGET_DIAGNOSTIC_CANDIDATE");
-            if (string.IsNullOrEmpty(candidate)) candidate = Path.Combine(Program.Repository,
-                "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll");
-            var assembly = Assembly.LoadFrom(Path.GetFullPath(candidate));
+            string candidate = allowCandidate ? Environment.GetEnvironmentVariable("JMR_TARGET_DIAGNOSTIC_CANDIDATE") :
+                Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll");
+            Require(!string.IsNullOrEmpty(candidate), "candidate specialist requires an explicit Host path");
+            candidate = Path.GetFullPath(candidate);
+            var assembly = Assembly.LoadFrom(candidate);
+            Require(string.Equals(Path.GetFullPath(assembly.Location), candidate, StringComparison.OrdinalIgnoreCase),
+                "actual loaded Host is the scope-selected candidate, without assembly binding substitution");
             using (var stream = File.OpenRead(assembly.Location))
             using (var sha = System.Security.Cryptography.SHA256.Create())
                 Console.WriteLine("TARGET-DIAGNOSTIC Host=" + assembly.Location + " MVID=" + assembly.ManifestModule.ModuleVersionId +
-                    " SHA256=" + BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "") + " formal=" + formal);
+                    " SHA256=" + BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "") + " allowCandidate=" + allowCandidate);
             var trace = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.TargetGestureTrace");
-            bool diagnostic = !formal && Environment.GetEnvironmentVariable("JMR_TARGET_DIAGNOSTIC_EXPECTED") == "1";
+            bool diagnostic = allowCandidate && Environment.GetEnvironmentVariable("JMR_TARGET_DIAGNOSTIC_EXPECTED") == "1";
             Require((trace != null) == diagnostic, "ordinary Host excludes the diagnostic type; diagnostic Host includes it");
             if (!diagnostic) { Console.WriteLine("PASS ordinary Host has no TargetGestureTrace type."); return; }
             output = Path.Combine(Path.GetFullPath(output), "collector-" + Guid.NewGuid().ToString("N"));
