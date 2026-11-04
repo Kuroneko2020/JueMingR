@@ -71,6 +71,9 @@ namespace JueMingR.TerrariaHost.Journey
                 Patch(harmony, Method(typeof(ItemsSacrificedUnlocksTracker), "ForEachItemWithResearchProgress", typeof(Action<int>)), "Enumerate");
                 Patch(harmony, Method(typeof(ItemsSacrificedUnlocksTracker), "TryGetSacrificeNumbers", typeof(int), typeof(int).MakeByRefType(), typeof(int).MakeByRefType()), "Numbers");
                 Patch(harmony, Method(typeof(ItemsSacrificedUnlocksTracker), "GetSacrificeCount", typeof(int)), "Count");
+                // Freeze before vanilla waits for IOLock or runs pre-file work.
+                // ProtectedInvoke remains synchronous on this same save thread.
+                Patch(harmony, Method(typeof(Player), "SavePlayer", typeof(PlayerFileData), typeof(bool), typeof(bool)), "BeginPlayerSave", "EndSave");
                 Patch(harmony, Method(typeof(Player), "InternalSavePlayerFile", typeof(PlayerFileData)), "BeginPlayerSave", "EndSave");
                 Patch(harmony, Method(typeof(WorldFile), "SaveWorld_Version2", typeof(BinaryWriter)), "BeginWorldSave", "EndSave");
                 Patch(harmony, Method(typeof(CreativePowerManager), "SaveToPlayer", typeof(Player), typeof(BinaryWriter)), "SavePlayerPowers");
@@ -242,18 +245,24 @@ namespace JueMingR.TerrariaHost.Journey
             internal readonly SaveView Parent;
             internal readonly JourneyPowers Powers;
             internal readonly Player Player;
+            internal readonly PlayerFileData PlayerFile;
             internal readonly bool World;
             internal bool Ended;
-            internal SaveView(JourneyPowers powers, Player player, bool world)
-            { Parent = save; Powers = powers; Player = player; World = world; }
+            internal SaveView(JourneyPowers powers, PlayerFileData playerFile, bool world)
+            { Parent = save; Powers = powers; PlayerFile = playerFile; Player = playerFile?.Player; World = world; }
         }
         private static void BeginPlayerSave(PlayerFileData playerFile, out SaveView __state)
         {
             lock (saveAdmissionGate)
             {
-                JourneyPowers captured = owner?.Persistence;
+                // Same-file nested serializers inherit the outer save's exact
+                // A view, including an OFF/null view. Do not late-capture B after
+                // disconnect/retirement/re-enable while the original save waits.
+                SaveView enclosing = save;
+                while (enclosing != null && (enclosing.World || !ReferenceEquals(enclosing.PlayerFile, playerFile) || !ReferenceEquals(enclosing.Player, playerFile.Player))) enclosing = enclosing.Parent;
+                JourneyPowers captured = enclosing != null ? enclosing.Powers : owner?.Persistence;
                 if (captured != null && (!ReferenceEquals(playerFile, captured.PlayerFile) || !ReferenceEquals(playerFile.Player, captured.Player))) captured = null;
-                __state = new SaveView(captured, playerFile.Player, false); save = __state;
+                __state = new SaveView(captured, playerFile, false); save = __state;
                 if (captured == null) Volatile.Write(ref unprotectedSaves, unprotectedSaves + 1);
             }
         }

@@ -139,6 +139,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeMiscPolishUiChecks.cs'=@('native-ProcessingCpu','native-ProcessingVisual','native-ToolsVisual')
         'tests/NativeWorldTextProbe/NativeHerbMovementChecks.cs'=@('native-ToolsExecutionCpu','native-ToolsExecution','native-ToolsExecutionRelease')
         'tests/NativeWorldTextProbe/NativeJourneyMultiplayerChecks.cs'=@('native-JourneyCpu','native-Journey')
+        'tests/NativeWorldTextProbe/NativeJourneyDisconnectSaveChecks.cs'=@('native-Journey')
         # Merchant expectations execute only in RunCpu. Other scopes borrow
         # unchanged Flags/Npc/Until/CheckLocked helpers; widen this leaf if those
         # shared helpers change rather than silently dropping their consumers.

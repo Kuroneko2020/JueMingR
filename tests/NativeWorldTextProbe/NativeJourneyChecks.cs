@@ -53,6 +53,9 @@ namespace NativeWorldTextProbe
                     // plus the connected client/save-view ownership leaf,
                     // then stops before the disk-save/consumer/kill matrix.
                     if (reopenOnly) return;
+                    // The pre-file disconnect/save matrix uses real disk and
+                    // independent readers; JourneyReopen keeps its narrow scope.
+                    NativeJourneyDisconnectSaveChecks.Run(context,content,output);
                     UseDuplicatedItem(context);
                     VerticalSave(context, content, output);
                     ConsumerChecks(context);
@@ -640,7 +643,7 @@ namespace NativeWorldTextProbe
 
         private static void ThrowNativeMenuClose() { nativeMenuCloseFailures++; throw new IOException("owned full-reset native menu-close failure"); }
 
-        private static void ConfigureFiles(int playerMode, int worldMode, string name)
+        internal static void ConfigureFiles(int playerMode, int worldMode, string name)
         {
             string root = Path.Combine(Terraria.Program.SavePath, "composition"); Directory.CreateDirectory(root);
             Player p = Main.LocalPlayer; p.difficulty = (byte)playerMode; p.active = true; p.dead = false; p.name = "Journey " + name; p.itemAnimation = p.itemTime = 0;
@@ -655,7 +658,7 @@ namespace NativeWorldTextProbe
             Check(File.Exists(Main.ActivePlayerFileData.Path) && File.Exists(Main.ActiveWorldFileData.Path), "actual native local player and world files written");
             WriteManifest(output, name, playerMode, worldMode, world, player);
         }
-        private static void WriteManifest(string output, string name, int playerMode, int worldMode, byte[] world, byte[] player)
+        internal static void WriteManifest(string output, string name, int playerMode, int worldMode, byte[] world, byte[] player)
         {
             File.WriteAllLines(Path.Combine(output, "journey-save-" + name + ".txt"), new[] { Main.ActivePlayerFileData.Path, Main.ActiveWorldFileData.Path, playerMode.ToString(), worldMode.ToString(), Convert.ToBase64String(world), Convert.ToBase64String(player), Main.LocalPlayer.inventory[12].stack.ToString(), Convert.ToBase64String(CaptureTracker(Main.LocalPlayer)), Main.LocalPlayer.inventory[10].type.ToString(), Main.LocalPlayer.inventory[10].stack.ToString(), Main.LocalPlayer.name });
         }
@@ -724,7 +727,7 @@ namespace NativeWorldTextProbe
             return Process.Start(info);
         }
         private static string Quote(string value) { return "\"" + value.Replace("\"", "\\\"") + "\""; }
-        private static void ReadInNewProcess(string content, string output)
+        internal static void ReadInNewProcess(string content, string output)
         {
             using (Process child = StartChild(content, output, "JourneyRead"))
             {

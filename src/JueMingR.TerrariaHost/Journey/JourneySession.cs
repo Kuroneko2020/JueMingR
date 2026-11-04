@@ -128,13 +128,18 @@ namespace JueMingR.TerrariaHost.Journey
             bool same = saved.MatchesPowerContext;
             // A reused local Player still owns its research slot after a
             // connection edge. Close that old window, but never return its
-            // slot to a different Player or restore powers into a new endpoint.
+            // slot to a different Player. Personal file protection is separate
+            // from restoring world controls against the strict endpoint context.
             bool samePlayer = ReferenceEquals(Main.LocalPlayer, saved.Player) && ReferenceEquals(Main.ActivePlayerFileData, saved.PlayerFile);
             bool closed = !samePlayer || CloseMenu();
             try
             {
                 if (restore && same) saved.Restore();
-                else if (samePlayer) saved.RetirePendingTargets();
+                else if (samePlayer)
+                {
+                    if (restore) saved.RestorePlayer();
+                    saved.RetirePendingTargets();
+                }
                 JourneyResearch.InvalidateMenu();
                 if (!closed)
                 {

@@ -21,6 +21,8 @@ namespace JueMingR.TerrariaHost.Journey
         private readonly bool godmode;
         private readonly bool range;
         private readonly bool creativeGodmode;
+        private readonly int playerIndex;
+        private static readonly FieldInfo PlayerToggleStates = AccessTools.Field(typeof(CreativePowers.APerPlayerTogglePower), "_perPlayerIsEnabled");
         private readonly Slider[] sliders;
         private readonly int netMode;
         private readonly object socket;
@@ -31,6 +33,13 @@ namespace JueMingR.TerrariaHost.Journey
             (!Multiplayer || ReferenceEquals(Terraria.Netplay.Connection.Socket, socket)) &&
             ReferenceEquals(Main.LocalPlayer, Player) && ReferenceEquals(Main.ActivePlayerFileData, PlayerFile) &&
             ReferenceEquals(Main.ActiveWorldFileData, WorldFile); } }
+        // Personal restoration owns this exact file, Player and native slot.
+        // A reused object with a new whoAmI must never write another player's
+        // toggle array or the new local player's shared slider cache.
+        internal bool MatchesPlayerContext { get { return Main.myPlayer == playerIndex && Player.whoAmI == playerIndex &&
+            playerIndex >= 0 && playerIndex < Main.player.Length && ReferenceEquals(Main.player[playerIndex], Player) &&
+            ReferenceEquals(Main.LocalPlayer, Player) && ReferenceEquals(Main.ActivePlayerFileData, PlayerFile) &&
+            ReferenceEquals(PlayerFile.Player, Player); } }
         private static readonly Action UpdateDifficulty = (Action)Delegate.CreateDelegate(typeof(Action),
             AccessTools.Method(typeof(Main), "UpdateCreativeGameModeOverride"));
         private static readonly MethodInfo ApplyDifficultySlider = AccessTools.Method(
@@ -39,6 +48,7 @@ namespace JueMingR.TerrariaHost.Journey
         internal JourneyPowers(Player player, PlayerFileData playerFile, WorldFileData worldFile)
         {
             Player = player; PlayerFile = playerFile; WorldFile = worldFile;
+            playerIndex = player.whoAmI;
             netMode = Main.netMode; Multiplayer = netMode == 1;
             socket = Multiplayer ? Terraria.Netplay.Connection.Socket : null;
             WorldBytes = Multiplayer ? null : Capture(w => CreativePowerManager.Instance.SaveToWorld(w));
@@ -77,17 +87,27 @@ namespace JueMingR.TerrariaHost.Journey
                 using (var stream = new MemoryStream(WorldBytes, false))
                 using (var reader = new BinaryReader(stream)) CreativePowerManager.Instance.LoadFromWorld(reader, 326);
             }
-            Power<CreativePowers.GodmodePower>().SetEnabledState(Player.whoAmI, godmode);
-            Power<CreativePowers.FarPlacementRangePower>().SetEnabledState(Player.whoAmI, range);
+            RestorePlayer();
             // Never replay an old shared value over a later server packet or
             // send a closing command. Only retire this window's uncommitted
             // targets; personal borrowed abilities still return locally.
             foreach (Slider slider in sliders)
-                if (Multiplayer && slider.IsShared) slider.CancelBorrowedCommit(); else slider.Restore();
-            Player.creativeGodMode = creativeGodmode;
+                if (slider.IsShared) { if (Multiplayer) slider.CancelBorrowedCommit(); else slider.Restore(); }
             // Single-player wind/rain caches return without their apply
             // methods; connected caches stay current. Actual weather is kept.
             UpdateDifficulty();
+        }
+
+        internal void RestorePlayer()
+        {
+            if (!MatchesPlayerContext) return;
+            // SetEnabledState broadcasts in netMode=2. Retirement may observe
+            // that mode already published, so return only our local array/slot
+            // without invoking a command against the later endpoint.
+            ((bool[])PlayerToggleStates.GetValue(Power<CreativePowers.GodmodePower>()))[playerIndex] = godmode;
+            ((bool[])PlayerToggleStates.GetValue(Power<CreativePowers.FarPlacementRangePower>()))[playerIndex] = range;
+            foreach (Slider slider in sliders) if (!slider.IsShared) slider.Restore();
+            Player.creativeGodMode = creativeGodmode;
         }
 
         internal void RetirePendingTargets()
