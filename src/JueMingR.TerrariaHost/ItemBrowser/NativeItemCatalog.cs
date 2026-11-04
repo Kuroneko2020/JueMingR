@@ -31,6 +31,27 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal string Status { get; private set; } = "打开查询页后准备资料";
         internal bool Ready { get { return Catalog != null && Recipes != null && !dirty; } }
         internal bool PlacementReady { get { return !dirty && (placementCursor >= ItemID.Count || itemCursor >= ItemID.Count); } }
+        internal int PlacementProgress { get { return itemCursor + placementCursor; } }
+        internal long PlacementGeneration { get; private set; }
+        private Func<long> placementClock;
+        internal void BindPlacementClock(Func<long> clock)
+        {
+            if (clock == null) throw new ArgumentNullException(nameof(clock));
+            if (placementClock != null) throw new InvalidOperationException("Placement clock already bound.");
+            placementClock = clock;
+        }
+        private bool ClaimPlacementBudget()
+        {
+            // All three producers share one scan batch per real host mapping,
+            // including native autopause. Empty outer Updates cannot mint work.
+            // Before composition binds its one clock, no producer has a valid
+            // opportunity. There is no second implicit world-clock policy.
+            if (placementClock == null) return false;
+            long opportunity = placementClock();
+            if (opportunity <= 0 || materialPlacementTickSet && materialPlacementTick == opportunity) return false;
+            materialPlacementTick = opportunity; materialPlacementTickSet = true;
+            return true;
+        }
 #if DEBUG
         internal long ItemReads, RecipeReads, PlacementReads;
         internal Exception CaptureFailure;
@@ -60,7 +81,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             {
                 if (itemCursor < ItemID.Count)
                 {
-                    materialPlacementTick = Main.GameUpdateCount; materialPlacementTickSet = true;
+                    if (!ClaimPlacementBudget()) return;
                     int end = Math.Min(ItemID.Count, itemCursor + 64);
                     for (; itemCursor < end; itemCursor++)
                     {
@@ -99,21 +120,20 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 _ = error;
 #endif
                 failures++; Catalog = null; Recipes = null; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); placementNames.Clear(); ClearMaterialPlacement();
+                PlacementGeneration++;
                 itemCursor = placementCursor = 1; recipeCursor = ExcludedIdentities = 0;
                 Status = "原版资料读取未完成（" + failures + "/3）";
             }
         }
         private void Reset()
-        { dirty = false; itemCursor = placementCursor = 1; recipeCursor = failures = ExcludedIdentities = 0; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); placementNames.Clear(); ClearMaterialPlacement(); Catalog = null; Recipes = null; Revision++; }
+        { dirty = false; itemCursor = placementCursor = 1; recipeCursor = failures = ExcludedIdentities = 0; items.Clear(); recipes.Clear(); stations.Clear(); walls.Clear(); placementNames.Clear(); ClearMaterialPlacement(); Catalog = null; Recipes = null; Revision++; PlacementGeneration++; }
         // A cold world gesture needs only canonical placement metadata. It does
         // not materialize descriptions, recipes, drops, shops, or the directory.
         // The gesture owns the demand and cancellation; no background warm-up.
         internal void StepPlacement()
         {
             ObserveContext(); if (dirty) Reset();
-            if (materialPlacementTickSet && materialPlacementTick == Main.GameUpdateCount) return;
-            materialPlacementTick = Main.GameUpdateCount; materialPlacementTickSet = true;
-            if (PlacementReady || ContentSamples.ItemsByType.Count < ItemID.Count) return;
+            if (PlacementReady || ContentSamples.ItemsByType.Count < ItemID.Count || !ClaimPlacementBudget()) return;
             int end = Math.Min(ItemID.Count, placementCursor + 64);
             for (; placementCursor < end; placementCursor++)
             {

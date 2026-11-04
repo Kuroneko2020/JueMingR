@@ -127,8 +127,21 @@ namespace JueMingR.TerrariaHost.Blueprint
             p.boundary = true; p.ui |= Main.LocalPlayer.mouseInterface || Main.mouseText || p.host.NativeUiBusy ||
                 (p.confirmationOnly ? !p.host.CanRetainTrimConfirmation(p.mapping) : p.host.Shell?.State.Visible == true) || p.host.Toolbar.HitCurrent();
         }
-        private static void Resources(bool __runOriginal)
-        { var p = current;
+        private static void Resources(bool __runOriginal
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            , object __instance
+#endif
+            )
+        {
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            // Arrival is independent of Blueprint's current gesture. This
+            // diagnostic event never supplies another owner's UI certificate.
+            JueMingR.TerrariaHost.ItemBrowser.TargetGestureTrace.Resource(__runOriginal,
+                __instance is Terraria.GameContent.UI.ResourceSets.ClassicPlayerResourcesDisplaySet ? 1 :
+                __instance is Terraria.GameContent.UI.ResourceSets.FancyClassicPlayerResourcesDisplaySet ? 2 :
+                __instance is Terraria.GameContent.UI.ResourceSets.HorizontalBarsPlayerResourcesDisplaySet ? 3 : 0);
+#endif
+            var p = current;
             if (p == null || !p.inPass || !p.boundary) return; p.resources = __runOriginal; p.ui |= Main.LocalPlayer.mouseInterface || Main.mouseText;
         }
         private static void Slot()

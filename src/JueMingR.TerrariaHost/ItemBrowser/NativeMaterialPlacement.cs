@@ -22,7 +22,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private static readonly FieldInfo materialOptions = materialBucketType?.GetField("Options"), materialConsume = materialBucketType?.GetField("ItemTypeToConsume");
         private BlueprintPlacementCatalog materialCatalog;
         private long placementRevision;
-        private ulong materialPlacementTick;
+        private long materialPlacementTick;
         private bool materialPlacementTickSet;
         private bool materialTileSourceComplete = true, materialWallSourceComplete = true, materialAbiValid = true;
         internal long PlacementRevision { get { PublishMaterialPlacement(); return placementRevision; } }
@@ -32,7 +32,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             materialRules.Clear(); materialDeclarations.Clear(); materialWalls.Clear(); materialPaints.Clear(); materialCoatings.Clear(); materialCaptured.Clear();
             ClearBlueprintSubstitution();
             materialTileSourceComplete = materialWallSourceComplete = materialAbiValid = true;
-            materialCatalog = null; placementRevision++; materialPlacementTickSet = false;
+            // Reset retires data, not the shared opportunity already spent by
+            // another producer in this mapping. A rebuild cannot double it.
+            materialCatalog = null; placementRevision++;
         }
         private void PublishMaterialPlacement()
         {

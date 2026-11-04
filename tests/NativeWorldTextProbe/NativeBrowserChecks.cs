@@ -38,6 +38,8 @@ namespace NativeWorldTextProbe
             NativeAnnouncementIconChecks.Run(assembly);
             Console.WriteLine("Native aliases: " + string.Join(",", ContentSamples.ItemsByType.Where(p => p.Key > 0 && p.Value.type > 0 && p.Key != p.Value.type).Select(p => p.Key + "->" + p.Value.type)));
             object subject = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeItemCatalog"), true);
+            long catalogMapping=0;
+            Call(subject,"BindPlacementClock",(Func<long>)(()=>catalogMapping));
             try
             {
                 Main.rand = new UnifiedRandom(789); var reference = new UnifiedRandom(789);
@@ -47,7 +49,7 @@ namespace NativeWorldTextProbe
                 while (!(bool)Get(subject, "Ready") && steps++ < 400)
                 {
                     long before = (long)Get(subject, "ItemReads"), recipes = (long)Get(subject, "RecipeReads");
-                    Call(subject, "Step", true);
+                    catalogMapping++;Call(subject, "Step", true);
                     Require((long)Get(subject, "ItemReads") - before <= 64 && (long)Get(subject, "RecipeReads") - recipes <= 32, "native cold batches remain bounded");
                 }
                 Require((bool)Get(subject, "Ready"), "full native catalog finishes: " + Get(subject, "Status") + "; steps=" + steps + "; failure=" + GetOptional(subject, "CaptureFailure"));

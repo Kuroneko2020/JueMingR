@@ -563,7 +563,12 @@ namespace JueMingR.TerrariaHost.F5
                 Vector2 raw = new Vector2(PlayerInput.MouseInfo.X * PlayerInput.RawMouseScale.X,
                     PlayerInput.MouseInfo.Y * PlayerInput.RawMouseScale.Y);
                 KeyboardState keySample = inputState.KeyboardSample;
-                bool f5 = !(TargetGestureBusy?.Invoke() ?? false) && keySample.IsKeyDown(Keys.F5) && !inputState.Hotkeys.IsSuppressed((int)Keys.F5) && !(HotkeyPopup != null && HotkeyPopup.Capturing);
+                // F5 is an action pulse from the shared trusted input owner,
+                // not the frozen physical level. Target cancellation consumes
+                // this edge before restoring its page; a held F5 must never
+                // become a new press when Busy clears. Do not suppress F5's
+                // held tail here: that global native-input barrier also eats W.
+                bool f5 = !(TargetGestureBusy?.Invoke() ?? false) && inputState.Hotkeys.IsNew((int)Keys.F5) && !(HotkeyPopup != null && HotkeyPopup.Capturing);
                 if (f5 && !State.Visible && inputState.CanUseInput && journey != null && journey.IsMenuOpen)
                     journey.CloseMenu();
                 // Map/camera requests precede their modal flags and draw layers.
@@ -641,6 +646,10 @@ namespace JueMingR.TerrariaHost.F5
                     inputState.ConsumeCancellation((int)Keys.Escape);
                     if(cancelItems)items.CancelSelection();
                 }
+                // Upper popup/selector owners may have consumed this epoch
+                // since entry. Keep the final action on the same surviving
+                // edge; the early pulse is not an independent permission.
+                f5 &= inputState.Hotkeys.IsNew((int)Keys.F5);
                 CombatInterval?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelGesture,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
                 CombatRadius?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelGesture,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
                 popupPointer|=(CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true);
@@ -1134,7 +1143,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.LoseFocus(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close();
             // Later update/draw gates may clean a focused modal's consumed
-            // neutral frame after State.Update recorded its real F5 release.
+            // neutral frame after State.Update received a non-action sample.
+            // Physical F5 history remains with HostInputState.Hotkeys.
             // Only actual focus loss may replace those edges with quarantine;
             // focused presentation cleanup closes controls without resampling.
             if (focusLost) State.CancelForFocusLoss(); else State.Close();

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using HarmonyLib;
 using JueMingR.Platform.Hotkeys;
@@ -24,6 +25,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private readonly HostInputState input;
         private readonly NativeItemCatalog catalog;
         private long tick, expires;
+        private long placementDeadline, placementGeneration;
+        private int placementProgress;
+        private const int PlacementStallSeconds = 10;
         private int pending;
         private bool picking, released, rawPick, inPass, completed, seenSlot, uiBlocked;
         private bool uiBoundary, resourceBoundary, preparingPlacement;
@@ -48,18 +52,30 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal ReadOnlyTargetGesture(HostInputState input, NativeItemCatalog catalog)
         {
             this.input = input; this.catalog = catalog;
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            TargetGestureTrace.Install(0);
+#endif
             try
             {
                 if (current != null || typeof(Main).Module.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083")) return;
                 current = this;
                 Patch(typeof(Main), "DrawInterface", new[] { typeof(GameTime) }, nameof(BeginPass), nameof(EndPass), nameof(PassFinally));
                 Patch(typeof(Main), "DrawInterface_39_MouseOver", Type.EmptyTypes, nameof(BeforeWorldHover), null);
-                Patch(typeof(Terraria.GameContent.UI.ResourceSets.PlayerResourceSetsManager), "TryToHoverOverResources", Type.EmptyTypes, null, nameof(AfterResources));
+                // The tiny manager wrapper may already be inlined in a caller
+                // prepared before our late installation. Observe the active
+                // resource implementation's real normal return, at the same UI
+                // boundary before world tooltips can change mouseText.
+                Patch(typeof(Terraria.GameContent.UI.ResourceSets.ClassicPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(AfterResources));
+                Patch(typeof(Terraria.GameContent.UI.ResourceSets.FancyClassicPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(AfterResources));
+                Patch(typeof(Terraria.GameContent.UI.ResourceSets.HorizontalBarsPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(AfterResources));
                 Patch(typeof(ItemSlot), "MouseHover", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(Hover), null);
                 Patch(typeof(ItemSlot), "LeftClick", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(Left), null);
                 Patch(typeof(ItemSlot), "RightClick", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(Right), null);
                 Patch(typeof(ItemSlot), "Draw", new[] { typeof(SpriteBatch), typeof(Item[]), typeof(int), typeof(int), typeof(Vector2), typeof(Color) }, nameof(Hotbar), null);
                 Ready = true; input.ClaimsReadOnlyGesture = Claim;
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+                TargetGestureTrace.Install(1);
+#endif
             }
             catch { Dispose(); }
         }
@@ -102,11 +118,19 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         }
         internal void ProcessInput()
         {
-            if (picking && (!SessionMatches() || !input.CanStartActions || CanPick != null && !CanPick() || input.Hotkeys.IsNew(27))) { Cancel("点选已取消"); return; }
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            if (picking || pending != 0) Trace(12, (input.CanStartActions ? 1 : 0) | (input.Hotkeys.IsNew(27) ? 2 : 0) | (input.Hotkeys.IsNew(257) ? 4 : 0) | (rawPick ? 8 : 0));
+#endif
+            if (picking && (!SessionMatches() || !input.CanStartActions || CanPick != null && !CanPick())) { Cancel("点选已取消"); return; }
+            // Only an accepted physical cancellation owns this input frame.
+            // System retirement stays in Cancel without consuming unrelated
+            // keys. Retain the existing read-only mouse tail until real release.
+            if (Busy && input.CanStartActions && SessionMatches() && input.Hotkeys.IsNew(27))
+            { input.ConsumeCancellation(27); Cancel(picking ? "点选已取消" : pending == 2 ? "宣告已取消" : "目标查询已取消"); return; }
             if (picking && rawPick)
             {
                 rawPick = false;
-                if (input.Hotkeys.IsNew(257)) { Cancel("点选已取消"); return; }
+                if (input.Hotkeys.IsNew(257)) { input.ConsumeCancellation(257); Cancel("点选已取消"); return; }
                 if (input.Hotkeys.IsNew(256) && (input.ReadOnlyMouseMask & 1) != 0) { picking = false; Request(1); }
             }
         }
@@ -128,6 +152,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private void Request(int kind)
         {
             pending = kind; preparingPlacement = completed = inPass = seenSlot = uiBlocked = false; hovered = null; expires = tick + 4;
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            TargetGestureTrace.Request(kind, tick, input.Mapping, expires);
+#endif
             player = Main.LocalPlayer; world = Main.ActiveWorldFileData; tiles = Main.tile; connection = Netplay.Connection;
             raw = new Vector2(PlayerInput.MouseInfo.X, PlayerInput.MouseInfo.Y); screen = PlayerInput.OriginalScreenSize;
             matrix = Main.UIScaleMatrix; zoom = Main.GameViewMatrix.ZoomMatrix; mouseScale = PlayerInput.RawMouseScale; camera = Main.screenPosition;
@@ -137,6 +164,40 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             // With no slot, null fails closed at delivery instead of resampling.
             catch { frozen = null; }
         }
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+        // This diagnostic comparison never replaces Matches or changes its
+        // short-circuit evaluation. Missing objects are a rejected observation,
+        // not an excuse to mutate the frozen request or call admission twice.
+        private void Trace(int point, int detail = 0)
+        {
+            if (!TargetGestureTrace.RequestActive) return;
+            string phase = "target.local-player";
+            try
+            {
+                int reasons = 0;
+                var local = Main.LocalPlayer;
+                phase = "target.focus"; if (!input.IsFocused) reasons |= 1;
+                phase = "target.player"; if (!ReferenceEquals(player, local)) reasons |= 2;
+                phase = "target.world"; if (!ReferenceEquals(world, Main.ActiveWorldFileData)) reasons |= 4;
+                phase = "target.tiles"; if (!ReferenceEquals(tiles, Main.tile)) reasons |= 8;
+                phase = "target.connection"; if (!ReferenceEquals(connection, Netplay.Connection)) reasons |= 16;
+                phase = "target.raw"; if (raw.X != PlayerInput.MouseInfo.X || raw.Y != PlayerInput.MouseInfo.Y) reasons |= 32;
+                phase = "target.screen"; if (screen != PlayerInput.OriginalScreenSize) reasons |= 64;
+                phase = "target.matrix"; if (matrix != Main.UIScaleMatrix) reasons |= 128;
+                phase = "target.zoom"; if (zoom != Main.GameViewMatrix.ZoomMatrix) reasons |= 256;
+                phase = "target.mouse-scale"; if (mouseScale != PlayerInput.RawMouseScale) reasons |= 512;
+                phase = "target.camera"; if (camera != Main.screenPosition) reasons |= 1024;
+                phase = "target.gravity"; if (local == null || gravity != local.gravDir) reasons |= 2048;
+                phase = "target.inventory"; if (inventory != Main.playerInventory) reasons |= 4096;
+                phase = "target.chest"; if (local == null || chest != local.chest) reasons |= 8192;
+                if (pending == 0) reasons |= 16384;
+                int state = pending | (picking ? 4 : 0) | (completed ? 8 : 0) | (inPass ? 16 : 0) | (seenSlot ? 32 : 0) |
+                    (uiBlocked ? 64 : 0) | (uiBoundary ? 128 : 0) | (resourceBoundary ? 256 : 0) | (preparingPlacement ? 512 : 0);
+                phase = "target.record"; TargetGestureTrace.Record(point, tick, input.Mapping, state, reasons, detail);
+            }
+            catch (Exception error) { TargetGestureTrace.Fail(error, point, phase); }
+        }
+#endif
         private bool SessionMatches() { return ReferenceEquals(player, Main.LocalPlayer) && ReferenceEquals(world, Main.ActiveWorldFileData) && ReferenceEquals(tiles, Main.tile) && ReferenceEquals(connection, Netplay.Connection); }
         private bool Matches()
         {
@@ -146,11 +207,29 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 camera == Main.screenPosition && gravity == Main.LocalPlayer.gravDir && inventory == Main.playerInventory && chest == Main.LocalPlayer.chest;
         }
         private static void BeginPass()
-        { var owner = current; if (owner == null || owner.pending == 0 || owner.completed) return; owner.inPass = owner.Matches(); owner.seenSlot = owner.uiBoundary = owner.resourceBoundary = owner.uiBlocked = false; owner.hovered = null; }
+        {
+            var owner = current;
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            owner?.Trace(3);
+#endif
+            if (owner == null || owner.pending == 0 || owner.completed) return; owner.inPass = owner.Matches(); owner.seenSlot = owner.uiBoundary = owner.resourceBoundary = owner.uiBlocked = false; owner.hovered = null;
+        }
         private static void BeforeWorldHover()
-        { var owner = current; if (owner == null || !owner.inPass) return; owner.uiBoundary = true; owner.uiBlocked = Main.LocalPlayer.mouseInterface || Main.mouseText; }
+        {
+            var owner = current;
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            owner?.Trace(4);
+#endif
+            if (owner == null || !owner.inPass) return; owner.uiBoundary = true; owner.uiBlocked = Main.LocalPlayer.mouseInterface || Main.mouseText;
+        }
         private static void AfterResources(bool __runOriginal)
-        { var owner = current; if (owner == null || !owner.inPass || !owner.uiBoundary) return; owner.resourceBoundary = __runOriginal; owner.uiBlocked |= Main.LocalPlayer.mouseInterface || Main.mouseText; }
+        {
+            var owner = current;
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            owner?.Trace(5, __runOriginal ? 1 : 0);
+#endif
+            if (owner == null || !owner.inPass || !owner.uiBoundary) return; owner.resourceBoundary = __runOriginal; owner.uiBlocked |= Main.LocalPlayer.mouseInterface || Main.mouseText;
+        }
         private static void Hover(Item[] __0, int __1, int __2)
         {
             var owner = current;
@@ -172,37 +251,90 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private static bool Right() { return current == null || (current.input.ReadOnlyMouseMask & 2) == 0; }
         private static void EndPass(bool __runOriginal)
         {
-            var owner = current; if (owner == null || !owner.inPass) return;
+            var owner = current;
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            owner?.Trace(7, __runOriginal ? 1 : 0);
+#endif
+            if (owner == null || !owner.inPass) return;
             // World item/NPC tooltips also set mouseText later. Only the actual
             // UI boundary, including life/mana hover, can veto a world target.
             owner.inPass = false; owner.completed = __runOriginal && owner.uiBoundary && owner.resourceBoundary && owner.Matches();
         }
         private static Exception PassFinally(Exception __exception)
-        { if (__exception != null && current != null) { current.inPass = current.completed = false; } return __exception; }
+        {
+            if (__exception != null && current != null) { current.inPass = current.completed = false; }
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            current?.Trace(8, __exception != null ? 1 : 0);
+#endif
+            return __exception;
+        }
         internal void Update(long currentTick)
         {
             tick = currentTick;
-            if (Busy && (tick > expires || Main.gameMenu || !input.IsFocused || !SessionMatches() || picking && CanPick != null && !CanPick())) { Cancel("未取得有效的新目标，点选或宣告已取消"); return; }
+            bool timedOut = preparingPlacement ? Stopwatch.GetTimestamp() >= placementDeadline : tick > expires;
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            if (Busy) Trace(9, (timedOut ? 1 : 0) | (Main.gameMenu ? 2 : 0) | (!input.IsFocused ? 4 : 0) | (!SessionMatches() ? 8 : 0));
+#endif
+            // Proof/pick leases use the outer clock. Once proof exists, only
+            // actual catalog cursor progress renews a separate monotonic stall
+            // lease: skipped outer Updates spend no preparation work allowance.
+            if (Busy && (timedOut || Main.gameMenu || !input.IsFocused || !SessionMatches() || picking && CanPick != null && !CanPick())) { Cancel("未取得有效的新目标，点选或宣告已取消"); return; }
             if (pending == 0 || !completed) return;
             int kind = pending; bool valid = Matches() && (kind == 1 ? CanPick == null || CanPick() : CanAnnounce != null && CanAnnounce()); TargetValue target = seenSlot ? hovered : uiBlocked ? null : frozen;
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            Trace(13, (valid ? 1 : 0) | (target != null ? 2 : 0) | (target?.Placement != null ? 4 : 0));
+#endif
             if (valid && target != null && target.Placement != null)
             {
-                if (!preparingPlacement) { preparingPlacement = true; expires = tick + 180; Feedback?.Invoke("正在准备物品对应资料；移动指针或 Esc 可取消"); }
-                if (input.Hotkeys.IsNew(27)) { Cancel("目标查询已取消"); return; }
+                bool firstPlacementStep = !preparingPlacement;
+                if (firstPlacementStep)
+                {
+                    preparingPlacement = true; placementDeadline = Stopwatch.GetTimestamp() + PlacementStallSeconds * Stopwatch.Frequency;
+                    Feedback?.Invoke("正在准备物品对应资料；移动指针或 Esc 可取消");
+                }
                 try
                 {
                     catalog.StepPlacement();
-                    if (!catalog.PlacementReady) return;
-                    valid = NativeTargetObservation.ResolvePlacement(target, catalog);
+                    if (!firstPlacementStep && placementGeneration != catalog.PlacementGeneration) valid = false;
+                    if (firstPlacementStep || catalog.PlacementProgress > placementProgress)
+                        placementDeadline = Stopwatch.GetTimestamp() + PlacementStallSeconds * Stopwatch.Frequency;
+                    placementProgress = catalog.PlacementProgress; placementGeneration = catalog.PlacementGeneration;
+                    if (valid && !catalog.PlacementReady)
+                    {
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+                        Trace(14, 0);
+#endif
+                        return;
+                    }
+                    if (valid) valid = NativeTargetObservation.ResolvePlacement(target, catalog);
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+                    Trace(14, valid ? 2 : 1);
+#endif
                 }
-                catch { valid = false; }
+                catch
+                {
+                    valid = false;
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+                    Trace(14, 3);
+#endif
+                }
             }
-            pending = 0; completed = false; frozen = hovered = null;
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            Trace(10, (valid ? 1 : 0) | (target != null ? 2 : 0) | (target?.Placement != null ? 4 : 0));
+#endif
+            pending = 0; preparingPlacement = completed = false; frozen = hovered = null;
             if (!valid || target == null) { Feedback?.Invoke("目标已变化或被界面遮挡，请重新操作"); if (kind == 1) PickCancelled?.Invoke(); return; }
             if (kind == 1) Picked?.Invoke(target); else Announced?.Invoke(target);
         }
         internal void Cancel(string message = null)
-        { bool returnPick = Picking; picking = rawPick = inPass = completed = false; pending = 0; frozen = hovered = null; if (message != null) Feedback?.Invoke(message); if (returnPick) PickCancelled?.Invoke(); }
+        {
+#if JMR_TARGET_GESTURE_DIAGNOSTIC
+            Trace(11);
+#endif
+            bool returnPick = Picking; picking = rawPick = inPass = completed = preparingPlacement = false; pending = 0; frozen = hovered = null; if (message != null) Feedback?.Invoke(message); if (returnPick) PickCancelled?.Invoke();
+        }
+        // Each observed native method can have Blueprint's independent owner.
+        // Retiring this lease removes only our own patches and request state.
         public void Dispose()
         { Ready = false; Cancel(); input.ClaimsReadOnlyGesture = null; foreach (var patch in patches) harmony.Unpatch(patch, HarmonyPatchType.All, Owner); patches.Clear(); if (ReferenceEquals(current, this)) current = null; }
     }

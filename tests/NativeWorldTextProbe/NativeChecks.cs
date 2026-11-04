@@ -14,6 +14,17 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "TargetGestureOriginal") return NativeViewOriginalChecks.Run(content, output, targets: true);
+            if (scope == "TargetGestureDiagnostic" || scope == "TargetGestureDiagnosticCandidate")
+            {
+                // Main's native static data requires Program.SavePath even
+                // without constructing a Game; keep it in this owned output.
+                Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user");
+                Directory.CreateDirectory(Terraria.Program.SavePath);
+                if (scope == "TargetGestureDiagnosticCandidate") NativeTargetDiagnosticChecks.Run(output, allowCandidate: true);
+                else NativeTargetDiagnosticChecks.Run(output, allowCandidate: false);
+                return 0;
+            }
             if(scope=="WorldGenPreviewVisual")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
