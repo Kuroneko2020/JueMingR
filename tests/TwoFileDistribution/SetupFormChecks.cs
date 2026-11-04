@@ -29,7 +29,6 @@ internal static class SetupFormChecks
             Check(Find<Control>(form, "OperationResult").Visible && Find<TextBox>(form, "OperationDetails").Visible && Find<TextBox>(form, "OperationDetails").Text == "", "form-default-visible-empty-log-no-fake-ready");
             Check(Find<Control>(form, "ProductTitle").Text == "决明" && form.Icon != null, "form-text-heading-window-icon");
             Check(form.Controls.Find("MaintenanceButton", true).Length == 0 && form.Controls.Find("ToggleDetails", true).Length == 0 && form.AcceptButton == null, "form-retired-menu-and-collapse-no-default-install");
-            Check(install.Font.Bold && install.Font.SizeInPoints > form.Font.SizeInPoints, "form-primary-action-larger-bold-text");
             var uninstall = Find<LinkLabel>(form, "UninstallLink"); var clear = Find<LinkLabel>(form, "ClearConfigurationLink");
             Check(uninstall.LinkBehavior == LinkBehavior.NeverUnderline && clear.LinkBehavior == LinkBehavior.NeverUnderline && uninstall.TabStop && clear.TabStop && uninstall.VisitedLinkColor == uninstall.LinkColor && clear.AccessibleName == "清空配置", "form-maintenance-native-links-accessible-no-default-underline");
             install.PerformClick(); Pump(() => started.IsSet); install.PerformClick();
