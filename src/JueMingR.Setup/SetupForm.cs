@@ -22,8 +22,8 @@ namespace JueMingR.Setup
         private readonly LinkLabel clear = MaintenanceLink("清空配置", "ClearConfigurationLink", 1);
         private readonly Label identityDivider = new Label { Text = "│", AutoSize = true, ForeColor = Color.Silver, Margin = new Padding(10, 0, 10, 0), TabStop = false };
         private readonly FlowLayoutPanel identities = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = Padding.Empty };
-        private readonly TableLayoutPanel resultPanel = new TableLayoutPanel { Name = "OperationResult", Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 12, 0, 12) };
-        private readonly TableLayoutPanel layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(26, 20, 26, 20), ColumnCount = 1, RowCount = 5, AutoScroll = true };
+        private readonly TableLayoutPanel resultPanel = new TableLayoutPanel { Name = "OperationResult", Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 8, 0, 8) };
+        private readonly TableLayoutPanel layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24, 16, 24, 8), ColumnCount = 1, RowCount = 5, AutoScroll = true };
         private readonly Timer checkDelay = new Timer { Interval = 350 };
         private readonly Func<string, SetupTargetState> inspect;
         private readonly Func<string, string, SetupResult> execute;
@@ -46,27 +46,27 @@ namespace JueMingR.Setup
             Text = "决明安装程序"; Name = "JueMingRSetup"; Font = new Font("Microsoft YaHei UI", 9.5F);
             titleFont = new Font(Font.FontFamily, 25F, FontStyle.Bold); labelFont = new Font(Font, FontStyle.Bold);
             ForeColor = Ink; BackColor = Color.FromArgb(247, 249, 248); AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(760, 450); MinimumSize = new Size(420, 390); StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(720, 400); MinimumSize = new Size(420, 350); StartPosition = FormStartPosition.CenterScreen;
             using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Icon")) Icon = new Icon(stream);
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             for (int i = 0; i < 5; i++) layout.RowStyles.Add(new RowStyle(i == 3 ? SizeType.Percent : SizeType.AutoSize, i == 3 ? 100 : 0));
 
-            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2, Margin = new Padding(0, 0, 0, 22) };
+            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2, Margin = new Padding(0, 0, 0, 14) };
             heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            heading.Controls.Add(new Label { Text = "决明", Name = "ProductTitle", AutoSize = true, Font = titleFont, ForeColor = Accent, Margin = new Padding(0, 0, 12, 12) }, 0, 0);
+            heading.Controls.Add(new Label { Text = "决明", Name = "ProductTitle", AutoSize = true, Font = titleFont, ForeColor = Accent, Margin = new Padding(0, 0, 12, 8) }, 0, 0);
             heading.Controls.Add(new Label { Text = "│", AutoSize = true, ForeColor = Color.Silver, Margin = new Padding(0, 14, 12, 0) }, 1, 0);
-            payloadVersion.Text = "正在读取…"; payloadVersion.ForeColor = Muted; payloadVersion.Margin = new Padding(0, 14, 0, 12); payloadVersion.TabIndex = 0; heading.Controls.Add(payloadVersion, 2, 0);
+            payloadVersion.Text = "正在读取…"; payloadVersion.ForeColor = Muted; payloadVersion.Margin = new Padding(0, 14, 0, 8); payloadVersion.TabIndex = 0; heading.Controls.Add(payloadVersion, 2, 0);
             var topLine = Separator(); heading.Controls.Add(topLine, 0, 1); heading.SetColumnSpan(topLine, 3); layout.Controls.Add(heading, 0, 0);
 
             var pathArea = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty, TabIndex = 1 };
             pathArea.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            pathArea.Controls.Add(new Label { Text = "游戏目录（Terraria）", AutoSize = true, Font = labelFont, Margin = new Padding(0, 0, 0, 8) });
+            pathArea.Controls.Add(new Label { Text = "游戏目录（Terraria）", AutoSize = true, Font = labelFont, Margin = new Padding(0, 0, 0, 6) });
             var pathRow = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
             pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             directory.Margin = new Padding(0, 0, 10, 0); pathRow.Controls.Add(directory, 0, 0); browse.Margin = Padding.Empty; browse.TabIndex = 1; browse.AccessibleName = "选择游戏目录";
             browse.AutoSize = false; browse.MinimumSize = Size.Empty; browse.Padding = Padding.Empty; pathRow.Controls.Add(browse, 1, 0); pathArea.Controls.Add(pathRow); layout.Controls.Add(pathArea, 0, 1);
 
-            var information = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 10, 0, 0), TabIndex = 2 };
+            var information = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 8, 0, 0), TabIndex = 2 };
             information.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             identity.ForeColor = installedIdentity.ForeColor = Muted; identity.Dock = installedIdentity.Dock = DockStyle.None;
             identity.Margin = installedIdentity.Margin = Padding.Empty; identity.TabIndex = 0; installedIdentity.TabIndex = 1;
@@ -79,7 +79,7 @@ namespace JueMingR.Setup
 
             var actions = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Margin = Padding.Empty, TabIndex = 4 };
             actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); actions.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            var bottomLine = Separator(); bottomLine.Margin = new Padding(0, 0, 0, 12); actions.Controls.Add(bottomLine, 0, 0); actions.SetColumnSpan(bottomLine, 2);
+            var bottomLine = Separator(); bottomLine.Margin = new Padding(0, 0, 0, 8); actions.Controls.Add(bottomLine, 0, 0); actions.SetColumnSpan(bottomLine, 2);
             var maintenanceLinks = new FlowLayoutPanel { Name = "MaintenanceLinks", AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty, Anchor = AnchorStyles.Left, TabIndex = 0 };
             maintenanceLinks.Controls.Add(uninstall); maintenanceLinks.Controls.Add(clear); install.TabIndex = 1; install.Margin = Padding.Empty; install.Anchor = AnchorStyles.Right;
             actions.Controls.Add(maintenanceLinks, 0, 1); actions.Controls.Add(install, 1, 1); layout.Controls.Add(actions, 0, 4); Controls.Add(layout);
@@ -258,7 +258,7 @@ namespace JueMingR.Setup
                 for (int i = 0; i < rows.Length; i++) if (i != 3) fixedHeight += rows[i];
                 Rectangle work = Screen.FromControl(this).WorkingArea;
                 int requiredHeight = SizeFromClientSize(new Size(0, fixedHeight + resultMinimum + resultPanel.Margin.Vertical)).Height;
-                MinimumSize = new Size(Math.Min(work.Width, (int)(420 * DeviceDpi / 96F)), Math.Min(work.Height, Math.Max((int)(390 * DeviceDpi / 96F), requiredHeight)));
+                MinimumSize = new Size(Math.Min(work.Width, (int)(420 * DeviceDpi / 96F)), Math.Min(work.Height, Math.Max((int)(350 * DeviceDpi / 96F), requiredHeight)));
                 if (Width > work.Width || Height > work.Height) Size = new Size(Math.Min(Width, work.Width), Math.Min(Height, work.Height));
                 if (Bottom > work.Bottom) Top = Math.Max(work.Top, work.Bottom - Height);
                 if (Right > work.Right) Left = Math.Max(work.Left, work.Right - Width);
