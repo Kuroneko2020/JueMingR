@@ -139,7 +139,7 @@ internal static class SetupServiceChecks
     private static void PresentationChecks()
     {
         string empty = Fresh("pair-empty");
-        Check(SetupTargetState.Read(empty).Pair == SetupPairState.NotInstalled, "state-no-pair");
+        Check(SetupTargetState.Read(empty).Pair == SetupPairState.NotInstalled && SetupTargetState.Read(empty).InstalledCaption == "当前未安装决明", "state-no-pair");
         File.WriteAllBytes(Path.Combine(empty, "Terraria.exe.config"), Foreign);
         Check(SetupTargetState.Read(empty).Pair == SetupPairState.NotInstalled, "state-foreign-config-no-r");
         string manual = Fresh("pair-manual"); File.WriteAllBytes(Path.Combine(manual, "JueMingR.dll"), payload.Dll); File.WriteAllBytes(Path.Combine(manual, "Terraria.exe.config"), payload.Config);

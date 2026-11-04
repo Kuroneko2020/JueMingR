@@ -29,7 +29,7 @@ namespace JueMingR.Setup
         private readonly Func<string, string, SetupResult> execute;
         private readonly Func<SetupVersionDisplay> readVersion;
         private readonly string emptyTargetPrompt;
-        private readonly Font titleFont, labelFont;
+        private readonly Font titleFont, labelFont, actionFont;
         private SetupTargetState target;
         private bool busy, checking, closing, resourcesDisposed, measuringLayout, versionStarted;
         private int targetGeneration;
@@ -45,6 +45,7 @@ namespace JueMingR.Setup
             emptyTargetPrompt = candidates.Length > 1 ? "找到多个游戏目录，请选择。" : "请先选择游戏目录，可输入路径或选择目录。";
             Text = "决明安装程序"; Name = "JueMingRSetup"; Font = new Font("Microsoft YaHei UI", 9.5F);
             titleFont = new Font(Font.FontFamily, 25F, FontStyle.Bold); labelFont = new Font(Font, FontStyle.Bold);
+            actionFont = new Font(Font.FontFamily, 11.5F, FontStyle.Bold); install.Font = actionFont;
             ForeColor = Ink; BackColor = Color.FromArgb(247, 249, 248); AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(720, 400); MinimumSize = new Size(420, 350); StartPosition = FormStartPosition.CenterScreen;
             using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Icon")) Icon = new Icon(stream);
@@ -114,7 +115,7 @@ namespace JueMingR.Setup
             {
                 resourcesDisposed = true; closing = true; targetGeneration++; checkDelay.Stop(); checkDelay.Dispose();
                 if (Icon != null) { Icon.Dispose(); Icon = null; }
-                titleFont.Dispose(); labelFont.Dispose(); Font.Dispose();
+                titleFont.Dispose(); labelFont.Dispose(); actionFont.Dispose(); Font.Dispose();
             }
             base.Dispose(disposing);
         }

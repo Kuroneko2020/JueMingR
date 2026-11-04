@@ -27,6 +27,7 @@ namespace JueMingR.Setup
         {
             get
             {
+                if (CanMaintain && Pair == SetupPairState.NotInstalled) return "当前未安装决明";
                 string value = !CanMaintain ? "无法确认" : Pair == SetupPairState.NotInstalled ? "未安装" : Pair == SetupPairState.Incomplete ? "安装不完整" : Pair == SetupPairState.Unknown ? "安装状态无法确认" :
                     !string.IsNullOrEmpty(InstalledVersionProblem) ? "读取失败" : string.IsNullOrWhiteSpace(InstalledVersion) || InstalledVersion == "0.0.0.0" ? "无法确认" : InstalledVersion;
                 return "已安装决明版本：" + value;
