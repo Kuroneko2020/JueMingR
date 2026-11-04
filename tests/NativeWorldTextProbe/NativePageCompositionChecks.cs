@@ -62,6 +62,7 @@ namespace NativeWorldTextProbe
             Call(state,"Navigate",1);Call(renderer,"Prepare",state,1200f,1200f,1f);prepare();MiscOrder(shell);
             NativeItemsHintChecks.Run(context);
             NativePageCompositionPickerInputChecks.Run(context);
+            NativeTargetCancellationChecks.RunF5Consumers(context);
             Call(shell,"CloseAndSubmitPosition");Console.WriteLine("PASS complete Items/Misc composition order, unchanged identities, final footer and stable layout work.");
         }
         private static void Input(object context, Action prepare)
