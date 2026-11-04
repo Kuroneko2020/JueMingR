@@ -126,6 +126,7 @@ internal static class SetupServiceChecks
         string expected = System.Diagnostics.FileVersionInfo.GetVersionInfo(dll).ProductVersion;
         var read = SetupVersionReader.Read(source, temporary);
         Check(read.Version == (string.IsNullOrWhiteSpace(expected) || expected == "0.0.0.0" ? null : expected) && (read.Version != null || read.Problem == "无法确认"), "version-reader-win32-product-version-or-explicit-unknown");
+        Check(read.Caption == (read.Version ?? "无法确认"), "version-reader-header-raw-value-without-display-prefix");
         Check(read.CleanupProblem == null && Directory.GetFileSystemEntries(temporary).Length == 0, "version-reader-owned-temporary-file-cleaned");
         string selectedCopy = Path.Combine(fixtureRoot, "selected-copy.dll"); File.Copy(dll, selectedCopy);
         using (new FileStream(selectedCopy, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { Check(true, "version-reader-selected-fixture-file-reopenable"); }

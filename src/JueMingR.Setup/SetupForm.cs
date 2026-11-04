@@ -55,7 +55,7 @@ namespace JueMingR.Setup
             heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             heading.Controls.Add(new Label { Text = "决明", Name = "ProductTitle", AutoSize = true, Font = titleFont, ForeColor = Accent, Margin = new Padding(0, 0, 12, 12) }, 0, 0);
             heading.Controls.Add(new Label { Text = "│", AutoSize = true, ForeColor = Color.Silver, Margin = new Padding(0, 14, 12, 0) }, 1, 0);
-            payloadVersion.Text = "待安装版本：正在读取…"; payloadVersion.ForeColor = Muted; payloadVersion.Margin = new Padding(0, 14, 0, 12); payloadVersion.TabIndex = 0; heading.Controls.Add(payloadVersion, 2, 0);
+            payloadVersion.Text = "正在读取…"; payloadVersion.ForeColor = Muted; payloadVersion.Margin = new Padding(0, 14, 0, 12); payloadVersion.TabIndex = 0; heading.Controls.Add(payloadVersion, 2, 0);
             var topLine = Separator(); heading.Controls.Add(topLine, 0, 1); heading.SetColumnSpan(topLine, 3); layout.Controls.Add(heading, 0, 0);
 
             var pathArea = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty, TabIndex = 1 };

@@ -10,7 +10,7 @@ namespace JueMingR.Setup
         internal string Version;
         internal string Problem;
         internal string CleanupProblem;
-        internal string Caption { get { return "待安装版本：" + (Version ?? Problem ?? "无法确认") + (string.IsNullOrEmpty(CleanupProblem) ? "" : Environment.NewLine + CleanupProblem); } }
+        internal string Caption { get { return (Version ?? Problem ?? "无法确认") + (string.IsNullOrEmpty(CleanupProblem) ? "" : Environment.NewLine + CleanupProblem); } }
     }
 
     internal static class SetupVersionReader

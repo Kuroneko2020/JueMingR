@@ -82,6 +82,7 @@ internal static class SetupFormChecks
                 Find<ComboBox>(form, "GameDirectory").Text = "B";
                 Pump(() => Find<LinkLabel>(form, "UninstallLink").Enabled);
                 Check(versionReads == 1 && Find<TextBox>(form, "InstalledIdentity").Text == "已安装决明版本：未安装" && Find<LinkLabel>(form, "ClearConfigurationLink").Enabled && !Find<Button>(form, "InstallButton").Enabled, "form-package-read-once-independent-target-and-maintenance-pair");
+                Check(Find<TextBox>(form, "PayloadVersion").Text == "0.0.0-dev+payload-different-from-installed" && Find<TextBox>(form, "PayloadVersion").AccessibleName == "待安装决明版本", "form-header-raw-product-version-with-accessible-meaning");
                 ActivateLink(Find<LinkLabel>(form, "UninstallLink"));
                 Pump(() => maintenanceCalls == 1 && Find<LinkLabel>(form, "UninstallLink").Enabled);
                 Check(Find<TextBox>(form, "OperationSummary").Text.Contains("无需处理") && Find<TextBox>(form, "PayloadVersion").Text.Contains("payload-different"), "form-noop-result-preserved-with-package-version");
