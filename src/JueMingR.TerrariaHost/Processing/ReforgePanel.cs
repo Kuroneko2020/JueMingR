@@ -36,7 +36,7 @@ namespace JueMingR.TerrariaHost.Processing
         private Matrix matrix;
         private Vector2 pointer;
         private Part armed;
-        private string message;
+        private string submitError,inputError;
         private long editRevision=-1,caretRevision=-1;
         private string composition;
         private float editWidth;
@@ -45,7 +45,6 @@ namespace JueMingR.TerrariaHost.Processing
         private long additionRevision=-1;
         private bool additionAvailable;
         private object additionCulture;
-        private ReforgeTargets.AdditionItemKey additionItem;
 #if DEBUG
         internal long LayoutBuilds,EditMeasurements;
         internal long AdditionValidations;
@@ -63,22 +62,31 @@ namespace JueMingR.TerrariaHost.Processing
             TextInput=new TextEditInput(this,new NotesClipboard(()=>Main.instance.Window.Handle),ime);
             var prior=shell.BeforeLeave;shell.BeforeLeave=p=>{if(prior!=null && !prior(p))return false;Suspend();return true;};
         }
-        private static TextEditBuffer NewDraft(){return new TextEditBuffer("",true,128,512,"词缀名称最多 128 个字");}
+        private static TextEditBuffer NewDraft(string text=""){return new TextEditBuffer(text,true,128,512,ReforgeTargets.InvalidNameHint);}
         public void PreserveUncommittedInput(TextEditBuffer editor){}
         public bool RequestFinish()
         {
             TextInput.FinishComposition(false);if(TextInput.HasComposition)return false;
-            if(!host.Reforge.Targets.Add(draft.Text,out message)){dirty=true;return false;}
-            editing=false;TextInput.Release(false);draft=NewDraft();dirty=true;return true;
+            // Validation belongs to the current draft, never a sticky submit
+            // message. Only an operation refused after validation is retained.
+            RefreshAddition();if(!additionReady)return false;
+            if(!host.Reforge.Targets.Add(draft.Text,out submitError)){dirty=true;return false;}
+            submitError=null;editing=false;TextInput.Release(false);draft=NewDraft();RetireEditFeedback();dirty=true;return true;
         }
-        public void CancelEdit(){editing=false;TextInput.Release(true);dirty=true;}
+        public void CancelEdit(){editing=false;TextInput.Release(true);RetireEditFeedback();dirty=true;}
         internal void BeforeInput(bool active){TextInput.BeforeSample(active && shell.Visible && shell.Page==1);}
         internal void ProcessInput(bool active,KeyboardState keys,Vector2 point,bool geometryCurrent,bool focused,bool blocked)
         {
             pointer=point;bool left=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,right=PlayerInput.MouseInfo.RightButton==ButtonState.Pressed;
             ConsumeLeft=leftTail;ConsumeRight=rightTail;OwnsPointer=false;
             bool on=active && focused && shell.Visible && shell.Page==1;
-            TextInput.AfterSample(on && !blocked,null,keys,focused);
+            var priorDraft=draft;long priorRevision=draft.Revision;
+            // Drain this field's prior input feedback before sampling, so a new
+            // clipboard failure in the SAME sample as committed text wins over
+            // retiring the old content's error. The shared input lifecycle stays intact.
+            TextInput.ClearError();TextInput.AfterSample(on && !blocked,null,keys,focused);
+            if(!ReferenceEquals(priorDraft,draft) || priorRevision!=draft.Revision)inputError=null;
+            if(editing && TextInput.Error!=null)inputError=TextInput.Error;
             if(on)RefreshAddition();
             if(!on || session!=host.Runtime.Generation)
             {Suspend();if(focused){if(!left)leftTail=false;if(!right)rightTail=false;}previousLeft=focused?left:true;return;}
@@ -101,7 +109,7 @@ namespace JueMingR.TerrariaHost.Processing
                 bool twice=clickPending && unchecked((uint)(now-lastClick))<=500;
                 lastClick=now;clickPending=!twice;
                 if(!twice || editing)return;
-                editing=true;TextInput.PrepareEditor();
+                RetireEditFeedback();editing=true;TextInput.PrepareEditor();
             }
             else if(part.Command==7){clickPending=false;return;}
             else if(part.Command==2){clickPending=false;RequestFinish();}
@@ -122,6 +130,9 @@ namespace JueMingR.TerrariaHost.Processing
         }
         internal void PrepareLayout(Matrix transform,float contentStart)
         {
+            // Refresh the execution explanation at the UI preparation boundary,
+            // using its item/list/language cache. Hint/Draw never clone or scan.
+            host.Reforge.Targets.HasTargets(Main.reforgeItem);
             RefreshAddition();
             matrix=transform;ready=true;var next=shell.Layout.Viewport.Offset(shell.X,shell.Y);
             bool rebuild=dirty || generation!=shell.Layout.Generation || skin!=renderer.Generation || revision!=host.Settings[2].Revision || available!=host.Controls(2) || session!=host.Runtime.Generation || start!=contentStart || view.X!=next.X || view.Y!=next.Y;
@@ -193,10 +204,10 @@ namespace JueMingR.TerrariaHost.Processing
         {logical.Add(new Part{Element=new F5Element(F5ElementKind.Button,rect,text,name==null?shell.Layout.TextSize(text,.7f):shell.Layout.DynamicTextSize(text,.7f),.7f,F5Command.None),Command=command,Name=name,Enabled=enabled});}
         private void RefreshAddition()
         {
-            string text=draft.Text,nextComposition=editing?TextInput.Composition:"";var item=ReforgeTargets.AdditionItemKey.Current();
+            string text=draft.Text,nextComposition=editing?TextInput.Composition:"";
             bool composing=editing && TextInput.HasComposition;
             var culture=Terraria.Localization.Language.ActiveCulture;long nextRevision=host.Settings[2].Revision;bool nextAvailable=host.Controls(2);
-            if(additionKnown && additionText==text && additionComposition==nextComposition && additionComposing==composing && additionRevision==nextRevision && additionAvailable==nextAvailable && ReferenceEquals(additionCulture,culture) && additionItem.Equals(item))return;
+            if(additionKnown && additionText==text && additionComposition==nextComposition && additionComposing==composing && additionRevision==nextRevision && additionAvailable==nextAvailable && ReferenceEquals(additionCulture,culture))return;
             // Eligibility changes revoke the old gesture without releasing the
             // text lease, caret or IME draft. Geometry changes only if visibility
             // changes; submission still ends composition and validates anew.
@@ -205,7 +216,7 @@ namespace JueMingR.TerrariaHost.Processing
             // owner even when the displayed composition string is empty.
             additionReady=!composing && host.Reforge.Targets.TryValidateAddition(text,out name,out additionReason);
             if(composing)additionReason=null;
-            additionKnown=true;additionText=text;additionComposition=nextComposition;additionComposing=composing;additionRevision=nextRevision;additionAvailable=nextAvailable;additionCulture=culture;additionItem=item;
+            additionKnown=true;additionText=text;additionComposition=nextComposition;additionComposing=composing;additionRevision=nextRevision;additionAvailable=nextAvailable;additionCulture=culture;
             if(was!=additionReady)dirty=true;
 #if DEBUG
             AdditionValidations++;
@@ -234,7 +245,8 @@ namespace JueMingR.TerrariaHost.Processing
                 if(p.Command==6)return F5HotkeyHints.Toggle;
                 if(p.Command==3)return "从名单移除「"+p.Name+"」";
                 if(p.Command==7)return null;
-                if(p.Command==1 || p.Command==2)return host.Error??host.Settings[2].Message??host.Reforge.Targets.Message??message??TextInput.Error??draft.Error??additionReason??"双击输入完整词缀名，按回车或点击添加。";
+                if(p.Command==1 || p.Command==2)return host.Error??host.Settings[2].Message??host.Reforge.Targets.Message??submitError??
+                    (!editing || TextInput.HasComposition?null:inputError??(draft.Error!=null?ReforgeTargets.InvalidNameHint:additionReason))??"双击输入词缀";
                 if(p.Element.Description!=null)return HostProcessing.Help[2];
             }
             return null;
@@ -272,7 +284,15 @@ namespace JueMingR.TerrariaHost.Processing
             });
         }
         private void ResetGesture(){armed=null;clickPending=false;}
-        internal void Suspend(){TextInput.Release(false);editing=false;ready=false;ResetGesture();OwnsPointer=false;dirty=true;Parts.Clear();additionKnown=false;additionItem=default(ReforgeTargets.AdditionItemKey);renderer.Dispose();}
+        private void RetireEditFeedback()
+        {
+            inputError=null;TextInput.ClearError();
+            if(draft.Error==null)return;
+            // A rejected edit is private to that edit cycle. Renew only its
+            // buffer identity, preserving the exact unsubmitted text/selection.
+            var old=draft;draft=NewDraft(old.Text);draft.MoveTo(old.Anchor);draft.MoveTo(old.Caret,true);
+        }
+        internal void Suspend(){TextInput.Release(false);editing=false;RetireEditFeedback();ready=false;ResetGesture();OwnsPointer=false;dirty=true;Parts.Clear();additionKnown=false;renderer.Dispose();}
         public void Dispose(){Suspend();}
     }
 }

@@ -9,6 +9,7 @@ namespace JueMingR.TerrariaHost.Processing
 {
     internal sealed class ReforgeTargets
     {
+        internal const string InvalidNameHint="需输入当前语言下存在的词缀";
         private readonly HostProcessing host;
         private readonly HashSet<int> valid=new HashSet<int>();
         private Item item;
@@ -28,17 +29,19 @@ namespace JueMingR.TerrariaHost.Processing
             Resolutions++;
 #endif
             item=current;type=current?.type??0;revision=settings.Revision;culture=Language.ActiveCulture;valid.Clear();Message=null;
-            if(current==null || current.IsAir || !current.CanHavePrefixes())return false;
+            if(current==null || current.IsAir)return false;
+            if(!current.CanHavePrefixes()){if(settings.Value.Names.Count!=0)Message="当前物品无法重铸。";return false;}
             Item plain=current.Clone();plain.ResetPrefix();
+            bool anyKnown=false;
             foreach(string name in settings.Value.Names)
             {
-                bool known=false,usable=false;
                 for(int id=1;id<Lang.prefix.Length;id++)if(NameEquals(name,Lang.prefix[id]?.Value))
-                {known=true;if(CanRoll(plain,id)){valid.Add(id);usable=true;}}
-                if(!known)Message="当前语言下找不到名单中的词缀，请修改名单。";
-                else if(!usable && Message==null)Message="名单中的部分词缀不适用于当前物品。";
+                {anyKnown=true;if(CanRoll(plain,id))valid.Add(id);}
             }
-            if(valid.Count==0 && settings.Value.Names.Count!=0 && Message==null)Message="名单中没有适用于当前物品的词缀。";
+            // The saved list is shared across items. Inapplicable members do
+            // not make a usable mixed list erroneous; only an empty reachable
+            // set blocks spending. Item/list/language identity owns this cache.
+            if(valid.Count==0 && settings.Value.Names.Count!=0)Message=anyKnown?"名单中没有适用于当前物品的词缀。":"当前语言下找不到名单中的词缀，请修改名单。";
             return valid.Count!=0;
         }
         internal bool Matches(Item current){return HasTargets(current) && valid.Contains(current.prefix);}
@@ -46,15 +49,16 @@ namespace JueMingR.TerrariaHost.Processing
         // the same check: a visible button is never a saved-command permission.
         internal bool TryValidateAddition(string input,out string name,out string reason)
         {
-            reason=null;name=(input??"").Trim();bool known=false,usable=false;
+            reason=null;name=(input??"").Trim();bool known=false;
             var s=host.Settings[2];
             if(!host.Controls(2)){reason="请稍后再试。";return false;}
-            if(name.Length==0 || name.Length>128 || name.Any(char.IsControl) || s.Value.Names.Count>=256){reason="词缀名称或名单长度超出范围。";return false;}
-            Item current=Main.reforgeItem,plain=current==null || current.IsAir?null:current.Clone();plain?.ResetPrefix();
-            for(int id=1;id<Lang.prefix.Length;id++)if(NameEquals(name,Lang.prefix[id]?.Value)){known=true;if(plain==null || CanRoll(plain,id))usable=true;}
-            if(!known){reason="请输入当前语言下的完整词缀名称。";return false;}
-            if(!usable){reason="这个词缀不适用于当前重铽物品。";return false;}
-            foreach(string existing in s.Value.Names)if(NameEquals(existing,name)){reason="名单中已有这个词缀。";return false;}
+            if(name.Length==0 || name.Length>128 || name.Any(char.IsControl)){reason=InvalidNameHint;return false;}
+            if(s.Value.Names.Count>=256){reason="词缀名单已满。";return false;}
+            // Adding configures a reusable target, not the current reforge slot.
+            // Reachability belongs exclusively to HasTargets at execution time.
+            for(int id=1;id<Lang.prefix.Length;id++)if(NameEquals(name,Lang.prefix[id]?.Value)){known=true;break;}
+            if(!known){reason=InvalidNameHint;return false;}
+            foreach(string existing in s.Value.Names)if(NameEquals(existing,name)){reason=InvalidNameHint;return false;}
             return true;
         }
         internal bool Add(string input,out string reason)
@@ -69,25 +73,5 @@ namespace JueMingR.TerrariaHost.Processing
         private static bool CanRoll(Item plain,int id)
         {float a,b,c,d,e,f,value;int crit,tag,armor;return plain.CanRollPrefix(id) && plain.TryGetPrefixStatMultipliersForItem(id,out a,out b,out c,out d,out e,out f,out crit,out tag,out armor,out value);}
 
-        // The .8 prefix readers depend on category/accessory/vanity and rounded
-        // damage/useAnimation/mana/knockBack, not only Item reference/type. A
-        // prefixed clone resets through Refresh, including the world variant.
-        // Keep one current draft key, never clones or prefix scans per Draw.
-        internal struct AdditionItemKey : IEquatable<AdditionItemKey>
-        {
-            private Item source;
-            private int type,stack,damage,animation,mana;
-            private byte prefix;
-            private float knockBack;
-            private bool accessory,vanity;
-            private object variant,selectedVariant;
-            internal static AdditionItemKey Current()
-            {
-                var p=Main.reforgeItem;if(p==null)return default(AdditionItemKey);
-                return new AdditionItemKey{source=p,type=p.type,stack=p.stack,prefix=p.prefix,damage=p.damage,animation=p.useAnimation,mana=p.mana,knockBack=p.knockBack,accessory=p.accessory,vanity=p.vanity,variant=p.Variant,selectedVariant=p.IsAir?null:Terraria.GameContent.Items.ItemVariants.SelectVariant(p.type)};
-            }
-            public bool Equals(AdditionItemKey other)
-            {return ReferenceEquals(source,other.source) && type==other.type && stack==other.stack && prefix==other.prefix && damage==other.damage && animation==other.animation && mana==other.mana && knockBack==other.knockBack && accessory==other.accessory && vanity==other.vanity && ReferenceEquals(variant,other.variant) && ReferenceEquals(selectedVariant,other.selectedVariant);}
-        }
     }
 }

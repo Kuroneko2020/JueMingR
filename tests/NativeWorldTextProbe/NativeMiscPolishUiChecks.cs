@@ -29,6 +29,7 @@ namespace NativeWorldTextProbe
                     Action prepare=()=>NativeProcessingUiChecks.Prepare(context,size[0],size[1],size[2]/100f);
                     SetDraft(ui,"");prepare();Require(!Parts(ui).Any(p=>Command(p)==2),"empty reforge draft has no Add hit region");
                     SetDraft(ui,"not-a-prefix");prepare();Require(!Parts(ui).Any(p=>Command(p)==2),"invalid reforge draft has no Add hit region");
+                    NativeQuickUiChecks.FinalHint(shell,Get(Parts(ui).Single(p=>Command(p)==1),"Element"),"双击输入词缀");
                     SetDraft(ui,prefix);long accepted=settings.AcceptedCommandId,revision=settings.Revision;prepare();
                     var add=Parts(ui).Single(p=>Command(p)==2);var field=Parts(ui).Single(p=>Command(p)==1);
                     var a=Rect(add);var f=Rect(field);
@@ -42,16 +43,15 @@ namespace NativeWorldTextProbe
                 }
                 SetDraft(ui,prefix);NativeProcessingUiChecks.Prepare(context,960,760,1);
                 Main.reforgeItem=new Item();Main.reforgeItem.SetDefaults(1);Main.reforgeItem.damage=0;
-                NativeProcessingUiChecks.Prepare(context,960,760,1);Require(!Parts(ui).Any(p=>Command(p)==2),"native rounded stat rejects an inapplicable damage prefix");
+                long itemScans=(long)Get(ui,"AdditionValidations");
+                NativeProcessingUiChecks.Prepare(context,960,760,1);Require(Parts(ui).Any(p=>Command(p)==2),"a complete shared target is addable even when inapplicable to the current item");
                 Main.reforgeItem.damage=10;NativeProcessingUiChecks.Prepare(context,960,760,1);
-                Require(Parts(ui).Any(p=>Command(p)==2),"same Item/type stat change invalidates the preview key");
+                Require(itemScans==(long)Get(ui,"AdditionValidations"),"slot stat changes do not rescan item-independent addition eligibility");
                 var current=Parts(ui).Single(p=>Command(p)==2);var oldPoint=Point(current);long before=settings.AcceptedCommandId;
                 Step(context,ui,false,oldPoint);Step(context,ui,true,oldPoint);Main.reforgeItem.damage=0;Step(context,ui,false,oldPoint);
-                Require(settings.AcceptedCommandId==before,"slot applicability change between press/release cannot save old Add");
-                Main.reforgeItem=new Item();SetDraft(ui,prefix);NativeProcessingUiChecks.Prepare(context,960,760,1);
-                current=Parts(ui).Single(p=>Command(p)==2);Step(context,ui,false,Point(current));Step(context,ui,true,Point(current));Step(context,ui,false,Point(current));
                 NativeQuickItemChecks.Until(()=>{settings.Poll();return !settings.Busy;});
-                Require(settings.Value.Names.SequenceEqual(new[]{prefix}),"actual Add click persists exactly one complete name through shared submit");
+                Require(settings.AcceptedCommandId>before && settings.Value.Names.SequenceEqual(new[]{prefix}),"real Add keeps the shared name across a slot applicability change and persists exactly once");
+                Main.reforgeItem=new Item();
                 SetDraft(ui,prefix);NativeProcessingUiChecks.Prepare(context,960,760,1);Require(!Parts(ui).Any(p=>Command(p)==2),"duplicate complete draft has no Add control");
                 var name=Parts(ui).First(p=>GetOptional(Get(p,"Element"),"Description")!=null);
                 NativeQuickUiChecks.FinalHint(shell,Get(name,"Element"),"按住重铸键直到名单内前缀停下(要按两下)");
@@ -59,7 +59,7 @@ namespace NativeWorldTextProbe
                 Require(ui.GetType().GetMethod("Hint",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(ui,bodyArgs)==null,"prefix card body has no extra hover text");
                 var cross=Parts(ui).Single(p=>Command(p)==3);var crossPoint=Point(cross);object[] crossArgs={crossPoint.X,crossPoint.Y,null,null};
                 Require((string)ui.GetType().GetMethod("Hint",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(ui,crossArgs)=="从名单移除「"+prefix+"」","overlapping delete corner retains full-name hint priority");
-                Console.WriteLine("PASS Misc polish reforge preview, paired geometry, exact hints, real click, no-save/stable cache, duplicate and same-object native applicability invalidation.");
+                Console.WriteLine("PASS Misc polish reforge preview, paired geometry, exact hints, real click, no-save/stable cache, duplicate and item-independent shared additions.");
             }
             finally{Main.reforgeItem=oldItem;NativeProcessingUiChecks.Save(settings,new ProcessingOptions());SetDraft(ui,"");}
         }
