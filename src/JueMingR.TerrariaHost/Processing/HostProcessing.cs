@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Processing
     {
         internal static readonly string[] Actions={"processing.bags","processing.extraction","processing.reforge"};
         internal static readonly string[] Names={"持续开袋","自动提炼","自动重铸"};
-        internal static readonly string[] Help={"按住shift长按右键点击匣子快速打开","靠近提炼机尝试自动提炼","按住重铸键直到名单的词缀停下"};
+        internal static readonly string[] Help={"按住shift长按右键点击匣子快速打开","靠近提炼机尝试自动提炼","按住重铸键直到名单内前缀停下(要按两下)"};
         internal readonly SingleFeatureRuntime Runtime;
         internal readonly HostItems Items;
         internal readonly HostInputState Input;

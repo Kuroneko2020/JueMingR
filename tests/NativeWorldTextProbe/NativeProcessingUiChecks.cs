@@ -1,10 +1,12 @@
 using System;
 using System.Collections;
+using System.IO;
 using System.Linq;
 using System.Runtime.Remoting.Messaging;
 using System.Runtime.Remoting.Proxies;
 using JueMingR.Features.Processing;
 using JueMingR.Features.Text;
+using JueMingR.Infrastructure.Storage;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -37,9 +39,8 @@ namespace NativeWorldTextProbe
             Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.W,Keys.Space));
             Require(!Main.blockInput && !PlayerInput.WritingText && Main.keyState.IsKeyDown(Keys.Space),"plain list leaves movement keyboard alone");
             var field=Parts(ui).First(p=>(int)Get(p,"Command")==1);
-            var add=Parts(ui).First(p=>(int)Get(p,"Command")==2);
             var on=Parts(ui).First(p=>(int)Get(p,"Command")==4);
-            Require(Y(field)==Y(add) && Y(field)==Y(on),"input, add and toggles share one row");
+            Require(!Parts(ui).Any(p=>(int)Get(p,"Command")==2),"blank draft has no visible or executable Add control");
             var hint=GetOptional(field,"Label");Require(hint!=null,"idle input hint has measured glyph layout");
             var hintRect=Get(hint,"Rect");var fieldRect=Get(Get(field,"Element"),"Rect");
             Require((float)Get(hintRect,"Width")<=(float)Get(fieldRect,"Width")-12 &&
@@ -51,8 +52,17 @@ namespace NativeWorldTextProbe
             string name=Lang.prefix[1].Value;
             Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(),name);
             Require(Main.blockInput && PlayerInput.WritingText && ((TextEditBuffer)Get(ui,"Editor")).Text==name,"only actual editor leases native keyboard and commits whole name");
+            prepare();var add=Parts(ui).Single(p=>(int)Get(p,"Command")==2);field=Parts(ui).Single(p=>(int)Get(p,"Command")==1);
+            Require(Y(field)==Y(add) && X(add)<X(field),"valid draft Add shares its field row on the left");
             ime.Composition="ni";Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.Enter),"\r");
             Require(settings.Value.Names.Count==0 && GetOptional(ui,"Editor")!=null,"composition Enter cannot add unfinished name");
+            prepare();Require(!Parts(ui).Any(p=>(int)Get(p,"Command")==2) && GetOptional(ui,"Editor")!=null && ((TextEditBuffer)Get(ui,"Editor")).Text==name,"synthetic IME composition hides Add without dropping its existing draft/editor");
+            ime.Composition="";ime.Candidates=true;Step(context,ui,false,new Vector2(-10,-10),new KeyboardState());prepare();
+            Require(!Parts(ui).Any(p=>(int)Get(p,"Command")==2) && (bool)Get(ui,"OwnsTextToken") && ((TextEditBuffer)Get(ui,"Editor")).Text==name,"candidate-only synthetic IME keeps its lease/draft and hides Add");
+            ime.Candidates=false;Step(context,ui,false,new Vector2(-10,-10),new KeyboardState());prepare();
+            add=Parts(ui).Single(p=>(int)Get(p,"Command")==2);var addPoint=Point(add);long beforeComposition=settings.AcceptedCommandId;
+            Step(context,ui,true,addPoint,new KeyboardState());ime.Candidates=true;Step(context,ui,false,addPoint,new KeyboardState());prepare();
+            Require(settings.AcceptedCommandId==beforeComposition && !Parts(ui).Any(p=>(int)Get(p,"Command")==2) && (bool)Get(ui,"OwnsTextToken"),"candidate-only IME revokes an old Add press without losing text ownership");ime.Candidates=false;
             ime.Composition="";Step(context,ui,false,new Vector2(-10,-10),new KeyboardState());Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.Enter),"\r");
             NativeQuickItemChecks.Until(()=>{settings.Poll();return !settings.Busy;});
             Require(settings.Value.Names.SequenceEqual(new[]{name}),"fresh Enter persists one complete target");
@@ -110,8 +120,90 @@ namespace NativeWorldTextProbe
             Require(GetOptional(ui,"Editor")==null && !(bool)Get(ui,"OwnsTextToken"),"higher popup yields editor and keyboard ownership");
             Save(settings,new ProcessingOptions());prepare();GroupGeometry(shell,ui);
             Require((float)Get(ui,"Height")==compactReforgeHeight,"clearing prefix content restores compact group and following layout");
+            NativeMiscPolishUiChecks.Processing(context);
+            ReforgeHints(context,ime);
             Call(state,"Close");Call(ui,"Suspend");Save(settings,new ProcessingOptions());
             Console.WriteLine("PASS G08 UI: physical editor/list controls, isolated IME boundary, whole-name persistence, stable height/measurement, movement keys and shared scroll.");
+        }
+        private static void ReforgeHints(object context,Ime ime)
+        {
+            var host=Get(context,"Processing");var shell=Get(context,"Shell");var ui=Get(shell,"ReforgeUi");var state=Get(shell,"State");
+            var slots=(ProcessingSettings[])Get(host,"Settings");var settings=slots[2];var oldItem=Main.reforgeItem;
+            Action prepare=()=>Prepare(context,960,760,1);
+            Action<string> hint=expected=>{prepare();NativeQuickUiChecks.FinalHint(shell,Get(Parts(ui).Single(p=>(int)Get(p,"Command")==1),"Element"),expected);};
+            Action<string> text=value=>{((TextEditBuffer)Get(ui,"Editor")).SelectAll();Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(),value);};
+            const string invalid="需输入当前语言下存在的词缀";
+            string first=Lang.prefix[1].Value,second=Lang.prefix[2].Value;
+            try
+            {
+                Main.reforgeItem=new Item();Call(ui,"CancelEdit");Save(settings,new ProcessingOptions());
+                hint("双击输入词缀");DoubleClick(context,ui);hint(invalid);
+                text("not-a-prefix");hint(invalid);
+                Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.Enter),"\r");hint(invalid);
+                text(first);hint("双击输入词缀");Require(Parts(ui).Any(p=>(int)Get(p,"Command")==2),"correcting a failed name retires its old submit error");
+                ((TextEditBuffer)Get(ui,"Editor")).SelectAll();Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.Back));hint(invalid);
+                ime.Composition="ni";Step(context,ui,false,new Vector2(-10,-10),new KeyboardState());hint("双击输入词缀");
+                ime.Composition="";ime.Candidates=true;Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.Enter),"\r");hint("双击输入词缀");
+                Require(settings.Value.Names.Count==0 && !Parts(ui).Any(p=>(int)Get(p,"Command")==2),"IME composition/candidates suppress both premature name errors and Add");
+                ime.Candidates=false;Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(),first);hint("双击输入词缀");
+                Require(Parts(ui).Any(p=>(int)Get(p,"Command")==2) && settings.Value.Names.Count==0,"confirmed whole IME text becomes addable without implicit submit");
+
+                text("not-a-prefix");var editor=(TextEditBuffer)Get(ui,"Editor");editor.MoveTo(1);editor.MoveTo(3,true);
+                Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.Escape),"\x1b");hint("双击输入词缀");
+                DoubleClick(context,ui);editor=(TextEditBuffer)Get(ui,"Editor");Require(editor.Text=="not-a-prefix" && editor.Anchor==1 && editor.Caret==3,"cancel/re-edit preserves the unsubmitted draft and selection");hint(invalid);
+                // Rejected buffer edits do not change its content revision. A new
+                // edit cycle must retire that rejection while preserving text/caret.
+                editor.SelectAll();Require(!editor.Insert(new string('x',129)),"oversized paste is rejected by the actual buffer transaction, not a fabricated oversized native key queue");hint(invalid);
+                int anchor=editor.Anchor,caret=editor.Caret;string kept=editor.Text;Call(ui,"CancelEdit");hint("双击输入词缀");DoubleClick(context,ui);
+                editor=(TextEditBuffer)Get(ui,"Editor");Require(editor.Text==kept && editor.Anchor==anchor && editor.Caret==caret,"retiring a rejected edit cannot reset the draft/caret");hint(invalid);
+                Call(state,"Navigate",0);Step(context,ui,false,new Vector2(-10,-10),new KeyboardState());Call(state,"Navigate",1);prepare();
+                Require(GetOptional(ui,"Editor")==null,"actual inactive-page input retires editing before returning to the page");hint("双击输入词缀");
+                DoubleClick(context,ui);text(first);hint("双击输入词缀");
+
+                var input=Get(ui,"TextInput");var clipField=input.GetType().GetField("clipboard",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);var oldClipboard=clipField.GetValue(input);
+                try
+                {
+                    clipField.SetValue(input,new FailingClipboard(clipField.FieldType).GetTransparentProxy());
+                    editor=(TextEditBuffer)Get(ui,"Editor");editor.SelectAll();
+                    Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.LeftControl,Keys.V),second);
+                    hint("无法粘贴：剪贴板不可用或内容过长。草稿未改动。");
+                    Require(((TextEditBuffer)Get(ui,"Editor")).Text==second,"same-sample text commit is kept while a NEW clipboard failure stays visible");
+                    Step(context,ui,false,new Vector2(-10,-10),new KeyboardState());text(first);hint("双击输入词缀");
+                }
+                finally{clipField.SetValue(input,oldClipboard);}
+
+                Call(ui,"CancelEdit");Save(settings,new ProcessingOptions(false,new[]{first}));prepare();DoubleClick(context,ui);text(first);hint(invalid);
+                Require(!Parts(ui).Any(p=>(int)Get(p,"Command")==2),"duplicate remains rejected");
+                Save(settings,new ProcessingOptions(false,Enumerable.Range(0,256).Select(i=>"retained-target-"+i)));text(second);hint("词缀名单已满。");
+                Require(!Parts(ui).Any(p=>(int)Get(p,"Command")==2),"list capacity keeps its own reason and still refuses addition");
+                Save(settings,new ProcessingOptions());Main.reforgeItem=new Item();Main.reforgeItem.SetDefaults(1);Main.reforgeItem.damage=0;text(Lang.prefix[5].Value);hint("双击输入词缀");
+                Require(Parts(ui).Any(p=>(int)Get(p,"Command")==2),"an inapplicable slot cannot veto adding a shared complete target");
+                Main.reforgeItem=new Item();Call(ui,"CancelEdit");
+
+                // Real document workers/files are isolated by this native scope's
+                // SavePath. Block the destination after a successful missing read.
+                foreach(bool protectedRead in new[]{false,true})
+                {
+                    string path=Path.Combine(Terraria.Program.SavePath,"hint-fault-"+Guid.NewGuid().ToString("N")+".json");
+                    if(protectedRead)File.WriteAllText(path,"{\"format\":\"JueMingR.Reforge\",\"version\":99,\"enabled\":false,\"names\":[]}");
+                    using(var fault=new ProcessingSettings(new AtomicFileDocument(path,65536),2))
+                    {
+                        NativeQuickItemChecks.Until(()=>{fault.Poll();return fault.Loaded;});slots[2]=fault;prepare();
+                        if(!protectedRead)
+                        {
+                            Directory.CreateDirectory(path);DoubleClick(context,ui);text(first);
+                            Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.Enter),"\r");
+                            NativeQuickItemChecks.Until(()=>{fault.Poll();return !fault.Busy;});
+                            Require(fault.CompletedCommandId>0 && !fault.CompletionSucceeded,"real save failure reaches the actual document worker");
+                        }
+                        Require(fault.Message!=null && (!protectedRead || fault.Protected),"save/protected-read failure remains a business error");
+                        hint(fault.Message);Call(ui,"CancelEdit");hint(fault.Message);Call(ui,"Suspend");prepare();hint(fault.Message);
+                    }
+                    slots[2]=settings;
+                }
+                Console.WriteLine("PASS Reforge final hints: idle/empty, invalid-to-valid, cancel/re-entry selection, page leave, duplicate/shared-target addition, IME confirmation, same-sample clipboard error, real save/protected-read failures.");
+            }
+            finally{slots[2]=settings;ime.Composition="";ime.Candidates=false;Main.reforgeItem=oldItem;Call(ui,"CancelEdit");Save(settings,new ProcessingOptions());}
         }
         private static void GroupGeometry(object shell,object ui)
         {
@@ -185,9 +277,16 @@ namespace NativeWorldTextProbe
         private sealed class Ime : RealProxy
         {
             internal string Composition="";
+            internal bool Candidates;
             internal Ime(Type contract):base(contract){}
             public override IMessage Invoke(IMessage message)
-            {var call=(IMethodCallMessage)message;object value=call.MethodName=="get_Composition"?(object)Composition:call.MethodName=="get_Candidates"?(object)false:null;return new ReturnMessage(value,null,0,call.LogicalCallContext,call);}
+            {var call=(IMethodCallMessage)message;object value=call.MethodName=="get_Composition"?(object)Composition:call.MethodName=="get_Candidates"?(object)Candidates:null;return new ReturnMessage(value,null,0,call.LogicalCallContext,call);}
+        }
+        private sealed class FailingClipboard : RealProxy
+        {
+            internal FailingClipboard(Type contract):base(contract){}
+            public override IMessage Invoke(IMessage message)
+            {var call=(IMethodCallMessage)message;bool paste=call.MethodName=="TryPaste";return new ReturnMessage(false,paste?new object[]{null}:null,paste?1:0,call.LogicalCallContext,call);}
         }
     }
 }

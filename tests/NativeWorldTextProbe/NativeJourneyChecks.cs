@@ -48,9 +48,14 @@ namespace NativeWorldTextProbe
                     NativeJourneyUiChecks.Run(context, graphics, output, reopenOnly);
                     object journey = Get(context, "Journey");
                     Check((bool)Call(journey, "SetEnabled", false), "UI completion returns the borrowed state");
+                    NativeJourneyMultiplayerChecks.Menu(context);
                     // The closeout scope reuses original preparation/UI input,
-                    // then stops before any copy/save/consumer/kill matrix.
+                    // plus the connected client/save-view ownership leaf,
+                    // then stops before the disk-save/consumer/kill matrix.
                     if (reopenOnly) return;
+                    // The pre-file disconnect/save matrix uses real disk and
+                    // independent readers; JourneyReopen keeps its narrow scope.
+                    NativeJourneyDisconnectSaveChecks.Run(context,content,output);
                     UseDuplicatedItem(context);
                     VerticalSave(context, content, output);
                     ConsumerChecks(context);
@@ -63,7 +68,7 @@ namespace NativeWorldTextProbe
             }, processing: true, shortFeedback: true);
             if (reopenOnly)
             {
-                Console.WriteLine("PASS JOURNEY REOPEN: real Shell Enable/reopen/Disable/binding, stable Persistence and selected power; no save/reader/kill/coexist matrix.");
+                Console.WriteLine("PASS JOURNEY REOPEN: real Shell Enable/reopen/Disable/binding, stable Persistence and selected power; connected native menu and save-view ownership; no disk-save/reader/kill/coexist matrix.");
                 return 0;
             }
             ReadInNewProcess(content, output);
@@ -88,6 +93,7 @@ namespace NativeWorldTextProbe
                 NativeHiddenEntryChecks.RevealForComposition(context);
                 ConfigureFiles(0, 0, "cpu-native"); Main.LocalPlayer.inventory[12].SetDefaults(ItemID.Torch); Main.LocalPlayer.inventory[12].stack = 19;
                 OffSaveAdmission(context, output);
+                NativeJourneyMultiplayerChecks.Cpu(context);
                 Console.WriteLine("JOURNEY OFF-100-reflective-probe-ms=" + ms.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "; includes test reflection; no FPS inference.");
             }, processing: true, shortFeedback: true);
             ReadInNewProcess(content, output);
@@ -637,7 +643,7 @@ namespace NativeWorldTextProbe
 
         private static void ThrowNativeMenuClose() { nativeMenuCloseFailures++; throw new IOException("owned full-reset native menu-close failure"); }
 
-        private static void ConfigureFiles(int playerMode, int worldMode, string name)
+        internal static void ConfigureFiles(int playerMode, int worldMode, string name)
         {
             string root = Path.Combine(Terraria.Program.SavePath, "composition"); Directory.CreateDirectory(root);
             Player p = Main.LocalPlayer; p.difficulty = (byte)playerMode; p.active = true; p.dead = false; p.name = "Journey " + name; p.itemAnimation = p.itemTime = 0;
@@ -652,7 +658,7 @@ namespace NativeWorldTextProbe
             Check(File.Exists(Main.ActivePlayerFileData.Path) && File.Exists(Main.ActiveWorldFileData.Path), "actual native local player and world files written");
             WriteManifest(output, name, playerMode, worldMode, world, player);
         }
-        private static void WriteManifest(string output, string name, int playerMode, int worldMode, byte[] world, byte[] player)
+        internal static void WriteManifest(string output, string name, int playerMode, int worldMode, byte[] world, byte[] player)
         {
             File.WriteAllLines(Path.Combine(output, "journey-save-" + name + ".txt"), new[] { Main.ActivePlayerFileData.Path, Main.ActiveWorldFileData.Path, playerMode.ToString(), worldMode.ToString(), Convert.ToBase64String(world), Convert.ToBase64String(player), Main.LocalPlayer.inventory[12].stack.ToString(), Convert.ToBase64String(CaptureTracker(Main.LocalPlayer)), Main.LocalPlayer.inventory[10].type.ToString(), Main.LocalPlayer.inventory[10].stack.ToString(), Main.LocalPlayer.name });
         }
@@ -721,7 +727,7 @@ namespace NativeWorldTextProbe
             return Process.Start(info);
         }
         private static string Quote(string value) { return "\"" + value.Replace("\"", "\\\"") + "\""; }
-        private static void ReadInNewProcess(string content, string output)
+        internal static void ReadInNewProcess(string content, string output)
         {
             using (Process child = StartChild(content, output, "JourneyRead"))
             {

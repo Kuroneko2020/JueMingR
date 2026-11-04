@@ -33,6 +33,18 @@ namespace NativeWorldTextProbe
                 if(size[1]==440)
                 {Call(state,"ScrollTo",80f);Call(shell,"PrepareMisc",true,matrix,screen,true);graphics.Image(Path.Combine(output,"processing-misc-short-scrolled.png"),draw,matrix,size[0],size[1]);}
             }
+            // Same original font/renderer, with an addable draft and a long
+            // list. The old all-prefix fixture could never expose valid Add.
+            Main.reforgeItem.TurnToAir();string addable=Lang.prefix[1].Value;
+            NativeProcessingUiChecks.Save(settings,new ProcessingOptions(false,settings.Value.Names.Where(n=>n!=addable)));
+            ui.GetType().GetField("draft",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(ui,new JueMingR.Features.Text.TextEditBuffer(addable,true,128,512,"词缀名称最多 128 个字"));
+            foreach(var size in new[]{new[]{960,760,100},new[]{1280,720,150}})
+            {
+                float scale=size[2]/100f;var matrix=Matrix.CreateScale(scale);var screen=new Vector2(size[0],size[1]);Call(state,"ScrollTo",0f);
+                NativeProcessingUiChecks.Prepare(context,size[0],size[1],scale);
+                Require(NativeProcessingUiChecks.Parts(ui).Any(p=>(int)Get(p,"Command")==2),"original-font valid-draft image includes the actual left Add control");
+                graphics.Image(Path.Combine(output,"processing-valid-add-"+size[0]+"-"+size[2]+".png"),()=>{Call(renderer,"Draw",state,matrix,false,false);Call(ui,"Draw",Get(shell,"drawKeyboard"));Call(Get(shell,"MiningUi"),"Draw",Get(shell,"drawKeyboard"));Call(Get(shell,"MiscUi"),"Draw",Get(shell,"drawKeyboard"),true);Call(Get(shell,"RecoveryUi"),"Draw",Get(shell,"drawKeyboard"),true);},matrix,size[0],size[1]);
+            }
             Call(state,"Navigate",0);var items=Get(shell,"items");Call(renderer,"Prepare",state,960f,760f,1f);Call(items,"Prepare",true,Matrix.Identity,new Vector2(960,760));
             graphics.LoadItemTextures(((System.Collections.IEnumerable)Get(items,"controls")).Cast<object>().Select(p=>(int)Get(p,"Type")).Where(t=>t>0));
             graphics.Image(Path.Combine(output,"processing-items.png"),()=>{Call(renderer,"Draw",state,Matrix.Identity,false,false);Call(items,"Draw",Get(shell,"drawKeyboard"));},Matrix.Identity,960,760);

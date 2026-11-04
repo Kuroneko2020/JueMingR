@@ -33,6 +33,9 @@ namespace JueMingR.TerrariaHost.Input
         { this.workspace = workspace; this.clipboard = clipboard; this.ime = ime ?? new NativeIme(); }
         internal string Composition { get; private set; } = "";
         internal string Error { get; private set; }
+        // A field may retire feedback at its own edit/content boundary. Other
+        // editors retain their existing error lifetime and input/IME ownership.
+        internal void ClearError() { Error = null; }
         internal bool Owned { get { return leased; } }
         // The native token is cleared by outer Updates that may skip input but
         // still Draw. Presentation may retain only this exact editor's lease.

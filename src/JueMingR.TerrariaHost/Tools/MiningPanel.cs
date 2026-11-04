@@ -28,6 +28,9 @@ namespace JueMingR.TerrariaHost.Tools
         private float bindingWidth;
         private F5Size bindingSize;
         private F5Element bindingDisplay;
+        private string measuredBinding;
+        private object measuredFont;
+        private float fieldWidth;
         internal Action<string,F5Rect> HotkeyClicked;
         internal bool OwnsPointer {get;private set;}
         internal bool ConsumeLeft {get;private set;}
@@ -41,13 +44,25 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal void PrepareLayout(Matrix transform,float bottom)
         {
-            var next=shell.Layout.Viewport.Offset(shell.X,shell.Y);bool build=panel.NeedsBuild || start!=bottom || generation!=shell.Layout.Generation || skin!=renderer.Generation || view.Width!=next.Width;
+            var next=shell.Layout.Viewport.Offset(shell.X,shell.Y);
+            string text=bindings==null?"暂不可用":!bindings.Loaded?"正在加载":bindings.Get(HostTools.SelectAction)?.DisplayText??(bindings.Error(HostTools.SelectAction)!=null?"绑定无效":bindings.Protected?"文件已保护":"双击设置快捷键");
+            object font=Terraria.GameContent.FontAssets.MouseText?.Value;
+            float desiredWidth=fieldWidth;
+            if(measuredBinding!=text || !ReferenceEquals(measuredFont,font) || generation!=shell.Layout.Generation || view.Width!=next.Width)
+            {
+                // Measure the actual binding outside the fixed-text cache; the
+                // teaching placeholder stays fully readable before long chords
+                // use the existing fitted display. The pair wraps as one unit.
+                float pairButton=Math.Max(30,shell.Layout.TextSize("快捷键",.7f).Width+16);
+                desiredWidth=Math.Min(next.Width-20-pairButton,Math.Max(shell.Layout.TextSize("双击设置快捷键",.7f).Width+12,shell.Layout.DynamicTextSize(text,.7f).Width+12));
+                measuredBinding=text;measuredFont=font;
+            }
+            bool build=panel.NeedsBuild || start!=bottom || generation!=shell.Layout.Generation || skin!=renderer.Generation || view.Width!=next.Width || fieldWidth!=desiredWidth;
             bool project=build || scroll!=shell.Scroll || view.X!=next.X || view.Y!=next.Y || matrix!=transform;
             matrix=transform;view=next;ready=true;
-            if(build)panel.Build(bottom,view.Width,shell.Layout.TextSize);
+            fieldWidth=desiredWidth;
+            if(build)panel.Build(bottom,view.Width,shell.Layout.TextSize,fieldWidth);
             if(project){armed=null;controls.Clear();elements.Clear();panel.Project(view,shell.Scroll,controls,elements);}
-            string text=bindings==null?"暂不可用":!bindings.Loaded?"正在加载":bindings.Get(HostTools.SelectAction)?.DisplayText??(bindings.Error(HostTools.SelectAction)!=null?"绑定无效":bindings.Protected?"文件已保护":"未设置");
-            object font=Terraria.GameContent.FontAssets.MouseText?.Value;
             if(project || bindingText!=text || !ReferenceEquals(bindingFont,font))
             {
                 bindingDisplay=null;

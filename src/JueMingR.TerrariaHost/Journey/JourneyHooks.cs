@@ -71,6 +71,9 @@ namespace JueMingR.TerrariaHost.Journey
                 Patch(harmony, Method(typeof(ItemsSacrificedUnlocksTracker), "ForEachItemWithResearchProgress", typeof(Action<int>)), "Enumerate");
                 Patch(harmony, Method(typeof(ItemsSacrificedUnlocksTracker), "TryGetSacrificeNumbers", typeof(int), typeof(int).MakeByRefType(), typeof(int).MakeByRefType()), "Numbers");
                 Patch(harmony, Method(typeof(ItemsSacrificedUnlocksTracker), "GetSacrificeCount", typeof(int)), "Count");
+                // Freeze before vanilla waits for IOLock or runs pre-file work.
+                // ProtectedInvoke remains synchronous on this same save thread.
+                Patch(harmony, Method(typeof(Player), "SavePlayer", typeof(PlayerFileData), typeof(bool), typeof(bool)), "BeginPlayerSave", "EndSave");
                 Patch(harmony, Method(typeof(Player), "InternalSavePlayerFile", typeof(PlayerFileData)), "BeginPlayerSave", "EndSave");
                 Patch(harmony, Method(typeof(WorldFile), "SaveWorld_Version2", typeof(BinaryWriter)), "BeginWorldSave", "EndSave");
                 Patch(harmony, Method(typeof(CreativePowerManager), "SaveToPlayer", typeof(Player), typeof(BinaryWriter)), "SavePlayerPowers");
@@ -105,7 +108,8 @@ namespace JueMingR.TerrariaHost.Journey
         private static void Qualify(Harmony harmony, Type type, string name, Type[] args, bool world)
         {
             var method = Method(type, name, args);
-            string patch = type == typeof(Player) && name == "ResetEffects" ? "LocalWorldRead" : world ? "WorldRead" : "PlayerRead";
+            string patch = type == typeof(Player) && name == "ResetEffects" ? "LocalWorldRead" :
+                type == typeof(Main) && name == "UpdateCreativeGameModeOverride" ? "DifficultyWorldRead" : world ? "WorldRead" : "PlayerRead";
             Apply(harmony, method, transpiler: new HarmonyMethod(typeof(JourneyHooks), patch));
         }
         private static void Apply(Harmony harmony, MethodInfo method, HarmonyMethod prefix = null, HarmonyMethod transpiler = null, HarmonyMethod finalizer = null)
@@ -133,10 +137,14 @@ namespace JueMingR.TerrariaHost.Journey
             if (found != 1) throw new InvalidOperationException("Journey player eligibility read count: " + found);
         }
         private static IEnumerable<CodeInstruction> WorldRead(IEnumerable<CodeInstruction> instructions)
+        { return ReadWorld(instructions, "WorldEligible"); }
+        private static IEnumerable<CodeInstruction> DifficultyWorldRead(IEnumerable<CodeInstruction> instructions)
+        { return ReadWorld(instructions, "DifficultyWorldEligible"); }
+        private static IEnumerable<CodeInstruction> ReadWorld(IEnumerable<CodeInstruction> instructions, string replacementName)
         {
             int found = 0;
             MethodInfo original = AccessTools.PropertyGetter(typeof(Main), "IsJourneyMode");
-            MethodInfo replacement = Method(typeof(JourneyHooks), "WorldEligible");
+            MethodInfo replacement = Method(typeof(JourneyHooks), replacementName);
             foreach (var instruction in instructions)
             {
                 if (instruction.Calls(original)) { instruction.operand = replacement; found++; }
@@ -147,6 +155,11 @@ namespace JueMingR.TerrariaHost.Journey
         private static byte Difficulty(Player player)
         { return owner != null && owner.OwnsPlayer(player) ? (byte)3 : player.difficulty; }
         private static bool WorldEligible() { return Main.IsJourneyMode || owner != null && owner.IsActive; }
+        // Ordinary servers also sync the native reset difficulty cache (0 ->
+        // x0.5), whose effect is normally gated off. Opening a client menu must
+        // not activate it; network difficulty keeps the native world identity.
+        // Native slider requests/permissions remain available and unchanged.
+        private static bool DifficultyWorldEligible() { return Main.netMode == 1 ? Main.IsJourneyMode : WorldEligible(); }
         private static bool LocalWorldEligible(Player player)
         { return Main.IsJourneyMode || owner != null && owner.OwnsPlayer(player); }
         private static IEnumerable<CodeInstruction> LocalWorldRead(IEnumerable<CodeInstruction> instructions)
@@ -232,18 +245,24 @@ namespace JueMingR.TerrariaHost.Journey
             internal readonly SaveView Parent;
             internal readonly JourneyPowers Powers;
             internal readonly Player Player;
+            internal readonly PlayerFileData PlayerFile;
             internal readonly bool World;
             internal bool Ended;
-            internal SaveView(JourneyPowers powers, Player player, bool world)
-            { Parent = save; Powers = powers; Player = player; World = world; }
+            internal SaveView(JourneyPowers powers, PlayerFileData playerFile, bool world)
+            { Parent = save; Powers = powers; PlayerFile = playerFile; Player = playerFile?.Player; World = world; }
         }
         private static void BeginPlayerSave(PlayerFileData playerFile, out SaveView __state)
         {
             lock (saveAdmissionGate)
             {
-                JourneyPowers captured = owner?.Persistence;
+                // Same-file nested serializers inherit the outer save's exact
+                // A view, including an OFF/null view. Do not late-capture B after
+                // disconnect/retirement/re-enable while the original save waits.
+                SaveView enclosing = save;
+                while (enclosing != null && (enclosing.World || !ReferenceEquals(enclosing.PlayerFile, playerFile) || !ReferenceEquals(enclosing.Player, playerFile.Player))) enclosing = enclosing.Parent;
+                JourneyPowers captured = enclosing != null ? enclosing.Powers : owner?.Persistence;
                 if (captured != null && (!ReferenceEquals(playerFile, captured.PlayerFile) || !ReferenceEquals(playerFile.Player, captured.Player))) captured = null;
-                __state = new SaveView(captured, playerFile.Player, false); save = __state;
+                __state = new SaveView(captured, playerFile, false); save = __state;
                 if (captured == null) Volatile.Write(ref unprotectedSaves, unprotectedSaves + 1);
             }
         }
@@ -252,7 +271,10 @@ namespace JueMingR.TerrariaHost.Journey
             lock (saveAdmissionGate)
             {
                 JourneyPowers captured = owner?.Persistence;
-                if (captured != null && !ReferenceEquals(Main.ActiveWorldFileData, captured.WorldFile)) captured = null;
+                // Connected worlds have no client-owned persistent baseline.
+                // Keep the native world's current powers even if a serializer
+                // runs in the same process; only the local player is borrowed.
+                if (captured != null && (captured.Multiplayer || !ReferenceEquals(Main.ActiveWorldFileData, captured.WorldFile))) captured = null;
                 __state = new SaveView(captured, null, true); save = __state;
                 if (captured == null) Volatile.Write(ref unprotectedSaves, unprotectedSaves + 1);
             }

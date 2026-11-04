@@ -47,9 +47,10 @@ namespace NativeWorldTextProbe
             foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})watch.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeToolExecutionChecks),nameof(SkipOutlet)));
             foreach(string name in new[]{"ItemCheck_UseMiningTools","PlaceThing_Tiles","ItemCheck_CatchCritters"})watch.Patch(typeof(Player).GetMethod(name,Flags),postfix:new HarmonyMethod(typeof(NativeToolExecutionChecks),nameof(Consumed)));
             watch.Patch(typeof(Player).GetMethod("ItemCheck_CatchCritters",Flags),postfix:new HarmonyMethod(typeof(NativeToolExecutionChecks),nameof(Caught)));
-            var failures=new List<string>();
+            var failures=new List<string>();Exception originalFailure=null;
             try
             {
+                NativeHerbMovementChecks.Run(context,host,input);
                 foreach(bool smart in new[]{false,true})foreach(int empty in new[]{0,1,3})
                 {
                     foreach(int tool in new[]{ItemID.StaffofRegrowth,ItemID.AcornAxe})foreach(int slot in new[]{0,12})
@@ -74,7 +75,13 @@ namespace NativeWorldTextProbe
                 NativeToolWaitChecks.Run(context,host,input,release);
                 Console.WriteLine("PASS G09 full Player.Update/ItemCheckWrapped: true automatic first hit, continuous effects, unsampled outer updates, focused retention and safety cancellation"+(graphics==null?"; texture-free CPU cadence, capture not run.":"; three real net textures, native rabbit AI from both sides and actual catch output."));
             }
-            finally{for(int i=0;i<3;i++)NativeToolsChecks.SetMode(host,i,0);foreach(var method in watch.GetPatchedMethods().ToArray())watch.Unpatch(method,HarmonyPatchType.All,watch.Id);}
+            catch(Exception error){originalFailure=error;Console.WriteLine("FAIL full native execution original: "+error);throw;}
+            finally
+            {
+                try{for(int i=0;i<3;i++)NativeToolsChecks.SetMode(host,i,0);}
+                catch(Exception cleanup){Console.WriteLine("FAIL full native execution cleanup: "+cleanup);if(originalFailure==null)throw;}
+                finally{foreach(var method in watch.GetPatchedMethods().ToArray())watch.Unpatch(method,HarmonyPatchType.All,watch.Id);}
+            }
         }
         private static bool SkipOutlet(){return false;}
         private static void MaterialsViewing(object context,object host,object input)
@@ -198,16 +205,17 @@ namespace NativeWorldTextProbe
             }
             finally{Call(use,"Retire");p.direction=savedDirection;Main.SmartCursorWanted_Mouse=savedSmartMouse;Main.SmartCursorWanted_GamePad=savedSmartPad;Sample(context,input,new Vector2(480,540),false);}
         }
-        internal static void Sample(object context,object input,Vector2 world,bool held)
+        internal static void Sample(object context,object input,Vector2 world,bool held,int movement=0)
         {
             Call(input,"BeginUpdate");
             Vector2 pixel=Vector2.Transform(world-Main.screenPosition,Main.GameViewMatrix.ZoomMatrix);
             PlayerInput.MouseInfo=new MouseState((int)pixel.X,(int)pixel.Y,0,held?ButtonState.Pressed:ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released);
             var tokens=new List<string>();if(held)tokens.Add("Mouse1");PlayerInput.Triggers.Reset();Call(input,"AfterNativeMouse",tokens);
+            if(movement!=0)tokens.Add(movement<0?"A":"D");
             foreach(string token in tokens)PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].Processkey(PlayerInput.Triggers.Current,token,InputMode.Keyboard);
             PlayerInput.Triggers.Update();Main.mouseLeft=PlayerInput.Triggers.Current.MouseLeft;Main.mouseRight=false;
             PlayerInput.MouseX=(int)pixel.X;PlayerInput.MouseY=(int)pixel.Y;PlayerInput.UpdateMainMouse();PlayerInput.CacheZoomableValues();
-            Main.oldKeyState=Main.keyState;Main.keyState=new KeyboardState();Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");Call(Get(context,"Shell"),"ProcessInput");
+            Main.oldKeyState=Main.keyState;Main.keyState=movement==0?new KeyboardState():new KeyboardState(movement<0?Keys.A:Keys.D);Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");Call(Get(context,"Shell"),"ProcessInput");
             PlayerInput.SetZoom_World();
         }
         internal static void Outer(object context,object input,int count)

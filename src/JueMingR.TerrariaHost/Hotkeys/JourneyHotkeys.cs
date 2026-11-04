@@ -18,7 +18,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         {
             this.access = access;
             registration = registry.CreateDynamicOwner("journey.");
-            action = new[] { new HotkeyAction(JourneyControls.ActionId, "旅行菜单", HotkeyContext.SinglePlayer,
+            action = new[] { new HotkeyAction(JourneyControls.ActionId, "旅行菜单", HotkeyContext.Gameplay,
                 () => access != null && access.IsUnlocked && (owner.IsActive || owner.CanEnable), toggle,
                 () => access != null && access.IsUnlocked) };
             Refresh();

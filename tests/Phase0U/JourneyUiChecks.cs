@@ -71,7 +71,7 @@ namespace Terraria
             }
             Require(buttons == 2 && journeyName != null && merchantName != null && journeyName.Rect.Y > merchantName.Rect.Y, "two real commands form the row next to merchant test");
             Require(Has(layout, "开启") && Has(layout, "关闭") && !Has(layout, "打开"), "both layout paths retain Enable/Disable without an Open element or hitbox");
-            Require(journeyName.Description != null && journeyName.Description.Text == "单人临时使用原版旅行菜单", "name hover carries exact product description");
+            Require(journeyName.Description != null && journeyName.Description.Text == "临时使用原版旅行菜单；联机效果由原版与服务器决定。", "name hover carries exact product description");
             var binding = Find(layout, JourneyControls.ActionId);
             Require(binding != null && binding.Kind == F5ElementKind.Hotkey && binding.Command == F5Command.None, "shared binding slot does not execute business");
             int generation = layout.Generation, measurements = layout.MeasurementCount;

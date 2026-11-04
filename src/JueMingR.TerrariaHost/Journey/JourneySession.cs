@@ -30,14 +30,18 @@ namespace JueMingR.TerrariaHost.Journey
             {
                 if (!ready || state.Failed) return "旅行菜单暂不可用。";
                 if (!access.IsUnlocked) return "旅行菜单尚未解锁。";
-                if (!runtime.IsSessionActive || Main.gameMenu || WorldGen.isGeneratingOrLoadingWorld || Main.netMode != 0 || Main.ServerSideCharacter)
-                    return "旅行菜单仅限进入世界后的单人游戏。";
+                if (!runtime.IsSessionActive || Main.gameMenu || WorldGen.isGeneratingOrLoadingWorld)
+                    return "请先进入世界并等待加载完成。";
+                if (Main.ServerSideCharacter) return "旅行菜单暂不支持服务端角色。";
                 var player = Main.LocalPlayer;
                 if (player == null || !player.active || Main.ActivePlayerFileData == null || Main.ActiveWorldFileData == null ||
                     !ReferenceEquals(Main.ActivePlayerFileData.Player, player)) return "角色或世界尚未就绪。";
                 // Cloud providers are left untouched. This candidate admits
                 // local files only until a real provider's output is verified.
-                if (Main.ActivePlayerFileData.IsCloudSave || Main.ActiveWorldFileData.IsCloudSave) return "旅行菜单暂不支持云存档。";
+                // A connected world's descriptor comes from vanilla's world
+                // packet, not a local file/provider owned by this client.
+                if (Main.ActivePlayerFileData.IsCloudSave || Main.netMode == 0 && Main.ActiveWorldFileData.IsCloudSave)
+                    return "旅行菜单暂不支持云存档。";
                 if (!IsActive && JourneyHooks.UnprotectedSaveInFlight) return "正在保存，请稍后开启旅行菜单。";
                 if (player.dead || Main.blockInput || Main.CreativeMenu.Blocked) return "请先结束当前交互。";
                 return null;
@@ -121,11 +125,21 @@ namespace JueMingR.TerrariaHost.Journey
             // Revoke read-side admission first. Existing save contexts already
             // own immutable substreams and survive this reference retirement.
             state.End();
-            bool same = ReferenceEquals(Main.ActiveWorldFileData, saved.WorldFile) && ReferenceEquals(Main.LocalPlayer, saved.Player);
-            bool closed = !same || CloseMenu();
+            bool same = saved.MatchesPowerContext;
+            // A reused local Player still owns its research slot after a
+            // connection edge. Close that old window, but never return its
+            // slot to a different Player. Personal file protection is separate
+            // from restoring world controls against the strict endpoint context.
+            bool samePlayer = ReferenceEquals(Main.LocalPlayer, saved.Player) && ReferenceEquals(Main.ActivePlayerFileData, saved.PlayerFile);
+            bool closed = !samePlayer || CloseMenu();
             try
             {
                 if (restore && same) saved.Restore();
+                else if (samePlayer)
+                {
+                    if (restore) saved.RestorePlayer();
+                    saved.RetirePendingTargets();
+                }
                 JourneyResearch.InvalidateMenu();
                 if (!closed)
                 {
@@ -144,8 +158,7 @@ namespace JueMingR.TerrariaHost.Journey
         private bool MatchesCurrent()
         {
             var saved = Volatile.Read(ref baseline);
-            return saved != null && runtime.IsSessionActive && generation == runtime.Generation && !Main.gameMenu && Main.netMode == 0 &&
-                ReferenceEquals(Main.LocalPlayer, saved.Player) && ReferenceEquals(Main.ActiveWorldFileData, saved.WorldFile);
+            return saved != null && runtime.IsSessionActive && generation == runtime.Generation && !Main.gameMenu && saved.MatchesPowerContext;
         }
         internal bool OwnsPlayer(Player player) { return IsActive && ReferenceEquals(player, baseline.Player); }
         internal bool OwnsTracker(Terraria.GameContent.Creative.ItemsSacrificedUnlocksTracker tracker)
@@ -156,8 +169,8 @@ namespace JueMingR.TerrariaHost.Journey
         internal void BeforeNativeReset(bool playerOnly)
         {
             // ResetDataForNewPlayer (also used by vanilla Deserialize/clone)
-            // does not reset world powers. Return those borrowed controls before
-            // retiring their baseline, while the old object still owns them.
+            // does not reset world powers. Return single-player borrowed world
+            // controls before retirement; connected shared controls stay current.
             // Full world Reset replaces all powers itself; writing an old world
             // baseline across that load boundary would be the wrong lifetime.
             Stop(playerOnly);

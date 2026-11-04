@@ -48,16 +48,18 @@ namespace Terraria
                 JourneyUiChecks.Require(registry.Revision == unlockedRevision && storage.Writes == 0, "unlocked stable updates do not re-register or save");
                 keys[74] = false; input.Update(keys, true); keys[74] = true; input.Update(keys, true);
                 bindings.Dispatch(input, HotkeyContext.Multiplayer, true);
-                JourneyUiChecks.Require(owner.ToggleCalls == 0, "Journey action stays single-player only");
-                bindings.Dispatch(input, HotkeyContext.SinglePlayer, true);
-                JourneyUiChecks.Require(owner.ToggleCalls == 1 && owner.IsActive && owner.IsMenuOpen, "unlocked saved binding calls real toggle command boundary");
+                JourneyUiChecks.Require(owner.ToggleCalls == 1 && owner.IsActive && owner.IsMenuOpen, "unlocked saved binding reaches the same owner in multiplayer");
                 owner.Ready = false;
                 keys[74] = false; input.Update(keys, true); keys[74] = true; input.Update(keys, true);
-                bindings.Dispatch(input, HotkeyContext.SinglePlayer, true);
+                bindings.Dispatch(input, HotkeyContext.Multiplayer, true);
                 JourneyUiChecks.Require(owner.ToggleCalls == 2 && !owner.IsActive, "loss of enable readiness never blocks explicit close");
                 keys[74] = false; input.Update(keys, true); keys[74] = true; input.Update(keys, true);
                 bindings.Dispatch(input, HotkeyContext.SinglePlayer, true);
                 JourneyUiChecks.Require(owner.ToggleCalls == 2, "not-ready OFF state cannot enable");
+                owner.Ready = true;
+                keys[74] = false; input.Update(keys, true); keys[74] = true; input.Update(keys, true);
+                bindings.Dispatch(input, HotkeyContext.SinglePlayer, true);
+                JourneyUiChecks.Require(owner.ToggleCalls == 3 && owner.IsActive, "single-player binding retains the same toggle behavior");
             }
         }
         private static void CheckLockedConflict()

@@ -74,7 +74,11 @@ namespace JueMingR.TerrariaHost.Tools
         }
         internal ToolIntent Choose(Player p)
         {
-            if(host.Mode(1)==0 || !host.Admit(p,false) || host.Input.Frame<nextProbe)return null;
+            if(host.Mode(1)==0 || !host.Admit(p,false))return null;
+            // The cadence bounds empty-field exploration, not a candidate
+            // already discovered by the normal movement/range observation.
+            // Tool identity and live target eligibility are still checked below.
+            if(host.Input.Frame<nextProbe && Field.Count==0)return null;
             // Only capture owns the explicit rod-borrow/recast contract.
             // Harvest and seed uses must not silently end an ordinary cast.
             if(p.HeldItem.fishingPole>0 && FishingBorrow.HasBobber(p))return null;
@@ -113,14 +117,20 @@ namespace JueMingR.TerrariaHost.Tools
             var intent=new ToolIntent{Kind=ToolKind.Harvest,Slot=tool};
             intent.Target=new Vector2(bx*16+8,by*16+8);
             intent.Valid=()=>host.Mode(1)!=0 && bx>=0 && !Unknown(bx,by) && Harvestable(p,source,bx,by,style);
-            intent.Refresh=()=>
+            intent.Readiness=()=>
             {
-                if(host.Mode(1)==0 || !IsTool(source))return false;
+                if(host.Mode(1)==0 || !IsTool(source))return ToolReadiness.Invalid;
                 Field.Observe(p,source,host.Tick);
-                if(intent.Valid())return true;
+                if(intent.Valid())return ToolReadiness.Ready;
                 Field.Reject(bx,by);
-                if(!FindTarget(p,source,out bx,out by,out style))return false;
-                intent.Target=new Vector2(bx*16+8,by*16+8);return true;
+                if(FindTarget(p,source,out bx,out by,out style))
+                {intent.Target=new Vector2(bx*16+8,by*16+8);return ToolReadiness.Ready;}
+                // Walking can exhaust currently reachable plants before the next
+                // column enters range. Keep only the current native animation:
+                // Pending submits neutral input and cannot consume the stale
+                // target. A new legal plant resumes this lease immediately;
+                // an empty animation boundary retires it instead of idling.
+                return p.itemAnimation>0?ToolReadiness.Pending:ToolReadiness.Invalid;
             };
             intent.Completed=(started,unknown)=>{if(unknown && bx>=0)HoldUnknown(bx,by);};
             return intent;

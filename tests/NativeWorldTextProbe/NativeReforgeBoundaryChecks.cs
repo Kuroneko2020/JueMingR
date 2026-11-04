@@ -17,6 +17,7 @@ namespace NativeWorldTextProbe
             var p=Main.LocalPlayer;var owner=Get(host,"Reforge");var targets=Get(owner,"Targets");var settings=((ProcessingSettings[])Get(host,"Settings"))[2];
             Main.playerInventory=Main.InReforgeMenu=true;p.SetTalkNPC(0);p.discountAvailable=false;p.currentShoppingSettings.PriceAdjustment=1;
             foreach(var item in p.inventory)item.TurnToAir();for(int a=0;a<4;a++)foreach(var item in NativeCoinChecks.Bank(p,a).item)item.TurnToAir();
+            SharedTargets(context,host,input);
             Main.reforgeItem=new Item();Main.reforgeItem.SetDefaults(53);p.bank.item[0]=NativeCoinChecks.Coin(74,3);
             foreach(var names in new[]{new string[0],new[]{"not-a-prefix"},new[]{Lang.prefix[81].Value}})
             {
@@ -142,6 +143,55 @@ namespace NativeWorldTextProbe
             finally{Main.rand=saved;}
             NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Main.InReforgeMenu=false;Main.playerInventory=false;p.SetTalkNPC(-1);NativeProcessingUiChecks.Save(settings,new ProcessingOptions());
             Console.WriteLine("PASS G08 reforge boundaries: whole compatible targets, repeated same-prefix paid rolls, bank change, insufficient money, identity revocations, language and stable-cache costs.");
+        }
+        private static void SharedTargets(object context,object host,object input)
+        {
+            var owner=Get(host,"Reforge");var targets=Get(owner,"Targets");var settings=((ProcessingSettings[])Get(host,"Settings"))[2];var p=Main.LocalPlayer;
+            var melee=new Item();melee.SetDefaults(Terraria.ID.ItemID.NightsEdge);var ranged=new Item();ranged.SetDefaults(Terraria.ID.ItemID.Minishark);
+            var a=melee.GetRollablePrefixes().Select(id=>(int)id).ToArray();var b=ranged.GetRollablePrefixes().Select(id=>(int)id).ToArray();
+            var saved=Main.rand;
+            try
+            {
+                int[] types={melee.type,ranged.type};var allowed=new[]{a.Except(b).ToArray(),b.Except(a).ToArray()};var seeds=new int[2];var ids=new int[2];
+                for(int index=0;index<2;index++)
+                {
+                    for(int seed=0;seed<4096;seed++)
+                    {var probe=new Item();probe.SetDefaults(types[index]);Main.rand=new UnifiedRandom(seed);bool top;probe.Prefix(-2,out top);if(allowed[index].Contains(probe.prefix)){seeds[index]=seed;ids[index]=probe.prefix;break;}}
+                    Require(ids[index]>0,"native roll supplies a target exclusive to each weapon category");
+                }
+                string[] names=ids.Select(id=>Lang.prefix[id].Value).ToArray();NativeProcessingUiChecks.Save(settings,new ProcessingOptions(true,names));p.bank.item[0]=NativeCoinChecks.Coin(74,10);
+                for(int index=0;index<2;index++)
+                {
+                    NativeReforgeChecks.Sample(input,false);Call(owner,"Update");Main.reforgeItem=new Item();Main.reforgeItem.SetDefaults(types[index]);
+                    FinalTargetHint(context,"双击输入词缀");Require(GetOptional(targets,"Message")==null,"mixed shared list is normal when at least one target is reachable");
+                    long fee=(long)Main.reforgeItem.value*Main.reforgeItem.stack/3,before=NativeReforgeChecks.Total(p);Press(owner,input,seeds[index]);
+                    Require(before-NativeReforgeChecks.Total(p)==fee && Main.reforgeItem.prefix==ids[index],"mixed list pays once through native BuyItem and stops on this weapon's reachable target");
+                    long stopped=NativeReforgeChecks.Total(p);NativeReforgeChecks.SampleWorld(input,true);Call(owner,"Update");
+                    Require(NativeReforgeChecks.Total(p)==stopped && settings.Value.Names.SequenceEqual(names),"hit stop and switching weapons never modify the shared list");
+                }
+                NativeProcessingUiChecks.Save(settings,new ProcessingOptions(true,new[]{names[1]}));Main.reforgeItem=new Item();Main.reforgeItem.SetDefaults(types[0]);
+                FinalTargetHint(context,"名单中没有适用于当前物品的词缀。");long empty=NativeReforgeChecks.Total(p);Press(owner,input);
+                Require(NativeReforgeChecks.Total(p)==empty && Main.reforgeItem.prefix==0 && settings.Value.Names.SequenceEqual(new[]{names[1]}),"all unreachable targets refuse native automatic spending and retain the list");
+                Main.reforgeItem=new Item();Main.reforgeItem.SetDefaults(Terraria.ID.ItemID.DirtBlock);FinalTargetHint(context,"当前物品无法重铸。");Press(owner,input);
+                Require(NativeReforgeChecks.Total(p)==empty,"non-reforgeable item has an accurate reason and no automatic payment");
+                Main.reforgeItem=new Item();Main.reforgeItem.SetDefaults(types[1]);FinalTargetHint(context,"双击输入词缀");
+                Require(GetOptional(targets,"Message")==null,"slot switch clears the old unreachable final hint before another reforge press");
+                long switchFee=(long)Main.reforgeItem.value*Main.reforgeItem.stack/3;Press(owner,input,seeds[1]);
+                Require(empty-NativeReforgeChecks.Total(p)==switchFee && Main.reforgeItem.prefix==ids[1] && settings.Value.Names.SequenceEqual(new[]{names[1]}),"the same saved target becomes usable after switching items and stops on a native paid hit");
+                Main.reforgeItem=new Item();FinalTargetHint(context,"双击输入词缀");
+                Console.WriteLine("PASS Reforge shared targets: mixed weapons, native debit/roll/hit stop, all-unreachable and non-reforgeable refusal, unchanged list, slot-change final Hint refresh, empty-slot guidance.");
+            }
+            finally{Main.rand=saved;NativeReforgeChecks.Sample(input,false);Call(owner,"Update");NativeProcessingUiChecks.Save(settings,new ProcessingOptions());}
+        }
+        private static void FinalTargetHint(object context,string expected)
+        {
+            var shell=Get(context,"Shell");var state=Get(shell,"State");var ui=Get(shell,"ReforgeUi");var renderer=Get(shell,"renderer");
+            Call(state,"Navigate",1);Call(state,"RestoreVisible");Call(renderer,"RefreshResources");
+            var input=Activator.CreateInstance(state.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.F5Input"));
+            foreach(var field in new[]{Tuple.Create("Width",(object)960f),Tuple.Create("Height",(object)760f),Tuple.Create("Scale",(object)1f),Tuple.Create("X",(object)(-10f)),Tuple.Create("Y",(object)(-10f)),Tuple.Create("Active",(object)true),Tuple.Create("Focused",(object)true)})Set(input,field.Item1,field.Item2);
+            Call(state,"Update",input);NativeProcessingUiChecks.Prepare(context,960,760,1);
+            NativeQuickUiChecks.FinalHint(shell,Get(NativeProcessingUiChecks.Parts(ui).Single(part=>(int)Get(part,"Command")==1),"Element"),expected);
+            Call(state,"Close");Call(ui,"Suspend");
         }
         private static void Press(object owner,object input,int? seed=null)
         {

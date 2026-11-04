@@ -26,7 +26,6 @@ namespace JueMingR.TerrariaHost.Guidance
             get
             {
                 if (!GuidanceObservationReader.ValidPlayer) return "角色尚未就绪或已死亡。";
-                if (Main.netMode != 0) return "游商测试仅限单人世界。";
                 if (!Main.dayTime) return "旅商只能在白天到访。";
                 if (Main.eclipse) return "日食期间无法召唤旅商。";
                 if (Main.invasionType > 0 && Main.invasionDelay == 0 && Main.invasionSize > 0) return "入侵期间无法召唤旅商。";
@@ -54,7 +53,10 @@ namespace JueMingR.TerrariaHost.Guidance
                 NativeCalls++;
 #endif
                 spawn();
-                if (TryFind(out found) && found) return Result(GameOperationOutcome.Succeeded, "旅商已到访。");
+                // SpawnTravelNPC can create a client-local NPC and shop. A
+                // local observation is confirmation only in single player;
+                // this operation owns no server acknowledgement protocol.
+                if (Main.netMode == 0 && TryFind(out found) && found) return Result(GameOperationOutcome.Succeeded, "旅商已到访。");
                 return Result(GameOperationOutcome.Unconfirmed, "已尝试召唤，无法确认旅商是否到访；不会自动重试。");
             }
             catch (Exception) { return Result(GameOperationOutcome.Failed, "召唤出错，结果未确认；不会自动重试。"); }
