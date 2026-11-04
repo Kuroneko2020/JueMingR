@@ -28,9 +28,9 @@ SHA-256：dbe815a11a5cc7f4c61e51992ae37e9ab0445eb47b49da0bcb264b4466d81035
 未在素材制作阶段执行 Windows Setup 的构建或实际窗口测试。
 
 接入：
-PNG → JueMingR.Setup.Brand.Logo → 现有安装器页头。
+PNG 保留原始字节作为素材，不嵌入或显示于安装器页头。
 ICO → ApplicationIcon 与 JueMingR.Setup.Brand.Icon → EXE 及窗口图标。
-全部资源嵌入 Setup，不作为第三个游戏发行文件。
+ICO 嵌入 Setup；不依赖外置图片，不作为第三个游戏发行文件。
 
 此前“透明 v3 像素印章／隐藏明字结构”等提示对应已被替代的历史方案，
 不描述当前最终图片，也不再作为当前资产的生成或修改指令。

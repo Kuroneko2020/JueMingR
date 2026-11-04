@@ -15,11 +15,24 @@ namespace JueMingR.Setup
         internal string Directory;
         internal string Version;
         internal string InstalledVersion;
+        internal string InstalledVersionProblem;
         internal string Problem;
         internal string InstallProblem;
         internal bool CanMaintain;
         internal bool CanInstall;
         internal SetupPairState Pair = SetupPairState.Unknown;
+
+        internal string TerrariaCaption { get { return "Terraria 版本：" + (string.IsNullOrWhiteSpace(Version) ? "无法确认" : Version); } }
+        internal string InstalledCaption
+        {
+            get
+            {
+                string value = !CanMaintain ? "无法确认" : Pair == SetupPairState.NotInstalled ? "未安装" : Pair == SetupPairState.Incomplete ? "安装不完整" : Pair == SetupPairState.Unknown ? "安装状态无法确认" :
+                    !string.IsNullOrEmpty(InstalledVersionProblem) ? "读取失败" : string.IsNullOrWhiteSpace(InstalledVersion) || InstalledVersion == "0.0.0.0" ? "无法确认" : InstalledVersion;
+                return "已安装决明版本：" + value;
+            }
+        }
+        internal string Feedback { get { return string.Join(Environment.NewLine, new[] { Problem, CanInstall ? null : InstallProblem, InstalledVersionProblem }).Trim(); } }
 
         internal string Caption
         {
@@ -48,7 +61,8 @@ namespace JueMingR.Setup
                 {
                     // Read the selected installed DLL's informational/product version, not
                     // this Setup's version or the uninformative assembly/file 0.0.0.0.
-                    state.InstalledVersion = FileVersionInfo.GetVersionInfo(Path.Combine(state.Directory, "JueMingR.dll")).ProductVersion;
+                    try { state.InstalledVersion = FileVersionInfo.GetVersionInfo(Path.Combine(state.Directory, "JueMingR.dll")).ProductVersion; }
+                    catch (Exception error) when (IsReadError(error)) { state.InstalledVersionProblem = "已安装版本读取失败：" + error.Message; }
                 }
             }
             catch (Exception error) when (IsReadError(error))

@@ -8,6 +8,7 @@
     <Compile Include="SetupFormChecks.cs" />
     <Compile Include="../../src/JueMingR.Setup/SetupPresentation.cs" Link="SetupPresentation.cs" />
     <Compile Include="../../src/JueMingR.Setup/SetupForm.cs" Link="SetupForm.cs" />
+    <Compile Include="../../src/JueMingR.Setup/SetupVersionReader.cs" Link="SetupVersionReader.cs" />
     <Compile Include="../../src/JueMingR.Setup/InstallService.cs" Link="InstallService.cs" />
     <Compile Include="../../src/JueMingR.Setup/SetupPayload.cs" Link="SetupPayload.cs" />
     <Compile Include="../../src/JueMingR.Setup/TargetSafety.cs" Link="TargetSafety.cs" />

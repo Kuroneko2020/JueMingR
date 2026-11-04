@@ -19,6 +19,8 @@ internal static class SetupServiceChecks
         try
         {
             if (args.Length == 1 && args[0] == "--form-contract") { SetupFormChecks.Run(); return 0; }
+            if (args.Length == 2 && args[0] == "--form-preview") { SetupFormChecks.Preview(args[1]); return 0; }
+            if (args.Length == 4 && args[0] == "--version-reader") { VersionReaderChecks(args[1], args[2], args[3]); return 0; }
             if (args.Length == 1 && args[0] == "--wait") { Console.WriteLine("ready"); Console.ReadLine(); return 0; }
             if (args.Length == 2 && args[0] == "--path-snapshot") { Console.WriteLine(PathSnapshot(args[1])); return 0; }
             if (args.Length == 2 && args[0] == "--path-contract")
@@ -113,6 +115,26 @@ internal static class SetupServiceChecks
     }
 
     private static InstallService Service() { return new InstallService(() => payload, null); }
+    private static void VersionReaderChecks(string fixture, string setup, string dll)
+    {
+        string fixtureRoot = Path.GetFullPath(fixture); Directory.CreateDirectory(fixtureRoot);
+        Check(Directory.GetFileSystemEntries(fixtureRoot).Length == 0, "version-reader-fresh-fixture-root");
+        string temporary = Path.Combine(fixtureRoot, "temp"); Directory.CreateDirectory(temporary);
+        Assembly source = Assembly.ReflectionOnlyLoad(File.ReadAllBytes(setup));
+        byte[] embedded = SetupPayload.Resource(source, SetupVersionReader.ResourceName);
+        Check(embedded.SequenceEqual(File.ReadAllBytes(dll)), "version-reader-exact-embedded-dll-bytes");
+        string expected = System.Diagnostics.FileVersionInfo.GetVersionInfo(dll).ProductVersion;
+        var read = SetupVersionReader.Read(source, temporary);
+        Check(read.Version == (string.IsNullOrWhiteSpace(expected) || expected == "0.0.0.0" ? null : expected) && (read.Version != null || read.Problem == "无法确认"), "version-reader-win32-product-version-or-explicit-unknown");
+        Check(read.CleanupProblem == null && Directory.GetFileSystemEntries(temporary).Length == 0, "version-reader-owned-temporary-file-cleaned");
+        string selectedCopy = Path.Combine(fixtureRoot, "selected-copy.dll"); File.Copy(dll, selectedCopy);
+        using (new FileStream(selectedCopy, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { Check(true, "version-reader-selected-fixture-file-reopenable"); }
+        var missing = SetupVersionReader.Read(Assembly.GetExecutingAssembly(), temporary);
+        Check(missing.Version == null && missing.Problem == "未封装载荷", "version-reader-missing-resource-not-fake-version");
+        var failed = SetupVersionReader.Read(source, Path.Combine(temporary, "does-not-exist"));
+        Check(failed.Version == null && failed.Problem.StartsWith("读取失败：", StringComparison.Ordinal) && Directory.GetFileSystemEntries(temporary).Length == 0, "version-reader-real-io-failure-no-created-file");
+        Console.WriteLine(new JavaScriptSerializer().Serialize(new { status = "PASS", setupProductVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(setup).ProductVersion, embeddedProductVersion = expected, displayed = read.Caption, dllSha256 = SetupPayload.Hash(embedded), scope = "actual embedded DLL Win32 version; no payload execution or install" }));
+    }
     private static void PresentationChecks()
     {
         string empty = Fresh("pair-empty");
@@ -125,6 +147,7 @@ internal static class SetupServiceChecks
         string installedVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(Path.Combine(manual, "JueMingR.dll")).ProductVersion;
         Check(!string.IsNullOrWhiteSpace(installedVersion) && state.InstalledVersion == installedVersion && state.Caption.Contains("决明版本：" + installedVersion), "state-version-read-from-selected-installed-dll");
         Check(new SetupTargetState { CanMaintain = true, CanInstall = true, Pair = SetupPairState.Installed }.Caption.Contains("决明版本：无法确认") && new SetupTargetState { CanMaintain = true, CanInstall = true, Pair = SetupPairState.Installed, InstalledVersion = "0.0.0.0" }.Caption.Contains("决明版本：无法确认"), "state-missing-product-version-not-replaced-by-setup-version");
+        Check(new SetupTargetState { CanMaintain = true, Pair = SetupPairState.Installed, InstalledVersionProblem = "受控读取失败" }.InstalledCaption == "已安装决明版本：读取失败" && new SetupTargetState { CanMaintain = true, Pair = SetupPairState.Unknown }.InstalledCaption == "已安装决明版本：安装状态无法确认", "state-version-read-failure-distinct-from-pair-unknown");
         File.Delete(Path.Combine(manual, "Terraria.exe.config"));
         state = SetupTargetState.Read(manual);
         Check(state.Pair == SetupPairState.Incomplete && state.InstalledVersion == null && !state.Caption.Contains("决明版本："), "state-only-dll-not-labelled-installed-version");
