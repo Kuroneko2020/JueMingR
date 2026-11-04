@@ -10,7 +10,7 @@ namespace JueMingR.TerrariaHost.CoinDeposit
     internal sealed class CoinPanel
     {
         private static readonly F5RowDescription description = new F5RowDescription(HostCoinDeposit.ActionId,
-            "将未收藏的钱币存入附近个人银行，主动取钱后暂停。");
+            "靠近存钱罐自动存钱");
         private readonly HostCoinDeposit host;
         private readonly List<F5Element> rows = new List<F5Element>();
         private long revision = -1;

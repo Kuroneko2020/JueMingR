@@ -17,7 +17,7 @@ namespace JueMingR.TerrariaHost.Tools
         private readonly F5Rect[] cells=new F5Rect[8];
         private readonly F5Element[] buttons=new F5Element[8];
         internal int LayoutBuilds {get;private set;}
-        private F5Rect anchor,close,title,note,note2;
+        private F5Rect anchor,close,title;
         private Matrix matrix;
         private int layoutGeneration=-1;
         private Vector2 screen,pointer;
@@ -48,17 +48,21 @@ namespace JueMingR.TerrariaHost.Tools
             if(!Visible)return;if(resources && !renderer.Refresh())return;
             if(revision!=host.Settings[0].Revision){armed=-1;revision=host.Settings[0].Revision;}
             if(!layoutDirty && buttons[0]!=null && screen==physical && matrix==transform && skin==renderer.Generation)return;
-            var size=measure("分类仅限制主动目标，挥网可能顺带捕获其他类别",.6f);
-            float width=Math.Max(360,size.Width+24),row=Math.Max(34,measure("七彩草蛉",.7f).Height+12),header=Math.Max(40,measure("自动捕捉配置",.75f).Height+12),line=Math.Max(24,size.Height+8);
-            float height=header+row*4+line*2+16;Vector2 logical=physical/transform.M11;
+            float longest=0,tallest=0;
+            for(int i=0;i<Names.Length;i++){var size=measure(Names[i],.7f);longest=Math.Max(longest,size.Width);tallest=Math.Max(tallest,size.Height);}
+            // Symmetric 18px text clearance keeps the shared corner check off
+            // even the longest label. Grid width follows content, not old notes.
+            float cellWidth=Math.Max(30,longest+36),row=Math.Max(34,tallest+12),header=Math.Max(40,measure("自动捕捉配置",.75f).Height+12);
+            float width=Math.Max(cellWidth*2+24,measure("自动捕捉配置",.75f).Width+58);
+            float height=header+row*4+8;Vector2 logical=physical/transform.M11;
             if(width>logical.X-24 || height>logical.Y-24){Close();return;}
             float x=Math.Max(12,Math.Min(logical.X-width-12,anchor.Right+8)),y=Math.Max(12,Math.Min(logical.Y-height-12,anchor.Y));
             var panel=new F5Rect(x,y,width,height);
             if(screen!=physical || matrix!=transform || Panel.X!=x || Panel.Y!=y || Panel.Width!=width || Panel.Height!=height || revision!=host.Settings[0].Revision || skin!=renderer.Generation)armed=-1;
             Panel=panel;screen=physical;matrix=transform;revision=host.Settings[0].Revision;skin=renderer.Generation;
             title=new F5Rect(x+8,y+4,width-50,header-8);close=new F5Rect(x+width-36,y+5,30,30);
-            for(int i=0;i<8;i++){cells[i]=new F5Rect(x+8+i%2*(width/2),y+header+i/2*row,width/2-16,row-4);buttons[i]=new F5Element(F5ElementKind.Button,cells[i],Names[i],measure(Names[i],.7f),.7f,F5Command.None);}LayoutBuilds++;
-            note=new F5Rect(x+8,y+header+4*row,width-16,line);note2=new F5Rect(x+8,note.Bottom,width-16,line);
+            float gridX=x+(width-(cellWidth*2+8))/2;
+            for(int i=0;i<8;i++){cells[i]=new F5Rect(gridX+i%2*(cellWidth+8),y+header+i/2*row,cellWidth,row-4);buttons[i]=new F5Element(F5ElementKind.Button,cells[i],Names[i],measure(Names[i],.7f),.7f,F5Command.None);}LayoutBuilds++;
             layoutDirty=false;
         }
         internal void Process(bool active,KeyboardState keys,Vector2 point,Matrix transform,Vector2 physical,bool focused)
@@ -83,8 +87,7 @@ namespace JueMingR.TerrariaHost.Tools
         {
             if(!Visible)return;
             renderer.Pass(matrix,Panel,()=>{renderer.Panel(Panel);renderer.Text("自动捕捉配置",title,Color.White,.75f);renderer.Cross(close,true);
-                for(int i=0;i<8;i++)renderer.Button(buttons[i],(host.Settings[0].Value.Categories&(1<<i))!=0,host.Controls(0),false,cells[i].Contains(pointer.X,pointer.Y));
-                renderer.Text("分类仅限制主动目标，挥网可能顺带捕获其他类别",note,Color.White,.6f);renderer.Text("Boss 战时暂停；关闭后保留上次模式与分类",note2,Color.White,.6f);});
+                for(int i=0;i<8;i++){renderer.Button(buttons[i],false,host.Controls(0),false,cells[i].Contains(pointer.X,pointer.Y));if((host.Settings[0].Value.Categories&(1<<i))!=0)renderer.Selection(cells[i]);}});
         }
     }
 }

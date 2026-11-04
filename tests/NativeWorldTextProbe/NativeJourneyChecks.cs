@@ -48,8 +48,10 @@ namespace NativeWorldTextProbe
                     NativeJourneyUiChecks.Run(context, graphics, output, reopenOnly);
                     object journey = Get(context, "Journey");
                     Check((bool)Call(journey, "SetEnabled", false), "UI completion returns the borrowed state");
+                    NativeJourneyMultiplayerChecks.Menu(context);
                     // The closeout scope reuses original preparation/UI input,
-                    // then stops before any copy/save/consumer/kill matrix.
+                    // plus the connected client/save-view ownership leaf,
+                    // then stops before the disk-save/consumer/kill matrix.
                     if (reopenOnly) return;
                     UseDuplicatedItem(context);
                     VerticalSave(context, content, output);
@@ -63,7 +65,7 @@ namespace NativeWorldTextProbe
             }, processing: true, shortFeedback: true);
             if (reopenOnly)
             {
-                Console.WriteLine("PASS JOURNEY REOPEN: real Shell Enable/reopen/Disable/binding, stable Persistence and selected power; no save/reader/kill/coexist matrix.");
+                Console.WriteLine("PASS JOURNEY REOPEN: real Shell Enable/reopen/Disable/binding, stable Persistence and selected power; connected native menu and save-view ownership; no disk-save/reader/kill/coexist matrix.");
                 return 0;
             }
             ReadInNewProcess(content, output);
@@ -88,6 +90,7 @@ namespace NativeWorldTextProbe
                 NativeHiddenEntryChecks.RevealForComposition(context);
                 ConfigureFiles(0, 0, "cpu-native"); Main.LocalPlayer.inventory[12].SetDefaults(ItemID.Torch); Main.LocalPlayer.inventory[12].stack = 19;
                 OffSaveAdmission(context, output);
+                NativeJourneyMultiplayerChecks.Cpu(context);
                 Console.WriteLine("JOURNEY OFF-100-reflective-probe-ms=" + ms.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "; includes test reflection; no FPS inference.");
             }, processing: true, shortFeedback: true);
             ReadInNewProcess(content, output);

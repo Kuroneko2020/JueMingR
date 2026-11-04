@@ -42,14 +42,25 @@ namespace JueMingR.TerrariaHost.Processing
             return valid.Count!=0;
         }
         internal bool Matches(Item current){return HasTargets(current) && valid.Contains(current.prefix);}
-        internal bool Add(string input,out string reason)
+        // Presentation asks this without publishing settings. Submission repeats
+        // the same check: a visible button is never a saved-command permission.
+        internal bool TryValidateAddition(string input,out string name,out string reason)
         {
-            reason=null;string name=(input??"").Trim();bool known=false,usable=false;
+            reason=null;name=(input??"").Trim();bool known=false,usable=false;
+            var s=host.Settings[2];
+            if(!host.Controls(2)){reason="请稍后再试。";return false;}
+            if(name.Length==0 || name.Length>128 || name.Any(char.IsControl) || s.Value.Names.Count>=256){reason="词缀名称或名单长度超出范围。";return false;}
             Item current=Main.reforgeItem,plain=current==null || current.IsAir?null:current.Clone();plain?.ResetPrefix();
             for(int id=1;id<Lang.prefix.Length;id++)if(NameEquals(name,Lang.prefix[id]?.Value)){known=true;if(plain==null || CanRoll(plain,id))usable=true;}
             if(!known){reason="请输入当前语言下的完整词缀名称。";return false;}
             if(!usable){reason="这个词缀不适用于当前重铽物品。";return false;}
-            var s=host.Settings[2];if(s.Value.Names.Any(v=>NameEquals(v,name))){reason="名单中已有这个词缀。";return false;}
+            foreach(string existing in s.Value.Names)if(NameEquals(existing,name)){reason="名单中已有这个词缀。";return false;}
+            return true;
+        }
+        internal bool Add(string input,out string reason)
+        {
+            string name;if(!TryValidateAddition(input,out name,out reason))return false;
+            var s=host.Settings[2];
             try{if(!host.Controls(2) || !s.Set(new ProcessingOptions(s.Value.Enabled,s.Value.Names.Concat(new[]{name})))){reason="请稍后再试。";return false;}}
             catch(ArgumentException){reason="词缀名称或名单长度超出范围。";return false;}return true;
         }
@@ -57,5 +68,26 @@ namespace JueMingR.TerrariaHost.Processing
         private static bool NameEquals(string a,string b){return !string.IsNullOrEmpty(b) && string.Equals(a,b,StringComparison.OrdinalIgnoreCase);}
         private static bool CanRoll(Item plain,int id)
         {float a,b,c,d,e,f,value;int crit,tag,armor;return plain.CanRollPrefix(id) && plain.TryGetPrefixStatMultipliersForItem(id,out a,out b,out c,out d,out e,out f,out crit,out tag,out armor,out value);}
+
+        // The .8 prefix readers depend on category/accessory/vanity and rounded
+        // damage/useAnimation/mana/knockBack, not only Item reference/type. A
+        // prefixed clone resets through Refresh, including the world variant.
+        // Keep one current draft key, never clones or prefix scans per Draw.
+        internal struct AdditionItemKey : IEquatable<AdditionItemKey>
+        {
+            private Item source;
+            private int type,stack,damage,animation,mana;
+            private byte prefix;
+            private float knockBack;
+            private bool accessory,vanity;
+            private object variant,selectedVariant;
+            internal static AdditionItemKey Current()
+            {
+                var p=Main.reforgeItem;if(p==null)return default(AdditionItemKey);
+                return new AdditionItemKey{source=p,type=p.type,stack=p.stack,prefix=p.prefix,damage=p.damage,animation=p.useAnimation,mana=p.mana,knockBack=p.knockBack,accessory=p.accessory,vanity=p.vanity,variant=p.Variant,selectedVariant=p.IsAir?null:Terraria.GameContent.Items.ItemVariants.SelectVariant(p.type)};
+            }
+            public bool Equals(AdditionItemKey other)
+            {return ReferenceEquals(source,other.source) && type==other.type && stack==other.stack && prefix==other.prefix && damage==other.damage && animation==other.animation && mana==other.mana && knockBack==other.knockBack && accessory==other.accessory && vanity==other.vanity && ReferenceEquals(variant,other.variant) && ReferenceEquals(selectedVariant,other.selectedVariant);}
+        }
     }
 }

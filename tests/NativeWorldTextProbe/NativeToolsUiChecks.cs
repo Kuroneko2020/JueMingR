@@ -30,6 +30,7 @@ namespace NativeWorldTextProbe
             foreach(bool left in new[]{false,true,false}){Mouse(point,left);Call(misc,"ProcessInput",true,new KeyboardState(),point,true,true,false);}
             Require((bool)Get(popup,"Visible"),"actual Misc configuration button opens capture window");Call(popup,"Prepare",Matrix.Identity,new Vector2(960,760),true);
             var cells=(Array)Get(popup,"cells");int saved=settings.Value.Categories;
+            NativeMiscPolishUiChecks.CaptureGeometry(popup);
             for(int i=0;i<8;i++)
             {
                 point=Point(cells.GetValue(i));long before=settings.AcceptedCommandId;
@@ -124,8 +125,10 @@ namespace NativeWorldTextProbe
                 var mode=Controls(mining).Single(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==21);
                 var select=icons.Single(c=>Get(Get(c,"Element"),"Kind").ToString()=="Field");
                 var modeRect=Get(mode,"Rect");var selectRect=Get(select,"Rect");
-                Require((float)Get(selectRect,"Y")== (float)Get(modeRect,"Y") && (float)Get(selectRect,"X")==(float)Get(modeRect,"Right")+4,"select binding is immediately beside the hotkey mode button");
+                Require((float)Get(selectRect,"Y")== (float)Get(modeRect,"Y") && (float)Get(selectRect,"Right")+4==(float)Get(modeRect,"X"),"select binding is immediately left of the hotkey mode button");
                 Require(Get(Get(select,"Element"),"Kind").ToString()=="Field","select action is a visible binding box, not a second keyboard icon");
+                if(bindings.Get("tools.mining.select")==null && bindings.Error("tools.mining.select")==null && !bindings.Protected)
+                    Require((string)Get(Get(mining,"bindingDisplay"),"Text")=="双击设置快捷键","genuinely unbound mining field displays its complete measured teaching text");
                 graphics.Image(Path.Combine(output,"tools-full-misc-"+size[0]+"-"+size[1]+"-"+size[2]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);
                 foreach(var tuple in new[]{Tuple.Create("tools.mining",Keys.F9,"自动挖矿"),Tuple.Create("tools.mining.select",Keys.F10,"选择挖矿区域")})
                 {

@@ -40,8 +40,15 @@ namespace JueMingR.TerrariaHost.Processing
         private long editRevision=-1,caretRevision=-1;
         private string composition;
         private float editWidth;
+        private bool additionReady,additionKnown,additionComposing;
+        private string additionText,additionComposition,additionReason;
+        private long additionRevision=-1;
+        private bool additionAvailable;
+        private object additionCulture;
+        private ReforgeTargets.AdditionItemKey additionItem;
 #if DEBUG
         internal long LayoutBuilds,EditMeasurements;
+        internal long AdditionValidations;
 #endif
         internal Action<string,F5Rect> HotkeyClicked;
         internal bool OwnsPointer {get;private set;}
@@ -72,6 +79,7 @@ namespace JueMingR.TerrariaHost.Processing
             ConsumeLeft=leftTail;ConsumeRight=rightTail;OwnsPointer=false;
             bool on=active && focused && shell.Visible && shell.Page==1;
             TextInput.AfterSample(on && !blocked,null,keys,focused);
+            if(on)RefreshAddition();
             if(!on || session!=host.Runtime.Generation)
             {Suspend();if(focused){if(!left)leftTail=false;if(!right)rightTail=false;}previousLeft=focused?left:true;return;}
             if(!geometryCurrent || generation!=shell.Layout.Generation || revision!=host.Settings[2].Revision || available!=host.Controls(2) || scroll!=shell.Scroll || view.X!=shell.X+shell.Layout.Viewport.X || view.Y!=shell.Y+shell.Layout.Viewport.Y){dirty=true;ResetGesture();}
@@ -114,6 +122,7 @@ namespace JueMingR.TerrariaHost.Processing
         }
         internal void PrepareLayout(Matrix transform,float contentStart)
         {
+            RefreshAddition();
             matrix=transform;ready=true;var next=shell.Layout.Viewport.Offset(shell.X,shell.Y);
             bool rebuild=dirty || generation!=shell.Layout.Generation || skin!=renderer.Generation || revision!=host.Settings[2].Revision || available!=host.Controls(2) || session!=host.Runtime.Generation || start!=contentStart || view.X!=next.X || view.Y!=next.Y;
             view=next;
@@ -123,7 +132,9 @@ namespace JueMingR.TerrariaHost.Processing
                 LayoutBuilds++;
 #endif
                 logical.Clear();float y=contentStart;var rows=new List<F5Element>();
-                new F5RowLayout(rows,shell.Layout.TextSize).Row(ref y,0,view.Width,HostProcessing.Names[2],new[]{null,"添加","开启","关闭","键"},description:new F5RowDescription(HostProcessing.Actions[2],HostProcessing.Help[2]));
+                var description=new F5RowDescription(HostProcessing.Actions[2],HostProcessing.Help[2]);
+                if(additionReady)F5PairedRowLayout.Row(rows,shell.Layout.TextSize,ref y,view.Width,HostProcessing.Names[2],"添加",false,new[]{"开启","关闭","键"},description);
+                else new F5RowLayout(rows,shell.Layout.TextSize).Row(ref y,0,view.Width,HostProcessing.Names[2],new[]{null,"开启","关闭","键"},description:description);
                 foreach(var e in rows)
                 {
                     int command=e.Kind==F5ElementKind.Field?1:e.Kind==F5ElementKind.Hotkey?6:e.Kind==F5ElementKind.Button?e.Text=="添加"?2:e.Text=="开启"?4:5:0;
@@ -180,6 +191,26 @@ namespace JueMingR.TerrariaHost.Processing
         }
         private void Add(F5Rect rect,string text,int command,string name,bool enabled)
         {logical.Add(new Part{Element=new F5Element(F5ElementKind.Button,rect,text,name==null?shell.Layout.TextSize(text,.7f):shell.Layout.DynamicTextSize(text,.7f),.7f,F5Command.None),Command=command,Name=name,Enabled=enabled});}
+        private void RefreshAddition()
+        {
+            string text=draft.Text,nextComposition=editing?TextInput.Composition:"";var item=ReforgeTargets.AdditionItemKey.Current();
+            bool composing=editing && TextInput.HasComposition;
+            var culture=Terraria.Localization.Language.ActiveCulture;long nextRevision=host.Settings[2].Revision;bool nextAvailable=host.Controls(2);
+            if(additionKnown && additionText==text && additionComposition==nextComposition && additionComposing==composing && additionRevision==nextRevision && additionAvailable==nextAvailable && ReferenceEquals(additionCulture,culture) && additionItem.Equals(item))return;
+            // Eligibility changes revoke the old gesture without releasing the
+            // text lease, caret or IME draft. Geometry changes only if visibility
+            // changes; submission still ends composition and validates anew.
+            ResetGesture();bool was=additionReady;string name;
+            // Candidates and an unfinished surrogate also belong to the text
+            // owner even when the displayed composition string is empty.
+            additionReady=!composing && host.Reforge.Targets.TryValidateAddition(text,out name,out additionReason);
+            if(composing)additionReason=null;
+            additionKnown=true;additionText=text;additionComposition=nextComposition;additionComposing=composing;additionRevision=nextRevision;additionAvailable=nextAvailable;additionCulture=culture;additionItem=item;
+            if(was!=additionReady)dirty=true;
+#if DEBUG
+            AdditionValidations++;
+#endif
+        }
         private static F5Element LabelAt(F5Element label,F5Rect rect)
         {return new F5Element(F5ElementKind.Text,rect,label.Text,label.TextSize,label.TextScale,F5Command.None);}
         private void AddCard(F5Rect rect,string name,bool enabled)
@@ -202,9 +233,9 @@ namespace JueMingR.TerrariaHost.Processing
                 target=F5HintLayout.Intersect(rect,visible);
                 if(p.Command==6)return F5HotkeyHints.Toggle;
                 if(p.Command==3)return "从名单移除「"+p.Name+"」";
-                if(p.Command==7)return p.Name;
-                if(p.Command==1 || p.Command==2)return message??TextInput.Error??draft.Error??"双击输入完整词缀名，按回车或点击添加。";
-                if(p.Element.Description!=null)return host.Error??host.Settings[2].Message??host.Reforge.Targets.Message??HostProcessing.Help[2];
+                if(p.Command==7)return null;
+                if(p.Command==1 || p.Command==2)return host.Error??host.Settings[2].Message??host.Reforge.Targets.Message??message??TextInput.Error??draft.Error??additionReason??"双击输入完整词缀名，按回车或点击添加。";
+                if(p.Element.Description!=null)return HostProcessing.Help[2];
             }
             return null;
         }
@@ -241,7 +272,7 @@ namespace JueMingR.TerrariaHost.Processing
             });
         }
         private void ResetGesture(){armed=null;clickPending=false;}
-        internal void Suspend(){TextInput.Release(false);editing=false;ready=false;ResetGesture();OwnsPointer=false;dirty=true;Parts.Clear();renderer.Dispose();}
+        internal void Suspend(){TextInput.Release(false);editing=false;ready=false;ResetGesture();OwnsPointer=false;dirty=true;Parts.Clear();additionKnown=false;additionItem=default(ReforgeTargets.AdditionItemKey);renderer.Dispose();}
         public void Dispose(){Suspend();}
     }
 }

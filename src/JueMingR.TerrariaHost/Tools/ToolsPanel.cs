@@ -20,14 +20,16 @@ namespace JueMingR.TerrariaHost.Tools
         internal ToolsPanel(HostTools host,bool mining=false){this.host=host;this.mining=mining;}
         internal bool NeedsBuild {get{for(int i=mining?2:0;i<(mining?3:2);i++)if(revisions[i]!=host.Settings[i].Revision || available[i]!=host.Controls(i))return true;return false;}}
         internal void Execute(ItemUiControl control){int domain=control.Argument/10,command=control.Argument%10;if(domain==0 && command==3)Configure?.Invoke(control.Rect);else host.Set(domain,command);}
-        internal void Build(float start,float width,Func<string,float,F5Size> measure)
+        internal void Build(float start,float width,Func<string,float,F5Size> measure,float fieldWidth=120)
         {
             float y=start;
             for(int i=mining?2:0;i<(mining?3:2);i++)
             {
                 revisions[i]=host.Settings[i].Revision;available[i]=host.Controls(i);rows[i].Clear();
-                string help=i==0?"自动选择主背包虫网；手持模式必须手持虫网。Boss 战时暂停，保留模式。":i==1?"携带再生法杖或再生之斧自动收获/种植。仅花盆和种植盆，优先免费复种。":"当前镐或电钻接管已选矿脉；绿色为当前可产生进度，红色为暂不可挖或未知。";
-                new F5RowLayout(rows[i],measure).Row(ref y,0,width,HostTools.Names[i],i==0?new[]{"配置","自动","手持","关闭","键"}:i==1?new[]{"开启","关闭","键"}:new[]{"快捷键",null,"自动","关闭","键"},description:new F5RowDescription(HostTools.Actions[i],help));
+                string help=i==0?"附近有小动物时自动挥网捕捉":i==1?"携带再生法杖自动收获草药":"自动连续挖掘矿脉";
+                var description=new F5RowDescription(HostTools.Actions[i],help);
+                if(i==2)F5PairedRowLayout.Row(rows[i],measure,ref y,width,HostTools.Names[i],"快捷键",true,new[]{"自动","关闭","键"},description,fieldWidth);
+                else new F5RowLayout(rows[i],measure).Row(ref y,0,width,HostTools.Names[i],i==0?new[]{"配置","自动","手持","关闭","键"}:new[]{"开启","关闭","键"},description:description);
                 // The select binding belongs beside its mode; the final
                 // binding still toggles/restores the feature. Carry identity
                 // in layout metadata so clipping cannot exchange the actions.

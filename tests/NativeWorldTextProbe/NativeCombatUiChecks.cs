@@ -38,7 +38,7 @@ namespace NativeWorldTextProbe
                 action=registry.Find("combat.npc-path");Require(action!=null,"fifth release publishes the original Path action ID");
                 CheckCombatProjection(g);CheckHiddenNames(g);
                 Main.netMode=1;Netplay.Connection.State=10;
-                Require(action.CanConfigure && (bool)Get(host,"Path") && !(bool)Get(Get(context,"Journey"),"CanEnable"),"ordinary multiplayer Path qualification remains independent of Journey singleplayer gate");
+                Require(action.CanConfigure && (bool)Get(host,"Path") && (bool)Get(Get(context,"Journey"),"CanEnable"),"ordinary multiplayer Path and Journey retain their own unlocked qualification");
                 foreach(var geometry in new[]{new[]{960,640,100},new[]{960,360,100},new[]{1440,900,150}})
                 {
                     g.Geometry(geometry[0],geometry[1],geometry[2]/100f);g.Open(1);g.Frame(940,620);

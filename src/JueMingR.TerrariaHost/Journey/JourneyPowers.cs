@@ -15,12 +15,22 @@ namespace JueMingR.TerrariaHost.Journey
         internal readonly Player Player;
         internal readonly PlayerFileData PlayerFile;
         internal readonly WorldFileData WorldFile;
+        internal readonly bool Multiplayer;
         internal readonly byte[] WorldBytes;
         internal readonly byte[] PlayerBytes;
         private readonly bool godmode;
         private readonly bool range;
         private readonly bool creativeGodmode;
         private readonly Slider[] sliders;
+        private readonly int netMode;
+        private readonly object socket;
+        // These references describe the borrowed native resources. Runtime
+        // remains the only session-generation owner; its end callback can run
+        // after vanilla has already replaced the connection but reused files.
+        internal bool MatchesPowerContext { get { return Main.netMode == netMode &&
+            (!Multiplayer || ReferenceEquals(Terraria.Netplay.Connection.Socket, socket)) &&
+            ReferenceEquals(Main.LocalPlayer, Player) && ReferenceEquals(Main.ActivePlayerFileData, PlayerFile) &&
+            ReferenceEquals(Main.ActiveWorldFileData, WorldFile); } }
         private static readonly Action UpdateDifficulty = (Action)Delegate.CreateDelegate(typeof(Action),
             AccessTools.Method(typeof(Main), "UpdateCreativeGameModeOverride"));
         private static readonly MethodInfo ApplyDifficultySlider = AccessTools.Method(
@@ -29,7 +39,9 @@ namespace JueMingR.TerrariaHost.Journey
         internal JourneyPowers(Player player, PlayerFileData playerFile, WorldFileData worldFile)
         {
             Player = player; PlayerFile = playerFile; WorldFile = worldFile;
-            WorldBytes = Capture(w => CreativePowerManager.Instance.SaveToWorld(w));
+            netMode = Main.netMode; Multiplayer = netMode == 1;
+            socket = Multiplayer ? Terraria.Netplay.Connection.Socket : null;
+            WorldBytes = Multiplayer ? null : Capture(w => CreativePowerManager.Instance.SaveToWorld(w));
             PlayerBytes = Capture(w => CreativePowerManager.Instance.SaveToPlayer(player, w));
             godmode = Power<CreativePowers.GodmodePower>().IsEnabledForPlayer(player.whoAmI);
             range = Power<CreativePowers.FarPlacementRangePower>().IsEnabledForPlayer(player.whoAmI);
@@ -47,23 +59,44 @@ namespace JueMingR.TerrariaHost.Journey
                 // was previously gated off. Admitting the gate must not grant
                 // range until the player explicitly chooses it.
                 Power<CreativePowers.FarPlacementRangePower>().SetEnabledState(Player.whoAmI, false);
-                float value = Main.GameMode == 2 ? 1f : Main.GameMode == 1 ? 0.665f : 0.33f;
-                SetDifficulty(Power<CreativePowers.DifficultySliderPower>(), value);
+                // Connected shared powers belong to the server. In particular,
+                // opening the menu must not replace its received difficulty.
+                if (!Multiplayer)
+                {
+                    float value = Main.GameMode == 2 ? 1f : Main.GameMode == 1 ? 0.665f : 0.33f;
+                    SetDifficulty(Power<CreativePowers.DifficultySliderPower>(), value);
+                }
             }
             UpdateDifficulty();
         }
 
         internal void Restore()
         {
-            using (var stream = new MemoryStream(WorldBytes, false))
-            using (var reader = new BinaryReader(stream)) CreativePowerManager.Instance.LoadFromWorld(reader, 326);
+            if (!Multiplayer)
+            {
+                using (var stream = new MemoryStream(WorldBytes, false))
+                using (var reader = new BinaryReader(stream)) CreativePowerManager.Instance.LoadFromWorld(reader, 326);
+            }
             Power<CreativePowers.GodmodePower>().SetEnabledState(Player.whoAmI, godmode);
             Power<CreativePowers.FarPlacementRangePower>().SetEnabledState(Player.whoAmI, range);
-            foreach (Slider slider in sliders) slider.Restore();
+            // Never replay an old shared value over a later server packet or
+            // send a closing command. Only retire this window's uncommitted
+            // targets; personal borrowed abilities still return locally.
+            foreach (Slider slider in sliders)
+                if (Multiplayer && slider.IsShared) slider.CancelBorrowedCommit(); else slider.Restore();
             Player.creativeGodMode = creativeGodmode;
-            // Wind/rain slider caches are restored without calling their apply
-            // methods: actual weather already caused by the player is retained.
+            // Single-player wind/rain caches return without their apply
+            // methods; connected caches stay current. Actual weather is kept.
             UpdateDifficulty();
+        }
+
+        internal void RetirePendingTargets()
+        {
+            // An incoming .8 packet never updates target/pending. If vanilla has
+            // reused our Player/window across an endpoint edge, those pending
+            // edits still belong to the old window, including a prior native
+            // intent. Drop them without replaying any cached power or packet.
+            foreach (Slider slider in sliders) slider.CancelBorrowedCommit(false);
         }
 
         internal static T Power<T>() where T : class, ICreativePower
@@ -93,6 +126,8 @@ namespace JueMingR.TerrariaHost.Journey
             private readonly float targetValue;
             private readonly int playerIndex;
             private readonly float playerValue;
+            private readonly bool wasPending;
+            internal bool IsShared { get { return playerIndex < 0; } }
             internal Slider(object power, int playerIndex = -1)
             {
                 this.power = power; this.playerIndex = playerIndex;
@@ -100,12 +135,22 @@ namespace JueMingR.TerrariaHost.Journey
                 target = playerIndex < 0 ? SharedTarget : PlayerTarget;
                 pending = playerIndex < 0 ? SharedPending : PlayerPending;
                 value = (float)cache.GetValue(power); targetValue = (float)target.GetValue(power);
+                wasPending = (bool)pending.GetValue(power);
                 if (playerIndex >= 0) playerValue = ((float[])PlayerValues.GetValue(power))[playerIndex];
             }
             internal void Restore()
             {
                 cache.SetValue(power, value); target.SetValue(power, targetValue); pending.SetValue(power, false);
                 if (playerIndex >= 0) ((float[])PlayerValues.GetValue(power))[playerIndex] = playerValue;
+            }
+            internal void CancelBorrowedCommit(bool preservePrior = true)
+            {
+                // .8's incoming shared packet updates cache, not target or
+                // pending. Preserve an unchanged intent which predated R;
+                // otherwise cancel the borrowed target against the latest
+                // received value without applying it or producing a packet.
+                if (preservePrior && wasPending && (bool)pending.GetValue(power) && (float)target.GetValue(power) == targetValue) return;
+                pending.SetValue(power, false); target.SetValue(power, cache.GetValue(power));
             }
         }
     }

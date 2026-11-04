@@ -136,6 +136,13 @@ function Get-WorkloadLeafChecks {
         'scripts/phase0s/PackageVerification.Support.ps1'=@('workload-PackageVerification')
         'tests/Phase0S/Invoke-PackageVerificationChecks.ps1'=@('workload-PackageVerification')
         'tests/NativeWorldTextProbe/NativePageCompositionChecks.cs'=@('native-PageCompositionCpu')
+        'tests/NativeWorldTextProbe/NativeMiscPolishUiChecks.cs'=@('native-ProcessingCpu','native-ProcessingVisual','native-ToolsVisual')
+        'tests/NativeWorldTextProbe/NativeHerbMovementChecks.cs'=@('native-ToolsExecutionCpu','native-ToolsExecution','native-ToolsExecutionRelease')
+        'tests/NativeWorldTextProbe/NativeJourneyMultiplayerChecks.cs'=@('native-JourneyCpu','native-Journey')
+        # Merchant expectations execute only in RunCpu. Other scopes borrow
+        # unchanged Flags/Npc/Until/CheckLocked helpers; widen this leaf if those
+        # shared helpers change rather than silently dropping their consumers.
+        'tests/NativeWorldTextProbe/NativeGuidanceChecks.cs'=@('native-GuidanceCpu')
         'tests/NativeWorldTextProbe/NativeBackgroundAutomationChecks.cs'=@('native-BackgroundCpu','native-F5AutomationCpu')
         'tests/NativeWorldTextProbe/NativeToolCadenceChecks.cs'=@('native-ToolsCadence')
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')

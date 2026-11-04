@@ -57,6 +57,9 @@ namespace NativeWorldTextProbe
             prepare();MiscOrder(shell);prepare();
             var misc=Get(shell,"MiscUi");int builds=(int)Get(misc,"LayoutBuildCount");
             for(int i=0;i<30;i++)prepare();Require(builds==(int)Get(misc,"LayoutBuildCount"),"stable complete Misc composition does not rebuild migrated blocks");
+            // FinalHint deliberately supplies a 960x760 input sample. Match
+            // that real layout, then restore this composition fixture's size.
+            SampleSize(state,960,760);NativeProcessingUiChecks.Prepare(context,960,760,1);NameHints(shell);SampleSize(state,1200,1200);Call(renderer,"Prepare",state,1200f,1200f,1f);prepare();
             Input(context, prepare);
             NativeHiddenEntryChecks.RevealForComposition(context);
             Call(state,"Navigate",1);Call(renderer,"Prepare",state,1200f,1200f,1f);prepare();MiscOrder(shell);
@@ -88,6 +91,24 @@ namespace NativeWorldTextProbe
             input(false,true,true);input(true,true,true);input(false,true,true);
             Require((bool)Get(Get(shell,"CaptureUi"),"Visible"),"actual page configuration dispatch reaches its owning popup");
             Call(Get(shell,"CaptureUi"),"Close");
+        }
+        private static void NameHints(object shell)
+        {
+            var elements=((IEnumerable)Get(Get(shell,"MiscUi"),"elements")).Cast<object>()
+                .Concat(((IEnumerable)Get(Get(shell,"MiningUi"),"elements")).Cast<object>())
+                .Concat(((IEnumerable)Get(Get(shell,"ReforgeUi"),"Parts")).Cast<object>().Select(p=>Get(p,"Element"))).ToArray();
+            foreach(var expected in new[]{new[]{"自动重铸","按住重铸键直到名单内前缀停下(要按两下)"},new[]{"自动挖矿","自动连续挖掘矿脉"},new[]{"自动捕捉","附近有小动物时自动挥网捕捉"},new[]{"自动收获","携带再生法杖自动收获草药"},new[]{"自动存钱","靠近存钱罐自动存钱"}})
+            {
+                var e=elements.Single(p=>GetOptional(p,"Description")!=null && (string)GetOptional(p,"Text")==expected[0]);
+                Require((string)Get(Get(e,"Description"),"Text")==expected[1],"ordinary name source is the exact owner wording for "+expected[0]);
+                NativeQuickUiChecks.FinalHint(shell,e,expected[1]);
+            }
+        }
+        private static void SampleSize(object state,float width,float height)
+        {
+            var input=Activator.CreateInstance(state.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.F5Input"));
+            foreach(var field in new[]{Tuple.Create("Width",(object)width),Tuple.Create("Height",(object)height),Tuple.Create("Scale",(object)1f),Tuple.Create("X",(object)(-10f)),Tuple.Create("Y",(object)(-10f)),Tuple.Create("Active",(object)true),Tuple.Create("Focused",(object)true)})Set(input,field.Item1,field.Item2);
+            Call(state,"Update",input);
         }
         internal static void MiscOrder(object shell)
         {

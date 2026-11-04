@@ -105,7 +105,8 @@ namespace JueMingR.TerrariaHost.Journey
         private static void Qualify(Harmony harmony, Type type, string name, Type[] args, bool world)
         {
             var method = Method(type, name, args);
-            string patch = type == typeof(Player) && name == "ResetEffects" ? "LocalWorldRead" : world ? "WorldRead" : "PlayerRead";
+            string patch = type == typeof(Player) && name == "ResetEffects" ? "LocalWorldRead" :
+                type == typeof(Main) && name == "UpdateCreativeGameModeOverride" ? "DifficultyWorldRead" : world ? "WorldRead" : "PlayerRead";
             Apply(harmony, method, transpiler: new HarmonyMethod(typeof(JourneyHooks), patch));
         }
         private static void Apply(Harmony harmony, MethodInfo method, HarmonyMethod prefix = null, HarmonyMethod transpiler = null, HarmonyMethod finalizer = null)
@@ -133,10 +134,14 @@ namespace JueMingR.TerrariaHost.Journey
             if (found != 1) throw new InvalidOperationException("Journey player eligibility read count: " + found);
         }
         private static IEnumerable<CodeInstruction> WorldRead(IEnumerable<CodeInstruction> instructions)
+        { return ReadWorld(instructions, "WorldEligible"); }
+        private static IEnumerable<CodeInstruction> DifficultyWorldRead(IEnumerable<CodeInstruction> instructions)
+        { return ReadWorld(instructions, "DifficultyWorldEligible"); }
+        private static IEnumerable<CodeInstruction> ReadWorld(IEnumerable<CodeInstruction> instructions, string replacementName)
         {
             int found = 0;
             MethodInfo original = AccessTools.PropertyGetter(typeof(Main), "IsJourneyMode");
-            MethodInfo replacement = Method(typeof(JourneyHooks), "WorldEligible");
+            MethodInfo replacement = Method(typeof(JourneyHooks), replacementName);
             foreach (var instruction in instructions)
             {
                 if (instruction.Calls(original)) { instruction.operand = replacement; found++; }
@@ -147,6 +152,11 @@ namespace JueMingR.TerrariaHost.Journey
         private static byte Difficulty(Player player)
         { return owner != null && owner.OwnsPlayer(player) ? (byte)3 : player.difficulty; }
         private static bool WorldEligible() { return Main.IsJourneyMode || owner != null && owner.IsActive; }
+        // Ordinary servers also sync the native reset difficulty cache (0 ->
+        // x0.5), whose effect is normally gated off. Opening a client menu must
+        // not activate it; network difficulty keeps the native world identity.
+        // Native slider requests/permissions remain available and unchanged.
+        private static bool DifficultyWorldEligible() { return Main.netMode == 1 ? Main.IsJourneyMode : WorldEligible(); }
         private static bool LocalWorldEligible(Player player)
         { return Main.IsJourneyMode || owner != null && owner.OwnsPlayer(player); }
         private static IEnumerable<CodeInstruction> LocalWorldRead(IEnumerable<CodeInstruction> instructions)
@@ -252,7 +262,10 @@ namespace JueMingR.TerrariaHost.Journey
             lock (saveAdmissionGate)
             {
                 JourneyPowers captured = owner?.Persistence;
-                if (captured != null && !ReferenceEquals(Main.ActiveWorldFileData, captured.WorldFile)) captured = null;
+                // Connected worlds have no client-owned persistent baseline.
+                // Keep the native world's current powers even if a serializer
+                // runs in the same process; only the local player is borrowed.
+                if (captured != null && (captured.Multiplayer || !ReferenceEquals(Main.ActiveWorldFileData, captured.WorldFile))) captured = null;
                 __state = new SaveView(captured, null, true); save = __state;
                 if (captured == null) Volatile.Write(ref unprotectedSaves, unprotectedSaves + 1);
             }

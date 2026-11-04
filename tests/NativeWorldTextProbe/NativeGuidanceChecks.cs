@@ -133,7 +133,7 @@ namespace NativeWorldTextProbe
             // Full F5 pointer chain submitted by the input check; here final
             // native adapter receives explicit requests against changed facts.
             long session = (long)Get(host, "Session");
-            foreach (Action invalid in new Action[] { () => Main.netMode = 1, () => Main.dayTime = false, () => Main.eclipse = true,
+            foreach (Action invalid in new Action[] { () => Main.dayTime = false, () => Main.eclipse = true,
                 () => { Main.invasionType = 1; Main.invasionDelay = 0; Main.invasionSize = 100; }, () => { Main.npc[8] = Npc(8,368,0,200); Main.npc[8].hide = true; }, () => Main.npc = null })
             {
                 var table = Main.npc; invalid();
@@ -149,6 +149,31 @@ namespace NativeWorldTextProbe
             Require(feature.Result.Message == "已尝试召唤，无法确认旅商是否到访；不会自动重试。", "unconfirmed native result never uses the confirmed arrival message");
             Set(port, "spawn", (Action)(() => { calls++; throw new InvalidOperationException(); })); Call(host, "RequestMerchant"); update(); update(); Require(calls == 3 && feature.Result.Outcome == GameOperationOutcome.Failed, "exception is terminal with possible partial native side effects");
             Require(feature.Result.Message == "召唤出错，结果未确认；不会自动重试。", "thrown operation preserves uncertainty about partial results");
+            int previousMode = Main.netMode, previousConnection = Netplay.Connection.State;
+            try
+            {
+                Main.netMode = 1; Netplay.Connection.State = 10; update();
+                Call(Get(shell, "State"), "RestoreVisible");
+                Require(GetOptional(host, "SummonReason") == null && (bool)Get(shell, "CanExecuteMerchantInput"), "connected client has no mode-only UI or final input refusal");
+                Set(port, "spawn", (Action)(() => { calls++; Main.npc[8] = Npc(8, 368, 0, 2500); }));
+                Call(host, "RequestMerchant"); Call(host, "RequestMerchant"); update();
+                for (int i = 0; i < 20; i++) update();
+                Require(calls == 4 && feature.Result.Outcome == GameOperationOutcome.Unconfirmed &&
+                    feature.Result.Message == "已尝试召唤，无法确认旅商是否到访；不会自动重试。",
+                    "two pending clicks invoke vanilla once; a client-local merchant cannot confirm server arrival or trigger retry");
+                Call(host, "RequestMerchant"); update();
+                Require(calls == 4 && feature.Result.Outcome == GameOperationOutcome.Rejected, "connected existing merchant still prevents shop refresh");
+                Main.npc[8] = null;
+                foreach (Action invalid in new Action[] { () => Main.dayTime = false, () => Main.eclipse = true,
+                    () => { Main.invasionType = 1; Main.invasionDelay = 0; Main.invasionSize = 100; } })
+                {
+                    invalid();
+                    var result = (MerchantTestReceipt)Call(port, "Execute", new MerchantTestRequest((long)Get(host, "Session")));
+                    Require(result.Outcome == GameOperationOutcome.Rejected && calls == 4, "connected client preserves concrete native world gates");
+                    Main.dayTime = true; Main.eclipse = false; Main.invasionType = 0;
+                }
+            }
+            finally { Main.netMode = previousMode; Netplay.Connection.State = previousConnection; Main.npc[8] = null; update(); }
         }
     }
 }

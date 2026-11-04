@@ -37,9 +37,8 @@ namespace NativeWorldTextProbe
             Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.W,Keys.Space));
             Require(!Main.blockInput && !PlayerInput.WritingText && Main.keyState.IsKeyDown(Keys.Space),"plain list leaves movement keyboard alone");
             var field=Parts(ui).First(p=>(int)Get(p,"Command")==1);
-            var add=Parts(ui).First(p=>(int)Get(p,"Command")==2);
             var on=Parts(ui).First(p=>(int)Get(p,"Command")==4);
-            Require(Y(field)==Y(add) && Y(field)==Y(on),"input, add and toggles share one row");
+            Require(!Parts(ui).Any(p=>(int)Get(p,"Command")==2),"blank draft has no visible or executable Add control");
             var hint=GetOptional(field,"Label");Require(hint!=null,"idle input hint has measured glyph layout");
             var hintRect=Get(hint,"Rect");var fieldRect=Get(Get(field,"Element"),"Rect");
             Require((float)Get(hintRect,"Width")<=(float)Get(fieldRect,"Width")-12 &&
@@ -51,8 +50,17 @@ namespace NativeWorldTextProbe
             string name=Lang.prefix[1].Value;
             Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(),name);
             Require(Main.blockInput && PlayerInput.WritingText && ((TextEditBuffer)Get(ui,"Editor")).Text==name,"only actual editor leases native keyboard and commits whole name");
+            prepare();var add=Parts(ui).Single(p=>(int)Get(p,"Command")==2);field=Parts(ui).Single(p=>(int)Get(p,"Command")==1);
+            Require(Y(field)==Y(add) && X(add)<X(field),"valid draft Add shares its field row on the left");
             ime.Composition="ni";Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.Enter),"\r");
             Require(settings.Value.Names.Count==0 && GetOptional(ui,"Editor")!=null,"composition Enter cannot add unfinished name");
+            prepare();Require(!Parts(ui).Any(p=>(int)Get(p,"Command")==2) && GetOptional(ui,"Editor")!=null && ((TextEditBuffer)Get(ui,"Editor")).Text==name,"synthetic IME composition hides Add without dropping its existing draft/editor");
+            ime.Composition="";ime.Candidates=true;Step(context,ui,false,new Vector2(-10,-10),new KeyboardState());prepare();
+            Require(!Parts(ui).Any(p=>(int)Get(p,"Command")==2) && (bool)Get(ui,"OwnsTextToken") && ((TextEditBuffer)Get(ui,"Editor")).Text==name,"candidate-only synthetic IME keeps its lease/draft and hides Add");
+            ime.Candidates=false;Step(context,ui,false,new Vector2(-10,-10),new KeyboardState());prepare();
+            add=Parts(ui).Single(p=>(int)Get(p,"Command")==2);var addPoint=Point(add);long beforeComposition=settings.AcceptedCommandId;
+            Step(context,ui,true,addPoint,new KeyboardState());ime.Candidates=true;Step(context,ui,false,addPoint,new KeyboardState());prepare();
+            Require(settings.AcceptedCommandId==beforeComposition && !Parts(ui).Any(p=>(int)Get(p,"Command")==2) && (bool)Get(ui,"OwnsTextToken"),"candidate-only IME revokes an old Add press without losing text ownership");ime.Candidates=false;
             ime.Composition="";Step(context,ui,false,new Vector2(-10,-10),new KeyboardState());Step(context,ui,false,new Vector2(-10,-10),new KeyboardState(Keys.Enter),"\r");
             NativeQuickItemChecks.Until(()=>{settings.Poll();return !settings.Busy;});
             Require(settings.Value.Names.SequenceEqual(new[]{name}),"fresh Enter persists one complete target");
@@ -110,6 +118,7 @@ namespace NativeWorldTextProbe
             Require(GetOptional(ui,"Editor")==null && !(bool)Get(ui,"OwnsTextToken"),"higher popup yields editor and keyboard ownership");
             Save(settings,new ProcessingOptions());prepare();GroupGeometry(shell,ui);
             Require((float)Get(ui,"Height")==compactReforgeHeight,"clearing prefix content restores compact group and following layout");
+            NativeMiscPolishUiChecks.Processing(context);
             Call(state,"Close");Call(ui,"Suspend");Save(settings,new ProcessingOptions());
             Console.WriteLine("PASS G08 UI: physical editor/list controls, isolated IME boundary, whole-name persistence, stable height/measurement, movement keys and shared scroll.");
         }
@@ -185,9 +194,10 @@ namespace NativeWorldTextProbe
         private sealed class Ime : RealProxy
         {
             internal string Composition="";
+            internal bool Candidates;
             internal Ime(Type contract):base(contract){}
             public override IMessage Invoke(IMessage message)
-            {var call=(IMethodCallMessage)message;object value=call.MethodName=="get_Composition"?(object)Composition:call.MethodName=="get_Candidates"?(object)false:null;return new ReturnMessage(value,null,0,call.LogicalCallContext,call);}
+            {var call=(IMethodCallMessage)message;object value=call.MethodName=="get_Composition"?(object)Composition:call.MethodName=="get_Candidates"?(object)Candidates:null;return new ReturnMessage(value,null,0,call.LogicalCallContext,call);}
         }
     }
 }
