@@ -123,11 +123,13 @@ namespace JueMingR.TerrariaHost.F5
             // Every body slot fits both the ordinary glyph and a standard button.
             // Short viewports scroll complete slots; header/footer never move.
             float textHeight = measure("测试Ag", .75f).Height; lineHeight = Math.Max(34, textHeight + 10);
-            float panelWidth = Math.Min(Mode == 1 ? Math.Max(300, measure("地图显示死亡点数量：", .75f).Width + 24) : 560, w - 24);
+            float quantityCloseWidth = Mode == 1 ? Math.Max(56, measure("关闭", .70f).Width + 16) : 0;
+            float panelWidth = Math.Min(Mode == 1 ? Math.Max(300, measure("地图显示死亡点数量：", .75f).Width + quantityCloseWidth + 36) : 560, w - 24);
             // A short list uses only its actual rows. Full text keeps a fixed
             // viewport while incremental wrapping continues, so exit stays put.
             int listSlots = Math.Max(1, (queryReady ? value.Rows.Count : 0) + (nextStatus == null ? 0 : 1));
-            float quantityHeight = 24 + textHeight + Math.Max(24, measure("1024", .70f).Height + 6) * 2 + 16;
+            float quantityButtonHeight = Mode == 1 ? Math.Max(24, Math.Max(measure("1024", .70f).Height, measure("关闭", .70f).Height) + 6) : 0;
+            float quantityHeight = Mode == 1 ? 32 + Math.Max(measure("地图显示死亡点数量：", .75f).Height, quantityButtonHeight) + quantityButtonHeight : 0;
             float wantedHeight = Mode == 1 ? quantityHeight : Mode == 2 ? (listSlots + 2) * lineHeight + 50 : 6 * lineHeight + 84;
             float panelHeight = Math.Min(wantedHeight, h - 24);
             var oldPanel = Panel;
@@ -165,13 +167,17 @@ namespace JueMingR.TerrariaHost.F5
         private void BuildQuantity(float panelWidth, float panelHeight, Func<string, float, F5Size> measure)
         {
             float titleHeight = measure("地图显示死亡点数量：", .75f).Height;
-            float buttonHeight = Math.Max(24, measure("1024", .70f).Height + 6);
-            float top = 16 + titleHeight, optionWidth = (panelWidth - 42) / 4;
-            AddText("地图显示死亡点数量：", 12, 10, panelWidth - 24, .75f, measure);
+            float buttonHeight = Math.Max(24, Math.Max(measure("1024", .70f).Height, measure("关闭", .70f).Height) + 6);
+            float closeWidth = Math.Max(56, measure("关闭", .70f).Width + 16);
+            float headerHeight = Math.Max(titleHeight, buttonHeight);
+            float top = 20 + headerHeight, optionWidth = (panelWidth - 42) / 4;
+            // Reserve distinct measured title/close cells. The close action shares
+            // the fixed header; quantity has no footer or empty status row.
+            AddText("地图显示死亡点数量：", 12, 12 + (headerHeight - titleHeight) / 2, panelWidth - closeWidth - 36, .75f, measure);
             int[] choices = { 128, 256, 512, 1024 };
             for (int i = 0; i < choices.Length; i++)
                 AddQuantityButton(choices[i].ToString(CultureInfo.InvariantCulture), choices[i], 12 + i * (optionWidth + 6), top, optionWidth, buttonHeight, host.ControlsEnabled, measure);
-            AddQuantityButton("关闭", 0, panelWidth - 68, panelHeight - buttonHeight - 10, 56, buttonHeight, true, measure);
+            AddQuantityButton("关闭", 0, panelWidth - closeWidth - 12, 12 + (headerHeight - buttonHeight) / 2, closeWidth, buttonHeight, true, measure);
             Body = new F5Rect(Panel.X + 12, Panel.Y + top, panelWidth - 24, buttonHeight);
             bodyMax = 0; scroll = 0;
         }

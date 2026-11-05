@@ -85,7 +85,15 @@ namespace NativeWorldTextProbe
                 NativeToolsUiChecks.PopupClick(context,popup,"Clear");NativeQuickItemChecks.Until(()=>{NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);return !bindings.Busy;});
                 Require(bindings.Get(Id)==null,"real clear deactivates view chord");Call(popup,"Close");
                 object death=Get(shell,"DeathPopup"),renderer=Get(shell,"renderer");Call(death,"Open",true,2);NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
-                graphics.Image(Path.Combine(output,"quantity-"+size[0]+"-"+size[2]+".png"),()=>Call(renderer,"DrawDeathPopup",death),Main.UIScaleMatrix,size[0],size[1]);Call(death,"Close");
+                var texts=((IEnumerable)Get(death,"Text")).Cast<object>().ToArray();
+                var commands=(IList)Get(death,"Commands");var buttons=(IList)Get(death,"Buttons");
+                var title=Get(texts.Single(),"Rect");var close=Get(buttons[commands.IndexOf(0)],"Rect");var quantity=Get(buttons[commands.IndexOf(128)],"Rect");var panel=Get(death,"Panel");
+                Require((string)Get(texts.Single(),"Text")=="地图显示死亡点数量：" && buttons.Count==5,"real quantity has exact sole title/four choices/close");
+                Require((float)Get(close,"X")>=(float)Get(title,"Right") && (float)Get(close,"Y")<(float)Get(quantity,"Y") && (float)Get(panel,"Height")<104,"real close shares top-right measured header and removes footer volume");
+                foreach(object button in buttons){var r=Get(button,"Rect");Require((float)Get(r,"Bottom")<=(float)Get(panel,"Height") && (float)Get(r,"Right")<=(float)Get(panel,"Width"),"real quantity controls stay inside compact panel at actual UI scale");}
+                graphics.Image(Path.Combine(output,"quantity-"+size[0]+"-"+size[2]+".png"),()=>Call(renderer,"DrawDeathPopup",death),Main.UIScaleMatrix,size[0],size[1]);
+                var closePoint=new Vector2((float)Get(panel,"X")+(float)Get(close,"X")+5,(float)Get(panel,"Y")+(float)Get(close,"Y")+5)*Main.UIScale;
+                NativeToolsUiChecks.Click(context,closePoint);Require(!(bool)Get(death,"Visible"),"real top-right close accepts a complete physical gesture");
             }
             Call(shell,"CloseAndSubmitPosition");
         }
