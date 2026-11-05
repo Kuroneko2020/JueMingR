@@ -122,9 +122,49 @@ namespace JueMingR.Setup
 
         private static TextBox ReadableText(string name, string accessibleName)
         {
-            // Native multiline editing retains wheel/caret navigation without a visible
-            // scrollbar. ReadOnly still permits selection, Ctrl+C, PageDown and Ctrl+End.
-            return new TextBox { Multiline = true, ReadOnly = true, WordWrap = true, BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(247, 249, 248), ForeColor = Ink, Dock = DockStyle.Fill, Name = name, AccessibleName = accessibleName, ScrollBars = ScrollBars.None };
+            return new ArrowlessTextBox { Multiline = true, ReadOnly = true, WordWrap = true, BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(247, 249, 248), ForeColor = Ink, Dock = DockStyle.Fill, Name = name, AccessibleName = accessibleName, ScrollBars = ScrollBars.None };
+        }
+
+        private sealed class ArrowlessTextBox : TextBox
+        {
+            private int wheelRemainder;
+
+            protected override void OnMouseWheel(MouseEventArgs e)
+            {
+                base.OnMouseWheel(e);
+                if (!Multiline || ScrollBars != ScrollBars.None) return;
+                ScrollHiddenWheel(e.Delta, SystemInformation.MouseWheelScrollLines);
+                var handled = e as HandledMouseEventArgs;
+                if (handled != null) handled.Handled = true;
+            }
+
+            // The native edit control receives wheel messages with ScrollBars.None but
+            // does not scroll them. Keep arrows hidden while using its own line/page
+            // scrolling messages; these do not move the caret or replace the selection.
+            // Remainder belongs to this control, so precise wheels retain partial ticks.
+            private void ScrollHiddenWheel(int delta, int configuredLines)
+            {
+                if (configuredLines == 0) { wheelRemainder = 0; return; }
+                int total = wheelRemainder + delta;
+                int ticks = total / SystemInformation.MouseWheelScrollDelta;
+                wheelRemainder = total % SystemInformation.MouseWheelScrollDelta;
+                if (ticks == 0) return;
+                if (configuredLines == -1)
+                {
+                    // WHEEL_PAGESCROLL uses the native edit's page size, including its
+                    // normal line overlap, rather than inventing a fixed pixel amount.
+                    for (int i = 0; i < Math.Abs(ticks); i++)
+                    {
+                        Message page = Message.Create(Handle, 0x00B5, new IntPtr(ticks > 0 ? 2 : 3), IntPtr.Zero); // EM_SCROLL, SB_PAGEUP/DOWN
+                        base.WndProc(ref page);
+                    }
+                }
+                else if (configuredLines > 0)
+                {
+                    Message lines = Message.Create(Handle, 0x00B6, IntPtr.Zero, new IntPtr(-ticks * configuredLines)); // EM_LINESCROLL
+                    base.WndProc(ref lines);
+                }
+            }
         }
         private static Panel Separator() { return new Panel { Dock = DockStyle.Fill, Height = 1, MinimumSize = new Size(0, 1), BackColor = Color.FromArgb(215, 220, 217), Margin = Padding.Empty }; }
         private static LinkLabel MaintenanceLink(string text, string name, int tabIndex)

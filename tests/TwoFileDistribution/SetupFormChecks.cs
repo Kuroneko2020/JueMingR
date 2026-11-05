@@ -114,6 +114,28 @@ internal static class SetupFormChecks
         {
             Observe(form, "close-in-flight", () => { Pump(() => readStarted.IsSet); form.Close(); readRelease.Set(); Check(readFinished.Wait(3000), "form-closed-read-finishes-without-publishing"); });
         }
+        using (var form = new SetupForm("A", new string[0], Ready, (operation, path) => { throw new Exception("Wheel check does not execute a service"); }))
+        {
+            Observe(form, "arrowless-wheel", () =>
+            {
+                var log = Find<TextBox>(form, "OperationDetails");
+                var content = new System.Text.StringBuilder();
+                for (int i = 0; i < 100; i++) content.AppendLine("Line " + i.ToString("D2") + " selected text remains intact");
+                log.Text = content.ToString(); log.Select(0, 7); log.ScrollToCaret();
+                string selection = log.SelectedText;
+                var scroll = log.GetType().GetMethod("ScrollHiddenWheel", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Action<int, int> wheel = (delta, lines) => scroll.Invoke(log, new object[] { delta, lines });
+                Func<int> first = () => log.GetCharIndexFromPosition(new Point(1, 1));
+                int start = first();
+                wheel(-60, 3); Check(first() == start, "form-precise-wheel-retains-half-tick");
+                wheel(-60, 3); Check(first() > start && log.ScrollBars == ScrollBars.None && log.SelectedText == selection, "form-arrowless-wheel-scrolls-without-changing-selection");
+                wheel(120, 3); Check(first() == start, "form-arrowless-wheel-both-directions");
+                wheel(-120, 0); Check(first() == start, "form-wheel-respects-disabled-system-setting");
+                wheel(-120, 1); int lineAdvance = first(); wheel(120, 1);
+                wheel(-120, -1); Check(first() > lineAdvance && log.SelectedText == selection, "form-wheel-native-page-setting");
+                form.Close();
+            });
+        }
         Console.WriteLine("PASS production SetupForm STA controls; simulated read/service seams only; no real install or game process");
     }
 
