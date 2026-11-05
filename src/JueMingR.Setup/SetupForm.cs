@@ -23,8 +23,9 @@ namespace JueMingR.Setup
         private readonly Label identityDivider = new Label { Text = "│", AutoSize = true, ForeColor = Color.Silver, Margin = new Padding(10, 0, 10, 0), TabStop = false };
         private readonly FlowLayoutPanel identities = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = Padding.Empty };
         private readonly TableLayoutPanel resultPanel = new TableLayoutPanel { Name = "OperationResult", Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 8, 0, 8) };
-        private readonly TableLayoutPanel layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24, 16, 24, 8), ColumnCount = 1, RowCount = 5, AutoScroll = true };
+        private readonly TableLayoutPanel layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20, 12, 20, 8), ColumnCount = 1, RowCount = 5, AutoScroll = true };
         private readonly Timer checkDelay = new Timer { Interval = 350 };
+        private readonly ToolTip fullText = new ToolTip { AutoPopDelay = 30000 };
         private readonly Func<string, SetupTargetState> inspect;
         private readonly Func<string, string, SetupResult> execute;
         private readonly Func<SetupVersionDisplay> readVersion;
@@ -44,19 +45,26 @@ namespace JueMingR.Setup
             this.inspect = inspect; this.execute = execute; this.readVersion = readVersion ?? SetupVersionReader.Read;
             emptyTargetPrompt = candidates.Length > 1 ? "找到多个游戏目录，请选择。" : "请先选择游戏目录，可输入路径或选择目录。";
             Text = "决明安装程序"; Name = "JueMingRSetup"; Font = new Font("Microsoft YaHei UI", 9.5F);
-            titleFont = new Font(Font.FontFamily, 25F, FontStyle.Bold); labelFont = new Font(Font, FontStyle.Bold);
+            titleFont = new Font(Font.FontFamily, 22F, FontStyle.Bold); labelFont = new Font(Font, FontStyle.Bold);
             actionFont = new Font(Font.FontFamily, 11.5F, FontStyle.Bold); install.Font = actionFont;
             ForeColor = Ink; BackColor = Color.FromArgb(247, 249, 248); AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(720, 400); MinimumSize = new Size(420, 350); StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(640, 360); FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false; StartPosition = FormStartPosition.CenterScreen;
+            // Complete development versions remain editable-text values for selection /
+            // horizontal caret navigation and copying, rather than enlarging the window.
+            foreach (TextBox box in new[] { payloadVersion, identity, installedIdentity, feedback, summary })
+            {
+                box.Multiline = false; box.WordWrap = false;
+                box.TextChanged += (sender, args) => fullText.SetToolTip(box, box.Text);
+            }
             using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Icon")) Icon = new Icon(stream);
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             for (int i = 0; i < 5; i++) layout.RowStyles.Add(new RowStyle(i == 3 ? SizeType.Percent : SizeType.AutoSize, i == 3 ? 100 : 0));
 
-            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2, Margin = new Padding(0, 0, 0, 14) };
+            var heading = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2, Margin = new Padding(0, 0, 0, 10) };
             heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             heading.Controls.Add(new Label { Text = "决明", Name = "ProductTitle", AutoSize = true, Font = titleFont, ForeColor = Accent, Margin = new Padding(0, 0, 12, 8) }, 0, 0);
             heading.Controls.Add(new Label { Text = "│", AutoSize = true, ForeColor = Color.Silver, Margin = new Padding(0, 14, 12, 0) }, 1, 0);
-            payloadVersion.Text = "正在读取…"; payloadVersion.ForeColor = Muted; payloadVersion.Margin = new Padding(0, 14, 0, 8); payloadVersion.TabIndex = 0; heading.Controls.Add(payloadVersion, 2, 0);
+            payloadVersion.Text = "正在读取…"; payloadVersion.ForeColor = Muted; payloadVersion.Margin = new Padding(0, 10, 0, 8); payloadVersion.TabIndex = 0; heading.Controls.Add(payloadVersion, 2, 0);
             var topLine = Separator(); heading.Controls.Add(topLine, 0, 1); heading.SetColumnSpan(topLine, 3); layout.Controls.Add(heading, 0, 0);
 
             var pathArea = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty, TabIndex = 1 };
@@ -71,6 +79,7 @@ namespace JueMingR.Setup
             information.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             identity.ForeColor = installedIdentity.ForeColor = Muted; identity.Dock = installedIdentity.Dock = DockStyle.None;
             identity.Margin = installedIdentity.Margin = Padding.Empty; identity.TabIndex = 0; installedIdentity.TabIndex = 1;
+            identities.WrapContents = false;
             identities.Controls.Add(identity); identities.Controls.Add(identityDivider); identities.Controls.Add(installedIdentity); information.Controls.Add(identities, 0, 0);
             feedback.ForeColor = Color.FromArgb(149, 54, 36); feedback.Margin = new Padding(0, 5, 0, 0); feedback.TabIndex = 2; information.Controls.Add(feedback, 0, 1); layout.Controls.Add(information, 0, 2);
 
@@ -113,7 +122,7 @@ namespace JueMingR.Setup
         {
             if (disposing && !resourcesDisposed)
             {
-                resourcesDisposed = true; closing = true; targetGeneration++; checkDelay.Stop(); checkDelay.Dispose();
+                resourcesDisposed = true; closing = true; targetGeneration++; checkDelay.Stop(); checkDelay.Dispose(); fullText.Dispose();
                 if (Icon != null) { Icon.Dispose(); Icon = null; }
                 titleFont.Dispose(); labelFont.Dispose(); actionFont.Dispose(); Font.Dispose();
             }
@@ -265,6 +274,7 @@ namespace JueMingR.Setup
 
         private int TextHeight(TextBox box, int maximumLines)
         {
+            if (!box.Multiline) return box.Font.Height + 5;
             int width = Math.Max(40, box.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
             int measured = TextRenderer.MeasureText(box.Text.Length == 0 ? " " : box.Text, box.Font, new Size(width, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height + 5;
             return maximumLines == 0 ? measured : Math.Min(box.Font.Height * maximumLines + 5, measured);
@@ -280,27 +290,28 @@ namespace JueMingR.Setup
                 browse.Size = new Size(directory.PreferredHeight + (int)(8 * DeviceDpi / 96F), directory.PreferredHeight);
                 payloadVersion.MinimumSize = new Size(0, TextHeight(payloadVersion, 0));
                 int available = Math.Max(80, layout.ClientSize.Width - layout.Padding.Horizontal - SystemInformation.VerticalScrollBarWidth);
-                int gameWidth = TextRenderer.MeasureText(identity.Text, identity.Font).Width + SystemInformation.VerticalScrollBarWidth + 8;
-                int installedWidth = TextRenderer.MeasureText(installedIdentity.Text, installedIdentity.Font).Width + SystemInformation.VerticalScrollBarWidth + 8;
-                bool sameRow = gameWidth + installedWidth + identityDivider.PreferredWidth + identityDivider.Margin.Horizontal <= available;
-                identityDivider.Visible = sameRow; identities.SetFlowBreak(identity, !sameRow);
-                identity.Width = sameRow ? gameWidth : available; installedIdentity.Width = sameRow ? installedWidth : available;
+                int gameWidth = Math.Min(available / 2, TextRenderer.MeasureText(identity.Text, identity.Font).Width + 8);
+                identityDivider.Visible = true;
+                identity.Width = gameWidth; installedIdentity.Width = Math.Max(40, available - gameWidth - identityDivider.PreferredWidth - identityDivider.Margin.Horizontal);
                 identity.Height = TextHeight(identity, 0); installedIdentity.Height = TextHeight(installedIdentity, 0);
                 feedback.Visible = !string.IsNullOrWhiteSpace(feedback.Text); feedback.MinimumSize = new Size(0, feedback.Visible ? TextHeight(feedback, 3) : 0);
                 summary.MinimumSize = new Size(0, summary.Visible ? TextHeight(summary, 4) : 0);
-                // Default visible logs always retain a font-based viewport. Short work
-                // areas use root scrolling rather than shrinking the result to zero.
+                // A fixed compact frame reserves the same font-based log viewport for
+                // long versions and partial results; only tiny work areas need root scroll.
                 int viewport = details.Font.Height * 6 + SystemInformation.BorderSize.Height * 2;
                 details.MinimumSize = new Size(0, viewport);
                 int resultMinimum = viewport + (summary.Visible ? summary.MinimumSize.Height + summary.Margin.Vertical : 0);
                 resultPanel.MinimumSize = new Size(0, resultMinimum);
                 layout.PerformLayout();
-                int fixedHeight = layout.Padding.Vertical; int[] rows = layout.GetRowHeights();
-                for (int i = 0; i < rows.Length; i++) if (i != 3) fixedHeight += rows[i];
                 Rectangle work = Screen.FromControl(this).WorkingArea;
-                int requiredHeight = SizeFromClientSize(new Size(0, fixedHeight + resultMinimum + resultPanel.Margin.Vertical)).Height;
-                MinimumSize = new Size(Math.Min(work.Width, (int)(420 * DeviceDpi / 96F)), Math.Min(work.Height, Math.Max((int)(350 * DeviceDpi / 96F), requiredHeight)));
-                if (Width > work.Width || Height > work.Height) Size = new Size(Math.Min(Width, work.Width), Math.Min(Height, work.Height));
+                Size designed = SizeFromClientSize(new Size((int)(640 * DeviceDpi / 96F), (int)(360 * DeviceDpi / 96F)));
+                Size frame = new Size(Math.Min(work.Width, designed.Width), Math.Min(work.Height, designed.Height));
+                // User-approved fixed proportions replace text-driven window growth.
+                // On a smaller desktop clamp the frame and keep native root scrolling;
+                // do not demand an off-screen minimum or change display settings.
+                if (MinimumSize != frame || MaximumSize != frame)
+                { MinimumSize = Size.Empty; MaximumSize = frame; MinimumSize = frame; }
+                if (Size != frame) Size = frame;
                 if (Bottom > work.Bottom) Top = Math.Max(work.Top, work.Bottom - Height);
                 if (Right > work.Right) Left = Math.Max(work.Left, work.Right - Width);
             }

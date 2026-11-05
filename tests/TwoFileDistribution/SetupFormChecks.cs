@@ -25,6 +25,7 @@ internal static class SetupFormChecks
             {
             var install = Find<Button>(form, "InstallButton"); var path = Find<ComboBox>(form, "GameDirectory");
             Pump(() => install.Enabled);
+            Size fixedFrame = form.Size;
             Check(SynchronizationContext.Current is WindowsFormsSynchronizationContext && Application.MessageLoop, "form-persistent-sta-message-loop");
             Check(Find<Control>(form, "OperationResult").Visible && Find<TextBox>(form, "OperationDetails").Visible && Find<TextBox>(form, "OperationDetails").Text == "", "form-default-visible-empty-log-no-fake-ready");
             Check(Find<Control>(form, "ProductTitle").Text == "决明" && form.Icon != null, "form-text-heading-window-icon");
@@ -39,13 +40,14 @@ internal static class SetupFormChecks
             Pump(() => install.Enabled && Find<TextBox>(form, "OperationSummary").Text.Contains("只完成了一部分"));
             Check(Find<TextBox>(form, "InstalledIdentity").Text.Contains("已安装决明版本：0.0.0-dev+installed-target") && Find<TextBox>(form, "OperationSummary").Text.Contains("受控配置失败"), "form-current-state-does-not-erase-partial-result");
             Check(Find<TextBox>(form, "OperationDetails").Visible && Find<TextBox>(form, "OperationDetails").Text.Contains("replace-config") && Find<TextBox>(form, "OperationDetails").Text.Contains("目标：A"), "form-default-visible-real-fields-and-target");
+            Check(form.Size == fixedFrame, "form-result-does-not-enlarge-fixed-frame");
             form.Size = form.MinimumSize; Application.DoEvents();
             var resultSummary = Find<TextBox>(form, "OperationSummary");
             var resultDetails = Find<TextBox>(form, "OperationDetails");
             Check(resultDetails.Visible && FullyVisible(resultDetails) && resultDetails.ClientSize.Height >= resultDetails.Font.Height * 4 && resultDetails.ScrollBars == ScrollBars.None && SummaryReasonVisible(resultSummary, "受控配置失败") && FullyVisible(uninstall) && FullyVisible(clear) && FullyVisible(install), "form-minimum-readable-log-no-visible-arrows-and-all-actions");
             Check(Find<Button>(form, "BrowseButton").Height == path.PreferredHeight && Find<Button>(form, "BrowseButton").Width < path.PreferredHeight * 2 && Find<TextBox>(form, "PayloadVersion").ScrollBars == ScrollBars.None && Find<TextBox>(form, "GameIdentity").ScrollBars == ScrollBars.None && Find<TextBox>(form, "InstalledIdentity").ScrollBars == ScrollBars.None, "form-compact-browse-and-version-no-arrows");
             Size stableMinimum = form.MinimumSize;
-            form.Width += 20; form.Width -= 20; Application.DoEvents();
+            form.Width += 20; Check(form.Size == fixedFrame, "form-fixed-frame-rejects-user-size-growth"); form.Width -= 20; Application.DoEvents();
             Check(form.MinimumSize == stableMinimum, "form-resize-no-height-growth");
             path.Text = "B";
             Check(Find<Control>(form, "OperationResult").Visible && resultDetails.Text == "" && !resultSummary.Visible && !install.Enabled && !uninstall.Enabled && !clear.Enabled, "form-target-change-clears-old-result-and-eligibility-retains-log");
@@ -72,9 +74,10 @@ internal static class SetupFormChecks
             });
         }
         int versionReads = 0, maintenanceCalls = 0;
+        string completePackageVersion = "0.0.0-dev+payload-different-from-installed-" + new string('v', 120);
         using (var form = new SetupForm("A", new string[0], path => new SetupTargetState { Directory = path, Version = "1.4.5.8", CanMaintain = true, Pair = SetupPairState.NotInstalled },
             (operation, selected) => { Check(operation == "uninstall" && selected == "B", "form-exact-uninstall-operation-and-target"); maintenanceCalls++; return new SetupResult { operation = operation, gameDirectory = selected, status = "noop" }; },
-            () => { Interlocked.Increment(ref versionReads); return new SetupVersionDisplay { Version = "0.0.0-dev+payload-different-from-installed" }; }))
+            () => { Interlocked.Increment(ref versionReads); return new SetupVersionDisplay { Version = completePackageVersion }; }))
         {
             Observe(form, "package-and-maintenance", () =>
             {
@@ -82,7 +85,7 @@ internal static class SetupFormChecks
                 Find<ComboBox>(form, "GameDirectory").Text = "B";
                 Pump(() => Find<LinkLabel>(form, "UninstallLink").Enabled);
                 Check(versionReads == 1 && Find<TextBox>(form, "InstalledIdentity").Text == "当前未安装决明" && Find<LinkLabel>(form, "ClearConfigurationLink").Enabled && !Find<Button>(form, "InstallButton").Enabled, "form-package-read-once-independent-target-and-maintenance-pair");
-                Check(Find<TextBox>(form, "PayloadVersion").Text == "0.0.0-dev+payload-different-from-installed" && Find<TextBox>(form, "PayloadVersion").AccessibleName == "待安装决明版本", "form-header-raw-product-version-with-accessible-meaning");
+                Check(Find<TextBox>(form, "PayloadVersion").Text == completePackageVersion && Find<TextBox>(form, "PayloadVersion").AccessibleName == "待安装决明版本", "form-header-raw-product-version-with-accessible-meaning");
                 ActivateLink(Find<LinkLabel>(form, "UninstallLink"));
                 Pump(() => maintenanceCalls == 1 && Find<LinkLabel>(form, "UninstallLink").Enabled);
                 Check(Find<TextBox>(form, "OperationSummary").Text.Contains("无需处理") && Find<TextBox>(form, "PayloadVersion").Text.Contains("payload-different"), "form-noop-result-preserved-with-package-version");
