@@ -136,6 +136,7 @@ function Get-WorkloadLeafChecks {
         'scripts/phase0s/PackageVerification.Support.ps1'=@('workload-PackageVerification')
         'tests/Phase0S/Invoke-PackageVerificationChecks.ps1'=@('workload-PackageVerification')
         'tests/NativeWorldTextProbe/NativePageCompositionChecks.cs'=@('native-PageCompositionCpu')
+        'tests/NativeWorldTextProbe/NativeDeathPreferenceFeedbackChecks.cs'=@('native-ShortFeedbackCpu')
         'tests/NativeWorldTextProbe/NativeMiscPolishUiChecks.cs'=@('native-ProcessingCpu','native-ProcessingVisual','native-ToolsVisual')
         'tests/NativeWorldTextProbe/NativeHerbMovementChecks.cs'=@('native-ToolsExecutionCpu','native-ToolsExecution','native-ToolsExecutionRelease')
         'tests/NativeWorldTextProbe/NativeJourneyMultiplayerChecks.cs'=@('native-JourneyCpu','native-Journey')

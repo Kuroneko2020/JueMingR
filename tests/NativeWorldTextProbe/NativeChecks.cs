@@ -708,7 +708,7 @@ namespace NativeWorldTextProbe
                 return 0;
             }
             if (scope == "ExplorationRelease") scope = "ExplorationCpu";
-            if (scope != "Full" && scope != "SelectionCpuCosts" && scope != "SelectionCpuChecks" && scope != "WorkloadCpu" && scope != "InformationCpu" && scope != "GuidanceCpu" && scope != "GuidanceVisual" && scope != "DeathCpu" && scope != "DeathVisual" && scope != "ExplorationCpu" && scope != "MapVisual" && scope != "MapAlignment" && scope != "FootprintsCpu" && scope != "FootprintsVisual") throw new ArgumentException("Unknown probe scope");
+            if (scope != "Full" && scope != "SelectionCpuCosts" && scope != "SelectionCpuChecks" && scope != "WorkloadCpu" && scope != "InformationCpu" && scope != "GuidanceCpu" && scope != "GuidanceVisual" && scope != "DeathCpu" && scope != "DeathVisual" && scope != "ExplorationCpu" && scope != "MapVisual" && scope != "MapAlignment" && scope != "FootprintsCpu" && scope != "FootprintsVisual" && scope != "FootprintsPopupVisual") throw new ArgumentException("Unknown probe scope");
             if (IntPtr.Size != 4 || typeof(object).Assembly.GetName().Name != "mscorlib") throw new InvalidOperationException("Native workload requires .NET Framework x86.");
             string isolated = Path.Combine(Path.GetTempPath(), "JueMingR-native-text-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(isolated);
             // Main's beforefieldinit constructor reads Program.SavePath. This is
@@ -772,6 +772,7 @@ namespace NativeWorldTextProbe
             }
             using (var graphics = new ProbeGraphics(content, scope == "GuidanceVisual"))
             {
+                if (scope == "FootprintsPopupVisual") { NativeFootprintVisualChecks.Run(graphics, output, true); return 0; }
                 if (scope == "FootprintsVisual") { NativeFootprintVisualChecks.Run(graphics, output); NativeQuickItemChecks.Run(context => NativeFootprintPathCoexistenceChecks.Run(context, graphics, output), processing: true, shortFeedback: true); return 0; }
                 if (scope == "MapVisual") { NativeMapVisualChecks.Run(graphics, output); return 0; }
                 if (scope == "MapAlignment") { NativeMapVisualChecks.Run(graphics, output, true); return 0; }

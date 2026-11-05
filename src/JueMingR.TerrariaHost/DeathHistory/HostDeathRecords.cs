@@ -35,7 +35,7 @@ namespace JueMingR.TerrariaHost.DeathHistory
         private object missedToken;
         private readonly HashSet<string> missedPairs = new HashSet<string>(StringComparer.Ordinal);
         private bool MissedHere { get { return pair != null && missedPairs.Contains(pair) || missedToken != null && ReferenceEquals(missedToken, CurrentToken()); } }
-        private string pair, localError, reportedError;
+        private string pair, localError, reportedError, reportedPreferenceError;
         private long pageOffset = -1;
         private string selected;
         private long shownCount = -1, shownDays = -1;
@@ -157,9 +157,21 @@ namespace JueMingR.TerrariaHost.DeathHistory
         public void TakeFeedback(Action<string> display)
         {
             string error = localError ?? History.Error ?? History.Snapshot.Error ?? History.BackgroundError ?? Time.Error ?? Time.BackgroundError ?? deathHooks.Failure ?? timeHooks.Failure ?? Map.Failure;
-            if (error == null && Preferences.IsLoaded) error = PreferenceMessage;
-            if (error == null || error == reportedError) return;
-            display(MissedHere ? "有死亡未能记录；次数和详情可能不完整，已有记录已保留。" : "死亡记录或世界天数遇到读取、记录或保存问题；现有文件已保留，请查看对应信息。"); reportedError = error;
+            if (error != null && error != reportedError)
+            {
+                display(MissedHere ? "有死亡未能记录；次数和详情可能不完整，已有记录已保留。" : "死亡记录或世界天数遇到读取、记录或保存问题；现有文件已保留，请查看对应信息。");
+                reportedError = error;
+            }
+            // Quantity has no resident status slot. Preserve the preference's
+            // concrete persistence consequence in its own delivered-error slot,
+            // even when a ledger/time error is also present. A failed display
+            // never acknowledges either message before it was actually sent.
+            string preferenceError = Preferences.IsLoaded ? PreferenceMessage : null;
+            if (preferenceError != null && preferenceError != reportedPreferenceError)
+            {
+                display("死亡点设置：" + preferenceError);
+                reportedPreferenceError = preferenceError;
+            }
         }
         public string CountText
         { get { var value = History.Snapshot; if (!SourceReady) return "暂不可用"; if (!value.Known) return value.Error != null || History.Error != null ? "读取失败" : "正在读取…";

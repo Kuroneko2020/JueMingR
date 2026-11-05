@@ -16,6 +16,7 @@ namespace JueMingR.TerrariaHost.F5
     // OFF-Retained must stay visibly off while its native camera remains wide.
     internal sealed class ViewControls
     {
+        internal const string ActionId = "view-unlock.toggle";
         private static readonly F5RowDescription description =
             new F5RowDescription("view-unlock", "可以调整到更大的视野范围");
         private readonly IViewControls owner;
@@ -23,10 +24,10 @@ namespace JueMingR.TerrariaHost.F5
 
         internal static void AddRows(List<F5Element> elements, Func<string, float, F5Size> measure, ref float y)
         {
-            // This feature deliberately uses only the native mapped zoom keys;
-            // the owner requested no R binding entry or separate zoom control.
-            new F5RowLayout(elements, measure).Row(ref y, 0, 522, "视距解锁", new[] { "开启", "关闭" },
-                text => text == "开启" ? F5Command.EnableViewUnlock : F5Command.DisableViewUnlock, description);
+            new F5RowLayout(elements, measure).Row(ref y, 0, 522, "视距解锁", new[] { "开启", "关闭", "键" },
+                text => text == "开启" ? F5Command.EnableViewUnlock : text == "关闭" ? F5Command.DisableViewUnlock : F5Command.None, description);
+            var key = elements[elements.Count - 1];
+            elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, ActionId);
         }
 
         internal static bool Owns(F5Command command)
