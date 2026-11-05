@@ -134,7 +134,7 @@ function Get-WorkloadRoute {
             '^src/JueMingR.TerrariaHost/Notes/NotesInput\.cs$' { [void]$groups.Add('notes-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('processing-host'); continue }
             '^src/[^/]+/Notes/|^tests/Notes/' { [void]$groups.Add('notes-host'); continue }
             '^src/[^/]+/Text/' { [void]$groups.Add('fishing-host'); [void]$groups.Add('notes-host'); [void]$groups.Add('map-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('processing-host'); continue }
-            '^src/[^/]+/Footprints/|^tests/Footprints/' { [void]$groups.Add('footprints-host'); [void]$groups.Add('map-host'); [void]$groups.Add('storage-host'); continue }
+            '^src/[^/]+/Footprints/|^tests/Footprints/|^tests/NativeWorldTextProbe/NativeFootprintVisualChecks\.cs$' { [void]$groups.Add('footprints-host'); [void]$groups.Add('map-host'); [void]$groups.Add('storage-host'); continue }
             '^src/[^/]+/(MapMarkers|Exploration)/|^src/JueMingR.TerrariaHost/Map/|^tests/MapMarkers/' { [void]$groups.Add('map-host'); [void]$groups.Add('death-host'); continue }
             '^src/JueMingR.TerrariaHost/EntityLabels/(Style|Hex)|^tests/EntityLabels/EntityStyle|^tests/WorldTargets/WorldTargetStyle' { [void]$groups.Add('style-host'); continue }
             '^src/[^/]+/WorldObjectText/Opened|^tests/JueMingR.ArchitectureTests/WorldObjectText/Opened' { [void]$groups.Add('records'); continue }
