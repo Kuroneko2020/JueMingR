@@ -58,7 +58,7 @@ namespace NativeWorldTextProbe
         {
             object shell=Get(context,"Shell"),state=Get(shell,"State"),popup=Get(shell,"HotkeyPopup"),view=Get(context,"View");
             var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");
-            foreach(var size in new[]{new[]{960,640,100},new[]{640,360,100},new[]{640,360,150}})
+            foreach(var size in new[]{new[]{960,640,100},new[]{640,360,100},new[]{960,540,150}})
             {
                 NativeToolsUiChecks.Prepare(context,2,size[0],size[1],size[2]/100f);
                 NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
