@@ -63,7 +63,10 @@ namespace JueMingR.TerrariaHost.F5
             for (int i = 0; i < popup.Text.Count; i++) { var line = popup.Text[i]; Text(batch, line.Text, new Vector2(popup.Panel.X + line.Rect.X, popup.Panel.Y + line.Rect.Y), line.TextScale, popup.TextColors[i], line.TextSize); }
             for (int i = 0; i < popup.Buttons.Count; i++)
             {
-                int command = popup.Commands[i]; Color? selected = command == 1 ? (popup.RecordingSelected ? Color.LightGreen : Color.LightGray) : command == 2 || command == 4 ? (Color?)new Color(255, 145, 130) : null;
+                int command = popup.Commands[i];
+                // Only recording projects a selected state. Clear/retry are
+                // actions; their danger section keeps its color, not a toggle underline.
+                Color? selected = command == 1 ? (Color?)(popup.RecordingSelected ? Color.LightGreen : Color.LightGray) : null;
                 F5ControlRenderer.Button(batch, pixel, button, font, popup.Buttons[i], popup.Hovered == command, popup.Enabled[i], selected, popup.Panel.X, popup.Panel.Y, true, popup.Pressed == command);
             }
             popup.Presented();
