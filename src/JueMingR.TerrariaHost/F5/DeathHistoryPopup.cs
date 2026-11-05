@@ -123,36 +123,32 @@ namespace JueMingR.TerrariaHost.F5
             // Every body slot fits both the ordinary glyph and a standard button.
             // Short viewports scroll complete slots; header/footer never move.
             float textHeight = measure("测试Ag", .75f).Height; lineHeight = Math.Max(34, textHeight + 10);
-            float panelWidth = Math.Min(Mode == 1 ? 490 : 560, w - 24);
+            float quantityCloseWidth = Mode == 1 ? Math.Max(56, measure("关闭", .70f).Width + 16) : 0;
+            float panelWidth = Math.Min(Mode == 1 ? Math.Max(300, measure("地图显示死亡点数量：", .75f).Width + quantityCloseWidth + 36) : 560, w - 24);
             // A short list uses only its actual rows. Full text keeps a fixed
             // viewport while incremental wrapping continues, so exit stays put.
             int listSlots = Math.Max(1, (queryReady ? value.Rows.Count : 0) + (nextStatus == null ? 0 : 1));
-            float wantedHeight = Mode == 2 ? (listSlots + 2) * lineHeight + 50 : (Mode == 1 ? 4 : 6) * lineHeight + 84;
+            float quantityButtonHeight = Mode == 1 ? Math.Max(24, Math.Max(measure("1024", .70f).Height, measure("关闭", .70f).Height) + 6) : 0;
+            float quantityHeight = Mode == 1 ? 32 + Math.Max(measure("地图显示死亡点数量：", .75f).Height, quantityButtonHeight) + quantityButtonHeight : 0;
+            float wantedHeight = Mode == 1 ? quantityHeight : Mode == 2 ? (listSlots + 2) * lineHeight + 50 : 6 * lineHeight + 84;
             float panelHeight = Math.Min(wantedHeight, h - 24);
             var oldPanel = Panel;
             preparedAnchor=Anchor;Panel = F5PopupPlacement.Place(Anchor,panelWidth,panelHeight,w,h);
-            AddText(Mode == 1 ? "死亡点常驻" : "死亡详情", 16, 12, panelWidth - 32, .75f, measure);
+            if (Mode != 1) AddText("死亡详情", 16, 12, panelWidth - 32, .75f, measure);
             float footer = panelHeight - lineHeight - 20;
-            AddButton("关闭", 0, panelWidth - 84, footer, 68, true, measure);
+            if (Mode != 1) AddButton("关闭", 0, panelWidth - 84, footer, 68, true, measure);
             float bodyTop = lineHeight + 22;
             Body = new F5Rect(Panel.X + 16, Panel.Y + bodyTop, panelWidth - 32, Math.Max(0, footer - bodyTop - 8));
             if (Mode == 1)
             {
-                int visible = Math.Max(0, (int)(Body.Height / lineHeight));
-                bodyMax = Math.Max(0, (preference == null ? 3 : 4) - visible); scroll = Math.Min(scroll, (int)bodyMax);
-                if (scroll == 0 && visible > 0) AddText("地图显示数量", 16, bodyTop, panelWidth - 32, .75f, measure);
-                float optionWidth = (panelWidth - 50) / 4;
-                int[] choices = { 128, 256, 512, 1024 };
-                if (scroll <= 1 && 1 < scroll + visible) for (int i = 0; i < 4; i++) AddButton(choices[i].ToString(CultureInfo.InvariantCulture), choices[i], 16 + i * (optionWidth + 6), bodyTop + (1 - scroll) * lineHeight, optionWidth, host.ControlsEnabled, measure);
-                if (scroll <= 2 && 2 < scroll + visible) AddText("显示最近的" + count.ToString(CultureInfo.InvariantCulture) + "次死亡；完整记录见详情。", 16, bodyTop + (2 - scroll) * lineHeight, panelWidth - 32, .70f, measure);
-                if (preference != null && scroll <= 3 && 3 < scroll + visible) AddText(preference, 16, bodyTop + (3 - scroll) * lineHeight, panelWidth - 32, .70f, measure);
+                BuildQuantity(panelWidth, panelHeight, measure);
             }
             else
             {
                 if (Mode == 2) BuildList(value, bodyTop, footer, measure);
                 else BuildFull(value, bodyTop, footer, measure);
             }
-            if (bodyMax > 0) AddText("滚轮滚动正文", 180, 16, panelWidth - 196, .65f, measure);
+            if (Mode != 1 && bodyMax > 0) AddText("滚轮滚动正文", 180, 16, panelWidth - 196, .65f, measure);
             // Text progress alone cannot invalidate a press on a fixed footer.
             // Geometry, enabled state, and command identity are the action epoch.
             bool geometryChanged = resources || !oldPanel.Equals(Panel) || oldButtons.Length != Buttons.Count;
@@ -164,6 +160,32 @@ namespace JueMingR.TerrariaHost.F5
 #if DEBUG
             LayoutBuilds++;
 #endif
+        }
+        // Quantity has no description/status slots. Preference failures retain
+        // their existing HostDeathRecords.TakeFeedback channel; other modes keep
+        // their shared button geometry and scroll behavior.
+        private void BuildQuantity(float panelWidth, float panelHeight, Func<string, float, F5Size> measure)
+        {
+            float titleHeight = measure("地图显示死亡点数量：", .75f).Height;
+            float buttonHeight = Math.Max(24, Math.Max(measure("1024", .70f).Height, measure("关闭", .70f).Height) + 6);
+            float closeWidth = Math.Max(56, measure("关闭", .70f).Width + 16);
+            float headerHeight = Math.Max(titleHeight, buttonHeight);
+            float top = 20 + headerHeight, optionWidth = (panelWidth - 42) / 4;
+            // Reserve distinct measured title/close cells. The close action shares
+            // the fixed header; quantity has no footer or empty status row.
+            AddText("地图显示死亡点数量：", 12, 12 + (headerHeight - titleHeight) / 2, panelWidth - closeWidth - 36, .75f, measure);
+            int[] choices = { 128, 256, 512, 1024 };
+            for (int i = 0; i < choices.Length; i++)
+                AddQuantityButton(choices[i].ToString(CultureInfo.InvariantCulture), choices[i], 12 + i * (optionWidth + 6), top, optionWidth, buttonHeight, host.ControlsEnabled, measure);
+            AddQuantityButton("关闭", 0, panelWidth - closeWidth - 12, 12 + (headerHeight - buttonHeight) / 2, closeWidth, buttonHeight, true, measure);
+            Body = new F5Rect(Panel.X + 12, Panel.Y + top, panelWidth - 24, buttonHeight);
+            bodyMax = 0; scroll = 0;
+        }
+        private void AddQuantityButton(string text, int command, float x, float y, float width, float height, bool enabled, Func<string, float, F5Size> measure)
+        {
+            var size = measure(text, .70f);
+            Buttons.Add(new F5Element(F5ElementKind.Button, new F5Rect(x, y, width, height), text, size, .70f, F5Command.None));
+            Commands.Add(command); Enabled.Add(enabled);
         }
         private void BuildList(DeathHistorySnapshot value, float top, float footer, Func<string, float, F5Size> measure)
         {

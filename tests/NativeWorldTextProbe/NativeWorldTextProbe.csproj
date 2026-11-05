@@ -4,11 +4,13 @@
     <AssemblyName>NativeWorldTextProbe</AssemblyName><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- Broad probe compiles Debug-only checks; production scopes stage and
          authenticate their own Release runtime assemblies independently. -->
+    <DefineConstants>$(DefineConstants);JMR_NATIVE_VIEW_CONTROLS</DefineConstants>
     <JueMingRProbeReferenceConfiguration Condition="'$(JueMingRProbeReferenceConfiguration)' == ''">Debug</JueMingRProbeReferenceConfiguration>
     <JueMingRProbeBuildRoot Condition="'$(JueMingRProbeBuildRoot)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\build\Debug\work\bin</JueMingRProbeBuildRoot>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Workload/BusinessAssertionProtocol.cs" />
+    <Compile Include="../Phase0U/ViewControlChecks.cs" Link="ViewControlChecks.cs" />
     <Reference Include="JueMingR.Platform"><HintPath>$(JueMingRProbeBuildRoot)\JueMingR.Platform\x86\$(JueMingRProbeReferenceConfiguration)\net472\JueMingR.Platform.dll</HintPath></Reference>
     <Reference Include="JueMingR.Features"><HintPath>$(JueMingRProbeBuildRoot)\JueMingR.Features\x86\$(JueMingRProbeReferenceConfiguration)\net472\JueMingR.Features.dll</HintPath></Reference>
     <Reference Include="JueMingR.Infrastructure"><HintPath>$(JueMingRProbeBuildRoot)\JueMingR.Infrastructure\x86\$(JueMingRProbeReferenceConfiguration)\net472\JueMingR.Infrastructure.dll</HintPath></Reference>

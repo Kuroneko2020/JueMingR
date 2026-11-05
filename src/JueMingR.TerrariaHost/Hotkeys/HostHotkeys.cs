@@ -20,7 +20,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         private readonly Action movementModeChanged;
         internal void PollHiddenRegistration() { journey?.Refresh(); combatPath?.Refresh(); }
         internal HostHotkeys(string gameDirectory, Phase0TBiomeRuntime biome, HostPreferences preferences, HostItems items, EntityLabels.HostEntityLabels labels = null, WorldTargets.HostWorldTargets targets = null, WorldObjectText.HostWorldObjectText worldObjects = null,
-            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null, F5.IMapControls maps = null, F5.IFootprintControls footprints = null, Func<bool> canAnnounce = null, Action announce = null, Func<bool> canQuery = null, Action query = null, F5.IAnnouncementControls announcements = null, QuickItems.HostQuickItems quickItems = null, CoinDeposit.HostCoinDeposit coinDeposit = null, Recovery.HostRecovery recovery = null, Processing.HostProcessing processing = null, Feedback.LocalShortFeedback display = null, Tools.HostTools tools = null, Fishing.HostFishing fishing = null, Combat.HostCombat combat = null, Combat.HostCombatObservation combatObservation=null, F5.IJourneyControls journey = null, Features.HiddenFeatures.HiddenFeatureAccess hiddenAccess = null, Action journeyToggle = null, F5.IMovementControls movement = null, Blueprint.HostBlueprint blueprint = null)
+            Information.HostInformation information = null, Func<bool> canAdjustInformation = null, Action adjustInformation = null, Guidance.HostGuidance guidance = null, F5.IDeathControls deaths = null, F5.IMapControls maps = null, F5.IFootprintControls footprints = null, Func<bool> canAnnounce = null, Action announce = null, Func<bool> canQuery = null, Action query = null, F5.IAnnouncementControls announcements = null, QuickItems.HostQuickItems quickItems = null, CoinDeposit.HostCoinDeposit coinDeposit = null, Recovery.HostRecovery recovery = null, Processing.HostProcessing processing = null, Feedback.LocalShortFeedback display = null, Tools.HostTools tools = null, Fishing.HostFishing fishing = null, Combat.HostCombat combat = null, Combat.HostCombatObservation combatObservation=null, F5.IJourneyControls journey = null, Features.HiddenFeatures.HiddenFeatureAccess hiddenAccess = null, Action journeyToggle = null, F5.IMovementControls movement = null, Blueprint.HostBlueprint blueprint = null, F5.IViewControls view = null)
         {
             if (display != null) Feedback = new HotkeyStateFeedback(display);
             RegisterSwitch(HotkeyActionIds.Biome, "群系显示",
@@ -80,6 +80,10 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 }
             if (deaths != null) RegisterSwitch(F5.DeathControls.ActionId, "死亡点常驻",
                 () => deaths.ControlsEnabled, () => deaths.SetEnabled(!deaths.Settings.Enabled), () => deaths.Settings.Enabled ? 1 : 0);
+            // Register before Bindings freezes the registry, using the same
+            // owner as F5. Permission changes never write the native zoom target.
+            if (view != null) RegisterSwitch(F5.ViewControls.ActionId, "视距解锁",
+                () => view.ControlsEnabled, () => view.SetUnlockEnabled(!view.UnlockEnabled), () => view.UnlockEnabled ? 1 : 0);
             if (maps != null) RegisterSwitch(F5.MapControls.ActionId, "地图标记", () => maps.ControlsEnabled, () => maps.SetMarkers(!maps.MarkersEnabled), () => maps.MarkersEnabled ? 1 : 0);
             if (footprints != null) RegisterSwitch(F5.FootprintControls.ActionId, "足迹", () => footprints.ControlsEnabled, () => footprints.SetDisplay(!footprints.Display), () => footprints.Display ? 1 : 0);
             if (canAnnounce != null && announce != null) Registry.Register(new HotkeyAction(F5.AnnouncementControls.SendActionId, "宣告指向内容", HotkeyContext.Gameplay, canAnnounce, announce));

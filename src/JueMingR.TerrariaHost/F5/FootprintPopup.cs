@@ -86,27 +86,44 @@ namespace JueMingR.TerrariaHost.F5
             Text.Clear(); TextColors.Clear(); Buttons.Clear(); Commands.Clear(); Enabled.Clear();
             float pw = Math.Min(340, w - 24); scale = .70f;
             bool compact = h < 280;
-            if (compact) scale = Math.Min(scale, Math.Max(.45f, (h - 76) / 6 / measure("测试Ag", 1).Height));
-            float textHeight = measure("测试Ag", scale).Height, gap = compact ? 8 : 12, header = Math.Max(30, textHeight + 14);
-            float recordHeight = Math.Max(58, textHeight * 2 + (compact ? 18 : 28));
-            float clearHeight = Math.Max(84, textHeight * 2 + (compact ? 44 : 56));
-            float ph = header + gap + recordHeight + gap + clearHeight + gap;
+            // Keep the two content rows and optional retry control readable in
+            // the supported short viewport. Button minimums remain unchanged.
+            if (compact)
+            {
+                // Worst-case retry layout: 62 + 4*max(26,t+8) + 2*t,
+                // within the viewport margin. Solve both button-height branches.
+                float maxTextHeight = Math.Min((h - 190) / 2, (h - 118) / 6);
+                scale = Math.Min(scale, maxTextHeight / measure("测试Ag", 1).Height);
+            }
+            float textHeight = measure("测试Ag", scale).Height, buttonHeight = Math.Max(26, textHeight + 8);
+            float padding = compact ? 6 : 10, gap = compact ? 4 : 6, sectionGap = compact ? 6 : 10;
+            float outerTop = compact ? 8 : 10, outerBottom = compact ? 8 : 10;
+            float header = outerTop + buttonHeight + (compact ? 4 : 10);
+            float detailHeight = host.CanRetrySave ? buttonHeight : textHeight;
+            float recordHeight = padding * 2 + buttonHeight + gap + detailHeight;
+            float actionGap = compact ? 4 : 10;
+            float clearHeight = padding * 2 + textHeight * 2 + gap + actionGap + buttonHeight;
+            float ph = header + recordHeight + sectionGap + clearHeight + outerBottom;
             preparedAnchor=Anchor;Panel = F5PopupPlacement.Place(Anchor,pw,ph,w,h);
-            RecordingPanel = new F5Rect(12, header + gap, pw - 24, recordHeight);
-            ClearPanel = new F5Rect(12, RecordingPanel.Bottom + gap, pw - 24, clearHeight);
-            AddText("足迹", 16, 10, measure);
-            AddButton("关闭", 0, pw - 70, 7, 58, true, measure);
-            AddText("录制路线", 24, RecordingPanel.Y + 10, measure);
-            AddButton(recording ? "已开启" : "已关闭", 1, pw - 104, RecordingPanel.Y + 5, 80, host.ControlsEnabled && !clearing, measure);
-            string detail = host.CanRetrySave ? "记录尚未保存" : host.HasIssue || !canClear && !clearing ? status : recording ? "从新记录开始，旧格式保留" : "停止新增，已有路线保留";
-            AddText(detail ?? "", 24, RecordingPanel.Bottom - textHeight - 9, measure, Microsoft.Xna.Framework.Color.LightGray);
-            if (host.CanRetrySave) AddButton("重试保存", 5, pw - 120, RecordingPanel.Bottom - 32, 96, true, measure);
-            AddText(clearing ? canRetry ? "清除未完成" : "正在清除…" : "清除历史", 24, ClearPanel.Y + 9, measure, new Microsoft.Xna.Framework.Color(255, 190, 160));
-            AddText("当前角色在此世界的新版足迹", 24, ClearPanel.Y + textHeight + 14, measure, Microsoft.Xna.Framework.Color.LightGray);
+            RecordingPanel = new F5Rect(12, header, pw - 24, recordHeight);
+            ClearPanel = new F5Rect(12, RecordingPanel.Bottom + sectionGap, pw - 24, clearHeight);
+            const float left = 24;
+            float right = pw - left;
+            AddText("足迹", left, outerTop + (buttonHeight - textHeight) / 2, measure);
+            AddButton("关闭", 0, right - 58, outerTop, 58, true, measure);
+            float recordTop = RecordingPanel.Y + padding, detailTop = recordTop + buttonHeight + gap;
+            AddText("录制路线", left, recordTop + (buttonHeight - textHeight) / 2, measure);
+            AddButton(recording ? "已开启" : "已关闭", 1, right - 80, recordTop, 80, host.ControlsEnabled && !clearing, measure);
+            string detail = host.CanRetrySave ? "记录尚未保存" : host.HasIssue || !canClear && !clearing ? status : clearing ? status : recording ? "正在记录当前角色的移动路线" : "停止新增，已有路线保留";
+            AddText(detail ?? "", left, detailTop + (detailHeight - textHeight) / 2, measure, Microsoft.Xna.Framework.Color.LightGray);
+            if (host.CanRetrySave) AddButton("重试保存", 5, right - 96, detailTop, 96, true, measure);
+            float clearTop = ClearPanel.Y + padding;
+            AddText(clearing ? canRetry ? "清除未完成" : "正在清除…" : "清除历史", left, clearTop, measure, new Microsoft.Xna.Framework.Color(255, 190, 160));
+            AddText("当前角色在此世界的足迹", left, clearTop + textHeight + gap, measure, Microsoft.Xna.Framework.Color.LightGray);
             bool confirm = confirmation.Stage > 0 && !clearing;
-            float buttonY = ClearPanel.Bottom - Math.Max(28, textHeight + 8) - 8;
-            AddButton(clearing ? canRetry ? "重试清除" : "清除处理中…" : confirmation.Label, canRetry ? 4 : 2, 24, buttonY, confirm ? pw - 134 : pw - 48, canRetry || canClear, measure);
-            if (confirm) AddButton("取消", 3, pw - 98, buttonY, 74, true, measure);
+            float buttonY = clearTop + textHeight * 2 + gap + actionGap;
+            AddButton(clearing ? canRetry ? "重试清除" : "清除处理中…" : confirmation.Label, canRetry ? 4 : 2, left, buttonY, confirm ? pw - 134 : pw - 48, canRetry || canClear, measure);
+            if (confirm) AddButton("取消", 3, right - 74, buttonY, 74, true, measure);
             generation++; dirty = false;
         }
         private void AddText(string value, float x, float y, Func<string, float, F5Size> measure, Microsoft.Xna.Framework.Color? color = null)
