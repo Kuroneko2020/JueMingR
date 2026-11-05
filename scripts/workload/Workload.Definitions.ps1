@@ -107,6 +107,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeTargetDiagnosticChecks.cs'=@('native-TargetGestureDiagnostic')
         'tests/NativeWorldTextProbe/NativeTargetCancellationChecks.cs'=@('native-BrowserCpu','native-PageCompositionCpu')
         'tests/NativeWorldTextProbe/NativeTargetGestureChecks.cs'=@('native-BrowserCpu')
+        'tests/NativeWorldTextProbe/NativeTargetMotionInputChecks.cs'=@('native-BrowserCpu')
+        'tests/NativeWorldTextProbe/NativeTargetOwnerChecks.cs'=@('native-BrowserCpu','native-PageCompositionCpu')
         # This owner authenticates only actual Content consumers; CPU fixtures
         # keep their original argument and proof projection.
         'scripts/workload/Workload.NativeContent.ps1'=@('native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')

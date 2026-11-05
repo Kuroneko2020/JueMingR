@@ -83,6 +83,7 @@ namespace NativeWorldTextProbe
                 Until(()=>{Call(context,"UpdateRuntime");bindings.Poll();return settings.Loaded && bindings.Loaded;});
                 Require(!settings.Enabled && !settings.KeepFavorited && settings.Current.Entries.Count==0,"full profile defaults off with empty entries");
                 Set(input,"gameWindow",(Func<IntPtr>)(()=>new IntPtr(1)));Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(1)));
+                Set(input,"ReadOnlyKeyboardSource",(Func<KeyboardState>)(()=>Main.keyState));
                 Set(shell,"LayersReady",true);Set(Get(shell,"State"),"Ready",true);
                 Sample(input,new Keys[0]);Sample(input,new Keys[0]);
                 if(shortFeedback){visual?.Invoke(context);return;}

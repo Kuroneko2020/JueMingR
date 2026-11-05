@@ -15,10 +15,12 @@ namespace NativeWorldTextProbe
     internal static class NativeBrowserChecks
     {
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        internal static void Run()
+        internal static void Run(bool motionPredicate = false)
         {
             Require(IntPtr.Size == 4 && typeof(object).Assembly.GetName().Name == "mscorlib", "G04 requires .NET Framework x86");
-            var assembly = Assembly.LoadFrom(Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
+            string explicitCandidate = motionPredicate ? Environment.GetEnvironmentVariable("JUEMINGR_BROWSER_CANDIDATE") : null;
+            var assembly = Assembly.LoadFrom(explicitCandidate ?? Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
+            Console.WriteLine("BROWSER-CANDIDATE " + assembly.Location + " MVID=" + assembly.ManifestModule.ModuleVersionId);
             if (assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeItemCatalog") == null)
                 throw new InvalidOperationException("G04 native item/recipe read-only catalog adapter missing");
             Require(typeof(Main).Assembly.ManifestModule.ModuleVersionId == new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"), "G04 native MVID");
@@ -38,6 +40,12 @@ namespace NativeWorldTextProbe
             NativeAnnouncementIconChecks.Run(assembly);
             Console.WriteLine("Native aliases: " + string.Join(",", ContentSamples.ItemsByType.Where(p => p.Key > 0 && p.Value.type > 0 && p.Key != p.Value.type).Select(p => p.Key + "->" + p.Value.type)));
             object subject = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeItemCatalog"), true);
+            if (motionPredicate)
+            {
+                try { NativeTargetMotionInputChecks.CameraPredicate(assembly, subject); }
+                finally { ((IDisposable)subject).Dispose(); }
+                return;
+            }
             long catalogMapping=0;
             Call(subject,"BindPlacementClock",(Func<long>)(()=>catalogMapping));
             try
@@ -85,6 +93,7 @@ namespace NativeWorldTextProbe
                 Require(lunar.SequenceEqual(new[] { 5408, 5401, 5403, 5402, 5406, 5407, 5405, 5404 }), "actual moon index order");
                 Console.WriteLine("PASS: actual .8 drop reports and shimmer declarations; globals once; no random operations.");
                 CheckShops(assembly);
+                NativeTargetMotionInputChecks.CameraPredicate(assembly, subject);
                 NativeTargetGestureChecks.Run(assembly, subject);
                 NativeBrowserUiChecks.Run(assembly, subject);
                 NativeChestLocatorChecks.Run(assembly);

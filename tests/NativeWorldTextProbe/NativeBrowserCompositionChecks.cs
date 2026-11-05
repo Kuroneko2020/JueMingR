@@ -62,6 +62,8 @@ namespace NativeWorldTextProbe
                 isolation.Patch(incoming, prefix: new HarmonyMethod(typeof(NativeBrowserCompositionChecks).GetMethod(nameof(Local), Flags)));
                 for (int i = 0; i < Main.combatText.Length; i++) Main.combatText[i] = new CombatText();
                 Terraria.GameContent.FontAssets.CombatText[0] = Terraria.GameContent.FontAssets.MouseText;
+                NativeTargetMotionInputChecks.Consumers(context, () => local + network, () => last);
+                NativeTargetOwnerChecks.Buttons(context, () => local + network);
                 object value = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeTargetObservation").GetMethod("UiItem", Flags).Invoke(null, new object[] { 9, 23 });
                 Main.hideUI = true; local = network = 0; Call(announcements, "Submit", value);
                 Require(local == 0 && network == 0, "disabled announcement has no chat outlet");

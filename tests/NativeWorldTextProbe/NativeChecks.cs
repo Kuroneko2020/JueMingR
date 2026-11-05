@@ -700,6 +700,12 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(scope=="QuickItemsVisual"?(Action<object>)(context=>{using(var graphics=new ProbeGraphics(content))NativeQuickUiChecks.Run(context,graphics,output);}):null);return 0;
             }
+            if (scope == "TargetMotionPredicate")
+            {
+                Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-target-motion-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeBrowserChecks.Run(true); return 0;
+            }
             if (scope == "BrowserCpu" || scope == "BrowserVisual")
             {
                 Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-browser-" + Guid.NewGuid().ToString("N"));

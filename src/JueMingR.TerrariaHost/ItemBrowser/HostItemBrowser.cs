@@ -1,4 +1,5 @@
 using System;
+using JueMingR.Platform.Hotkeys;
 using JueMingR.TerrariaHost.Announcements;
 using JueMingR.TerrariaHost.ChestLocator;
 using JueMingR.TerrariaHost.F5;
@@ -30,14 +31,20 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         }
         internal bool CanAnnounce() { return !disposed && Targets.Ready && !Targets.Picking && Announcements.Enabled && shell != null && shell.CanTargetInput; }
         internal bool CanQuery() { return !disposed && Targets.Ready && !Targets.Busy && shell != null && shell.CanTargetInput; }
-        internal void Query() { Targets.RequestQuery(); }
-        internal void Announce() { Targets.RequestAnnouncement(); }
+        internal void Query(HotkeyChord gesture) { Targets.RequestQuery(gesture); }
+        internal void Announce(HotkeyChord gesture) { Targets.RequestAnnouncement(gesture); }
         internal void Attach(F5Shell owner, HostHotkeys hotkeys)
         {
             shell = owner; page = new BrowserPresentation(Knowledge, shell.State, input);
             shell.AttachBrowser(page); shell.TargetGestureBusy = () => Targets.Busy;
             Targets.CanPick = () => !disposed && shell.CanTargetInput;
             Targets.CanAnnounce = CanAnnounce;
+            // Recognition while pending is independent of the dispatch Busy
+            // gate: either enabled chord still owns its new native mouse edge.
+            Targets.CanAbsorbAnnouncement = () => !disposed && Targets.Ready && Announcements.Enabled && shell.CanTargetInput;
+            Targets.PointerOwned = () => shell.TargetPointerOwned;
+            Targets.FreezeUiOwner = shell.FreezeTargetUi;
+            shell.NativeTargetControlOwnsPointer = Targets.NativeControlOwnsPointer;
             page.ConfigurePickHotkey = rect => shell.OpenHotkey("item-browser.query", rect);
             Targets.QueryBinding = () => hotkeys.Bindings.Get("item-browser.query");
             Targets.AnnouncementBinding = () => hotkeys.Bindings.Get(AnnouncementControls.SendActionId);

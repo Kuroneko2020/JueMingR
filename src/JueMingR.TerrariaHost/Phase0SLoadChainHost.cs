@@ -1,4 +1,5 @@
 using System;
+using JueMingR.Platform.Hotkeys;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -988,7 +989,7 @@ namespace JueMingR.TerrariaHost
                     runtime.SharedRuntime.AddFeature(View);
                 }
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation, Journey, hiddenAccess, () => Shell?.ToggleJourneyFromHotkey(), Movement, Blueprint, View) : null;
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action<HotkeyChord>)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action<HotkeyChord>)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation, Journey, hiddenAccess, () => Shell?.ToggleJourneyFromHotkey(), Movement, Blueprint, View) : null;
                 hotkeyFeedback = hotkeys?.Feedback;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements, hiddenAccess) { LayersReady = f5LayersReady };
                 if (Blueprint != null) { Blueprint.Shell = Shell; Shell.AttachBlueprint(Blueprint); }

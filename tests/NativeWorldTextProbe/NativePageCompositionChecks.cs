@@ -66,6 +66,7 @@ namespace NativeWorldTextProbe
             NativeItemsHintChecks.Run(context);
             NativePageCompositionPickerInputChecks.Run(context);
             NativeTargetCancellationChecks.RunF5Consumers(context);
+            NativeTargetOwnerChecks.SharedOwners(context);
             Call(shell,"CloseAndSubmitPosition");Console.WriteLine("PASS complete Items/Misc composition order, unchanged identities, final footer and stable layout work.");
         }
         private static void Input(object context, Action prepare)

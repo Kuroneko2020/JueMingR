@@ -5,6 +5,7 @@ using JueMingR.Features.Announcements;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ID;
+using Terraria.GameInput;
 using Terraria.Map;
 
 namespace JueMingR.TerrariaHost.ItemBrowser
@@ -18,6 +19,16 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal bool WallPlacement;
         internal int PlacementX, PlacementY, PlacementEntry;
         internal readonly List<string> Entries = new List<string>();
+        internal readonly List<Func<bool>> Identity = new List<Func<bool>>();
+        internal Vector2 WorldPoint;
+        internal bool LocationBound;
+        internal Rectangle WorldBounds;
+        internal bool StillMatches()
+        {
+            if (LocationBound && !NativeTargetObservation.InView(Display?.VisibleBounds ?? WorldBounds)) return false;
+            foreach (var check in Identity) if (!check()) return false;
+            return Display == null || Display.StillMatches();
+        }
     }
     internal static class NativeTargetObservation
     {
@@ -46,26 +57,32 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal static TargetValue World(Vector2 point, NativeItemCatalog catalog, bool announcement)
         {
             catalog.ObserveContext();
-            var value = new TargetValue();
+            var value = new TargetValue { LocationBound = true, WorldPoint = point,
+                WorldBounds = new Rectangle((int)Math.Floor(point.X / 16) * 16, (int)Math.Floor(point.Y / 16) * 16, 16, 16) };
             if (Main.mapFullscreen) { value.Literal = true; value.Entries.Add("大地图已打开，无法确定世界目标"); return value; }
             Point position = point.ToPoint();
             for (int i = 0; announcement && i < Main.player.Length && value.Entries.Count < 12; i++)
             {
                 Player player = Main.player[i]; if (player == null || !player.active || player.dead || player.ghost || !player.Hitbox.Contains(position)) continue;
+                int slot = i;
+                value.Identity.Add(() => ReferenceEquals(Main.player[slot], player) && player.active && !player.dead && !player.ghost && InView(player.Hitbox));
                 value.Entries.Add(Name(player.name) + " 生命 " + player.statLife + "/" + player.statLifeMax2 +
                     (i == Main.myPlayer ? "，魔力 " + player.statMana + "/" + player.statManaMax2 : ""));
             }
             for (int i = 0; announcement && i < Main.npc.Length && value.Entries.Count < 12; i++)
             {
                 NPC npc = Main.npc[i]; if (npc == null || !npc.active || npc.hide || npc.life <= 0 || !npc.Hitbox.Contains(position)) continue;
+                int slot = i, generation = npc.generation, type = npc.type, netId = npc.netID;
+                value.Identity.Add(() => ReferenceEquals(Main.npc[slot], npc) && npc.generation == generation && npc.type == type && npc.netID == netId && npc.active && !npc.hide && npc.life > 0 && InView(npc.Hitbox));
                 value.Entries.Add(Name(npc.FullName) + " 生命 " + npc.life + "/" + npc.lifeMax);
             }
-            if (value.Entries.Count != 0) { if (value.Entries.Count >= 12) value.Entries.Add("目标较多，仅列出前 12 个"); return value; }
+            if (value.Entries.Count != 0) { value.LocationBound = false; if (value.Entries.Count >= 12) value.Entries.Add("目标较多，仅列出前 12 个"); return value; }
             if (DroppedItems(value, position, announcement)) return value;
             int x = (int)Math.Floor(point.X / 16), y = (int)Math.Floor(point.Y / 16);
             if (Main.tile == null || x < 0 || y < 0 || x >= Main.maxTilesX || y >= Main.maxTilesY || Main.netMode == 1 && (Main.sectionManager == null || !Main.sectionManager.TileLoaded(x, y)))
             { value.Literal = true; value.Entries.Add("这里的世界资料尚未接收"); return value; }
             Tile tile = Main.tile[x, y]; if (tile == null) { value.Literal = true; value.Entries.Add("这里暂时无法确认"); return value; }
+            FreezeTileIdentity(value, tile, x, y);
             // Wires are an explicit product exception, never proof that another
             // dark/echo layer is visible. Keep their result independent below.
             var wires = new List<string>();
@@ -91,6 +108,8 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             {
                 int herb = Herb(targetTile);
                 value.Display = NativeDisplayContents.Capture(targetTile, targetX, targetY);
+                if (targetX != x || targetY != y) FreezeTileIdentity(value, targetTile, targetX, targetY);
+                value.Identity.Add(() => Visible(Main.tile[targetX, targetY], targetX, targetY, Main.ShouldShowInvisibleBlocksAndWalls()));
                 int item = herb > 0 ? herb : catalog.PlacedItem(targetTile);
                 value.ItemType = value.Display != null && value.Display.ItemType > 0 ? value.Display.ItemType : item;
                 value.Quantity = value.Display != null && value.Display.ItemType > 0 ? value.Display.Quantity : item > 0 ? 1 : 0;
@@ -176,14 +195,20 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             // Keep Legacy's fixed neighbourhood, not a transitive flood fill.
             // One additional pass aggregates every type, instead of rescanning
             // the world-item array once for each co-located item.
-            foreach (var drop in Main.item)
+            for (int index = 0; index < Main.item.Length; index++)
             {
+                var drop = Main.item[index];
                 if (drop == null || !drop.active || drop.inner == null || drop.inner.IsAir || !announcement && drop.inner.type != first.inner.type ||
                     Math.Abs((int)Math.Floor(drop.Center.X / 16) - tx) > 1 || Math.Abs((int)Math.Floor(drop.Center.Y / 16) - ty) > 1) continue;
                 long count; if (!counts.TryGetValue(drop.inner.type, out count)) order.Add(drop.inner.type);
                 counts[drop.inner.type] = count + drop.inner.stack;
+                int slot = index, type = drop.type, stack = drop.stack, prefix = drop.prefix, age = drop.timeSinceItemSpawned;
+                Item item = drop.inner;
+                value.Identity.Add(() => ReferenceEquals(Main.item[slot], drop) && ReferenceEquals(drop.inner, item) && drop.active &&
+                    drop.type == type && drop.stack == stack && drop.prefix == prefix && drop.timeSinceItemSpawned >= age && InView(drop.Hitbox));
             }
             value.ItemType = first.inner.type; value.Quantity = (int)Math.Min(int.MaxValue, counts[first.inner.type]); value.JoinItems = announcement;
+            value.LocationBound = false;
             foreach (int type in order) value.Entries.Add(counts[type] + " 个 " + ItemName(type));
             return true;
         }
@@ -206,6 +231,17 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             if (catalog.PlacementReady) return;
             value.Placement = new Tile(); value.Placement.CopyFrom(tile);
             value.PlacementX = x; value.PlacementY = y; value.WallPlacement = wall; value.PlacementEntry = value.Entries.Count - 1;
+        }
+        private static void FreezeTileIdentity(TargetValue value, Tile tile, int x, int y)
+        {
+            var copy = new Tile(); copy.CopyFrom(tile);
+            value.Identity.Add(() => NativeDisplayContents.Loaded(x, y) && ReferenceEquals(Main.tile[x, y], tile) && tile.isTheSameAs(copy));
+        }
+        internal static bool InView(Rectangle bounds)
+        {
+            Vector2 center = Main.screenPosition + PlayerInput.OriginalScreenSize / 2f;
+            Vector2 half = PlayerInput.OriginalScreenSize / (2f * Main.GameViewMatrix.RenderZoom.X);
+            return bounds.Right > center.X - half.X && bounds.Bottom > center.Y - half.Y && bounds.Left < center.X + half.X && bounds.Top < center.Y + half.Y;
         }
         internal static bool ResolvePlacement(TargetValue value, NativeItemCatalog catalog)
         {

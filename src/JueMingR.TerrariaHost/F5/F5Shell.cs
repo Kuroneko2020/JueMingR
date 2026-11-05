@@ -26,6 +26,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly ItemsPresentation items;
         internal IBrowserPage Browser { get; private set; }
         internal Func<bool> TargetGestureBusy { get; set; }
+        internal Func<bool> NativeTargetControlOwnsPointer { get; set; }
         private readonly HostItems hostItems;
         private readonly Input.HostInputState inputState;
         internal Feedback.LocalShortFeedback ShortFeedback;
@@ -294,6 +295,8 @@ namespace JueMingR.TerrariaHost.F5
         private static readonly Action<string> displayPreferenceFeedback = message => Main.NewText(message, 255, 180, 90);
         private Player leasedPlayer;
         private bool priorMouseInterface, hoverLease, priorMouseText;
+        private Player nativeControlPlayer;
+        private bool nativeControlPriorInterface;
         private bool failed, failureNotified, positionRestored;
         private bool adjustmentPending;
         private long adjustmentRequest;
@@ -473,6 +476,45 @@ namespace JueMingR.TerrariaHost.F5
         }
         private bool OtherPointerOwner { get { return information != null && information.Adjustment.Dragging || BlueprintReplacementPopup?.BlockPointer == true || inputState.HotkeyPointerOwned || BlueprintMaterialsUi != null && BlueprintMaterialsUi.OwnsPointer || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true) || BlueprintPlacedUi?.OwnsPointer == true || BlueprintUi != null && BlueprintUi.OwnsPointer || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || MiscUi != null && MiscUi.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer; } }
         internal bool OwnsPointer { get { return !failed && CanPresentNow && (State.OwnsPointer || OtherPointerOwner); } }
+        internal bool TargetPointerOwned
+        {
+            get
+            {
+                if (failed || !CanPresentNow) return true;
+                Vector2 raw = new Vector2(PlayerInput.MouseInfo.X * PlayerInput.RawMouseScale.X, PlayerInput.MouseInfo.Y * PlayerInput.RawMouseScale.Y);
+                Vector2 point = Vector2.Transform(raw, Matrix.Invert(Main.UIScaleMatrix));
+                Vector2 screen = PlayerInput.OriginalScreenSize;
+                // Page hover getters describe the previous ProcessInput point.
+                // Their rectangles live inside the fresh main window above;
+                // retain only actual text/capture/tails outside that rectangle.
+                return State.OwnsCurrentPointer(screen.X, screen.Y, Main.UIScaleMatrix.M11, point.X, point.Y) || ClaimsPopupPointer() || blueprint?.Toolbar.HitCurrent() == true ||
+                    inputState.HotkeyPointerOwned || notes.CapturesPointer || notes.Overlaps(new F5Rect(point.X, point.Y, 1, 1)) ||
+                    information?.Adjustment.Dragging == true || BlueprintReplacementPopup?.BlockPointer == true ||
+                    BlueprintPlacedUi?.ConsumeLeft == true || BlueprintPlacedUi?.ConsumeRight == true ||
+                    BlueprintUi?.ConsumeLeft == true || BlueprintUi?.ConsumeRight == true || BlueprintUi?.OwnsTextToken == true ||
+                    FishingUi?.ConsumeLeft == true || FishingUi?.ConsumeRight == true || FishingUi?.OwnsTextToken == true ||
+                    CaptureUi?.ConsumeLeft == true || CaptureUi?.ConsumeRight == true ||
+                    MiningUi?.ConsumeLeft == true || MiningUi?.ConsumeRight == true || MiscUi?.ConsumeLeft == true || MiscUi?.ConsumeRight == true ||
+                    Browser?.ConsumeLeft == true || Browser?.ConsumeRight == true || Browser?.OwnsTextToken == true ||
+                    ReforgeUi?.ConsumeLeft == true || ReforgeUi?.ConsumeRight == true || ReforgeUi?.OwnsTextToken == true ||
+                    RecoveryUi?.ConsumeLeft == true || RecoveryUi?.ConsumeRight == true || RecoveryUi?.Selecting == true ||
+                    items?.ConsumeLeft == true || items?.ConsumeRight == true || items?.Selecting == true;
+            }
+        }
+        internal Func<bool> FreezeTargetUi()
+        {
+            bool visible = State.Visible; int page = State.Page, generation = State.Layout.Generation;
+            float x = State.X, y = State.Y, scroll = State.Scroll;
+            bool hotkey = HotkeyPopup?.Visible == true, style = StylePopup?.Visible == true, death = DeathPopup?.Visible == true,
+                map = MapPopup?.Visible == true, footprint = FootprintPopup?.Visible == true, materials = BlueprintMaterialsUi?.Visible == true,
+                replacement = BlueprintReplacementPopup?.Visible == true, fishing = FishingUi?.Visible == true, capture = CaptureUi?.Visible == true;
+            // This request-local closure watches actual UI context, never a
+            // camera or a shared proof/owner from another capability.
+            return () => State.Visible == visible && State.Page == page && State.Layout.Generation == generation && State.X == x && State.Y == y && State.Scroll == scroll &&
+                (HotkeyPopup?.Visible == true) == hotkey && (StylePopup?.Visible == true) == style && (DeathPopup?.Visible == true) == death &&
+                (MapPopup?.Visible == true) == map && (FootprintPopup?.Visible == true) == footprint && (BlueprintMaterialsUi?.Visible == true) == materials &&
+                (BlueprintReplacementPopup?.Visible == true) == replacement && (FishingUi?.Visible == true) == fishing && (CaptureUi?.Visible == true) == capture;
+        }
 
         internal bool CanAdjustInformation { get { return information != null && information.PositionReady && biome.SharedRuntime.IsSessionActive && !failed && CanPresentNow && inputState.CanUseInput; } }
         internal void RequestInformationAdjustment()
@@ -553,6 +595,18 @@ namespace JueMingR.TerrariaHost.F5
             try
             {
                 RestoreLeases();
+                // A committed native inventory button keeps its real raw click
+                // for DrawInventory, while vanilla's own mouseInterface gate
+                // protects the earlier world ItemCheck. This is native UI
+                // ownership, not a relaxed F5 hover lease. The existing update,
+                // draw-finally, unavailable/session and failure restoration
+                // boundaries retire it even when native Draw is skipped.
+                if (NativeTargetControlOwnsPointer?.Invoke() == true && Main.LocalPlayer != null)
+                {
+                    nativeControlPlayer = Main.LocalPlayer;
+                    nativeControlPriorInterface = nativeControlPlayer.mouseInterface;
+                    nativeControlPlayer.mouseInterface = true;
+                }
                 RestorePositionWhenLoaded();
                 State.Layout.SetHiddenFeaturesVisible(hiddenAccess != null && hiddenAccess.IsUnlocked);
                 if (worldObjects != null) State.Layout.SetWorldObjectSettings(worldObjects.Preferences.Value);
@@ -779,7 +833,7 @@ namespace JueMingR.TerrariaHost.F5
                     !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible);
                 // Older development profiles have no target owner or actions;
                 // do not evaluate the new native observation gate for them.
-                bool targetHotkey = Browser != null && CanTargetInput;
+                bool targetHotkey = Browser != null && CanTargetInput && !TargetPointerOwned;
                 // Fullscreen map owns native mouseInterface. Admit only its
                 // registered master switch, through the same binding engine.
                 bool mapHotkey = !failed && maps != null && Main.mapFullscreen && CanPresent(true) && inputState.CanUseInput &&
@@ -1047,6 +1101,11 @@ namespace JueMingR.TerrariaHost.F5
             {
                 if (leasedPlayer.mouseInterface) leasedPlayer.mouseInterface = priorMouseInterface;
                 leasedPlayer = null;
+            }
+            if (nativeControlPlayer != null)
+            {
+                if (nativeControlPlayer.mouseInterface) nativeControlPlayer.mouseInterface = nativeControlPriorInterface;
+                nativeControlPlayer = null;
             }
             if (hoverLease)
             {
