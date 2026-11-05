@@ -17,6 +17,8 @@ namespace NativeWorldTextProbe
         internal static void Run(object context)
         {
             object shell=Get(context,"Shell"), input=Get(context,"Input"), view=Get(context,"View"), display=Get(context,"ShortFeedback");
+            ViewControlChecks.RunNative(shell.GetType().Assembly);
+            NativeDeathPreferenceFeedbackChecks.Run(context);
             var keys=Get(shell,"hotkeys");var registry=(HotkeyRegistry)Get(keys,"Registry");var bindings=(HotkeyBindings)Get(keys,"Bindings");
             var action=registry.Find(Id);
             Require(action!=null && action.Context==HotkeyContext.Gameplay,"view registered once before registry freeze");
@@ -57,7 +59,8 @@ namespace NativeWorldTextProbe
         internal static void Visual(object context, ProbeGraphics graphics, string output)
         {
             object shell=Get(context,"Shell"),state=Get(shell,"State"),popup=Get(shell,"HotkeyPopup"),view=Get(context,"View");
-            var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");
+            object keys=Get(shell,"hotkeys");
+            var bindings=(HotkeyBindings)Get(keys,"Bindings");
             foreach(var size in new[]{new[]{960,640,100},new[]{640,360,100},new[]{960,540,150}})
             {
                 NativeToolsUiChecks.Prepare(context,2,size[0],size[1],size[2]/100f);
@@ -78,10 +81,57 @@ namespace NativeWorldTextProbe
                 NativeToolsUiChecks.Click(context,point);Require(!(bool)Get(popup,"Visible"),"first real icon click does not open recorder");
                 NativeToolsUiChecks.Click(context,point);Require((bool)Get(popup,"Visible") && (string)Get(popup,"Target")==Id && (bool)Get(view,"UnlockEnabled")==before,"double click opens shared view recorder without toggling");
                 graphics.Image(Path.Combine(output,"view-binding-"+size[0]+"-"+size[2]+".png"),()=>Call(shell,"DrawLayer"),Main.UIScaleMatrix,size[0],size[1]);
-                NativeToolsUiChecks.PopupClick(context,popup,"Record");
-                NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.LeftControl);NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.LeftControl,Keys.F14);NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
-                NativeQuickItemChecks.Until(()=>{NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);return !bindings.Busy;});
-                Require(bindings.Get(Id)!=null && bindings.CompletionSucceeded,"real view recorder saves through public binding owner");
+                HotkeyChord requested;string reason;long command;
+                Require(HotkeyChord.TryCreate((int)Keys.F14,HotkeyModifiers.LeftControl,out requested,out reason),"UI chord");
+                Require(bindings.TrySet("biome-display.toggle",requested,null,out command,out reason),"reserve an actual other action for internal conflict");
+                NativeQuickItemChecks.Until(()=>{bindings.Poll();return !bindings.Busy;});
+                Action record=()=>{
+                    NativeToolsUiChecks.PopupClick(context,popup,"Record");
+                    NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.LeftControl);NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.LeftControl,Keys.F14);NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
+                    NativeQuickItemChecks.Until(()=>{NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);return !bindings.Busy;});
+                };
+                record();Require(bindings.Get(Id)==null && Get(Get(popup,"Feedback"),"Kind").ToString()=="Rejected" && (bool)Get(view,"UnlockEnabled")==before,"real recorder rejects an internal conflict without changing view or effective binding");
+                Require(bindings.TrySet("biome-display.toggle",null,null,out command,out reason),"remove only the isolated conflict reservation");
+                NativeQuickItemChecks.Until(()=>{bindings.Poll();return !bindings.Busy;});
+                record();Require(requested.Equals(bindings.Get(Id)) && bindings.CompletionSucceeded && (bool)Get(view,"UnlockEnabled")==before,"real view recorder reliably saves without executing business");
+                Call(popup,"Close");Call(shell,"CloseAndSubmitPosition");
+                var oldRegistry=(HotkeyRegistry)Get(keys,"Registry");var oldActions=oldRegistry.Actions.ToArray();
+                Require(bindings.Stop(750),"old actual bindings relinquishes its document lease");
+                var reloadedRegistry=new HotkeyRegistry();foreach(var action in oldActions)reloadedRegistry.Register(action);
+                Require(reloadedRegistry.Actions.Select(a=>a.Id).OrderBy(id=>id).SequenceEqual(oldActions.Select(a=>a.Id).OrderBy(id=>id)),"fresh actual registry retains the complete production action set and real command owners");
+                var reloaded=new HotkeyBindings(reloadedRegistry,new AtomicFileDocument(Path.Combine((string)Get(context,"gameDirectory"),"JueMingRData","config","hotkeys.json"),65536,true));
+                NativeQuickItemChecks.Until(()=>{reloaded.Poll();return reloaded.Loaded;});
+                Require(!reloaded.Protected && requested.Equals(reloaded.Get(Id)),"new binding owner reloads the real recorder's exact saved chord from the same file");
+                Set(keys,"Registry",reloadedRegistry);Set(keys,"Bindings",reloaded);bindings=reloaded;
+                popup=Activator.CreateInstance(popup.GetType(),System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic,null,new object[]{reloaded,reloadedRegistry,Get(context,"Input")},null);
+                Set(shell,"HotkeyPopup",popup);
+                object display=Get(context,"ShortFeedback");Call(display,"Clear");
+                NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
+                Require((bool)Get(view,"UnlockEnabled")==before && !NativeShortFeedbackChecks.Entries(display).Any(),"reload does not execute the view command or manufacture feedback");
+                float zoom=Main.GameZoomTarget;
+                try
+                {
+                    Main.GameZoomTarget=.5f;
+                    NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.LeftControl,Keys.F14);
+                    Require((bool)Get(view,"UnlockEnabled")!=before && Main.GameZoomTarget==.5f && NativeShortFeedbackChecks.Has(display,"视距解锁 "+(before?"已关闭":"已开启")),"saved UI chord reloads into actual Shell dispatch and real View/Immediate feedback");
+                    NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.LeftControl,Keys.F14);Require((bool)Get(view,"UnlockEnabled")!=before,"reloaded held chord never repeats");
+                    NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.LeftControl,Keys.F14);NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
+                    Require((bool)Get(view,"UnlockEnabled")==before && Main.GameZoomTarget==.5f && NativeShortFeedbackChecks.Has(display,"视距解锁 "+(before?"已开启":"已关闭")),"reloaded reverse dispatch preserves zoom and uses actual state feedback");
+                }
+                finally{Main.GameZoomTarget=zoom;}
+                NativeToolsUiChecks.Prepare(context,2,size[0],size[1],size[2]/100f);
+                typeof(Main).GetField("_uiScaleUsed",flags).SetValue(null,size[2]/100f);
+                typeof(Main).GetField("_uiScaleMatrix",flags).SetValue(null,Matrix.CreateScale(size[2]/100f));
+                Require(Main.UIScale==size[2]/100f && Main.UIScaleMatrix.M11==size[2]/100f,"reopened popup retains actual requested scale after Prepare");
+                NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
+                // Closing F5 can retire its scroll projection. Resolve the new
+                // public element/viewport instead of replaying an old screen point.
+                layout=Get(state,"Layout");icon=((IEnumerable)Get(layout,"Elements")).Cast<object>().Single(e=>(string)GetOptional(e,"HotkeyTarget")==Id);
+                rect=Get(icon,"Rect");viewport=Get(layout,"Viewport");
+                Call(state,"ScrollTo",Math.Max(0,(float)Get(rect,"Bottom")-(float)Get(viewport,"Height")+4));
+                point=new Vector2((float)Get(state,"X")+(float)Get(viewport,"X")+(float)Get(rect,"X")+5,(float)Get(state,"Y")+(float)Get(viewport,"Y")+(float)Get(rect,"Y")-(float)Get(state,"Scroll")+5)*Main.UIScale;
+                NativeToolsUiChecks.Click(context,point);NativeToolsUiChecks.Click(context,point);
+                Require((bool)Get(popup,"Visible") && (string)Get(popup,"Target")==Id,"reloaded popup remains reachable through the same public icon");
                 NativeToolsUiChecks.PopupClick(context,popup,"Clear");NativeQuickItemChecks.Until(()=>{NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);return !bindings.Busy;});
                 Require(bindings.Get(Id)==null,"real clear deactivates view chord");Call(popup,"Close");
                 object death=Get(shell,"DeathPopup"),renderer=Get(shell,"renderer");Call(death,"Open",true,2);NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
@@ -96,6 +146,7 @@ namespace NativeWorldTextProbe
                 NativeToolsUiChecks.Click(context,closePoint);Require(!(bool)Get(death,"Visible"),"real top-right close accepts a complete physical gesture");
             }
             Call(shell,"CloseAndSubmitPosition");
+            Console.WriteLine("PASS actual view UI recording/conflict/reliable save, fresh full registry and binding-owner same-file reload, physical bidirectional dispatch/feedback/retained zoom and public clear.");
         }
     }
 }
