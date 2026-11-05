@@ -17,6 +17,7 @@ namespace NativeWorldTextProbe
         internal static void Run(object context,ProbeGraphics graphics,string output)
         {
             Directory.CreateDirectory(output);
+            NativeViewHotkeyChecks.Visual(context,graphics,output);
             object display=Get(context,"ShortFeedback"), shell=Get(context,"Shell");
             var registry=(HotkeyRegistry)Get(Get(shell,"hotkeys"),"Registry");
             Set(Get(context,"onboarding"),"CanPresent",(Func<bool>)(()=>false));

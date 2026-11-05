@@ -26,7 +26,7 @@ namespace NativeWorldTextProbe
             "information.infection.toggle", "information.luck.toggle", "information.angler.toggle",
             "information.full-fish.toggle", "information.filtered-fish.toggle",
             "rare-direction.toggle", "merchant-direction.toggle", "equipment-warning.toggle",
-            "death-markers.toggle", "map-markers.toggle", "footprints.toggle", "announcement.toggle",
+            "view-unlock.toggle", "death-markers.toggle", "map-markers.toggle", "footprints.toggle", "announcement.toggle",
             "movement.simulated-jump", "movement.continuous-dash", "movement.teleport-correction", "movement.smart-fall-protection",
             "blueprint.toolbar", "blueprint.autobuild", "blueprint.substitution"
         };
@@ -63,7 +63,7 @@ namespace NativeWorldTextProbe
             // Capture/edit/save/open commands keep their own operation result;
             // entering or cancelling an editor is not an enabled-state switch.
             string[] once={"information-window.adjust","announcement.send","item-browser.query","tools.mining.select",
-                "blueprint.capture","blueprint.save","blueprint.library","blueprint.move","blueprint.remove",
+                "blueprint.placed-list","blueprint.capture","blueprint.save","blueprint.library","blueprint.move","blueprint.remove",
                 "blueprint.mirror","blueprint.trim","blueprint.trim.confirm","blueprint.materials"};
             Require(!(bool)Get(Get(context,"hiddenAccess"),"IsUnlocked") && registry.Find("combat.npc-path")==null,
                 "ordinary isolated composition remains locked; the qualification-owned path action is absent, not a once-action exclusion");
@@ -71,11 +71,11 @@ namespace NativeWorldTextProbe
             var expected=ImmediateSwitchIds.Concat(CommittedSwitchIds).ToArray();
             Console.WriteLine("FEEDBACK REGISTRY switches="+actions.Length+" immediate="+ImmediateSwitchIds.Length+" committed="+CommittedSwitchIds.Length+
                 " qualification=locked ids="+string.Join(",",actions.Select(a=>a.Id).OrderBy(id=>id,StringComparer.Ordinal))+" once="+string.Join(",",once.Where(id=>registry.Find(id)!=null)));
-            Require(ImmediateSwitchIds.Length==34 && CommittedSwitchIds.Length==30 && expected.Distinct(StringComparer.Ordinal).Count()==64 &&
-                actions.Length==64 && actions.Select(a=>a.Id).Distinct(StringComparer.Ordinal).Count()==64 &&
+            Require(ImmediateSwitchIds.Length==35 && CommittedSwitchIds.Length==30 && expected.Distinct(StringComparer.Ordinal).Count()==65 &&
+                actions.Length==65 && actions.Select(a=>a.Id).Distinct(StringComparer.Ordinal).Count()==65 &&
                 actions.Select(a=>a.Id).OrderBy(id=>id,StringComparer.Ordinal).SequenceEqual(expected.OrderBy(id=>id,StringComparer.Ordinal)) &&
-                once.Length==13 && once.Distinct(StringComparer.Ordinal).Count()==13 && once.All(id=>registry.Find(id)!=null),
-                "64 unique registered switches match the independent 34 Immediate/30 Committed identities; thirteen distinct once-actions remain registered");
+                once.Length==14 && once.Distinct(StringComparer.Ordinal).Count()==14 && once.All(id=>registry.Find(id)!=null),
+                "65 unique registered switches match the independent 35 Immediate/30 Committed identities; fourteen distinct once-actions remain registered");
             Require(ImmediateSwitchIds.Count(id=>id=="blueprint.substitution")==1 && !CommittedSwitchIds.Contains("blueprint.substitution") &&
                 !once.Contains("blueprint.substitution") && actions.Count(a=>a.Id=="blueprint.substitution")==1,
                 "the new substitution action is one actual synchronous switch and participates in the complete bidirectional feedback loop");
@@ -103,6 +103,7 @@ namespace NativeWorldTextProbe
                 if(substitution)Require((bool)Get(blueprint,"SameTypeReplacementEnabled")==beforeSubstitution &&
                     second=="同类替换 "+(beforeSubstitution?"已开启":"已关闭"),"new registered substitution reverse command restores the real state and exact feedback");
             }
+            NativeViewHotkeyChecks.Run(context);
             Call(display,"Clear");
             object recovery=Get(context,"Recovery");
             Call(recovery,"Set",0,2);NativeQuickItemChecks.Until(()=>{Call(recovery,"Poll");return (int)Call(recovery,"Value",0)==2;});
@@ -155,7 +156,7 @@ namespace NativeWorldTextProbe
             Require((int)Get(display,"Count")==0 && (int)Get(feedback,"PendingCount")==0,"session end releases all requests synchronously");
             Call(context,"UpdateRuntime");
             MapFailure(context,registry,display);
-            Console.WriteLine("PASS: 64 registered switch consumers (34 Immediate/30 Committed), thirteen once-actions classified separately in the ordinary locked composition, real bidirectional substitution state/feedback, runtime/commit separation, modes, owner tokens, bounded replacement, native ownership, fallback, no network and idle/session cleanup.");
+            Console.WriteLine("PASS: 65 registered switch consumers (35 Immediate/30 Committed), fourteen once-actions classified separately in the ordinary locked composition, real bidirectional substitution state/feedback, runtime/commit separation, modes, owner tokens, bounded replacement, native ownership, fallback, no network and idle/session cleanup.");
         }
         private static void AsyncFailures(object context,HotkeyRegistry registry,object display,object feedback)
         {

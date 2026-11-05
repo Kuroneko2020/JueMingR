@@ -39,7 +39,8 @@ namespace Terraria
             Require(name.Command == F5Command.None && name.HotkeyTarget == null, "name is display only");
             var buttons = state.Layout.Elements.Where(e => ViewControls.Owns(e.Command)).ToArray();
             Require(buttons.Length == 2 && buttons.Select(e => e.Text).SequenceEqual(new[] { "开启", "关闭" }), "only standard Enable/Disable");
-            Require(state.Layout.Elements.All(e => e.HotkeyTarget != "view-unlock"), "no extra R binding entry");
+            var key = state.Layout.Elements.Single(e => e.HotkeyTarget == ViewControls.ActionId);
+            Require(key.Text == "键" && key.Rect.Y >= buttons[1].Rect.Y && (key.Rect.Y > buttons[1].Rect.Y || key.Rect.X >= buttons[1].Rect.Right), "unique permission binding entry follows off");
             Require(buttons.All(e => e.Rect.Y >= 0 && e.Rect.Bottom <= state.Layout.ContentHeight + .01f), "row participates in final scroll geometry");
             int generation = state.Layout.Generation, measurements = state.Layout.MeasurementCount;
             for (int i = 0; i < 100; i++) state.Layout.Ensure(input.Width, input.Height, input.Scale, state.Page, font, measure);

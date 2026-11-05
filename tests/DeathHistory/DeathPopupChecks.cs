@@ -32,7 +32,11 @@ namespace Terraria
         {
             var h = new Owner(); var d = new Driver(h); d.Popup.Open(true, 2); d.Prepare(); d.Click(128);
             Require(h.Settings.Count == 128 && h.Changes == 1, "a complete physical click selects 128 exactly once");
-            d.Click(128); Require(h.Changes == 1, "same value never creates another intent");
+            Require(d.Popup.Text.Count == 1 && d.Popup.Text[0].Text == "地图显示死亡点数量：", "quantity has exact title and no descriptions/status slot");
+            Require(d.Popup.Panel.Width < 490 && d.Popup.Panel.Height < 180 && d.Popup.Buttons.Count == 5, "quantity panel and five controls are compact");
+            foreach (int n in new[] {256,512,1024,128}) { d.Click(n); Require(h.Settings.Count == n && d.Popup.IsSelected(n), "all four immediate choices remain selected"); }
+            int changes = h.Changes;
+            d.Click(128); Require(h.Changes == changes, "same value never creates another intent");
             int builds = d.Popup.LayoutBuilds; for (int i = 0; i < 100; i++) d.Prepare(); Require(builds == d.Popup.LayoutBuilds, "stable quantity reuses layout");
             d.Click(0); Require(!d.Popup.Visible, "close is reachable");
         }
