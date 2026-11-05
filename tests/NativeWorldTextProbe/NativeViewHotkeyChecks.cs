@@ -61,6 +61,13 @@ namespace NativeWorldTextProbe
             foreach(var size in new[]{new[]{960,640,100},new[]{640,360,100},new[]{960,540,150}})
             {
                 NativeToolsUiChecks.Prepare(context,2,size[0],size[1],size[2]/100f);
+                // The isolated fixture does not run native UI-scale update.
+                // Set the actual used scale/matrix, as the existing pixel probe
+                // does, rather than mistaking UIScale's desired value for it.
+                var flags=System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic;
+                typeof(Main).GetField("_uiScaleUsed",flags).SetValue(null,size[2]/100f);
+                typeof(Main).GetField("_uiScaleMatrix",flags).SetValue(null,Matrix.CreateScale(size[2]/100f));
+                Require(Main.UIScale==size[2]/100f && Main.UIScaleMatrix.M11==size[2]/100f,"actual UI scale and drawing transform match the requested fixture");
                 NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
                 object layout=Get(state,"Layout");var icon=((IEnumerable)Get(layout,"Elements")).Cast<object>().Single(e=>(string)GetOptional(e,"HotkeyTarget")==Id);
                 var rect=Get(icon,"Rect");var viewport=Get(layout,"Viewport");
