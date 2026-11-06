@@ -45,12 +45,20 @@ namespace JueMingR.TerrariaHost.Input
         internal void ClaimUseGesture(HotkeyChord chord)
         { if (CanStartActions) UseGesture.Claim(chord, Hotkeys, physical); }
         internal KeyboardState KeyboardSample { get; private set; }
+        // A private early sample admits only read-only mouse ownership. Vanilla
+        // keeps its cached keyboard mapping and its later final refresh intact.
+        internal Func<KeyboardState> ReadOnlyKeyboardSource { get; set; }
+        internal HotkeyModifiers ReadOnlyModifiers { get; private set; }
+        internal bool ReadOnlySystemModifier { get; private set; }
+        internal long MouseSample { get; private set; }
+        internal long FocusGeneration { get; private set; }
         internal int MapMouseX { get; private set; }
         internal int MapMouseY { get; private set; }
         internal bool HotkeyCapture { get; set; }
         internal Func<bool> ClaimsHotkeyPointer { get; set; }
         internal Func<bool> ClaimsMapPointer { get; set; }
         internal Func<int, int, int> ClaimsReadOnlyGesture { get; set; }
+        internal Func<bool> ReadOnlyGestureDemand { get; set; }
         internal int ReadOnlyMouseMask { get; private set; }
         private int readOnlyTail;
         internal int MapWheel { get; private set; }
@@ -69,6 +77,7 @@ namespace JueMingR.TerrariaHost.Input
         internal void AfterNativeMouse(List<string> mouseKeys)
         {
             RefreshFocus(); MouseState sample = PlayerInput.MouseInfo;
+            MouseSample++;
             RawMouseLeft = sample.LeftButton == ButtonState.Pressed;
             RawMouseRight = sample.RightButton == ButtonState.Pressed;
             PhysicalMapX = (int)(sample.X * PlayerInput.RawMouseScale.X); PhysicalMapY = (int)(sample.Y * PlayerInput.RawMouseScale.Y);
@@ -77,7 +86,16 @@ namespace JueMingR.TerrariaHost.Input
             bool reliable = IsFocused && FocusHelper.IsSelectedApplication && !rearming && !ExternalModalBusy;
             bool claims = reliable && ClaimsMapPointer != null && ClaimsMapPointer();
             if (claims) mouseTail |= down & ~previousMouse;
-            if (reliable && !claims && ClaimsReadOnlyGesture != null) readOnlyTail |= ClaimsReadOnlyGesture(down, down & ~previousMouse) & down & ~previousMouse & 31;
+            if (reliable && !claims && ClaimsReadOnlyGesture != null && (ReadOnlyGestureDemand == null || ReadOnlyGestureDemand()))
+            {
+                if ((down & ~previousMouse) != 0)
+                {
+                    KeyboardState early = ReadOnlyKeyboardSource();
+                    ReadOnlyModifiers = Modifiers(early);
+                    ReadOnlySystemModifier = early.IsKeyDown(Keys.LeftWindows) || early.IsKeyDown(Keys.RightWindows);
+                }
+                readOnlyTail |= ClaimsReadOnlyGesture(down, down & ~previousMouse) & down & ~previousMouse & 31;
+            }
             OwnedMouseMask = mouseTail; mapWheelOwned = claims;
             ReadOnlyMouseMask = readOnlyTail;
             // MouseInput only staged these tokens; keyboard and gamepad mappings
@@ -134,9 +152,15 @@ namespace JueMingR.TerrariaHost.Input
         internal uint BlueprintDiagnosticWorldAtBegin { get { return worldAtBegin; } }
 #endif
         internal bool CanPrepareText { get { return IsFocused && !rearming && !quarantine && !ExternalModalBusy; } }
-        internal HostInputState() : this(() => Main.instance == null ? IntPtr.Zero : Main.instance.Window.Handle, GetForegroundWindow) { }
+        internal HostInputState() : this(() => Main.instance == null ? IntPtr.Zero : Main.instance.Window.Handle, GetForegroundWindow)
+        { ReadOnlyKeyboardSource = Keyboard.GetState; }
         internal HostInputState(Func<IntPtr> gameWindow, Func<IntPtr> foregroundWindow)
-        { this.gameWindow = gameWindow; this.foregroundWindow = foregroundWindow; }
+        {
+            this.gameWindow = gameWindow; this.foregroundWindow = foregroundWindow;
+            // Controlled component fixtures supply their keyboard through this
+            // seam; they never call the machine's OS input provider.
+            ReadOnlyKeyboardSource = () => Main.keyState;
+        }
 
         internal void BeginUpdate()
         {
@@ -163,8 +187,15 @@ namespace JueMingR.TerrariaHost.Input
             bool focused;
             try { IntPtr window = gameWindow(); focused = window != IntPtr.Zero && foregroundWindow() == window; }
             catch { focused = false; }
+            if (observed && focused != IsFocused) FocusGeneration++;
             if (!focused || observed && !IsFocused && focused) rearming = true;
             IsFocused = focused; observed = true;
+        }
+        internal static HotkeyModifiers Modifiers(KeyboardState sample)
+        {
+            HotkeyModifiers value = HotkeyModifiers.None;
+            for (int i = 0; i < 6; i++) if (sample.IsKeyDown((Keys)HotkeyChord.ModifierCode(i))) value |= (HotkeyModifiers)(1 << i);
+            return value;
         }
         internal bool RestrictNativePermission(bool permitted)
         { return permitted && IsFocused; }

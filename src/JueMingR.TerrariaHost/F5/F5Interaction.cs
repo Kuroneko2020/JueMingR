@@ -60,6 +60,20 @@ namespace JueMingR.TerrariaHost.F5
             get { return Ready && Visible && active &&
                 (capture != 0 || new F5Rect(X, Y, windowWidth, windowHeight).Contains(PointerX, PointerY)); }
         }
+        // Early claim reads current coordinates without advancing UI edges.
+        // Use the same projection, clamping and integer origin as Update.
+        internal bool OwnsCurrentPointer(float width, float height, float scale, float px, float py)
+        {
+            if (!Ready || !Visible) return leftTail || rightTail;
+            if (capture != 0 || leftTail || rightTail) return true;
+            if (!Finite(width) || !Finite(height) || !Finite(scale) || scale <= 0 || !Finite(px) || !Finite(py)) return true;
+            F5Size size = F5Layout.WindowSize(width, height, scale);
+            float x = positionProjection == null ? (width / scale - size.Width) / 2 : positionProjection.X;
+            float y = positionProjection == null ? (height / scale - size.Height) / 2 : positionProjection.Y;
+            x = (float)Math.Floor(Clamp(x, 12, width / scale - size.Width - 12));
+            y = (float)Math.Floor(Clamp(y, 12, height / scale - size.Height - 12));
+            return new F5Rect(x, y, size.Width, size.Height).Contains(px, py);
+        }
 
         internal void Update(F5Input input)
         {

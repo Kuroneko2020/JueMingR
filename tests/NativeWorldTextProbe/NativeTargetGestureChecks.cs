@@ -31,7 +31,7 @@ namespace NativeWorldTextProbe
             typeof(Main).GetField("_uiScaleMatrix", Flags).SetValue(null, Matrix.Identity);
             typeof(PlayerInput).GetField("_originalScreenWidth", Flags).SetValue(null, 960); typeof(PlayerInput).GetField("_originalScreenHeight", Flags).SetValue(null, 640);
             typeof(PlayerInput).GetField("RawMouseScale", Flags).SetValue(null, Vector2.One);
-            PlayerInput.Triggers.Initialize(); Main.keyState = new KeyboardState(); Main.mouseX = Main.mouseY = 20;
+            PlayerInput.Triggers.Initialize(); Main.keyState = new KeyboardState(); Main.mouseX = Main.mouseY = PlayerInput.MouseX = PlayerInput.MouseY = 20;
             PlayerInput.MouseInfo = new MouseState(20, 20, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
             var inputType = assembly.GetType("JueMingR.TerrariaHost.Input.HostInputState");
             object input = Activator.CreateInstance(inputType, Flags, null, new object[] { (Func<IntPtr>)(() => new IntPtr(1)), (Func<IntPtr>)(() => new IntPtr(1)) }, null);
@@ -63,24 +63,38 @@ namespace NativeWorldTextProbe
                 Main.tile[1, 1] = new Tile();
                 Require((bool)Get(gesture, "Ready"), "fixed native read-only gesture hooks install");
                 Set(gesture, "CanPick", (Func<bool>)(() => true)); Set(gesture, "CanAnnounce", (Func<bool>)(() => true));
+                HotkeyChord queryChord; string queryError; HotkeyChord.TryParse("K", out queryChord, out queryError);
+                Set(gesture, "QueryBinding", (Func<HotkeyChord>)(() => queryChord));
                 object result = null; int delivered = 0, cancelled = 0;
                 Set(gesture, "Picked", Adapt(type.GetProperty("Picked", Flags).PropertyType, value => { delivered++; result = value; }));
                 Set(gesture, "PickCancelled", (Action)(() => cancelled++));
                 Action<bool> uiPass = blocked => { Call(gesture, "BeginPass"); Main.LocalPlayer.mouseInterface = blocked; Main.mouseText = blocked; Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Main.mouseText = true; Call(gesture, "EndPass", true); };
+                uiPass(false); // A complete visible receipt precedes the trigger.
                 Call(gesture, "Request", 1); uiPass(false); UpdateGesture(gesture, 1L);
                 Require(delivered == 1 && result != null, "world tooltip flag after UI boundary is not UI遮挡");
                 Call(gesture, "Request", 1); uiPass(true); UpdateGesture(gesture, 2L);
                 Require(delivered == 1 && cancelled == 1, "fresh UI boundary vetoes world target");
-                Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "Hover", new Item[] { new Item() }, 0, 0);
+                Main.playerInventory = true; Main.LocalPlayer.inventory[0] = new Item();
+                object snapshot = Get(gesture, "snapshot");
+                Action<Item[], int> visibleSlot = (items, context) =>
+                {
+                    Call(gesture, "BeginPass"); Call(snapshot, "Record", items, context, 0, new Vector2(20, 20), 44.2f, 44.2f);
+                    Main.LocalPlayer.mouseInterface = true; Main.mouseText = false;
+                    Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Call(gesture, "EndPass", true);
+                };
+                visibleSlot(Main.LocalPlayer.inventory, 0);
+                Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "Hover", Main.LocalPlayer.inventory, 0, 0);
                 Main.LocalPlayer.mouseInterface = true; Main.mouseText = false; Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Call(gesture, "EndPass", true); UpdateGesture(gesture, 3L);
-                Require(delivered == 2 && (bool)Get(result, "UiSlot") && (int)Get(result, "ItemType") == 0, "fresh empty slot wins over frozen world target");
+                Require(delivered == 2 && (bool)Get(result, "UiSlot") && (int)Get(result, "ItemType") == 0, "trigger-visible empty slot wins over frozen world target");
                 foreach (int context in new[] { 22, 41, 42 })
                 {
                     var sample = new Item(); sample.SetDefaults(9); sample.stack = 123;
-                    Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "Hover", new[] { sample }, context, 0);
+                    var samples = new[] { sample }; visibleSlot(samples, context); int beforeSample = delivered;
+                    Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "Hover", samples, context, 0);
                     Call(gesture, "BeforeWorldHover"); Call(gesture, "AfterResources", true); Call(gesture, "EndPass", true); UpdateGesture(gesture, 3L);
-                    Require((int)Get(result, "ItemType") == 0, "craft sample context never becomes possessed stack " + context);
+                    Require(delivered == beforeSample, "craft sample context never becomes possessed stack or world target " + context);
                 }
+                Main.playerInventory = false; uiPass(false);
                 int previous = delivered; Call(gesture, "Request", 1); Call(gesture, "BeginPass"); Call(gesture, "EndPass", true); UpdateGesture(gesture, 9L);
                 Require(delivered == previous && !(bool)Get(gesture, "Busy"), "UI pass missing concrete hover boundary times out without fallback");
                 Call(gesture, "BeginPick"); Main.tile = new Tile[64, 64]; UpdateGesture(gesture, 10L);
@@ -191,14 +205,14 @@ namespace NativeWorldTextProbe
                     var jar = new Terraria.GameContent.Tile_Entities.TEDeadCellsDisplayJar { Position = displayOrigin, item = new Item() }; jar.item.SetDefaults(4);
                     Terraria.DataStructures.TileEntity.ByPosition[displayOrigin] = jar;
                     for (int y = 0; y < 2; y++) { var tile = new Tile { type = 698, frameY = (short)(18 * y) }; tile.active(true); tile.fullbrightBlock(true); Main.tile[1, 1 + y] = tile; }
-                    Main.mouseY = 36; PlayerInput.MouseInfo = new MouseState(20, 36, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
+                    Main.mouseY = PlayerInput.MouseY = 36; PlayerInput.MouseInfo = new MouseState(20, 36, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
                     Call(coldCatalog, "Reset"); int beforeCoating = announced;
                     Call(gesture, "Request", 2); uiPass(false); UpdateGesture(gesture, ++coldTick);
                     Require((bool)Get(gesture, "Busy"), "jar lower-cell cold gesture waits for body identity");
                     Main.tile[1, 1].invisibleBlock(true);
                     for (int i = 0; i < 180 && (bool)Get(gesture, "Busy"); i++) UpdateGesture(gesture, ++coldTick);
                     Require(announced == beforeCoating && !(bool)Get(gesture, "Busy"), "coating the real jar draw anchor cancels a pending lower-cell gesture");
-                    Main.mouseY = 20; PlayerInput.MouseInfo = new MouseState(20, 20, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
+                    Main.mouseY = PlayerInput.MouseY = 20; PlayerInput.MouseInfo = new MouseState(20, 20, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
                 }
                 finally { Main.tileFrameImportant[395] = frameFlag; if (hadEntity) Terraria.DataStructures.TileEntity.ByPosition[displayOrigin] = priorEntity; else Terraria.DataStructures.TileEntity.ByPosition.Remove(displayOrigin); }
                 // Actual original slot methods are intercepted before transfer.

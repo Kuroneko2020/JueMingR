@@ -22,6 +22,7 @@ namespace NativeWorldTextProbe
             // Existing semantic checks omit only canonical icon tokens. Separate
             // real native-parser assertions below verify their exact identities.
             Func<object, string> textOf = value => System.Text.RegularExpressions.Regex.Replace(string.Join("|", (List<string>)Get(value, "Entries")), @" \[i:[1-9][0-9]*\]", "");
+            Func<object, string> localOf = value => (string)Get(value,"LocalMessage") ?? "";
             int[] types = { 27, 395, 471, 698, 520, 470, 475 };
             bool[] oldFlags = types.Select(t => Main.tileFrameImportant[t]).ToArray();
             var savedTiles = new Tile[8, 8];
@@ -79,7 +80,8 @@ namespace NativeWorldTextProbe
                     try
                     {
                         Main.netMode = 1; Main.sectionManager = new Terraria.WorldSections(1, 1);
-                        check(textOf(at(20, 20)) == "这里的世界资料尚未接收", "unreceived client body cannot reveal stale entity contents " + c.Item1);
+                        object unreceived=at(20,20);
+                        check(localOf(unreceived) == "这里的世界资料尚未接收" && textOf(unreceived)=="", "unreceived client body is local-only and cannot reveal stale entity contents " + c.Item1);
                         Main.sectionManager.SetAllSectionsLoaded();
                         check(textOf(at(20, 20)).Contains("放在" + furniture + "的"), "ordinary client resolves only existing received entity " + c.Item1);
                     }
@@ -87,10 +89,10 @@ namespace NativeWorldTextProbe
                     item.SetDefaults(8); item.stack = 1;
                     check(!(bool)Call(Get(frozen, "Display"), "StillMatches"), "changed received content cancels a cold pending display " + c.Item1);
                     TileEntity.ByPosition[origin] = new TEFoodPlatter { Position = origin, item = new Item() };
-                    if (c.Item1 != 520) check(textOf(at(20, 20)).Contains("内容尚未确认"), "wrong entity kind never confirms an empty support " + c.Item1);
+                    if (c.Item1 != 520) check(localOf(at(20, 20)).Contains("内容尚未确认"), "wrong entity kind never confirms an empty support " + c.Item1);
                     TileEntity.ByPosition.Remove(origin);
-                    string unknown = textOf(at(20, 20));
-                    check(unknown.Contains(furniture) && unknown.Contains("内容尚未确认") && !unknown.Contains(Lang.GetItemNameValue(4)), "missing entity is named support with unknown contents " + c.Item1);
+                    object unknownValue=at(20,20); string unknown = localOf(unknownValue);
+                    check(unknown.Contains("内容尚未确认") && Get(unknownValue,"Issue").ToString()=="Unconfirmed" && (int)Get(unknownValue,"ItemType")==0 && !textOf(unknownValue).Contains(furniture) && !unknown.Contains(Lang.GetItemNameValue(4)), "missing entity is local-only unknown contents, not a successful furniture announcement " + c.Item1);
                 }
                 foreach (var c in new[] { Tuple.Create(470, 2, 3, (TileEntity)new TEDisplayDoll(), "_equip", "_misc"), Tuple.Create(475, 3, 4, (TileEntity)new TEHatRack(), "_items", "_dyes") })
                 {
@@ -113,7 +115,7 @@ namespace NativeWorldTextProbe
                             "19 occupied display slots reserve icon/color overhead and retain whole names plus icons before omission");
                     }
                     Main.tile[20, 20] = new Tile();
-                    check(textOf(at(21, 21)).Contains("内容尚未确认"), "incomplete body cannot authorize stale tile-entity contents " + c.Item1);
+                    check(localOf(at(21, 21)).Contains("内容尚未确认"), "incomplete body cannot authorize stale tile-entity contents " + c.Item1);
                     TileEntity.ByPosition.Remove(origin);
                 }
                 for (int i = 0; i < Main.item.Length; i++) Main.item[i] = new WorldItem();
@@ -165,7 +167,7 @@ namespace NativeWorldTextProbe
                     Main.tile[21, 20] = Make(698, 18, 0); Main.tile[21, 21] = Make(698, 18, 18);
                     TileEntity.ByPosition[otherOrigin] = new TEDeadCellsDisplayJar { Position = otherOrigin, item = new Item() };
                     object overlap = observe.Invoke(null, new object[] { new Vector2(328, 358), catalog, true });
-                    check(!(bool)Get(overlap, "EmptyAir") && (int)Get(overlap, "ItemType") == 0 && textOf(overlap).Contains("重叠"), "overlapping jar outlines are an ambiguous object, never air or an arbitrary content");
+                    check(!(bool)Get(overlap, "EmptyAir") && (int)Get(overlap, "ItemType") == 0 && localOf(overlap).Contains("重叠") && textOf(overlap)=="", "overlapping jar outlines are local-only, never air or an arbitrary content");
                 }
                 finally { Main.tileGlowMask[698] = glow; Main.tileFlame[698] = flame; NativeAnnouncementTargetChecks.TestLight = Color.White; if (hadOther) TileEntity.ByPosition[otherOrigin] = otherOld; else TileEntity.ByPosition.Remove(otherOrigin); }
                 Require(failures.Count == 0, "object-family regressions: " + string.Join("; ", failures));

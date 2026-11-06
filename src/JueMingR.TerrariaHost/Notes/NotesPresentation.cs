@@ -59,6 +59,7 @@ namespace JueMingR.TerrariaHost.Notes
             pins = new NotesPins(workspace, renderer, Request);
         }
         internal bool OwnsPointer { get { return ready && (pins.OwnsPointer || input.Owned || cards.Selecting); } }
+        internal bool CapturesPointer { get { return ready && (pins.CapturesPointer || input.Owned || cards.Selecting || textLeftTail || textRightTail); } }
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
         internal bool ConsumeWheel { get { return pins.ConsumeWheel || input.Owned || cards.Selecting; } }

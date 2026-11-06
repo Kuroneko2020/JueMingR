@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using JueMingR.Features.Announcements;
+using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
 using Terraria.GameContent.Tile_Entities;
@@ -21,6 +22,21 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal int ItemType { get; private set; }
         internal int Quantity { get; private set; }
         internal string FallbackName { get; private set; }
+        internal string UnconfirmedMessage { get { return FallbackName + "的内容尚未确认，未发送宣告"; } }
+        // The frozen body can remain partially visible after the original
+        // clicked cell leaves the viewport. The jar uses its accepted sprite
+        // footprint instead of pretending its 1x2 tile body is the whole image.
+        internal Rectangle VisibleBounds
+        {
+            get
+            {
+                if (type != 698) return new Rectangle(x * 16, y * 16, width * 16, height * 16);
+                int top = y * 16 - 2;
+                Tile above = Loaded(x, y - 1) ? Main.tile[x, y - 1] : null;
+                if (above != null && above.active() && Terraria.ID.TileID.Sets.Platforms[above.type] && !above.halfBrick() && above.slope() == 0) top -= 8;
+                return new Rectangle(x * 16 - 10, top, 36, 44);
+            }
+        }
         private NativeDisplayContents(int x, int y, int type, int width, int height, string name)
         { this.x = x; this.y = y; this.type = type; this.width = width; this.height = height; FallbackName = name; }
         private static FieldInfo Field(Type type, string name) { return type.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic); }
@@ -117,7 +133,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         }
         internal string Describe(string body)
         {
-            if (!Known) return body + "（内容尚未确认）";
+            // Missing contents are a structured local-only outcome, never an
+            // otherwise successful furniture sentence with a warning appended.
+            if (!Known) return null;
             if (ItemType == 0) return body;
             var entries = new List<string>(); bool omitted = false;
             for (int i = 0; i < facts.Length; i += 2)

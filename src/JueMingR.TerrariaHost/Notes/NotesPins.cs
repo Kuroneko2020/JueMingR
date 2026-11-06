@@ -41,6 +41,8 @@ namespace JueMingR.TerrariaHost.Notes
         private object hintFont;
         private float hintWidth;
         internal bool OwnsPointer { get; private set; }
+        // Capture/tails are physical ownership; hover belongs to a fresh point.
+        internal bool CapturesPointer { get { return drag != null || leftTail || rightTail; } }
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
         internal bool ConsumeWheel { get; private set; }

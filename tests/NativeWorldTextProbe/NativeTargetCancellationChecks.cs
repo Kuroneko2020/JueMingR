@@ -91,10 +91,11 @@ namespace NativeWorldTextProbe
             internal void Sample(bool right, params Keys[] keys)
             {
                 var physical = new KeyboardState(keys);
+                Set(input, "ReadOnlyKeyboardSource", (Func<KeyboardState>)(() => physical));
                 Call(input, "BeginUpdate");
                 PlayerInput.MouseInfo = new MouseState(20, 20, 0, ButtonState.Released, ButtonState.Released,
                     right ? ButtonState.Pressed : ButtonState.Released, ButtonState.Released, ButtonState.Released);
-                Main.mouseX = Main.mouseY = 20; Main.mouseLeft = false; Main.mouseRight = right;
+                Main.mouseX = Main.mouseY = PlayerInput.MouseX = PlayerInput.MouseY = 20; Main.mouseLeft = false; Main.mouseRight = right;
                 Main.LocalPlayer.mouseInterface = Main.mouseText = false;
                 var mouseKeys = new List<string>(right ? new[] { "Mouse2" } : Array.Empty<string>());
                 Call(input, "AfterNativeMouse", mouseKeys);
@@ -148,6 +149,7 @@ namespace NativeWorldTextProbe
                         Call(native, "Reset");
                         var tile = new Tile { type = 21, frameX = 36 }; tile.active(true); tile.fullbrightBlock(true); Main.tile[1, 1] = tile;
                         Main.tileFrameImportant[21] = true; Main.LocalPlayer.position = new Microsoft.Xna.Framework.Vector2(800, 800);
+                        NativeTargetMotionInputChecks.Pass(targets);
                     }
                     if (scenario.StartsWith("pick-", StringComparison.Ordinal))
                     {
