@@ -17,7 +17,7 @@ namespace JueMingR.TerrariaHost.Items
 {
     // Composition and lifetime only. The Feature owns lists/priority; concrete
     // adapters own native calls and causal scopes. One real config document.
-    internal sealed class HostItems : IRuntimeFeature
+    internal sealed class HostItems : IRuntimeFeature, IRuntimeFailureCleanup
     {
         private readonly PreferenceDocument<ItemAutomationSettings> preferences;
         private readonly Stopwatch startup = Stopwatch.StartNew();
@@ -148,6 +148,13 @@ namespace JueMingR.TerrariaHost.Items
             var unknown = new ItemOperationResult(ItemOperationState.Unconfirmed, reason: "item-host-failed");
             Ownership.FinishSale(Runtime.Generation, unknown); Ownership.FinishDiscard(Runtime.Generation, unknown); Ownership.FinishStore(Runtime.Generation, unknown);
             CapabilityError = "物品自动处理出错，已停止；结果未确认的操作不会自动重试。";
+        }
+        public void UpdateFailureCleanup(ulong tick)
+        {
+            // Accept only the pending source group's actual authority replies
+            // (and its finite timeout). No acquisition drain, candidate scan,
+            // source submission, resend or feature Update runs after failure.
+            Tick = tick; Storage.Tick = tick; Storage.Update();
         }
         internal string PreferenceMessage
         {

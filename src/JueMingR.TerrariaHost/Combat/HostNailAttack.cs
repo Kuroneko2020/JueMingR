@@ -16,9 +16,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal static bool Family(int type){return Handles(type);}
         private sealed class Member {internal Projectile Shot;internal HostAttackObstacles Receive;internal bool Source,Random;}
         private static Member Make(Projectile p,HostAttackObstacles root,bool source){return new Member{Shot=p,Receive=root.ForkForSpawn(p),Source=source};}
-        private static MotionRect? Attached(Projectile p,HostProjectileTargets targets,NpcTrajectory path,int tick)
-        {int slot=(int)-p.ai[0]-1;for(int i=0;i<targets.Count;i++)if(targets.Slot(i)==slot && targets.Alive(i))return targets.Bounds(i,path,tick);return null;}
-        internal static bool Step(Projectile p,PredictionTerrain terrain,MotionRect? attached,out bool killed,out Vector2 death,out bool random)
+        internal static bool Step(Projectile p,PredictionTerrain terrain,MotionRect? attached,out bool killed,out Vector2 death,out bool random,bool attachedAlive=true)
         {
             killed=random=false;death=p.Center;if(HostRaySpellAttack.WorldRetired(p)){p.active=false;return true;}Vector2 wetVelocity=p.velocity;p.alpha=Math.Max(0,p.alpha-25);if(p.velocity.Y>18)p.velocity.Y=18;
             if(p.ai[0]==0){if(++p.ai[1]>20){p.velocity.Y+=.1f;p.velocity.X*=.992f;}}
@@ -28,8 +26,12 @@ namespace JueMingR.TerrariaHost.Combat
                 if(p.ai[0]==1)p.velocity*=.6f;
                 else
                 {
-                    if(attached.HasValue)p.Center=new Vector2(attached.Value.CenterX,attached.Value.CenterY)-p.velocity;
-                    if(!attached.HasValue){p.tileCollide=true;p.ai[0]=0;p.ai[1]=20;p.velocity=Vector2.UnitX*6;random=true;}
+                    if(!attached.HasValue)return false;
+                    // Vanilla relocates even a slot just invalidated by a
+                    // packet. Geometry is deterministic; only the subsequent
+                    // six-speed detach direction is a legal representative.
+                    p.Center=new Vector2(attached.Value.CenterX,attached.Value.CenterY)-p.velocity;
+                    if(!attachedAlive){p.tileCollide=true;p.ai[0]=0;p.ai[1]=20;p.velocity=Vector2.UnitX*6;random=true;}
                     else if(p.velocity.Length()>(int)(attached.Value.Width+attached.Value.Height)/3)p.velocity*=.99f;
                 }
                 if(p.ai[0]!=0 && ++p.ai[1]>90){killed=true;death=p.Center;return true;}
@@ -61,7 +63,9 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 var p=m.Shot;for(int sub=0;sub<=p.extraUpdates && p.active;sub++)
                 {
-                    CombatPredictionWork.Check();bool killed,random;Vector2 death;if(!Step(p,terrain,p.ai[0]<0?Attached(p,targets,path,tick):null,out killed,out death,out random))return false;m.Random|=random;if(!p.active)break;
+                    CombatPredictionWork.Check();bool killed,random,alive=true;Vector2 death;MotionRect body;MotionRect? attached=null;
+                    if(p.ai[0]<0){if(!targets.NailBody((int)-p.ai[0]-1,path,tick,out body,out alive))return false;attached=body;}
+                    if(!Step(p,terrain,attached,out killed,out death,out random,alive))return false;m.Random|=random;if(!p.active)break;
                     if(!killed && (p.ai[0]==0 || p.ai[0]==2) && (int)(p.damage*(p.ai[0]==2?1.35:.15))>0)
                     {
                         int hits=m.Receive.SelectedHits;bool pass=m.Receive.PassCustomOuter(2,tick,outer,p.Center.X,p.Center.Y,p.width,p.height,null,consumeSelected:true,onHit:(slot,left)=>
@@ -82,7 +86,7 @@ namespace JueMingR.TerrariaHost.Combat
         {var list=new List<Member>();foreach(var p in scene)list.Add(Make(HostBetsyFlameAttack.Copy(p),root,source!=null && Array.IndexOf(source,p)>=0));return list;}
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory path,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles root,int delay)
         {
-            if(ammo.Projectile!=514 || age-delay<0 || age+1>=path.Count)return null;root.CaptureShotFacing(player);var scene=Capture(player,root);var targets=root.CaptureNailTargets(Terraria.ID.ContentSamples.ProjectilesByType[514]);var pool=root.CaptureBirthSlots();var directions=new List<Vector2>();
+            if(ammo.Projectile!=514 || age-delay<0 || age+1>=path.Count)return null;root.CaptureShotFacing(player);var scene=Capture(player,root);var targets=root.CaptureNailTargets(Terraria.ID.ContentSamples.ProjectilesByType[514],scene);var pool=root.CaptureBirthSlots();var directions=new List<Vector2>();
             // Its free motor is separable through the first attachment. Use
             // the shared rectangle inverse only to propose inputs; native cap,
             // tile-stick, attachment and bursts still decide every Contact.
@@ -98,7 +102,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal static AttackContact KnownFamily(Player player,Projectile[] source,NpcTrajectory path,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles root)
         {
-            if(source==null || source.Length==0 || clock.Phase==HostAttackPhase.Projectiles || clock.LaunchDelay!=0)return null;var scene=Capture(player,root);var targets=root.CaptureNailTargets(source[0]);root.BeginCandidate();var rows=Copy(scene,source,root);var aim=source[0].Center+source[0].velocity*1000;
+            if(source==null || source.Length==0 || clock.Phase==HostAttackPhase.Projectiles || clock.LaunchDelay!=0)return null;var scene=Capture(player,root);var targets=root.CaptureNailTargets(source[0],scene);root.BeginCandidate();var rows=Copy(scene,source,root);var aim=source[0].Center+source[0].velocity*1000;
             for(int step=0;step<Math.Min(120,path.Count-clock.FirstTick);step++){AttackContact contact;if(!Outer(rows,targets,path,clock.FirstTick+step,step+1,terrain,aim,out contact))return null;if(contact!=null)return contact;}return null;
         }
     }

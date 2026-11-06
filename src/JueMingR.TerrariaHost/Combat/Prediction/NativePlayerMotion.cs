@@ -18,8 +18,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private int restoring;
         [ThreadStatic] private static NativePlayerMotion restored;
         internal int Quality { get; private set; }
+        // An observed stool anchor is a complex fixed-input condition, like
+        // sitting. Do not invent ordinary gravity/jump while keeping its
+        // expanded hitbox. A changed use bit is independently in Alignment.
         internal static int Mechanism(Player p)
-        {return (p.mount.Active?1:0)|(p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0?2:0)|(p.pulley?4:0)|(p.sitting.isSitting?8:0)|(p.dashDelay<0?16:0)|(p.wingTime>0 && p.controlJump?32:0)|(p.shimmering?64:0)|(p.tongued?128:0);}
+        {return (p.mount.Active?1:0)|(p.grappling!=null && p.grappling.Length>0 && p.grappling[0]>=0?2:0)|(p.pulley?4:0)|(p.sitting.isSitting?8:0)|(p.dashDelay<0?16:0)|(p.wingTime>0 && p.controlJump?32:0)|(p.shimmering?64:0)|(p.tongued?128:0)|(p.portableStoolInfo.IsInUse?256:0);}
         private static bool SupportedHover(Player p)
         {return p.mount.Active && (p.mount.Type==Terraria.ID.MountID.WitchBroom || p.mount.Type==5) && !p.CCed && !p.pulley && !p.shimmering && !p.tongued && (p.grappling==null || p.grappling.Length==0 || p.grappling[0]<0);}
         internal static bool Conditional(Player p){var profile=Premise(p);return Mechanism(p)!=0 && !SupportedHover(p) || AssistedComplex(p,profile.AssistedJump);}

@@ -456,7 +456,10 @@ function Get-WorkloadAssertionHost {
     # Only these current scopes have typed assertions and audited scene
     # aggregation. Legacy string/catch-all adapters remain unknown on failure.
     # This is an actual launch/protocol owner, so it stays in the bound recipe.
-    if($Name -cin @('native-MovementJumpCpu','native-MovementSmartFallCpu','native-MovementDashCpu','native-MovementTeleportCpu','native-NpcEyeBoss','native-NpcSnowman')){return 'NativeWorldTextProbe.exe'}
+    if($Name -cin @('native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu','native-RuntimeFailureBuildReceiptCpu')){return 'NativeWorldTextProbe.exe'}
+    if($Name -cin @('native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsHomingEffectCpu','native-CombatEffectsJoustingLanceCpu','native-CombatEffectsWhipStarCpu','native-CombatEffectsThornCpu')){return 'NativeWorldTextProbe.exe'}
+    if($Name -cin @('native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')){return 'NativeWorldTextProbe.exe'}
+    if($Name -cin @('native-MovementJumpCpu','native-MovementSmartFallCpu','native-MovementDashCpu','native-MovementTeleportCpu','native-NpcEyeBoss','native-NpcSnowman','native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu','native-JourneyCloseCpu','native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu','native-CombatTerrainKnowledgeCpu','native-CombatShotFacingCpu','native-CombatShotBirthOrderCpu','native-CombatNailDetachCpu','native-NpcReviewedStool','native-NpcReviewedParticle','native-CombatEffectsNailCpu','native-CombatEffectsPiranhaCpu','native-CombatEffectsPhoenixCpu','native-CombatEffectsSpecialArrowCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsPhantasmEchoCpu')){return 'NativeWorldTextProbe.exe'}
     return $null
 }
 function Invoke-WorkloadProcess {

@@ -92,9 +92,27 @@ namespace NativeWorldTextProbe
                 bool clear=Collision.CanHit(origin,0,0,origin+offset,0,0);Require(clear!=blocked,"Betsy birth fixture truly selects CanHit clear and blocked");var args=new object[]{Terrain(),origin,v,p.HeldItem.scale,null};Require((bool)Static(model,"BirthOrigin",args) && (Vector2)args[4]==(clear?origin+offset:origin),"40px birth offset follows native CanHit");
                 for(int i=0;i<3;i++){var expected=(v*.8f+Vector2.Normalize(v)*i).RotatedBy(i*((float)Math.PI/180f*(-direction)));Require((Vector2)Static(model,"BirthVelocity",v,direction,i)==expected,"all three fan velocities use exact native float operation order");}cases++;
             }
-            var owner=Main.LocalPlayer;float gravity=owner.gravDir,rotation=owner.fullRotation;
-            try{foreach(float g in new[]{1f,-1f})foreach(float r in new[]{-.4f,0f,.4f}){owner.gravDir=g;owner.fullRotation=r;var origin=new Vector2(950,350);var aim=new Vector2(970,410);var rawPoint=aim;if(g==-1)rawPoint.Y=Main.screenPosition.Y+Main.screenHeight-(aim.Y-Main.screenPosition.Y);var ray=Vector2.Normalize(rawPoint-origin);int expected=Vector2.Dot(Vector2.UnitX.RotatedBy(r),ray)>0?1:-1;Require((int)Static(model,"Facing",owner,origin,aim)==expected,"native pre-reverse-gravity facing predicate is retained by the fan");}}
-            finally{owner.gravDir=gravity;owner.fullRotation=rotation;}
+            // Original Shoot is the direction oracle for the same borrowed
+            // integer point. The legal inverted native-bed/quarter-turn
+            // witness belongs to CombatShotFacingCpu, not field-only poses.
+            foreach(int side in new[]{-1,1})
+            {
+                var p=Reset(context);p.StopVanityActions();if(p.mount.Active)p.mount.Dismount(p);p.statMana=p.statManaMax2=200;
+                Require(p.gravDir==1 && p.fullRotation==0 && !p.sleeping.isSleeping && !p.mount.Active,"ordinary actual Betsy holder has its legal unrotated pose");
+                var origin=p.RotatedRelativePoint(p.MountedCenter);var aim=origin+new Vector2(side*200,-120);int savedX=Main.mouseX,savedY=Main.mouseY;
+                var scope=assembly.GetType("JueMingR.TerrariaHost.Combat.CombatCursorScope",true).GetMethod("Begin",Flags).Invoke(null,new object[]{aim,true});
+                Require(scope!=null,"actual ordinary Betsy cursor loan opens");
+                try
+                {
+                    var logical=Main.MouseWorld;int direction=p.direction;int predicted=(int)Static(model,"Facing",p,origin,logical);
+                    Require(p.direction==direction,"facing prediction leaves the actual holder direction untouched");
+                    typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{p.whoAmI,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});
+                    Require(Main.projectile.Count(q=>q.active && q.type==711 && q.owner==p.whoAmI)==3,"actual ordinary Betsy Shoot reaches all three fan births");
+                    Require(predicted==p.direction,"Betsy logical point facing equals original Shoot ChangeDir for the same actual input");
+                }
+                finally{Call(scope,"End");}
+                Require(Main.mouseX==savedX && Main.mouseY==savedY,"actual Betsy cursor loan returns its exact owned physical coordinates");
+            }
             Console.WriteLine("PASS BETSY birth roles="+cases);
         }
         private static void Receives(object context)

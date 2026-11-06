@@ -24,6 +24,9 @@ namespace JueMingR.TerrariaHost.Movement
         private readonly Stopwatch startup = Stopwatch.StartNew();
         private readonly int thread = Thread.CurrentThread.ManagedThreadId;
         private Player player, intentPlayer;
+        private Player cleanupPlayer;
+        private object cleanupWorld, cleanupSocket;
+        private int cleanupMode;
         private MovementInputFrame frame;
         private long tick, intentVersion, intentGeneration, observedMapping = -1;
         private bool failed, stopping;
@@ -125,7 +128,9 @@ namespace JueMingR.TerrariaHost.Movement
         {
             // Death withdraws action permission but does not turn the same
             // real player's native containers into a successor's inventory.
-            return !stopping && runtime.IsSessionActive && Thread.CurrentThread.ManagedThreadId == thread && !Main.dedServ && Main.netMode != 2 && !Main.gameMenu &&
+            return !stopping && runtime.HasRetainedSession && Thread.CurrentThread.ManagedThreadId == thread && !Main.dedServ && Main.netMode != 2 && !Main.gameMenu &&
+                ReferenceEquals(value, cleanupPlayer) && ReferenceEquals(cleanupWorld, Main.ActiveWorldFileData) && cleanupMode == Main.netMode &&
+                ReferenceEquals(cleanupSocket, Main.netMode == 1 ? Netplay.Connection.Socket : null) &&
                 value != null && value.active && Main.player != null && Main.myPlayer >= 0 && Main.myPlayer < Main.player.Length && ReferenceEquals(value, Main.player[Main.myPlayer]);
         }
         private bool CanRetainMovementContext(Player value)
@@ -208,14 +213,35 @@ namespace JueMingR.TerrariaHost.Movement
             }
             finally { player = null; frame = default(MovementInputFrame); }
         }
-        public void OnSessionStarted() { ResetIntent(); intentPlayer = null; observedMapping = -1; }
-        public void OnSessionEnded() { if (player != null) EndUpdate(player); FallHost.ClearSession(); ResetIntent(); intentPlayer = null; observedMapping = -1; JumpHost.ClearSession(); }
+        public void OnSessionStarted()
+        {
+            ResetIntent(); intentPlayer = null; observedMapping = -1;
+            cleanupPlayer = Main.LocalPlayer; cleanupWorld = Main.ActiveWorldFileData;
+            cleanupMode = Main.netMode; cleanupSocket = Main.netMode == 1 ? Netplay.Connection.Socket : null;
+        }
+        public void OnSessionEnded()
+        {
+            if (player != null) EndUpdate(player);
+            FallHost.ClearSession(); ResetIntent(); intentPlayer = cleanupPlayer = null;
+            cleanupWorld = cleanupSocket = null; observedMapping = -1; JumpHost.ClearSession();
+        }
         public void Update(ulong updateTick)
         {
             if (!preferences.Snapshot.IsLoaded && startup.ElapsedMilliseconds >= 2000) preferences.AbandonSlowLoad();
             ObserveInput();
         }
-        public void FailClosed() { failed = true; OnSessionEnded(); }
+        public void FailClosed()
+        {
+            failed = true;
+            FallHost.WithdrawPermission();
+            ResetIntent(); intentPlayer = null; observedMapping = -1;
+            if (player == null) JumpHost.ClearSession();
+            // Keep SmartFall's actual loan journal. Subsequent original native
+            // updates may only finish its return under CanCleanUp's captured
+            // player/world/socket identity; a real Session end retires it above.
+            // An already-entered native frame keeps its own EndPlayer finalizer;
+            // failure cannot observe its effects early or detach its receipt.
+        }
         public void TakeFeedback(Action<string> display)
         {
             if (failure != null) { display(failure); failure = null; }

@@ -20,10 +20,11 @@ namespace NativeWorldTextProbe
         private const BindingFlags F=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static int stage;
         private const int Floor=125;
-        private static object movement,input,host,items;
+        private static object movement,input,host,items,runtimeContext;
         private static long frame;
         internal static void Run(object context)
         {
+            runtimeContext=context;
             movement=Get(context,"Movement");input=Get(context,"Input");host=Get(movement,"FallHost");items=Get(context,"items");
             Console.WriteLine("SMART-FALL REPRESENTATIVE SELECTION canonical-all");
             var before=(SmartFallProtectionOptions)Get(movement,"SmartFallProtection");bool jumping=(bool)Call(movement,"IsEnabled",0);
@@ -91,9 +92,10 @@ namespace NativeWorldTextProbe
             {
                 Call(host,"ClearSession");Call(movement,"EndUpdate",Main.LocalPlayer);
                 foreach(var method in isolation.GetPatchedMethods().ToArray())isolation.Unpatch(method,HarmonyPatchType.All,isolation.Id);
-                Main.player[Main.myPlayer]=original;Call(Get(items,"World"),"BeginSession");Call(movement,"SetEnabled",0,jumping);
+                Main.player[Main.myPlayer]=original;Call(context,"UpdateRuntime");Call(movement,"SetEnabled",0,jumping);
                 ArmorIDs.Wing.Sets.Stats=oldWingStats;for(int i=0;i<Main.gore.Length;i++)Main.gore[i]=oldGore[i];
                 for(int i=0;i<12;i++)Call(movement,"SetSmartFallPermission",i,before.Allows(i));Call(movement,"SetEnabled",3,before.Enabled);
+                runtimeContext=null;
             }
         }
         private static void Independent(string name,Action check,ref Exception first)
@@ -107,7 +109,10 @@ namespace NativeWorldTextProbe
             var p=new Player{whoAmI=Main.myPlayer,active=true,position=new Vector2(700,Floor*16-42-gap),velocity=new Vector2(0,10),releaseJump=true,rocketRelease=true,releaseUp=true,gravDir=1,gravity=.4f,maxFallSpeed=10,fallStart=0,statLife=5000,statLifeMax=5000,statLifeMax2=5000};
             Main.player[Main.myPlayer]=p;Main.mouseItem.TurnToAir();Main.mouseLeft=Main.mouseRight=false;
             for(int x=35;x<65;x++) { var t=Main.tile[x,Floor];t.active(true);t.type=1;t.slope(0);t.halfBrick(false); }
-            Call(Get(items,"World"),"BeginSession");Call(Get(items,"World"),"InvalidateObservation");return p;
+            // This is a real local-player replacement. Let the actual Runtime
+            // publish that identity to every owner before this fixture asks a
+            // disabled/CCed cleanup scope to return the new player's own loan.
+            Call(runtimeContext,"UpdateRuntime");Call(Get(items,"World"),"InvalidateObservation");return p;
         }
         private static void Select(SmartFallFamily family)
         { for(int i=0;i<12;i++)Call(movement,"SetSmartFallPermission",i,i==(int)family);Call(host,"ClearSession"); }

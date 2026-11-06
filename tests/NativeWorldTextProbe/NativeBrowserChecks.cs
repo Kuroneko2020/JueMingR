@@ -15,10 +15,10 @@ namespace NativeWorldTextProbe
     internal static class NativeBrowserChecks
     {
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        internal static void Run(bool motionPredicate = false, string targetScope = null)
+        internal static void Run(bool motionPredicate = false, string targetScope = null, string candidateAssembly = null)
         {
             Require(IntPtr.Size == 4 && typeof(object).Assembly.GetName().Name == "mscorlib", "G04 requires .NET Framework x86");
-            string explicitCandidate = targetScope != null ? Environment.GetEnvironmentVariable("JUEMINGR_ANNOUNCEMENT_CANDIDATE") : motionPredicate ? Environment.GetEnvironmentVariable("JUEMINGR_BROWSER_CANDIDATE") : null;
+            string explicitCandidate = candidateAssembly ?? (targetScope != null ? Environment.GetEnvironmentVariable("JUEMINGR_ANNOUNCEMENT_CANDIDATE") : motionPredicate ? Environment.GetEnvironmentVariable("JUEMINGR_BROWSER_CANDIDATE") : null);
             var assembly = Assembly.LoadFrom(explicitCandidate ?? Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
             Console.WriteLine("BROWSER-CANDIDATE " + assembly.Location + " MVID=" + assembly.ManifestModule.ModuleVersionId);
             if (assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeItemCatalog") == null)

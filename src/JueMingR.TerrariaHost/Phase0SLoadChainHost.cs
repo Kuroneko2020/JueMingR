@@ -483,7 +483,7 @@ namespace JueMingR.TerrariaHost
         private static void InputPrefix()
         {
             PostfixContext context = postfixContext;
-            if (Volatile.Read(ref hookCommitted) == 1 && context != null && context.Shell != null)
+            if (Volatile.Read(ref hookCommitted) == 1 && context != null && !context.RuntimeFailed && context.Shell != null)
                 context.Shell.BeforeInput();
         }
 
@@ -491,7 +491,13 @@ namespace JueMingR.TerrariaHost
         {
             PostfixContext context = postfixContext;
             if (Volatile.Read(ref hookCommitted) == 1 && context != null)
-            { context.Input.AfterKeyboardRefresh(); context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); if (context.Shell != null) context.Shell.ProcessInput(); context.ProcessWorldGenPreviewInput(); context.MapFeatures?.Layer.ProcessInput(); context.Movement?.ObserveInput(); context.Combat?.Sample(); context.CombatObservation?.SampleMouse(); context.Blueprint?.ProcessInput(); }
+            {
+                context.Input.AfterKeyboardRefresh();
+                // Trusted sampling and native postfix/finalizer returns survive
+                // a common failure. These callbacks are new business admission.
+                if (!context.RuntimeFailed)
+                { context.Browser?.Targets.ProcessInput(); context.Footprints?.Layer.ProcessInput(); context.Shell?.ProcessInput(); context.ProcessWorldGenPreviewInput(); context.MapFeatures?.Layer.ProcessInput(); context.Movement?.ObserveInput(); context.Combat?.Sample(); context.CombatObservation?.SampleMouse(); context.Blueprint?.ProcessInput(); }
+            }
 #if JMR_INPUT_DIAGNOSTIC
             if (Volatile.Read(ref hookCommitted) == 1 && context != null) context.Input.ObserveDiagnostics(3);
 #endif
@@ -501,7 +507,7 @@ namespace JueMingR.TerrariaHost
         {
             PostfixContext context = postfixContext;
             F5Shell shell = context == null ? null : context.Shell;
-            try { return Volatile.Read(ref hookCommitted) != 1 || shell == null || shell.AllowNpcHover(); }
+            try { return Volatile.Read(ref hookCommitted) != 1 || context == null || context.RuntimeFailed || shell == null || shell.AllowNpcHover(); }
             catch { if (shell != null) shell.FailClosed(); return true; }
         }
 
@@ -578,6 +584,7 @@ namespace JueMingR.TerrariaHost
 
         private static void DrawSetupPostfix(List<GameInterfaceLayer> ____gameInterfaceLayers)
         {
+            if (postfixContext?.RuntimeFailed == true) return;
             try
             {
                 InsertBiomeLayer(____gameInterfaceLayers);
@@ -620,6 +627,7 @@ namespace JueMingR.TerrariaHost
         private static bool DrawEntityLabels()
         {
             // Returning false would stop all later native interface layers.
+            if (postfixContext?.RuntimeFailed == true) return true;
             try { postfixContext?.Labels?.World.Draw(); } catch { postfixContext?.Labels?.FailClosed(); }
             try { postfixContext?.WorldTargets?.World.Draw(); } catch { postfixContext?.WorldTargets?.FailClosed(); }
             try { postfixContext?.WorldObjects?.World.Draw(); } catch { postfixContext?.WorldObjects?.FailClosed(); }
@@ -665,9 +673,9 @@ namespace JueMingR.TerrariaHost
             if (own == 0) layers.Insert(anchorIndex, new LegacyGameInterfaceLayer(name, draw, scale));
         }
 
-        private static bool F5PointerBegin() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.BeginPointerLayer(); }
-        private static bool F5Window() { try { postfixContext?.Blueprint?.Toolbar.Draw(); } catch { postfixContext?.Blueprint?.Toolbar.Cancel(); } return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.DrawLayer(); }
-        private static bool F5HoverGate() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.HoverGateLayer(); }
+        private static bool F5PointerBegin() { return postfixContext == null || postfixContext.RuntimeFailed || postfixContext.Shell == null || postfixContext.Shell.BeginPointerLayer(); }
+        private static bool F5Window() { if (postfixContext?.RuntimeFailed == true) return true; try { postfixContext?.Blueprint?.Toolbar.Draw(); } catch { postfixContext?.Blueprint?.Toolbar.Cancel(); } return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.DrawLayer(); }
+        private static bool F5HoverGate() { return postfixContext == null || postfixContext.RuntimeFailed || postfixContext.Shell == null || postfixContext.Shell.HoverGateLayer(); }
         private static bool F5PointerEnd() { return postfixContext == null || postfixContext.Shell == null || postfixContext.Shell.EndPointerLayer(); }
 
         private static void InsertBiomeLayer(List<GameInterfaceLayer> layers)
@@ -756,6 +764,7 @@ namespace JueMingR.TerrariaHost
         {
             // One shared consumer replaces the former fixed-position biome
             // drawing. All native observation and layout finish before Draw.
+            if (postfixContext?.RuntimeFailed == true) return true;
             try
             {
                 var information = postfixContext?.Information;
@@ -812,6 +821,9 @@ namespace JueMingR.TerrariaHost
             private Onboarding.HostOnboarding onboarding;
             private Items.HostItems items;
             private bool startupEvidenceComplete;
+            private bool compositionFailed, failureResourcesRetired;
+            internal bool RuntimeFailed { get { return compositionFailed || runtime != null && runtime.SharedRuntime.HasFailed; } }
+            internal Exception RuntimeCleanupFailure { get; private set; }
             private string pendingBiomeErrorStage;
             private Exception pendingBiomeError;
 
@@ -873,7 +885,7 @@ namespace JueMingR.TerrariaHost
                 worldGenPreview.Install(target);
             }
             internal void DisposeWorldGenPreview() { worldGenPreview?.Dispose(); }
-            internal void ProcessWorldGenPreviewInput() { worldGenPreview?.ProcessInput(); }
+            internal void ProcessWorldGenPreviewInput() { if (!RuntimeFailed) worldGenPreview?.ProcessInput(); }
             internal void InstallInformationSources()
             {
                 if (!(PackageId.StartsWith("information-summary-", StringComparison.Ordinal) || PackageId.StartsWith("direction-equipment-", StringComparison.Ordinal) || PackageId.StartsWith("death-history-", StringComparison.Ordinal) || PackageId.StartsWith("map-markers-exploration-", StringComparison.Ordinal) || (PackageId.StartsWith("footprints-", StringComparison.Ordinal) || PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || (PackageId.StartsWith("favorite-quick-items-", StringComparison.Ordinal) || (PackageId.StartsWith("coin-deposit-", StringComparison.Ordinal) || (PackageId.StartsWith("about-help-feedback-", StringComparison.Ordinal) || (PackageId.StartsWith("recovery-buffs-services-", StringComparison.Ordinal) || PackageId.StartsWith("continuous-processing-", StringComparison.Ordinal))))))) || informationHooks != null) return;
@@ -906,6 +918,7 @@ namespace JueMingR.TerrariaHost
 
             internal void InitializeRuntime(bool enabled)
             {
+                if (compositionFailed) return;
                 if (runtime != null)
                 {
                     throw new InvalidOperationException("The Phase 0-T runtime was already initialized.");
@@ -1034,6 +1047,14 @@ namespace JueMingR.TerrariaHost
                     return;
                 }
 
+                if (current.SharedRuntime.HasFailed)
+                {
+                    FailRuntimeClosed();
+                    current.Update(updateTick); // Identity edges and finite returns only.
+                    updateTick = unchecked(updateTick + 1);
+                    return;
+                }
+
                 preferences.Update();
                 notes.Update();
                 onboarding?.Poll();
@@ -1057,6 +1078,12 @@ namespace JueMingR.TerrariaHost
                 worldTiles?.BeginTick();
                 nativeNpcs?.BeginCompleted((long)Terraria.Main.GameUpdateCount);
                 current.Update(updateTick);
+                if (current.SharedRuntime.HasFailed)
+                {
+                    FailRuntimeClosed();
+                    updateTick = unchecked(updateTick + 1);
+                    return;
+                }
                 Browser?.Update(unchecked((long)updateTick));
                 hotkeyFeedback?.Poll();
                 updateTick = unchecked(updateTick + 1);
@@ -1064,37 +1091,34 @@ namespace JueMingR.TerrariaHost
 
             internal void FailRuntimeClosed()
             {
-                items?.FailClosed();
-                Labels?.FailClosed();
-                WorldTargets?.FailClosed();
-                WorldObjects?.FailClosed();
-                Information?.FailClosed();
-                Guidance?.FailClosed();
-                DeathRecords?.FailClosed(); MapFeatures?.FailClosed(); Footprints?.FailClosed();
-                Browser?.FailClosed();
-                QuickItems?.FailClosed();
-                CoinDeposit?.FailClosed();
-                Recovery?.FailClosed();
-                Processing?.FailClosed();
-                Tools?.FailClosed();
-                Fishing?.FailClosed();
-                Combat?.FailClosed();
-                CombatObservation?.FailClosed();
-                KeepFavorited?.FailClosed();
-                Blueprint?.FailClosed();
-                View?.FailClosed();
-                Movement?.FailClosed();
-                onboarding?.FailClosed();
-                hotkeyFeedback?.Clear();
-                nativeNpcs?.Clear();
                 Phase0TBiomeRuntime current = runtime;
-                if (current != null)
-                {
-                    current.FailClosed();
-                }
+                if (current == null) compositionFailed = true;
+                else current.SharedRuntime.FailClosed();
+                if (failureResourcesRetired) return;
+                failureResourcesRetired = true;
+                // Runtime is the sole common terminal owner and covers every
+                // registered feature (including Journey). These are composition
+                // resources outside that feature list; one throwing cleanup
+                // cannot skip the others or falsely report a complete return.
+                AttemptFailureCleanup(() => Browser?.FailClosed());
+                AttemptFailureCleanup(() => Shell?.FailClosed());
+                AttemptFailureCleanup(() => hotkeyFeedback?.Clear());
+                AttemptFailureCleanup(() => nativeNpcs?.Clear());
+                AttemptFailureCleanup(DisposeInformationSources);
+                AttemptFailureCleanup(DisposeWorldGenPreview);
             }
 
-            internal void UpdateShell() { if (Shell != null) Shell.AfterUpdate(); Information?.PrepareHud(); Guidance?.World.Prepare(); CombatObservation?.World.Prepare(); }
+            private void AttemptFailureCleanup(Action cleanup)
+            {
+                try { cleanup(); }
+                catch (Exception exception) { if (RuntimeCleanupFailure == null) RuntimeCleanupFailure = exception; }
+            }
+
+            internal void UpdateShell()
+            {
+                if (RuntimeFailed) { FailRuntimeClosed(); return; }
+                Shell?.AfterUpdate(); Information?.PrepareHud(); Guidance?.World.Prepare(); CombatObservation?.World.Prepare();
+            }
         }
     }
 

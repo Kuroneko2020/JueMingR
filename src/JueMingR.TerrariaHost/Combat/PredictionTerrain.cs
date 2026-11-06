@@ -4,6 +4,7 @@ using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Terraria;
 using Terraria.ID;
+using JueMingR.TerrariaHost.World;
 
 namespace JueMingR.TerrariaHost.Combat
 {
@@ -28,31 +29,37 @@ namespace JueMingR.TerrariaHost.Combat
         {internal int Left,Right,Top,Bottom;internal long Epoch;}
         private readonly SlopeFreeRegion[] slopeFreeRegions=new SlopeFreeRegion[32];
         private long epoch=1;
-        private int width,height;
+        private int width;
+        private WorldTileSource source;
         private bool continuing;
 #if DEBUG
         internal int Reads {get;private set;}
 #endif
-        public void Reset(){if(continuing)return;cells.Clear();width=Main.maxTilesX;height=Main.maxTilesY;if(epoch==long.MaxValue){Array.Clear(hotEpochs,0,hotEpochs.Length);Array.Clear(dryRegions,0,dryRegions.Length);Array.Clear(slopeFreeRegions,0,slopeFreeRegions.Length);epoch=0;}epoch++;}
+        // Construction opens the first empty sample too. Later world/socket
+        // changes still require the producer's explicit Reset; a cache read
+        // must never silently reopen a source midway through a calculation.
+        internal PredictionTerrain(){Reset();}
+        public void Reset(){if(continuing)return;cells.Clear();width=Main.maxTilesX;source=WorldTileSource.Capture();if(epoch==long.MaxValue){Array.Clear(hotEpochs,0,hotEpochs.Length);Array.Clear(dryRegions,0,dryRegions.Length);Array.Clear(slopeFreeRegions,0,slopeFreeRegions.Length);epoch=0;}epoch++;}
         public bool Unchanged
         {
-            get{if(width!=Main.maxTilesX || height!=Main.maxTilesY)return false;foreach(var pair in cells){Cell current;if(!Read(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}return true;}
+            get{if(!source.Current)return false;foreach(var pair in cells){Cell current;if(!Read(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}return true;}
         }
         // A candidate can leave this owner before it is considered again.
         // Freeze only the bounded cells actually read, never a second world.
         // Reset/candidate switching cannot erase this independent read lease.
         internal sealed class CellLease
         {
-            private readonly int width,height;
+            private readonly int width;
+            private readonly WorldTileSource source;
             private readonly KeyValuePair<int,Cell>[] values;
             internal int Count {get{return values.Length;}}
-            private CellLease(int width,int height,Dictionary<int,Cell> cells)
-            {this.width=width;this.height=height;values=new KeyValuePair<int,Cell>[cells.Count];int at=0;foreach(var pair in cells)values[at++]=pair;}
+            private CellLease(int width,WorldTileSource source,Dictionary<int,Cell> cells)
+            {this.width=width;this.source=source;values=new KeyValuePair<int,Cell>[cells.Count];int at=0;foreach(var pair in cells)values[at++]=pair;}
             internal bool Current
             {
                 get
                 {
-                    if(width<=0 || width!=Main.maxTilesX || height!=Main.maxTilesY)return false;
+                    if(width<=0 || !source.Current)return false;
                     foreach(var pair in values){Cell current;if(!Read(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}
                     return true;
                 }
@@ -66,12 +73,12 @@ namespace JueMingR.TerrariaHost.Combat
                 // change; its time stays charged to the enclosing work owner.
                 // Acquisition caps this set at 4096 cells. New-update and
                 // candidate validation continue through ordinary budget checks.
-                if(width<=0 || width!=Main.maxTilesX || height!=Main.maxTilesY)return false;
+                if(width<=0 || !source.Current)return false;
                 foreach(var pair in values){Cell current;if(!ReadCell(pair.Key%width,pair.Key/width,out current) || !current.Equals(pair.Value))return false;}
                 return true;
             }
             internal static CellLease Capture(PredictionTerrain terrain)
-            {return new CellLease(terrain.width,terrain.height,terrain.cells);}
+            {return new CellLease(terrain.width,terrain.source,terrain.cells);}
             internal void Restore(PredictionTerrain terrain)
             {foreach(var pair in values)terrain.cells.Add(pair.Key,pair.Value);}
         }
@@ -93,7 +100,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private static bool ReadCell(int x,int y,out Cell value)
         {
-            value=default(Cell);if(Main.tile==null || x<0 || y<0 || x>=Main.maxTilesX || y>=Main.maxTilesY)return false;
+            value=default(Cell);if(!WorldTileKnowledge.CellKnown(x,y))return false;
             var tile=Main.tile[x,y];if(tile==null)return false;
             bool active=tile.active() && !tile.inActive();
             int frame=tile.frameX/18;
@@ -111,7 +118,9 @@ namespace JueMingR.TerrariaHost.Combat
         {
             CombatPredictionWork.CheckGeometry();
             stop=PredictionStop.None;cell=default(Cell);
-            if(x<0 || y<0 || x>=Main.maxTilesX || y>=Main.maxTilesY){stop=PredictionStop.TerrainUnavailable;return false;}
+            // Recheck knowledge before BOTH caches: neither a same-byte ACK
+            // transition nor a default Tile can certify an old read source.
+            if(!source.Current || !WorldTileKnowledge.CellKnown(x,y)){stop=PredictionStop.TerrainUnavailable;return false;}
             int key=y*Main.maxTilesX+x,hot=(key^(key>>7)^(key>>16))&255;
             // Ice changes are private forecast values. Check before either
             // cache so a player cannot silently consume the old world cell.
@@ -444,10 +453,11 @@ namespace JueMingR.TerrariaHost.Combat
             // cannot acquire liquid from an all-dry captured region. Keep the
             // original area/clipping gate above and the complete cell lease;
             // private ice guards/read tracking must still observe every cell.
-            bool cacheable=width==Main.maxTilesX && height==Main.maxTilesY && icePlayerGuard==null && icePathReads==null;
+            bool cacheable=source.Current && icePlayerGuard==null && icePathReads==null;
             int slot=(left^(right*397)^(top*17)^(bottom*31))&31;
             var dry=dryRegions[slot];
-            if(cacheable && dry.Epoch==epoch && dry.Left==left && dry.Right==right && dry.Top==top && dry.Bottom==bottom)return true;
+            if(cacheable && dry.Epoch==epoch && dry.Left==left && dry.Right==right && dry.Top==top && dry.Bottom==bottom)
+            {if(WorldTileKnowledge.RegionKnown(left,top,right,bottom))return true;stop=PredictionStop.TerrainUnavailable;return false;}
             bool allDry=true;
             for(int x=left;x<right;x++)for(int y=top;y<bottom;y++)
             {
@@ -562,9 +572,9 @@ namespace JueMingR.TerrariaHost.Combat
             CombatPredictionWork.Check();
             int left=Math.Max(0,(int)(x/16)-1),right=Math.Min(Main.maxTilesX-1,(int)((x+w)/16)+2);
             int top=Math.Max(0,(int)(y/16)-1),bottom=Math.Min(Main.maxTilesY-40,(int)((y+h)/16)+2);
-            bool cacheable=w>0 && h>0 && width==Main.maxTilesX && height==Main.maxTilesY && icePlayerGuard==null && icePathReads==null;
+            bool cacheable=w>0 && h>0 && source.Current && icePlayerGuard==null && icePathReads==null;
             int slot=(left^(right*397)^(top*17)^(bottom*31))&31;var flat=slopeFreeRegions[slot];
-            bool flatMatch=cacheable && flat.Epoch==epoch && flat.Left==left && flat.Right==right && flat.Top==top && flat.Bottom==bottom;
+            bool flatMatch=cacheable && flat.Epoch==epoch && flat.Left==left && flat.Right==right && flat.Top==top && flat.Bottom==bottom && WorldTileKnowledge.RegionKnown(left,top,right,bottom);
             // A COMPLETE scan proving every leased cell has Slope==0 cannot
             // write any correction/mask/stair state, regardless of float pose
             // inside the same discrete bounds. Retain acquisition and the

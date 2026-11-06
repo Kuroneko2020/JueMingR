@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -16,6 +17,15 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model;private static Projectile receiving,watched;private static int strikes;
         private static int readProbeDepth,playerReads;
+        private sealed class HandBirth{internal Vector2 Aim,Origin,Center;internal int Direction;}
+        private static readonly List<HandBirth> handBirths=new List<HandBirth>();
+        private static int handDepth,handFacingCalls,handFacing;private static Vector2 handAim,handOrigin;
+        // Observe the real Solve -> Facing -> StaffBirth path. These patches
+        // copy values only; native Shoot below supplies the independent oracle.
+        private static void HandFacing(Player player,Vector2 origin,Vector2 aim,int __result)
+        {if(handDepth>0){handFacingCalls++;handFacing=__result;handAim=aim;handOrigin=origin;}}
+        private static void HandBorn(int direction,bool available,Vector2 __result)
+        {if(handDepth>0 && available){Require(direction==handFacing,"actual homing Solve passes its observed facing to StaffBirth");handBirths.Add(new HandBirth{Aim=handAim,Origin=handOrigin,Center=__result,Direction=direction});}}
         private static void PlayerRead(){if(readProbeDepth>0)playerReads++;}
         private static object Static(Type type,string name,params object[] args){return type.GetMethod(name,Flags).Invoke(null,args);}
         private static void Damage(Projectile __instance){receiving=__instance;}private static void DamageDone(){receiving=null;}
@@ -43,8 +53,37 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatHomingEffectChecks),nameof(Damage)),postfix:new HarmonyMethod(typeof(NativeCombatHomingEffectChecks),nameof(DamageDone)));
             audit.Patch(typeof(NPC).GetMethod("StrikeNPC",Flags,null,new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)},null),postfix:new HarmonyMethod(typeof(NativeCombatHomingEffectChecks),nameof(Strike)));
             audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.NpcPredictionSource",true).GetMethod("ReadPlayer",Flags),prefix:new HarmonyMethod(typeof(NativeCombatHomingEffectChecks),nameof(PlayerRead)));
-            try{Births(context);Motors(context);Bolts(context);Receives(context);Bounces(context);DrawInputs(context);Console.WriteLine("PASS HOMING EFFECT original hand births, AI171/181/196, seeded ArcSurge geometry and actual first Damage/Strike boundaries.");}
-            finally{Main.windPhysics=wind;audit.UnpatchAll(audit.Id);}
+            audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.HostBetsyFlameAttack",true).GetMethod("Facing",Flags),postfix:new HarmonyMethod(typeof(NativeCombatHomingEffectChecks),nameof(HandFacing)));
+            audit.Patch(model.GetMethod("StaffBirth",Flags),postfix:new HarmonyMethod(typeof(NativeCombatHomingEffectChecks),nameof(HandBorn)));
+            try{Births(context);Motors(context);Bolts(context);Receives(context);Bounces(context);DrawInputs(context);NewHands(context);Console.WriteLine("PASS HOMING EFFECT original hand births, actual new-hand Solve facing, AI171/181/196, seeded ArcSurge geometry and actual first Damage/Strike boundaries.");}
+            finally{handDepth=0;handBirths.Clear();Main.windPhysics=wind;audit.UnpatchAll(audit.Id);}
+        }
+        private static void NewHands(object context)
+        {
+            int cases=0;var ammoType=assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true);var scopeType=assembly.GetType("JueMingR.TerrariaHost.Combat.CombatCursorScope",true);var shoot=typeof(Player).GetMethod("ItemCheck_Shoot",Flags);
+            foreach(int weapon in new[]{4952,6154})foreach(int side in new[]{-1,1})
+            {
+                var p=Reset(context,weapon);p.StopVanityActions();if(p.mount.Active)p.mount.Dismount(p);p.position=new Vector2(850,646);for(int x=45;x<115;x++)NativeToolsChecks.Tile(x,43,1);p.ChangeDir(-side);p.itemAnimationMax=p.itemAnimation=p.HeldItem.useAnimation;p.PlayerFrame();
+                Require(!p.dead && p.statLife>0 && p.gravDir==1 && p.fullRotation==0 && !p.sleeping.isSleeping && !p.mount.Active,"homing new hand starts from an ordinary native holder, without a fabricated rotated pose");
+                var origin=p.RotatedRelativePoint(p.MountedCenter);var n=Target(2,origin+new Vector2(side*120,0));var path=Timeline(n);var ammo=Static(ammoType,"Capture",p,p.HeldItem);var sample=new Projectile();sample.SetDefaults((int)Get(ammo,"Projectile"));sample.owner=p.whoAmI;var terrain=Terrain();var root=Obstacles(p,sample,path);
+                int oldDirection=p.direction,savedX=Main.mouseX,savedY=Main.mouseY,savedTileX=Player.tileTargetX,savedTileY=Player.tileTargetY;handBirths.Clear();handFacingCalls=0;AttackContact contact;
+                handDepth++;try{using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))contact=(AttackContact)Static(model,"Solve",p,ammo,path,origin,0,true,terrain,root,0);}finally{handDepth--;}
+                Require(contact!=null && handFacingCalls>0 && handBirths.Count>0,"actual homing new-hand Solve reaches its facing-dependent staff birth and a real positive contact: "+weapon+"/"+side);
+                var births=handBirths.Where(b=>b.Aim==new Vector2(contact.AimX,contact.AimY)).ToArray();Require(births.Length>0,"returned homing aim belongs to the observed actual Solve candidate");
+                Require(p.direction==oldDirection && Main.mouseX==savedX && Main.mouseY==savedY && n.life==10000 && !Main.projectile.Any(q=>q.active),"homing preparation leaves live facing, cursor, target and projectile pool untouched");
+                var scope=Static(scopeType,"Begin",new Vector2(contact.AimX,contact.AimY),true);Require(scope!=null,"homing native oracle borrows the actual prepared input");
+                try
+                {
+                    shoot.Invoke(p,new object[]{p.whoAmI,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});var shots=Main.projectile.Where(q=>q.active && q.owner==p.whoAmI && q.type==(int)Get(ammo,"Projectile")).ToArray();
+                    Require(shots.Length==(weapon==6154?3:1),"same-input original homing Shoot creates its complete native sibling count");
+                    Require(p.direction!=oldDirection && births.All(b=>b.Direction==p.direction && b.Origin==origin && shots.All(q=>Vector2.Distance(q.Center,b.Center)<.001f)),"actual homing Solve facing and staff offset equal original Shoot after reversing the holder's prior direction");
+                    Require(!p.dead && p.statLife>0,"ordinary same-input homing native Shoot preserves the live holder");
+                    Console.WriteLine("HOMING NEW HAND weapon="+weapon+" side="+side+" oldDir="+oldDirection+" nativeDir="+p.direction+" observedFacing="+births[0].Direction+" facingCalls="+handFacingCalls+" staffBirths="+handBirths.Count+" nativeBirths="+shots.Length+" center="+shots[0].Center+" contact="+contact.Tick);
+                }
+                finally{Call(scope,"End");}
+                Require(Main.mouseX==savedX && Main.mouseY==savedY && Player.tileTargetX==savedTileX && Player.tileTargetY==savedTileY,"homing actual cursor loan returns its exact owned physical and tile coordinates");cases++;
+            }
+            Console.WriteLine("PASS HOMING new-hand Solve/native Shoot directions2 x actual staff families2="+cases+"; no random representative velocity is asserted as a deterministic native hand");
         }
         private static void DrawInputs(object context)
         {
@@ -68,7 +107,9 @@ namespace NativeWorldTextProbe
                 {
                     Require(q.damage==(int)Get(ammo,"Damage") && q.ai[0]==-1,"ordinary captured damage and native initial target clock agree: "+type);
                     if(type==1122){var arcExpected=Main.MouseWorld;p.LimitPointToPlayerReachableArea(ref arcExpected);float distance=Vector2.Distance(arcExpected,origin),minimum=(float)Get(ammo,"Speed")*20;if(distance<minimum)arcExpected+=direction.SafeNormalize(Vector2.UnitX)*(minimum-distance);Console.WriteLine("ARC BIRTH actual="+q.Center+" expected="+arcExpected+" v="+q.velocity+" life="+q.timeLeft+" origin="+origin+" speed="+Get(ammo,"Speed"));Require(Vector2.Distance(q.Center,arcExpected)<=20.001f && q.velocity==Vector2.Zero && q.timeLeft==1,"actual ArcSurge has cursor-circle/minimum-range birth and first-action lifetime, not a240-action body");continue;}
-                    object[] args={p,p.direction,Terrain(),false};var expected=(Vector2)Static(model,"StaffBirth",args);Require((bool)args[3] && Vector2.Distance(q.Center,expected)<.001f,"actual staff native mount offset/fallback matches the prepared birth");
+                    object[] args={p,p.direction,Terrain(),false};var expected=(Vector2)Static(model,"StaffBirth",args);
+                    Console.WriteLine("HOMING STAFF BIRTH weapon="+weapon+" type="+type+" netMode="+Main.netMode+" actual="+q.Center+" expected="+expected+" available="+args[3]);
+                    Require((bool)args[3] && Vector2.Distance(q.Center,expected)<.001f,"actual staff native mount offset/fallback matches the prepared birth");
                     var random=type==1116?(q.velocity-direction*2)/2:q.velocity;
                     Require(Math.Abs(random.X)<=4.001f && random.Y<=.001f && random.Y>=-(type==1116?3.001f:4.001f),"actual random hand impulse is inside its native circle-plus-edge and upward-fold support");
                 }

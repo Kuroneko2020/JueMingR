@@ -22,7 +22,13 @@ namespace NativeWorldTextProbe
         private static readonly List<Projectile> newborns=new List<Projectile>();private static readonly List<int> strikeSlots=new List<int>();
         private static readonly List<Projectile> newbornRefs=new List<Projectile>();private static readonly List<ProjectileKey> newbornKeys=new List<ProjectileKey>();private static readonly List<float> birthAi1=new List<float>();
         private static bool Type(int type){return type==7 || type==8 || type>=150 && type<=152 || type==493 || type==494;}
-        private static object Static(Type t,string name,params object[] args){return t.GetMethod(name,Flags).Invoke(null,args);}
+        private static object Static(Type t,string name,params object[] args)
+        {
+            // BirthVelocity also exposes an out-qualification overload. All
+            // three native birth oracles here intentionally call the original
+            // four-value entry, so name-only lookup is not a business check.
+            var method=name=="BirthVelocity"?t.GetMethod(name,Flags,null,new[]{typeof(Player),typeof(Vector2),typeof(Vector2),typeof(float)},null):t.GetMethod(name,Flags);return method.Invoke(null,args);
+        }
         private static void SolveWork(){solves++;}private static void StepWork(){steps++;}
         private static void BeforeKill(Projectile __instance){if(Type(__instance.type))kills++;}
         private static void BeforeDamage(Projectile __instance){receiving=__instance;}private static void AfterDamage(){receiving=null;}

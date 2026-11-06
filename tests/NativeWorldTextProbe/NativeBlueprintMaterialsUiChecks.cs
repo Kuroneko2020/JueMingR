@@ -257,17 +257,34 @@ namespace NativeWorldTextProbe
                         faults.Add(new KeyValuePair<string, Exception>(observedEntry, args.Exception));
                 };
                 Exception failure = null;
+                string publicationStage = "metadata";
+                Action<string> publicationAt = value => { publicationStage = value; Console.WriteLine("MATERIAL PUBLICATION stage=" + value); };
                 AppDomain.CurrentDomain.FirstChanceException += trace;
                 try
                 {
+                    publicationAt("metadata");
                     NativeBlueprintWorldMatchChecks.InitializeMetadata(); Framing.Initialize(); Main.SetupTileMerge();
                     Action tick = () =>
                     {
+                        // A real mapping owns the shared native catalog budget.
+                        // Reuse the last actual physical keyboard sample while
+                        // leaving MouseInfo/buttons/position/focus untouched;
+                        // neutral Frame/Sample helpers would release the title
+                        // or Close that this publication scene is holding.
+                        var keyboard = (KeyboardState)Get(input, "KeyboardSample");
+                        Call(input, "BeginUpdate"); Call(input, "AfterMapping");
+                        Main.keyState = keyboard; Call(input, "AfterKeyboardRefresh");
                         NativeQuickItemChecks.BeginWorldStep(); ObservedCall(context, "UpdateRuntime");
                         Require(!(bool)Get(shell, "Failed"), "material production shell remains healthy after PostfixContext.UpdateRuntime in the seventy-row publication regression");
                     };
+                    publicationAt("material-demand");
                     Call(host, "SetMaterialViewDemand", true);
+                    publicationAt("catalog-await-MaterialCatalog");
+                    long catalogMapping = (long)Get(input, "Mapping");
                     NativeQuickItemChecks.Until(() => { tick(); return GetOptional(host, "MaterialCatalog") != null; });
+                    Console.WriteLine("MATERIAL PUBLICATION catalog-ready mapping=" + catalogMapping + "->" + Get(input, "Mapping") +
+                        " physicalMouse=" + PlayerInput.MouseInfo.X + "," + PlayerInput.MouseInfo.Y + "/" + PlayerInput.MouseInfo.LeftButton + "/" + PlayerInput.MouseInfo.RightButton);
+                    publicationAt("wall-metadata-and-textures");
                     var catalog = (BlueprintPlacementCatalog)Get(host, "MaterialCatalog");
                     var declarations = (IDictionary<int, BlueprintPlacementDescriptor>)Get(catalog, "walls");
                     var walls = declarations.Where(p => p.Value.ConsumeItemType > 0).GroupBy(p => p.Value.ConsumeItemType).Select(g => g.First()).OrderBy(p => p.Value.ConsumeItemType).Take(70).ToArray();
@@ -277,16 +294,22 @@ namespace NativeWorldTextProbe
                     // Main.LoadItem to inspect their native asset descriptors.
                     graphics.LoadItemTextures(walls.Select(p => p.Value.ConsumeItemType));
                     var cells = walls.Select((p, i) => new CaptureCell { X = i, Layers = CaptureLayer.Wall, WallType = (ushort)p.Key }).ToArray();
+                    publicationAt("save-seventy-wall-source");
                     var entry = NativeBlueprintProjectionVisualChecks.Save(library, new BlueprintProjectionWindow(
                         new BlueprintProjectionIdentity(Guid.NewGuid(), Guid.NewGuid(), "publication-gap", 1, 1), 1,
                         new CaptureSummary { Width = cells.Length, Height = 1, ContentCount = cells.Length }, new BlueprintProjectionBounds(0, 0, cells.Length, 1), cells, Array.Empty<CaptureObject>()));
+                    publicationAt("place-saved-source");
                     var placed = NativeBlueprintWorldMatchChecks.Place(host, input, entry, 40, 70, tick);
+                    publicationAt("open-material-popup");
                     Frame(shell, input, 1, 1, false); Frame(shell, input, 1, 1, false); Call(host, "OpenMaterials");
+                    publicationAt("world-exact70-await");
                     NativeQuickItemChecks.Until(() => { tick(); return ((BlueprintMaterialSnapshot)Call(host, "MaterialWorld", 0L)).Status == BlueprintMaterialStatus.Exact; });
                     Prepare(shell, graphics); var content = Get(popup, "Content");
                     Require((int)Get(content, "Count") == 70, "actual source/match/material publication reaches the real common popup with seventy material rows");
+                    publicationAt("standalone-material-names-and-scales");
                     NativeBlueprintMaterialNameChecks.Standalone(context, graphics);
                     if (output != null) ImagesAtScales(shell, popup, graphics, output, "blueprint-world-materials-compact-first");
+                    publicationAt("short-viewport-wheel");
                     Main.screenHeight = Math.Min(originalHeight, 400); PlayerInput.CacheOriginalScreenDimensions(); Prepare(shell, graphics);
                     var shortBody = Get(popup, "Body"); float shortX = (float)Get(shortBody, "X") + 8, shortY = (float)Get(shortBody, "Y") + 8;
                     int hotbar = player.selectedItemState.Hotbar;
@@ -306,6 +329,7 @@ namespace NativeWorldTextProbe
                     { Frame(shell, input, shortX, shortY, false, 120); Prepare(shell, graphics); }
                     Require((float)Get(popup, "scroll") == 0, "the same real wheel returns the nonempty list to its first material");
                     BoundaryWheel(shell, input, graphics, shortX, shortY, 120, hotbar);
+                    publicationAt("scroll-anchor");
                     Main.screenHeight = originalHeight; PlayerInput.CacheOriginalScreenDimensions(); Prepare(shell, graphics);
                     var body = Get(popup, "Body"); float x = (float)Get(body, "X") + 8, y = (float)Get(body, "Y") + 8;
                     for (int i = 0; i < 6; i++) { Frame(shell, input, x, y, false, -120); Prepare(shell, graphics); }
@@ -315,14 +339,17 @@ namespace NativeWorldTextProbe
                     Frame(shell, input, x, Math.Max(y, top + 5), false); Prepare(shell, graphics);
                     int hovered = (int)Get(popup, "HoveredItem"); Require(hovered != 0, "actual material row establishes a hover identity before publication loss");
                     Console.WriteLine("MATERIAL ANCHOR baseline " + MaterialAnchorState(popup, content, item, top));
+                    publicationAt("inventory-publication-gap");
                     player.inventory[0] = new Item(); player.inventory[0].SetDefaults(walls[0].Value.ConsumeItemType); player.inventory[0].stack = 2;
                     tick(); var pending = (BlueprintMaterialSnapshot)Call(host, "MaterialWorld", 0L);
                     Require(pending.Status == BlueprintMaterialStatus.Pending && pending.Rows.Count == 0 && GetOptional(host, "materialPublishing") != null,
                         "real inventory revision starts the bounded seventy-row publisher and exposes its empty Pending slice after Host.Update");
                     Prepare(shell, graphics); AssertPendingView(popup, content, scroll);
                     NativeBlueprintMaterialNameChecks.PendingSummary(context, graphics);
+                    publicationAt("inventory-exact-await");
                     NativeQuickItemChecks.Until(() => { tick(); Prepare(shell, graphics); return ((BlueprintMaterialSnapshot)Get(popup, "snapshot")).Status == BlueprintMaterialStatus.Exact; });
                     AssertAnchor(popup, content, item, top, "inventory-exact");
+                    publicationAt("drag-during-publication");
                     NativeBlueprintMaterialsDragChecks.DuringPublication(context, graphics, tick, () =>
                     {
                         WorldGen.PlaceWall(40, 70, cells[0].WallType, true);
@@ -335,6 +362,7 @@ namespace NativeWorldTextProbe
                     string priorAnchorState = null; int anchorTraces = 0;
                     WorldGen.PlaceWall(41, 70, cells[1].WallType, true);
                     Require(Main.tile[41, 70].wall == cells[1].WallType, "independent original wall writer changes the next actual target");
+                    publicationAt("world-gap-exact68-await");
                     NativeQuickItemChecks.Until(() =>
                     {
                         tick(); var value = (BlueprintMaterialSnapshot)Call(host, "MaterialWorld", 0L); Prepare(shell, graphics);
@@ -351,7 +379,9 @@ namespace NativeWorldTextProbe
                     Frame(shell, input, x, y, false); PlayerInput.Triggers.Current.CopyInto(player);
                     Require(!(bool)Get(popup, "Visible") && !player.controlUseItem, "the original close release succeeds after Pending recovery without world-use click-through");
                     Frame(shell, input, 1, 1, false); Frame(shell, input, 1, 1, false); Call(host, "OpenMaterials");
+                    publicationAt("reopen-exact-await");
                     NativeQuickItemChecks.Until(() => { tick(); Prepare(shell, graphics); return ((BlueprintMaterialSnapshot)Get(popup, "snapshot")).Status == BlueprintMaterialStatus.Exact; });
+                    publicationAt("scope-selector");
                     long identity = ((BlueprintProjectionIdentity)Get(placed, "Identity")).ProjectionGeneration;
                     var selector = Get(popup, "selector"); x = (float)Get(selector, "X") + 8; y = (float)Get(selector, "Y") + 8;
                     Frame(shell, input, x, y, false); Frame(shell, input, x, y, true); Frame(shell, input, x, y, false); Prepare(shell, graphics);
@@ -368,7 +398,57 @@ namespace NativeWorldTextProbe
                         "changing scope discards retained rows rather than showing another scope's historical bill");
                     Console.WriteLine("PASS material publication UI: real 70-row inventory publisher and Host.Update material→match revocation expose Pending empty slices; old numbers become dashes, ItemType/scroll survive, live 69-row set updates during title drag, fresh 68-row anchor recovers and original Close release still consumes; short-viewport first/last wheel reaches the native hotbar consumer without switching slots, last row fully visible, actual selector choice clears retained rows.");
                 }
-                catch (Exception error) { failure = error; throw; }
+                catch (Exception error)
+                {
+                    failure = error;
+                    Console.Error.WriteLine("MATERIAL PUBLICATION failure-stage=" + publicationStage);
+                    // Failure-only observation. MaterialCatalog/MaterialWorld
+                    // getters can publish, so inspect their underlying fields
+                    // without calling clocks, Step/Pump or consuming receipts.
+                    Func<object, string, object> read = (owner, name) => owner == null ? null : GetOptional(owner, name);
+                    try
+                    {
+                        var runtime = read(host, "runtime");
+                        Console.Error.WriteLine("MATERIAL PUBLICATION runtime HasSession=" + read(host, "HasSession") + " ready=" + read(host, "ready") +
+                            " failed=" + read(host, "failed") + " HasFailed=" + read(runtime, "HasFailed") + " IsSessionActive=" + read(runtime, "IsSessionActive") +
+                            " generation=" + read(runtime, "Generation") + "/" + read(host, "generation") + " updateTick=" + read(context, "updateTick") +
+                            " materialTick=" + read(host, "materialTick") + " tickSet=" + read(host, "materialTickSet") + " viewDemand=" + read(host, "materialViewDemand") +
+                            " staticDemand=" + read(host, "materialStaticDemand") + " observedDemand=" + read(host, "materialObservedDynamicDemand") +
+                            " mapping=" + read(input, "Mapping") + " frame=" + read(input, "Frame") + " mapped=" + read(input, "mapped") + " finalized=" + read(input, "finalized") +
+                            " rearming=" + read(input, "rearming") + " quarantine=" + read(input, "quarantine") + " nativeWorld=" + Main.GameUpdateCount);
+                    }
+                    catch (Exception observation) { Console.Error.WriteLine("MATERIAL PUBLICATION runtime-observation=" + observation.GetType().FullName + ": " + observation.Message); }
+                    try
+                    {
+                        var knowledge = read(host, "materialKnowledge"); var native = read(knowledge, "Native");
+                        Console.Error.WriteLine("MATERIAL PUBLICATION native bound=" + (native != null) + " placementClockBound=" + (read(native, "placementClock") != null) +
+                            " itemCursor=" + read(native, "itemCursor") + " placementCursor=" + read(native, "placementCursor") + " itemCount=" + Terraria.ID.ItemID.Count +
+                            " placementTick=" + read(native, "materialPlacementTick") + " placementTickSet=" + read(native, "materialPlacementTickSet") +
+                            " dirty=" + read(native, "dirty") + " PlacementReady=" + read(native, "PlacementReady") + " catalogPublished=" + (read(native, "materialCatalog") != null) +
+                            " placementReads=" + read(native, "PlacementReads") + " itemReads=" + read(native, "ItemReads") + " failures=" + read(native, "failures") +
+                            " status=" + read(native, "Status") + " nativeSamples=" + Terraria.ID.ContentSamples.ItemsByType.Count);
+                    }
+                    catch (Exception observation) { Console.Error.WriteLine("MATERIAL PUBLICATION native-observation=" + observation.GetType().FullName + ": " + observation.Message); }
+                    try
+                    {
+                        // Worker presence/counters are best-effort reads, not
+                        // a coherent receipt or permission to advance its work.
+                        var worker = read(library, "worker"); var pending = read(worker, "pending"); var result = read(worker, "result");
+                        var snapshot = library.Snapshot; var material = read(host, "materialWorldSnapshot");
+                        Console.Error.WriteLine("MATERIAL PUBLICATION source libraryBusy=" + snapshot.Busy + " processed=" + snapshot.ProcessedItems +
+                            " acceptedCommand=" + library.AcceptedCommandId + " receiptKind=" + read(snapshot.LastReceipt, "Kind") + " receiptStatus=" + read(snapshot.LastReceipt, "Status") +
+                            " workerOccupied=" + read(worker, "occupied") + " workerStopping=" + read(worker, "stopping") + " workerAlive=" + read(read(worker, "thread"), "IsAlive") +
+                            " pendingKind=" + read(pending, "Kind") + " resultKind=" + read(result, "Kind") + " resultStatus=" + read(result, "Status") + " rootFailure=" + read(worker, "rootFailure") +
+                            " projectionMode=" + read(host, "ProjectionMode") + " persistenceReady=" + read(host, "projectionRestoreComplete") +
+                            " candidate=" + (read(host, "candidateProjection") != null) + " pendingProjection=" + (read(host, "pendingProjection") != null) +
+                            " sceneCount=" + read(read(host, "projectionScene"), "Count") + " projectionRequests=" + read(read(worker, "projectionRequests"), "Count") +
+                            " projectionActive=" + (read(worker, "projectionActiveRequest") != null) + " sourceRequests=" + read(read(worker, "projectionSourceRequests"), "Count") +
+                            " sourceActive=" + (read(worker, "projectionSourceActive") != null) + " materialStatus=" + read(material, "Status") +
+                            " materialRows=" + (material as BlueprintMaterialSnapshot)?.Rows.Count + " materialPublishing=" + (read(host, "materialPublishing") != null));
+                    }
+                    catch (Exception observation) { Console.Error.WriteLine("MATERIAL PUBLICATION source-observation=" + observation.GetType().FullName + ": " + observation.Message); }
+                    throw;
+                }
                 finally
                 {
                     AppDomain.CurrentDomain.FirstChanceException -= trace;

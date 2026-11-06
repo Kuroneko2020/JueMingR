@@ -36,6 +36,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             writer.Write(seat.offsetForSeat.X);writer.Write(seat.offsetForSeat.Y);writer.Write(seat.sittingIndex);
             NativeTagSnapshot.Write(writer,player);
             NativeMountSnapshot.Write(writer,player.mount);
+            NativePortableStoolSnapshot.Write(writer,player);
         }
         internal static void ReadPlayer(BinaryReader reader,Player player)
         {
@@ -50,6 +51,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             player.sitting=new PlayerSittingHelper{isSitting=reader.ReadBoolean(),details=new ExtraSeatInfo{IsAToilet=reader.ReadBoolean()},offsetForSeat=new Vector2(Finite(reader.ReadSingle(),"sitting"),Finite(reader.ReadSingle(),"sitting")),sittingIndex=reader.ReadInt32()};
             NativeTagSnapshot.Read(reader,player);
             player.mount=NativeMountSnapshot.Read(reader);
+            NativePortableStoolSnapshot.Read(reader,player);
         }
         private static void WriteItem(BinaryWriter writer,Item item)
         {writer.Write(item!=null);if(item!=null){Items.Write(writer,item);writer.Write(VariantId(item.Variant));}}

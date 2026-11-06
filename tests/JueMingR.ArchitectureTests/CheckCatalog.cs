@@ -16,6 +16,9 @@ namespace JueMingR.ArchitectureTests
         private static readonly List<Entry> entries = new List<Entry>();
         static CheckCatalog()
         {
+            Add("RuntimeFailureChecks", "shared-host", (root, failures) => RuntimeFailureChecks.Check(failures));
+            Add("PreferenceDeadlineChecks", "preferences", (root, failures) => PreferenceDeadlineChecks.Check(failures));
+            Add("OpenedDeadlineChecks", "records", (root, failures) => OpenedDeadlineChecks.Check(failures));
             Add("BlueprintSelectionChecks", "blueprint-host", (root, failures) => BlueprintSelectionChecks.Check(failures));
             Add("BlueprintCaptureChecks", "blueprint-host", (root, failures) => BlueprintCaptureChecks.Check(failures));
             Add("BlueprintSubstitutionPreferenceChecks", "blueprint-host", (root, failures) => BlueprintSubstitutionPreferenceChecks.Check(failures));

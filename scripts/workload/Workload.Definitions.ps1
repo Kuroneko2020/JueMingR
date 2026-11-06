@@ -20,6 +20,19 @@ function Get-WorkloadLeafChecks {
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
     $leaves = @{
+        'tests/JueMingR.ArchitectureTests/RuntimeFailureChecks.cs'=@('RuntimeFailureChecks')
+        'tests/JueMingR.ArchitectureTests/PreferenceDeadlineChecks.cs'=@('PreferenceDeadlineChecks')
+        'tests/JueMingR.ArchitectureTests/WorldObjectText/OpenedDeadlineChecks.cs'=@('OpenedDeadlineChecks')
+        'tests/NativeWorldTextProbe/NativeRuntimeFailureChecks.cs'=@('native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu')
+        'tests/NativeWorldTextProbe/NativeJourneyCloseAdmissionChecks.cs'=@('native-JourneyCloseCpu','native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu','native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu')
+        'tests/NativeWorldTextProbe/NativeRuntimeFailureReturnChecks.cs'=@('native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu')
+        'tests/NativeWorldTextProbe/NativeRuntimeFailureBuildChecks.cs'=@('native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu')
+        'tests/NativeWorldTextProbe/NativeRuntimeFailureBuildReceiptChecks.cs'=@('native-RuntimeFailureBuildReceiptCpu')
+        'tests/NativeWorldTextProbe/NativeCombatTerrainKnowledgeChecks.cs'=@('native-CombatTerrainKnowledgeCpu')
+        'tests/NativeWorldTextProbe/NativeCombatShotBirthChecks.cs'=@('native-CombatShotFacingCpu','native-CombatShotBirthOrderCpu')
+        'tests/NativeWorldTextProbe/NativeCombatNailDetachChecks.cs'=@('native-CombatNailDetachCpu')
+        'tests/NativeWorldTextProbe/NativeCombatReviewedNativeChecks.cs'=@('native-NpcReviewedStool','native-NpcReviewedParticle')
+        'tests/NativeWorldTextProbe/NativeCombatSnapshotChecks.cs'=@('native-NpcSnapshot')
         'tests/NativeWorldTextProbe/NativeWorldGenPreviewChecks.cs'=@('native-WorldGenPreviewCpu')
         'tests/NativeWorldTextProbe/NativeCombatWorkerAssetChecks.cs'=$workerAssetConsumers
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionChecks.cs'=@('native-BlueprintSubstitutionCpu')
@@ -135,7 +148,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeViewCombatChecks.cs'=@('native-ViewCombatCpu')
         'tests/NativeWorldTextProbe/NativeViewRangeConsumerChecks.cs'=@('native-ViewRangeConsumerCpu')
         'tests/NativeWorldTextProbe/NativeViewZoomSpeedChecks.cs'=@('native-ViewZoomSpeedCpu')
-        'tests/NativeWorldTextProbe/NativeJourneyChecks.cs'=@('native-JourneyCpu','native-Journey')
+        'tests/NativeWorldTextProbe/NativeJourneyChecks.cs'=@('native-JourneyCpu','native-Journey','native-JourneyCloseCpu','native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu','native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu')
         'tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs'=@('native-Journey')
         'tests/NativeWorldTextProbe/NativeJourneyPredictionChecks.cs'=@('native-JourneyPredictionCpu')
         'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs'=$attackConsumers
@@ -162,7 +175,7 @@ function Get-WorkloadLeafChecks {
         # Initialize also serves native Journey and graphical footprint/path
         # coexistence. The latter remains a separate graphics-risk entry; the
         # ordinary footprints CPU group cannot claim it executed real Draw.
-        'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual','native-CombatObservationCpu','native-CombatTerrainCpu','native-NpcPlayerPolicy','native-Journey','native-JourneyCpu','native-JourneyPredictionCpu','native-FootprintsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual','native-CombatObservationCpu','native-CombatTerrainCpu','native-CombatShotFacingCpu','native-CombatShotBirthOrderCpu','native-CombatNailDetachCpu','native-NpcPlayerPolicy','native-Journey','native-JourneyCpu','native-JourneyPredictionCpu','native-FootprintsCpu')
         'tests/NativeWorldTextProbe/NativeCombatVisualChecks.cs'=@('native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatAimQualificationChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatAimUiChecks.cs'=@('native-CombatAimUi','native-CombatVisual')
@@ -182,14 +195,14 @@ function Get-WorkloadLeafChecks {
         # Step is a shared native update/purity fixture. Bind every actual
         # caller even when this revision changes only the private ranking tests.
         'tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')
-        'tests/NativeWorldTextProbe/NativeCombatControlPreviewChecks.cs'=@('native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatSkyActionCpu')
+        'tests/NativeWorldTextProbe/NativeCombatControlPreviewChecks.cs'=@('native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatSkyActionCpu','native-CombatShotFacingCpu','native-CombatShotBirthOrderCpu','native-CombatNailDetachCpu')
         'tests/NativeWorldTextProbe/NativeCombatUsageChecks.cs'=@('native-CombatIntegrationCpu','native-CombatImpactVisual')
         'tests/NativeWorldTextProbe/NativeCombatOriginalFeedbackChecks.cs'=@('native-CombatIntegrationCpu','native-CombatImpactVisual')
         'tests/NativeWorldTextProbe/NativeCombatOriginalRangedChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatCelebrationChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatBasicAimChecks.cs'=@('native-CombatAimCpu','native-CombatIntegrationCpu','native-CombatImpactVisual')
         'tests/NativeWorldTextProbe/NativeCombatMagicStringAimChecks.cs'=@('native-CombatIntegrationCpu')
-        'tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs'=@('native-CombatEffectsCpu','native-CombatSkyActionCpu')
+        'tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs'=@('native-CombatEffectsCpu','native-CombatSkyActionCpu','native-CombatShotFacingCpu','native-CombatShotBirthOrderCpu','native-CombatNailDetachCpu')
         'tests/NativeWorldTextProbe/NativeCombatBallisticPreparationChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBallisticSceneChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBallisticMotionChecks.cs'=@('native-CombatEffectsCpu')
@@ -416,6 +429,26 @@ function Get-WorkloadLeafChecks {
     foreach($path in @('tests/NativeWorldTextProbe/NativeBlueprintExchangeLifecycleChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintPlacedListChecks.cs')){
         $leaves[$path]=@($leaves[$path])+@('native-BlueprintExchangeFollowupCpu')
     }
+    # The failure-flight leaf reuses these real construction and input helpers.
+    # Keep their assertion bytes bound without claiming sibling execution.
+    $failureBuild=@('native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu','native-RuntimeFailureBuildReceiptCpu')
+    foreach($path in @($leaves.Keys)){
+        if(@($leaves[$path]|Where-Object {$_ -in @('native-BlueprintCpu','native-BlueprintConstructionCpu')}).Count -or $path -cin @('tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeRuntimeFailureReturnChecks.cs')){
+            $leaves[$path]=@($leaves[$path])+@($failureBuild)
+        }
+    }
+    # Finite family scopes reuse the unchanged Effects entry and its helpers.
+    # Bind the aggregate's existing assertion dependencies conservatively; a
+    # family PASS never represents execution of the complete Effects matrix.
+    $families=@('native-CombatEffectsNailCpu','native-CombatEffectsPiranhaCpu','native-CombatEffectsPhoenixCpu','native-CombatEffectsSpecialArrowCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsPhantasmEchoCpu','native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsHomingEffectCpu','native-CombatEffectsJoustingLanceCpu','native-CombatEffectsWhipStarCpu','native-CombatEffectsThornCpu')
+    foreach($path in @($leaves.Keys)){
+        if($leaves[$path] -contains 'native-CombatEffectsCpu'){$leaves[$path]=@($leaves[$path])+@($families)}
+    }
+    # These existing narrow bodies share the real aim/control/effects fixture.
+    # Bind its existing assertions conservatively without executing siblings.
+    foreach($path in @($leaves.Keys)){
+        if(@($leaves[$path]|Where-Object {$_ -in @('native-CombatAimCpu','native-CombatControlCpu','native-CombatEffectsCpu')}).Count){$leaves[$path]=@($leaves[$path])+@('native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')}
+    }
     return $leaves
 }
 function Get-WorkloadNativeScopes {
@@ -424,6 +457,17 @@ function Get-WorkloadNativeScopes {
     # in test-world-object-text. Impact/AimUi/Visual need matching real Content
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
+        'RuntimeFailureCpu'=@('shared-host','journey-host','quick-items-host');
+        'RuntimeFailureActiveCpu'=@('shared-host','journey-host','quick-items-host');
+        'RuntimeFailureToolsCpu'=@('shared-host','journey-host','quick-items-host','tools-host');
+        'RuntimeFailureQuickCpu'=@('shared-host','journey-host','quick-items-host');
+        'RuntimeFailureLoansCpu'=@('shared-host','journey-host','quick-items-host','fishing-host','movement-host');
+        'RuntimeFailureWorldCpu'=@('shared-host','journey-host','quick-items-host','fishing-host','movement-host');
+        'RuntimeFailureBuildCpu'=@('shared-host','blueprint-host','tools-host');
+        'RuntimeFailureBuildManualCpu'=@('shared-host','blueprint-host','tools-host');
+        'RuntimeFailureBuildWorldCpu'=@('shared-host','blueprint-host','tools-host');
+        'RuntimeFailureBuildReceiptCpu'=@('shared-host','blueprint-host','tools-host');
+        'JourneyCloseCpu'=@('journey-host','quick-items-host');
         'TargetGestureDiagnostic'=@('browser-host');
         'WorldGenPreviewCpu'=@('worldgen-preview','shared-host');
         'MovementJumpCpu'=@('movement-host');
@@ -441,8 +485,24 @@ function Get-WorkloadNativeScopes {
         'NpcRollingCpu'=@('combat-host');
         'CombatAimCpu'=@('combat-host');
         'CombatControlCpu'=@('combat-host');
+        # Reviewed regression leaves consume this existing full native fixture
+        # initialization, without executing its quick-item feature matrix.
+        'CombatTerrainKnowledgeCpu'=@('combat-host','quick-items-host');
+        'CombatShotFacingCpu'=@('combat-host','quick-items-host','tools-host');
+        'CombatShotBirthOrderCpu'=@('combat-host','quick-items-host','tools-host');
+        'CombatNailDetachCpu'=@('combat-host','quick-items-host','tools-host');
         'CombatMechanicsCpu'=@('combat-host');
         'CombatEffectsCpu'=@('combat-host');
+        'CombatEffectsNailCpu'=@('combat-host','quick-items-host','tools-host');
+        'CombatEffectsPiranhaCpu'=@('combat-host','quick-items-host','tools-host');
+        'CombatEffectsPhoenixCpu'=@('combat-host','quick-items-host','tools-host');
+        'CombatEffectsSpecialArrowCpu'=@('combat-host','quick-items-host','tools-host');
+        'CombatEffectsAttachedShotCpu'=@('combat-host','quick-items-host','tools-host');
+        'CombatEffectsPhantasmEchoCpu'=@('combat-host','quick-items-host','tools-host');
+        'CombatEffectsBetsyFlameCpu'=@('combat-host','quick-items-host','tools-host'); 'CombatEffectsArcSwingCpu'=@('combat-host','quick-items-host','tools-host');
+        'CombatEffectsHomingEffectCpu'=@('combat-host','quick-items-host','tools-host'); 'CombatEffectsJoustingLanceCpu'=@('combat-host','quick-items-host','tools-host');
+        'CombatEffectsWhipStarCpu'=@('combat-host','quick-items-host','tools-host'); 'CombatEffectsThornCpu'=@('combat-host','quick-items-host','tools-host');
+        'DirectionalControl'=@('combat-host','quick-items-host','tools-host'); 'NpcSelectedContinuation'=@('combat-host','quick-items-host','tools-host'); 'TerrainLine'=@('combat-host','quick-items-host','tools-host');
         'CombatIntegrationCpu'=@('combat-host');
         # The narrow bodies use NativeQuickItemChecks' real initialization;
         # bind that fixture owner without executing its feature matrices.
@@ -483,6 +543,10 @@ function Get-WorkloadNativeScopes {
         'NpcSharedGeometry'=@('combat-host'); 'NpcTargetMarker'=@('combat-host');
         'NpcSamplePresentation'=@('combat-host'); 'NpcFiniteFlight'=@('combat-host'); 'CombatYoyoCausal'=@('combat-host');
         'NpcWorkerIntegration'=@('legacy-worker'); 'NpcSnapshot'=@('legacy-worker'); 'NpcWorkerPreparation'=@('legacy-worker');
+        'NpcReviewedStool'=@('legacy-worker'); 'NpcReviewedParticle'=@('legacy-worker');
+        # These existing native worker bodies are task-specific consumers,
+        # with their original dispatch/expectations retained as named checks.
+        'NpcWorkerContext'=@('legacy-worker'); 'NpcWorkerAssets'=@('legacy-worker'); 'NpcWorkerLifecycle'=@('legacy-worker');
         'NpcDiagnosticsOff'=@('legacy-worker'); 'NpcPostDelivery'=@('legacy-worker'); 'NpcGuardianQuery'=@('legacy-worker'); 'NpcModeledImpact'=@('legacy-worker');
         'NpcLegalCoverage'=@('legacy-worker'); 'NpcWorkerTransport'=@('legacy-worker'); 'NpcMenuPreparation'=@('legacy-worker'); 'NpcSessionCapacity'=@('legacy-worker'); 'NpcProduction'=@('legacy-worker'); 'NpcLongCoverage'=@('legacy-worker');
         'WorkloadCpu'=@('world-host','shared-host'); 'InformationCpu'=@('information','shared-host'); 'GuidanceCpu'=@('guidance','shared-host');

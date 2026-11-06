@@ -42,8 +42,8 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="flame"){NativeCombatFlameChecks.Run(context);return;}
             if(finiteOracle=="bee"){NativeCombatBeeChecks.Run(context);return;}
             if(finiteOracle=="bee-gun"){NativeCombatBeeGunChecks.Run(context);return;}
-            if(finiteOracle=="phoenix"){NativeCombatPhoenixChecks.Run(context);return;}
-            if(finiteOracle=="thorn"){NativeCombatThornChecks.Run(context);return;}
+            if(finiteOracle=="phoenix"){NativeScopeDispatch.EnterSelected("effects-phoenix");NativeCombatPhoenixChecks.Run(context);return;}
+            if(finiteOracle=="thorn"){NativeScopeDispatch.EnterSelected("effects-thorn");NativeCombatThornChecks.Run(context);return;}
             if(finiteOracle=="stream"){NativeCombatStreamChecks.Run(context);return;}
             if(finiteOracle=="bottle"){NativeCombatBottleChecks.Run(context);return;}
             if(finiteOracle=="note"){NativeCombatNoteChecks.Run(context);return;}
@@ -61,11 +61,11 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="ornament"){NativeCombatOrnamentChecks.Run(context);return;}
             if(finiteOracle=="inferno"){NativeCombatInfernoChecks.Run(context);return;}
             if(finiteOracle=="paper-airplane"){NativeCombatPaperAirplaneChecks.Run(context);return;}
-            if(finiteOracle=="arc-swing"){NativeCombatArcSwingChecks.Run(context);return;}
-            if(finiteOracle=="attached-shot"){NativeCombatAttachedShotChecks.Run(context);return;}
+            if(finiteOracle=="arc-swing"){NativeScopeDispatch.EnterSelected("effects-arc-swing");NativeCombatArcSwingChecks.Run(context);return;}
+            if(finiteOracle=="attached-shot"){NativeScopeDispatch.EnterSelected("effects-attached-shot");NativeCombatAttachedShotChecks.Run(context);return;}
             if(finiteOracle=="ballistic-candidates"){NativeCombatBallisticCandidateChecks.Run(context);return;}
             if(Environment.GetEnvironmentVariable("JMR_WEAPON_EFFECT_ORACLE_ONLY")=="rapier"){NativeCombatBallisticRapierChecks.Run(context);return;}
-            if(finiteOracle=="homing-effect"){NativeCombatHomingEffectChecks.Run(context);return;}
+            if(finiteOracle=="homing-effect"){NativeScopeDispatch.EnterSelected("effects-homing-effect");NativeCombatHomingEffectChecks.Run(context);return;}
             if(finiteOracle=="placed-pulse"){NativeCombatPlacedPulseChecks.Run(context);return;}
             if(finiteOracle=="terrain-line"){NativeCombatTerrainLineChecks.Run(context);return;}
             if(finiteOracle=="fixed-sky"){NativeCombatFixedSkyChecks.Run(context);return;}
@@ -75,13 +75,13 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="arrow-family"){NativeCombatArrowFamilyChecks.Run(context);return;}
             if(finiteOracle=="impact-burst"){NativeCombatImpactBurstChecks.Run(context);return;}
             if(finiteOracle=="clinger-wall"){NativeCombatClingerWallChecks.Run(context);return;}
-            if(finiteOracle=="jousting-lance"){NativeCombatJoustingLanceChecks.Run(context);return;}
-            if(finiteOracle=="whip-star"){NativeCombatWhipStarChecks.Run(context);return;}
+            if(finiteOracle=="jousting-lance"){NativeScopeDispatch.EnterSelected("effects-jousting-lance");NativeCombatJoustingLanceChecks.Run(context);return;}
+            if(finiteOracle=="whip-star"){NativeScopeDispatch.EnterSelected("effects-whip-star");NativeCombatWhipStarChecks.Run(context);return;}
             if(finiteOracle=="harpy-arrow-family"){NativeCombatHarpyArrowFamilyChecks.Run(context);return;}
             if(finiteOracle=="bubble-flail"){NativeCombatBubbleFlailFamilyChecks.Run(context);return;}
             if(finiteOracle=="finite-tail"){FiniteTail(context);return;}
             if(finiteOracle=="held-then-steering"){NativeCombatHeldAmmoFamilyChecks.Run(context);NativeCombatAmmoSteeringChecks.Run(context);return;}
-            if(finiteOracle=="piranha"){NativeCombatPiranhaChecks.Run(context);return;}
+            if(finiteOracle=="piranha"){NativeScopeDispatch.EnterSelected("effects-piranha");NativeCombatPiranhaChecks.Run(context);return;}
             if(finiteOracle=="lights-bane"){NativeCombatLightsBaneChecks.Run(context);return;}
             if(finiteOracle=="sharp-tears"){NativeCombatSharpTearsChecks.Run(context);return;}
             if(finiteOracle=="north-pole"){NativeCombatNorthPoleChecks.Run(context);return;}
@@ -100,19 +100,19 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="medusa-scan"){NativeCombatMedusaScanChecks.Run(context);return;}
             if(finiteOracle=="solar-eruption"){NativeCombatSolarEruptionChecks.Run(context);return;}
             if(finiteOracle=="influx"){NativeCombatInfluxChecks.Run(context);return;}
-            if(finiteOracle=="nail"){NativeCombatNailChecks.Run(context);return;}
+            if(finiteOracle=="nail"){NativeScopeDispatch.EnterSelected("effects-nail");NativeCombatNailChecks.Run(context);return;}
             if(finiteOracle=="spear-shards"){NativeCombatSpearShardChecks.Run(context);return;}
             if(finiteOracle=="guitar-curve"){NativeCombatGuitarCurveChecks.Run(context);return;}
             if(finiteOracle=="yoyo-family"){NativeCombatYoyoFamilyChecks.Run(context);return;}
             if(finiteOracle=="weather-pain"){NativeCombatWeatherPainChecks.Run(context);return;}
-            if(finiteOracle=="phantasm-echo"){NativeCombatPhantasmEchoChecks.Run(context);return;}
+            if(finiteOracle=="phantasm-echo"){NativeScopeDispatch.EnterSelected("effects-phantasm-echo");NativeCombatPhantasmEchoChecks.Run(context);return;}
             if(finiteOracle=="magnet-sphere"){NativeCombatMagnetSphereChecks.Run(context);return;}
             if(finiteOracle=="spirit-flame"){NativeCombatBallisticSpiritChecks.Run(context);return;}
             if(finiteOracle=="typhoon"){NativeCombatBallisticTyphoonChecks.Run(context);return;}
             if(finiteOracle=="cloud"){NativeCombatBallisticCloudChecks.Run(context);return;}
             if(finiteOracle=="ballistic-seeds"){NativeCombatBallisticSeedChecks.Run(context);return;}
             if(finiteOracle=="free-flight"){NativeCombatBallisticFreeFlightChecks.Run(context);return;}
-            if(finiteOracle=="betsy-flame"){NativeCombatBetsyFlameChecks.Run(context);return;}
+            if(finiteOracle=="betsy-flame"){NativeScopeDispatch.EnterSelected("effects-betsy-flame");NativeCombatBetsyFlameChecks.Run(context);return;}
             if(finiteOracle=="electrosphere"){NativeCombatElectrosphereChecks.Run(context);return;}
             if(finiteOracle=="barrel"){NativeCombatBarrelChecks.Run(context);return;}
             if(finiteOracle=="javelin"){NativeCombatJavelinChecks.Run(context);return;}
@@ -123,7 +123,7 @@ namespace NativeWorldTextProbe
             if(finiteOracle=="reflection"){NativeCombatReflectionChecks.Run(context);return;}
             if(finiteOracle=="scourge"){NativeCombatScourgeChecks.Run(context);return;}
             if(finiteOracle=="phaseblade"){NativeCombatPhasebladeChecks.Run(context);return;}
-            string oracle=Environment.GetEnvironmentVariable("JMR_WEAPON_EFFECT_ORACLE_ONLY");if(oracle=="ai008"){MagicBounceMotor(context,combat);MagicBurst(context,combat);return;}if(oracle=="crystal"){CrystalBirths(context,combat,host,attack,input);CrystalMotor(context,combat,input);return;}if(oracle=="harpy"){NativeCombatHarpyChecks.Run(context);return;}if(oracle=="finite-throw"){NativeCombatFiniteThrowChecks.Run(context);return;}if(oracle=="special-arrow"){NativeCombatSpecialArrowChecks.Run(context);return;}if(oracle=="explosive"){NativeCombatExplosiveChecks.Run(context);return;}if(oracle=="harpoon"){NativeCombatHarpoonChecks.Run(context);return;}
+            string oracle=Environment.GetEnvironmentVariable("JMR_WEAPON_EFFECT_ORACLE_ONLY");if(oracle=="ai008"){MagicBounceMotor(context,combat);MagicBurst(context,combat);return;}if(oracle=="crystal"){CrystalBirths(context,combat,host,attack,input);CrystalMotor(context,combat,input);return;}if(oracle=="harpy"){NativeCombatHarpyChecks.Run(context);return;}if(oracle=="finite-throw"){NativeCombatFiniteThrowChecks.Run(context);return;}if(oracle=="special-arrow"){NativeScopeDispatch.EnterSelected("effects-special-arrow");NativeCombatSpecialArrowChecks.Run(context);return;}if(oracle=="explosive"){NativeCombatExplosiveChecks.Run(context);return;}if(oracle=="harpoon"){NativeCombatHarpoonChecks.Run(context);return;}
             foreach(var row in new[]{new[]{39,516,91,92},new[]{95,515,89,90},new[]{39,3568,639,640},new[]{95,1179,207,0},new[]{127,0,20,0},new[]{518,0,94,0},new[]{197,75,955,0},new[]{1446,0,297,0},new[]{112,0,15,0},new[]{165,0,27,0},new[]{519,0,95,0},new[]{1264,0,253,0},new[]{3063,0,502,0}})
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,row[0],0,0);p.position=new Vector2(700,646);p.ResetEffects();Main.screenPosition=new Vector2(600,500);p.inventory[54].SetDefaults(row[1]);p.inventory[54].stack=999;Main.rand=new Terraria.Utilities.UnifiedRandom(7123);

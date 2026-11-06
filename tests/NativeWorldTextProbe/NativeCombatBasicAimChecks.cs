@@ -94,6 +94,11 @@ namespace NativeWorldTextProbe
         }
         internal static void Run(object context)
         {
+            // These positive Path-only scenes keep selection while Aim is
+            // off, so obtain the existing real display qualification first.
+            var pathHost=Get(context,"CombatObservation");bool pathAccessBefore=(bool)Get(pathHost,"PathAccess");
+            if(!pathAccessBefore)NativeHiddenEntryChecks.RevealForComposition(context);
+            Console.WriteLine("BASIC PATH QUALIFICATION before="+pathAccessBefore+" after="+Get(pathHost,"PathAccess")+" settingsReady="+Get(Get(pathHost,"Settings"),"Ready"));
             var audit=new Harmony("JueMingR.Tests.BasicAimNaturalConsumers");
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})
                 audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));

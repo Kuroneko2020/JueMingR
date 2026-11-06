@@ -19,6 +19,10 @@ namespace NativeWorldTextProbe
         internal static void Run(object context,string output)
         {
             Directory.CreateDirectory(output);var host=Get(context,"CombatObservation");var layer=Get(host,"World");var geometry=Get(host,"Geometry");var cache=Get(Get(host,"Prediction"),"Cache");var settings=(ObservationSettings)Get(host,"Settings");
+            // Dual measures a real Path parent and its complete forecast.
+            // Establish its native qualification before any warmup or timing.
+            bool pathAccessBefore=(bool)Get(host,"PathAccess");if(!pathAccessBefore)NativeHiddenEntryChecks.RevealForComposition(context);
+            Console.WriteLine("COST PATH QUALIFICATION before="+pathAccessBefore+" after="+Get(host,"PathAccess")+" settingsReady="+settings.Ready);
             for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};
             var update=(Action)Delegate.CreateDelegate(typeof(Action),context,context.GetType().GetMethod("UpdateRuntime",Flags));
             var prepareWorld=(Action)Delegate.CreateDelegate(typeof(Action),layer,layer.GetType().GetMethod("Prepare",Flags));

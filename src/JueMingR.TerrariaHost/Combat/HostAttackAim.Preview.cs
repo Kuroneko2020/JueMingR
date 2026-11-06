@@ -436,11 +436,12 @@ namespace JueMingR.TerrariaHost.Combat
             internal HostAttackReceive Receive;
             internal PredictionPlayerMotion PlayerMotion;internal HostAttackPhase Phase;internal int Age,Delay,Immune,AttackCooldown,MeleeCooldown,Animation,AnimationMax,Time,Reuse;
             internal int Direction;internal long SwingRevision;internal float MeleeSpeed;internal bool Prepared,Controlled,CapsuleOnly,Using;private Item item;private int slot,type,prefix;private float scale;
+            private float birthRotation,birthGravity;private Vector2 birthScreen;private int birthHeight;
             // Every plan kind, including controlled and existing-flight previews,
             // binds the environment used by its solve. Draw only validates it.
             internal Player HandOwner;
-            internal void SetMembers(Player player,Item weapon){HandOwner=player;item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;EnvironmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(player,weapon),player);WhipOwner=HostMeleeAttack.KnownWhipParent(weapon.shoot)?new HostMeleeAttack.SpearFlightState(player,System.Array.Empty<Projectile>()):null;}
-            internal bool WeaponCurrent(Player player){return player!=null && item!=null && player.selectedItem==slot && ReferenceEquals(player.HeldItem,item) && item.type==type && item.prefix==prefix && player.GetAdjustedItemScale(item)==scale;}
+            internal void SetMembers(Player player,Item weapon){HandOwner=player;item=weapon;slot=player.selectedItem;type=weapon.type;prefix=weapon.prefix;scale=player.GetAdjustedItemScale(weapon);Direction=player.direction;birthRotation=player.fullRotation;birthGravity=player.gravDir;birthScreen=Main.screenPosition;birthHeight=Main.screenHeight;EnvironmentState=new HostProjectileEnvironment.State(true,HostProjectileEnvironment.HandWindRelevant(player,weapon),player);WhipOwner=HostMeleeAttack.KnownWhipParent(weapon.shoot)?new HostMeleeAttack.SpearFlightState(player,System.Array.Empty<Projectile>()):null;}
+            internal bool WeaponCurrent(Player player){return player!=null && item!=null && player.selectedItem==slot && ReferenceEquals(player.HeldItem,item) && item.type==type && item.prefix==prefix && player.GetAdjustedItemScale(item)==scale && (!HostAttackModels.CandidateBirth(item) || birthRotation==player.fullRotation && birthGravity==player.gravDir && birthScreen==Main.screenPosition && birthHeight==Main.screenHeight);}
             private bool HandReceiveCurrent(Player player)
             {
                 if(Contact==null || Controlled || Flight!=null || Contact.ReceiveGeometry!=AttackReceiveGeometry.Melee)return true;
@@ -469,6 +470,7 @@ namespace JueMingR.TerrariaHost.Combat
                 Clear();Contact=source.Contact;Solution=source.Solution;Balanced=source.Balanced;Timeline=source.Timeline;Ammo=source.Ammo;Environment=source.Environment;EnvironmentState=source.EnvironmentState;Obstacles=source.Obstacles;
                 HarpyState=source.HarpyState;Flight=source.Flight;ControlDependencies=source.ControlDependencies;WhipOwner=source.WhipOwner;Direction=source.Direction;Controlled=source.Controlled;
                 item=source.item;slot=source.slot;type=source.type;prefix=source.prefix;scale=source.scale;
+                birthRotation=source.birthRotation;birthGravity=source.birthGravity;birthScreen=source.birthScreen;birthHeight=source.birthHeight;
                 Phase=source.Phase;Immune=source.Immune;AttackCooldown=source.AttackCooldown;MeleeCooldown=source.MeleeCooldown;
             }
             internal void Clear(){Contact=null;Solution=default(HostAttackSolution);Balanced=false;Timeline=null;MotionTerrain=null;MotionSource=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;HandOwner=null;Prepared=Controlled=HadFlight=false;}

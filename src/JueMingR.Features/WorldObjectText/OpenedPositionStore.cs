@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using JueMingR.Platform.Settings;
 
@@ -35,11 +36,13 @@ namespace JueMingR.Features.WorldObjectText
             internal OpenedPositionIndex[] Overlays = new OpenedPositionIndex[0];
             internal bool InUse = true, Writable, Read, AdmissionBlocked;
             internal int Failures, Reservation, InFlight;
-            internal DateTime Due, FirstPending;
+            // Process-local elapsed milliseconds; never a persisted event time.
+            internal long Due, FirstPending;
         }
         internal sealed class Deferred { internal List<long> Values; internal int Start; internal OpenedPositionIndex Index; }
         private readonly object gate = new object();
         private readonly Func<string, IPreferenceStorage> factory;
+        private readonly Func<long> nowMilliseconds;
         private readonly Dictionary<string, Lease> leases = new Dictionary<string, Lease>(StringComparer.Ordinal);
         private readonly OpenedPositionCodec codec = new OpenedPositionCodec();
         private readonly Timer timer;
@@ -54,7 +57,9 @@ namespace JueMingR.Features.WorldObjectText
         private string lastFailure, admissionFailure;
         private readonly Dictionary<string, string> pairFailures = new Dictionary<string, string>(StringComparer.Ordinal);
         internal OpenedPositionStore(Func<string, IPreferenceStorage> factory)
-        { this.factory = factory ?? throw new ArgumentNullException(nameof(factory)); timer = new Timer(Drain, null, Timeout.Infinite, Timeout.Infinite); }
+            : this(factory, CreateDelayClock()) { }
+        internal OpenedPositionStore(Func<string, IPreferenceStorage> factory, Func<long> nowMilliseconds)
+        { this.factory = factory ?? throw new ArgumentNullException(nameof(factory)); this.nowMilliseconds = nowMilliseconds ?? throw new ArgumentNullException(nameof(nowMilliseconds)); timer = new Timer(Drain, null, Timeout.Infinite, Timeout.Infinite); }
         internal bool Terminated { get { lock (gate) return cancelled; } }
         internal string TakeFailure()
         {
@@ -81,7 +86,7 @@ namespace JueMingR.Features.WorldObjectText
                     if (leases.Count == 8) return null;
                     value = new Lease { Key = key }; leases.Add(key, value);
                 }
-                value.InUse = true; RetryLocked(value); ScheduleLocked(0); return value;
+                value.InUse = true; RetryLocked(value); ScheduleLocked(); return value;
             }
         }
         internal static State Snapshot(Lease lease) { return Volatile.Read(ref lease.Current); }
@@ -99,9 +104,9 @@ namespace JueMingR.Features.WorldObjectText
                 if (!lease.Pending.Add(key)) return true;
                 lease.AdmissionBlocked = false;
                 queuedUnits++; lease.Reservation++; lease.Accepted.Add(key);
-                DateTime now = DateTime.UtcNow;
-                if (lease.Pending.Count == 1) lease.FirstPending = now.AddMilliseconds(1000);
-                lease.Due = Earlier(now.AddMilliseconds(150), lease.FirstPending); ScheduleLocked(150); return true;
+                long now = nowMilliseconds();
+                if (lease.Pending.Count == 1) lease.FirstPending = now + 1000;
+                lease.Due = Math.Min(now + 150, lease.FirstPending); ScheduleLocked(); return true;
             }
         }
         internal void Release(Lease lease, List<long> frozenRemainder, int start, OpenedPositionIndex frozenIndex)
@@ -128,12 +133,12 @@ namespace JueMingR.Features.WorldObjectText
                     }
                     else { admissionFailure = "opened-unaccepted-tail-session-only"; }
                 }
-                lease.InUse = false; lease.Due = DateTime.UtcNow; ScheduleLocked(0);
+                lease.InUse = false; lease.Due = nowMilliseconds(); ScheduleLocked();
             }
         }
-        internal void Retry(Lease lease) { lock (gate) { if (!cancelled && !stopping && !completed) { RetryLocked(lease); ScheduleLocked(0); } } }
-        private static void RetryLocked(Lease lease)
-        { if (!lease.Current.Protected && lease.Current.Status == PreferenceStatus.IoFailure) { lease.Failures = 0; lease.Due = DateTime.UtcNow; } }
+        internal void Retry(Lease lease) { lock (gate) { if (!cancelled && !stopping && !completed) { RetryLocked(lease); ScheduleLocked(); } } }
+        private void RetryLocked(Lease lease)
+        { if (!lease.Current.Protected && lease.Current.Status == PreferenceStatus.IoFailure) { lease.Failures = 0; lease.Due = nowMilliseconds(); } }
         internal bool Stop(int milliseconds)
         {
             lock (gate)
@@ -141,16 +146,33 @@ namespace JueMingR.Features.WorldObjectText
                 if (completed) return true;
                 if (cancelled) return false;
                 stopping = true; finished.Reset();
-                foreach (var lease in leases.Values) { lease.InUse = false; lease.Due = DateTime.UtcNow; }
-                ScheduleLocked(0);
+                long now = nowMilliseconds();
+                foreach (var lease in leases.Values) { lease.InUse = false; lease.Due = now; }
+                ScheduleLocked();
             }
             if (finished.Wait(Math.Max(0, milliseconds)))
             { lock (gate) { if (cancelled) return false; completed = true; timer.Dispose(); } return true; }
-            lock (gate) { cancelled = true; ScheduleLocked(0); }
+            lock (gate) { cancelled = true; ScheduleLocked(); }
             return false; // An already-entered OS write retains worker ownership.
         }
-        private void ScheduleLocked(int delay)
-        { if (!cancelled && !completed) timer.Change(Math.Max(0, delay), Timeout.Infinite); }
+        private void ScheduleLocked()
+        {
+            if (cancelled || completed || running) return;
+            // Release may finish the final lease before Stop takes the gate.
+            // With no worker or lease left there is no future timer callback
+            // to signal the reset completion event, and no I/O owner to await.
+            if (stopping && leases.Count == 0) { finished.Set(); return; }
+            long now = nowMilliseconds(), earliest = long.MaxValue;
+            // At most eight leases. A new quiet interval may renew only its own
+            // due: it cannot reset the domain timer to another full 150ms after
+            // the first-fact limit or postpone a different pair/read/release.
+            // An in-flight worker owns this calculation in its finally block.
+            foreach (var lease in leases.Values)
+                if (!lease.Read || !lease.InUse && !HasWork(lease)) { earliest = now; break; }
+                else if (HasWork(lease)) earliest = Math.Min(earliest, lease.Due);
+            if (earliest != long.MaxValue)
+                timer.Change((int)Math.Max(0L, Math.Min(1000L, earliest - now)), Timeout.Infinite);
+        }
         private void Drain(object unused)
         {
             lock (gate) { if (running || completed) return; running = true; }
@@ -162,7 +184,7 @@ namespace JueMingR.Features.WorldObjectText
                     lock (gate)
                     {
                         if (cancelled) break;
-                        DateTime now = DateTime.UtcNow;
+                        long now = nowMilliseconds();
                         foreach (var candidate in leases.Values)
                             if (!candidate.Read || !candidate.InUse && !HasWork(candidate) ||
                                 HasWork(candidate) && (stopping || candidate.Due <= now))
@@ -228,14 +250,7 @@ namespace JueMingR.Features.WorldObjectText
                 {
                     running = false;
                     if (stopping && leases.Count == 0 || cancelled) finished.Set();
-                    else
-                    {
-                        DateTime earliest = DateTime.MaxValue;
-                        foreach (var lease in leases.Values)
-                            if (!lease.Read || !lease.InUse && !HasWork(lease)) { earliest = DateTime.UtcNow; break; }
-                            else if (HasWork(lease)) earliest = Earlier(earliest, lease.Due);
-                        if (earliest != DateTime.MaxValue) ScheduleLocked((int)Math.Max(0, Math.Min(1000, (earliest - DateTime.UtcNow).TotalMilliseconds)));
-                    }
+                    else ScheduleLocked();
                 }
             }
         }
@@ -281,7 +296,7 @@ namespace JueMingR.Features.WorldObjectText
                         lock (gate)
                         {
                             retry = true;
-                            lease.Failures++; lease.Due = lease.Failures < 3 ? DateTime.UtcNow.AddMilliseconds(250 * lease.Failures) : DateTime.MaxValue;
+                            lease.Failures++; lease.Due = lease.Failures < 3 ? nowMilliseconds() + 250 * lease.Failures : long.MaxValue;
                             return batch.Count;
                         }
                 }
@@ -307,7 +322,14 @@ namespace JueMingR.Features.WorldObjectText
                 Volatile.Write(ref lease.Current, state);
             }
         }
-        private static DateTime Earlier(DateTime a, DateTime b) { return a < b ? a : b; }
+        private static Func<long> CreateDelayClock()
+        {
+            // One clock for this domain's leases. Stopwatch converts its native
+            // frequency; UTC corrections cannot extend quiet, maximum-merge or
+            // retry waits. Accepted facts, I/O ownership and file bytes are unchanged.
+            var elapsed = Stopwatch.StartNew();
+            return () => elapsed.ElapsedMilliseconds;
+        }
         private static bool HasWork(Lease lease) { return lease.Pending.Count != 0 || lease.Deferred.Count != 0 || lease.RetryBatch != null; }
     }
 }

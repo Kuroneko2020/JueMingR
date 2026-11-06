@@ -65,7 +65,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // Taskbar flashing only: even a subsequently rejected death must
             // not leave external callbacks in the private main-thread queue.
             Patch(typeof(Main),"NotifyOfEvent","Skip");
-            Patch(typeof(Terraria.GameContent.Drawing.ParticleOrchestrator),"SpawnParticlesDirect","Skip");
+            Patch(typeof(Terraria.GameContent.Drawing.ParticleOrchestrator),"SpawnParticlesDirect","ParticleInitialization");
             Patch(typeof(Terraria.GameContent.Events.MoonlordDeathDrama),"ThrowPieces","Skip");
             Patch(typeof(Terraria.GameContent.Events.MoonlordDeathDrama),"RequestLight","Skip");
             Patch(typeof(Terraria.GameContent.Events.MoonlordDeathDrama),"AddExplosion","Explosion");
@@ -100,7 +100,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static void Part(System.Diagnostics.Stopwatch watch,string name)
         {if(watch!=null){Console.Error.WriteLine("STARTUP "+name+"-ms="+watch.Elapsed.TotalMilliseconds.ToString("F3",System.Globalization.CultureInfo.InvariantCulture));watch.Restart();}}
-        internal static void Begin(){Failure=null;VerifyFacilities();camera=new Terraria.Graphics.CameraModifiers.CameraModifierStack();}
+        internal static void Begin(){Failure=null;NativeParticleInitialization.Clear();VerifyFacilities();camera=new Terraria.Graphics.CameraModifiers.CameraModifierStack();}
         private static void VerifyFacilities()
         {
             if(Terraria.Audio.SoundEngine.IsAudioSupported || Terraria.Audio.SoundEngine.SoundPlayer!=null || Terraria.Audio.SoundEngine.LegacySoundPlayer!=null)
@@ -118,6 +118,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         }
         private static HarmonyMethod Prefix(string name){return new HarmonyMethod(typeof(NativeEffectBoundary).GetMethod(name,BindingFlags.Static|BindingFlags.NonPublic));}
         private static bool Skip(){return false;}
+        private static bool ParticleInitialization(Terraria.GameContent.Drawing.ParticleOrchestraType __0,Terraria.GameContent.Drawing.ParticleOrchestraSettings __1)
+        {
+            // All three native entry points retain their own evaluated guards
+            // and reach this private dispatcher boundary. Do not execute it or
+            // broaden the existing unmodeled types into a global Block.
+            if(Main.netMode==2)return false;
+            try{NativeParticleInitialization.Consume(__0,__1);}
+            catch(InvalidDataException error){Failure=error.Message;throw;}
+            return false;
+        }
         // Allocation is an AI RNG input: NewDust/NewGore/NewText consume
         // different random calls when the observed pools are crowded/full.
         // Carry only bounded occupancy and Dust's spawn-range scalar. We do
@@ -129,6 +139,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             for(int start=0;start<Main.dust.Length;start+=8){byte bits=0;for(int b=0;b<8 && start+b<Main.dust.Length;b++)if(Main.dust[start+b]?.active==true)bits|=(byte)(1<<b);writer.Write(bits);}
             for(int start=0;start<Main.gore.Length;start+=8){byte bits=0;for(int b=0;b<8 && start+b<Main.gore.Length;b++)if(Main.gore[start+b]?.active==true)bits|=(byte)(1<<b);writer.Write(bits);}
             for(int start=0;start<Main.combatText.Length;start+=8){byte bits=0;for(int b=0;b<8 && start+b<Main.combatText.Length;b++)if(Main.combatText[start+b]?.active==true)bits|=(byte)(1<<b);writer.Write(bits);}
+            NativeParticleInitialization.Write(writer);
         }
         internal static void ReadAllocation(BinaryReader reader)
         {
@@ -136,6 +147,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             for(int start=0;start<Main.dust.Length;start+=8){byte bits=AllocationBits(reader,Main.dust.Length-start);for(int b=0;b<8 && start+b<Main.dust.Length;b++)Main.dust[start+b].active=(bits&(1<<b))!=0;}
             for(int start=0;start<Main.gore.Length;start+=8){byte bits=AllocationBits(reader,Main.gore.Length-start);for(int b=0;b<8 && start+b<Main.gore.Length;b++)Main.gore[start+b].active=(bits&(1<<b))!=0;}
             for(int start=0;start<Main.combatText.Length;start+=8){byte bits=AllocationBits(reader,Main.combatText.Length-start);for(int b=0;b<8 && start+b<Main.combatText.Length;b++)Main.combatText[start+b].active=(bits&(1<<b))!=0;}
+            NativeParticleInitialization.Read(reader);
         }
         private static byte AllocationBits(BinaryReader reader,int remaining)
         {byte bits=reader.ReadByte();if(remaining<8 && (bits>>remaining)!=0)throw new InvalidDataException("Effect allocation padding.");return bits;}

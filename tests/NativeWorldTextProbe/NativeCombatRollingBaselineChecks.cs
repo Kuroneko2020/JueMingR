@@ -126,6 +126,7 @@ namespace NativeWorldTextProbe
                     // Warm the original environment through real idle updates.
                     // This startup axis is separate from normal combat costs;
                     // r1/r2 preserve the cold-start interruption evidence.
+                    if(!(bool)Get(host,"PathAccess"))NativeHiddenEntryChecks.RevealForComposition(context);
                     phase="startup-idle";NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,radius:0));
                     if(candidate && Environment.GetEnvironmentVariable("JUEMINGR_ROLLING_BOUNDARIES")=="1")
                         NativeCombatRollingBoundaryChecks.Run(context,host,cache,step,output);

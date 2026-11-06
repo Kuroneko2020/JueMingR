@@ -133,7 +133,7 @@ namespace NativeWorldTextProbe
                 SlopeRegionQuery(terrain,407.125f,80);Require(slopeRegionCells>before,"larger body acquires new scan bounds instead of borrowing the prior proof");
 
                 Call(terrain,"Reset");SlopeRegionQuery(terrain,407.125f,20);before=slopeRegionCells;
-                Main.maxTilesY=height+1;SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"world dimensions deny an old slope proof even within an unchanged local rectangle");Main.maxTilesY=height;
+                Main.maxTilesY=height+1;SlopeRegionQuery(terrain,407.125f,20,false);Require(!(bool)Get(terrain,"Unchanged"),"world dimensions retire the whole old sample, rather than opening a mixed-world slope proof");Main.maxTilesY=height;Call(terrain,"Reset");SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"an explicit fresh sample reacquires its slope cells after a world identity change");
                 NativeToolsChecks.Tile(26,25,TileID.Stone);Main.tile[26,25].slope(1);
                 Require(!(bool)Get(terrain,"Unchanged"),"actual new slope retires the old complete cell lease");Call(terrain,"Reset");before=slopeRegionCells;
                 SlopeRegionQuery(terrain,407.125f,20);Require(slopeRegionCells>before,"new sample evaluates the actual slope against original collision");before=slopeRegionCells;

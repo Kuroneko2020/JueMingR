@@ -15,7 +15,7 @@ using JueMingR.TerrariaHost.Blueprint;
 
 namespace JueMingR.TerrariaHost.Tools
 {
-    internal sealed class HostTools : IRuntimeFeature
+    internal sealed class HostTools : IRuntimeFeature, IRuntimeFailureCleanup
     {
         internal static readonly string[] Actions={"tools.capture","tools.herbs","tools.mining"};
         internal const string SelectAction="tools.mining.select";
@@ -246,12 +246,31 @@ namespace JueMingR.TerrariaHost.Tools
             nativeTick=Main.GameUpdateCount;simulationTick=0;
         }
         public void OnSessionEnded(){Use.Retire();Capture.Reset();Herbs.Reset();Mining.Clear();Fishing.Reset();SelectionIntent++;}
+        internal bool MatchesRetainedSession(Player p)
+        {
+            // Native return/decoder callbacks may precede the next outer
+            // identity observation. A retained generation alone cannot lend
+            // an old duty to a replaced player, world or connection socket.
+            return Runtime.HasRetainedSession && !Main.gameMenu && !Main.dedServ && (Main.netMode==0 || Main.netMode==1) &&
+                Main.player!=null && Main.myPlayer>=0 && Main.myPlayer<Main.player.Length && p!=null && p.active &&
+                ReferenceEquals(p,Main.player[Main.myPlayer]) && ReferenceEquals(p,identityPlayer) &&
+                ReferenceEquals(identityWorld,Main.ActiveWorldFileData) && identityMode==Main.netMode &&
+                (Main.netMode!=1 || Netplay.Connection!=null) &&
+                ReferenceEquals(identitySocket,Main.netMode==1?Netplay.Connection.Socket:null);
+        }
         public void Update(ulong tick)
         {
             if(unknown!=0)Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);
             Use.Update();Fishing.Update();Herbs.Update();Mining.Update();
         }
         public void FailClosed(){Available=false;Use.Cancel();Fishing.Cancel();Herbs.Reset();Mining.Clear();Report("自动采集已停止，未确认的操作不会重试。");}
+        public void UpdateFailureCleanup(ulong tick)
+        {
+            // The shared Runtime retains this session identity only for the
+            // existing selection/ItemCheck lease. No chooser or tool planner runs.
+            if(unknown!=0)Items.Ownership.HoldInterruptedSource(Runtime.Generation,unknown);
+            Use.UpdateFailureCleanup();
+        }
         internal void Report(string message){if(Error==message)return;Error=message;report=true;}
         internal void TakeFeedback(Action<string> display){foreach(var s in Settings)s.TakeFeedback(display);if(report){report=false;display(Error);}}
         private void Exit(object sender,EventArgs e){AppDomain.CurrentDomain.ProcessExit-=Exit;foreach(var s in Settings)s.Stop(750);}

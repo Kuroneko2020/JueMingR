@@ -1,5 +1,6 @@
 # One selector/leaf contract consumed by the formal runner and native entry.
 # Selector rows clear only fixture shortcuts, never SDK/Content/build identity.
+selector	JMR_WEAPON_EFFECT_ORACLE_ONLY
 selector	JUEMINGR_STRATEGY_ONLY
 selector	JUEMINGR_FOUNDATION_ONLY
 selector	JUEMINGR_FOUNDATION_STRATEGY_ONLY
@@ -147,3 +148,35 @@ leaf	NpcWorkerCatalogue	worker-catalogue
 leaf	NpcWorkerLifetime	worker-lifetime
 leaf	NpcLegalCoverage	worker-legal
 leaf	NpcLongCoverage	worker-long
+leaf	NpcReviewedStool	worker-reviewed-stool
+leaf	NpcReviewedParticle	worker-reviewed-particle
+leaf	RuntimeFailureCpu	runtime-failure-initial
+leaf	RuntimeFailureActiveCpu	runtime-failure-active
+leaf	JourneyCloseCpu	journey-close
+leaf	RuntimeFailureToolsCpu	runtime-failure-tools
+leaf	RuntimeFailureQuickCpu	runtime-failure-quick
+leaf	RuntimeFailureLoansCpu	runtime-failure-loans
+leaf	RuntimeFailureWorldCpu	runtime-failure-world
+leaf	RuntimeFailureBuildCpu	runtime-failure-build
+leaf	RuntimeFailureBuildManualCpu	runtime-failure-build-manual
+leaf	RuntimeFailureBuildWorldCpu	runtime-failure-build-world
+leaf	RuntimeFailureBuildReceiptCpu	runtime-failure-build-receipt
+leaf	CombatTerrainKnowledgeCpu	combat-terrain-knowledge
+leaf	CombatShotFacingCpu	combat-shot-facing
+leaf	CombatShotBirthOrderCpu	combat-shot-birth-order
+leaf	CombatNailDetachCpu	combat-nail-detach
+leaf	CombatEffectsNailCpu	effects-nail
+leaf	CombatEffectsPiranhaCpu	effects-piranha
+leaf	CombatEffectsPhoenixCpu	effects-phoenix
+leaf	CombatEffectsSpecialArrowCpu	effects-special-arrow
+leaf	CombatEffectsAttachedShotCpu	effects-attached-shot
+leaf	CombatEffectsPhantasmEchoCpu	effects-phantasm-echo
+leaf	CombatEffectsBetsyFlameCpu	effects-betsy-flame
+leaf	CombatEffectsArcSwingCpu	effects-arc-swing
+leaf	CombatEffectsHomingEffectCpu	effects-homing-effect
+leaf	CombatEffectsJoustingLanceCpu	effects-jousting-lance
+leaf	CombatEffectsWhipStarCpu	effects-whip-star
+leaf	CombatEffectsThornCpu	effects-thorn
+leaf	DirectionalControl	directional-control
+leaf	NpcSelectedContinuation	npc-selected-continuation
+leaf	TerrainLine	terrain-line

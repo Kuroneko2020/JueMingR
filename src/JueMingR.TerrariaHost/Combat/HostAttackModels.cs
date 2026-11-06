@@ -25,6 +25,49 @@ namespace JueMingR.TerrariaHost.Combat
             if(item.type==3007){origin.X-=4*player.direction;origin.Y-=2*player.gravDir;directionDependent=true;}
             return origin;
         }
+        internal static int CommonFacing(Player player,Vector2 origin,Vector2 logicalAim)
+        {
+            // Match the integer cursor actually borrowed by CombatCursorScope,
+            // then vanilla Main.MouseWorld's gravity restoration. Facing reads
+            // that logical point, before Shoot applies any muzzle displacement.
+            var v=HostDirectionalControl.Cursor(player,logicalAim)-origin;if(v!=Vector2.Zero)v.Normalize();
+            return Vector2.Dot(Vector2.UnitX.RotatedBy(player.fullRotation),v)>0?1:-1;
+        }
+        private static float MuzzleX(Item item){return item.type==281 || item.type==986?6:item.type==3007?-4:0;}
+        internal static bool CandidateBirth(Item item){return item!=null && (item.type==3859 || MuzzleX(item)!=0);}
+        internal static Vector2 OtherMuzzleOrigin(Player player,Item item,Vector2 preparedOrigin)
+        {return preparedOrigin-Vector2.UnitX*(2*MuzzleX(item)*player.direction);}
+        internal static Vector2 NativeLaunchOrigin(Player player,Item item,Vector2 preparedOrigin,Vector2 aim,out int facing)
+        {
+            // preparedOrigin may already contain a future player displacement.
+            // Recover Shoot's pre-muzzle mounted point from that same pose;
+            // computing facing from the displaced muzzle would be circular.
+            var common=player.RotatedRelativePoint(player.MountedCenter)+(preparedOrigin-LaunchOrigin(player,item));
+            facing=item.type==3611?player.direction:CommonFacing(player,common,aim);
+            return preparedOrigin+Vector2.UnitX*(MuzzleX(item)*(facing-player.direction));
+        }
+        internal static Vector2 NativeLaunchVelocity(Player player,Vector2 origin,Vector2 aim,float speed,int facing)
+        {
+            bool fallback;var velocity=HostThornAttack.BirthVelocity(player,origin,aim,speed,out fallback);
+            return fallback?Vector2.UnitX*(facing*speed):velocity;
+        }
+        internal readonly struct BirthInputs
+        {
+            private readonly Player player;private readonly Item item;private readonly Vector2 origin,screen,aim;
+            private readonly int facing,height;private readonly float rotation,gravity;
+            internal BirthInputs(Player player,Item item,Vector2 preparedOrigin,Vector2 aim)
+            {
+                this.player=CandidateBirth(item)?player:null;this.item=item;this.aim=aim;screen=Main.screenPosition;height=Main.screenHeight;rotation=player.fullRotation;gravity=player.gravDir;
+                origin=NativeLaunchOrigin(player,item,preparedOrigin,aim,out facing);
+            }
+            internal bool Current(Player current,Item weapon)
+            {
+                if(player==null)return true;
+                if(!ReferenceEquals(player,current) || !ReferenceEquals(item,weapon) || screen!=Main.screenPosition || height!=Main.screenHeight || rotation!=current.fullRotation || gravity!=current.gravDir)return false;
+                int direction;var now=NativeLaunchOrigin(current,weapon,LaunchOrigin(current,weapon),aim,out direction);
+                return direction==facing && Vector2.DistanceSquared(now,origin)<=4;
+            }
+        }
         internal static bool TryResolved(int projectile,float speed,int weaponType,out AttackMotion motion)
         {
             motion=default(AttackMotion);Projectile sample;

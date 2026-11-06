@@ -7,6 +7,7 @@ namespace JueMingR.Platform.Runtime
     {
         private readonly IGameSessionProbe sessionProbe;
         private readonly List<IRuntimeFeature> features = new List<IRuntimeFeature>();
+        private readonly HashSet<IRuntimeFeature> failedCleanup = new HashSet<IRuntimeFeature>();
         private bool sessionActive;
         private bool observed;
         private object sessionIdentity;
@@ -18,6 +19,11 @@ namespace JueMingR.Platform.Runtime
         }
 
         public long Generation { get; private set; }
+        public bool HasFailed { get; private set; }
+        // This is identity retention for an existing return/receipt, never an
+        // action permit. The generation is retired only at a real session edge.
+        public bool HasRetainedSession { get { return sessionActive; } }
+        public Exception CleanupFailure { get; private set; }
         public void AddFeature(IRuntimeFeature feature)
         {
             if (observed) throw new InvalidOperationException("Runtime composition is frozen before its first observation.");
@@ -28,7 +34,7 @@ namespace JueMingR.Platform.Runtime
 
         public bool IsSessionActive
         {
-            get { return sessionActive; }
+            get { return sessionActive && !HasFailed; }
         }
 
         public void Update(ulong updateTick)
@@ -45,8 +51,31 @@ namespace JueMingR.Platform.Runtime
             }
             catch
             {
-                InvalidateSession();
-                foreach (IRuntimeFeature feature in features) FailFeatureClosed(feature);
+                FailClosed();
+                // Failure to observe is not evidence of a session edge. Do not
+                // pump cleanup or retire identity this tick. Feature.FailClosed
+                // still revokes intent and returns under its own exact contract.
+                return;
+            }
+
+            if (HasFailed)
+            {
+                // A common failure is terminal for this composition, including
+                // before its first session and after a later world replacement.
+                // Observe only identity edges and explicitly owned finite returns.
+                if (!active || sessionActive && !ReferenceEquals(identity, sessionIdentity)) InvalidateSession();
+                if (sessionActive)
+                    foreach (IRuntimeFeature feature in features)
+                    {
+                        var cleanup = feature as IRuntimeFailureCleanup;
+                        if (cleanup == null || failedCleanup.Contains(feature)) continue;
+                        try { cleanup.UpdateFailureCleanup(updateTick); }
+                        catch (Exception exception)
+                        {
+                            failedCleanup.Add(feature);
+                            if (CleanupFailure == null) CleanupFailure = exception;
+                        }
+                    }
                 return;
             }
 
@@ -89,16 +118,27 @@ namespace JueMingR.Platform.Runtime
             }
         }
 
-        private static void FailFeatureClosed(IRuntimeFeature feature)
+        public void FailClosed()
         {
-            // The feature owns terminal failure and cleanup; this runtime has no failure latch.
+            if (HasFailed) return;
+            // Withdraw admission before callbacks: a reentrant command cannot
+            // start work while another owner is still returning its native loan.
+            HasFailed = true;
+            observed = true;
+            foreach (IRuntimeFeature feature in features) FailFeatureClosed(feature);
+        }
+
+        private void FailFeatureClosed(IRuntimeFeature feature)
+        {
             try
             {
                 feature.FailClosed();
             }
-            catch
+            catch (Exception exception)
             {
-                // Contain the callback exception only; this does not prove cleanup succeeded.
+                // Other owners still receive cleanup. Preserve the first failure
+                // rather than describing an incomplete cleanup as successful.
+                if (CleanupFailure == null) CleanupFailure = exception;
             }
         }
     }

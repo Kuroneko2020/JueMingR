@@ -20,9 +20,9 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatWorkerChecks
     {
 #if JMR_CONDITIONAL_RESEARCH
-        internal static readonly int ExpectedProtocol=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_EXPECTED_PROTOCOL")??"139");
+        internal static readonly int ExpectedProtocol=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_EXPECTED_PROTOCOL")??"141");
 #else
-        internal static readonly int ExpectedProtocol=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_EXPECTED_PROTOCOL")??"39");
+        internal static readonly int ExpectedProtocol=int.Parse(Environment.GetEnvironmentVariable("JUEMINGR_NPC_EXPECTED_PROTOCOL")??"41");
 #endif
         internal const int PointBytes=75;
         private static readonly Main weatherOracle=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));
@@ -34,7 +34,7 @@ namespace NativeWorldTextProbe
         }
         private const BindingFlags Flags=BindingFlags.Static|BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public;
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void Run(string output,bool catalogue=false,bool linkedOnly=false,bool lifetimeOnly=false,bool assetsOnly=false,bool randomOnly=false,bool playerOnly=false,bool entityOnly=false,bool birthOnly=false,bool contextOnly=false,bool immunityOnly=false,bool lifecycleOnly=false,bool fieldsOnly=false,bool transportOnly=false,bool productionOnly=false,string content=null,bool preparationOnly=false,bool menuOnly=false,bool snapshotOnly=false,bool longCoverageOnly=false,bool legalOnly=false)
+        internal static void Run(string output,bool catalogue=false,bool linkedOnly=false,bool lifetimeOnly=false,bool assetsOnly=false,bool randomOnly=false,bool playerOnly=false,bool entityOnly=false,bool birthOnly=false,bool contextOnly=false,bool immunityOnly=false,bool lifecycleOnly=false,bool fieldsOnly=false,bool transportOnly=false,bool productionOnly=false,string content=null,bool preparationOnly=false,bool menuOnly=false,bool snapshotOnly=false,bool longCoverageOnly=false,bool legalOnly=false,string reviewedNative=null)
         {
             output=Path.GetFullPath(output);
             Directory.CreateDirectory(output);
@@ -110,6 +110,14 @@ namespace NativeWorldTextProbe
             var capture=wire.GetMethod("Capture",Flags);
             if(lifetimeOnly){NativeScopeDispatch.Enter("worker-lifetime");NativeCombatWorkerBoundaryChecks.ParentExit(layout);return;}
             Initialize();
+            // These explicit original-stage checks own their complete oracle;
+            // they cannot fall through to the broad default Worker comparison.
+            if(reviewedNative!=null)
+            {
+                if(reviewedNative=="stool"){NativeScopeDispatch.Enter("worker-reviewed-stool");NativeCombatReviewedNativeChecks.Stool(host,layout,output);return;}
+                if(reviewedNative=="particle"){NativeScopeDispatch.Enter("worker-reviewed-particle");NativeCombatReviewedNativeChecks.Particles(host,layout,output,content);return;}
+                throw new ArgumentException("Unknown reviewed Native scope.",nameof(reviewedNative));
+            }
             if(legalOnly || Environment.GetEnvironmentVariable("JUEMINGR_NPC_LEGAL_COVERAGE")=="1"){NativeScopeDispatch.Enter("worker-legal");NativeCombatLegalCoverageChecks.Run(host,layout,output);return;}
             if(snapshotOnly){NativeScopeDispatch.Enter("worker-snapshot");NativeCombatSnapshotChecks.Run(host);return;}
             if(longCoverageOnly){NativeScopeDispatch.Enter("worker-long");NativeCombatLongCoverageChecks.Run(host,layout,output);return;}

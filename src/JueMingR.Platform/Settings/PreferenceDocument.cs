@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 
 namespace JueMingR.Platform.Settings
@@ -12,17 +13,23 @@ namespace JueMingR.Platform.Settings
         private readonly IPreferenceStorage storage;
         private readonly IPreferenceCodec<T> codec;
         private readonly int quietMilliseconds;
+        private readonly Func<long> nowMilliseconds;
         private readonly Thread worker;
         private PreferenceSnapshot<T> snapshot;
         private bool writable, pending, stopping, cancelled, loadAbandoned;
-        private DateTime due;
+        private long due;
 
         public PreferenceDocument(IPreferenceStorage storage, IPreferenceCodec<T> codec, T defaultValue, int quietMilliseconds = 150)
+            : this(storage, codec, defaultValue, quietMilliseconds, CreateDelayClock())
+        { }
+
+        internal PreferenceDocument(IPreferenceStorage storage, IPreferenceCodec<T> codec, T defaultValue, int quietMilliseconds, Func<long> nowMilliseconds)
         {
             this.storage = storage ?? throw new ArgumentNullException(nameof(storage));
             this.codec = codec ?? throw new ArgumentNullException(nameof(codec));
             if (quietMilliseconds < 0 || quietMilliseconds > 1000) throw new ArgumentOutOfRangeException(nameof(quietMilliseconds));
             this.quietMilliseconds = quietMilliseconds;
+            this.nowMilliseconds = nowMilliseconds ?? throw new ArgumentNullException(nameof(nowMilliseconds));
             snapshot = new PreferenceSnapshot<T>(defaultValue, false, 0, PreferenceStatus.Loading);
             worker = new Thread(Work) { IsBackground = true, Name = "JueMingR preference I/O" };
             worker.Start();
@@ -43,7 +50,10 @@ namespace JueMingR.Platform.Settings
                 if (writable)
                 {
                     pending = true;
-                    due = DateTime.UtcNow.AddMilliseconds(quietMilliseconds);
+                    // This is a relative quiet interval, not an event UTC. The
+                    // private elapsed clock cannot be postponed by a wall-clock
+                    // correction; only a newly accepted revision renews it.
+                    due = nowMilliseconds() + quietMilliseconds;
                     Monitor.PulseAll(gate);
                 }
                 return true;
@@ -110,8 +120,14 @@ namespace JueMingR.Platform.Settings
                     {
                         while (!pending && !stopping) Monitor.Wait(gate);
                         if (cancelled || (stopping && !pending)) return;
-                        while (!stopping && DateTime.UtcNow < due)
-                            Monitor.Wait(gate, Math.Max(1, (int)(due - DateTime.UtcNow).TotalMilliseconds));
+                        while (!stopping)
+                        {
+                            long remaining = due - nowMilliseconds();
+                            if (remaining <= 0) break;
+                            // Sample once per comparison, and bound conversion
+                            // to Monitor's Int32 wait even after long uptime.
+                            Monitor.Wait(gate, (int)Math.Min(1000L, remaining));
+                        }
                         if (cancelled) return;
                         value = snapshot.Value; revision = snapshot.Revision; pending = false;
                     }
@@ -152,6 +168,14 @@ namespace JueMingR.Platform.Settings
                 }
             }
             finally { storage.Dispose(); }
+        }
+
+        private static Func<long> CreateDelayClock()
+        {
+            // Stopwatch owns the platform frequency conversion. These local
+            // milliseconds never enter document bytes or persisted identities.
+            var elapsed = Stopwatch.StartNew();
+            return () => elapsed.ElapsedMilliseconds;
         }
 
         private static PreferenceStatus ReadStatus(PreferenceReadStatus status)

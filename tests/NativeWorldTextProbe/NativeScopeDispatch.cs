@@ -55,6 +55,25 @@ namespace NativeWorldTextProbe
             entered=leaf;
             return leaf;
         }
+        internal static void EnterSelected(string leaf)
+        {
+            // The existing specialist remains usable without a formal named
+            // leaf. An explicit family must enter at its actual Run dispatch,
+            // where a different family is rejected by the same exact guard.
+            if(expected!=null)Enter(leaf);
+        }
+        internal static void RunExclusiveEffectFamily(string family, Action run)
+        {
+            // These are the actual inner shortcuts of the explicitly named
+            // families. A named scope owns the unchanged complete family Run;
+            // restore the caller's process state even when its assertions fail.
+            string previous=Environment.GetEnvironmentVariable("JMR_WEAPON_EFFECT_ORACLE_ONLY");
+            string[] keys={"JMR_PIRANHA_MOTOR_SCENE","JMR_PHOENIX_ORACLE_ONLY","JMR_ATTACHED_SHOT_ONLY","JMR_PHANTASM_BOUNDARY_TRACE","JMR_BETSY_FLAME_ORACLE_ONLY","JMR_ARC_SWING_LEAF","JMR_ARC_SWING_ITEM","JMR_THORN_LEAF","JMR_THORN_ITEM"};
+            var values=new string[keys.Length];
+            for(int i=0;i<keys.Length;i++){values[i]=Environment.GetEnvironmentVariable(keys[i]);Environment.SetEnvironmentVariable(keys[i],null);}
+            try{Environment.SetEnvironmentVariable("JMR_WEAPON_EFFECT_ORACLE_ONLY",family);run();}
+            finally{Environment.SetEnvironmentVariable("JMR_WEAPON_EFFECT_ORACLE_ONLY",previous);for(int i=0;i<keys.Length;i++)Environment.SetEnvironmentVariable(keys[i],values[i]);}
+        }
         internal static void Complete()
         {
             if(expected==null)return;
