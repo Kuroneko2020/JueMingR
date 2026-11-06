@@ -5,8 +5,17 @@ $ErrorActionPreference = 'Stop'
 if($LASTEXITCODE -ne 0){throw 'Native Content dispatch/input checks failed.'}
 & powershell -NoProfile -File (Join-Path $PSScriptRoot 'Invoke-WorkloadCompilationChecks.ps1')
 if($LASTEXITCODE -ne 0){throw 'Actual compilation input checks failed.'}
-& powershell -NoProfile -File (Join-Path $PSScriptRoot 'Invoke-NativeDispatchChecks.ps1')
-if($LASTEXITCODE -ne 0){throw 'Native scope boundary/protocol checks failed.'}
+# This nested mechanism deliberately emits real child protocol tokens. Preserve
+# every physical line with its owner so they cannot sign the outer tool scope.
+$dispatchPreference=$ErrorActionPreference;$dispatchExit=$null
+try{
+    $ErrorActionPreference='Continue';$global:LASTEXITCODE=$null
+    & powershell -NoProfile -File (Join-Path $PSScriptRoot 'Invoke-NativeDispatchChecks.ps1') 2>&1 | ForEach-Object {
+        foreach($line in [regex]::Split([string]$_,'\r\n|\r|\n')){Write-Output ('NATIVE-DISPATCH-MECHANISM: '+$line)}
+    }
+    $dispatchExit=$global:LASTEXITCODE
+}finally{$ErrorActionPreference=$dispatchPreference}
+if($null -eq $dispatchExit -or $dispatchExit -ne 0){throw 'Native scope boundary/protocol checks failed or produced no exit.'}
 Set-StrictMode -Version 2.0
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 . (Join-Path $root 'scripts/workload/Workload.Support.ps1')
