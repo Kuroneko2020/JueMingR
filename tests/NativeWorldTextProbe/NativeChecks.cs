@@ -706,6 +706,11 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeBrowserChecks.Run(true); return 0;
             }
+            if (scope == "AnnouncementNaturalNames" || scope == "AnnouncementOutcomes" || scope=="AnnouncementQueryConsumers")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-natural-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeBrowserChecks.Run(targetScope:scope);return 0;
+            }
             if (scope == "BrowserCpu" || scope == "BrowserVisual")
             {
                 Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-browser-" + Guid.NewGuid().ToString("N"));

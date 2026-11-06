@@ -57,7 +57,7 @@ namespace NativeWorldTextProbe
                 frame.item.TurnToAir(); Require((int)Get(observe(), "ItemType") != 4, "empty frame does not reuse former display contents");
                 TileEntity.ByPosition.Remove(origin); Require((int)Get(observe(), "ItemType") != 4, "missing client entity cannot invent display contents");
                 var hidden = new Tile { type = 395, frameX = 18, frameY = 18 }; hidden.active(true); hidden.invisibleBlock(true); Main.tile[1, 1] = hidden;
-                var invisible = observe(); Require(((List<string>)Get(invisible, "Entries"))[0] == "这里看不见东西" && (bool)Get(invisible, "Literal") && !(bool)Get(invisible, "EmptyAir"), "hidden target preserves the exact Legacy notice without gaining the air cooldown");
+                var invisible = observe(); Require((string)Get(invisible, "LocalMessage") == "这里看不见东西" && Get(invisible,"Issue").ToString()=="NotVisible" && !(bool)Get(invisible, "Literal") && !(bool)Get(invisible, "EmptyAir"), "hidden target is a local-only result, never literal air or public chat");
                 Console.WriteLine("PASS: actual 21 herb stage/style identities, display-frame content/empty/missing/hidden boundaries and Legacy notices.");
             }
             finally { lighting.Unpatch(getColor, HarmonyPatchType.All, lighting.Id); if (hadPrevious) TileEntity.ByPosition[origin] = previous; else TileEntity.ByPosition.Remove(origin); Main.tile[1, 1] = new Tile(); }

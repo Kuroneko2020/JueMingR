@@ -15,10 +15,10 @@ namespace NativeWorldTextProbe
     internal static class NativeBrowserChecks
     {
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        internal static void Run(bool motionPredicate = false)
+        internal static void Run(bool motionPredicate = false, string targetScope = null)
         {
             Require(IntPtr.Size == 4 && typeof(object).Assembly.GetName().Name == "mscorlib", "G04 requires .NET Framework x86");
-            string explicitCandidate = motionPredicate ? Environment.GetEnvironmentVariable("JUEMINGR_BROWSER_CANDIDATE") : null;
+            string explicitCandidate = targetScope != null ? Environment.GetEnvironmentVariable("JUEMINGR_ANNOUNCEMENT_CANDIDATE") : motionPredicate ? Environment.GetEnvironmentVariable("JUEMINGR_BROWSER_CANDIDATE") : null;
             var assembly = Assembly.LoadFrom(explicitCandidate ?? Path.Combine(Program.Repository, "artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
             Console.WriteLine("BROWSER-CANDIDATE " + assembly.Location + " MVID=" + assembly.ManifestModule.ModuleVersionId);
             if (assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeItemCatalog") == null)
@@ -39,7 +39,18 @@ namespace NativeWorldTextProbe
             Recipe.SetupRecipes(); ContentSamples.FixItemsAfterRecipesAreAdded(); MapHelper.Initialize();
             NativeAnnouncementIconChecks.Run(assembly);
             Console.WriteLine("Native aliases: " + string.Join(",", ContentSamples.ItemsByType.Where(p => p.Key > 0 && p.Value.type > 0 && p.Key != p.Value.type).Select(p => p.Key + "->" + p.Value.type)));
+            // Locale changes deliberately retire live catalogue snapshots. Run
+            // these independent fixtures before the aggregate's catalogue owner
+            // exists, rather than invalidating its already prepared sources.
+            if(targetScope==null && !motionPredicate)
+            { NativeNaturalNameChecks.Run(assembly); NativeAnnouncementOutcomeChecks.Run(assembly); }
             object subject = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeItemCatalog"), true);
+            if (targetScope != null)
+            {
+                try { if(targetScope=="AnnouncementNaturalNames")NativeNaturalNameChecks.Run(assembly);else if(targetScope=="AnnouncementOutcomes")NativeAnnouncementOutcomeChecks.Run(assembly);else if(targetScope=="AnnouncementQueryConsumers"){using(var bounded=new NativeNaturalNameChecks.World(assembly))NativeBrowserCompositionChecks.Run(assembly,true);}else throw new ArgumentException("Unknown finite target scope"); }
+                finally { ((IDisposable)subject).Dispose(); }
+                return;
+            }
             if (motionPredicate)
             {
                 try { NativeTargetMotionInputChecks.CameraPredicate(assembly, subject); }

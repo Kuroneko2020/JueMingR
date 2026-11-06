@@ -22,6 +22,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal int ItemType { get; private set; }
         internal int Quantity { get; private set; }
         internal string FallbackName { get; private set; }
+        internal string UnconfirmedMessage { get { return FallbackName + "的内容尚未确认，未发送宣告"; } }
         // The frozen body can remain partially visible after the original
         // clicked cell leaves the viewport. The jar uses its accepted sprite
         // footprint instead of pretending its 1x2 tile body is the whole image.
@@ -132,7 +133,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         }
         internal string Describe(string body)
         {
-            if (!Known) return body + "（内容尚未确认）";
+            // Missing contents are a structured local-only outcome, never an
+            // otherwise successful furniture sentence with a warning appended.
+            if (!Known) return null;
             if (ItemType == 0) return body;
             var entries = new List<string>(); bool omitted = false;
             for (int i = 0; i < facts.Length; i += 2)

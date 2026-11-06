@@ -47,10 +47,14 @@ namespace JueMingR.TerrariaHost.Announcements
         internal void Submit(TargetValue value)
         {
             if (!Enabled || value == null) return;
+            if (value.Issue != TargetIssue.None) { Feedback(value.LocalMessage); return; }
             if (value.UiSlot && value.ItemType <= 0) { Feedback("这里是空槽，未发送宣告"); return; }
-            if (!cooldown.TryTake(clock.ElapsedMilliseconds, value.EmptyAir)) { CooldownFeedback(); return; }
             string text = value.Literal ? SafeChatText.BuildNotice(value.Entries, 1024) : value.JoinItems ? SafeChatText.BuildItems(value.Entries, 1024) : SafeChatText.Build(value.Entries, 1024);
             if (text.Length == 0) { Feedback("目标文字无法安全发送"); return; }
+            // Result failures never enter either success cooldown or any native
+            // chat construction/dispatch path. Do not classify by localized text
+            // or Literal: a confirmed air phrase is an ordinary announcement.
+            if (!cooldown.TryTake(clock.ElapsedMilliseconds, value.EmptyAir)) { CooldownFeedback(); return; }
             try
             {
                 var message = ChatManager.Commands.CreateOutgoingMessage(text);

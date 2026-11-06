@@ -10,10 +10,17 @@ using Terraria.Map;
 
 namespace JueMingR.TerrariaHost.ItemBrowser
 {
+    internal enum TargetIssue { None, EmptySlot, Unreceived, Unconfirmed, Unknown, Overlap, NotVisible }
     internal sealed class TargetValue
     {
         internal int ItemType, Quantity;
         internal bool EmptyAir, UiSlot, Literal, JoinItems;
+        // Formatting (including confirmed air's Literal) is independent of
+        // delivery eligibility. One uncertain primary invalidates the whole
+        // announcement, even when reliable liquid/wire facts also exist.
+        internal TargetIssue Issue;
+        internal string LocalMessage;
+        internal void Reject(TargetIssue issue, string message) { Issue = issue; LocalMessage = message; }
         internal NativeDisplayContents Display;
         internal Tile Placement;
         internal bool WallPlacement;
@@ -32,7 +39,6 @@ namespace JueMingR.TerrariaHost.ItemBrowser
     }
     internal static class NativeTargetObservation
     {
-        private static readonly int[] herbItems = { 313, 314, 315, 316, 317, 318, 2358 };
         private static readonly string[] airPhrases = {
             "这里毛都没有", "这里只有空气", "这里空空如也", "这里什么都没有", "这里啥也没有", "这里只有寂寞", "这里空得很彻底",
             "这里一片安静", "这里没有目标", "这里看起来很干净", "这里什么也没发现", "这里只有风经过", "这里空无一物", "这里没有东西",
@@ -52,6 +58,8 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         {
             var value = new TargetValue { UiSlot = true, ItemType = type > 0 && type < ItemID.Count && quantity > 0 ? type : 0, Quantity = Math.Max(0, quantity) };
             if (value.ItemType > 0) value.Entries.Add(quantity + " 个 " + ItemName(type));
+            else value.Reject(type == 0 || quantity == 0 ? TargetIssue.EmptySlot : TargetIssue.Unknown,
+                type == 0 || quantity == 0 ? "这里是空槽，未发送宣告" : "物品资料无法确认，未发送宣告");
             return value;
         }
         internal static TargetValue World(Vector2 point, NativeItemCatalog catalog, bool announcement)
@@ -59,7 +67,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             catalog.ObserveContext();
             var value = new TargetValue { LocationBound = true, WorldPoint = point,
                 WorldBounds = new Rectangle((int)Math.Floor(point.X / 16) * 16, (int)Math.Floor(point.Y / 16) * 16, 16, 16) };
-            if (Main.mapFullscreen) { value.Literal = true; value.Entries.Add("大地图已打开，无法确定世界目标"); return value; }
+            if (Main.mapFullscreen) { value.Reject(TargetIssue.Unconfirmed, "大地图已打开，无法确定世界目标"); return value; }
             Point position = point.ToPoint();
             for (int i = 0; announcement && i < Main.player.Length && value.Entries.Count < 12; i++)
             {
@@ -80,8 +88,8 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             if (DroppedItems(value, position, announcement)) return value;
             int x = (int)Math.Floor(point.X / 16), y = (int)Math.Floor(point.Y / 16);
             if (Main.tile == null || x < 0 || y < 0 || x >= Main.maxTilesX || y >= Main.maxTilesY || Main.netMode == 1 && (Main.sectionManager == null || !Main.sectionManager.TileLoaded(x, y)))
-            { value.Literal = true; value.Entries.Add("这里的世界资料尚未接收"); return value; }
-            Tile tile = Main.tile[x, y]; if (tile == null) { value.Literal = true; value.Entries.Add("这里暂时无法确认"); return value; }
+            { value.Reject(TargetIssue.Unreceived, "这里的世界资料尚未接收"); return value; }
+            Tile tile = Main.tile[x, y]; if (tile == null) { value.Reject(TargetIssue.Unconfirmed, "这里暂时无法确认"); return value; }
             FreezeTileIdentity(value, tile, x, y);
             // Wires are an explicit product exception, never proof that another
             // dark/echo layer is visible. Keep their result independent below.
@@ -106,18 +114,33 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             if (!visibleTile && !tile.active()) visibleTile = TryJar(point, x, y, echo, out targetTile, out targetX, out targetY, out ambiguousJar);
             if (visibleTile)
             {
-                int herb = Herb(targetTile);
+                NaturalName natural = NativeNaturalNames.Resolve(targetTile);
+                // Descriptive public identity is not a veto on an existing
+                // reliable query placement (e.g. sapling -> native Acorn).
+                // Invalid natural frames still cannot borrow that fallback.
+                bool queryPlacement = !announcement && natural.Handled && natural.ItemType == 0 && natural.Description != null;
                 value.Display = NativeDisplayContents.Capture(targetTile, targetX, targetY);
                 if (targetX != x || targetY != y) FreezeTileIdentity(value, targetTile, targetX, targetY);
                 value.Identity.Add(() => Visible(Main.tile[targetX, targetY], targetX, targetY, Main.ShouldShowInvisibleBlocksAndWalls()));
-                int item = herb > 0 ? herb : catalog.PlacedItem(targetTile);
+                int item = natural.Handled && !queryPlacement ? natural.ItemType : catalog.PlacedItem(targetTile);
                 value.ItemType = value.Display != null && value.Display.ItemType > 0 ? value.Display.ItemType : item;
                 value.Quantity = value.Display != null && value.Display.ItemType > 0 ? value.Display.Quantity : item > 0 ? 1 : 0;
-                string body = item > 0 ? ItemName(item) : value.Display?.FallbackName ?? MapName(targetTile, targetX, targetY) ?? "可见物件（暂无可靠物品对应）";
+                string body = item > 0 ? ItemName(item) : natural.Handled ? natural.Description : value.Display?.FallbackName ?? MapName(targetTile, targetX, targetY);
+                if (value.Display != null && !value.Display.Known)
+                {
+                    // Unknown contents block the entire announcement. Query
+                    // may still know this complete carrier's own item ID;
+                    // StillMatches retains body/entity/visibility validation.
+                    if (announcement) value.ItemType = value.Quantity = 0;
+                    value.Reject(TargetIssue.Unconfirmed, value.Display.UnconfirmedMessage);
+                }
+                else if (string.IsNullOrEmpty(body)) value.Reject(TargetIssue.Unknown, "无法确认这里的物件，未发送宣告");
+                // Keep the original entry position for a bounded cold resolver.
+                // Unknown placeholders are never formatted by the chat consumer.
                 value.Entries.Add(value.Display == null ? body : value.Display.Describe(body));
-                if (herb == 0) FreezePlacement(value, targetTile, targetX, targetY, false, catalog);
+                if ((!natural.Handled || queryPlacement) && (value.Display == null || value.Display.Known || !announcement)) FreezePlacement(value, targetTile, targetX, targetY, false, catalog);
             }
-            else if (ambiguousJar) value.Entries.Add("可见物件（重叠，无法确定目标）");
+            else if (ambiguousJar) value.Reject(TargetIssue.Overlap, "可见物件重叠，无法确定目标，未发送宣告");
             if (lit && tile.liquid > 0 && (!tile.active() || !Main.tileSolid[tile.type] || Main.tileSolidTop[tile.type] || tile.inActive()))
                 value.Entries.Add(tile.liquidType() == 1 ? "熔岩" : tile.liquidType() == 2 ? "蜂蜜" : tile.liquidType() == 3 ? "微光" : "水");
             if (wires.Count > 0) value.Entries.Add(string.Join("、", wires));
@@ -130,15 +153,22 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             {
                 int item = catalog.WallItem(tile.wall); value.ItemType = item; value.Quantity = item > 0 ? 1 : 0;
                 value.Entries.Add(item > 0 ? ItemName(item) : "背景墙");
+                if (item <= 0) value.Reject(TargetIssue.Unknown, "背景墙资料无法确认，未发送宣告");
                 FreezePlacement(value, tile, x, y, true, catalog);
             }
+            // Reliable wires/liquid cannot turn an unseen foreground into a
+            // successful partial declaration. A genuinely selected visible wall
+            // retains its existing independent echo/lighting contract above.
+            if (!visibleTile && tile.active() && value.ItemType == 0 && value.Issue == TargetIssue.None)
+                value.Reject(TargetIssue.NotVisible, "这里看不见东西");
             if (value.Entries.Count == 0)
             {
-                value.EmptyAir = lit && !tile.active() && tile.wall == 0 && tile.liquid == 0;
-                value.Literal = true;
+                value.EmptyAir = value.Issue == TargetIssue.None && lit && !tile.active() && tile.wall == 0 && tile.liquid == 0;
+                value.Literal = value.EmptyAir;
                 // Vary Legacy's air phrases without consuming gameplay RNG.
                 uint choice = unchecked((uint)x * 73856093u ^ (uint)y * 19349663u ^ (uint)Main.GameUpdateCount);
-                value.Entries.Add(value.EmptyAir ? airPhrases[choice % airPhrases.Length] : "这里看不见东西");
+                if (value.EmptyAir && value.Issue == TargetIssue.None) value.Entries.Add(airPhrases[choice % airPhrases.Length]);
+                else if (value.Issue == TargetIssue.None) value.Reject(TargetIssue.NotVisible, "这里看不见东西");
             }
             return value;
         }
@@ -175,14 +205,6 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 tile.wall > 0 && (tile.wall == 318 || tile.fullbrightWall()) || NativeDisplayContents.JarGlows(tile, x, y)) return true;
             try { Color light = Lighting.GetColor(x, y); if (light.R > 0 || light.G > 0 || light.B > 0) return true; } catch { }
             return VisionReveals(tile, x, y);
-        }
-        private static int Herb(Tile tile)
-        {
-            // .8 Lang.BuildMapAtlas identifies all three growth stages by this
-            // style. This names the plant; it does not predict harvest drops.
-            if (tile.type >= 82 && tile.type <= 84)
-            { int style = tile.frameX / 18; return style >= 0 && style < herbItems.Length ? herbItems[style] : 0; }
-            return 0;
         }
         private static bool DroppedItems(TargetValue value, Point position, bool announcement)
         {
@@ -254,7 +276,11 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             int item = value.WallPlacement ? catalog.WallItem(observed.wall) : catalog.PlacedItem(observed);
             value.ItemType = value.Display != null && value.Display.ItemType > 0 ? value.Display.ItemType : item;
             value.Quantity = value.Display != null && value.Display.ItemType > 0 ? value.Display.Quantity : item > 0 ? 1 : 0;
-            if (item > 0) { string name = ItemName(item); value.Entries[value.PlacementEntry] = value.Display == null ? name : value.Display.Describe(name); }
+            if (item > 0)
+            {
+                string name = ItemName(item); value.Entries[value.PlacementEntry] = value.Display == null ? name : value.Display.Describe(name);
+                if (value.Issue == TargetIssue.Unknown) { value.Issue = TargetIssue.None; value.LocalMessage = null; }
+            }
             value.Placement = null; return true;
         }
         private static bool VisionReveals(Tile tile, int x, int y)
