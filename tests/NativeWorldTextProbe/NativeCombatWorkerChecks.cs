@@ -108,25 +108,26 @@ namespace NativeWorldTextProbe
             }
             var wire=host.GetType("JueMingR.TerrariaHost.Combat.Prediction.PredictionWire",true);
             var capture=wire.GetMethod("Capture",Flags);
-            if(lifetimeOnly){NativeCombatWorkerBoundaryChecks.ParentExit(layout);return;}
+            if(lifetimeOnly){NativeScopeDispatch.Enter("worker-lifetime");NativeCombatWorkerBoundaryChecks.ParentExit(layout);return;}
             Initialize();
-            if(legalOnly || Environment.GetEnvironmentVariable("JUEMINGR_NPC_LEGAL_COVERAGE")=="1"){NativeCombatLegalCoverageChecks.Run(host,layout,output);return;}
-            if(snapshotOnly){NativeCombatSnapshotChecks.Run(host);return;}
-            if(longCoverageOnly){NativeCombatLongCoverageChecks.Run(host,layout,output);return;}
-            if(preparationOnly){NativeCombatWorkerPreparationChecks.Run(host,layout,output);return;}
-            if(transportOnly){NativeCombatWorkerTransportChecks.Run(host,layout,output);return;}
-            if(fieldsOnly){NativeCombatWorkerFieldChecks.Run(host);return;}
-            if(lifecycleOnly){NativeCombatWorkerLifecycleChecks.Run(host,layout,output);return;}
-            if(contextOnly){NativeCombatWorkerContextChecks.Run(host);NativeCombatWorkerTagChecks.RemoteTerrain(host,layout,output);return;}
-            if(immunityOnly){NativeCombatWorkerImmunityChecks.Run(host,layout,output);return;}
-            if(birthOnly){NativeCombatWorkerBirthChecks.Run(host,layout,output);return;}
-            if(entityOnly){NativeCombatWorkerEntityChecks.Run(host,layout,output);return;}
-            if(playerOnly){NativeCombatWorkerPlayerChecks.Run(host,layout,output);return;}
-            if(randomOnly){RandomScene(host,layout,output);return;}
-            if(assetsOnly){NativeCombatWorkerAssetChecks.Run(host,layout,output);NativeCombatWorkerAssetChecks.GoreMetadata(host);return;}
-            if(linkedOnly){NativeCombatWorkerLinkedChecks.Run(host,layout,output);return;}
+            if(legalOnly || Environment.GetEnvironmentVariable("JUEMINGR_NPC_LEGAL_COVERAGE")=="1"){NativeScopeDispatch.Enter("worker-legal");NativeCombatLegalCoverageChecks.Run(host,layout,output);return;}
+            if(snapshotOnly){NativeScopeDispatch.Enter("worker-snapshot");NativeCombatSnapshotChecks.Run(host);return;}
+            if(longCoverageOnly){NativeScopeDispatch.Enter("worker-long");NativeCombatLongCoverageChecks.Run(host,layout,output);return;}
+            if(preparationOnly){NativeScopeDispatch.Enter("worker-preparation");NativeCombatWorkerPreparationChecks.Run(host,layout,output);return;}
+            if(transportOnly){NativeScopeDispatch.Enter("worker-transport");NativeCombatWorkerTransportChecks.Run(host,layout,output);return;}
+            if(fieldsOnly){NativeScopeDispatch.Enter("worker-fields");NativeCombatWorkerFieldChecks.Run(host);return;}
+            if(lifecycleOnly){NativeScopeDispatch.Enter("worker-lifecycle");NativeCombatWorkerLifecycleChecks.Run(host,layout,output);return;}
+            if(contextOnly){NativeScopeDispatch.Enter("worker-context");NativeCombatWorkerContextChecks.Run(host);NativeCombatWorkerTagChecks.RemoteTerrain(host,layout,output);return;}
+            if(immunityOnly){NativeScopeDispatch.Enter("worker-immunity");NativeCombatWorkerImmunityChecks.Run(host,layout,output);return;}
+            if(birthOnly){NativeScopeDispatch.Enter("worker-birth");NativeCombatWorkerBirthChecks.Run(host,layout,output);return;}
+            if(entityOnly){NativeScopeDispatch.Enter("worker-entity");NativeCombatWorkerEntityChecks.Run(host,layout,output);return;}
+            if(playerOnly){NativeScopeDispatch.Enter("worker-player");NativeCombatWorkerPlayerChecks.Run(host,layout,output);return;}
+            if(randomOnly){NativeScopeDispatch.Enter("worker-random");RandomScene(host,layout,output);return;}
+            if(assetsOnly){NativeScopeDispatch.Enter("worker-assets");NativeCombatWorkerAssetChecks.Run(host,layout,output);NativeCombatWorkerAssetChecks.GoreMetadata(host);return;}
+            if(linkedOnly){NativeScopeDispatch.Enter("worker-linked");NativeCombatWorkerLinkedChecks.Run(host,layout,output);return;}
             if(!catalogue)NativeCombatTileManifestChecks.Run(output,false);
-            if(catalogue){Catalogue(layout,capture,output);return;}
+            if(catalogue){NativeScopeDispatch.Enter("worker-catalogue");Catalogue(layout,capture,output);return;}
+            NativeScopeDispatch.Enter("worker-integration");
             foreach(bool linked in new[]{false,true})
             {
                 int[] slots=Scene(linked);int selected=linked?1:0;

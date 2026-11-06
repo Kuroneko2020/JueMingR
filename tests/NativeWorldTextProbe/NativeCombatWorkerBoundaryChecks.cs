@@ -32,6 +32,7 @@ namespace NativeWorldTextProbe
         {
             var start=new ProcessStartInfo(Assembly.GetExecutingAssembly().Location,"\""+Program.Repository+"\" --cpu \""+layout+"\" NpcWorkerParentExit")
             {UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=layout,RedirectStandardInput=true,RedirectStandardError=true,RedirectStandardOutput=true};
+            NativeScopeDispatch.PrepareOwnedChild(start);
             using(var parent=Process.Start(start))
             {
                 try

@@ -21,6 +21,8 @@ namespace NativeWorldTextProbe
                 if(args.Length>0 && args[args.Length-1]=="--allow-test-sound")
                 {TestSoundRequested=true;Array.Resize(ref args,args.Length-1);}
                 if (args.Length < 3 || args.Length > 4) throw new ArgumentException("repository Content output [Full|SelectionCpuCosts|SelectionCpuChecks|WorkloadCpu|InformationCpu|GuidanceCpu|GuidanceVisual|DeathCpu|DeathVisual|ExplorationCpu|ExplorationRelease|MapVisual] required");
+                Repository = Path.GetFullPath(args[0]);
+                NativeScopeDispatch.Begin(Repository,args.Length==4?args[3]:"Full");
                 // A formal whole-strategy request owns its scope. Inherited
                 // debug-only variables cannot silently reduce the obligation.
                 // Explicit subscopes retain the original fresh-process boundary.
@@ -56,7 +58,9 @@ namespace NativeWorldTextProbe
                 if(args.Length==4 && args[3]=="NpcPresentationOriginal")return NativeCombatPrivateImageChecks.PresentationOriginal(args[2]);
                 if(args.Length==4 && args[3]=="NpcPrivateValues")return NativeCombatPrivateImageChecks.Run(args[1],args[2]);
                 if(args.Length==4 && args[3]=="NpcPrivateSafety")return NativeCombatPrivateImageChecks.Run(args[1],args[2],true);
-                return Run(args[1], args[2], args.Length == 4 ? args[3] : "Full");
+                int result=Run(args[1], args[2], args.Length == 4 ? args[3] : "Full");
+                if(result==0)NativeScopeDispatch.Complete();
+                return result;
             }
             catch (Exception e)
             {

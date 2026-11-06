@@ -64,6 +64,7 @@ namespace NativeWorldTextProbe
                 Arguments = Quote(Program.Repository) + " " + Quote(content) + " " + Quote(output) + " JourneyPredictionRead",
                 WorkingDirectory = output, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
             };
+            NativeScopeDispatch.PrepareOwnedChild(start);
             using (var child = Process.Start(start))
             {
                 var stdout = child.StandardOutput.ReadToEndAsync(); var stderr = child.StandardError.ReadToEndAsync();

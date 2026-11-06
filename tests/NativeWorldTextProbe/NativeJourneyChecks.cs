@@ -724,6 +724,7 @@ namespace NativeWorldTextProbe
         {
             string exe = Assembly.GetExecutingAssembly().Location;
             var info = new ProcessStartInfo(exe, Quote(Program.Repository) + " " + Quote(content) + " " + Quote(output) + " " + scope) { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Program.Repository };
+            NativeScopeDispatch.PrepareOwnedChild(info);
             return Process.Start(info);
         }
         private static string Quote(string value) { return "\"" + value.Replace("\"", "\\\"") + "\""; }

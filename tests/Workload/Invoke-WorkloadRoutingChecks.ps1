@@ -18,6 +18,12 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+$dispatchPath='tests/NativeWorldTextProbe/NativeScopeDispatch.cs'
+$dispatchRoute=Get-WorkloadRoute @($dispatchPath)
+Assert-Route ($dispatchRoute.unknown.Count -eq 0 -and $dispatchRoute.groups -contains 'combat-host' -and $dispatchRoute.groups -contains 'legacy-worker') 'actual native entry boundary routes its production and worker consumers'
+foreach($consumer in @('native-NpcCaster','native-NpcWorkerFields','native-JourneyCpu','native-BrowserCpu')){
+    Assert-Route ((Get-WorkloadCheckFingerprint ([pscustomobject]@{inputs=@($dispatchPath+':A')}) $consumer) -cne (Get-WorkloadCheckFingerprint ([pscustomobject]@{inputs=@($dispatchPath+':B')}) $consumer)) ('shared native dispatcher invalidates actual consumer '+$consumer)
+}
 $twoFileTools=@('scripts/build-setup-from-existing-pair.ps1','scripts/phase0s/Read-TwoFilePackageMetadata.ps1')
 $deploymentGroups=@('core','package-tools','workload-tools')
 foreach($path in (@('src/JueMingR.Bootstrap/BundlePayload.cs','src/JueMingR.Setup/InstallService.cs','scripts/TwoFileBundle.Support.ps1','tests/TwoFileDistribution/SetupChecks.ps1','tests/TwoFileColdStart/Program.cs','tests/Phase0S/Invoke-TwoFileColdStartChecks.ps1')+$twoFileTools)){

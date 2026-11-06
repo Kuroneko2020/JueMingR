@@ -3,6 +3,10 @@ param()
 $ErrorActionPreference = 'Stop'
 & powershell -NoProfile -File (Join-Path $PSScriptRoot 'Invoke-WorkloadContentChecks.ps1')
 if($LASTEXITCODE -ne 0){throw 'Native Content dispatch/input checks failed.'}
+& powershell -NoProfile -File (Join-Path $PSScriptRoot 'Invoke-WorkloadCompilationChecks.ps1')
+if($LASTEXITCODE -ne 0){throw 'Actual compilation input checks failed.'}
+& powershell -NoProfile -File (Join-Path $PSScriptRoot 'Invoke-NativeDispatchChecks.ps1')
+if($LASTEXITCODE -ne 0){throw 'Native scope boundary/protocol checks failed.'}
 Set-StrictMode -Version 2.0
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 . (Join-Path $root 'scripts/workload/Workload.Support.ps1')
@@ -434,6 +438,8 @@ throw 'Incorrectly returned from a failed process.'
     $cancelCheck=[pscustomobject]@{name='checkpoint-two';executable=$stderrExe;arguments=@('wait',$ready,$stop);project=''}
     $cancel=Start-WorkloadCheckpoint $fixture $batch $cancelCheck 'cancel-command'
     $pipeline=[PowerShell]::Create()
+    $priorCancelKing=$env:JUEMINGR_KING_SLIME
+    $env:JUEMINGR_KING_SLIME='cancel-parent'
     try {
         [void]$pipeline.AddScript('param($support,$exe,$arguments,$receipt) $ErrorActionPreference="Stop"; . $support; Invoke-WorkloadProcess "checkpoint-two" $exe $arguments -Checkpoint $receipt').AddArgument($support).AddArgument($stderrExe).AddArgument($cancelCheck.arguments).AddArgument($cancel)
         $async=$pipeline.BeginInvoke();$deadline=[DateTime]::UtcNow.AddSeconds(5)
@@ -443,12 +449,14 @@ throw 'Incorrectly returned from a failed process.'
         # Stop only this test's own pipeline/native child. This uses the same
         # PowerShell pipeline cancellation boundary as an interrupted runner.
         $pipeline.Stop();try {$null=$pipeline.EndInvoke($async)} catch { }
+        Assert-Evidence ($env:JUEMINGR_KING_SLIME -ceq 'cancel-parent') 'actual pipeline cancellation restores non-suffix parent selector'
         $cancelled=Read-WorkloadJson $cancel.path
         Assert-Evidence ($cancelled.status -ceq 'RUNNING' -and $null -eq $cancelled.exitCode -and $null -eq $cancelled.endedUtc -and -not (Test-WorkloadCheckpointQualified $fixture $cancelled)) 'actual cancelled child has no invented normal exit/end/qualification'
         [IO.File]::WriteAllText(($cancel.path+'.pending'),'{"status":"PASS","exitCode":0}')
         Assert-Evidence ((Read-WorkloadJson $cancel.path).status -ceq 'RUNNING' -and -not (Test-WorkloadCheckpointQualified $fixture $cancelled)) 'unpublished partial writer cannot upgrade original running receipt'
         Assert-Evidence ($null -ne (Restore-WorkloadCheckpointEvidence $fixture $sourceLock $locked 'checkpoint-one' 'signature' ('a'*40))) 'completed sibling remains recoverable after actual next-child cancellation'
     } finally {
+        $env:JUEMINGR_KING_SLIME=$priorCancelKing
         # If the runtime has not already terminated its native child, ask only
         # the fixture PID with this exact executable path to finish itself.
         if([IO.File]::Exists($ready)) {
@@ -632,7 +640,7 @@ throw 'Incorrectly returned from a failed process.'
             $tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $recipeRoot 'scripts/build.ps1'),[ref]$tokens,[ref]$errors)
             $owner=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ieq '$buildArguments'},$true))
             if($errors.Count -or $owner.Count -lt 1){throw 'Tiny recipe parameter owner is ambiguous.'}
-            $solutionPath=$project;$Configuration='Debug';$workRoot=Join-Path $recipeRoot 'artifacts/build/Debug/work';$referencesDirectory='unused';$harmonyReferencesDirectory='unused';$commit='fixture';$BlueprintDiagnostic=$false
+            $solutionPath=$project;$Configuration='Debug';$workRoot=Join-Path $recipeRoot 'artifacts/build/Debug/work';$referencesDirectory='unused';$harmonyReferencesDirectory='unused';$commit='fixture';$BlueprintDiagnostic=$false;$TargetGestureDiagnostic=$false
             $extra=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ceq '$extraOption'},$true))
             if($extra.Count -eq 1){. ([scriptblock]::Create($extra[0].Extent.Text))}
             foreach($assignment in $owner){. ([scriptblock]::Create($assignment.Extent.Text))}

@@ -1,6 +1,8 @@
 . (Join-Path $PSScriptRoot 'Workload.Definitions.ps1')
 . (Join-Path $PSScriptRoot 'Workload.NativeContent.ps1')
 . (Join-Path $PSScriptRoot 'Workload.ReadWindow.ps1')
+. (Join-Path $PSScriptRoot 'Workload.Compilation.ps1')
+. (Join-Path $PSScriptRoot 'Workload.NativeDispatch.ps1')
 # Shared by the existing build and its thin CPU runner. No build/test recursion.
 function Invoke-WorkloadGit {
     param([string] $Root, [string[]] $Arguments)
@@ -150,7 +152,7 @@ function Get-WorkloadRoute {
             '^src/JueMingR.TerrariaHost/World/WorldTileObservation\.cs$|^src/JueMingR.Platform/WorldTargets/WorldTargetObservation\.cs$' { [void]$groups.Add('tools-host'); [void]$groups.Add('world-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); continue }
             '^src/[^/]+/(WorldObjectText|WorldTargets|World|Rendering)/|^tests/(WorldObjectText|WorldTargets)/' { [void]$groups.Add('world-host'); continue }
             '^src/[^/]+/(EntityLabels|Hotkeys|Items|Settings|Biomes)/|^tests/(EntityLabels|Hotkeys|Items|Phase0U|Phase0V)/' { [void]$groups.Add('shared-host'); continue }
-            '^tests/NativeWorldTextProbe/(NativeChecks|NativeInformationChecks|Program|CheckCatalog|NativeStrategyScopes)\.cs$|^tests/NativeWorldTextProbe/.*\.csproj$|^scripts/phase0s/|^scripts/prepare-|^scripts/build-phase0|^scripts/test-phase0|^tests/Phase0|^tests/JueMingR.ArchitectureTests/|^eng/|^src/.*\.(csproj|props|targets)$|^Directory\.Build\.|^global\.json$|^JueMingR\.sln$|^NuGet\.Config$|^\.github/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
+            '^tests/NativeWorldTextProbe/(NativeChecks|NativeInformationChecks|Program|CheckCatalog|NativeStrategyScopes|NativeScopeDispatch)\.cs$|^tests/NativeWorldTextProbe/.*\.csproj$|^scripts/phase0s/|^scripts/prepare-|^scripts/build-phase0|^scripts/test-phase0|^tests/Phase0|^tests/JueMingR.ArchitectureTests/|^eng/|^src/.*\.(csproj|props|targets)$|^Directory\.Build\.|^global\.json$|^JueMingR\.sln$|^NuGet\.Config$|^\.github/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
             default { $unknown += $path }
         }
     }
