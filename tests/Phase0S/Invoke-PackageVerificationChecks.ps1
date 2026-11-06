@@ -151,6 +151,12 @@ function global:git {$global:LASTEXITCODE=0}
     foreach($name in @('TerrariaReferences.baseline.json','Harmony.baseline.json')){Copy-Item (Join-Path $repository ('eng/'+$name)) (Join-Path $buildMini ('eng/'+$name))}
     foreach($name in @('TerrariaRefs','Harmony')){New-Item -ItemType Junction -Path (Join-Path $buildMini ('external/'+$name)) -Target (Join-Path $repository ('external/'+$name))|Out-Null}
     [IO.File]::WriteAllText((Join-Path $buildMini 'JueMingR.sln'),'recorded compile input')
+    # The real identity reader evaluates this inert project; build/structure
+    # dispatch is still recorded below, with no product or game ABI compiled.
+    Copy-Item -LiteralPath (Join-Path $repository 'global.json') -Destination (Join-Path $buildMini 'global.json')
+    $identityProject=Join-Path $buildMini 'tests/JueMingR.ArchitectureTests';[IO.Directory]::CreateDirectory($identityProject)|Out-Null
+    [IO.File]::WriteAllText((Join-Path $identityProject 'JueMingR.ArchitectureTests.csproj'),'<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net472</TargetFramework><PlatformTarget>x86</PlatformTarget><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup><Compile Include="CompileInput.cs" /></ItemGroup></Project>')
+    [IO.File]::WriteAllText((Join-Path $identityProject 'CompileInput.cs'),'internal static class RecordedCompileInput { }')
     [IO.File]::WriteAllText((Join-Path $buildMini '.gitignore'),"artifacts/`n")
     foreach($name in @('prepare-terraria-references.ps1','prepare-harmony.ps1')){[IO.File]::WriteAllText((Join-Path $buildScripts $name),'param([switch]$VerifyOnly)')}
     $buildRecorder=Join-Path $buildMini 'build-recorder.exe'
