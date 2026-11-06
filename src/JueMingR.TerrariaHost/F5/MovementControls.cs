@@ -27,7 +27,7 @@ namespace JueMingR.TerrariaHost.F5
         private static readonly F5RowDescription hold = new F5RowDescription(ActionIds[1], "按住方向键冲刺");
         private static readonly F5RowDescription doubleTap = new F5RowDescription(ActionIds[1], "双击按住方向键冲刺");
         private static readonly F5RowDescription teleport = new F5RowDescription(ActionIds[2], "传送杖点击到物块内时，传送到附近空地");
-        private static readonly F5RowDescription fall = new F5RowDescription(ActionIds[3], "触底前使用可用能力防摔，临时借物及时归还；抓钩由你手动解除");
+        private static readonly F5RowDescription fall = new F5RowDescription(ActionIds[3], "用身上的装备进行防摔操作");
         internal bool ConfigurationExpanded { get; private set; }
         private readonly IMovementControls owner;
         internal MovementControls(IMovementControls owner) { this.owner = owner; }
