@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             try
             {
                 entered=Monitor.TryEnter(exportGate,250);if(!entered || attemptedExport)return;attemptedExport=true;
+                RequireTrustedRoot();
                 // Optional detail is dropped before any byte is written. The
                 // smaller retry is still a complete JSON with explicit loss.
                 byte[] bytes=Encode(true,true,true);
@@ -22,8 +23,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(bytes.Length>TraceByteLimit)bytes=Encode(false,false,true);
                 if(bytes.Length>TraceByteLimit)bytes=Encode(false,false,false);
                 if(bytes.Length>TraceByteLimit)throw new InvalidDataException("Bounded trace exceeded its raw byte allocation.");
-                string directory=Path.Combine(root,"run-"+runId);Directory.CreateDirectory(directory);
-                using(var file=new FileStream(Path.Combine(directory,"trace.json"),FileMode.CreateNew,FileAccess.Write,FileShare.Read))
+                string directory=Path.Combine(root,"run-"+runId);PrepareExportDirectory(directory);
+                string path=Path.Combine(directory,"trace.json");RequireTrustedFile(path);
+                using(var file=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.Read))
                 {file.Write(bytes,0,bytes.Length);file.Flush(true);}
             }
             catch(Exception error)
@@ -32,7 +34,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 try
                 {
                     byte[] bytes=Encoding.UTF8.GetBytes("{\"status\":\"export-failed\",\"runId\":"+Quote(runId)+",\"failure\":"+Quote(failure)+"}");
-                    using(var file=new FileStream(Path.Combine(root,"export-failure-"+runId+".json"),FileMode.CreateNew,FileAccess.Write,FileShare.Read))file.Write(bytes,0,bytes.Length);
+                    string path=Path.Combine(root,"export-failure-"+runId+".json");RequireTrustedFile(path);
+                    using(var file=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.Read))file.Write(bytes,0,bytes.Length);
                 }
                 catch { }
             }

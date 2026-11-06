@@ -10,7 +10,7 @@ All inputs, build output, failures and raw traces stay below this task check roo
 [CmdletBinding()]
 param(
     [string] $OutputDirectory,
-    [ValidateSet('All', 'TargetAssociation')][string] $Scope = 'All'
+    [ValidateSet('All', 'TargetAssociation', 'PathSafety')][string] $Scope = 'All'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -156,6 +156,111 @@ internal static class Program
     }
     private static string SnapshotFiles(string directory)
     {return string.Join("|",Directory.GetFiles(directory,"*",SearchOption.AllDirectories).OrderBy(p=>p,StringComparer.Ordinal).Select(p=>p.Substring(directory.Length)+":"+new FileInfo(p).Length+":"+Hash(p)));}
+    private static string SnapshotTree(string directory)
+    {return string.Join("|",Directory.GetDirectories(directory,"*",SearchOption.AllDirectories).OrderBy(p=>p,StringComparer.Ordinal).Select(p=>"D:"+p.Substring(directory.Length)))+"|"+SnapshotFiles(directory);}
+    private static Fixture At(string path)
+    {
+        var fixture=new Fixture{Root=path,Clock=new Clock()};
+        fixture.Trace=new BlueprintBuildTrace(path,hostFile,"synthetic-recorder-check",fixture.Clock.Read,useTimer:false);
+        BlueprintBuildTrace.BindForTest(fixture.Trace);return fixture;
+    }
+    private static void RejectedRootDoesNotWrite()
+    {
+        string paths=Path.Combine(root,"path-safety");
+        foreach(string name in new[]{"root","ancestor"})
+        {
+            string target=Path.Combine(paths,name+"-target"),before=SnapshotTree(target);
+            string diagnostic=name=="root"?Path.Combine(paths,"root-link"):Path.Combine(paths,"ancestor-link","missing","diagnostic");
+            Require((File.GetAttributes(Path.Combine(paths,name+"-link"))&FileAttributes.ReparsePoint)!=0,"The rejection fixture must be a real filesystem junction.");
+            var fixture=At(diagnostic);SettleClaim(fixture);
+            Require(fixture.Trace.Finished && !fixture.Trace.Accepting,"A reparse root was not rejected.");
+            Require(SnapshotTree(target)==before,"Rejected "+name+" diagnostic path changed the target directory/file set or bytes.");
+        }
+    }
+    private static void PathQualificationAndExport()
+    {
+        string paths=Path.Combine(root,"path-safety");
+        var absent=At(Path.Combine(paths,"ordinary-missing","diagnostic"));SettleClaim(absent);
+        Require(absent.Trace.Finished && (string)ReadJson(Path.Combine(absent.Root,"claim-status.json"))["status"]=="missing-arm","Ordinary missing directories lost their explicit missing-arm status.");
+        var existing=New("existing-status","hostSha256="+hostSha+"\n");
+        string status=Path.Combine(existing.Root,"claim-status.json");File.WriteAllText(status,"preserved-status");string original=Hash(status);
+        SettleClaim(existing);Require(existing.Trace.Accepting && Hash(status)==original,"CreateNew status replaced previous evidence or disabled a valid arm.");
+        existing.Trace.Stop("path-normal-export",true);Exported(existing);
+
+        // Both renames stay inside this fresh check's controlled root. Move a
+        // prebuilt junction into a previously qualified path only after Claim.
+        var late=New("late-path-invalidation","hostSha256="+hostSha+"\n");SettleClaim(late);Require(late.Trace.Accepting,"Late-invalidation fixture did not claim.");
+        string target=Path.Combine(paths,"late-target"),before=SnapshotTree(target);
+        Directory.Move(late.Root,late.Root+"-retained");Directory.Move(Path.Combine(paths,"late-link"),late.Root);
+        late.Trace.Stop("path-changed-after-claim",true);
+        Require(late.Trace.Finished && SnapshotTree(target)==before,"Export or its failure report followed an invalidated root.");
+
+        var child=New("reparse-run-directory","hostSha256="+hostSha+"\n");SettleClaim(child);Require(child.Trace.Accepting,"Run-directory fixture did not claim.");
+        target=Path.Combine(paths,"run-target");before=SnapshotTree(target);
+        Directory.Move(Path.Combine(paths,"run-link"),Path.Combine(child.Root,"run-"+child.Trace.RunId));
+        child.Trace.Stop("reparse-run-directory",true);
+        Require(SnapshotTree(target)==before,"Export followed a pre-existing reparse run directory.");
+    }
+    private static void WritePermissionRefusal()
+    {
+        const string name="real isolated write-denial preserves all original entries and stops the recorder";
+        var fixture=New("denied-write",null);
+        Require(Path.GetFullPath(fixture.Root).StartsWith(root+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase),"The ACL fixture must remain inside this fresh check root.");
+        for(var directory=new DirectoryInfo(fixture.Root);directory!=null;directory=directory.Parent)
+            Require((directory.Attributes&FileAttributes.ReparsePoint)==0,"The ACL fixture may not traverse a reparse point.");
+        var original=Directory.GetAccessControl(fixture.Root);
+        string originalDacl=original.GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access);
+        var aclFacts=new List<string>{"originalAccessRulesModified="+AclAccessRulesModified(original),"originalDacl="+originalDacl};
+        bool restoreRequired=false;
+        try
+        {
+            try
+            {
+                var denied=Directory.GetAccessControl(fixture.Root);
+                denied.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(System.Security.Principal.WindowsIdentity.GetCurrent().User,
+                    System.Security.AccessControl.FileSystemRights.Write,System.Security.AccessControl.AccessControlType.Deny));
+                aclFacts.Add("deniedAccessRulesModifiedBeforePersist="+AclAccessRulesModified(denied));
+                restoreRequired=true;Directory.SetAccessControl(fixture.Root,denied);
+            }
+            catch(UnauthorizedAccessException){Results.Add(new{name,status="NOT_EXECUTED",reason="The isolated ACL could not be installed."});return;}
+            bool refused=false;
+            try{using(var file=new FileStream(Path.Combine(fixture.Root,"permission-probe"),FileMode.CreateNew,FileAccess.Write))file.WriteByte(1);}
+            catch(UnauthorizedAccessException){refused=true;}
+            if(!refused){Results.Add(new{name,status="NOT_EXECUTED",reason="The filesystem did not enforce this user's write-denial rule."});return;}
+            string before=SnapshotTree(fixture.Root);SettleClaim(fixture);
+            Require(fixture.Trace.Finished && !fixture.Trace.Accepting && SnapshotTree(fixture.Root)==before,"A denied write was not bounded or changed original entries.");
+            Results.Add(new{name,status="PASS"});Console.WriteLine("PASS "+name);
+        }
+        finally
+        {
+            if(restoreRequired)
+            {
+                // A clean DirectorySecurity obtained by GetAccessControl has
+                // no modified sections. Framework SetAccessControl can then
+                // persist nothing; merely handing it the old object is not a
+                // restore. Rehydrate the saved access SDDL to mark that exact
+                // section dirty, then require its actual filesystem readback.
+                Directory.SetAccessControl(fixture.Root,original);
+                aclFacts.Add("legacyCleanObjectRestoreMatches="+(Directory.GetAccessControl(fixture.Root).GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access)==originalDacl));
+                var restored=new System.Security.AccessControl.DirectorySecurity();
+                restored.SetSecurityDescriptorSddlForm(originalDacl,System.Security.AccessControl.AccessControlSections.Access);
+                aclFacts.Add("restoredAccessRulesModifiedBeforePersist="+AclAccessRulesModified(restored));
+                Directory.SetAccessControl(fixture.Root,restored);
+                string actualDacl=Directory.GetAccessControl(fixture.Root).GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access);
+                aclFacts.Add("restoredDacl="+actualDacl);aclFacts.Add("actualDaclMatches="+(actualDacl==originalDacl));
+                File.WriteAllLines(Path.Combine(root,"permission-acl-receipt.txt"),aclFacts);
+                Require(actualDacl==originalDacl,"The isolated ACL restoration did not restore the original actual DACL.");
+            }
+        }
+    }
+    private static bool AclAccessRulesModified(System.Security.AccessControl.DirectorySecurity security)
+    {
+        const BindingFlags flags=BindingFlags.Instance|BindingFlags.NonPublic;
+        Type owner=typeof(System.Security.AccessControl.ObjectSecurity);
+        owner.GetMethod("ReadLock",flags).Invoke(security,null);
+        try{return (bool)owner.GetProperty("AccessRulesModified",flags).GetValue(security,null);}
+        finally{owner.GetMethod("ReadUnlock",flags).Invoke(security,null);}
+    }
     private static string SnapshotArrays(BlueprintBuildTrace trace)
     {
         var text=new StringBuilder();foreach(var field in typeof(BlueprintBuildTrace).GetFields(BindingFlags.Instance|BindingFlags.NonPublic).Where(f=>f.FieldType.IsArray).OrderBy(f=>f.Name,StringComparer.Ordinal))
@@ -324,14 +429,24 @@ internal static class Program
         string scope=args.Length>1?args[1]:"All";
         try
         {
+            if(scope=="All" || scope=="PathSafety")
+            {
+                Case("real junction root and ancestor are rejected with zero target directory/file/byte changes",RejectedRootDoesNotWrite);
+                Case("normal missing/status/export paths work; invalidated root and reparse run directory never receive trace or fallback writes",PathQualificationAndExport);
+                WritePermissionRefusal();
+            }
             if(scope=="All")
             {
                 Case("menu preserves arm; first world starts with AutoBuild off/no scene; early stop and restart do not extend it",ArmStartAndRestart);
                 Case("missing, wrong Host and oversized arms are explicit and never consumed",MissingAndWrongArm);
                 Case("pending claim cannot reopen/consume after world exit/change, even on return to the initial world",PendingWorldRetirement);
             }
-            Case("more than 8 targets: retained early events keep stable identity and mark evicted details unknown",RotatedTargetAssociation);
-            Fixture capacity=null;Case("fake 120s window: event saturation, bounded summaries/details, gaps, ordered coverage and <=1MiB raw",()=>capacity=CapacityAndDeadline());
+            Fixture capacity=null;
+            if(scope!="PathSafety")
+            {
+                Case("more than 8 targets: retained early events keep stable identity and mark evicted details unknown",RotatedTargetAssociation);
+                Case("fake 120s window: event saturation, bounded summaries/details, gaps, ordered coverage and <=1MiB raw",()=>capacity=CapacityAndDeadline());
+            }
             if(scope=="All")
             {
                 Case("inactive producers accept no data, read no clock, mutate no arrays and do not re-export",()=>StoppedWorkAndOnceExport(capacity));
@@ -369,6 +484,17 @@ try {
     $probe = Join-Path $outputRoot 'probe.exe'
     [IO.File]::Copy($executables[0].FullName, $probe, $false)
     [IO.File]::Copy(($executables[0].FullName + '.config'), ($probe + '.config'), $false)
+    if ($Scope -eq 'All' -or $Scope -eq 'PathSafety') {
+        $checkPhase = 'junction-fixture'
+        $pathSafetyRoot = Join-Path $runsRoot 'path-safety'
+        [void] [IO.Directory]::CreateDirectory($pathSafetyRoot)
+        foreach ($name in @('root', 'ancestor', 'late', 'run')) {
+            $target = Join-Path $pathSafetyRoot ($name + '-target')
+            [void] [IO.Directory]::CreateDirectory($target)
+            [IO.File]::WriteAllBytes((Join-Path $target 'preserve.bin'), [byte[]] @(0, 1, 128, 255))
+            [void] (New-Item -ItemType Junction -Path (Join-Path $pathSafetyRoot ($name + '-link')) -Target $target -ErrorAction Stop)
+        }
+    }
     $checkPhase = 'execution'
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
