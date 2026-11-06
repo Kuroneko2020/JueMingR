@@ -43,11 +43,11 @@ namespace NativeWorldTextProbe
             // these independent fixtures before the aggregate's catalogue owner
             // exists, rather than invalidating its already prepared sources.
             if(targetScope==null && !motionPredicate)
-            { NativeNaturalNameChecks.Run(assembly); NativeAnnouncementOutcomeChecks.Run(assembly); }
+            { NativeNaturalNameChecks.Run(assembly); NativePalmTargetChecks.Names(assembly); NativeAnnouncementOutcomeChecks.Run(assembly); }
             object subject = Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeItemCatalog"), true);
             if (targetScope != null)
             {
-                try { if(targetScope=="AnnouncementNaturalNames")NativeNaturalNameChecks.Run(assembly);else if(targetScope=="AnnouncementOutcomes")NativeAnnouncementOutcomeChecks.Run(assembly);else if(targetScope=="AnnouncementQueryConsumers"){using(var bounded=new NativeNaturalNameChecks.World(assembly))NativeBrowserCompositionChecks.Run(assembly,true);}else throw new ArgumentException("Unknown finite target scope"); }
+                try { if(targetScope=="AnnouncementNaturalNames")NativeNaturalNameChecks.Run(assembly);else if(targetScope=="PalmNames")NativePalmTargetChecks.Names(assembly);else if(targetScope=="AnnouncementOutcomes")NativeAnnouncementOutcomeChecks.Run(assembly);else if(targetScope=="AnnouncementQueryConsumers"){using(var bounded=new NativeNaturalNameChecks.World(assembly))NativeBrowserCompositionChecks.Run(assembly,true);}else if(targetScope=="ActorGestureConsumers"){using(var bounded=new NativeNaturalNameChecks.World(assembly))NativeBrowserCompositionChecks.Run(assembly,isolatedConsumer:NativeActorGestureChecks.Run);}else if(targetScope=="ActorResourceProofConsumers"){using(var bounded=new NativeNaturalNameChecks.World(assembly))NativeBrowserCompositionChecks.Run(assembly,isolatedConsumer:NativeActorResourceProofChecks.Run);}else if(targetScope=="ActorBeforeProofConsumers"){using(var bounded=new NativeNaturalNameChecks.World(assembly))NativeBrowserCompositionChecks.Run(assembly,isolatedConsumer:NativeActorGestureChecks.BeforeProof);}else if(targetScope=="PalmGeometryConsumers"){using(var bounded=new NativeNaturalNameChecks.World(assembly))NativeBrowserCompositionChecks.Run(assembly,isolatedConsumer:NativePalmTargetChecks.Consumers);}else throw new ArgumentException("Unknown finite target scope"); }
                 finally { ((IDisposable)subject).Dispose(); }
                 return;
             }

@@ -43,6 +43,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             // gate: either enabled chord still owns its new native mouse edge.
             Targets.CanAbsorbAnnouncement = () => !disposed && Targets.Ready && Announcements.Enabled && shell.CanTargetInput;
             Targets.PointerOwned = () => shell.TargetPointerOwned;
+            Targets.PointOwned = shell.TargetPointOwned;
             Targets.FreezeUiOwner = shell.FreezeTargetUi;
             shell.NativeTargetControlOwnsPointer = Targets.NativeControlOwnsPointer;
             page.ConfigurePickHotkey = rect => shell.OpenHotkey("item-browser.query", rect);

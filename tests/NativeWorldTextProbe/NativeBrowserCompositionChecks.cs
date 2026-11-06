@@ -19,7 +19,7 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
         private static int local, network;
         private static string last;
-        internal static void Run(Assembly assembly,bool queryOnly=false)
+        internal static void Run(Assembly assembly,bool queryOnly=false,Action<object> isolatedConsumer=null)
         {
             Main.dedServ = true; try { System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Terraria.Graphics.Capture.CaptureManager).TypeHandle); } finally { Main.dedServ = false; }
             string root = Path.Combine(Terraria.Program.SavePath, "browser-composition"); Directory.CreateDirectory(root);
@@ -44,6 +44,7 @@ namespace NativeWorldTextProbe
                     Require(GetOptional(context, name) != null, "complete browser package retains " + name);
                 Require((bool)Get(Get(browser, "Targets"), "Ready") && (bool)Get(Get(Get(browser, "Locator"), "Receiver"), "Ready"), "complete profile installs both fixed native observation owners");
                 if(queryOnly){NativeAnnouncementOutcomeChecks.QueryConsumers(context,()=>local+network);return;}
+                if(isolatedConsumer!=null){isolatedConsumer(context);return;}
                 var registry = (HotkeyRegistry)Get(keys, "Registry");
                 foreach (string id in new[] { "announcement.send", "announcement.toggle", "item-browser.query" })
                     Require(registry.Actions.Any(a => a.Id == id && a.Context == HotkeyContext.Gameplay) && bindings.Get(id) == null, "shared action is available to both topologies and unbound by default: " + id);
@@ -66,6 +67,9 @@ namespace NativeWorldTextProbe
                 NativeTargetMotionInputChecks.Consumers(context, () => local + network, () => last);
                 NativeTargetOwnerChecks.Buttons(context, () => local + network);
                 NativeAnnouncementOutcomeChecks.QueryConsumers(context,()=>local+network);
+                NativeActorGestureChecks.Run(context);
+                NativeActorResourceProofChecks.Run(context);
+                NativePalmTargetChecks.Consumers(context);
                 object value = assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeTargetObservation").GetMethod("UiItem", Flags).Invoke(null, new object[] { 9, 23 });
                 Main.hideUI = true; local = network = 0; Call(announcements, "Submit", value);
                 Require(local == 0 && network == 0, "disabled announcement has no chat outlet");

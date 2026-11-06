@@ -13,6 +13,8 @@ namespace JueMingR.TerrariaHost.ItemBrowser
     internal sealed class TargetInputSnapshot
     {
         private static readonly FieldInfo ActiveResourceSet = typeof(Terraria.GameContent.UI.ResourceSets.PlayerResourceSetsManager).GetField("_activeSet", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly Type Classic = typeof(Terraria.GameContent.UI.ResourceSets.ClassicPlayerResourcesDisplaySet);
+        private static readonly FieldInfo ClassicAnchor = Classic.GetField("UI_ScreenAnchorX", BindingFlags.NonPublic | BindingFlags.Instance), ClassicLife = Classic.GetField("UIDisplay_LifePerHeart", BindingFlags.NonPublic | BindingFlags.Instance), ClassicMana = Classic.GetField("UIDisplay_ManaPerStar", BindingFlags.NonPublic | BindingFlags.Instance);
         internal struct Slot
         {
             internal Item[] Items;
@@ -97,6 +99,8 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             }
         }
         private Slot[] committed = new Slot[512], building = new Slot[512];
+        private readonly Slot[] actorTrigger = new Slot[512];
+        private int actorTriggerCount;
         private int[] committedBuffs = new int[64], buildingBuffs = new int[64], triggerBuffs = new int[64];
         private int committedBuffCount, buildingBuffCount, triggerBuffCount;
         private int committedCount, buildingCount;
@@ -105,6 +109,13 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private Slot selected;
         private Vector2 triggerPoint;
         private bool checking, currentBlocked;
+        private Vector2 buildingUiPoint, committedUiPoint;
+        private bool buildingUiObserved, committedUiObserved, buildingUiBlocked, committedUiBlocked;
+        private bool buildingResourcesSeen, buildingResourcesFailed, committedResourcesReady;
+        // A same-point actual native UI boundary is the direct proof. An actor
+        // requested at another point needs the separate complete actor-only
+        // geometry gate; another pointer's hover never proves its source.
+        internal bool OriginUiClear { get { return TriggerValid && committedUiObserved && !committedUiBlocked && committedUiPoint == triggerPoint && (committedLayout.ResourceSet == null || committedResourcesReady); } }
         internal bool HasSlot { get; private set; }
         internal bool RejectedSlot { get; private set; }
         internal bool Confirmed { get; private set; }
@@ -119,12 +130,59 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         {
             recording = true; overflow = false; buildingCount = 0; buildingLayout = Layout.Capture();
             currentBlocked = false;
+            buildingUiObserved = buildingResourcesSeen = buildingResourcesFailed = false;
             buildingBuffCount = CaptureBuffs(buildingBuffs); if (buildingBuffCount < 0) overflow = true;
         }
         internal void RecordBlocker(Rectangle rect)
         { AppendBlocker(rect, false); }
         internal void RecordNativeControl(Rectangle rect)
         { AppendBlocker(rect, true); }
+        internal void ObserveUiBoundary(Vector2 point, bool blocked)
+        { if (recording) { buildingUiObserved = true; buildingUiPoint = point; buildingUiBlocked = blocked; } }
+        internal void ResourceProducer(object source, bool ran)
+        {
+            if (!recording || !ReferenceEquals(source,buildingLayout.ResourceSet)) return;
+            // A setting is only a fragment. The active implementation must
+            // return as a whole; GUIBarsDraw may swallow its later exception.
+            buildingResourcesSeen |= ran; buildingResourcesFailed |= !ran;
+        }
+        internal void ResourceFragment(bool ran) { if(recording && !ran) buildingResourcesFailed=true; }
+        internal void ResourceFailure() { if(recording) buildingResourcesFailed=true; }
+        internal void RecordClassicResources(object source)
+        {
+            if (!recording) return;
+            if (buildingLayout.ResourceSet != null && (!ReferenceEquals(source,buildingLayout.ResourceSet) || !buildingResourcesSeen || buildingResourcesFailed)) return;
+            try
+            {
+                // These are Classic's fields prepared by its actual Draw, not
+                // a second screen/layout policy. Enclose the native strict
+                // hover bounds conservatively, including fractional UI points;
+                // ResourceDrawSettings has a separate exact native rectangle.
+                int anchor = (int)ClassicAnchor.GetValue(source), life = (int)(float)ClassicLife.GetValue(source), mana = (int)ClassicMana.GetValue(source);
+                int heartHeight = Terraria.GameContent.TextureAssets.Heart.Value.Height;
+                if (life <= 0 || mana <= 0 || heartHeight <= 0) { ResourceFailure(); return; }
+                Player p = Main.LocalPlayer; int width = p.statLifeMax2 > 200 ? 260 : 26 * p.statLifeMax2 / life;
+                RecordBlocker(new Rectangle(500 + anchor, 32, Math.Max(0, width), heartHeight + (p.statLifeMax2 > 200 ? 26 : 0)));
+                RecordBlocker(new Rectangle(762 + anchor, 30, 24, Math.Max(0, 28 * p.statManaMax2 / mana)));
+            }
+            catch { ResourceFailure(); }
+        }
+        internal bool OwnsContinuationPoint(Vector2 point)
+        {
+            Layout now = Layout.Capture();
+            if (!available || !committedLayout.Matches(now) || !committedLayout.UiOwnersMatch(now) || !BuffsMatch(committedBuffs, committedBuffCount)) return true;
+            if (committedLayout.ResourceSet != null && !committedResourcesReady) return true;
+            for (int i = committedCount - 1; i >= 0; i--) if (committed[i].Contains(point)) return true;
+            if (recording) for (int i = buildingCount - 1; i >= 0; i--) if (building[i].Contains(point)) return true;
+            return committedUiObserved && committedUiBlocked && committedUiPoint == point;
+        }
+        internal bool PureActorOriginClear(Vector2 point)
+        {
+            if (!recording || !StillMatches() || overflow || buildingLayout.ResourceSet != null && (!buildingResourcesSeen || buildingResourcesFailed)) return false;
+            for (int i=0;i<actorTriggerCount;i++) if (actorTrigger[i].Contains(point)) return false;
+            for (int i=0;i<buildingCount;i++) if (building[i].Contains(point)) return false;
+            return !(committedUiObserved && committedUiBlocked && committedUiPoint == point);
+        }
         private void AppendBlocker(Rectangle rect, bool nativeControl)
         {
             if (!recording) return;
@@ -158,6 +216,8 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             if (!complete || overflow || !buildingLayout.Matches(end) || !buildingLayout.UiOwnersMatch(end) || !BuffsMatch(buildingBuffs, buildingBuffCount)) { available = false; return; }
             var old = committed; committed = building; building = old;
             committedCount = buildingCount; committedLayout = buildingLayout; available = true;
+            committedUiObserved = buildingUiObserved; committedUiPoint = buildingUiPoint; committedUiBlocked = buildingUiBlocked;
+            committedResourcesReady = buildingResourcesSeen && !buildingResourcesFailed;
             var oldBuffs = committedBuffs; committedBuffs = buildingBuffs; buildingBuffs = oldBuffs; committedBuffCount = buildingBuffCount;
         }
         internal bool Freeze(Vector2 uiPoint)
@@ -168,6 +228,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             TriggerValid = available && committedLayout.Matches(triggerLayout) && committedLayout.UiOwnersMatch(triggerLayout) && BuffsMatch(committedBuffs, committedBuffCount);
             triggerBuffCount = CaptureBuffs(triggerBuffs);
             if (!TriggerValid) return false;
+            actorTriggerCount = committedCount; Array.Copy(committed, actorTrigger, committedCount);
             // Last drawn slot wins exactly as the visible painting does. An
             // unsupported/empty candidate never falls through to the world.
             for (int i = committedCount - 1; i >= 0; i--)
@@ -179,7 +240,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 Value = RejectedSlot ? null : NativeTargetObservation.UiItem(slot.Type, slot.Stack);
                 return !RejectedSlot;
             }
-            return true;
+            // A completed native UI hover at this same visible point is an
+            // owner even if its family has no slot/blocker geometry receipt.
+            return !committedUiObserved || committedUiPoint != uiPoint || !committedUiBlocked;
         }
         internal bool Confirm(Item[] items, int context, int index)
         {

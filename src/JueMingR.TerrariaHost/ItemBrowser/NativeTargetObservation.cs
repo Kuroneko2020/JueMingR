@@ -15,6 +15,9 @@ namespace JueMingR.TerrariaHost.ItemBrowser
     {
         internal int ItemType, Quantity;
         internal bool EmptyAir, UiSlot, Literal, JoinItems;
+        // Actor identity is distinct from dropped-item/location lifetime. Only
+        // the gesture owner may release its pointer lock after proving UI origin.
+        internal bool ActorIdentity;
         // Formatting (including confirmed air's Literal) is independent of
         // delivery eligibility. One uncertain primary invalidates the whole
         // announcement, even when reliable liquid/wire facts also exist.
@@ -84,7 +87,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 value.Identity.Add(() => ReferenceEquals(Main.npc[slot], npc) && npc.generation == generation && npc.type == type && npc.netID == netId && npc.active && !npc.hide && npc.life > 0 && InView(npc.Hitbox));
                 value.Entries.Add(Name(npc.FullName) + " 生命 " + npc.life + "/" + npc.lifeMax);
             }
-            if (value.Entries.Count != 0) { value.LocationBound = false; if (value.Entries.Count >= 12) value.Entries.Add("目标较多，仅列出前 12 个"); return value; }
+            if (value.Entries.Count != 0) { value.LocationBound = false; value.ActorIdentity = true; if (value.Entries.Count >= 12) value.Entries.Add("目标较多，仅列出前 12 个"); return value; }
             if (DroppedItems(value, position, announcement)) return value;
             int x = (int)Math.Floor(point.X / 16), y = (int)Math.Floor(point.Y / 16);
             if (Main.tile == null || x < 0 || y < 0 || x >= Main.maxTilesX || y >= Main.maxTilesY || Main.netMode == 1 && (Main.sectionManager == null || !Main.sectionManager.TileLoaded(x, y)))
@@ -108,10 +111,26 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 if (targetTile == null || targetTile.type != 698 || targetTile.frameY != 0 || targetTile.frameX != tile.frameX) targetTile = null;
             }
             bool visibleTile = Visible(targetTile, targetX, targetY, echo);
+            if (!tile.active() || tile.type == 323)
+            {
+                PalmHit palm; PalmHitState state = NativePalmGeometry.Resolve(point, out palm);
+                if (state == PalmHitState.Found)
+                {
+                    targetTile = palm.Tile; targetX = palm.X; targetY = palm.Y; value.WorldBounds = palm.Bounds;
+                    visibleTile = Visible(targetTile, targetX, targetY, echo);
+                    if (!visibleTile) value.Reject(TargetIssue.NotVisible, "这里看不见东西");
+                }
+                else
+                {
+                    if (tile.type == 323 && tile.active()) visibleTile = false;
+                    if (state == PalmHitState.Overlap) value.Reject(TargetIssue.Overlap, "可见树形重叠，无法确定目标，未发送宣告");
+                    else if (state == PalmHitState.Unconfirmed) value.Reject(TargetIssue.Unconfirmed, "暂时无法确定这里的目标，未发送宣告");
+                }
+            }
             // The jar's native sprite is 36x44 over a 1x2 tile body. Resolve its
             // static visible footprint only when no foreground was hit; keep
             // liquid/wires/wall observations tied to the original cursor cell.
-            if (!visibleTile && !tile.active()) visibleTile = TryJar(point, x, y, echo, out targetTile, out targetX, out targetY, out ambiguousJar);
+            if (!visibleTile && !tile.active() && value.Issue == TargetIssue.None) visibleTile = TryJar(point, x, y, echo, out targetTile, out targetX, out targetY, out ambiguousJar);
             if (visibleTile)
             {
                 NaturalName natural = NativeNaturalNames.Resolve(targetTile);

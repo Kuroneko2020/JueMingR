@@ -26,6 +26,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private Matrix drawnMatrix;
         private F5Rect visibleClip;
         private bool presented, previousLeft = true, needsNeutral = true;
+        private bool visibleKnown, visibleReceipt;
         private bool leftTail, rightTail;
         private long processedMapping = -1;
         private int armed = -1, armedGeneration;
@@ -42,6 +43,23 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if (!GeometryCurrent()) return false;
             Vector2 point = Pointer();
+            return Layout.Panel.Contains(point.X, point.Y) && visibleClip.Contains(point.X, point.Y);
+        }
+        internal bool OwnsPoint(Vector2 point)
+        {
+            // Pure observation of this owner's last presented geometry. A
+            // pending target itself hides future toolbar drawing, but cannot
+            // retire the still-visible receipt or lend it to another point.
+            var player = Main.LocalPlayer;
+            bool eligible = host.ControlsEnabled && host.ToolbarEnabled && player != null && !player.dead && !player.ghost && player.HeldItem?.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0;
+            if (!eligible) return false;
+            if (leftTail || rightTail || armed >= 0) return true;
+            if (!visibleKnown) return true;
+            if (!visibleReceipt) return false;
+            if (drawnMatrix != Main.UIScaleMatrix ||
+                !Layout.MatchesObservation(PlayerInput.OriginalScreenSize.X, PlayerInput.OriginalScreenSize.Y, Main.UIScaleMatrix.M11, FontAssets.MouseText?.Value,
+                    host.State.Active, ProjectionMode, host.TrimPreviewRevision, host.ProjectionScene.Count != 0) ||
+                !ReferenceEquals(skin, TextureAssets.InventoryBack?.Value) || !ReferenceEquals(pixel, TextureAssets.MagicPixel?.Value)) return true;
             return Layout.Panel.Contains(point.X, point.Y) && visibleClip.Contains(point.X, point.Y);
         }
 
@@ -172,7 +190,18 @@ namespace JueMingR.TerrariaHost.Blueprint
 
         internal void Draw()
         {
-            if (!host.ShowToolbar) { Cancel(); return; }
+            // Process may cancel interaction before another frame is painted.
+            // Only this real presentation entry can publish a known hidden
+            // surface; a successful full Draw publishes visible geometry after
+            // graphics restoration. Exceptions never clear an old picture by
+            // pretending a completed hidden frame.
+            visibleKnown = false;
+            if (!host.ShowToolbar) { Cancel(); visibleReceipt = false; visibleKnown = true; return; }
+            try { DrawCore(); if (presented) { visibleReceipt = visibleKnown = true; } }
+            catch { Cancel(); throw; }
+        }
+        private void DrawCore()
+        {
             var nextFont = FontAssets.MouseText?.Value;
             var nextSkin = TextureAssets.InventoryBack?.Value;
             var nextPixel = TextureAssets.MagicPixel?.Value;
@@ -299,6 +328,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         { return MatchesProjection(w, h, s, f, mode, 0); }
         internal bool MatchesProjection(float w, float h, float s, object f, bool mode, int projection)
         { return Generation > 0 && w == width && h == height && s == scale && ReferenceEquals(f, font) && mode == active && projection == projectionMode && previewRevision == builtPreviewRevision && placedListVisible == builtPlacedListVisible; }
+        internal bool MatchesObservation(float w, float h, float s, object f, bool mode, int projection, long revision, bool placed)
+        { return MatchesProjection(w,h,s,f,mode,projection) && revision == builtPreviewRevision && placed == builtPlacedListVisible; }
         internal bool Ensure(float w, float h, float s, object f, Func<string, float, F5Size> measure, bool mode)
         { return EnsureProjection(w, h, s, f, measure, mode, 0); }
         internal bool EnsureProjection(float w, float h, float s, object f, Func<string, float, F5Size> measure, bool mode, int projection)

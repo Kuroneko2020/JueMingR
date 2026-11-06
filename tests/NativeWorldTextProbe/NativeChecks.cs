@@ -601,10 +601,10 @@ namespace NativeWorldTextProbe
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-combat-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(scope=="CombatRelease"?(Action<object>)CombatRelease:scope=="CombatUiCpu"?(Action<object>)NativeCombatUiChecks.Run:scope=="CombatReportCpu"?(Action<object>)NativeCombatReportChecks.Run:scope=="CombatHitsCpu"?(Action<object>)NativeCombatHitChecks.Run:scope=="CombatFacingCpu"?(Action<object>)NativeCombatFacingChecks.Run:NativeCombatChecks.Run,processing:true,shortFeedback:true,candidateAssembly:scope=="CombatRelease"?Path.Combine(Program.Repository,"artifacts/build/Release/work/bin/JueMingR.TerrariaHost/x86/Release/net472/JueMingR.TerrariaHost.dll"):Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
-            if(scope=="PageCompositionCpu")
+            if(scope=="PageCompositionCpu" || scope=="ActorToolbarConsumers")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-pages-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(NativePageCompositionChecks.Run,processing:true,shortFeedback:true);return 0;
+                NativeQuickItemChecks.Run(scope=="ActorToolbarConsumers"?(Action<object>)NativeActorGestureChecks.ToolbarConsumers:NativePageCompositionChecks.Run,processing:true,shortFeedback:true);return 0;
             }
             if(scope=="BackgroundCpu" || scope=="F5AutomationCpu")
             {
@@ -706,7 +706,7 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeBrowserChecks.Run(true); return 0;
             }
-            if (scope == "AnnouncementNaturalNames" || scope == "AnnouncementOutcomes" || scope=="AnnouncementQueryConsumers")
+            if (scope == "AnnouncementNaturalNames" || scope == "AnnouncementOutcomes" || scope=="AnnouncementQueryConsumers" || scope=="PalmNames" || scope=="ActorGestureConsumers" || scope=="ActorResourceProofConsumers" || scope=="ActorBeforeProofConsumers" || scope=="PalmGeometryConsumers")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-natural-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeBrowserChecks.Run(targetScope:scope);return 0;

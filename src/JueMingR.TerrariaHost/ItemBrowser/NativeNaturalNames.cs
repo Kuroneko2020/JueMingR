@@ -25,6 +25,8 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private static NaturalName Description(Tile tile, string text, int step = 18)
         { return Grid(tile, step) ? new NaturalName(0, text) : Unknown; }
         private static NaturalName Item(int item) { return new NaturalName(item, null); }
+        internal static bool PalmFrame(Tile tile)
+        { return tile != null && tile.type == 323 && tile.frameX >= 0 && tile.frameX <= 220 && tile.frameX % 22 == 0 && tile.frameY >= -16 && tile.frameY <= 16 && tile.frameY % 2 == 0; }
         internal static NaturalName Resolve(Tile tile)
         {
             if (tile == null || !tile.active()) return default(NaturalName);
@@ -88,7 +90,11 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 case 530: return Description(tile, "绿洲植物");
                 case 5: return Description(tile, Language.GetTextValue("MapObject.Tree"), 22);
                 case 20: case 590: case 595: case 615: return Description(tile, Language.GetTextValue("MapObject.Sapling"));
-                case 323: return Description(tile, Language.GetTextValue("MapObject.PalmTree"), 22);
+                case 323:
+                    // Palm X is the sprite style (including cut/root styles);
+                    // Y is a signed even horizontal displacement, not texture Y.
+                    // GrowPalmTree/CheckPalmTree/conversion retain this domain.
+                    return PalmFrame(tile) ? new NaturalName(0, Language.GetTextValue("MapObject.PalmTree")) : Unknown;
                 case 72: return Description(tile, Language.GetTextValue("MapObject.GiantMushroom"), 22);
                 case 32: return Description(tile, "腐化荆棘");
                 case 69: return Description(tile, "丛林荆棘");

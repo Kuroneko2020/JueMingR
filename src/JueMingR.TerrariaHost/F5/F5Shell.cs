@@ -468,10 +468,14 @@ namespace JueMingR.TerrariaHost.F5
             // Claim visible popup buttons/body before native zoom/navigation;
             // do not sample or advance physical edges here. The later popup
             // handles the same geometry and retains the complete gesture tail.
-            if (failed || !State.Visible && BlueprintMaterialsUi?.Visible != true && BlueprintReplacementPopup?.Captured != true || !CanPresentNow) return false;
             MouseState mouse = PlayerInput.MouseInfo;
             Vector2 raw = new Vector2(mouse.X * PlayerInput.RawMouseScale.X, mouse.Y * PlayerInput.RawMouseScale.Y);
             Vector2 point = Vector2.Transform(raw, Matrix.Invert(Main.UIScaleMatrix));
+            return ClaimsPopupPoint(point);
+        }
+        private bool ClaimsPopupPoint(Vector2 point)
+        {
+            if (failed || !State.Visible && BlueprintMaterialsUi?.Visible != true && BlueprintReplacementPopup?.Captured != true || !CanPresentNow) return false;
             return BlueprintReplacementPopup != null && (BlueprintReplacementPopup.Captured || BlueprintReplacementPopup.Contains(point.X, point.Y)) || BlueprintMaterialsUi != null && (BlueprintMaterialsUi.Captured || BlueprintMaterialsUi.Contains(point.X, point.Y)) || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true) || FishingUi != null && (FishingUi.Captured || FishingUi.Contains(point.X,point.Y)) || CaptureUi != null && (CaptureUi.Captured || CaptureUi.Contains(point.X,point.Y)) || RecoveryUi != null && (RecoveryUi.PotionPopup.Captured || RecoveryUi.PotionPopup.Contains(point.X,point.Y)) || StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y) || DeathPopup != null && (DeathPopup.Pressed >= 0 || DeathPopup.ContainsPointer(point.X, point.Y)) || MapPopup != null && (MapPopup.Pressed >= 0 || MapPopup.ContainsPointer(point.X, point.Y)) || FootprintPopup != null && (FootprintPopup.Pressed >= 0 || FootprintPopup.ContainsPointer(point.X, point.Y));
         }
         private bool OtherPointerOwner { get { return information != null && information.Adjustment.Dragging || BlueprintReplacementPopup?.BlockPointer == true || inputState.HotkeyPointerOwned || BlueprintMaterialsUi != null && BlueprintMaterialsUi.OwnsPointer || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true) || BlueprintPlacedUi?.OwnsPointer == true || BlueprintUi != null && BlueprintUi.OwnsPointer || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || MiscUi != null && MiscUi.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer; } }
@@ -483,11 +487,21 @@ namespace JueMingR.TerrariaHost.F5
                 if (failed || !CanPresentNow) return true;
                 Vector2 raw = new Vector2(PlayerInput.MouseInfo.X * PlayerInput.RawMouseScale.X, PlayerInput.MouseInfo.Y * PlayerInput.RawMouseScale.Y);
                 Vector2 point = Vector2.Transform(raw, Matrix.Invert(Main.UIScaleMatrix));
+                return TargetPointOwned(point, false);
+            }
+        }
+        internal bool TargetPointOwned(Vector2 point) { return TargetPointOwned(point, true); }
+        private bool TargetPointOwned(Vector2 point, bool pure)
+        {
+                if (failed || !CanPresentNow) return true;
                 Vector2 screen = PlayerInput.OriginalScreenSize;
                 // Page hover getters describe the previous ProcessInput point.
                 // Their rectangles live inside the fresh main window above;
                 // retain only actual text/capture/tails outside that rectangle.
-                return State.OwnsCurrentPointer(screen.X, screen.Y, Main.UIScaleMatrix.M11, point.X, point.Y) || ClaimsPopupPointer() || blueprint?.Toolbar.HitCurrent() == true ||
+                // The toolbar owner validates its own presented geometry and
+                // business revision without refreshing layout or reading R.
+                bool toolbar = pure ? blueprint?.Toolbar.OwnsPoint(point) == true : blueprint?.Toolbar.HitCurrent() == true;
+                return State.OwnsCurrentPointer(screen.X, screen.Y, Main.UIScaleMatrix.M11, point.X, point.Y) || ClaimsPopupPoint(point) || toolbar ||
                     inputState.HotkeyPointerOwned || notes.CapturesPointer || notes.Overlaps(new F5Rect(point.X, point.Y, 1, 1)) ||
                     information?.Adjustment.Dragging == true || BlueprintReplacementPopup?.BlockPointer == true ||
                     BlueprintPlacedUi?.ConsumeLeft == true || BlueprintPlacedUi?.ConsumeRight == true ||
@@ -499,7 +513,6 @@ namespace JueMingR.TerrariaHost.F5
                     ReforgeUi?.ConsumeLeft == true || ReforgeUi?.ConsumeRight == true || ReforgeUi?.OwnsTextToken == true ||
                     RecoveryUi?.ConsumeLeft == true || RecoveryUi?.ConsumeRight == true || RecoveryUi?.Selecting == true ||
                     items?.ConsumeLeft == true || items?.ConsumeRight == true || items?.Selecting == true;
-            }
         }
         internal Func<bool> FreezeTargetUi()
         {

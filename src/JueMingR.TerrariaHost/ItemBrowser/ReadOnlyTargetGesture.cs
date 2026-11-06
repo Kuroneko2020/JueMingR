@@ -26,7 +26,10 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private readonly HostInputState input;
         private readonly NativeItemCatalog catalog;
         private readonly TargetInputSnapshot snapshot = new TargetInputSnapshot();
+        private readonly NativePalmGeometry palms;
+        private readonly NativeActorUiProof actorUi = new NativeActorUiProof();
         private bool recordingPass, sourceRejected;
+        private bool actorOriginProven;
         private int notificationDepth;
         private Func<bool> uiLease;
         private long tick, expires;
@@ -47,11 +50,12 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private HotkeyChord claimedChord, requestChord;
         private long claimedSample, claimedFrame, requestFocus;
         private bool duplicateClaim;
-        private bool NeedsSnapshot { get { return Busy || QueryBinding?.Invoke() != null && CanPick?.Invoke() == true || AnnouncementBinding?.Invoke() != null && CanAnnounce?.Invoke() == true; } }
+        private bool NeedsSnapshot { get { bool needed = Busy || QueryBinding?.Invoke() != null && CanPick?.Invoke() == true || AnnouncementBinding?.Invoke() != null && CanAnnounce?.Invoke() == true; if (!needed) palms?.Invalidate(); return needed; } }
         internal Func<bool> CanPick { get; set; }
         internal Func<bool> CanAnnounce { get; set; }
         internal Func<bool> CanAbsorbAnnouncement { get; set; }
         internal Func<bool> PointerOwned { get; set; }
+        internal Func<Vector2, bool> PointOwned { get; set; }
         internal Func<Func<bool>> FreezeUiOwner { get; set; }
         internal Func<HotkeyChord> AnnouncementBinding { get; set; }
         internal Func<HotkeyChord> QueryBinding { get; set; }
@@ -64,7 +68,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal bool Busy { get { return picking || pending != 0; } }
         internal ReadOnlyTargetGesture(HostInputState input, NativeItemCatalog catalog)
         {
-            this.input = input; this.catalog = catalog;
+            this.input = input; this.catalog = catalog; palms = new NativePalmGeometry(() => NeedsSnapshot);
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
             TargetGestureTrace.Install(0);
 #endif
@@ -78,9 +82,11 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 // prepared before our late installation. Observe the active
                 // resource implementation's real normal return, at the same UI
                 // boundary before world tooltips can change mouseText.
-                Patch(typeof(Terraria.GameContent.UI.ResourceSets.ClassicPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(AfterResources));
+                Patch(typeof(Terraria.GameContent.UI.ResourceSets.ClassicPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, nameof(BeforeClassicHover), nameof(AfterResources));
                 Patch(typeof(Terraria.GameContent.UI.ResourceSets.FancyClassicPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(AfterResources));
                 Patch(typeof(Terraria.GameContent.UI.ResourceSets.HorizontalBarsPlayerResourcesDisplaySet), "TryToHover", Type.EmptyTypes, null, nameof(AfterResources));
+                foreach(var display in new[]{typeof(Terraria.GameContent.UI.ResourceSets.ClassicPlayerResourcesDisplaySet),typeof(Terraria.GameContent.UI.ResourceSets.FancyClassicPlayerResourcesDisplaySet),typeof(Terraria.GameContent.UI.ResourceSets.HorizontalBarsPlayerResourcesDisplaySet)})
+                    Patch(display,"Draw",Type.EmptyTypes,null,nameof(ResourceRootDrawn),nameof(ResourceRootFinally));
                 Patch(typeof(ItemSlot), "MouseHover", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(Hover), null);
                 Patch(typeof(ItemSlot), "LeftClick", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(Left), null);
                 Patch(typeof(ItemSlot), "RightClick", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(Right), null);
@@ -97,6 +103,14 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 var inventoryDraw = typeof(Main).GetMethod("DrawInventory", BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null);
                 if (inventoryDraw == null) throw new MissingMethodException("Main.DrawInventory");
                 patches.Add(inventoryDraw); harmony.Patch(inventoryDraw, transpiler: Hook(nameof(InventoryButtonsTranspiler)));
+                var resources = typeof(Terraria.GameContent.UI.ResourceSets.ResourceDrawSettings).GetMethod("Draw", new[] { typeof(SpriteBatch), typeof(bool).MakeByRefType() });
+                if (resources == null) throw new MissingMethodException("ResourceDrawSettings.Draw");
+                patches.Add(resources); harmony.Patch(resources, postfix: Hook(nameof(ResourceDrawn)), transpiler: Hook(nameof(ResourceRectTranspiler)), finalizer: Hook(nameof(ResourceFinally)));
+                Patch(typeof(Main), "DrawBuffIcon", new[] { typeof(int), typeof(int), typeof(int), typeof(int) }, null, nameof(ActorBuff));
+                Patch(typeof(Terraria.GameContent.UI.Chat.RemadeChatMonitor), "DrawChat", new[] { typeof(bool) }, nameof(ActorChatBegin), nameof(ActorChat), nameof(ActorChatFinally));
+                Patch(typeof(Terraria.UI.Chat.ChatManager), "DrawColorCodedString", new[] { typeof(SpriteBatch), typeof(ReLogic.Graphics.DynamicSpriteFont), typeof(IEnumerable<Terraria.UI.Chat.PositionedSnippet>), typeof(Vector2), typeof(float), typeof(Vector2), typeof(Vector2), typeof(int).MakeByRefType(), typeof(Color?) }, null, nameof(ActorChatSnippets));
+                Patch(typeof(Terraria.GameContent.UI.Minimap.MinimapFrame), "DrawForeground", new[] { typeof(SpriteBatch) }, null, nameof(ActorMap));
+                palms.Install(harmony, patches);
                 Ready = true; input.ClaimsReadOnlyGesture = Claim; input.ReadOnlyGestureDemand = () => NeedsSnapshot;
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
                 TargetGestureTrace.Install(1);
@@ -209,7 +223,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         }
         private void Request(int kind)
         {
-            pending = kind; preparingPlacement = completed = inPass = seenSlot = uiBlocked = false; hovered = null; expires = tick + 4;
+            pending = kind; preparingPlacement = completed = inPass = seenSlot = uiBlocked = actorOriginProven = false; hovered = null; expires = tick + 4;
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
             TargetGestureTrace.Request(kind, tick, input.Mapping, expires);
 #endif
@@ -226,6 +240,8 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             // mapping. UI is already frozen from a complete visible receipt.
             try { frozen = sourceRejected || seenSlot ? null : NativeTargetObservation.World(Main.MouseWorld, catalog, kind == 2); }
             catch { frozen = null; }
+            actorOriginProven = !sourceRejected && frozen?.ActorIdentity == true && snapshot.OriginUiClear;
+            actorUi.Freeze();
         }
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
         // This diagnostic comparison never replaces Matches or changes its
@@ -269,13 +285,20 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         }
         private bool InputSpaceMatches()
         {
-            // Camera travel does not change the frozen world point. Pointer,
-            // viewport, gravity and UI/world transforms remain distinct gates.
-            return raw.X == PlayerInput.MouseInfo.X && raw.Y == PlayerInput.MouseInfo.Y &&
+            // A frozen actor can wait across another pointer mapping. Delivery
+            // still requires the original point's proof below; waiting never
+            // resamples a target or borrows the new point's hover. Slots and
+            // cold world tiles retain their exact pointer lock.
+            return (!PointerMoved || IsFrozenActor) &&
                 screen == PlayerInput.OriginalScreenSize && matrix == Main.UIScaleMatrix && zoom == Main.GameViewMatrix.ZoomMatrix && mouseScale == PlayerInput.RawMouseScale &&
                 gravity == Main.LocalPlayer.gravDir;
         }
-        private bool UiSpaceMatches() { return !sourceRejected && snapshot.StillMatches() && (uiLease == null || uiLease()) && inventory == Main.playerInventory && chest == Main.LocalPlayer.chest && PointerOwned?.Invoke() != true; }
+        private bool PointerMoved { get { return raw.X != PlayerInput.MouseInfo.X || raw.Y != PlayerInput.MouseInfo.Y; } }
+        private bool CanFollowActor { get { return actorOriginProven && !seenSlot && frozen?.ActorIdentity == true; } }
+        private bool IsFrozenActor { get { return !seenSlot && frozen?.ActorIdentity == true; } }
+        private Vector2 OriginUiPoint { get { return Vector2.Transform(raw * mouseScale, Matrix.Invert(matrix)); } }
+        private static Vector2 CurrentUiPoint { get { return Vector2.Transform(new Vector2(PlayerInput.MouseInfo.X, PlayerInput.MouseInfo.Y) * PlayerInput.RawMouseScale, Matrix.Invert(Main.UIScaleMatrix)); } }
+        private bool UiSpaceMatches() { return !sourceRejected && snapshot.StillMatches() && (uiLease == null || uiLease()) && inventory == Main.playerInventory && chest == Main.LocalPlayer.chest && PointerOwned?.Invoke() != true && (!IsFrozenActor || PointOwned?.Invoke(CurrentUiPoint) != true) && (!CanFollowActor || !PointerMoved || !snapshot.OwnsContinuationPoint(CurrentUiPoint) && !actorUi.Owns(CurrentUiPoint)); }
         private bool Matches() { return RequestMatches() && InputSpaceMatches() && UiSpaceMatches(); }
         private static void BeginPass()
         {
@@ -284,8 +307,11 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             owner?.Trace(3);
 #endif
             if (owner == null) return;
-            if (!owner.NeedsSnapshot) { owner.recordingPass = owner.inPass = false; owner.snapshot.Invalidate(); return; }
-            owner.snapshot.BeginDraw(); owner.recordingPass = true;
+            if (!owner.NeedsSnapshot) { owner.recordingPass = owner.inPass = false; owner.snapshot.Invalidate(); owner.palms.Invalidate(); owner.actorUi.Invalidate(); return; }
+            owner.snapshot.BeginDraw();
+            bool actorDemand = owner.pending == 2 && owner.IsFrozenActor || owner.AnnouncementBinding?.Invoke() != null && (owner.CanAbsorbAnnouncement ?? owner.CanAnnounce)?.Invoke() == true;
+            if (actorDemand) owner.actorUi.Begin(); else owner.actorUi.Invalidate();
+            owner.recordingPass = true;
             owner.inPass = owner.pending != 0 && !owner.completed && owner.Matches();
             owner.uiBoundary = owner.resourceBoundary = owner.uiBlocked = false;
         }
@@ -304,6 +330,29 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             owner?.Trace(5, __runOriginal ? 1 : 0);
 #endif
             if (owner == null || !owner.recordingPass || !owner.uiBoundary) return; owner.resourceBoundary = __runOriginal; owner.uiBlocked |= Main.LocalPlayer.mouseInterface || Main.mouseText;
+        }
+        private static void BeforeClassicHover(object __instance) { if (current?.actorUi.Recording == true) current.snapshot.RecordClassicResources(__instance); }
+        private static void ResourceDrawn(bool __runOriginal) { if (current?.actorUi.Recording == true) current.snapshot.ResourceFragment(__runOriginal); }
+        private static void ResourceRootDrawn(object __instance,bool __runOriginal) { if(current?.actorUi.Recording==true) current.snapshot.ResourceProducer(__instance,__runOriginal); }
+        private static Exception ResourceRootFinally(object __instance,Exception __exception)
+        { if(__exception!=null && current?.actorUi.Recording==true) current.snapshot.ResourceFailure();return __exception; }
+        private static Exception ResourceFinally(Exception __exception)
+        { if(__exception!=null && current?.actorUi.Recording==true) current.snapshot.ResourceFailure();return __exception; }
+        private static void ActorBuff(int __1, int __2, int __3, bool __runOriginal) { current?.actorUi.Buff(__1, __2, __3, __runOriginal); }
+        private static void ActorChat(object __instance, bool __runOriginal) { current?.actorUi.Chat(__instance, __runOriginal); }
+        private static void ActorChatBegin(object __instance) { current?.actorUi.BeginChat(__instance); }
+        private static Exception ActorChatFinally(Exception __exception) { if (__exception != null) current?.actorUi.ChatFailed(); return __exception; }
+        private static void ActorChatSnippets(IEnumerable<Terraria.UI.Chat.PositionedSnippet> __2, Vector2 __3, Color? __8, bool __runOriginal) { current?.actorUi.ChatSnippets(__2, __3, __8, __runOriginal); }
+        private static void ActorMap(Terraria.GameContent.UI.Minimap.MinimapFrame __instance, bool __runOriginal) { current?.actorUi.Map(__instance, __runOriginal); }
+        private static bool ResourceContains(ref Rectangle rectangle, Point point)
+        { if (current?.actorUi.Recording == true) current.snapshot.RecordBlocker(rectangle); return rectangle.Contains(point); }
+        private static IEnumerable<CodeInstruction> ResourceRectTranspiler(IEnumerable<CodeInstruction> instructions)
+        {
+            var code = new List<CodeInstruction>(instructions); int count = 0;
+            var contains = typeof(Rectangle).GetMethod("Contains", new[] { typeof(Point) });
+            foreach (var item in code) if (item.Calls(contains)) { item.opcode = OpCodes.Call; item.operand = typeof(ReadOnlyTargetGesture).GetMethod(nameof(ResourceContains), BindingFlags.NonPublic | BindingFlags.Static); count++; }
+            if (contains == null || count != 1) throw new InvalidOperationException("target-resource-rectangle-callsite-shape");
+            return code;
         }
         private static void Hover(Item[] __0, int __1, int __2)
         {
@@ -419,13 +468,23 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             // World item/NPC tooltips also set mouseText later. Only the actual
             // UI boundary, including life/mana hover, can veto a world target.
             bool complete = __runOriginal && owner.uiBoundary && owner.resourceBoundary;
-            if (owner.inPass) owner.completed = complete && owner.Matches() && (!owner.snapshot.HasSlot || owner.snapshot.Confirmed);
+            // The complete geometry pass can authenticate the original Q even
+            // after a later native mapping R. No mouse state is replayed, and
+            // current R must independently remain free of actual UI owners.
+            if (owner.inPass && complete && owner.IsFrozenActor && !owner.actorOriginProven && owner.PointOwned != null &&
+                !owner.PointOwned(owner.OriginUiPoint) && owner.actorUi.Proves(owner.OriginUiPoint) && owner.snapshot.PureActorOriginClear(owner.OriginUiPoint)) owner.actorOriginProven = true;
+            if (owner.inPass && complete && owner.frozen?.ActorIdentity == true && !owner.seenSlot && !owner.PointerMoved && !owner.uiBlocked && owner.Matches()) owner.actorOriginProven = true;
+            if (owner.inPass && complete && owner.CanFollowActor && owner.PointerMoved && owner.uiBlocked) owner.sourceRejected = true;
+            if (owner.inPass) owner.completed = complete && owner.Matches() && (!owner.IsFrozenActor || !owner.PointerMoved || owner.actorOriginProven) && (!owner.snapshot.HasSlot || owner.snapshot.Confirmed);
+            owner.snapshot.ObserveUiBoundary(CurrentUiPoint, owner.uiBlocked);
             owner.inPass = owner.recordingPass = false;
             owner.snapshot.EndDraw(complete);
+            owner.actorUi.End(complete);
+            owner.palms.CommitVisibleFrame(complete);
         }
         private static Exception PassFinally(Exception __exception)
         {
-            if (__exception != null && current != null) { current.inPass = current.completed = current.recordingPass = false; current.snapshot.EndDraw(false); }
+            if (__exception != null && current != null) { current.inPass = current.completed = current.recordingPass = false; current.snapshot.EndDraw(false); current.actorUi.End(false); current.palms.CommitVisibleFrame(false); }
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
             current?.Trace(8, __exception != null ? 1 : 0);
 #endif
@@ -487,7 +546,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
             Trace(10, (valid ? 1 : 0) | (target != null ? 2 : 0) | (target?.Placement != null ? 4 : 0));
 #endif
-            pending = 0; preparingPlacement = completed = false; frozen = hovered = null; requestChord = null; uiLease = null; snapshot.Retire();
+            pending = 0; preparingPlacement = completed = actorOriginProven = false; frozen = hovered = null; requestChord = null; uiLease = null; snapshot.Retire();
             if (!valid || target == null) { Feedback?.Invoke("目标已变化或被界面遮挡，请重新操作"); if (kind == 1) PickCancelled?.Invoke(); return; }
             if (kind == 1) Picked?.Invoke(target); else Announced?.Invoke(target);
         }
@@ -496,11 +555,11 @@ namespace JueMingR.TerrariaHost.ItemBrowser
 #if JMR_TARGET_GESTURE_DIAGNOSTIC
             Trace(11);
 #endif
-            bool returnPick = Picking; picking = rawPick = inPass = completed = preparingPlacement = false; pending = 0; frozen = hovered = null; requestChord = null; uiLease = null; snapshot.Retire(); if (message != null) Feedback?.Invoke(message); if (returnPick) PickCancelled?.Invoke();
+            bool returnPick = Picking; picking = rawPick = inPass = completed = preparingPlacement = actorOriginProven = false; pending = 0; frozen = hovered = null; requestChord = null; uiLease = null; snapshot.Retire(); if (message != null) Feedback?.Invoke(message); if (returnPick) PickCancelled?.Invoke();
         }
         // Each observed native method can have Blueprint's independent owner.
         // Retiring this lease removes only our own patches and request state.
         public void Dispose()
-        { Ready = false; Cancel(); input.ClaimsReadOnlyGesture = null; input.ReadOnlyGestureDemand = null; foreach (var patch in patches) harmony.Unpatch(patch, HarmonyPatchType.All, Owner); patches.Clear(); if (ReferenceEquals(current, this)) current = null; }
+        { Ready = false; Cancel(); palms.Dispose(); input.ClaimsReadOnlyGesture = null; input.ReadOnlyGestureDemand = null; foreach (var patch in patches) harmony.Unpatch(patch, HarmonyPatchType.All, Owner); patches.Clear(); if (ReferenceEquals(current, this)) current = null; }
     }
 }
