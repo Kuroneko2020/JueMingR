@@ -210,11 +210,40 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool PreparedBuildPriorityCurrent(BuildFlight next,Player p)
         {
             if(!BuildContinuationCurrent(p) || FlightContinuesBuild(next))return true;
-            BlueprintBuildTarget target;BuildOperationPlan plan;
-            // Legality of an already prepared foreign candidate does not
-            // establish its order. Recheck the complete current near domain
-            // immediately before it may acquire another native generation.
-            return TryPreferredBuild(p,out target,out plan)==PreferredBuildSearch.NoRunnable;
+            return PreferredBuildAbsenceCurrent(p);
+        }
+        private bool PreferredBuildAbsenceCurrent(Player p)
+        {
+            // Pick/Acquire reads only already completed current negative
+            // coverage. Pending goes back to the paid Update planner; a Ready
+            // material receipt cannot create another source/search allowance.
+            if(!BuildFocusNearCurrent(p) || repeatedBuild!=null ||
+                activeBuild!=null && !activeBuild.Checked && !activeBuild.Rejected)return false;
+            var group=buildContinuation;var world=BuildFocusWorldBounds(p);
+            foreach(var range in group.Discovery.Ranges)
+            {
+                var owner=range.Owner;
+                if(!projectionScene.Contains(owner) || ProjectionQualificationFailed(owner))continue;
+                var bounds=IntersectBuildBounds(BuildFocusBounds(owner,p),range.Source.Bounds);
+                if(EmptyBuildBounds(bounds))continue;
+                var value=range.Materials;long support;
+                if(!ProjectionQualificationCurrent(owner) || owner.Match==null || range.Index<0 || range.Index>=owner.Match.Ranges.Length ||
+                    !ReferenceEquals(owner.Match.Ranges[range.Index],range) || value==null || value.PreferredGroup!=group.Group ||
+                    value.PreferredRevisit || value.PreferredFrontier || !BuildBoundsContain(value.PreferredCoveredBounds,bounds) ||
+                    value.PreferredVersion!=range.Version || value.PreferredWake!=value.BuildWakeRevision || value.PreferredSupply!=buildSupplyRevision ||
+                    !ProjectionMatchReadCurrent(range,range.RawVersion) || !projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support) ||
+                    support!=value.PreferredSupport ||
+                    (value.PreferredWaits&BlueprintBuildWait.Player)!=0 && value.PreferredPermission!=buildFocusPermissionRevision ||
+                    (value.PreferredWaits&BlueprintBuildWait.Container)!=0 && value.PreferredContainer!=buildContainerRevision ||
+                    (value.PreferredWaits&BlueprintBuildWait.Restoration)!=0 && value.PreferredRestoration!=appearanceRestorationRevision ||
+                    (value.PreferredWaits&BlueprintBuildWait.Dependencies)!=0 && BuildDependencyReleased(value.PreferredDependencySlots) ||
+                    value.PreferredRetryAt!=0 && materialTick>=value.PreferredRetryAt)return false;
+                if(value.PreferredPositionNegatives!=null)foreach(var proof in value.PreferredPositionNegatives.Values)
+                    if(proof.Active && !(proof.Player==MaterialBuildEligibilityRevision && proof.Position==p.position && proof.Reach.Equals(world) &&
+                        proof.Width==p.width && proof.Height==p.height && proof.Direction==p.direction && proof.PulleyDirection==p.pulleyDir && proof.Pulley==p.pulley) &&
+                        !(proof.OutOfReach && (proof.X<world.Left || proof.X>=world.Right || proof.Y<world.Top || proof.Y>=world.Bottom)))return false;
+            }
+            return true;
         }
         private void RememberBuildContinuation(BuildFlight flight)
         {
@@ -427,7 +456,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             var discovery=group.Discovery;
             // Known local transports are positive search routes even while
-            // the shared directory is cold. The directory still owns complete
+            // the shared query is pending. The directory still owns complete
             // near coverage: these hints alone can never prove absence.
             for(var node=buildSources.First;node!=null;node=node.Next)
             {

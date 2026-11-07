@@ -16,6 +16,64 @@ namespace JueMingR.ArchitectureTests
         {
             foreach (string mode in new[] { "future", "corrupt", "read-failed", "unconfirmed" }) ProtectOriginal(mode);
             PairNoticeIsolation();
+            foreach (string mode in new[] { "committed-unconfirmed", "conflict", "committed-throw", "healthy", "retry" }) ReentryProtection(mode);
+        }
+        private static void ReentryProtection(string mode)
+        {
+            string root=Root(), pair=new string('d',64), other=new string('e',64), path=Path.Combine(root,pair+".json");
+            var codec=new OpenedPositionCodec();File.WriteAllBytes(path,codec.Encode(pair,new OpenedPositionIndex(new[]{WorldObject.PositionKey(2,3)})));
+            int totalWrites=0,acquired=0;ReentryStorage first=null;
+            var owner=new OpenedPositionHistory(key=>
+            {
+                var storage=new ReentryStorage(new AtomicFileDocument(Path.Combine(root,key+".json"),OpenedPositionCodec.MaximumBytes,true),
+                    key==pair && Interlocked.Increment(ref acquired)==1?mode:"healthy",()=>Interlocked.Increment(ref totalWrites));
+                if(key==pair && first==null)first=storage;return storage;
+            });
+            bool protect=mode=="committed-unconfirmed" || mode=="conflict" || mode=="committed-throw";
+            try
+            {
+                owner.BeginSession(1);owner.UsePair(pair);Until(()=>{owner.Poll();return owner.Loaded;});owner.Opened(5,6);
+                Until(()=>{owner.Poll();return first.Writes>0 && (protect?owner.Error!=null:owner.Status==PreferenceStatus.Saved);});
+                Require(owner.CommitUnconfirmed==(mode.StartsWith("committed",StringComparison.Ordinal)),"only actual unknown commits retain unconfirmed meaning");
+                owner.TakeBackgroundFailure(); // Acknowledging a notice cannot unlock this pair.
+                owner.EndSession();Until(()=>Volatile.Read(ref first.Disposed)!=0);
+                byte[] main=File.ReadAllBytes(path),backup=File.Exists(path+".bak")?File.ReadAllBytes(path+".bak"):null;
+                int before=Volatile.Read(ref totalWrites);
+                owner.BeginSession(2);owner.UsePair(pair);Until(()=>{owner.Poll();return owner.Loaded;});
+                Require(owner.CommitUnconfirmed==(mode.StartsWith("committed",StringComparison.Ordinal)),"reentry preserves unknown-commit status after handle disposal");
+                owner.Opened(7,8);Require(owner.Contains(WorldObject.PositionKey(7,8)),"protected pair retains session-only facts");
+                owner.EndSession();Until(()=>Volatile.Read(ref acquired)>=2);
+                // Switch to a healthy independent pair and wait for a real save;
+                // serial worker ordering also settles the released second lease.
+                owner.BeginSession(3);owner.UsePair(other);owner.Opened(9,10);
+                Until(()=>{owner.Poll();return owner.Status==PreferenceStatus.Saved && File.Exists(Path.Combine(root,other+".json"));});
+                Require(Volatile.Read(ref totalWrites)==before+(protect?1:2),"only protected reentry rejects a second write; healthy/retry pairs and independent pair still save");
+                if(protect)
+                {
+                    Require(File.ReadAllBytes(path).SequenceEqual(main),"same-pair reentry preserves the post-fault main bytes");
+                    Require(backup==null?!File.Exists(path+".bak"):File.ReadAllBytes(path+".bak").SequenceEqual(backup),"same-pair reentry never rotates recovery backup");
+                    owner.BeginSession(4);owner.UsePair(pair);Until(()=>{owner.Poll();return owner.Loaded;});
+                    Require(owner.Error!=null,"another pair saving cannot unlock the protected pair");
+                }
+                Console.WriteLine("Opened reentry "+mode+": real storage/replace, lease disposed, writes="+totalWrites+"; owner-result fault simulation, not OS fault reproduction");
+            }
+            finally{owner.Stop(5000);}
+        }
+        private sealed class ReentryStorage : IPreferenceStorage
+        {
+            private readonly IPreferenceStorage inner;private readonly string mode;private readonly Action written;internal int Writes,Disposed;
+            internal ReentryStorage(IPreferenceStorage inner,string mode,Action written){this.inner=inner;this.mode=mode;this.written=written;}
+            public PreferenceReadResult Read(){return inner.Read();}
+            public PreferenceWriteResult Write(string identity,byte[] bytes)
+            {
+                int count=Interlocked.Increment(ref Writes);written();
+                if(mode=="conflict")return new PreferenceWriteResult(PreferenceWriteStatus.Conflict,identity,"reentry-conflict",isProtected:true);
+                if(mode=="retry" && count==1)return new PreferenceWriteResult(PreferenceWriteStatus.IoFailure,identity,"reentry-retry");
+                PreferenceWriteResult result=inner.Write(identity,bytes);Require(result.Status==PreferenceWriteStatus.Saved,"fault wrapper first performs an actual confirmed AtomicFileDocument write");
+                if(mode=="committed-throw")throw new IOException("simulated lost owner result after real replace");
+                return mode=="committed-unconfirmed"?new PreferenceWriteResult(PreferenceWriteStatus.IoFailure,result.Identity,"reentry-unconfirmed",true,true):result;
+            }
+            public void Dispose(){inner.Dispose();Interlocked.Exchange(ref Disposed,1);}
         }
         private static void ProtectOriginal(string mode)
         {

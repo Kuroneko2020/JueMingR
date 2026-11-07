@@ -8,7 +8,7 @@ $fixture=Join-Path ([IO.Path]::GetTempPath()) ('JueMingR-dispatch-'+[Guid]::NewG
 $checks=0
 function Assert-Dispatch([bool]$Pass,[string]$Reason){if(!$Pass){throw ('Native dispatch: '+$Reason)};$script:checks++}
 $innerKeys=@('JMR_PIRANHA_MOTOR_SCENE','JMR_PHOENIX_ORACLE_ONLY','JMR_ATTACHED_SHOT_ONLY','JMR_PHANTASM_BOUNDARY_TRACE','JMR_BETSY_FLAME_ORACLE_ONLY','JMR_ARC_SWING_LEAF','JMR_ARC_SWING_ITEM','JMR_THORN_LEAF','JMR_THORN_ITEM')
-$saved=@{};foreach($key in @('JUEMINGR_KING_SLIME','JUEMINGR_PHASED_FLIGHT','JUEMINGR_NPC_LEGAL_COVERAGE','JUEMINGR_UNKNOWN_ONLY','JUEMINGR_WORKLOAD_SCOPE_CONTEXT','JMR_WEAPON_EFFECT_ORACLE_ONLY')+$innerKeys){$saved[$key]=[Environment]::GetEnvironmentVariable($key)}
+$saved=@{};foreach($key in @('JUEMINGR_KING_SLIME','JUEMINGR_PHASED_FLIGHT','JUEMINGR_NPC_LEGAL_COVERAGE','JUEMINGR_UNKNOWN_ONLY','JUEMINGR_WORKLOAD_SCOPE_CONTEXT','JMR_WEAPON_EFFECT_ORACLE_ONLY','JMR_OBSERVATION_ORACLE_ONLY','JUEMINGR_COMBAT_GEOMETRY_CANDIDATE','JUEMINGR_SKY_CANDIDATE')+$innerKeys){$saved[$key]=[Environment]::GetEnvironmentVariable($key)}
 try{
     [IO.Directory]::CreateDirectory($fixture)|Out-Null
     $driver=Join-Path $fixture 'Driver.cs'
@@ -40,8 +40,10 @@ string scope=args[3];
 string family=scope=="CombatEffectsNailCpu"?"nail":scope=="CombatEffectsBetsyFlameCpu"?"betsy-flame":scope=="CombatEffectsArcSwingCpu"?"arc-swing":scope=="CombatEffectsHomingEffectCpu"?"homing-effect":scope=="CombatEffectsJoustingLanceCpu"?"jousting-lance":scope=="CombatEffectsWhipStarCpu"?"whip-star":scope=="CombatEffectsThornCpu"?"thorn":null;
 string leaf=family!=null?"effects-"+family:scope=="NpcCaster"?"caster":scope=="NpcSnowman"?"snowman":scope=="RuntimeFailureCpu"?"runtime-failure-initial":scope=="JourneyCloseCpu"?"journey-close":scope=="CombatShotBirthOrderCpu"?"combat-shot-birth-order":scope=="RuntimeFailureBuildCpu"?"runtime-failure-build":scope=="RuntimeFailureBuildManualCpu"?"runtime-failure-build-manual":scope=="RuntimeFailureBuildWorldCpu"?"runtime-failure-build-world":scope=="RuntimeFailureBuildReceiptCpu"?"runtime-failure-build-receipt":scope=="DirectionalControl"?"directional-control":scope=="NpcSelectedContinuation"?"npc-selected-continuation":scope=="TerrainLine"?"terrain-line":"worker-fields";
 if(Environment.GetEnvironmentVariable("JUEMINGR_KING_SLIME")!=null || Environment.GetEnvironmentVariable("JUEMINGR_PHASED_FLIGHT")!=null || Environment.GetEnvironmentVariable("JUEMINGR_NPC_LEGAL_COVERAGE")!=null || Environment.GetEnvironmentVariable("JMR_WEAPON_EFFECT_ORACLE_ONLY")!=null)throw new Exception("Inherited selector reached the boundary.");
+foreach(string key in new[]{"JMR_OBSERVATION_ORACLE_ONLY","JUEMINGR_COMBAT_GEOMETRY_CANDIDATE","JUEMINGR_SKY_CANDIDATE"})if(Environment.GetEnvironmentVariable(key)!=null)throw new Exception("Formal diagnostic override leaked: "+key);
 if(args[1]=="wrong-leaf")leaf="king-slime";
 if(family!=null) {
+var childInner=new string[inner.Length];for(int i=0;i<inner.Length;i++)childInner[i]=Environment.GetEnvironmentVariable(inner[i]);
 bool failed=false;
 try { NativeScopeDispatch.RunExclusiveEffectFamily(family,()=>{
 foreach(string key in inner)if(Environment.GetEnvironmentVariable(key)!=null)throw new Exception("Inherited inner shortcut reached a complete family: "+key);
@@ -50,7 +52,7 @@ NativeScopeDispatch.EnterSelected(leaf);
 if(args[1]=="inner-fail")throw new Exception("Controlled family assertion failure.");
 if(args[1]=="cancel-wait")Wait(args);
 }); } catch { if(args[1]!="inner-fail")throw;failed=true; }
-foreach(string key in inner)if(Environment.GetEnvironmentVariable(key)!="inner-parent")throw new Exception("Inner selector not restored: "+key);
+for(int i=0;i<inner.Length;i++)if(Environment.GetEnvironmentVariable(inner[i])!=childInner[i])throw new Exception("Inner selector not restored to its admitted child state: "+inner[i]);
 if(Environment.GetEnvironmentVariable("JMR_WEAPON_EFFECT_ORACLE_ONLY")!=null)throw new Exception("Family selector not restored after actual boundary clear.");
 if(failed)return 9;
 } else NativeScopeDispatch.Enter(leaf);
@@ -69,6 +71,7 @@ return 0;
     & $compiler /nologo /target:exe /platform:x86 ('/out:'+$exe) $driver (Join-Path $root 'tests/NativeWorldTextProbe/NativeScopeDispatch.cs')
     if($LASTEXITCODE -ne 0){throw 'Actual native scope boundary compilation failed.'}
     foreach($key in $innerKeys){[Environment]::SetEnvironmentVariable($key,'inner-parent')}
+    $env:JMR_OBSERVATION_ORACLE_ONLY='ownership';$env:JUEMINGR_COMBAT_GEOMETRY_CANDIDATE='different-host.dll';$env:JUEMINGR_SKY_CANDIDATE='different-sky.dll'
     foreach($scope in @('NpcCaster','NpcSnowman','NpcWorkerFields','RuntimeFailureCpu','JourneyCloseCpu','CombatShotBirthOrderCpu','CombatEffectsNailCpu','CombatEffectsCpu','CombatEffectsBetsyFlameCpu','CombatEffectsArcSwingCpu','CombatEffectsHomingEffectCpu','CombatEffectsJoustingLanceCpu','CombatEffectsWhipStarCpu','CombatEffectsThornCpu','RuntimeFailureBuildCpu','RuntimeFailureBuildManualCpu','RuntimeFailureBuildWorldCpu','RuntimeFailureBuildReceiptCpu','DirectionalControl','NpcSelectedContinuation','TerrainLine')){
         $env:JUEMINGR_KING_SLIME='king-parent';$env:JUEMINGR_PHASED_FLIGHT='phase-parent';$env:JUEMINGR_NPC_LEGAL_COVERAGE='legal-parent';$env:JUEMINGR_WORKLOAD_SCOPE_CONTEXT='parent-context';$env:JMR_WEAPON_EFFECT_ORACLE_ONLY='phoenix'
         Invoke-WorkloadProcess ('native-'+$scope) $exe @($root,'ok',$fixture,$scope)

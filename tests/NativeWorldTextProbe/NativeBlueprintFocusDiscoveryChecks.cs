@@ -23,14 +23,27 @@ namespace NativeWorldTextProbe
             var sources=Enumerable.Range(0,33).Select(index=>(BlueprintProjectionSourceRange)constructor.Invoke(new object[]{
                 (long)index,new BlueprintProjectionBounds(index,0,1,1),1L,new[]{(long)(uint)index},new ushort[]{1},new int[]{0},
                 Array.CreateInstance(dependencyType,0),index,0})).ToArray();
-            var table=host.GetType().GetField("buildPhysicalDirectories",BindingFlags.Static|BindingFlags.NonPublic).GetValue(null);
-            var get=table.GetType().GetMethod("GetValue");
-            var factory=Delegate.CreateDelegate(get.GetParameters()[1].ParameterType,host,host.GetType().GetMethod("CreateBuildPhysicalDirectory",F));
-            long builds=(long)Get(host,"BuildFocusDirectoryBuilds"),construction=(long)Get(host,"BuildFocusDirectoryConstructionSteps"),
-                querySteps=(long)Get(host,"BuildFocusDirectorySteps");
-            object first=get.Invoke(table,new object[]{sources,factory}),second=get.Invoke(table,new object[]{sources,factory});
-            Require(ReferenceEquals(first,second) && !(bool)Get(first,"Ready") && (long)Get(host,"BuildFocusDirectoryBuilds")==builds+1,
-                "two owners of the same immutable qualified geometry share one unfinished directory without restarting it");
+            var builderType=typeof(BlueprintProjectionGeometryDirectory).GetNestedType("Builder",BindingFlags.NonPublic);
+            foreach(int count in new[]{0,1})
+            {
+                var tiny=sources.Take(count).ToArray();var small=Activator.CreateInstance(builderType,F,null,new object[]{tiny},null);
+                Require((int)Call(small,"Advance",64)==count && (bool)Get(small,"Ready"),"zero and single-range builders complete without a synthetic parent");
+                var frozen=(BlueprintProjectionGeometryDirectory)Call(small,"Freeze",tiny);
+                Require(frozen.NodeCount==count && frozen.Bytes==72L+count*32L &&
+                    (count==0 || frozen.GetNode(0).Group==0 && frozen.GetNode(0).Left==-1 && frozen.GetNode(0).Right==-1),
+                    "empty and singleton frozen geometry keeps exact leaf identity and byte ownership");
+            }
+            var builder=Activator.CreateInstance(builderType,F,null,new object[]{sources},null);
+            Require(!(bool)Get(builder,"Ready") && (int)Call(builder,"Advance",64)==64 && !(bool)Get(builder,"Ready"),
+                "a 65-node production builder remains genuinely incomplete after its first 64-node worker batch");
+            bool refused=false;
+            try {Call(builder,"Freeze",sources);}catch(TargetInvocationException error){refused=error.InnerException is InvalidOperationException;}
+            Require(refused,"incomplete production geometry cannot be frozen or queried by Host");
+            Require((int)Call(builder,"Advance",64)==1 && (bool)Get(builder,"Ready"),"the next batch pays exactly the final parent node");
+            var first=(BlueprintProjectionGeometryDirectory)Call(builder,"Freeze",sources);
+            Require(ReferenceEquals(first.Sources,sources) && first.NodeCount==65 && (long)Get(builder,"Bytes")==64,
+                "freeze transfers one node array, binds the qualified Sources identity and releases builder storage");
+            long construction=(long)Get(host,"BuildFocusDirectoryConstructionSteps"),querySteps=(long)Get(host,"BuildFocusDirectorySteps");
             var queryType=host.GetType().GetNestedType("BuildFocusNearQuery",BindingFlags.NonPublic);
             var queries=Enumerable.Range(0,2).Select(_=>Activator.CreateInstance(queryType,true)).ToArray();
             foreach(var query in queries)
@@ -54,10 +67,9 @@ namespace NativeWorldTextProbe
                     }
                     updates++;
                     Require((long)Get(host,"BuildFocusDirectorySteps")+(long)Get(host,"BuildFocusDirectoryConstructionSteps")-before<=64,
-                        "directory construction and both owner queries share the unchanged64-step allowance");
-                    if(updates==1)Require(!(bool)Get(first,"Ready") && routes.All(value=>value.Count==0),
-                        "a65-node directory is genuinely Pending after64 construction steps, with no premature owner query");
-                    Require(Math.Abs(routes[0].Count-routes[1].Count)<=1 && updates<=4,
+                        "both owner queries share the unchanged 64-step Host allowance; construction has already completed in the worker");
+                    Require(ReferenceEquals(Get(queries[0],"Directory"),Get(queries[1],"Directory")),"both owners query the same frozen directory without private construction");
+                    Require(Math.Abs(routes[0].Count-routes[1].Count)<=1 && updates<=3,
                         "one-node owner turns converge for both later and earlier owners without starvation");
                 }
                 long stable=(long)Get(host,"BuildFocusDirectorySteps")+(long)Get(host,"BuildFocusDirectoryConstructionSteps");
@@ -65,13 +77,13 @@ namespace NativeWorldTextProbe
                     Require(!(bool)Call(host,"AdvanceBuildFocusNearQuery",query,new Action<int>(_=>throw new InvalidOperationException("stable query emitted again"))),
                         "a completed stable geometric query performs no work");
                 Require(routes.All(value=>value.Count==33 && value.Distinct().Count()==33) &&
-                    (long)Get(host,"BuildFocusDirectoryConstructionSteps")-construction==65 && (long)Get(host,"BuildFocusDirectorySteps")-querySteps==130 &&
-                    (long)Get(host,"BuildFocusDirectoryBuilds")==builds+1 &&
+                    (long)Get(host,"BuildFocusDirectoryConstructionSteps")==construction && (long)Get(host,"BuildFocusDirectorySteps")-querySteps==130 &&
+                    (long)Get(host,"BuildFocusDirectoryBuilds")==0 &&
                     stable==(long)Get(host,"BuildFocusDirectorySteps")+(long)Get(host,"BuildFocusDirectoryConstructionSteps") &&
                     (long)Get(first,"Bytes")==72+65*32 && (long)Get(host,"BuildFocusDirectoryTemporaryBytes")==0,
-                    "the shared segment tree accounts for65 constant construction steps,130 owner node visits,2152 resident bytes and no sort buffer");
+                    "the frozen segment tree accounts for 65 worker construction steps, 130 Host owner node visits, 2152 shared worker bytes and no sort buffer");
                 Console.WriteLine("BlueprintFocusDirectory component physicalGroups=33 nodes=65 owners=2 updates="+updates+
-                    " builds=1 constructionSteps=65 queryNodes=130 routedLeaves=33/33 residentBytes="+Get(first,"Bytes")+
+                    " workerBuilds=1 constructionSteps=65 hostConstruction=0 queryNodes=130 routedLeaves=33/33 residentBytes="+Get(first,"Bytes")+
                     " temporaryOrderBytes=0 stableCalls=24 stableWork=0 nativeWorld=NOT_EVALUATED");
             }
             finally { Set(host,"materialBuildSearchBudget",priorBudget); }
@@ -96,7 +108,7 @@ namespace NativeWorldTextProbe
                 // worker timing claim is made, and no completion is fabricated.
                 var error=(BlueprintProjectionQualificationReceipt)Activator.CreateInstance(typeof(BlueprintProjectionQualificationReceipt),F,null,new object[]{
                     receipt.Identity,receipt.Catalog,receipt.Mask,receipt.TotalRequiredLayerCount,receipt.EffectiveRequiredLayerCount,
-                    receipt.EffectiveUnknownLayerCount,receipt.SourceRanges,receipt.MatchRanges,"fixture-completed-qualification-failure",receipt.View},null);
+                    receipt.EffectiveUnknownLayerCount,receipt.SourceRanges,receipt.MatchRanges,receipt.GeometryDirectory,"fixture-completed-qualification-failure",receipt.View},null);
                 Call(host,"ReleaseProjectionMatch",failed);Call(host,"AcceptProjectionQualification",failed,error);
                 Require((bool)Call(host,"ProjectionQualificationFailed",failed) && !(bool)Call(host,"ProjectionQualificationCurrent",failed),
                     "only a completed failure under the exact current identity is classified as failed construction qualification");

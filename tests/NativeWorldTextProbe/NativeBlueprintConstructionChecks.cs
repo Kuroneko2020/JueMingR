@@ -46,6 +46,10 @@ namespace NativeWorldTextProbe
                         catch(Exception error){Console.Error.WriteLine("CONSTRUCTION CASE "+name+": "+error);DumpConstructionPreparation(host,tools);if(first==null)first=error;}
                     };
                     check("finite original inventory input preparation",()=>ConstructionMaterialPreparation(context,host,tools,input));
+                    if(family=="SupplyRepair")check("finite paint conversion programs and every cancel prefix",()=>SupplyConversionPrograms(context,host,tools,input));
+                    if(family=="SupplyRepair")check("same prepared supply crosses real consumers at the original opportunity",()=>SupplyConsumerHandoff(context,host,tools,input));
+                    if(family=="SupplyRepair")check("leftover-color native gap and five real conversion clicks",()=>SupplyColorHandoff(context,host,tools,input));
+                    if(family=="SupplyRepair")check("Ready uses first legal original Pick and revoked ticket never consumes",()=>SupplyReadyEntrance(context,host,tools,input));
                     if(!preparationOnly && first==null)
                     {
                     if(family=="ExternalModal")check("external modal finite owned inventory",()=>ConstructionExternalModal(context,host,tools,input));

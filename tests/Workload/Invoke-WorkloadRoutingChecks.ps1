@@ -65,7 +65,10 @@ $selectionPath='tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs
 # three narrow bodies retain the same aim/control fixture through Initialize.
 # Keep this independent list in step with the actual C# entry/Run contracts.
 $reviewedSharedConsumers=@('native-CombatEffectsNailCpu','native-CombatEffectsPiranhaCpu','native-CombatEffectsPhoenixCpu','native-CombatEffectsSpecialArrowCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsPhantasmEchoCpu','native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsHomingEffectCpu','native-CombatEffectsJoustingLanceCpu','native-CombatEffectsWhipStarCpu','native-CombatEffectsThornCpu','native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')
-$selectionConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')+$reviewedSharedConsumers
+# Only these family bodies actually call SelectionPreview.Step; sharing the
+# aggregate entry does not call its sibling bodies.
+$selectionFamilyConsumers=@('native-CombatEffectsPhoenixCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsThornCpu','native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')
+$selectionConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')+$selectionFamilyConsumers
 Assert-Route (((Get-WorkloadPathChecks $selectionPath|Sort-Object)-join '|') -ceq (($selectionConsumers|Sort-Object)-join '|')) 'selection shared Step binds its complete actual consumer union'
 $selectionRoute=Get-WorkloadRoute @($selectionPath)
 $selectionPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $selectionRoute.groups|ForEach-Object {$_.name})

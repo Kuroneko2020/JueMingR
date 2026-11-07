@@ -29,6 +29,19 @@ $changed=[pscustomobject]@{inputs=@($source.inputs)+@('docs/unrelated.md:B');com
 Assert-Compilation ((Get-WorkloadCompileFingerprint $identity) -ceq (Get-WorkloadCompileFingerprint $changed)) 'unrelated documentation does not invalidate compilation'
 $fixture=Join-Path ([IO.Path]::GetTempPath()) ('JueMingR-compilation-'+[Guid]::NewGuid().ToString('N'))
 try{
+    [IO.Directory]::CreateDirectory($fixture)|Out-Null
+    $runtimeKeys=@('JMR_OBSERVATION_ORACLE_ONLY','JUEMINGR_COMBAT_GEOMETRY_CANDIDATE','DefineConstants');$runtimeSaved=@{}
+    foreach($key in $runtimeKeys){$runtimeSaved[$key]=[Environment]::GetEnvironmentVariable($key)}
+    try{
+        $before=@(Get-WorkloadCompilationEnvironmentRows $fixture @())
+        $env:JMR_OBSERVATION_ORACLE_ONLY='ownership';$env:JUEMINGR_COMBAT_GEOMETRY_CANDIDATE='different-runtime-only.dll'
+        Assert-Compilation ((Get-WorkloadHash $before) -ceq (Get-WorkloadHash @(Get-WorkloadCompilationEnvironmentRows $fixture @()))) 'cleared pure-runtime selectors do not change compilation identity'
+        $env:DefineConstants='REAL_COMPILE_SYMBOL'
+        Assert-Compilation ((Get-WorkloadHash $before) -cne (Get-WorkloadHash @(Get-WorkloadCompilationEnvironmentRows $fixture @()))) 'actual compile symbol remains bound'
+        [IO.File]::WriteAllText((Join-Path $fixture 'explicit.props'),'<Project><PropertyGroup><Test>$(JUEMINGR_COMBAT_GEOMETRY_CANDIDATE)</Test></PropertyGroup></Project>')
+        $rowsWithProperty=@(Get-WorkloadCompilationEnvironmentRows $fixture @('explicit.props:locked'))
+        Assert-Compilation (@($rowsWithProperty|Where-Object {$_ -like 'environment:JUEMINGR_COMBAT_GEOMETRY_CANDIDATE:*'}).Count -eq 1) 'an explicitly consumed project property stays a compile input even if its name is also a diagnostic control'
+    }finally{foreach($key in $runtimeSaved.Keys){[Environment]::SetEnvironmentVariable($key,$runtimeSaved[$key])}}
     $directory=Join-Path $fixture 'tests/JueMingR.ArchitectureTests';[IO.Directory]::CreateDirectory($directory)|Out-Null
     $path=Join-Path $directory 'JueMingR.ArchitectureTests.csproj'
     foreach($body in @('<Import Project="unknown.props" />','<Target Name="Generate"><ItemGroup><Compile Include="unknown.cs" /></ItemGroup></Target>')){

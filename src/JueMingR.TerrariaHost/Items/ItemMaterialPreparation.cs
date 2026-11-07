@@ -28,8 +28,9 @@ namespace JueMingR.TerrariaHost.Items
             internal Item Original, Expected;
         }
         private readonly HostTools tools;
-        private readonly Endpoint[] endpoints = new Endpoint[3];
-        private readonly int[] forward = new int[4], history = new int[4];
+        private readonly Endpoint[] endpoints = new Endpoint[4];
+        // Conversion keeps old cleanup plus its confirmed prefix (3+5 or 4+4).
+        private readonly int[] forward = new int[5], history = new int[8];
         private int endpointCount, forwardCount, forwardCursor, historyCount, sourceSlot, destination, activeSlot = -1;
         private Player player;
         private Item[] inventory;
@@ -53,10 +54,23 @@ namespace JueMingR.TerrariaHost.Items
         internal static ItemMaterialPreparation Current { get; private set; }
         internal bool HasWork { get { return phase != Phase.Idle; } }
         internal bool Ready { get { return phase == Phase.Ready; } }
+        internal long ReceiptEpoch { get { return receiptEpoch; } }
+        internal bool ReadyTicketCurrent(Player p, BlueprintProjectionIdentity target, long epoch, Item expected)
+        { return epoch==receiptEpoch && phase==Phase.Ready && identity!=null && identity.Equals(target) &&
+            ReferenceEquals(material,expected) && SameSession(p) && !tailPending && !returnRequested && !ownsInventory &&
+            tools.SelectionIntent==selection && !PhysicalInput && ExpectedCurrent(false,false) && PreparationItemsNotPending() && Main.mouseItem.IsAir; }
         internal bool Using { get { return phase == Phase.Using; } }
         internal bool Returning { get { return phase == Phase.Returning; } }
         internal bool Unknown { get { return phase == Phase.Unknown; } }
         internal bool Abandoning { get { return phase == Phase.Abandoning; } }
+        internal bool ObservesRetainedSelection(HostTools owner, Player p)
+        {
+            // This read only permission observes a real Select for precisely
+            // the old return duty. It grants no failed-session world chooser
+            // or inventory action and never lends a different Host its player.
+            return ReferenceEquals(owner, tools) && OnGameThread && phase == Phase.Returning && tools.Runtime.HasFailed &&
+                SameSession(p) && tools.MatchesRetainedSession(p) && ExpectedCurrent(false, false);
+        }
         // Retain only business intent across this owner's native inventory
         // sequence. This grants no ToolUse, source or consumer permission;
         // every action still requires its ordinary closed/empty-cursor gate.
@@ -456,7 +470,7 @@ namespace JueMingR.TerrariaHost.Items
             for (int i = 0; i < endpointCount; i++) endpoints[i] = null;
             endpointCount = forwardCount = forwardCursor = historyCount = 0;
             session = token = selection = 0; identity = default(BlueprintProjectionIdentity); Reason = null;
-            UseConsumptionMaximum = null;
+            UseConsumptionMaximum = null; converting = false; conversionMaterial = null;
             ownsInventory = nativeInventoryChange = false;
             nativeClick = tailOpen = tailPending = clickApplied = returnRequested = false; tailStep = TailStep.None; activeSlot = -1;
         }
@@ -643,7 +657,7 @@ namespace JueMingR.TerrariaHost.Items
             var beforeSlot = array[slot]; var beforeCursor = Main.mouseItem;
             int slotType = beforeSlot.type, slotStack = beforeSlot.stack, oldCursorType = beforeCursor.type, oldCursorStack = beforeCursor.stack;
             if (ItemSlot.PickItemMovementAction(inventory, context, activeSlot, beforeCursor) != 0 ||
-                !beforeSlot.IsAir && !beforeCursor.IsAir && Item.CanStack(beforeSlot, beforeCursor))
+                !beforeSlot.IsAir && !beforeCursor.IsAir && (Item.CanStack(beforeSlot, beforeCursor) || Item.CanStack(beforeCursor, beforeSlot)))
             { LoseIdentity("material-preparation-native-swap-not-legal", false); return; }
             try
             {
@@ -692,6 +706,7 @@ namespace JueMingR.TerrariaHost.Items
                 history[historyCount++] = activeSlot; forwardCursor++;
                 if (forwardCursor == forwardCount)
                 {
+                    if (converting && !CompleteSupplyConversion()) return;
                     if (!Main.mouseItem.IsAir || MaterialSlot() != destination) { LoseIdentity("material-preparation-not-ready", false); return; }
                     if (!FinishInventoryPhase()) return;
                     phase = Phase.Ready;

@@ -22,12 +22,13 @@ namespace NativeWorldTextProbe
         {
             requested=scope; expected=entered=null;
             var selectors=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var overrides=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var leaves=new Dictionary<string,string>(StringComparer.Ordinal);
             foreach(string line in File.ReadAllLines(Path.Combine(repository,"eng","Workload.NativeDispatch.tsv")))
             {
                 if(line.Length==0 || line[0]=='#')continue;
                 string[] row=line.Split('\t');
-                if(row.Length==2 && row[0]=="selector") { if(!selectors.Add(row[1]))throw new InvalidDataException("Duplicate native selector."); }
+                if(row.Length==2 && (row[0]=="selector" || row[0]=="override")) { if(!selectors.Add(row[1]))throw new InvalidDataException("Duplicate native selector."); if(row[0]=="override")overrides.Add(row[1]); }
                 else if(row.Length==3 && row[0]=="leaf")leaves.Add(row[1],row[2]);
                 else throw new InvalidDataException("Malformed native dispatch contract.");
             }
@@ -43,10 +44,10 @@ namespace NativeWorldTextProbe
                 foreach(DictionaryEntry pair in Environment.GetEnvironmentVariables())
                 {
                     string key=(string)pair.Key;
-                    if(key.StartsWith("JUEMINGR_",StringComparison.OrdinalIgnoreCase) &&
-                        (key.EndsWith("ONLY",StringComparison.OrdinalIgnoreCase) || key.EndsWith("SCOPE",StringComparison.OrdinalIgnoreCase) || key.EndsWith("PHASE",StringComparison.OrdinalIgnoreCase) || key.EndsWith("PHASES",StringComparison.OrdinalIgnoreCase) || key.EndsWith("SINGLE",StringComparison.OrdinalIgnoreCase)) && !selectors.Contains(key))
+                    if((key.StartsWith("JUEMINGR_",StringComparison.OrdinalIgnoreCase) || key.StartsWith("JMR_",StringComparison.OrdinalIgnoreCase)) &&
+                        (key.EndsWith("ONLY",StringComparison.OrdinalIgnoreCase) || key.EndsWith("SCOPE",StringComparison.OrdinalIgnoreCase) || key.EndsWith("PHASE",StringComparison.OrdinalIgnoreCase) || key.EndsWith("PHASES",StringComparison.OrdinalIgnoreCase) || key.EndsWith("SINGLE",StringComparison.OrdinalIgnoreCase) || key.EndsWith("CANDIDATE",StringComparison.OrdinalIgnoreCase)) && !selectors.Contains(key))
                         throw new ArgumentException("Unknown inherited workload selector: "+key);
-                    if(selectors.Contains(key))Environment.SetEnvironmentVariable(key,null);
+                    if(selectors.Contains(key) && (formal || !overrides.Contains(key)))Environment.SetEnvironmentVariable(key,null);
                 }
         }
         internal static string Enter(string leaf)

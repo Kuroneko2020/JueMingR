@@ -44,6 +44,10 @@ namespace JueMingR.Features.WorldObjectText
         private readonly Func<string, IPreferenceStorage> factory;
         private readonly Func<long> nowMilliseconds;
         private readonly Dictionary<string, Lease> leases = new Dictionary<string, Lease>(StringComparer.Ordinal);
+        // Protection belongs to this pair for the store lifetime. Releasing a
+        // lease/handle or consuming its notice cannot confirm an unknown write
+        // or authorize rotation of recovery material on same-process reentry.
+        private readonly Dictionary<string, State> protectedPairs = new Dictionary<string, State>(StringComparer.Ordinal);
         private readonly OpenedPositionCodec codec = new OpenedPositionCodec();
         private readonly Timer timer;
         private readonly ManualResetEventSlim finished = new ManualResetEventSlim(true);
@@ -84,7 +88,11 @@ namespace JueMingR.Features.WorldObjectText
                 if (!leases.TryGetValue(key, out value))
                 {
                     if (leases.Count == 8) return null;
-                    value = new Lease { Key = key }; leases.Add(key, value);
+                    value = new Lease { Key = key };
+                    State protection;
+                    if (protectedPairs.TryGetValue(key, out protection))
+                        value.Current = new State(new OpenedPositionIndex(), false, protection.Status, protection.Error, true, protection.Unconfirmed);
+                    leases.Add(key, value);
                 }
                 value.InUse = true; RetryLocked(value); ScheduleLocked(); return value;
             }
@@ -271,8 +279,11 @@ namespace JueMingR.Features.WorldObjectText
                             read.Error ?? "opened-load-failed", true)); return 0;
                     }
                     var index = read.Status == PreferenceReadStatus.Missing ? new OpenedPositionIndex() : codec.Decode(read.Contents, lease.Key);
-                    lease.Writable = true;
-                    Publish(lease, new State(index, true, read.Status == PreferenceReadStatus.Missing ? PreferenceStatus.Missing : PreferenceStatus.Saved));
+                    State protection;
+                    lock (gate) protectedPairs.TryGetValue(lease.Key, out protection);
+                    lease.Writable = protection == null;
+                    Publish(lease, protection == null ? new State(index, true, read.Status == PreferenceReadStatus.Missing ? PreferenceStatus.Missing : PreferenceStatus.Saved) :
+                        new State(index, true, protection.Status, protection.Error, true, protection.Unconfirmed));
                 }
                 if (batch.Count == 0 || !lease.Writable) return 0;
                 var previous = Snapshot(lease).Index; var candidate = new OpenedPositionIndex(previous.All);
@@ -291,7 +302,7 @@ namespace JueMingR.Features.WorldObjectText
                 {
                     if (written.IsProtected || written.CommitUnconfirmed) lease.Writable = false;
                     Publish(lease, new State(previous, true, written.Status == PreferenceWriteStatus.Conflict ? PreferenceStatus.Conflict : written.Status == PreferenceWriteStatus.Busy ? PreferenceStatus.Busy : PreferenceStatus.IoFailure,
-                        written.Error ?? "opened-write-failed", written.IsProtected, written.CommitUnconfirmed));
+                        written.Error ?? "opened-write-failed", written.IsProtected || written.CommitUnconfirmed, written.CommitUnconfirmed), written.IsProtected || written.CommitUnconfirmed);
                     if (lease.Writable)
                         lock (gate)
                         {
@@ -304,13 +315,16 @@ namespace JueMingR.Features.WorldObjectText
             catch (PreferenceFormatException e)
             { lease.Read = true; lease.Writable = false; Publish(lease, new State(Snapshot(lease).Index, true, e.Status, "opened-format-" + e.Status, true)); }
             catch (Exception)
-            { lease.Read = true; lease.Writable = false; Publish(lease, new State(Snapshot(lease).Index, true, PreferenceStatus.IoFailure, writeEntered ? "opened-write-threw" : "opened-load-or-prepare-failed", true, writeEntered)); }
+            { lease.Read = true; lease.Writable = false; Publish(lease, new State(Snapshot(lease).Index, true, PreferenceStatus.IoFailure, writeEntered ? "opened-write-threw" : "opened-load-or-prepare-failed", true, writeEntered), writeEntered); }
             return 0;
         }
-        private void Publish(Lease lease, State state)
+        private void Publish(Lease lease, State state, bool rememberProtection = false)
         {
             lock (gate)
             {
+                // Register before publishing the result or retiring the lease;
+                // Acquire cannot observe a writable successor in between.
+                if (rememberProtection) protectedPairs[lease.Key] = new State(null, true, state.Status, state.Error, true, state.Unconfirmed);
                 if (state.Error != null && state.Error != lease.Current.Error)
                 {
                     // At most eight pending pair notices. Recovery of B cannot

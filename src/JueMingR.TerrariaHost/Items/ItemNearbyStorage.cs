@@ -187,7 +187,11 @@ namespace JueMingR.TerrariaHost.Items
                         int moved = current.OriginalQuantity - remaining;
                         ownership.FinishStore(current.Request.Session, new ItemOperationResult(moved == 0 ? ItemOperationState.NotApplicable :
                             remaining == 0 ? ItemOperationState.Completed : ItemOperationState.PartiallyCompleted, moved));
-                        if (moved == 0) RememberNoCapacity(current.Request.Sources[0].Identity, current.Player.position);
+                        // A negative capacity result belongs to the request's
+                        // location, never the position where a delayed reply
+                        // arrived. A new pickup at B must retain its own chance.
+                        if (moved == 0 && current.Player.position == current.Position)
+                            RememberNoCapacity(current.Request.Sources[0].Identity, current.Position);
                         pending = null; return;
                     }
                 }
@@ -245,11 +249,12 @@ namespace JueMingR.TerrariaHost.Items
             internal readonly Player Player;
             internal readonly int OriginalQuantity;
             internal readonly ulong Started;
+            internal readonly Vector2 Position;
             internal readonly bool[] Received;
             internal readonly int[] Remaining;
             internal bool Changed, Invalid, TimedOut;
             internal Pending(StoreItemsRequest request, Player player, int originalQuantity, ulong started)
-            { Request = request; Player = player; OriginalQuantity = originalQuantity; Started = started;
+            { Request = request; Player = player; OriginalQuantity = originalQuantity; Started = started; Position = player.position;
                 Received = new bool[request.Sources.Count]; Remaining = new int[request.Sources.Count]; }
         }
     }

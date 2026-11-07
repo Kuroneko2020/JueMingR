@@ -253,11 +253,13 @@ namespace JueMingR.TerrariaHost.Tools
         // native cursor override 58 otherwise consumes the buffered change
         // before the next inventory tail can see the player's new selection.
         private static bool PreparationSelection {get{return Items.ItemMaterialPreparation.Current?.HasWork==true;}}
-        private static void Select(Player ___player){if(host!=null && (host.Enabled || host.Combat?.Enabled==true || PreparationSelection) && ReferenceEquals(___player,host.Player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.ManualSelection();}}
+        private static bool SelectionPlayer(Player p)
+        { return host != null && (ReferenceEquals(p, host.Player) || Items.ItemMaterialPreparation.Current?.ObservesRetainedSelection(host, p) == true); }
+        private static void Select(Player ___player){if(host!=null && (host.Enabled || host.Combat?.Enabled==true || PreparationSelection) && SelectionPlayer(___player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.ManualSelection();}}
         private static void SelectionUpdate(Player ___player)
         {
             host?.Combat?.Handoff.BeforeSelection(___player);
-            if(host==null || !ReferenceEquals(___player,host.Player))return;
+            if(!SelectionPlayer(___player))return;
             bool enabled=host.Enabled;
             if(!enabled && !PreparationSelection)return;
             if(enabled)host.Npcs.BeginActions(host.Input.Frame);

@@ -25,7 +25,26 @@ namespace JueMingR.Features.Blueprint
         private IEnumerator<bool> projectionQualifying;
 #if DEBUG
         private long projectionQualificationWorkingBytes;
+        private long projectionGeometryDirectoryBuilds,projectionGeometryDirectoryNodes,projectionGeometryDirectoryYields,projectionGeometryDirectoryCancelled;
+        private long projectionGeometryDirectoryMaximumBatch;
 #endif
+        private void AdvanceQualificationDirectory(ProjectionOwner owner,ProjectionQualificationRequest request,BlueprintProjectionGeometryDirectory.Builder builder)
+        {
+            CheckProjectionQualification(owner,request);
+            // Every caller immediately yields the outer qualification iterator.
+            // Nested object iterators advance only here, once per MoveNext,
+            // sharing the existing lane's 64-node allowance rather than adding
+            // a synchronous tail pass after the geometry scan has completed.
+            if(builder==null)return;
+#if DEBUG
+            int steps=builder.Advance(64);
+            Interlocked.Add(ref projectionGeometryDirectoryNodes,steps);
+            Interlocked.Increment(ref projectionGeometryDirectoryYields);
+            if(steps>Interlocked.Read(ref projectionGeometryDirectoryMaximumBatch))Interlocked.Exchange(ref projectionGeometryDirectoryMaximumBatch,steps);
+#else
+            builder.Advance(64);
+#endif
+        }
         [System.Diagnostics.Conditional("DEBUG")]
         private void UpdateProjectionQualificationWorkingBytes(long bytes)
         {
@@ -241,6 +260,10 @@ namespace JueMingR.Features.Blueprint
         }
         private IEnumerable<bool> QualifyProjection(ProjectionOwner owner, ProjectionQualificationRequest request)
         {
+            BlueprintProjectionGeometryDirectory.Builder directoryBuilder=null;
+#if DEBUG
+            bool directoryPublished=false;
+#endif
             try
             {
             CheckProjectionQualification(owner, request);
@@ -251,7 +274,15 @@ namespace JueMingR.Features.Blueprint
             var sources = buildGeometry ? new List<BlueprintProjectionSourceRange>() : null;
             var proofs = buildGeometry ? new List<BlueprintProjectionSourceRange>() : null;
             var indexed = buildGeometry ? new HashSet<int>() : null;
-            long total = 0, effective = 0, unknown = 0, geometryBytes = 0;
+            if(buildGeometry)
+            {
+                directoryBuilder=new BlueprintProjectionGeometryDirectory.Builder(owner.SourceRanges);
+                UpdateProjectionQualificationWorkingBytes(directoryBuilder.Bytes);
+#if DEBUG
+                Interlocked.Increment(ref projectionGeometryDirectoryBuilds);
+#endif
+            }
+            long total = 0, effective = 0, unknown = 0, geometryBytes = 0, lastGroupScratchBytes = 0;
             for (int group = 0; group < owner.SourceRanges.Count; group++)
             {
                 CheckProjectionQualification(owner, request); var rawRange = owner.SourceRanges[group];
@@ -259,10 +290,12 @@ namespace JueMingR.Features.Blueprint
                 // Current block staging and its temporary geometry arrays are
                 // bounded by the existing decoded block. Completed numeric
                 // geometry is charged while this incremental pass retains it.
-                long working = geometryBytes + chunk.Count * 256L + 1024L +
+                lastGroupScratchBytes = chunk.Count * 256L + 1024L;
+                long working = geometryBytes + (directoryBuilder?.Bytes??0) + lastGroupScratchBytes +
                     (buildGeometry ? (sources.Capacity + proofs.Capacity) * 64L + indexed.Count * 64L : 0L);
                 UpdateProjectionQualificationWorkingBytes(working);
-                foreach (bool ignored in PrepareProjectionObjectQualificationsSteps(owner, request, chunk, working)) yield return true;
+                foreach (bool ignored in PrepareProjectionObjectQualificationsSteps(owner, request, chunk, working))
+                { AdvanceQualificationDirectory(owner,request,directoryBuilder);yield return true; }
                 var positions = buildGeometry ? new List<long>() : null; var bits = buildGeometry ? new List<ushort>() : null;
                 var ids = buildGeometry ? new List<int>() : null; var objectIds = buildGeometry ? new HashSet<int>() : null;
                 for (int i = 0; i < chunk.Count; i++)
@@ -277,7 +310,7 @@ namespace JueMingR.Features.Blueprint
                         positions.Add(((long)(cell.Y-summary.Top)<<32)|(uint)(cell.X-summary.Left)); bits.Add(selection.RequiredBits); ids.Add(cell.ObjectId);
                         if (cell.ObjectId > 0 && (selection.RequiredBits & 1) != 0) objectIds.Add(cell.ObjectId);
                     }
-                    if ((i & 31) == 31) { CheckProjectionQualification(owner, request); yield return true; }
+                    if ((i & 31) == 31) { AdvanceQualificationDirectory(owner,request,directoryBuilder); yield return true; }
                 }
                 if (buildGeometry)
                 {
@@ -304,11 +337,23 @@ namespace JueMingR.Features.Blueprint
                         var proof = new BlueprintProjectionSourceRange(rawRange.Block,bounds,(long)obj.Width*obj.Height,
                             new[]{((long)(obj.Y-summary.Top)<<32)|(uint)(obj.X-summary.Left)},new ushort[]{1},new[]{id},new[]{new BlueprintProjectionSourceDependency(bounds,id)},group,id);
                         routedObjects.Add(id); routes.Add(proofs.Count-proofStart); proofs.Add(proof); geometryBytes += proof.SourceIndexBytes;
-                        CheckProjectionQualification(owner, request); yield return true;
+                        AdvanceQualificationDirectory(owner,request,directoryBuilder); yield return true;
                     }
                     source = source.WithRouting(ordinary,routedObjects.ToArray(),routes.ToArray()); sources.Add(source); geometryBytes += source.SourceIndexBytes;
                 }
-                yield return true;
+                AdvanceQualificationDirectory(owner,request,directoryBuilder); yield return true;
+            }
+            CheckProjectionQualification(owner, request);
+            // Bounds and physical ordinals are unchanged by qualification.
+            // Each raw group above contributes at least one existing yield,
+            // enough for all 2N-1 nodes without moving a wait to first use.
+            if(buildGeometry)
+            {
+                var frozenSources=Array.AsReadOnly(sources.ToArray());
+                var directory=directoryBuilder.Freeze(frozenSources);
+                geometry=new ProjectionQualifiedGeometry { Catalog=catalog,Profile=request.View?.Profile,
+                    Sources=frozenSources,Proofs=Array.AsReadOnly(proofs.ToArray()),Directory=directory,
+                    Bytes=geometryBytes+directory.Bytes+128L+(sources.Count+proofs.Count)*64L };
             }
             CheckProjectionQualification(owner, request);
             lock (gate)
@@ -317,16 +362,21 @@ namespace JueMingR.Features.Blueprint
                 if (buildGeometry)
                 {
                     if (!ReferenceEquals(owner.QualificationCatalog, catalog) || !ReferenceEquals(owner.QualificationProfile, request.View?.Profile)) owner.QualificationViews.Clear();
-                    geometry = new ProjectionQualifiedGeometry { Catalog = catalog, Profile = request.View?.Profile,
-                        Sources = Array.AsReadOnly(sources.ToArray()), Proofs = Array.AsReadOnly(proofs.ToArray()), Bytes = geometryBytes + 128L + (sources.Count + proofs.Count)*64L };
                     owner.QualificationViews[mirrored] = geometry;
+#if DEBUG
+                    directoryPublished=true;
+#endif
                 }
                 owner.QualificationCatalog = catalog; owner.QualificationProfile = request.View?.Profile;
                 owner.QualificationSourceRanges = geometry.Sources; owner.QualificationMatchRanges = geometry.Proofs;
                 owner.QualificationGeometryBytes = 0; foreach (var cached in owner.QualificationViews.Values) owner.QualificationGeometryBytes += cached.Bytes;
             }
+            // The frozen nodes and numeric geometry are now charged exactly
+            // once by their template owner, not again as worker scratch space.
+            UpdateProjectionQualificationWorkingBytes(lastGroupScratchBytes+(directoryBuilder?.Bytes??0)+
+                (buildGeometry?(sources.Capacity+proofs.Capacity)*64L+indexed.Count*64L:0));
             var completed = new BlueprintProjectionQualificationReceipt(request.Identity,catalog,request.Mask,total,effective,unknown,
-                geometry.Sources,geometry.Proofs,view: request.View);
+                geometry.Sources,geometry.Proofs,geometry.Directory,view: request.View);
             while (true)
             {
                 CheckProjectionQualification(owner, request);
@@ -342,7 +392,13 @@ namespace JueMingR.Features.Blueprint
             }
             UpdateProjectionStatistics();
             }
-            finally { UpdateProjectionQualificationWorkingBytes(0); }
+            finally
+            {
+#if DEBUG
+                if(directoryBuilder!=null && !directoryPublished)Interlocked.Increment(ref projectionGeometryDirectoryCancelled);
+#endif
+                UpdateProjectionQualificationWorkingBytes(0);
+            }
         }
     }
 }

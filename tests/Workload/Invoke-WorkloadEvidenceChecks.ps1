@@ -527,6 +527,30 @@ throw 'Incorrectly returned from a failed process.'
     Assert-Evidence ($null -eq (Restore-WorkloadCheckpointEvidence $fixture $sourceLock $different $check.name 'signature' ('a'*40))) 'changed compiler/configuration input cannot recover old pending completion'
     $qualifiedEntry=[pscustomobject]@{schemaVersion=2;status='PASS';name=$check.name;signature='signature';inputFingerprint=(Get-WorkloadCheckFingerprint $locked $check.name);executionId=$completed.executionId;sourceCommit=('a'*40);sourceFingerprint=('B'*64);milliseconds=1;outputs=$completed.outputs;allInputFingerprint=$locked.fingerprint;inputs=$locked.inputs;detectionCommit=('a'*40);checkpointPath=$completed.path}
     Assert-Evidence (Test-WorkloadReusable $fixture $qualifiedEntry $locked $check.name 'signature') 'existing reuse entry consumes qualified real checkpoint'
+    # A real inert process/checkpoint proves the evidence mechanism, never a
+    # Terraria business result. Keep its original input/execution/artifact rows
+    # while changing only copied private assertion inputs for the reuse query.
+    foreach($family in @('Nail','Phoenix','')){
+        $familyName='native-CombatEffects'+$family+'Cpu'
+        $privateRows=@('source:locked','tests/NativeWorldTextProbe/NativeCombatBeeChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatNailChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatPhoenixChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs:A','tests/NativeWorldTextProbe/NativeChecks.cs:A')
+        $privateLock=[pscustomobject]@{inputs=$privateRows;fingerprint=(Get-WorkloadHash $privateRows)}
+        $privateCheck=[pscustomobject]@{name=$familyName;executable=$stderrExe;arguments=@('0');project=''}
+        $privateBatch=New-WorkloadCheckpointBatch $fixture $sourceLock $privateLock @($familyName)
+        $privateAttempt=Start-WorkloadCheckpoint $fixture $privateBatch $privateCheck 'private-projection-mechanism'
+        $privateAttempt.beforeOutputs=@(Get-WorkloadEvidenceOutputs $fixture ([pscustomobject]@{outputs=@()}) $stderrExe|ForEach-Object{[pscustomobject]@{path=$_.path;livePath=$_.path;length=$_.length;sha256=$_.sha256}})
+        Invoke-WorkloadProcess $familyName $stderrExe @('0') -Checkpoint $privateAttempt
+        $privateCompleted=Read-WorkloadJson $privateAttempt.path
+        $privateCompleted.outputs=@(Save-WorkloadArtifacts $fixture @(Get-WorkloadEvidenceOutputs $fixture ([pscustomobject]@{outputs=@()}) $stderrExe));Write-WorkloadJson $privateCompleted.path $privateCompleted
+        Complete-WorkloadCheckpointQualification $fixture @($privateCompleted) $privateBatch
+        $privateEntry=[pscustomobject]@{schemaVersion=2;status='PASS';name=$familyName;signature='private-projection-mechanism';inputFingerprint=(Get-WorkloadCheckFingerprint $privateLock $familyName);executionId=$privateCompleted.executionId;sourceCommit=$sourceLock.commit;sourceFingerprint=$sourceLock.fingerprint;milliseconds=1;outputs=$privateCompleted.outputs;allInputFingerprint=$privateLock.fingerprint;inputs=$privateRows;detectionCommit=$sourceLock.commit;checkpointPath=$privateCompleted.path}
+        foreach($changedPath in @('NativeCombatBeeChecks.cs','NativeCombatNailChecks.cs','NativeCombatBallisticCandidateChecks.cs','NativeCombatEffectChecks.cs','NativeChecks.cs')){
+            $changedRows=@($privateRows|ForEach-Object{if($_ -ceq ('tests/NativeWorldTextProbe/'+$changedPath+':A')){$_ -replace ':A$',':B'}else{$_}})
+            $changedLock=[pscustomobject]@{inputs=$changedRows;fingerprint=(Get-WorkloadHash $changedRows)}
+            $expected=$family -ne '' -and ($changedPath -eq 'NativeCombatBeeChecks.cs' -or $family -eq 'Phoenix' -and $changedPath -in @('NativeCombatNailChecks.cs','NativeCombatBallisticCandidateChecks.cs'))
+            Assert-Evidence ((Test-WorkloadReusable $fixture $privateEntry $changedLock $familyName $privateEntry.signature) -eq $expected) ('actual qualified original reuse '+$familyName+' changing '+$changedPath)
+            Assert-Evidence ($privateEntry.executionId -ceq $privateCompleted.executionId -and $privateEntry.allInputFingerprint -ceq $privateLock.fingerprint) 'private-input reuse never re-signs the original process or complete source identity'
+        }
+    }
     # Real owned inert completion, with the old Quick shadow projection. The
     # complete original input identity still binds its omitted Quick row.
     $quickName='checkpoint-shared-quick';$script:WorkloadCheckGroups[$quickName]=@('combat-host')

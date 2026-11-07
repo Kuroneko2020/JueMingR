@@ -41,7 +41,7 @@ function Get-WorkloadCompilationEnvironmentRows {
         $path=Join-Path $Root $relative;if(![IO.File]::Exists($path)){continue}
         foreach($match in [regex]::Matches([IO.File]::ReadAllText($path),'\$\(([A-Za-z_][A-Za-z0-9_]*)\b')){[void]$names.Add($match.Groups[1].Value)}
     }
-    return @(Get-ChildItem Env:|Where-Object {$names.Contains($_.Name) -or $_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JueMingR|Configuration$|Platform$|DefineConstants$|TargetFramework$)'}|Sort-Object Name|ForEach-Object {'environment:'+ $_.Name+':'+(Get-WorkloadHash @($_.Value))})
+    return @(Get-ChildItem Env:|Where-Object {$names.Contains($_.Name) -or ($_.Name -notin @((Read-WorkloadNativeDispatch).selectors) -and $_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JueMingR|Configuration$|Platform$|DefineConstants$|TargetFramework$)')}|Sort-Object Name|ForEach-Object {'environment:'+ $_.Name+':'+(Get-WorkloadHash @($_.Value))})
 }
 function Get-WorkloadArchitectureCompilationInputs {
     param([string]$Root,[string[]]$InputRows)

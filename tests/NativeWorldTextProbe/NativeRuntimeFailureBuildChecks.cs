@@ -20,7 +20,7 @@ namespace NativeWorldTextProbe
         // Reuse the real construction fixture: production discovery, priority
         // material preparation, original ApplyPaint and native inventory tail.
         // Only the fault and unrelated achievements are controlled here.
-        internal static void RunCommonFailureBuild(object context, bool replaceWorld = false, bool manualTakeover = false)
+        internal static void RunCommonFailureBuild(object context, bool replaceWorld = false, bool manualTakeover = false, int selectionTakeover = 0)
         {
             var host = Get(context, "Blueprint"); var tools = Get(context, "Tools"); var input = Get(context, "Input");
             NativeToolExecutionChecks.Initialize(context, null);
@@ -95,7 +95,43 @@ namespace NativeWorldTextProbe
                             ReferenceEquals(p.inventory[20], slot20) && ReferenceEquals(p.inventory[54], slot54) && Main.mouseItem.IsAir,
                             "the real native blockInput gate preserves the old inverse material duty without any inventory write");
                         Main.blockInput = false;
-                        if (manualTakeover)
+                        if (selectionTakeover != 0)
+                        {
+                            long selection = (long)Get(tools, "SelectionIntent");
+                            var oldWorld=Main.ActiveWorldFileData;var oldPlayer=Main.player[Main.myPlayer];var oldInventory=p.inventory;
+                            int oldMode=Main.netMode;
+                            Action<string,Action,Action> foreign=(label,enter,leave)=>
+                            {
+                                enter();
+                                try
+                                {
+                                    p.selectedItemState.Select(1);p.selectedItemState.Update();
+                                    Require((long)Get(tools,"SelectionIntent")==selection,
+                                        "a failed return cannot observe another current "+label+" as its retained player selection");
+                                }
+                                finally{leave();}
+                            };
+                            foreign("world",()=>Main.ActiveWorldFileData=new Terraria.IO.WorldFileData("foreign-selection.wld",false),()=>Main.ActiveWorldFileData=oldWorld);
+                            foreign("player",()=>Main.player[Main.myPlayer]=new Player(),()=>Main.player[Main.myPlayer]=oldPlayer);
+                            foreign("inventory array",()=>p.inventory=(Item[])oldInventory.Clone(),()=>p.inventory=oldInventory);
+                            foreign("connection mode",()=>Main.netMode=1,()=>Main.netMode=oldMode);
+                            int selected = selectionTakeover == 1 ? 2 : (p.selectedItem + 1) % 10;
+                            // Both keyboard slot selection and scrolling enter
+                            // this actual vanilla SelectedItemState consumer.
+                            // OS sampling/caller mapping is outside this fixture.
+                            p.selectedItemState.Select(selected);
+                            p.selectedItemState.Update();
+                            Require((long)Get(tools, "SelectionIntent") > selection,
+                                "actual vanilla Select records the player's intent during failed-session material return");
+                            for (int i = 0; i < 8; i++) Step(context, input);
+                            Require((long)Get(failureBuildPreparation, "NativeClicks") == clicks &&
+                                ReferenceEquals(p.inventory[20], slot20) && ReferenceEquals(p.inventory[54], slot54) &&
+                                red.stack == 3 && blue.stack == 7 && Main.mouseItem.IsAir,
+                                "failed-session manual selection relinquishes every old inverse click and preserves real remainder references");
+                            Require(failureBuildCompleted == 1 && failureBuildNativeEnds == 1,
+                                "manual selection does not duplicate the completed native use/finalizer");
+                        }
+                        else if (manualTakeover)
                         {
                             // The player takes the real native inventory before
                             // the next automatic input tail can undo a swap.
@@ -123,7 +159,7 @@ namespace NativeWorldTextProbe
                         "terminal build return runs no new candidate discovery, source scan or native build choice");
                     Require(!(bool)Get(Get(Get(context, "Runtime"), "SharedRuntime"), "IsSessionActive"),
                         "completed old material duty does not reactivate the terminal session");
-                    Console.WriteLine("PASS common BuildFlight original ApplyPaint/finalizer and exact material return, changedWorld=" + replaceWorld + " manualTakeover=" + manualTakeover + "; CPU native input tail, no Draw/network/gameplay claim.");
+                    Console.WriteLine("PASS common BuildFlight original ApplyPaint/finalizer and exact material return, changedWorld=" + replaceWorld + " manualTakeover=" + manualTakeover + " selectionTakeover=" + selectionTakeover + "; CPU native input tail, no Draw/network/gameplay claim.");
                 }
             }
             finally

@@ -26,7 +26,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeRuntimeFailureChecks.cs'=@('native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu')
         'tests/NativeWorldTextProbe/NativeJourneyCloseAdmissionChecks.cs'=@('native-JourneyCloseCpu','native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu','native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu')
         'tests/NativeWorldTextProbe/NativeRuntimeFailureReturnChecks.cs'=@('native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu')
-        'tests/NativeWorldTextProbe/NativeRuntimeFailureBuildChecks.cs'=@('native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu')
+        'tests/NativeWorldTextProbe/NativeRuntimeFailureBuildChecks.cs'=@('native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu','native-RuntimeFailureBuildSelectionCpu','native-RuntimeFailureBuildScrollCpu')
         'tests/NativeWorldTextProbe/NativeRuntimeFailureBuildReceiptChecks.cs'=@('native-RuntimeFailureBuildReceiptCpu')
         'tests/NativeWorldTextProbe/NativeCombatTerrainKnowledgeChecks.cs'=@('native-CombatTerrainKnowledgeCpu')
         'tests/NativeWorldTextProbe/NativeCombatShotBirthChecks.cs'=@('native-CombatShotFacingCpu','native-CombatShotBirthOrderCpu')
@@ -282,6 +282,12 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatPreviewLeaseChecks.cs'=@('native-CombatCosts','native-CombatAttackCosts','native-CombatControlCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Natural.cs'=@('native-CombatCosts','native-CombatAttackCosts')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.CandidateState.cs'=@('native-CombatCosts','native-CombatAttackCosts')
+        'tests/NativeWorldTextProbe/NativeBlueprintSupplyHandoffChecks.cs'=@('native-BlueprintSupplyContinuationCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintSupplyReadyChecks.cs'=@('native-BlueprintSupplyContinuationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatObservationSuite.cs'=@('native-CombatObservationCpu','native-CombatObservationBoundaryCpu')
+        'tests/NativeWorldTextProbe/NativeObservationBoundaryChecks.cs'=@('native-CombatObservationBoundaryCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintSchedulerColdHandoffChecks.cs'=@('native-BlueprintBuildCadenceCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintSupplyConversionChecks.cs'=@('native-BlueprintPreparationCpu','native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatObstacleChecks.cs'=@('native-CombatEffectsCpu')
@@ -435,18 +441,42 @@ function Get-WorkloadLeafChecks {
     }
     # The failure-flight leaf reuses these real construction and input helpers.
     # Keep their assertion bytes bound without claiming sibling execution.
-    $failureBuild=@('native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu','native-RuntimeFailureBuildReceiptCpu')
+    $failureBuild=@('native-RuntimeFailureBuildSelectionCpu','native-RuntimeFailureBuildScrollCpu','native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu','native-RuntimeFailureBuildReceiptCpu')
     foreach($path in @($leaves.Keys)){
         if(@($leaves[$path]|Where-Object {$_ -in @('native-BlueprintCpu','native-BlueprintConstructionCpu')}).Count -or $path -cin @('tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeRuntimeFailureReturnChecks.cs')){
             $leaves[$path]=@($leaves[$path])+@($failureBuild)
         }
     }
-    # Finite family scopes reuse the unchanged Effects entry and its helpers.
-    # Bind the aggregate's existing assertion dependencies conservatively; a
-    # family PASS never represents execution of the complete Effects matrix.
-    $families=@('native-CombatEffectsNailCpu','native-CombatEffectsPiranhaCpu','native-CombatEffectsPhoenixCpu','native-CombatEffectsSpecialArrowCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsPhantasmEchoCpu','native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsHomingEffectCpu','native-CombatEffectsJoustingLanceCpu','native-CombatEffectsWhipStarCpu','native-CombatEffectsThornCpu')
-    foreach($path in @($leaves.Keys)){
-        if($leaves[$path] -contains 'native-CombatEffectsCpu'){$leaves[$path]=@($leaves[$path])+@($families)}
+    foreach($path in @($leaves.Keys)){if($leaves[$path] -contains 'native-BlueprintConstructionCpu'){$leaves[$path]=@($leaves[$path])+@('native-BlueprintSupplyContinuationCpu')}}
+    # A family enters EffectChecks.RunCore and returns from its exact branch.
+    # Its own body and called shared scene/Save/Step/solution helpers matter;
+    # sibling private assertions (for example Bee) do not execute on that path.
+    # NativeChecks/ScopeDispatch/QuickItem/Information remain common inputs.
+    $familyHelpers=@{
+        'Nail'=@('BallisticCandidate','Aim','Observation','Cadence')
+        'Piranha'=@('BallisticCandidate','Aim','Observation','Cadence')
+        'Phoenix'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
+        'SpecialArrow'=@('Aim','Observation')
+        'AttachedShot'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
+        'PhantasmEcho'=@('Cadence','Observation')
+        'BetsyFlame'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
+        'ArcSwing'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
+        'HomingEffect'=@('Cadence','Observation')
+        'JoustingLance'=@('Aim','Cadence','Observation')
+        'WhipStar'=@('Cadence','Observation')
+        'Thorn'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
+    }
+    $familyNames=@($familyHelpers.Keys|ForEach-Object {'native-CombatEffects'+$_+'Cpu'})
+    foreach($path in @($leaves.Keys)){if($path.StartsWith('src/') -and $leaves[$path] -contains 'native-CombatEffectsCpu'){$leaves[$path]=@($leaves[$path])+@($familyNames)}}
+    foreach($family in $familyHelpers.Keys){
+        $name='native-CombatEffects'+$family+'Cpu'
+        foreach($helper in @('Effect',$family)+@($familyHelpers[$family])){
+            $path='tests/NativeWorldTextProbe/NativeCombat'+$helper+'Checks.cs'
+            $leaves[$path]=@($leaves[$path])+@($name)
+        }
+        foreach($path in @('tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){
+            $leaves[$path]=@($leaves[$path])+@($name)
+        }
     }
     # These existing narrow bodies share the real aim/control/effects fixture.
     # Bind its existing assertions conservatively without executing siblings.
@@ -471,6 +501,8 @@ function Get-WorkloadNativeScopes {
         'RuntimeFailureBuildManualCpu'=@('shared-host','blueprint-host','tools-host');
         'RuntimeFailureBuildWorldCpu'=@('shared-host','blueprint-host','tools-host');
         'RuntimeFailureBuildReceiptCpu'=@('shared-host','blueprint-host','tools-host');
+        'RuntimeFailureBuildSelectionCpu'=@('shared-host','blueprint-host','tools-host');
+        'RuntimeFailureBuildScrollCpu'=@('shared-host','blueprint-host','tools-host');
         'JourneyCloseCpu'=@('journey-host','quick-items-host');
         'TargetGestureDiagnostic'=@('browser-host');
         'WorldGenPreviewCpu'=@('worldgen-preview','shared-host');
@@ -555,7 +587,7 @@ function Get-WorkloadNativeScopes {
         'NpcLegalCoverage'=@('legacy-worker'); 'NpcWorkerTransport'=@('legacy-worker'); 'NpcMenuPreparation'=@('legacy-worker'); 'NpcSessionCapacity'=@('legacy-worker'); 'NpcProduction'=@('legacy-worker'); 'NpcLongCoverage'=@('legacy-worker');
         'WorkloadCpu'=@('world-host','shared-host'); 'InformationCpu'=@('information','shared-host'); 'GuidanceCpu'=@('guidance','shared-host');
         'ShortFeedbackCpu'=@('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host','fishing-host','combat-host','blueprint-host');
-        'CombatCpu'=@('combat-host'); 'CombatFacingCpu'=@('combat-host'); 'CombatHitsCpu'=@('combat-host'); 'CombatReportCpu'=@('combat-host'); 'CombatUiCpu'=@('combat-host'); 'CombatObservationCpu'=@('combat-host'); 'CombatCosts'=@('combat-host');
+        'CombatCpu'=@('combat-host'); 'CombatFacingCpu'=@('combat-host'); 'CombatHitsCpu'=@('combat-host'); 'CombatReportCpu'=@('combat-host'); 'CombatUiCpu'=@('combat-host'); 'CombatObservationCpu'=@('combat-host'); 'CombatObservationBoundaryCpu'=@('combat-host'); 'CombatCosts'=@('combat-host');
         'InputBoundary'=@('input-boundary','shared-host');
         'ToolsCpu'=@('tools-host'); 'ToolsCadence'=@('tools-host'); 'ToolsExecutionCpu'=@('tools-host'); 'ToolsWorkload'=@('tools-host');
         'BlueprintSubstitutionCpu'=@('blueprint-host','tools-host','browser-host');
@@ -564,6 +596,7 @@ function Get-WorkloadNativeScopes {
         'BlueprintExchangeCpu'=@('blueprint-host','tools-host','shared-host');
         'BlueprintExchangeFollowupCpu'=@('blueprint-host','shared-host','hotkeys');
         'BlueprintMirrorTrimCpu'=@('blueprint-host','hotkeys','tools-host');
+        'BlueprintSupplyContinuationCpu'=@('blueprint-host','tools-host');
         'BlueprintConstructionCpu'=@('blueprint-host','tools-host');
         'BlueprintBuildCadenceCpu'=@('blueprint-host','tools-host');
         'BlueprintPreparationCpu'=@('blueprint-host','tools-host');

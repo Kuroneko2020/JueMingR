@@ -187,6 +187,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(target.Readiness==BlueprintBuildReadiness.Deferred)return;
                 NotifyBuildAttempt(target);
             }
+            if(buildMaterialPreparation?.Ready==true && buildSupplyTarget==null)buildMaterialPreparation.RequestReturn();
         }
         private bool TryPrepareBuild(BlueprintBuildTarget target, Player p, out BuildFlight result)
         { return TryPrepareSelectedBuild(target, p, out result, null); }
@@ -455,6 +456,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.BuildChoice);
 #endif
+            FinalizeReadyBuildSupply(p);
             var next = preparedBuild;
             if (next == null || !ReferenceEquals(p, next.Player) || !CanBuildAutomatically(p) || p.itemAnimation > 0 || p.itemTime > 0 || p.channel || p.reuseDelay > 0 ||
                 !p.releaseUseItem || p.selectedItemState.HasActiveOverride || p.selectedItemState.HasBufferedChange || !BuildFlightCurrent(next, false) || !PreparedBuildPriorityCurrent(next,p))

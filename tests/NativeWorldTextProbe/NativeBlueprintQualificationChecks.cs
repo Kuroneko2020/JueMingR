@@ -198,12 +198,15 @@ namespace NativeWorldTextProbe
                 "actual catalog invalidation withdraws old proof, move lock and denominator before the replacement directory is ready");
             Ready(host,item,step);var current=Qualification(item);var match=Get(item,"Match");
             Require(current.CapabilityRevision>old.CapabilityRevision,"real native catalog rebuild publishes a new capability identity");
+            Require(!ReferenceEquals(current.GeometryDirectory,old.GeometryDirectory) && ReferenceEquals(current.GeometryDirectory.Sources,current.SourceRanges),
+                "native catalog invalidation publishes complete geometry under the new qualified source, never the old directory");
             Call(host,"AcceptProjectionQualification",item,old);
             Require(ReferenceEquals(Qualification(item),current) && ReferenceEquals(Get(item,"Match"),match),"late real old-catalog receipt cannot replace current Host qualification or proof");
             var coverEntry=Save(library,new CaptureSummary{Width=1,Height=1},new[]{new CaptureCell{Layers=CaptureLayer.Tile,TileType=TileID.Stone}});
             var cover=NativeBlueprintWorldMatchChecks.Place(host,input,coverEntry,100,60,step);
             NativeQuickItemChecks.Until(()=>{step();return ((BlueprintProjectionMask)Get(item,"Mask")).RemovedLayerCount==6;});Ready(host,item,step);
             var masked=Qualification(item);var mask=(BlueprintProjectionMask)Get(item,"Mask");
+            Require(ReferenceEquals(masked.GeometryDirectory,current.GeometryDirectory),"the real mask-only native qualification shares geometry while rebuilding current world proof");
             Require(masked.EffectiveRequiredLayerCount==6 && raw.Cells.Where(c=>c.TileType==187).All(c=>(mask.Apply(c).Layers&CaptureLayer.Tile)==0) &&
                 (mask.Apply(raw.Cells.Single(c=>c.X==0 && c.Y==0)).Layers&(CaptureLayer.Wall|CaptureLayer.Wire|CaptureLayer.Actuator))==(CaptureLayer.Wall|CaptureLayer.Wire|CaptureLayer.Actuator),
                 "one overlapping Tile masks the entire display object, preserves raw geometry/sibling layers and does not deduct construction targets");

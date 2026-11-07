@@ -144,7 +144,7 @@ function Read-WorkloadJson {
 function Get-WorkloadClearedEnvironment {
     # These are fixture selectors, never inherited proof of a full scope.
     $known=(Read-WorkloadNativeDispatch).selectors
-    $selectors=@(Get-ChildItem Env: | Where-Object {$known.Contains($_.Name) -or $_.Name -match '^JUEMINGR_.*(ONLY|SCOPE|PHASES?|SINGLE)$'})
+    $selectors=@(Get-ChildItem Env: | Where-Object {$known.Contains($_.Name) -or $_.Name -match '^(JUEMINGR|JMR)_.*(ONLY|SCOPE|PHASES?|SINGLE|CANDIDATE)$'})
     foreach ($item in $selectors) { if (!$known.Contains($item.Name)) {throw ('Unknown inherited workload selector: '+$item.Name)} }
     if ($env:JMR_INPUT_DIAGNOSTIC -or $env:JMR_INPUT_DIAGNOSTIC_WINDOW) {throw 'Diagnostic process switches are not ordinary workload inputs.'}
     return $selectors

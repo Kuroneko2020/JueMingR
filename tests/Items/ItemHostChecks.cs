@@ -380,6 +380,19 @@ namespace Terraria
         }
         private static void CapacityBackoff()
         {
+            foreach(bool moved in new[]{false,true})
+            {
+                NewSession(1);Configure(true,false,false);Player client=Main.LocalPlayer;client.position=Vector2.Zero;
+                client.inventory[10]=Make(8,20);int sent=QuickStacking.Calls;
+                client.Pickup(new WorldItem{inner=Make(8,1)});Step();
+                Check(host.Ownership.StoreBlocked && QuickStacking.Calls==sent+1,"actual pickup submits exactly one asynchronous request at A");
+                if(moved)client.position=new Vector2(100,0);
+                Reply(10,8,21);Step();
+                Check(!host.Ownership.StoreBlocked && host.Ownership.StoreResult.State==ItemOperationState.NotApplicable,"complete zero reply settles its original request without inventing transfer");
+                client.Pickup(new WorldItem{inner=Make(8,1)});Step();
+                Check(QuickStacking.Calls==sent+(moved?2:1) && client.inventory[10].stack==22,"A zero reply only backs off at A; real new pickup at B retains one immediate request");
+                Step(3);Check(QuickStacking.Calls==sent+(moved?2:1),"new B opportunity is sent once, not blindly replayed");
+            }
             NewSession(0); Configure(true, false, false); Player p = Main.LocalPlayer;
             p.inventory[10] = Make(8, 20); int calls = QuickStacking.Calls;
             Step(12); Check(QuickStacking.Calls == calls, "no source never queries a container");
