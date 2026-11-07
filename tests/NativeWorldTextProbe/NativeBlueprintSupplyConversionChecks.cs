@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using HarmonyLib;
+using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ID;
 using Terraria.UI;
@@ -37,6 +38,7 @@ namespace NativeWorldTextProbe
                 }
                 SupplyConversionRounds(context,host,tools,input);
                 SupplyConversionManualSelection(context,host,tools,input);
+                SupplyConversionPresentation(context,host,tools,input);
             }
             finally
             {
@@ -131,6 +133,72 @@ namespace NativeWorldTextProbe
             if(Main.playerInventory)p.ToggleInv();
             Require(ReferenceEquals(p.inventory[20],red) && ReferenceEquals(p.inventory[21],blue) && ReferenceEquals(p.inventory[54],original) && Main.mouseItem.IsAir,
                 "only the explicit new manual commands restore the abandoned conversion layout");
+        }
+        private static object conversionPresentationOwner;
+        private static Item[] conversionPresentationOriginals;
+        private static Item conversionPresentationCursor;
+        private static bool conversionPresentationObserved;
+        private static bool ConversionPresentationEntry()
+        {
+            var p=Main.LocalPlayer;var live=p.inventory;
+            var view=(Item[])Call(conversionPresentationOwner,"PresentHotbarInventory",new object[]{live});
+            Require(!Main.playerInventory && Main.MouseDisplayItem.IsAir && ReferenceEquals(Main.mouseItem,conversionPresentationCursor) &&
+                !ReferenceEquals(view,live) && new[]{0,20,21,54}.All(slot=>ReferenceEquals(view[slot],conversionPresentationOriginals[slot])) &&
+                ReferenceEquals(p.inventory,live),
+                "actual interface scope maps all four conversion endpoints and hides only the real owned cursor without replacing inventory");
+            conversionPresentationObserved=true;return false;
+        }
+        private static void SupplyConversionPresentation(object context,object host,object tools,object input)
+        {
+            using(var probe=new PostProcessingProbe(context,host,tools,input))
+            {
+                var p=Reset(context,host,tools,input);p.position=new Vector2(42*16,646);
+                for(int slot=0;slot<50;slot++){p.inventory[slot].SetDefaults(ItemID.Wood);p.inventory[slot].stack=1;}
+                p.inventory[0].SetDefaults(ItemID.Paintbrush);var brush=p.inventory[0];
+                p.inventory[20].SetDefaults(ItemID.RedPaint);p.inventory[20].stack=5;var red=p.inventory[20];
+                p.inventory[21].SetDefaults(ItemID.BluePaint);p.inventory[21].stack=3;var blue=p.inventory[21];
+                p.inventory[54].SetDefaults(ItemID.BluePaint);p.inventory[54].stack=7;var original=p.inventory[54];
+                conversionPresentationOriginals=p.inventory.ToArray();
+                var goals=new[]{PostProcessingTarget("TilePaint",44,42,red.paint,ItemID.RedPaint),PostProcessingTarget("TilePaint",45,42,blue.paint,ItemID.BluePaint)};
+                foreach(var goal in goals)NativeToolsChecks.Tile(goal.X,goal.Y,TileID.Stone);
+                probe.Goals=goals;probe.ToolItems=new[]{brush};probe.Supplies=new[]{red,blue};
+                PostProcessingPlace(context,host,input,goals);probe.Advance();probe.Begin(true);SetAutomatic(host,input,true);
+                var preparation=Get(host,"buildMaterialPreparation");
+                NativeQuickItemChecks.Until(()=>{probe.Advance();return (bool)Get(preparation,"converting") &&
+                    (int)Get(preparation,"forwardCursor")==3 && !Main.mouseItem.IsAir;});
+                Require((int)Get(preparation,"endpointCount")==4 && ReferenceEquals(Main.mouseItem,brush),
+                    "the real first five-click conversion carries the exact slot0 brush from its fourth endpoint");
+                conversionPresentationOwner=preparation;conversionPresentationCursor=Main.mouseItem;conversionPresentationObserved=false;
+                var draw=typeof(Main).GetMethod("DrawInterface",F,null,new[]{typeof(GameTime)},null);
+                var target=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));GC.SuppressFinalize(target);
+                var patch=new Harmony("JueMingR.Tests.ConversionPresentation");
+                patch.Patch(draw,prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(ConversionPresentationEntry)){priority=Priority.Last});
+                try{draw.Invoke(target,new object[]{new GameTime()});}
+                finally{foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);}
+                Require(conversionPresentationObserved && Main.playerInventory && ReferenceEquals(Main.mouseItem,brush),
+                    "four-endpoint actual interface exit restores the owned logical inventory and cursor");
+                NativeQuickItemChecks.Until(()=>{probe.Advance();return (bool)Get(preparation,"Ready");});
+                var live=p.inventory;var ready=(Item[])Call(preparation,"PresentHotbarInventory",new object[]{live});
+                Require((int)Get(preparation,"endpointCount")==3 && ReferenceEquals(live[21],brush) && ReferenceEquals(live[0],original) &&
+                    ReferenceEquals(live[54],blue) && ReferenceEquals(ready[0],brush) && ReferenceEquals(ready[21],blue) && ReferenceEquals(ready[54],original) &&
+                    ReferenceEquals(live[20],red) && ReferenceEquals(ready[20],red),
+                    "folded three-endpoint Ready view keeps original tool/material identities while the restored old source is released");
+                NativeQuickItemChecks.Until(()=>{probe.Advance();return probe.Events.Count==2;});
+                var view=(Item[])Call(preparation,"PresentHotbarInventory",new object[]{live});
+                int shown=(int)Call(preparation,"PresentHotbarSelection",p.selectedItem);
+                var held=(Item)Call(preparation,"PresentHotbarHeldItem",p.HeldItem);
+                bool temporary=(bool)Call(preparation,"PresentHotbarOverride",p.selectedItemState.HasActiveOverride);
+                Require((bool)Get(preparation,"Using") && p.selectedItem==21 && shown==0 && temporary && ReferenceEquals(held,brush) &&
+                    ReferenceEquals(view[shown],brush) && ReferenceEquals(view[21],blue) && view[21].stack==2 &&
+                    ReferenceEquals(probe.Events[1].Tool,brush) && probe.Events[1].ToolSlot==21 && ReferenceEquals(live,p.inventory),
+                    "actual new ToolUse selects migrated brush21 while title/highlight/extra-slot consumers show original brush0 and current blue remainder");
+                NativeQuickItemChecks.Until(()=>{probe.Advance();return !(bool)Get(preparation,"HasWork") && !(bool)Get(Get(tools,"Use"),"Active");});
+                Require(ReferenceEquals(p.inventory[0],brush) && ReferenceEquals(p.inventory[20],red) && red.stack==4 && ReferenceEquals(p.inventory[21],blue) &&
+                    blue.stack==2 && ReferenceEquals(p.inventory[54],original) && original.stack==7 && Main.mouseItem.IsAir,
+                    "original native final cleanup restores the moved brush and both exact remainders after display scopes");
+                Console.WriteLine("PASS SupplyConversionPresentation fourthEndpoint=true foldedEndpoints=3 actualTool=21 displayedTool=0 exactRemainder=true fullDrawPixels=NOT_RUN");
+            }
+            conversionPresentationOwner=null;conversionPresentationOriginals=null;conversionPresentationCursor=null;
         }
     }
 }

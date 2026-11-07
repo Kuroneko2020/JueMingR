@@ -136,7 +136,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (!AppearanceRestorationConsumptionReady(target, p, operation.SupplyType, operation.PrimaryMaximum)) return false;
                 if (!TryPrepareBuildSupply(target, p, operation.SupplyType, operation.SupplyDestination, out primary, plan)) return false;
                 if (!PlannedBuildSupplyCurrent(p, plan, primary)) { WaitForDynamicBuild(target); return false; }
-                // A native three-endpoint preparation may move the actual tool.
+                // Native preparation or finite paint conversion can move the tool.
                 // Select its current real position, never the pre-swap slot.
                 tool = plan == null ? FindAppearanceTool(target, p, out outsideReach) : PlannedBuildToolSlot(p, plan, true);
                 if (tool < 0) { WaitForAppearanceAvailability(target, outsideReach); return false; }

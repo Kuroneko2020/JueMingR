@@ -97,7 +97,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintBuildWallContextChecks.cs'=@('native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildNativeTargetChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPersistenceChecks.cs'=@('native-BlueprintCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintQualificationChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintQualificationChecks.cs'=@('native-BlueprintCpu','native-BlueprintQualificationCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildMixedSourceChecks.cs'=@('native-BlueprintCpu','native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildPreflightChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildReviewPreflightChecks.cs'=@('native-BlueprintCpu')
@@ -453,8 +453,8 @@ function Get-WorkloadLeafChecks {
     # sibling private assertions (for example Bee) do not execute on that path.
     # NativeChecks/ScopeDispatch/QuickItem/Information remain common inputs.
     $familyHelpers=@{
-        'Nail'=@('BallisticCandidate','Aim','Observation','Cadence')
-        'Piranha'=@('BallisticCandidate','Aim','Observation','Cadence')
+        'Nail'=@('BallisticCandidate','Aim','Observation','Cadence','ControlPreview')
+        'Piranha'=@('BallisticCandidate','Aim','Observation','Cadence','ControlPreview')
         'Phoenix'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
         'SpecialArrow'=@('Aim','Observation')
         'AttachedShot'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
@@ -470,12 +470,12 @@ function Get-WorkloadLeafChecks {
     foreach($path in @($leaves.Keys)){if($path.StartsWith('src/') -and $leaves[$path] -contains 'native-CombatEffectsCpu'){$leaves[$path]=@($leaves[$path])+@($familyNames)}}
     foreach($family in $familyHelpers.Keys){
         $name='native-CombatEffects'+$family+'Cpu'
-        foreach($helper in @('Effect',$family)+@($familyHelpers[$family])){
+        foreach($helper in @('Effect',$family,'AimFixture','WorkerAsset')+@($familyHelpers[$family])){
             $path='tests/NativeWorldTextProbe/NativeCombat'+$helper+'Checks.cs'
             $leaves[$path]=@($leaves[$path])+@($name)
         }
         foreach($path in @('tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){
-            $leaves[$path]=@($leaves[$path])+@($name)
+            if($leaves.ContainsKey($path)){$leaves[$path]=@($leaves[$path])+@($name)}
         }
     }
     # These existing narrow bodies share the real aim/control/effects fixture.
@@ -596,6 +596,7 @@ function Get-WorkloadNativeScopes {
         'BlueprintExchangeCpu'=@('blueprint-host','tools-host','shared-host');
         'BlueprintExchangeFollowupCpu'=@('blueprint-host','shared-host','hotkeys');
         'BlueprintMirrorTrimCpu'=@('blueprint-host','hotkeys','tools-host');
+        'BlueprintQualificationCpu'=@('blueprint-host');
         'BlueprintSupplyContinuationCpu'=@('blueprint-host','tools-host');
         'BlueprintConstructionCpu'=@('blueprint-host','tools-host');
         'BlueprintBuildCadenceCpu'=@('blueprint-host','tools-host');

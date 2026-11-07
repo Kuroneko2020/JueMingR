@@ -532,7 +532,7 @@ throw 'Incorrectly returned from a failed process.'
     # while changing only copied private assertion inputs for the reuse query.
     foreach($family in @('Nail','Phoenix','')){
         $familyName='native-CombatEffects'+$family+'Cpu'
-        $privateRows=@('source:locked','tests/NativeWorldTextProbe/NativeCombatBeeChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatNailChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatPhoenixChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs:A','tests/NativeWorldTextProbe/NativeChecks.cs:A')
+        $privateRows=@('source:locked','tests/NativeWorldTextProbe/NativeCombatBeeChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatNailChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatPhoenixChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatBallisticCandidateChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatControlPreviewChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatAimFixture.cs:A','tests/NativeWorldTextProbe/NativeCombatWorkerAssetChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs:A','tests/NativeWorldTextProbe/NativeChecks.cs:A')
         $privateLock=[pscustomobject]@{inputs=$privateRows;fingerprint=(Get-WorkloadHash $privateRows)}
         $privateCheck=[pscustomobject]@{name=$familyName;executable=$stderrExe;arguments=@('0');project=''}
         $privateBatch=New-WorkloadCheckpointBatch $fixture $sourceLock $privateLock @($familyName)
@@ -543,7 +543,7 @@ throw 'Incorrectly returned from a failed process.'
         $privateCompleted.outputs=@(Save-WorkloadArtifacts $fixture @(Get-WorkloadEvidenceOutputs $fixture ([pscustomobject]@{outputs=@()}) $stderrExe));Write-WorkloadJson $privateCompleted.path $privateCompleted
         Complete-WorkloadCheckpointQualification $fixture @($privateCompleted) $privateBatch
         $privateEntry=[pscustomobject]@{schemaVersion=2;status='PASS';name=$familyName;signature='private-projection-mechanism';inputFingerprint=(Get-WorkloadCheckFingerprint $privateLock $familyName);executionId=$privateCompleted.executionId;sourceCommit=$sourceLock.commit;sourceFingerprint=$sourceLock.fingerprint;milliseconds=1;outputs=$privateCompleted.outputs;allInputFingerprint=$privateLock.fingerprint;inputs=$privateRows;detectionCommit=$sourceLock.commit;checkpointPath=$privateCompleted.path}
-        foreach($changedPath in @('NativeCombatBeeChecks.cs','NativeCombatNailChecks.cs','NativeCombatBallisticCandidateChecks.cs','NativeCombatEffectChecks.cs','NativeChecks.cs')){
+        foreach($changedPath in @('NativeCombatBeeChecks.cs','NativeCombatNailChecks.cs','NativeCombatBallisticCandidateChecks.cs','NativeCombatControlPreviewChecks.cs','NativeCombatAimFixture.cs','NativeCombatWorkerAssetChecks.cs','NativeCombatEffectChecks.cs','NativeChecks.cs')){
             $changedRows=@($privateRows|ForEach-Object{if($_ -ceq ('tests/NativeWorldTextProbe/'+$changedPath+':A')){$_ -replace ':A$',':B'}else{$_}})
             $changedLock=[pscustomobject]@{inputs=$changedRows;fingerprint=(Get-WorkloadHash $changedRows)}
             $expected=$family -ne '' -and ($changedPath -eq 'NativeCombatBeeChecks.cs' -or $family -eq 'Phoenix' -and $changedPath -in @('NativeCombatNailChecks.cs','NativeCombatBallisticCandidateChecks.cs'))

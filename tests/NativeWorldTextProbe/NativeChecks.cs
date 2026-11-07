@@ -126,7 +126,7 @@ namespace NativeWorldTextProbe
             if (scope == "BlueprintQualificationCpu")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(NativeBlueprintQualificationChecks.Run, processing:true,shortFeedback:true);return 0;
+                NativeQuickItemChecks.Run(context=>{NativeBlueprintQualificationChecks.Run(context);NativeScopeDispatch.Enter("blueprint-qualification");}, processing:true,shortFeedback:true);return 0;
             }
             if (scope == "BlueprintColdHandoffDiagnostic")
             {
