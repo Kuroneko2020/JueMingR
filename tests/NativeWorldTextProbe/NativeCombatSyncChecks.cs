@@ -30,6 +30,24 @@ namespace NativeWorldTextProbe
             var demands=GetOptional(cache,"demands") as int[];var minimums=GetOptional(cache,"minimums") as int[];
             var raw=GetOptional(cache,"result") as JueMingR.Platform.Combat.NpcTrajectory;var outcomeIdentity=GetOptional(source,"outcomeIdentity");var work=GetOptional(host,"PredictionWork") as CombatPredictionWork;
             Console.WriteLine("SYNC SOURCE FACTS demand0="+(demands!=null && demands.Length>0?demands[0]:-1)+" minimum0="+(minimums!=null && minimums.Length>0?minimums[0]:-1)+" raw="+(raw!=null)+" rawCount="+(raw==null?-1:raw.Count)+" rawStop="+(raw==null?"none":raw.Stop.ToString())+" rawSample="+(raw==null?-1:raw.SampleTick)+" guc="+Main.GameUpdateCount+" outcomeTick="+(GetOptional(source,"outcomeTick")??"absent")+" outcomeStop="+(GetOptional(source,"outcomeStop")??"absent")+" outcomeLayer="+(GetOptional(source,"outcomeLayer")??"absent")+" outcomeFuture="+(GetOptional(source,"outcomeFuture")??"absent")+" identityMatch="+(outcomeIdentity!=null && outcomeIdentity.Equals(Get(selection,"Target")))+" native="+(GetOptional(source,"Native")!=null)+" work="+(work!=null)+" budgetMs="+(work==null?-1:work.UsedMilliseconds)+" exceeded="+(work!=null && work.Exceeded));
+            // Packet invalidation requires an actual prior publication, not a
+            // cold first-GUC latency promise. Only the measured zero-future
+            // budget pause may wait through the existing display cadence.
+            bool coldBudgetMiss=raw==null && work!=null && work.Exceeded && demands!=null && demands.Length>0 && demands[0]>0 && minimums!=null && minimums.Length>0 && minimums[0]==1 && GetOptional(source,"Native")==null && (long)Get(source,"outcomeTick")==Main.GameUpdateCount && (int)Get(source,"outcomeFuture")==0 && object.Equals(Get(source,"outcomeLayer"),JueMingR.Platform.Combat.PredictionFailureLayer.None) && object.Equals(Get(source,"outcomeStop"),JueMingR.Platform.Combat.PredictionStop.InvalidState) && outcomeIdentity!=null && outcomeIdentity.Equals(Get(selection,"Target"));
+            if(coldBudgetMiss)
+            {
+                int limit=(int)Get(host,"DisplayRefreshUpdates")*3,advanced=0;uint firstGuc=Main.GameUpdateCount;string waitStop="limit";var expectedIdentity=Get(selection,"Target");
+                while(advanced<limit && cache.Read(0)==null)
+                {
+                    NativeCombatObservationChecks.Fresh(context,host);advanced++;var publication=cache.Read(0);var currentRaw=GetOptional(cache,"result") as JueMingR.Platform.Combat.NpcTrajectory;
+                    long outcomeAt=(long)Get(source,"outcomeTick");int future=(int)Get(source,"outcomeFuture");var stop=Get(source,"outcomeStop");var layer=Get(source,"outcomeLayer");var identity=Get(selection,"Target");bool sameIdentity=expectedIdentity.Equals(identity),sameOutcome=object.Equals(Get(source,"outcomeIdentity"),identity);
+                    Console.WriteLine("SYNC COLD PUBLICATION advanced="+advanced+" guc="+Main.GameUpdateCount+" optionalTick="+Get(host,"optionalTick")+" published="+(publication!=null)+" rawCount="+(currentRaw==null?-1:currentRaw.Count)+" rawStop="+(currentRaw==null?"none":currentRaw.Stop.ToString())+" outcomeTick="+outcomeAt+" outcomeStop="+stop+" outcomeLayer="+layer+" outcomeFuture="+future+" sameIdentity="+sameIdentity+" sameOutcome="+sameOutcome+" budgetMs="+work.UsedMilliseconds+" exceeded="+work.Exceeded);
+                    if(!sameIdentity || outcomeAt==Main.GameUpdateCount && !sameOutcome){waitStop="identity-changed";Require(false,"Sync first-publication identity changed; another target's path cannot establish this packet oracle.");break;}
+                    if(publication!=null){waitStop="published";break;}
+                    if(outcomeAt==Main.GameUpdateCount && !(currentRaw==null && future==0 && object.Equals(layer,JueMingR.Platform.Combat.PredictionFailureLayer.None) && object.Equals(stop,JueMingR.Platform.Combat.PredictionStop.InvalidState) && work.Exceeded)){waitStop="not-qualified-budget-miss";break;}
+                }
+                Console.WriteLine("SYNC COLD PUBLICATION END firstGuc="+firstGuc+" finalGuc="+Main.GameUpdateCount+" advanced="+advanced+" limit="+limit+" stop="+waitStop);
+            }
             Require(cache.Read(0)!=null,"Real Host starts a published path before native packet.");
             var before=target.position;target.position.X+=600;var packet=CombatNetworkFixture.Serialize(23,2);target.position=before;
             Require(packet[3]==2 && packet[4]==7,"Original serializer has separate byte slot/generation.");CombatNetworkFixture.Receive(packet);
