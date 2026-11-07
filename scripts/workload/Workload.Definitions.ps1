@@ -35,7 +35,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatSnapshotChecks.cs'=@('native-NpcSnapshot')
         'tests/NativeWorldTextProbe/NativeWorldGenPreviewChecks.cs'=@('native-WorldGenPreviewCpu')
         'tests/NativeWorldTextProbe/NativeCombatWorkerAssetChecks.cs'=$workerAssetConsumers
-        'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionChecks.cs'=@('native-BlueprintSubstitutionCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintSupplyContinuationCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionNativeChecks.cs'=@('native-BlueprintSubstitutionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionLifecycleChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionLifecycleCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionUiChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput','native-BlueprintVisual','native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionVisual')
@@ -74,7 +74,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintBuildChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSubstitutionCpu','native-BlueprintCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildCadenceChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPostProcessingContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintBusinessContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBusinessContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSupplyContinuationCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSchedulerRunnableChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSchedulerFreshnessChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSupplyContinuationCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSchedulerOpportunityChecks.cs'=@('native-BlueprintBuildCadenceCpu')

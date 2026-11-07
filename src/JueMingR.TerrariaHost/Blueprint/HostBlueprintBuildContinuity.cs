@@ -214,18 +214,31 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool PreferredBuildSupplyCurrent(BlueprintRangeMaterials value)
         {
-            if(value.PreferredSupply==buildSupplyRevision)return true;
+            if(value.PreferredSupply==buildSupplyRevision || value.PreferredSupplyDependencies==BlueprintBuildWait.None)return true;
             var group=buildContinuation;long recovered;
             // PreferredSupply is a recovery cutoff, not a requirement that
             // every unrelated inventory type keep the same qualification.
             // ObserveBuildSignals preserves a positive type's serial through
             // ordinary spend/moves and assigns a later serial on real recovery.
-            // The group's actual tool/material must still reopen its negative
-            // proof after restock. A recorded missing capability remains broad:
-            // another qualifying tool type may restore that same operation.
-            if(group==null || (value.PreferredWaits&(BlueprintBuildWait.Material|BlueprintBuildWait.Capability))!=0)return false;
+            // Only an actual material-dependent negative needs that recovery.
+            // Completed/non-group world members cannot become runnable A just
+            // because A's own selection protection was released. Conversely,
+            // the same unfinished group still reopens on real restock, even
+            // when a successful plan selected a different business material.
+            // Missing capability remains broad for another qualifying tool.
+            if(group==null || (value.PreferredSupplyDependencies&BlueprintBuildWait.Capability)!=0)return false;
             return !(buildSupply.TryGetValue(group.Source.Type,out recovered) && recovered>value.PreferredSupply) &&
                 !(group.Operation?.SupplyType>0 && buildSupply.TryGetValue(group.Operation.SupplyType,out recovered) && recovered>value.PreferredSupply);
+        }
+        private void CapturePreferredSupplyDependency(BlueprintRangeMaterials value,bool alternatives)
+        {
+            // The first dependency starts at the inventory actually used for
+            // this negative, not an older world-only cutoff. Broadening an
+            // existing dependency must retain its cutoff: an earlier recovery
+            // of that material may still await the paid currentness check.
+            if(value.PreferredSupplyDependencies==BlueprintBuildWait.None)value.PreferredSupply=buildSupplyRevision;
+            value.PreferredSupplyDependencies|=BlueprintBuildWait.Material;
+            if(alternatives)value.PreferredSupplyDependencies|=BlueprintBuildWait.Capability;
         }
         private bool PreferredBuildAbsenceCurrent(Player p)
         {
@@ -297,6 +310,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 value.PreferredRevisit=true;value.PreferredCoveredBounds=default(BlueprintProjectionBounds);value.PreferredNegativeOrdinals?.Clear();
                 value.PreferredPositionNegatives?.Clear();value.PreferredWaits=BlueprintBuildWait.None;value.PreferredRetryAt=value.PreferredDependencySlots=0;
+                value.PreferredSupplyDependencies=BlueprintBuildWait.None;
                 value.PreferredContainer=buildContainerRevision;value.PreferredRestoration=appearanceRestorationRevision;value.PreferredPermission=buildFocusPermissionRevision;
             }
         }
@@ -316,6 +330,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 value.PreferredNegativeOrdinals=new System.Collections.Generic.HashSet<int>();
                 value.PreferredPositionNegatives=null;
                 value.PreferredWaits=BlueprintBuildWait.None;value.PreferredRetryAt=value.PreferredDependencySlots=0;
+                value.PreferredSupplyDependencies=BlueprintBuildWait.None;
                 value.PreferredContainer=buildContainerRevision;value.PreferredRestoration=appearanceRestorationRevision;value.PreferredPermission=buildFocusPermissionRevision;
                 value.PreferredVersion=value.PreferredWake=value.PreferredSupply=value.PreferredPlayer=-1;
             }
@@ -333,6 +348,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 value.PreferredCoveredBounds=default(BlueprintProjectionBounds);
                 value.PreferredNegativeOrdinals?.Clear();
                 value.PreferredPositionNegatives?.Clear();
+                value.PreferredSupplyDependencies=BlueprintBuildWait.None;
             }
             // The native writer revokes this route before Host drains its
             // change queue. A cached negative must see that same immediate
@@ -436,7 +452,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(readiness==BlueprintBuildReadiness.Deferred)
                 {DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
                 if(readiness==BlueprintBuildReadiness.Ready && IsUnfinishedBuildTarget(candidate))return PreferredBuildSearch.OwnerPending;
-                if(readiness==BlueprintBuildReadiness.Ready && CandidateMayContinueBuild(candidate))
+                bool materialNegative=readiness==BlueprintBuildReadiness.Ready && CandidateMayContinueBuild(candidate);
+                if(materialNegative)
                 {
                     BuildOperationPlan option;BlueprintBuildWait wait;ulong slots;
                     if(!TryPlanContinuationBuild(candidate,p,PreferredBuildSourceHint(p),out option,out wait,out slots))
@@ -452,6 +469,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // This is a bounded current-near query proof. It is discarded
                 // with that Focus/range or its world/relevant-supply/permission recovery;
                 // it cannot update Match, materials totals or target completion.
+                // Found/Deferred returned above. This is an actual negative;
+                // include a successful plan for another group, which can change
+                // when A supply recovers even without a registered wait reason.
+                if(materialNegative)CapturePreferredSupplyDependency(value,false);
                 value.PreferredNegativeOrdinals?.Add(ordinal);
                 cursor=next;
             }

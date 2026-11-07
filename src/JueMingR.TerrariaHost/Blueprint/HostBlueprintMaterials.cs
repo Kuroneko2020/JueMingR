@@ -92,6 +92,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int PreferredFrontierCursor;
         internal bool PreferredFrontier;
         internal BlueprintBuildWait PreferredWaits;
+        // Material: an actual unfinished same-group candidate produced a
+        // negative plan. Capability: that negative also lacked supplied
+        // capability, so a different qualified type can restore it. World-only
+        // absence carries neither bit. These survive partial strip revisits.
+        internal BlueprintBuildWait PreferredSupplyDependencies;
         internal ulong PreferredDependencySlots, PreferredRetryAt;
         internal long PreferredContainer, PreferredRestoration, PreferredPermission;
         internal long BuildEpoch, BuildWakeRevision;
@@ -408,6 +413,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 ResetMaterialBuildWalk(range, true);
                 value.PreferredGroup = 0; value.PreferredCursor = 0; value.PreferredInitialized = value.PreferredComplete = value.PreferredRevisit = false;
+                value.PreferredSupplyDependencies=BlueprintBuildWait.None;
             }
             value.Desired = null; QueueMaterialChange(range);
             if (retiring) value.CatalogRevision = -1;

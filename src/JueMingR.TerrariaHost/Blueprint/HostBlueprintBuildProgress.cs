@@ -163,6 +163,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (target.LocalPriority && value.PreferredGroup == buildContinuation?.Group)
             {
                 value.PreferredWaits |= reason; value.PreferredDependencySlots |= dependencySlots;
+                if((reason&(BlueprintBuildWait.Material|BlueprintBuildWait.Capability))!=0)
+                    CapturePreferredSupplyDependency(value,true);
                 if ((reason & BlueprintBuildWait.Player) != 0)
                 {
                     if(value.PreferredPositionNegatives==null)value.PreferredPositionNegatives=new Dictionary<int,BlueprintBuildPositionNegative>();
