@@ -14,8 +14,10 @@ namespace NativeWorldTextProbe
         private static object failureBuildContext, failureBuildHost, failureBuildTools, failureBuildPreparation, failureBuildFlight;
         private static Item failureBuildMaterial;
         private static long failureBuildToken, failureBuildCandidates, failureBuildChoices, failureBuildSourceReads;
+        private static long failureBuildNativeGeneration;
         private static bool failureBuildArmed, failureBuildSeen, failureBuildRetained, failureBuildReplaceWorld;
         private static int failureBuildCompleted, failureBuildNativeEnds;
+        private static int failureBuildOriginalEnds,failureBuildNotifyCalls,failureBuildTraceRows;
 
         // Reuse the real construction fixture: production discovery, priority
         // material preparation, original ApplyPaint and native inventory tail.
@@ -36,11 +38,15 @@ namespace NativeWorldTextProbe
                 postfix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(FailInsideOriginalBuild)));
             patch.Patch(host.GetType().GetMethod("EndAutomaticBuild", F), prefix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(ObserveFailureBuildCompleted)));
             var use = Get(tools, "Use");
-            patch.Patch(use.GetType().GetMethod("End", F), postfix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(ObserveFailureBuildNativeEnd)));
+            patch.Patch(use.GetType().GetMethod("End", F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(ObserveFailureBuildNativeEndBefore)),
+                postfix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(ObserveFailureBuildNativeEnd)));
+            patch.Patch(use.GetType().GetMethod("Notify",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(ObserveFailureBuildNotifyBefore)),
+                postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(ObserveFailureBuildNotifyAfter)));
             failureBuildContext = context; failureBuildHost = host; failureBuildTools = tools;
             failureBuildPreparation = Get(host, "buildMaterialPreparation");
             failureBuildArmed = failureBuildSeen = failureBuildRetained = false;
             failureBuildReplaceWorld = replaceWorld; failureBuildCompleted = failureBuildNativeEnds = 0;
+            failureBuildNativeGeneration=0;failureBuildOriginalEnds=failureBuildNotifyCalls=failureBuildTraceRows=0;
             constructionChecksActive = true;
             var inputTail = failureBuildPreparation.GetType().GetMethod("NativeInputTailForChecks", F);
             Require(inputTail != null, "common-build fixture uses the locked original inventory input tail");
@@ -128,6 +134,7 @@ namespace NativeWorldTextProbe
                                 ReferenceEquals(p.inventory[20], slot20) && ReferenceEquals(p.inventory[54], slot54) &&
                                 red.stack == 3 && blue.stack == 7 && Main.mouseItem.IsAir,
                                 "failed-session manual selection relinquishes every old inverse click and preserves real remainder references");
+                            FailureBuildCounts("after-manual-selection");
                             Require(failureBuildCompleted == 1 && failureBuildNativeEnds == 1,
                                 "manual selection does not duplicate the completed native use/finalizer");
                         }
@@ -146,6 +153,7 @@ namespace NativeWorldTextProbe
                         else
                         {
                             Until(context, input, () => !(bool)Get(use, "Active") && !(bool)Get(failureBuildPreparation, "HasWork"));
+                            FailureBuildCounts("after-normal-return");
                             Require(failureBuildCompleted == 1 && GetOptional(host, "activeBuild") == null,
                                 "one exact original BuildFlight completion releases its finite material use");
                             Require(ReferenceEquals(p.inventory[20], red) && red.stack == 3 && ReferenceEquals(p.inventory[54], blue) && blue.stack == 7 && Main.mouseItem.IsAir,
@@ -178,6 +186,7 @@ namespace NativeWorldTextProbe
             failureBuildArmed = false;
             var use = Get(failureBuildTools, "Use");
             failureBuildFlight = GetOptional(failureBuildHost, "activeBuild"); failureBuildToken = (long)Get(use, "Operation");
+            failureBuildNativeGeneration=(long)Get(use,"NativeGeneration");
             Require(failureBuildFlight != null && failureBuildToken > 0 && (bool)Get(use, "InNativeUse") && (bool)Get(failureBuildPreparation, "Using") &&
                 ReferenceEquals(Get(failureBuildPreparation, "Material"), __4) && __4.stack == 3,
                 "fixture fault enters the genuine prepared ApplyPaint after its one real debit");
@@ -194,9 +203,43 @@ namespace NativeWorldTextProbe
                 Call(failureBuildContext, "UpdateRuntime");
             }
         }
+        private static void FailureBuildTrace(string text)
+        {if(failureBuildTraceRows++<40)Console.WriteLine("FailureBuildTrace world="+Main.GameUpdateCount+" "+text);}
+        private static void FailureBuildCounts(string boundary)
+        {
+            FailureBuildTrace(boundary+" completed="+failureBuildCompleted+" broadEnds="+failureBuildNativeEnds+
+                " originalGenEnds="+failureBuildOriginalEnds+" notifyCalls="+failureBuildNotifyCalls+
+                " faultToken/gen="+failureBuildToken+"/"+failureBuildNativeGeneration+
+                " useActive="+Get(Get(failureBuildTools,"Use"),"Active")+" activeFlightSame="+ReferenceEquals(GetOptional(failureBuildHost,"activeBuild"),failureBuildFlight));
+        }
         private static void ObserveFailureBuildCompleted(object __0)
-        { if (__0 != null && ReferenceEquals(__0, failureBuildFlight) && (long)Get(__0, "Token") == failureBuildToken) failureBuildCompleted++; }
-        private static void ObserveFailureBuildNativeEnd(long operation)
-        { if (failureBuildSeen && operation == failureBuildToken) failureBuildNativeEnds++; }
+        {
+            if(failureBuildFlight==null)return;
+            FailureBuildTrace("EndAutomaticBuild argumentNull="+(__0==null)+" sameFlight="+ReferenceEquals(__0,failureBuildFlight)+
+                " argumentToken="+(__0==null?"none":Get(__0,"Token").ToString())+" expectedToken="+failureBuildToken+
+                " currentUseToken="+Get(Get(failureBuildTools,"Use"),"Operation"));
+            if(__0!=null && ReferenceEquals(__0,failureBuildFlight) && (long)Get(__0,"Token")==failureBuildToken)failureBuildCompleted++;
+        }
+        private static void ObserveFailureBuildNativeEndBefore(object __instance,long operation,long generation,out bool __state)
+        {__state=failureBuildSeen && operation==failureBuildToken && generation==failureBuildNativeGeneration && (bool)Get(__instance,"InNativeUse");}
+        private static void ObserveFailureBuildNativeEnd(object __instance,long operation,long generation,bool __state)
+        {
+            if(!failureBuildSeen || operation!=failureBuildToken)return;
+            failureBuildNativeEnds++;
+            if(__state && !(bool)Get(__instance,"InNativeUse"))failureBuildOriginalEnds++;
+            FailureBuildTrace("End token/gen="+operation+"/"+generation+" currentGen="+Get(__instance,"NativeGeneration")+
+                " originalGenExited="+__state+" broadEnds="+failureBuildNativeEnds+" originalGenEnds="+failureBuildOriginalEnds);
+        }
+        private static void ObserveFailureBuildNotifyBefore(object __instance,out bool __state)
+        {
+            __state=failureBuildFlight!=null && ReferenceEquals(__instance,Get(failureBuildTools,"Use"));
+            if(!__state)return;
+            failureBuildNotifyCalls++;
+            var intent=GetOptional(__instance,"Intent");
+            FailureBuildTrace("Notify before token="+Get(__instance,"Operation")+" notified="+Get(__instance,"notified")+
+                " callbackPresent="+(intent!=null && GetOptional(intent,"Completed")!=null));
+        }
+        private static void ObserveFailureBuildNotifyAfter(object __instance,bool __state)
+        {if(__state)FailureBuildTrace("Notify after notified="+Get(__instance,"notified")+" completed="+failureBuildCompleted);}
     }
 }
