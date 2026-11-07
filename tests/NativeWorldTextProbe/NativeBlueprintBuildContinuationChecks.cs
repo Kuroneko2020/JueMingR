@@ -280,11 +280,14 @@ namespace NativeWorldTextProbe
         {
             var p = Reset(context, host, tools, input); p.inventory[12].SetDefaults(ItemID.StoneBlock); p.inventory[12].stack = 8;
             var original = p.inventory[12];
+            var worker=Get(Get(host,"Library"),"worker");
+            long workerBuilds=(long)Get(worker,"projectionGeometryDirectoryBuilds"),workerNodes=(long)Get(worker,"projectionGeometryDirectoryNodes");
             WorldGen.PlaceTile(44, 41, TileID.Stone, true, true); WorldGen.PlaceTile(45, 41, TileID.Stone, true, true);
             var stone = Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone });
             Place(context, host, input, stone, 44, 42);
             foreach (int x in new[] { 42, 43, 45 }) Place(context, host, input, stone, x, 42);
             Place(context, host, input, stone, 44, 40); Place(context, host, input, stone, 45, 40);
+            var instances=Scene(host);
             SetAutomatic(host, input, true);
             NativeQuickItemChecks.Until(() =>
             {
@@ -299,10 +302,27 @@ namespace NativeWorldTextProbe
             // twin cannot turn cache replacement into a different Item source.
             p.inventory[11].SetDefaults(ItemID.StoneBlock); p.inventory[11].stack = 3; var earlier = p.inventory[11];
             long requests = (long)Get(host, "ProjectionMatchSourceRequests"), steps = (long)Get(host, "ProjectionMatchSourceSteps");
+            var qualification=(BlueprintProjectionQualificationReceipt)instances.Select(owner=>GetOptional(owner,"Qualification")).First(value=>value!=null);
+            var directory=qualification.GeometryDirectory;
+            object[] geometries;long chargedGeometryBytes;
+            lock(Get(worker,"gate"))
+            {
+                var template=((IDictionary)Get(worker,"projectionOwners"))[qualification.Identity.TemplateKey];
+                geometries=((IDictionary)Get(template,"QualificationViews")).Values.Cast<object>().ToArray();
+                chargedGeometryBytes=(long)Get(template,"QualificationGeometryBytes");
+            }
+            long sharedDirectoryBytes=directory.Bytes;
+            long expectedGeometryBytes=qualification.SourceRanges.Sum(range=>range.SourceIndexBytes)+qualification.MatchRanges.Sum(range=>range.SourceIndexBytes)+
+                directory.Bytes+128L+(qualification.SourceRanges.Count+qualification.MatchRanges.Count)*64L;
+            Require(directory.NodeCount==1 && qualification.SourceRanges.Count==1 && ReferenceEquals(directory.Sources,qualification.SourceRanges) &&
+                directory.GetNode(0).Group==0 && directory.GetNode(0).Left==-1 && directory.GetNode(0).Right==-1 &&
+                directory.GetNode(0).Bounds.Equals(qualification.SourceRanges[0].Bounds) && sharedDirectoryBytes==72+32 &&
+                geometries.Length==1 && ReferenceEquals(Get(geometries[0],"Directory"),directory) &&
+                chargedGeometryBytes==(long)Get(geometries[0],"Bytes") && chargedGeometryBytes==expectedGeometryBytes,
+                "the actual template owner charges one complete one-node directory once with its shared qualified source geometry");
             long directoryBuilds=(long)Get(host,"BuildFocusDirectoryBuilds"),directoryConstruction=(long)Get(host,"BuildFocusDirectoryConstructionSteps"),
-                directoryQueries=(long)Get(host,"BuildFocusDirectorySteps"),directoryRoutes=(long)Get(host,"BuildFocusDirectoryRoutes"),
-                sharedDirectoryBytes=(long)Get(host,"BuildFocusDirectorySharedBytes"),temporaryDirectoryBytes=(long)Get(host,"BuildFocusDirectoryTemporaryBytes");
-            long peakDirectoryBytes=0,peakSharedDirectoryBytes=sharedDirectoryBytes;
+                directoryQueries=(long)Get(host,"BuildFocusDirectorySteps"),directoryRoutes=(long)Get(host,"BuildFocusDirectoryRoutes");
+            long peakDirectoryBytes=0;int observedQueries=0;
             var initiallyRetained = pinned.Select(r => Get(r, "Owner")).ToArray();
             var patch = new Harmony("JueMingR.Tests.BlueprintFullSourceContinuation");
             patch.Patch(typeof(Player).GetMethod("PlaceThing_Tiles_PlaceIt", F), postfix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(ContinuousPlaced)));
@@ -321,7 +341,13 @@ namespace NativeWorldTextProbe
                     previousSteps = currentSteps; previousChecks = currentChecks;previousQueries=(long)Get(host,"BuildFocusDirectorySteps");
                     previousConstruction=(long)Get(host,"BuildFocusDirectoryConstructionSteps");
                     peakDirectoryBytes=Math.Max(peakDirectoryBytes,(long)Get(host,"BuildFocusDirectoryBytes"));
-                    peakSharedDirectoryBytes=Math.Max(peakSharedDirectoryBytes,(long)Get(host,"BuildFocusDirectorySharedBytes"));
+                    var focus=GetOptional(host,"buildContinuation");
+                    if(focus!=null)foreach(DictionaryEntry query in (IDictionary)Get(Get(focus,"Discovery"),"Owners"))
+                    {
+                        Require(instances.Contains(query.Key) && ReferenceEquals(Get(query.Value,"Directory"),directory),
+                            "live per-instance Host queries retain the template's same frozen directory instead of building private copies");
+                        observedQueries++;
+                    }
                     return Scene(host).Length == 0 && !(bool)Get(continuousUse, "Active");
                 });
                 Require(continuousPlacements.Count == 6 && continuousPlacements.Select(v => v.Owner).Distinct().Count() == 6 &&
@@ -340,18 +366,23 @@ namespace NativeWorldTextProbe
                     v.WorldTick + "/" + v.Time + "/" + ((BlueprintProjectionIdentity)Get(v.Owner, "Identity")).ProjectionGeneration + "/" + v.Token)) + " gaps=" + string.Join(",", gaps));
                 Require(gaps.Select((gap, i) => gap == continuousPlacements[i].Time).All(equal => equal),
                     "all six exact-source native consumers, including both initially nonresident instances, use each preceding native itemTime opportunity");
-                long built=(long)Get(host,"BuildFocusDirectoryBuilds")-directoryBuilds,
-                    construction=(long)Get(host,"BuildFocusDirectoryConstructionSteps")-directoryConstruction;
-                Require(built>0 && built<=6 && construction==built && peakDirectoryBytes<=1024+6*1024 &&
-                    peakSharedDirectoryBytes-sharedDirectoryBytes<=1024+6*256 && (long)Get(host,"BuildFocusDirectoryTemporaryBytes")<=Math.Max(temporaryDirectoryBytes,28),
-                    "six one-group qualified instances build at most six shared geometry directories once; construction and retained/temporary bytes are accounted independently of source transport");
-                long stableBuilds=(long)Get(host,"BuildFocusDirectoryBuilds"),stableConstruction=(long)Get(host,"BuildFocusDirectoryConstructionSteps");
+                long built=(long)Get(worker,"projectionGeometryDirectoryBuilds")-workerBuilds,
+                    construction=(long)Get(worker,"projectionGeometryDirectoryNodes")-workerNodes;
+                // Six instances consume one immutable qualified source. The
+                // worker owns its sole node allocation; Host owns only the
+                // independently bounded query/coverage/stack state above.
+                Require(built==1 && construction==1 && (long)Get(worker,"projectionGeometryDirectoryMaximumBatch")<=64 && observedQueries>0 &&
+                    instances.All(owner=>ReferenceEquals(((BlueprintProjectionQualificationReceipt)Get(owner,"Qualification")).GeometryDirectory,directory)) &&
+                    peakDirectoryBytes<=1024+6*1024 && (long)Get(host,"BuildFocusDirectoryBuilds")==directoryBuilds &&
+                    (long)Get(host,"BuildFocusDirectoryConstructionSteps")==directoryConstruction && (long)Get(host,"BuildFocusDirectoryTemporaryBytes")==0,
+                    "all six real consumers share one worker-built one-node directory, with separately bounded Host queries and zero Host construction");
+                long stableBuilds=(long)Get(worker,"projectionGeometryDirectoryBuilds"),stableConstruction=(long)Get(worker,"projectionGeometryDirectoryNodes");
                 for(int i=0;i<12;i++)Step(context,input);
-                Require(stableBuilds==(long)Get(host,"BuildFocusDirectoryBuilds") && stableConstruction==(long)Get(host,"BuildFocusDirectoryConstructionSteps"),
+                Require(stableBuilds==(long)Get(worker,"projectionGeometryDirectoryBuilds") && stableConstruction==(long)Get(worker,"projectionGeometryDirectoryNodes"),
                     "stable callbacks do not rebuild the geometry directory");
-                Console.WriteLine("BlueprintFocusDirectory instances=6 builds="+built+" constructionSteps="+construction+
+                Console.WriteLine("BlueprintFocusDirectory instances=6 workerBuilds="+built+" workerConstructionSteps="+construction+" hostConstruction=0"+
                     " queryNodes="+((long)Get(host,"BuildFocusDirectorySteps")-directoryQueries)+" routedLogicalParts="+((long)Get(host,"BuildFocusDirectoryRoutes")-directoryRoutes)+
-                    " activeEstimatedBytesPeak="+peakDirectoryBytes+" sharedEstimatedBytes="+sharedDirectoryBytes+"->"+peakSharedDirectoryBytes+
+                    " activeEstimatedBytesPeak="+peakDirectoryBytes+" workerSharedDirectoryBytes="+sharedDirectoryBytes+" workerChargedQualifiedGeometryBytes="+chargedGeometryBytes+
                     " temporaryOrderBytesPeak="+Get(host,"BuildFocusDirectoryTemporaryBytes")+" stableRebuilds=0");
             }
             finally
