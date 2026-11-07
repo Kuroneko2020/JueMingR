@@ -114,6 +114,7 @@ namespace NativeWorldTextProbe
             // false branches are the three Entry actors and Waiting family.
             var horizontal=typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.FighterHorizontalMotion");var independent=horizontal.GetMethod("Independent",Flags);var shooter=typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcFighterClockMotion").GetMethod("Shooter",Flags);
             for(int type=0;type<Terraria.ID.NPCID.Count;type++)if((bool)independent.Invoke(null,new object[]{type}))Require((bool)shooter.Invoke(null,new object[]{type}),"Current horizontal Independent false is intercepted by finite Clock type="+type);
+            ProveTrendHostPublication(context,host);
             foreach(int side in new[]{-1,1})foreach(int ownerSlot in new[]{1,3})
             {
                 foreach(var npc in Main.npc)npc.active=false;var owner=Main.npc[ownerSlot]=new NPC();owner.SetDefaults(398);owner.whoAmI=ownerSlot;owner.position=new Vector2(900,400);owner.velocity=new Vector2(.5f,0);owner.noGravity=owner.noTileCollide=true;
@@ -121,12 +122,21 @@ namespace NativeWorldTextProbe
                 var trendSelection=Get(host,"Selection");var trendIdentity=(NpcIdentity)Get(trendSelection,"Target");var trendRaw=GetOptional(cache,"result") as NpcTrajectory;
                 var trendDemands=GetOptional(cache,"demands") as int[];var trendMinimums=GetOptional(cache,"minimums") as int[];var trendBudget=GetOptional(host,"PredictionWork") as CombatPredictionWork;
                 Console.WriteLine("TR01 SOURCE FACTS side="+side+" ownerSlot="+ownerSlot+" guc="+Main.GameUpdateCount+" wet="+(wet!=null)+" wetCount="+(wet==null?-1:wet.Count)+" wetStop="+(wet==null?"none":wet.Stop.ToString())+" wetTokenMatches="+(wet!=null && ReferenceEquals(wet.Identity.Token,n))+" nActive="+n.active+" ownerActive="+owner.active+" hasTarget="+Get(trendSelection,"HasTarget")+" selectedTokenMatches="+ReferenceEquals(trendIdentity.Token,n)+" demand0="+(trendDemands!=null && trendDemands.Length>0?trendDemands[0]:-1)+" minimum0="+(trendMinimums!=null && trendMinimums.Length>0?trendMinimums[0]:-1)+" rawCount="+(trendRaw==null?-1:trendRaw.Count)+" outcomeTick="+Get(source,"outcomeTick")+" outcomeStop="+Get(source,"outcomeStop")+" outcomeLayer="+Get(source,"outcomeLayer")+" outcomeFuture="+Get(source,"outcomeFuture")+" outcomeMatches="+object.Equals(Get(source,"outcomeIdentity"),trendIdentity)+" optionalTick="+Get(host,"optionalTick")+" displayShortTick="+Get(host,"displayShortTick")+" budgetMs="+(trendBudget==null?-1:trendBudget.UsedMilliseconds)+" exceeded="+(trendBudget!=null && trendBudget.Exceeded));
+                // These are frozen Source component oracles, including the
+                // same-capture demand/reuse checks below, not a cold Host
+                // publication or performance promise. Keep each original GUC
+                // and prepare its real selected sample through the same Source
+                // seam already used below; do not invent a trajectory/budget.
+                Require((bool)Get(trendSelection,"HasTarget") && trendIdentity.Equals(new NpcIdentity((long)Get(host,"Session"),n,2,n.generation,n.type,n.netID)),"TR01 wet component uses the real selected identity.");
+                Call(source,"Prepare",trendIdentity,(long)Main.GameUpdateCount);wet=cache.Read(0);
                 Require(wet!=null && wet.Count>13 && ReferenceEquals(wet.Identity.Token,n),"Current TR01 real relation4 Source publishes a future");
                 var rolling=Get(source,"rolling");var work=(NpcMotionState[])Get(rolling,"work");bool routed=false;foreach(var state in work)if(state.Identity.Equals(wet.Identity))routed=state.PositionRelation==4 && state.TrendInitialized && state.TrendBaseVx==side*2;
                 Require(routed && wet[1].Vx==side*2 && wet[2].Vx==side*2 && wet[13].Vx==side*2,"TR01 actual nested Trend initialized and no-contact dry physics owns future baseline side="+side+" slot="+ownerSlot);
                 Require((wet.Assumptions&(PredictionAssumption.CurrentConnection|PredictionAssumption.ApproximateMechanism))==(PredictionAssumption.CurrentConnection|PredictionAssumption.ApproximateMechanism),"Real constraint does not turn the observed hand/Boss velocity into complete AI");
                 Call(source,"Prepare",wet.Identity,wet.CaptureTick);Require(ReferenceEquals(wet,cache.Read(0)),"Current nested Trend repeated identical sample reuses immutable path");
-                n.wet=false;n.velocity=new Vector2(side*4,0);NativeCombatObservationChecks.Fresh(context,host);var dry=cache.Read(0);Require(dry!=null && dry[13].Vx==side*4,"Current relation4 unchanged dry positive");
+                n.wet=false;n.velocity=new Vector2(side*4,0);NativeCombatObservationChecks.Fresh(context,host);
+                trendIdentity=(NpcIdentity)Get(trendSelection,"Target");Require((bool)Get(trendSelection,"HasTarget") && trendIdentity.Equals(new NpcIdentity((long)Get(host,"Session"),n,2,n.generation,n.type,n.netID)),"TR01 dry component uses the real selected identity.");
+                Call(source,"Prepare",trendIdentity,(long)Main.GameUpdateCount);var dry=cache.Read(0);Require(dry!=null && dry[13].Vx==side*4,"Current relation4 unchanged dry positive");
                 n.position+=n.velocity;n.velocity=new Vector2(side*3.8f,0);NativeQuickItemChecks.BeginWorldStep();Call(Get(context,"nativeNpcs"),"BeginTick");cache.Demand(0,1,6);Call(source,"Prepare",dry.Identity,(long)Main.GameUpdateCount);var shortPath=cache.Read(0);
                 // Short demand and its growth are solves of one frozen sample,
                 // not new observations. Every common point must be identical.
@@ -135,7 +145,9 @@ namespace NativeWorldTextProbe
                 Require(Math.Abs(grown[13].Vx-side*3.8f)<.00001f && Math.Abs(grown[3].Vx)<3.8f,"Current relation4 recent correction retires without permanent acceleration");
                 for(int point=0;point<shortPath.Count;point++)Require(shortPath[point].Bounds.X==grown[point].Bounds.X && shortPath[point].Bounds.Y==grown[point].Bounds.Y && shortPath[point].Vx==grown[point].Vx,"Nested Trend demand growth does not re-accumulate transient point="+point);
                 for(int repeat=0;repeat<3;repeat++){Call(source,"Prepare",grown.Identity,grown.CaptureTick);Require(ReferenceEquals(grown,cache.Read(0)),"Nested Trend repeated growth sample never advances itself");}
-                n.position+=n.velocity;n.velocity=new Vector2(side*3.6f,0);n.wet=true;n.wetCount=1;NativeCombatObservationChecks.Fresh(context,host);var takeover=cache.Read(0);
+                n.position+=n.velocity;n.velocity=new Vector2(side*3.6f,0);n.wet=true;n.wetCount=1;NativeCombatObservationChecks.Fresh(context,host);
+                trendIdentity=(NpcIdentity)Get(trendSelection,"Target");Require((bool)Get(trendSelection,"HasTarget") && trendIdentity.Equals(new NpcIdentity((long)Get(host,"Session"),n,2,n.generation,n.type,n.netID)),"TR01 takeover component uses the real selected identity.");
+                Call(source,"Prepare",trendIdentity,(long)Main.GameUpdateCount);var takeover=cache.Read(0);
                 Require(takeover!=null && Math.Abs(takeover[1].Vx-side*1.7f)<.00001f && takeover[1].Vx==takeover[2].Vx && takeover[2].Vx==takeover[13].Vx,"Liquid takes over a recent Trend correction exactly once, retaining actual physical result");
                 work=(NpcMotionState[])Get(rolling,"work");foreach(var state in work)if(state.Identity.Equals(takeover.Identity))Require(state.ObservedAccelerationX==0 && state.ObservedTurn==0,"Physical takeover retires old transient rather than accumulating it");grown=takeover;
                 owner.position.X+=10;Call(source,"Prepare",grown.Identity,grown.CaptureTick);var revised=cache.Read(0);Require(revised!=null && !ReferenceEquals(grown,revised) && revised.CaptureTick==grown.CaptureTick && revised[0].Bounds.X==grown[0].Bounds.X,"Same-tick owner revision invalidates path without moving point zero");
@@ -143,6 +155,31 @@ namespace NativeWorldTextProbe
                 owner.active=false;Call(source,"Prepare",revised.Identity,revised.CaptureTick);Require(cache.Read(0)==null,"Current relation4 inactive necessary owner D");cases++;
             }
             Console.WriteLine("PASS current TR01 real relation4 nested Trend wet/dry, transient retirement, demand growth/repetition and same-tick owner revision cases="+cases);
+        }
+        private static void ProveTrendHostPublication(object context,object host)
+        {
+            // No direct Source preparation in this separate real-Host scene.
+            // The component loop constructs fresh owner/body tokens afterward,
+            // preserving its original adjacent wet/dry observation semantics.
+            foreach(var npc in Main.npc)npc.active=false;
+            var owner=Main.npc[1]=new NPC();owner.SetDefaults(398);owner.whoAmI=1;owner.active=true;owner.position=new Vector2(900,400);owner.velocity=new Vector2(.5f,0);owner.noGravity=owner.noTileCollide=true;
+            var n=Main.npc[2]=new NPC();n.SetDefaults(397);n.whoAmI=2;n.active=true;n.dontTakeDamage=n.immortal=n.friendly=false;n.Center=owner.Center+new Vector2(-500,-100);n.velocity=new Vector2(-4,0);n.target=Main.myPlayer;n.ai[3]=1;n.ai[2]=0;n.wet=true;n.wetCount=1;n.noTileCollide=false;n.timeLeft=750;
+            var expected=new NpcIdentity((long)Get(host,"Session"),n,2,n.generation,n.type,n.netID);var source=Get(host,"Prediction");long before=Main.GameUpdateCount;
+            Aim(context,host,n);int limit=(int)Get(host,"DisplayRefreshUpdates")*3;
+            for(int updates=1;updates<=limit;updates++)
+            {
+                NativeCombatObservationChecks.Fresh(context,host);long now=Main.GameUpdateCount;var selection=Get(host,"Selection");var selected=(NpcIdentity)Get(selection,"Target");
+                bool same=n.active && ReferenceEquals(Main.npc[2],n) && expected.Equals(new NpcIdentity((long)Get(host,"Session"),n,2,n.generation,n.type,n.netID)) && (bool)Get(selection,"HasTarget") && selected.Equals(expected);
+                var display=GetOptional(host,"DisplayPath") as NpcTrajectory;long age=display==null?-1:now-display.SampleTick,remaining=display==null?-1:(long)display.Count-1-age;
+                bool available=(bool)Get(host,"Path") && (bool)Get(host,"PredictionAvailable") && (bool)Get(host,"SelectionAvailable") && !(bool)Get(host,"TargetPredictionFailed");
+                bool ready=available && same && display!=null && display.Identity.Equals(expected) && display.SampleTick>before && display.CaptureTick>before && age>=0 && age==(int)Get(host,"DisplayAge") && age<=(int)Get(host,"DisplayMaximumAge") && remaining>0;
+                var budget=Get(host,"PredictionWork") as CombatPredictionWork;
+                Console.WriteLine("TR01 HOST PUBLICATION updates="+updates+" limit="+limit+" guc="+now+" sameIdentity="+same+" available="+available+" count="+(display==null?-1:display.Count)+" sample="+(display==null?-1:display.SampleTick)+" capture="+(display==null?-1:display.CaptureTick)+" age="+age+" remaining="+remaining+" outcomeTick="+Get(source,"outcomeTick")+" outcomeLayer="+Get(source,"outcomeLayer")+" budgetMs="+(budget==null?-1:budget.UsedMilliseconds)+" exceeded="+(budget!=null && budget.Exceeded)+" ready="+ready);
+                Require(same,"TR01 real Host publication retains its complete fixed receiver identity.");
+                if(ready)return;
+                if(!available || (long)Get(source,"outcomeTick")==now && !object.Equals(Get(source,"outcomeLayer"),PredictionFailureLayer.None))break;
+            }
+            Require(false,"TR01 real Host publishes a current display with at least one complete future step within15 original-budget updates.");
         }
         internal static void Follow(object context)
         {

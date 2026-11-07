@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Reflection;
 using JueMingR.Features.Combat;
+using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -19,7 +20,7 @@ namespace NativeWorldTextProbe
         internal static void Run(object context,string output)
         {
             Directory.CreateDirectory(output);var host=Get(context,"CombatObservation");var layer=Get(host,"World");var geometry=Get(host,"Geometry");var cache=Get(Get(host,"Prediction"),"Cache");var settings=(ObservationSettings)Get(host,"Settings");
-            // Dual measures a real Path parent and its complete forecast.
+            // Dual measures a real Path parent and its current display lease.
             // Establish its native qualification before any warmup or timing.
             bool pathAccessBefore=(bool)Get(host,"PathAccess");if(!pathAccessBefore)NativeHiddenEntryChecks.RevealForComposition(context);
             Console.WriteLine("COST PATH QUALIFICATION before="+pathAccessBefore+" after="+Get(host,"PathAccess")+" settingsReady="+settings.Ready);
@@ -74,8 +75,17 @@ namespace NativeWorldTextProbe
                         var raw=GetOptional(cache,"result");var display=GetOptional(host,"DisplayPath");var selection=Get(host,"Selection");var selected=Get(selection,"Target");
                         var demands=GetOptional(cache,"demands") as int[];var minimums=GetOptional(cache,"minimums") as int[];
                         int displayAge=(int)Get(host,"DisplayAge");int? displayRemaining=display==null?(int?)null:(int)Get(display,"Count")-1-displayAge;
-                        Console.WriteLine("COST DUAL FACTS guc="+Main.GameUpdateCount+" hasTarget="+Get(selection,"HasTarget")+" path="+PathFacts(path,selected)+" raw="+PathFacts(raw,selected)+" display="+PathFacts(display,selected)+" displayAge="+displayAge+" displayRemainingRaw="+(displayRemaining.HasValue?displayRemaining.Value.ToString():"none")+" displayRemainingNonnegative="+(displayRemaining.HasValue?Math.Max(0,displayRemaining.Value).ToString():"none")+" demand0="+(demands!=null && demands.Length>0?demands[0]:-1)+" minimum0="+(minimums!=null && minimums.Length>0?minimums[0]:-1)+" optionalTick="+Get(host,"optionalTick")+" displayShortTick="+Get(host,"displayShortTick")+" optionalTargetMatches="+object.Equals(Get(host,"optionalTarget"),selected));
-                        Require(path!=null && (int)Get(path,"Count")==121,"Dual cost includes the full unchanged selected path.");
+                        var selectedIdentity=(NpcIdentity)selected;long session=(long)Get(host,"Session");
+                        var selectedNpc=Main.npc!=null && selectedIdentity.Slot>=0 && selectedIdentity.Slot<Main.npc.Length?Main.npc[selectedIdentity.Slot]:null;
+                        bool liveIdentity=session>=0 && selectedNpc!=null && selectedNpc.active && selectedIdentity.Equals(new NpcIdentity(session,selectedNpc,selectedNpc.whoAmI,selectedNpc.generation,selectedNpc.type,selectedNpc.netID));
+                        var displayPath=display as NpcTrajectory;long age=displayPath==null?-1:(long)Main.GameUpdateCount-displayPath.SampleTick;
+                        long remaining=displayPath==null?-1:(long)displayPath.Count-1-age;int maximumAge=(int)Get(host,"DisplayMaximumAge");
+                        Console.WriteLine("COST DUAL FACTS guc="+Main.GameUpdateCount+" hasTarget="+Get(selection,"HasTarget")+" path="+PathFacts(path,selected)+" raw="+PathFacts(raw,selected)+" display="+PathFacts(display,selected)+" displayAge="+displayAge+" displayRemainingRaw="+(displayRemaining.HasValue?displayRemaining.Value.ToString():"none")+" displayRemainingNonnegative="+(displayRemaining.HasValue?Math.Max(0,displayRemaining.Value).ToString():"none")+" actualDisplayAge="+age+" selectedIdentityLive="+liveIdentity+" demand0="+(demands!=null && demands.Length>0?demands[0]:-1)+" minimum0="+(minimums!=null && minimums.Length>0?minimums[0]:-1)+" optionalTick="+Get(host,"optionalTick")+" displayShortTick="+Get(host,"displayShortTick")+" optionalTargetMatches="+object.Equals(Get(host,"optionalTarget"),selected));
+                        // Preferred120 is not a complete tail promise every GUC.
+                        // This is current display-lease qualification only; it
+                        // does not replace direction/visible-length/long-lease
+                        // checks or prove equal120 output or a speed comparison.
+                        Require(displayPath!=null && (bool)Get(selection,"HasTarget") && liveIdentity && displayPath.Identity.Equals(selectedIdentity) && age>=0 && age==displayAge && age<=maximumAge && remaining>0,"Dual cost includes a current selected display lease with usable remaining future.");
                     }
                 }
                 string detail="nativeDamageInputs="+shots+";activeNPC="+npcs+";strokes="+strokes+";strokeCapReached="+strokeCapReached+";pathCount="+(path==null?"0":Get(path,"Count").ToString())+";pathStop="+(path==null?"NA":Get(path,"Stop").ToString());
