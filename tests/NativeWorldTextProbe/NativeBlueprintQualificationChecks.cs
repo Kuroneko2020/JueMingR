@@ -103,11 +103,45 @@ namespace NativeWorldTextProbe
         private static long Matches(object item){var value=GetOptional(item,"Match");return value==null?0:(long)Get(value,"Matches");}
         private static void Ready(object host,object item,Action step)
         {
-            NativeQuickItemChecks.Until(()=>
+            var input=Get(host,"Input");var native=Get(Get(host,"materialKnowledge"),"Native");
+            long firstMapping=(long)Get(input,"Mapping"),firstReads=(long)Get(native,"PlacementReads");
+            int firstProgress=(int)Get(native,"PlacementProgress");
+            try
             {
-                step();var value=GetOptional(item,"Match");return Scene(host).Contains(item) && (bool)Call(host,"ProjectionQualificationCurrent",item) && value!=null &&
-                    (int)Get(value,"Current")==((Array)Get(value,"Ranges")).Length;
-            });
+                NativeQuickItemChecks.Until(()=>
+                {
+                    step();var value=GetOptional(item,"Match");return Scene(host).Contains(item) && (bool)Call(host,"ProjectionQualificationCurrent",item) && value!=null &&
+                        (int)Get(value,"Current")==((Array)Get(value,"Ranges")).Length;
+                });
+            }
+            catch(Exception failure)
+            {
+                // One bounded failure witness. Read existing fields/results;
+                // never grant another mapping/batch or warm the catalog while
+                // reporting why the unchanged wait did not reach qualification.
+                try
+                {
+                    var library=(LibraryState)Get(host,"Library");var worker=Get(library,"worker");
+                    var match=GetOptional(item,"Match");var qualification=Qualification(item);
+                    Console.WriteLine("BlueprintQualificationReadyFailure exception="+failure.GetType().FullName+" mapping="+firstMapping+"->"+Get(input,"Mapping")+
+                        " world="+Main.GameUpdateCount+" progress="+firstProgress+"->"+Get(native,"PlacementProgress")+
+                        " placementReads="+firstReads+"->"+Get(native,"PlacementReads")+" placementCursor="+Get(native,"placementCursor")+
+                        " dirty="+Get(native,"dirty")+" placementReady="+Get(native,"PlacementReady")+
+                        " catalogPresent="+(GetOptional(native,"materialCatalog")!=null)+" sampleCount="+Terraria.ID.ContentSamples.ItemsByType.Count+
+                        "/"+ItemID.Count+" sceneContains="+Scene(host).Contains(item)+" opened="+Get(item,"Opened")+
+                        " qualification="+(qualification!=null)+" requestedRevision="+Get(item,"QualificationRequestedRevision")+
+                        " qualificationError="+(qualification?.Error??"none")+" match="+(match!=null)+
+                        " matchCurrent/ranges="+(match==null?"none":Get(match,"Current")+"/"+((Array)Get(match,"Ranges")).Length)+
+                        " libraryReceipt="+library.Snapshot.LastReceipt?.Status+" libraryError="+library.Snapshot.LastReceipt?.Error);
+                    lock(Get(worker,"gate"))
+                        Console.WriteLine("BlueprintQualificationReadyWorker queued="+Get(Get(worker,"projectionQualificationRequests"),"Count")+
+                            " active="+(GetOptional(worker,"projectionQualifying")!=null)+" receipts="+Get(Get(worker,"projectionQualificationReceipts"),"Count")+
+                            " owners="+Get(Get(worker,"projectionOwners"),"Count")+" directoryBuilds="+Get(worker,"projectionGeometryDirectoryBuilds")+
+                            " directoryNodes="+Get(worker,"projectionGeometryDirectoryNodes")+" rootFailure="+(GetOptional(worker,"rootFailure")??"none"));
+                }
+                catch(Exception observationError){Console.WriteLine("BlueprintQualificationReadyFailure observationUnavailable="+observationError.GetType().FullName+":"+observationError.Message);}
+                throw;
+            }
         }
         private static void Window(object host,object item,Action step)
         {
