@@ -212,6 +212,7 @@ namespace Terraria
             try
             {
                 if (IntPtr.Size != 4 || typeof(object).Assembly.GetName().Name != "mscorlib") throw new InvalidOperationException("Host checks require .NET Framework x86.");
+                JueMingR.TerrariaHost.Items.UninstalledPreparationChecks.Run();
                 // Explicit fixture-only selection; never infer a pass from a
                 // device exception. The caller records authorization and reason.
                 bool deferGraphics = args.Length > 0 && args[args.Length - 1] == "--defer-graphics";

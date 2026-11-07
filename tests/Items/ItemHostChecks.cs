@@ -58,6 +58,10 @@ namespace Terraria
             new Main(); Main.gameMenu = false; Main.LocalPlayer = new Player { active = true };
             runtime = new SingleFeatureRuntime(new ItemSessionProbe(), new Idle());
             host = new HostItems(root, runtime, () => canStartActions);
+            // This source-linked receiver installs Items only. Native fixtures
+            // own ToolUse/construction; these callbacks are deliberately absent.
+            host.AllowsOwnedUse=null;host.OwnsBuildHeldMaterial=null;host.HasConstructionPending=null;
+            host.ConstructionPendingProtected=null;host.AllowsOwnedConstructionMaterial=null;
             documents.Add((PreferenceDocument<ItemAutomationSettings>)typeof(HostItems).GetField("preferences", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(host));
             Check(host.Available, "all native hooks admitted: " + host.SetupError);
             runtime.AddFeature(host); runtime.Update(tick++);

@@ -58,7 +58,7 @@ namespace Terraria
     public partial class Main
     {
         public static bool playerInventory, ServerSideCharacter, PendingInventory, NativeVoidPending;
-        public static int cursorOverride, myPlayer;
+        public static int cursorOverride, myPlayer, worldID;
         public static int npcShop { get; set; }
         public static Item mouseItem = new Item();
         public static NPC[] npc = { new NPC() };
@@ -71,7 +71,13 @@ namespace Terraria
         public static bool LocalPlayerHasPendingInventoryActions() { return PendingInventory; }
     }
     public static class Lang { public static string GetItemNameValue(int type) { return "测试物品 " + type; } }
-    public static class Netplay { public static RemoteServer Connection = new RemoteServer(); }
+    public static class Netplay
+    {
+        public static RemoteServer Connection = new RemoteServer();
+        // Locked .8 section coordinates; these are geometry only, not ACKs.
+        public static int GetSectionX(int x) { return x / 200; }
+        public static int GetSectionY(int y) { return y / 150; }
+    }
     public sealed class RemoteServer { public Net.Sockets.ISocket Socket = new Net.Sockets.FixtureSocket(); }
     public partial class Entity { public int whoAmI; public Vector2 position; public Vector2 Center { get; set; } }
     public static class WorldGen
