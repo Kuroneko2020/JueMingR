@@ -1,5 +1,6 @@
 using System;
 using JueMingR.Features.Combat;
+using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -65,7 +66,10 @@ namespace NativeWorldTextProbe
                 Require((long)Get(source,"epoch")>epoch && (long)Get(Get(source,"rolling"),"priorTick")==prior && (long)Get(Get(source,"segmented"),"relationVersion")==relation,"Normal packet retires publication epoch while preserving rolling and segment relation history.");
                 NativeCombatObservationChecks.Fresh(context,host);var next=cache.Read(0);Require(next!=null && (type!=14 || next.Quality==JueMingR.Platform.Combat.PredictionQuality.ObservedTrend),"Next completed sample retains measured segmented trend after normal sync.");
                 target.position.X+=600;packet=CombatNetworkFixture.Serialize(23,2);target.position.X-=600;CombatNetworkFixture.Receive(packet);Require(cache.Read(0)==null && (long)Get(source,"epoch")>epoch || type==14 && cache.Read(0)==null && (long)Get(Get(source,"segmented"),"relationVersion")>relation,"Same-identity large correction retires history separately.");
-                NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null,"Large correction can resample real current target.");
+                var correctionIdentity=ActualSyncIdentity(host,2);
+                NativeCombatObservationChecks.Fresh(context,host);
+                WaitForReadmission(context,host,source,cache,correctionIdentity,"large-correction type="+type);
+                Require(cache.Read(0)!=null,"Large correction can resample real current target.");
                 Console.WriteLine("SYNC23 ordinary/correction type="+type+" tokenSame="+ReferenceEquals(Main.npc[2],token));
                 foreach(int change in new[]{0,1,2})
                 {
@@ -77,7 +81,10 @@ namespace NativeWorldTextProbe
                     CombatNetworkFixture.Receive(changed);
                     Require(cache.Read(0)==null && (change==2?ReferenceEquals(Main.npc[2],token):!ReferenceEquals(Main.npc[2],token)),"Real forced instance / generation / same-token netID transformation retires cached identity: "+change);
                     Require(!oldIdentity.Equals(new JueMingR.Platform.Combat.NpcIdentity(oldIdentity.Session,Main.npc[2],2,Main.npc[2].generation,Main.npc[2].type,Main.npc[2].netID)),"Changed identity cannot continue old target.");
-                    NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null,"Reacquire actual changed target.");
+                    var changedIdentity=ActualSyncIdentity(host,2);
+                    NativeCombatObservationChecks.Fresh(context,host);
+                    WaitForReadmission(context,host,source,cache,changedIdentity,"changed-target type="+type+" change="+change);
+                    Require(cache.Read(0)!=null,"Reacquire actual changed target.");
                 }
             }
             SegmentedBoundaries(context,host,source,cache);
@@ -85,6 +92,47 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS SYNC23 real original serialization/dispatch: nonzero generation, ordinary history, forced instance, generation, same-token transform and large correction.");
             }
             finally{Main.sectionManager=previousSections;Main.netMode=previousNetMode;}
+        }
+        private static NpcIdentity ActualSyncIdentity(object host,int slot)
+        {
+            var npc=Main.npc[slot];
+            return new NpcIdentity((long)Get(host,"Session"),npc,slot,npc==null?-1:npc.generation,npc==null?-1:npc.type,npc==null?-1:npc.netID);
+        }
+        private static void WaitForReadmission(object context,object host,object source,NpcPredictionCache cache,NpcIdentity expected,string stage)
+        {
+            // Only these two positive reacquisition checks have no one-frame
+            // publication promise. Packet retirement does not reset either
+            // Host clock. Wait only while BOTH admission clocks are not due;
+            // the first admission/outcome returns to the unchanged assertion.
+            // Normal-sync motion history and all same-GUC checks stay separate.
+            int limit=(int)Get(host,"DisplayRefreshUpdates")*3,advanced=0;
+            while(ReadmissionPending(host,source,cache,expected,stage,advanced,limit))
+            {
+                if(advanced>=limit)break;
+                NativeCombatObservationChecks.Fresh(context,host);advanced++;
+            }
+        }
+        private static bool ReadmissionPending(object host,object source,NpcPredictionCache cache,NpcIdentity expected,string stage,int advanced,int limit)
+        {
+            var selection=Get(host,"Selection");var selected=(NpcIdentity)Get(selection,"Target");
+            var path=cache.Read(0);var raw=GetOptional(cache,"result") as NpcTrajectory;var budget=GetOptional(host,"PredictionWork") as CombatPredictionWork;
+            var demands=GetOptional(cache,"demands") as int[];var minimums=GetOptional(cache,"minimums") as int[];
+            long now=Main.GameUpdateCount,fullTick=(long)Get(host,"optionalTick"),shortTick=(long)Get(host,"displayShortTick"),outcomeAt=(long)Get(source,"outcomeTick");
+            bool hasTarget=(bool)Get(selection,"HasTarget"),selectedMatches=hasTarget && selected.Equals(expected);
+            bool liveMatches=Main.npc[expected.Slot]!=null && Main.npc[expected.Slot].active && expected.Equals(ActualSyncIdentity(host,expected.Slot));
+            bool optionalTargetMatches=expected.Equals((NpcIdentity)Get(host,"optionalTarget"));var outcomeIdentity=GetOptional(source,"outcomeIdentity");
+            bool optional=(bool)Get(host,"OptionalPreparation"),pathEnabled=(bool)Get(host,"Path"),pathFailed=(bool)Get(host,"pathFailed"),targetFailed=(bool)Get(host,"TargetPredictionFailed");
+            int demand=demands!=null && demands.Length>0?demands[0]:0,minimum=minimums!=null && minimums.Length>0?minimums[0]:0;
+            bool exceeded=budget!=null && budget.Exceeded;
+            bool pending=path==null && raw==null && pathEnabled && !pathFailed && !targetFailed && demand>0 && minimum==1 &&
+                liveMatches && selectedMatches && outcomeAt!=now && !optional && optionalTargetMatches &&
+                fullTick>=0 && fullTick<now && now-fullTick<(int)Get(host,"DisplayRefreshUpdates") &&
+                shortTick>=0 && shortTick<now && now-shortTick<(int)Get(host,"DisplayShortRefreshUpdates") && budget!=null && !exceeded;
+            Console.WriteLine("SYNC READMISSION stage="+stage+" advanced="+advanced+" limit="+limit+" guc="+now+" hasTarget="+hasTarget+" selectedMatches="+selectedMatches+" liveMatches="+liveMatches+" expected="+expected.Slot+"/"+expected.Generation+"/"+expected.Type+" path="+(path!=null)+" rawCount="+(raw==null?-1:raw.Count)+" rawStop="+(raw==null?"none":raw.Stop.ToString())+" rawSample="+(raw==null?-1:raw.SampleTick)+" demand0="+demand+" minimum0="+minimum+" pathEnabled="+pathEnabled+" pathFailed="+pathFailed+" targetFailed="+targetFailed+" optional="+optional+" optionalTick="+fullTick+" displayShortTick="+shortTick+" optionalTargetMatches="+optionalTargetMatches+" outcomeTick="+outcomeAt+" outcomeStop="+Get(source,"outcomeStop")+" outcomeLayer="+Get(source,"outcomeLayer")+" outcomeFuture="+Get(source,"outcomeFuture")+" outcomeMatches="+object.Equals(outcomeIdentity,expected)+" budgetMs="+(budget==null?-1:budget.UsedMilliseconds)+" exceeded="+exceeded+" waitEligible="+pending);
+            Require(liveMatches && selectedMatches,"Sync readmission identity changed or selected target became unavailable; another target cannot satisfy this packet oracle.");
+            Require(path==null || path.Identity.Equals(expected),"Sync readmission published another target's path.");
+            Require(outcomeAt!=now || object.Equals(outcomeIdentity,expected),"Sync readmission Source outcome belongs to another target.");
+            return pending;
         }
         private static void SegmentedBoundaries(object context,object host,object source,NpcPredictionCache cache)
         {

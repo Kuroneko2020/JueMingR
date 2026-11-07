@@ -67,7 +67,16 @@ namespace NativeWorldTextProbe
                     Require(((NpcPredictionCache)cache).Required==(pathEnabled?120:0),"Marker with an idle Aim parent/dual cache demand remains independent.");
                     Require((bool)Get(Get(layer,"Marker"),"Visible")==!none,"Actual current marker command survives the measured update/prepare.");
                     if(!pathEnabled)Require(strokes==0 && path==null,"Marker-only costs contain selection/commands without path work.");
-                    else Require(path!=null && (int)Get(path,"Count")==121,"Dual cost includes the full unchanged selected path.");
+                    else
+                    {
+                        // Timing has ended. Inspect the stored forecast and the
+                        // real presentation getter without renewing either owner.
+                        var raw=GetOptional(cache,"result");var display=GetOptional(host,"DisplayPath");var selection=Get(host,"Selection");var selected=Get(selection,"Target");
+                        var demands=GetOptional(cache,"demands") as int[];var minimums=GetOptional(cache,"minimums") as int[];
+                        int displayAge=(int)Get(host,"DisplayAge");int? displayRemaining=display==null?(int?)null:(int)Get(display,"Count")-1-displayAge;
+                        Console.WriteLine("COST DUAL FACTS guc="+Main.GameUpdateCount+" hasTarget="+Get(selection,"HasTarget")+" path="+PathFacts(path,selected)+" raw="+PathFacts(raw,selected)+" display="+PathFacts(display,selected)+" displayAge="+displayAge+" displayRemainingRaw="+(displayRemaining.HasValue?displayRemaining.Value.ToString():"none")+" displayRemainingNonnegative="+(displayRemaining.HasValue?Math.Max(0,displayRemaining.Value).ToString():"none")+" demand0="+(demands!=null && demands.Length>0?demands[0]:-1)+" minimum0="+(minimums!=null && minimums.Length>0?minimums[0]:-1)+" optionalTick="+Get(host,"optionalTick")+" displayShortTick="+Get(host,"displayShortTick")+" optionalTargetMatches="+object.Equals(Get(host,"optionalTarget"),selected));
+                        Require(path!=null && (int)Get(path,"Count")==121,"Dual cost includes the full unchanged selected path.");
+                    }
                 }
                 string detail="nativeDamageInputs="+shots+";activeNPC="+npcs+";strokes="+strokes+";strokeCapReached="+strokeCapReached+";pathCount="+(path==null?"0":Get(path,"Count").ToString())+";pathStop="+(path==null?"NA":Get(path,"Stop").ToString());
                 for(int i=0;i<before.Length;i++){var after=Counter(cache,counterNames[i]);detail+=";"+counterNames[i]+"="+(before[i].HasValue && after.HasValue?(after.Value-before[i].Value).ToString():"NA");}
@@ -80,6 +89,8 @@ namespace NativeWorldTextProbe
             NativeCombatAimChecks.Initialize();NativeCombatAttackCostChecks.Run(context);
             void SetOptions(ObservationOptions value){NativeQuickItemChecks.Until(()=>{settings.Poll();return settings.Ready;});Require(settings.Set(value),"cost setting accepted");NativeQuickItemChecks.Until(()=>{settings.Poll();return !settings.Busy;});Require(settings.CompletionSucceeded,"cost setting committed");}
         }
+        private static string PathFacts(object path,object selected)
+        {return path==null?"null":"[count="+Get(path,"Count")+",stop="+Get(path,"Stop")+",paused="+Get(path,"BudgetPaused")+",sample="+Get(path,"SampleTick")+",capture="+Get(path,"CaptureTick")+",selected="+object.Equals(Get(path,"Identity"),selected)+"]";}
         private static int? Counter(object owner,string name){var value=GetOptional(owner,name);return value is int?(int?)value:null;}
         private static string F(double value){return value.ToString("F3",CultureInfo.InvariantCulture);}
     }
