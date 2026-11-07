@@ -148,6 +148,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             substitutionPlanningPending = false;
             int allowance = 64;
             if(ContinueBuildSupply(p,ref allowance))return;
+            AdvanceAutomaticBuildSelection(p,ref allowance);
+        }
+        private void AdvanceAutomaticBuildSelection(Player p,ref int allowance)
+        {
+            try
+            {
             // Exact preparation/return remains its original owner's finite
             // responsibility. It cannot grant a foreign business group order.
             if(preparedBuild!=null && BuildFlightCurrent(preparedBuild,false) && PreparedBuildPriorityCurrent(preparedBuild,p))return;
@@ -187,7 +193,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(target.Readiness==BlueprintBuildReadiness.Deferred)return;
                 NotifyBuildAttempt(target);
             }
-            if(buildMaterialPreparation?.Ready==true && buildSupplyTarget==null)buildMaterialPreparation.RequestReturn();
+            }
+            finally
+            {
+                // A NoRunnable discovery ticket may lend the rest of this
+                // Update to ordinary selection. Every early Pending/Deferred
+                // exit must return an unbound receipt, never hold it for I/O.
+                if(buildMaterialPreparation?.Ready==true && buildSupplyTarget==null && buildSupplyDiscovery==null)
+                    buildMaterialPreparation.RequestReturn();
+            }
         }
         private bool TryPrepareBuild(BlueprintBuildTarget target, Player p, out BuildFlight result)
         { return TryPrepareSelectedBuild(target, p, out result, null); }

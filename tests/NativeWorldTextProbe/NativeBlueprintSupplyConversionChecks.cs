@@ -39,6 +39,7 @@ namespace NativeWorldTextProbe
                 SupplyConversionRounds(context,host,tools,input);
                 SupplyConversionManualSelection(context,host,tools,input);
                 SupplyConversionPresentation(context,host,tools,input);
+                SupplyDeferredReceiptRelease(context,host,tools,input);
             }
             finally
             {
@@ -199,6 +200,52 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS SupplyConversionPresentation fourthEndpoint=true foldedEndpoints=3 actualTool=21 displayedTool=0 exactRemainder=true fullDrawPixels=NOT_RUN");
             }
             conversionPresentationOwner=null;conversionPresentationOriginals=null;conversionPresentationCursor=null;
+        }
+        private static void SupplyDeferredReceiptRelease(object context,object host,object tools,object input)
+        {
+            var patch=new Harmony("JueMingR.Tests.SupplyDeferredReceipt");
+            var p=Reset(context,host,tools,input);var preparation=Get(host,"buildMaterialPreparation");
+            p.inventory[12].SetDefaults(ItemID.Paintbrush);
+            p.inventory[13].SetDefaults(ItemID.WoodWall);p.inventory[13].stack=3;
+            p.inventory[20].SetDefaults(ItemID.RedPaint);p.inventory[20].stack=4;var red=p.inventory[20];
+            p.inventory[54].SetDefaults(ItemID.BluePaint);p.inventory[54].stack=7;var original=p.inventory[54];
+            Place(context,host,input,Asset(host,new CaptureCell{Layers=CaptureLayer.Wall,WallType=WallID.Wood}),44,40);
+            var right=Main.tile[45,40];
+            try
+            {
+                Main.tile[45,40]=null;
+                patch.Patch(host.GetType().GetMethod("AdvanceAutomaticBuild",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(FreezeSupplyDiscoveryAdvance)));
+                supplyDiscoveryFrozen=true;SetAutomatic(host,input,true);
+                object target=null;
+                NativeQuickItemChecks.Until(()=>
+                {
+                    Step(context,input);object[] chosen={null};bool found=(bool)Call(host,"TryGetBuildTarget",chosen);
+                    if(found)target=chosen[0];return found;
+                });
+                Call(preparation,"TryPrepare",new object[]{p,20,54,LifecycleIdentity(tools),-1});
+                Until(context,input,()=>(bool)Get(preparation,"Ready"));
+                Require(GetOptional(host,"buildSupplyTarget")==null && GetOptional(host,"buildSupplyDiscovery")==null && target!=null,
+                    "the selection boundary starts with a real exact Ready receipt and no remaining bound successor/discovery duty");
+                schedulerDeferredSelection=new SchedulerDeferredSelectionObservation{Host=host};
+                patch.Patch(host.GetType().GetMethod("TryPlanBuild",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SchedulerDeferredPlanBefore)),
+                    postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SchedulerDeferredPlanAfter)));
+                patch.Patch(host.GetType().GetMethod("ReadBuildCell",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SchedulerDeferredCellAfter)));
+                object[] selection={p,64};Call(host,"AdvanceAutomaticBuildSelection",selection);
+                Require(schedulerDeferredSelection.DeferredCalls>0 && schedulerDeferredSelection.UnavailableRightReads>0 &&
+                    (bool)Get(preparation,"Returning") && Main.tile[45,40]==null && p.inventory[13].stack==3,
+                    "ordinary selection really returns Deferred from an unavailable native support read and starts finite receipt return in that same boundary");
+                supplyDiscoveryFrozen=false;
+                Until(context,input,()=>!(bool)Get(preparation,"HasWork"));
+                Require(ReferenceEquals(p.inventory[20],red) && red.stack==4 && ReferenceEquals(p.inventory[54],original) && original.stack==7 && Main.mouseItem.IsAir,
+                    "source waiting never prolongs an unbound Ready receipt or invents paint consumption");
+                Console.WriteLine("PASS SupplyDeferredReceipt realUnavailableSupport=true deferredCalls="+schedulerDeferredSelection.DeferredCalls+" sameBoundaryReturn=true");
+            }
+            finally
+            {
+                supplyDiscoveryFrozen=false;schedulerDeferredSelection=null;
+                foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);
+                Main.tile[45,40]=right;SetAutomatic(host,input,false);
+            }
         }
     }
 }
