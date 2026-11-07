@@ -58,7 +58,10 @@ namespace NativeWorldTextProbe
                         outlets.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,F),prefix:new HarmonyMethod(typeof(NativeBlueprintQualificationChecks),nameof(SkipOutlet)));
                     NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperPickaxe,0,0);
                     player.releaseUseItem = true; player.builderAccStatus[10] = 0;
-                    Action step = ()=>{NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");};
+                    // Each simulated update receives a real input sample:
+                    // placement compilation claims at most one batch from
+                    // that Mapping, not from the world's separate counter.
+                    Action step = ()=>{NativeQuickItemChecks.Sample(input,Array.Empty<Keys>());NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");};
                     NativeQuickItemChecks.Sample(input,Array.Empty<Keys>()); step();
                     NativeQuickItemChecks.Until(()=>{step();return (bool)Get(host,"ControlsEnabled");});
 
