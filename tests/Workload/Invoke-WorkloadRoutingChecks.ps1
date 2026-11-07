@@ -18,6 +18,18 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+# Real Git-root and Windows-root callers must launch identical argv, rather
+# than obtaining incompatible evidence signatures for the same directory.
+$rootForms=@($repositoryRoot,$repositoryRoot.Replace([char]'\',[char]'/'))
+$rootPlans=@(foreach($rootForm in $rootForms){
+    $checks=Join-Path $rootForm 'artifacts/build/Debug/checks'
+    $architecture=Join-Path $rootForm 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
+    $rows=@(Get-WorkloadPlan $rootForm $checks $architecture @('RootContract|core') @('core','combat-host','workload-tools') | ForEach-Object {
+        $_.name+':'+(Get-WorkloadHash (@($_.executable)+@($_.arguments)))
+    } | Sort-Object)
+    [pscustomobject]@{rows=($rows -join "`n")}
+})
+Assert-Route ($rootPlans[0].rows -ceq $rootPlans[1].rows) 'Git and native Windows root spellings produce identical complete launch signatures'
 $dispatchPath='tests/NativeWorldTextProbe/NativeScopeDispatch.cs'
 $dispatchRoute=Get-WorkloadRoute @($dispatchPath)
 Assert-Route ($dispatchRoute.unknown.Count -eq 0 -and $dispatchRoute.groups -contains 'combat-host' -and $dispatchRoute.groups -contains 'legacy-worker') 'actual native entry boundary routes its production and worker consumers'

@@ -769,6 +769,10 @@ function Test-WorkloadEvidenceOutputs {
 }
 function Get-WorkloadPlan {
     param([string] $Root, [string] $ChecksRoot, [string] $Architecture, [string[]] $Catalog, [string[]] $Groups)
+    # Git and native Windows callers spell the same repository root differently.
+    # Give every caller the same actual child argv before its exact signature is
+    # calculated; never normalize a retained signature or execution receipt.
+    $Root = [IO.Path]::GetFullPath($Root).Replace([char]'\',[char]'/')
     $plan = New-Object 'System.Collections.Generic.List[object]'
     foreach ($line in $Catalog) {
         $parts = $line.Split('|')
