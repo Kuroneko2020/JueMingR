@@ -51,7 +51,7 @@ namespace NativeWorldTextProbe
                     // run only unchanged ordinary scenes in a fresh process,
                     // never enter a new-ABI program before those measurements.
                     if(family=="SupplyRepair" || family=="SupplyBaseline")check("same prepared supply crosses real consumers at the original opportunity",()=>SupplyConsumerHandoff(context,host,tools,input));
-                    if(family=="SupplyRepair" || family=="SupplyBaseline")check("leftover-color native gap and five real conversion clicks",()=>SupplyColorHandoff(context,host,tools,input));
+                    if(family=="SupplyRepair" || family=="SupplyBaseline")check("leftover-color native gap and five real conversion clicks",()=>SupplyColorHandoff(context,host,tools,input,family=="SupplyBaseline"));
                     if(family=="SupplyRepair")check("Ready uses first legal original Pick and revoked ticket never consumes",()=>SupplyReadyEntrance(context,host,tools,input));
                     if(!preparationOnly && first==null)
                     {

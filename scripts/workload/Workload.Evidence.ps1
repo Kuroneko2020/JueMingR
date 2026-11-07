@@ -787,7 +787,7 @@ function Get-WorkloadPlan {
         'world-targets-observation'=@('world-host','shared-host'); 'world-targets-projection'=@('world-host','shared-host');
         'entity-observation'=@('world-host','shared-host'); 'entity-projection'=@('shared-host');
         'entity-preferences'=@('shared-host'); 'entity-controls'=@('shared-host');
-        'items-safety'=@('shared-host'); 'information-defaults'=@('shared-host')
+        'items-safety'=@('shared-host'); 'items-storage'=@('shared-host'); 'information-defaults'=@('shared-host')
     }
     foreach ($mode in $modes.Keys) {
         $script:WorkloadCheckGroups['fixture-'+$mode]=@($modes[$mode])

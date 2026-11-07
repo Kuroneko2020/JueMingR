@@ -13,12 +13,14 @@ namespace NativeWorldTextProbe
     {
         private static object supplyTraceHost,supplyTraceTools;
         private static bool supplyTraceDiscovery;
+        private static bool supplyTraceFinalize;
+        private static int supplyTraceFinalizeCount;
         private sealed class SupplyColorTrace : IDisposable
         {
             private readonly Harmony patch=new Harmony("JueMingR.Tests.SupplyColorHandoffTrace");
             internal SupplyColorTrace(object host,object tools)
             {
-                supplyTraceHost=host;supplyTraceTools=tools;
+                supplyTraceHost=host;supplyTraceTools=tools;supplyTraceFinalizeCount=0;
                 patch.Patch(host.GetType().GetMethod("ReturnPreparedBuildLease",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceReturnBefore)),
                     postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceReturnAfter)));
                 patch.Patch(host.GetType().GetMethod("ContinueBuildSupplyDiscovery",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceDiscoveryBefore)),
@@ -26,8 +28,44 @@ namespace NativeWorldTextProbe
                 patch.Patch(host.GetType().GetMethod("TryPreferredBuild",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTracePreferredAfter)));
                 patch.Patch(host.GetType().GetMethod("TryPlanBuildSupply",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTracePlanAfter)));
                 patch.Patch(host.GetType().GetMethod("TryGetBuildTarget",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceTargetAfter)));
+                patch.Patch(host.GetType().GetMethod("FinalizeReadyBuildSupply",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceFinalizeBefore)),
+                    postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceFinalizeAfter)));
+                foreach(string name in new[]{"CanBuildAutomatically","PreferredBuildAbsenceCurrent","BuildFocusNearCurrent","TryPrepareAppearanceBuild","BuildFlightCurrent"})
+                    patch.Patch(host.GetType().GetMethod(name,F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceFinalizeGate)));
+                patch.Patch(Get(host,"buildMaterialPreparation").GetType().GetMethod("ReadyTicketCurrent",F),
+                    postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceFinalizeGate)));
             }
-            public void Dispose(){foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);supplyTraceHost=supplyTraceTools=null;supplyTraceDiscovery=false;}
+            public void Dispose(){foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);supplyTraceHost=supplyTraceTools=null;supplyTraceDiscovery=supplyTraceFinalize=false;}
+        }
+        private static void SupplyTraceFinalizeBefore(object __instance,Player __0)
+        {
+            supplyTraceFinalize=ReferenceEquals(__instance,supplyTraceHost) && (bool)Get(Get(__instance,"buildMaterialPreparation"),"Ready") &&
+                GetOptional(__instance,"preparedBuild")==null && supplyTraceFinalizeCount<8;
+            if(!supplyTraceFinalize)return;
+            supplyTraceFinalizeCount++;
+            var target=GetOptional(__instance,"buildSupplyTarget");var operation=target==null?null:GetOptional(target,"Operation");
+            Console.WriteLine("SupplyTrace actual-finalize world="+Main.GameUpdateCount+" timers="+__0.itemAnimation+"/"+__0.itemTime+"/"+__0.reuseDelay+
+                " release/override/buffer/cursor/inventory="+__0.releaseUseItem+"/"+__0.selectedItemState.HasActiveOverride+"/"+__0.selectedItemState.HasBufferedChange+"/"+Main.mouseItem.type+"/"+Main.playerInventory+
+                " target/plan/readyFlight="+(target!=null)+"/"+(GetOptional(__instance,"buildSupplyPlan")!=null)+"/"+Get(__instance,"buildSupplyReadyFlight")+
+                " operation="+(operation==null?"none":Get(operation,"Kind")+":"+Get(operation,"SupplyType")));
+        }
+        private static void SupplyTraceFinalizeGate(System.Reflection.MethodBase __originalMethod,bool __result)
+        {
+            if(!supplyTraceFinalize)return;
+            Console.WriteLine("SupplyTrace actual-finalize-gate "+__originalMethod.Name+"="+__result);
+            if(__originalMethod.Name!="PreferredBuildAbsenceCurrent" || __result)return;
+            var group=GetOptional(supplyTraceHost,"buildContinuation");if(group==null)return;
+            foreach(var range in (System.Collections.IEnumerable)Get(Get(group,"Discovery"),"Ranges"))
+            {
+                var value=GetOptional(range,"Materials");if(value==null)continue;
+                Console.WriteLine("SupplyTrace actual-absence range="+Get(range,"Index")+" global="+Get(supplyTraceHost,"buildSupplyRevision")+
+                    " proofs="+string.Join("/",new[]{"PreferredSupply","PreferredWaits","PreferredRevisit","PreferredFrontier","PreferredVersion","PreferredWake","BuildWakeRevision","PreferredSupport","PreferredRetryAt"}.Select(n=>n+":"+Get(value,n))));
+            }
+        }
+        private static void SupplyTraceFinalizeAfter(object __instance)
+        {
+            if(supplyTraceFinalize)Console.WriteLine("SupplyTrace actual-finalized prepared="+(GetOptional(__instance,"preparedBuild")!=null));
+            supplyTraceFinalize=false;
         }
         private static void SupplyTraceReturnBefore(object __instance,object __0,bool __1)
         {
@@ -60,11 +98,11 @@ namespace NativeWorldTextProbe
                     " exhausted="+Get(value,"BuildExhausted")+" retry="+Get(value,"BuildRetryPending")+" candidate="+(GetOptional(value,"Candidate")!=null));
             }
         }
-        private static void SupplyColorHandoff(object context,object host,object tools,object input)
+        private static void SupplyColorHandoff(object context,object host,object tools,object input,bool diagnostic=false)
         {
             using(var probe=new PostProcessingProbe(context,host,tools,input))
             using(var timeline=new SchedulerTimeline(host,tools,input))
-            using(var trace=new SupplyColorTrace(host,tools))
+            using(var trace=diagnostic?new SupplyColorTrace(host,tools):null)
             {
                 var p=Reset(context,host,tools,input);p.position=new Vector2(42*16,646);
                 p.inventory[12].SetDefaults(ItemID.Paintbrush);var brush=p.inventory[12];

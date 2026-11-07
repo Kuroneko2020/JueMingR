@@ -242,6 +242,7 @@ namespace Terraria
                 if (args.Length == 3 && args[0] == "hotkeys-visual") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; HotkeyVisualChecks.Run(args[1], args[2]); return 0; }
                 if (args.Length == 1 && args[0] == "items-host") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(); return 0; }
                 if (args.Length == 1 && args[0] == "items-safety") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false); return 0; }
+                if (args.Length == 1 && args[0] == "items-storage") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false, only: "storage"); return 0; }
                 if (args.Length == 1 && args[0] == "items-death") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false, only: "death"); return 0; }
                 if (args.Length == 1 && args[0] == "items-feedback") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false, only: "feedback"); return 0; }
                 if (args.Length == 1 && args[0] == "items-layout") { AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssembly; ItemHostChecks.Run(graphics: false, only: "layout"); return 0; }

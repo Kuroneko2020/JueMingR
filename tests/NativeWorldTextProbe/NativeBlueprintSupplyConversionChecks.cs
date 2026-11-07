@@ -224,7 +224,6 @@ namespace NativeWorldTextProbe
             var right=Main.tile[45,40];
             try
             {
-                Main.tile[45,40]=null;
                 patch.Patch(host.GetType().GetMethod("AdvanceAutomaticBuild",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(FreezeSupplyDiscoveryAdvance)));
                 supplyDiscoveryFrozen=true;SetAutomatic(host,input,true);
                 object target=null;
@@ -241,10 +240,18 @@ namespace NativeWorldTextProbe
                 patch.Patch(host.GetType().GetMethod("TryPlanBuild",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SchedulerDeferredPlanBefore)),
                     postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SchedulerDeferredPlanAfter)));
                 patch.Patch(host.GetType().GetMethod("ReadBuildCell",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SchedulerDeferredCellAfter)));
-                object[] selection={p,64};Call(host,"AdvanceAutomaticBuildSelection",selection);
-                Require(schedulerDeferredSelection.DeferredCalls>0 && schedulerDeferredSelection.UnavailableRightReads>0 &&
-                    (bool)Get(preparation,"Returning") && Main.tile[45,40]==null && p.inventory[13].stack==3,
-                    "ordinary selection really returns Deferred from an unavailable native support read and starts finite receipt return in that same boundary");
+                // Only the direct planner sees unavailable support. Original
+                // Player.Update paint scans require real Tile instances, so
+                // restore the native world before any subsequent simulation.
+                try
+                {
+                    Main.tile[45,40]=null;
+                    object[] selection={p,64};Call(host,"AdvanceAutomaticBuildSelection",selection);
+                    Require(schedulerDeferredSelection.DeferredCalls>0 && schedulerDeferredSelection.UnavailableRightReads>0 &&
+                        (bool)Get(preparation,"Returning") && Main.tile[45,40]==null && p.inventory[13].stack==3,
+                        "ordinary selection really returns Deferred from an unavailable native support read and starts finite receipt return in that same boundary");
+                }
+                finally{Main.tile[45,40]=right;}
                 supplyDiscoveryFrozen=false;
                 Until(context,input,()=>!(bool)Get(preparation,"HasWork"));
                 Require(ReferenceEquals(p.inventory[20],red) && red.stack==4 && ReferenceEquals(p.inventory[54],original) && original.stack==7 && Main.mouseItem.IsAir,

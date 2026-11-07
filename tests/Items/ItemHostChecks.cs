@@ -73,16 +73,31 @@ namespace Terraria
             ItemDiscardFeedbackChecks.Run(host, () => NewSession(0));
             PreferenceIsolation(); Transactions(); SelectionAndSources(); SourceEdges(); UnifiedSourceAndFocus(); RejectedSaleMembers(); CapacityBackoff(); StorageBoundaries(); NetworkOwnership();
             new ItemDeathBoundaryChecks(host, runtime, NewSession, Step, value => canStartActions = value).Run();
-            Guards(); UiKeys();
+            Guards();
+            if (only == "storage")
+            {
+                // This named CPU receiver retains the complete transaction,
+                // source, receipt and partial-grant safety path. Presentation
+                // has its own full items-safety/layout responsibility; a later
+                // layout failure must remain visible in that original scope.
+                PartialNativeGrant();
+                Console.WriteLine("PASS: item storage receiver preferences, transactions, sources, capacity, receipt ownership, guards and partial native grants. UI/layout and real server acceptance NOT_RUN.");
+                return;
+            }
+            UiKeys();
             ItemUiChecks.RunLayout(host);
             if (graphics) ItemUiChecks.Run(host, content, output);
+            PartialNativeGrant();
+            Console.WriteLine("PASS: item host fixture transactions, causal sources, selective requests, receipts, conflict guards and key focus. Not real-game/server acceptance.");
+        }
+        private static void PartialNativeGrant()
+        {
             // Partial original side effects protect their finite affected range.
             NewSession(0); Configure(true, false, false); Main.LocalPlayer.inventory[10] = Make(1000, 2);
             Main.LocalPlayer.inventory[11] = Make(327, 2); Main.LocalPlayer.ThrowGrant = true; ID.ItemID.Sets.OpenableBag[1000] = true;
             bool threw = false;
             try { ItemSlot.RightClick(Main.LocalPlayer.inventory, 0, 10); } catch (InvalidOperationException) { threw = true; }
             Check(threw && !host.Feature.HasFailed && host.World.CausalDepth == 0 && Main.LocalPlayer.inventory.Any(i => i.type == 8) && host.Ownership.IsProtected(10) && !host.Ownership.IsProtected(20), "partial native grant preserved with only affected source range protected");
-            Console.WriteLine("PASS: item host fixture transactions, causal sources, selective requests, receipts, conflict guards and key focus. Not real-game/server acceptance.");
         }
         private static void NewSession(int mode)
         {

@@ -212,6 +212,21 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(!BuildContinuationCurrent(p) || FlightContinuesBuild(next))return true;
             return PreferredBuildAbsenceCurrent(p);
         }
+        private bool PreferredBuildSupplyCurrent(BlueprintRangeMaterials value)
+        {
+            if(value.PreferredSupply==buildSupplyRevision)return true;
+            var group=buildContinuation;long recovered;
+            // PreferredSupply is a recovery cutoff, not a requirement that
+            // every unrelated inventory type keep the same qualification.
+            // ObserveBuildSignals preserves a positive type's serial through
+            // ordinary spend/moves and assigns a later serial on real recovery.
+            // The group's actual tool/material must still reopen its negative
+            // proof after restock. A recorded missing capability remains broad:
+            // another qualifying tool type may restore that same operation.
+            if(group==null || (value.PreferredWaits&(BlueprintBuildWait.Material|BlueprintBuildWait.Capability))!=0)return false;
+            return !(buildSupply.TryGetValue(group.Source.Type,out recovered) && recovered>value.PreferredSupply) &&
+                !(group.Operation?.SupplyType>0 && buildSupply.TryGetValue(group.Operation.SupplyType,out recovered) && recovered>value.PreferredSupply);
+        }
         private bool PreferredBuildAbsenceCurrent(Player p)
         {
             // Pick/Acquire reads only already completed current negative
@@ -230,7 +245,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(!ProjectionQualificationCurrent(owner) || owner.Match==null || range.Index<0 || range.Index>=owner.Match.Ranges.Length ||
                     !ReferenceEquals(owner.Match.Ranges[range.Index],range) || value==null || value.PreferredGroup!=group.Group ||
                     value.PreferredRevisit || value.PreferredFrontier || !BuildBoundsContain(value.PreferredCoveredBounds,bounds) ||
-                    value.PreferredVersion!=range.Version || value.PreferredWake!=value.BuildWakeRevision || value.PreferredSupply!=buildSupplyRevision ||
+                    value.PreferredVersion!=range.Version || value.PreferredWake!=value.BuildWakeRevision || !PreferredBuildSupplyCurrent(value) ||
                     !ProjectionMatchReadCurrent(range,range.RawVersion) || !projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support) ||
                     support!=value.PreferredSupport ||
                     (value.PreferredWaits&BlueprintBuildWait.Player)!=0 && value.PreferredPermission!=buildFocusPermissionRevision ||
@@ -311,7 +326,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 (value.PreferredWaits & BlueprintBuildWait.Restoration) != 0 && value.PreferredRestoration != appearanceRestorationRevision ||
                 (value.PreferredWaits & BlueprintBuildWait.Dependencies) != 0 && BuildDependencyReleased(value.PreferredDependencySlots) ||
                 value.PreferredRetryAt != 0 && materialTick >= value.PreferredRetryAt) ReopenPreferredRange(range);
-            if(value.PreferredVersion!=range.Version || value.PreferredWake!=value.BuildWakeRevision || value.PreferredSupply!=buildSupplyRevision)
+            if(value.PreferredVersion!=range.Version || value.PreferredWake!=value.BuildWakeRevision || !PreferredBuildSupplyCurrent(value))
             {
                 value.PreferredVersion=range.Version;value.PreferredWake=value.BuildWakeRevision;
                 value.PreferredSupply=buildSupplyRevision;value.PreferredPlayer=MaterialBuildEligibilityRevision;value.PreferredRevisit=true;
