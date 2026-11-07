@@ -119,40 +119,51 @@ namespace NativeWorldTextProbe
             Require(outcomeAt!=now || object.Equals(outcomeIdentity,expected),"Sync readmission Source outcome belongs to another target.");
             return pending;
         }
+        private static void PrepareSourceComponent(object host,object source,NPC expected)
+        {
+            Require(expected!=null && expected.whoAmI>=0 && expected.whoAmI<Main.npc.Length && expected.active && ReferenceEquals(Main.npc[expected.whoAmI],expected),"Sync Source component requires the live original NPC instance.");
+            var selection=Get(host,"Selection");var selected=(NpcIdentity)Get(selection,"Target");
+            Require((bool)Get(selection,"HasTarget") && selected.Equals(ActualSyncIdentity(host,expected.whoAmI)),"Sync Source component requires the real complete selected identity.");
+            Call(source,"Prepare",selected,(long)Main.GameUpdateCount);
+        }
         private static void SegmentedBoundaries(object context,object host,object source,NpcPredictionCache cache)
         {
+            // Source observation/rebuild components keep every original native
+            // GUC and same-capture request. Explicit preparation is separate
+            // from the real Host publication/packet coverage above; never wait
+            // across a measured interval or prepare before immediate retirement.
             foreach(var n in Main.npc)n.active=false;
             var target=Main.npc[2];target.SetDefaults(14);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.spawnNeedsSyncing=false;target.position=new Vector2(800,900);target.velocity=Vector2.Zero;
-            NativeCombatObservationChecks.Fresh(context,host);target.position.X+=2;NativeCombatObservationChecks.Fresh(context,host);
+            NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,target);target.position.X+=2;NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,target);
             var original=cache.Read(0);Require(original!=null && original[1].Vx==2,"Default Source observes directly assigned segmented motion.");
-            Call(host,"Update",Main.GameUpdateCount);bool equivalent=ReferenceEquals(cache.Read(0),original);
+            PrepareSourceComponent(host,source,target);bool equivalent=ReferenceEquals(cache.Read(0),original);
             var before=target.position;target.position.X+=8;var packet=CombatNetworkFixture.Serialize(23,2);target.position=before;CombatNetworkFixture.Receive(packet);
             Require(cache.Read(0)==null && target.position.X==before.X+8,"Original .8 packet applies correction before R postfix invalidation.");
-            Call(host,"Update",Main.GameUpdateCount);var corrected=cache.Read(0);
+            PrepareSourceComponent(host,source,target);var corrected=cache.Read(0);
             Require(corrected!=null && corrected[0].Bounds.X==target.position.X && corrected[1].Vx==2 && !ReferenceEquals(corrected,original),"Same-time correction moves origin without inventing speed.");
-            target.position.X+=3;NativeCombatObservationChecks.Fresh(context,host);var accelerated=cache.Read(0);
+            target.position.X+=3;NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,target);var accelerated=cache.Read(0);
             Require(accelerated!=null && accelerated[1].Vx==3,"Next actual update measures changed speed from corrected baseline.");
             Require(equivalent,"Equivalent same-time Source request retains immutable trajectory.");
-            target.width+=2;Call(host,"Update",Main.GameUpdateCount);var resized=cache.Read(0);
+            target.width+=2;PrepareSourceComponent(host,source,target);var resized=cache.Read(0);
             Require(resized!=null && resized[0].Bounds.Width==target.width && !ReferenceEquals(resized,accelerated),"Same-time shape change recalculates result.");target.width-=2;
             cache.Release(0);cache.Demand(1,1,30);Call(source,"Prepare",resized.Identity,(long)Main.GameUpdateCount);var shortPath=cache.Read(1);
             cache.Demand(1,1,60);Call(source,"Prepare",resized.Identity,(long)Main.GameUpdateCount);var longer=cache.Read(1);
             Require(shortPath.Count==31 && longer.Count==61 && !ReferenceEquals(shortPath,longer),"Changed same-time consumer horizon cannot reuse incomplete immutable result.");cache.Release(1);
             target=(NPC)typeof(NPC).GetMethod("NewNPCInstanceInSlot",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic).Invoke(null,new object[]{2,(byte)(target.generation+1)});
-            target.SetDefaults(14);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.position=new Vector2(810,900);target.velocity=new Vector2(2,0);NativeCombatObservationChecks.Fresh(context,host);var fallback=cache.Read(0);
-            target.velocity=new Vector2(4,0);Call(host,"Update",Main.GameUpdateCount);var changedFallback=cache.Read(0);
+            target.SetDefaults(14);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.position=new Vector2(810,900);target.velocity=new Vector2(2,0);NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,target);var fallback=cache.Read(0);
+            target.velocity=new Vector2(4,0);PrepareSourceComponent(host,source,target);var changedFallback=cache.Read(0);
             Require(fallback.Quality==JueMingR.Platform.Combat.PredictionQuality.LimitedObservation && changedFallback[1].Vx==4 && !ReferenceEquals(fallback,changedFallback),"Fresh limited observation rechecks actual same-time native velocity.");
             var selected=Main.npc[4];selected.SetDefaults(14);selected.whoAmI=4;selected.active=true;selected.target=Main.myPlayer;selected.position=new Vector2(720,800);selected.velocity=Vector2.Zero;
-            NativeCombatObservationChecks.Fresh(context,host);var unrelated=cache.Read(0);Require(ReferenceEquals(unrelated.Identity.Token,selected),"Current segmented A replaces previously observed unrelated B.");
+            NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,selected);var unrelated=cache.Read(0);Require(ReferenceEquals(unrelated.Identity.Token,selected),"Current segmented A replaces previously observed unrelated B.");
             before=target.position;target.position.X+=2;packet=CombatNetworkFixture.Serialize(23,2);target.position=before;CombatNetworkFixture.Receive(packet);
-            Require(ReferenceEquals(cache.Read(0),unrelated),"Unrelated old B sync does not revoke current A publication.");Call(host,"Update",Main.GameUpdateCount);
+            Require(ReferenceEquals(cache.Read(0),unrelated),"Unrelated old B sync does not revoke current A publication.");PrepareSourceComponent(host,source,selected);
             Require(ReferenceEquals(cache.Read(0),unrelated),"Unrelated old B history correction cannot invalidate equivalent A result reuse.");
-            selected.ai[1]=2;Call(host,"Update",Main.GameUpdateCount);var related=cache.Read(0);
+            selected.ai[1]=2;PrepareSourceComponent(host,source,selected);var related=cache.Read(0);
             before=target.position;target.position.X+=2;packet=CombatNetworkFixture.Serialize(23,2);target.position=before;CombatNetworkFixture.Receive(packet);
-            Require(cache.Read(0)==null,"True current parent B sync still retires A publication.");Call(host,"Update",Main.GameUpdateCount);
+            Require(cache.Read(0)==null,"True current parent B sync still retires A publication.");PrepareSourceComponent(host,source,selected);
             Require(cache.Read(0)!=null && !ReferenceEquals(cache.Read(0),related),"True current dependency correction rebuilds A.");selected.active=false;
             var worm=target;worm.active=false;var ordinary=Main.npc[3];ordinary.SetDefaults(2);ordinary.whoAmI=3;ordinary.active=true;ordinary.target=Main.myPlayer;ordinary.position=new Vector2(810,900);ordinary.velocity=new Vector2(1,0);
-            NativeCombatObservationChecks.Fresh(context,host);var normal=cache.Read(0);Require(normal!=null && ReferenceEquals(normal.Identity.Token,ordinary),"Segmented to ordinary directly selects current Source target.");
+            NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,ordinary);var normal=cache.Read(0);Require(normal!=null && ReferenceEquals(normal.Identity.Token,ordinary),"Segmented to ordinary directly selects current Source target.");
             Call(source,"ObserveNpcReset",worm);Require(ReferenceEquals(cache.Read(0),normal),"Dormant worm reset cannot revoke new ordinary publication.");
             Call(source,"ObserveNpcQueryUpdate",2,true);Require(ReferenceEquals(cache.Read(0),normal),"Dormant discontinuity cannot clear new ordinary history.");
             Call(source,"ObserveNpcQueryUpdate",3,true);Require(cache.Read(0)==null,"Current dependency still revokes invalid publication.");

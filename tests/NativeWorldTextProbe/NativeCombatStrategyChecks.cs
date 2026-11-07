@@ -12,6 +12,17 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatStrategyChecks
     {
         private const BindingFlags Flags=BindingFlags.Static|BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
+        // Explicit Strategy Source-component boundary after a caller's original
+        // Fresh. It prepares the actual selected NPC at the unchanged native
+        // GUC; it grants no Host display, input, demand or larger work budget.
+        internal static void PrepareSelectedSource(object host,NPC expected)
+        {
+            Require(expected!=null && expected.whoAmI>=0 && expected.whoAmI<Main.npc.Length && expected.active && ReferenceEquals(Main.npc[expected.whoAmI],expected),"Strategy Source component requires the live original NPC instance.");
+            var selection=Get(host,"Selection");var selected=(NpcIdentity)Get(selection,"Target");long session=(long)Get(host,"Session");
+            var actual=new NpcIdentity(session,expected,expected.whoAmI,expected.generation,expected.type,expected.netID);
+            Require(session>=0 && (bool)Get(selection,"HasTarget") && selected.Equals(actual),"Strategy Source component requires the real complete selected identity, slot="+expected.whoAmI+" type="+expected.type);
+            Call(Get(host,"Prediction"),"Prepare",selected,(long)Main.GameUpdateCount);
+        }
         internal static void Run(object context)
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");
