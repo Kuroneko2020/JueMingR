@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using HarmonyLib;
 using JueMingR.Features.Blueprint;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -10,10 +11,60 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeBlueprintBuildChecks
     {
+        private static object supplyTraceHost,supplyTraceTools;
+        private static bool supplyTraceDiscovery;
+        private sealed class SupplyColorTrace : IDisposable
+        {
+            private readonly Harmony patch=new Harmony("JueMingR.Tests.SupplyColorHandoffTrace");
+            internal SupplyColorTrace(object host,object tools)
+            {
+                supplyTraceHost=host;supplyTraceTools=tools;
+                patch.Patch(host.GetType().GetMethod("ReturnPreparedBuildLease",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceReturnBefore)),
+                    postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceReturnAfter)));
+                patch.Patch(host.GetType().GetMethod("ContinueBuildSupplyDiscovery",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceDiscoveryBefore)),
+                    postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceDiscoveryAfter)));
+                patch.Patch(host.GetType().GetMethod("TryPreferredBuild",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTracePreferredAfter)));
+                patch.Patch(host.GetType().GetMethod("TryPlanBuildSupply",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTracePlanAfter)));
+                patch.Patch(host.GetType().GetMethod("TryGetBuildTarget",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyTraceTargetAfter)));
+            }
+            public void Dispose(){foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);supplyTraceHost=supplyTraceTools=null;supplyTraceDiscovery=false;}
+        }
+        private static void SupplyTraceReturnBefore(object __instance,object __0,bool __1)
+        {
+            if(!ReferenceEquals(__instance,supplyTraceHost))return;
+            var prep=Get(__instance,"buildMaterialPreparation");var operation=GetOptional(__0,"Operation");
+            object[] read={Main.LocalPlayer,operation==null?0:(int)Get(operation,"SupplyType"),operation==null?-1:(int)Get(operation,"SupplyDestination"),-1};
+            bool supply=(bool)Call(prep,"TryReadSupply",read);var next=GetOptional(__instance,"preparedBuild");
+            Console.WriteLine("SupplyTrace return world="+Main.GameUpdateCount+" checked/settled/rejected/unknown="+Get(__0,"Checked")+"/"+Get(__0,"SettledConsumption")+"/"+Get(__0,"Rejected")+"/"+__1+
+                " can/group/unconfirmed="+Call(__instance,"CanBuildAutomatically",Main.LocalPlayer,false)+"/"+Call(__instance,"BuildContinuationCurrent",Main.LocalPlayer)+"/"+Call(__instance,"IsUnconfirmedTarget",Get(__0,"Target"))+
+                " sourceRead/slot="+supply+"/"+read[3]+" next="+(next==null?"none":Get(next,"Generation")+":"+Get(Get(next,"Target"),"WorldX"))+
+                " cancelled="+Get(Get(supplyTraceTools,"Use"),"cancelled"));
+        }
+        private static void SupplyTraceReturnAfter(object __instance)
+        {if(ReferenceEquals(__instance,supplyTraceHost))Console.WriteLine("SupplyTrace returned phase="+Get(Get(__instance,"buildMaterialPreparation"),"phase")+" discovery="+(GetOptional(__instance,"buildSupplyDiscovery")!=null));}
+        private static void SupplyTraceDiscoveryBefore(object __instance)
+        {supplyTraceDiscovery=ReferenceEquals(__instance,supplyTraceHost);if(supplyTraceDiscovery)Console.WriteLine("SupplyTrace discovery world="+Main.GameUpdateCount+" can/group="+Call(__instance,"CanBuildAutomatically",Main.LocalPlayer,false)+"/"+Call(__instance,"BuildContinuationCurrent",Main.LocalPlayer));}
+        private static void SupplyTracePreferredAfter(object __instance,object __result)
+        {if(supplyTraceDiscovery && ReferenceEquals(__instance,supplyTraceHost))Console.WriteLine("SupplyTrace preferred="+__result);}
+        private static void SupplyTraceDiscoveryAfter(object __instance)
+        {if(supplyTraceDiscovery && ReferenceEquals(__instance,supplyTraceHost))Console.WriteLine("SupplyTrace discovery-end phase="+Get(Get(__instance,"buildMaterialPreparation"),"phase"));supplyTraceDiscovery=false;}
+        private static void SupplyTracePlanAfter(object __instance,int __2,object __5,bool __result)
+        {if(ReferenceEquals(__instance,supplyTraceHost) && __2==ItemID.BluePaint && !__result)Console.WriteLine("SupplyTrace blue-plan phase="+Get(Get(__instance,"buildMaterialPreparation"),"phase")+" wait="+__5+" tick="+Get(__instance,"materialTick"));}
+        private static void SupplyTraceTargetAfter(object __instance,bool __result)
+        {
+            if(!ReferenceEquals(__instance,supplyTraceHost) || __result || !(bool)Get(Get(__instance,"buildMaterialPreparation"),"Ready"))return;
+            foreach(var owner in Scene(__instance))foreach(var range in EligibilityRanges(owner))
+            {
+                var value=GetOptional(range,"Materials");if(value==null)continue;
+                Console.WriteLine("SupplyTrace no-target tick="+Get(__instance,"materialTick")+" waits="+Get(value,"BuildWaits")+" dynamicAt="+Get(value,"DynamicRetryAt")+
+                    " exhausted="+Get(value,"BuildExhausted")+" retry="+Get(value,"BuildRetryPending")+" candidate="+(GetOptional(value,"Candidate")!=null));
+            }
+        }
         private static void SupplyColorHandoff(object context,object host,object tools,object input)
         {
             using(var probe=new PostProcessingProbe(context,host,tools,input))
             using(var timeline=new SchedulerTimeline(host,tools,input))
+            using(var trace=new SupplyColorTrace(host,tools))
             {
                 var p=Reset(context,host,tools,input);p.position=new Vector2(42*16,646);
                 p.inventory[12].SetDefaults(ItemID.Paintbrush);var brush=p.inventory[12];
@@ -50,7 +101,8 @@ namespace NativeWorldTextProbe
                 " tokens="+automatic[0].Token+"/"+automatic[1].Token+" flights="+automatic[0].Flight+"/"+automatic[1].Flight);
             Require(actual==expected,"same prepared paint brush-to-roller uses the first original legal consumer opportunity");
             Require(automatic[0].PreparationClicks==automatic[1].PreparationClicks && automatic[0].Token!=automatic[1].Token &&
-                automatic[0].Flight!=automatic[1].Flight && automatic[0].Consumer!=automatic[1].Consumer,
+                automatic[0].Flight!=automatic[1].Flight && automatic[0].Kind=="TilePaint" && automatic[1].Kind=="WallPaint" &&
+                automatic[0].ToolType==ItemID.Paintbrush && automatic[1].ToolType==ItemID.PaintRoller,
                 "the real material receipt crosses consumers with zero extra click and newly authorized ToolUse/flight");
         }
         private static PostProcessingEvent[] SupplyConsumerHandoffRun(object context,object host,object tools,object input,PostProcessingEvent[] replay)

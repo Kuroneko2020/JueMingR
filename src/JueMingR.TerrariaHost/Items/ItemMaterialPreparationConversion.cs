@@ -9,6 +9,15 @@ namespace JueMingR.TerrariaHost.Items
         private bool converting;
         private int conversionSource, conversionBuffer;
         private Item conversionMaterial;
+        internal bool PreparingSupply(Player p,int type,int targetDestination,BlueprintProjectionIdentity target)
+        {
+            // An Update can precede the first/next real Draw tail. During a
+            // conversion Material still denotes A until B is fully confirmed;
+            // that is pending B, not a mismatch requesting A's inverse path.
+            return OnGameThread && converting && phase==Phase.Preparing && destination==targetDestination &&
+                conversionMaterial!=null && conversionMaterial.type==type && conversionMaterial.stack>0 &&
+                identity!=null && identity.Equals(target) && SameSession(p);
+        }
         private static bool NonStacking(Item a, Item b)
         { return a != null && b != null && (a.IsAir || b.IsAir || !Item.CanStack(a, b) && !Item.CanStack(b, a)); }
 
