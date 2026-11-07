@@ -96,16 +96,26 @@ namespace NativeWorldTextProbe
         {
             object preparation;Item red,blue,green,original,q;
             var p=SupplyConversionStart(context,host,tools,input,false,out preparation,out red,out blue,out green,out original,out q);
+            // Reset leaves a genuine pickaxe at0. Derive the empty isolation
+            // endpoint from this fixture's pre-request stock, independently of
+            // the preparation's selected buffer or folded cleanup program.
+            int expectedBuffer=Enumerable.Range(0,50).First(slot=>slot!=20 && slot!=21 && p.inventory[slot].IsAir);
+            Require(expectedBuffer!=20 && expectedBuffer!=21 && expectedBuffer<50 && p.inventory[expectedBuffer].IsAir,
+                "the stable-round fixture supplies a real empty nonaliasing main-bag isolation endpoint");
+            bool first=true;
             foreach(int source in new[]{21,22,20,21,22,20})
             {
                 long clicks=(long)Get(preparation,"NativeClicks"),neutral=(long)Get(preparation,"NativeNeutralTails");
                 Require((bool)Call(preparation,"TryConvertSupply",p,source,LifecycleIdentity(tools)),"each new exact source can reuse the finite displaced stack isolation");
-                int steps=(int)Get(preparation,"forwardCount");
+                int steps=first?5:3;
+                Require((int)Get(preparation,"forwardCount")==steps && (int)Get(preparation,"conversionBuffer")==expectedBuffer &&
+                    (int)Get(preparation,"endpointCount")<=4,"the actual program binds the independently supplied legal T within four temporary endpoints");
                 Until(context,input,()=>(bool)Get(preparation,"Ready"));
                 Require((long)Get(preparation,"NativeClicks")==clicks+steps && (int)Get(preparation,"endpointCount")==3 &&
-                    (int)Get(preparation,"historyCount")==4 && original.stack==7 && ReferenceEquals(p.inventory[0],original),
+                    (int)Get(preparation,"historyCount")==4 && original.stack==7 && ReferenceEquals(p.inventory[expectedBuffer],original),
                     "each native conversion folds to three endpoints/four cleanup steps without growing history or consuming original54");
-                Console.WriteLine("PASS SupplyConversion stableRound source="+source+" clicks="+steps+" neutral="+((long)Get(preparation,"NativeNeutralTails")-neutral)+" endpoints=3 cleanup=4");
+                Console.WriteLine("PASS SupplyConversion stableRound source="+source+" buffer="+expectedBuffer+" clicks="+steps+" neutral="+((long)Get(preparation,"NativeNeutralTails")-neutral)+" endpoints=3 cleanup=4");
+                first=false;
             }
             Call(preparation,"RequestReturn");Until(context,input,()=>!(bool)Get(preparation,"HasWork"));
             Require(ReferenceEquals(p.inventory[20],red) && ReferenceEquals(p.inventory[21],blue) && ReferenceEquals(p.inventory[22],green) &&

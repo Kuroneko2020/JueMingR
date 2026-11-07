@@ -453,29 +453,34 @@ function Get-WorkloadLeafChecks {
     # sibling private assertions (for example Bee) do not execute on that path.
     # NativeChecks/ScopeDispatch/QuickItem/Information remain common inputs.
     $familyHelpers=@{
-        'Nail'=@('BallisticCandidate','Aim','Observation','Cadence','ControlPreview')
-        'Piranha'=@('BallisticCandidate','Aim','Observation','Cadence','ControlPreview')
-        'Phoenix'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
-        'SpecialArrow'=@('Aim','Observation')
-        'AttachedShot'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
+        'Nail'=@('BallisticCandidate','Observation','Cadence','ControlPreview')
+        'Piranha'=@('BallisticCandidate','Observation','Cadence','ControlPreview')
+        'Phoenix'=@('Cadence','ControlPreview','Observation','SelectionPreview')
+        'SpecialArrow'=@('Observation')
+        'AttachedShot'=@('Cadence','ControlPreview','Observation','SelectionPreview')
         'PhantasmEcho'=@('Cadence','Observation')
-        'BetsyFlame'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
-        'ArcSwing'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
+        'BetsyFlame'=@('Cadence','ControlPreview','Observation','SelectionPreview')
+        'ArcSwing'=@('Cadence','ControlPreview','Observation','SelectionPreview')
         'HomingEffect'=@('Cadence','Observation')
-        'JoustingLance'=@('Aim','Cadence','Observation')
+        'JoustingLance'=@('Cadence','Observation')
         'WhipStar'=@('Cadence','Observation')
-        'Thorn'=@('Aim','Cadence','ControlPreview','Observation','SelectionPreview')
+        'Thorn'=@('Cadence','ControlPreview','Observation','SelectionPreview')
     }
+    # Initialize and the shared solution helpers physically live in AimFixture;
+    # ordinary AimChecks has no family callee or static initialization.
+    # The aggregate invokes every family and therefore owns their helper union.
     $familyNames=@($familyHelpers.Keys|ForEach-Object {'native-CombatEffects'+$_+'Cpu'})
     foreach($path in @($leaves.Keys)){if($path.StartsWith('src/') -and $leaves[$path] -contains 'native-CombatEffectsCpu'){$leaves[$path]=@($leaves[$path])+@($familyNames)}}
     foreach($family in $familyHelpers.Keys){
         $name='native-CombatEffects'+$family+'Cpu'
         foreach($helper in @('Effect',$family,'WorkerAsset')+@($familyHelpers[$family])){
             $path='tests/NativeWorldTextProbe/NativeCombat'+$helper+'Checks.cs'
-            $leaves[$path]=@($leaves[$path])+@($name)
+            # A previously shared path keeps its conservative existing route;
+            # adding a family must not silently remove its other consumers.
+            if($leaves.ContainsKey($path)){$leaves[$path]=@((@($leaves[$path])+@($name,'native-CombatEffectsCpu'))|Sort-Object -Unique)}
         }
         foreach($path in @('tests/NativeWorldTextProbe/NativeCombatAimFixture.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){
-            if($leaves.ContainsKey($path)){$leaves[$path]=@($leaves[$path])+@($name)}
+            if($leaves.ContainsKey($path)){$leaves[$path]=@((@($leaves[$path])+@($name,'native-CombatEffectsCpu'))|Sort-Object -Unique)}
         }
     }
     # These existing narrow bodies share the real aim/control/effects fixture.
