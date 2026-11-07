@@ -297,7 +297,8 @@ namespace JueMingR.TerrariaHost.F5
         private bool priorMouseInterface, hoverLease, priorMouseText;
         private Player nativeControlPlayer;
         private bool nativeControlPriorInterface;
-        private bool failed, failureNotified, positionRestored;
+        private bool failed, failureNotified, positionRestored, failureCleanupAttempted;
+        internal Exception CleanupFailure { get; private set; }
         private bool adjustmentPending;
         private long adjustmentRequest;
         private Matrix matrix;
@@ -426,11 +427,24 @@ namespace JueMingR.TerrariaHost.F5
         // Only the exact already-owned ItemSlot preparation asks this gate.
         // Native inventory hover is not proof about mouseInterface's writer;
         // retain every real shell/text/overlay owner and grant no gameplay use.
-        internal bool CanInventoryPreparationInput {get{return CanProcessingActions(false) && !OwnsPointer &&
+        internal bool CanInventoryPreparationInput {get{return (CanProcessingActions(false) || CanInventoryReturnAfterFailure) && !OwnsPointer &&
             Main.CurrentInputTextTakerOverride==null && !PlayerInput.WritingText && !notes.OtherTextOwner &&
             !(HotkeyPopup?.Visible??false) && !(StylePopup?.Visible??false) && !(DeathPopup?.Visible??false) &&
             !(MapPopup?.Visible??false) && !(FootprintPopup?.Visible??false) &&
             !(FishingUi?.BlockPointer??false) && !(CaptureUi?.Captured??false);}}
+        private bool CanInventoryReturnAfterFailure
+        {
+            get
+            {
+                // ItemMaterialPreparation alone consumes this exception for
+                // its exact Returning receipt. Rendering readiness and a
+                // closed shell cannot strand that native inverse duty; every
+                // real UI/text owner still vetoes it, including failed cleanup.
+                return biome.SharedRuntime.HasFailed && biome.SharedRuntime.HasRetainedSession && NativePresentationAvailable(false,false) &&
+                    !State.Visible && !State.OwnsPointer && !OtherPointerOwner && !NativeJourneyInputBusy && !inputState.HotkeyCapture &&
+                    !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow;
+            }
+        }
         private bool CanProcessingActions(bool requireFocus){return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !NativeJourneyInputBusy &&
             !inputState.HotkeyCapture && !(information!=null && information.Adjustment.Active) && !adjustmentPending && !Main.clothesWindow && !Main.hairWindow;}
         // Opening F5 is not a gameplay barrier. Only its actual text/gesture
@@ -453,7 +467,7 @@ namespace JueMingR.TerrariaHost.F5
                     (player.mouseInterface && !(ReferenceEquals(leasedPlayer, player) && !priorMouseInterface) || player.lastMouseInterface && !State.Visible));
             }
         }
-        internal bool CanStartJourneyItemOperation { get { return !NativeJourneyInputBusy; } }
+        internal bool CanStartJourneyItemOperation { get { return !failed && biome.SharedRuntime.IsSessionActive && !NativeJourneyInputBusy; } }
         private bool CanFishingEquipmentInput {get{return CanAutomaticProcessingInput;}}
         internal bool CanAutomaticBuff {get{return CanAutomaticTargetInput;}}
         private bool CanTargetActions(bool requireFocus)
@@ -578,6 +592,8 @@ namespace JueMingR.TerrariaHost.F5
         private bool CanPresent(bool allowMap)
         {return CanPresent(allowMap,true);}
         private bool CanPresent(bool allowMap,bool requireFocus)
+        { return !biome.SharedRuntime.HasFailed && NativePresentationAvailable(allowMap,requireFocus); }
+        private bool NativePresentationAvailable(bool allowMap,bool requireFocus)
             {
                 Player player = Main.LocalPlayer;
                 var capture = Terraria.Graphics.Capture.CaptureManager.Instance;
@@ -601,13 +617,14 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void BeforeInput()
-        { try { hotkeys?.PollHiddenRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && BlueprintMaterialsUi?.Visible != true); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
+        { if (biome.SharedRuntime.HasFailed) { FailClosed(); return; } try { hotkeys?.PollHiddenRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && BlueprintMaterialsUi?.Visible != true); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
 
         internal void ProcessInput()
         {
             try
             {
                 RestoreLeases();
+                if (biome.SharedRuntime.HasFailed) { FailClosed(); return; }
                 // A committed native inventory button keeps its real raw click
                 // for DrawInventory, while vanilla's own mouseInterface gate
                 // protects the earlier world ItemCheck. This is native UI
@@ -834,16 +851,15 @@ namespace JueMingR.TerrariaHost.F5
                     else State.Layout.About.Execute(State.Command);
                     renderer.MovementControls?.Execute(State.Command); renderer.ViewControls?.Execute(State.Command); renderer.DeathControls?.Execute(State.Command); renderer.MapControls?.Execute(State.Command); renderer.FootprintControls?.Execute(State.Command); renderer.AnnouncementControls?.Execute(State.Command);
                     if (State.Command != F5Command.EnableBiome && State.Command != F5Command.DisableBiome) renderer.InformationControls?.Execute(State.Command); }
-                bool gameplay = !(TargetGestureBusy?.Invoke() ?? false) && inputActive && !(information != null && information.Adjustment.Active) && !adjustmentPending && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
+                bool ordinaryHotkey = !(TargetGestureBusy?.Invoke() ?? false) && inputActive && !(information != null && information.Adjustment.Active) && !adjustmentPending && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
                     Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !OwnsPointer &&
-                    !materialsWasVisible && BlueprintMaterialsUi?.Visible != true && BlueprintReplacementPopup?.Visible != true && !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(DeathPopup != null && DeathPopup.Visible) && !(MapPopup != null && MapPopup.Visible) && !(FootprintPopup != null && FootprintPopup.Visible) && !(RecoveryUi != null && RecoveryUi.Selecting) && !(items != null && items.Selecting) &&
-                    !(Main.LocalPlayer != null && Main.LocalPlayer.mouseInterface);
+                    !materialsWasVisible && BlueprintMaterialsUi?.Visible != true && BlueprintReplacementPopup?.Visible != true && !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(DeathPopup != null && DeathPopup.Visible) && !(MapPopup != null && MapPopup.Visible) && !(FootprintPopup != null && FootprintPopup.Visible) && !(RecoveryUi != null && RecoveryUi.Selecting) && !(items != null && items.Selecting);
+                bool gameplay = ordinaryHotkey && !(Main.LocalPlayer != null && Main.LocalPlayer.mouseInterface);
                 // Native CreativeUI owns mouseInterface while hovered. Its own
-                // switch must still be able to close the active R session; text
-                // entry/capture continues to protect ordinary typed characters.
-                bool journeyClose = journey != null && journey.IsActive && inputActive && !journeyLeavePending &&
-                    !inputState.HotkeyCapture && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText &&
-                    !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible);
+                // switch must still close the active R session in both supported
+                // modes. Only this close bypasses native hover; every ordinary
+                // text/modal/popup/gesture gate and the same Stop owner survive.
+                bool journeyClose = ordinaryHotkey && journey != null && journey.IsActive && !journeyLeavePending && !inputState.HotkeyCapture;
                 // Older development profiles have no target owner or actions;
                 // do not evaluate the new native observation gate for them.
                 bool targetHotkey = Browser != null && CanTargetInput && !TargetPointerOwned;
@@ -854,7 +870,7 @@ namespace JueMingR.TerrariaHost.F5
                     Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture;
                 dispatchGameplay = gameplay;
                 dispatchBlueprint = !uiWheelOwner && CanDispatchBlueprintEdit(inputActive, materialsWasVisible, popupPointer);
-                dispatchJourneyClose = journeyClose && Main.netMode == 0;
+                dispatchJourneyClose = journeyClose;
                 dispatchTarget = targetHotkey; dispatchMap = mapHotkey;
                 // A single compiled-match pass owns every primary. In particular,
                 // a bound Mouse1 cannot both confirm a preview and start a drag.
@@ -1224,6 +1240,44 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void FailClosed()
-        { failed = true; State.Ready = false; CloseAndSubmitPosition(); RestoreLeases(); notes.FailClosed(); renderer.Dispose(); }
+        {
+            failed = true; State.Ready = false;
+            if (failureCleanupAttempted) return;
+            failureCleanupAttempted = true;
+            // Each UI owner may still hold text, pointer or an accepted submit.
+            // Close them independently; one renderer/editor exception cannot
+            // leave later owners admitted or suppress the original lease return.
+            AttemptFailureCleanup(CloseBlueprintReplacementConfiguration);
+            AttemptFailureCleanup(() => CombatInterval?.Cancel());
+            AttemptFailureCleanup(() => CombatRadius?.Cancel());
+            AttemptFailureCleanup(() => BlueprintMaterialsUi?.Close());
+            AttemptFailureCleanup(() => BlueprintPlacedUi?.Close());
+            AttemptFailureCleanup(() => BlueprintUi?.Suspend());
+            AttemptFailureCleanup(() => MiscUi?.Suspend());
+            AttemptFailureCleanup(() => FishingUi?.Suspend());
+            AttemptFailureCleanup(() => CaptureUi?.Close());
+            AttemptFailureCleanup(() => MiningUi?.Suspend());
+            AttemptFailureCleanup(() => CancelInformationAdjustment(false));
+            AttemptFailureCleanup(() => HotkeyPopup?.Close());
+            AttemptFailureCleanup(() => StylePopup?.Close());
+            AttemptFailureCleanup(() => DeathPopup?.Close());
+            AttemptFailureCleanup(() => MapPopup?.Suspend());
+            AttemptFailureCleanup(() => FootprintPopup?.Close());
+            AttemptFailureCleanup(State.Close);
+            AttemptFailureCleanup(() => notes.Suspend());
+            AttemptFailureCleanup(() => items?.Suspend());
+            AttemptFailureCleanup(() => RecoveryUi?.Suspend());
+            AttemptFailureCleanup(() => ReforgeUi?.Suspend());
+            AttemptFailureCleanup(() => Browser?.Suspend());
+            AttemptFailureCleanup(SubmitPosition);
+            AttemptFailureCleanup(RestoreLeases);
+            AttemptFailureCleanup(notes.FailClosed);
+            AttemptFailureCleanup(renderer.Dispose);
+        }
+        private void AttemptFailureCleanup(Action cleanup)
+        {
+            try { cleanup(); }
+            catch (Exception exception) { if (CleanupFailure == null) CleanupFailure = exception; }
+        }
     }
 }

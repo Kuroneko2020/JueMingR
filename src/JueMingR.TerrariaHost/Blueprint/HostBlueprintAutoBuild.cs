@@ -782,6 +782,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             // successor planning cannot perform this execution bookkeeping.
             if (buildMaterialPreparation?.Using == true && !buildMaterialPreparation.ObserveUseConsumption(flight.Token))
             { HoldUnconfirmedBuild(flight); buildTools.Use.Cancel(); return; }
+            // The original native consumer still settles its exact material
+            // vector after common failure. It cannot publish retry/frontier
+            // work or discover a successor for a terminal Runtime.
+            if(buildTools.Runtime.HasFailed)return;
 #if JMR_BLUEPRINT_DIAGNOSTIC
             DiagnosticFlight(flight,BuildTraceStage.Checked,spent?BuildTraceReason.ConsumptionObserved:BuildTraceReason.NoConsumption);
 #endif
@@ -843,8 +847,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             EndWiringBuildFlight(flight,unknown);
             ReturnPreparedBuildLease(flight,unknown);
             if (unknown) HoldUnconfirmedBuild(flight);
-            else if (!flight.Checked && !flight.Rejected) WaitForBuild(flight.Target, BlueprintBuildWait.Player, retryPending: true);
-            activeBuild = null; NotifyBuildAttempt(flight.Target);
+            else if (!buildTools.Runtime.HasFailed && !flight.Checked && !flight.Rejected) WaitForBuild(flight.Target, BlueprintBuildWait.Player, retryPending: true);
+            activeBuild = null; if(!buildTools.Runtime.HasFailed)NotifyBuildAttempt(flight.Target);
         }
         internal void CancelAutomaticBuild()
         { preparedBuild = null; ClearBuildContinuation(); StopWiringBuild(false); buildMaterialPreparation?.RequestReturn(); if (buildTools?.Use.Building == true) buildTools.Use.Cancel(); }
@@ -852,7 +856,15 @@ namespace JueMingR.TerrariaHost.Blueprint
         { preparedBuild = null; ClearBuildContinuation(); if (AutoBuildEnabled) buildActivationRevision++; else RemoveBuildSources(); MaterialBuildEligibilityRevision++; ObserveMaterialDemand(); }
         private void ClearAutomaticBuild()
         {
-            CancelAutomaticBuild(); if (buildTools?.Use.Building == true) buildTools.Use.Retire(); preparedBuild = activeBuild = null;
+            CancelAutomaticBuild();
+            // Common failure revokes producers, not the admitted native use.
+            // Keep both its token and matching flight until the original
+            // finalizer/selection return can settle wiring and prepared Items.
+            // A real session edge first withdraws HasRetainedSession and keeps
+            // the original retirement path instead of replaying old returns.
+            bool retained = buildTools?.Use.Building==true && buildTools.Runtime.HasFailed && buildTools.Runtime.HasRetainedSession;
+            if(!retained){if(buildTools?.Use.Building==true)buildTools.Use.Retire();activeBuild=null;}
+            preparedBuild = null;
             // RemoveAll/Clear retires projection work, not an original packet
             // already sent in this connection. Keep that finite responsibility
             // until its decoder reply or the actual session boundary below.
@@ -915,7 +927,13 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BuildContainerReceipt MatchBuildContainer(byte[] bytes, int start, int length)
         {
             var receipt = buildContainer;
-            if (receipt == null || !receipt.Sent || receipt.Resolved || Main.netMode != 1 || receipt.Session != generation || !HasSession || bytes == null || start < 0 || length < 10 || start > bytes.Length - length || bytes[start] != 34) return null;
+            // The original decoder may finish an already-sent request after
+            // common failure. This is correlation of one old receipt, never a
+            // new construction permit, and checks real identity before outer
+            // Runtime observation can retire a changed socket/world.
+            bool retained = runtime.HasFailed && runtime.HasRetainedSession && generation==runtime.Generation &&
+                buildTools?.MatchesRetainedSession(player)==true && ReferenceEquals(world,Main.ActiveWorldFileData) && ReferenceEquals(connection,Netplay.Connection);
+            if (receipt == null || !receipt.Sent || receipt.Resolved || Main.netMode != 1 || receipt.Session != generation || (!HasSession && !retained) || bytes == null || start < 0 || length < 10 || start > bytes.Length - length || bytes[start] != 34) return null;
             return bytes[start + 1] == receipt.Action && ReadBuildShort(bytes, start + 2) == receipt.X && ReadBuildShort(bytes, start + 4) == receipt.Y && ReadBuildShort(bytes, start + 6) == receipt.Style ? receipt : null;
         }
         private static short ReadBuildShort(byte[] data, int at) { return unchecked((short)(data[at] | data[at + 1] << 8)); }

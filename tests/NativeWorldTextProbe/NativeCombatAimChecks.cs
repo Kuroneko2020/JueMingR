@@ -228,7 +228,12 @@ namespace NativeWorldTextProbe
                 var plan=ReadSolution(attack,true);
                 if(spawnX==850)
                 {
-                    var timeline=((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(1);var spawn=(Vector2)Get(attack,"nextOrigin");Require(timeline!=null && timeline.Count==121 && (!plan.HasPoint || plan.Reachability!="Reachable"),"original tiny-target geometry has no reachable actual solution");
+                    var timeline=((NpcPredictionCache)Get(Get(host,"Prediction"),"Cache")).Read(1);var spawn=(Vector2)Get(attack,"nextOrigin");
+                    // Facts only: distinguish the compound prerequisite from
+                    // the retained independent launch-circle/native oracle.
+                    var timingWork=(CombatPredictionWork)Get(host,"PredictionWork");
+                    Console.WriteLine("TIMING NEGATIVE FACTS spawnX="+spawnX+" timeline="+(timeline!=null)+" count="+(timeline==null?-1:timeline.Count)+" sample="+(timeline==null?-1:timeline.SampleTick)+" stop="+(timeline==null?"none":timeline.Stop.ToString())+" nextOrigin="+spawn+" hasPoint="+plan.HasPoint+" reachability="+plan.Reachability+" point="+plan.Point+" receive="+plan.ReceiveTick+" native="+plan.NativeTick+" first="+plan.FirstTick+" phase="+plan.Phase+" delay="+plan.Delay+" item="+p.HeldItem.type+" direction="+p.direction+" mountedCenter="+p.MountedCenter+" rotation="+p.fullRotation+" gravity="+p.gravDir+" player="+p.position+" playerVelocity="+p.velocity+" mouse="+Main.mouseX+","+Main.mouseY+" screen="+Main.screenPosition+" npc="+n.whoAmI+"/"+n.type+" npcPosition="+n.position+" npcVelocity="+n.velocity+" npcSize="+n.width+"x"+n.height+" npcOffset="+n.netOffset+" guc="+Main.GameUpdateCount+" budgetMs="+timingWork.UsedMilliseconds+" exceeded="+timingWork.Exceeded);
+                    Require(timeline!=null && timeline.Count==121 && (!plan.HasPoint || plan.Reachability!="Reachable"),"original tiny-target geometry has no reachable actual solution");
                     var bullet=ContentSamples.ProjectilesByType[14];float gap=float.MaxValue;
                     for(int k=1;k<(timeline.Count-1)*(bullet.extraUpdates+1)+1;k++)
                     {

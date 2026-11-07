@@ -137,6 +137,7 @@ namespace NativeWorldTextProbe
             Directory.CreateDirectory(output);
             var start=new System.Diagnostics.ProcessStartInfo(Assembly.GetExecutingAssembly().Location,"\""+Program.Repository+"\" unused \""+Path.GetFullPath(output)+"\" NpcPresentationOriginal")
             {UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
+            NativeScopeDispatch.PrepareOwnedChild(start);
             using(var child=System.Diagnostics.Process.Start(start))
             {
                 var stdout=child.StandardOutput.ReadToEndAsync();var stderr=child.StandardError.ReadToEndAsync();

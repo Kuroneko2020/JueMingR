@@ -13,8 +13,8 @@ namespace JueMingR.TerrariaHost.Combat
         {var lease=HostProjectileTargets.CaptureOwnerChase(shot,timeline.Identity.Session);targetLeases.Add(lease);return lease;}
         internal HostProjectileTargets CaptureMovingChaseTargets(Terraria.Projectile shot)
         {var lease=HostProjectileTargets.CaptureMovingChase(shot,timeline.Identity.Session);targetLeases.Add(lease);return lease;}
-        internal HostProjectileTargets CaptureNailTargets(Terraria.Projectile shot)
-        {var lease=HostProjectileTargets.CaptureNailBodies(shot,timeline.Identity.Session);targetLeases.Add(lease);return lease;}
+        internal HostProjectileTargets CaptureNailTargets(Terraria.Projectile shot,Terraria.Projectile[] family)
+        {var lease=HostProjectileTargets.CaptureNailBodies(shot,timeline.Identity.Session);lease.IncludeNailSlots(family);targetLeases.Add(lease);return lease;}
         internal HostProjectileTargets CapturePiranhaTargets(Terraria.Projectile shot)
         {var lease=HostProjectileTargets.CapturePiranhaBodies(shot,timeline.Identity.Session);targetLeases.Add(lease);return lease;}
         internal bool HomingOwnerClear(int slot,int captured,int outer)

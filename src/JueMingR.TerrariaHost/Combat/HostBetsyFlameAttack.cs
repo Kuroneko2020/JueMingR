@@ -80,12 +80,10 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal static int Facing(Player player,Vector2 origin,Vector2 aim)
         {
-            // Shoot chooses facing BEFORE converting the Y velocity for
-            // reverse gravity. Use the borrowed raw Main.MouseWorld here.
-            var screen=aim-Main.screenPosition;if(player.gravDir==-1)screen.Y=Main.screenHeight-screen.Y;
-            aim=new Vector2((int)screen.X+Main.screenPosition.X,(int)screen.Y+Main.screenPosition.Y);
-            var v=aim-origin;if(v!=Vector2.Zero)v.Normalize();
-            return Vector2.Dot(Vector2.UnitX.RotatedBy(player.fullRotation),v)>0?1:-1;
+            // aim is logical world space. The shared integer-cursor mapping
+            // includes Main.MouseWorld's gravity restoration before Shoot's
+            // facing read; reflecting that logical Y again changes the side.
+            return HostAttackModels.CommonFacing(player,origin,aim);
         }
         internal static bool Step(Projectile p,PredictionTerrain terrain)
         {return !p.active || Motor(p,terrain,null);}

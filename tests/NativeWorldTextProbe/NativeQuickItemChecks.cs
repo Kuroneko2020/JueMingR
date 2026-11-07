@@ -25,7 +25,7 @@ namespace NativeWorldTextProbe
         private static double predictionCodeMs;
         internal static int Recalls {get{return recalls;}}
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false,string candidateAssembly=null,string predictionHostHash=null,string candidatePackageId=null,bool exactPredictionComparison=false)
+        internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false,string candidateAssembly=null,string predictionHostHash=null,string candidatePackageId=null,bool exactPredictionComparison=false,Action<object> initializeRuntime=null)
         {
             RequireHostIdentity(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
             RequireHostIdentity(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
@@ -58,6 +58,11 @@ namespace NativeWorldTextProbe
                 var codePreparation=assembly.GetType("JueMingR.TerrariaHost.Combat.NpcPredictionSource").GetMethod("PrepareRollingCode",Flags);
                 if(codePreparation!=null)isolation.Patch(codePreparation,prefix:new HarmonyMethod(typeof(NativeQuickItemChecks),nameof(BeforePredictionCode)),postfix:new HarmonyMethod(typeof(NativeQuickItemChecks),nameof(AfterPredictionCode)));
                 var compositionClock=System.Diagnostics.Stopwatch.StartNew();
+                // A first-handoff fault must enter the real owner before any
+                // successful InitializeRuntime baseline. The override remains
+                // inside this fixture's original cleanup; normal calls retain
+                // the complete initialization and input preparation below.
+                if(initializeRuntime!=null){initializeRuntime(context);visual?.Invoke(context);return;}
                 Call(context,"InitializeRuntime",true);
                 Console.WriteLine("COMPOSITION initialization-ms="+compositionClock.Elapsed.TotalMilliseconds.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+" code-prepare-ms="+predictionCodeMs.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+" exact-comparison="+exactPredictionComparison);
                 if(candidatePackageId!=null)

@@ -154,6 +154,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             bool conditional=NativePlayerMotion.Conditional(p);w.Write(conditional);
             w.Write(p.whoAmI);w.Write(p.active);w.Write(p.dead);w.Write(p.ghost);w.Write(p.width);w.Write(p.height);w.Write(p.gravDir);
+            NativePortableStoolSnapshot.Write(w,p);
             w.Write(p.immune && p.immuneTime>PredictionWire.MaximumHorizon);
             w.Write(p.controlLeft);w.Write(p.controlRight);w.Write(p.controlUp);w.Write(p.controlDown);w.Write(p.controlJump);w.Write(p.controlUseItem);w.Write(p.controlUseTile);
             // Special mounts may recompute these outputs from fatigue or

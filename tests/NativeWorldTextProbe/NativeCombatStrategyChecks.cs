@@ -12,16 +12,35 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatStrategyChecks
     {
         private const BindingFlags Flags=BindingFlags.Static|BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
+        // Explicit Strategy Source-component boundary after a caller's original
+        // Fresh. It prepares the actual selected NPC at the unchanged native
+        // GUC; it grants no Host display, input, demand or larger work budget.
+        internal static void PrepareSelectedSource(object host,NPC expected)
+        {
+            Require(expected!=null && expected.whoAmI>=0 && expected.whoAmI<Main.npc.Length && expected.active && ReferenceEquals(Main.npc[expected.whoAmI],expected),"Strategy Source component requires the live original NPC instance.");
+            var selection=Get(host,"Selection");var selected=(NpcIdentity)Get(selection,"Target");long session=(long)Get(host,"Session");
+            var actual=new NpcIdentity(session,expected,expected.whoAmI,expected.generation,expected.type,expected.netID);
+            Require(session>=0 && (bool)Get(selection,"HasTarget") && selected.Equals(actual),"Strategy Source component requires the real complete selected identity, slot="+expected.whoAmI+" type="+expected.type);
+            Call(Get(host,"Prediction"),"Prepare",selected,(long)Main.GameUpdateCount);
+        }
         internal static void Run(object context)
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");
+            int previousNetMode=Main.netMode;var previousSections=Main.sectionManager;
+            try
+            {
+            if(!(bool)Get(host,"PathAccess"))NativeHiddenEntryChecks.RevealForComposition(context);
             for(int i=0;i<Main.maxPlayers;i++){if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};Main.player[i].active=false;}
             foreach(var npc in Main.npc)npc.active=false;
             Main.netMode=1;Main.dayTime=false;Main.worldSurface=20;Main.tileSolid[TileID.Stone]=true;
             var p=Main.LocalPlayer;p.active=true;p.dead=p.ghost=false;p.position=new Vector2(900,960-p.height);p.velocity=Vector2.Zero;p.controlLeft=p.controlRight=p.controlJump=false;p.carpetFrame=-1;p.gravity=.4f;p.maxFallSpeed=10;p.maxRunSpeed=3;p.accRunSpeed=6;p.runAcceleration=.08f;p.runSlowdown=.2f;p.aggro=0;p.tankPet=-1;
             for(int x=1;x<Main.maxTilesX-1;x++){Main.tile[x,60].active(true);Main.tile[x,60].type=TileID.Stone;}
+            // This complete isolated client world, including its floor, is
+            // received terrain for these positive Source/native AI oracles.
+            Main.sectionManager=new WorldSections(Netplay.GetSectionX(Main.maxTilesX-1)+1,Netplay.GetSectionY(Main.maxTilesY-1)+1);Main.sectionManager.SetAllSectionsLoaded();
             Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,marker:true));Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
+            Console.WriteLine("STRATEGY PREREQUISITES pathAccess="+Get(host,"PathAccess")+" path="+Get(host,"Path")+" settingsReady="+Get(Get(host,"Settings"),"Ready")+" netMode="+Main.netMode+" sections="+(Main.sectionManager!=null)+" playerTileLoaded="+(Main.sectionManager!=null && Main.sectionManager.TileLoaded((int)p.Center.X/16,(int)p.Center.Y/16)));
             string only=Environment.GetEnvironmentVariable("JUEMINGR_STRATEGY_ONLY");
             if(!string.IsNullOrEmpty(only))NativeStrategyScopes.Require(only);
             if(only=="facing"){Facing(source,p);return;}
@@ -68,12 +87,21 @@ namespace NativeWorldTextProbe
             if(only=="rollchoice" || only=="rollchoice39"){NativeCombatRollingControlChecks.Choices(context);return;}
             if(only=="roll417"){NativeCombatRollingControlChecks.UnknownBounce(context);return;}
             if(only!="bee")NativeCombatPositionControlChecks.Trend(context);
+            if(only!="trend")ProveBeeHostPublication(context,host);
             if(only!="trend")foreach(int type in new[]{210,211})foreach(float birth in new[]{0f,59f,120f})foreach(bool npcTarget in new[]{false,true})
             {
                 foreach(var npc in Main.npc)npc.active=false;
-                var n=Main.npc[2];n.SetDefaults(type);n.whoAmI=2;n.active=true;n.dontTakeDamage=n.immortal=n.friendly=false;n.position=new Vector2(650,700);n.velocity=new Vector2(6,-1);n.target=p.whoAmI;n.ai[0]=99;n.ai[1]=birth;n.timeLeft=750;
-                if(npcTarget){var other=Main.npc[3];other.SetDefaults(1);other.whoAmI=3;other.active=true;other.position=new Vector2(630,650);other.velocity=Vector2.Zero;other.life=100;other.dontTakeDamage=other.immortal=other.friendly=false;}
-                NativeCombatObservationChecks.Fresh(context,host);var frozen=cache.Read(0);Require(frozen!=null && frozen.Count>30,"TR02 Source bee actual necessary target has usable future type="+type+" birth="+birth+" npc="+npcTarget+" count="+frozen?.Count+" stop="+frozen?.Stop);
+                var n=Main.npc[2]=new NPC();n.SetDefaults(type);n.whoAmI=2;n.active=true;n.dontTakeDamage=n.immortal=n.friendly=false;n.position=new Vector2(650,700);n.velocity=new Vector2(6,-1);n.target=p.whoAmI;n.ai[0]=99;n.ai[1]=birth;n.timeLeft=750;
+                if(npcTarget){var other=Main.npc[3]=new NPC();other.SetDefaults(1);other.whoAmI=3;other.active=true;other.position=new Vector2(630,650);other.velocity=Vector2.Zero;other.life=100;other.dontTakeDamage=other.immortal=other.friendly=false;}
+                NativeCombatObservationChecks.Fresh(context,host);
+                // The following120 original AI actions compare one frozen
+                // Source component sample. Establish it at this same real GUC;
+                // a cold Host display prefix is not a first-frame120 promise.
+                var beeSelection=Get(host,"Selection");var beeIdentity=(NpcIdentity)Get(beeSelection,"Target");
+                Require((bool)Get(beeSelection,"HasTarget") && beeIdentity.Equals(new NpcIdentity((long)Get(host,"Session"),n,n.whoAmI,n.generation,n.type,n.netID)),"TR02 frozen component uses the real selected bee identity.");
+                Call(source,"Prepare",beeIdentity,(long)Main.GameUpdateCount);
+                var frozen=cache.Read(0);Require(frozen!=null && frozen.Count>30,"TR02 Source bee actual necessary target has usable future type="+type+" birth="+birth+" npc="+npcTarget+" count="+frozen?.Count+" stop="+frozen?.Stop);
+                Require(frozen.Count==121,"TR02 frozen component covers all120 original AI comparison actions.");
                 Require(ReferenceEquals(frozen.Identity.Token,n),"TR02 selected receiver is the bee, distinct from its AI target");
                 float originX=n.position.X,originY=n.position.Y;
                 n.AI();Call(n,"UpdateCollision");
@@ -90,6 +118,31 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS TR02 bee frozen120 type="+type+" birth="+birth+" npc="+npcTarget+" target="+n.target+" near15Max="+nearMax+" far120Max="+farMax+" crossed="+crossed+" turned="+turned);
             }
             if(only!="trend")Competition(source,cache,p);
+            }
+            finally{Main.sectionManager=previousSections;Main.netMode=previousNetMode;}
+        }
+        private static void ProveBeeHostPublication(object context,object host)
+        {
+            // Establish real budgeted Host display before any component Prepare.
+            // The loop above then replaces body/competitor tokens with new NPCs,
+            // so this wait cannot become a component observation-history input.
+            foreach(var npc in Main.npc)npc.active=false;
+            var n=Main.npc[2]=new NPC();n.SetDefaults(210);n.whoAmI=2;n.active=true;n.dontTakeDamage=n.immortal=n.friendly=false;n.position=new Vector2(650,700);n.velocity=new Vector2(6,-1);n.target=Main.myPlayer;n.ai[0]=99;n.ai[1]=0;n.timeLeft=750;
+            var expected=new NpcIdentity((long)Get(host,"Session"),n,2,n.generation,n.type,n.netID);var source=Get(host,"Prediction");long before=Main.GameUpdateCount;int limit=(int)Get(host,"DisplayRefreshUpdates")*3;
+            for(int updates=1;updates<=limit;updates++)
+            {
+                NativeCombatObservationChecks.Fresh(context,host);long now=Main.GameUpdateCount;var selection=Get(host,"Selection");var selected=(NpcIdentity)Get(selection,"Target");
+                bool same=n.active && ReferenceEquals(Main.npc[2],n) && expected.Equals(new NpcIdentity((long)Get(host,"Session"),n,2,n.generation,n.type,n.netID)) && (bool)Get(selection,"HasTarget") && selected.Equals(expected);
+                var display=GetOptional(host,"DisplayPath") as NpcTrajectory;long age=display==null?-1:now-display.SampleTick,remaining=display==null?-1:(long)display.Count-1-age;
+                bool available=(bool)Get(host,"Path") && (bool)Get(host,"PredictionAvailable") && (bool)Get(host,"SelectionAvailable") && !(bool)Get(host,"TargetPredictionFailed");
+                bool ready=available && same && display!=null && display.Identity.Equals(expected) && display.SampleTick>before && display.CaptureTick>before && age>=0 && age==(int)Get(host,"DisplayAge") && age<=(int)Get(host,"DisplayMaximumAge") && remaining>0;
+                var budget=Get(host,"PredictionWork") as CombatPredictionWork;
+                Console.WriteLine("TR02 HOST PUBLICATION updates="+updates+" limit="+limit+" guc="+now+" sameIdentity="+same+" available="+available+" count="+(display==null?-1:display.Count)+" sample="+(display==null?-1:display.SampleTick)+" capture="+(display==null?-1:display.CaptureTick)+" age="+age+" remaining="+remaining+" outcomeTick="+Get(source,"outcomeTick")+" outcomeLayer="+Get(source,"outcomeLayer")+" budgetMs="+(budget==null?-1:budget.UsedMilliseconds)+" exceeded="+(budget!=null && budget.Exceeded)+" ready="+ready);
+                Require(same,"TR02 real Host publication retains its complete fixed receiver identity.");
+                if(ready)return;
+                if(!available || (long)Get(source,"outcomeTick")==now && !object.Equals(Get(source,"outcomeLayer"),PredictionFailureLayer.None))break;
+            }
+            Require(false,"TR02 real Host publishes a current display with at least one complete future step within15 original-budget updates.");
         }
         private static void Facing(object source,Player p)
         {

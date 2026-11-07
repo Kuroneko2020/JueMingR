@@ -245,14 +245,16 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(!Handles(ammo.Projectile) || ammo.Damage<=0 || ammo.Speed<=0 || float.IsInfinity(ammo.Speed) || float.IsNaN(ammo.Speed) || player.whoAmI!=Main.myPlayer || delay<0 || age<delay || age+1>=timeline.Count)return null;
             var policy=new Projectile();policy.SetDefaults(ammo.Projectile);policy.owner=player.whoAmI;policy.damage=ammo.Damage;
-            var targets=obstacles.CaptureChaseTargets(policy);var slots=obstacles.CaptureBirthSlots();var directions=new Vector2[41];int count=0;
-            for(int seed=0;seed<41;seed++)
+            obstacles.CaptureShotFacing(player);var targets=obstacles.CaptureChaseTargets(policy);var slots=obstacles.CaptureBirthSlots();var inputs=new List<Vector2>();bool displaced;HostAttackModels.LaunchOrigin(player,player.HeldItem,out displaced);
+            for(int branch=0;branch<(displaced?2:1);branch++)for(int seed=0;seed<41;seed++)
             {
-                Vector2 direction;if(seed<9){var b=timeline[Math.Min(timeline.Count-1,age+1+seed*4)].ProjectileReceiveBounds;direction=(new Vector2(b.CenterX,b.CenterY)-origin).SafeNormalize(Vector2.UnitX*player.direction);}else direction=((seed-9)*MathHelper.TwoPi/32).ToRotationVector2();
-                bool duplicate=false;for(int i=0;i<count;i++)if(directions[i]==direction){duplicate=true;break;}if(duplicate)continue;directions[count++]=direction;
-                obstacles.BeginCandidate();var birth=Copy(policy);birth.active=true;birth.Center=origin;birth.velocity=BirthVelocity(direction*ammo.Speed);birth.knockBack=player.GetWeaponKnockback(player.HeldItem,player.HeldItem.knockBack);
-                bool wet;byte kind;if(!terrain.ProjectileWet(origin.X,origin.Y,birth.width,birth.height,out wet,out kind,true))return null;birth.wet=wet;birth.honeyWet=wet && kind==2;birth.shimmerWet=wet && kind==3;
-                var aim=origin+direction*10000;var contact=Family(new[]{birth},timeline,age,delay,terrain,obstacles,targets,slots,false,aim);if(contact!=null)return contact;
+                var proposalOrigin=branch==0?origin:HostAttackModels.OtherMuzzleOrigin(player,player.HeldItem,origin);
+                Vector2 direction;if(seed<9){var b=timeline[Math.Min(timeline.Count-1,age+1+seed*4)].ProjectileReceiveBounds;direction=(new Vector2(b.CenterX,b.CenterY)-proposalOrigin).SafeNormalize(Vector2.UnitX*player.direction);}else direction=((seed-9)*MathHelper.TwoPi/32).ToRotationVector2();
+                var aim=proposalOrigin+direction*10000;if(inputs.Contains(aim))continue;inputs.Add(aim);
+                int facing;var muzzle=HostAttackModels.NativeLaunchOrigin(player,player.HeldItem,origin,aim,out facing);
+                obstacles.BeginCandidate();var birth=Copy(policy);birth.active=true;birth.Center=muzzle;birth.velocity=BirthVelocity(HostAttackModels.NativeLaunchVelocity(player,muzzle,aim,ammo.Speed,facing));birth.knockBack=player.GetWeaponKnockback(player.HeldItem,player.HeldItem.knockBack);
+                bool wet;byte kind;if(!terrain.ProjectileWet(muzzle.X,muzzle.Y,birth.width,birth.height,out wet,out kind,true))return null;birth.wet=wet;birth.honeyWet=wet && kind==2;birth.shimmerWet=wet && kind==3;
+                var contact=Family(new[]{birth},timeline,age,delay,terrain,obstacles,targets,slots,false,aim);if(contact!=null)return contact;
             }
             return null;
         }

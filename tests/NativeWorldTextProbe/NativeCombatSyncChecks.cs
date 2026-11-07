@@ -1,5 +1,6 @@
 using System;
 using JueMingR.Features.Combat;
+using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -11,10 +12,31 @@ namespace NativeWorldTextProbe
         internal static void Run(object context)
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");foreach(var n in Main.npc)n.active=false;
-            Main.netMode=1;Main.LocalPlayer.position=new Vector2(600,700);Main.dayTime=false;
+            int previousNetMode=Main.netMode;var previousSections=Main.sectionManager;
+            try
+            {
+            if(!(bool)Get(host,"PathAccess"))NativeHiddenEntryChecks.RevealForComposition(context);
+            // The isolated harness supplied every tile in its fixed world.
+            // This client packet oracle starts from received terrain, so give
+            // that world the original section owner's loaded qualification.
+            Main.netMode=1;Main.sectionManager=new WorldSections(Netplay.GetSectionX(Main.maxTilesX-1)+1,Netplay.GetSectionY(Main.maxTilesY-1)+1);Main.sectionManager.SetAllSectionsLoaded();
+            Main.LocalPlayer.position=new Vector2(600,700);Main.dayTime=false;
             for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};
             var target=(NPC)typeof(NPC).GetMethod("NewNPCInstanceInSlot",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic).Invoke(null,new object[]{2,(byte)7});target.SetDefaults(2);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.position=new Vector2(800,900);target.velocity=new Vector2(1,0);target.spawnNeedsSyncing=false;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null,"Real Host starts a published path before native packet.");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));var initialIdentity=ActualSyncIdentity(host,2);
+            NativeCombatObservationChecks.Fresh(context,host);
+            var selection=Get(host,"Selection");
+            Console.WriteLine("SYNC PREREQUISITES pathAccess="+Get(host,"PathAccess")+" path="+Get(host,"Path")+" settingsReady="+Get(Get(host,"Settings"),"Ready")+" required="+cache.Required+" hasTarget="+Get(selection,"HasTarget")+" netMode="+Main.netMode+" sections="+(Main.sectionManager!=null)+" playerTileLoaded="+(Main.sectionManager!=null && Main.sectionManager.TileLoaded((int)Main.LocalPlayer.Center.X/16,(int)Main.LocalPlayer.Center.Y/16))+" targetTileLoaded="+(Main.sectionManager!=null && Main.sectionManager.TileLoaded((int)target.Center.X/16,(int)target.Center.Y/16)));
+            // Inspect stored values only: Read rejects absent demand/result or
+            // a prefix that cannot satisfy this reader's unchanged minimum.
+            var demands=GetOptional(cache,"demands") as int[];var minimums=GetOptional(cache,"minimums") as int[];
+            var raw=GetOptional(cache,"result") as JueMingR.Platform.Combat.NpcTrajectory;var outcomeIdentity=GetOptional(source,"outcomeIdentity");var work=GetOptional(host,"PredictionWork") as CombatPredictionWork;
+            Console.WriteLine("SYNC SOURCE FACTS demand0="+(demands!=null && demands.Length>0?demands[0]:-1)+" minimum0="+(minimums!=null && minimums.Length>0?minimums[0]:-1)+" raw="+(raw!=null)+" rawCount="+(raw==null?-1:raw.Count)+" rawStop="+(raw==null?"none":raw.Stop.ToString())+" rawSample="+(raw==null?-1:raw.SampleTick)+" guc="+Main.GameUpdateCount+" outcomeTick="+(GetOptional(source,"outcomeTick")??"absent")+" outcomeStop="+(GetOptional(source,"outcomeStop")??"absent")+" outcomeLayer="+(GetOptional(source,"outcomeLayer")??"absent")+" outcomeFuture="+(GetOptional(source,"outcomeFuture")??"absent")+" identityMatch="+(outcomeIdentity!=null && outcomeIdentity.Equals(Get(selection,"Target")))+" native="+(GetOptional(source,"Native")!=null)+" work="+(work!=null)+" budgetMs="+(work==null?-1:work.UsedMilliseconds)+" exceeded="+(work!=null && work.Exceeded));
+            // Packet assertions need a real publication, not a cold single-GUC
+            // latency promise. Retain the first miss above, then let the real
+            // Host schedule bounded new updates without changing its budget.
+            WaitForPublication(context,host,source,cache,initialIdentity,"initial-publication");
+            Require(cache.Read(0)!=null,"Real Host starts a published path before native packet.");
             var before=target.position;target.position.X+=600;var packet=CombatNetworkFixture.Serialize(23,2);target.position=before;
             Require(packet[3]==2 && packet[4]==7,"Original serializer has separate byte slot/generation.");CombatNetworkFixture.Receive(packet);
             Console.WriteLine("SYNC23 native="+target.position+" generation="+target.generation+" cached="+(cache.Read(0)!=null));
@@ -31,7 +53,10 @@ namespace NativeWorldTextProbe
                 Require((long)Get(source,"epoch")>epoch && (long)Get(Get(source,"rolling"),"priorTick")==prior && (long)Get(Get(source,"segmented"),"relationVersion")==relation,"Normal packet retires publication epoch while preserving rolling and segment relation history.");
                 NativeCombatObservationChecks.Fresh(context,host);var next=cache.Read(0);Require(next!=null && (type!=14 || next.Quality==JueMingR.Platform.Combat.PredictionQuality.ObservedTrend),"Next completed sample retains measured segmented trend after normal sync.");
                 target.position.X+=600;packet=CombatNetworkFixture.Serialize(23,2);target.position.X-=600;CombatNetworkFixture.Receive(packet);Require(cache.Read(0)==null && (long)Get(source,"epoch")>epoch || type==14 && cache.Read(0)==null && (long)Get(Get(source,"segmented"),"relationVersion")>relation,"Same-identity large correction retires history separately.");
-                NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null,"Large correction can resample real current target.");
+                var correctionIdentity=ActualSyncIdentity(host,2);
+                NativeCombatObservationChecks.Fresh(context,host);
+                WaitForPublication(context,host,source,cache,correctionIdentity,"large-correction type="+type);
+                Require(cache.Read(0)!=null,"Large correction can resample real current target.");
                 Console.WriteLine("SYNC23 ordinary/correction type="+type+" tokenSame="+ReferenceEquals(Main.npc[2],token));
                 foreach(int change in new[]{0,1,2})
                 {
@@ -43,47 +68,102 @@ namespace NativeWorldTextProbe
                     CombatNetworkFixture.Receive(changed);
                     Require(cache.Read(0)==null && (change==2?ReferenceEquals(Main.npc[2],token):!ReferenceEquals(Main.npc[2],token)),"Real forced instance / generation / same-token netID transformation retires cached identity: "+change);
                     Require(!oldIdentity.Equals(new JueMingR.Platform.Combat.NpcIdentity(oldIdentity.Session,Main.npc[2],2,Main.npc[2].generation,Main.npc[2].type,Main.npc[2].netID)),"Changed identity cannot continue old target.");
-                    NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null,"Reacquire actual changed target.");
+                    var changedIdentity=ActualSyncIdentity(host,2);
+                    NativeCombatObservationChecks.Fresh(context,host);
+                    WaitForPublication(context,host,source,cache,changedIdentity,"changed-target type="+type+" change="+change);
+                    Require(cache.Read(0)!=null,"Reacquire actual changed target.");
                 }
             }
             SegmentedBoundaries(context,host,source,cache);
-            NativeCombatObservationChecks.Save(host,new ObservationOptions());Main.netMode=0;
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());
             Console.WriteLine("PASS SYNC23 real original serialization/dispatch: nonzero generation, ordinary history, forced instance, generation, same-token transform and large correction.");
+            }
+            finally{Main.sectionManager=previousSections;Main.netMode=previousNetMode;}
+        }
+        private static NpcIdentity ActualSyncIdentity(object host,int slot)
+        {
+            var npc=Main.npc[slot];
+            return new NpcIdentity((long)Get(host,"Session"),npc,slot,npc==null?-1:npc.generation,npc==null?-1:npc.type,npc==null?-1:npc.netID);
+        }
+        private static void WaitForPublication(object context,object host,object source,NpcPredictionCache cache,NpcIdentity expected,string stage)
+        {
+            // Only initial publication and the two generic reacquisition
+            // premises may span real updates. A hard or optional pause can
+            // happen before Outcome exists; its incidental scalar shape must
+            // not define readiness. Public failure and a current Source failure
+            // end the wait. Normal-sync history and same-GUC checks never wait.
+            int limit=(int)Get(host,"DisplayRefreshUpdates")*3,advanced=0;
+            while(PublicationPending(host,source,cache,expected,stage,advanced,limit))
+            {
+                if(advanced>=limit)break;
+                NativeCombatObservationChecks.Fresh(context,host);advanced++;
+            }
+        }
+        private static bool PublicationPending(object host,object source,NpcPredictionCache cache,NpcIdentity expected,string stage,int advanced,int limit)
+        {
+            var selection=Get(host,"Selection");var selected=(NpcIdentity)Get(selection,"Target");
+            var path=cache.Read(0);var raw=GetOptional(cache,"result") as NpcTrajectory;var budget=GetOptional(host,"PredictionWork") as CombatPredictionWork;
+            var demands=GetOptional(cache,"demands") as int[];var minimums=GetOptional(cache,"minimums") as int[];
+            long now=Main.GameUpdateCount,fullTick=(long)Get(host,"optionalTick"),shortTick=(long)Get(host,"displayShortTick"),outcomeAt=(long)Get(source,"outcomeTick");
+            bool hasTarget=(bool)Get(selection,"HasTarget"),selectedMatches=hasTarget && selected.Equals(expected);
+            bool liveMatches=Main.npc[expected.Slot]!=null && Main.npc[expected.Slot].active && expected.Equals(ActualSyncIdentity(host,expected.Slot));
+            bool optionalTargetMatches=expected.Equals((NpcIdentity)Get(host,"optionalTarget"));var outcomeIdentity=GetOptional(source,"outcomeIdentity");
+            bool optional=(bool)Get(host,"OptionalPreparation"),pathEnabled=(bool)Get(host,"Path"),sourceAvailable=(bool)Get(host,"PredictionAvailable"),selectionAvailable=(bool)Get(host,"SelectionAvailable"),targetFailed=(bool)Get(host,"TargetPredictionFailed");
+            int demand=demands!=null && demands.Length>0?demands[0]:0,minimum=minimums!=null && minimums.Length>0?minimums[0]:0;
+            bool exceeded=budget!=null && budget.Exceeded;
+            bool sourceFailure=path==null && outcomeAt==now && !object.Equals(Get(source,"outcomeLayer"),PredictionFailureLayer.None);
+            bool pending=path==null && pathEnabled && sourceAvailable && selectionAvailable && !targetFailed && demand>0 && minimum>0 && minimum<=demand && liveMatches && selectedMatches && !sourceFailure;
+            Console.WriteLine("SYNC PUBLICATION stage="+stage+" advanced="+advanced+" limit="+limit+" guc="+now+" hasTarget="+hasTarget+" selectedMatches="+selectedMatches+" liveMatches="+liveMatches+" expected="+expected.Slot+"/"+expected.Generation+"/"+expected.Type+" path="+(path!=null)+" rawCount="+(raw==null?-1:raw.Count)+" rawStop="+(raw==null?"none":raw.Stop.ToString())+" rawSample="+(raw==null?-1:raw.SampleTick)+" demand0="+demand+" minimum0="+minimum+" pathEnabled="+pathEnabled+" sourceAvailable="+sourceAvailable+" selectionAvailable="+selectionAvailable+" targetFailed="+targetFailed+" optional="+optional+" optionalTick="+fullTick+" displayShortTick="+shortTick+" optionalTargetMatches="+optionalTargetMatches+" outcomeTick="+outcomeAt+" outcomeStop="+Get(source,"outcomeStop")+" outcomeLayer="+Get(source,"outcomeLayer")+" outcomeFuture="+Get(source,"outcomeFuture")+" outcomeMatches="+object.Equals(outcomeIdentity,expected)+" budgetMs="+(budget==null?-1:budget.UsedMilliseconds)+" exceeded="+exceeded+" sourceFailure="+sourceFailure+" waitEligible="+pending);
+            Require(liveMatches && selectedMatches,"Sync readmission identity changed or selected target became unavailable; another target cannot satisfy this packet oracle.");
+            Require(path==null || path.Identity.Equals(expected),"Sync readmission published another target's path.");
+            Require(outcomeAt!=now || object.Equals(outcomeIdentity,expected),"Sync readmission Source outcome belongs to another target.");
+            return pending;
+        }
+        private static void PrepareSourceComponent(object host,object source,NPC expected)
+        {
+            Require(expected!=null && expected.whoAmI>=0 && expected.whoAmI<Main.npc.Length && expected.active && ReferenceEquals(Main.npc[expected.whoAmI],expected),"Sync Source component requires the live original NPC instance.");
+            var selection=Get(host,"Selection");var selected=(NpcIdentity)Get(selection,"Target");
+            Require((bool)Get(selection,"HasTarget") && selected.Equals(ActualSyncIdentity(host,expected.whoAmI)),"Sync Source component requires the real complete selected identity.");
+            Call(source,"Prepare",selected,(long)Main.GameUpdateCount);
         }
         private static void SegmentedBoundaries(object context,object host,object source,NpcPredictionCache cache)
         {
+            // Source observation/rebuild components keep every original native
+            // GUC and same-capture request. Explicit preparation is separate
+            // from the real Host publication/packet coverage above; never wait
+            // across a measured interval or prepare before immediate retirement.
             foreach(var n in Main.npc)n.active=false;
             var target=Main.npc[2];target.SetDefaults(14);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.spawnNeedsSyncing=false;target.position=new Vector2(800,900);target.velocity=Vector2.Zero;
-            NativeCombatObservationChecks.Fresh(context,host);target.position.X+=2;NativeCombatObservationChecks.Fresh(context,host);
+            NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,target);target.position.X+=2;NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,target);
             var original=cache.Read(0);Require(original!=null && original[1].Vx==2,"Default Source observes directly assigned segmented motion.");
-            Call(host,"Update",Main.GameUpdateCount);bool equivalent=ReferenceEquals(cache.Read(0),original);
+            PrepareSourceComponent(host,source,target);bool equivalent=ReferenceEquals(cache.Read(0),original);
             var before=target.position;target.position.X+=8;var packet=CombatNetworkFixture.Serialize(23,2);target.position=before;CombatNetworkFixture.Receive(packet);
             Require(cache.Read(0)==null && target.position.X==before.X+8,"Original .8 packet applies correction before R postfix invalidation.");
-            Call(host,"Update",Main.GameUpdateCount);var corrected=cache.Read(0);
+            PrepareSourceComponent(host,source,target);var corrected=cache.Read(0);
             Require(corrected!=null && corrected[0].Bounds.X==target.position.X && corrected[1].Vx==2 && !ReferenceEquals(corrected,original),"Same-time correction moves origin without inventing speed.");
-            target.position.X+=3;NativeCombatObservationChecks.Fresh(context,host);var accelerated=cache.Read(0);
+            target.position.X+=3;NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,target);var accelerated=cache.Read(0);
             Require(accelerated!=null && accelerated[1].Vx==3,"Next actual update measures changed speed from corrected baseline.");
             Require(equivalent,"Equivalent same-time Source request retains immutable trajectory.");
-            target.width+=2;Call(host,"Update",Main.GameUpdateCount);var resized=cache.Read(0);
+            target.width+=2;PrepareSourceComponent(host,source,target);var resized=cache.Read(0);
             Require(resized!=null && resized[0].Bounds.Width==target.width && !ReferenceEquals(resized,accelerated),"Same-time shape change recalculates result.");target.width-=2;
             cache.Release(0);cache.Demand(1,1,30);Call(source,"Prepare",resized.Identity,(long)Main.GameUpdateCount);var shortPath=cache.Read(1);
             cache.Demand(1,1,60);Call(source,"Prepare",resized.Identity,(long)Main.GameUpdateCount);var longer=cache.Read(1);
             Require(shortPath.Count==31 && longer.Count==61 && !ReferenceEquals(shortPath,longer),"Changed same-time consumer horizon cannot reuse incomplete immutable result.");cache.Release(1);
             target=(NPC)typeof(NPC).GetMethod("NewNPCInstanceInSlot",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic).Invoke(null,new object[]{2,(byte)(target.generation+1)});
-            target.SetDefaults(14);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.position=new Vector2(810,900);target.velocity=new Vector2(2,0);NativeCombatObservationChecks.Fresh(context,host);var fallback=cache.Read(0);
-            target.velocity=new Vector2(4,0);Call(host,"Update",Main.GameUpdateCount);var changedFallback=cache.Read(0);
+            target.SetDefaults(14);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.position=new Vector2(810,900);target.velocity=new Vector2(2,0);NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,target);var fallback=cache.Read(0);
+            target.velocity=new Vector2(4,0);PrepareSourceComponent(host,source,target);var changedFallback=cache.Read(0);
             Require(fallback.Quality==JueMingR.Platform.Combat.PredictionQuality.LimitedObservation && changedFallback[1].Vx==4 && !ReferenceEquals(fallback,changedFallback),"Fresh limited observation rechecks actual same-time native velocity.");
             var selected=Main.npc[4];selected.SetDefaults(14);selected.whoAmI=4;selected.active=true;selected.target=Main.myPlayer;selected.position=new Vector2(720,800);selected.velocity=Vector2.Zero;
-            NativeCombatObservationChecks.Fresh(context,host);var unrelated=cache.Read(0);Require(ReferenceEquals(unrelated.Identity.Token,selected),"Current segmented A replaces previously observed unrelated B.");
+            NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,selected);var unrelated=cache.Read(0);Require(ReferenceEquals(unrelated.Identity.Token,selected),"Current segmented A replaces previously observed unrelated B.");
             before=target.position;target.position.X+=2;packet=CombatNetworkFixture.Serialize(23,2);target.position=before;CombatNetworkFixture.Receive(packet);
-            Require(ReferenceEquals(cache.Read(0),unrelated),"Unrelated old B sync does not revoke current A publication.");Call(host,"Update",Main.GameUpdateCount);
+            Require(ReferenceEquals(cache.Read(0),unrelated),"Unrelated old B sync does not revoke current A publication.");PrepareSourceComponent(host,source,selected);
             Require(ReferenceEquals(cache.Read(0),unrelated),"Unrelated old B history correction cannot invalidate equivalent A result reuse.");
-            selected.ai[1]=2;Call(host,"Update",Main.GameUpdateCount);var related=cache.Read(0);
+            selected.ai[1]=2;PrepareSourceComponent(host,source,selected);var related=cache.Read(0);
             before=target.position;target.position.X+=2;packet=CombatNetworkFixture.Serialize(23,2);target.position=before;CombatNetworkFixture.Receive(packet);
-            Require(cache.Read(0)==null,"True current parent B sync still retires A publication.");Call(host,"Update",Main.GameUpdateCount);
+            Require(cache.Read(0)==null,"True current parent B sync still retires A publication.");PrepareSourceComponent(host,source,selected);
             Require(cache.Read(0)!=null && !ReferenceEquals(cache.Read(0),related),"True current dependency correction rebuilds A.");selected.active=false;
             var worm=target;worm.active=false;var ordinary=Main.npc[3];ordinary.SetDefaults(2);ordinary.whoAmI=3;ordinary.active=true;ordinary.target=Main.myPlayer;ordinary.position=new Vector2(810,900);ordinary.velocity=new Vector2(1,0);
-            NativeCombatObservationChecks.Fresh(context,host);var normal=cache.Read(0);Require(normal!=null && ReferenceEquals(normal.Identity.Token,ordinary),"Segmented to ordinary directly selects current Source target.");
+            NativeCombatObservationChecks.Fresh(context,host);PrepareSourceComponent(host,source,ordinary);var normal=cache.Read(0);Require(normal!=null && ReferenceEquals(normal.Identity.Token,ordinary),"Segmented to ordinary directly selects current Source target.");
             Call(source,"ObserveNpcReset",worm);Require(ReferenceEquals(cache.Read(0),normal),"Dormant worm reset cannot revoke new ordinary publication.");
             Call(source,"ObserveNpcQueryUpdate",2,true);Require(ReferenceEquals(cache.Read(0),normal),"Dormant discontinuity cannot clear new ordinary history.");
             Call(source,"ObserveNpcQueryUpdate",3,true);Require(cache.Read(0)==null,"Current dependency still revokes invalid publication.");

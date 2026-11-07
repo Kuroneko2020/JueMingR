@@ -23,6 +23,10 @@ namespace NativeWorldTextProbe
         private static void RunCore(object context)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var control=Get(attack,"Control");var input=Get(context,"Input");
+            // Path-only is an intentional surviving parent when Aim is off.
+            // Its real hidden qualification is a premise, not a control lease.
+            bool pathAccessBefore=(bool)Get(host,"PathAccess");if(!pathAccessBefore)NativeHiddenEntryChecks.RevealForComposition(context);
+            Console.WriteLine("DIRECTIONAL PATH QUALIFICATION before="+pathAccessBefore+" after="+Get(host,"PathAccess")+" settingsReady="+Get(Get(host,"Settings"),"Ready"));
             foreach(int weapon in new[]{3368,4144,3835,3858,6155})
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());
@@ -40,7 +44,12 @@ namespace NativeWorldTextProbe
                 if(type==1117){shot.Center=p.Center+new Vector2(80,0);shot.ai[0]=-1;shot.velocity=Vector2.Zero;}
                 else{shot.ai[0]=24;shot.velocity=new Vector2(-1,0);p.direction=-1;}
                 NativeCombatAimChecks.Prepare(host,attack,n,0,true);
+                // Read the already prepared entry, never query TryPoint or
+                // enlarge the cold native allowance to observe this gate.
+                var observedEntry=entries.Contains((int)shot.key)?entries[(int)shot.key]:null;var observedTimeline=GetOptional(control,"preparedTimeline") as NpcTrajectory;var observedWork=(CombatPredictionWork)Get(host,"PredictionWork");
+                Console.WriteLine("DIRECTIONAL PRE-AI type="+type+" registered="+(observedEntry!=null)+" prepared="+(observedEntry==null?null:Get(observedEntry,"Prepared"))+" hasPoint="+(observedEntry==null?null:Get(observedEntry,"HasPoint"))+" contact="+(observedEntry!=null && GetOptional(observedEntry,"Contact")!=null)+" phase="+Get(control,"preparedPhase")+" sample="+(observedTimeline==null?-1:observedTimeline.SampleTick)+" count="+(observedTimeline==null?-1:observedTimeline.Count)+" guc="+Main.GameUpdateCount+" budgetMs="+observedWork.UsedMilliseconds+" exceeded="+observedWork.Exceeded+" player="+p.position+" velocity="+p.velocity+" direction="+p.direction+" shot="+shot.Center+" shotVelocity="+shot.velocity+" ai="+shot.ai[0]+","+shot.ai[1]+" mouse="+Main.mouseX+","+Main.mouseY);
                 int mouseX=Main.mouseX,mouseY=Main.mouseY;shot.AI();
+                Console.WriteLine("DIRECTIONAL POST-AI type="+type+" active="+shot.active+" registered="+entries.Contains((int)shot.key)+" shot="+shot.Center+" velocity="+shot.velocity+" ai="+shot.ai[0]+","+shot.ai[1]+" mouse="+Main.mouseX+","+Main.mouseY);
                 Require(shot.velocity.X>0,"actual native later input faces/travels toward the shared right target while physical mouse stays left: "+type);
                 Require(Main.mouseX==mouseX && Main.mouseY==mouseY,"native AI cursor borrowing restores physical coordinates: "+type);
                 if(type==697 || type==707)shot.ai[0]=24;

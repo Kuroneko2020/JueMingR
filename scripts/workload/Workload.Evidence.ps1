@@ -27,20 +27,24 @@ function Get-WorkloadEvidenceInput {
     $rows += 'sdk:10.0.203;target:net472;x86;detection:Debug'
     $rows += 'os:' + [Environment]::OSVersion.VersionString + ';powershell:' + $PSVersionTable.PSVersion.ToString()
     # Hash only relevant build overrides; do not log unrelated private variables.
-    foreach ($item in @(Get-ChildItem Env: | Where-Object { $_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JueMingR|Configuration$|Platform$|DefineConstants$|TargetFramework$)' } | Sort-Object Name)) {
-        $rows += 'environment:' + $item.Name + ':' + (Get-WorkloadHash @($item.Value))
-    }
+    $rows+=@(Get-WorkloadCompilationEnvironmentRows $Root $rows)
     $rows+=@(Get-WorkloadNativeContentRows $Root)
-    return [ordered]@{ fingerprint = Get-WorkloadHash $rows; inputs = $rows }
+    $compilation=@(Get-WorkloadArchitectureCompilationInputs $Root $rows)
+    return [ordered]@{ fingerprint = Get-WorkloadHash $rows; inputs = $rows; compilationInputs = $compilation }
 }
 function Get-WorkloadCompileInputs {
     param($InputIdentity)
     # Build identity follows compilation inputs, not the recipe that later
     # consumes a historical behavior conclusion. Architecture assertions are
     # part of the solution; other fixture projects prepare their own inputs.
-    return @($InputIdentity.inputs | Where-Object {
+    $ordinary=@($InputIdentity.inputs | Where-Object {
         $_ -match '^(src/|tests/JueMingR.ArchitectureTests/|eng/|external/|framework-x86/|sdk:|os:|environment:|Directory\.Build\.|global\.json:|JueMingR\.sln:|NuGet\.Config:|scripts/build\.ps1:)'
     })
+    # Live evidence identities carry the real evaluated graph. Historical
+    # records keep their original rows; they are never upgraded or re-signed.
+    $property=if($InputIdentity -is [Collections.IDictionary]){$InputIdentity.Contains('compilationInputs')}else{$null -ne $InputIdentity.PSObject.Properties['compilationInputs']}
+    if($property){$ordinary+=@($InputIdentity.compilationInputs)}
+    return @($ordinary|Sort-Object -Unique)
 }
 function Get-WorkloadCompileFingerprint {
     param($InputIdentity)
@@ -139,9 +143,9 @@ function Read-WorkloadJson {
 }
 function Get-WorkloadClearedEnvironment {
     # These are fixture selectors, never inherited proof of a full scope.
-    $known='^JUEMINGR_(STRATEGY_ONLY|FOUNDATION_(ONLY|STRATEGY_ONLY|FIGHTER_ONLY|GRAVITY_ONLY|NPC_LIQUID_ONLY|PLAYER_LIQUID_ONLY|SINGLE)|SHARED_GEOMETRY_PHASE|ROLLING_CPU_ONLY|ROLLING_PHASES|AIM_LIGHT_SEMANTICS_ONLY)$'
-    $selectors=@(Get-ChildItem Env: | Where-Object {$_.Name -match '^JUEMINGR_.*(ONLY|SCOPE|PHASES?|SINGLE)$'})
-    foreach ($item in $selectors) { if ($item.Name -notmatch $known) {throw ('Unknown inherited workload selector: '+$item.Name)} }
+    $known=(Read-WorkloadNativeDispatch).selectors
+    $selectors=@(Get-ChildItem Env: | Where-Object {$known.Contains($_.Name) -or $_.Name -match '^JUEMINGR_.*(ONLY|SCOPE|PHASES?|SINGLE)$'})
+    foreach ($item in $selectors) { if (!$known.Contains($item.Name)) {throw ('Unknown inherited workload selector: '+$item.Name)} }
     if ($env:JMR_INPUT_DIAGNOSTIC -or $env:JMR_INPUT_DIAGNOSTIC_WINDOW) {throw 'Diagnostic process switches are not ordinary workload inputs.'}
     return $selectors
 }
@@ -231,7 +235,7 @@ function Start-WorkloadCheckpoint {
     param([string] $Root, $Batch, $Check, [string] $Signature)
     if ($Check.name -notmatch '^[A-Za-z0-9_-]+$') {throw 'Invalid checkpoint check name.'}
     $cleared=@(Get-WorkloadClearedEnvironment)
-    $environment=@(Get-ChildItem Env: | Where-Object {$_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JUEMINGR|Configuration$|Platform$|DefineConstants$|TargetFramework$)' -and $_.Name -notmatch '^JUEMINGR_.*(ONLY|SCOPE|PHASES?|SINGLE)$'} | Sort-Object Name | ForEach-Object {$_.Name+':'+(Get-WorkloadHash @($_.Value))})
+    $environment=@(Get-ChildItem Env: | Where-Object {$_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JUEMINGR|Configuration$|Platform$|DefineConstants$|TargetFramework$)' -and $_.Name -cnotin @($cleared|ForEach-Object {$_.Name})} | Sort-Object Name | ForEach-Object {$_.Name+':'+(Get-WorkloadHash @($_.Value))})
     $id=[Guid]::NewGuid().ToString('N')
     $path=Join-Path (Split-Path -Parent $Batch.path) ($id+'.json')
     $attempt=[pscustomobject][ordered]@{executionId=$id;name=$Check.name;status='PREPARING';signature=$Signature;executable=$Check.executable;arguments=@($Check.arguments);effectiveEnvironment=$environment;clearedSelectors=@($cleared | ForEach-Object {$_.Name} | Sort-Object);batchPath=$Batch.path;batchSha256=$Batch.sha256;path=$path;startedUtc=$null;endedUtc=$null;exitCode=$null;outputPath=($path+'.log');outputSha256=$null;beforeOutputs=@();outputs=@();milliseconds=0}
@@ -452,7 +456,10 @@ function Get-WorkloadAssertionHost {
     # Only these current scopes have typed assertions and audited scene
     # aggregation. Legacy string/catch-all adapters remain unknown on failure.
     # This is an actual launch/protocol owner, so it stays in the bound recipe.
-    if($Name -cin @('native-MovementJumpCpu','native-MovementSmartFallCpu','native-MovementDashCpu','native-MovementTeleportCpu','native-NpcEyeBoss','native-NpcSnowman')){return 'NativeWorldTextProbe.exe'}
+    if($Name -cin @('native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu','native-RuntimeFailureBuildReceiptCpu')){return 'NativeWorldTextProbe.exe'}
+    if($Name -cin @('native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsHomingEffectCpu','native-CombatEffectsJoustingLanceCpu','native-CombatEffectsWhipStarCpu','native-CombatEffectsThornCpu')){return 'NativeWorldTextProbe.exe'}
+    if($Name -cin @('native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')){return 'NativeWorldTextProbe.exe'}
+    if($Name -cin @('native-MovementJumpCpu','native-MovementSmartFallCpu','native-MovementDashCpu','native-MovementTeleportCpu','native-NpcEyeBoss','native-NpcSnowman','native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu','native-JourneyCloseCpu','native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu','native-CombatTerrainKnowledgeCpu','native-CombatShotFacingCpu','native-CombatShotBirthOrderCpu','native-CombatNailDetachCpu','native-NpcReviewedStool','native-NpcReviewedParticle','native-CombatEffectsNailCpu','native-CombatEffectsPiranhaCpu','native-CombatEffectsPhoenixCpu','native-CombatEffectsSpecialArrowCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsPhantasmEchoCpu')){return 'NativeWorldTextProbe.exe'}
     return $null
 }
 function Invoke-WorkloadProcess {
@@ -463,19 +470,25 @@ function Invoke-WorkloadProcess {
     $onlyVariables = @(Get-WorkloadClearedEnvironment)
     $writer=$null
     $assertionContext=[Environment]::GetEnvironmentVariable('JUEMINGR_WORKLOAD_ASSERTION_CONTEXT')
+    $scopeContext=[Environment]::GetEnvironmentVariable('JUEMINGR_WORKLOAD_SCOPE_CONTEXT')
     $protocolLines=New-Object 'System.Collections.Generic.List[string]'
+    $leafLines=New-Object 'System.Collections.Generic.List[string]'
     $hostName=[IO.Path]::GetFileName($Executable)
+    $nativeHost=$hostName -ceq 'NativeWorldTextProbe.exe'
+    $expectedLeaf=if($nativeHost){Get-WorkloadExpectedNativeLeaf $Name}else{$null}
+    $leafContext=if($nativeHost){$Name+'|'+$(if($null -ne $Checkpoint){$Checkpoint.executionId}else{[Guid]::NewGuid().ToString('N')})+'|'+(Get-WorkloadFileHash $Executable).Hash+'|'+(Get-WorkloadHash (@($Executable)+@($Arguments)))}else{$null}
     $supportsAssertion=$null -ne $Checkpoint -and $hostName -ceq (Get-WorkloadAssertionHost $Name)
     $expectedContext=if($supportsAssertion){$Name+'|'+$Checkpoint.executionId+'|'+(Get-WorkloadFileHash $Executable).Hash+'|'+(Get-WorkloadHash (@($Executable)+@($Arguments)))}else{$null}
     if ($null -ne $Checkpoint) {
         $Checkpoint.clearedSelectors=@($onlyVariables | ForEach-Object {$_.Name} | Sort-Object)
-        $Checkpoint.effectiveEnvironment=@(Get-ChildItem Env: | Where-Object {$_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JUEMINGR|Configuration$|Platform$|DefineConstants$|TargetFramework$)' -and $_.Name -notmatch '^JUEMINGR_.*(ONLY|SCOPE|PHASES?|SINGLE)$'} | Sort-Object Name | ForEach-Object {$_.Name+':'+(Get-WorkloadHash @($_.Value))})
+        $Checkpoint.effectiveEnvironment=@(Get-ChildItem Env: | Where-Object {$_.Name -match '^(DOTNET_|MSBUILD|COMPlus_|JUEMINGR|Configuration$|Platform$|DefineConstants$|TargetFramework$)' -and $_.Name -cnotin @($onlyVariables|ForEach-Object {$_.Name})} | Sort-Object Name | ForEach-Object {$_.Name+':'+(Get-WorkloadHash @($_.Value))})
         $Checkpoint.status='RUNNING';$Checkpoint.startedUtc=[DateTime]::UtcNow.ToString('o')
         Write-WorkloadJson $Checkpoint.path $Checkpoint
         $writer=New-Object IO.StreamWriter($Checkpoint.outputPath,$false,(New-Object Text.UTF8Encoding($false)))
     }
     try {
         [Environment]::SetEnvironmentVariable('JUEMINGR_WORKLOAD_ASSERTION_CONTEXT',$expectedContext)
+        [Environment]::SetEnvironmentVariable('JUEMINGR_WORKLOAD_SCOPE_CONTEXT',$leafContext)
         foreach ($variable in $onlyVariables) { Remove-Item -LiteralPath ('Env:'+$variable.Name) }
         # Windows PowerShell can promote ordinary native stderr to an error
         # under the package entry's 2>&1 capture. Keep that output, but decide
@@ -484,25 +497,29 @@ function Invoke-WorkloadProcess {
         $global:LASTEXITCODE = $null
         & $Executable @Arguments 2>&1 | ForEach-Object {
             if ([string]$_ -match '^JMR-(ASSERTION|FAULT)-') {$protocolLines.Add([string]$_)}
+            if ([string]$_ -match '^JMR-LEAF-') {$leafLines.Add([string]$_)}
             if ($null -ne $writer) {$writer.WriteLine([string]$_);$writer.Flush()}
             if ($_ -is [Management.Automation.ErrorRecord]) {Write-Error -ErrorRecord $_ -ErrorAction Continue} else {$_ | Out-Host}
         }
         $exitCode = $global:LASTEXITCODE
-    } finally { if ($null -ne $writer) {$writer.Dispose()};[Environment]::SetEnvironmentVariable('JUEMINGR_WORKLOAD_ASSERTION_CONTEXT',$assertionContext);foreach ($variable in $onlyVariables) { Set-Item -LiteralPath ('Env:'+$variable.Name) -Value $variable.Value }; $ErrorActionPreference = $previousPreference }
+    } finally { if ($null -ne $writer) {$writer.Dispose()};[Environment]::SetEnvironmentVariable('JUEMINGR_WORKLOAD_ASSERTION_CONTEXT',$assertionContext);[Environment]::SetEnvironmentVariable('JUEMINGR_WORKLOAD_SCOPE_CONTEXT',$scopeContext);foreach ($variable in $onlyVariables) { Set-Item -LiteralPath ('Env:'+$variable.Name) -Value $variable.Value }; $ErrorActionPreference = $previousPreference }
+    $leafValid=if($expectedLeaf){$leafLines.Count -eq 1 -and $leafLines[0] -ceq ('JMR-LEAF-V1|'+$leafContext+'|'+$expectedLeaf) -and (Get-WorkloadFileHash $Executable).Hash -ceq ($leafContext -split '\|')[2]}else{$leafLines.Count -eq 0}
     $faultPrefix='JMR-FAULT-V1|'+$expectedContext+'|'
     $hostExceptionType=if($supportsAssertion -and $exitCode -eq 1 -and $protocolLines.Count -eq 1 -and $protocolLines[0].StartsWith($faultPrefix,[StringComparison]::Ordinal)){$protocolLines[0].Substring($faultPrefix.Length)}else{$null}
     $hostStable=$supportsAssertion -and (Get-WorkloadFileHash $Executable).Hash -ceq ($expectedContext -split '\|')[2]
     $failureKind=if($exitCode -eq 3 -and $hostStable -and $protocolLines.Count -eq 1 -and $protocolLines[0] -ceq ('JMR-ASSERTION-V1|'+$expectedContext)){'BusinessAssertion'}elseif($hostStable -and $hostExceptionType -cmatch '^[A-Za-z0-9_.+`]+$'){'HostException'}elseif($protocolLines.Count){'ProtocolFailure'}elseif($null -eq $exitCode){'MissingExit'}else{'UnknownExit'}
+    if($exitCode -eq 0 -and !$leafValid){$failureKind='ProtocolFailure'}
     if ($null -ne $Checkpoint) {
         $Checkpoint.endedUtc=[DateTime]::UtcNow.ToString('o');$Checkpoint.exitCode=$exitCode
-        $Checkpoint.status=if ($null -ne $exitCode -and $exitCode -eq 0) {'EXECUTED_AWAITING_STABILITY'} else {'FAILED'}
+        $Checkpoint.status=if ($null -ne $exitCode -and $exitCode -eq 0 -and $leafValid) {'EXECUTED_AWAITING_STABILITY'} else {'FAILED'}
         $Checkpoint.outputSha256=(Get-WorkloadFileHash -LiteralPath $Checkpoint.outputPath -Algorithm SHA256).Hash
-        $Checkpoint | Add-Member -MemberType NoteProperty -Name failureKind -Value $(if($exitCode -eq 0 -and $protocolLines.Count -eq 0){$null}else{$failureKind}) -Force
+        $Checkpoint | Add-Member -MemberType NoteProperty -Name failureKind -Value $(if($exitCode -eq 0 -and $protocolLines.Count -eq 0 -and $leafValid){$null}else{$failureKind}) -Force
+        $Checkpoint | Add-Member -MemberType NoteProperty -Name actualLeaf -Value $(if($leafValid){$expectedLeaf}else{$null}) -Force
         $Checkpoint | Add-Member -MemberType NoteProperty -Name hostExceptionType -Value $(if($failureKind -ceq 'HostException'){$hostExceptionType}else{$null}) -Force
         Write-WorkloadJson $Checkpoint.path $Checkpoint
     }
     if ($null -eq $exitCode) { throw ("Workload check $Name did not produce a process exit code.") }
-    if ($exitCode -ne 0 -or $protocolLines.Count) {
+    if ($exitCode -ne 0 -or $protocolLines.Count -or !$leafValid) {
         $failure=New-Object InvalidOperationException("Workload check $Name failed with exit $exitCode ($failureKind).")
         $failure.Data['WorkloadFailureKind']=$failureKind
         throw $failure

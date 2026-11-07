@@ -92,6 +92,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Runtime.IGameSessionProbe",
                 "JueMingR.Platform.Runtime.IGameSessionIdentityProbe",
                 "JueMingR.Platform.Runtime.IRuntimeFeature",
+                "JueMingR.Platform.Runtime.IRuntimeFailureCleanup",
                 "JueMingR.Platform.Runtime.SingleFeatureRuntime",
                 "JueMingR.Platform.Settings.IPreferenceCodec`1",
                 "JueMingR.Platform.Settings.IPreferenceStorage",

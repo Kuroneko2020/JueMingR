@@ -16,6 +16,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private readonly Projectile shot;private readonly long session;private readonly bool townBodies,trackWet,ignoreDontTakeDamage,attachments,trackOwner,trackLife,trackVelocity,positiveLife;
         private readonly List<Target> targets=new List<Target>();
+        private Dictionary<int,Target> nailSlots;
         private HostProjectileTargets(Projectile shot,long session,bool townBodies,bool trackWet,bool ignoreDontTakeDamage=false,bool attachments=false,bool trackOwner=false,bool trackLife=false,bool trackVelocity=false,bool positiveLife=false)
         {
             this.shot=shot;this.session=session;this.townBodies=townBodies;this.trackWet=trackWet;this.ignoreDontTakeDamage=ignoreDontTakeDamage;this.attachments=attachments;this.trackOwner=trackOwner;this.trackLife=trackLife;this.trackVelocity=trackVelocity;this.positiveLife=positiveLife;
@@ -52,6 +53,25 @@ namespace JueMingR.TerrariaHost.Combat
         internal Vector2 Velocity(int index,NpcTrajectory timeline,int tick){return Slot(index)==timeline.Identity.Slot?new Vector2(timeline[tick].Vx,timeline[tick].Vy):targets[index].Velocity;}
         internal static HostProjectileTargets CaptureNailBodies(Projectile shot,long session)
         {return new HostProjectileTargets(shot,session,false,false,ignoreDontTakeDamage:true,attachments:true,trackLife:true);}
+        // AI093 reads its locked slot's Center BEFORE testing active/life.
+        // Only slots actually locked by this captured family are added here;
+        // inactive bodies never enter the ordinary chase/receive collection.
+        internal void IncludeNailSlots(Projectile[] family)
+        {
+            foreach(var p in family)
+            {
+                if(p.ai[0]>=0)continue;int slot=(int)-p.ai[0]-1;
+                if(slot<0 || slot>=Main.maxNPCs || Main.npc[slot]==null || Main.npc[slot].active)continue;
+                if(nailSlots==null)nailSlots=new Dictionary<int,Target>();if(nailSlots.ContainsKey(slot))continue;
+                var npc=Main.npc[slot];nailSlots.Add(slot,new Target{Npc=npc,Identity=CombatSelection.Identity(npc,session),Bounds=new MotionRect(npc.position.X,npc.position.Y,npc.width,npc.height)});
+            }
+        }
+        internal bool NailBody(int slot,NpcTrajectory timeline,int tick,out MotionRect bounds,out bool alive)
+        {
+            for(int i=0;i<targets.Count;i++)if(Slot(i)==slot){bounds=Bounds(i,timeline,tick);alive=Alive(i);return true;}
+            Target row;if(nailSlots!=null && nailSlots.TryGetValue(slot,out row)){bounds=row.Bounds;alive=false;return true;}
+            bounds=default(MotionRect);alive=false;return false;
+        }
         // AI039 retains an attached active body only while life is POSITIVE;
         // unlike Nail's life>=0 boundary, zero already triggers reacquisition.
         internal static HostProjectileTargets CapturePiranhaBodies(Projectile shot,long session)
@@ -78,7 +98,13 @@ namespace JueMingR.TerrariaHost.Combat
                     if(at>=targets.Count)return false;var row=targets[at++];
                     if(row.Identity.Slot!=slot || !ReferenceEquals(row.Npc,npc) || !CombatSelection.Valid(row.Identity,session) || npc.position.X!=row.Bounds.X || npc.position.Y!=row.Bounds.Y || npc.width!=row.Bounds.Width || npc.height!=row.Bounds.Height || npc.netOffset!=row.Offset || trackVelocity && npc.velocity!=row.Velocity || trackLife && (positiveLife?npc.life>0:npc.life>=0)!=row.Alive || trackWet && npc.wet!=row.Wet || trackOwner && npc.immune[shot.owner]!=row.OwnerImmune)return false;
                 }
-                return at==targets.Count;
+                if(at!=targets.Count)return false;
+                if(nailSlots!=null)foreach(var pair in nailSlots)
+                {
+                    var row=pair.Value;var npc=Main.npc[pair.Key];
+                    if(npc==null || npc.active || !ReferenceEquals(npc,row.Npc) || !CombatSelection.Identity(npc,session).Equals(row.Identity) || npc.position.X!=row.Bounds.X || npc.position.Y!=row.Bounds.Y || npc.width!=row.Bounds.Width || npc.height!=row.Bounds.Height)return false;
+                }
+                return true;
             }
         }
     }

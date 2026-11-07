@@ -1,5 +1,6 @@
 #if JMR_BLUEPRINT_DIAGNOSTIC
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
@@ -30,7 +31,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool inventorySampleAccepted;
         private readonly long[] stages=new long[SecondsLimit*StageCount], reasons=new long[SecondsLimit*ReasonCount], lastSeen=new long[SecondsLimit*StageCount];
         private readonly long[] reasonUpdates=new long[SecondsLimit*ReasonCount], reasonLastOuter=new long[ReasonCount];
-        private int state, initialWorld, initialMode, initialPlayer, targetCount, targetCursor, materialCount;
+        private int state, rootQualification, initialWorld, initialMode, initialPlayer, targetCount, targetCursor, materialCount;
         private long started, stoppedAt, sequence, overwritten, suppressedEvents, contention, targetReplaced, targetIdentity;
         private long outerSerial;
         private bool hasPreviousOuter, attemptedExport;
@@ -52,7 +53,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
         internal BlueprintBuildTrace(string root,string hostFile,string packageId,Func<long> clock,bool useTimer=true)
         {
-            this.root=root;this.hostFile=hostFile;this.packageId=packageId;this.clock=clock;this.useTimer=useTimer;
+            this.root=Path.GetFullPath(root);this.hostFile=hostFile;this.packageId=packageId;this.clock=clock;this.useTimer=useTimer;
             for(int i=0;i<lastSeen.Length;i++)lastSeen[i]=-1;
             for(int i=0;i<reasonLastOuter.Length;i++)reasonLastOuter[i]=-1;
         }
@@ -134,11 +135,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 BeforeClaimForTest?.Invoke();
 #endif
                 runId=DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ")+"-"+Guid.NewGuid().ToString("N").Substring(0,8);
+                EstablishRoot();
                 using(var file=File.OpenRead(hostFile))using(var sha=SHA256.Create())hostSha=BitConverter.ToString(sha.ComputeHash(file)).Replace("-","");
                 var assembly=AssemblyName.GetAssemblyName(hostFile);hostAssembly=assembly.FullName;
                 hostMvid=typeof(BlueprintBuildTrace).Assembly.ManifestModule.ModuleVersionId.ToString("D");
-                for(var directory=new DirectoryInfo(root);directory!=null;directory=directory.Parent)
-                    if(directory.Exists && (directory.Attributes&FileAttributes.ReparsePoint)!=0)throw new IOException("Reparse diagnostic root.");
                 string arm=Path.Combine(root,"arm.txt");
                 if(!File.Exists(arm)){status="missing-arm";return;}
                 var info=new FileInfo(arm);
@@ -147,7 +147,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 string value=File.ReadAllText(arm,new UTF8Encoding(false,true)).Trim();
                 if(!string.Equals(value,expected,StringComparison.Ordinal)){status="wrong-host";return;}
                 if(Volatile.Read(ref state)!=1){status="session-ended-before-claim";return;}
-                File.Move(arm,Path.Combine(root,"used-"+runId+".txt"));
+                RequireTrustedFile(arm);string used=Path.Combine(root,"used-"+runId+".txt");RequireTrustedFile(used);
+                File.Move(arm,used);
                 status="claimed";
             }
             catch(Exception error){failure=Limit(error.GetType().FullName,160);}
@@ -155,12 +156,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 try
                 {
-                    Directory.CreateDirectory(root);
                     byte[] bytes=Encoding.UTF8.GetBytes("{\"status\":"+Quote(status)+",\"runId\":"+Quote(runId)+",\"hostSha256\":"+Quote(hostSha)+",\"failure\":"+Quote(failure)+"}");
                     // CreateNew retains any earlier process's status as evidence.
-                    using(var file=new FileStream(Path.Combine(root,"claim-status.json"),FileMode.CreateNew,FileAccess.Write,FileShare.Read))file.Write(bytes,0,bytes.Length);
+                    string path=Path.Combine(root,"claim-status.json");RequireTrustedFile(path);
+                    using(var file=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.Read))file.Write(bytes,0,bytes.Length);
                 }
                 catch(Exception error){if(failure==null)failure=Limit(error.GetType().FullName,160);}
+                if(Volatile.Read(ref rootQualification)<0)status="claim-failed";
                 int prior=Interlocked.CompareExchange(ref state,status=="claimed"?2:4,1);
                 // A world may retire while this bounded I/O is in flight. A
                 // late result never reopens it, even if the same world returns.
@@ -169,6 +171,66 @@ namespace JueMingR.TerrariaHost.Blueprint
                 AfterClaimForTest?.Invoke();
 #endif
             }
+        }
+        // The observer may report a failure only inside a root it has actually
+        // qualified. Revocation is permanent: neither finally nor Export may
+        // turn a rejected path into a new destination for a failure report.
+        // Rechecks protect normal path replacement between callbacks; they do
+        // not claim an atomic defence against hostile concurrent renames.
+        private void EstablishRoot()
+        {
+            try
+            {
+                if(Volatile.Read(ref rootQualification)<0)throw new IOException("Diagnostic root was rejected.");
+                CreateOrdinaryDirectory(root);Volatile.Write(ref rootQualification,1);
+            }
+            catch{Volatile.Write(ref rootQualification,-1);throw;}
+        }
+        private void RequireTrustedRoot()
+        {
+            try
+            {
+                if(Volatile.Read(ref rootQualification)!=1)throw new IOException("Diagnostic root is not qualified.");
+                RequireOrdinaryDirectory(root);
+            }
+            catch{Volatile.Write(ref rootQualification,-1);throw;}
+        }
+        private void RequireTrustedFile(string path)
+        {
+            RequireTrustedRoot();
+            try
+            {RequireOrdinaryDirectory(Path.GetDirectoryName(path));FileAttributes attributes;if(TryAttributes(path,out attributes) && (attributes&FileAttributes.ReparsePoint)!=0)throw new IOException("Reparse diagnostic file.");}
+            catch{Volatile.Write(ref rootQualification,-1);throw;}
+        }
+        private void PrepareExportDirectory(string path)
+        {
+            RequireTrustedRoot();
+            try{CreateOrdinaryDirectory(path);RequireTrustedRoot();}
+            catch{Volatile.Write(ref rootQualification,-1);throw;}
+        }
+        private static bool TryAttributes(string path,out FileAttributes attributes)
+        {
+            try{attributes=File.GetAttributes(path);return true;}
+            catch(FileNotFoundException){attributes=0;return false;}
+            catch(DirectoryNotFoundException){attributes=0;return false;}
+        }
+        private static void RequireDirectoryAttributes(FileAttributes attributes)
+        {if((attributes&FileAttributes.ReparsePoint)!=0 || (attributes&FileAttributes.Directory)==0)throw new IOException("Nonordinary diagnostic directory.");}
+        private static void RequireOrdinaryDirectory(string path)
+        {for(var directory=new DirectoryInfo(path);directory!=null;directory=directory.Parent)RequireDirectoryAttributes(File.GetAttributes(directory.FullName));}
+        private static void CreateOrdinaryDirectory(string path)
+        {
+            var missing=new Stack<string>();
+            // Inspect every existing ancestor before creating even one child.
+            // Access failures are failures, never evidence of a missing path.
+            for(var directory=new DirectoryInfo(path);directory!=null;directory=directory.Parent)
+            {FileAttributes attributes;if(TryAttributes(directory.FullName,out attributes))RequireDirectoryAttributes(attributes);else missing.Push(directory.FullName);}
+            while(missing.Count!=0)
+            {
+                string next=missing.Pop();RequireOrdinaryDirectory(Path.GetDirectoryName(next));
+                Directory.CreateDirectory(next);RequireOrdinaryDirectory(next);
+            }
+            RequireOrdinaryDirectory(path);
         }
         private bool Enter()
         {

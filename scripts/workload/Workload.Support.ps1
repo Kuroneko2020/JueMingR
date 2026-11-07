@@ -1,6 +1,8 @@
 . (Join-Path $PSScriptRoot 'Workload.Definitions.ps1')
 . (Join-Path $PSScriptRoot 'Workload.NativeContent.ps1')
 . (Join-Path $PSScriptRoot 'Workload.ReadWindow.ps1')
+. (Join-Path $PSScriptRoot 'Workload.Compilation.ps1')
+. (Join-Path $PSScriptRoot 'Workload.NativeDispatch.ps1')
 # Shared by the existing build and its thin CPU runner. No build/test recursion.
 function Invoke-WorkloadGit {
     param([string] $Root, [string[]] $Arguments)
@@ -100,7 +102,10 @@ function Get-WorkloadRoute {
             '^scripts/workload/(AimStage\.Development|DevelopmentCandidate)\.ps1$' { [void]$groups.Add('workload-tools');[void]$groups.Add('package-tools');continue }
             '^scripts/(build-phase0s-validation-package|test-phase0s)\.ps1$' { [void]$groups.Add('workload-tools');[void]$groups.Add('package-tools');continue }
             '^scripts/workload/|^scripts/(build|test-workload-regressions|test-world-object-text)\.ps1$|^tests/Workload/' { [void]$groups.Add('workload-tools'); continue }
-            '^src/JueMingR.TerrariaHost/Combat/Prediction/(SegmentedNpcPrediction|NativePlayerMotion)\.cs$|^src/JueMingR.TerrariaHost/Combat/NpcPredictionSource\.cs$|^src/JueMingR.Platform/Combat/' { [void]$groups.Add('combat-host');[void]$groups.Add('legacy-worker');continue }
+            # These capture/alignment/effect owners and their real Probe driver
+            # are also consumed by the private Native Worker. Bind both sides
+            # of the page/protocol change; default Rolling remains independent.
+            '^src/JueMingR.TerrariaHost/Combat/Prediction/(SegmentedNpcPrediction|NativePlayerMotion|NativeActorContext|NativePredictionAlignment|NativeEffectBoundary|NativePortableStoolSnapshot|NativeParticleInitialization|PredictionWire|PredictionPipeProtocol)\.cs$|^src/JueMingR.TerrariaHost/Combat/NpcPredictionSource\.cs$|^src/JueMingR.Platform/Combat/|^tests/NativeWorldTextProbe/NativeCombatWorkerChecks\.cs$' { [void]$groups.Add('combat-host');[void]$groups.Add('legacy-worker');continue }
             '^src/JueMingR.PredictionWorker/|^src/JueMingR.TerrariaHost/Combat/Prediction/' { [void]$groups.Add('legacy-worker'); continue }
             '^tests/NativeWorldTextProbe/NativeCombat(Worker|Private|Snapshot|Production|History|Preparation|Legal|Dd2|EventBirth|TileManifest)' { [void]$groups.Add('legacy-worker'); continue }
 
@@ -121,7 +126,9 @@ function Get-WorkloadRoute {
             # a change to those providers. Keep reverse dependencies below.
             '^src/[^/]+/(About|Onboarding)/|^tests/(About|Onboarding)/|^tests/Phase0U/AboutChecks\.cs$|^tests/JueMingR.ArchitectureTests/Onboarding|^tests/NativeWorldTextProbe/NativeAbout' { [void]$groups.Add('about-host'); continue }
             '^src/[^/]+/CoinDeposit/|^tests/JueMingR.ArchitectureTests/CoinDeposit/|^tests/CoinDeposit/|^tests/NativeWorldTextProbe/NativeCoin' { [void]$groups.Add('coin-deposit-host'); continue }
-            '^src/[^/]+/(QuickItems|KeepFavorited)/|^tests/JueMingR.ArchitectureTests/(QuickItems|KeepFavorited)/|^tests/NativeWorldTextProbe/Native(Quick|Favorite)' { if($path.StartsWith('src/')){[void]$groups.Add('tools-host')}; [void]$groups.Add('quick-items-host'); continue }
+            # The exact shared composition fixture belongs to the existing
+            # shared/storage rule below; other Quick/Favorite leaves stay local.
+            '^src/[^/]+/(QuickItems|KeepFavorited)/|^tests/JueMingR.ArchitectureTests/(QuickItems|KeepFavorited)/|^tests/NativeWorldTextProbe/Native(Quick(?!ItemChecks\.cs$)|Favorite)' { if($path.StartsWith('src/')){[void]$groups.Add('tools-host')}; [void]$groups.Add('quick-items-host'); continue }
             # Native target GPU checks remain explicit specialists, while their
             # compiled fixture inputs conservatively retain the browser group.
             '^tests/NativeWorldTextProbe/(NativeBrowserChecks|NativeBrowserVisualChecks|NativeTargetOriginalChecks)\.cs$' { [void]$groups.Add('browser-host'); continue }
@@ -146,11 +153,14 @@ function Get-WorkloadRoute {
             '^src/[^/]+/Journey/|^src/JueMingR.TerrariaHost/F5/JourneyControls\.cs$|^src/JueMingR.TerrariaHost/Hotkeys/JourneyHotkeys\.cs$|^tests/NativeWorldTextProbe/NativeJourney' { [void]$groups.Add('journey-host'); continue }
             '^src/[^/]+/(Guidance|Npcs)/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
             '^src/JueMingR.TerrariaHost/(F5|Input)/|^src/JueMingR.TerrariaHost/Phase0|^src/JueMingR.Platform/Runtime/' { [void]$groups.Add('shared-host'); continue }
+            # Terrain/Native capture and raw tile consumers share the section
+            # knowledge owner; unknown client tiles are not an empty world.
+            '^src/JueMingR.TerrariaHost/World/WorldTileKnowledge\.cs$' { [void]$groups.Add('tools-host'); [void]$groups.Add('world-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); [void]$groups.Add('combat-host'); [void]$groups.Add('legacy-worker'); continue }
             # Furniture consumes this shared raw tile source and its value DTO.
             '^src/JueMingR.TerrariaHost/World/WorldTileObservation\.cs$|^src/JueMingR.Platform/WorldTargets/WorldTargetObservation\.cs$' { [void]$groups.Add('tools-host'); [void]$groups.Add('world-host'); [void]$groups.Add('recovery-host'); [void]$groups.Add('processing-host'); continue }
             '^src/[^/]+/(WorldObjectText|WorldTargets|World|Rendering)/|^tests/(WorldObjectText|WorldTargets)/' { [void]$groups.Add('world-host'); continue }
             '^src/[^/]+/(EntityLabels|Hotkeys|Items|Settings|Biomes)/|^tests/(EntityLabels|Hotkeys|Items|Phase0U|Phase0V)/' { [void]$groups.Add('shared-host'); continue }
-            '^tests/NativeWorldTextProbe/(NativeChecks|NativeInformationChecks|Program|CheckCatalog|NativeStrategyScopes)\.cs$|^tests/NativeWorldTextProbe/.*\.csproj$|^scripts/phase0s/|^scripts/prepare-|^scripts/build-phase0|^scripts/test-phase0|^tests/Phase0|^tests/JueMingR.ArchitectureTests/|^eng/|^src/.*\.(csproj|props|targets)$|^Directory\.Build\.|^global\.json$|^JueMingR\.sln$|^NuGet\.Config$|^\.github/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
+            '^tests/NativeWorldTextProbe/(NativeChecks|NativeInformationChecks|NativeQuickItemChecks|Program|CheckCatalog|NativeStrategyScopes|NativeScopeDispatch)\.cs$|^tests/NativeWorldTextProbe/.*\.csproj$|^scripts/phase0s/|^scripts/prepare-|^scripts/build-phase0|^scripts/test-phase0|^tests/Phase0|^tests/JueMingR.ArchitectureTests/|^eng/|^src/.*\.(csproj|props|targets)$|^Directory\.Build\.|^global\.json$|^JueMingR\.sln$|^NuGet\.Config$|^\.github/' { [void]$groups.Add('shared-host'); [void]$groups.Add('storage-host'); continue }
             default { $unknown += $path }
         }
     }

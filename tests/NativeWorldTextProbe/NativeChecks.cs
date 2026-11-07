@@ -14,6 +14,30 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="RuntimeFailureCpu" || scope=="RuntimeFailureActiveCpu" || scope=="JourneyCloseCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JMR-reviewed-runtime-"+Guid.NewGuid().ToString("N").Substring(0,10));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                string candidate=Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE");
+                if(scope=="RuntimeFailureCpu")NativeQuickItemChecks.Run(processing:true,shortFeedback:true,candidateAssembly:candidate,initializeRuntime:context=>{NativeScopeDispatch.Enter("runtime-failure-initial");NativeRuntimeFailureChecks.RunInitial(context);});
+                else NativeQuickItemChecks.Run(context=>{NativeScopeDispatch.Enter(scope=="RuntimeFailureActiveCpu"?"runtime-failure-active":"journey-close");if(scope=="RuntimeFailureActiveCpu")NativeRuntimeFailureChecks.RunActive(context);else NativeJourneyCloseAdmissionChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:candidate);
+                return 0;
+            }
+            if(scope=="RuntimeFailureToolsCpu" || scope=="RuntimeFailureQuickCpu" || scope=="RuntimeFailureLoansCpu" || scope=="RuntimeFailureWorldCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JMR-reviewed-returns-"+Guid.NewGuid().ToString("N").Substring(0,10));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                string candidate=Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE");
+                Action<object> check=scope=="RuntimeFailureToolsCpu"?(Action<object>)NativeRuntimeFailureReturnChecks.ToolsSelection:scope=="RuntimeFailureQuickCpu"?(Action<object>)NativeRuntimeFailureReturnChecks.QuickSelection:scope=="RuntimeFailureLoansCpu"?(Action<object>)NativeRuntimeFailureReturnChecks.SameIdentityLoans:NativeRuntimeFailureReturnChecks.ChangedWorldLoan;
+                // Each common-fault scene has its own process and composition;
+                // entering one cannot pre-sign another terminal responsibility.
+                string leaf=scope=="RuntimeFailureToolsCpu"?"runtime-failure-tools":scope=="RuntimeFailureQuickCpu"?"runtime-failure-quick":scope=="RuntimeFailureLoansCpu"?"runtime-failure-loans":"runtime-failure-world";
+                NativeQuickItemChecks.Run(context=>{NativeScopeDispatch.Enter(leaf);check(context);},processing:true,shortFeedback:true,candidateAssembly:candidate);return 0;
+            }
+            if(scope=="RuntimeFailureBuildCpu" || scope=="RuntimeFailureBuildManualCpu" || scope=="RuntimeFailureBuildWorldCpu" || scope=="RuntimeFailureBuildReceiptCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JMR-reviewed-build-return-"+Guid.NewGuid().ToString("N").Substring(0,10));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                string leaf=scope=="RuntimeFailureBuildReceiptCpu"?"runtime-failure-build-receipt":scope=="RuntimeFailureBuildManualCpu"?"runtime-failure-build-manual":scope=="RuntimeFailureBuildWorldCpu"?"runtime-failure-build-world":"runtime-failure-build";
+                NativeQuickItemChecks.Run(context=>{NativeScopeDispatch.Enter(leaf);if(scope=="RuntimeFailureBuildReceiptCpu")NativeBlueprintBuildChecks.RunCommonFailureBuildReceipt(context);else NativeBlueprintBuildChecks.RunCommonFailureBuild(context,replaceWorld:scope=="RuntimeFailureBuildWorldCpu",manualTakeover:scope=="RuntimeFailureBuildManualCpu");},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if (scope == "TargetGestureOriginal") return NativeViewOriginalChecks.Run(content, output, targets: true);
             if (scope == "TargetGestureDiagnostic" || scope == "TargetGestureDiagnosticCandidate")
             {
@@ -156,7 +180,7 @@ namespace NativeWorldTextProbe
             if (scope == "BlueprintInput")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context => { NativeBlueprintInputRecoveryChecks.Cpu(context); NativeBlueprintSubstitutionUiChecks.Run(context); using (var graphics = new ProbeGraphics(content)) { NativeBlueprintInputContinuityChecks.Run(context, graphics); NativeBlueprintMaterialsUiChecks.Input(context, graphics); NativeBlueprintMirrorTrimVisualChecks.Run(context,graphics,output); NativeBlueprintSubstitutionUiChecks.Visual(context,graphics,output); } }, processing: true, shortFeedback: true); return 0;
+                NativeQuickItemChecks.Run(context => { NativeBlueprintInputRecoveryChecks.Cpu(context); NativeBlueprintSubstitutionUiChecks.Run(context); using (var graphics = new ProbeGraphics(content)) { NativeBlueprintInputContinuityChecks.Run(context, graphics); NativeBlueprintMaterialsUiChecks.Input(context, graphics); NativeBlueprintMirrorTrimVisualChecks.Run(context,graphics,output); NativeBlueprintSubstitutionUiChecks.Visual(context,graphics,output); } }, processing: true, shortFeedback: true, candidateAssembly: Environment.GetEnvironmentVariable("JUEMINGR_INPUT_BOUNDARY_CANDIDATE")); return 0;
             }
             if (scope == "BlueprintMaterialsInput" || scope == "BlueprintMaterialsVisual")
             {
@@ -292,7 +316,7 @@ namespace NativeWorldTextProbe
                     catch (Exception error) { Console.Error.WriteLine("SMART-FALL SCOPE: " + error); if (first == null) first = error; }
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                     }
-                }, processing: true, shortFeedback: true); return 0;
+                }, processing: true, shortFeedback: true, candidateAssembly: Environment.GetEnvironmentVariable("JUEMINGR_INPUT_BOUNDARY_CANDIDATE")); return 0;
             }
             if (scope == "MovementJumpCpu" || scope == "MovementDashCpu" || scope == "MovementTeleportCpu")
             {
@@ -333,12 +357,12 @@ namespace NativeWorldTextProbe
             if(scope=="NpcSelectedContinuation")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-selected-continuation-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatPredictionChecks.RunContinuation(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeScopeDispatch.Enter("npc-selected-continuation");NativeCombatPredictionChecks.RunContinuation(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="DirectionalControl")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-directional-control-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatDirectionalControlChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeScopeDispatch.Enter("directional-control");NativeCombatDirectionalControlChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="HomingEffect")
             {
@@ -348,7 +372,7 @@ namespace NativeWorldTextProbe
             if(scope=="TerrainLine")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-terrain-line-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatTerrainLineChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeScopeDispatch.Enter("terrain-line");NativeCombatTerrainLineChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="YoyoFamily")
             {
@@ -495,6 +519,12 @@ namespace NativeWorldTextProbe
             {NativeCombatWorkerBoundaryChecks.ParentProbe(output);return 0;}
             if(scope=="NpcTileManifest" || scope=="NpcTileManifestGenerate")
             {NativeCombatTileManifestChecks.Run(output,scope=="NpcTileManifestGenerate");return 0;}
+            if(scope=="NpcReviewedStool" || scope=="NpcReviewedParticle")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-reviewed-"+Guid.NewGuid().ToString("N"));
+                NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeCombatWorkerChecks.Run(output,content:content,reviewedNative:scope=="NpcReviewedStool"?"stool":"particle");return 0;
+            }
             if(scope=="NpcWorkerIntegration" || scope=="NpcLegalCoverage" || scope=="NpcWorkerCatalogue" || scope=="NpcWorkerLinked" || scope=="NpcWorkerLifetime" || scope=="NpcWorkerAssets" || scope=="NpcWorkerRandom" || scope=="NpcWorkerPlayer" || scope=="NpcWorkerEntity" || scope=="NpcWorkerBirth" || scope=="NpcWorkerContext" || scope=="NpcWorkerImmunity" || scope=="NpcWorkerLifecycle" || scope=="NpcWorkerFields" || scope=="NpcWorkerTransport" || scope=="NpcProduction" || scope=="NpcWorkerPreparation" || scope=="NpcMenuPreparation" || scope=="NpcSnapshot" || scope=="NpcLongCoverage")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-worker-oracle-"+Guid.NewGuid().ToString("N"));
@@ -518,7 +548,16 @@ namespace NativeWorldTextProbe
             if(scope=="CombatTerrainCpu")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-terrain-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(NativeCombatTerrainChecks.Run,processing:true,shortFeedback:true);return 0;
+                // The standalone terrain body reaches native UpdateWeather;
+                // share the same Main fixture preparation as ObservationCpu.
+                NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatTerrainChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="CombatTerrainKnowledgeCpu" || scope=="CombatShotFacingCpu" || scope=="CombatShotBirthOrderCpu" || scope=="CombatNailDetachCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JMR-reviewed-combat-"+Guid.NewGuid().ToString("N").Substring(0,10));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                Action<object> check=scope=="CombatTerrainKnowledgeCpu"?(Action<object>)NativeCombatTerrainKnowledgeChecks.Run:scope=="CombatShotFacingCpu"?(Action<object>)NativeCombatShotBirthChecks.RunFacing:scope=="CombatShotBirthOrderCpu"?(Action<object>)NativeCombatShotBirthChecks.RunBirthOrder:NativeCombatNailDetachChecks.Run;
+                string leaf=scope=="CombatTerrainKnowledgeCpu"?"combat-terrain-knowledge":scope=="CombatShotFacingCpu"?"combat-shot-facing":scope=="CombatShotBirthOrderCpu"?"combat-shot-birth-order":"combat-nail-detach";
+                NativeQuickItemChecks.Run(context=>{NativeScopeDispatch.Enter(leaf);check(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="CombatObservationCpu")
             {
@@ -589,6 +628,16 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content)){NativeCombatVisualChecks.Run(context,graphics,output);NativeCombatPathContinuityChecks.Run(context,graphics,Path.Combine(output,"path-continuity"),true);NativeCombatPathDisplayChecks.Run(context,graphics,Path.Combine(output,"path-display"),true);}},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="CombatYoyoCausal"){Directory.CreateDirectory(output);Environment.SetEnvironmentVariable("JUEMINGR_YOYO_EVIDENCE",output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-yoyo-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);Environment.SetEnvironmentVariable("JUEMINGR_YOYO_CAUSAL","1");NativeQuickItemChecks.Run(NativeCombatCadenceChecks.Run,processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;}
+            if(scope=="CombatEffectsNailCpu" || scope=="CombatEffectsPiranhaCpu" || scope=="CombatEffectsPhoenixCpu" || scope=="CombatEffectsSpecialArrowCpu" || scope=="CombatEffectsAttachedShotCpu" || scope=="CombatEffectsPhantasmEchoCpu" || scope=="CombatEffectsBetsyFlameCpu" || scope=="CombatEffectsArcSwingCpu" || scope=="CombatEffectsHomingEffectCpu" || scope=="CombatEffectsJoustingLanceCpu" || scope=="CombatEffectsWhipStarCpu" || scope=="CombatEffectsThornCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JMR-effect-family-"+Guid.NewGuid().ToString("N").Substring(0,10));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                string family=scope=="CombatEffectsNailCpu"?"nail":scope=="CombatEffectsPiranhaCpu"?"piranha":scope=="CombatEffectsPhoenixCpu"?"phoenix":scope=="CombatEffectsSpecialArrowCpu"?"special-arrow":scope=="CombatEffectsAttachedShotCpu"?"attached-shot":scope=="CombatEffectsPhantasmEchoCpu"?"phantasm-echo":scope=="CombatEffectsBetsyFlameCpu"?"betsy-flame":scope=="CombatEffectsArcSwingCpu"?"arc-swing":scope=="CombatEffectsHomingEffectCpu"?"homing-effect":scope=="CombatEffectsJoustingLanceCpu"?"jousting-lance":scope=="CombatEffectsWhipStarCpu"?"whip-star":"thorn";
+                NativeQuickItemChecks.Run(context=>
+                {
+                    NativeCombatAimChecks.Initialize();
+                    NativeScopeDispatch.RunExclusiveEffectFamily(family,()=>NativeCombatEffectChecks.Run(context));
+                },processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if(scope=="CombatAimCpu" || scope=="CombatControlCpu" || scope=="CombatMechanicsCpu" || scope=="CombatEffectsCpu")
             {
                 Directory.CreateDirectory(output);
@@ -609,7 +658,7 @@ namespace NativeWorldTextProbe
             if(scope=="BackgroundCpu" || scope=="F5AutomationCpu")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-background-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(scope=="BackgroundCpu"?(Action<object>)NativeBackgroundAutomationChecks.Run:NativeBackgroundAutomationChecks.RunF5,processing:true,shortFeedback:true);return 0;
+                NativeQuickItemChecks.Run(scope=="BackgroundCpu"?(Action<object>)NativeBackgroundAutomationChecks.Run:NativeBackgroundAutomationChecks.RunF5,processing:true,shortFeedback:true,candidateAssembly:scope=="F5AutomationCpu"?Environment.GetEnvironmentVariable("JUEMINGR_INPUT_BOUNDARY_CANDIDATE"):null);return 0;
             }
             if(scope=="FishingCpu" || scope=="FishingVisual" || scope=="FishingRelease")
             {
@@ -619,14 +668,14 @@ namespace NativeWorldTextProbe
                 {
                     if(scope=="FishingVisual")using(var graphics=new ProbeGraphics(content)){NativeFishingChecks.Run(context,graphics);graphics.SetMouseFont(graphics.Font);NativeFishingVisualChecks.Run(context,graphics,output);}
                     else NativeFishingChecks.Run(context);
-                },processing:true,shortFeedback:true,candidateAssembly:scope=="FishingRelease"?Path.Combine(Program.Repository,"artifacts/build/Release/work/bin/JueMingR.TerrariaHost/x86/Release/net472/JueMingR.TerrariaHost.dll"):null);return 0;
+                },processing:true,shortFeedback:true,candidateAssembly:scope=="FishingRelease"?Path.Combine(Program.Repository,"artifacts/build/Release/work/bin/JueMingR.TerrariaHost/x86/Release/net472/JueMingR.TerrariaHost.dll"):scope=="FishingCpu"?Environment.GetEnvironmentVariable("JUEMINGR_INPUT_BOUNDARY_CANDIDATE"):null);return 0;
             }
             if(scope=="ToolsExecution" || scope=="ToolsExecutionRelease" || scope=="ToolsExecutionOld" || scope=="ToolsExecutionCpu")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-tools-execution-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 Directory.CreateDirectory(output);
                 string candidate=scope=="ToolsExecutionRelease"?Path.Combine(Program.Repository,"artifacts/build/Release/work/bin/JueMingR.TerrariaHost/x86/Release/net472/JueMingR.TerrariaHost.dll"):
-                    scope=="ToolsExecutionOld"?Path.Combine(Program.Repository,"outputs/g09/d4cc715/round2/JueMingR-Continuous-Processing-d4cc715a1a126d0904cbd62d84e76d27588d1d5d/payload/JueMingR.Validation/JueMingR.TerrariaHost.dll"):null;
+                    scope=="ToolsExecutionOld"?Path.Combine(Program.Repository,"outputs/g09/d4cc715/round2/JueMingR-Continuous-Processing-d4cc715a1a126d0904cbd62d84e76d27588d1d5d/payload/JueMingR.Validation/JueMingR.TerrariaHost.dll"):scope=="ToolsExecutionCpu"?Environment.GetEnvironmentVariable("JUEMINGR_INPUT_BOUNDARY_CANDIDATE"):null;
                 NativeQuickItemChecks.Run(context=>{if(scope=="ToolsExecutionCpu")NativeToolExecutionChecks.Run(context,null);else using(var graphics=new ProbeGraphics(content))NativeToolExecutionChecks.Run(context,graphics,scope=="ToolsExecutionRelease");},processing:true,shortFeedback:true,candidateAssembly:candidate);return 0;
             }
             if(scope=="ToolsBindings" || scope=="ToolsBindingsReload")
@@ -698,7 +747,7 @@ namespace NativeWorldTextProbe
             {
                 Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-quick-items-" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(scope=="QuickItemsVisual"?(Action<object>)(context=>{using(var graphics=new ProbeGraphics(content))NativeQuickUiChecks.Run(context,graphics,output);}):null);return 0;
+                NativeQuickItemChecks.Run(scope=="QuickItemsVisual"?(Action<object>)(context=>{using(var graphics=new ProbeGraphics(content))NativeQuickUiChecks.Run(context,graphics,output);}):null,candidateAssembly:scope=="QuickItemsCpu"?Environment.GetEnvironmentVariable("JUEMINGR_INPUT_BOUNDARY_CANDIDATE"):null);return 0;
             }
             if (scope == "TargetMotionPredicate")
             {
@@ -714,7 +763,7 @@ namespace NativeWorldTextProbe
             if (scope == "BrowserCpu" || scope == "BrowserVisual")
             {
                 Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-browser-" + Guid.NewGuid().ToString("N"));
-                Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly); NativeBrowserChecks.Run();
+                Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly); NativeBrowserChecks.Run(candidateAssembly:scope=="BrowserCpu"?Environment.GetEnvironmentVariable("JUEMINGR_INPUT_BOUNDARY_CANDIDATE"):null);
                 if (scope == "BrowserVisual") using (var graphics = new ProbeGraphics(content)) NativeBrowserVisualChecks.Run(graphics, output);
                 return 0;
             }

@@ -19,7 +19,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // initializers samples Main, constructs an actor or reads assets.
             // Do this on the transport owner during finite preparation so the
             // first selected type does not compile field plans on a game frame.
-            var types=new[]{typeof(PredictionWire),typeof(NativeWorldSnapshot),typeof(NativeEntityDirectory),typeof(NativeNpcEligibility),typeof(NativeNpcEligibility.Premise),typeof(NativeActorContext),typeof(NativeEntitySnapshot),typeof(NativePredictionAlignment),typeof(NativePredictionAlignment.ValueHashWriter),typeof(NativeEntityContext),typeof(NativeRandomSnapshot),typeof(NativeTagSnapshot),typeof(NativeValueSnapshot),typeof(NativeCapturedValues),typeof(NativeTerrainSnapshot)};
+            var types=new[]{typeof(PredictionWire),typeof(NativeWorldSnapshot),typeof(NativeEntityDirectory),typeof(NativeNpcEligibility),typeof(NativeNpcEligibility.Premise),typeof(NativeActorContext),typeof(NativePortableStoolSnapshot),typeof(NativeParticleInitialization),typeof(NativeEntitySnapshot),typeof(NativePredictionAlignment),typeof(NativePredictionAlignment.ValueHashWriter),typeof(NativeEntityContext),typeof(NativeRandomSnapshot),typeof(NativeTagSnapshot),typeof(NativeValueSnapshot),typeof(NativeCapturedValues),typeof(NativeTerrainSnapshot)};
             foreach(var type in types)
                 RuntimeHelpers.RunClassConstructor(type.TypeHandle);
             // Compiling these host codecs does not execute their reads. Their

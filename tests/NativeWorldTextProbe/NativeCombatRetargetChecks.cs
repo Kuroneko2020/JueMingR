@@ -27,7 +27,7 @@ namespace NativeWorldTextProbe
                 else if(branch==2){n.ai[3]=1;n.localAI[3]=1;n.alpha=100;n.direction=n.directionY=1;}
                 else if(branch==3){local.active=false;local.dead=true;remote.active=false;cache.Demand(0,1,120);}
                 if(type==316 && branch==3){var read=source.GetType().GetMethod("Read",Flags);var scalar=(NpcMotionState)read.Invoke(null,new object[]{n,1L});Call(source,"Prepare",scalar.Identity,(long)Main.GameUpdateCount);}
-                else NativeCombatObservationChecks.Fresh(context,host);
+                else {NativeCombatObservationChecks.Fresh(context,host);NativeCombatStrategyChecks.PrepareSelectedSource(host,n);}
                 var frozen=cache.Read(0);bool oldKept=type==82 && branch==2 || type==316 && branch>=2;int expected=oldKept?1:local.whoAmI;
                 Require(frozen!=null && frozen.Count>1 && (int)Get(source,"targetPlayer")==expected,"R03 Source preflight matches native first target type="+type+" branch="+branch+" count="+frozen?.Count+" stop="+frozen?.Stop+" premise="+Get(source,"targetPlayer"));
                 var state=((NpcMotionState[])Get(source,"states"))[0];var env=new PredictionEnvironment{PlayerIndex=expected,PlayerX=Main.player[expected].Center.X,PlayerY=Main.player[expected].Center.Y,PlayerWidth=Main.player[expected].width,PlayerHeight=Main.player[expected].height,PlayerDead=Main.player[expected].dead,WorldSurface=20,Multiplayer=true};var kernel=typeof(NpcMotion).Assembly.GetType("JueMingR.Features.Combat.NpcFiniteFlightMotion").GetMethod("Step",Flags);object[] action={state,env,(IPredictionTerrain)Get(source,"Terrain"),false,PredictionStop.None};Require((bool)kernel.Invoke(null,action),"R03 finite first movement is known");state=(NpcMotionState)action[0];

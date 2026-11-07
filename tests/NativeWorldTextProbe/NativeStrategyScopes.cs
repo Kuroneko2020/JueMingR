@@ -14,16 +14,22 @@ namespace NativeWorldTextProbe
         {if(Array.IndexOf(All,scope)<0)throw new ArgumentException("Unknown NpcStrategy subscope: "+scope);}
         private static string Quote(string value)
         {return "\""+System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(value,"(\\\\*)\"","$1$1\\\""),"(\\\\+)$","$1$1")+"\"";}
+        internal static Process StartChild(string[] args,string scope)
+        {
+            Require(scope);
+            var start=new ProcessStartInfo(Assembly.GetExecutingAssembly().Location){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
+            start.Arguments=Quote(args[0])+" "+Quote(args[1])+" "+Quote(Path.Combine(args[2],scope))+" "+Quote("NpcStrategy:"+scope);
+            start.EnvironmentVariables.Remove("JUEMINGR_STRATEGY_ONLY");
+            NativeScopeDispatch.PrepareOwnedChild(start);
+            return Process.Start(start);
+        }
         internal static int RunAll(string[] args)
         {
             Directory.CreateDirectory(args[2]);Console.WriteLine("STRATEGY requested="+string.Join(",",All)+" inherited-only="+(Environment.GetEnvironmentVariable("JUEMINGR_STRATEGY_ONLY")??"none")+" disposition=ignored-for-full-request");
             var receipts=new System.Collections.Generic.List<string>();
             foreach(string scope in All)
             {
-                var start=new ProcessStartInfo(Assembly.GetExecutingAssembly().Location){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
-                start.Arguments=Quote(args[0])+" "+Quote(args[1])+" "+Quote(Path.Combine(args[2],scope))+" "+Quote("NpcStrategy:"+scope);
-                start.EnvironmentVariables.Remove("JUEMINGR_STRATEGY_ONLY");
-                using(var child=Process.Start(start))
+                using(var child=StartChild(args,scope))
                 {var stdout=child.StandardOutput.ReadToEndAsync();var stderr=child.StandardError.ReadToEndAsync();child.WaitForExit();string log=stdout.GetAwaiter().GetResult()+stderr.GetAwaiter().GetResult();File.WriteAllText(Path.Combine(args[2],scope+".log"),log);Console.Write(log);receipts.Add(scope+",EXECUTED,"+child.ExitCode);File.WriteAllLines(Path.Combine(args[2],"strategy-scopes.csv"),receipts);Console.WriteLine("STRATEGY executed="+scope+" NativeExit="+child.ExitCode);if(child.ExitCode!=0)return child.ExitCode;}
             }
             Console.WriteLine("PASS STRATEGY requested="+All.Length+" executed="+receipts.Count+" reused=0 unexecuted=0 fresh-process-per-scope");return 0;

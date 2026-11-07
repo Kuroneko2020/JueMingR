@@ -51,6 +51,9 @@ namespace NativeWorldTextProbe
         internal static void Continuous(object context,NpcPredictionCache cache,Action step,string output)
         {
             object host=Get(context,"CombatObservation"),source=Get(host,"Prediction");long session=(long)Get(host,"Session");
+            // A committed Path preference does not grant the process-local
+            // hidden display qualification. Use the existing real UI gesture.
+            if(!(bool)Get(host,"PathAccess"))NativeHiddenEntryChecks.RevealForComposition(context);
             var read=source.GetType().GetMethod("Read",Flags);var capture=source.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.NpcTrackingObservation",true).GetMethod("Capture",Flags);
             var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);var rows=new List<string>{"scene,frame,type,hop,cycle,pause,turn,selected,published,count,stop,matched,longMatched,error,cross,actions"};var failures=new List<string>();
             var observer=new Harmony("JueMingR.Probe.FrostLegionOracle");var update=typeof(NPC).GetMethod("UpdateNPC",Flags);

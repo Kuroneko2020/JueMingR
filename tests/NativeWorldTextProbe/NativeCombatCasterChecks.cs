@@ -84,7 +84,11 @@ namespace NativeWorldTextProbe
         {
             int leaf=-1;string selector=Environment.GetEnvironmentVariable("JUEMINGR_CASTER_SCENE");if(!string.IsNullOrEmpty(selector))Require(int.TryParse(selector,out leaf) && leaf>=0 && leaf<4,"Caster selector0..3.");
             Console.WriteLine("CASTER actual leaf="+(leaf<0?"0,1,2,3":leaf.ToString())+" client/server/bodyclock; attack emissions not certified");
-            var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var terrain=(IPredictionTerrain)Get(source,"Terrain");
+            var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");
+            if(!(bool)Get(host,"PathAccess"))NativeHiddenEntryChecks.RevealForComposition(context);
+            // This independent original-action oracle must not reset the
+            // production Source's acquired cells or its continuation leases.
+            var terrain=(IPredictionTerrain)Activator.CreateInstance(Get(source,"Terrain").GetType(),true);
             var audit=new Harmony("JueMingR.Probe.Caster");audit.Patch(typeof(NPC).GetMethod("UpdateNPC",Flags),prefix:new HarmonyMethod(typeof(NativeCombatCasterChecks),nameof(Before)),postfix:new HarmonyMethod(typeof(NativeCombatCasterChecks),nameof(After)));
             var rows=new List<string>{"scene,frame,clock,selected,actions,matches,long,random,jumps,fresh,restored,max"};
             try
@@ -94,7 +98,13 @@ namespace NativeWorldTextProbe
                     if(leaf>=0 && leaf!=scene)continue;Setup(context);
                     if(scene==2)NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),2100,2300,35,Start:8,ai3:1);
                     if(scene==3){Main.getGoodWorld=true;NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),2100,2300,113,Start:8);}
-                    var actor=Birth(scene==2?32:24);if(scene==1)Main.netMode=1;
+                    var actor=Birth(scene==2?32:24);if(scene==1)
+                    {
+                        // FlightWorld already supplied every tile in this
+                        // isolated fixed world. The client oracle represents
+                        // received data, not background-allocated unknown air.
+                        Main.netMode=1;Main.sectionManager=new WorldSections(Netplay.GetSectionX(Main.maxTilesX-1)+1,Netplay.GetSectionY(Main.maxTilesY-1)+1);Main.sectionManager.SetAllSectionsLoaded();
+                    }
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,mouseCenter:true,clearLine:false,radius:50));
                     var freezes=new List<NpcTrajectory>();NpcMotionState expected=default(NpcMotionState);PredictionStop stop=PredictionStop.None;bool ok=false;
                     int selected=0,actions=0,matches=0,longMatches=0,random=0,jumps=0,fresh=0,restored=0;double maximum=0;bool hit=false;long hitTick=-1;NpcTrajectory priorHit=null;
@@ -130,7 +140,15 @@ namespace NativeWorldTextProbe
                                 Require(closed,"Real Source acquisition, not the current-action oracle's local snapshot, closes the required global-query roles.");
                             }
                         }
-                        if(hit && Main.GameUpdateCount>hitTick){var prepared=GetOptional(Get(host,"World"),"preparedPath") as NpcTrajectory;Require(path==null || !ReferenceEquals(path,priorHit),"Old NoNewHits publication expires after actual receiving.");Require(prepared==null || ReferenceEquals(prepared,path),"Prepared consumer uses current publication.");}
+                        if(hit && Main.GameUpdateCount>hitTick)
+                        {
+                            var prepared=GetOptional(Get(host,"World"),"preparedPath") as NpcTrajectory;var display=GetOptional(host,"DisplayPath") as NpcTrajectory;var lease=GetOptional(host,"displayTerrain");
+                            Require(path==null || !ReferenceEquals(path,priorHit),"Old NoNewHits publication expires after actual receiving.");
+                            // Display owns a separately validated window/tail;
+                            // latest raw Source object equality is not its
+                            // contract. Preserve post-hit age and actual cells.
+                            Require(prepared==null || ReferenceEquals(prepared,display) && prepared.CaptureTick>hitTick && !ReferenceEquals(prepared,priorHit) && lease!=null && (bool)Call(lease,"DisplayCurrent",true),"Prepared consumer uses its current post-hit display publication and terrain lease.");
+                        }
                         foreach(var frozen in freezes)
                         {
                             int age=(int)((long)Main.GameUpdateCount-frozen.CaptureTick);if(age<=0 || age>=frozen.Count)continue;

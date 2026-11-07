@@ -136,6 +136,7 @@ namespace JueMingR.TerrariaHost.Combat
             weapon=item;slot=player.selectedItem;type=item.type;prefix=item.prefix;session=observation.Session;prepared=Main.GameUpdateCount;ammo=captured;
             balancedOrdinary=preparedOrdinary=true;preparedOrdinaryPhase=phase;preparedMotion=NpcPredictionSource.ReadPlayer(player);preparedDirection=player.direction;
             preparedAnimation=player.itemAnimation;preparedAnimationMax=player.itemAnimationMax;preparedTime=player.itemTime;preparedReuse=player.reuseDelay;preparedScale=player.GetAdjustedItemScale(item);
+            CaptureNativeBirthInputs(player,item,phase);
             cadence.Prepare(player,item,captured,timeline,phase,currentSolution);
         }
         private bool BalancedInputCurrent(bool checkAmmo,bool checkDirection=true)
@@ -151,6 +152,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // Pure facing may leave this birth unchanged; physical samples,
                 // muzzle, target and freshness still qualify the same solution.
                 (!checkDirection || solution.DirectionIndependent || preparedDirection==player.direction) &&
+                NativeBirthInputsCurrent(player,weapon) &&
                 Vector2.DistanceSquared(HostAttackModels.LaunchOrigin(player,weapon),Main.GameUpdateCount==prepared?origin:nextOrigin)<=4 &&
                 environmentState.Current && (handTerrain==null?terrain.Unchanged:handTerrain.Current && handMotionTerrain!=null && handMotionTerrain.Current) &&
                 (solution.Contact==null || obstacles==null || (checkAmmo?obstacles.UnchangedForHandStart:obstacles.Unchanged)) && (checkAmmo?ammo.Matches(player,weapon):ammo.IdentityMatches(player,weapon));

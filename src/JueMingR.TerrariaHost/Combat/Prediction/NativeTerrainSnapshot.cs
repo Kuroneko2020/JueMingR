@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Terraria;
+using JueMingR.TerrariaHost.World;
 
 namespace JueMingR.TerrariaHost.Combat.Prediction
 {
@@ -21,6 +22,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal readonly long World;
         internal readonly int Width,Height;
         internal readonly Chunk[] Chunks;
+        private readonly WorldTileSource source;
         // A proof cache for ONE synchronous game-thread Prepare, never for a
         // tick number shared with arbitrary callers. Only successful complete
         // comparisons enter it; failure cannot certify another snapshot.
@@ -28,9 +30,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             internal readonly Dictionary<int,Chunk> Matched=new Dictionary<int,Chunk>();
             internal long World,TilesRead,ChunkHits,TilesCaptured;internal int Width,Height;
-            internal void Clear(){Matched.Clear();World=TilesRead=ChunkHits=TilesCaptured=0;Width=Height=0;}
+            internal WorldTileSource Source;
+            internal void Clear(){Matched.Clear();Source=default(WorldTileSource);World=TilesRead=ChunkHits=TilesCaptured=0;Width=Height=0;}
         }
-        private NativeTerrainSnapshot(long world,int width,int height,Chunk[] chunks){World=world;Width=width;Height=height;Chunks=chunks;}
+        private NativeTerrainSnapshot(long world,int width,int height,Chunk[] chunks){World=world;Width=width;Height=height;Chunks=chunks;source=WorldTileSource.Capture();}
         internal static NativeTerrainSnapshot Capture(long world,int left,int top,int right,int bottom)
         {
             var keys=new SortedSet<int>();AddRegion(keys,left,top,right,bottom);return CaptureChunks(world,keys);
@@ -54,11 +57,12 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
                 int cx=key/128,cy=key%128;
                 if(cx<0 || cy<0 || cx>(width-1)/32 || cy>(height-1)/32)throw new InvalidDataException("Local terrain chunk coordinates.");
+                if(!WorldTileKnowledge.RegionKnown(cx*32,cy*32,Math.Min(width,(cx+1)*32),Math.Min(height,(cy+1)*32)))throw new InvalidDataException("Unobserved live terrain section.");
                 // Region growth does not invalidate this call's completed
                 // live comparisons. Reuse those immutable bytes; only new or
                 // unverified chunks need another tile read/allocation/hash.
                 Chunk verified;
-                if(pass!=null && pass.World==world && pass.Width==width && pass.Height==height && pass.Matched.TryGetValue(key,out verified)){chunks[index++]=verified;continue;}
+                if(pass!=null && pass.Source.Current && pass.World==world && pass.Width==width && pass.Height==height && pass.Matched.TryGetValue(key,out verified)){chunks[index++]=verified;continue;}
                 var data=new byte[Math.Min(32,width-cx*32)*Math.Min(32,height-cy*32)*14];int at=0;
                 for(int x=cx*ChunkSize;x<Math.Min(width,(cx+1)*ChunkSize);x++)
                 for(int y=cy*ChunkSize;y<Math.Min(height,(cy+1)*ChunkSize);y++,at+=14)
@@ -93,17 +97,19 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         // cannot disappear from the request's union. This replaces the old
         // pending full comparison, never adds a second whole-region scan.
         internal bool ObserveChanges(long world,NativeTerrainUsage changes,Comparison pass,out bool exactCurrent)
-        {exactCurrent=false;if(World!=world || Main.maxTilesX!=Width || Main.maxTilesY!=Height)return false;exactCurrent=Compare(world,null,pass,changes);return true;}
+        {exactCurrent=false;if(World!=world || !source.Current)return false;exactCurrent=Compare(world,null,pass,changes);return true;}
         private bool Compare(long world,NativeTerrainUsage usage,Comparison pass,NativeTerrainUsage changes)
         {
-            if(World!=world || Main.maxTilesX!=Width || Main.maxTilesY!=Height)return false;
-            if(pass!=null && (pass.World!=world || pass.Width!=Width || pass.Height!=Height)){pass.Clear();pass.World=world;pass.Width=Width;pass.Height=Height;}
+            if(World!=world || !source.Current)return false;
+            if(pass!=null && (!pass.Source.Current || pass.World!=world || pass.Width!=Width || pass.Height!=Height)){pass.Clear();pass.Source=source;pass.World=world;pass.Width=Width;pass.Height=Height;}
             bool current=true;
             foreach(var chunk in Chunks)
             {
                 int key=chunk.X*128+chunk.Y;Chunk matched;byte[] relevant=null;
                 if(usage!=null && !usage.Cells.TryGetValue(key,out relevant))continue;
-                if(pass!=null && pass.Matched.TryGetValue(key,out matched))
+                bool known=WorldTileKnowledge.RegionKnown(chunk.X*32,chunk.Y*32,Math.Min(Width,chunk.X*32+32),Math.Min(Height,chunk.Y*32+32));
+                if(!known && pass!=null)pass.Matched.Remove(key);
+                if(known && pass!=null && pass.Matched.TryGetValue(key,out matched))
                 {
                     if(matched.Version==chunk.Version && SameBytes(matched.Values,chunk.Values))
                     {if(PredictionPipeProtocol.Measure)pass.ChunkHits++;continue;}
@@ -114,7 +120,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     int cell=x%32*32+y%32;
                     if(relevant!=null && (relevant[cell/8]&(1<<(cell%8)))==0)continue;
                     if(pass!=null && PredictionPipeProtocol.Measure)pass.TilesRead++;
-                    Tile t=Main.tile[x,y];if(t==null || t.type!=U16(b,at) || t.wall!=U16(b,at+2) || t.liquid!=b[at+4] || t.sTileHeader!=U16(b,at+5) || t.bTileHeader!=b[at+7] || t.bTileHeader2!=b[at+8] || t.bTileHeader3!=b[at+9] || t.frameX!=(short)U16(b,at+10) || t.frameY!=(short)U16(b,at+12))
+                    Tile t=Main.tile[x,y];if(!known && !WorldTileKnowledge.CellKnown(x,y) || t==null || t.type!=U16(b,at) || t.wall!=U16(b,at+2) || t.liquid!=b[at+4] || t.sTileHeader!=U16(b,at+5) || t.bTileHeader!=b[at+7] || t.bTileHeader2!=b[at+8] || t.bTileHeader3!=b[at+9] || t.frameX!=(short)U16(b,at+10) || t.frameY!=(short)U16(b,at+12))
                     {equal=current=false;if(changes==null)return false;changes.Add(x,y);}
                 }
                 // Only a complete nine-field chunk comparison proves exact

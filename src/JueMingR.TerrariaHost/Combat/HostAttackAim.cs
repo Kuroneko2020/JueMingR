@@ -29,6 +29,7 @@ namespace JueMingR.TerrariaHost.Combat
         private HostAttackObstacles obstacles;
         private HostHarpyAttack.State harpyState;
         private readonly PredictionTerrain terrain=new PredictionTerrain();
+        private HostAttackModels.BirthInputs currentBirthInputs,nextBirthInputs;
         private PredictionTerrain.CellLease handTerrain,handMotionTerrain;
         private Player sharedHandOwner;
         private readonly HostSwingAttack swing=new HostSwingAttack();
@@ -201,7 +202,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return NpcPredictionCache.Horizon;
         }
-        internal void ClearExecution(){presentation=null;weapon=null;ammo=null;current=next=null;currentSolution=nextSolution=default(HostAttackSolution);balancedOrdinary=false;environment=null;obstacles=null;harpyState=null;handTerrain=handMotionTerrain=null;sharedHandOwner=null;preparedOrdinary=false;cadence.Clear();Control.Clear();}
+        internal void ClearExecution(){presentation=null;weapon=null;ammo=null;current=next=null;currentSolution=nextSolution=default(HostAttackSolution);currentBirthInputs=nextBirthInputs=default(HostAttackModels.BirthInputs);balancedOrdinary=false;environment=null;obstacles=null;harpyState=null;handTerrain=handMotionTerrain=null;sharedHandOwner=null;preparedOrdinary=false;cadence.Clear();Control.Clear();}
         internal void Clear(){ClearExecution();ClearPreview();}
         internal void Reset(){demandActive=false;releaseHand=null;Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.Reset();hasConsumedInput=false;}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
@@ -376,7 +377,25 @@ namespace JueMingR.TerrariaHost.Combat
             weapon=item;slot=player.selectedItem;type=item.type;prefix=item.prefix;session=observation.Session;prepared=Main.GameUpdateCount;ammo=captured;
             preparedOrdinary=true;preparedOrdinaryPhase=phase;preparedMotion=NpcPredictionSource.ReadPlayer(player);preparedDirection=player.direction;preparedAnimation=player.itemAnimation;preparedAnimationMax=player.itemAnimationMax;preparedTime=player.itemTime;preparedReuse=player.reuseDelay;preparedImmune=Main.npc[timeline.Identity.Slot].immune[player.whoAmI];
             preparedAttackCooldown=player.attackCD;preparedMeleeCooldown=player.meleeNPCHitCooldown[timeline.Identity.Slot];preparedMeleeSpeed=player.meleeSpeed;preparedScale=player.GetAdjustedItemScale(item);
+            CaptureNativeBirthInputs(player,item,phase);
         }
+        private void CaptureNativeBirthInputs(Player player,Item item,HostAttackPhase phase)
+        {
+            currentBirthInputs=nextBirthInputs=default(HostAttackModels.BirthInputs);
+            if(!HostAttackModels.CandidateBirth(item))return;
+            if(balancedOrdinary)
+            {
+                if(currentSolution.HasPoint)currentBirthInputs=new HostAttackModels.BirthInputs(player,item,phase==HostAttackPhase.CompletedWorld?nextOrigin:origin,currentSolution.Point);
+                if(nextSolution.HasPoint)nextBirthInputs=new HostAttackModels.BirthInputs(player,item,nextOrigin,nextSolution.Point);
+            }
+            else
+            {
+                if(current!=null)currentBirthInputs=new HostAttackModels.BirthInputs(player,item,origin,new Vector2(current.AimX,current.AimY));
+                if(next!=null)nextBirthInputs=new HostAttackModels.BirthInputs(player,item,nextOrigin,new Vector2(next.AimX,next.AimY));
+            }
+        }
+        private bool NativeBirthInputsCurrent(Player player,Item item)
+        {return (Main.GameUpdateCount==prepared?currentBirthInputs:nextBirthInputs).Current(player,item);}
         private static bool Eligible(Item item){return item!=null && !item.sentry && (HostPlacementAttack.Handles(item) || HostSwingAttack.Handles(item) || !item.IsAir && item.useStyle>0 && item.useTime>0 && item.shoot>0 && (item.damage>0 || item.type==905) && item.pick==0 && (item.axe==0 || item.type==5519 && item.shoot==1052) && item.hammer==0 && (!item.summon || ProjectileID.Sets.IsAWhip[item.shoot]));}
         private AttackContact Solve(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,int age,bool beforeNpc)
         {return SolveOnTerrain(player,item,captured,timeline,start,age,beforeNpc,terrain,0,out environment,out obstacles);}
@@ -433,7 +452,7 @@ namespace JueMingR.TerrariaHost.Combat
             var result=Main.GameUpdateCount==prepared?current:next;
             if(!checkAmmo && !HostAttackWindow.NextAction(combat,player,weapon))return false;
             if(result==null || !result.Timeline.Identity.Equals(observation.Selection.Target) || !TimelineCurrent(result.Timeline) ||
-                Vector2.DistanceSquared(HostAttackModels.LaunchOrigin(player,weapon),Main.GameUpdateCount==prepared?origin:nextOrigin)>4)return false;
+                !NativeBirthInputsCurrent(player,weapon) || Vector2.DistanceSquared(HostAttackModels.LaunchOrigin(player,weapon),Main.GameUpdateCount==prepared?origin:nextOrigin)>4)return false;
             if(handTerrain!=null && (!ReferenceEquals(sharedHandOwner,player) || player.position.X!=preparedMotion.X || player.position.Y!=preparedMotion.Y || player.GetAdjustedItemScale(weapon)!=preparedScale || Main.npc[observation.Selection.Target.Slot].immune[player.whoAmI]!=preparedImmune))return false;
             return environmentState.Current && (handTerrain==null?terrain.Unchanged:handTerrain.Current && handMotionTerrain!=null && handMotionTerrain.Current) && (environment==null || environment.Unchanged) && (obstacles==null || (checkAmmo?obstacles.UnchangedForHandStart:obstacles.Unchanged)) && (harpyState==null || harpyState.Current) && (!checkAmmo || (ammo==null?pureMeleeFamily && HasOwnMeleeHitFamily(weapon):ammo.Matches(player,weapon)));
         }

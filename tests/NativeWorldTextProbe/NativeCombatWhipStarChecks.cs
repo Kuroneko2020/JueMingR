@@ -16,6 +16,19 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
         private static Assembly assembly;private static Type model;private static Projectile parent,receiving;private static int nativeTick,starFirst;private static readonly List<Projectile> born=new List<Projectile>();
+        private static int handDepth,handFacingCalls,handFacing,handPointDirection;private static Vector2 handAim,handOrigin,handVelocity;private static float handStage;private static Vector2[] handPoints;
+        private static bool handPrivateOwner;
+        // Observe values at the existing consumers, without editing the
+        // private flight or replacing any Solve/contact gate. Collision points
+        // ignore the whip's random visual curvature in the original routine.
+        private static void HandFacing(Player player,Vector2 origin,Vector2 aim,int __result)
+        {if(handDepth>0){handFacingCalls++;handFacing=__result;handAim=aim;handOrigin=origin;}}
+        private static void HandPoints(object[] __args)
+        {
+            if(handDepth==0 || handPoints!=null)return;var shot=(Projectile)__args[0];var body=__args[2] as Player;
+            if(shot.type!=1034 || body==null || !(bool)__args[3] || (int)__args[4]!=0)return;
+            handPoints=((List<Vector2>)__args[1]).ToArray();handPointDirection=body.direction;handPrivateOwner=!ReferenceEquals(body,Main.player[shot.owner]);handStage=shot.ai[0];handVelocity=shot.velocity;
+        }
         private static object Static(Type type,string name,params object[] args){return type.GetMethod(name,Flags).Invoke(null,args);}
         private static void Birth(IEntitySource __0,int __result)
         {if((__0 as EntitySource_Parent)?.Entity==parent && __result>=0 && __result<1000 && Main.projectile[__result].type==1039)born.Add(Main.projectile[__result]);}
@@ -49,7 +62,38 @@ namespace NativeWorldTextProbe
             foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
             var birth=typeof(Projectile).GetMethods(Flags).Single(m=>m.Name=="NewProjectile" && m.GetParameters().Length==13 && m.GetParameters()[1].ParameterType==typeof(float));audit.Patch(birth,postfix:new HarmonyMethod(typeof(NativeCombatWhipStarChecks),nameof(Birth)));
             audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatWhipStarChecks),nameof(Damage)),postfix:new HarmonyMethod(typeof(NativeCombatWhipStarChecks),nameof(DamageDone)));audit.Patch(typeof(NPC).GetMethod("StrikeNPC",Flags,null,new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)},null),postfix:new HarmonyMethod(typeof(NativeCombatWhipStarChecks),nameof(Strike)));
-            try{BirthGeometry(context);Trigger(context);Motor(context);FullPool(context);Console.WriteLine("PASS WHIP STAR observed1034 proc/timers, native source births and autonomous1039 Damage.");}finally{Main.windPhysics=wind;Main.ProjectileUpdateLoopIndex=-1;audit.UnpatchAll(audit.Id);}
+            audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.HostBetsyFlameAttack",true).GetMethod("Facing",Flags),postfix:new HarmonyMethod(typeof(NativeCombatWhipStarChecks),nameof(HandFacing)));
+            audit.Patch(typeof(Projectile).GetMethod("FillWhipControlPoints",Flags),postfix:new HarmonyMethod(typeof(NativeCombatWhipStarChecks),nameof(HandPoints)));
+            try{BirthGeometry(context);Trigger(context);Motor(context);FullPool(context);NewHands(context);Console.WriteLine("PASS WHIP STAR observed1034 proc/timers, actual new-hand Solve/native collision points, native source births and autonomous1039 Damage.");}finally{handDepth=0;handPoints=null;Main.windPhysics=wind;Main.ProjectileUpdateLoopIndex=-1;audit.UnpatchAll(audit.Id);}
+        }
+        private static void NewHands(object context)
+        {
+            int cases=0;var ammoType=assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true);var frameType=assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPlayerFrame",true);var scopeType=assembly.GetType("JueMingR.TerrariaHost.Combat.CombatCursorScope",true);var shoot=typeof(Player).GetMethod("ItemCheck_Shoot",Flags);
+            foreach(int side in new[]{-1,1})
+            {
+                var p=Reset(context);p.StopVanityActions();if(p.mount.Active)p.mount.Dismount(p);p.ChangeDir(-side);p.PlayerFrame();
+                Require(!p.dead && p.statLife>0 && p.gravDir==1 && p.fullRotation==0 && !p.sleeping.isSleeping && !p.mount.Active,"whip new hand starts from an ordinary native holder, without a fabricated sleeping or rotated pose");
+                var origin=p.RotatedRelativePoint(p.MountedCenter);var n=Target(2,origin+new Vector2(side*140,0));var path=Timeline(n);var ammo=Static(ammoType,"Capture",p,p.HeldItem);var sample=new Projectile();sample.SetDefaults(1034);sample.owner=p.whoAmI;var terrain=Terrain();var root=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackObstacles",true),Flags,null,new object[]{p,sample,path,0,true,false},null);var frame=Static(frameType,"Capture",p,path);
+                int oldDirection=p.direction,savedX=Main.mouseX,savedY=Main.mouseY,savedTileX=Player.tileTargetX,savedTileY=Player.tileTargetY;handFacingCalls=0;handPoints=null;handPrivateOwner=false;AttackContact contact;
+                handDepth++;try{using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))contact=(AttackContact)Static(model,"SolvePrepared",p,p.HeldItem,ammo,path,0,true,terrain,0,root,frame);}finally{handDepth--;}
+                Require(contact!=null && handFacingCalls>0 && handPoints!=null && handPoints.Length>1 && handPrivateOwner && handStage==1,"actual whip new-hand Solve reaches its private-facing first collision-point consumer and a real positive contact: "+side);
+                Require(handAim==new Vector2(contact.AimX,contact.AimY) && handPointDirection==handFacing,"returned whip candidate consumes the actual observed facing in native control points");
+                Require(p.direction==oldDirection && Main.mouseX==savedX && Main.mouseY==savedY && n.life==10000 && !Main.projectile.Any(q=>q.active),"whip preparation leaves live facing, cursor, target and projectile pool untouched");
+                var scope=Static(scopeType,"Begin",new Vector2(contact.AimX,contact.AimY),true);Require(scope!=null,"whip native oracle borrows the actual prepared input");
+                try
+                {
+                    shoot.Invoke(p,new object[]{p.whoAmI,p.HeldItem,p.GetWeaponDamage(p.HeldItem),true});var shots=Main.projectile.Where(q=>q.active && q.owner==p.whoAmI && q.type==1034).ToArray();
+                    Require(shots.Length==1 && shots[0].ai[0]==0,"same-input original whip Shoot creates its one actual unadvanced parent");var nativeShot=shots[0];
+                    Require(p.direction!=oldDirection && p.direction==handFacing && Vector2.Distance(nativeShot.Center,handOrigin)<.001f && Vector2.Distance(nativeShot.velocity,handVelocity)<.001f,"actual whip Solve facing, birth point and velocity equal original Shoot after reversing the holder's prior direction");
+                    nativeShot.AI();var actual=new List<Vector2>();Projectile.FillWhipControlPoints(nativeShot,actual,p,true,0);
+                    Require(nativeShot.active && nativeShot.ai[0]==handStage && actual.Count==handPoints.Length && actual.Zip(handPoints,(a,b)=>Vector2.Distance(a,b)<.001f).All(equal=>equal),"first real native whip AI and collision points equal the observed private Solve points, independent of random visual curvature");
+                    Require(!p.dead && p.statLife>0,"ordinary same-input whip native Shoot preserves the live holder");
+                    Console.WriteLine("WHIP NEW HAND side="+side+" oldDir="+oldDirection+" nativeDir="+p.direction+" observedFacing="+handFacing+" pointOwnerDir="+handPointDirection+" facingCalls="+handFacingCalls+" collisionPoints="+actual.Count+" ai="+nativeShot.ai[0]+" contact="+contact.Tick);
+                }
+                finally{Call(scope,"End");}
+                Require(Main.mouseX==savedX && Main.mouseY==savedY && Player.tileTargetX==savedTileX && Player.tileTargetY==savedTileY,"whip actual cursor loan returns its exact owned physical and tile coordinates");cases++;
+            }
+            Console.WriteLine("PASS WHIP STAR new-hand Solve/native Shoot and original collision control points directions="+cases);
         }
         private static void BirthGeometry(object context)
         {

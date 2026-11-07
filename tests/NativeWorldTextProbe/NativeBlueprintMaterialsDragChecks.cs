@@ -94,11 +94,17 @@ namespace NativeWorldTextProbe
                 var before = Get(popup, "Panel"); var body = Get(popup, "Body"); float bodyY = Y(body) - Y(before);
                 float cachedBodyTop = (float)Get(popup, "bodyTop");
                 long builds = (long)Get(popup, "LayoutBuilds"), sets = (long)Get(popup, "VisibleSetBuilds");
-                float outsideX = Main.screenWidth / Main.UIScale - 1, outsideY = Main.screenHeight / Main.UIScale - 1;
+                float logicalWidth = Main.screenWidth / Main.UIScale, logicalHeight = Main.screenHeight / Main.UIScale;
+                check(Math.Abs(Y(before) + H(before) - (logicalHeight - 12)) < .1f,
+                    "the fixture begins at the actual bottom viewport clamp before testing two-axis movement");
+                // The initial real anchor already clamps this window to the
+                // bottom. Drag above it so both axes must genuinely translate.
+                float outsideX = logicalWidth - 1, outsideY = 1;
                 frame(outsideX, outsideY, true); PlayerInput.Triggers.Current.CopyInto(player); prepare();
                 var moved = Get(popup, "Panel");
                 check((bool)Get(popup, "Dragging") && X(moved) > X(before) && Y(moved) != Y(before) &&
-                    X(moved) + W(moved) <= Main.screenWidth / Main.UIScale - 11.9f && Y(moved) + H(moved) <= Main.screenHeight / Main.UIScale - 11.9f,
+                    X(moved) + W(moved) <= logicalWidth - 11.9f && Y(moved) + H(moved) <= logicalHeight - 11.9f &&
+                    Y(moved) >= 11.9f && Y(moved) <= 12.1f,
                     "captured title movement continues outside the old window and clamps to the current logical viewport");
                 Console.WriteLine("MATERIAL DRAG pure beforePanel=" + RectState(before) + " beforeBody=" + RectState(body) + " after=" + PublicationState(popup, input) +
                     " localBodyY=" + Number(bodyY) + "/" + Number(Y(Get(popup, "Body")) - Y(moved)) +

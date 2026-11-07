@@ -157,7 +157,7 @@ namespace NativeWorldTextProbe
             foreach(int i in new[]{0,7,8,Main.gore.Length-1})Main.gore[i].active=true;
             foreach(int i in new[]{0,7,8,Main.combatText.Length-1})Main.combatText[i].active=true;Dust.dCount=.7f;
             byte[] captured;using(var stream=new MemoryStream())using(var writer=new BinaryWriter(stream)){boundary.GetMethod("WriteAllocation",Flags).Invoke(null,new object[]{writer});writer.Flush();captured=stream.ToArray();}
-            Require(captured.Length==844,"Fixed native allocation input remains bounded.");
+            Require(captured.Length==862,"Fixed native allocation input plus the versioned 18-byte particle premise remains bounded.");
             foreach(var d in Main.dust)d.active=false;foreach(var g in Main.gore)g.active=false;foreach(var c in Main.combatText)c.active=false;Dust.dCount=0;
             read(captured);Require(Dust.dCount==.7f && Main.dust.Count(d=>d.active)==4 && Main.gore.Count(g=>g.active)==4 && Main.combatText.Count(c=>c.active)==4 && Main.dust[6000].active && Main.gore[600].active && Main.combatText[99].active,"Frozen allocation restores boundary slots independently of producer mutations.");
             foreach(var item in new[]{new[]{754,2},new[]{830,2},new[]{843,16}})
@@ -165,7 +165,7 @@ namespace NativeWorldTextProbe
                 byte[] bad=(byte[])captured.Clone();bad[item[0]]|=(byte)item[1];bool refused=false;
                 try{read(bad);}catch(TargetInvocationException e){refused=e.InnerException is InvalidDataException;}Require(refused,"Unused effect bitmap bits are not valid actor slots: "+item[0]);
             }
-            foreach(int length in new[]{3,754,830,843}){bool refused=false;try{read(captured.Take(length).ToArray());}catch(TargetInvocationException e){refused=e.InnerException is EndOfStreamException;}Require(refused,"Truncated allocation refuses before a prediction.");}
+            foreach(int length in new[]{3,754,830,843,844,861}){bool refused=false;try{read(captured.Take(length).ToArray());}catch(TargetInvocationException e){refused=e.InnerException is EndOfStreamException;}Require(refused,"Truncated allocation refuses before a prediction.");}
             foreach(float value in new[]{float.NaN,float.PositiveInfinity,-.1f,1.1f}){byte[] bad=(byte[])captured.Clone();Buffer.BlockCopy(BitConverter.GetBytes(value),0,bad,0,4);bool refused=false;try{read(bad);}catch(TargetInvocationException e){refused=e.InnerException is InvalidDataException;}Require(refused,"Invalid dust count premise refuses.");}
             // Reset is the same immediate value reset used by ClearWorld;
             // this unit probe does not install private hooks in the oracle.

@@ -12,7 +12,7 @@ namespace JueMingR.TerrariaHost.World
     {
         private readonly Func<bool> sessionActive;
         private readonly Dictionary<long, WorldTargetTile> cache = new Dictionary<long, WorldTargetTile>();
-        private object tiles, sections;
+        private WorldTileSource source;
         private long revision, geometryRevision;
         private int screenWidth, screenHeight;
         private Matrix lastZoom;
@@ -20,11 +20,11 @@ namespace JueMingR.TerrariaHost.World
         private Vector2 first, last;
         internal WorldTileObservation(Func<bool> sessionActive) { this.sessionActive = sessionActive; }
         internal void BeginTick() { cache.Clear(); prepared = available = false; CheckIdentity(); }
-        internal void EndSession() { cache.Clear(); tiles = sections = null; prepared = available = false; revision++; }
+        internal void EndSession() { cache.Clear(); source = default(WorldTileSource); prepared = available = false; revision++; }
         private void CheckIdentity()
         {
-            if (ReferenceEquals(tiles, Main.tile) && ReferenceEquals(sections, Main.sectionManager)) return;
-            tiles = Main.tile; sections = Main.sectionManager; cache.Clear(); prepared = available = false; revision++;
+            if (source.Current) return;
+            source = WorldTileSource.Capture(); cache.Clear(); prepared = available = false; revision++;
         }
         internal bool TryView(int padding, out WorldTargetView view)
         {
@@ -56,6 +56,7 @@ namespace JueMingR.TerrariaHost.World
         internal WorldTargetTile Read(int x, int y)
         {
             CheckIdentity(); long key = ((long)x << 32) | (uint)y; WorldTargetTile value;
+            if (!WorldTileKnowledge.CellKnown(x, y)) return default(WorldTargetTile);
             if (cache.TryGetValue(key, out value)) return value;
             value = ReadCurrent(x, y);
             // Both bounded discovery consumers fit below this retained limit.
@@ -65,8 +66,7 @@ namespace JueMingR.TerrariaHost.World
         }
         internal static WorldTargetTile ReadCurrent(int x, int y)
         {
-            if (x < 0 || y < 0 || x >= Main.maxTilesX || y >= Main.maxTilesY || Main.tile == null ||
-                Main.netMode == 1 && (Main.sectionManager == null || !Main.sectionManager.TileLoaded(x, y))) return default(WorldTargetTile);
+            if (!WorldTileKnowledge.CellKnown(x, y)) return default(WorldTargetTile);
             Tile tile = Main.tile[x, y];
             if (tile == null) return default(WorldTargetTile);
             return new WorldTargetTile { Readable = true, Active = tile.active(), Inactive = tile.inActive(), Type = tile.type, FrameX = tile.frameX, FrameY = tile.frameY };

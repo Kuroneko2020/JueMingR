@@ -544,11 +544,24 @@ namespace JueMingR.TerrariaHost.Items
                     Matches(Main.mouseItem, expectedCursor, cursorType, cursorStack);
             }
         }
+        private bool CanReturnAfterFailure
+        {
+            get
+            {
+                // Only inverse clicks of this already-owned receipt survive
+                // common failure. Ready/Using/new preparation never acquire
+                // this permission; the original token, endpoints and actual
+                // player/world/socket must all still match before each tail.
+                return phase==Phase.Returning && tools.Runtime.HasFailed && tools.MatchesRetainedSession(player) &&
+                    SameSession(player) && !PhysicalInput && tools.SelectionIntent==selection && Main.playerInventory==ownsInventory &&
+                    ExpectedCurrent(false,false);
+            }
+        }
         private bool CanClickNow
         {
             get
             {
-                return tools.Runtime.IsSessionActive && ((tools.Input.CanRunAutomaticActions || CanContinueExternalModal) && !Main.gamePaused || CanContinuePausedInventory) && PreparationInterfaceAllowed &&
+                return (tools.Runtime.IsSessionActive || CanReturnAfterFailure) && ((tools.Input.CanRunAutomaticActions || CanContinueExternalModal) && !Main.gamePaused || CanContinuePausedInventory) && PreparationInterfaceAllowed &&
                     !tools.Use.Active && !player.dead && !player.CCed && !player.cursed && !player.noItems && !player.isOperatingAnotherEntity &&
                     !player.HasLockedInventory() && !Main.gameMenu && !Main.blockInput && !Main.mapFullscreen &&
                     !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
@@ -590,6 +603,10 @@ namespace JueMingR.TerrariaHost.Items
         {
             get
             {
+                // Returning may first need to reopen its own native inventory.
+                // The shell still owns real text/pointer/modal arbitration;
+                // its terminal branch grants no new preparation or world use.
+                if(CanReturnAfterFailure)return tools.CanInventoryPreparationInterface?.Invoke()??false;
                 if (!ownsInventory) return tools.CanInterface?.Invoke() ?? false;
                 // This is continuation of the one exact native ItemSlot use,
                 // never permission to start a new preparation or gameplay use.

@@ -116,10 +116,82 @@ function Export-EmbeddedReLogic {
     }
 }
 
+function Assert-OwnedReferencePath {
+    param([string] $Path)
+    # Publication owns only the fixed reference directory and its five files /
+    # receipt. Never follow a link or remove unrelated files from external.
+    $full = [IO.Path]::GetFullPath($Path)
+    $owned = [IO.Path]::GetFullPath($referencesDirectory)
+    if ($full -cne $owned -and -not $full.StartsWith($owned + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Reference publication escaped its owned directory.'
+    }
+    $current = $full
+    while ($current -and $current -cne $repositoryRoot) {
+        if ((Test-Path -LiteralPath $current) -and
+            ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'Reference publication refuses reparse paths.'
+        }
+        $current = Split-Path -Parent $current
+    }
+}
+
+function Assert-ExplicitSources {
+    Assert-ReferenceMatchesBaseline -Path $terrariaSource -Expected $terrariaExpected
+    Assert-ReferenceMatchesBaseline -Path $xnaGameSource -Expected $xnaGameExpected
+    Assert-ReferenceMatchesBaseline -Path $xnaFrameworkSource -Expected $xnaFrameworkExpected
+    Assert-ReferenceMatchesBaseline -Path $xnaGraphicsSource -Expected $xnaGraphicsExpected
+}
+
+function Publish-ReferenceReceipt {
+    # Only the real prepare producer can attest the explicit original source.
+    # VerifyOnly deliberately checks compile references without making this
+    # stronger Content/source claim. Revalidate source bytes before publishing.
+    Assert-ExplicitSources
+    Assert-ReferenceSet -Baseline $baseline -Directory $referencesDirectory
+    $receiptPath = Join-Path $referencesDirectory '.juemingr-reference-set.json'
+    Assert-OwnedReferencePath $receiptPath
+    $receipt = [ordered]@{
+        schemaVersion = 1
+        generator = 'scripts/prepare-terraria-references.ps1'
+        profileId = [string] $baseline.profileId
+        baselineSha256 = (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash
+        preparedAtUtc = [DateTime]::UtcNow.ToString('o')
+        source = [ordered]@{
+            terrariaInstallDirectory = Split-Path -Parent $terrariaSource
+            terrariaExePath = $terrariaSource
+            xnaGameAssemblyPath = $xnaGameSource
+            xnaFrameworkAssemblyPath = $xnaFrameworkSource
+            xnaGraphicsAssemblyPath = $xnaGraphicsSource
+        }
+        sourceHashesUnchanged = $true
+        files = @($baseline.files)
+    }
+    $temporary = Join-Path $referencesDirectory ('.reference-receipt.' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    try {
+        $stream = [IO.File]::Open($temporary, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        try {
+            $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes(($receipt | ConvertTo-Json -Depth 12))
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+        } finally { $stream.Dispose() }
+        $written = Get-Content -LiteralPath $temporary -Raw | ConvertFrom-Json
+        if ($written.profileId -cne $baseline.profileId -or @($written.files).Count -ne 5 -or
+            $written.source.terrariaInstallDirectory -cne (Split-Path -Parent $terrariaSource)) {
+            throw 'Prepared reference receipt did not round-trip.'
+        }
+        Assert-ExplicitSources
+        Assert-ReferenceSet -Baseline $baseline -Directory $referencesDirectory
+        if ([IO.File]::Exists($receiptPath)) { [IO.File]::Replace($temporary, $receiptPath, [NullString]::Value) }
+        else { [IO.File]::Move($temporary, $receiptPath) }
+    } finally {
+        if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
+    }
+}
+
 $baseline = Read-Baseline
 if ($VerifyOnly) {
     Assert-ReferenceSet -Baseline $baseline -Directory $referencesDirectory
-    Write-Output 'PASS: the fixed local Terraria reference set matches the baseline.'
+    Write-Output 'PASS: the five local compile references match the baseline; VerifyOnly does not verify or repair original Content provenance.'
     exit 0
 }
 
@@ -131,6 +203,9 @@ if ([string]::IsNullOrWhiteSpace($TerrariaExePath) -or
 }
 
 $terrariaSource = [System.IO.Path]::GetFullPath($TerrariaExePath)
+if ([IO.Path]::GetFileName($terrariaSource) -cne 'Terraria.exe') {
+    throw 'The explicit original source must be named Terraria.exe for native Content provenance.'
+}
 $xnaGameSource = [System.IO.Path]::GetFullPath($XnaGameAssemblyPath)
 $xnaFrameworkSource = [System.IO.Path]::GetFullPath($XnaFrameworkAssemblyPath)
 $xnaGraphicsSource = [System.IO.Path]::GetFullPath($XnaGraphicsAssemblyPath)
@@ -155,11 +230,13 @@ catch {
 }
 
 if ($existingSetIsValid) {
+    Publish-ReferenceReceipt
     Write-Output 'PASS: the fixed local Terraria reference set is already up to date.'
     exit 0
 }
 
 $externalDirectory = Split-Path -Parent $referencesDirectory
+Assert-OwnedReferencePath $referencesDirectory
 [System.IO.Directory]::CreateDirectory($externalDirectory) | Out-Null
 $stagingDirectory = Join-Path $externalDirectory ('.TerrariaRefs.stage.' + [Guid]::NewGuid().ToString('N'))
 [System.IO.Directory]::CreateDirectory($stagingDirectory) | Out-Null
@@ -176,14 +253,28 @@ try {
         -ResourceName ([string] $reLogicExpected.embeddedResourceName)
     Assert-ReferenceSet -Baseline $baseline -Directory $stagingDirectory
 
-    if ([System.IO.Directory]::Exists($referencesDirectory)) {
-        Remove-Item -LiteralPath $referencesDirectory -Recurse -Force
+    Assert-ExplicitSources
+    Assert-OwnedReferencePath $referencesDirectory
+    [IO.Directory]::CreateDirectory($referencesDirectory) | Out-Null
+    $receiptPath = Join-Path $referencesDirectory '.juemingr-reference-set.json'
+    Assert-OwnedReferencePath $receiptPath
+    # Retire provenance before a partial set can be observed; a failed publish
+    # remains visibly incomplete and a later prepare can safely finish it.
+    if ([IO.File]::Exists($receiptPath)) { [IO.File]::Delete($receiptPath) }
+    foreach ($expected in @($baseline.files)) {
+        $destination = Join-Path $referencesDirectory ([string] $expected.logicalName)
+        Assert-OwnedReferencePath $destination
+        $staged = Join-Path $stagingDirectory ([string] $expected.logicalName)
+        if ([IO.File]::Exists($destination)) { [IO.File]::Replace($staged, $destination, [NullString]::Value) }
+        else { [IO.File]::Move($staged, $destination) }
     }
-    Move-Item -LiteralPath $stagingDirectory -Destination $referencesDirectory
-    $stagingDirectory = $null
+    Publish-ReferenceReceipt
 }
 finally {
     if ($null -ne $stagingDirectory -and [System.IO.Directory]::Exists($stagingDirectory)) {
+        $stagingFull = [IO.Path]::GetFullPath($stagingDirectory)
+        if ((Split-Path -Parent $stagingFull) -cne [IO.Path]::GetFullPath($externalDirectory) -or
+            (Split-Path -Leaf $stagingFull) -notlike '.TerrariaRefs.stage.*') { throw 'Unsafe reference staging cleanup target.' }
         Remove-Item -LiteralPath $stagingDirectory -Recurse -Force
     }
 }

@@ -10,7 +10,7 @@ using Terraria.GameInput;
 
 namespace JueMingR.TerrariaHost.Fishing
 {
-    internal sealed class HostFishing : IRuntimeFeature
+    internal sealed class HostFishing : IRuntimeFeature, IRuntimeFailureCleanup
     {
         internal static readonly string[] Names={"自动钓鱼","自动换装","自动配装","自动存放鱼","切杆跳过","钓鱼过滤"};
         internal static readonly string[] Actions={"fishing.auto-fish.toggle","fishing.auto-loadout.toggle","fishing.auto-equipment.toggle","fishing.auto-store.toggle","fishing.cut-rod.toggle","fishing.filter.toggle"};
@@ -121,6 +121,10 @@ namespace JueMingR.TerrariaHost.Fishing
             Observation.Invalidate();Session.ObserveCreated(p,projectile);
         }
         public void FailClosed(){Available=false;Session.Stop();Equipment.Fail("钓鱼辅助已停止，仍需归还的装备保留实际记录。");Observation.Clear();Display?.Clear();Report("钓鱼辅助已停止，未确认的操作不会重试。");}
+        // Equipment owns exact original/borrowed objects and its save/manual
+        // gates. A common failure keeps that journal until return or a real
+        // session edge; no fishing observation, recast or new swap is admitted.
+        public void UpdateFailureCleanup(ulong tick){Equipment.Update();}
         private void Exit(object sender,EventArgs e){AppDomain.CurrentDomain.ProcessExit-=Exit;Settings.Stop(1000);Rename.Dispose();Display?.Dispose();}
     }
 }

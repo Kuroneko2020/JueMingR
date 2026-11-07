@@ -10,7 +10,7 @@ using Terraria.GameInput;
 
 namespace JueMingR.TerrariaHost.Processing
 {
-    internal sealed class HostProcessing : IRuntimeFeature
+    internal sealed class HostProcessing : IRuntimeFeature, IRuntimeFailureCleanup
     {
         internal static readonly string[] Actions={"processing.bags","processing.extraction","processing.reforge"};
         internal static readonly string[] Names={"持续开袋","自动提炼","自动重铸"};
@@ -101,6 +101,12 @@ namespace JueMingR.TerrariaHost.Processing
         public void OnSessionEnded(){Bags.EndSession();Extraction.Reset(false);Reforge.Reset(false);}
         public void Update(ulong tick){Bags.RestoreUnknown();Items.World.RefreshManualRelease();Extraction.Update();Reforge.Update();if(Value(0))Bags.Update();else Bags.ReleaseIntent();}
         public void FailClosed(){Available=false;Bags.ReleaseIntent();Extraction.Cancel();Report("连续加工已停止；结果未确认的操作不会重试。");}
+        public void UpdateFailureCleanup(ulong tick)
+        {
+            // These paths only retain unknown-source protection and return an
+            // already selected extraction lease. Bag/reforge planners stay off.
+            Bags.RestoreUnknown();Items.World.RefreshManualRelease();Extraction.Update();
+        }
         internal void Report(string message){if(Error==message)return;Error=message;feedback=true;}
         internal void TakeFeedback(Action<string> display){foreach(var s in Settings)s.TakeFeedback(display);if(feedback){feedback=false;display(Error);}}
         internal void Exit(object sender,EventArgs e){AppDomain.CurrentDomain.ProcessExit-=Exit;foreach(var s in Settings)s.Stop(750);}

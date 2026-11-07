@@ -17,10 +17,16 @@ namespace NativeWorldTextProbe
         private static int faults;
         private static void Fault(){faults++;throw new InvalidOperationException("Controlled optional display fault.");}
         private static bool SkipAchievement(){return false;}
+        private static void RetryState(object host,object world,object marker,string phase)
+        {
+            var settings=(ObservationSettings)Get(host,"Settings");
+            Console.WriteLine("DISPLAY RETRY phase="+phase+" optionsPath="+settings.Value.Path+" optionsMarker="+settings.Value.Marker+" loaded="+settings.Loaded+" busy="+settings.Busy+" ready="+settings.Ready+" canRun="+settings.CanRun+" accepted="+settings.AcceptedCommandId+" completed="+settings.CompletedCommandId+" succeeded="+settings.CompletionSucceeded+" pathAccess="+Get(host,"PathAccess")+" path="+Get(host,"Path")+" worldFailed="+Get(world,"Failed")+" markerFailed="+Get(marker,"Failed")+" selectionFailed="+Get(host,"selectionFailed")+" layer="+Get(host,"LayerStatus")+" canConfigure="+Get(host,"CanConfigure"));
+        }
         internal static void Run(object context)
         {
             var host=Get(context,"CombatObservation");var world=Get(host,"World");var marker=Get(world,"Marker");
             var cache=(NpcPredictionCache)Get(Get(host,"Prediction"),"Cache");var input=Get(context,"Input");
+            if(!(bool)Get(host,"PathAccess"))NativeHiddenEntryChecks.RevealForComposition(context);
             foreach(var n in Main.npc)n.active=false;
             var target=Main.npc[2];target.SetDefaults(2);target.whoAmI=2;target.active=true;target.target=0;target.position=new Vector2(800,650);
             NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,marker:true));NativeCombatObservationChecks.Fresh(context,host);
@@ -34,6 +40,12 @@ namespace NativeWorldTextProbe
                 Require((bool)Get(Get(context,"Tools"),"Available") && (bool)Get(Get(context,"QuickItems"),"Available"),"Optional display failure leaves actual adjacent operation owners available.");
                 // 0 is the display and 1 belongs to aim, including its OFF release.
                 cache.Demand(2,1,120);NativeCombatObservationChecks.Fresh(context,host);
+                // This fixture-owned reader has no registered scheduler.
+                // Demand retains its lease; its owner prepares Source just as
+                // the independent readers in NativeCombatObservationChecks do.
+                var independentSelection=Get(host,"Selection");var identity=(JueMingR.Platform.Combat.NpcIdentity)Get(independentSelection,"Target");
+                Require((bool)Get(independentSelection,"HasTarget") && ReferenceEquals(identity.Token,target),"Independent reader enters through the actual selected target after display failure.");
+                Call(Get(host,"Prediction"),"Prepare",identity,(long)Main.GameUpdateCount);
                 Require(cache.Read(2)!=null && cache.Read(0)==null,"Healthy independent prediction consumer keeps shared Source despite failed display.");
             }
             finally{harmony.Unpatch(prepare,HarmonyPatchType.All,harmony.Id);}
@@ -53,7 +65,17 @@ namespace NativeWorldTextProbe
             for(int i=0;i<3;i++){NativeCombatObservationChecks.Fresh(context,host);Call(context,"UpdateShell");}
             Require((bool)Get(marker,"Failed") && !(bool)Get(host,"Marker") && !(bool)Get(selection,"HasTarget"),"Failed-only marker has no selection demand and clear-frame cannot unlock it.");
             if(candidatesProperty!=null)Require((int)candidatesProperty.GetValue(selection,null)==candidates,"DEBUG failed-only marker performs no candidate search.");
-            Call(host,"Set",5,true);NativeCombatObservationChecks.Fresh(context,host);Require((bool)Get(host,"Marker"),"Existing explicit marker retry remains reachable.");
+            Call(host,"Set",5,true);NativeCombatObservationChecks.Fresh(context,host);
+            Require(!(bool)Get(marker,"Failed") && !(bool)Get(host,"Marker"),"Explicit marker retry clears its own failure while absent parent demand still keeps it inactive.");
+            // Set submits the real preference command; Fresh drives native
+            // observation but never Polls settings. Wait for this exact owner
+            // receipt before claiming that the new parent demand is active.
+            var retrySettings=(ObservationSettings)Get(host,"Settings");RetryState(host,world,marker,"before-parent");long priorCommand=retrySettings.AcceptedCommandId;
+            Call(host,"Set",1,true);long acceptedCommand=retrySettings.AcceptedCommandId;
+            Require(acceptedCommand>priorCommand,"Parent retry is accepted by the real settings owner as a new command.");
+            NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !retrySettings.Busy && retrySettings.CompletedCommandId==acceptedCommand;});
+            Require(retrySettings.CompletionSucceeded && retrySettings.CompletedCommandId==acceptedCommand && retrySettings.Ready && retrySettings.Value.Path && retrySettings.Value.Marker,"This exact parent retry commits successfully while preserving the marker preference.");
+            NativeCombatObservationChecks.Fresh(context,host);RetryState(host,world,marker,"after-parent-receipt");Require((bool)Get(host,"Marker"),"Existing explicit marker retry remains reachable.");
             var guidance=Get(context,"Guidance");var guidanceWorld=Get(guidance,"World");
             Call(guidance,"SetEnabled",GuidanceKind.Rare,true);
             var guidancePrepare=guidanceWorld.GetType().GetMethod("PrepareCore",Flags);harmony.Patch(guidancePrepare,prefix:new HarmonyMethod(typeof(NativeDisplayResponsibilityChecks).GetMethod(nameof(Fault),Flags)));

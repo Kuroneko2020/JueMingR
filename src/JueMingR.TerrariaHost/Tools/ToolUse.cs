@@ -511,6 +511,17 @@ namespace JueMingR.TerrariaHost.Tools
             if(returnRequested && SourceIdentity() && player.selectedItem!=original && player.selectedItemState.HasBufferedChange)return;
             if(checkedItem && (cancelled || Intent.Refresh==null && Intent.Readiness==null) && player.selectedItemState.CanChangeSelectedItemImmediately)Retire();
         }
+        internal void UpdateFailureCleanup()
+        {
+            if(!Active)return;
+            Cancel();
+            // A failure may precede the first ItemCheck. That is still a real
+            // selection loan, but it must not wait forever for a check that is
+            // no longer admitted. Vanilla consumes the queued return first;
+            // its in-flight ItemCheck/finalizer remains the exclusive receipt.
+            if(!InNativeUse && !player.selectedItemState.HasActiveOverride &&
+                !player.selectedItemState.HasBufferedChange && player.selectedItemState.CanChangeSelectedItemImmediately)Retire();
+        }
         private void Notify(bool unknown){if(notified)return;notified=true;Intent?.Completed?.Invoke(started,unknown);}
         internal void Cancel()
         {

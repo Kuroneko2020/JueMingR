@@ -65,100 +65,100 @@ namespace NativeWorldTextProbe
                     foreach(var method in new[]{typeof(WorldGen).GetMethod("saveToonWhilePlaying",Flags),typeof(Player).GetMethod("SavePlayer",Flags),typeof(NetMessage).GetMethod("SendData",Flags)})Patch(sink,method,nameof(Refuse));
                     Set(host,"LayerStatus",Enum.Parse(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Rendering.WorldLayerStatus"),"Ready"));
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_PHASED_FLIGHT")=="1")
-                    {phase="phased-flight";NativeCombatPhasedFlightChecks.Catalogue(context,output);NativeCombatPhasedFlightChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("phased-flight");NativeCombatPhasedFlightChecks.Catalogue(context,output);NativeCombatPhasedFlightChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_AMBIENT_FLIGHT")=="1")
-                    {phase="ambient-flight";NativeCombatAmbientFlightChecks.Boundaries();NativeCombatAmbientFlightChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("ambient-flight");NativeCombatAmbientFlightChecks.Boundaries();NativeCombatAmbientFlightChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_RELATED_FLIGHT")=="1")
-                    {phase="related-flight";NativeCombatFreeFlightBoundsChecks.Run(context);NativeCombatRelatedChecks.Boundaries();NativeCombatRelatedChecks.Lifecycle(context);NativeCombatRelatedChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("related-flight");NativeCombatFreeFlightBoundsChecks.Run(context);NativeCombatRelatedChecks.Boundaries();NativeCombatRelatedChecks.Lifecycle(context);NativeCombatRelatedChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_BIG_MIMIC")=="1")
-                    {phase="big-mimic";NativeCombatBigMimicChecks.Boundaries();NativeCombatBigMimicChecks.Lifecycle(context);NativeCombatBigMimicChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("big-mimic");NativeCombatBigMimicChecks.Boundaries();NativeCombatBigMimicChecks.Lifecycle(context);NativeCombatBigMimicChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_AQUATIC_ACTIONS")=="1")
-                    {phase="aquatic-actions";NativeCombatAquaticActionChecks.Boundaries();NativeCombatAquaticActionChecks.Lifecycle(context);NativeCombatAquaticActionChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("aquatic-actions");NativeCombatAquaticActionChecks.Boundaries();NativeCombatAquaticActionChecks.Lifecycle(context);NativeCombatAquaticActionChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_PLANTERA_FLIGHT")=="1")
-                    {phase="plantera-flight";NativeCombatPlanteraChecks.Boundaries();NativeCombatPlanteraChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("plantera-flight");NativeCombatPlanteraChecks.Boundaries();NativeCombatPlanteraChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_INVASION_FLIGHT")=="1")
-                    {phase="invasion-flight";NativeCombatInvasionFlightChecks.Boundaries();NativeCombatInvasionFlightChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output,graphics);return;}
+                    {phase=NativeScopeDispatch.Enter("invasion-flight");NativeCombatInvasionFlightChecks.Boundaries();NativeCombatInvasionFlightChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output,graphics);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_INVASION_GROUND")=="1")
-                    {phase="invasion-ground";NativeCombatInvasionGroundChecks.Boundaries();NativeCombatInvasionGroundChecks.Lifecycle(context);NativeCombatInvasionGroundChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("invasion-ground");NativeCombatInvasionGroundChecks.Boundaries();NativeCombatInvasionGroundChecks.Lifecycle(context);NativeCombatInvasionGroundChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_EYE_BOSS")=="1")
-                    {phase="eye-boss";NativeCombatEyeBossChecks.Boundaries();NativeCombatEyeBossChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("eye-boss");NativeCombatEyeBossChecks.Boundaries();NativeCombatEyeBossChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_SNOWMAN")=="1")
-                    {phase="snowman";NativeCombatSnowmanChecks.Boundaries();NativeCombatSnowmanChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("snowman");NativeCombatSnowmanChecks.Boundaries();NativeCombatSnowmanChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_SANTA_TANK")=="1")
-                    {phase="santa-tank";NativeCombatSantaTankChecks.Boundaries();NativeCombatSantaTankChecks.Lifecycle(context);NativeCombatSantaTankChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("santa-tank");NativeCombatSantaTankChecks.Boundaries();NativeCombatSantaTankChecks.Lifecycle(context);NativeCombatSantaTankChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_KING_SLIME")=="1")
-                    {phase="king-slime";NativeCombatKingSlimeChecks.Boundaries();NativeCombatKingSlimeChecks.Lifecycle(context);NativeCombatKingSlimeChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("king-slime");NativeCombatKingSlimeChecks.Boundaries();NativeCombatKingSlimeChecks.Lifecycle(context);NativeCombatKingSlimeChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_SKELETON_BOSS")=="1")
-                    {phase="skeleton-boss";NativeCombatSkeletonBossChecks.Boundaries();NativeCombatSkeletonBossChecks.Lifecycle(context);NativeCombatSkeletonBossChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("skeleton-boss");NativeCombatSkeletonBossChecks.Boundaries();NativeCombatSkeletonBossChecks.Lifecycle(context);NativeCombatSkeletonBossChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_BETSY")=="1")
-                    {phase="betsy";NativeCombatBetsyChecks.Boundaries();NativeCombatBetsyChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output,graphics);return;}
+                    {phase=NativeScopeDispatch.Enter("betsy");NativeCombatBetsyChecks.Boundaries();NativeCombatBetsyChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output,graphics);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_TOWN_CRITTER")=="1")
-                    {phase="town-critter";NativeCombatTownCritterChecks.Boundaries();NativeCombatTownCritterChecks.Lifecycle(context);NativeCombatTownCritterChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("town-critter");NativeCombatTownCritterChecks.Boundaries();NativeCombatTownCritterChecks.Lifecycle(context);NativeCombatTownCritterChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_INVASION_LIGHTNING")=="1")
-                    {phase="invasion-lightning";NativeCombatInvasionLightningChecks.Boundaries();NativeCombatInvasionLightningChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("invasion-lightning");NativeCombatInvasionLightningChecks.Boundaries();NativeCombatInvasionLightningChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_DIVE_FLIGHT")=="1")
-                    {phase="dive-flight";NativeCombatDiveFlightChecks.Boundaries();NativeCombatDiveFlightChecks.Lifecycle(context);NativeCombatDiveFlightChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("dive-flight");NativeCombatDiveFlightChecks.Boundaries();NativeCombatDiveFlightChecks.Lifecycle(context);NativeCombatDiveFlightChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_ATTACHED_WEAPON")=="1")
-                    {phase="attached-weapon";NativeCombatAttachedWeaponChecks.Boundaries();NativeCombatAttachedWeaponChecks.Lifecycle(context);NativeCombatAttachedWeaponChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("attached-weapon");NativeCombatAttachedWeaponChecks.Boundaries();NativeCombatAttachedWeaponChecks.Lifecycle(context);NativeCombatAttachedWeaponChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_DARK_MAGE")=="1")
-                    {phase="dark-mage";NativeCombatDarkMageChecks.Boundaries();NativeCombatDarkMageChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output,graphics);return;}
+                    {phase=NativeScopeDispatch.Enter("dark-mage");NativeCombatDarkMageChecks.Boundaries();NativeCombatDarkMageChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output,graphics);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_BLOOD_NAUTILUS")=="1")
-                    {phase="blood-nautilus";NativeCombatBloodNautilusChecks.Boundaries();NativeCombatBloodNautilusChecks.Lifecycle(context);NativeCombatBloodNautilusChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("blood-nautilus");NativeCombatBloodNautilusChecks.Boundaries();NativeCombatBloodNautilusChecks.Lifecycle(context);NativeCombatBloodNautilusChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_GOLEM")=="1")
-                    {phase="golem";NativeCombatGolemChecks.Boundaries();NativeCombatGolemChecks.Lifecycle(context);NativeCombatGolemChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("golem");NativeCombatGolemChecks.Boundaries();NativeCombatGolemChecks.Lifecycle(context);NativeCombatGolemChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_QUEEN_BEE")=="1")
-                    {phase="queen-bee";NativeCombatQueenBeeChecks.Boundaries();NativeCombatQueenBeeChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("queen-bee");NativeCombatQueenBeeChecks.Boundaries();NativeCombatQueenBeeChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_BRAIN_SWARM")=="1")
-                    {phase="brain-swarm";NativeCombatBrainSwarmChecks.Boundaries();NativeCombatBrainSwarmChecks.Lifecycle(context);NativeCombatBrainSwarmChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("brain-swarm");NativeCombatBrainSwarmChecks.Boundaries();NativeCombatBrainSwarmChecks.Lifecycle(context);NativeCombatBrainSwarmChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(Environment.GetEnvironmentVariable("JUEMINGR_WALL_BOSS")=="1")
-                    {phase="wall-boss";NativeCombatWallBossChecks.Boundaries();NativeCombatWallBossChecks.Lifecycle(context);NativeCombatWallBossChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("wall-boss");NativeCombatWallBossChecks.Boundaries();NativeCombatWallBossChecks.Lifecycle(context);NativeCombatWallBossChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_TREE_BOSS")=="1")
-                    {phase="tree-boss";NativeCombatTreeBossChecks.Boundaries();NativeCombatTreeBossChecks.Lifecycle(context);NativeCombatTreeBossChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("tree-boss");NativeCombatTreeBossChecks.Boundaries();NativeCombatTreeBossChecks.Lifecycle(context);NativeCombatTreeBossChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_CELESTIAL_TOWER")=="1")
-                    {phase="celestial-tower";NativeCombatCelestialTowerChecks.Boundaries();NativeCombatCelestialTowerChecks.Lifecycle(context);NativeCombatCelestialTowerChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("celestial-tower");NativeCombatCelestialTowerChecks.Boundaries();NativeCombatCelestialTowerChecks.Lifecycle(context);NativeCombatCelestialTowerChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_PUMPKING")=="1")
-                    {phase="pumpking";NativeCombatPumpkingChecks.Boundaries();NativeCombatPumpkingChecks.Lifecycle(context);NativeCombatPumpkingChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("pumpking");NativeCombatPumpkingChecks.Boundaries();NativeCombatPumpkingChecks.Lifecycle(context);NativeCombatPumpkingChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(Environment.GetEnvironmentVariable("JUEMINGR_ICE_QUEEN")=="1")
-                    {phase="ice-queen";NativeCombatIceQueenChecks.Boundaries();NativeCombatIceQueenChecks.Lifecycle(context);NativeCombatIceQueenChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("ice-queen");NativeCombatIceQueenChecks.Boundaries();NativeCombatIceQueenChecks.Lifecycle(context);NativeCombatIceQueenChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_CULTIST_BOSS")=="1")
-                    {phase="cultist-boss";if(Environment.GetEnvironmentVariable("JUEMINGR_CULTIST_DOOM_OWNER")=="1"){NativeCombatCultistDoomOwnerChecks.Run(context,()=>Step(context,samples,prepares,false),output);return;}NativeCombatCultistBossChecks.Boundaries();NativeCombatCultistBossChecks.Lifecycle(context);NativeCombatCultistBossChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("cultist-boss");if(Environment.GetEnvironmentVariable("JUEMINGR_CULTIST_DOOM_OWNER")=="1"){NativeCombatCultistDoomOwnerChecks.Run(context,()=>Step(context,samples,prepares,false),output);return;}NativeCombatCultistBossChecks.Boundaries();NativeCombatCultistBossChecks.Lifecycle(context);NativeCombatCultistBossChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_CULTIST_RITUAL")=="1")
-                    {phase="cultist-ritual";NativeCombatCultistRitualChecks.Boundaries();NativeCombatCultistRitualChecks.Lifecycle(context);NativeCombatCultistRitualChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("cultist-ritual");NativeCombatCultistRitualChecks.Boundaries();NativeCombatCultistRitualChecks.Lifecycle(context);NativeCombatCultistRitualChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_FISHRON")=="1")
-                    {phase="fishron";NativeCombatFishronChecks.Lifecycle(context);NativeCombatFishronChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("fishron");NativeCombatFishronChecks.Lifecycle(context);NativeCombatFishronChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_EMPRESS")=="1")
-                    {phase="empress";NativeCombatEmpressChecks.Boundaries(context);NativeCombatEmpressChecks.Lifecycle(context);NativeCombatEmpressChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("empress");NativeCombatEmpressChecks.Boundaries(context);NativeCombatEmpressChecks.Lifecycle(context);NativeCombatEmpressChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_DEERCLOPS")=="1")
-                    {phase="deerclops";NativeCombatDeerclopsChecks.Boundaries(context);NativeCombatDeerclopsChecks.Lifecycle(context);NativeCombatDeerclopsChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("deerclops");NativeCombatDeerclopsChecks.Boundaries(context);NativeCombatDeerclopsChecks.Lifecycle(context);NativeCombatDeerclopsChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_BIRD")=="1")
-                    {phase="bird";if(Environment.GetEnvironmentVariable("JUEMINGR_BIRD_TOWN_CENSUS")=="1"){NativeCombatBirdTownChecks.Run(context,()=>Step(context,samples,prepares,false),output);return;}NativeCombatBirdChecks.Boundaries();NativeCombatBirdChecks.Lifecycle(context);NativeCombatBirdChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("bird");if(Environment.GetEnvironmentVariable("JUEMINGR_BIRD_TOWN_CENSUS")=="1"){NativeCombatBirdTownChecks.Run(context,()=>Step(context,samples,prepares,false),output);return;}NativeCombatBirdChecks.Boundaries();NativeCombatBirdChecks.Lifecycle(context);NativeCombatBirdChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_CASTER")=="1")
-                    {phase="caster";NativeCombatCasterChecks.Boundaries();NativeCombatCasterChecks.Lifecycle(context);NativeCombatCasterChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("caster");NativeCombatCasterChecks.Boundaries();NativeCombatCasterChecks.Lifecycle(context);NativeCombatCasterChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_MARTIAN_TURRET")=="1")
-                    {phase="martian-turret";NativeCombatMartianTurretChecks.Boundaries();NativeCombatMartianTurretChecks.Lifecycle(context);NativeCombatMartianTurretChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("martian-turret");NativeCombatMartianTurretChecks.Boundaries();NativeCombatMartianTurretChecks.Lifecycle(context);NativeCombatMartianTurretChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_SEGMENTED_WORM")=="1")
-                    {phase="segmented-worm";NativeCombatSegmentedWormChecks.Boundaries();NativeCombatSegmentedWormChecks.Lifecycle(context);NativeCombatSegmentedWormChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("segmented-worm");NativeCombatSegmentedWormChecks.Boundaries();NativeCombatSegmentedWormChecks.Lifecycle(context);NativeCombatSegmentedWormChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_SOLAR_WORM")=="1")
-                    {phase="solar-worm";NativeCombatSolarWormChecks.Boundaries();NativeCombatSolarWormChecks.Lifecycle(context);NativeCombatSolarWormChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("solar-worm");NativeCombatSolarWormChecks.Boundaries();NativeCombatSolarWormChecks.Lifecycle(context);NativeCombatSolarWormChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_SOLITARY_WORM")=="1")
-                    {phase="solitary-worm";NativeCombatSolitaryWormChecks.Boundaries();NativeCombatSolitaryWormChecks.Lifecycle(context);NativeCombatSolitaryWormChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("solitary-worm");NativeCombatSolitaryWormChecks.Boundaries();NativeCombatSolitaryWormChecks.Lifecycle(context);NativeCombatSolitaryWormChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_WINDY_BALLOON")=="1")
-                    {phase="windy-balloon";NativeCombatWindyBalloonChecks.Boundaries();NativeCombatWindyBalloonChecks.Lifecycle(context);NativeCombatWindyBalloonChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("windy-balloon");NativeCombatWindyBalloonChecks.Boundaries();NativeCombatWindyBalloonChecks.Lifecycle(context);NativeCombatWindyBalloonChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_QUEEN_SLIME")=="1")
-                    {phase="queen-slime";NativeCombatQueenSlimeChecks.Boundaries(context);NativeCombatQueenSlimeChecks.Lifecycle(context);NativeCombatQueenSlimeChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("queen-slime");NativeCombatQueenSlimeChecks.Boundaries(context);NativeCombatQueenSlimeChecks.Lifecycle(context);NativeCombatQueenSlimeChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_MOON_LEECH")=="1")
-                    {phase="moon-leech";NativeCombatMoonLeechChecks.Boundaries(context);NativeCombatMoonLeechChecks.Lifecycle(context);NativeCombatMoonLeechChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output,graphics);return;}
+                    {phase=NativeScopeDispatch.Enter("moon-leech");NativeCombatMoonLeechChecks.Boundaries(context);NativeCombatMoonLeechChecks.Lifecycle(context);NativeCombatMoonLeechChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output,graphics);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_MOON_LORD")=="1")
-                    {phase="moon-lord";NativeCombatMoonLordChecks.Boundaries();NativeCombatMoonLordChecks.Lifecycle(context);NativeCombatMoonLordChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("moon-lord");NativeCombatMoonLordChecks.Boundaries();NativeCombatMoonLordChecks.Lifecycle(context);NativeCombatMoonLordChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_TERRAIN_FLIGHT")=="1")
-                    {phase="terrain-flight";NativeCombatTerrainFlightChecks.Boundaries();NativeCombatTerrainFlightChecks.Lifecycle(context);NativeCombatTerrainFlightChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("terrain-flight");NativeCombatTerrainFlightChecks.Boundaries();NativeCombatTerrainFlightChecks.Lifecycle(context);NativeCombatTerrainFlightChecks.Continuous(context,cache,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_UMBRELLA")=="1")
-                    {phase="umbrella";NativeCombatTerrainFlightChecks.Umbrella(context,()=>Step(context,samples,prepares,false),output);return;}
+                    {phase=NativeScopeDispatch.Enter("umbrella");NativeCombatTerrainFlightChecks.Umbrella(context,()=>Step(context,samples,prepares,false),output);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_BASIC_MOTION")=="1")
-                    {phase="basic-motion";NativeCombatBasicMotionChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output,samples,prepares);return;}
+                    {phase=NativeScopeDispatch.Enter("basic-motion");NativeCombatBasicMotionChecks.Run(context,cache,()=>Step(context,samples,prepares,false),output,samples,prepares);return;}
                     if(rolling && Environment.GetEnvironmentVariable("JUEMINGR_FOUNDATION_CONTINUOUS")=="1")
                     {
-                        phase="foundation-continuous";sourcePrepare.Clear();
+                        phase=NativeScopeDispatch.Enter("foundation-continuous");sourcePrepare.Clear();
                         // Test-only low-burden timing surrounds the entire real
                         // Source entry. No sampling/relations/model work moves
                         // outside the measured boundary; normal diagnostics stay off.
@@ -168,7 +168,7 @@ namespace NativeWorldTextProbe
                         return;
                     }
                     if(rolling || Environment.GetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT")=="rolling-baseline")
-                    {NativeCombatRollingBaselineChecks.Run(context,cache,()=>{phase=NativeCombatRollingBaselineChecks.Phase;Step(context,samples,prepares,false);},output,graphics);return;}
+                    {NativeScopeDispatch.Enter("rolling-baseline");NativeCombatRollingBaselineChecks.Run(context,cache,()=>{phase=NativeCombatRollingBaselineChecks.Phase;Step(context,samples,prepares,false);},output,graphics);return;}
                     if(continuousSeconds>0){Scene(2);Window(context,cache,samples,prepares,"baseline-off",continuousSeconds,false);Main.npc[0].active=false;}
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));
                     if(Environment.GetEnvironmentVariable("JUEMINGR_AIM_LIGHT_PAIR")!=null)

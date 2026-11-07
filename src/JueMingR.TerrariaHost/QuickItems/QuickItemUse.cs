@@ -91,7 +91,7 @@ namespace JueMingR.TerrariaHost.QuickItems
             borrowedMouse=false;
             if(!ReferenceEquals(current,player) || !selected || current.selectedItem!=choice.Slot)return false;
             InNativeUse=true;
-            if(pulsed && !checkedItem && !Main.mouseLeft) {borrowedMouse=ownsMouse=true;Main.mouseLeft=true;}
+            if(!cancelled && pulsed && !checkedItem && !Main.mouseLeft) {borrowedMouse=ownsMouse=true;Main.mouseLeft=true;}
             return true;
         }
         internal void Started(Player current) {if(ReferenceEquals(current,player) && InNativeUse)started=true;}
@@ -120,13 +120,29 @@ namespace JueMingR.TerrariaHost.QuickItems
         // lose a fresh B edge after A has actually finished on the prior frame.
         internal void RetireCompleted()
         {if(Active && selected && checkedItem && player.selectedItemState.CanChangeSelectedItemImmediately)Retire();}
-        internal void Cancel() {cancelled=true;ReturnSelection();if(!selected)Retire();}
+        internal void UpdateFailureCleanup()
+        {
+            if(!Active)return;
+            Cancel();
+            // Cancellation before the first ItemCheck has no future use to
+            // await. Retain only until vanilla consumes the selection buffer,
+            // never detach a still-entered native finalizer or create a pulse.
+            if(Active && !InNativeUse && !player.selectedItemState.HasActiveOverride &&
+                !player.selectedItemState.HasBufferedChange && player.selectedItemState.CanChangeSelectedItemImmediately)Retire();
+        }
+        internal void Cancel() {cancelled=true;ReturnSelection();ReleasePulse();if(!selected)Retire();}
         internal void Retire()
         {
             if(player==null)return;
             ReleaseMouse();
             ReturnSelection();
-            if(pulsed && admittedFrame==host.Input.Frame)
+            ReleasePulse();
+            host.Items.Ownership.EndUse(session,token);
+            player=null;provider=null;entry=null;InNativeUse=false;token=0;
+        }
+        private void ReleasePulse()
+        {
+            if(player!=null && pulsed && admittedFrame==host.Input.Frame)
             {
                 // A boundary can follow ItemCheck in the very same input
                 // frame. Completion of ItemCheck does not release controlUseItem;
@@ -134,8 +150,6 @@ namespace JueMingR.TerrariaHost.QuickItems
                 player.controlUseItem=PlayerInput.Triggers.Current.MouseLeft;
                 player.releaseUseItem=!player.controlUseItem;
             }
-            host.Items.Ownership.EndUse(session,token);
-            player=null;provider=null;entry=null;InNativeUse=false;token=0;
         }
         private void ReleaseMouse() {if(ownsMouse){if(Main.mouseLeft)Main.mouseLeft=false;ownsMouse=false;}}
     }

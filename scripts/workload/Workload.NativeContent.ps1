@@ -1,12 +1,13 @@
 # These ordinary mixed scopes really construct ProbeGraphics. Keep resource
 # admission in this separately bound owner, not in a pure plan projection.
 function Get-WorkloadNativeContentScopes {
-    return @('BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss')
+    return @('BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
 }
 function Get-WorkloadNativeContentFiles {
     param([string]$Scope)
     if($Scope -cnotin @(Get-WorkloadNativeContentScopes)){return @()}
     $files=@('Fonts/Mouse_Text.xnb','Fonts/Item_Stack.xnb','Fonts/Combat_Text.xnb','Fonts/Combat_Crit.xnb','Images/Item_8.xnb','Images/Inventory_Back.xnb','Images/MagicPixel.xnb')
+    if($Scope -ceq 'NpcReviewedParticle'){$files+=@('Images/Projectile_228.xnb','Images/NPC_48.xnb')}
     if($Scope -ceq 'BlueprintInput'){
         # Host70 selects the first seventy distinct consumable wall identities
         # from the fixed .8 native catalog. Bind the actual icon bytes loaded by

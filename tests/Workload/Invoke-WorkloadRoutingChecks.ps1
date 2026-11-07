@@ -18,6 +18,12 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+$dispatchPath='tests/NativeWorldTextProbe/NativeScopeDispatch.cs'
+$dispatchRoute=Get-WorkloadRoute @($dispatchPath)
+Assert-Route ($dispatchRoute.unknown.Count -eq 0 -and $dispatchRoute.groups -contains 'combat-host' -and $dispatchRoute.groups -contains 'legacy-worker') 'actual native entry boundary routes its production and worker consumers'
+foreach($consumer in @('native-NpcCaster','native-NpcWorkerFields','native-JourneyCpu','native-BrowserCpu')){
+    Assert-Route ((Get-WorkloadCheckFingerprint ([pscustomobject]@{inputs=@($dispatchPath+':A')}) $consumer) -cne (Get-WorkloadCheckFingerprint ([pscustomobject]@{inputs=@($dispatchPath+':B')}) $consumer)) ('shared native dispatcher invalidates actual consumer '+$consumer)
+}
 $twoFileTools=@('scripts/build-setup-from-existing-pair.ps1','scripts/phase0s/Read-TwoFilePackageMetadata.ps1')
 $deploymentGroups=@('core','package-tools','workload-tools')
 foreach($path in (@('src/JueMingR.Bootstrap/BundlePayload.cs','src/JueMingR.Setup/InstallService.cs','scripts/TwoFileBundle.Support.ps1','tests/TwoFileDistribution/SetupChecks.ps1','tests/TwoFileColdStart/Program.cs','tests/Phase0S/Invoke-TwoFileColdStartChecks.ps1')+$twoFileTools)){
@@ -54,7 +60,12 @@ Assert-Route ($previewPlan -contains 'native-WorldGenPreviewCpu' -and $previewPl
 # by actual Effects/Aim/Control/Mechanics and visual callers. A private-test
 # edit still changes this shared file under the current whole-file proof.
 $selectionPath='tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs'
-$selectionConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')
+# NativeChecks sends each named family through the actual Effects.Run owner;
+# its whole-file shared fixture proof also binds these finite consumers. The
+# three narrow bodies retain the same aim/control fixture through Initialize.
+# Keep this independent list in step with the actual C# entry/Run contracts.
+$reviewedSharedConsumers=@('native-CombatEffectsNailCpu','native-CombatEffectsPiranhaCpu','native-CombatEffectsPhoenixCpu','native-CombatEffectsSpecialArrowCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsPhantasmEchoCpu','native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsHomingEffectCpu','native-CombatEffectsJoustingLanceCpu','native-CombatEffectsWhipStarCpu','native-CombatEffectsThornCpu','native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')
+$selectionConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')+$reviewedSharedConsumers
 Assert-Route (((Get-WorkloadPathChecks $selectionPath|Sort-Object)-join '|') -ceq (($selectionConsumers|Sort-Object)-join '|')) 'selection shared Step binds its complete actual consumer union'
 $selectionRoute=Get-WorkloadRoute @($selectionPath)
 $selectionPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $selectionRoute.groups|ForEach-Object {$_.name})
@@ -67,7 +78,7 @@ foreach($consumer in $selectionConsumers){
 }
 Assert-Route ((Get-WorkloadCheckFingerprint $before 'native-NpcEyeBoss') -ceq (Get-WorkloadCheckFingerprint $after 'native-NpcEyeBoss')) 'shared Step edit does not invalidate unrelated NPC motion proof'
 Assert-Route ($selectionPlan -notcontains 'native-NpcEyeBoss' -and $selectionPlan -notcontains 'native-CombatNavigationCpu') 'shared Step has no unrelated NPC or navigation consumer'
-$attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
+$attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')+$reviewedSharedConsumers
 foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){
     $consumers=@(Get-WorkloadPathChecks $path)
     Assert-Route ((($consumers|Sort-Object)-join '|') -ceq (($attackConsumers|Sort-Object)-join '|')) ('three attack owners bind all direct consumers '+$path)

@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.QuickItems
 {
     // Owns saved entries and publication, not keyboard sampling or native item
     // lifecycle. At most one intent lives between shared dispatch and admission.
-    internal sealed class HostQuickItems : IRuntimeFeature
+    internal sealed class HostQuickItems : IRuntimeFeature, IRuntimeFailureCleanup
     {
         internal const string FavoriteAction = "items.keep-favorited.toggle", ToggleAction = "items.quick-items.toggle";
         internal readonly QuickItemSettings Settings;
@@ -227,6 +227,7 @@ namespace JueMingR.TerrariaHost.QuickItems
         private void ClearUseFeedback(){useErrors.Clear();useFeedback=false;requestMessage=requestFeedback=null;}
         public void Update(ulong tick) { if(Player==null) Use.Retire(); }
         public void FailClosed() { Available=false; requested=null; Use.Cancel(); Message="快捷物品已停止；正在归还原版选择。"; }
+        public void UpdateFailureCleanup(ulong tick) { Use.UpdateFailureCleanup(); }
         private void Exit(object sender,EventArgs args) { AppDomain.CurrentDomain.ProcessExit-=Exit; Settings.Stop(750); }
     }
 }

@@ -784,6 +784,14 @@ namespace JueMingR.TerrariaHost.Movement
         }
         internal void ClearSession()
         { ClearState(); }
+        internal void WithdrawPermission()
+        {
+            permitted = targetActive = false;
+            if (player != null) ReturnInputs(player);
+            // Do not ClearState/EndSession here: those retire the exact borrowed
+            // objects. A failure withdraws new rescue input while native landing,
+            // save/manual gates and the existing return owner finish the loan.
+        }
         private void ClearState()
         {
             if (player != null) ReturnInputs(player);
