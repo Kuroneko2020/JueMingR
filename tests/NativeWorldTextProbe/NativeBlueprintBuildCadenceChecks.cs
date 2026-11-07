@@ -336,6 +336,12 @@ namespace NativeWorldTextProbe
             int start = height == 4 ? 1019 : 1018;
             var p = SubstitutionReset(context, host, tools, input); SubstitutionCatalog(context, host, input);
             long directoryBuilds=(long)Get(host,"BuildFocusDirectoryBuilds"),directoryConstruction=(long)Get(host,"BuildFocusDirectoryConstructionSteps");
+            object instance=null;BlueprintProjectionQualificationReceipt qualification=null;
+            BlueprintProjectionGeometryDirectory directory=null;
+            var worker=automatic?Get(Get(host,"Library"),"worker"):null;
+            long workerBuilds=automatic?(long)Get(worker,"projectionGeometryDirectoryBuilds"):0,
+                workerNodes=automatic?(long)Get(worker,"projectionGeometryDirectoryNodes"):0,
+                workerYields=automatic?(long)Get(worker,"projectionGeometryDirectoryYields"):0;
             Call(host, "SetMaterialViewDemand", false); Call(host, "SetSameTypeReplacement", substitution);
             for (int x = ox + start - 4; x <= ox + width + 2; x++) for (int y = oy - 4; y <= oy + height + 5; y++) Main.tile[x, y].ClearEverything();
             for (int x = ox + start - 4; x <= ox + width + 2; x++) Require(WorldGen.PlaceTile(x, oy + 6, TileID.WoodBlock, true, true), "long cadence independent native player floor");
@@ -351,11 +357,17 @@ namespace NativeWorldTextProbe
             {
                 var chunks = Enumerable.Range(0, height).Select(y => Enumerable.Range(0, width).Select(x => new CaptureCell { X = x, Y = y, Layers = CaptureLayer.Tile,
                     TileType = x >= start ? (ushort)TileID.Stone : (ushort)TileID.Dirt }).ToArray()).ToArray();
-                var instance = Place(context, host, input, CadenceAsset(host, width, height, chunks), ox, oy);
+                instance = Place(context, host, input, CadenceAsset(host, width, height, chunks), ox, oy);
                 Until(context, input, () => GetOptional(instance, "Match") != null && EligibilityRanges(instance).All(r => (bool)Get(r, "Current")));
                 Require(!(bool)Get(instance, "MirroredHorizontally") && EligibilityRanges(instance).Length == 2 &&
                     EligibilityRanges(instance).Select(r => (long)Get(Get(r, "Source"), "Block")).Distinct().Count() == 2,
                     (width * height) + " real normalized source records expose two distinct physical/logical ranges, without mirror");
+                qualification=(BlueprintProjectionQualificationReceipt)Get(instance,"Qualification");directory=qualification.GeometryDirectory;
+                Require(qualification.SourceRanges.Count==2 && ReferenceEquals(directory.Sources,qualification.SourceRanges) && directory.NodeCount==3 &&
+                    directory.GetNode(0).Left==1 && directory.GetNode(0).Right==2 && directory.GetNode(0).Group==-1 &&
+                    directory.GetNode(1).Group==0 && directory.GetNode(2).Group==1 &&
+                    directory.GetNode(1).Bounds.Equals(qualification.SourceRanges[0].Bounds) && directory.GetNode(2).Bounds.Equals(qualification.SourceRanges[1].Bounds),
+                    "the real qualification publishes both physical source ordinals in one complete three-node frozen directory before Enable");
                 SetAutomatic(host, input, true);
             }
             else { p.selectedItemState.Select(12); Step(context, input); }
@@ -391,9 +403,19 @@ namespace NativeWorldTextProbe
                 "actual native consumption, rather than only metadata, crosses the real normalized source/range boundary");
             if(automatic)
             {
-                Require((long)Get(host,"BuildFocusDirectoryBuilds")-directoryBuilds==1 && (long)Get(host,"BuildFocusDirectoryConstructionSteps")-directoryConstruction==3,
-                    "two real normalized physical groups share one incrementally built three-node geometry directory");
-                Console.WriteLine("BlueprintFocusDirectory native records="+(width*height)+" physicalGroups=2 builds=1 constructionSteps=3 policy="+substitution);
+                var query=Get(Get(Get(host,"buildContinuation"),"Discovery"),"Owners") as IDictionary;
+                // Construction moved to the existing qualification worker.
+                // Both real source consumers still share that exact frozen
+                // directory; Host pays only its unchanged near-query budget.
+                Require((long)Get(worker,"projectionGeometryDirectoryBuilds")-workerBuilds==1 &&
+                    (long)Get(worker,"projectionGeometryDirectoryNodes")-workerNodes==3 &&
+                    (long)Get(worker,"projectionGeometryDirectoryYields")>workerYields && (long)Get(worker,"projectionGeometryDirectoryMaximumBatch")<=64 &&
+                    ReferenceEquals(((BlueprintProjectionQualificationReceipt)Get(instance,"Qualification")).GeometryDirectory,directory) &&
+                    query!=null && query.Contains(instance) && ReferenceEquals(Get(query[instance],"Directory"),directory) &&
+                    (long)Get(host,"BuildFocusDirectoryBuilds")==directoryBuilds && (long)Get(host,"BuildFocusDirectoryConstructionSteps")==directoryConstruction,
+                    "two genuinely consumed physical groups share one worker-built three-node directory, with bounded worker batches and no Host construction");
+                Console.WriteLine("BlueprintFocusDirectory native records="+(width*height)+" physicalGroups=2 workerBuilds=1 workerConstructionSteps=3 workerYields="+
+                    ((long)Get(worker,"projectionGeometryDirectoryYields")-workerYields)+" hostConstruction=0 sharedFrozenGeometry=true policy="+substitution);
             }
             if (automatic && height == 4) Require(result.PartialSourceReceipt, "two full2048-record windows really cross the256KiB receipt prefix while the first world sample remains active");
             SetAutomatic(host, input, false); Call(host, "SetSameTypeReplacement", false); return result;
