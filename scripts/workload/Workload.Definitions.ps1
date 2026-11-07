@@ -172,6 +172,10 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeToolsWorkloadChecks.cs'=@('native-ToolsWorkload')
         'tests/NativeWorldTextProbe/NativeYoyoAdoptionChecks.cs'=@('native-CombatCpu','native-CombatYoyoCausal')
         'tests/NativeWorldTextProbe/NativeCombatAimChecks.cs'=@('native-CombatAimCpu')
+        # These private Run bodies are reached only by their named formal
+        # branches. Shared NativeChecks/fixtures and attack-cost owners stay shared.
+        'tests/NativeWorldTextProbe/NativeCombatCostChecks.cs'=@('native-CombatCosts')
+        'tests/NativeWorldTextProbe/NativeCombatSyncChecks.cs'=@('native-NpcSync')
         # Initialize also serves native Journey and graphical footprint/path
         # coexistence. The latter remains a separate graphics-risk entry; the
         # ordinary footprints CPU group cannot claim it executed real Draw.
@@ -731,6 +735,24 @@ function Test-WorkloadBehaviorRecipes {
 }
 function Get-WorkloadLegacyCheckFingerprint {
     param($InputIdentity, [string] $Name)
+    # Before the two private leaves and shared Quick fixture were corrected,
+    # their old combat-host/Quick shadow routes defined the original projection.
+    # Validate that exact
+    # recorded fingerprint in original input order; current reuse still compares
+    # the precise map and never exempts an actual consumer's changed input.
+    if($null -ne $InputIdentity.PSObject.Properties['inputFingerprint']){
+        $groups=@(Get-WorkloadCheckGroups $Name)
+        $precise=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+        foreach($row in @(Get-WorkloadCheckInputs $InputIdentity $Name)){[void]$precise.Add([string]$row)}
+        $beforePrivateLeaves=@($InputIdentity.inputs | Where-Object {
+            $path=($_ -split ':',2)[0]
+            if($path -cin @('tests/NativeWorldTextProbe/NativeCombatSyncChecks.cs','tests/NativeWorldTextProbe/NativeCombatCostChecks.cs')){$groups -contains '*' -or $groups -contains 'combat-host'}
+            elseif($path -ceq 'tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'){$groups -contains '*' -or @($groups|Where-Object {$_ -cin @('quick-items-host','recovery-host','coin-deposit-host','hotkeys')}).Count -gt 0}
+            else{$precise.Contains([string]$_)}
+        })
+        $beforePrivateFingerprint=Get-WorkloadHash $beforePrivateLeaves
+        if($InputIdentity.inputFingerprint -ceq $beforePrivateFingerprint){return $beforePrivateFingerprint}
+    }
     $legacyAimConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual')
     # Before the three attack owners became leaves they were combat-host
     # grouped inputs. Verify that immutable original projection only against

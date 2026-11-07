@@ -42,6 +42,38 @@ foreach($case in @(
     Assert-Evidence ((Get-WorkloadCheckFingerprint $before $case.independent) -ceq (Get-WorkloadCheckFingerprint $after $case.independent)) ('isolated owner preserves '+$case.independent)
 }
 $recipePath='scripts/workload/Workload.Evidence.ps1'
+# Independent calls in NativeChecks own these private leaves. Cost calls the
+# shared AttackCost body; standalone AttackCosts never calls the Cost wrapper.
+foreach($case in @(
+ @{path='tests/NativeWorldTextProbe/NativeCombatSyncChecks.cs';consumer='native-NpcSync';independent=@('native-CombatCosts','native-CombatAimCpu','native-NpcSharedGeometry')},
+ @{path='tests/NativeWorldTextProbe/NativeCombatCostChecks.cs';consumer='native-CombatCosts';independent=@('native-NpcSync','native-CombatAimCpu','native-CombatAttackCosts','native-CombatEffectsBetsyFlameCpu')})){
+    $before=[pscustomobject]@{inputs=@($case.path+':A')};$after=[pscustomobject]@{inputs=@($case.path+':B')}
+    Assert-Evidence ((Get-WorkloadPathChecks $case.path) -ccontains $case.consumer) ('private actual consumer registered: '+$case.path)
+    Assert-Evidence ((Get-WorkloadCheckFingerprint $before $case.consumer) -cne (Get-WorkloadCheckFingerprint $after $case.consumer)) ('private changed bytes retire actual consumer: '+$case.consumer)
+    foreach($independent in $case.independent){Assert-Evidence ((Get-WorkloadCheckFingerprint $before $independent) -ceq (Get-WorkloadCheckFingerprint $after $independent)) ('private leaf preserves independent scope: '+$case.path+' -> '+$independent)}
+}
+$privateLegacyRows=@('tests/NativeWorldTextProbe/NativeCombatSyncChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatCostChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatAimChecks.cs:A','tests/NativeWorldTextProbe/NativeCombatAimFixture.cs:A','src/JueMingR.TerrariaHost/Combat/HostCombat.cs:A','tests/NativeWorldTextProbe/NativeQuickItemChecks.cs:A','environment:test:A')
+# Aim's original single-check fingerprint did not bind the shadowed Quick row.
+$privateLegacy=[pscustomobject]@{inputs=$privateLegacyRows;inputFingerprint=(Get-WorkloadHash @($privateLegacyRows|Where-Object {$_ -notlike 'tests/NativeWorldTextProbe/NativeQuickItemChecks.cs:*'}))}
+Assert-Evidence (Test-WorkloadOriginalProjection $privateLegacy 'native-CombatAimCpu') 'exact original pre-private-map fingerprint remains verifiable without rewriting it'
+$privateCorrupt=$privateLegacy|ConvertTo-Json -Depth 5|ConvertFrom-Json;$privateCorrupt.inputs[0]='tests/NativeWorldTextProbe/NativeCombatSyncChecks.cs:CORRUPT'
+Assert-Evidence (-not (Test-WorkloadOriginalProjection $privateCorrupt 'native-CombatAimCpu')) 'even newly independent original bytes remain bound to their old fingerprint'
+$privateCorrupt=$privateLegacy|ConvertTo-Json -Depth 5|ConvertFrom-Json;$privateCorrupt.inputFingerprint=('0'*64)
+Assert-Evidence (-not (Test-WorkloadOriginalProjection $privateCorrupt 'native-CombatAimCpu')) 'arbitrary historical fingerprint is not accepted'
+$privateCorrupt=$privateLegacy|ConvertTo-Json -Depth 5|ConvertFrom-Json;[array]::Reverse($privateCorrupt.inputs)
+Assert-Evidence (-not (Test-WorkloadOriginalProjection $privateCorrupt 'native-CombatAimCpu')) 'original grouped input order remains bound'
+foreach($shared in @('tests/NativeWorldTextProbe/NativeChecks.cs','tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeWorldTextProbe.csproj','src/UnknownCombatOwner.cs','environment:test')){
+    $before=[pscustomobject]@{inputs=@($shared+':A')};$after=[pscustomobject]@{inputs=@($shared+':B')}
+    foreach($name in @('native-NpcSync','native-CombatCosts','native-CombatAimCpu')){Assert-Evidence ((Get-WorkloadCheckFingerprint $before $name) -cne (Get-WorkloadCheckFingerprint $after $name)) ('shared/project/unknown identity remains strict: '+$shared+' -> '+$name)}
+}
+$sharedQuickRoute=Get-WorkloadRoute @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs')
+foreach($group in @('shared-host','storage-host','quick-items-host','recovery-host','coin-deposit-host','hotkeys')){Assert-Evidence ($sharedQuickRoute.groups -contains $group) ('shared Quick keeps old consumers and adds true shared boundary: '+$group)}
+$otherQuickRoute=Get-WorkloadRoute @('tests/NativeWorldTextProbe/NativeQuickItemChecks.Extra.cs')
+Assert-Evidence ($otherQuickRoute.groups -contains 'quick-items-host' -and $otherQuickRoute.groups -notcontains 'shared-host') 'only the exact shared Quick file leaves the original Quick prefix route'
+$quickBefore=[pscustomobject]@{inputs=@('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs:A')};$quickAfter=[pscustomobject]@{inputs=@('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs:B')}
+Assert-Evidence ((Get-WorkloadCheckFingerprint $quickBefore 'native-QuickItemsCpu') -cne (Get-WorkloadCheckFingerprint $quickAfter 'native-QuickItemsCpu')) 'old Quick business consumer remains bound'
+$attackBefore=[pscustomobject]@{inputs=@('tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs:A')};$attackAfter=[pscustomobject]@{inputs=@('tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.cs:B')}
+foreach($name in @('native-CombatCosts','native-CombatAttackCosts')){Assert-Evidence ((Get-WorkloadCheckFingerprint $attackBefore $name) -cne (Get-WorkloadCheckFingerprint $attackAfter $name)) ('real shared AttackCost changes retire both callers: '+$name)}
 $selectionA='function Get-WorkloadPlan { return 1 }; function Invoke-WorkloadProcess { & real.exe --scope A }'
 $selectionB='function Get-WorkloadPlan { return 2 }; function Invoke-WorkloadProcess { & real.exe --scope A }'
 Assert-Evidence ((Get-WorkloadBehaviorRecipeProjection $recipePath $selectionA) -ceq (Get-WorkloadBehaviorRecipeProjection $recipePath $selectionB)) 'pure selection cannot retire actual launch contract'
@@ -219,6 +251,20 @@ Assert-Evidence ((Get-WorkloadCheckFingerprint $before 'native-FishingCpu') -cne
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('JueMingR-evidence-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($fixture) | Out-Null
 try {
+    # Business projection never filters the real fixture compilation closure.
+    $privateRoot=Join-Path $fixture 'private-fixture';$privateDirectory=Join-Path $privateRoot 'tests/NativeWorldTextProbe'
+    [IO.Directory]::CreateDirectory($privateDirectory)|Out-Null
+    [IO.File]::WriteAllText((Join-Path $privateDirectory 'NativeWorldTextProbe.csproj'),'<Project Sdk="Microsoft.NET.Sdk" />')
+    foreach($name in @('NativeCombatSyncChecks','NativeCombatCostChecks','NativeQuickItemChecks')){[IO.File]::WriteAllText((Join-Path $privateDirectory ($name+'.cs')),('internal class '+$name+' {}'))}
+    foreach($name in @('NativeCombatSyncChecks','NativeCombatCostChecks','NativeQuickItemChecks')){
+        $locked=[pscustomobject]@{inputs=@(Get-ChildItem -LiteralPath $privateDirectory -File|ForEach-Object {'tests/NativeWorldTextProbe/'+$_.Name+':'+(Get-FileHash -LiteralPath $_.FullName).Hash})}
+        $beforeFixture=Get-WorkloadFixtureInputFingerprint $privateRoot 'NativeWorldTextProbe' $locked
+        [IO.File]::AppendAllText((Join-Path $privateDirectory ($name+'.cs')),' // changed private assertion')
+        $changedLock=[pscustomobject]@{inputs=@(Get-ChildItem -LiteralPath $privateDirectory -File|ForEach-Object {'tests/NativeWorldTextProbe/'+$_.Name+':'+(Get-FileHash -LiteralPath $_.FullName).Hash})}
+        Assert-Evidence ($beforeFixture -cne (Get-WorkloadFixtureInputFingerprint $privateRoot 'NativeWorldTextProbe' $changedLock)) ('actual full fixture identity still changes for '+$name)
+        $staleRejected=$false;try{$null=Get-WorkloadFixtureInputFingerprint $privateRoot 'NativeWorldTextProbe' $locked}catch{$staleRejected=$true}
+        Assert-Evidence $staleRejected ('old locked fixture cannot hide changed private compile input '+$name)
+    }
     $recipeRoot=Join-Path $fixture 'recipe';$recipeFile=Join-Path $recipeRoot 'scripts/workload/Workload.Evidence.ps1'
     [IO.Directory]::CreateDirectory((Split-Path -Parent $recipeFile))|Out-Null
     [IO.File]::WriteAllText($recipeFile,'dotnet build -p:Option=A');$recipeBefore=Get-WorkloadFixtureRecipeFingerprint $recipeRoot
@@ -481,6 +527,30 @@ throw 'Incorrectly returned from a failed process.'
     Assert-Evidence ($null -eq (Restore-WorkloadCheckpointEvidence $fixture $sourceLock $different $check.name 'signature' ('a'*40))) 'changed compiler/configuration input cannot recover old pending completion'
     $qualifiedEntry=[pscustomobject]@{schemaVersion=2;status='PASS';name=$check.name;signature='signature';inputFingerprint=(Get-WorkloadCheckFingerprint $locked $check.name);executionId=$completed.executionId;sourceCommit=('a'*40);sourceFingerprint=('B'*64);milliseconds=1;outputs=$completed.outputs;allInputFingerprint=$locked.fingerprint;inputs=$locked.inputs;detectionCommit=('a'*40);checkpointPath=$completed.path}
     Assert-Evidence (Test-WorkloadReusable $fixture $qualifiedEntry $locked $check.name 'signature') 'existing reuse entry consumes qualified real checkpoint'
+    # Real owned inert completion, with the old Quick shadow projection. The
+    # complete original input identity still binds its omitted Quick row.
+    $quickName='checkpoint-shared-quick';$script:WorkloadCheckGroups[$quickName]=@('combat-host')
+    try {
+        $quickRows=@('source:locked','tests/NativeWorldTextProbe/NativeQuickItemChecks.cs:A')
+        $quickLock=[pscustomobject]@{inputs=$quickRows;fingerprint=(Get-WorkloadHash $quickRows)}
+        $quickBatch=New-WorkloadCheckpointBatch $fixture $sourceLock $quickLock @($quickName)
+        $quickCheck=[pscustomobject]@{name=$quickName;executable=$stderrExe;arguments=@('0');project=''}
+        $quickAttempt=Start-WorkloadCheckpoint $fixture $quickBatch $quickCheck 'quick-signature'
+        $quickAttempt.beforeOutputs=@(Get-WorkloadEvidenceOutputs $fixture ([pscustomobject]@{outputs=@()}) $stderrExe|ForEach-Object {[pscustomobject]@{path=$_.path;livePath=$_.path;length=$_.length;sha256=$_.sha256}})
+        Invoke-WorkloadProcess $quickName $stderrExe @('0') -Checkpoint $quickAttempt
+        $quickCompleted=Read-WorkloadJson $quickAttempt.path
+        $quickCompleted.outputs=@(Save-WorkloadArtifacts $fixture @(Get-WorkloadEvidenceOutputs $fixture ([pscustomobject]@{outputs=@()}) $stderrExe));Write-WorkloadJson $quickCompleted.path $quickCompleted
+        Complete-WorkloadCheckpointQualification $fixture @($quickCompleted) $quickBatch
+        $quickEntry=[pscustomobject]@{schemaVersion=2;status='PASS';name=$quickName;signature='quick-signature';inputFingerprint=(Get-WorkloadHash @('source:locked'));executionId=$quickCompleted.executionId;sourceCommit=$sourceLock.commit;sourceFingerprint=$sourceLock.fingerprint;milliseconds=1;outputs=$quickCompleted.outputs;allInputFingerprint=$quickLock.fingerprint;inputs=$quickRows;detectionCommit=$sourceLock.commit;checkpointPath=$quickCompleted.path}
+        Assert-Evidence (Test-WorkloadReusable $fixture $quickEntry $quickLock $quickName 'quick-signature') 'old Quick-shadow original remains genuinely qualified and reusable'
+        $changedQuickRows=@('source:locked','tests/NativeWorldTextProbe/NativeQuickItemChecks.cs:B');$changedQuick=[pscustomobject]@{inputs=$changedQuickRows;fingerprint=(Get-WorkloadHash $changedQuickRows)}
+        Assert-Evidence (-not (Test-WorkloadReusable $fixture $quickEntry $changedQuick $quickName 'quick-signature')) 'actual changed shared Quick retires its consumer'
+        $forgedQuick=$quickEntry|ConvertTo-Json -Depth 12|ConvertFrom-Json;$forgedQuick.inputs[1]=$changedQuick.inputs[1]
+        Assert-Evidence (Test-WorkloadOriginalProjection $forgedQuick $quickName) 'old single-check fingerprint never pretends to have bound Quick'
+        Assert-Evidence ((Get-WorkloadCheckFingerprint $forgedQuick $quickName) -ceq (Get-WorkloadCheckFingerprint $changedQuick $quickName)) 'tampered old Quick now matches current projection, not an early projection rejection'
+        Assert-Evidence (Test-WorkloadLatestAttempt $fixture $forgedQuick $quickName 'quick-signature') 'same original checkpoint and stability remain valid before complete-input guard'
+        Assert-Evidence (-not (Test-WorkloadReusable $fixture $forgedQuick $changedQuick $quickName 'quick-signature')) 'complete original input fingerprint rejects matching-current Quick tampering'
+    } finally {[void]$script:WorkloadCheckGroups.Remove($quickName)}
     $legacy=$qualifiedEntry | ConvertTo-Json -Depth 10 | ConvertFrom-Json
     $legacy | Add-Member -MemberType NoteProperty -Name executedUtc -Value $completed.endedUtc
     $legacy.PSObject.Properties.Remove('checkpointPath');$legacy.name='legacy-one';$legacy.signature=Get-WorkloadHash (@($stderrExe)+@('0'))

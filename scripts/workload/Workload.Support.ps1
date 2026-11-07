@@ -126,7 +126,9 @@ function Get-WorkloadRoute {
             # a change to those providers. Keep reverse dependencies below.
             '^src/[^/]+/(About|Onboarding)/|^tests/(About|Onboarding)/|^tests/Phase0U/AboutChecks\.cs$|^tests/JueMingR.ArchitectureTests/Onboarding|^tests/NativeWorldTextProbe/NativeAbout' { [void]$groups.Add('about-host'); continue }
             '^src/[^/]+/CoinDeposit/|^tests/JueMingR.ArchitectureTests/CoinDeposit/|^tests/CoinDeposit/|^tests/NativeWorldTextProbe/NativeCoin' { [void]$groups.Add('coin-deposit-host'); continue }
-            '^src/[^/]+/(QuickItems|KeepFavorited)/|^tests/JueMingR.ArchitectureTests/(QuickItems|KeepFavorited)/|^tests/NativeWorldTextProbe/Native(Quick|Favorite)' { if($path.StartsWith('src/')){[void]$groups.Add('tools-host')}; [void]$groups.Add('quick-items-host'); continue }
+            # The exact shared composition fixture belongs to the existing
+            # shared/storage rule below; other Quick/Favorite leaves stay local.
+            '^src/[^/]+/(QuickItems|KeepFavorited)/|^tests/JueMingR.ArchitectureTests/(QuickItems|KeepFavorited)/|^tests/NativeWorldTextProbe/Native(Quick(?!ItemChecks\.cs$)|Favorite)' { if($path.StartsWith('src/')){[void]$groups.Add('tools-host')}; [void]$groups.Add('quick-items-host'); continue }
             # Native target GPU checks remain explicit specialists, while their
             # compiled fixture inputs conservatively retain the browser group.
             '^tests/NativeWorldTextProbe/(NativeBrowserChecks|NativeBrowserVisualChecks|NativeTargetOriginalChecks)\.cs$' { [void]$groups.Add('browser-host'); continue }
