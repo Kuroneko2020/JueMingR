@@ -76,7 +76,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintPostProcessingContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBusinessContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSchedulerRunnableChecks.cs'=@('native-BlueprintBuildCadenceCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintSchedulerFreshnessChecks.cs'=@('native-BlueprintBuildCadenceCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintSchedulerFreshnessChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSupplyContinuationCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSchedulerOpportunityChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSchedulerColdChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintFocusDiscoveryChecks.cs'=@('native-BlueprintBuildCadenceCpu')

@@ -133,6 +133,13 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(output); Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context=>NativeBlueprintBuildChecks.Run(context,coldHandoffOnly:true),processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE")); return 0;
             }
+            if (scope == "BlueprintSupplyBaselineDiagnostic")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                // Fresh ordinary scenes only: a historical Host cannot execute
+                // the new conversion ABI, nor inherit a failed receipt from it.
+                NativeQuickItemChecks.Run(context=>NativeBlueprintBuildChecks.RunConstruction(context,family:"SupplyBaseline"),processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if (scope == "BlueprintBuildCadenceCpu")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);

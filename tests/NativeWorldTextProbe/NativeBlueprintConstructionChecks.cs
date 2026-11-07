@@ -41,14 +41,17 @@ namespace NativeWorldTextProbe
                     Exception first=null;
                     Action<string,Action> check=(name,body)=>
                     {
-                        if(first!=null && (family=="SupplySmartWiring" || family=="SupplyPresentation"))return;
+                        if(first!=null && (family=="SupplySmartWiring" || family=="SupplyPresentation" || family=="SupplyRepair"))return;
                         try{body();Console.WriteLine("PASS BlueprintConstruction case="+name);}
                         catch(Exception error){Console.Error.WriteLine("CONSTRUCTION CASE "+name+": "+error);DumpConstructionPreparation(host,tools);if(first==null)first=error;}
                     };
                     check("finite original inventory input preparation",()=>ConstructionMaterialPreparation(context,host,tools,input));
                     if(family=="SupplyRepair")check("finite paint conversion programs and every cancel prefix",()=>SupplyConversionPrograms(context,host,tools,input));
-                    if(family=="SupplyRepair")check("same prepared supply crosses real consumers at the original opportunity",()=>SupplyConsumerHandoff(context,host,tools,input));
-                    if(family=="SupplyRepair")check("leftover-color native gap and five real conversion clicks",()=>SupplyColorHandoff(context,host,tools,input));
+                    // Historical comparison has an explicit nonformal entry:
+                    // run only unchanged ordinary scenes in a fresh process,
+                    // never enter a new-ABI program before those measurements.
+                    if(family=="SupplyRepair" || family=="SupplyBaseline")check("same prepared supply crosses real consumers at the original opportunity",()=>SupplyConsumerHandoff(context,host,tools,input));
+                    if(family=="SupplyRepair" || family=="SupplyBaseline")check("leftover-color native gap and five real conversion clicks",()=>SupplyColorHandoff(context,host,tools,input));
                     if(family=="SupplyRepair")check("Ready uses first legal original Pick and revoked ticket never consumes",()=>SupplyReadyEntrance(context,host,tools,input));
                     if(!preparationOnly && first==null)
                     {
