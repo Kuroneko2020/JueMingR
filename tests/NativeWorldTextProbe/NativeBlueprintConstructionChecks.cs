@@ -47,6 +47,7 @@ namespace NativeWorldTextProbe
                     };
                     check("finite original inventory input preparation",()=>ConstructionMaterialPreparation(context,host,tools,input));
                     if(family=="SupplyRepair")check("finite paint conversion programs and every cancel prefix",()=>SupplyConversionPrograms(context,host,tools,input));
+                    if(family=="SupplyRepair")check("real current-material restock precedes an already prepared foreign flight",()=>SupplyCurrentRestockPriority(context,host,tools,input));
                     // Historical comparison has an explicit nonformal entry:
                     // run only unchanged ordinary scenes in a fresh process,
                     // never enter a new-ABI program before those measurements.

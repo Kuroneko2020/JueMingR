@@ -450,7 +450,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     {candidate.LocalPriority=true;target=candidate;plan=option;return PreferredBuildSearch.Found;}
                 }
                 // This is a bounded current-near query proof. It is discarded
-                // with that Focus/range or any world/supply/permission recovery;
+                // with that Focus/range or its world/relevant-supply/permission recovery;
                 // it cannot update Match, materials totals or target completion.
                 value.PreferredNegativeOrdinals?.Add(ordinal);
                 cursor=next;

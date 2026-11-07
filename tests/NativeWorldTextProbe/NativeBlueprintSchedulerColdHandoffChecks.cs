@@ -46,6 +46,7 @@ namespace NativeWorldTextProbe
                         Patch("NativeBuildGeometry",null,nameof(ColdHandoffGeometryResult));
                         Patch("PreparedBuildPriorityCurrent",nameof(ColdHandoffPriorityBefore),nameof(ColdHandoffPriorityResult));
                         Patch("PreferredBuildAbsenceCurrent",null,nameof(ColdHandoffAbsenceResult));
+                        Patch("PreferredBuildSupplyCurrent",null,nameof(ColdHandoffSupplyResult));
                         Patch("BuildFocusNearCurrent",null,nameof(ColdHandoffNearResult));
                         Patch("ProjectionMatchReadCurrent",null,nameof(ColdHandoffReadResult));
                         Patch("AdvanceAutomaticBuildSelection",nameof(ColdHandoffAdvanceBefore),nameof(ColdHandoffAdvanceResult));
@@ -77,6 +78,27 @@ namespace NativeWorldTextProbe
             }
             private static string Bounds(object bounds)
             {return Get(bounds,"Left")+","+Get(bounds,"Top")+","+Get(bounds,"Right")+","+Get(bounds,"Bottom");}
+            internal string SupplySnapshot()
+            {
+                var group=GetOptional(Host,"buildContinuation");if(group==null)return "supplyGroup=none";
+                var source=Get(group,"Source");var operation=GetOptional(group,"Operation");
+                int slot=(int)Get(source,"Slot"),type=(int)Get(source,"Type"),supplyType=operation==null?0:(int)Get(operation,"SupplyType");
+                var item=(Item)Get(source,"Item");var p=Main.LocalPlayer;var map=(IDictionary)Get(Host,"buildSupply");
+                var inventory=GetOptional(Host,"MaterialInventory");string published="NOT_PUBLISHED";
+                if(inventory!=null)foreach(var entry in (IEnumerable)Get(inventory,"Slots"))
+                    if((int)Get(entry,"Slot")==slot)
+                    {published="ready:"+Get(inventory,"Ready")+",type:"+Get(entry,"ItemType")+",stack:"+Get(entry,"Stack")+",eligible:"+Get(entry,"Eligible");break;}
+                var atSlot=slot>=0 && slot<p.inventory.Length?p.inventory[slot]:null;
+                // These are the existing per-type serials/publication and live
+                // Item fields. Do not call eligibility, supply-currentness or
+                // planning again merely to explain an observed return value.
+                return "sourceType="+type+" operationSupplyType="+supplyType+
+                    " sourceSerial="+(map.Contains(type)?map[type]:"ABSENT")+
+                    " operationSupplySerial="+(supplyType>0 && map.Contains(supplyType)?map[supplyType]:"ABSENT")+
+                    " sourceSlot="+slot+" sourceItemType/stack="+(item==null?"null":item.type+"/"+item.stack)+
+                    " liveSlotType/stack="+(atSlot==null?"null":atSlot.type+"/"+atSlot.stack)+" sameSourceItem="+ReferenceEquals(item,atSlot)+
+                    " publishedSourceSlot={"+published+"}";
+            }
             // Read captured fields only. In particular, never call another
             // TryPreferredBuild/currentness/native-stamp query to observe one.
             // The last native results below came from the production calls.
@@ -89,6 +111,7 @@ namespace NativeWorldTextProbe
                     .Append(" player=").Append(p.position).Append(" direction=").Append(p.direction)
                     .Append(" eligibility=").Append(Get(Host,"MaterialBuildEligibilityRevision"))
                     .Append(" materialTick=").Append(Get(Host,"materialTick"))
+                    .Append(' ').Append(SupplySnapshot())
                     .Append(" supply=").Append(Get(Host,"buildSupplyRevision")).Append(" permission=").Append(Get(Host,"buildFocusPermissionRevision"))
                     .Append(" container=").Append(Get(Host,"buildContainerRevision")).Append(" restoration=").Append(Get(Host,"appearanceRestorationRevision"))
                     .Append(" world=").Append(Bounds(Get(discovery,"World"))).Append(" active[").Append(Flight(GetOptional(Host,"activeBuild"))).Append("]");
@@ -164,6 +187,14 @@ namespace NativeWorldTextProbe
         {
             var o=coldHandoffObservation;if(o?.Watching==true && o.PriorityDepth>0 && ReferenceEquals(o.Host,__instance) && !__result)
                 o.Emit("absence-false","PreferredBuildAbsenceCurrent=false "+o.Proofs());
+        }
+        private static void ColdHandoffSupplyResult(object __instance,object __0,bool __result)
+        {
+            var o=coldHandoffObservation;if(o?.Watching!=true || !ReferenceEquals(o.Host,__instance) || o.Rows>=64)return;
+            string snapshot=o.SupplySnapshot();
+            o.Emit("supply-current-"+__result+"-"+Get(__0,"PreferredSupply")+"-"+Get(__0,"PreferredWaits")+"-"+snapshot,
+                "PreferredBuildSupplyCurrent="+__result+" cutoff="+Get(__0,"PreferredSupply")+" global="+Get(o.Host,"buildSupplyRevision")+
+                " waits="+Get(__0,"PreferredWaits")+" "+snapshot);
         }
         private static void ColdHandoffNearResult(object __instance,bool __result)
         {var o=coldHandoffObservation;if(o?.Watching==true && ReferenceEquals(o.Host,__instance))o.LastNearResult=__result;}

@@ -12,11 +12,15 @@ namespace NativeWorldTextProbe
     internal static partial class NativeBlueprintBuildChecks
     {
         private static object supplyReadyHost,supplyReadyTools,supplyReadyPreparation;
+        private static Item supplyReadyExpectedMaterial;
+        private static PostProcessingGoal supplyReadyExpectedGoal;
         private static bool supplyReadyTracking;
         private static int supplyReadyOpportunities;
         private static void SupplyReadyBeforePick(Player __instance,out bool __state)
         {
             __state=supplyReadyTracking && ReferenceEquals(__instance,Main.LocalPlayer) && (bool)Get(supplyReadyPreparation,"Ready") &&
+                (supplyReadyExpectedMaterial==null || ReferenceEquals(GetOptional(supplyReadyPreparation,"Material"),supplyReadyExpectedMaterial)) &&
+                (supplyReadyExpectedGoal==null || !supplyReadyExpectedGoal.Complete) &&
                 !(bool)Get(Get(supplyReadyTools,"Use"),"Active") && (bool)Get(Get(supplyReadyTools,"Input"),"CanRunAutomaticActions") &&
                 __instance.itemAnimation==0 && __instance.itemTime==0 && __instance.reuseDelay==0 && !__instance.channel && __instance.releaseUseItem &&
                 !__instance.selectedItemState.HasActiveOverride && !__instance.selectedItemState.HasBufferedChange &&
@@ -32,13 +36,33 @@ namespace NativeWorldTextProbe
             Require(__result && (bool)Get(Get(supplyReadyTools,"Use"),"Building") && GetOptional(supplyReadyHost,"activeBuild")!=null,
                 "the first genuine original Pick after Ready and legal native timers acquires the exact new flight before another Host postfix");
         }
+        // Install the same native opportunity assertion on the actual B
+        // conversion trajectory. The old54 Blue stack cannot satisfy the
+        // reference filter, and no production priority predicate is an oracle.
+        private sealed class SupplyColorReadyPick : IDisposable
+        {
+            private readonly Harmony patch=new Harmony("JueMingR.Tests.SupplyColorReadyPick");
+            internal SupplyColorReadyPick(object host,object tools,Item material,PostProcessingGoal goal)
+            {
+                supplyReadyHost=host;supplyReadyTools=tools;supplyReadyPreparation=Get(host,"buildMaterialPreparation");
+                supplyReadyExpectedMaterial=material;supplyReadyExpectedGoal=goal;supplyReadyTracking=true;supplyReadyOpportunities=0;
+                patch.Patch(typeof(Player).GetMethod("PickItemSelectionOverride",F),
+                    prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyReadyBeforePick)),
+                    postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyReadyAfterPick)));
+            }
+            public void Dispose()
+            {
+                supplyReadyTracking=false;supplyReadyExpectedMaterial=null;supplyReadyExpectedGoal=null;supplyReadyHost=supplyReadyTools=supplyReadyPreparation=null;
+                foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);
+            }
+        }
         private static void SupplyReadyEntrance(object context,object host,object tools,object input)
         {
             var patch=new Harmony("JueMingR.Tests.SupplyReadyPick");
             patch.Patch(typeof(Player).GetMethod("PickItemSelectionOverride",F),
                 prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyReadyBeforePick)),
                 postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyReadyAfterPick)));
-            supplyReadyHost=host;supplyReadyTools=tools;supplyReadyPreparation=Get(host,"buildMaterialPreparation");
+            supplyReadyHost=host;supplyReadyTools=tools;supplyReadyPreparation=Get(host,"buildMaterialPreparation");supplyReadyExpectedMaterial=null;supplyReadyExpectedGoal=null;
             try
             {
                 foreach(bool invalidate in new[]{false,true})
@@ -82,7 +106,7 @@ namespace NativeWorldTextProbe
             }
             finally
             {
-                supplyReadyTracking=false;supplyReadyHost=supplyReadyTools=supplyReadyPreparation=null;
+                supplyReadyTracking=false;supplyReadyExpectedMaterial=null;supplyReadyExpectedGoal=null;supplyReadyHost=supplyReadyTools=supplyReadyPreparation=null;
                 foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);
             }
         }
