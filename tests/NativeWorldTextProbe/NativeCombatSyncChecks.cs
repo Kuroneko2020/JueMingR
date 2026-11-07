@@ -11,10 +11,21 @@ namespace NativeWorldTextProbe
         internal static void Run(object context)
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");foreach(var n in Main.npc)n.active=false;
-            Main.netMode=1;Main.LocalPlayer.position=new Vector2(600,700);Main.dayTime=false;
+            int previousNetMode=Main.netMode;var previousSections=Main.sectionManager;
+            try
+            {
+            if(!(bool)Get(host,"PathAccess"))NativeHiddenEntryChecks.RevealForComposition(context);
+            // The isolated harness supplied every tile in its fixed world.
+            // This client packet oracle starts from received terrain, so give
+            // that world the original section owner's loaded qualification.
+            Main.netMode=1;Main.sectionManager=new WorldSections(Netplay.GetSectionX(Main.maxTilesX-1)+1,Netplay.GetSectionY(Main.maxTilesY-1)+1);Main.sectionManager.SetAllSectionsLoaded();
+            Main.LocalPlayer.position=new Vector2(600,700);Main.dayTime=false;
             for(int i=0;i<Main.maxPlayers;i++)if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};
             var target=(NPC)typeof(NPC).GetMethod("NewNPCInstanceInSlot",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic).Invoke(null,new object[]{2,(byte)7});target.SetDefaults(2);target.whoAmI=2;target.active=true;target.target=Main.myPlayer;target.position=new Vector2(800,900);target.velocity=new Vector2(1,0);target.spawnNeedsSyncing=false;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));NativeCombatObservationChecks.Fresh(context,host);Require(cache.Read(0)!=null,"Real Host starts a published path before native packet.");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));NativeCombatObservationChecks.Fresh(context,host);
+            var selection=Get(host,"Selection");
+            Console.WriteLine("SYNC PREREQUISITES pathAccess="+Get(host,"PathAccess")+" path="+Get(host,"Path")+" settingsReady="+Get(Get(host,"Settings"),"Ready")+" required="+cache.Required+" hasTarget="+Get(selection,"HasTarget")+" netMode="+Main.netMode+" sections="+(Main.sectionManager!=null)+" playerTileLoaded="+(Main.sectionManager!=null && Main.sectionManager.TileLoaded((int)Main.LocalPlayer.Center.X/16,(int)Main.LocalPlayer.Center.Y/16))+" targetTileLoaded="+(Main.sectionManager!=null && Main.sectionManager.TileLoaded((int)target.Center.X/16,(int)target.Center.Y/16)));
+            Require(cache.Read(0)!=null,"Real Host starts a published path before native packet.");
             var before=target.position;target.position.X+=600;var packet=CombatNetworkFixture.Serialize(23,2);target.position=before;
             Require(packet[3]==2 && packet[4]==7,"Original serializer has separate byte slot/generation.");CombatNetworkFixture.Receive(packet);
             Console.WriteLine("SYNC23 native="+target.position+" generation="+target.generation+" cached="+(cache.Read(0)!=null));
@@ -47,8 +58,10 @@ namespace NativeWorldTextProbe
                 }
             }
             SegmentedBoundaries(context,host,source,cache);
-            NativeCombatObservationChecks.Save(host,new ObservationOptions());Main.netMode=0;
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());
             Console.WriteLine("PASS SYNC23 real original serialization/dispatch: nonzero generation, ordinary history, forced instance, generation, same-token transform and large correction.");
+            }
+            finally{Main.sectionManager=previousSections;Main.netMode=previousNetMode;}
         }
         private static void SegmentedBoundaries(object context,object host,object source,NpcPredictionCache cache)
         {

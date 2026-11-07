@@ -15,13 +15,21 @@ namespace NativeWorldTextProbe
         internal static void Run(object context)
         {
             var host=Get(context,"CombatObservation");var source=Get(host,"Prediction");var cache=(NpcPredictionCache)Get(source,"Cache");
+            int previousNetMode=Main.netMode;var previousSections=Main.sectionManager;
+            try
+            {
+            if(!(bool)Get(host,"PathAccess"))NativeHiddenEntryChecks.RevealForComposition(context);
             for(int i=0;i<Main.maxPlayers;i++){if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};Main.player[i].active=false;}
             foreach(var npc in Main.npc)npc.active=false;
             Main.netMode=1;Main.dayTime=false;Main.worldSurface=20;Main.tileSolid[TileID.Stone]=true;
             var p=Main.LocalPlayer;p.active=true;p.dead=p.ghost=false;p.position=new Vector2(900,960-p.height);p.velocity=Vector2.Zero;p.controlLeft=p.controlRight=p.controlJump=false;p.carpetFrame=-1;p.gravity=.4f;p.maxFallSpeed=10;p.maxRunSpeed=3;p.accRunSpeed=6;p.runAcceleration=.08f;p.runSlowdown=.2f;p.aggro=0;p.tankPet=-1;
             for(int x=1;x<Main.maxTilesX-1;x++){Main.tile[x,60].active(true);Main.tile[x,60].type=TileID.Stone;}
+            // This complete isolated client world, including its floor, is
+            // received terrain for these positive Source/native AI oracles.
+            Main.sectionManager=new WorldSections(Netplay.GetSectionX(Main.maxTilesX-1)+1,Netplay.GetSectionY(Main.maxTilesY-1)+1);Main.sectionManager.SetAllSectionsLoaded();
             Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true,marker:true));Set(host,"LayerStatus",Enum.Parse(Get(host,"LayerStatus").GetType(),"Ready"));
+            Console.WriteLine("STRATEGY PREREQUISITES pathAccess="+Get(host,"PathAccess")+" path="+Get(host,"Path")+" settingsReady="+Get(Get(host,"Settings"),"Ready")+" netMode="+Main.netMode+" sections="+(Main.sectionManager!=null)+" playerTileLoaded="+(Main.sectionManager!=null && Main.sectionManager.TileLoaded((int)p.Center.X/16,(int)p.Center.Y/16)));
             string only=Environment.GetEnvironmentVariable("JUEMINGR_STRATEGY_ONLY");
             if(!string.IsNullOrEmpty(only))NativeStrategyScopes.Require(only);
             if(only=="facing"){Facing(source,p);return;}
@@ -90,6 +98,8 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS TR02 bee frozen120 type="+type+" birth="+birth+" npc="+npcTarget+" target="+n.target+" near15Max="+nearMax+" far120Max="+farMax+" crossed="+crossed+" turned="+turned);
             }
             if(only!="trend")Competition(source,cache,p);
+            }
+            finally{Main.sectionManager=previousSections;Main.netMode=previousNetMode;}
         }
         private static void Facing(object source,Player p)
         {
