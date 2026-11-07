@@ -543,10 +543,11 @@ throw 'Incorrectly returned from a failed process.'
         $privateCompleted.outputs=@(Save-WorkloadArtifacts $fixture @(Get-WorkloadEvidenceOutputs $fixture ([pscustomobject]@{outputs=@()}) $stderrExe));Write-WorkloadJson $privateCompleted.path $privateCompleted
         Complete-WorkloadCheckpointQualification $fixture @($privateCompleted) $privateBatch
         $privateEntry=[pscustomobject]@{schemaVersion=2;status='PASS';name=$familyName;signature='private-projection-mechanism';inputFingerprint=(Get-WorkloadCheckFingerprint $privateLock $familyName);executionId=$privateCompleted.executionId;sourceCommit=$sourceLock.commit;sourceFingerprint=$sourceLock.fingerprint;milliseconds=1;outputs=$privateCompleted.outputs;allInputFingerprint=$privateLock.fingerprint;inputs=$privateRows;detectionCommit=$sourceLock.commit;checkpointPath=$privateCompleted.path}
+        Assert-Evidence (Test-WorkloadReusable $fixture $privateEntry $privateLock $familyName $privateEntry.signature) 'private projection control begins with a genuinely reusable unchanged original'
         foreach($changedPath in @('NativeCombatBeeChecks.cs','NativeCombatNailChecks.cs','NativeCombatBallisticCandidateChecks.cs','NativeCombatControlPreviewChecks.cs','NativeCombatAimFixture.cs','NativeCombatWorkerAssetChecks.cs','NativeCombatEffectChecks.cs','NativeChecks.cs')){
             $changedRows=@($privateRows|ForEach-Object{if($_ -ceq ('tests/NativeWorldTextProbe/'+$changedPath+':A')){$_ -replace ':A$',':B'}else{$_}})
             $changedLock=[pscustomobject]@{inputs=$changedRows;fingerprint=(Get-WorkloadHash $changedRows)}
-            $expected=$family -ne '' -and ($changedPath -eq 'NativeCombatBeeChecks.cs' -or $family -eq 'Phoenix' -and $changedPath -in @('NativeCombatNailChecks.cs','NativeCombatBallisticCandidateChecks.cs'))
+            $expected=$family -ne '' -and ($changedPath -eq 'NativeCombatBeeChecks.cs' -or ($family -eq 'Phoenix' -and $changedPath -in @('NativeCombatNailChecks.cs','NativeCombatBallisticCandidateChecks.cs')))
             Assert-Evidence ((Test-WorkloadReusable $fixture $privateEntry $changedLock $familyName $privateEntry.signature) -eq $expected) ('actual qualified original reuse '+$familyName+' changing '+$changedPath)
             Assert-Evidence ($privateEntry.executionId -ceq $privateCompleted.executionId -and $privateEntry.allInputFingerprint -ceq $privateLock.fingerprint) 'private-input reuse never re-signs the original process or complete source identity'
         }
