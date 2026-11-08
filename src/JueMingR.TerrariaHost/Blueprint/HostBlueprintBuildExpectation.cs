@@ -33,6 +33,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal readonly Dictionary<int,NearBuildFact> Facts=new Dictionary<int,NearBuildFact>();
             internal int Cursor;
             internal bool Complete,Initialized,WiringPass;
+            internal ulong ExtractionTick;
+            internal bool ExtractionWaiting;
             internal BlueprintProjectionBounds Bounds,Covered,WiringCovered;
             internal readonly List<int> Retired=new List<int>();
             internal BlueprintWorldObject Body;
@@ -79,7 +81,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal long NearBuildSemanticSteps { get; private set; }
         internal long NearBuildPlanBytes
         {
-            get { long bytes=128+NearCapabilityPlanBytes;foreach(var range in nearBuildRanges.Values){bytes+=96+range.Retired.Capacity*4L;if(range.Body!=null)bytes+=128+range.Body.Width*range.Body.Height*8L;bytes+=range.Facts.Count*272L;}return bytes; }
+            get { long bytes=128+NearCapabilityPlanBytes;foreach(var range in nearBuildRanges.Values){bytes+=112+range.Retired.Capacity*4L;if(range.Body!=null)bytes+=128+range.Body.Width*range.Body.Height*8L;bytes+=range.Facts.Count*272L;}return bytes; }
         }
         internal int NearBuildFacts { get { int count=0;foreach(var range in nearBuildRanges.Values)count+=range.Facts.Count;return count; } }
 #endif
@@ -221,13 +223,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             int count=nearBuildDiscovery.Ranges.Count;
             // Fairness applies to discovery, never to native execution. All
             // ranges spend the existing single 64-source-step Update balance.
-            for(int n=0;n<count;n++)
+            int idleRanges=0,rangeVisits=0;
+            while(count>0 && idleRanges<count)
             {
-                nearRangeCursor%=count;var range=nearBuildDiscovery.Ranges[nearRangeCursor];nearRangeCursor=(nearRangeCursor+1)%count;
+                rangeVisits++;nearRangeCursor%=count;var range=nearBuildDiscovery.Ranges[nearRangeCursor];nearRangeCursor=(nearRangeCursor+1)%count;
                 NearBuildRange state;if(!nearBuildRanges.TryGetValue(range,out state))nearBuildRanges.Add(range,state=new NearBuildRange());
                 var wireBounds=IntersectBuildBounds(BuildFocusBounds(range.Owner,p),range.Source.Bounds);
                 var bounds=IntersectBuildBounds(BuildNearOrdinaryBounds(range.Owner,p),range.Source.Bounds);
-                if(EmptyBuildBounds(wireBounds))continue;
+                if(EmptyBuildBounds(wireBounds)){idleRanges++;continue;}
                 if(!state.LastNear.Equals(bounds))
                 {
                     var ordinaryCorridor=bounds.Expand(Math.Max(bounds.Width,bounds.Height));
@@ -245,7 +248,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                         NearBuildRetirementChecks++;
 #endif
                         var seed=entry.Value.Seed;
-                        if(seed.Body==null?!corridor.Contains(seed.Cell.X,seed.Cell.Y):!BuildBoundsOverlap(corridor,new BlueprintProjectionBounds(seed.Body.WorldX-seed.Owner.OriginX,seed.Body.WorldY-seed.Owner.OriginY,seed.Body.Width,seed.Body.Height)))state.Retired.Add(entry.Key);
+                        // Seeds execute in display coordinates; coverage is raw source.
+                        // Transform the WHOLE object rectangle (not its anchor).
+                        var display=seed.Body==null?new BlueprintProjectionBounds(seed.Cell.X,seed.Cell.Y,1,1):
+                            new BlueprintProjectionBounds(seed.Body.WorldX-seed.Owner.OriginX,seed.Body.WorldY-seed.Owner.OriginY,seed.Body.Width,seed.Body.Height);
+                        if(!BuildBoundsOverlap(corridor,seed.Owner.View.SourceBounds(display)))state.Retired.Add(entry.Key);
                     }
                     foreach(int ordinal in state.Retired){ReleaseNearCapabilityDependency(state.Facts[ordinal].Capability);state.Facts.Remove(ordinal);nearPlanDirty=true;}
                     state.RetirementBounds=retainedDomain;
@@ -260,9 +267,17 @@ namespace JueMingR.TerrariaHost.Blueprint
                     state.WiringPass=ordinaryDone;var desired=state.WiringPass?wireBounds:bounds;
                     state.Bounds=NextNearBuildStrip(state.WiringPass?state.WiringCovered:state.Covered,desired);state.Cursor=0;
                 }
-                if(!state.Complete && materialBuildSourceBudget>0)
+                if(state.ExtractionTick!=materialTick){state.ExtractionTick=materialTick;state.ExtractionWaiting=false;}
+                bool progressed=false;
+                if(!state.Complete && !state.ExtractionWaiting && materialBuildSourceBudget>0)
                 {
-                    ExtractNearBuildRange(state,range,p,bounds);
+                    int beforeBudget=materialBuildSourceBudget,beforeCursor=state.Cursor;
+                    bool beforeInitialized=state.Initialized;
+                    var beforeCovered=state.Covered;var beforeWiringCovered=state.WiringCovered;
+                    bool available=ExtractNearBuildRange(state,range,p,bounds);
+                    progressed=beforeBudget!=materialBuildSourceBudget || beforeCursor!=state.Cursor || beforeInitialized!=state.Initialized ||
+                        !beforeCovered.Equals(state.Covered) || !beforeWiringCovered.Equals(state.WiringCovered);
+                    state.ExtractionWaiting=!available;
                     // Publish completion in this same paid extraction epoch.
                     // Deferring it would cache a false absence for one more
                     // native opportunity after the final source strip.
@@ -274,6 +289,11 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if DEBUG
                 NearBuildRangeChecks++;
 #endif
+                // Slice exhaustion only yields to other ranges. A complete
+                // idle round (real source/support wait), or the unchanged shared
+                // budget reaching zero, ends extraction. No worker busy wait.
+                idleRanges=progressed?0:idleRanges+1;
+                if(materialBuildSourceBudget<=0 && rangeVisits>=count)idleRanges=count;
                 long support;bool stamped=projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support);
                 bool raw=ProjectionMatchReadCurrent(range,range.RawVersion);
                 if(state.Version!=range.Version || state.Support!=(stamped?support:-1) || state.RawCurrent!=raw || state.Wake!=(range.Materials?.BuildWakeRevision??-1) ||
@@ -334,21 +354,21 @@ namespace JueMingR.TerrariaHost.Blueprint
             foreach(var entry in range.Capabilities)if(CurrentNearCapabilitySerial(entry.Key)>entry.Value)return true;
             return false;
         }
-        private void ExtractNearBuildRange(NearBuildRange state,BlueprintProjectionMatchRange range,Player p,BlueprintProjectionBounds bounds)
+        private bool ExtractNearBuildRange(NearBuildRange state,BlueprintProjectionMatchRange range,Player p,BlueprintProjectionBounds bounds)
         {
                     var part=FindBuildSource(range);
-                    if(part==null || BuildMemberIndex(state.Cursor)<part.Offset){DemandProjectionMatchRange(range);return;}
+                    if(part==null || BuildMemberIndex(state.Cursor)<part.Offset){DemandProjectionMatchRange(range);return false;}
                     int steps=BuildSourceSlice;long support;
-                    if(!projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support)){DemandProjectionMatchRange(range);return;}
+                    if(!projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support)){DemandProjectionMatchRange(range);return false;}
                     var cells=ProjectionSourceCells(part.Window);
                     if(!state.Initialized && part.Offset==0)
                     {state.Cursor=BuildMemberOrdinal((part.LogicalObjectId>0?0:BuildCellLowerBound(cells,state.Bounds.Left,state.Bounds.Top)));state.Initialized=true;}
                     while(steps>0 && materialBuildSourceBudget>0)
                     {
                         int index=BuildMemberIndex(state.Cursor)-part.Offset;
-                        if(index>=cells.Count){if(part.Complete)CompleteNearBuildStrip(state,bounds);else DemandProjectionMatchRange(range);break;}
+                        if(index>=cells.Count){if(part.Complete){CompleteNearBuildStrip(state,bounds);return true;}DemandProjectionMatchRange(range);return false;}
                         var cell=cells[index];
-                        if(part.LogicalObjectId==0 && cell.Y>=state.Bounds.Bottom){CompleteNearBuildStrip(state,bounds);break;}
+                        if(part.LogicalObjectId==0 && cell.Y>=state.Bounds.Bottom){CompleteNearBuildStrip(state,bounds);return true;}
                         materialBuildSourceBudget--;steps--;
 #if DEBUG
                         ProjectionMatchSourceSteps++;NearBuildSemanticSteps++;
@@ -370,7 +390,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                         finally{capturingNearRange=null;}
                         state.Cursor=NextBuildSourceOrdinal(state.Cursor,cell,part.LogicalObjectId>0);
                     }
-
+                    return true; // Slice/budget ended without an external wait.
         }
         private static BlueprintProjectionBounds NextNearBuildStrip(BlueprintProjectionBounds covered,BlueprintProjectionBounds near)
         {

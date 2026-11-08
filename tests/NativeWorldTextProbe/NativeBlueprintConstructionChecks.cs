@@ -46,6 +46,29 @@ namespace NativeWorldTextProbe
                         catch(Exception error){Console.Error.WriteLine("CONSTRUCTION CASE "+name+": "+error);DumpConstructionPreparation(host,tools);if(first==null)first=error;}
                     };
                     check("finite original inventory input preparation",()=>ConstructionMaterialPreparation(context,host,tools,input));
+                    // Explicit local fixture diagnosis only; formal Appearance
+                    // retains its complete body and reaches this case there.
+                    if(family=="EmptyReceipt")check("truly empty settled receipt",()=>ConstructionEmptyPaintReceipt(context,host,tools,input));
+                    if(family=="EmptyReceipt" || family=="SettledAdmission")check("settled paint live admission",()=>ConstructionSettledPaintAdmission(context,host,tools,input));
+                    if(family=="QueueRecovery")
+                    {
+                        check("Q4 fair sources",()=>QueueBudgetProgress(context,host,tools,input,true,true));
+                        check("Q4 actual pending source",()=>QueueActualSourceWaiting(context,host,tools,input));
+                        check("Q3 recovery before foreign Acquire",()=>QueueReachAdmissionFence(context,host,tools,input,true));
+                        check("Q3 recovery after foreign admission",()=>QueueReachAdmissionFence(context,host,tools,input,false));
+                    }
+                    if(family=="QueueMechanismControls")
+                    {
+                        // Fixed-production comparisons only. Do not enter the
+                        // newer ExtractionWaiting observation on old Hosts.
+                        check("Q1 furniture return",()=>QueueFurnitureMovement(context,host,tools,input,false));
+                        check("Q2 mirrored furniture",()=>QueueFurnitureMovement(context,host,tools,input,true));
+                        check("Q2 mirrored cell",()=>QueueMirrorCellMovement(context,host,tools,input));
+                        check("Q1 GrandDesign ordinary domain",()=>NearQueueGrandDesignMovement(context,host,tools,input,true));
+                        check("Q4 cold source tail",()=>QueueBudgetProgress(context,host,tools,input,false));
+                        check("Q3 short-to-long brush",()=>QueueReachRecovery(context,host,tools,input,false));
+                    }
+                    if(family=="QueueOrdinaryReturn")check("Q1 unchanged-world ordinary return",()=>QueueOrdinaryCellReturn(context,host,tools,input));
                     if(family=="SupplyRepair")check("finite paint conversion programs and every cancel prefix",()=>SupplyConversionPrograms(context,host,tools,input));
                     if(family=="SupplyRepair")check("real current-material restock precedes an already prepared foreign flight",()=>SupplyCurrentRestockPriority(context,host,tools,input));
                     // Historical comparison has an explicit nonformal entry:

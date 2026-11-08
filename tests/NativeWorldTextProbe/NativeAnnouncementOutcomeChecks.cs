@@ -33,17 +33,20 @@ namespace NativeWorldTextProbe
             try
             {
                 silence.Patch(typeof(Main).GetMethod("NewText",F,null,new[]{typeof(string),typeof(byte),typeof(byte),typeof(byte)},null),prefix:new HarmonyMethod(typeof(NativeAnnouncementOutcomeChecks).GetMethod(nameof(Notice),F)));
+                silence.Patch(typeof(ChatHelper).GetMethod("SendChatMessageFromClient",F),prefix:new HarmonyMethod(typeof(NativeAnnouncementOutcomeChecks).GetMethod(nameof(Client),F)));
+                silence.Patch(typeof(ChatCommandProcessor).GetMethod("ProcessIncomingMessage",F),prefix:new HarmonyMethod(typeof(NativeAnnouncementOutcomeChecks).GetMethod(nameof(Local),F)));
+                int interceptedBefore=client+local;
                 Set(state,"Ready",true);int beforePublic=outputCount();
                 Main.GameViewMatrix=new Terraria.Graphics.SpriteViewMatrix(null);Main.GameViewMatrix.SetViewportOverride(new Microsoft.Xna.Framework.Graphics.Viewport(0,0,960,640));Main.GameViewMatrix.Zoom=Vector2.One;Main.screenPosition=Vector2.Zero;
                 typeof(Terraria.GameInput.PlayerInput).GetField("_originalScreenWidth",F).SetValue(null,960);typeof(Terraria.GameInput.PlayerInput).GetField("_originalScreenHeight",F).SetValue(null,640);
                 foreach(int mode in new[]{0,1}) foreach(bool warm in new[]{true,false})
-                foreach(var row in new[]{new[]{395,3270},new[]{20,27}})
+                foreach(var row in new[]{new[]{395,3270},new[]{20,27}}.Concat(NativeLegacyPlacementIdentityChecks.Samples(380).Concat(new[]{19,10,314,387,388}.Select(t=>NativeLegacyPlacementIdentityChecks.Samples(t).First())).Select(i=>new[]{i.createTile,i.type})))
                 using(var world=new NativeNaturalNameChecks.World(browser.GetType().Assembly,warm))
                 {
                     Main.netMode=mode;var origin=new Point16(20,20);TileEntity saved;bool had=TileEntity.ByPosition.TryGetValue(origin,out saved);
                     try
                     {
-                        if(row[0]==395){Frame();TileEntity.ByPosition.Remove(origin);}else world.At(20,0);
+                        if(row[0]==395){Frame();TileEntity.ByPosition.Remove(origin);}else if(row[0]!=20)NativeLegacyPlacementIdentityChecks.PlaceSource(ContentSamples.ItemsByType[row[1]]);else world.At(20,0);
                         Call(workspace,"Navigate",9,false);object value=world.Observe(328,328,false);
                         int first=(int)Get(value,"ItemType");bool pending=GetOptional(value,"Placement")!=null;
                         if(!warm){world.Warm();if(pending)Require((bool)browser.GetType().Assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeTargetObservation").GetMethod("ResolvePlacement",F).Invoke(null,new[]{value,world.Catalog}),"stable cold query resolves original body");}
@@ -64,6 +67,7 @@ namespace NativeWorldTextProbe
                     finally{if(had)TileEntity.ByPosition[origin]=saved;else TileEntity.ByPosition.Remove(origin);}
                 }
                 Require(outputCount()==beforePublic,"query-only consumers never use public declaration outlets");
+                Require(client+local==interceptedBefore,"query-only intercepted native terminals stay unused");
                 Require(failures.Count==0,"actual World(false) -> installed Host Picked -> page navigation: "+string.Join(";",failures));
                 Console.WriteLine("PASS query consumers L2: real Host-installed Picked/page navigation for received unknown-content display and sapling, hot/cold bounded native placement, SP/client; actual contents priority and truly unknown nonnavigation. Controlled world/visibility, no input/Main loop/network.");
             }
@@ -71,6 +75,7 @@ namespace NativeWorldTextProbe
         }
         internal static void Run(Assembly assembly)
         {
+            NativeLegacyPlacementIdentityChecks.Run(assembly);
             var isolation=new Harmony("JueMingR.Tests.AnnouncementOutcomes");
             bool menu=Main.gameMenu,hidden=Main.hideUI;object owner=null;
             try
@@ -132,6 +137,8 @@ namespace NativeWorldTextProbe
                         }
                         finally{TileEntity.ByPosition.Remove(new Point16(21,20));if(had)TileEntity.ByPosition[origin]=previous;else TileEntity.ByPosition.Remove(origin);}
                         Positive(owner,mode,()=>{world.At(3,144);Main.tile[20,20].liquid=80;return world.Observe();},"known-plant+water",Lang.GetItemNameValue(5),"水");
+                        foreach(var sample in NativeLegacyPlacementIdentityChecks.Samples(380).Concat(new[]{19,10,314,387,388}.Select(t=>NativeLegacyPlacementIdentityChecks.Samples(t).First())))
+                            Positive(owner,mode,()=>{NativeLegacyPlacementIdentityChecks.PlaceSource(sample);object value=world.Observe();Require((int)Get(value,"ItemType")==sample.type,"native legacy body reaches Submit with exact identity");return value;},"canonical-legacy-"+sample.type,Lang.GetItemNameValue(sample.type),"[i:"+sample.type+"]");
                         Positive(owner,mode,()=>world.At(184,22,0),"nonzero-moss-frame","长苔藓");
                         Positive(owner,mode,()=>world.At(20,0),"sapling-description",Terraria.Localization.Language.GetTextValue("MapObject.Sapling"));
                         Require(!sent.Contains("[i:27]") && !sent.Contains(Lang.GetItemNameValue(27)),"query's native Acorn identity never replaces the public sapling description");

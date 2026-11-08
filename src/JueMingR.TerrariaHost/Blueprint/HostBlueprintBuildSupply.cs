@@ -117,6 +117,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             else if(source==destination){currentSlot=source;return true;}
             buildSupplyTarget=target;buildSupplyPlan=plan;buildSupplyReadyFlight=0;
+            // A fully settled old paint use still owns its natural ToolUse
+            // tail. Its own lease is not a world/material rejection of this
+            // selectable candidate. Keep the fact pending and let Refresh
+            // yield that exact old owner before any real inventory clicks.
+            if (DeferSettledPaintPreparation(target)) return false;
             bool ready=preparation.TryPrepare(p,source,destination,target.Identity,out currentSlot);
             buildSupplyReceiptEpoch=preparation.ReceiptEpoch;buildSupplyMaterial=preparation.Material;
             if(!ready)WaitForDynamicBuild(target);

@@ -129,6 +129,11 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeAnnouncementOutcomeChecks.cs'=@('native-BrowserCpu')
         'tests/NativeWorldTextProbe/NativeAnnouncementObjectChecks.cs'=@('native-BrowserCpu')
         'tests/NativeWorldTextProbe/NativeAnnouncementTargetChecks.cs'=@('native-BrowserCpu')
+        'tests/NativeWorldTextProbe/NativePlacementIdentityChecks.cs'=@('native-BrowserCpu')
+        'tests/NativeWorldTextProbe/NativeSwitchIdentityChecks.cs'=@('native-BrowserCpu')
+        'tests/NativeWorldTextProbe/NativeLegacyPlacementIdentityChecks.cs'=@('native-BrowserCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintQueueRecoveryChecks.cs'=@('native-BlueprintNearQueueCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintReachAdmissionChecks.cs'=@('native-BlueprintNearQueueCpu')
         # This owner authenticates only actual Content consumers; CPU fixtures
         # keep their original argument and proof projection.
         'scripts/workload/Workload.NativeContent.ps1'=@('native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','native-NpcReviewedParticle','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
@@ -520,6 +525,11 @@ function Get-WorkloadLeafChecks {
     foreach($path in @($leaves.Keys)){
         if(@($leaves[$path]|Where-Object {$_ -in @('native-CombatAimCpu','native-CombatControlCpu','native-CombatEffectsCpu')}).Count){$leaves[$path]=@($leaves[$path])+@('native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')}
     }
+    # These private cases are reached only by the full construction and
+    # appearance bodies. They export no shared fixture and have no static
+    # initializers; the older shared-partial expansions above do not apply.
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintEmptyReceiptChecks.cs']=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintSettledPaintAdmissionChecks.cs']=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
     return $leaves
 }
 function Get-WorkloadNativeScopes {

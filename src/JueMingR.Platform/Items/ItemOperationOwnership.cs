@@ -9,6 +9,7 @@ namespace JueMingR.Platform.Items
         private const ulong AllInventorySlots = (1UL << 58) - 1;
         private ulong saleSlots, discardSlots, storeSlots, interruptedSourceSlots, useSlots, coinSlots;
         private long useToken, coinToken, nextUseToken;
+        private int useSource = -1;
         private ulong fallInventory;
         private uint fallArmor, fallMisc;
         private long fallToken;
@@ -121,10 +122,22 @@ namespace JueMingR.Platform.Items
         {
             if (slot < 0 || slot >= 50 || token <= 0 || generation <= 0 || generation != Session || useToken != 0 ||
                 (dependencies & ~AllInventorySlots) != 0 || (ProtectedSlots & (dependencies | (1UL << slot))) != 0) return false;
-            useSlots = dependencies | (1UL << slot); useToken = token; return true;
+            useSlots = dependencies | (1UL << slot); useSource = slot; useToken = token; return true;
+        }
+        // A returned native generation may continue with the SAME held source
+        // and token. The native owner must settle its old debit and validate
+        // new Item identities first; this owner atomically exchanges only the
+        // exact dependency mask, never authorizes input or a second lease.
+        public bool TryContinueUse(long generation, int slot, long token, ulong expectedDependencies, ulong dependencies)
+        {
+            if (slot < 0 || slot >= 50 || useSource != slot || !OwnsUse(generation, token) ||
+                (dependencies & ~AllInventorySlots) != 0 ||
+                useSlots != (expectedDependencies | (1UL << slot)) ||
+                ((ProtectedSlots & ~useSlots) & (dependencies | (1UL << slot))) != 0) return false;
+            useSlots = dependencies | (1UL << slot); return true;
         }
         public void EndUse(long generation, long token)
-        { if (generation == Session && token == useToken) { useSlots = 0; useToken = 0; } }
+        { if (generation == Session && token == useToken) { useSlots = 0; useToken = 0; useSource = -1; } }
         public bool SaleBlocked { get { return ProtectedSlots != 0; } }
         public bool DiscardBlocked { get { return discardSlots != 0; } }
         public bool StoreBlocked { get { return storeSlots != 0; } }
@@ -138,6 +151,7 @@ namespace JueMingR.Platform.Items
             if (discardSlots != 0) DiscardResult = Unknown();
             if (storeSlots != 0) StoreResult = Unknown();
             saleSlots = discardSlots = storeSlots = interruptedSourceSlots = useSlots = coinSlots = 0; useToken = coinToken = 0;
+            useSource = -1;
             fallInventory=0;fallArmor=fallMisc=0;fallToken=0;
             Session = generation;
             Array.Clear(recoverySlots,0,recoverySlots.Length);recoveryToken=0;

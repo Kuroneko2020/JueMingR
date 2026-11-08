@@ -133,7 +133,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                     wait |= localWait; dependencySlots |= localSlots;
                 }
             }
-            if (!found && wait == BlueprintBuildWait.None) wait = BlueprintBuildWait.Material;
+            // The semantic fact records this result before the old range wait
+            // normalizer runs. Missing tools must subscribe to the same exact
+            // wiring options here, or native GetItem cannot wake that fact.
+            if (!found && wait == BlueprintBuildWait.None) wait = BlueprintBuildWait.Material | BlueprintBuildWait.Capability;
             if(wait==BlueprintBuildWait.None)return BlockBuildTarget(target);
             return false;
         }
@@ -143,7 +146,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             plan = null; wait = BlueprintBuildWait.None; dependencySlots = 0;
             var tool = p.inventory[slot];
             if (tool == null || tool.IsAir || !WiringToolMatches(target.Operation, tool.type))
-            { wait = BlueprintBuildWait.Material; return false; }
+            { wait = BlueprintBuildWait.Material | BlueprintBuildWait.Capability; return false; }
             if (!buildTools.BuildInventoryEligible(slot, tool))
             { wait = BlueprintBuildWait.Dependencies; dependencySlots = 1UL << slot; return false; }
             var requested = target.Operation;
@@ -237,7 +240,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintWorldMatchSample actual, out BlueprintBuildWait wait, out ulong dependencySlots, BuildFlight ownFlight = null)
         {
             wait = BlueprintBuildWait.None; dependencySlots = 0;
-            if (!WiringToolInRange(target, p, tool)) { wait = BlueprintBuildWait.Player; return false; }
+            // A newly qualified matching tool (including GD) can restore reach.
+            if (!WiringToolInRange(target, p, tool)) { wait = BlueprintBuildWait.Player | BlueprintBuildWait.Capability; return false; }
             switch (operation.Kind)
             {
                 case BlueprintBuildOperationKind.AddWire:

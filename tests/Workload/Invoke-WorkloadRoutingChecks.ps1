@@ -19,6 +19,43 @@ function Assert-Route {
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
 # New task leaves have one exact formal native responsibility each.
+foreach($identityHelper in @('NativePlacementIdentityChecks.cs','NativeSwitchIdentityChecks.cs','NativeLegacyPlacementIdentityChecks.cs')){
+    $identityPath='tests/NativeWorldTextProbe/'+$identityHelper
+    Assert-Route ((@(Get-WorkloadPathChecks $identityPath) -join '|') -ceq 'native-BrowserCpu') ('private identity helper exact consumer '+$identityHelper)
+    $identityRoute=Get-WorkloadRoute @($identityPath)
+    Assert-Route ($identityRoute.unknown.Count -eq 0) ('identity helper classified '+$identityHelper)
+    $identityPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $identityRoute.groups)
+    Assert-Route ($identityPlan.Count -eq 1 -and $identityPlan[0].name -ceq 'native-BrowserCpu' -and $identityPlan[0].arguments[-1] -ceq 'BrowserCpu') ('identity helper selects real BrowserCpu entry '+$identityHelper)
+    $identityBefore=[pscustomobject]@{inputs=@($identityPath+':'+('A'*64))}
+    $identityAfter=[pscustomobject]@{inputs=@($identityPath+':'+('B'*64))}
+    Assert-Route ((Get-WorkloadCheckFingerprint $identityBefore 'native-BrowserCpu') -cne (Get-WorkloadCheckFingerprint $identityAfter 'native-BrowserCpu')) ('identity bytes invalidate actual consumer '+$identityHelper)
+    Assert-Route ((Get-WorkloadCheckFingerprint $identityBefore 'native-BlueprintAppearanceCpu') -ceq (Get-WorkloadCheckFingerprint $identityAfter 'native-BlueprintAppearanceCpu')) ('identity private helper preserves unrelated appearance proof '+$identityHelper)
+}
+$queueHelper='tests/NativeWorldTextProbe/NativeBlueprintQueueRecoveryChecks.cs'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeBlueprintReachAdmissionChecks.cs') -join '|') -ceq 'native-BlueprintNearQueueCpu') 'tool recovery admission fixture has exact queue consumer'
+Assert-Route ((@(Get-WorkloadPathChecks $queueHelper) -join '|') -ceq 'native-BlueprintNearQueueCpu') 'queue recovery assertions have one actual private consumer'
+$queueRoute=Get-WorkloadRoute @($queueHelper)
+$queuePlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $queueRoute.groups)
+Assert-Route ($queueRoute.unknown.Count -eq 0 -and $queuePlan.Count -eq 1 -and $queuePlan[0].name -ceq 'native-BlueprintNearQueueCpu') 'queue recovery helper selects actual formal leaf'
+$queueBefore=[pscustomobject]@{inputs=@($queueHelper+':'+('A'*64))}
+$queueAfter=[pscustomobject]@{inputs=@($queueHelper+':'+('B'*64))}
+Assert-Route ((Get-WorkloadCheckFingerprint $queueBefore 'native-BlueprintNearQueueCpu') -cne (Get-WorkloadCheckFingerprint $queueAfter 'native-BlueprintNearQueueCpu')) 'private recovery assertions invalidate queue proof'
+Assert-Route ((Get-WorkloadCheckFingerprint $queueBefore 'native-BlueprintSupplyContinuationCpu') -ceq (Get-WorkloadCheckFingerprint $queueAfter 'native-BlueprintSupplyContinuationCpu')) 'private recovery body preserves independent SupplyRepair proof'
+$emptyReceiptPath='tests/NativeWorldTextProbe/NativeBlueprintEmptyReceiptChecks.cs'
+Assert-Route (((@(Get-WorkloadPathChecks $emptyReceiptPath)|Sort-Object)-join '|') -ceq 'native-BlueprintAppearanceCpu|native-BlueprintConstructionCpu') 'empty receipt case owns its actual appearance runner consumers'
+$emptyBefore=[pscustomobject]@{inputs=@($emptyReceiptPath+':'+('A'*64))}
+$emptyAfter=[pscustomobject]@{inputs=@($emptyReceiptPath+':'+('B'*64))}
+Assert-Route ((Get-WorkloadCheckFingerprint $emptyBefore 'native-BlueprintAppearanceCpu') -cne (Get-WorkloadCheckFingerprint $emptyAfter 'native-BlueprintAppearanceCpu')) 'empty receipt assertions invalidate actual appearance proof'
+Assert-Route ((Get-WorkloadCheckFingerprint $emptyBefore 'native-BlueprintNearQueueCpu') -ceq (Get-WorkloadCheckFingerprint $emptyAfter 'native-BlueprintNearQueueCpu')) 'private empty receipt assertions preserve unrelated queue proof'
+foreach($privateHelper in @('tests/NativeWorldTextProbe/NativeBlueprintSettledPaintAdmissionChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintReachAdmissionChecks.cs')){
+    $privateRoute=Get-WorkloadRoute @($privateHelper)
+    $privatePlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $privateRoute.groups)
+    $expectedPrivate=if($privateHelper -match 'SettledPaint'){@('native-BlueprintAppearanceCpu','native-BlueprintConstructionCpu')}else{@('native-BlueprintNearQueueCpu')}
+    Assert-Route ($privateRoute.unknown.Count -eq 0 -and (($privatePlan.name|Sort-Object)-join '|') -ceq (($expectedPrivate|Sort-Object)-join '|')) ('private admission case actual formal consumers '+$privateHelper)
+    $privateBefore=[pscustomobject]@{inputs=@($privateHelper+':'+('A'*64))};$privateAfter=[pscustomobject]@{inputs=@($privateHelper+':'+('B'*64))}
+    foreach($consumer in $expectedPrivate){Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore $consumer) -cne (Get-WorkloadCheckFingerprint $privateAfter $consumer)) ('private admission bytes invalidate actual consumer '+$consumer)}
+    Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore 'native-BlueprintSupplyContinuationCpu') -ceq (Get-WorkloadCheckFingerprint $privateAfter 'native-BlueprintSupplyContinuationCpu')) ('private admission helper preserves unrelated SupplyRepair '+$privateHelper)
+}
 foreach($scope in @('BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu')){
     $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-'+$scope))
     Assert-Route ($plan.Count -eq 1 -and $plan[0].name -ceq ('native-'+$scope) -and $plan[0].arguments[-1] -ceq $scope) ('exact new native scope '+$scope)

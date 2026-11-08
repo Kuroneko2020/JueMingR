@@ -35,6 +35,8 @@ namespace NativeWorldTextProbe
             check("mixed paint", () => ConstructionMixedPaint(context, host, tools, input));
             check("missing foreground keeps wall paint", () => ConstructionMissingForegroundWallPaint(context, host, tools, input));
             check("last paint", () => ConstructionLastPaint(context, host, tools, input));
+            check("truly empty settled receipt", () => ConstructionEmptyPaintReceipt(context, host, tools, input));
+            check("settled paint live admission", () => ConstructionSettledPaintAdmission(context, host, tools, input));
             check("coating restoration", () => ConstructionCoatingRestoration(context, host, tools, input));
             check("same color restoration refill", () => ConstructionSameColorRestorationRefill(context, host, tools, input));
             check("unselected foreground", () => ConstructionUnselectedForeground(context, host, tools, input));

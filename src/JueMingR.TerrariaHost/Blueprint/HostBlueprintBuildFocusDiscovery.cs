@@ -23,6 +23,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal BlueprintProjectionGeometryDirectory Directory;
             internal BlueprintProjectionBounds Covered, Query;
             internal bool Complete, Started;
+            internal BuildFocusNearQuery Ordinary;
+            internal bool WiringTurn;
             internal readonly Stack<int> Stack=new Stack<int>();
         }
         private sealed class BuildFocusDiscovery
@@ -58,7 +60,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // after Clear retained its buckets for the next near query.
                 long bytes=224+discovery.Ranges.Capacity*8L+discovery.Members.Count*32L+discovery.Ranges.Count*192L;
                 bytes+=discovery.NearOwners.Capacity*8L+discovery.NearOwnerSet.Count*32L+discovery.Retired.Capacity*8L;
-                foreach(var query in discovery.Owners.Values)bytes+=128+query.Stack.Count*4L;
+                foreach(var query in discovery.Owners.Values)bytes+=160+query.Stack.Count*4L+(query.Ordinary==null?0:160+query.Ordinary.Stack.Count*4L);
                 return bytes;
             }
         }
@@ -120,6 +122,21 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(query.Stack.Count==0){query.Covered=query.Query;query.Complete=true;query.Started=false;}
             return true;
         }
+        private static bool BuildFocusQueryCurrent(BuildFocusNearQuery query,BlueprintProjectionBounds bounds)
+        {return query!=null && query.Complete && BuildBoundsContain(query.Covered,bounds);}
+        private static bool BuildFocusQueryRetains(BuildFocusNearQuery query,BlueprintProjectionBounds bounds)
+        {return query!=null && (BuildBoundsOverlap(query.Covered,bounds) || query.Started && BuildBoundsOverlap(query.Query,bounds));}
+        private static void PrepareBuildFocusQuery(BuildFocusNearQuery query,BlueprintProjectionBounds bounds)
+        {
+            var corridor=bounds.Expand(Math.Max(bounds.Width,bounds.Height));
+            query.Covered=IntersectBuildBounds(query.Covered,corridor);
+            // An in-flight frozen query keeps its members until completion;
+            // movement is serviced by a subsequent bounded query, not reset.
+            if(query.Started || BuildFocusQueryCurrent(query,bounds))return;
+            query.Query=EmptyBuildBounds(query.Covered)?bounds:BuildBoundsUnion(query.Covered,bounds);
+            query.Started=true;query.Complete=false;
+            if(query.Directory.NodeCount>0)query.Stack.Push(0);
+        }
         private bool RefreshBuildFocusNear(Player p)
         {
             var discovery=nearBuildDiscovery;
@@ -139,19 +156,6 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(!discovery.NearOwnerSet.Contains(owner) || !ProjectionQualificationCurrent(owner) || !ReferenceEquals(owner.Match,discovery.Owners[owner].Match))
                     discovery.Retired.Add(owner);
             foreach(var owner in discovery.Retired)discovery.Owners.Remove(owner);
-            // Prune only the previous near domain. Moving never resets a
-            // source ordinal or walks every member of every blueprint.
-            for(int i=discovery.Ranges.Count-1;i>=0;i--)
-            {
-                var range=discovery.Ranges[i];var owner=range.Owner;
-                BuildFocusNearQuery query;bool known=discovery.Owners.TryGetValue(owner,out query);
-                if(!projectionScene.Contains(owner) || owner.Match==null || range.Index>=owner.Match.Ranges.Length ||
-                    !ReferenceEquals(owner.Match.Ranges[range.Index],range) || !known ||
-                    !BuildBoundsOverlap(range.Source.Bounds,BuildNearOrdinaryBounds(owner,p)) && (range.Source.TargetBits&NearBuildWiringTargetBits)==0 ||
-                    !(BuildBoundsOverlap(range.Source.Bounds,BuildFocusBounds(owner,p)) ||
-                      query.Complete && BuildBoundsOverlap(range.Source.Bounds,query.Covered) || query.Started && BuildBoundsOverlap(range.Source.Bounds,query.Query)))
-                {discovery.Members.Remove(range);discovery.Ranges.RemoveAt(i);}
-            }
             foreach(var owner in discovery.NearOwners)
             {
                 var state=owner.Match;
@@ -161,31 +165,44 @@ namespace JueMingR.TerrariaHost.Blueprint
                 {
                     query=new BuildFocusNearQuery{Match=state,Sources=owner.Qualification.SourceRanges,
                         Directory=owner.Qualification.GeometryDirectory};
+                    query.Ordinary=new BuildFocusNearQuery{Match=state,Sources=query.Sources,Directory=query.Directory};
                     discovery.Owners[owner]=query;
                 }
             }
+            // Ordinary and screen-wiring coverage certify different layers.
+            // Freeze each query domain; retain only its bounded corridor and
+            // corresponding members, so neither GD nor a retired member can
+            // sign an ordinary absence on a later visit.
+            bool grand=buildSupply.ContainsKey(3611);
+            foreach(var owner in discovery.NearOwners)
+            {
+                BuildFocusNearQuery query;if(!discovery.Owners.TryGetValue(owner,out query))continue;
+                PrepareBuildFocusQuery(query.Ordinary,BuildNearOrdinaryBounds(owner,p));
+                if(grand)PrepareBuildFocusQuery(query,BuildFocusBounds(owner,p));
+                else {query.Covered=default(BlueprintProjectionBounds);query.Complete=false;query.Started=false;query.Stack.Clear();}
+            }
+            for(int i=discovery.Ranges.Count-1;i>=0;i--)
+            {
+                var range=discovery.Ranges[i];var owner=range.Owner;BuildFocusNearQuery query;
+                if(!projectionScene.Contains(owner) || owner.Match==null || range.Index>=owner.Match.Ranges.Length ||
+                    !ReferenceEquals(owner.Match.Ranges[range.Index],range) || !discovery.Owners.TryGetValue(owner,out query) ||
+                    !(BuildFocusQueryRetains(query.Ordinary,range.Source.Bounds) || grand &&
+                      (range.Source.TargetBits&NearBuildWiringTargetBits)!=0 && BuildFocusQueryRetains(query,range.Source.Bounds)))
+                {discovery.Members.Remove(range);discovery.Ranges.RemoveAt(i);}
+            }
             int ownerCount=discovery.NearOwners.Count,idle=0;
-            // Each pending owner receives one node before another turn. A
-            // moving first instance cannot consume every later source's turn.
             while(ownerCount>0 && materialBuildSearchBudget>0 && idle<ownerCount)
             {
                 discovery.OwnerCursor%=ownerCount;var owner=discovery.NearOwners[discovery.OwnerCursor];
                 discovery.OwnerCursor=(discovery.OwnerCursor+1)%ownerCount;
-                BuildFocusNearQuery query;
-                if(!discovery.Owners.TryGetValue(owner,out query)){idle++;continue;}
-                if(!query.Started && (!query.Complete || !BuildBoundsContain(query.Covered,BuildFocusBounds(owner,p))))
-                {
-                    var bounds=BuildFocusBounds(owner,p);
-                    // Immutable geometry keeps a bounded corridor across
-                    // visits; actual target legality is checked separately.
-                    var previous=IntersectBuildBounds(query.Covered,bounds.Expand(Math.Max(bounds.Width,bounds.Height)));
-                    query.Query=query.Complete && !EmptyBuildBounds(previous)?BuildBoundsUnion(previous,bounds):bounds;
-                    query.Started=true;if(query.Directory.NodeCount>0)query.Stack.Push(0);
-                }
+                BuildFocusNearQuery ownerQuery;
+                if(!discovery.Owners.TryGetValue(owner,out ownerQuery)){idle++;continue;}
+                bool wiring=grand && ownerQuery.Started && (!ownerQuery.Ordinary.Started || ownerQuery.WiringTurn);
+                var query=wiring?ownerQuery:ownerQuery.Ordinary;ownerQuery.WiringTurn=!wiring;
                 bool advanced=AdvanceBuildFocusNearQuery(query,index=>
                 {
                     var group=query.Match.Groups[index];
-                    Action<int> route=ordinal=>
+                    group.Source.RouteProofs(query.Query,wiring?NearBuildWiringTargetBits:(ushort)0xff,owner.Mask,ordinal=>
                     {
 #if DEBUG
                         BuildFocusDirectoryRoutes++;
@@ -193,17 +210,20 @@ namespace JueMingR.TerrariaHost.Blueprint
                         if(ordinal<0 || ordinal>=group.Parts.Count)return;
                         var range=group.Parts[ordinal];
                         if(discovery.Members.Add(range))discovery.Ranges.Add(range);
-                    };
-                    group.Source.RouteProofs(IntersectBuildBounds(query.Query,BuildNearOrdinaryBounds(owner,p)),0xff,owner.Mask,route);
-                    if(buildSupply.ContainsKey(3611))group.Source.RouteProofs(query.Query,NearBuildWiringTargetBits,owner.Mask,route);
+                    });
                 });
                 if(advanced)idle=0;else idle++;
             }
+            bool wiringGroup=WiringOperation(buildContinuation?.Operation);
+            var relevantWorld=wiringGroup?world:BuildNearOrdinaryWorldBounds(p);
             foreach(var owner in discovery.NearOwners)
             {
+                var summary=owner.Summary;
+                if(summary!=null && !BuildBoundsOverlap(relevantWorld,new BlueprintProjectionBounds(owner.OriginX-1,owner.OriginY-1,summary.Width+2,summary.Height+2)))continue;
                 BuildFocusNearQuery query;
                 if(owner.Match==null || !ProjectionQualificationCurrent(owner) || !discovery.Owners.TryGetValue(owner,out query) ||
-                    !query.Complete || !BuildBoundsContain(query.Covered,BuildFocusBounds(owner,p)))return false;
+                    !BuildFocusQueryCurrent(query.Ordinary,BuildNearOrdinaryBounds(owner,p)) ||
+                    wiringGroup && grand && !BuildFocusQueryCurrent(query,BuildFocusBounds(owner,p)))return false;
             }
             return true;
         }
@@ -223,8 +243,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 BuildFocusNearQuery query;
                 if(owner.Match==null || !ProjectionQualificationCurrent(owner) || !discovery.Owners.TryGetValue(owner,out query) ||
                     !ReferenceEquals(query.Match,owner.Match) || !ReferenceEquals(query.Sources,owner.Qualification.SourceRanges) ||
-                    !ReferenceEquals(query.Directory,owner.Qualification.GeometryDirectory) || !query.Complete ||
-                    !BuildBoundsContain(query.Covered,BuildPreferredFocusBounds(owner,p)))return false;
+                    !ReferenceEquals(query.Directory,owner.Qualification.GeometryDirectory) ||
+                    !BuildFocusQueryCurrent(query.Ordinary,BuildNearOrdinaryBounds(owner,p)) ||
+                    WiringOperation(buildContinuation?.Operation) && buildSupply.ContainsKey(3611) && !BuildFocusQueryCurrent(query,BuildFocusBounds(owner,p)))return false;
             }
             return true;
         }

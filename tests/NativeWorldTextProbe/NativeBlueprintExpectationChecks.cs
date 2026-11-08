@@ -63,6 +63,18 @@ namespace NativeWorldTextProbe
                     BusinessNearQueue(context, host, tools, input, false, logicalCount: 8);
                     if (GetOptional(host, "NearBuildFacts") != null)
                     {
+                        QueueFurnitureMovement(context, host, tools, input, false);
+                        QueueFurnitureMovement(context, host, tools, input, true);
+                        QueueMirrorCellMovement(context, host, tools, input);
+                        QueueBudgetProgress(context, host, tools, input, false);
+                        QueueBudgetProgress(context, host, tools, input, true);
+                        QueueBudgetProgress(context, host, tools, input, true, true);
+                        QueueActualSourceWaiting(context, host, tools, input);
+                        QueueReachRecovery(context, host, tools, input, false);
+                        QueueReachRecovery(context, host, tools, input, true);
+                        QueueMissingWiringToolRecovery(context, host, tools, input);
+                        QueueReachAdmissionFence(context, host, tools, input, true);
+                        QueueReachAdmissionFence(context, host, tools, input, false);
                         NearQueueLifecycle(context, host, tools, input);
                         NearQueueLookahead(context, host, tools, input);
                         NearQueueNativeReentry(context, host, tools, input);
@@ -73,6 +85,7 @@ namespace NativeWorldTextProbe
                         SchedulerNativeHandoffCadence(context, host, tools, input);
                         NearQueueMaterialDependency(context, host, tools, input);
                         NearQueueGrandDesignMovement(context, host, tools, input);
+                        NearQueueGrandDesignMovement(context, host, tools, input, true);
                         long oneCapabilitySlots = NearQueueCapabilityRecovery(context, host, tools, input, 1);
                         long fourCapabilitySlots = NearQueueCapabilityRecovery(context, host, tools, input, 4);
                         Require(fourCapabilitySlots <= oneCapabilitySlots,
@@ -225,27 +238,38 @@ namespace NativeWorldTextProbe
             return types;
         }
 
-        private static void NearQueueGrandDesignMovement(object context, object host, object tools, object input)
+        private static void NearQueueGrandDesignMovement(object context, object host, object tools, object input, bool separateFurniture = false)
         {
             using (var scope = new BusinessScope(context, host, tools, input))
             using (var observation = new NearQueueObservation(host, required: true))
             {
                 var p = Reset(context, host, tools, input);
                 p.inventory[12].SetDefaults(3611);
-                var stone = BusinessStock(p, 13, ItemID.StoneBlock, 4);
+                var stone = BusinessStock(p, 13, separateFurniture ? ItemID.WorkBench : ItemID.StoneBlock, separateFurniture ? 9999 : 4);
                 p.inventory[20].SetDefaults(ItemID.Wire); p.inventory[20].stack = 3; var wire = p.inventory[20];
                 scope.Sources = new[] { stone }; scope.Goals = new[] { BusinessTileGoal(57, 42, stone) };
                 var screen = Main.screenPosition; var mode = WiresUI.Settings.ToolMode;
                 try
                 {
                     WiresUI.Settings.ToolMode = WiresUI.Settings.MultiToolMode.Green | WiresUI.Settings.MultiToolMode.Cutter;
-                    var instance = Place(context, host, input, Asset(host,
+                    LibraryEntry entry;
+                    if(separateFurniture)
+                    {
+                        NativeToolsChecks.Tile(83,43,TileID.Stone);NativeToolsChecks.Tile(84,43,TileID.Stone);
+                        scope.Goals=new[]{NearQueueFurniture(stone,83,42,57,42)};
+                        WorldGen.PlaceWire2(70,42);WorldGen.PlaceWire2(82,42);
+                        entry=NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(context,host,input,(LibraryState)Get(host,"Library"),()=>scope.Step(),70,42,15,1,"GD独立家具范围");
+                    }
+                    else entry=Asset(host,
                         new CaptureCell { Layers = CaptureLayer.Wire, Wires = 2 },
                         new CaptureCell { X = 12, Layers = CaptureLayer.Wire, Wires = 2 },
-                        new CaptureCell { X = 13, Layers = CaptureLayer.Tile, TileType = TileID.Stone }), 44, 42);
-                    Require(((IEnumerable)Get(instance, "MatchRanges")).Cast<object>().Count() == 1 && !scope.Runnable(scope.Goals[0]) &&
-                        (bool)Call(host, "GrandBuildPointVisible", p, 56, 42),
-                        "one ordinary logical range mixes screen-reachable wiring with a currently out-of-ordinary-reach stone goal");
+                        new CaptureCell { X = 13, Layers = CaptureLayer.Tile, TileType = TileID.Stone });
+                    var instance=Place(context,host,input,entry,44,42);
+                    var actualRanges=((IEnumerable)Get(instance,"MatchRanges")).Cast<object>().ToArray();
+                    Require((separateFurniture?actualRanges.Length==2:actualRanges.Length==1) && !scope.Runnable(scope.Goals[0]) &&
+                        (bool)Call(host,"GrandBuildPointVisible",p,56,42),"GD fixture has the declared actual range separation and native out-of-range ordinary goal");
+                    if(separateFurniture)Require(actualRanges.Count(range=>(int)Get(range,"ObjectId")>0)==1,
+                        "captured complete native bench occupies a distinct object range from wiring");
                     scope.Begin(true); SetAutomatic(host, input, true);
                     Action<int> native = direction =>
                     {
@@ -282,7 +306,7 @@ namespace NativeWorldTextProbe
                         }
                         return domainChecked && Main.tile[44, 42].wire2() && Main.tile[56, 42].wire2() && GetOptional(host, "grandBuild") == null;
                     });
-                    Require(wire.stack == 1 && stone.Item.stack == 4 && !scope.Goals[0].Complete,
+                    Require(wire.stack == 1 && stone.Item.stack == (separateFurniture ? 9999 : 4) && !scope.Goals[0].Complete,
                         "real Grand Design screen-domain wire commits once without lending its reach to the ordinary stone body");
                     NativeQuickItemChecks.Until(() =>
                     {
@@ -290,7 +314,7 @@ namespace NativeWorldTextProbe
                         Require(Main.screenPosition == screen, "the screen stays fixed while actual native controls move the ordinary reach domain");
                         return scope.Goals[0].Complete;
                     });
-                    Require(scope.Events.Count == 1 && stone.Item.stack == 3 && wire.stack == 1 && Main.tile[44, 42].wire2() && Main.tile[56, 42].wire2(),
+                    Require(scope.Events.Count == 1 && stone.Item.stack == (separateFurniture ? 9998 : 3) && wire.stack == 1 && Main.tile[44, 42].wire2() && Main.tile[56, 42].wire2(),
                         "the previously screened-out ordinary seed is rediscovered and consumed exactly once after real reach entry, preserving wiring");
                 }
                 finally { WiresUI.Settings.ToolMode = mode; Main.screenPosition = screen; }

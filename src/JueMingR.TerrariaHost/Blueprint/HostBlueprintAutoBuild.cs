@@ -38,7 +38,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal long SmartNeutralFrame = -1;
             internal SmartPlatformInputProof SmartProof;
             internal long SmartLookupFrame = -1;
-            internal bool SmartLookupValid, SettledConsumption;
+            internal bool SmartLookupValid, SettledConsumption, EmptySupplySettled, SettledSupplyPreparationPending;
             internal long Token, Generation;
             internal bool Checked, Rejected, Started, Chosen, Entered;
             internal BlueprintBuildOperation Operation { get { return Target.Operation; } }
@@ -564,8 +564,14 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (current.Operation?.NativePlacement?.Producer?.Kind == BlueprintSpecialProducerKind.Flexible) return SpecialBuildReadiness(current);
                 return ToolReadiness.Ready;
             }
+            // A restored current-group candidate can need real inventory
+            // preparation, which cannot start while THIS exact old lease owns
+            // its natural tail. Yield that lease; Pending here would retain
+            // the very owner that the pending preparation needs to release.
+            if (current.SettledSupplyPreparationPending) return ToolReadiness.Yield;
             var next = preparedBuild;
-            if (next == null || !SameBuildSource(current, next, intent.MaterialSlots))
+            bool settledPaint = next != null && !SameBuildSource(current, next, intent.MaterialSlots);
+            if (next == null || settledPaint && !SettledPaintContinuationAllowed(current, next))
             {
                 if (current.Operation?.NativePlacement?.Producer?.Kind == BlueprintSpecialProducerKind.Flexible)
                 {
@@ -578,10 +584,16 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(next==null && current.SettledConsumption && buildMaterialPreparation?.Using==true)return ToolReadiness.Yield;
                 return next == null && BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield;
             }
-            if (!BuildFlightCurrent(next, false) || !PreparedBuildPriorityCurrent(next,p)) { preparedBuild = null; return BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield; }
+            // A settled paint can change business groups without another
+            // ToolUse.Acquire. That is an admission boundary too: use live A
+            // capabilities/materials before exchanging this token's mask.
+            if (!BuildFlightCurrent(next, false) || !PreparedBuildPriorityCurrent(next,p,settledPaint)) { preparedBuild = null; return BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield; }
+            if (settledPaint && !ContinueSettledPaintLease(current, next, intent))
+            { preparedBuild = null; return BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield; }
             // One native ItemCheck has fully returned before this handoff.
             // The lease stays, but target, baselines and cleanup responsibility
             // belong to the new flight. Original selection/timers stay intact.
+            next.EmptySupplySettled |= current.EmptySupplySettled && buildMaterialPreparation?.HasWork == false;
             next.SmartNeutralRequired = !SameSmartPlatformSegment(current,next);
             preparedBuild = null; next.Token = current.Token; activeBuild = next; RememberBuildContinuation(next);
             ConfigurePreparedBuildBudgets(next);
@@ -833,7 +845,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // source). Retire only that inventory debt; the exact ToolUse
             // token still owns its natural tail and retires itself normally.
             if(flight.SettledConsumption && buildMaterialPreparation?.TryCompleteSettledEmptyUse(flight.Token)==true)
-                ClearBuildSupplyHint();
+            { flight.EmptySupplySettled = true; ClearBuildSupplyHint(); }
             if (spent && !applied)
             {
                 // Consumption without an observable body is unknown, never a
