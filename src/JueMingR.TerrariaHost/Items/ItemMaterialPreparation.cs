@@ -281,6 +281,39 @@ namespace JueMingR.TerrariaHost.Items
             return OnGameThread && phase == Phase.Using && token == useToken && nativeCalls == 0 && !tailPending &&
                 tools.Items.Ownership.OwnsUse(session, useToken) && SameSessionIdentity(player) && ExpectedCurrent(true);
         }
+        internal bool TryCompleteSettledEmptyUse(long useToken)
+        {
+            // Only the returned, positively confirmed native consumer may call
+            // this after ObserveUseConsumption settled its exact debit. Empty
+            // paint endpoints already at their updated originals have no inverse
+            // ItemSlot work; clicking them would delay vanilla's next material.
+            if (!OnGameThread || phase != Phase.Using || useToken <= 0 || token != useToken || destination != 54 ||
+                !tools.Runtime.IsSessionActive || tools.Runtime.HasFailed || !tools.Input.CanRunAutomaticActions ||
+                !tools.Use.Building || tools.Use.Operation != useToken || tools.Use.InNativeUse ||
+                !SameSession(player) || tools.SelectionIntent != selection || PhysicalInput ||
+                nativeCalls != 0 || lifecycleCalls != 0 || cursorSyncCalls != 0 || nativeClick || nativeInventoryChange ||
+                tailOpen || tailPending || tailStep != TailStep.None || activeSlot >= 0 || ownsInventory || Main.playerInventory ||
+                converting || returnRequested || endpointCount == 0 || historyCount == 0 || material == null || !material.IsAir ||
+                Main.mouseItem == null || !Main.mouseItem.IsAir || Main.LocalPlayerHasPendingInventoryActions() ||
+                !ExpectedCurrent(false, false) || !PreparationItemsNotPending()) return false;
+            for (int i = 0; i < endpointCount; i++)
+            {
+                var endpoint = endpoints[i]; var current = inventory[endpoint.Slot];
+                // Include the original source, which ordinary FinishReturn need
+                // not compare. A displaced nonempty 54, tool, remainder or any
+                // pending/manual endpoint must retain its real inverse route.
+                if (!Air(endpoint.OriginalType, endpoint.OriginalStack) || !Air(endpoint.Type, endpoint.Stack) ||
+                    !current.IsAir || !Matches(current, endpoint.Original, endpoint.OriginalType, endpoint.OriginalStack) ||
+                    player.inventoryChestStack[endpoint.Slot] || tools.Items.World.ManualMaterials.Contains(current) ||
+                    tools.ProtectedAfterYield(current)) return false;
+            }
+            // The existing ToolUse still owns this exact token and its source
+            // through vanilla's natural animation/selection tail. Forget only
+            // the completed preparation receipt; EndUse remains ToolUse's job.
+            // This grants no successor, input, inventory move or failed-runtime
+            // work, and leaves every nonempty return program unchanged.
+            ResetReceipt(); return true;
+        }
         internal bool IsDisplaced(Item item)
         { return item != null && !item.IsAir && (HasWork && ReferenceEquals(item, displaced) || abandonedDisplaced.Contains(item)); }
         internal void ObserveInventory(Player p)

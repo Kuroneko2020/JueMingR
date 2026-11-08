@@ -828,6 +828,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(!SmartPlatformResultValid(flight))
             {HoldUnconfirmedBuild(flight);buildTools.Use.Cancel();return;}
             flight.SettledConsumption=spent && applied;
+            // Native consumption can leave every prepared inventory endpoint
+            // already at its real original remainder (including an empty
+            // source). Retire only that inventory debt; the exact ToolUse
+            // token still owns its natural tail and retires itself normally.
+            if(flight.SettledConsumption && buildMaterialPreparation?.TryCompleteSettledEmptyUse(flight.Token)==true)
+                ClearBuildSupplyHint();
             if (spent && !applied)
             {
                 // Consumption without an observable body is unknown, never a

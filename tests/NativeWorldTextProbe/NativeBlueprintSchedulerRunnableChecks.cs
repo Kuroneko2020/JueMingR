@@ -320,6 +320,7 @@ namespace NativeWorldTextProbe
                 Place(context, host, input, woodAsset, 40, 42);
                 var late = Place(context, host, input, woodAsset, lateX, 42);
                 Place(context, host, input, BusinessTileAsset(host, stone), 39, 42);
+                NativeQuickItemChecks.Until(()=>{scope.Step(preparationOnly:true);return GetOptional(late,"Match")!=null;});
                 var lateRange=EligibilityRanges(late).Single();
                 Require(!initialBounds.Contains(lateX,42) && NearRangeFacts(host,lateRange).Length==0,
                     "the future A owner begins just outside ordinary discovery with no acquired semantic facts");
