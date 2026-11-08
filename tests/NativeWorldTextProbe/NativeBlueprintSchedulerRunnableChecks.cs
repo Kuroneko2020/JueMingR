@@ -309,6 +309,8 @@ namespace NativeWorldTextProbe
             using (var timeline = new SchedulerTimeline(host, tools, input))
             {
                 var p = Reset(context, host, tools, input); p.position.X = 42 * 16;
+                // Begin just inside the same discovery boundary so real input enters before B's lawful opportunity.
+                p.position.X = (float)Math.Ceiling((p.position.X + p.width) / 16f) * 16 - p.width - .25f;
                 var wood = BusinessStock(p, 12, ItemID.Wood, 4); var stone = BusinessStock(p, 13, ItemID.StoneBlock, 3);
                 scope.Sources = new[] { wood, stone };
                 var initialBounds=(BlueprintProjectionBounds)Call(host,"BuildNearOrdinaryWorldBounds",p);
