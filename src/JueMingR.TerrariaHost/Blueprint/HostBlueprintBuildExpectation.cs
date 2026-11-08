@@ -20,7 +20,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal Tools.ToolBuildConsumer Consumer;
             internal long Version=-1, Support=-1, Wake=-1, SupplyRevision=-1, Player=-1;
             internal long Container,Restoration,PlanGroup;internal ulong Dependencies;internal BlueprintBuildWait Wait;
-            internal ulong Retry,ObservedNativeRetry;
+            internal ulong Retry;
+#if DEBUG
+            internal ulong ObservedNativeRetry;
+#endif
             internal bool Ready, Pending=true;
             internal NearCapabilityDependency Capability;
             internal long CapabilitySerial=-1;
