@@ -46,7 +46,7 @@ namespace NativeWorldTextProbe
                         Patch("NativeBuildGeometry",null,nameof(ColdHandoffGeometryResult));
                         Patch("PreparedBuildPriorityCurrent",nameof(ColdHandoffPriorityBefore),nameof(ColdHandoffPriorityResult));
                         Patch("PreferredBuildAbsenceCurrent",null,nameof(ColdHandoffAbsenceResult));
-                        Patch("PreferredBuildSupplyCurrent",null,nameof(ColdHandoffSupplyResult));
+                        Patch("NearFactSupplyCurrent",null,nameof(ColdHandoffSupplyResult));
                         Patch("BuildFocusNearCurrent",null,nameof(ColdHandoffNearResult));
                         Patch("ProjectionMatchReadCurrent",null,nameof(ColdHandoffReadResult));
                         Patch("AdvanceAutomaticBuildSelection",nameof(ColdHandoffAdvanceBefore),nameof(ColdHandoffAdvanceResult));
@@ -105,9 +105,9 @@ namespace NativeWorldTextProbe
             internal string Proofs()
             {
                 var group=GetOptional(Host,"buildContinuation");if(group==null)return "group=none";
-                var p=Main.LocalPlayer;var discovery=Get(group,"Discovery");var result=new StringBuilder();
+                var p=Main.LocalPlayer;var discovery=Get(Host,"nearBuildDiscovery");var result=new StringBuilder();
                 result.Append("group=").Append(Get(group,"Group")).Append(" pending=").Append(Get(group,"Pending"))
-                    .Append(" nearActual=").Append(LastNearResult?.ToString()??"NOT_CALLED").Append(" repeated=").Append(GetOptional(Host,"repeatedBuild")!=null)
+                    .Append(" nearActual=").Append(LastNearResult?.ToString()??"NOT_CALLED").Append(" repeated=").Append(GetOptional(Host,"nearSelected")!=null)
                     .Append(" player=").Append(p.position).Append(" direction=").Append(p.direction)
                     .Append(" eligibility=").Append(Get(Host,"MaterialBuildEligibilityRevision"))
                     .Append(" materialTick=").Append(Get(Host,"materialTick"))
@@ -136,18 +136,7 @@ namespace NativeWorldTextProbe
                         .Append(" stampActual=").Append(LastStampWatch).Append('/').Append(LastStampPart).Append('/').Append(LastStampResult).Append('/').Append(LastStampValue);
                     if(value!=null)
                     {
-                        foreach(string name in new[]{"PreferredGroup","PreferredRevisit","PreferredFrontier","PreferredComplete","PreferredCoveredBounds","PreferredVersion","PreferredWake","BuildWakeRevision","PreferredSupply","PreferredSupport","PreferredWaits","PreferredPermission","PreferredContainer","PreferredRestoration","PreferredRetryAt","PreferredDependencySlots"})
-                            result.Append(' ').Append(name).Append('=').Append(name=="PreferredCoveredBounds"?Bounds(Get(value,name)):Get(value,name));
-                        var negatives=GetOptional(value,"PreferredPositionNegatives") as IDictionary;
-                        if(negatives!=null)
-                        {
-                            int n=0;foreach(var proof in negatives.Values)
-                            {
-                                if(n++>=8){result.Append(" positions=TRUNCATED");break;}
-                                result.Append(" P{");foreach(string name in new[]{"Active","Player","Position","Reach","Width","Height","Direction","PulleyDirection","Pulley","OutOfReach","X","Y"})
-                                    result.Append(name).Append('=').Append(name=="Reach"?Bounds(Get(proof,name)):Get(proof,name)).Append(' ');result.Append('}');
-                            }
-                        }
+                        result.Append(" sharedNear=").Append(NearRangeSummary(Host,range));
                     }
                     result.Append('}');
                 }
@@ -192,9 +181,9 @@ namespace NativeWorldTextProbe
         {
             var o=coldHandoffObservation;if(o?.Watching!=true || !ReferenceEquals(o.Host,__instance) || o.Rows>=64)return;
             string snapshot=o.SupplySnapshot();
-            o.Emit("supply-current-"+__result+"-"+Get(__0,"PreferredSupply")+"-"+Get(__0,"PreferredWaits")+"-"+snapshot,
-                "PreferredBuildSupplyCurrent="+__result+" cutoff="+Get(__0,"PreferredSupply")+" global="+Get(o.Host,"buildSupplyRevision")+
-                " waits="+Get(__0,"PreferredWaits")+" "+snapshot);
+            o.Emit("supply-current-"+__result+"-"+Get(__0,"SupplyRevision")+"-"+Get(__0,"Wait")+"-"+snapshot,
+                "NearFactSupplyCurrent="+__result+" cutoff="+Get(__0,"SupplyRevision")+" global="+Get(o.Host,"buildSupplyRevision")+
+                " waits="+Get(__0,"Wait")+" "+snapshot);
         }
         private static void ColdHandoffNearResult(object __instance,bool __result)
         {var o=coldHandoffObservation;if(o?.Watching==true && ReferenceEquals(o.Host,__instance))o.LastNearResult=__result;}

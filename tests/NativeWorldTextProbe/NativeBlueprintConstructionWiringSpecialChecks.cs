@@ -295,7 +295,7 @@ namespace NativeWorldTextProbe
             var instance = Place(context, host, input, Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone, Inactive = true }), 44, 42);
             long sourceSteps = (long)Get(host, "ProjectionMatchSourceSteps");
             SetAutomatic(host, input, true);
-            NativeQuickItemChecks.Until(() => { ConstructionStepWithProjectiles(context, input); return ProgressDormant(instance) && !(bool)Get(Get(tools, "Use"), "Active"); });
+            NativeQuickItemChecks.Until(() => { ConstructionStepWithProjectiles(context, input); return ProgressDormant(host,instance) && !(bool)Get(Get(tools, "Use"), "Active"); });
             Require(!Main.tile[44, 42].actuator() && ((IDictionary)Get(host, "ownedBuildActuators")).Count == 0 && p.inventory[20].stack == 2,
                 "a real candidate search creates no temporary actuator debt until the current rod route is reachable");
             Require((long)Get(host, "ProjectionMatchSourceSteps") > sourceSteps, "the negative route completed actual source discovery before sleeping, without entering a final preparation");

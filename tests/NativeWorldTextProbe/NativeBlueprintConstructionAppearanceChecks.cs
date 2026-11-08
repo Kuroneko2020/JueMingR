@@ -742,7 +742,7 @@ namespace NativeWorldTextProbe
                 TileType=TileID.Stone,WallType=WallID.Stone,WallPaint=paint.paint }),44,42);
             var instance=Scene(host).Single();
             SetAutomatic(host,input,true);
-            Until(context,input,()=>Main.tile[44,42].wallColor()==paint.paint && ProgressDormant(instance) && !(bool)Get(Get(tools,"Use"),"Active"));
+            Until(context,input,()=>Main.tile[44,42].wallColor()==paint.paint && ProgressDormant(host,instance) && !(bool)Get(Get(tools,"Use"),"Active"));
             Require(!Main.tile[44,42].active() && Main.tile[44,42].wall==WallID.Stone && Main.tile[44,42].wallColor()==paint.paint &&
                 ReferenceEquals(p.inventory[12],paint) && paint.stack==1 && Scene(host).Contains(instance),
                 "a proved missing foreground skips only dependent work: the independent existing wall receives real paint and its exact debit while the unsupplied tile remains pending");
@@ -826,7 +826,16 @@ namespace NativeWorldTextProbe
                 foreach (var range in ((System.Collections.IEnumerable)Get(match, "Ranges")).Cast<object>())
                 {
                     var material = GetOptional(range, "Materials");
-                    if (material != null && (bool)Get(material, "BuildExhausted") && Get(material, "BuildWaits").ToString().Contains("Capability"))
+                    var near = NearRangeState(host, range);
+                    if (material == null || !(bool)Get(material, "Current") || !(bool)Get(range, "Current") ||
+                        (bool)Get(range, "Demand") || (bool)Get(range, "Reading") || near == null || !(bool)Get(near, "Complete")) continue;
+                    var facts = NearRangeFacts(host, range);
+                    // This known two-paint restoration shortage is a semantic
+                    // capability/material wait, not an exhausted forward walk
+                    // or a native rejection with a timed retry permission.
+                    if (facts.Length > 0 && facts.All(fact => !(bool)Get(fact, "Ready") && !(bool)Get(fact, "Pending")) &&
+                        facts.Any(fact => Get(fact, "Wait").ToString().Contains("Capability") && (ulong)Get(fact, "Retry") == 0 &&
+                            (int)Get(Get(Get(fact, "Seed"), "Cell"), "X") == 0 && (int)Get(Get(Get(fact, "Seed"), "Cell"), "Y") == 0))
                     { waitingMaterial = material; return true; }
                 }
                 return false;

@@ -88,14 +88,16 @@ namespace NativeWorldTextProbe
             Set(target, "Cell", new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone, HalfBrick = true });
             Set(operation, "Kind", Enum.Parse(operation.GetType().GetField("Kind", F).FieldType, "Hammer")); Set(target, "Operation", operation);
             var tool = new Item(); tool.SetDefaults(ItemID.MoltenHamaxe);
-            Require((bool)Call(host, "AppearanceToolMatches", target, tool), "ordinary hamaxe remains legal for a non-axe body");
+            var matches=host.GetType().GetMethod("AppearanceToolMatches",F,null,new[]{target.GetType(),typeof(Item)},null);
+            Require(matches!=null,"the exact target/Item appearance capability entry exists");
+            Require((bool)matches.Invoke(host,new[]{target,(object)tool}), "ordinary hamaxe remains legal for a non-axe body");
             foreach (string forbidden in new[] { "pick", "channel", "shoot" })
             {
                 tool.SetDefaults(ItemID.WoodenHammer);
                 if (forbidden == "pick") tool.pick = 1;
                 else if (forbidden == "channel") tool.channel = true;
                 else tool.shoot = 1;
-                Require(!(bool)Call(host, "AppearanceToolMatches", target, tool), "shape capability does not admit destructive/projectile/channel tool: " + forbidden);
+                Require(!(bool)matches.Invoke(host,new[]{target,(object)tool}), "shape capability does not admit destructive/projectile/channel tool: " + forbidden);
             }
             Console.WriteLine("PASS OrdinaryHammerEligibility sevenTypes=336,340,341,342,343,344,351 specialAndSaveOnlyExcluded=true toolGuards=true");
         }

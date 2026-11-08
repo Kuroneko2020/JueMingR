@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using JueMingR.Features.Blueprint;
 using JueMingR.TerrariaHost.Tools;
@@ -217,6 +217,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if((lane==BlueprintBuildLane.TileBody || lane==BlueprintBuildLane.WallBody) && descriptor==null)return BlueprintBuildReadiness.DoneInvalid;
             var next=CreateMaterialBuildTarget(owner,range,cell,descriptor,obj,body,ordinal,support,catalog.Revision);
             next.LocalProof=true;next.LocalPriority=localPriority;
+            CaptureNearBuildSeed(next);
             long reads=buildUnavailableReads;BlueprintWorldMatchSample actual;
             if(!TryBindConstructionTarget(next,lane,out actual))
             {

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using JueMingR.Features.Blueprint;
 
 namespace JueMingR.TerrariaHost.Blueprint
@@ -238,48 +238,13 @@ namespace JueMingR.TerrariaHost.Blueprint
                 TargetX = x, TargetY = y, Ordinal = ordinal, Cell = cell, Object = obj ?? default(CaptureObject), Body = body,
                 Bounds = bounds, Placement = descriptor };
         }
+        // Selection reads the shared Update plan. This facade is also the
+        // narrow observer seam for candidate selection; it owns no discovery
+        // allowance, source walk or transport lifetime.
         internal bool TryGetBuildTarget(out BlueprintBuildTarget target)
         {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            BlueprintBuildTrace.Hit(BuildTraceStage.Discover);
-#endif
-            target = null;
-            if (!HasSession || MaterialBuildDemand?.Invoke() != true || ProjectionEditing || ProjectionCaptureBlocked)
-            {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                BlueprintBuildTrace.Count(BuildTraceReason.AutomaticGateFalse);
-#endif
-                return false;
-            }
-            int count = projectionScene.Count; if (count == 0)
-            {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                BlueprintBuildTrace.Count(BuildTraceReason.SourceMissing);
-#endif
-                return false;
-            }
-            if (TryRetainedBuildTarget(out target)) return true;
-            while (materialBuildSearchBudget-- > 0)
-            {
-                materialBuildSceneCursor %= count; var item = projectionScene[materialBuildSceneCursor]; var match = item.Match;
-                materialBuildSceneCursor = (materialBuildSceneCursor + 1) % count;
-                if (match == null || match.Ranges.Length == 0) continue;
-                match.MaterialBuildCursor %= match.Ranges.Length;
-                var range = match.Ranges[match.MaterialBuildCursor]; match.MaterialBuildCursor = (match.MaterialBuildCursor + 1) % match.Ranges.Length;
-                if (TryMaterialBuildTarget(range, out target)) return true;
-            }
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            if(materialBuildSearchBudget<=0)BlueprintBuildTrace.Count(BuildTraceReason.SearchBudgetEmpty);
-#endif
-            return false;
-        }
-        private bool TryMaterialBuildTarget(BlueprintProjectionMatchRange range, out BlueprintBuildTarget target, int stepLimit = int.MaxValue)
-        {
-            TryWakeBuildEligibility(range);
-            var candidate = range.Materials?.Candidate;
-            if (candidate != null && IsBuildTargetCurrent(candidate)) { target = candidate; return true; }
-            if (candidate != null) range.Materials.Candidate = null;
-            return ContinueMaterialBuildSource(range, out target, stepLimit);
+            target=null;var p=buildTools?.Player;
+            return p!=null && HasSession && MaterialBuildDemand?.Invoke()==true && !ProjectionEditing && !ProjectionCaptureBlocked && TryNearBuildTarget(p,out target);
         }
         internal bool IsBuildTargetCurrent(BlueprintBuildTarget target)
         {
@@ -302,10 +267,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             target = target?.Requirement ?? target;
             if (target == null || target.Range?.Materials == null) return;
-            var value = target.Range.Materials;
-            if (!ReferenceEquals(value.Candidate, target)) return;
-            if(!target.LocalPriority)value.CandidateCursor = NextBuildSourceOrdinal(target.Ordinal, target.Cell, target.Body != null);
-            value.Candidate = null;
+            InvalidateNearBuildRange(target.Range);
         }
         internal void InvalidateBuildTargets(BlueprintProjectionIdentity identity = null)
         {

@@ -206,8 +206,7 @@ namespace NativeWorldTextProbe
                     foreach (var owner in Scene(Host)) if (GetOptional(owner,"Match") != null) foreach (var range in EligibilityRanges(owner))
                     {
                         var value=GetOptional(range,"Materials");if(value==null)continue;
-                        Console.Error.WriteLine("PostProcessing negative cursor/pass/complete/revisit=" + Get(value,"PreferredCursor")+"/"+Get(value,"PreferredCompletedBatch")+"/"+
-                            Get(value,"PreferredComplete")+"/"+Get(value,"PreferredRevisit")+" waits="+Get(value,"BuildWaits"));
+                        Console.Error.WriteLine("PostProcessing sharedNear="+NearRangeSummary(Host,range)+" waits="+Get(value,"BuildWaits"));
                     }
                 }
                 Require(!Automatic || CurrentGroup == null || CurrentGroup == entry.Group || !entry.PreviousRunnable,

@@ -80,6 +80,75 @@ namespace NativeWorldTextProbe
                     {
                         long clicks = (long)Get(failureBuildPreparation, "NativeClicks");
                         var slot20 = p.inventory[20]; var slot54 = p.inventory[54];
+                        if (selectionTakeover >= 3)
+                        {
+                            Require((bool)Get(failureBuildPreparation, "Using") && !(bool)Get(failureBuildPreparation, "Returning") &&
+                                (bool)Get(use, "Building") && (long)Get(use, "Operation") == failureBuildToken &&
+                                (p.selectedItemState.HasActiveOverride || p.selectedItemState.HasBufferedChange || !p.selectedItemState.CanChangeSelectedItemImmediately),
+                                "Using selection fixture reaches the real failed Build natural tail before Returning");
+                            Main.blockInput = false;
+                            long selection = (long)Get(tools, "SelectionIntent");
+                            var phase = Get(failureBuildPreparation, "phase");
+                            var useToken = (long)Get(use, "token");
+                            try
+                            {
+                                Set(use, "token", useToken + 1);
+                                p.selectedItemState.Select(1);
+                                Require((long)Get(tools, "SelectionIntent") == selection,
+                                    "Using observation cannot borrow an unmatched old Build token");
+                                Set(use, "token", useToken);
+                                Set(failureBuildPreparation, "phase", Enum.Parse(phase.GetType(), "Ready"));
+                                p.selectedItemState.Select(1);
+                                Require((long)Get(tools, "SelectionIntent") == selection,
+                                    "a retained Ready receipt cannot observe failed-session selection");
+                            }
+                            finally { Set(use, "token", useToken); Set(failureBuildPreparation, "phase", phase); }
+                            var oldWorld = Main.ActiveWorldFileData;
+                            Main.ActiveWorldFileData = new Terraria.IO.WorldFileData("foreign-using-selection.wld", false);
+                            try
+                            {
+                                p.selectedItemState.Select(1);
+                                Require((long)Get(tools, "SelectionIntent") == selection,
+                                    "Using observation rejects a replaced current world before the outer identity update");
+                            }
+                            finally { Main.ActiveWorldFileData = oldWorld; }
+                            ulong slots = (ulong)Get(failureBuildPreparation, "Slots");
+                            var affectedSlots = Enumerable.Range(0, 58).Where(i => (slots & (1UL << i)) != 0 || i == 12).ToArray();
+                            var inventoryAtTakeover = affectedSlots.Select(i => p.inventory[i]).ToArray();
+                            var stacksAtTakeover = inventoryAtTakeover.Select(i => i.stack).ToArray();
+                            var cursorAtTakeover = Main.mouseItem;
+                            // Invoke the real Select edge while its native buffer
+                            // still has work; Update consuming it is no new intent.
+                            int selected = selectionTakeover == 3 ? 2 : (p.selectedItem + 1) % 10;
+                            p.selectedItemState.Select(selected);
+                            Require((long)Get(tools, "SelectionIntent") == selection + 1,
+                                "actual Select immediately records one manual intent in the failed Using tail");
+                            p.selectedItemState.Update();
+                            Require((long)Get(tools, "SelectionIntent") == selection + 1,
+                                "native buffer consumption does not manufacture a second manual Select");
+                            p.ToggleInv();
+                            Require(Main.playerInventory, "player opens the original inventory after taking the failed Using duty");
+                            NativeQuickItemChecks.Until(() =>
+                            {
+                                Step(context, input);
+                                Require((long)Get(failureBuildPreparation, "NativeClicks") == clicks && Main.playerInventory,
+                                    "failed Using takeover never replays inverse clicks or changes the player's inventory UI");
+                                return !(bool)Get(use, "Active") && !p.selectedItemState.HasActiveOverride &&
+                                    !p.selectedItemState.HasBufferedChange && p.selectedItemState.CanChangeSelectedItemImmediately;
+                            });
+                            // Cross legal input tails after all animation/selection
+                            // barriers end; zero writes while blocked is insufficient.
+                            for (int i = 0; i < 8; i++) Step(context, input);
+                            Require((long)Get(failureBuildPreparation, "NativeClicks") == clicks && Main.playerInventory &&
+                                ReferenceEquals(Main.mouseItem, cursorAtTakeover) && Main.mouseItem.IsAir &&
+                                affectedSlots.Select((slot, i) => ReferenceEquals(p.inventory[slot], inventoryAtTakeover[i]) && p.inventory[slot].stack == stacksAtTakeover[i]).All(x => x) &&
+                                red.stack == 3 && blue.stack == 7,
+                                "legal late input tails preserve every actual slot, cursor and the single native paint debit after Using takeover");
+                            Require(failureBuildCompleted == 1 && failureBuildNativeEnds == 1 && failureBuildNotifyCalls == 1,
+                                "Using takeover settles the exact original native End and Completed callback once");
+                        }
+                        else
+                        {
                         // The original animation/selection buffer must finish
                         // before ToolUse can transfer its material token back.
                         // Keep the real input barrier throughout that wait and
@@ -154,6 +223,7 @@ namespace NativeWorldTextProbe
                                 "one exact original BuildFlight completion releases its finite material use");
                             Require(ReferenceEquals(p.inventory[20], red) && red.stack == 3 && ReferenceEquals(p.inventory[54], blue) && blue.stack == 7 && Main.mouseItem.IsAir,
                                 "real inverse ItemSlot inputs return both original material objects with exactly one native paint debit");
+                        }
                         }
                     }
                     Main.blockInput = blockInput;

@@ -1,4 +1,4 @@
-#if JMR_BLUEPRINT_DIAGNOSTIC
+﻿#if JMR_BLUEPRINT_DIAGNOSTIC
 using System;
 using JueMingR.Features.Blueprint;
 using JueMingR.TerrariaHost.Input;
@@ -64,14 +64,17 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // not a traversal of scenes, source ranges or world targets.
                 for(var node=buildSources.First;node!=null && slot<4;node=node.Next,slot++)
                 {
-                    var s=node.Value;var r=s.Range;var m=r.Materials;
+                    var s=node.Value;var r=s.Range;var m=r.Materials;NearBuildRange plan;nearBuildRanges.TryGetValue(r,out plan);var bounds=plan?.Bounds??default(BlueprintProjectionBounds);
                     trace.Source(slot,new BuildTraceSource{Instance=s.Owner.Identity.ProjectionGeneration,Range=r.Index,Version=r.Version,Wake=m?.BuildWakeRevision??-1,
-                        NearVersion=s.NearVersion,NearWake=s.NearWake,NearPlayer=s.NearPlayer,NearSupply=s.NearSupply,NearCursor=s.NearCursor,ForwardCursor=m?.CandidateCursor??-1,
-                        FrontierCursor=s.FrontierCursor,Left=s.NearBounds.Left,Top=s.NearBounds.Top,Width=s.NearBounds.Width,Height=s.NearBounds.Height,
-                        Flags=(m?.BuildExhausted==true?1:0)|(m?.Candidate!=null?2:0)|(r.Demand?4:0)|(r.Reading?8:0)|(m?.Progress!=null?16:0)|
-                            (m?.Current==true?32:0)|(r.Current?64:0)|(m?.BuildRetryPending==true?128:0)|(m?.EligibilityRetry==true?256:0)|(s.Frontier?512:0),
+                        // Removed transport-owned proofs are explicitly absent in
+                        // this legacy trace schema. The cursor/bounds now show
+                        // the shared semantic range's current extraction strip.
+                        NearVersion=-1,NearWake=-1,NearPlayer=-1,NearSupply=-1,NearCursor=plan?.Cursor??-1,ForwardCursor=-1,
+                        FrontierCursor=-1,Left=bounds.Left,Top=bounds.Top,Width=bounds.Width,Height=bounds.Height,
+                        Flags=(plan?.Complete==true?1:0)|(plan?.Facts.Count>0?2:0)|(r.Demand?4:0)|(r.Reading?8:0)|(m?.Progress!=null?16:0)|
+                            (m?.Current==true?32:0)|(r.Current?64:0)|(m?.BuildRetryPending==true?128:0)|(m?.EligibilityRetry==true?256:0)|(plan?.Initialized==true?512:0),
                         RetryOrdinal=m?.EligibilityRetryOrdinal??-1,RetryAt=m?.EligibilityRetryAt??0,MaterialTick=materialTick,
-                        ResetBefore=s.DiagnosticResetBefore,ResetAfter=s.DiagnosticResetAfter,ResetReasons=s.DiagnosticResetReasons},buildSources.Count);
+                        ResetBefore=-1,ResetAfter=-1,ResetReasons=0},buildSources.Count);
                 }
                 if(slot==0)trace.EmptySources();
             }

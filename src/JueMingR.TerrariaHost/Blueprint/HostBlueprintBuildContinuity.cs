@@ -21,41 +21,16 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal readonly CaptureObject? Object;
             internal readonly BlueprintWorldObject Body;
             internal readonly BlueprintPlacementDescriptor Placement;
-            internal RepeatedBuildSeed(BlueprintBuildTarget target)
+            internal RepeatedBuildSeed(BlueprintBuildTarget target,BlueprintWorldObject sharedBody=null)
             {
                 target = target.Requirement ?? target;
                 Owner = target.Range.Owner; Range = target.Range; Identity = target.Identity; Mask = target.Mask;
                 X = target.OriginX; Y = target.OriginY; Ordinal = target.Ordinal; Catalog = target.PlacementRevision;
                 Cell = target.Cell; Object = target.Body == null ? (CaptureObject?)null : target.Object;
-                Body = target.Body; Placement = target.Placement;
+                Body = sharedBody ?? target.Body; Placement = target.Placement;
             }
         }
         private enum PreferredBuildSearch { Found, BudgetPending, SourcePending, OwnerPending, NoRunnable, CurrentGroupInvalid }
-        private BlueprintBuildLane? PreferredBuildLane()
-        {
-            var consumer=buildContinuation.Consumer;
-            switch(buildContinuation.Operation?.Kind??BlueprintBuildOperationKind.Body)
-            {
-                case BlueprintBuildOperationKind.Body:
-                    if(consumer==ToolBuildConsumer.Walls)return BlueprintBuildLane.WallBody;
-                    if(consumer==ToolBuildConsumer.Tiles)return BlueprintBuildLane.TileBody;break;
-                case BlueprintBuildOperationKind.PlaceBase:case BlueprintBuildOperationKind.ConvertSubstrate:
-                    if(consumer==ToolBuildConsumer.Tiles)return BlueprintBuildLane.TileBody;break;
-                case BlueprintBuildOperationKind.Hammer:
-                    if(consumer==ToolBuildConsumer.Hammer)return BlueprintBuildLane.Shape;break;
-                case BlueprintBuildOperationKind.PaintTile:
-                    if(consumer==ToolBuildConsumer.Paintbrush)return BlueprintBuildLane.Appearance;break;
-                case BlueprintBuildOperationKind.PaintWall:
-                    if(consumer==ToolBuildConsumer.PaintRoller)return BlueprintBuildLane.Appearance;break;
-                case BlueprintBuildOperationKind.Scrape:
-                    if(consumer==ToolBuildConsumer.PaintScraper)return BlueprintBuildLane.Appearance;break;
-                case BlueprintBuildOperationKind.AddWire:
-                    if(consumer==ToolBuildConsumer.Wiring || consumer==ToolBuildConsumer.GrandDesign)return BlueprintBuildLane.Wire;break;
-                case BlueprintBuildOperationKind.AddActuator:case BlueprintBuildOperationKind.SetInactive:case BlueprintBuildOperationKind.RemoveOwnedActuator:
-                    if(consumer==ToolBuildConsumer.Wiring || consumer==ToolBuildConsumer.GrandDesign)return BlueprintBuildLane.Actuation;break;
-            }
-            return null; // Unmapped/inconsistent semantics retain the full walk.
-        }
         // Business preference has no inventory/input ownership. Its source is
         // a rebindable hint; every admitted flight keeps its own exact lease.
         private sealed class BuildContinuation
@@ -65,11 +40,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal BlueprintBuildOperation Operation;
             internal ToolBuildConsumer Consumer;
             internal BlueprintMaterialInventory HintInventory;
-            internal BuildFocusDiscovery Discovery;
             internal long Session, Selection, Group, Policy;
-            internal bool Pending;
+            internal bool Pending=false;
         }
-        private RepeatedBuildSeed repeatedBuild;
         private BuildContinuation buildContinuation;
         private long buildContinuationGroup;
 
@@ -160,40 +133,28 @@ namespace JueMingR.TerrariaHost.Blueprint
 #endif
             if (plan != null) target.Operation = CopyBuildOperation(plan.Operation);
             target.Readiness=BlueprintBuildReadiness.Deferred;
-            bool ready = TryPrepareSelectedBuild(target, p, out result, plan);
+            bool ready;
+            nearWaitingFact=nearSelected!=null && ReferenceEquals(nearSelected.Seed.Range,target.Range) && nearSelected.Seed.Ordinal==target.Ordinal?nearSelected:null;
+            if(nearWaitingFact!=null){nearWaitingFact.Wait=BlueprintBuildWait.None;nearWaitingFact.Dependencies=0;}
+            try{ready=TryPrepareSelectedBuild(target,p,out result,plan);}finally{nearWaitingFact=null;}
             if(plan?.ExecutionTarget!=null)target.Readiness=plan.ExecutionTarget.Readiness;
             if(ready)target.Readiness=BlueprintBuildReadiness.Ready;
-            if (!ready) CompletePreferredAttempt(target);
+            if (!ready) RejectNearBuildCandidate(target);
             return ready;
-        }
-        private void CompletePreferredAttempt(BlueprintBuildTarget target,bool rejected=true)
-        {
-            var value = target?.Range.Materials; var group = buildContinuation;
-            if (target?.LocalPriority != true || group == null || value == null || value.PreferredGroup != group.Group) return;
-            // A missing read/source retains this exact unserved ordinal. The
-            // caller yields to that request owner instead of restarting an
-            // Unknown pass or preparing the same failed plan 64 times.
-            if(rejected && target.Readiness==BlueprintBuildReadiness.Deferred)return;
-            int next = NextBuildSourceOrdinal(target.Ordinal, target.Cell, target.Body != null);
-            if (value.PreferredCursor == target.Ordinal) value.PreferredCursor = next;
-            if (value.PreferredFrontier && value.PreferredFrontierCursor == target.Ordinal) value.PreferredFrontierCursor = next;
-            // A rejected preparation may have a current dependency or native
-            // refusal. Cache only that negative permission, never completion.
-            if (rejected && (target.Readiness==BlueprintBuildReadiness.BlockedNow || target.Readiness==BlueprintBuildReadiness.DoneInvalid))
-                value.PreferredNegativeOrdinals?.Add(target.Ordinal);
         }
         private bool PlanContinuesBuild(BlueprintBuildTarget target, BuildOperationPlan plan)
         {return plan!=null && OperationContinuesBuild(target,plan.Operation,plan.ToolType,plan.SupplyType);}
         private bool FlightContinuesBuild(BuildFlight flight)
         {return flight!=null && OperationContinuesBuild(flight.Target,flight.Operation,flight.Source.Type,flight.Operation?.SupplyType??0);}
         private bool OperationContinuesBuild(BlueprintBuildTarget target,BlueprintBuildOperation operation,int toolType,int supplyType)
+        { return OperationContinuesBuild(buildContinuation,operation,toolType,supplyType,BuildConsumer(operation,target)); }
+        private static bool OperationContinuesBuild(BuildContinuation group,BlueprintBuildOperation operation,int toolType,int supplyType,ToolBuildConsumer consumer)
         {
-            var group = buildContinuation;
             if(group==null)return false;
             var a=group.Operation;var b=operation;
             bool ordinaryA=a==null || a.Kind==BlueprintBuildOperationKind.PlaceBase || a.Kind==BlueprintBuildOperationKind.ConvertSubstrate;
             bool ordinaryB=b==null || b.Kind==BlueprintBuildOperationKind.PlaceBase || b.Kind==BlueprintBuildOperationKind.ConvertSubstrate;
-            if(ordinaryA || ordinaryB)return ordinaryA && ordinaryB && group.Source.Type==toolType && group.Consumer==BuildConsumer(b,target);
+            if(ordinaryA || ordinaryB)return ordinaryA && ordinaryB && group.Source.Type==toolType && group.Consumer==consumer;
             if(b==null || a.Kind!=b.Kind)return false;
             if(a.Kind==BlueprintBuildOperationKind.Hammer || a.Kind==BlueprintBuildOperationKind.Scrape)return true;
             if(a.Kind==BlueprintBuildOperationKind.PaintTile || a.Kind==BlueprintBuildOperationKind.PaintWall)
@@ -207,72 +168,16 @@ namespace JueMingR.TerrariaHost.Blueprint
                 left?.TileType==right?.TileType && left?.Style==right?.Style && left?.Producer?.Kind==right?.Producer?.Kind &&
                 left?.Producer?.OptionIndex==right?.Producer?.OptionIndex && left?.Producer?.RandomResidue==right?.Producer?.RandomResidue;
         }
-        private bool PreparedBuildPriorityCurrent(BuildFlight next,Player p)
+        private bool PreparedBuildPriorityCurrent(BuildFlight next,Player p,bool admission=false)
         {
             if(!BuildContinuationCurrent(p) || FlightContinuesBuild(next))return true;
-            return PreferredBuildAbsenceCurrent(p);
-        }
-        private bool PreferredBuildSupplyCurrent(BlueprintRangeMaterials value)
-        {
-            if(value.PreferredSupply==buildSupplyRevision || value.PreferredSupplyDependencies==BlueprintBuildWait.None)return true;
-            var group=buildContinuation;long recovered;
-            // PreferredSupply is a recovery cutoff, not a requirement that
-            // every unrelated inventory type keep the same qualification.
-            // ObserveBuildSignals preserves a positive type's serial through
-            // ordinary spend/moves and assigns a later serial on real recovery.
-            // Only an actual material-dependent negative needs that recovery.
-            // Completed/non-group world members cannot become runnable A just
-            // because A's own selection protection was released. Conversely,
-            // the same unfinished group still reopens on real restock, even
-            // when a successful plan selected a different business material.
-            // Missing capability remains broad for another qualifying tool.
-            if(group==null || (value.PreferredSupplyDependencies&BlueprintBuildWait.Capability)!=0)return false;
-            return !(buildSupply.TryGetValue(group.Source.Type,out recovered) && recovered>value.PreferredSupply) &&
-                !(group.Operation?.SupplyType>0 && buildSupply.TryGetValue(group.Operation.SupplyType,out recovered) && recovered>value.PreferredSupply);
-        }
-        private void CapturePreferredSupplyDependency(BlueprintRangeMaterials value,bool alternatives)
-        {
-            // The first dependency starts at the inventory actually used for
-            // this negative, not an older world-only cutoff. Broadening an
-            // existing dependency must retain its cutoff: an earlier recovery
-            // of that material may still await the paid currentness check.
-            if(value.PreferredSupplyDependencies==BlueprintBuildWait.None)value.PreferredSupply=buildSupplyRevision;
-            value.PreferredSupplyDependencies|=BlueprintBuildWait.Material;
-            if(alternatives)value.PreferredSupplyDependencies|=BlueprintBuildWait.Capability;
+            return NearBuildAbsenceCurrent(p,admission);
         }
         private bool PreferredBuildAbsenceCurrent(Player p)
         {
-            // Pick/Acquire reads only already completed current negative
-            // coverage. Pending goes back to the paid Update planner; a Ready
-            // material receipt cannot create another source/search allowance.
-            if(!BuildFocusNearCurrent(p) || repeatedBuild!=null ||
-                activeBuild!=null && !activeBuild.Checked && !activeBuild.Rejected)return false;
-            var group=buildContinuation;var world=BuildFocusWorldBounds(p);
-            foreach(var range in group.Discovery.Ranges)
-            {
-                var owner=range.Owner;
-                if(!projectionScene.Contains(owner) || ProjectionQualificationFailed(owner))continue;
-                var bounds=IntersectBuildBounds(BuildFocusBounds(owner,p),range.Source.Bounds);
-                if(EmptyBuildBounds(bounds))continue;
-                var value=range.Materials;long support;
-                if(!ProjectionQualificationCurrent(owner) || owner.Match==null || range.Index<0 || range.Index>=owner.Match.Ranges.Length ||
-                    !ReferenceEquals(owner.Match.Ranges[range.Index],range) || value==null || value.PreferredGroup!=group.Group ||
-                    value.PreferredRevisit || value.PreferredFrontier || !BuildBoundsContain(value.PreferredCoveredBounds,bounds) ||
-                    value.PreferredVersion!=range.Version || value.PreferredWake!=value.BuildWakeRevision || !PreferredBuildSupplyCurrent(value) ||
-                    !ProjectionMatchReadCurrent(range,range.RawVersion) || !projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support) ||
-                    support!=value.PreferredSupport ||
-                    (value.PreferredWaits&BlueprintBuildWait.Player)!=0 && value.PreferredPermission!=buildFocusPermissionRevision ||
-                    (value.PreferredWaits&BlueprintBuildWait.Container)!=0 && value.PreferredContainer!=buildContainerRevision ||
-                    (value.PreferredWaits&BlueprintBuildWait.Restoration)!=0 && value.PreferredRestoration!=appearanceRestorationRevision ||
-                    (value.PreferredWaits&BlueprintBuildWait.Dependencies)!=0 && BuildDependencyReleased(value.PreferredDependencySlots) ||
-                    value.PreferredRetryAt!=0 && materialTick>=value.PreferredRetryAt)return false;
-                if(value.PreferredPositionNegatives!=null)foreach(var proof in value.PreferredPositionNegatives.Values)
-                    if(proof.Active && !(proof.Player==MaterialBuildEligibilityRevision && proof.Position==p.position && proof.Reach.Equals(world) &&
-                        proof.Width==p.width && proof.Height==p.height && proof.Direction==p.direction && proof.PulleyDirection==p.pulleyDir && proof.Pulley==p.pulley) &&
-                        !(proof.OutOfReach && (proof.X<world.Left || proof.X>=world.Right || proof.Y<world.Top || proof.Y>=world.Bottom)))return false;
-            }
-            return true;
+            return NearBuildAbsenceCurrent(p,true);
         }
+
         private void RememberBuildContinuation(BuildFlight flight)
         {
             var plan = new BuildOperationPlan { Operation = flight.Operation, Tool = flight.Source.Item, ToolType = flight.Source.Type, ToolSlot = flight.Source.Slot,
@@ -280,265 +185,36 @@ namespace JueMingR.TerrariaHost.Blueprint
             foreach (var dependency in flight.Dependencies) if (dependency.Primary) { plan.SupplySlot = dependency.Slot; plan.Supply = dependency.Item; }
             bool samePlan=BuildContinuationCurrent(flight.Player) && PlanContinuesBuild(flight.Target,plan);
             if(samePlan)
-            {CompletePreferredAttempt(flight.Target,false);buildContinuation.Source=flight.Source;buildContinuation.HintInventory=MaterialInventory;return;}
-            // Match ranges can outlive a business group. Release the old
-            // group's derived negative proofs before replacing its only owner.
-            ClearBuildContinuation();
+            {buildContinuation.Source=flight.Source;buildContinuation.HintInventory=MaterialInventory;return;}
+            // A natural material change only replaces business preference.
+            // Shared source semantics and other groups keep their progress.
             buildContinuation = new BuildContinuation { Player=flight.Player,Source=flight.Source,HintInventory=MaterialInventory,
                 Operation=CopyBuildOperation(flight.Operation),Consumer=BuildConsumer(flight.Operation,flight.Target),Session=generation,
-                Selection=buildTools.SelectionIntent,Policy=substitutionRevision,Group=++buildContinuationGroup,Discovery=new BuildFocusDiscovery() };
-            repeatedBuild = null;
+                Selection=buildTools.SelectionIntent,Policy=substitutionRevision,Group=++buildContinuationGroup };
         }
-        private void RetirePreferredRange(BlueprintProjectionMatchRange range)
+        private void RetireNearBuildRange(BlueprintProjectionMatchRange range)
         {
-            var discovery=buildContinuation?.Discovery;if(discovery==null)return;
-            if(range.Materials!=null)range.Materials.PreferredNegativeOrdinals=null;
-            if(range.Materials!=null)range.Materials.PreferredPositionNegatives=null;
-            discovery.Members.Remove(range);discovery.Ranges.Remove(range);
-            discovery.Results.Remove(range);
+            NearBuildRange state;if(nearBuildRanges.TryGetValue(range,out state))ReleaseNearBuildRange(state);
+            nearBuildRanges.Remove(range);nearBuildDiscovery.Members.Remove(range);nearBuildDiscovery.Ranges.Remove(range);nearPlanDirty=true;
         }
         private void ClearBuildContinuation()
         {
-            if(buildContinuation?.Discovery!=null)foreach(var range in buildContinuation.Discovery.Ranges)
-                if(range.Materials!=null){range.Materials.PreferredNegativeOrdinals=null;range.Materials.PreferredPositionNegatives=null;}
-            buildContinuation = null; repeatedBuild = null;
+            buildContinuation=null;ClearNearBuildPlan();
         }
-        private void ReopenPreferredRange(BlueprintProjectionMatchRange range)
+        private void InvalidateNearBuildRange(BlueprintProjectionMatchRange range)
         {
-            var value=range.Materials;
-            if(value!=null && value.PreferredGroup==buildContinuation?.Group)
-            {
-                value.PreferredRevisit=true;value.PreferredCoveredBounds=default(BlueprintProjectionBounds);value.PreferredNegativeOrdinals?.Clear();
-                value.PreferredPositionNegatives?.Clear();value.PreferredWaits=BlueprintBuildWait.None;value.PreferredRetryAt=value.PreferredDependencySlots=0;
-                value.PreferredSupplyDependencies=BlueprintBuildWait.None;
-                value.PreferredContainer=buildContainerRevision;value.PreferredRestoration=appearanceRestorationRevision;value.PreferredPermission=buildFocusPermissionRevision;
-            }
-        }
-        private PreferredBuildSearch TryPreferredRange(BlueprintProjectionMatchRange range, Player p, out BlueprintBuildTarget target, out BuildOperationPlan plan)
-        {
-            target=null;plan=null;var group=buildContinuation;
-            var bounds=IntersectBuildBounds(BuildFocusBounds(range.Owner,p),range.Source.Bounds);
-            if(EmptyBuildBounds(bounds))return PreferredBuildSearch.NoRunnable;
-            var value=range.Materials;
-            if(value==null)range.Materials=value=new BlueprintRangeMaterials{OwnerTotals=range.Owner.Match.Materials,CatalogRevision=MaterialCatalog.Revision};
-            TryWakeBuildEligibility(range);
-            if(value.PreferredGroup!=group.Group)
-            {
-                value.PreferredGroup=group.Group;value.PreferredCursor=0;
-                value.PreferredComplete=value.PreferredInitialized=value.PreferredRevisit=value.PreferredFrontier=false;
-                value.PreferredCoveredBounds=default(BlueprintProjectionBounds);
-                value.PreferredNegativeOrdinals=new System.Collections.Generic.HashSet<int>();
-                value.PreferredPositionNegatives=null;
-                value.PreferredWaits=BlueprintBuildWait.None;value.PreferredRetryAt=value.PreferredDependencySlots=0;
-                value.PreferredSupplyDependencies=BlueprintBuildWait.None;
-                value.PreferredContainer=buildContainerRevision;value.PreferredRestoration=appearanceRestorationRevision;value.PreferredPermission=buildFocusPermissionRevision;
-                value.PreferredVersion=value.PreferredWake=value.PreferredSupply=value.PreferredPlayer=-1;
-            }
-            if(value.PreferredNegativeOrdinals==null){value.PreferredNegativeOrdinals=new System.Collections.Generic.HashSet<int>();ReopenPreferredRange(range);}
-            RefreshPreferredPositionNegatives(value,p);
-            if ((value.PreferredWaits & BlueprintBuildWait.Player) != 0 && value.PreferredPermission != buildFocusPermissionRevision ||
-                (value.PreferredWaits & BlueprintBuildWait.Container) != 0 && value.PreferredContainer != buildContainerRevision ||
-                (value.PreferredWaits & BlueprintBuildWait.Restoration) != 0 && value.PreferredRestoration != appearanceRestorationRevision ||
-                (value.PreferredWaits & BlueprintBuildWait.Dependencies) != 0 && BuildDependencyReleased(value.PreferredDependencySlots) ||
-                value.PreferredRetryAt != 0 && materialTick >= value.PreferredRetryAt) ReopenPreferredRange(range);
-            if(value.PreferredVersion!=range.Version || value.PreferredWake!=value.BuildWakeRevision || !PreferredBuildSupplyCurrent(value))
-            {
-                value.PreferredVersion=range.Version;value.PreferredWake=value.BuildWakeRevision;
-                value.PreferredSupply=buildSupplyRevision;value.PreferredPlayer=MaterialBuildEligibilityRevision;value.PreferredRevisit=true;
-                value.PreferredCoveredBounds=default(BlueprintProjectionBounds);
-                value.PreferredNegativeOrdinals?.Clear();
-                value.PreferredPositionNegatives?.Clear();
-                value.PreferredSupplyDependencies=BlueprintBuildWait.None;
-            }
-            // The native writer revokes this route before Host drains its
-            // change queue. A cached negative must see that same immediate
-            // authority, without reacquiring an evicted immutable transport.
-            long support;
-            if(!ProjectionMatchReadCurrent(range,range.RawVersion) ||
-                !projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support))
-            {DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
-            if(value.PreferredSupport!=support)
-            {value.PreferredSupport=support;ReopenPreferredRange(range);}
-            // A completed negative result needs no transport pin. Only its
-            // actual local dependencies can reopen it; eviction is not a new
-            // discovery obligation and a lease boundary is not a new group.
-            // An unfinished entered strip no longer in the current near
-            // domain cannot withhold a negative proof for the covered interior.
-            // Keep that strip's ordinal for the next entry instead of restarting.
-            if(!value.PreferredRevisit && !value.PreferredFrontier && BuildBoundsContain(value.PreferredCoveredBounds,bounds))return PreferredBuildSearch.NoRunnable;
-            if(value.PreferredComplete)
-            {
-                if (value.PreferredRevisit) { value.PreferredWaits=BlueprintBuildWait.None;value.PreferredRetryAt=value.PreferredDependencySlots=0; }
-                value.PreferredCompletedBatch++;value.PreferredComplete=value.PreferredInitialized=value.PreferredRevisit=false;value.PreferredCursor=0;
-            }
-            var part=FindBuildSource(range);
-            if(part==null || !range.Group.Ready || !ProjectionMatchReadCurrent(range,range.RawVersion) ||
-                !projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support))
-            {DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
-            var cells=ProjectionSourceCells(part.Window);
-            value.PreferredPassCovered=IntersectBuildBounds(value.PreferredPassCovered,bounds);
-            if(!value.PreferredInitialized && part.Offset==0)
-            {
-                value.PreferredBounds=NextBuildFocusCoverage(value,bounds);value.PreferredPassCovered=value.PreferredBounds;
-                value.PreferredInitialized=true;value.PreferredRevisit=false;
-                value.PreferredCursor=BuildMemberOrdinal(BuildCellLowerBound(cells,value.PreferredBounds.Left,value.PreferredBounds.Top));
-            }
-            int steps=BuildSourceSlice;
-            if(value.PreferredFrontier)
-            {
-                var frontier=value.PreferredFrontierBounds;
-                if(BuildMemberIndex(value.PreferredFrontierCursor)<part.Offset){DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
-                var result=WalkPreferredSource(range,part,p,frontier,ref value.PreferredFrontierCursor,ref steps,support,out target,out plan);
-                if(result!=PreferredBuildSearch.NoRunnable)return result;
-                value.PreferredFrontier=false;
-            }
-            if(BuildMemberIndex(value.PreferredCursor)<part.Offset)
-            {DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
-            var found=WalkPreferredSource(range,part,p,value.PreferredBounds,ref value.PreferredCursor,ref steps,support,out target,out plan);
-            if(found!=PreferredBuildSearch.NoRunnable)return found;
-            if(value.PreferredRevisit)
-            {
-                // Merge changes behind the absolute cursor. Finish the current
-                // finite calculation pass, then revisit within this same Focus.
-                value.PreferredCompletedBatch++;value.PreferredInitialized=value.PreferredRevisit=false;value.PreferredCursor=0;
-                return PreferredBuildSearch.BudgetPending;
-            }
-            CompleteBuildFocusCoverage(value);
-            value.PreferredComplete=true;value.PreferredCompletedBatch++;
-            return BuildBoundsContain(value.PreferredCoveredBounds,bounds)?PreferredBuildSearch.NoRunnable:PreferredBuildSearch.BudgetPending;
-        }
-        private PreferredBuildSearch WalkPreferredSource(BlueprintProjectionMatchRange range,BlueprintProjectionSourcePart part,Player p,
-            BlueprintProjectionBounds bounds,ref int cursor,ref int steps,long support,out BlueprintBuildTarget target,out BuildOperationPlan plan)
-        {
-            target=null;plan=null;var cells=ProjectionSourceCells(part.Window);
-            var value=range.Materials;var near=BuildFocusBounds(range.Owner,p);var lane=PreferredBuildLane();
-            while(materialBuildSourceBudget>0 && steps>0)
-            {
-                // Align source ordinals before reading any member. Other
-                // lanes cannot belong to this group; a member without this
-                // lane still reaches the constructor and spends one step.
-                if(lane.HasValue && BuildLane(cursor)!=lane.Value)
-                {
-                    int relevant=BuildMemberOrdinal(BuildMemberIndex(cursor))+(int)lane.Value;
-                    cursor=relevant>=cursor?relevant:BuildMemberOrdinal(BuildMemberIndex(cursor)+1)+(int)lane.Value;
-                }
-                int index=BuildMemberIndex(cursor)-part.Offset;
-                if(index<0){DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
-                if(index>=cells.Count)
-                {
-                    if(part.Complete)return PreferredBuildSearch.NoRunnable;
-                    cursor=Math.Max(cursor,BuildMemberOrdinal(part.NextOffset));DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;
-                }
-                var cell=cells[index];
-                if(part.LogicalObjectId==0)
-                {
-                    if(cell.Y>=bounds.Bottom)return PreferredBuildSearch.NoRunnable;
-                    if(cell.X<bounds.Left || cell.X>=bounds.Right || cell.Y<bounds.Top)
-                    {cursor=BuildMemberOrdinal(part.Offset+BuildCellLowerBound(cells,bounds.Left,cell.X>=bounds.Right?cell.Y+1:Math.Max(cell.Y,bounds.Top)));continue;}
-                }
-                int ordinal=cursor,next=NextBuildSourceOrdinal(ordinal,cell,part.LogicalObjectId>0);
-                materialBuildSourceBudget--;steps--;
-#if DEBUG
-                ProjectionMatchSourceSteps++;
-#endif
-                if(value.PreferredNegativeOrdinals?.Contains(ordinal)==true){cursor=next;continue;}
-                if(part.LogicalObjectId==0 && (cell.X<near.Left || cell.X>=near.Right || cell.Y<near.Top || cell.Y>=near.Bottom))
-                {cursor=next;continue;}
-                BlueprintBuildTarget candidate;
-                // Reuse only this visit's known Missing/Conflict sample to skip
-                // dependent no-op lanes. A found/prepared target returns with
-                // its ordinal intact; its later real write is never skipped.
-                var readiness=CreateConstructionCandidate(range.Owner,range,part,index,ordinal,support,out candidate,out next,true);
-                if(readiness==BlueprintBuildReadiness.Deferred)
-                {DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
-                if(readiness==BlueprintBuildReadiness.Ready && IsUnfinishedBuildTarget(candidate))return PreferredBuildSearch.OwnerPending;
-                bool materialNegative=readiness==BlueprintBuildReadiness.Ready && CandidateMayContinueBuild(candidate);
-                if(materialNegative)
-                {
-                    BuildOperationPlan option;BlueprintBuildWait wait;ulong slots;
-                    if(!TryPlanContinuationBuild(candidate,p,PreferredBuildSourceHint(p),out option,out wait,out slots))
-                    {
-                        if(substitutionPlanningPending)return PreferredBuildSearch.OwnerPending;
-                        if(candidate.Readiness==BlueprintBuildReadiness.Deferred)
-                        {DemandProjectionMatchRange(range);return PreferredBuildSearch.SourcePending;}
-                        RegisterPlannedBuildWait(candidate,wait,slots);
-                    }
-                    else if(PlanContinuesBuild(candidate,option))
-                    {candidate.LocalPriority=true;target=candidate;plan=option;return PreferredBuildSearch.Found;}
-                }
-                // This is a bounded current-near query proof. It is discarded
-                // with that Focus/range or its world/relevant-supply/permission recovery;
-                // it cannot update Match, materials totals or target completion.
-                // Found/Deferred returned above. This is an actual negative;
-                // include a successful plan for another group, which can change
-                // when A supply recovers even without a registered wait reason.
-                if(materialNegative)CapturePreferredSupplyDependency(value,false);
-                value.PreferredNegativeOrdinals?.Add(ordinal);
-                cursor=next;
-            }
-            return PreferredBuildSearch.BudgetPending;
+            // Broad material publication may include unrelated C recovery.
+            // Each fact validates its own wait, source and world stamps; this
+            // notification requests proof aggregation without erasing semantics.
+            if(nearBuildRanges.ContainsKey(range))nearPlanDirty=true;
         }
         private PreferredBuildSearch TryPreferredBuild(Player p, out BlueprintBuildTarget target, out BuildOperationPlan plan)
         {
             target=null;plan=null;
             if(!BuildContinuationCurrent(p))return PreferredBuildSearch.CurrentGroupInvalid;
-            var group=buildContinuation;bool nearCurrent=RefreshBuildFocusNear(p);
-            if(repeatedBuild!=null)
-            {
-                BlueprintBuildTarget repeated;BuildOperationPlan repeatPlan;bool pending;
-                if(TryRebindBuildSeed(repeatedBuild,p,PreferredBuildSourceHint(p),out repeated,out repeatPlan,out pending,BuildPlanningIntent.ContinuationProbe) && PlanContinuesBuild(repeated,repeatPlan))
-                {repeatedBuild=null;target=repeated;plan=repeatPlan;group.Pending=true;return PreferredBuildSearch.Found;}
-                if(!pending)repeatedBuild=null;
-            }
-            var discovery=group.Discovery;
-            // Known local transports are positive search routes even while
-            // the shared query is pending. The directory still owns complete
-            // near coverage: these hints alone can never prove absence.
-            for(var node=buildSources.First;node!=null;node=node.Next)
-            {
-                var range=node.Value.Range;var owner=range.Owner;
-                if(!discovery.NearOwnerSet.Contains(owner) || !ProjectionQualificationCurrent(owner) ||
-                    owner.Match==null || range.Index<0 || range.Index>=owner.Match.Ranges.Length ||
-                    !ReferenceEquals(owner.Match.Ranges[range.Index],range) ||
-                    !BuildBoundsOverlap(range.Source.Bounds,BuildFocusBounds(owner,p)))continue;
-                if(discovery.Members.Add(range))discovery.Ranges.Add(range);
-            }
-            discovery.Results.Clear();
-            int count=discovery.Ranges.Count,idle=0;
-            // Even a zero remaining source allowance may validate already
-            // covered negatives at Acquire. Unfinished ranges return one
-            // budget wait without a read; they cannot spin or grant absence.
-            while(count>0 && idle<count)
-            {
-                discovery.Cursor%=count;var range=discovery.Ranges[discovery.Cursor];discovery.Cursor=(discovery.Cursor+1)%count;
-                PreferredBuildSearch previous;
-                if(discovery.Results.TryGetValue(range,out previous) && previous!=PreferredBuildSearch.BudgetPending)
-                {idle++;continue;}
-                int before=materialBuildSourceBudget;
-                var result=TryPreferredRange(range,p,out target,out plan);
-                discovery.Results[range]=result;
-                discovery.ResultPeakCount=Math.Max(discovery.ResultPeakCount,discovery.Results.Count);
-                if(result==PreferredBuildSearch.Found){group.Pending=true;return result;}
-                // A slice is fairness, not a Host-update boundary. Continue
-                // CPU work while the shared budget pays for real progress;
-                // source waits and finished ranges get no repeated polling.
-                if(before!=materialBuildSourceBudget || result!=PreferredBuildSearch.BudgetPending)idle=0;
-                else idle++;
-            }
-            bool pendingSource=!nearCurrent,pendingWalk=false;
-            foreach(var range in discovery.Ranges)
-            {
-                PreferredBuildSearch result;
-                if(!discovery.Results.TryGetValue(range,out result)){pendingWalk=true;continue;}
-                pendingSource|=result==PreferredBuildSearch.SourcePending;
-                pendingWalk|=result==PreferredBuildSearch.BudgetPending || result==PreferredBuildSearch.OwnerPending;
-            }
-            // A current native consumer is a real obligation, not proof that
-            // its unfinished target is absent from this business group.
-            pendingWalk|=activeBuild!=null && !activeBuild.Checked && !activeBuild.Rejected;
-            group.Pending=pendingSource || pendingWalk;
-            return pendingSource?PreferredBuildSearch.SourcePending:pendingWalk?PreferredBuildSearch.BudgetPending:PreferredBuildSearch.NoRunnable;
+            return ReadNearBuildPreference(p,out target,out plan);
         }
+
         private void RegisterPlannedBuildWait(BlueprintBuildTarget target, BlueprintBuildWait wait, ulong slots)
         {
             if ((wait & BlueprintBuildWait.Dynamic) != 0) WaitForDynamicBuild(target);

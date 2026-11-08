@@ -109,18 +109,15 @@ namespace NativeWorldTextProbe
             observation.WriterWorld = Main.GameUpdateCount;
             var restoredRange = ((System.Collections.IEnumerable)Get(Get(observation.RestoredOwner, "Match"), "Ranges")).Cast<object>().Single();
             var foreignRange = Get(Get(observation.PreparedForeign, "Target"), "Range");
-            var materials = Get(restoredRange, "Materials"); var coverage = Get(materials, "PreferredCoveredBounds");
-            var negatives = GetOptional(materials, "PreferredNegativeOrdinals");
-            Require((long)Get(restoredRange, "Watch") != (long)Get(foreignRange, "Watch"),
+            var state=NearRangeState(observation.Host,restoredRange);var coverage=Get(state,"Covered");
+            var negatives=NearRangeFacts(observation.Host,restoredRange).Where(f=>!(bool)Get(f,"Ready") && !(bool)Get(f,"Pending")).ToArray();
+            Require((long)Get(restoredRange,"Watch")!=(long)Get(foreignRange,"Watch"),
                 "restored A and prepared B own different genuine observer watches");
-            Require(!(bool)Get(materials, "PreferredRevisit") && !(bool)Get(materials, "PreferredFrontier") &&
-                (int)Get(coverage, "Right") > (int)Get(coverage, "Left") && (int)Get(coverage, "Bottom") > (int)Get(coverage, "Top") &&
-                negatives != null && (int)Get(negatives, "Count") > 0,
-                "the genuine blocked A path has actually published cached current negative coverage before the writer stimulus");
-            Console.WriteLine("BlueprintSchedulerFreshness prior-negative revisit=" + Get(materials, "PreferredRevisit") +
-                " frontier=" + Get(materials, "PreferredFrontier") + " covered=" + Get(coverage, "Left") + "," + Get(coverage, "Top") + "," +
-                Get(coverage, "Right") + "," + Get(coverage, "Bottom") + " negatives=" + (negatives == null ? 0 : Get(negatives, "Count")) +
-                " AHostVersion=" + Get(restoredRange, "Version") + " BHostVersion=" + Get(foreignRange, "Version") + " separateWatch=true supportRegionsSeparated=true");
+            Require((bool)Get(state,"Complete") && (int)Get(coverage,"Right")>(int)Get(coverage,"Left") &&
+                (int)Get(coverage,"Bottom")>(int)Get(coverage,"Top") && negatives.Length>0,
+                "the genuine blocked A path has published complete shared near coverage and cached negative facts before the writer stimulus");
+            Console.WriteLine("BlueprintSchedulerFreshness prior-negative "+NearRangeSummary(observation.Host,restoredRange)+
+                " AHostVersion="+Get(restoredRange,"Version")+" BHostVersion="+Get(foreignRange,"Version")+" separateWatch=true supportRegionsSeparated=true");
             WorldGen.KillTile(observation.Restored.X, observation.Restored.Y, fail: false, effectOnly: false, noItem: true);
             observation.Written = true;
             bool currentAProof = (bool)Call(observation.Host, "ProjectionMatchReadCurrent", restoredRange, Get(restoredRange, "RawVersion"));
@@ -205,7 +202,7 @@ namespace NativeWorldTextProbe
         private static SchedulerDeferredSelectionObservation schedulerDeferredSelection;
         private sealed class SchedulerDeferredSelectionObservation
         {
-            internal object Host, Target;
+            internal object Host, Target, Fact, Bounds, Covered;
             internal int Advance, ObservedAdvance, DeferredCalls, DeferredNotifies, Cursor, Ordinal;
             internal int UnavailableRightReads;
             internal long BeforeUnavailable, UnavailableDelta;
@@ -235,10 +232,13 @@ namespace NativeWorldTextProbe
             if (__result || (int)Get(__0, "WorldX") != 44 ||
                 (int)Get(__0, "WorldY") != 40 || Get(__0, "Readiness").ToString() != "Deferred") return;
             state.UnavailableDelta += (long)Get(state.Host, "buildUnavailableReads") - state.BeforeUnavailable;
-            var materials = Get(Get(__0, "Range"), "Materials");
-            state.Target = __0; state.DeferredCalls++; state.ObservedAdvance = state.Advance;
-            state.Ordinal = (int)Get(__0, "Ordinal"); state.Cursor = (int)Get(materials, "CandidateCursor");
-            state.Local = (bool)Get(__0, "LocalPriority"); state.CandidateWasExact = ReferenceEquals(GetOptional(materials, "Candidate"), __0);
+            var range=Get(__0,"Range");var near=NearRangeState(state.Host,range);
+            state.Target=__0;state.DeferredCalls++;state.ObservedAdvance=state.Advance;
+            state.Ordinal=(int)Get(__0,"Ordinal");state.Cursor=near==null?0:(int)Get(near,"Cursor");
+            state.Bounds=near==null?null:Get(near,"Bounds");state.Covered=near==null?null:Get(near,"Covered");
+            state.Fact=NearRangeFacts(state.Host,range).SingleOrDefault(f=>(int)Get(Get(f,"Seed"),"Ordinal")==state.Ordinal);
+            state.Local=(bool)Get(__0,"LocalPriority");state.CandidateWasExact=state.Fact!=null &&
+                ReferenceEquals(Get(Get(state.Fact,"Seed"),"Range"),range);
             Console.WriteLine("BlueprintSchedulerDeferred selected-plan world=" + Main.GameUpdateCount + " host=" + Get(state.Host, "projectionMatchTick") +
                 " readiness=Deferred ordinal=" + state.Ordinal + " forward=" + state.Cursor + " localPriority=" + state.Local +
                 " candidateExact=" + state.CandidateWasExact + " unavailableRightNeighbor=" + (Main.tile[45, 40] == null) +
@@ -254,9 +254,12 @@ namespace NativeWorldTextProbe
         {
             var state = schedulerDeferredSelection;
             if (state == null || !ReferenceEquals(__instance, state.Host) || state.Target == null || state.ObservedAdvance != state.Advance) return;
-            var materials = Get(Get(state.Target, "Range"), "Materials");
-            state.CandidatePreserved &= ReferenceEquals(GetOptional(materials, "Candidate"), state.Target) && (int)Get(state.Target, "Ordinal") == state.Ordinal;
-            if (!state.Local) state.ForwardPreserved &= (int)Get(materials, "CandidateCursor") == state.Cursor;
+            var range=Get(state.Target,"Range");var near=NearRangeState(state.Host,range);
+            state.CandidatePreserved &= state.Fact!=null && NearRangeFacts(state.Host,range).Contains(state.Fact) &&
+                (int)Get(Get(state.Fact,"Seed"),"Ordinal")==state.Ordinal && (bool)Get(state.Fact,"Pending");
+            if(!state.Local)state.ForwardPreserved &= near!=null &&
+                Equals(Get(near,"Bounds"),state.Bounds) && Equals(Get(near,"Covered"),state.Covered) && (int)Get(near,"Cursor")==state.Cursor;
+
         }
 
         internal static void SchedulerDeferredSelectionReadRecovery(object context, object host, object tools, object input)
@@ -281,7 +284,10 @@ namespace NativeWorldTextProbe
                     patch.Patch(host.GetType().GetMethod("AdvanceAutomaticBuild", F),
                         prefix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(SchedulerDeferredAdvanceBefore)),
                         postfix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(SchedulerDeferredAdvanceAfter)));
-                    patch.Patch(host.GetType().GetMethod("TryPlanBuild", F),
+                    // Semantic classification and selection share this actual
+                    // evaluator; observing only the outer selector misses a
+                    // Deferred fact before it can become a ready head.
+                    patch.Patch(host.GetType().GetMethod("EvaluateBuildPlan", F),
                         prefix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(SchedulerDeferredPlanBefore)),
                         postfix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(SchedulerDeferredPlanAfter)));
                     patch.Patch(host.GetType().GetMethod("ReadBuildCell", F),
@@ -291,10 +297,10 @@ namespace NativeWorldTextProbe
                     scope.Begin(true); SetAutomatic(host, input, true);
                     NativeQuickItemChecks.Until(() => { scope.Step(); return schedulerDeferredSelection.DeferredCalls > 0; });
                     Require(schedulerDeferredSelection.UnavailableRightReads > 0 && schedulerDeferredSelection.UnavailableDelta > 0,
-                        "the actual fresh TryPlanBuild invocation reads the unavailable right neighbor through original ReadBuildCell, rather than failing in an earlier matcher/identity gate");
+                        "the actual semantic planning evaluation reads the unavailable right neighbor through original ReadBuildCell, rather than failing in an earlier matcher/identity gate");
                     Require(schedulerDeferredSelection.CandidateWasExact && schedulerDeferredSelection.DeferredNotifies == 0 &&
                         schedulerDeferredSelection.CandidatePreserved && schedulerDeferredSelection.ForwardPreserved,
-                        "a real fresh-selection planning Deferred retains its exact Candidate/ordinal without NotifyBuildAttempt; forward advancement is checked only for nonlocal candidates");
+                        "a real fresh-selection planning Deferred retains its exact semantic fact/ordinal without NotifyBuildAttempt; forward advancement is checked only for nonlocal candidates");
                     Require(Main.tile[45, 40] == null && scope.Events.Count == 0 && wall.Item.stack == 3,
                         "unavailable support is not allocated, treated as known rejection, or submitted to a native consumer");
                     Require(WorldGen.PlaceTile(45, 40, TileID.Stone, true, true), "a real original writer restores the missing wall support");

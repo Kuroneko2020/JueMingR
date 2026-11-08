@@ -137,7 +137,7 @@ namespace NativeWorldTextProbe
                     new CaptureCell { X = 8, Layers = CaptureLayer.Tile, TileType = TileID.Stone }), right, 42);
                 SetAutomatic(host, input, true);
                 Until(context, input, () => Main.tile[right, 42].active() && Main.tile[ropeX, 42].active());
-                Until(context, input, () => ProgressDormant(Scene(host).Single()));
+                Until(context, input, () => ProgressDormant(host,Scene(host).Single()));
                 Require(!Main.tile[buffX, 42].active() && !Main.tile[journeyX, 42].active() && p.inventory[12].stack == 9 && p.inventory[13].stack == 9,
                     "the shared broad envelope does not lend Rope's reach to the actual shorter stone consumer");
                 p.AddBuff(BuffID.Builder, 36000);
@@ -165,7 +165,7 @@ namespace NativeWorldTextProbe
                 // not evidence that normal StoneBlock changes boost in play.
                 SetAutomatic(host, input, false); Main.GameMode = 0; far.SetEnabledState(p.whoAmI, false); p.ResetEffects();
                 Place(context, host, input, Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone }), right + 2, 42);
-                SetAutomatic(host, input, true); Until(context, input, () => ProgressDormant(Scene(host).Single()));
+                SetAutomatic(host, input, true); Until(context, input, () => ProgressDormant(host,Scene(host).Single()));
                 var unchangedInventory = Get(host, "MaterialInventory"); long revision = (long)Get(host, "MaterialBuildEligibilityRevision");
                 long reads = (long)Get(host, "BuildReachSourceReads");
                 for (int i = 0; i < 12; i++) Step(context, input);

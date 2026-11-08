@@ -9,6 +9,11 @@ namespace JueMingR.TerrariaHost.Blueprint
 {
     internal sealed partial class HostBlueprint
     {
+        // Projection target bits are not CaptureLayer: tile=1, wall=2,
+        // liquid=4, actuator=8, and the four wire colors occupy bits4..7.
+        // Grand Design's screen extension must never route liquid as wiring.
+        private const ushort NearBuildWireTargetBits=0xf0;
+        private const ushort NearBuildWiringTargetBits=0xf8;
         // Immutable geometry is owned and charged by the worker-qualified
         // source. Host retains only current per-instance query/coverage state.
         private sealed class BuildFocusNearQuery
@@ -25,13 +30,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal readonly Dictionary<BlueprintProjectionPlacement,BuildFocusNearQuery> Owners=new Dictionary<BlueprintProjectionPlacement,BuildFocusNearQuery>();
             internal readonly List<BlueprintProjectionMatchRange> Ranges=new List<BlueprintProjectionMatchRange>();
             internal readonly HashSet<BlueprintProjectionMatchRange> Members=new HashSet<BlueprintProjectionMatchRange>();
-            // One final result per near range, reused by the current query.
-            // A CPU slice can be revisited; a pending source is not polled.
-            internal readonly Dictionary<BlueprintProjectionMatchRange,PreferredBuildSearch> Results=new Dictionary<BlueprintProjectionMatchRange,PreferredBuildSearch>();
             internal readonly List<BlueprintProjectionPlacement> Retired=new List<BlueprintProjectionPlacement>();
             internal readonly List<BlueprintProjectionPlacement> NearOwners=new List<BlueprintProjectionPlacement>();
             internal readonly HashSet<BlueprintProjectionPlacement> NearOwnerSet=new HashSet<BlueprintProjectionPlacement>();
-            internal int Cursor, OwnerCursor, ResultPeakCount;
+            internal int OwnerCursor;
             internal ulong Tick;
             internal bool TickSet;
             internal BlueprintProjectionBounds World;
@@ -51,13 +53,11 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             get
             {
-                var discovery=buildContinuation?.Discovery;if(discovery==null)return 0;
+                var discovery=nearBuildDiscovery;if(discovery==null)return 0;
                 // Collection estimates include reusable result storage even
                 // after Clear retained its buckets for the next near query.
-                long bytes=224+discovery.Ranges.Capacity*8L+discovery.Members.Count*32L+discovery.Ranges.Count*192L+discovery.ResultPeakCount*80L;
+                long bytes=224+discovery.Ranges.Capacity*8L+discovery.Members.Count*32L+discovery.Ranges.Count*192L;
                 bytes+=discovery.NearOwners.Capacity*8L+discovery.NearOwnerSet.Count*32L+discovery.Retired.Capacity*8L;
-                foreach(var range in discovery.Ranges)
-                {bytes+=range.Materials?.PreferredNegativeOrdinals?.Count*32L??0;bytes+=range.Materials?.PreferredPositionNegatives?.Count*112L??0;}
                 foreach(var query in discovery.Owners.Values)bytes+=128+query.Stack.Count*4L;
                 return bytes;
             }
@@ -69,7 +69,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {return outer.Left<=inner.Left && outer.Top<=inner.Top && outer.Right>=inner.Right && outer.Bottom>=inner.Bottom;}
         private BlueprintProjectionBounds BuildFocusWorldBounds(Player p)
         {
-            var focus=buildContinuation;var discovery=focus.Discovery;
+            var discovery=nearBuildDiscovery;
             if(discovery.TickSet && discovery.Tick==materialTick && discovery.PlayerX==p.position.X && discovery.PlayerY==p.position.Y &&
                 discovery.PlayerWidth==p.width && discovery.PlayerHeight==p.height && discovery.BlockRange==p.blockRange &&
                 discovery.ReachX==Player.tileRangeX && discovery.ReachY==Player.tileRangeY && discovery.ScreenX==Main.screenPosition.X &&
@@ -78,30 +78,28 @@ namespace JueMingR.TerrariaHost.Blueprint
             discovery.PlayerX=p.position.X;discovery.PlayerY=p.position.Y;discovery.PlayerWidth=p.width;discovery.PlayerHeight=p.height;
             discovery.BlockRange=p.blockRange;discovery.ReachX=Player.tileRangeX;discovery.ReachY=Player.tileRangeY;
             discovery.ScreenX=Main.screenPosition.X;discovery.ScreenY=Main.screenPosition.Y;discovery.ScreenWidth=Main.screenWidth;discovery.ScreenHeight=Main.screenHeight;
-            int boost=0;bool hammer=focus.Operation?.Kind==BlueprintBuildOperationKind.Hammer;
-            if(AppearanceOperation(focus.Operation) && EnsureAppearanceInventory(p))
-            {
-                int kind=hammer?0:focus.Operation.Kind==BlueprintBuildOperationKind.Scrape?3:focus.Operation.Kind==BlueprintBuildOperationKind.PaintTile?1:2;
-                for(int n=0;n<appearanceToolCounts[kind];n++)
-                {int slot=appearanceTools[kind,n];if(buildTools.BuildInventoryEligible(slot,p.inventory[slot]))boost=Math.Max(boost,p.inventory[slot].tileBoost);}
-            }
-            else if(WiringOperation(focus.Operation))
-            {
-                for(int n=0;n<3;n++){int type=WiringToolType(focus.Operation,n),reach;if(buildItemReach.TryGetValue(type,out reach))boost=Math.Max(boost,reach);}
-            }
-            else buildItemReach.TryGetValue(focus.Source.Type,out boost);
-            var hint=PreferredBuildSourceHint(p);if(hint!=null)boost=Math.Max(boost,hint.Item.tileBoost);
-            int left,top,right,bottom;
-            TileReachCheckSettings.Simple.GetTileRegion(p,out left,out top,out right,out bottom,boost+(hammer?0:p.blockRange));
-            var world=new BlueprintProjectionBounds(left,top,Math.Max(0,right-left+1),Math.Max(0,bottom-top+1));
-            if(WiringOperation(focus.Operation) && WiringToolMatches(focus.Operation,3611) && buildSupply.ContainsKey(3611) && Main.screenWidth>0 && Main.screenHeight>0)
+            var world=BuildNearOrdinaryWorldBounds(p);
+            if(buildSupply.ContainsKey(3611) && Main.screenWidth>0 && Main.screenHeight>0)
                 world=BuildBoundsUnion(world,new BlueprintProjectionBounds((int)Math.Floor(Main.screenPosition.X/16f),(int)Math.Floor(Main.screenPosition.Y/16f),
                     (int)Math.Ceiling((Main.screenPosition.X+Main.screenWidth)/16f)-(int)Math.Floor(Main.screenPosition.X/16f),
                     (int)Math.Ceiling((Main.screenPosition.Y+Main.screenHeight)/16f)-(int)Math.Floor(Main.screenPosition.Y/16f)));
             discovery.World=world;return world;
         }
+        // Conservative shared discovery only; each target's native tool
+        // reach is checked independently. Screen extension routes wire layers
+        // exclusively, never ordinary table/chair source demands.
+        private BlueprintProjectionBounds BuildNearOrdinaryWorldBounds(Player p)
+        {
+            int left,top,right,bottom;
+            Terraria.DataStructures.TileReachCheckSettings.Simple.GetTileRegion(p,out left,out top,out right,out bottom,buildEnvelopeBoost+Math.Max(0,p.blockRange));
+            return new BlueprintProjectionBounds(left,top,Math.Max(0,right-left+1),Math.Max(0,bottom-top+1));
+        }
+        private BlueprintProjectionBounds BuildNearOrdinaryBounds(BlueprintProjectionPlacement owner,Player p)
+        {var world=BuildNearOrdinaryWorldBounds(p);return owner.View.SourceBounds(new BlueprintProjectionBounds(world.Left-owner.OriginX,world.Top-owner.OriginY,world.Width,world.Height));}
         private BlueprintProjectionBounds BuildFocusBounds(BlueprintProjectionPlacement owner,Player p)
         {var world=BuildFocusWorldBounds(p);return owner.View.SourceBounds(new BlueprintProjectionBounds(world.Left-owner.OriginX,world.Top-owner.OriginY,world.Width,world.Height));}
+        private BlueprintProjectionBounds BuildPreferredFocusBounds(BlueprintProjectionPlacement owner,Player p)
+        {return WiringOperation(buildContinuation?.Operation)?BuildFocusBounds(owner,p):BuildNearOrdinaryBounds(owner,p);}
         private bool AdvanceBuildFocusNearQuery(BuildFocusNearQuery query,Action<int> emit)
         {
             if(materialBuildSearchBudget<=0)return false;
@@ -124,7 +122,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool RefreshBuildFocusNear(Player p)
         {
-            var discovery=buildContinuation.Discovery;
+            var discovery=nearBuildDiscovery;
             discovery.NearOwners.Clear();discovery.NearOwnerSet.Clear();discovery.Retired.Clear();
             var world=BuildFocusWorldBounds(p);
             foreach(var owner in projectionScene)
@@ -149,9 +147,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 BuildFocusNearQuery query;bool known=discovery.Owners.TryGetValue(owner,out query);
                 if(!projectionScene.Contains(owner) || owner.Match==null || range.Index>=owner.Match.Ranges.Length ||
                     !ReferenceEquals(owner.Match.Ranges[range.Index],range) || !known ||
+                    !BuildBoundsOverlap(range.Source.Bounds,BuildNearOrdinaryBounds(owner,p)) && (range.Source.TargetBits&NearBuildWiringTargetBits)==0 ||
                     !(BuildBoundsOverlap(range.Source.Bounds,BuildFocusBounds(owner,p)) ||
                       query.Complete && BuildBoundsOverlap(range.Source.Bounds,query.Covered) || query.Started && BuildBoundsOverlap(range.Source.Bounds,query.Query)))
-                {if(range.Materials!=null){range.Materials.PreferredNegativeOrdinals=null;range.Materials.PreferredPositionNegatives=null;}discovery.Members.Remove(range);discovery.Ranges.RemoveAt(i);}
+                {discovery.Members.Remove(range);discovery.Ranges.RemoveAt(i);}
             }
             foreach(var owner in discovery.NearOwners)
             {
@@ -186,7 +185,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 bool advanced=AdvanceBuildFocusNearQuery(query,index=>
                 {
                     var group=query.Match.Groups[index];
-                    group.Source.RouteProofs(query.Query,0xff,owner.Mask,ordinal=>
+                    Action<int> route=ordinal=>
                     {
 #if DEBUG
                         BuildFocusDirectoryRoutes++;
@@ -194,7 +193,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                         if(ordinal<0 || ordinal>=group.Parts.Count)return;
                         var range=group.Parts[ordinal];
                         if(discovery.Members.Add(range))discovery.Ranges.Add(range);
-                    });
+                    };
+                    group.Source.RouteProofs(IntersectBuildBounds(query.Query,BuildNearOrdinaryBounds(owner,p)),0xff,owner.Mask,route);
+                    if(buildSupply.ContainsKey(3611))group.Source.RouteProofs(query.Query,NearBuildWiringTargetBits,owner.Mask,route);
                 });
                 if(advanced)idle=0;else idle++;
             }
@@ -212,8 +213,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         // newly entered reach returns Pending to the ordinary discovery lane.
         private bool BuildFocusNearCurrent(Player p)
         {
-            var discovery=buildContinuation?.Discovery;if(discovery==null)return false;
-            var world=BuildFocusWorldBounds(p);
+            var discovery=nearBuildDiscovery;if(discovery==null)return false;
+            var world=WiringOperation(buildContinuation?.Operation)?BuildFocusWorldBounds(p):BuildNearOrdinaryWorldBounds(p);
             foreach(var owner in projectionScene)
             {
                 var summary=owner.Summary;
@@ -223,7 +224,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(owner.Match==null || !ProjectionQualificationCurrent(owner) || !discovery.Owners.TryGetValue(owner,out query) ||
                     !ReferenceEquals(query.Match,owner.Match) || !ReferenceEquals(query.Sources,owner.Qualification.SourceRanges) ||
                     !ReferenceEquals(query.Directory,owner.Qualification.GeometryDirectory) || !query.Complete ||
-                    !BuildBoundsContain(query.Covered,BuildFocusBounds(owner,p)))return false;
+                    !BuildBoundsContain(query.Covered,BuildPreferredFocusBounds(owner,p)))return false;
             }
             return true;
         }

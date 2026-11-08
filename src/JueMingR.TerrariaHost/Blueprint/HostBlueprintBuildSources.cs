@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using JueMingR.Features.Blueprint;
 
@@ -14,13 +14,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal BlueprintProjectionSourcePart Part;
             internal int X, Y;
             internal long Catalog;
-            internal long NearVersion=-1, NearWake=-1, NearPlayer=-1, NearSupply=-1;
-            internal int NearCursor, FrontierCursor;
-            internal BlueprintProjectionBounds NearBounds, FrontierBounds;
-            internal bool Frontier, NearInitialized, NearComplete, NearRevisit, LocalFirst = true;
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            internal int DiagnosticResetBefore,DiagnosticResetAfter,DiagnosticResetReasons;
-#endif
         }
         // Reuse the immutable transport, not a second world/target table. Four
         // recent parts share the match owner's retained-byte accounting. The
@@ -34,7 +27,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private static long BuildSourceRetainedBytes(BlueprintProjectionSourcePart part) { return part.EstimatedBytes + 256; }
         private readonly LinkedList<BuildSourcePart> buildSources = new LinkedList<BuildSourcePart>();
         private long buildSourceBytes;
-        private int materialBuildSourceBudget, buildSourceCursor;
+        private int materialBuildSourceBudget;
 
         private void RetainBuildSource(BlueprintProjectionMatchRead read)
         {
@@ -95,120 +88,6 @@ namespace JueMingR.TerrariaHost.Blueprint
                 work.Parts.Add(part);
             }
             return true;
-        }
-        private bool ContinueMaterialBuildSource(BlueprintProjectionMatchRange range, out BlueprintBuildTarget target, int stepLimit)
-        {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            BlueprintBuildTrace.Hit(BuildTraceStage.Forward);
-            BlueprintBuildTrace.Count(BuildTraceReason.ForwardVisit);
-            if(materialBuildSourceBudget<=0)BlueprintBuildTrace.Count(BuildTraceReason.ForwardZeroBudget);
-#endif
-            target = null;
-            var value = range.Materials;
-            if (value == null || value.BuildExhausted)
-            {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                BlueprintBuildTrace.Count(BuildTraceReason.SourceExhausted);
-#endif
-                return false;
-            }
-            var part = FindBuildSource(range);
-            if (part == null)
-            {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                BlueprintBuildTrace.Count(BuildTraceReason.SourceMissing);
-#endif
-                if (BuildSourceCapacityAvailable()) DemandProjectionMatchRange(range);
-                return false;
-            }
-            long support;
-            if (!range.Group.Ready || !ProjectionMatchReadCurrent(range, range.RawVersion) ||
-                !projectionChanges.TryGetBuildStamp(range.Watch, range.PartIndex, out support))
-            {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                BlueprintBuildTrace.Count(BuildTraceReason.SourceNotCurrent);
-#endif
-                return false;
-            }
-            while (materialBuildSourceBudget > 0 && stepLimit-- > 0)
-            {
-                int index = BuildMemberIndex(value.CandidateCursor) - part.Offset;
-                if (index < 0) { DemandProjectionMatchRange(range);
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                    BlueprintBuildTrace.Count(BuildTraceReason.SourceOffset);
-#endif
-                    return false; }
-                if (index >= part.Window.Cells.Count)
-                {
-                    value.BuildExhausted = part.Complete;
-                    // Cells omit positive-object Tile-only records. A bounded
-                    // ordinary prefix still advances in raw source offsets;
-                    // its filtered count cannot name the next source slice.
-                    if (!part.Complete)
-                    {
-                        value.CandidateCursor = Math.Max(value.CandidateCursor, BuildMemberOrdinal(part.NextOffset));
-                        DemandProjectionMatchRange(range);
-                    }
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                    BlueprintBuildTrace.Count(BuildTraceReason.SourceEnd);
-#endif
-                    return false; }
-                materialBuildSourceBudget--;
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                BlueprintBuildTrace.Count(BuildTraceReason.ForwardStep);
-#endif
-#if DEBUG
-                ProjectionMatchSourceSteps++;
-#endif
-                int ordinal = value.CandidateCursor;
-                int following;
-                var readiness=CreateConstructionCandidate(range.Owner,range,part,index,ordinal,support,out target,out following,false);
-                if (readiness==BlueprintBuildReadiness.Ready)
-                {
-                    target.LocalProof = true; value.Candidate = target; return true;
-                }
-                if(readiness==BlueprintBuildReadiness.Deferred)
-                {DemandProjectionMatchRange(range);return false;}
-                value.CandidateCursor = following;
-            }
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            BlueprintBuildTrace.Count(BuildTraceReason.SourceBudgetEmpty);
-#endif
-            return false;
-        }
-        private bool BuildSourceCapacityAvailable()
-        {
-            // A paused discovery walk keeps its ordinal in the range, never a
-            // permanent cache pin. Nearby immutable transport can displace it.
-            return true;
-        }
-        private bool TryRetainedBuildTarget(out BlueprintBuildTarget target)
-        {
-            target = null;
-            // Spend the same 64 source steps on at most four live walks before
-            // discovering another locality. A large mixed template must not
-            // revisit hundreds of exhausted object ranges for each ordinary
-            // candidate. Source discovery keeps its own bounded scene cursor.
-            for (int n = 0; n < BuildSourcePartLimit && buildSources.Count > 0 && materialBuildSourceBudget > 0; n++)
-            {
-                int count = buildSources.Count, at = buildSourceCursor % count;
-                var node = buildSources.First;
-                for (int i = 0; i < at; i++) node = node.Next;
-                buildSourceCursor = (at + 1) % count;
-                var source = node.Value;
-                bool localFirst = source.LocalFirst; source.LocalFirst = !localFirst;
-                if (localFirst)
-                {
-                    if (TryNearbyBuildTarget(source, BuildSourceSlice, out target)) return true;
-                    if (TryMaterialBuildTarget(source.Range, out target, BuildSourceSlice)) return true;
-                }
-                else
-                {
-                    if (TryMaterialBuildTarget(source.Range, out target, BuildSourceSlice)) return true;
-                    if (TryNearbyBuildTarget(source, BuildSourceSlice, out target)) return true;
-                }
-            }
-            return false;
         }
         private static int NextBuildSourceOrdinal(int ordinal, CaptureCell cell, bool logicalObject)
         {

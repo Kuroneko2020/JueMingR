@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using JueMingR.Features.Blueprint;
 using Terraria;
@@ -54,7 +54,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 var retained=node.Value;
                 if(!BuildBoundsOverlap(retained.Part.Window.Bounds,retained.Owner.View.SourceBounds(BuildNearBounds(retained.Owner))))return node;
-                if(finished==null && node.Value.Range.Materials?.BuildExhausted!=false)finished=node;
+                NearBuildRange plan;
+                if(finished==null && nearBuildRanges.TryGetValue(node.Value.Range,out plan) && plan.Complete)finished=node;
             }
             return finished ?? (nearby?buildSources.First:null);
         }
@@ -68,133 +69,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             return low;
         }
-        private bool TryNearbyBuildTarget(BuildSourcePart source,int stepLimit,out BlueprintBuildTarget target)
-        {
-            target=null;var range=source.Range;var value=range.Materials;
-            if(value==null || !ReferenceEquals(FindBuildSource(range),source.Part))return false;
-            TryWakeBuildEligibility(range);
-            if(value.Candidate!=null && IsBuildTargetCurrent(value.Candidate)){target=value.Candidate;return true;}
-            if(source.NearVersion!=range.Version || source.NearWake!=value.BuildWakeRevision || source.NearPlayer!=MaterialBuildEligibilityRevision || source.NearSupply!=buildSupplyRevision)
-            {
-                source.NearVersion=range.Version;source.NearWake=value.BuildWakeRevision;
-                source.NearPlayer=MaterialBuildEligibilityRevision;source.NearSupply=buildSupplyRevision;
-                source.NearBounds=source.Owner.View.SourceBounds(BuildNearBounds(source.Owner));
-                // These revisions invalidate candidate proofs, not the stable
-                // source ordinal. Merge a revisit and refresh the broad phase
-                // now; finish the current finite pass before wrapping once.
-                source.NearRevisit=true;
-            }
-            if(!source.NearInitialized || source.NearComplete && source.NearRevisit)
-            {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                source.DiagnosticResetBefore=source.NearCursor;
-#endif
-                source.NearInitialized=true;source.NearComplete=source.NearRevisit=false;
-                source.NearCursor=BuildMemberOrdinal(BuildCellLowerBound(ProjectionSourceCells(source.Part.Window),source.NearBounds.Left,source.NearBounds.Top));
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                source.DiagnosticResetAfter=source.NearCursor;
-                // A merged revisit no longer has one immediate reset cause.
-                source.DiagnosticResetReasons=0;
-                BlueprintBuildTrace.Count(BuildTraceReason.NearReset);
-#endif
-            }
-            bool complete;
-            if(source.Frontier)
-            {
-                if(ContinueLocalBuildSource(source,source.FrontierBounds,ref source.FrontierCursor,ref stepLimit,out target,out complete))return true;
-                // Slice exhaustion only pauses this pass. It does not consume
-                // a pending revisit or discard unfinished frontier work.
-                if(complete)source.Frontier=false;
-                if(materialBuildSourceBudget<=0 || stepLimit<=0 || !complete)return false;
-            }
-            if(source.NearComplete)return false;
-            if(ContinueLocalBuildSource(source,source.NearBounds,ref source.NearCursor,ref stepLimit,out target,out complete))return true;
-            source.NearComplete=complete;return false;
-        }
-        private bool ContinueLocalBuildSource(BuildSourcePart source,BlueprintProjectionBounds bounds,ref int cursor,ref int stepLimit,out BlueprintBuildTarget target,out bool complete)
-        {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            bool diagnosticFrontier=false;
-            if(BlueprintBuildTrace.Active){diagnosticFrontier=source.Frontier;BlueprintBuildTrace.Hit(diagnosticFrontier?BuildTraceStage.Frontier:BuildTraceStage.Near);}
-#endif
-            target=null;complete=false;var part=source.Part;var range=source.Range;var cells=ProjectionSourceCells(part.Window);
-            long support;
-            if(!range.Group.Ready || !ProjectionMatchReadCurrent(range,range.RawVersion) ||
-                !projectionChanges.TryGetBuildStamp(range.Watch,range.PartIndex,out support))
-            {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                BlueprintBuildTrace.Count(BuildTraceReason.SourceNotCurrent);
-#endif
-                return false;
-            }
-            while(materialBuildSourceBudget>0 && stepLimit>0)
-            {
-                int index=BuildMemberIndex(cursor);
-                if(index>=cells.Count)
-                {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                    BlueprintBuildTrace.Count(BuildTraceReason.SourceEnd);
-#endif
-                    complete=true;return false;
-                }
-                var cell=cells[index];
-                if(part.LogicalObjectId==0)
-                {
-                    if(cell.Y>=bounds.Bottom)
-                    {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                        BlueprintBuildTrace.Count(BuildTraceReason.SourceBoundsEnd);
-#endif
-                        complete=true;return false;
-                    }
-                    if(cell.X<bounds.Left || cell.X>=bounds.Right || cell.Y<bounds.Top)
-                    {cursor=BuildMemberOrdinal(BuildCellLowerBound(cells,bounds.Left,cell.X>=bounds.Right?cell.Y+1:Math.Max(cell.Y,bounds.Top)));continue;}
-                }
-                int ordinal=BuildMemberOrdinal(part.Offset+index)+(int)BuildLane(cursor);
-                cursor=NextBuildOrdinal(cursor,cell);
-                materialBuildSourceBudget--;stepLimit--;
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                BlueprintBuildTrace.Count(diagnosticFrontier?BuildTraceReason.FrontierStep:BuildTraceReason.NearStep);
-#endif
-#if DEBUG
-                ProjectionMatchSourceSteps++;
-#endif
-                int following;
-                var readiness=CreateConstructionCandidate(source.Owner,source.Range,source.Part,index,ordinal,support,out target,out following,false);
-                if(readiness==BlueprintBuildReadiness.Ready)
-                {target.LocalPriority=true;range.Materials.Candidate=target;return true;}
-                if(readiness==BlueprintBuildReadiness.Deferred)
-                {cursor=ordinal-BuildMemberOrdinal(part.Offset);DemandProjectionMatchRange(range);return false;}
-                // No target will write this sample. Consume its proven no-op
-                // lanes in this visit only; this cursor is part-relative while
-                // the shared constructor returns an absolute source ordinal.
-                cursor=following-BuildMemberOrdinal(part.Offset);
-            }
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            BlueprintBuildTrace.Count(BuildTraceReason.SourceBudgetEmpty);
-#endif
-            return false;
-        }
         private void RememberBuildFrontier(BlueprintBuildTarget target)
         {
-            var preferred=target.Range.Materials;
-            if(preferred!=null && preferred.PreferredGroup==buildContinuation?.Group)
-            {
-                var world=target.Bounds.Expand(1);var owner=target.Range.Owner;
-                var next=owner.View.SourceBounds(new BlueprintProjectionBounds(world.Left-owner.OriginX,world.Top-owner.OriginY,world.Width,world.Height));
-                preferred.PreferredFrontierBounds=preferred.PreferredFrontier?BuildBoundsUnion(preferred.PreferredFrontierBounds,next):next;
-                preferred.PreferredFrontier=true;
-                var part=FindBuildSource(target.Range);
-                preferred.PreferredFrontierCursor=part==null?0:BuildMemberOrdinal(part.Offset+BuildCellLowerBound(ProjectionSourceCells(part.Window),preferred.PreferredFrontierBounds.Left,preferred.PreferredFrontierBounds.Top));
-            }
-            for(var node=buildSources.First;node!=null;node=node.Next)
-            {
-                var source=node.Value;if(!ReferenceEquals(source.Range,target.Range))continue;
-                var bounds=target.Bounds.Expand(1);
-                source.FrontierBounds=source.Owner.View.SourceBounds(new BlueprintProjectionBounds(bounds.Left-source.Owner.OriginX,bounds.Top-source.Owner.OriginY,bounds.Width,bounds.Height));
-                source.FrontierCursor=BuildMemberOrdinal(BuildCellLowerBound(ProjectionSourceCells(source.Part.Window),source.FrontierBounds.Left,source.FrontierBounds.Top));
-                source.Frontier=true;return;
-            }
+            nearPlanDirty=true;
+
         }
         private bool BuildDiscoveryPending()
         {

@@ -57,7 +57,7 @@ namespace NativeWorldTextProbe
             var ready = GetOptional(host, "preparedBuild"); var active = GetOptional(host, "activeBuild");
             var sources = ((IEnumerable)Get(host, "buildSources")).Cast<object>().Take(4).Select(s => {
                 var r = Get(s, "Range"); var m = GetOptional(r, "Materials");
-                return Get(r, "Index") + ":" + Get(s, "NearCursor") + "/" + (m == null ? "none" : Get(m, "CandidateCursor") + "/" + Get(m, "PreferredCursor") + "/" + Get(m, "BuildExhausted")); });
+                return Get(r,"Index")+":"+NearRangeSummary(host,r); });
             var works = ((IDictionary)Get(host, "projectionMatchWork")).Values.Cast<object>().Take(4).Select(w => {
                 var r = GetOptional(w, "Read"); return Get(w, "Pending") + ":" + (r == null ? "none" : Get(Get(r, "Range"), "Index") + "/" + Get(r, "CellIndex") + "/" + Get(Get(r, "Range"), "RawVersion")); });
             return "t=" + p.itemTime + "/" + p.itemAnimation + "/" + p.reuseDelay + " prepared=" + (ready == null ? "none" : Get(Get(Get(ready, "Target"), "Range"), "Index").ToString()) +
@@ -403,7 +403,7 @@ namespace NativeWorldTextProbe
                 "actual native consumption, rather than only metadata, crosses the real normalized source/range boundary");
             if(automatic)
             {
-                var query=Get(Get(Get(host,"buildContinuation"),"Discovery"),"Owners") as IDictionary;
+                var query=Get(Get(host,"nearBuildDiscovery"),"Owners") as IDictionary;
                 // Construction moved to the existing qualification worker.
                 // Both real source consumers still share that exact frozen
                 // directory; Host pays only its unchanged near-query budget.

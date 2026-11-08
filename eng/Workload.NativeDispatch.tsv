@@ -71,6 +71,7 @@ selector	JUEMINGR_TERRAIN_FLIGHT
 selector	JUEMINGR_UMBRELLA
 selector	JUEMINGR_BASIC_MOTION
 selector	JUEMINGR_FOUNDATION_CONTINUOUS
+selector	JUEMINGR_NPC_MEASURE_OFF
 selector	JUEMINGR_NPC_LEGAL_COVERAGE
 selector	JUEMINGR_NPC_LIVE_CONTEXT
 selector	JUEMINGR_NPC_ENV_AXIS
@@ -268,6 +269,11 @@ selector	JUEMINGR_VIEW_CACHE_PROBE
 override	JUEMINGR_NPC_WORKER_BUILD
 override	JUEMINGR_NPC_CONFIGURATION
 override	JUEMINGR_NPC_WORKER_LAYOUT
+leaf	NpcProduction	npc-production-complete
+leaf	NpcDiagnosticsOff	npc-diagnostics-off
+leaf	BlueprintNearQueueCpu	blueprint-near-queue
+leaf	RuntimeFailureBuildUsingSelectionCpu	runtime-failure-build-using-selection
+leaf	RuntimeFailureBuildUsingScrollCpu	runtime-failure-build-using-scroll
 leaf	NpcPhasedFlight	phased-flight
 leaf	NpcAmbientFlight	ambient-flight
 leaf	NpcRelatedMotion	related-flight

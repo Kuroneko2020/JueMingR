@@ -64,11 +64,11 @@ namespace NativeWorldTextProbe
             Console.WriteLine("SupplyTrace actual-types tool="+type+" serial="+(supplies.Contains(type)?supplies[type]:"ABSENT")+
                 " material="+material+" serial="+(supplies.Contains(material)?supplies[material]:"ABSENT")+
                 " source="+slot+":"+item.type+":"+item.stack+" exact="+(slot>=0 && slot<50 && ReferenceEquals(Main.LocalPlayer.inventory[slot],item)));
-            foreach(var range in (System.Collections.IEnumerable)Get(Get(group,"Discovery"),"Ranges"))
+            foreach(var range in (System.Collections.IEnumerable)Get(Get(supplyTraceHost,"nearBuildDiscovery"),"Ranges"))
             {
                 var value=GetOptional(range,"Materials");if(value==null)continue;
                 Console.WriteLine("SupplyTrace actual-absence range="+Get(range,"Index")+" global="+Get(supplyTraceHost,"buildSupplyRevision")+
-                    " proofs="+string.Join("/",new[]{"PreferredSupply","PreferredWaits","PreferredRevisit","PreferredFrontier","PreferredVersion","PreferredWake","BuildWakeRevision","PreferredSupport","PreferredRetryAt"}.Select(n=>n+":"+Get(value,n))));
+                    " sharedNear="+NearRangeSummary(supplyTraceHost,range));
             }
         }
         private static void SupplyTraceFinalizeAfter(object __instance)

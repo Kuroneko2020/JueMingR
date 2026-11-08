@@ -30,17 +30,18 @@ Assert-Compilation ((Get-WorkloadCompileFingerprint $identity) -ceq (Get-Workloa
 $fixture=Join-Path ([IO.Path]::GetTempPath()) ('JueMingR-compilation-'+[Guid]::NewGuid().ToString('N'))
 try{
     [IO.Directory]::CreateDirectory($fixture)|Out-Null
-    $runtimeKeys=@('JMR_OBSERVATION_ORACLE_ONLY','JUEMINGR_COMBAT_GEOMETRY_CANDIDATE','DefineConstants');$runtimeSaved=@{}
+    $runtimeKeys=@('JUEMINGR_NPC_MEASURE_OFF','JMR_OBSERVATION_ORACLE_ONLY','JUEMINGR_COMBAT_GEOMETRY_CANDIDATE','DefineConstants');$runtimeSaved=@{}
     foreach($key in $runtimeKeys){$runtimeSaved[$key]=[Environment]::GetEnvironmentVariable($key)}
     try{
         $before=@(Get-WorkloadCompilationEnvironmentRows $fixture @())
+        $env:JUEMINGR_NPC_MEASURE_OFF='1'
         $env:JMR_OBSERVATION_ORACLE_ONLY='ownership';$env:JUEMINGR_COMBAT_GEOMETRY_CANDIDATE='different-runtime-only.dll'
         Assert-Compilation ((Get-WorkloadHash $before) -ceq (Get-WorkloadHash @(Get-WorkloadCompilationEnvironmentRows $fixture @()))) 'cleared pure-runtime selectors do not change compilation identity'
         $env:DefineConstants='REAL_COMPILE_SYMBOL'
         Assert-Compilation ((Get-WorkloadHash $before) -cne (Get-WorkloadHash @(Get-WorkloadCompilationEnvironmentRows $fixture @()))) 'actual compile symbol remains bound'
-        [IO.File]::WriteAllText((Join-Path $fixture 'explicit.props'),'<Project><PropertyGroup><Test>$(JUEMINGR_COMBAT_GEOMETRY_CANDIDATE)</Test></PropertyGroup></Project>')
+        [IO.File]::WriteAllText((Join-Path $fixture 'explicit.props'),'<Project><PropertyGroup><Test>$(JUEMINGR_NPC_MEASURE_OFF)</Test></PropertyGroup></Project>')
         $rowsWithProperty=@(Get-WorkloadCompilationEnvironmentRows $fixture @('explicit.props:locked'))
-        Assert-Compilation (@($rowsWithProperty|Where-Object {$_ -like 'environment:JUEMINGR_COMBAT_GEOMETRY_CANDIDATE:*'}).Count -eq 1) 'an explicitly consumed project property stays a compile input even if its name is also a diagnostic control'
+        Assert-Compilation (@($rowsWithProperty|Where-Object {$_ -like 'environment:JUEMINGR_NPC_MEASURE_OFF:*'}).Count -eq 1) 'an explicitly consumed project property stays a compile input even if its name is also a diagnostic control'
     }finally{foreach($key in $runtimeSaved.Keys){[Environment]::SetEnvironmentVariable($key,$runtimeSaved[$key])}}
     $directory=Join-Path $fixture 'tests/JueMingR.ArchitectureTests';[IO.Directory]::CreateDirectory($directory)|Out-Null
     $path=Join-Path $directory 'JueMingR.ArchitectureTests.csproj'

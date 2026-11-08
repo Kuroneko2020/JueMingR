@@ -18,6 +18,11 @@ namespace NativeWorldTextProbe
     internal static partial class NativeBlueprintBuildChecks
     {
         private const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+        // All partial consumers execute this initialization, even SupplyRepair
+        // which never calls Door's private assertion body. Keep it with Reset/Step.
+        private sealed class DoorNativeAction
+        { internal int X, Y; internal string Kind; }
+        private static readonly System.Collections.Generic.List<DoorNativeAction> doorRepairActions = new System.Collections.Generic.List<DoorNativeAction>();
         private static object faultTools;
         private static bool reportedNativeFault;
         internal static void Run(object context, bool throughputOnly=false, bool cadenceOnly=false, bool coldHandoffOnly=false)

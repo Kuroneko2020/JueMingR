@@ -38,7 +38,7 @@ namespace NativeWorldTextProbe
             if(formal && context.Split('|')[0]!="native-"+scope.Replace(':','-'))
                 throw new ArgumentException("Formal check name and native scope differ.");
             // Named exclusive scopes own their complete family. The generic
-            // explicit NpcProduction/strategy specialist still permits its
+            // strategy specialist still permits its
             // deliberate environment axis when no formal runner requested it.
             if(formal || expected!=null)
                 foreach(DictionaryEntry pair in Environment.GetEnvironmentVariables())
@@ -49,6 +49,12 @@ namespace NativeWorldTextProbe
                         throw new ArgumentException("Unknown inherited workload selector: "+key);
                     if(selectors.Contains(key) && (formal || !overrides.Contains(key)))Environment.SetEnvironmentVariable(key,null);
                 }
+        }
+        // Aliases deliberately rewrite their local scope to NpcProduction.
+        // Only the original request can own its completion responsibility.
+        internal static void EnterForRequest(string originalRequest, string leaf)
+        {
+            if(requested==originalRequest)Enter(leaf);
         }
         internal static string Enter(string leaf)
         {
@@ -62,6 +68,12 @@ namespace NativeWorldTextProbe
             // leaf. An explicit family must enter at its actual Run dispatch,
             // where a different family is rejected by the same exact guard.
             if(expected!=null)Enter(leaf);
+        }
+        internal static void RunNpcDiagnosticsOff(Action run)
+        {
+            string previous=Environment.GetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF");
+            try{Environment.SetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF","1");run();}
+            finally{Environment.SetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF",previous);}
         }
         internal static void RunExclusiveEffectFamily(string family, Action run)
         {

@@ -143,10 +143,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             // cancellation: keep the suggestion, but do no discovery/preflight.
             // Pick and each native consumer still validate current permission,
             // source and geometry before this prepared work can own any input.
-            if (!buildTools.Input.CanRunAutomaticActions) return;
+            // Inventory publication can precede the first qualified placement
+            // catalog. No semantic planning is legal in that transition.
+            if (!buildTools.Input.CanRunAutomaticActions || MaterialCatalog==null) return;
             substitutionCandidateBudget = 64;
             substitutionPlanningPending = false;
             int allowance = 64;
+            AdvanceNearBuildPlan(p,ref allowance);
             if(ContinueBuildSupply(p,ref allowance))return;
             AdvanceAutomaticBuildSelection(p,ref allowance);
         }
@@ -473,7 +476,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             FinalizeReadyBuildSupply(p);
             var next = preparedBuild;
             if (next == null || !ReferenceEquals(p, next.Player) || !CanBuildAutomatically(p) || p.itemAnimation > 0 || p.itemTime > 0 || p.channel || p.reuseDelay > 0 ||
-                !p.releaseUseItem || p.selectedItemState.HasActiveOverride || p.selectedItemState.HasBufferedChange || !BuildFlightCurrent(next, false) || !PreparedBuildPriorityCurrent(next,p))
+                !p.releaseUseItem || p.selectedItemState.HasActiveOverride || p.selectedItemState.HasBufferedChange || !BuildFlightCurrent(next, false) || !PreparedBuildPriorityCurrent(next,p,true))
             {
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 BlueprintBuildTrace.Count(next==null?BuildTraceReason.NoPrepared:BuildTraceReason.ChooseGate);
@@ -494,7 +497,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // boundary. Once admitted, later recovery never retro-aborts
                 // a legally selected flight's finite native responsibility.
                 Valid = () => CanBuildAutomatically(p) && BuildLeaseCurrent(activeBuild ?? next) &&
-                    (next.Token>0 || PreparedBuildPriorityCurrent(next,p)),
+                    (next.Token>0 || PreparedBuildPriorityCurrent(next,p,true)),
                 Admitted = () => { next.Token = buildTools.Use.Operation; next.SmartNeutralRequired=next.CursorMode==ToolBuildCursorMode.SmartPlatform;
                     activeBuild = next; RememberBuildContinuation(next);
 #if JMR_BLUEPRINT_DIAGNOSTIC
@@ -643,6 +646,21 @@ namespace JueMingR.TerrariaHost.Blueprint
             DiagnosticFlight(flight,BuildTraceStage.ResolveAfter,reason==ToolTargetRejection.Resolution?BuildTraceReason.TargetResolution:BuildTraceReason.TargetConsumer);
 #endif
             if(!RememberSmartPlatformFallback(flight))RequestBuildEligibilityRetry(flight.Target);
+            else
+            {
+                // Lookahead may already have prepared this same Smart route
+                // before its real lookup was rejected. It has no execution
+                // token yet: retire that speculation, so the next paid plan
+                // consults the newly recorded bounded fallback. Never rewrite
+                // the admitted flight or discard another target/material.
+                var next=preparedBuild;
+                if(next!=null && next.Token==0 && next.CursorMode==ToolBuildCursorMode.SmartPlatform &&
+                    ReferenceEquals(next.Target.Range,flight.Target.Range) && next.Target.Identity.Equals(flight.Target.Identity) &&
+                    ReferenceEquals(next.Target.Mask,flight.Target.Mask) && next.Target.Ordinal==flight.Target.Ordinal &&
+                    next.Target.WorldX==flight.Target.WorldX && next.Target.WorldY==flight.Target.WorldY &&
+                    next.Source.Type==flight.Source.Type && next.Target.PlacementRevision==flight.Target.PlacementRevision)
+                    preparedBuild=null;
+            }
             NotifyBuildAttempt(flight.Target);
         }
         private bool BuildFlightCurrent(BuildFlight flight, bool mayOwn)
@@ -822,7 +840,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Unknown/spent outcomes retain their existing protection and
             // can never be renewed by this bounded eligibility retry.
             if (!spent && !applied) RequestBuildEligibilityRetry(flight.Target);
-            else { RememberBuildFrontier(flight.Target); if (applied && flight.Operation?.Kind == BlueprintBuildOperationKind.Hammer) repeatedBuild = new RepeatedBuildSeed(flight.Target); }
+            else RememberBuildFrontier(flight.Target);
             NotifyBuildAttempt(flight.Target);
         }
         private void HoldUnconfirmedBuild(BuildFlight flight)
@@ -901,7 +919,6 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             RetireAppearanceRestoration(identity);
             RemoveBuildSources(identity);
-            if (repeatedBuild?.Identity.Equals(identity) == true) repeatedBuild = null;
             if (buildSupplyTarget?.Identity.Equals(identity) == true) ClearBuildSupplyHint();
             if (preparedBuild?.Target.Identity.Equals(identity) == true) preparedBuild = null;
             // Natural completion can retire the just-checked instance between

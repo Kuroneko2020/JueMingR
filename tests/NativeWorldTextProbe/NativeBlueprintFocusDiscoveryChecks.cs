@@ -150,20 +150,23 @@ namespace NativeWorldTextProbe
         {
             if(!ReferenceEquals(__instance,focusRetirementHost))return;
             var group=GetOptional(__instance,"buildContinuation");focusRetirementGroup=group==null?0:(long)Get(group,"Group");
-            focusRetirementMaterials=group==null?Array.Empty<object>():
-                ((System.Collections.IEnumerable)Get(Get(group,"Discovery"),"Ranges")).Cast<object>()
-                    .Where(range=>GetOptional(Get(range,"Owner"),"Match")!=null)
-                    .Select(range=>GetOptional(range,"Materials")).Where(value=>value!=null &&
-                        (long)Get(value,"PreferredGroup")==focusRetirementGroup &&
-                        GetOptional(value,"PreferredNegativeOrdinals")!=null && (int)Get(Get(value,"PreferredNegativeOrdinals"),"Count")>0 &&
-                        GetOptional(value,"PreferredPositionNegatives")!=null && (int)Get(Get(value,"PreferredPositionNegatives"),"Count")>0).ToArray();
+            focusRetirementMaterials=((System.Collections.IEnumerable)Get(Get(__instance,"nearBuildDiscovery"),"Ranges")).Cast<object>()
+                .SelectMany(range=>NearRangeFacts(__instance,range)).Where(f=>!(bool)Get(f,"Ready") && !(bool)Get(f,"Pending") && group!=null &&
+                    GetOptional(Get(Get(f,"Seed"),"Owner"),"Match")!=null &&
+                    (int)Get(Get(Get(f,"Seed"),"Placement"),"UseItemType")== (int)Get(Get(group,"Source"),"Type")).ToArray();
         }
         private static void FocusRetirementAfter(object __instance)
         {
             if(!ReferenceEquals(__instance,focusRetirementHost) || focusRetirementGroup==0 || focusRetirementMaterials.Length==0)return;
             var group=GetOptional(__instance,"buildContinuation");if(group==null || (long)Get(group,"Group")==focusRetirementGroup)return;
             focusRetirementObserved++;
-            if(focusRetirementMaterials.All(value=>GetOptional(value,"PreferredNegativeOrdinals")==null && GetOptional(value,"PreferredPositionNegatives")==null))focusRetirementReleased++;
+            // Q1 retains shared semantic negatives across a natural material
+            // switch. Only the group-specific absence permission must retire.
+            var retainedFacts=((System.Collections.IDictionary)Get(__instance,"nearBuildRanges")).Values.Cast<object>()
+                .SelectMany(state=>((System.Collections.IDictionary)Get(state,"Facts")).Values.Cast<object>()).ToArray();
+            var proofGroup=GetOptional(__instance,"nearProofGroup");
+            if(focusRetirementMaterials.All(f=>retainedFacts.Contains(f)) &&
+                !ReferenceEquals(proofGroup,group))focusRetirementReleased++;
             var flight=GetOptional(__instance,"activeBuild");var use=Get(focusRetirementTools,"Use");
             if(flight!=null && (long)Get(flight,"Token")== (long)Get(use,"Operation") && (long)Get(use,"Operation")>0 &&
                 ReferenceEquals(Get(group,"Source"),Get(flight,"Source")) &&
@@ -231,13 +234,9 @@ namespace NativeWorldTextProbe
                     NativeQuickItemChecks.Until(()=>{scope.Step();prepared=GetOptional(host,"preparedBuild");return prepared!=null && ReferenceEquals(Get(Get(prepared,"Source"),"Item"),dirt.Item);});
                     Require(scope.Events.Count==1 && scope.Runnable(foreign) && !scope.Runnable(entered),"a genuine foreign plan is prepared while the logical Table click is still outside exact native reach");
                     var positionProofs=((System.Collections.IEnumerable)Get(Get(enteredOwner,"Match"),"Ranges")).Cast<object>()
-                        .Select(range=>GetOptional(range,"Materials")).Where(value=>value!=null)
-                        .Select(value=>new{Value=value,Proofs=GetOptional(value,"PreferredPositionNegatives")})
-                        .Where(value=>value.Proofs!=null).SelectMany(value=>((System.Collections.IEnumerable)value.Proofs).Cast<object>()
-                            .Select(pair=>new{Value=value.Value,Ordinal=(int)Get(pair,"Key"),Proof=Get(pair,"Value")}))
-                        .Where(value=>(bool)Get(value.Proof,"Active") && (int)Get(value.Proof,"X")==entered.X && (int)Get(value.Proof,"Y")==entered.Y).ToArray();
-                    Require(positionProofs.Length>0 && positionProofs.All(value=>(bool)Call(Get(value.Value,"PreferredNegativeOrdinals"),"Contains",value.Ordinal)),
-                        "the actual preferred logical-object reach rejection records its own live-position dependency before a foreign plan is admitted");
+                        .SelectMany(range=>NearRangeFacts(host,range)).Where(f=>!(bool)Get(f,"Ready") && !(bool)Get(f,"Pending")).ToArray();
+                    Require(positionProofs.Length>0 && positionProofs.All(f=>(long)Get(f,"Player")== (long)Get(host,"MaterialBuildEligibilityRevision")),
+                        "the actual logical-object reach rejection retains a live-player-stamped shared fact before a foreign plan is admitted");
                     Require(p.itemAnimation>0 || (bool)Get(Get(tools,"Use"),"Active"),
                         "native movement is observed while the preceding Table use still owns its natural interval, before any foreign admission");
                     Console.WriteLine("BlueprintFocus prepared foreign boundary world="+Main.GameUpdateCount+" host="+Get(host,"projectionMatchTick")+
@@ -253,7 +252,7 @@ namespace NativeWorldTextProbe
                         Scene(host).Length==1 && ReferenceEquals(Scene(host)[0],retained) && GetOptional(retained,"Match")!=null,
                         "the newly reachable whole Table precedes the already prepared Dirt; the still-outside logical object stays alive and unconsumed");
                     if(retirement)Require(focusRetirementObserved>0 && focusRetirementObserved==focusRetirementReleased && focusRetirementObserved==focusRetirementExact,
-                        "a real switch with both negative caches present on a still-live old range releases both immediately and preserves the new exact lease; observed="+
+                        "a real switch preserves shared negative facts on still-live ranges, retires old-group permission and preserves the new exact lease; observed="+
                         focusRetirementObserved+" released="+focusRetirementReleased+" exact="+focusRetirementExact);
                     Console.WriteLine("BlueprintFocus logicalObject retirement="+retirement+" beforeX="+oldX+" afterX="+p.position.X+" enteredClick="+entered.X+
                         " retainedOutside="+outside.X+" liveCacheTransitions="+focusRetirementObserved+" released="+focusRetirementReleased+" exact="+focusRetirementExact);

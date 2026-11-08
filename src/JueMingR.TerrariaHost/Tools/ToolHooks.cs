@@ -248,7 +248,7 @@ namespace JueMingR.TerrariaHost.Tools
         {try{SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}finally{__state?.Placement?.End();__state?.Blueprint?.End();}}
         private static Exception Final(Player __instance,Lease __state,Exception __exception)
         {try{if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,__exception);}}finally{__state?.Placement?.End();__state?.Blueprint?.End();}return __exception;}
-        // Closing automation can leave an exact inventory return receipt alive.
+        // Closing/failure can leave an exact Using/Returning receipt alive.
         // Observe selection for that finite duty without enabling world tools;
         // native cursor override 58 otherwise consumes the buffered change
         // before the next inventory tail can see the player's new selection.
@@ -260,7 +260,10 @@ namespace JueMingR.TerrariaHost.Tools
         {
             host?.Combat?.Handoff.BeforeSelection(___player);
             if(!SelectionPlayer(___player))return;
-            bool enabled=host.Enabled;
+            // Use.Active can keep Enabled true during failed Using cleanup.
+            // A retained player only needs buffer handoff bookkeeping; never
+            // resume NPC action epochs or ordinary selectors for that branch.
+            bool enabled=ReferenceEquals(___player,host.Player) && host.Enabled;
             if(!enabled && !PreparationSelection)return;
             if(enabled)host.Npcs.BeginActions(host.Input.Frame);
             // Only a genuine Select owns a buffered manual handoff. Another

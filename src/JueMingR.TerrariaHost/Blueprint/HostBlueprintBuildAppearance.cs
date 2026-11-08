@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using JueMingR.Features.Blueprint;
 using JueMingR.TerrariaHost.Tools;
@@ -150,7 +150,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void WaitForAppearanceTool(BlueprintBuildTarget target)
         {
             // A temporary tool/supply shortage is not a native rejection.
-            // The shared Material/Capability inventory revision wakes it;
+            // Its actual material types / shared tool family wake it;
             // adding a native deadline would delay later steps of this cell.
             // Planning can discover this before assigning target.Operation.
             // Keep the explicit appearance-capability dependency even then.
@@ -182,15 +182,17 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
 
         private static bool AppearanceToolMatches(BlueprintBuildTarget target, Item item)
+        {return AppearanceToolMatches(target.Operation,target.Cell,item);}
+        private static bool AppearanceToolMatches(BlueprintBuildOperation operation,CaptureCell cell,Item item)
         {
-            switch (target.Operation.Kind)
+            switch (operation.Kind)
             {
                 case BlueprintBuildOperationKind.Hammer:
                     // Pick runs before pounding in ActuallyUseMiningTool. An
                     // ordinary hammer/hamaxe avoids entering that destructive
                     // branch; independent projectile tools have another owner.
                     return item.hammer > 0 && item.pick == 0 && !item.channel && item.shoot <= 0 &&
-                        !Main.tileHammer[target.Cell.TileType] && !Main.tileAxe[target.Cell.TileType];
+                        !Main.tileHammer[cell.TileType] && !Main.tileAxe[cell.TileType];
                 case BlueprintBuildOperationKind.PaintTile: return item.type == ItemID.Paintbrush || item.type == ItemID.SpectrePaintbrush;
                 case BlueprintBuildOperationKind.PaintWall: return item.type == ItemID.PaintRoller || item.type == ItemID.SpectrePaintRoller;
                 case BlueprintBuildOperationKind.Scrape: return ItemID.Sets.IsPaintScraper[item.type];
@@ -259,7 +261,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                 required.WallPaint != 0 && !HasAppearanceRestoreSupply(p, wallPaint, required.Count(wallPaint, MaterialCatalog)) ||
                 required.Fullbright > 0 && !HasAppearanceRestoreSupply(p, fullbright, required.Count(fullbright, MaterialCatalog)) ||
                 required.Invisible > 0 && !HasAppearanceRestoreSupply(p, invisible, required.Count(invisible, MaterialCatalog)))
-            { WaitForAppearanceTool(target); WaitForBuild(target, BlueprintBuildWait.Player); return false; }
+            {
+                WaitForAppearanceTool(target); WaitForBuild(target, BlueprintBuildWait.Player);
+                RecordNearAppearanceRestorationWait(target,tilePaint,wallPaint,required.Fullbright>0?fullbright:0,required.Invisible>0?invisible:0);
+                return false;
+            }
             return true;
         }
 

@@ -65,11 +65,15 @@ namespace JueMingR.TerrariaHost.Items
         internal bool Abandoning { get { return phase == Phase.Abandoning; } }
         internal bool ObservesRetainedSelection(HostTools owner, Player p)
         {
-            // This read only permission observes a real Select for precisely
-            // the old return duty. It grants no failed-session world chooser
-            // or inventory action and never lends a different Host its player.
-            return ReferenceEquals(owner, tools) && OnGameThread && phase == Phase.Returning && tools.Runtime.HasFailed &&
-                SameSession(p) && tools.MatchesRetainedSession(p) && ExpectedCurrent(false, false);
+            // A failed Build may still be Using while vanilla consumes its
+            // selection buffer/animation. Observe the real Select now, before
+            // that edge disappears; this grants no failed-session actions.
+            // The read accepts only the declared native debit without settling
+            // it. Returning keeps its strict, already settled endpoints.
+            if (!ReferenceEquals(owner, tools) || !OnGameThread || !tools.Runtime.HasFailed ||
+                !SameSession(p) || !tools.MatchesRetainedSession(p)) return false;
+            if (phase == Phase.Returning) return ExpectedCurrent(false, false);
+            return phase == Phase.Using && tools.Use.Building && tools.Use.Operation == token && ExpectedCurrent(true, false);
         }
         // Retain only business intent across this owner's native inventory
         // sequence. This grants no ToolUse, source or consumer permission;

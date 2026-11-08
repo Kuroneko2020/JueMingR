@@ -17,40 +17,53 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeBlueprintBuildChecks
     {
+        // Read-only snapshots of the shared planner; never call its currentness
+        // or selection methods from an observer (those may spend real work).
+        private static object NearRangeState(object host, object range)
+        { return ((IDictionary)Get(host,"nearBuildRanges"))[range]; }
+        private static object[] NearRangeFacts(object host, object range)
+        {
+            var state=NearRangeState(host,range);
+            return state==null?Array.Empty<object>():((IDictionary)Get(state,"Facts")).Values.Cast<object>().ToArray();
+        }
+        private static bool NearRangeHasPendingWork(object host,object range)
+        {
+            var state=NearRangeState(host,range);
+            return state==null || !(bool)Get(state,"Complete") || NearRangeFacts(host,range).Any(f=>(bool)Get(f,"Ready") || (bool)Get(f,"Pending"));
+        }
+        private static string NearRangeSummary(object host,object range)
+        {
+            var state=NearRangeState(host,range);
+            return state==null?"unclassified":"cursor="+Get(state,"Cursor")+" complete="+Get(state,"Complete")+
+                " bounds="+Get(state,"Bounds")+" covered="+Get(state,"Covered")+" facts="+Get(Get(state,"Facts"),"Count")+
+                " waits="+string.Join(",",NearRangeFacts(host,range).Take(8).Select(f=>Get(f,"Wait")+":"+Get(f,"Ready")+":"+Get(f,"Pending")));
+        }
         private sealed class PreferredWalkObservation
         {
-            internal long Group, CompletedBatch;
+            internal object State, Bounds, Covered;
             internal int Cursor;
             internal bool Complete, BudgetPaused;
         }
         private static void ObservePreferredContinuation(object host, IEnumerable<object> ranges,
             Dictionary<object, PreferredWalkObservation> prior, ref bool pending, ref bool resumed, ref int maxCursor)
         {
-            var group = GetOptional(host, "buildContinuation");
-            var prepared = GetOptional(host, "preparedBuild");
-            var source = group == null ? null : Get(group, "Source");
-            bool preparedSameSource = prepared != null && source != null &&
-                ReferenceEquals(Get(Get(prepared, "Source"), "Item"), Get(source, "Item")) &&
-                (int)Get(Get(prepared, "Source"), "Slot") == (int)Get(source, "Slot");
-            foreach (var range in ranges)
+            foreach(var range in ranges)
             {
-                var value = GetOptional(range, "Materials"); if (value == null) continue;
-                long identity = (long)Get(value, "PreferredGroup"); if (identity <= 0) continue;
-                var current = new PreferredWalkObservation { Group = identity, Cursor = (int)Get(value, "PreferredCursor"),
-                    CompletedBatch = (long)Get(value, "PreferredCompletedBatch"), Complete = (bool)Get(value, "PreferredComplete") };
-                // A pending slice retains its unfinished absolute ordinal.
-                // One range's bounded slice can finish before the shared
-                // 64-step allowance; a nonzero remainder is not NoRunnable.
-                current.BudgetPaused = group != null && (long)Get(group, "Group") == identity && (bool)Get(group, "Pending") &&
-                    !current.Complete && current.Cursor > 0 && !preparedSameSource;
+                var value=NearRangeState(host,range);if(value==null)continue;
+                var current=new PreferredWalkObservation{State=value,Cursor=(int)Get(value,"Cursor"),
+                    Bounds=Get(value,"Bounds"),Covered=Get(value,"Covered"),Complete=(bool)Get(value,"Complete")};
+                current.BudgetPaused=!current.Complete && (bool)Get(value,"Initialized") && current.Cursor>0;
                 PreferredWalkObservation previous;
-                if (prior.TryGetValue(range, out previous) && previous.Group == current.Group && previous.CompletedBatch == current.CompletedBatch &&
+                // Cursor resets only for a newly entered strip. Compare exactly
+                // the same outstanding strip/coverage across transport and leases.
+                if(prior.TryGetValue(range,out previous) && ReferenceEquals(previous.State,current.State) &&
+                    Equals(previous.Bounds,current.Bounds) && Equals(previous.Covered,current.Covered) &&
                     !previous.Complete && !current.Complete)
                 {
-                    Require(current.Cursor >= previous.Cursor, "movement, source transport and a new lease cannot rewind an unfinished preferred member walk");
-                    resumed |= previous.BudgetPaused && current.Cursor > previous.Cursor;
+                    Require(current.Cursor>=previous.Cursor,"movement, source transport and a new lease cannot rewind an unfinished shared near strip");
+                    resumed|=previous.BudgetPaused && current.Cursor>previous.Cursor;
                 }
-                pending |= current.BudgetPaused; maxCursor = Math.Max(maxCursor, current.Cursor); prior[range] = current;
+                pending|=current.BudgetPaused;maxCursor=Math.Max(maxCursor,current.Cursor);prior[range]=current;
             }
         }
         private static void ExecutionSearchFairness(object context,object host,object tools,object input,bool moving,bool denseEdge=false)
@@ -86,6 +99,7 @@ namespace NativeWorldTextProbe
             WorldGen.PlaceWall(lateX,43,WallID.Wood,true);
             WorldGen.PlaceWall(firstX-1,37,WallID.Wood,true);
             Require(Main.tile[lateX,43].wall==WallID.Wood && Main.tile[firstX-1,37].wall==WallID.Wood,"both separated wall endpoints have legal native supports");
+            long classificationsBefore=(long)Get(host,"NearBuildClassifications");
             SetAutomatic(host,input,true);
             int updates=0,maxNear=0,maxForward=0,maxSources=0,boundsChanges=0,nativeBoundsChanges=0;bool right=true;
             object priorBounds=null;float startX=p.position.X,minX=startX,maxX=startX;bool moved=false;
@@ -155,34 +169,34 @@ namespace NativeWorldTextProbe
                 // world/input sequence and source discovery remain unmodified.
                 if(GetOptional(instance,"Match")!=null)
                     ObservePreferredContinuation(host, EligibilityRanges(instance), preferredWalks, ref preferredPending, ref preferredResumed, ref maxPreferred);
-                foreach(var source in sources.Where(s=>ReferenceEquals(Get(s,"Owner"),instance)))
+                if(GetOptional(instance,"Match")!=null)foreach(var range in EligibilityRanges(instance))
                 {
-                    var value=Get(Get(source,"Range"),"Materials");int cursor=(int)Get(value,"CandidateCursor");
-                    maxNear=Math.Max(maxNear,(int)Get(source,"NearCursor"));maxForward=Math.Max(maxForward,cursor);
-                    var bounds=Get(source,"NearBounds");if(priorBounds!=null && !priorBounds.Equals(bounds))boundsChanges++;priorBounds=bounds;
-                    Require(!(bool)Get(value,"BuildExhausted") || cursor>=endOrdinal,
-                        "a finite local/forward slice is not mistaken for source exhaustion");
+                    var state=NearRangeState(host,range);if(state==null)continue;
+                    int cursor=(int)Get(state,"Cursor");maxNear=Math.Max(maxNear,cursor);
+                    maxForward=checked((int)((long)Get(host,"NearBuildClassifications")-classificationsBefore));
+                    var bounds=Get(state,"Bounds");if(priorBounds!=null && !priorBounds.Equals(bounds))boundsChanges++;priorBounds=bounds;
+                    var covered=Get(state,"Covered");
+                    Require(!(bool)Get(state,"Complete") ||
+                        (int)Get(covered,"Right")>(int)Get(covered,"Left") && (int)Get(covered,"Bottom")>(int)Get(covered,"Top"),
+                        "a finite shared source slice cannot claim complete near coverage before a nonempty strip has completed");
                 }
                 NativeToolExecutionChecks.Outer(context,input,1+updates%2);
                 return Main.tile[firstX,37].wall==WallID.Wood && Main.tile[lateX,42].wall==WallID.Wood && Main.tile[stoneX,42].active() &&
-                    (denseEdge || ProgressDormant(instance)) && !(bool)Get(Get(tools,"Use"),"Active") &&
+                    (denseEdge || ProgressDormant(host,instance)) && !(bool)Get(Get(tools,"Use"),"Active") &&
                     (denseEdge?maxPreferred>128 && nativeBoundsChanges>0:maxNear>128 && maxForward>0 && (!moving || boundsChanges>0));
             });}
             catch
             {
                 Console.Error.WriteLine("EXECUTION SEARCH state moving="+moving+" updates="+updates+" position="+p.position+" velocity="+p.velocity+
                     " maxNear="+maxNear+" maxForward="+maxForward+" boundsChanges="+boundsChanges+" maxSources="+maxSources+" moved="+moved+
-                    " woodWall="+Main.tile[lateX,42].wall+" stone="+Main.tile[stoneX,42].active()+" dormant="+ProgressDormant(instance)+" use="+Get(Get(tools,"Use"),"Active")+
+                    " woodWall="+Main.tile[lateX,42].wall+" stone="+Main.tile[stoneX,42].active()+" dormant="+ProgressDormant(host,instance)+" use="+Get(Get(tools,"Use"),"Active")+
                     " minX="+minX+" maxX="+maxX+" nativeBoundsChanges="+nativeBoundsChanges+" stocks="+p.inventory[12].stack+"/"+stoneSource.stack);
                 foreach(var source in ((IEnumerable)Get(host,"buildSources")).Cast<object>())
                 {
                     var value=Get(Get(source,"Range"),"Materials");
-                    Console.Error.WriteLine("EXECUTION SEARCH source near="+Get(source,"NearCursor")+
-                        " nearComplete="+Get(source,"NearComplete")+" revisit="+Get(source,"NearRevisit")+" bounds="+Get(source,"NearBounds")+
+                    Console.Error.WriteLine("EXECUTION SEARCH source sharedPlanner="+NearRangeSummary(host,Get(source,"Range"))+
                         " forward="+Get(value,"CandidateCursor")+" exhausted="+Get(value,"BuildExhausted")+
-                        " preferred="+Get(value,"PreferredCursor")+"/"+Get(value,"PreferredCompletedBatch")+"/"+Get(value,"PreferredComplete")+
-                        " revisit="+Get(value,"PreferredRevisit")+" waits="+Get(value,"BuildWaits")+
-                        " frontier="+Get(value,"PreferredFrontier")+"/"+Get(value,"PreferredFrontierCursor"));
+                        " sharedNear="+NearRangeSummary(host,Get(source,"Range")));
                 }
                 throw;
             }
@@ -196,9 +210,9 @@ namespace NativeWorldTextProbe
             p.controlLeft=p.controlRight=false;
             PlayerInput.Triggers.Current.Left=PlayerInput.Triggers.Current.Right=false;
             int settling=0;
-            if(denseEdge)Until(context,input,()=>{settling++;return ProgressDormant(instance);});
+            if(denseEdge)Until(context,input,()=>{settling++;return ProgressDormant(host,instance);});
             for(int i=0;i<40;i++)Step(context,input);
-            Require(ProgressDormant(instance),"after genuine movement stops, the complete remaining unsupplied scene becomes dormant");
+            Require(ProgressDormant(host,instance),"after genuine movement stops, the complete remaining unsupplied scene becomes dormant");
             long settled=(long)Get(host,"ProjectionMatchSourceSteps");
             for(int i=0;i<20;i++)Step(context,input);
             Require(settled==(long)Get(host,"ProjectionMatchSourceSteps"),"completed near/forward passes sleep while their real signals remain unchanged");
@@ -251,8 +265,8 @@ namespace NativeWorldTextProbe
             Until(context, input, () =>
             {
                 ticks++; partial |= ranges.Any(r => (bool)Get(r, "Reading"));
-                return (shared ? Main.tile[76, 42].active() : Enumerable.Range(44, 3).All(x => Main.tile[x, 42].active())) && ProgressDormant(instance) &&
-                    (smaller == null || ProgressDormant(smaller)) && !(bool)Get(Get(tools, "Use"), "Active");
+                return (shared ? Main.tile[76, 42].active() : Enumerable.Range(44, 3).All(x => Main.tile[x, 42].active())) && ProgressDormant(host,instance) &&
+                    (smaller == null || ProgressDormant(host,smaller)) && !(bool)Get(Get(tools, "Use"), "Active");
             });
             int spent = shared ? 1 : 3;
             Require(!Main.tile[42, 42].active() && !Main.tile[43, 42].active() && Scene(host).Length == (shared ? 2 : 1) && p.inventory[12].stack == 8 - spent,
@@ -296,7 +310,7 @@ namespace NativeWorldTextProbe
             });
             var pinned = ((IEnumerable)Get(host, "buildSources")).Cast<object>().Select(v => Get(v, "Range")).ToArray();
             Require(Scene(host).Length == 6 && p.inventory[12].stack == 8 && pinned.Length == 4 &&
-                pinned.All(r => GetOptional(r, "Materials") != null && !(bool)Get(Get(r, "Materials"), "BuildExhausted")),
+                pinned.All(r => NearRangeHasPendingWork(host,r)),
                 "four unfinished source parts fill the cache while six supported same-material instances are already admitted; at least two available instances are outside that cache");
             // The first flight is already bound to12. Publishing an earlier
             // twin cannot turn cache replacement into a different Item source.
@@ -342,7 +356,7 @@ namespace NativeWorldTextProbe
                     previousConstruction=(long)Get(host,"BuildFocusDirectoryConstructionSteps");
                     peakDirectoryBytes=Math.Max(peakDirectoryBytes,(long)Get(host,"BuildFocusDirectoryBytes"));
                     var focus=GetOptional(host,"buildContinuation");
-                    if(focus!=null)foreach(DictionaryEntry query in (IDictionary)Get(Get(focus,"Discovery"),"Owners"))
+                    if(focus!=null)foreach(DictionaryEntry query in (IDictionary)Get(Get(host,"nearBuildDiscovery"),"Owners"))
                     {
                         Require(instances.Contains(query.Key) && ReferenceEquals(Get(query.Value,"Directory"),directory),
                             "live per-instance Host queries retain the template's same frozen directory instead of building private copies");
@@ -409,7 +423,7 @@ namespace NativeWorldTextProbe
                 try
                 {
                     Require(p.inventory[12].stack == 8 && Enumerable.Range(42, 4).All(x => !Main.tile[x, 42].active()) &&
-                        Scene(host).SelectMany(EligibilityRanges).All(r => !(bool)Get(Get(r, "Materials"), "BuildExhausted")),
+                        Scene(host).SelectMany(EligibilityRanges).All(r => NearRangeHasPendingWork(host,r)),
                         "all four immutable source slots are genuinely pinned before any original use");
                     if (arrays) Main.tile = (Tile[,])oldTiles.Clone();
                     else { Main.sectionManager = new WorldSections((Main.maxTilesX + 199) / 200, (Main.maxTilesY + 149) / 150); Main.sectionManager.SetAllSectionsLoaded(); }
@@ -524,12 +538,12 @@ namespace NativeWorldTextProbe
                         var keptGroup = GetOptional(host, "buildContinuation");
                         long outerChecks = (long)Get(host, "BuildCandidateChecks");
                         var cursorOwners = GetOptional(instance, "Match") == null ? Array.Empty<object>() :
-                            EligibilityRanges(instance).Select(r => GetOptional(r, "Materials")).Where(v => v != null).ToArray();
-                        var preferenceCursors = cursorOwners.Select(v => (int)Get(v, "PreferredCursor")).ToArray();
+                            EligibilityRanges(instance).Select(r => NearRangeState(host,r)).Where(v => v != null).ToArray();
+                        var preferenceCursors = cursorOwners.Select(v => (int)Get(v, "Cursor")).ToArray();
                         NativeToolExecutionChecks.Outer(context, input, 2);
                         Require(continuousPlacements.Count == count &&
                             ReferenceEquals(keptGroup, GetOptional(host, "buildContinuation")) &&
-                            outerChecks == (long)Get(host, "BuildCandidateChecks") && cursorOwners.Select((v, i) => (int)Get(v, "PreferredCursor") == preferenceCursors[i]).All(v => v),
+                            outerChecks == (long)Get(host, "BuildCandidateChecks") && cursorOwners.Select((v, i) => (int)Get(v, "Cursor") == preferenceCursors[i]).All(v => v),
                             "empty outer does not reset the business preference or spend another preparation allowance");
                     }
                     continuousWatch = false;

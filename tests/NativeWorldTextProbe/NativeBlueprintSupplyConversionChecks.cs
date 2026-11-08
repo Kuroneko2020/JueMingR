@@ -219,25 +219,27 @@ namespace NativeWorldTextProbe
         private static void SupplyDeferredPlanInject(object __instance,object __0,out Tile __state)
         {
             __state=null;
-            if(!ReferenceEquals(__instance,supplyDeferredHost) || (int)Get(__0,"WorldX")!=44 || (int)Get(__0,"WorldY")!=40 ||
-                supplyDeferredGoal?.Complete!=true || !(bool)Get(Get(__instance,"buildMaterialPreparation"),"HasWork"))return;
-            // Keep this same candidate Deferred throughout A's natural tail;
-            // a known refusal here would advance it before Ready discovery.
-            if((bool)Get(Get(__instance,"buildMaterialPreparation"),"Ready") && GetOptional(__instance,"buildSupplyTarget")==null &&
-                GetOptional(__instance,"buildSupplyDiscovery")==null)
-            {
-                supplyDeferredReadyPlans++;
-                Console.WriteLine("SupplyDeferred actual-ready-unbound-plan world="+Main.GameUpdateCount+" priorConsumers=1 nativeTileRestoredBeforeUpdate=true");
-            }
+            if(!ReferenceEquals(__instance,supplyDeferredHost) || (int)Get(__0,"WorldX")!=44 || (int)Get(__0,"WorldY")!=40)return;
+            // Classification now evaluates before selection. Keep this exact
+            // input unknown from its first evaluation: an earlier known refusal
+            // would otherwise sleep legitimately before the paint receipt exists.
             __state=Main.tile[45,40];
             Require(__state!=null,"the deferred stimulus begins with a real allocated native right neighbor");
             Main.tile[45,40]=null;supplyDeferredInjected=true;
         }
         private static Exception SupplyDeferredPlanRestore(Tile __state,Exception __exception)
         {if(__state!=null)Main.tile[45,40]=__state;return __exception;}
-        private static void SupplyDeferredSelectionAfter(object __instance)
+        private static void SupplyDeferredSelectionBefore(object __instance,out bool __state)
         {
-            if(!ReferenceEquals(__instance,supplyDeferredHost) || supplyDeferredReadyPlans==0)return;
+            __state=ReferenceEquals(__instance,supplyDeferredHost) && supplyDeferredGoal?.Complete==true &&
+                (bool)Get(Get(__instance,"buildMaterialPreparation"),"Ready") &&
+                GetOptional(__instance,"buildSupplyTarget")==null && GetOptional(__instance,"buildSupplyDiscovery")==null &&
+                schedulerDeferredSelection.DeferredCalls>0 && schedulerDeferredSelection.UnavailableRightReads>0;
+            if(__state)supplyDeferredReadyPlans++;
+        }
+        private static void SupplyDeferredSelectionAfter(object __instance,bool __state)
+        {
+            if(!__state)return;
             supplyDeferredReturned=(bool)Get(Get(__instance,"buildMaterialPreparation"),"Returning");
             Console.WriteLine("SupplyDeferred actual-paid-selection deferredCalls="+schedulerDeferredSelection.DeferredCalls+
                 " unavailableRightReads="+schedulerDeferredSelection.UnavailableRightReads+" returning="+supplyDeferredReturned+
@@ -264,13 +266,14 @@ namespace NativeWorldTextProbe
                     "the future wall starts with all four real empty cardinal neighbors, apart from the later scoped unavailable read");
                 schedulerDeferredSelection=new SchedulerDeferredSelectionObservation{Host=host};
                 supplyDeferredHost=host;supplyDeferredGoal=goal;supplyDeferredReadyPlans=0;supplyDeferredInjected=supplyDeferredReturned=false;
-                patch.Patch(host.GetType().GetMethod("TryPlanBuild",F),
+                patch.Patch(host.GetType().GetMethod("EvaluateBuildPlan",F),
                     prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyDeferredPlanInject)),
                     finalizer:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyDeferredPlanRestore)));
-                patch.Patch(host.GetType().GetMethod("TryPlanBuild",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SchedulerDeferredPlanBefore)),
+                patch.Patch(host.GetType().GetMethod("EvaluateBuildPlan",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SchedulerDeferredPlanBefore)),
                     postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SchedulerDeferredPlanAfter)));
                 patch.Patch(host.GetType().GetMethod("ReadBuildCell",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SchedulerDeferredCellAfter)));
                 patch.Patch(host.GetType().GetMethod("AdvanceAutomaticBuildSelection",F),
+                    prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyDeferredSelectionBefore)),
                     postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(SupplyDeferredSelectionAfter)));
                 probe.Begin(true);SetAutomatic(host,input,true);
                 NativeQuickItemChecks.Until(()=>{probe.Advance();return supplyDeferredReturned;});

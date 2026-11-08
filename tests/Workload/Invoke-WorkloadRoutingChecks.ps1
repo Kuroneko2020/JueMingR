@@ -18,6 +18,33 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+# New task leaves have one exact formal native responsibility each.
+foreach($scope in @('BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu')){
+    $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-'+$scope))
+    Assert-Route ($plan.Count -eq 1 -and $plan[0].name -ceq ('native-'+$scope) -and $plan[0].arguments[-1] -ceq $scope) ('exact new native scope '+$scope)
+    Assert-Route ($null -ne (Get-WorkloadExpectedNativeLeaf ('native-'+$scope))) ('new scope completion registered '+$scope)
+}
+$supply='native-BlueprintSupplyContinuationCpu'
+Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeBlueprintConstructionDoorChecks.cs') -notcontains $supply) 'Door private body does not select SupplyRepair'
+foreach($helper in @('SupplyConversion','SupplyHandoff','SupplyReady','PostProcessingContinuity','Build','Construction','WorldMatch','ConstructionAppearance')){
+    $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
+    Assert-Route (@(Get-WorkloadPathChecks $path) -contains $supply) ('actual SupplyRepair helper selects its consumer '+$helper)
+    $route=Get-WorkloadRoute @($path)
+    Assert-Route (@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $route.groups|ForEach-Object {$_.name}) -contains $supply) ('actual route/plan contains SupplyRepair '+$helper)
+}
+foreach($helper in @('SupplyHandoffChecks.cs','SchedulerOpportunityChecks.cs','SchedulerFreshnessChecks.cs','CompletionV2Checks.cs','LibraryWait.cs','PostProcessingContinuityChecks.cs','WiringZeroDebitChecks.cs','BuildMixedSourceChecks.cs','BuildProgressChecks.cs')){
+    $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper
+    $old=[pscustomobject]@{inputs=@($path+':A')};$new=[pscustomobject]@{inputs=@($path+':B')}
+    Assert-Route (@(Get-WorkloadPathChecks $path) -contains 'native-BlueprintNearQueueCpu') ('NearQueue real helper route '+$helper)
+    Assert-Route ((Get-WorkloadCheckFingerprint $old 'native-BlueprintNearQueueCpu') -cne (Get-WorkloadCheckFingerprint $new 'native-BlueprintNearQueueCpu')) ('NearQueue real helper body changes invalidate '+$helper)
+}
+# The real hidden-entry Shell helper remains a conservative shared input.
+# Do not replace that existing responsibility with an exclusive two-leaf map.
+$hiddenPath='tests/NativeWorldTextProbe/NativeHiddenEntryChecks.cs'
+foreach($consumer in @('native-NpcProduction','native-NpcDiagnosticsOff')){
+    $before=[pscustomobject]@{inputs=@($hiddenPath+':A')};$after=[pscustomobject]@{inputs=@($hiddenPath+':B')}
+    Assert-Route ((Get-WorkloadCheckFingerprint $before $consumer) -cne (Get-WorkloadCheckFingerprint $after $consumer)) ('ordinary native window owns real hidden-entry prerequisite '+$consumer)
+}
 # Real Git-root and Windows-root callers must launch identical argv, rather
 # than obtaining incompatible evidence signatures for the same directory.
 $rootForms=@($repositoryRoot,$repositoryRoot.Replace([char]'\',[char]'/'))

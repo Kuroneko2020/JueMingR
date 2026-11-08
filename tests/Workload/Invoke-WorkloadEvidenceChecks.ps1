@@ -552,6 +552,61 @@ throw 'Incorrectly returned from a failed process.'
             Assert-Evidence ($privateEntry.executionId -ceq $privateCompleted.executionId -and $privateEntry.allInputFingerprint -ceq $privateLock.fingerprint) 'private-input reuse never re-signs the original process or complete source identity'
         }
     }
+    # Full default-glob compilation identity remains independent of a narrow
+    # behavior projection. Mutate only this owned, isolated Door source copy.
+    $nativeFixture=Join-Path $fixture 'tests/NativeWorldTextProbe'
+    [IO.Directory]::CreateDirectory($nativeFixture)|Out-Null
+    $nativeProject=Join-Path $nativeFixture 'NativeWorldTextProbe.csproj'
+    $nativeDoor=Join-Path $nativeFixture 'NativeBlueprintConstructionDoorChecks.cs'
+    [IO.File]::WriteAllText($nativeProject,'<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net472</TargetFramework></PropertyGroup></Project>')
+    [IO.File]::WriteAllText($nativeDoor,'class Door { static void Check() { System.Console.WriteLine("private assertion A"); } }')
+    function Get-SupplyCompileCopyIdentity {
+        $copyRows=@('NativeWorldTextProbe.csproj','NativeBlueprintConstructionDoorChecks.cs'|ForEach-Object {'tests/NativeWorldTextProbe/'+$_+':'+(Get-FileHash -LiteralPath (Join-Path $nativeFixture $_)).Hash})
+        return [pscustomobject]@{inputs=$copyRows}
+    }
+    $doorCompilationBefore=Get-WorkloadFixtureInputFingerprint $fixture 'NativeWorldTextProbe' (Get-SupplyCompileCopyIdentity)
+    [IO.File]::WriteAllText($nativeDoor,'class Door { static void Check() { System.Console.WriteLine("private assertion B"); } }')
+    Assert-Evidence ($doorCompilationBefore -cne (Get-WorkloadFixtureInputFingerprint $fixture 'NativeWorldTextProbe' (Get-SupplyCompileCopyIdentity))) 'unrelated Door behavior reuse still retires full Native default-glob compilation preparation'
+    # Independent SupplyRepair call graph controls. The inert process proves
+    # qualified receipt reuse only; it does not execute Terraria assertions.
+    foreach($supplyName in @('native-BlueprintSupplyContinuationCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintNearQueueCpu')){
+        $supplyPaths=@('NativeBlueprintConstructionDoorChecks.cs','NativeBlueprintSupplyConversionChecks.cs',
+            'NativeBlueprintSupplyHandoffChecks.cs','NativeBlueprintSupplyReadyChecks.cs',
+            'NativeBlueprintPostProcessingContinuityChecks.cs','NativeBlueprintWorldMatchChecks.cs',
+            'NativeBlueprintBuildChecks.cs','NativeBlueprintConstructionChecks.cs',
+            'NativeBlueprintConstructionAppearanceChecks.cs','NativeChecks.cs','NativeScopeDispatch.cs',
+            'NativeBlueprintBuildThroughputChecks.cs','NativeBlueprintSchedulerOpportunityChecks.cs',
+            'NativeBlueprintSchedulerFreshnessChecks.cs','NativeBlueprintSchedulerColdHandoffChecks.cs',
+            'NativeBlueprintCompletionV2Checks.cs','NativeBlueprintLibraryWait.cs','NativeBlueprintWiringZeroDebitChecks.cs','NativeBlueprintBuildMixedSourceChecks.cs','NativeBlueprintBuildProgressChecks.cs')
+        $supplyRows=@('source:locked')+@($supplyPaths|ForEach-Object {'tests/NativeWorldTextProbe/'+$_+':A'})
+        $supplyLock=[pscustomobject]@{inputs=$supplyRows;fingerprint=(Get-WorkloadHash $supplyRows)}
+        $supplyCheck=[pscustomobject]@{name=$supplyName;executable=$stderrExe;arguments=@('0');project=''}
+        $supplyBatch=New-WorkloadCheckpointBatch $fixture $sourceLock $supplyLock @($supplyName)
+        $supplyAttempt=Start-WorkloadCheckpoint $fixture $supplyBatch $supplyCheck 'supply-projection-mechanism'
+        $supplyAttempt.beforeOutputs=@(Get-WorkloadEvidenceOutputs $fixture ([pscustomobject]@{outputs=@()}) $stderrExe|ForEach-Object{[pscustomobject]@{path=$_.path;livePath=$_.path;length=$_.length;sha256=$_.sha256}})
+        Invoke-WorkloadProcess $supplyName $stderrExe @('0') -Checkpoint $supplyAttempt
+        $supplyCompleted=Read-WorkloadJson $supplyAttempt.path
+        $supplyCompleted.outputs=@(Save-WorkloadArtifacts $fixture @(Get-WorkloadEvidenceOutputs $fixture ([pscustomobject]@{outputs=@()}) $stderrExe));Write-WorkloadJson $supplyCompleted.path $supplyCompleted
+        Complete-WorkloadCheckpointQualification $fixture @($supplyCompleted) $supplyBatch
+        $supplyEntry=[pscustomobject]@{schemaVersion=2;status='PASS';name=$supplyName;signature='supply-projection-mechanism';inputFingerprint=(Get-WorkloadCheckFingerprint $supplyLock $supplyName);executionId=$supplyCompleted.executionId;sourceCommit=$sourceLock.commit;sourceFingerprint=$sourceLock.fingerprint;milliseconds=1;outputs=$supplyCompleted.outputs;allInputFingerprint=$supplyLock.fingerprint;inputs=$supplyRows;detectionCommit=$sourceLock.commit;checkpointPath=$supplyCompleted.path}
+        Assert-Evidence (Test-WorkloadReusable $fixture $supplyEntry $supplyLock $supplyName $supplyEntry.signature) 'Supply control starts from qualified immutable execution'
+        foreach($changedPath in $supplyPaths){
+            $changedRows=@($supplyRows|ForEach-Object{if($_ -ceq ('tests/NativeWorldTextProbe/'+$changedPath+':A')){$_ -replace ':A$',':B'}else{$_}})
+            $changedLock=[pscustomobject]@{inputs=$changedRows;fingerprint=(Get-WorkloadHash $changedRows)}
+            $expected=$false
+            if($supplyName -eq 'native-BlueprintNearQueueCpu'){$expected=$changedPath -in @('NativeBlueprintConstructionDoorChecks.cs','NativeBlueprintSupplyConversionChecks.cs','NativeBlueprintSupplyReadyChecks.cs','NativeBlueprintBuildThroughputChecks.cs','NativeBlueprintSchedulerColdHandoffChecks.cs')}
+            elseif($supplyName -eq 'native-BlueprintSupplyContinuationCpu'){$expected=$changedPath -in @('NativeBlueprintConstructionDoorChecks.cs','NativeBlueprintBuildThroughputChecks.cs')}
+            elseif($supplyName -eq 'native-BlueprintConstructionCpu'){$expected=$changedPath -in @('NativeBlueprintSupplyHandoffChecks.cs','NativeBlueprintSupplyReadyChecks.cs','NativeBlueprintPostProcessingContinuityChecks.cs')}
+            else{$expected=$changedPath -in @('NativeBlueprintSupplyConversionChecks.cs','NativeBlueprintSupplyHandoffChecks.cs','NativeBlueprintSupplyReadyChecks.cs','NativeBlueprintPostProcessingContinuityChecks.cs','NativeBlueprintBuildThroughputChecks.cs')}
+            if($changedPath -in @('NativeBlueprintBuildMixedSourceChecks.cs','NativeBlueprintBuildProgressChecks.cs')){$expected=($supplyName -eq 'native-BlueprintSupplyContinuationCpu') -or (($supplyName -eq 'native-BlueprintAppearanceCpu') -and ($changedPath -eq 'NativeBlueprintBuildMixedSourceChecks.cs'))}
+            if($changedPath -eq 'NativeBlueprintWiringZeroDebitChecks.cs'){$expected=$supplyName -in @('native-BlueprintSupplyContinuationCpu','native-BlueprintAppearanceCpu')}
+            if($supplyName -ne 'native-BlueprintNearQueueCpu' -and $changedPath -in @('NativeBlueprintSchedulerOpportunityChecks.cs','NativeBlueprintSchedulerColdHandoffChecks.cs')){$expected=$true}
+            if($supplyName -ne 'native-BlueprintNearQueueCpu' -and $changedPath -eq 'NativeBlueprintSchedulerFreshnessChecks.cs'){$expected=$supplyName -ne 'native-BlueprintSupplyContinuationCpu'}
+            if($supplyName -ne 'native-BlueprintNearQueueCpu' -and $changedPath -in @('NativeBlueprintCompletionV2Checks.cs','NativeBlueprintLibraryWait.cs')){$expected=$false}
+            Assert-Evidence ((Test-WorkloadReusable $fixture $supplyEntry $changedLock $supplyName $supplyEntry.signature) -eq $expected) ('qualified Supply/helper reuse '+$supplyName+' changing '+$changedPath)
+            Assert-Evidence ($supplyEntry.executionId -ceq $supplyCompleted.executionId -and $supplyEntry.allInputFingerprint -ceq $supplyLock.fingerprint) 'Supply reuse retains complete original execution/source identity'
+        }
+    }
     # Real owned inert completion, with the old Quick shadow projection. The
     # complete original input identity still binds its omitted Quick row.
     $quickName='checkpoint-shared-quick';$script:WorkloadCheckGroups[$quickName]=@('combat-host')

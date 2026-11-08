@@ -32,11 +32,11 @@ namespace NativeWorldTextProbe
                 string leaf=scope=="RuntimeFailureToolsCpu"?"runtime-failure-tools":scope=="RuntimeFailureQuickCpu"?"runtime-failure-quick":scope=="RuntimeFailureLoansCpu"?"runtime-failure-loans":"runtime-failure-world";
                 NativeQuickItemChecks.Run(context=>{NativeScopeDispatch.Enter(leaf);check(context);},processing:true,shortFeedback:true,candidateAssembly:candidate);return 0;
             }
-            if(scope=="RuntimeFailureBuildCpu" || scope=="RuntimeFailureBuildManualCpu" || scope=="RuntimeFailureBuildWorldCpu" || scope=="RuntimeFailureBuildReceiptCpu" || scope=="RuntimeFailureBuildSelectionCpu" || scope=="RuntimeFailureBuildScrollCpu")
+            if(scope=="RuntimeFailureBuildCpu" || scope=="RuntimeFailureBuildManualCpu" || scope=="RuntimeFailureBuildWorldCpu" || scope=="RuntimeFailureBuildReceiptCpu" || scope=="RuntimeFailureBuildSelectionCpu" || scope=="RuntimeFailureBuildScrollCpu" || scope=="RuntimeFailureBuildUsingSelectionCpu" || scope=="RuntimeFailureBuildUsingScrollCpu")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JMR-reviewed-build-return-"+Guid.NewGuid().ToString("N").Substring(0,10));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                string leaf=scope=="RuntimeFailureBuildSelectionCpu"?"runtime-failure-build-selection":scope=="RuntimeFailureBuildScrollCpu"?"runtime-failure-build-scroll":scope=="RuntimeFailureBuildReceiptCpu"?"runtime-failure-build-receipt":scope=="RuntimeFailureBuildManualCpu"?"runtime-failure-build-manual":scope=="RuntimeFailureBuildWorldCpu"?"runtime-failure-build-world":"runtime-failure-build";
-                NativeQuickItemChecks.Run(context=>{NativeScopeDispatch.Enter(leaf);if(scope=="RuntimeFailureBuildReceiptCpu")NativeBlueprintBuildChecks.RunCommonFailureBuildReceipt(context);else NativeBlueprintBuildChecks.RunCommonFailureBuild(context,replaceWorld:scope=="RuntimeFailureBuildWorldCpu",manualTakeover:scope=="RuntimeFailureBuildManualCpu",selectionTakeover:scope=="RuntimeFailureBuildSelectionCpu"?1:scope=="RuntimeFailureBuildScrollCpu"?2:0);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+                string leaf=scope=="RuntimeFailureBuildUsingSelectionCpu"?"runtime-failure-build-using-selection":scope=="RuntimeFailureBuildUsingScrollCpu"?"runtime-failure-build-using-scroll":scope=="RuntimeFailureBuildSelectionCpu"?"runtime-failure-build-selection":scope=="RuntimeFailureBuildScrollCpu"?"runtime-failure-build-scroll":scope=="RuntimeFailureBuildReceiptCpu"?"runtime-failure-build-receipt":scope=="RuntimeFailureBuildManualCpu"?"runtime-failure-build-manual":scope=="RuntimeFailureBuildWorldCpu"?"runtime-failure-build-world":"runtime-failure-build";
+                NativeQuickItemChecks.Run(context=>{NativeScopeDispatch.Enter(leaf);if(scope=="RuntimeFailureBuildReceiptCpu")NativeBlueprintBuildChecks.RunCommonFailureBuildReceipt(context);else NativeBlueprintBuildChecks.RunCommonFailureBuild(context,replaceWorld:scope=="RuntimeFailureBuildWorldCpu",manualTakeover:scope=="RuntimeFailureBuildManualCpu",selectionTakeover:scope=="RuntimeFailureBuildUsingSelectionCpu"?3:scope=="RuntimeFailureBuildUsingScrollCpu"?4:scope=="RuntimeFailureBuildSelectionCpu"?1:scope=="RuntimeFailureBuildScrollCpu"?2:0);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if (scope == "TargetGestureOriginal") return NativeViewOriginalChecks.Run(content, output, targets: true);
             if (scope == "TargetGestureDiagnostic" || scope == "TargetGestureDiagnosticCandidate")
@@ -58,6 +58,11 @@ namespace NativeWorldTextProbe
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context => NativeWorldGenPreviewChecks.Run(context, output), processing:true, shortFeedback:true); return 0;
+            }
+            if(scope=="BlueprintNearQueueCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeBlueprintBuildChecks.RunNearQueue(context);NativeScopeDispatch.Enter("blueprint-near-queue");},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="BlueprintSubstitutionVisual")
             {
@@ -521,7 +526,11 @@ namespace NativeWorldTextProbe
             if(scope=="NpcGuardianQuery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","environment");Environment.SetEnvironmentVariable("JUEMINGR_NPC_ENV_AXIS","guardian-query");scope="NpcProduction";}
             if(scope=="NpcModeledImpact"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","impact-suite");scope="NpcProduction";}
             if(scope=="NpcNameDraw"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_LIVE_CONTEXT","name-draw");scope="NpcProduction";}
-            if(scope=="NpcDiagnosticsOff"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF","1");scope="NpcProduction";}
+            if(scope=="NpcDiagnosticsOff")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-worker-oracle-"+Guid.NewGuid().ToString("N"));
+                NativeScopeDispatch.RunNpcDiagnosticsOff(()=>NativeCombatWorkerChecks.Run(output,productionOnly:true,content:content));return 0;
+            }
             if(scope=="NpcSessionCapacity"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_SESSION_CAPACITY","1");scope="NpcProduction";}
             if(scope=="NpcFailureRecovery"){Environment.SetEnvironmentVariable("JUEMINGR_NPC_RECOVERY_CHECK","1");scope="NpcProduction";}
             if(scope=="NpcMaterialCache"){NativeCombatMaterialCacheChecks.Run(output);return 0;}
