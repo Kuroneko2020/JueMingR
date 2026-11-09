@@ -118,6 +118,7 @@ namespace NativeWorldTextProbe
                     check("large mixed ordinary and object continuation",()=>MixedSourceContinuation(context,host,tools,input));
                     }
                     if(family==null || family=="Appearance")check("appearance consumers and native preparation",()=>ConstructionAppearance(context,host,tools,input));
+                    if(family=="BirthOutlet")check("actual651 birth outlet and original commit",()=>ConstructionGrandDesign(context,host,tools,input,false));
                     if(family==null || family=="Wiring")check("wiring and actuation consumers",()=>ConstructionWiring(context,host,tools,input));
                     if(family==null || family=="Special")check("special producers and substrates",()=>ConstructionSpecial(context,host,tools,input));
                     if(family==null || family=="Special")check("exact native object chosen before start",()=>ConstructionExactChoiceRepair(context,host,tools,input));

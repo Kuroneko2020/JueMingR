@@ -5,6 +5,7 @@ using System.Reflection.Emit;
 using System.Reflection;
 using HarmonyLib;
 using Terraria;
+using Terraria.DataStructures;
 
 namespace JueMingR.TerrariaHost.Tools
 {
@@ -60,7 +61,14 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Player),"ApplyCoating",new[]{typeof(int),typeof(int),typeof(bool),typeof(bool),typeof(Item)},nameof(BeforeApplyCoating));
             Patch(typeof(Player),"ItemCheck_UseWiringTools",new[]{typeof(Item)},nameof(BeforeWiring),nameof(AfterWiring),nameof(FinalWiring));
             Patch(typeof(Player),"ItemCheck_UseMiningTools_ActuallyUseMiningTool",new[]{typeof(Item),typeof(bool).MakeByRefType(),typeof(int),typeof(int)},nameof(MiningEnter),nameof(MiningLeave),nameof(MiningFinal));
-            Patch(typeof(Player),"TryUpdateChannel",new[]{typeof(Projectile)},null,nameof(ProjectileCreated));
+            // This is the actual local birth outlet, after vanilla finalized
+            // the new body. A postfix on the tiny TryUpdateChannel forwarding
+            // method is not sufficient evidence that its factory caller will
+            // notify us in an already-running native client.
+            var projectileFactory=typeof(Projectile).GetMethod("NewProjectile",BindingFlags.Static|BindingFlags.Public,null,
+                new[]{typeof(IEntitySource),typeof(float),typeof(float),typeof(float),typeof(float),typeof(int),typeof(int),typeof(float),typeof(int),typeof(float),typeof(float),typeof(float),typeof(NewProjectileModifier)},null);
+            if(projectileFactory?.GetMethodBody()==null)throw new MissingMethodException("tools-abi:NewProjectile scalar");
+            harmony.Patch(projectileFactory,transpiler:new HarmonyMethod(typeof(ToolHooks),nameof(ProjectileBirthOutlet)));
             Patch(typeof(Projectile),"AI",Type.EmptyTypes,nameof(ProjectileBefore),nameof(ProjectileAfter),nameof(ProjectileFinal));
             Patch(typeof(Projectile),"Kill",Type.EmptyTypes,nameof(KillBefore),nameof(KillAfter),nameof(KillFinal));
             Patch(typeof(Projectile),"Damage",Type.EmptyTypes,nameof(DamageBefore),nameof(ShotAfter),nameof(ShotFinal));
@@ -80,6 +88,26 @@ namespace JueMingR.TerrariaHost.Tools
             harmony.Patch(m,Hook(prefix),Hook(postfix),null,Hook(finalizer));
         }
         private static HarmonyMethod Hook(string name){return name==null?null:new HarmonyMethod(typeof(ToolHooks).GetMethod(name,BindingFlags.Static|BindingFlags.NonPublic));}
+        private static IEnumerable<CodeInstruction> ProjectileBirthOutlet(IEnumerable<CodeInstruction> instructions)
+        {
+            var code=instructions.ToList();var native=AccessTools.Method(typeof(Player),"TryUpdateChannel",new[]{typeof(Projectile)});
+            var bridge=AccessTools.Method(typeof(ToolHooks),nameof(NativeChannelAndBirth));int matches=0;
+            foreach(var instruction in code)if(instruction.Calls(native))
+            {
+                // Identical stack shape: the actual Player and newly finalized
+                // Projectile are already on the stack. Labels/exception blocks
+                // remain attached; no pool lookup, adoption or second birth.
+                instruction.opcode=OpCodes.Call;instruction.operand=bridge;matches++;
+            }
+            if(matches!=1)throw new InvalidOperationException("tools-abi:NewProjectile channel outlet must be unique");
+            return code;
+        }
+        private static void NativeChannelAndBirth(Player player,Projectile projectile)
+        {
+            // Keep native channel-cache effects and exceptions first. The
+            // original factory's Owner==myPlayer branch alone reaches here.
+            player.TryUpdateChannel(projectile);ProjectileCreated(player,projectile);
+        }
         private static IEnumerable<CodeInstruction> ConstructionInputTail(IEnumerable<CodeInstruction> instructions)
         {
             var code=instructions.ToList();int start,end;
@@ -188,7 +216,8 @@ namespace JueMingR.TerrariaHost.Tools
 #if JMR_AIM_LIGHT
             Combat.Prediction.AimLightTrace.PrismBirth(__instance,__0);
 #endif
-            host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);host?.Combat?.Use.Created(__instance,__0);host?.Combat?.Attack?.Control.Created(__instance,__0);}
+            // Preserve construction's former priority-first birth observer.
+            host?.BuildProjectile?.Invoke(__instance,__0);host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);host?.Combat?.Use.Created(__instance,__0);host?.Combat?.Attack?.Control.Created(__instance,__0);}
         // Vanilla has finished ALL NPC slots here, but has not advanced any
         // projectile. Finite held volleys must capture their full receiver and
         // chase scene at this boundary, once; individual AI only consumes it.

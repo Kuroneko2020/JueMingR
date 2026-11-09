@@ -389,8 +389,13 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal static void Install(HostBlueprint value)
             {
                 if (ReferenceEquals(owner, value)) return;
-                harmony.UnpatchAll(harmony.Id); owner = value;
-                Patch(typeof(Player), "TryUpdateChannel", new[] { typeof(Projectile) }, null, nameof(Created));
+                harmony.UnpatchAll(harmony.Id);
+                if(owner?.buildTools!=null && owner.buildTools.BuildProjectile==(Action<Player,Projectile>)Created)owner.buildTools.BuildProjectile=null;
+                owner = value;
+                // Share the actual factory outlet with Tools. BindGrandBuild
+                // still owns the exact 651/source/operation guards; a separate
+                // postfix on the tiny channel forwarder can miss the same birth.
+                if(value.buildTools!=null)value.buildTools.BuildProjectile=Created;
                 Patch(typeof(Player), "UpdateControlHolds", Type.EmptyTypes, nameof(ControlBefore), nameof(ScopeAfter), nameof(ScopeFinal));
                 Patch(typeof(Player), "Update", new[] { typeof(int) }, null, nameof(PlayerAfter));
                 Patch(typeof(Player), "ItemCheck_CheckCanUse_Inner", new[] { typeof(Item), typeof(bool) }, nameof(CanUseBefore), nameof(ScopeAfter), nameof(ScopeFinal));
