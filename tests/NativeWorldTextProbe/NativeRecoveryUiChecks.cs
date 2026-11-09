@@ -85,7 +85,12 @@ namespace NativeWorldTextProbe
                     foreach(int value in feature==0?new[]{0,1,2}:new[]{0,1})
                     {
                         var target=parts().Single(p=>(int)Get(p,"Command")==feature && (int)Get(p,"Value")==value && Get(Get(p,"Element"),"Kind").ToString()=="Button");
-                        Call(ui,"Execute",target);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return settings.All(s=>!s.Busy);});prepare();
+                        int committed=(int)Call(host,"PreferenceValue",feature);
+                        Call(ui,"Execute",target);prepare();
+                        var pending=parts().Where(p=>(int)Get(p,"Command")==feature && (bool)Get(p,"Selected")).ToArray();
+                        Require(pending.Length==1 && (int)Get(pending[0],"Value")==committed && (bool)Get(pending[0],"Off")== (committed==0),
+                            "Recovery pending save revokes execution without painting a false closed preference");
+                        NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return settings.All(s=>!s.Busy);});prepare();
                         var selected=parts().Where(p=>(int)Get(p,"Command")==feature && (bool)Get(p,"Selected")).ToArray();
                         Require(selected.Length==1 && (int)Get(selected[0],"Value")==value && (bool)Get(selected[0],"Off")== (value==0),
                             "all six real Recovery rows project current selected mode with explicit off polarity, including tax on Misc");

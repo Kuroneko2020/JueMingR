@@ -24,8 +24,8 @@ namespace JueMingR.TerrariaHost.QuickItems
             internal Command Command;
             internal string Id, Hint;
             internal int Type;
-            internal bool Enabled=true, Selected, Icon, Cross;
-            internal bool Off { get { return Command == Command.QuickOff || Command == Command.FavoriteOff; } }
+            internal bool Enabled=true, Selected, Icon, Cross, CurrentOff;
+            internal bool Off { get { return Command == Command.QuickOff || Command == Command.FavoriteOff || CurrentOff; } }
         }
         private readonly HostQuickItems host;
         private readonly F5Interaction shell;
@@ -110,7 +110,7 @@ namespace JueMingR.TerrariaHost.QuickItems
             float y=start;bool can=host.ControlsEnabled;
             Row(ref y,"快捷物品",Editing?new[]{"开启","关闭","键"}:new[]{"添加","开启","关闭","键"},
                 Editing?new[]{Command.QuickOn,Command.QuickOff,Command.None}:new[]{Command.Add,Command.QuickOn,Command.QuickOff,Command.None},can,HostQuickItems.ToggleAction,
-                "按快捷键快速使用物品",!host.Available?-1:host.Settings.Enabled?(Editing?0:1):(Editing?1:2));
+                "按快捷键快速使用物品",!host.Available || !host.Settings.Loaded || host.Settings.Protected?-1:host.Settings.Current.Enabled?(Editing?0:1):(Editing?1:2));
             int firstBody=logical.Count;
             if(Editing)BuildPicker(ref y,can);
             if(host.CanRetryCleanup)Buttons(ref y,new[]{"重试清理旧按键"},new[]{Command.RetryCleanup},true);
@@ -145,7 +145,7 @@ namespace JueMingR.TerrariaHost.QuickItems
             // same command generation and identity across these two sections.
             float y=start;
             Row(ref y,"保持收藏",new[]{"开启","关闭","键"},new[]{Command.FavoriteOn,Command.FavoriteOff,Command.None},host.FavoriteControlsEnabled,HostQuickItems.FavoriteAction,
-                "保持随身物品的收藏标记。",!host.FavoriteAvailable?-1:host.Settings.KeepFavorited?0:1);
+                "保持随身物品的收藏标记。",!host.FavoriteAvailable || !host.Settings.Loaded || host.Settings.Protected?-1:host.Settings.Current.KeepFavorited?0:1);
             Height=y;
         }
         private void BuildPicker(ref float y,bool can)
@@ -165,6 +165,10 @@ namespace JueMingR.TerrariaHost.QuickItems
                 }
                 int policy=logical.Count;
                 Buttons(ref y,new[]{compatible?"同用途替代：开":"仅此物品",entryEnabled?"停用此项":"启用此项"},new[]{Command.Policy,Command.Enable},can);
+                // These single toggles describe the current editor preference;
+                // their labels/click targets may name the opposite next action.
+                logical[policy].Selected=host.Settings.Loaded && !host.Settings.Protected;logical[policy].CurrentOff=!compatible;
+                logical[policy+1].Selected=host.Settings.Loaded && !host.Settings.Protected;logical[policy+1].CurrentOff=!entryEnabled;
                 logical[policy].Hint="首选物品不可用时，允许用同效果道具代替";
             }
             if(candidates.Count==0){Text(ref y,"背包中没有可选的物品。");return;}
@@ -196,7 +200,7 @@ namespace JueMingR.TerrariaHost.QuickItems
             {
                 Part p=logical[i];var e=p.Element;if(e.Rect.Bottom<=scroll || e.Rect.Y>=scroll+view.Height)continue;
                 var r=e.Rect.Offset(view.X,view.Y-scroll);var projected=new F5Element(e.Kind,r,e.Text,e.TextSize,e.TextScale,e.Command,e.HotkeyTarget,e.Description,e.HintRect.Offset(view.X,view.Y-scroll));
-                visible.Add(new Part{Element=projected,Command=p.Command,Id=p.Id,Type=p.Type,Enabled=p.Enabled,Selected=p.Selected,Icon=p.Icon,Cross=p.Cross,Hint=p.Hint});
+                visible.Add(new Part{Element=projected,Command=p.Command,Id=p.Id,Type=p.Type,Enabled=p.Enabled,Selected=p.Selected,CurrentOff=p.CurrentOff,Icon=p.Icon,Cross=p.Cross,Hint=p.Hint});
                 if(p.Icon && p.Type>0)visibleTypes.Add(p.Type);
                 if(p.Command!=Command.None || e.HotkeyTarget!=null)
                     controls.Add(new ItemUiControl{Command=e.HotkeyTarget!=null?ItemUiCommand.QuickHotkey:ItemUiCommand.Quick,Argument=i,Generation=generation,Rect=r,Element=projected,Enabled=p.Enabled});

@@ -158,7 +158,7 @@ namespace JueMingR.TerrariaHost.Recovery
                 if(e.Kind==F5ElementKind.Hotkey)command=-1;
                 var element=e.Kind==F5ElementKind.Hotkey?new F5Element(e.Kind,e.Rect,null,e.TextSize,e.TextScale,F5Command.None,HostRecovery.Actions[feature]):e;
                 string hint=e.Kind==F5ElementKind.Hotkey?F5HotkeyHints.Toggle:e.Text=="快速"?"掉血后立即选择合适的物品进行恢复":e.Text=="智能"?"掉血后会等待合适的阈值使用合适的药品":e.Description==null?null:host.Hint(feature)??help[feature];
-                logical.Add(new Part{Element=element,Command=command,Value=value,Enabled=host.Controls(feature),Selected=command>=0 && e.Kind==F5ElementKind.Button && host.Value(feature)==value,Off=command>=0 && value==0,Hint=hint});
+                logical.Add(new Part{Element=element,Command=command,Value=value,Enabled=host.Controls(feature),Selected=host.Available && host.Settings(feature).Loaded && !host.Settings(feature).Protected && command>=0 && e.Kind==F5ElementKind.Button && host.PreferenceValue(feature)==value,Off=command>=0 && value==0,Hint=hint});
             }
         }
         private void Editor(ref float y)
@@ -194,7 +194,7 @@ namespace JueMingR.TerrariaHost.Recovery
             var list=new List<F5Element>();new F5RowLayout(list,shell.Layout.TextSize).Buttons(ref y,x,width,labels);
             // Follow buttons always decorate the accepted current preference;
             // their Value is only the next click target and has opposite polarity.
-            for(int i=0;i<list.Count;i++)logical.Add(new Part{Element=list[i],Command=commands[i],Value=commands[i]>=6?1-host.Value(commands[i]):0,Selected=commands[i]>=6,Off=commands[i]>=6 && host.Value(commands[i])==0,Hint=commands[i]==6?"手动使用的增益物品同步加入名单":commands[i]==7?"手动删除的增益物品从名单同步删除":null,Enabled=commands[i]==-3 || host.Controls(editor==2?4:editor)});
+            for(int i=0;i<list.Count;i++)logical.Add(new Part{Element=list[i],Command=commands[i],Value=commands[i]>=6?1-host.PreferenceValue(commands[i]):0,Selected=commands[i]>=6 && host.Available && host.Settings(commands[i]).Loaded && !host.Settings(commands[i]).Protected,Off=commands[i]>=6 && host.PreferenceValue(commands[i])==0,Hint=commands[i]==6?"手动使用的增益物品同步加入名单":commands[i]==7?"手动删除的增益物品从名单同步删除":null,Enabled=commands[i]==-3 || host.Controls(editor==2?4:editor)});
         }
         private void Grid(ref float y,IEnumerable<int> types,float x=0,float width=0,string empty=null)
         {
