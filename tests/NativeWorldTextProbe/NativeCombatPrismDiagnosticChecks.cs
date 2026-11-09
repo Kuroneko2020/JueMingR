@@ -50,6 +50,25 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<200 && !(bool)type.GetProperty("Closed",Flags).GetValue(log);i++)Thread.Sleep(10);
                 Require((bool)type.GetProperty("Closed",Flags).GetValue(log),"native parent retirement automatically finishes the finite recorder");
                 string text=File.ReadAllText(Directory.GetFiles(armedRoot,"trace.tsv",SearchOption.AllDirectories).Single());
+                // Persist the original before any assertions, outside the
+                // disposable native SavePath, including on evidence failures.
+                Directory.CreateDirectory(Program.OutputDirectory);
+                File.WriteAllText(Path.Combine(Program.OutputDirectory,"prism-consumer-trace.tsv"),text);
+                ValidateText(text);
+                Require((bool)trace.GetField("prismFinished",Flags).GetValue(null),"recorder remains stopped after native retirement");
+                Console.WriteLine("PASS actual prism evidence: unarmed OFF / precise real CanInterface refusal / normal borrow-native-inertia-return / bounded native retirement; test-only hideUI counterexample is not the owner's root cause");
+            }
+            finally{injecting=false;Main.hideUI=false;Main.npc[2].dontTakeDamage=false;audit.UnpatchAll(audit.Id);field.SetValue(null,original);}
+        }
+        internal static void ReadEvidence(string input,string output)
+        {
+            Directory.CreateDirectory(output);
+            File.Copy(input,Path.Combine(output,"prism-consumer-trace.tsv"));
+            ValidateText(File.ReadAllText(input));
+            Console.WriteLine("PASS original prism trace predicates with corrected TSV payload reader; offline only, no native chain rerun");
+        }
+        private static void ValidateText(string text)
+        {
                 string[] rows=text.Split('\n').Where(line=>line.Contains("\tprism-consumer\t")).ToArray();
                 Require(rows.Length>0 && rows.Length<=192 && text.Contains("nativeAi075=") && text.Contains("observedBirths=1"),"same-parent native prefix, real birth and Tool consumer have bounded independent arrivals");
                 Require(rows.Any(row=>row.Contains("firstReject=HideUi;") && row.Contains("scope=False") && row.Contains("native=True")),"actual consumer records the precise conditional hideUI refusal rather than a Step-end inference");
@@ -59,13 +78,9 @@ namespace NativeWorldTextProbe
                 Require(rows.Where(row=>row.Contains("scope=True")).All(row=>Value(row,"frame")==Value(row,"sampledFrame") && int.Parse(Value(row,"boundary"),CultureInfo.InvariantCulture)>=0 && int.Parse(Value(row,"journey"),CultureInfo.InvariantCulture)>=0 && int.Parse(Value(row,"text"),CultureInfo.InvariantCulture)>=0 && int.Parse(Value(row,"pointer"),CultureInfo.InvariantCulture)>=0),"accepted consumers contain their exact sample epoch, cached input boundary and evaluated shell aggregate facts");
                 Require(rows.Where(row=>row.Contains("scope=True") && row.Contains("expected=True:")).All(row=>double.Parse(row.Split(';').Single(part=>part.StartsWith("steeringErrorSquared=",StringComparison.Ordinal)).Substring("steeringErrorSquared=".Length),CultureInfo.InvariantCulture)<.001),"native post-AI matches its actual consumed cursor and original .92 inertia, including initially incomplete alignment");
                 Require(rows.Where(row=>row.Contains("scope=True")).All(row=>!row.Contains("observedFirstFalse=HideUi")),"a prior rejected frame cannot contaminate later successful consumers");
-                Require(!text.Contains("\thost-gate\t") && !text.Contains("\tcache-publish\t") && (bool)trace.GetField("prismFinished",Flags).GetValue(null),"prism mode suppresses broad trace and remains stopped after native retirement");
-                File.WriteAllText(Path.Combine(root,"trace-copy.tsv"),text);
-                Console.WriteLine("PASS actual prism evidence: unarmed OFF / precise real CanInterface refusal / normal borrow-native-inertia-return / bounded native retirement; test-only hideUI counterexample is not the owner's root cause");
-            }
-            finally{injecting=false;Main.hideUI=false;Main.npc[2].dontTakeDamage=false;audit.UnpatchAll(audit.Id);field.SetValue(null,original);}
+                Require(!text.Contains("\thost-gate\t") && !text.Contains("\tcache-publish\t") && text.Contains("reason=prism-native-parent-retired"),"prism mode suppresses broad trace and ends with its bounded native retirement");
         }
         private static string Value(string row,string key)
-        {string prefix=key+"=";return row.Trim().Split(';').Single(field=>field.StartsWith(prefix,StringComparison.Ordinal)).Substring(prefix.Length);}
+        {string prefix=key+"=";string detail=row.Trim().Split('\t')[4];return detail.Split(';').Single(field=>field.StartsWith(prefix,StringComparison.Ordinal)).Substring(prefix.Length);}
     }
 }
