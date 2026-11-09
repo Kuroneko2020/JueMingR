@@ -133,8 +133,25 @@ namespace Terraria
                     if (element.Command == F5Command.None && element.Description != null)
                         failures.Add("inactive control still has a development hover hint");
                 }
-                if (page == 9 && layout.Elements[0].Rect.Height > 44)
-                    failures.Add("ordinary row retains the removed second-line space");
+                if (page == 9)
+                {
+                    // Tall glyphs now need extra button clearance for two
+                    // device rows. A fixed old row-height cap mistakes that for
+                    // a removed status band; measure the one real content band.
+                    F5Rect first = layout.Elements[0].Rect;
+                    float tallest = 0; int nameLines = 0;
+                    for (int i = 1; i < layout.Elements.Count && layout.Elements[i].Kind != F5ElementKind.Panel; i++)
+                    {
+                        var child = layout.Elements[i];
+                        if (child.Kind != F5ElementKind.Text && child.Kind != F5ElementKind.Button && child.Kind != F5ElementKind.Hotkey) continue;
+                        if (child.Kind == F5ElementKind.Text) nameLines++;
+                        tallest = Math.Max(tallest, child.Rect.Height);
+                        if (child.Rect.Y < first.Y + 3.99f || child.Rect.Bottom > first.Bottom - 3.99f)
+                            failures.Add("ordinary row crowds its single content band");
+                    }
+                    if (nameLines != 1 || Math.Abs(first.Height - Math.Max(38, tallest + 8)) > .01f)
+                        failures.Add("ordinary row reserves space beyond its single measured content band and padding");
+                }
             }
             if (failures.Count != 0) throw new InvalidOperationException("Visual contract: " + string.Join("; ",
                 new System.Collections.Generic.HashSet<string>(failures)));

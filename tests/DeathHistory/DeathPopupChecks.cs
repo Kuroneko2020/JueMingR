@@ -60,8 +60,12 @@ namespace Terraria
                 var surface = F5Layout.ButtonSurface(button).Offset(d.Popup.Panel.X, d.Popup.Panel.Y);
                 Require(Math.Abs(line.Height * .5f - 2) < .01f && line.Y >= label.Bottom + .49f && line.Bottom <= surface.Bottom - 1.99f,
                     "quantity's actual high-glyph geometry fits two device rows below its label at native minimum scale");
-                Require(button.Rect.Bottom <= d.Popup.Panel.Height - 11.99f && d.Popup.Body.Height == button.Rect.Height &&
-                    d.Popup.Body.Y == d.Popup.Panel.Y + button.Rect.Y, "quantity panel and body reserve the complete button/hit height");
+                // Stored coordinates and the same float sum can have different
+                // extended precision in optimized x86. Compare geometry in the
+                // existing subpixel tolerance, keeping the full inner margin.
+                Require(button.Rect.Bottom <= d.Popup.Panel.Height - 11.99f && Math.Abs(d.Popup.Body.Height - button.Rect.Height) < .01f &&
+                    Math.Abs(d.Popup.Body.Y - d.Popup.Panel.Y - button.Rect.Y) < .01f,
+                    "quantity panel and body reserve the complete button/hit height");
             }
             var title = d.Popup.Text[0].Rect; var close = d.Popup.Buttons[d.Popup.Commands.IndexOf(0)].Rect;
             Require(title.Right <= close.X && title.Bottom <= d.Popup.Body.Y - d.Popup.Panel.Y && close.Bottom <= d.Popup.Body.Y - d.Popup.Panel.Y,

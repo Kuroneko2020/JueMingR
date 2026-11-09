@@ -142,7 +142,7 @@ namespace JueMingR.TerrariaHost.F5
             LayoutBuilds++;
 #endif
             Text.Clear(); Buttons.Clear(); Commands.Clear(); Enabled.Clear(); Targets.Clear(); Icons.Clear(); Sections.Clear(); EditRect = default(F5Rect);
-            rowHeight = mode == 1 ? Math.Max(36, measure("测试Ag", .75f).Height + 12) : Math.Max(50, measure("测试Ag", .70f).Height + 24);
+            rowHeight = mode == 1 ? Math.Max(36, measure("测试Ag", .75f).Height + 12) : StatisticsRowHeight(measure);
             page = Math.Min(page, Math.Max(0, ((shown?.Records.Count ?? 0) - 1) / 10));
             int visibleRows = Math.Min(10, Math.Max(0, (shown?.Records.Count ?? 0) - page * 10));
             bool notice = status != null || host.Markers.Busy || !host.Markers.Loaded || shown?.IsReadOnly == true || Editor != null || visibleRows == 0;
@@ -245,6 +245,16 @@ namespace JueMingR.TerrariaHost.F5
         {
             int from = Math.Max(first, scroll), to = Math.Min(end, scroll + slots);
             if (from < to) Sections.Add(new F5Rect(16, top + (from - scroll) * rowHeight, pw - 32, (to - from) * rowHeight - 4));
+        }
+        private static float StatisticsRowHeight(Func<string, float, F5Size> measure)
+        {
+            float buttonHeight = 30;
+            foreach (string label in new[] { "重新统计", "暂停", "继续", "性能优先", "快速完成", "已开启 · 关闭", "已关闭 · 开启" })
+                buttonHeight = Math.Max(buttonHeight, measure(label, .70f).Height + 12);
+            // Body buttons start eight units into a slot. The shared section
+            // trims four at its end and still needs six below the final button.
+            // Keep the complete slot for layout, scrolling and hit projection.
+            return Math.Max(50, buttonHeight + 8 + 6 + 4);
         }
         private void PrepareHint(Func<string, float, F5Size> measure)
         {
