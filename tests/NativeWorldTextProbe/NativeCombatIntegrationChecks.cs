@@ -21,6 +21,13 @@ namespace NativeWorldTextProbe
             try
             {
                 string leaf=Environment.GetEnvironmentVariable("JMR_COMBAT_INTEGRATION_ONLY");
+                if(leaf=="prism-prejit")
+                {
+                    int before=births;
+                    try{NativeCombatPrismChainChecks.Run(context);}
+                    finally{Console.WriteLine("PRISM JIT ORDER actual TryUpdateChannel callbacks="+(births-before)+"; native 633 source/direction facts are above");}
+                    return;
+                }
                 if(leaf=="prism-diagnostic"){NativeCombatPrismDiagnosticChecks.Run(context);return;}
                 if(leaf=="prism-chain"){NativeCombatPrismChainChecks.Run(context);return;}
                 if(leaf=="prism-lifecycle"){NativeCombatPrismChainChecks.RunLifecycle(context);return;}
