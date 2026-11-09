@@ -23,6 +23,7 @@ namespace NativeWorldTextProbe
                 string leaf=Environment.GetEnvironmentVariable("JMR_COMBAT_INTEGRATION_ONLY");
                 if(leaf=="prism-chain"){NativeCombatPrismChainChecks.Run(context);return;}
                 if(leaf=="prism-lifecycle"){NativeCombatPrismChainChecks.RunLifecycle(context);return;}
+                if(leaf=="prism-lifecycle-remaining"){NativeCombatPrismChainChecks.RunRemainingLifecycle(context);return;}
                 if(leaf=="balanced"){NativeCombatBalancedAimChecks.Run(context);return;}
                 if(leaf=="magic-string-aim"){NativeCombatMagicStringAimChecks.Run(context);return;}
                 if(leaf=="placement"){NativeCombatPlacementChecks.Run(context);return;}

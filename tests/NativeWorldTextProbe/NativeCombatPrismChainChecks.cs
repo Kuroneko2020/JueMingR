@@ -73,6 +73,10 @@ namespace NativeWorldTextProbe
         private static void Committed(object host)
         {var settings=(ObservationSettings)Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings.Busy;});Require(settings.CompletionSucceeded,"actual Set save completes: "+settings.Message);}
         internal static void RunLifecycle(object context)
+        {RunLifecycleCore(context,new[]{3541,2882});}
+        internal static void RunRemainingLifecycle(object context)
+        {RunLifecycleCore(context,new[]{2882});}
+        private static void RunLifecycleCore(object context,int[] weapons)
         {
             var cosmetic=new Harmony("JueMingR.Tests.PrismLifecycleRipple");
             cosmetic.Patch(typeof(Projectile).GetMethod("AI"),transpiler:new HarmonyMethod(typeof(NativeCombatBeamChecks).GetMethod("RippleOutlet",BindingFlags.NonPublic|BindingFlags.Static)));
@@ -80,7 +84,7 @@ namespace NativeWorldTextProbe
             {
                 // 460 shares the same source gate but has a different native
                 // charge/read window; no all-weapon matrix is needed here.
-                foreach(int weapon in new[]{3541,2882})Lifecycle(context,weapon);
+                foreach(int weapon in weapons)Lifecycle(context,weapon);
                 Retirement(context);
             }
             finally{cosmetic.UnpatchAll(cosmetic.Id);}
@@ -136,8 +140,19 @@ namespace NativeWorldTextProbe
                 // A real UI owner denies input even though birth facts remain.
                 Main.drawingPlayerChat=true;Step(context,mouse,true);
                 Require(!(bool)Get(attack,"BasicPermission"),"UI occupation denies current execution");Main.drawingPlayerChat=false;
-                Step(context,mouse,false);Step(context,mouse,false);
-                Require(!parent.active && !registry.Contains(key),"physical release preserves native death and retires its source after Kill");
+                // 633 checks channel each AI. 460 checks only its next native
+                // five-action charge window; source retention must not force
+                // that still-live body to die early or continue lending input.
+                int releaseBound=Math.Max(1,NativeReleaseWindow(parent,p)),releaseUpdates=0;
+                Console.WriteLine("PRISM C1 release start weapon="+weapon+" active="+parent.active+" charge="+parent.ai[0]+" phase="+parent.ai[1]+" rate="+p.GetSlowMagicUseRate()+" bound="+releaseBound);
+                do
+                {
+                    Step(context,mouse,false);releaseUpdates++;
+                    Require(!p.channel && !(bool)Get(attack,"BasicPermission"),"physical release immediately withdraws execution before the native death window");
+                    if(!parent.active || (int)parent.key!=key)Require(!registry.Contains(key),"the native death callback immediately retires its original source");
+                }while(parent.active && (int)parent.key==key && releaseUpdates<releaseBound);
+                Console.WriteLine("PRISM C1 release end weapon="+weapon+" active="+parent.active+" updates="+releaseUpdates+" charge="+parent.ai[0]+" phase="+parent.ai[1]+" sources="+registry.Count);
+                Require((!parent.active || (int)parent.key!=key) && !registry.Contains(key),"physical release preserves the native death window and retires its source after Kill");
                 p.selectedItemState.Select(1);
                 // Select buffers intent; native Update admits it only after
                 // channel/reuse/animation AND itemTime close. ItemCheck spends
@@ -148,7 +163,7 @@ namespace NativeWorldTextProbe
                 while(p.selectedItem!=1 && selectionUpdates<selectionBound)
                 {
                     bool ready=p.selectedItemState.CanChangeSelectedItemImmediately;Step(context,mouse,false);selectionUpdates++;
-                    Require(!parent.active && !registry.Contains(key),"old native parent and source stay retired during the legitimate hand tail");
+                    Require((!parent.active || (int)parent.key!=key) && !registry.Contains(key),"old native parent and source stay retired during the legitimate hand tail");
                     if(ready)Require(p.selectedItem==1,"the first legal native selection opportunity consumes the buffered change");
                 }
                 Console.WriteLine("PRISM C1 selection end weapon="+weapon+" selected="+p.selectedItem+" updates="+selectionUpdates+" animation="+p.itemAnimation+" time="+p.itemTime+" reuse="+p.reuseDelay+" channel="+p.channel);
@@ -156,6 +171,27 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS source lifecycle weapon="+weapon+" OFF birth/enable/retry/close-reopen/movement/UI/release/selection; no parent respawn or manual registration");
             }
             finally{Main.drawingPlayerChat=false;Call(host,"Set",6,false);Committed(host);for(int i=0;i<8;i++)Step(context,mouse,false);}
+        }
+        // Independent of HostHeldAttack.Consumes: AI075 increments the local
+        // pre-charge counter, or the >=180 charge, before checking its native
+        // five-action gate. Read only actual current scalars; never run AI or
+        // rewrite its phase/channel to shorten a test's release tail.
+        private static int NativeReleaseWindow(Projectile parent,Player player)
+        {
+            if(!parent.active)return 0;
+            Require(parent.MaxUpdates==1,"release fixture uses the original single-update controller");
+            if(parent.type==633)return 1;
+            Require(parent.type==460,"release window has a declared native controller");
+            float charge=parent.ai[0],phase=parent.ai[1],rate=player.GetSlowMagicUseRate();
+            Require(rate>0 && rate<=1,"native slow-magic rate retains a finite five-action phase window");
+            int actions=(int)Math.Ceiling(5/rate)+1;
+            for(int i=1;i<=actions;i++)
+            {
+                charge+=rate;
+                if(charge<180){phase++;if(phase>=5)return i;}
+                else if((int)charge%5==0)return i;
+            }
+            throw new InvalidOperationException("Native release phase did not reach its independently bounded channel check.");
         }
         private static void Aligned(Projectile parent,Player p,NPC target,Vector2 mouse,string stage,int weapon)
         {
