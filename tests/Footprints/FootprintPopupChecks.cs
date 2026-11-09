@@ -23,7 +23,7 @@ namespace Terraria
             driver.Present(); driver.Click(2); driver.Present(); driver.Click(3); Require(driver.Label == "清除足迹", "cancel resets all stages");
             driver.Click(1); Require(!owner.Recording && owner.Display == false, "recording control never changes display");
             Require(!driver.Popup.RecordingSelected, "recording decoration comes from the current off state");
-            driver.Popup.Suspend(); driver.Popup.Open(2); driver.Prepare();
+            driver.Click(0); driver.Popup.Open(2); driver.Prepare();
             Require(!driver.Popup.RecordingSelected, "recording current state survives popup close/reopen");
             driver.Present(); driver.Click(2); driver.Present(); driver.Press(2); driver.Font = new object(); driver.Release(); Require(driver.Label == "清除足迹" && owner.Deleted == 1, "font replacement cancels old press and confirmation");
             driver.Present();driver.Click(2);driver.Present();driver.Press(2);driver.Popup.Anchor=new F5Rect(160,80,80,30);driver.Release();

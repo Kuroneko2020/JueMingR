@@ -48,6 +48,7 @@ namespace Terraria
                         Render(graphics, renderer, outputDirectory, "default-scale050", 9, .5f, 0, false, fractional: true);
                         Render(graphics, renderer, outputDirectory, "default-scale135-fractional-scroll", 9, 1.35f, 120, fractional: true);
                         CheckDeviceRows(graphics, font, inventory, outputDirectory, "actual-font");
+                        CheckDeathQuantity(graphics, renderer, outputDirectory, "actual-font");
                         Render(graphics, renderer, outputDirectory, "default-information-unavailable", 9, 1, 0, false, true);
                         Render(graphics, renderer, outputDirectory, "name-chest", 9, 1, 0, hintTarget: "宝箱显名");
                         Render(graphics, renderer, outputDirectory, "name-infection", 9, 1, 0, hintTarget: "世界感染");
@@ -59,6 +60,7 @@ namespace Terraria
                         GameContent.FontAssets.MouseText = graphics.Asset("synthetic-fractional-font", graphics.CreateFont(10, 24));
                         Render(graphics, renderer, outputDirectory, "synthetic-fractional-font-information", 9, 1, 0);
                         CheckDeviceRows(graphics, GameContent.FontAssets.MouseText.Value, inventory, outputDirectory, "glyph24");
+                        CheckDeathQuantity(graphics, renderer, outputDirectory, "glyph24");
                         GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
                         Render(graphics, renderer, outputDirectory, "default-scale150", 9, 1.5f, 240);
                         CheckSkinAndLifetime(graphics, renderer, inventory, outputDirectory);
@@ -71,6 +73,37 @@ namespace Terraria
 
         private static T Read<T>(XnbReader reader, string path) where T : class
         { using (var stream = File.OpenRead(path)) return reader.FromStream<T>(stream); }
+
+        private static void CheckDeathQuantity(F5FixtureGraphics graphics, F5Renderer renderer, string output, string name)
+        {
+            var owner = new DeathPopupChecks.Owner();
+            var input = new JueMingR.TerrariaHost.Input.HostInputState(() => new IntPtr(1), () => new IntPtr(1));
+            var popup = new DeathHistoryPopup(owner, input);
+            var matrix = Matrix.CreateScale(.5f); matrix.M41 = .37f; matrix.M42 = .61f;
+            Main.UIScaleMatrix = matrix; renderer.RefreshResources();
+            popup.Open(true, 2); popup.Prepare(1600, 600, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
+            using (var target = new RenderTarget2D(graphics.Device, 800, 300))
+            {
+                graphics.Device.SetRenderTarget(target); graphics.Device.Clear(new Color(80, 100, 110));
+                Main.spriteBatch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, matrix);
+                // This is the actual popup draw route that previously threw from
+                // its selected compact choice, rather than a standalone swatch.
+                renderer.DrawDeathPopup(popup);
+                Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
+                var button = popup.Buttons[popup.Commands.IndexOf(owner.Settings.Count)];
+                var line = F5Layout.ButtonUnderline(button, matrix, popup.Panel.X, popup.Panel.Y);
+                int left = (int)Math.Round(line.X * .5f + matrix.M41), right = (int)Math.Round(line.Right * .5f + matrix.M41);
+                int top = (int)Math.Round(line.Y * .5f + matrix.M42), bottom = (int)Math.Round(line.Bottom * .5f + matrix.M42);
+                F5InputChecks.Check(bottom - top == 2 && left >= 0 && right <= target.Width && top >= 0 && bottom <= target.Height,
+                    "actual death quantity choice remains visible with two complete device rows at native 50% UI");
+                var pixels = new Color[target.Width * target.Height]; target.GetData(pixels);
+                for (int y = top; y < bottom; y++) for (int x = left; x < right; x++)
+                    F5InputChecks.Check(pixels[y * target.Width + x] == Color.LightGreen,
+                        "production death popup draws the selected quantity without throwing or dropping its state line");
+                SaveTexture(target, Path.Combine(output, "death-quantity-" + name + "-scale050.png"));
+            }
+            Console.WriteLine("PASS: actual death quantity popup at native minimum UI scale: " + name);
+        }
 
         private static void CheckDeviceRows(F5FixtureGraphics graphics, DynamicSpriteFont font, Texture2D skin, string output, string name)
         {
