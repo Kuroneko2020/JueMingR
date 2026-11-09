@@ -138,7 +138,20 @@ namespace NativeWorldTextProbe
                 Require(!(bool)Get(attack,"BasicPermission"),"UI occupation denies current execution");Main.drawingPlayerChat=false;
                 Step(context,mouse,false);Step(context,mouse,false);
                 Require(!parent.active && !registry.Contains(key),"physical release preserves native death and retires its source after Kill");
-                p.selectedItemState.Select(1);Step(context,mouse,false);
+                p.selectedItemState.Select(1);
+                // Select buffers intent; native Update admits it only after
+                // channel/reuse/animation AND itemTime close. ItemCheck spends
+                // those tails later in the player update, so use their actual
+                // remaining values plus the following admission opportunity.
+                int selectionBound=Math.Max(p.itemAnimation,p.itemTime)+Math.Max(0,p.reuseDelay)+2,selectionUpdates=0;
+                Console.WriteLine("PRISM C1 selection start weapon="+weapon+" selected="+p.selectedItem+" animation="+p.itemAnimation+" time="+p.itemTime+" reuse="+p.reuseDelay+" channel="+p.channel+" pending="+Get(p,"pendingItemReuse")+" canChange="+p.selectedItemState.CanChangeSelectedItemImmediately+" bound="+selectionBound);
+                while(p.selectedItem!=1 && selectionUpdates<selectionBound)
+                {
+                    bool ready=p.selectedItemState.CanChangeSelectedItemImmediately;Step(context,mouse,false);selectionUpdates++;
+                    Require(!parent.active && !registry.Contains(key),"old native parent and source stay retired during the legitimate hand tail");
+                    if(ready)Require(p.selectedItem==1,"the first legal native selection opportunity consumes the buffered change");
+                }
+                Console.WriteLine("PRISM C1 selection end weapon="+weapon+" selected="+p.selectedItem+" updates="+selectionUpdates+" animation="+p.itemAnimation+" time="+p.itemTime+" reuse="+p.reuseDelay+" channel="+p.channel);
                 Require(p.selectedItem==1 && registry.Count==0,"normal weapon switch leaves no old source");
                 Console.WriteLine("PASS source lifecycle weapon="+weapon+" OFF birth/enable/retry/close-reopen/movement/UI/release/selection; no parent respawn or manual registration");
             }
