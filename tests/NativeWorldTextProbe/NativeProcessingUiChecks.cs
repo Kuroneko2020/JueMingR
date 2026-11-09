@@ -126,11 +126,16 @@ namespace NativeWorldTextProbe
             Call(state,"Close");Call(ui,"Suspend");Save(settings,new ProcessingOptions());
             Console.WriteLine("PASS G08 UI: physical editor/list controls, isolated IME boundary, whole-name persistence, stable height/measurement, movement keys and shared scroll.");
         }
-        private static void ProcessingStateDecorations(object context)
+        internal static void ProcessingStateDecorations(object context)
         {
             var host=Get(context,"Processing");var shell=Get(context,"Shell");var state=Get(shell,"State");var items=Get(shell,"items");var renderer=Get(shell,"renderer");
-            var settings=(ProcessingSettings[])Get(host,"Settings");var original=settings.Take(2).Select(s=>s.Value).ToArray();
-            Action prepare=()=>{Call(renderer,"Prepare",state,960f,760f,1f);Call(items,"Prepare",true,Matrix.Identity,new Vector2(960,760));};
+            var settings=(ProcessingSettings[])Get(host,"Settings");
+            NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return settings.All(s=>s.Loaded && !s.Busy);});
+            var original=settings.Take(2).Select(s=>s.Value).ToArray();
+            // CPU fixtures use the same real layout/projection entry as the
+            // existing Quick UI checks. Prepare also demands drawable textures;
+            // its GPU resource refusal says nothing about these row semantics.
+            Action prepare=()=>{Call(renderer,"Prepare",state,960f,760f,1f);Call(items,"PrepareLayout",Matrix.Identity,new Vector2(960,760));};
             Func<object[]> controls=()=>((IEnumerable)Get(items,"controls")).Cast<object>().ToArray();
             try
             {
@@ -151,7 +156,8 @@ namespace NativeWorldTextProbe
                     Require((bool)Get(selected,"Selected") && (bool)Get(selected,"Off")==!enabled,
                         "saved processing decoration survives close/reopen through the real Items presenter");
                 }
-                Require(controls().Where(c=>Get(c,"Command").ToString()=="Disable").All(c=>(bool)Get(c,"Off")) &&
+                Call(state,"ScrollTo",((float[])Get(Get(items,"layout"),"RowY"))[0]);prepare();
+                Require(controls().Any(c=>Get(c,"Command").ToString()=="Disable") && controls().Where(c=>Get(c,"Command").ToString()=="Disable").All(c=>(bool)Get(c,"Off")) &&
                     controls().Where(c=>Get(c,"Command").ToString()=="Add" || Get(c,"Command").ToString()=="Hotkey").All(c=>!(bool)Get(c,"Off")),
                     "original Items off commands and ordinary action/hotkey controls keep their distinct semantics");
             }
