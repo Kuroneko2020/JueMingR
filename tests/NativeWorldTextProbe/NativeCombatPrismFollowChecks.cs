@@ -58,11 +58,12 @@ namespace NativeWorldTextProbe
         {
             context=value;var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");attack=Get(combat,"Attack");control=Get(attack,"Control");var input=Get(context,"Input");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
-            var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3541,0,0);p.position=new Vector2(250,688-p.height);p.releaseUseItem=true;
+            var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3541,0,0);p.position=new Vector2(640,688-p.height);p.releaseUseItem=true;
             p.statMana=p.statManaMax=p.statManaMax2=200;p.inventory[54].SetDefaults(499);p.inventory[54].stack=999;
-            var oldBoots=p.armor[3];var oldFlower=p.armor[4];p.armor[3]=new Item();p.armor[3].SetDefaults(54);p.armor[4]=new Item();p.armor[4].SetDefaults(555);
+            var oldBoots=p.armor[3];var oldFlower=p.armor[4];var oldLight=p.armor[5];p.armor[3]=new Item();p.armor[3].SetDefaults(54);p.armor[4]=new Item();p.armor[4].SetDefaults(555);p.armor[5]=new Item();p.armor[5].SetDefaults(5107);
+            for(int x=115;x<Main.maxTilesX-1;x++)NativeToolsChecks.Tile(x,43,1);
             Main.screenPosition=new Vector2(400,200);
-            var dummy=NativeCombatControlPreviewChecks.Dummy(2,60,32);
+            NPC dummy=null;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,false,false,true,50,false,false));
             Call(host,"Set",6,true);var settings=Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !(bool)Get(settings,"Busy");});Require((bool)Get(settings,"CompletionSucceeded"),"real aim Set commits");
             var audit=new Harmony("JueMingR.Tests.PrismFollow");
@@ -71,11 +72,17 @@ namespace NativeWorldTextProbe
             samples.Clear();shadowReady=false;withdraw=false;stage="stationary";workTotal=workMax=0;worldSteps=budgetStops=0;
             try
             {
-                // Vanilla accelerates beyond maxRunSpeed towards Hermes'
-                // accRunSpeed only at runAcceleration*.2. Start the real run
-                // before channeling; 120 actions from rest did not reach 5.
-                // Neither this preparation nor measurement writes velocity.
-                for(int i=0;i<170;i++)Step(false,1);for(int i=0;i<12;i++)Step(true,1);
+                // The fixed CPU world is only 120 tiles wide. Native borders
+                // clamp its left start to 640. Magiluminescence legitimately
+                // accelerates this run (x1.75, speed x1.15); do not spend 170
+                // pre-run actions then walk out of the world/target radius.
+                // Neither preparation nor measurement writes velocity.
+                for(int i=0;i<80;i++)Step(false,1);
+                dummy=ElevatedDummy(2,(int)((p.Center.X+400-16)/16));
+                GeometryBounds(p,dummy,134);
+                // Let the new actual tile/NPC enter the ordinary observation
+                // owner before the first real Shoot; keep moving naturally.
+                for(int i=0;i<2;i++)Step(false,1);for(int i=0;i<12;i++)Step(true,1);
                 var parent=Main.projectile.Single(q=>q.active && q.owner==p.whoAmI && q.type==633);int key=(int)parent.key;
                 Console.WriteLine("PRISM FOLLOW measured-run entry player="+p.position+" velocity="+p.velocity+" maxRun="+p.maxRunSpeed+" accRun="+p.accRunSpeed+" acceleration="+p.runAcceleration+" dummy="+dummy.Center+" active="+dummy.active+" distance="+Vector2.Distance(p.Center,dummy.Center)+" radiusTiles="+((ObservationOptions)Get(host,"Options")).Radius);
                 stage="holder-run";for(int i=0;i<120;i++)Step(true,1);
@@ -90,7 +97,7 @@ namespace NativeWorldTextProbe
                 // source, native use, permissions and live target stay intact.
                 stage="basic";withdraw=true;for(int i=0;i<12;i++)Step(true,-1);withdraw=false;
                 Require(samples.Where(s=>s.Stage=="basic").All(s=>s.Kind=="Basic" && s.Error<.3f),"unknown/withdrawn future falls back to the same current-only steering law");
-                stage="switch";dummy.active=false;var second=NativeCombatControlPreviewChecks.Dummy(3,Math.Max(8,(int)(p.Center.X/16)-18),32);
+                stage="switch";dummy.active=false;var second=ElevatedDummy(3,Math.Max(8,(int)(p.Center.X/16)-18));
                 for(int i=0;i<45;i++)Step(true,0);
                 var switched=samples.Where(s=>s.Stage=="switch").ToArray();Require(switched.Length>=35 && switched.All(s=>s.Slot==3 && s.Key==key) && switched.Skip(38).All(s=>s.Error<.3f),"large target switch saturates legally and converges on the same original source");
                 stage="moving-target";second.active=false;var movingTarget=Main.npc[4];movingTarget.SetDefaults(3);movingTarget.whoAmI=4;movingTarget.active=true;movingTarget.Center=p.Center+new Vector2(-260,-100);movingTarget.velocity=new Vector2(3,0);movingTarget.aiStyle=-1;movingTarget.noGravity=true;movingTarget.life=movingTarget.lifeMax=100000;movingTarget.knockBackResist=0;
@@ -103,7 +110,7 @@ namespace NativeWorldTextProbe
             }
             finally
             {
-                withdraw=false;audit.UnpatchAll(audit.Id);p.armor[3]=oldBoots;p.armor[4]=oldFlower;p.gravDir=1;
+                withdraw=false;audit.UnpatchAll(audit.Id);p.armor[3]=oldBoots;p.armor[4]=oldFlower;p.armor[5]=oldLight;p.gravDir=1;
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());for(int i=0;i<8;i++)Step(false,0);context=control=attack=null;
             }
         }
@@ -118,6 +125,27 @@ namespace NativeWorldTextProbe
             for(int i=0;i<Main.maxProjectiles;i++)if(Main.projectile[i].active){Main.ProjectileUpdateLoopIndex=i;Main.projectile[i].Update(i);}Main.ProjectileUpdateLoopIndex=-1;
             Call(context,"UpdateRuntime");Call(context,"UpdateShell");Require(Main.mouseX==x && Main.mouseY==y,"normal native chain returns the physical mouse");
             var work=Get(host,"PredictionWork");double used=Convert.ToDouble(Get(work,"UsedMilliseconds"));workTotal+=used;workMax=Math.Max(workMax,used);worldSteps++;if((bool)Get(work,"Exceeded"))budgetStops++;
+        }
+        private static NPC ElevatedDummy(int slot,int x)
+        {
+            // The original NPC has gravity. Support the real placed 2x3 tile
+            // with vanilla solid terrain; do not hold its body in mid-air.
+            Require(x>=5 && x+1<Main.maxTilesX-5,"supported dummy remains inside the finite native world");
+            for(int dx=0;dx<2;dx++)NativeToolsChecks.Tile(x+dx,35,1);
+            return NativeCombatControlPreviewChecks.Dummy(slot,x,32);
+        }
+        private static void GeometryBounds(Player p,NPC dummy,int actions)
+        {
+            float v=p.velocity.X,end=p.position.X,increment=p.runAcceleration*.2f;
+            for(int i=0;i<actions;i++){if(v<p.maxRunSpeed)v+=p.runAcceleration;else if(v<p.accRunSpeed)v+=increment;end+=v;}
+            // Include the real neutral-input braking tail, not a timer or
+            // velocity reset at the end of the measurement.
+            for(int i=0;i<100 && v>0;i++){v=Math.Max(0,v-p.runSlowdown);end+=v;}
+            float height=Math.Abs(p.Center.Y-dummy.Center.Y),horizontal=Math.Max(Math.Abs(p.Center.X-dummy.Center.X),Math.Abs(end+p.width/2f-dummy.Center.X));
+            double far=Math.Sqrt(horizontal*horizontal+height*height),turn=(p.accRunSpeed+increment)/height*180/Math.PI;
+            Console.WriteLine("PRISM FOLLOW finite geometry preRun="+p.position+" speed="+p.velocity+" boundEndIncludingBrake="+end+" dummy="+dummy.Center+" height="+height+" distanceBound="+far+" angularRateBoundDegrees="+turn+" nativeTurnLimitDegrees="+(Math.Asin(.08/.92)*180/Math.PI));
+            Require(p.velocity.X>=5 && end+p.width<(Main.maxTilesX-1)*16,"real pre-run reaches the unchanged speed premise and the entire native run/braking tail fits the original finite world");
+            Require(height>=110 && height<=150 && far<800 && turn<4.9,"one supported stationary dummy stays within the original minimum selection radius with a nonzero, physically trackable continuous angular demand");
         }
         private static void NativeMapping(Projectile parent)
         {
