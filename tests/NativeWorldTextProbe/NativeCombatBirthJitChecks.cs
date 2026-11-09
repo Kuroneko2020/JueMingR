@@ -53,7 +53,7 @@ namespace NativeWorldTextProbe
                 Set(tools,"BuildProjectile",priorBuild);Set(tools,"FishingProjectile",priorFishing);
                 // A native factory call by itself cannot manufacture a Shoot
                 // receipt merely because the local player holds that weapon.
-                var player=Main.LocalPlayer;int slot=Projectile.NewProjectile(player.GetSource_Misc("source-authority-negative"),player.Center,Vector2.UnitX,633,1,0,player.whoAmI);
+                var player=Main.LocalPlayer;int slot=Projectile.NewProjectile(player.GetProjectileSource_Item(player.HeldItem),player.Center,Vector2.UnitX,633,1,0,player.whoAmI);
                 var orphan=Main.projectile[slot];
                 Require(!((System.Collections.IDictionary)Get(control,"shots")).Contains((int)orphan.key),"unreceipted local factory birth is observed but never adopted as an assisted source");orphan.Kill();
                 Console.WriteLine("PASS actual factory outlet: single native channel update, construction-first shared subscriptions, real633/six632 direction, release and no source adoption");
