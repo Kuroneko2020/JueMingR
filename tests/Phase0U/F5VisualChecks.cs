@@ -89,9 +89,11 @@ namespace Terraria
                 int top = (int)Math.Round(line.Y * scale + matrix.M42), bottom = (int)Math.Round(line.Bottom * scale + matrix.M42);
                 F5InputChecks.Check(bottom - top == 2 && right > left, "fully visible line spans exactly two integer device rows");
                 using (var baseline = new RenderTarget2D(graphics.Device, 420, 150))
+                using (var skinOnly = new RenderTarget2D(graphics.Device, 420, 150))
                 using (var target = new RenderTarget2D(graphics.Device, 420, 150))
                 using (var rasterizer = new RasterizerState { CullMode = CullMode.None, ScissorTestEnable = true })
                 {
+                    F5Element painted = element;
                     Action<RenderTarget2D, Color?, Rectangle> draw = (image, color, clip) =>
                     {
                         Rectangle priorClip = graphics.Device.ScissorRectangle;
@@ -100,12 +102,15 @@ namespace Terraria
                         Main.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp,
                             DepthStencilState.None, rasterizer, null, matrix);
                         F5ControlRenderer.Button(Main.spriteBatch, GameContent.TextureAssets.MagicPixel.Value, skin, font,
-                            element, false, true, color, transform: matrix);
+                            painted, false, true, color, transform: matrix);
                         Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null); graphics.Device.ScissorRectangle = priorClip;
                     };
                     foreach (bool clipped in new[] { false, true })
                     {
                         var clip = new Rectangle(0, clipped ? top + 1 : 0, 420, clipped ? 149 - top : 150);
+                        painted = new F5Element(element.Kind, element.Rect, "", element.TextSize, element.TextScale, element.Command);
+                        draw(skinOnly, null, clip); var backdrop = new Color[420 * 150]; skinOnly.GetData(backdrop);
+                        painted = element;
                         draw(baseline, null, clip);
                         var before = new Color[420 * 150]; baseline.GetData(before);
                         foreach (Color color in new[] { Color.LightGreen, Color.IndianRed })
@@ -115,6 +120,8 @@ namespace Terraria
                             for (int y = 0; y < 150; y++) for (int x = 0; x < 420; x++)
                             {
                                 bool onLine = x >= left && x < right && y >= top && y < bottom && clip.Contains(x, y);
+                                if (onLine) F5InputChecks.Check(before[y * 420 + x] == backdrop[y * 420 + x],
+                                    "line occupies actual text-free skin rather than covering glyphs or their border");
                                 F5InputChecks.Check(onLine ? after[y * 420 + x] == color : after[y * 420 + x] == before[y * 420 + x],
                                     "production button adds only the exact snapped line; text, skin, border and normal clipping match the undecorated render");
                                 if (onLine) changed++;
