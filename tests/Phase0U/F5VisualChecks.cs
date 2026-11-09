@@ -55,15 +55,7 @@ namespace Terraria
                         Render(graphics, renderer, outputDirectory, "hint-keyboard", 9, 1, 0, hintTarget: "keyboard");
                         Render(graphics, renderer, outputDirectory, "hint-unavailable", 9, 1, 0, false, true, "unavailable");
                         Render(graphics, renderer, outputDirectory, "default-fishing", 7, 1, 0);
-                        // Synthetic 24-high glyphs exercise the tall-font row
-                        // reserve; this is geometry stress, not a font-pack claim.
-                        GameContent.FontAssets.MouseText = graphics.Asset("synthetic-fractional-font", graphics.CreateFont(10, 24));
-                        Render(graphics, renderer, outputDirectory, "synthetic-fractional-font-information", 9, 1, 0);
-                        CheckDeviceRows(graphics, GameContent.FontAssets.MouseText.Value, inventory, outputDirectory, "glyph24");
-                        CheckDeathQuantity(graphics, renderer, outputDirectory, "glyph24");
-                        GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
-                        Render(graphics, renderer, outputDirectory, "default-scale150", 9, 1.5f, 240);
-                        CheckSkinAndLifetime(graphics, renderer, inventory, outputDirectory);
+                        CompleteUnderlineChecks(graphics, renderer, font, inventory, outputDirectory);
                         Console.WriteLine("PASS: production F5 offline previews with local XNB font and surface; owner visual acceptance remains pending.");
                     }
                 }
@@ -73,6 +65,41 @@ namespace Terraria
 
         private static T Read<T>(XnbReader reader, string path) where T : class
         { using (var stream = File.OpenRead(path)) return reader.FromStream<T>(stream); }
+
+        // Resume only the high-glyph/skin suffix after an earlier unrelated
+        // preview has already supplied its own valid evidence. No game startup.
+        internal static void RunUnderlineContinuation(string contentDirectory, string outputDirectory)
+        {
+            Directory.CreateDirectory(outputDirectory);
+            using (var graphics = new F5FixtureGraphics())
+            using (var renderer = new F5Renderer())
+            {
+                var services = new GameServiceContainer();
+                services.AddService(typeof(IGraphicsDeviceService), new GraphicsService(graphics.Device));
+                using (var reader = new XnbReader(services))
+                using (var inventory = Read<Texture2D>(reader, Path.Combine(contentDirectory, "Images/Inventory_Back.xnb")))
+                {
+                    var font = Read<DynamicSpriteFont>(reader, Path.Combine(contentDirectory, "Fonts/Mouse_Text.xnb"));
+                    GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
+                    GameContent.TextureAssets.InventoryBack = graphics.Asset("actual-inventory-back", inventory);
+                    CompleteUnderlineChecks(graphics, renderer, font, inventory, outputDirectory);
+                    Console.WriteLine("PASS: F5 visual underline continuation subset; earlier previews and full-suite qualification NOT_EVALUATED by this invocation.");
+                }
+            }
+        }
+        private static void CompleteUnderlineChecks(F5FixtureGraphics graphics, F5Renderer renderer, DynamicSpriteFont font, Texture2D inventory, string outputDirectory)
+        {
+            // Synthetic 24-high glyphs exercise the tall-font row reserve;
+            // this is geometry stress, not a real font-pack claim. The target
+            // state control may now require ordinary page scrolling to appear.
+            GameContent.FontAssets.MouseText = graphics.Asset("synthetic-fractional-font", graphics.CreateFont(10, 24));
+            Render(graphics, renderer, outputDirectory, "synthetic-fractional-font-information", 9, 1, 0, revealState: true);
+            CheckDeviceRows(graphics, GameContent.FontAssets.MouseText.Value, inventory, outputDirectory, "glyph24");
+            CheckDeathQuantity(graphics, renderer, outputDirectory, "glyph24");
+            GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
+            Render(graphics, renderer, outputDirectory, "default-scale150", 9, 1.5f, 240);
+            CheckSkinAndLifetime(graphics, renderer, inventory, outputDirectory);
+        }
 
         private static void CheckDeathQuantity(F5FixtureGraphics graphics, F5Renderer renderer, string output, string name)
         {
@@ -259,7 +286,7 @@ namespace Terraria
         }
 
         private static void Render(F5FixtureGraphics graphics, F5Renderer renderer, string output,
-            string name, int page, float scale, int wheel, bool enabled = true, bool failed = false, string hintTarget = null, bool fractional = false)
+            string name, int page, float scale, int wheel, bool enabled = true, bool failed = false, string hintTarget = null, bool fractional = false, bool revealState = false)
         {
             var matrix = Matrix.CreateScale(scale, scale, 1);
             if (fractional) { matrix.M41 = .37f; matrix.M42 = .61f; }
@@ -275,6 +302,14 @@ namespace Terraria
             input.Left = false; input.Wheel = -wheel; input.Y = state.Y + 160;
             state.Update(input); input.Wheel = 0;
             if (fractional) state.ScrollTo(state.Scroll + .43f);
+            if (revealState)
+                foreach (var element in state.Layout.Elements)
+                    if (element.Command == (enabled ? F5Command.EnableBiome : F5Command.DisableBiome))
+                    {
+                        Console.WriteLine("F5 visual state reveal: " + name + " localY=" + element.Rect.Y + " height=" + element.Rect.Height +
+                            " viewportHeight=" + state.Layout.Viewport.Height + " previousScroll=" + state.Scroll);
+                        state.ScrollTo(element.Rect.Y - 100); break;
+                    }
             if (hintTarget != null)
                 foreach (var element in state.Layout.Elements)
                     if (element.Text == hintTarget || hintTarget == "keyboard" && element.HotkeyTarget != null ||
@@ -296,12 +331,13 @@ namespace Terraria
                 renderer.DrawHints(state, Main.UIScaleMatrix, null, false, failed);
                 if (hintTarget != null) F5InputChecks.Check(renderer.HintLayout.Visible, "real information preview consumes the shared hint draw path");
                 Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
+                // Keep the actual failing framebuffer as evidence too.
+                SaveTexture(target, Path.Combine(output, name + ".png"));
                 CheckNavigationRows(target, state, matrix);
                 F5InputChecks.Check(Utils.RefinedTitleDraws == titles + 1 && Utils.FunctionColorErrors == errors &&
                     Utils.NormalStatusDraws == status && Utils.KeyboardTextDraws == keys,
                     "actual renderer uses the Chinese display title, neutral function text and no normal-status/key text");
                 if (page == 9 && scale == 1 && hintTarget == null) CheckRefinedPixels(target, state, enabled, failed);
-                SaveTexture(target, Path.Combine(output, name + ".png"));
             }
         }
 
@@ -328,6 +364,9 @@ namespace Terraria
             F5InputChecks.Check(selected != null, "information page retains both named real controls");
             F5Rect view = state.Layout.Viewport.Offset(state.X, state.Y);
             F5Rect surface = F5Layout.ButtonSurface(selected).Offset(view.X, view.Y - state.Scroll);
+            var stateLine = F5Layout.ButtonUnderline(selected, Main.UIScaleMatrix, view.X, view.Y - state.Scroll);
+            F5InputChecks.Check(stateLine.Y >= view.Y && stateLine.Bottom <= view.Bottom,
+                "state-color pixel assertion requires its actual line fully inside the content viewport");
             int green = 0, red = 0, minX = int.MaxValue, maxX = 0;
             for (int y = 0; y < target.Height; y++) for (int x = 0; x < target.Width; x++)
             {
