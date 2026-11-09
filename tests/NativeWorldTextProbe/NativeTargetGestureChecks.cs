@@ -19,7 +19,11 @@ namespace NativeWorldTextProbe
         {
             Main.gameMenu = Main.mapFullscreen = Main.hideUI = false; Main.netMode = 0;
             Main.maxTilesX = Main.maxTilesY = 64; Main.tile = new Tile[64, 64]; Main.tile[1, 1] = new Tile();
-            Terraria.ObjectData.TileObjectData.Initialize();
+            // The earlier native identity producers may already have completed
+            // startup metadata. Native TileObjectData forbids a second Initialize;
+            // preserve its real locked table when these CPU fixtures share a run.
+            if (!(bool)typeof(Terraria.ObjectData.TileObjectData).GetField("readOnlyData", Flags).GetValue(null))
+                Terraria.ObjectData.TileObjectData.Initialize();
             // Main.Initialize_TileAndNPCData2 sets this exact native fixture flag.
             Main.tileFrameImportant[21] = true;
             // The headless probe skips Main.Initialize: its zero-filled arrays

@@ -14,13 +14,27 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeBlueprintBuildChecks
     {
-        private static bool ProgressDormant(object item)
+        private static bool ProgressDormant(object host,object item)
         {
-            return GetOptional(item, "Match") != null && EligibilityRanges(item).All(range =>
+            if(GetOptional(item,"Match")==null)return false;
+            var p=Main.LocalPlayer;int left,top,right,bottom;
+            int boost=p.inventory.Take(50).Where(i=>i!=null && !i.IsAir).Select(i=>i.tileBoost).DefaultIfEmpty(0).Max();
+            TileReachCheckSettings.Simple.GetTileRegion(p,out left,out top,out right,out bottom,boost+p.blockRange);
+            return EligibilityRanges(item).All(range=>
             {
-                var value = GetOptional(range, "Materials");
-                return (bool)Get(range, "Current") && !(bool)Get(range, "Demand") && !(bool)Get(range, "Reading") &&
-                    value != null && (bool)Get(value, "Current") && (bool)Get(value, "BuildExhausted");
+                var materials=GetOptional(range,"Materials");
+                if(!(bool)Get(range,"Current") || (bool)Get(range,"Demand") || (bool)Get(range,"Reading") ||
+                    materials==null || !(bool)Get(materials,"Current"))return false;
+                var state=NearRangeState(host,range);
+                if(state!=null)return (bool)Get(state,"Complete") && NearRangeFacts(host,range).All(f=>!(bool)Get(f,"Ready") && !(bool)Get(f,"Pending"));
+                // A missing state is not proof of a cold near planner sleeping.
+                // Independently establish that this immutable range is outside
+                // ordinary native reach, or that automatic planning is disabled.
+                var bounds=Get(Get(range,"Source"),"Bounds");var owner=Get(range,"Owner");
+                int x=(int)Get(owner,"OriginX"),y=(int)Get(owner,"OriginY");
+                return !(bool)Get(host,"AutoBuildEnabled") ||
+                    x+(int)Get(bounds,"Right")<=left || x+(int)Get(bounds,"Left")>right ||
+                    y+(int)Get(bounds,"Bottom")<=top || y+(int)Get(bounds,"Top")>bottom;
             });
         }
         private static void ProgressStep(object context, object host, object input, Player p, int update, bool move, bool unrelated)
@@ -64,7 +78,7 @@ namespace NativeWorldTextProbe
                 }
                 if (stoneAt < 0 && Main.tile[44, 42].active()) stoneAt = updates;
                 if (dirtAt < 0 && Main.tile[42, 42].active()) dirtAt = updates;
-                return stoneAt >= 0 && (earlySupply ? Scene(host).Length == 0 : ProgressDormant(instance) && !(bool)Get(Get(tools, "Use"), "Active"));
+                return stoneAt >= 0 && (earlySupply ? Scene(host).Length == 0 : ProgressDormant(host,instance) && !(bool)Get(Get(tools, "Use"), "Active"));
             });
             Require(updates > 1 && stoneAt > 0 && Main.tile[44, 42].type == TileID.Stone && p.inventory[12].stack == 4,
                 "continuous move/inventory changes cannot starve the later real stone placement or create extra material consumption");
@@ -107,14 +121,15 @@ namespace NativeWorldTextProbe
             SetAutomatic(host, input, true); Until(context, input, () =>
             {
                 if(GetOptional(instance,"Match")==null)return false;
-                material=GetOptional(EligibilityRanges(instance).Single(),"Materials");if(material==null)return false;
-                recoveryCursor=(int)Get(material,"CandidateCursor");
-                return Get(material,"BuildWaits").ToString().Contains("Material") && !(bool)Get(material,"BuildExhausted") && recoveryCursor>2 && recoveryCursor<cells.Length*2;
+                var range=EligibilityRanges(instance).Single();material=NearRangeState(host,range);if(material==null)return false;
+                recoveryCursor=(int)Get(material,"Cursor");
+                return NearRangeFacts(host,range).Any(f=>Get(f,"Wait").ToString().Contains("Material")) &&
+                    !(bool)Get(material,"Complete") && recoveryCursor>2 && recoveryCursor<cells.Length*2;
             });
             Require(!Main.tile[42, 42].active() && !Main.tile[44, 42].active() && (long)Get(host,"BuildUsesStarted")==uses,
                 "the real walk has observed early missing supply and still owns an unvisited tail, with no native use or world write");
             p.inventory[13].SetDefaults(ItemID.DirtBlock); p.inventory[13].stack = 1;
-            Until(context, input, () => Main.tile[42, 42].active() && ProgressDormant(instance) && !(bool)Get(Get(tools, "Use"), "Active"));
+            Until(context, input, () => Main.tile[42, 42].active() && ProgressDormant(host,instance) && !(bool)Get(Get(tools, "Use"), "Active"));
             Require(!Main.tile[44, 42].active() && Main.tile[42, 42].type == TileID.Dirt && p.inventory[13].IsAir && Scene(host).Length == 1 &&
                 (long)Get(host, "BuildUsesStarted") == uses + 1 && (long)Get(host, "BuildCandidateChecks") > checks,
                 "an early relevant recovery survives the missing tail without any intervening world change; the next walk consumes the restored dirt exactly once");
@@ -126,7 +141,7 @@ namespace NativeWorldTextProbe
             var dirt = Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Dirt });
             var stable = new[] { Place(context, host, input, dirt, 80, 42), Place(context, host, input, dirt, 90, 42) };
             p.inventory[12].SetDefaults(ItemID.StoneBlock); p.inventory[12].stack = 5;
-            SetAutomatic(host, input, true); Until(context, input, () => stable.All(ProgressDormant));
+            SetAutomatic(host, input, true); Until(context, input, () => stable.All(item=>ProgressDormant(host,item)));
             var states = stable.Select(item => Get(item, "Match")).ToArray();
             var reads = states.Select(state => (long)Get(state, "WorldReads")).ToArray();
             var requests = states.Select(state => (long)Get(state, "SourceRequests")).ToArray();
@@ -172,7 +187,7 @@ namespace NativeWorldTextProbe
             try
             {
                 var item = Place(context, host, input, Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone }), 44, 42);
-                SetAutomatic(host, input, true); Until(context, input, () => ProgressDormant(item));
+                SetAutomatic(host, input, true); Until(context, input, () => ProgressDormant(host,item));
                 Require(!Main.tile[44, 42].active() && p.inventory[12].stack == 2, "an exhausted protected source neither spends nor manufactures availability");
                 Vector2 position = p.position; var source = p.inventory[12];
                 ownership.EndCoins(session, token, false);
@@ -234,7 +249,7 @@ namespace NativeWorldTextProbe
                     // while asynchronous source/material work becomes ready.
                     NativeToolExecutionChecks.Sample(context, input, new Vector2(480, 540), false);
                     NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime");
-                    return ProgressDormant(item);
+                    return ProgressDormant(host,item);
                 });
                 Require(p.itemAnimation > 0 && (bool)Call(tools, "ProtectedAfterYield", p.inventory[54]) &&
                     (bool)Call(host, "CanBuildAutomatically", p, true) && !Main.tile[44, 42].active() && p.inventory[12].stack == 2 && p.inventory[54].stack == 2,
@@ -264,7 +279,7 @@ namespace NativeWorldTextProbe
             Step(context, input);
             Require(!Main.tile[44, 42].active() && p.inventory[12].stack == 2 && uses == (long)Get(host, "BuildUsesStarted"),
                 "the ready candidate cannot use yesterday's reach when the real next Player.Update is out of range");
-            Until(context, input, () => ProgressDormant(Scene(host).Single()));
+            Until(context, input, () => ProgressDormant(host,Scene(host).Single()));
             Main.blockInput = true;
             try
             {
@@ -288,7 +303,7 @@ namespace NativeWorldTextProbe
             for (int y = 36; y <= 42; y++) Require(WorldGen.PlaceTile(41, y, TileID.Rope, true, true), "original rope supplies the actual pulley dependency");
             p.position = new Vector2(41 * 16 + 8 - p.width / 2, 646); p.velocity = Vector2.Zero;
             p.pulley = true; p.pulleyDir = 2; p.direction = 1;
-            SetAutomatic(host, input, true); Until(context, input, () => ProgressDormant(Scene(host).Single()));
+            SetAutomatic(host, input, true); Until(context, input, () => ProgressDormant(host,Scene(host).Single()));
             Require(p.pulley && p.pulleyDir == 2 && !Main.tile[44, 41].active() && p.inventory[12].stack == 2,
                 "original rope idle retains the opposing pulley direction and no automatic ChangeDir side effect or spend occurs");
             Vector2 position = p.position; p.direction = -1;
@@ -315,7 +330,7 @@ namespace NativeWorldTextProbe
             Require(!p.IsInTileInteractionRange(targetX, 42, TileReachCheckSettings.Simple, p.inventory[12].tileBoost + p.blockRange),
                 "the independent original reach consumer excludes the supported cell just beyond its exact integer body edge");
             var item = Place(context, host, input, Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone }), targetX, 42);
-            SetAutomatic(host, input, true); Until(context, input, () => ProgressDormant(item));
+            SetAutomatic(host, input, true); Until(context, input, () => ProgressDormant(host,item));
             Require(!Main.tile[targetX, 42].active() && p.inventory[12].stack == 2,
                 "the original out-of-range cell exhausts its walk without any consumption");
             float before = p.position.X; int integerPixel = (int)before;

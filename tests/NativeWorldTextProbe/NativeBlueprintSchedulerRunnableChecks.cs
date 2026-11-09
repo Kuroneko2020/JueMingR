@@ -255,11 +255,29 @@ namespace NativeWorldTextProbe
                 // Only immutable source/qualification/publication and the
                 // initial prepared A are warmed; no Player.Update means no
                 // group has been admitted and no preferred negative was run.
-                NativeQuickItemChecks.Until(() => { scope.Step(preparationOnly: true);
-                    var prepared = GetOptional(host, "preparedBuild");
-                    return prepared != null && ReferenceEquals(Get(Get(prepared, "Source"), "Item"), wall.Item) &&
-                        GetOptional(owner, "Match") != null && GetOptional(other, "Match") != null &&
-                        EligibilityRanges(owner).Concat(EligibilityRanges(other)).All(range => (bool)Get(range, "Current")); });
+                int warmUpdates=0;
+                Action<string> reportWarm=phase=>
+                {
+                    var prepared=GetOptional(host,"preparedBuild");
+                    var ranges=new[]{owner,other}.Where(value=>GetOptional(value,"Match")!=null).SelectMany(EligibilityRanges).ToArray();
+                    Console.WriteLine("BlueprintSchedulerWarm setup phase="+phase+" members="+members+" updates="+warmUpdates+
+                        " input="+Get(input,"CanRunAutomaticActions")+" enabled="+Get(host,"AutoBuildEnabled")+" controls="+Get(host,"ControlsEnabled")+
+                        " catalog="+(GetOptional(host,"MaterialCatalog")!=null)+" preparedType="+(prepared==null?"none":Get(Get(prepared,"Source"),"Type").ToString())+
+                        " current="+string.Join(",",ranges.Select(range=>Get(range,"Current")))+
+                        " facts="+string.Join(";",ranges.SelectMany(range=>NearRangeFacts(host,range)).Select(fact=>
+                            Get(Get(fact,"Seed"),"Ordinal")+":"+Get(fact,"Ready")+":"+Get(fact,"Pending")+":"+Get(fact,"Wait")))+
+                        " source/search="+Get(host,"materialBuildSourceBudget")+"/"+Get(host,"materialBuildSearchBudget"));
+                };
+                try
+                {
+                    NativeQuickItemChecks.Until(() => { scope.Step(preparationOnly: true);warmUpdates++;
+                        if(warmUpdates==1)reportWarm("first");
+                        var prepared = GetOptional(host, "preparedBuild");
+                        return prepared != null && ReferenceEquals(Get(Get(prepared, "Source"), "Item"), wall.Item) &&
+                            GetOptional(owner, "Match") != null && GetOptional(other, "Match") != null &&
+                            EligibilityRanges(owner).Concat(EligibilityRanges(other)).All(range => (bool)Get(range, "Current")); });
+                }
+                catch {reportWarm("failure");throw;}
                 Require(GetOptional(host, "buildContinuation") == null && scope.Goals.All(goal => !goal.Complete) && wall.Item.stack == 4 && stone.Item.stack == 3,
                     "source warmup performed no current-group negative query, actual consumer or debit");
                 schedulerWarm = new SchedulerWarmObservation { Host = host, Owner = owner, Scope = scope, Expected = members };
@@ -291,15 +309,23 @@ namespace NativeWorldTextProbe
             using (var timeline = new SchedulerTimeline(host, tools, input))
             {
                 var p = Reset(context, host, tools, input); p.position.X = 42 * 16;
+                // Begin just inside the same discovery boundary so real input enters before B's lawful opportunity.
+                p.position.X = (float)Math.Ceiling((p.position.X + p.width) / 16f) * 16 - p.width - .25f;
                 var wood = BusinessStock(p, 12, ItemID.Wood, 4); var stone = BusinessStock(p, 13, ItemID.StoneBlock, 3);
                 scope.Sources = new[] { wood, stone };
-                scope.Goals = new[] { BusinessTileGoal(44, 42, wood), BusinessTileGoal(46, 42, wood), BusinessTileGoal(39, 42, stone) };
+                var initialBounds=(BlueprintProjectionBounds)Call(host,"BuildNearOrdinaryWorldBounds",p);
+                int lateX=initialBounds.Right;
+                scope.Goals = new[] { BusinessTileGoal(40, 42, wood), BusinessTileGoal(lateX, 42, wood), BusinessTileGoal(39, 42, stone) };
                 scope.RunnableOracle = goal => SchedulerBlockRunnable(goal, scope.Sources.Single(source => source.Type == goal.Type));
                 var woodAsset = BusinessTileAsset(host, wood);
-                NativeToolsChecks.Tile(46, 42, TileID.Dirt);
-                Place(context, host, input, woodAsset, 44, 42);
-                var late = Place(context, host, input, woodAsset, 46, 42);
+                NativeToolsChecks.Tile(lateX, 42, TileID.Dirt);
+                Place(context, host, input, woodAsset, 40, 42);
+                var late = Place(context, host, input, woodAsset, lateX, 42);
                 Place(context, host, input, BusinessTileAsset(host, stone), 39, 42);
+                NativeQuickItemChecks.Until(()=>{scope.Step(preparationOnly:true);return GetOptional(late,"Match")!=null;});
+                var lateRange=EligibilityRanges(late).Single();
+                Require(!initialBounds.Contains(lateX,42) && NearRangeFacts(host,lateRange).Length==0,
+                    "the future A owner begins just outside ordinary discovery with no acquired semantic facts");
                 scope.Begin(true); SetAutomatic(host, input, true);
                 NativeQuickItemChecks.Until(() => { scope.Step(); return scope.Events.Count != 0; });
                 Require(scope.Events.Count == 1 && scope.Goals[0].Complete && scope.Events[0].Type == wood.Type,
@@ -307,6 +333,10 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Until(() => { scope.Step(preparationOnly: true); var prepared = GetOptional(host, "preparedBuild");
                     return prepared != null && ReferenceEquals(Get(Get(prepared, "Source"), "Item"), stone.Item); });
                 Require(scope.Events.Count == 1, "B is really prepared while no second native action has been introduced during setup");
+                var originalGroup=Get(host,"buildContinuation");
+                var warmBounds=(BlueprintProjectionBounds)Call(host,"BuildNearOrdinaryWorldBounds",p);
+                Require(NearRangeFacts(host,lateRange).Length==0 && !warmBounds.Contains(lateX,42),
+                    "B warmup has never classified the still-outside A range");
                 var patch = new Harmony("JueMingR.Tests.BlueprintSchedulerLateSource");
                 eligibilityWorker = Get(Get(host, "Library"), "worker");
                 eligibilitySourceEntered = new System.Threading.ManualResetEventSlim(); eligibilitySourceContinue = new System.Threading.ManualResetEventSlim();
@@ -314,27 +344,37 @@ namespace NativeWorldTextProbe
                 {
                     patch.Patch(AccessTools.Method(eligibilityWorker.GetType(), "ProjectionSourceStep"),
                         prefix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(PauseEligibilitySource)));
-                    // This is the existing bounded-cache eviction fixture
-                    // seam: drop immutable transport only, retaining every
-                    // business cursor/negative proof and its original owner.
-                    // The real writer, rather than the test, dirties A's facts.
-                    var lateRange = EligibilityRanges(late).Single();
+                    // This range has never entered the near semantic plan.
+                    // Transport eviction alone cannot make an already-known
+                    // fact unknown; actual movement now introduces this owner.
                     Call(host, "RemoveBuildSources", Get(late, "Identity"), lateRange);
-                    WorldGen.KillTile(46, 42, fail: false, effectOnly: false, noItem: true);
-                    NativeQuickItemChecks.Until(() => { scope.Step(preparationOnly: true); return eligibilitySourceEntered.IsSet; });
+                    WorldGen.KillTile(lateX, 42, fail: false, effectOnly: false, noItem: true);
+                    NativeQuickItemChecks.Until(() => { scope.Step(direction:1);
+                        Require(scope.Events.Count==1 && ReferenceEquals(GetOptional(host,"buildContinuation"),originalGroup),
+                            "entering unknown A's near domain preserves the same actual group and admits no B");
+                        return eligibilitySourceEntered.IsSet && SchedulerBlockRunnable(scope.Goals[1],wood); });
                     Require(SchedulerBlockRunnable(scope.Goals[1], wood) && SchedulerBlockRunnable(scope.Goals[2], stone) && scope.Events.Count == 1,
                         "the late A source has one outstanding real worker request; known world/stock make A and prepared B physically legal");
+                    lock(Get(eligibilityWorker,"gate"))
+                        Require(((System.Collections.IEnumerable)Get(eligibilityWorker,"projectionSourceRequests")).Cast<object>()
+                            .Any(request=>Equals(Get(request,"Identity"),Get(late,"Identity"))),
+                            "the held original source request belongs to the newly entered A owner");
+                    Require(NearRangeState(host,lateRange)!=null && NearRangeFacts(host,lateRange).Length==0 &&
+                        ((BlueprintProjectionBounds)Call(host,"BuildNearOrdinaryWorldBounds",p)).Contains(lateX,42) &&
+                        ReferenceEquals(GetOptional(host,"buildContinuation"),originalGroup) && (bool)Call(host,"BuildContinuationCurrent",p),
+                        "the paused original worker has published no semantic A fact and the established group remains current");
                     long requests = (long)Get(host, "ProjectionMatchSourceRequests");
                     int pendingTimelineStart = timeline.Events.Count;
                     int naturalWindow = wood.Item.useAnimation + 2;
                     for (int frame = 0; frame < naturalWindow; frame++) scope.Step();
-                    Require(scope.Events.Count == 1 && !scope.Goals[1].Complete && !scope.Goals[2].Complete &&
+                    Require(scope.Events.Count == 1 && NearRangeFacts(host,lateRange).Length==0 &&
+                        ReferenceEquals(GetOptional(host,"buildContinuation"),originalGroup) && !scope.Goals[1].Complete && !scope.Goals[2].Complete &&
                         wood.Item.stack == 3 && stone.Item.stack == 3 && (long)Get(host, "ProjectionMatchSourceRequests") == requests &&
                         !timeline.Events.Skip(pendingTimelineStart).Any(value => value.Kind == "admitted" && value.Type == stone.Type),
                         "a full natural use interval with unknown current-A source neither admits/consumes B nor resubmits the outstanding source request");
                     uint released = Main.GameUpdateCount;
                     Console.WriteLine("BlueprintSchedulerLateSource release world=" + released + " host=" + Get(host, "projectionMatchTick") +
-                        " blockedActualUpdates=" + naturalWindow + " originalRequestCount=" + requests + " preparedForeignWasObserved=true testEvictedImmutableTransport=true");
+                        " blockedActualUpdates=" + naturalWindow + " originalRequestCount=" + requests + " preparedForeignWasObserved=true neverClassifiedA=true lateX="+lateX+" nativePosition="+p.position);
                     eligibilitySourceContinue.Set();
                     NativeQuickItemChecks.Until(() => { scope.Step(); return scope.Goals.All(goal => goal.Complete) && !(bool)Get(Get(tools, "Use"), "Active"); });
                     Require(scope.Events.Select(value => value.Type).SequenceEqual(new[] { wood.Type, wood.Type, stone.Type }) &&

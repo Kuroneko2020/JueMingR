@@ -35,6 +35,8 @@ namespace NativeWorldTextProbe
             check("mixed paint", () => ConstructionMixedPaint(context, host, tools, input));
             check("missing foreground keeps wall paint", () => ConstructionMissingForegroundWallPaint(context, host, tools, input));
             check("last paint", () => ConstructionLastPaint(context, host, tools, input));
+            check("truly empty settled receipt", () => ConstructionEmptyPaintReceipt(context, host, tools, input));
+            check("settled paint live admission", () => ConstructionSettledPaintAdmission(context, host, tools, input));
             check("coating restoration", () => ConstructionCoatingRestoration(context, host, tools, input));
             check("same color restoration refill", () => ConstructionSameColorRestorationRefill(context, host, tools, input));
             check("unselected foreground", () => ConstructionUnselectedForeground(context, host, tools, input));
@@ -53,6 +55,8 @@ namespace NativeWorldTextProbe
         private static readonly System.Collections.Generic.Dictionary<long, long> smartPlatformLookups = new System.Collections.Generic.Dictionary<long, long>();
         private static readonly System.Collections.Generic.Dictionary<string, int> smartPlatformMissingLookups = new System.Collections.Generic.Dictionary<string, int>();
         private static readonly System.Collections.Generic.Dictionary<string, string> smartPlatformDirections = new System.Collections.Generic.Dictionary<string, string>();
+        private static readonly System.Collections.Generic.Dictionary<string,int> smartPlatformPrecisePending = new System.Collections.Generic.Dictionary<string,int>();
+        private static readonly System.Collections.Generic.HashSet<string> smartPlatformPreciseShaped = new System.Collections.Generic.HashSet<string>();
         private static string SmartPlatformPoint(object target)
         { return Get(target, "WorldX") + "," + Get(target, "WorldY"); }
         private static object WatchedSmartPlatformFlight()
@@ -95,14 +99,37 @@ namespace NativeWorldTextProbe
         private static void SmartPlatformChoiceAfter(object __0, bool __result)
         {
             if (!smartPlatformWatch || !__result) return;
+            Console.WriteLine("SMART_PLATFORM nativeChoice target="+SmartPlatformPoint(Get(__0,"Target"))+" mode="+Get(__0,"CursorMode")+
+                " frame="+Get(smartPlatformInput,"Frame")+" world="+Main.GameUpdateCount);
             if (smartPlatformMissingLookups.Count > 0) Console.WriteLine("SMART_PLATFORM fallbackChoice target=" + SmartPlatformPoint(Get(__0, "Target")) +
                 " mode=" + Get(__0, "CursorMode") + " generation=" + Get(__0, "Generation") + " frame=" + Get(smartPlatformInput, "Frame"));
-            if (Get(__0, "CursorMode").ToString() != "SmartPlatform") { smartPlatformPreciseChoices++; return; }
+            if (Get(__0, "CursorMode").ToString() != "SmartPlatform")
+            {
+                smartPlatformPreciseChoices++;
+                smartPlatformPrecisePending[SmartPlatformPoint(Get(__0,"Target"))]=(byte)Get(Get(Get(__0,"Target"),"Cell"),"Slope");
+                return;
+            }
             long frame;
             smartPlatformProofValid &= smartPlatformLookups.TryGetValue((long)Get(__0, "Generation"), out frame) &&
                 frame == (long)Get(smartPlatformInput, "Frame") && Main.SmartCursorIsUsed && Main.SmartCursorShowing &&
                 Main.SmartCursorX == Player.tileTargetX && Main.SmartCursorY == Player.tileTargetY;
             smartPlatformChoices++;
+        }
+        private static void SmartPlatformSlopeAfter(int __0,int __1,int __2,bool __result)
+        {
+            var flight=WatchedSmartPlatformFlight();if(flight==null || !__result)return;
+            var proof=GetOptional(flight,"SmartProof");
+            if(Get(flight,"CursorMode").ToString()=="SmartPlatform")
+            {
+                var target=Get(flight,"Target");int dx=__0-(int)Get(target,"WorldX"),dy=__1-(int)Get(target,"WorldY");
+                bool neighbor=proof!=null && ((System.Collections.IEnumerable)Get(proof,"Writes")).Cast<object>().Any(w=>
+                    (int)Get(w,"X")==dx && (int)Get(w,"Y")==dy && (int)Get(w,"Slope")==__2);
+                Require(dx==0 && dy==0 || neighbor,"every real Smart slope write is its center or an explicitly authorized projected neighbor");
+                int expected;string point=__0+","+__1;
+                if(neighbor && smartPlatformPrecisePending.TryGetValue(point,out expected) && expected==__2)smartPlatformPreciseShaped.Add(point);
+            }
+            Console.WriteLine("SMART_PLATFORM nativeSlope xy="+__0+","+__1+" slope="+__2+" from="+SmartPlatformPoint(Get(flight,"Target"))+
+                " mode="+Get(flight,"CursorMode")+" proofWrites="+(proof==null ? "none" : string.Join(";",((System.Collections.IEnumerable)Get(proof,"Writes")).Cast<object>().Select(w=>Get(w,"X")+","+Get(w,"Y")+":"+Get(w,"Slope")))));
         }
         private static void SmartPlatformHammerAfter(object __0, object __1, bool __result)
         {
@@ -114,6 +141,7 @@ namespace NativeWorldTextProbe
         {
             smartPlatformChoices = smartPlatformPreciseChoices = smartPlatformHammers = smartPlatformCorrectHammers = 0;
             smartPlatformProofValid = true; smartPlatformLookups.Clear(); smartPlatformMissingLookups.Clear(); smartPlatformDirections.Clear();
+            smartPlatformPrecisePending.Clear();smartPlatformPreciseShaped.Clear();
             smartPlatformRejectedFlight = null; smartPlatformUnknownBaseline = (long)Get(smartPlatformHost, "BuildUnknownResults");
             smartPlatformNativeNeutrals=0;smartPlatformFailureNeutrals.Clear();
         }
@@ -137,6 +165,8 @@ namespace NativeWorldTextProbe
                 postfix: new HarmonyLib.HarmonyMethod(self, nameof(SmartPlatformLookupAfter)));
             patch.Patch(host.GetType().GetMethod("NativeBuildChoice", F), postfix: new HarmonyLib.HarmonyMethod(self, nameof(SmartPlatformChoiceAfter)));
             patch.Patch(host.GetType().GetMethod("NativeAppearanceConsumer", F), postfix: new HarmonyLib.HarmonyMethod(self, nameof(SmartPlatformHammerAfter)));
+            patch.Patch(typeof(WorldGen).GetMethod("SlopeTile",F,null,new[]{typeof(int),typeof(int),typeof(int),typeof(bool),typeof(bool)},null),
+                postfix:new HarmonyLib.HarmonyMethod(self,nameof(SmartPlatformSlopeAfter)));
             bool oldMouse = Main.SmartCursorWanted_Mouse, oldPad = Main.SmartCursorWanted_GamePad;
             smartPlatformHost = host; smartPlatformInput = input;
             try
@@ -161,9 +191,14 @@ namespace NativeWorldTextProbe
                         !Main.tile[44 + cell.X, 39 + cell.Y].halfBrick()) && material.stack == 4 &&
                         Main.tile[seedX, 38].slope() == slope && !Main.tile[seedX, 38].halfBrick(),
                         "natural smart extension reaches all three shapes and consumes exactly three real platforms, preserving the seed; direction=" + direction);
-                    Require(smartPlatformChoices == 3 && smartPlatformHammers == 0 && smartPlatformPreciseChoices == 0 &&
-                        smartPlatformLookups.Count >= 3 && smartPlatformProofValid && smartPlatformDirections.Values.All(value => value == direction + ",1") && p.inventory.All(item => item.hammer == 0),
-                        "every direct slope has its own natural same-frame Lookup before PlaceIt and no hammer capability/consumer; direction=" + direction);
+                    // Legal native order can first place a flat middle cell,
+                    // then SpinSmartPlatform shapes it from the next endpoint.
+                    // Count every actual body and require each such Precise
+                    // cell's observed shaping through the exact Smart write set.
+                    Require(smartPlatformChoices+smartPlatformPreciseChoices == 3 && smartPlatformChoices>0 && smartPlatformHammers == 0 &&
+                        smartPlatformPrecisePending.Keys.All(smartPlatformPreciseShaped.Contains) &&
+                        smartPlatformLookups.Count >= smartPlatformChoices && smartPlatformProofValid && smartPlatformDirections.Values.All(value => value == direction + ",1") && p.inventory.All(item => item.hammer == 0),
+                        "each Smart body has same-frame Lookup; every temporary Precise flat is shaped by an observed authorized native neighbor write, with no hammer; direction=" + direction);
                     Require(Main.SmartCursorWanted_Mouse == expectedMouse && Main.SmartCursorWanted_GamePad == expectedPad,
                         "both original Smart preference values return after the temporary input scope");
                     long settled = (long)Get(host, "BuildUsesStarted");
@@ -742,7 +777,7 @@ namespace NativeWorldTextProbe
                 TileType=TileID.Stone,WallType=WallID.Stone,WallPaint=paint.paint }),44,42);
             var instance=Scene(host).Single();
             SetAutomatic(host,input,true);
-            Until(context,input,()=>Main.tile[44,42].wallColor()==paint.paint && ProgressDormant(instance) && !(bool)Get(Get(tools,"Use"),"Active"));
+            Until(context,input,()=>Main.tile[44,42].wallColor()==paint.paint && ProgressDormant(host,instance) && !(bool)Get(Get(tools,"Use"),"Active"));
             Require(!Main.tile[44,42].active() && Main.tile[44,42].wall==WallID.Stone && Main.tile[44,42].wallColor()==paint.paint &&
                 ReferenceEquals(p.inventory[12],paint) && paint.stack==1 && Scene(host).Contains(instance),
                 "a proved missing foreground skips only dependent work: the independent existing wall receives real paint and its exact debit while the unsupplied tile remains pending");
@@ -826,7 +861,16 @@ namespace NativeWorldTextProbe
                 foreach (var range in ((System.Collections.IEnumerable)Get(match, "Ranges")).Cast<object>())
                 {
                     var material = GetOptional(range, "Materials");
-                    if (material != null && (bool)Get(material, "BuildExhausted") && Get(material, "BuildWaits").ToString().Contains("Capability"))
+                    var near = NearRangeState(host, range);
+                    if (material == null || !(bool)Get(material, "Current") || !(bool)Get(range, "Current") ||
+                        (bool)Get(range, "Demand") || (bool)Get(range, "Reading") || near == null || !(bool)Get(near, "Complete")) continue;
+                    var facts = NearRangeFacts(host, range);
+                    // This known two-paint restoration shortage is a semantic
+                    // capability/material wait, not an exhausted forward walk
+                    // or a native rejection with a timed retry permission.
+                    if (facts.Length > 0 && facts.All(fact => !(bool)Get(fact, "Ready") && !(bool)Get(fact, "Pending")) &&
+                        facts.Any(fact => Get(fact, "Wait").ToString().Contains("Capability") && (ulong)Get(fact, "Retry") == 0 &&
+                            (int)Get(Get(Get(fact, "Seed"), "Cell"), "X") == 0 && (int)Get(Get(Get(fact, "Seed"), "Cell"), "Y") == 0))
                     { waitingMaterial = material; return true; }
                 }
                 return false;

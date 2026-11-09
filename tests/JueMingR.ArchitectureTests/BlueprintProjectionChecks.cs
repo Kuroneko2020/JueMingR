@@ -25,6 +25,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "shared instances and atomic layer/object delta", () => Scene(Path.Combine(area, "scene")));
             Run(failures, "liquid display and construction denominators", () => LiquidDenominators(Path.Combine(area, "liquid-denominators")));
             Run(failures, "qualified objects sibling masks and catalog revision", () => QualificationDenominators(Path.Combine(area, "qualification")));
+            Run(failures, "qualified directory cancellation sharing and worker fairness", () => QualificationDirectoryLifetime(Path.Combine(area, "qualification-directory")));
             Run(failures, "overlap reader retirement rejects late delta", () => CommitRetirement(Path.Combine(area, "commit-retirement")));
             Run(failures, "shared request saturation and eventual progress", () => Saturation(Path.Combine(area, "saturation")));
             Run(failures, "last reference retirement during reader disposal", () => LastReferenceWake(Path.Combine(area, "last-reference-wake")));
@@ -88,6 +89,9 @@ namespace JueMingR.ArchitectureTests
             BlueprintProjectionQualificationReceipt receipt=null;Until(()=>state.TryTakeProjectionQualification(out receipt));
             Require(receipt.Identity.Equals(identity) && ReferenceEquals(receipt.Catalog,catalog) && ReferenceEquals(receipt.Mask,mask) && receipt.CapabilityRevision==catalog.Revision,
                 "qualification receipt binds template/session/instance, catalog and exact mask reference");
+            Require(receipt.GeometryDirectory!=null && ReferenceEquals(receipt.GeometryDirectory.Sources,receipt.SourceRanges) &&
+                receipt.GeometryDirectory.NodeCount==Math.Max(0,receipt.SourceRanges.Count*2-1),
+                "qualification publishes only a complete directory bound to this exact qualified source sequence");
             return receipt;
         }
         private static void QualificationDenominators(string path)
@@ -129,6 +133,7 @@ namespace JueMingR.ArchitectureTests
                 var mask=covered.Masks[1];var after=Qualification(state,identity,catalog,mask);
                 Require(mask.RemovedLayerCount==6 && after.EffectiveRequiredLayerCount==5 && ReferenceEquals(after.MatchRanges,qualified.MatchRanges),
                     "covering one natural member removes the complete display object while construction count and shared derived geometry remain unchanged");
+                Require(ReferenceEquals(after.GeometryDirectory,qualified.GeometryDirectory),"mask-only qualification reuses the same frozen directory without another build");
                 var wallId=Open(state,wall,3);
                 var wallCovered=Commit(state,new BlueprintProjectionCommitRequest(11,9102,2,new BlueprintProjectionPlacement(wallId,incomingSummary,100,100,3),
                     new[]{new BlueprintProjectionPlacement(identity,opened.Summary,100,100,1,mask)}));
@@ -148,16 +153,63 @@ namespace JueMingR.ArchitectureTests
                 BlueprintProjectionQualificationReceipt changed=null;Until(()=>state.TryTakeProjectionQualification(out changed));
                 Require(changed.CapabilityRevision==902 && ReferenceEquals(changed.Mask,wallMask) && changed.TotalRequiredLayerCount==12 && changed.EffectiveRequiredLayerCount==5 && changed.EffectiveUnknownLayerCount==1,
                     "coverage loss restores real unknown responsibility only on still-unmasked content, with a new denominator and revision");
+                Require(!ReferenceEquals(changed.GeometryDirectory,qualified.GeometryDirectory) && !ReferenceEquals(changed.SourceRanges,qualified.SourceRanges),
+                    "catalog replacement cannot publish the old source's directory under the new qualification identity");
                 var raw=Window(state,identity,9104,new BlueprintProjectionBounds(0,0,4,2));
                 Require(raw.Cells.Count==8 && raw.Cells.Count(c=>c.TileType==187)==6 && raw.Cells.Any(c=>c.TileType==624 && (c.Layers&CaptureLayer.Liquid)!=0) && fixture.Hash==identity.ContentHash,
                     "qualification, masks and revision changes never rewrite the raw display window or original v1 content identity");
 #if DEBUG
-                Require(state.DebugProjectionStatistics.SourceIndexBytes>=qualified.SourceRanges.Sum(r=>r.SourceIndexBytes)+qualified.MatchRanges.Sum(r=>r.SourceIndexBytes),
+                Require(state.DebugProjectionStatistics.SourceIndexBytes>=changed.SourceRanges.Sum(r=>r.SourceIndexBytes)+changed.MatchRanges.Sum(r=>r.SourceIndexBytes)+changed.GeometryDirectory.Bytes,
                     "derived construction geometry is charged to the shared source index lifecycle");
 #endif
                 state.ReleaseProjection(identity);Require(!state.TryTakeProjectionQualification(out pending) && !state.RequestProjectionQualification(identity,catalog,wallMask),
                     "retired instance cannot accept a late qualification or resurrect the original template reference");
                 state.ReleaseProjection(incomingId);state.ReleaseProjection(wallId);Until(()=>counted.ActiveIndexes==0);
+            }
+        }
+        private static void QualificationDirectoryLifetime(string path)
+        {
+            const int groups=65;const int records=groups*CaptureChunk.MaximumRecords;
+            var fixture=Write(path,1024,records/1024,records,n=>Tile(37+(int)(n%1024),91+(int)(n/1024)));
+            using(var counted=new CountedFiles(path))using(var state=new LibraryState(counted))
+            {
+                var first=Open(state,fixture,1);var sibling=Open(state,fixture,2);var catalog=BlueprintQualificationChecks.Catalog();
+                const System.Reflection.BindingFlags flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+                var worker=typeof(LibraryState).GetField("worker",flags).GetValue(state);
+                // Hold the real uncached first block, after Open has finished.
+                // Retirement acts on the accepted request, never by replacing
+                // a builder, ready flag or result. The sibling keeps the file.
+                counted.HoldBlock=0;
+                Require(state.RequestProjectionQualification(first,catalog,BlueprintProjectionMask.Empty),"first real qualification request is accepted");
+                Require(counted.BlockEntered.Wait(5000),"qualification reaches its actual uncached first source block");
+#if DEBUG
+                Require((long)worker.GetType().GetField("projectionQualificationWorkingBytes",flags).GetValue(worker)>0,
+                    "live builder allocation is charged even while the qualification reader is waiting");
+#endif
+                state.ReleaseProjection(first);
+                Require(state.RequestProjectionQualification(sibling,catalog,BlueprintProjectionMask.Empty) && state.TryList(91601,0),
+                    "sibling qualification and ordinary accepted library command retain their own lanes during cancellation");
+                counted.BlockRelease.Set();
+                Require(Library(state,true).Status==LibraryStatus.Completed,"accepted List is serviced at the existing cooperative worker boundary");
+                BlueprintProjectionQualificationReceipt receipt=null;Until(()=>state.TryTakeProjectionQualification(out receipt));
+                Require(receipt.Identity.Equals(sibling) && receipt.SourceRanges.Count==groups && receipt.GeometryDirectory.NodeCount==2*groups-1 && counted.ActiveIndexes==1,
+                    "cancelled first request publishes nothing; the real sibling qualifies complete geometry without losing its shared reader");
+                var another=Open(state,fixture,3);var shared=Qualification(state,another,catalog,BlueprintProjectionMask.Empty);
+                Require(ReferenceEquals(receipt.GeometryDirectory,shared.GeometryDirectory),"another same-template instance receives the same frozen directory");
+#if DEBUG
+                Require((long)worker.GetType().GetField("projectionGeometryDirectoryBuilds",flags).GetValue(worker)==2 &&
+                    (long)worker.GetType().GetField("projectionGeometryDirectoryNodes",flags).GetValue(worker)==2*groups-1 &&
+                    (long)worker.GetType().GetField("projectionGeometryDirectoryCancelled",flags).GetValue(worker)==1 &&
+                    (long)worker.GetType().GetField("projectionGeometryDirectoryMaximumBatch",flags).GetValue(worker)<=64,
+                    "one cancelled allocation and one successful build account for every bounded node batch, with no extra mask rebuild");
+#endif
+                state.ReleaseProjection(sibling);state.ReleaseProjection(another);Until(()=>counted.ActiveIndexes==0);
+#if DEBUG
+                Until(()=>state.DebugProjectionStatistics.SourceIndexBytes==0 && state.DebugProjectionStatistics.WindowWorkingBytes==0 && state.DebugProjectionStatistics.PendingRequests==0);
+                Require(state.DebugProjectionStatistics.ReceiptBytes==0,"last reference retires directory, scratch and receipt byte ownership");
+#endif
+                Require(!state.TryTakeProjectionQualification(out receipt),"last reference cannot publish late cancelled geometry");
+                Console.WriteLine("BlueprintProjection directory groups=65 cancelledBuilders=1 publishedBuilders=1 nodes=129 maxBatch=64 maskRebuilds=0 acceptedList=true sharedReader=true lastReferenceBytes=0");
             }
         }
         private static void Until(Func<bool> condition)

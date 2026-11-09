@@ -58,7 +58,10 @@ namespace NativeWorldTextProbe
                         outlets.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,F),prefix:new HarmonyMethod(typeof(NativeBlueprintQualificationChecks),nameof(SkipOutlet)));
                     NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperPickaxe,0,0);
                     player.releaseUseItem = true; player.builderAccStatus[10] = 0;
-                    Action step = ()=>{NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");};
+                    // Each simulated update receives a real input sample:
+                    // placement compilation claims at most one batch from
+                    // that Mapping, not from the world's separate counter.
+                    Action step = ()=>{NativeQuickItemChecks.Sample(input,Array.Empty<Keys>());NativeQuickItemChecks.BeginWorldStep();Call(context,"UpdateRuntime");};
                     NativeQuickItemChecks.Sample(input,Array.Empty<Keys>()); step();
                     NativeQuickItemChecks.Until(()=>{step();return (bool)Get(host,"ControlsEnabled");});
 
@@ -103,11 +106,45 @@ namespace NativeWorldTextProbe
         private static long Matches(object item){var value=GetOptional(item,"Match");return value==null?0:(long)Get(value,"Matches");}
         private static void Ready(object host,object item,Action step)
         {
-            NativeQuickItemChecks.Until(()=>
+            var input=Get(host,"Input");var native=Get(Get(host,"materialKnowledge"),"Native");
+            long firstMapping=(long)Get(input,"Mapping"),firstReads=(long)Get(native,"PlacementReads");
+            int firstProgress=(int)Get(native,"PlacementProgress");
+            try
             {
-                step();var value=GetOptional(item,"Match");return Scene(host).Contains(item) && (bool)Call(host,"ProjectionQualificationCurrent",item) && value!=null &&
-                    (int)Get(value,"Current")==((Array)Get(value,"Ranges")).Length;
-            });
+                NativeQuickItemChecks.Until(()=>
+                {
+                    step();var value=GetOptional(item,"Match");return Scene(host).Contains(item) && (bool)Call(host,"ProjectionQualificationCurrent",item) && value!=null &&
+                        (int)Get(value,"Current")==((Array)Get(value,"Ranges")).Length;
+                });
+            }
+            catch(Exception failure)
+            {
+                // One bounded failure witness. Read existing fields/results;
+                // never grant another mapping/batch or warm the catalog while
+                // reporting why the unchanged wait did not reach qualification.
+                try
+                {
+                    var library=(LibraryState)Get(host,"Library");var worker=Get(library,"worker");
+                    var match=GetOptional(item,"Match");var qualification=Qualification(item);
+                    Console.WriteLine("BlueprintQualificationReadyFailure exception="+failure.GetType().FullName+" mapping="+firstMapping+"->"+Get(input,"Mapping")+
+                        " world="+Main.GameUpdateCount+" progress="+firstProgress+"->"+Get(native,"PlacementProgress")+
+                        " placementReads="+firstReads+"->"+Get(native,"PlacementReads")+" placementCursor="+Get(native,"placementCursor")+
+                        " dirty="+Get(native,"dirty")+" placementReady="+Get(native,"PlacementReady")+
+                        " catalogPresent="+(GetOptional(native,"materialCatalog")!=null)+" sampleCount="+Terraria.ID.ContentSamples.ItemsByType.Count+
+                        "/"+ItemID.Count+" sceneContains="+Scene(host).Contains(item)+" opened="+Get(item,"Opened")+
+                        " qualification="+(qualification!=null)+" requestedRevision="+Get(item,"QualificationRequestedRevision")+
+                        " qualificationError="+(qualification?.Error??"none")+" match="+(match!=null)+
+                        " matchCurrent/ranges="+(match==null?"none":Get(match,"Current")+"/"+((Array)Get(match,"Ranges")).Length)+
+                        " libraryReceipt="+library.Snapshot.LastReceipt?.Status+" libraryError="+library.Snapshot.LastReceipt?.Error);
+                    lock(Get(worker,"gate"))
+                        Console.WriteLine("BlueprintQualificationReadyWorker queued="+Get(Get(worker,"projectionQualificationRequests"),"Count")+
+                            " active="+(GetOptional(worker,"projectionQualifying")!=null)+" receipts="+Get(Get(worker,"projectionQualificationReceipts"),"Count")+
+                            " owners="+Get(Get(worker,"projectionOwners"),"Count")+" directoryBuilds="+Get(worker,"projectionGeometryDirectoryBuilds")+
+                            " directoryNodes="+Get(worker,"projectionGeometryDirectoryNodes")+" rootFailure="+(GetOptional(worker,"rootFailure")??"none"));
+                }
+                catch(Exception observationError){Console.WriteLine("BlueprintQualificationReadyFailure observationUnavailable="+observationError.GetType().FullName+":"+observationError.Message);}
+                throw;
+            }
         }
         private static void Window(object host,object item,Action step)
         {
@@ -198,12 +235,15 @@ namespace NativeWorldTextProbe
                 "actual catalog invalidation withdraws old proof, move lock and denominator before the replacement directory is ready");
             Ready(host,item,step);var current=Qualification(item);var match=Get(item,"Match");
             Require(current.CapabilityRevision>old.CapabilityRevision,"real native catalog rebuild publishes a new capability identity");
+            Require(!ReferenceEquals(current.GeometryDirectory,old.GeometryDirectory) && ReferenceEquals(current.GeometryDirectory.Sources,current.SourceRanges),
+                "native catalog invalidation publishes complete geometry under the new qualified source, never the old directory");
             Call(host,"AcceptProjectionQualification",item,old);
             Require(ReferenceEquals(Qualification(item),current) && ReferenceEquals(Get(item,"Match"),match),"late real old-catalog receipt cannot replace current Host qualification or proof");
             var coverEntry=Save(library,new CaptureSummary{Width=1,Height=1},new[]{new CaptureCell{Layers=CaptureLayer.Tile,TileType=TileID.Stone}});
             var cover=NativeBlueprintWorldMatchChecks.Place(host,input,coverEntry,100,60,step);
             NativeQuickItemChecks.Until(()=>{step();return ((BlueprintProjectionMask)Get(item,"Mask")).RemovedLayerCount==6;});Ready(host,item,step);
             var masked=Qualification(item);var mask=(BlueprintProjectionMask)Get(item,"Mask");
+            Require(ReferenceEquals(masked.GeometryDirectory,current.GeometryDirectory),"the real mask-only native qualification shares geometry while rebuilding current world proof");
             Require(masked.EffectiveRequiredLayerCount==6 && raw.Cells.Where(c=>c.TileType==187).All(c=>(mask.Apply(c).Layers&CaptureLayer.Tile)==0) &&
                 (mask.Apply(raw.Cells.Single(c=>c.X==0 && c.Y==0)).Layers&(CaptureLayer.Wall|CaptureLayer.Wire|CaptureLayer.Actuator))==(CaptureLayer.Wall|CaptureLayer.Wire|CaptureLayer.Actuator),
                 "one overlapping Tile masks the entire display object, preserves raw geometry/sibling layers and does not deduct construction targets");

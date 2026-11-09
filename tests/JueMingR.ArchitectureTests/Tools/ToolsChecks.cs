@@ -35,6 +35,27 @@ namespace JueMingR.ArchitectureTests
                 owner.EndUse(1,later);Require(owner.HasUse,"old/foreign finalizer cannot end a building lease");
                 owner.EndUse(1,building);Require(!owner.AnyProtected && owner.TryBeginUse(1,18,later),"exact building completion releases only its own source set");
                 owner.EndUse(1,later);Require(!owner.AnyProtected,"matching lease released");
+                var continuation=new ItemOperationOwnership();continuation.SetSession(7);
+                ulong oldDependencies=(1UL<<20)|(1UL<<54),newDependencies=1UL<<12;
+                long sameToken=continuation.NewUseToken();
+                Require(continuation.TryBeginUse(7,14,sameToken,oldDependencies),"settled paint fixture owns exact held source and old mask");
+                Require(!continuation.TryContinueUse(8,14,sameToken,oldDependencies,newDependencies) &&
+                    !continuation.TryContinueUse(7,14,sameToken+1,oldDependencies,newDependencies) &&
+                    !continuation.TryContinueUse(7,14,sameToken,1UL<<54,newDependencies) &&
+                    !continuation.TryContinueUse(7,20,sameToken,oldDependencies|(1UL<<14),newDependencies) &&
+                    !continuation.TryContinueUse(7,14,sameToken,oldDependencies,1UL<<58),
+                    "foreign session/token, stale dependencies, changed held source and invalid endpoints cannot retarget a lease");
+                Require(continuation.TryContinueUse(7,14,sameToken,oldDependencies,newDependencies) &&
+                    continuation.OwnsUse(7,sameToken) && continuation.IsProtected(14) && continuation.IsProtected(12) &&
+                    !continuation.IsProtected(20) && !continuation.IsProtected(54),"atomic dependency change preserves token/source and releases only settled old endpoints");
+                continuation.EndUse(7,sameToken+1);Require(continuation.HasUse,"foreign completion cannot release continued token");
+                continuation.EndUse(7,sameToken);Require(!continuation.AnyProtected,"single exact completion releases continued source and new material");
+                sameToken=continuation.NewUseToken();Require(continuation.TryBeginUse(7,14,sameToken,oldDependencies),"new separate protected-material control");
+                continuation.HoldInterruptedSource(7,newDependencies);
+                Require(!continuation.TryContinueUse(7,14,sameToken,oldDependencies,newDependencies) &&
+                    continuation.OwnsUse(7,sameToken) && continuation.IsProtected(20) && continuation.IsProtected(54),
+                    "an unknown new endpoint blocks continuation without releasing the existing exact lease");
+                continuation.EndUse(7,sameToken);Require(continuation.IsProtected(12),"ending use never clears unrelated unknown protection");
                 Require(typeof(JueMingR.Features.Processing.ProcessingOptions).Assembly.GetType("JueMingR.Features.Tools.MiningRegion")!=null,"bounded mining region is missing");
                 Policies();Storage();
             }

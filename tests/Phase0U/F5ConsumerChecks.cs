@@ -105,6 +105,8 @@ namespace Terraria
                 Main.SampleRight = false; Main.SpecialNpc = false;
                 object state = State();
                 object layout = Get(state, "Layout");
+                Check((int)Get(state,"Page")==5,"the actual process Shell starts at About");
+                state.GetType().GetMethod("Navigate",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(state,new object[]{9}); main.DrawAllFixtureLayers();
                 CheckNativeModes(main, state);
                 CheckNotesModalSample(main, state);
                 int generation = (int)Get(layout, "Generation"), measurements = (int)Get(layout, "MeasurementCount");
@@ -194,6 +196,7 @@ namespace Terraria
                 Main.gameMenu = true; FrameLocal(main, state, 30, 15, true);
                 Check(!(bool)Get(state, "Visible"), "world exit closes the F5 window");
                 Main.gameMenu = false; Frame(main, 20, 20);
+                Check(ReferenceEquals(state,State()) && (int)Get(state,"Page")==9,"same-process world exit retains the same Shell page owner");
                 Main.UIScaleMatrix = Matrix.Identity;
                 GameInput.PlayerInput.FixtureScreen = new Vector2(1920, 1080);
 

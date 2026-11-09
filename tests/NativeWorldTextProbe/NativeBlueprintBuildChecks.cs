@@ -18,9 +18,14 @@ namespace NativeWorldTextProbe
     internal static partial class NativeBlueprintBuildChecks
     {
         private const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+        // All partial consumers execute this initialization, even SupplyRepair
+        // which never calls Door's private assertion body. Keep it with Reset/Step.
+        private sealed class DoorNativeAction
+        { internal int X, Y; internal string Kind; }
+        private static readonly System.Collections.Generic.List<DoorNativeAction> doorRepairActions = new System.Collections.Generic.List<DoorNativeAction>();
         private static object faultTools;
         private static bool reportedNativeFault;
-        internal static void Run(object context, bool throughputOnly=false, bool cadenceOnly=false)
+        internal static void Run(object context, bool throughputOnly=false, bool cadenceOnly=false, bool coldHandoffOnly=false)
         {
             var host = Get(context, "Blueprint"); var tools = Get(context, "Tools"); var input = Get(context, "Input");
             NativeToolExecutionChecks.Initialize(context, null);
@@ -51,7 +56,11 @@ namespace NativeWorldTextProbe
                         try { body(); Console.WriteLine("PASS BlueprintBuild case=" + name); }
                         catch (Exception error) { Console.Error.WriteLine("BUILD CASE " + name + ": " + error); if (first == null) first = error; }
                     };
-                    if(cadenceOnly)
+                    if(coldHandoffOnly)
+                    {
+                        check("scheduler cold different material native", () => SchedulerColdHandoffRuntime(context,host,tools,input));
+                    }
+                    else if(cadenceOnly)
                     {
                         check("scheduler rooted dependency vertical", () => SchedulerDependencyChain(context,host,tools,input));
                         check("scheduler rooted dependency horizontal", () => SchedulerDependencyChain(context,host,tools,input,true));
@@ -59,6 +68,7 @@ namespace NativeWorldTextProbe
                         check("scheduler late current source", () => SchedulerLateCurrentSource(context,host,tools,input));
                         check("scheduler known positive with late source", () => SchedulerKnownPositiveWhileSourcePending(context,host,tools,input));
                         check("scheduler cold known positive native", () => SchedulerColdKnownPositiveRuntime(context,host,tools,input));
+                        check("scheduler cold different material native", () => SchedulerColdHandoffRuntime(context,host,tools,input));
                         check("scheduler exact native handoff", () => SchedulerNativeHandoffCadence(context,host,tools,input));
                         check("scheduler known wall refusal", () => SchedulerKnownRefusalCompetition(context,host,tools,input,0));
                         check("scheduler known anchor refusal", () => SchedulerKnownRefusalCompetition(context,host,tools,input,1));

@@ -73,6 +73,7 @@ namespace JueMingR.Features.Blueprint
             internal BlueprintPlacementCatalog Catalog;
             internal IBlueprintHorizontalMirrorProfile Profile;
             internal IReadOnlyList<BlueprintProjectionSourceRange> Sources, Proofs;
+            internal BlueprintProjectionGeometryDirectory Directory;
             internal long Bytes;
         }
         // One files owner and one global decoded cache serve every instance.

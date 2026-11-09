@@ -10,11 +10,14 @@ namespace JueMingR.Features.Blueprint
         internal const long DescriptorBytes = 256;
         internal BlueprintProjectionQualificationReceipt(BlueprintProjectionIdentity identity, BlueprintPlacementCatalog catalog,
             BlueprintProjectionMask mask, long total, long effective, long unknown, IReadOnlyList<BlueprintProjectionSourceRange> sourceRanges,
-            IReadOnlyList<BlueprintProjectionSourceRange> matchRanges, string error = null, BlueprintProjectionView view = null)
+            IReadOnlyList<BlueprintProjectionSourceRange> matchRanges, BlueprintProjectionGeometryDirectory directory,
+            string error = null, BlueprintProjectionView view = null)
         {
             Identity = identity; Catalog = catalog; Mask = mask; TotalRequiredLayerCount = total;
             EffectiveRequiredLayerCount = effective; EffectiveUnknownLayerCount = unknown;
             SourceRanges = sourceRanges; MatchRanges = matchRanges; Error = error; View = view;
+            if(directory==null || !ReferenceEquals(directory.Sources,sourceRanges))throw new ArgumentException("blueprint-directory-source-identity",nameof(directory));
+            GeometryDirectory=directory;
         }
         public BlueprintProjectionIdentity Identity { get; }
         public BlueprintPlacementCatalog Catalog { get; }
@@ -26,6 +29,7 @@ namespace JueMingR.Features.Blueprint
         public long EffectiveUnknownLayerCount { get; }
         public IReadOnlyList<BlueprintProjectionSourceRange> SourceRanges { get; }
         public IReadOnlyList<BlueprintProjectionSourceRange> MatchRanges { get; }
+        public BlueprintProjectionGeometryDirectory GeometryDirectory { get; }
         public string Error { get; }
         public BlueprintProjectionView View { get; }
     }

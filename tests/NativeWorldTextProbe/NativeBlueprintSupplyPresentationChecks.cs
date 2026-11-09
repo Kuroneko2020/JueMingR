@@ -125,6 +125,7 @@ namespace NativeWorldTextProbe
                     "a later paused update/tail cannot replay old swaps or close the player's inventory after takeover");
                 ManualPreparationClick(context,input,p,20);p.ToggleInv();Require(!SupplyAutoPauseStep(context,input),"manual owner completes its real cursor move and closes its own UI");
                 Console.WriteLine("PASS BlueprintAutoPause newPreparationBlocked=true readyAndUsingNotInventoryContinuation=true nativePausedInventoryTakeover=true oldTailCannotMoveOrClose=true");
+                SupplyAutoPauseContinuation(context,host,tools,input);
             }
             finally
             {
@@ -132,6 +133,57 @@ namespace NativeWorldTextProbe
                 Main.autoPause=oldPause;Main.gamePaused=oldPaused;Main.ingameOptionsWindow=oldOptions;
                 foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);
             }
+        }
+        private static void SupplyAutoPauseContinuation(object context,object host,object tools,object input)
+        {
+            Main.autoPause=false;
+            var p=Reset(context,host,tools,input);var preparation=Get(host,"buildMaterialPreparation");
+            p.inventory[12].SetDefaults(ItemID.Paintbrush);
+            p.inventory[20].SetDefaults(ItemID.RedPaint);p.inventory[20].stack=1;var first=p.inventory[20];
+            p.inventory[21].SetDefaults(ItemID.RedPaint);p.inventory[21].stack=3;var next=p.inventory[21];
+            p.inventory[22].SetDefaults(ItemID.BluePaint);p.inventory[22].stack=3;var other=p.inventory[22];
+            p.inventory[54].SetDefaults(ItemID.GreenPaint);p.inventory[54].stack=7;var priority=p.inventory[54];
+            foreach(int x in new[]{44,45,46})NativeToolsChecks.Tile(x,42,TileID.Stone);
+            Place(context,host,input,Asset(host,
+                new CaptureCell{Layers=CaptureLayer.Tile,TileType=TileID.Stone,TilePaint=first.paint},
+                new CaptureCell{X=1,Layers=CaptureLayer.Tile,TileType=TileID.Stone,TilePaint=other.paint},
+                new CaptureCell{X=2,Layers=CaptureLayer.Tile,TileType=TileID.Stone,TilePaint=next.paint}),44,42);
+            continuousPlacements.Clear();continuousHost=host;continuousUse=Get(tools,"Use");continuousWatch=continuousAutomatic=true;
+            SetAutomatic(host,input,true);
+            NativeQuickItemChecks.Until(()=>{SupplyAutoPauseStep(context,input);return continuousPlacements.Count>0;});
+            Require(continuousPlacements.Count==1 && ReferenceEquals(continuousPlacements[0].Supply,first),
+                "the first real red consumer establishes A before owned auto pause begins");
+            var group=Get(host,"buildContinuation");Require(group!=null,"actual first consumption publishes the business preference");
+            Main.autoPause=true;bool preparing=false,ready=false,returnTail=false;
+            for(int i=0;i<180 && (Scene(host).Length!=0 || (bool)Get(preparation,"HasWork"));i++)
+            {
+                SupplyAutoPauseStep(context,input);
+                if(continuousPlacements.Count==1 && Main.gamePaused)
+                {
+                    Require(ReferenceEquals(group,Get(host,"buildContinuation")),"self-owned paused preparation/return preserves established A");
+                    preparing|=(bool)Get(preparation,"HasWork") && !(bool)Get(preparation,"Ready");
+                    if((bool)Get(preparation,"Ready"))
+                    {
+                        ready=true;int count=continuousPlacements.Count;uint world=Main.GameUpdateCount;
+                        Call(context,"UpdateRuntime");constructionInputTail();
+                        Require(ReferenceEquals(group,Get(host,"buildContinuation")) && continuousPlacements.Count==count && Main.GameUpdateCount==world &&
+                            !(bool)Get(preparation,"CanClickNow"),"Ready pause tail keeps A but authorizes no inventory/world action");
+                    }
+                    if(!(bool)Get(preparation,"HasWork") && !Main.playerInventory)
+                    {
+                        returnTail=true;Call(context,"UpdateRuntime");
+                        Require(ReferenceEquals(group,Get(host,"buildContinuation")),"completed return retains A for only its natural paused world epoch");
+                    }
+                }
+            }
+            Require(preparing && ready && returnTail && continuousPlacements.Count==3 &&
+                ReferenceEquals(continuousPlacements[1].Supply,next) && ReferenceEquals(continuousPlacements[2].Supply,other) &&
+                first.IsAir && next.stack==2 && other.stack==2 && ReferenceEquals(p.inventory[54],priority) && priority.stack==7 &&
+                !(bool)Get(preparation,"HasWork") && Scene(host).Length==0,
+                "A resumes from the other exact stack before nearby B, each paint debits once and returns original54 without reviving a receipt");
+            Require(!SupplyAutoPauseStep(context,input) && !(bool)Call(preparation,"RetainsBuildIntent",p),
+                "the next real world step expires completed return intent, with no stale receipt exception");
+            Console.WriteLine("PASS BlueprintAutoPause establishedA=true preparingAndReadyAndReturnTail=true order=Red,Red,Blue exactDebit=3 pausedWorldActions=0");
         }
         // This deliberate interception executes the real patched interface
         // entry/exit without a GPU body. It proves scope and cleanup, never

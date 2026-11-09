@@ -144,7 +144,7 @@ function Read-WorkloadJson {
 function Get-WorkloadClearedEnvironment {
     # These are fixture selectors, never inherited proof of a full scope.
     $known=(Read-WorkloadNativeDispatch).selectors
-    $selectors=@(Get-ChildItem Env: | Where-Object {$known.Contains($_.Name) -or $_.Name -match '^JUEMINGR_.*(ONLY|SCOPE|PHASES?|SINGLE)$'})
+    $selectors=@(Get-ChildItem Env: | Where-Object {$known.Contains($_.Name) -or $_.Name -match '^(JUEMINGR|JMR)_.*(ONLY|SCOPE|PHASES?|SINGLE|CANDIDATE)$'})
     foreach ($item in $selectors) { if (!$known.Contains($item.Name)) {throw ('Unknown inherited workload selector: '+$item.Name)} }
     if ($env:JMR_INPUT_DIAGNOSTIC -or $env:JMR_INPUT_DIAGNOSTIC_WINDOW) {throw 'Diagnostic process switches are not ordinary workload inputs.'}
     return $selectors
@@ -769,6 +769,10 @@ function Test-WorkloadEvidenceOutputs {
 }
 function Get-WorkloadPlan {
     param([string] $Root, [string] $ChecksRoot, [string] $Architecture, [string[]] $Catalog, [string[]] $Groups)
+    # Git and native Windows callers spell the same repository root differently.
+    # Give every caller the same actual child argv before its exact signature is
+    # calculated; never normalize a retained signature or execution receipt.
+    $Root = [IO.Path]::GetFullPath($Root).Replace([char]'\',[char]'/')
     $plan = New-Object 'System.Collections.Generic.List[object]'
     foreach ($line in $Catalog) {
         $parts = $line.Split('|')
@@ -787,7 +791,7 @@ function Get-WorkloadPlan {
         'world-targets-observation'=@('world-host','shared-host'); 'world-targets-projection'=@('world-host','shared-host');
         'entity-observation'=@('world-host','shared-host'); 'entity-projection'=@('shared-host');
         'entity-preferences'=@('shared-host'); 'entity-controls'=@('shared-host');
-        'items-safety'=@('shared-host'); 'information-defaults'=@('shared-host')
+        'items-safety'=@('shared-host'); 'items-storage'=@('shared-host'); 'information-defaults'=@('shared-host')
     }
     foreach ($mode in $modes.Keys) {
         $script:WorkloadCheckGroups['fixture-'+$mode]=@($modes[$mode])

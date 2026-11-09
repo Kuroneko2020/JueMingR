@@ -18,6 +18,82 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+# New task leaves have one exact formal native responsibility each.
+foreach($identityHelper in @('NativePlacementIdentityChecks.cs','NativeSwitchIdentityChecks.cs','NativeLegacyPlacementIdentityChecks.cs')){
+    $identityPath='tests/NativeWorldTextProbe/'+$identityHelper
+    Assert-Route ((@(Get-WorkloadPathChecks $identityPath) -join '|') -ceq 'native-BrowserCpu') ('private identity helper exact consumer '+$identityHelper)
+    $identityRoute=Get-WorkloadRoute @($identityPath)
+    Assert-Route ($identityRoute.unknown.Count -eq 0) ('identity helper classified '+$identityHelper)
+    $identityPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $identityRoute.groups)
+    Assert-Route ($identityPlan.Count -eq 1 -and $identityPlan[0].name -ceq 'native-BrowserCpu' -and $identityPlan[0].arguments[-1] -ceq 'BrowserCpu') ('identity helper selects real BrowserCpu entry '+$identityHelper)
+    $identityBefore=[pscustomobject]@{inputs=@($identityPath+':'+('A'*64))}
+    $identityAfter=[pscustomobject]@{inputs=@($identityPath+':'+('B'*64))}
+    Assert-Route ((Get-WorkloadCheckFingerprint $identityBefore 'native-BrowserCpu') -cne (Get-WorkloadCheckFingerprint $identityAfter 'native-BrowserCpu')) ('identity bytes invalidate actual consumer '+$identityHelper)
+    Assert-Route ((Get-WorkloadCheckFingerprint $identityBefore 'native-BlueprintAppearanceCpu') -ceq (Get-WorkloadCheckFingerprint $identityAfter 'native-BlueprintAppearanceCpu')) ('identity private helper preserves unrelated appearance proof '+$identityHelper)
+}
+$queueHelper='tests/NativeWorldTextProbe/NativeBlueprintQueueRecoveryChecks.cs'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeBlueprintReachAdmissionChecks.cs') -join '|') -ceq 'native-BlueprintNearQueueCpu') 'tool recovery admission fixture has exact queue consumer'
+Assert-Route ((@(Get-WorkloadPathChecks $queueHelper) -join '|') -ceq 'native-BlueprintNearQueueCpu') 'queue recovery assertions have one actual private consumer'
+$queueRoute=Get-WorkloadRoute @($queueHelper)
+$queuePlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $queueRoute.groups)
+Assert-Route ($queueRoute.unknown.Count -eq 0 -and $queuePlan.Count -eq 1 -and $queuePlan[0].name -ceq 'native-BlueprintNearQueueCpu') 'queue recovery helper selects actual formal leaf'
+$queueBefore=[pscustomobject]@{inputs=@($queueHelper+':'+('A'*64))}
+$queueAfter=[pscustomobject]@{inputs=@($queueHelper+':'+('B'*64))}
+Assert-Route ((Get-WorkloadCheckFingerprint $queueBefore 'native-BlueprintNearQueueCpu') -cne (Get-WorkloadCheckFingerprint $queueAfter 'native-BlueprintNearQueueCpu')) 'private recovery assertions invalidate queue proof'
+Assert-Route ((Get-WorkloadCheckFingerprint $queueBefore 'native-BlueprintSupplyContinuationCpu') -ceq (Get-WorkloadCheckFingerprint $queueAfter 'native-BlueprintSupplyContinuationCpu')) 'private recovery body preserves independent SupplyRepair proof'
+$emptyReceiptPath='tests/NativeWorldTextProbe/NativeBlueprintEmptyReceiptChecks.cs'
+Assert-Route (((@(Get-WorkloadPathChecks $emptyReceiptPath)|Sort-Object)-join '|') -ceq 'native-BlueprintAppearanceCpu|native-BlueprintConstructionCpu') 'empty receipt case owns its actual appearance runner consumers'
+$emptyBefore=[pscustomobject]@{inputs=@($emptyReceiptPath+':'+('A'*64))}
+$emptyAfter=[pscustomobject]@{inputs=@($emptyReceiptPath+':'+('B'*64))}
+Assert-Route ((Get-WorkloadCheckFingerprint $emptyBefore 'native-BlueprintAppearanceCpu') -cne (Get-WorkloadCheckFingerprint $emptyAfter 'native-BlueprintAppearanceCpu')) 'empty receipt assertions invalidate actual appearance proof'
+Assert-Route ((Get-WorkloadCheckFingerprint $emptyBefore 'native-BlueprintNearQueueCpu') -ceq (Get-WorkloadCheckFingerprint $emptyAfter 'native-BlueprintNearQueueCpu')) 'private empty receipt assertions preserve unrelated queue proof'
+foreach($privateHelper in @('tests/NativeWorldTextProbe/NativeBlueprintSettledPaintAdmissionChecks.cs','tests/NativeWorldTextProbe/NativeBlueprintReachAdmissionChecks.cs')){
+    $privateRoute=Get-WorkloadRoute @($privateHelper)
+    $privatePlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $privateRoute.groups)
+    $expectedPrivate=if($privateHelper -match 'SettledPaint'){@('native-BlueprintAppearanceCpu','native-BlueprintConstructionCpu')}else{@('native-BlueprintNearQueueCpu')}
+    Assert-Route ($privateRoute.unknown.Count -eq 0 -and (($privatePlan.name|Sort-Object)-join '|') -ceq (($expectedPrivate|Sort-Object)-join '|')) ('private admission case actual formal consumers '+$privateHelper)
+    $privateBefore=[pscustomobject]@{inputs=@($privateHelper+':'+('A'*64))};$privateAfter=[pscustomobject]@{inputs=@($privateHelper+':'+('B'*64))}
+    foreach($consumer in $expectedPrivate){Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore $consumer) -cne (Get-WorkloadCheckFingerprint $privateAfter $consumer)) ('private admission bytes invalidate actual consumer '+$consumer)}
+    Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore 'native-BlueprintSupplyContinuationCpu') -ceq (Get-WorkloadCheckFingerprint $privateAfter 'native-BlueprintSupplyContinuationCpu')) ('private admission helper preserves unrelated SupplyRepair '+$privateHelper)
+}
+foreach($scope in @('BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu')){
+    $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-'+$scope))
+    Assert-Route ($plan.Count -eq 1 -and $plan[0].name -ceq ('native-'+$scope) -and $plan[0].arguments[-1] -ceq $scope) ('exact new native scope '+$scope)
+    Assert-Route ($null -ne (Get-WorkloadExpectedNativeLeaf ('native-'+$scope))) ('new scope completion registered '+$scope)
+}
+$supply='native-BlueprintSupplyContinuationCpu'
+Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeBlueprintConstructionDoorChecks.cs') -notcontains $supply) 'Door private body does not select SupplyRepair'
+foreach($helper in @('SupplyConversion','SupplyHandoff','SupplyReady','PostProcessingContinuity','Build','Construction','WorldMatch','ConstructionAppearance')){
+    $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
+    Assert-Route (@(Get-WorkloadPathChecks $path) -contains $supply) ('actual SupplyRepair helper selects its consumer '+$helper)
+    $route=Get-WorkloadRoute @($path)
+    Assert-Route (@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $route.groups|ForEach-Object {$_.name}) -contains $supply) ('actual route/plan contains SupplyRepair '+$helper)
+}
+foreach($helper in @('SupplyHandoffChecks.cs','SchedulerOpportunityChecks.cs','SchedulerFreshnessChecks.cs','CompletionV2Checks.cs','LibraryWait.cs','PostProcessingContinuityChecks.cs','WiringZeroDebitChecks.cs','BuildMixedSourceChecks.cs','BuildProgressChecks.cs')){
+    $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper
+    $old=[pscustomobject]@{inputs=@($path+':A')};$new=[pscustomobject]@{inputs=@($path+':B')}
+    Assert-Route (@(Get-WorkloadPathChecks $path) -contains 'native-BlueprintNearQueueCpu') ('NearQueue real helper route '+$helper)
+    Assert-Route ((Get-WorkloadCheckFingerprint $old 'native-BlueprintNearQueueCpu') -cne (Get-WorkloadCheckFingerprint $new 'native-BlueprintNearQueueCpu')) ('NearQueue real helper body changes invalidate '+$helper)
+}
+# The real hidden-entry Shell helper remains a conservative shared input.
+# Do not replace that existing responsibility with an exclusive two-leaf map.
+$hiddenPath='tests/NativeWorldTextProbe/NativeHiddenEntryChecks.cs'
+foreach($consumer in @('native-NpcProduction','native-NpcDiagnosticsOff')){
+    $before=[pscustomobject]@{inputs=@($hiddenPath+':A')};$after=[pscustomobject]@{inputs=@($hiddenPath+':B')}
+    Assert-Route ((Get-WorkloadCheckFingerprint $before $consumer) -cne (Get-WorkloadCheckFingerprint $after $consumer)) ('ordinary native window owns real hidden-entry prerequisite '+$consumer)
+}
+# Real Git-root and Windows-root callers must launch identical argv, rather
+# than obtaining incompatible evidence signatures for the same directory.
+$rootForms=@($repositoryRoot,$repositoryRoot.Replace([char]'\',[char]'/'))
+$rootPlans=@(foreach($rootForm in $rootForms){
+    $checks=Join-Path $rootForm 'artifacts/build/Debug/checks'
+    $architecture=Join-Path $rootForm 'artifacts/build/Debug/work/bin/JueMingR.ArchitectureTests/x86/Debug/net472/JueMingR.ArchitectureTests.exe'
+    $rows=@(Get-WorkloadPlan $rootForm $checks $architecture @('RootContract|core') @('core','combat-host','workload-tools') | ForEach-Object {
+        $_.name+':'+(Get-WorkloadHash (@($_.executable)+@($_.arguments)))
+    } | Sort-Object)
+    [pscustomobject]@{rows=($rows -join "`n")}
+})
+Assert-Route ($rootPlans[0].rows -ceq $rootPlans[1].rows) 'Git and native Windows root spellings produce identical complete launch signatures'
 $dispatchPath='tests/NativeWorldTextProbe/NativeScopeDispatch.cs'
 $dispatchRoute=Get-WorkloadRoute @($dispatchPath)
 Assert-Route ($dispatchRoute.unknown.Count -eq 0 -and $dispatchRoute.groups -contains 'combat-host' -and $dispatchRoute.groups -contains 'legacy-worker') 'actual native entry boundary routes its production and worker consumers'
@@ -65,7 +141,10 @@ $selectionPath='tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs
 # three narrow bodies retain the same aim/control fixture through Initialize.
 # Keep this independent list in step with the actual C# entry/Run contracts.
 $reviewedSharedConsumers=@('native-CombatEffectsNailCpu','native-CombatEffectsPiranhaCpu','native-CombatEffectsPhoenixCpu','native-CombatEffectsSpecialArrowCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsPhantasmEchoCpu','native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsHomingEffectCpu','native-CombatEffectsJoustingLanceCpu','native-CombatEffectsWhipStarCpu','native-CombatEffectsThornCpu','native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')
-$selectionConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')+$reviewedSharedConsumers
+# Only these family bodies actually call SelectionPreview.Step; sharing the
+# aggregate entry does not call its sibling bodies.
+$selectionFamilyConsumers=@('native-CombatEffectsPhoenixCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsThornCpu','native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')
+$selectionConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')+$selectionFamilyConsumers
 Assert-Route (((Get-WorkloadPathChecks $selectionPath|Sort-Object)-join '|') -ceq (($selectionConsumers|Sort-Object)-join '|')) 'selection shared Step binds its complete actual consumer union'
 $selectionRoute=Get-WorkloadRoute @($selectionPath)
 $selectionPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $selectionRoute.groups|ForEach-Object {$_.name})

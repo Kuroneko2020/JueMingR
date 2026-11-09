@@ -40,7 +40,7 @@ namespace JueMingR.TerrariaHost.F5
         internal bool Ready { get; set; }
         internal void RestoreVisible() { if (Ready) Visible = true; }
         internal Func<int, bool> BeforeLeave { get; set; }
-        internal int Page { get; private set; } = 9;
+        internal int Page { get; private set; } = 5;
         internal float X { get; private set; }
         internal float Y { get; private set; }
         internal float Scroll { get; private set; }

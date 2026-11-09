@@ -22,6 +22,11 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal void Capture(Item sample)
         {
             if (sample.createTile >= 0) Add(sample.createTile, sample.placeStyle, sample.type);
+            // Opening a door changes its world type and frame bank, not its
+            // canonical item. Keep both poses in the same candidate aggregator.
+            if (sample.createTile == Terraria.ID.TileID.ClosedDoor) Add(Terraria.ID.TileID.OpenDoor, sample.placeStyle, sample.type);
+            if (sample.createTile == Terraria.ID.TileID.TrapdoorClosed) Add(Terraria.ID.TileID.TrapdoorOpen, sample.placeStyle, sample.type);
+            if (sample.createTile == Terraria.ID.TileID.TallGateClosed) Add(Terraria.ID.TileID.TallGateOpen, sample.placeStyle, sample.type);
             // Only declarations for an item's own non-consuming variations.
             // Never call the wand's inventory/cycling/RNG placement operation,
             // or misidentify rubble/sandcastle materials as the placing tool.
@@ -44,12 +49,15 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         }
         internal int Find(Tile tile)
         {
-            if (tile == null || !tile.active() || tile.frameX < 0 || tile.frameY < 0) return 0;
+            if (tile == null || !tile.active() || tile.frameX < 0 || (tile.frameY < 0 && tile.type != Terraria.ID.TileID.MinecartTrack)) return 0;
             List<Candidate> values; if (!candidates.TryGetValue(tile.type, out values)) return 0;
             int result = 0;
             foreach (var value in values)
             {
-                bool matches = !Main.tileFrameImportant[tile.type] && value.Style == 0;
+                bool platform = Terraria.ID.TileID.Sets.Platforms[tile.type];
+                bool legacy = platform || tile.type == Terraria.ID.TileID.PlanterBox || tile.type == Terraria.ID.TileID.ClosedDoor || tile.type == Terraria.ID.TileID.OpenDoor || tile.type == Terraria.ID.TileID.TrapdoorOpen || tile.type == Terraria.ID.TileID.MinecartTrack;
+                bool matches = platform ? PlatformMatches(tile, value) : legacy ? LegacyMatches(tile, value) : !Main.tileFrameImportant[tile.type] && value.Style == 0;
+                if (legacy && !matches) continue;
                 if (!Main.tileFrameImportant[tile.type] && !matches) continue;
                 if (!matches)
                 {
@@ -73,6 +81,44 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 result = value.Item;
             }
             return result;
+        }
+        private static bool PlatformMatches(Tile tile, Candidate value)
+        {
+            // Native .8 platform framing owns 27 connection slots, not random
+            // placement variants. Its registered root has no alternates to
+            // compensate for those slots. Preserve the material's Y style.
+            var data = TileObjectData.GetTileData(tile.type, value.Style);
+            return data != null && data.Width == 1 && data.Height == 1 && data.CoordinateWidth == 16 && data.CoordinatePadding == 2 &&
+                data.CoordinateFullWidth == 18 && data.CoordinateFullHeight == 18 && data.StyleHorizontal && data.StyleMultiplier == 27 &&
+                data.StyleWrapLimit == 27 && data.StyleLineSkip == 1 && data.Style == 0 && data.RandomStyleRange == 0 &&
+                data.GetStyleOverride == null && data.AlternatesCount == 0 && data.SpecificRandomStyles == null &&
+                tile.frameX < 27 * 18 && tile.frameX % 18 == 0 && (long)tile.frameY == 18L * value.Style &&
+                tile.slope() <= 4 && (!tile.halfBrick() || tile.slope() == 0);
+        }
+        private static bool LegacyMatches(Tile tile, Candidate value)
+        {
+            // These .8 legacy encodings do not share ordinary TOD coordinates.
+            // Validate only the finite family domain; never repair world frames
+            // or derive an item ID from a style. Candidates still own identity.
+            if (tile.halfBrick() || tile.slope() != 0) return false;
+            if (tile.type == Terraria.ID.TileID.PlanterBox)
+                return tile.frameX <= 54 && tile.frameX % 18 == 0 && (long)tile.frameY == 18L * value.Style;
+            // CloseDoor chooses decoration X independently for each of the
+            // three rows. X54 is a style page, not another decoration slot.
+            if (tile.type == Terraria.ID.TileID.ClosedDoor)
+                return tile.frameX % 18 == 0 && tile.frameY % 18 == 0 &&
+                    tile.frameX / 54 == value.Style / 36 && tile.frameY / 54 == value.Style % 36;
+            if (tile.type == Terraria.ID.TileID.OpenDoor)
+                return tile.frameX % 18 == 0 && tile.frameY % 18 == 0 &&
+                    (long)tile.frameX / 72 == value.Style / 36 && tile.frameY / 54 == value.Style % 36;
+            // ShiftTrapdoor produces two 2x2 poses from the sole native closed
+            // declaration (style0). Their X banks encode opening side, not item.
+            if (tile.type == Terraria.ID.TileID.TrapdoorOpen)
+                return value.Style == 0 && tile.frameX <= 54 && tile.frameX % 18 == 0 && tile.frameY <= 18 && tile.frameY % 18 == 0;
+            // FrameTrack stores indices, with -1 meaning no secondary track.
+            // GetTrackItem is a read-only native classification, not a drop or
+            // framing operation. Bound both fields before calling its array ABI.
+            return tile.frameX < 36 && tile.frameY >= -1 && tile.frameY < 36 && Minecart.GetTrackItem(tile) == value.Item;
         }
         private static bool Matches(Tile tile, TileObjectData data, int style, int alternate, int random)
         {

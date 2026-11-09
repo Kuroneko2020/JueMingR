@@ -41,11 +41,42 @@ namespace NativeWorldTextProbe
                     Exception first=null;
                     Action<string,Action> check=(name,body)=>
                     {
-                        if(first!=null && (family=="SupplySmartWiring" || family=="SupplyPresentation"))return;
+                        if(first!=null && (family=="SupplySmartWiring" || family=="SupplyPresentation" || family=="SupplyRepair"))return;
                         try{body();Console.WriteLine("PASS BlueprintConstruction case="+name);}
                         catch(Exception error){Console.Error.WriteLine("CONSTRUCTION CASE "+name+": "+error);DumpConstructionPreparation(host,tools);if(first==null)first=error;}
                     };
                     check("finite original inventory input preparation",()=>ConstructionMaterialPreparation(context,host,tools,input));
+                    // Explicit local fixture diagnosis only; formal Appearance
+                    // retains its complete body and reaches this case there.
+                    if(family=="EmptyReceipt")check("truly empty settled receipt",()=>ConstructionEmptyPaintReceipt(context,host,tools,input));
+                    if(family=="EmptyReceipt" || family=="SettledAdmission")check("settled paint live admission",()=>ConstructionSettledPaintAdmission(context,host,tools,input));
+                    if(family=="QueueRecovery")
+                    {
+                        check("Q4 fair sources",()=>QueueBudgetProgress(context,host,tools,input,true,true));
+                        check("Q4 actual pending source",()=>QueueActualSourceWaiting(context,host,tools,input));
+                        check("Q3 recovery before foreign Acquire",()=>QueueReachAdmissionFence(context,host,tools,input,true));
+                        check("Q3 recovery after foreign admission",()=>QueueReachAdmissionFence(context,host,tools,input,false));
+                    }
+                    if(family=="QueueMechanismControls")
+                    {
+                        // Fixed-production comparisons only. Do not enter the
+                        // newer ExtractionWaiting observation on old Hosts.
+                        check("Q1 furniture return",()=>QueueFurnitureMovement(context,host,tools,input,false));
+                        check("Q2 mirrored furniture",()=>QueueFurnitureMovement(context,host,tools,input,true));
+                        check("Q2 mirrored cell",()=>QueueMirrorCellMovement(context,host,tools,input));
+                        check("Q1 GrandDesign ordinary domain",()=>NearQueueGrandDesignMovement(context,host,tools,input,true));
+                        check("Q4 cold source tail",()=>QueueBudgetProgress(context,host,tools,input,false));
+                        check("Q3 short-to-long brush",()=>QueueReachRecovery(context,host,tools,input,false));
+                    }
+                    if(family=="QueueOrdinaryReturn")check("Q1 unchanged-world ordinary return",()=>QueueOrdinaryCellReturn(context,host,tools,input));
+                    if(family=="SupplyRepair")check("finite paint conversion programs and every cancel prefix",()=>SupplyConversionPrograms(context,host,tools,input));
+                    if(family=="SupplyRepair")check("real current-material restock precedes an already prepared foreign flight",()=>SupplyCurrentRestockPriority(context,host,tools,input));
+                    // Historical comparison has an explicit nonformal entry:
+                    // run only unchanged ordinary scenes in a fresh process,
+                    // never enter a new-ABI program before those measurements.
+                    if(family=="SupplyRepair" || family=="SupplyBaseline")check("same prepared supply crosses real consumers at the original opportunity",()=>SupplyConsumerHandoff(context,host,tools,input));
+                    if(family=="SupplyRepair" || family=="SupplyBaseline")check("leftover-color native gap and five real conversion clicks",()=>SupplyColorHandoff(context,host,tools,input,family=="SupplyBaseline"));
+                    if(family=="SupplyRepair")check("Ready uses first legal original Pick and revoked ticket never consumes",()=>SupplyReadyEntrance(context,host,tools,input));
                     if(!preparationOnly && first==null)
                     {
                     if(family=="ExternalModal")check("external modal finite owned inventory",()=>ConstructionExternalModal(context,host,tools,input));

@@ -31,15 +31,25 @@ namespace NativeWorldTextProbe
         }
         private static object[] EligibilityRanges(object item)
         { return ((IEnumerable)Get(Get(item, "Match"), "Ranges")).Cast<object>().ToArray(); }
-        private static bool EligibilityDormant(object item)
+        private static bool EligibilityRangeDormant(object host, object range)
         {
-            var state = GetOptional(item, "Match");
-            return state != null && EligibilityRanges(item).All(range =>
-            {
-                var value = GetOptional(range, "Materials");
-                return (bool)Get(range, "Current") && !(bool)Get(range, "Demand") && !(bool)Get(range, "Reading") && value != null &&
-                    (bool)Get(value, "Current") && (bool)Get(value, "BuildExhausted") && (bool)Get(value, "EligibilityRetry");
-            });
+            var value = GetOptional(range, "Materials"); var near = NearRangeState(host, range);
+            if (!(bool)Get(range, "Current") || (bool)Get(range, "Demand") || (bool)Get(range, "Reading") || value == null ||
+                !(bool)Get(value, "Current") || !(bool)Get(value, "EligibilityRetry") || near == null || !(bool)Get(near, "Complete")) return false;
+            ulong deadline = (ulong)Get(value, "EligibilityRetryAt"); int ordinal = (int)Get(value, "EligibilityRetryOrdinal");
+            var facts = NearRangeFacts(host, range);
+            // Native no-spend rejection still owns its exact range/ordinal and
+            // original deadline. Completed nearby classification replaces the
+            // retired forward-walk exhaustion bit; missing state is not sleep.
+            return deadline > (ulong)Get(host, "materialTick") && facts.Length > 0 &&
+                facts.All(fact => !(bool)Get(fact, "Ready") && !(bool)Get(fact, "Pending")) && facts.Any(fact =>
+                    (int)Get(Get(fact, "Seed"), "Ordinal") == ordinal && (ulong)Get(fact, "Retry") == deadline);
+        }
+        private static bool EligibilityDormant(object host, object item)
+        {
+            if (GetOptional(item, "Match") == null) return false;
+            var ranges = EligibilityRanges(item);
+            return ranges.Length > 0 && ranges.All(range => EligibilityRangeDormant(host, range));
         }
         private static void GlobalPylonEligibility(object context, object host, object tools, object input)
         {
@@ -69,7 +79,7 @@ namespace NativeWorldTextProbe
                 p.inventory[14].SetDefaults(ItemID.StoneBlock); p.inventory[14].stack = 2;
                 Place(context, host, input, Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Stone }), 43, 42);
                 SetAutomatic(host, input, true);
-                Until(context, input, () => instances.All(EligibilityDormant) && Main.tile[43, 42].active() && !(bool)Get(Get(tools, "Use"), "Active"));
+                Until(context, input, () => instances.All(item => EligibilityDormant(host, item)) && Main.tile[43, 42].active() && !(bool)Get(Get(tools, "Use"), "Active"));
                 Require(p.inventory[12].stack == 2 && p.inventory[13].stack == 2 && p.inventory[14].stack == 1,
                     "two distinct native global rejections consume nothing and yield to the independent ready stone instance");
                 long retryUses = (long)Get(host, "BuildUsesStarted"), retryReads = (long)Get(host, "ProjectionMatchCellReads"), retryRequests = (long)Get(host, "ProjectionMatchSourceRequests");
@@ -85,14 +95,14 @@ namespace NativeWorldTextProbe
                 long repeatUses = (long)Get(host, "BuildUsesStarted") - retryUses, repeatReads = (long)Get(host, "ProjectionMatchCellReads") - retryReads;
                 Require(repeatUses == 0 && repeatReads > 0 && repeatReads <= 192 && (long)Get(host, "ProjectionMatchSourceRequests") - retryRequests <= 16 && p.inventory[12].stack == 2 && p.inventory[13].stack == 2,
                     "unchanged remote qualification is rechecked at bounded intervals before any new use starts; movement and inventory noise cannot produce periodic empty animations");
-                Until(context, input, () => instances.All(EligibilityDormant) && !(bool)Get(Get(tools, "Use"), "Active"));
+                Until(context, input, () => instances.All(item => EligibilityDormant(host, item)) && !(bool)Get(Get(tools, "Use"), "Active"));
                 SetAutomatic(host, input, false);
                 long closedReads = (long)Get(host, "ProjectionMatchCellReads"), closedRequests = (long)Get(host, "ProjectionMatchSourceRequests"), closedUses = (long)Get(host, "BuildUsesStarted"), closedWakes = (long)Get(host, "BuildEligibilityRetryWakes");
                 for (int i = 0; i < 500; i++) Step(context, input);
                 Require(closedReads == (long)Get(host, "ProjectionMatchCellReads") && closedRequests == (long)Get(host, "ProjectionMatchSourceRequests") && closedUses == (long)Get(host, "BuildUsesStarted") && closedWakes == (long)Get(host, "BuildEligibilityRetryWakes"),
                     "disabled automatic work does not retry formerly rejected ranges even beyond two recovery intervals");
                 SetAutomatic(host, input, true);
-                Until(context, input, () => instances.All(EligibilityDormant) && !(bool)Get(Get(tools, "Use"), "Active"));
+                Until(context, input, () => instances.All(item => EligibilityDormant(host, item)) && !(bool)Get(Get(tools, "Use"), "Active"));
                 long uses = (long)Get(host, "BuildUsesStarted"), reads = (long)Get(host, "ProjectionMatchCellReads"), requests = (long)Get(host, "ProjectionMatchSourceRequests");
                 ulong now = (ulong)Get(host, "materialTick");
                 ulong due = instances.SelectMany(EligibilityRanges).Min(range => (ulong)Get(Get(range, "Materials"), "EligibilityRetryAt"));
@@ -168,9 +178,7 @@ namespace NativeWorldTextProbe
                 {
                     if (GetOptional(item, "Match") == null) return false;
                     range = EligibilityRanges(item).Single(r => (int)Get(Get(r, "Source"), "ObjectId") > 0);
-                    var material = GetOptional(range, "Materials");
-                    return material != null && (bool)Get(material, "Current") && (bool)Get(material, "BuildExhausted") && (bool)Get(material, "EligibilityRetry") &&
-                        !(bool)Get(range, "Demand") && !(bool)Get(range, "Reading") && !(bool)Get(Get(tools, "Use"), "Active");
+                    return EligibilityRangeDormant(host, range) && !(bool)Get(Get(tools, "Use"), "Active");
                 });
                 Require((bool)Get(range, "MaterialCrossLayers") && p.inventory[12].stack == 2 && !Main.tile[44, 39].active(), "captured furniture/wall part retains its actual no-spend global rejection");
                 long version = (long)Get(range, "Version"), wake = (long)Get(Get(range, "Materials"), "BuildWakeRevision"), stamp = EligibilityMaterialStamp(host, range);
@@ -211,7 +219,7 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < 8000; i++) Chest.Assign(Chest.CreateOutOfArray(i, 120 + i % 70, 5 + i / 70, 0));
                 Require(Chest.FindEmptyChest(44, 41) == -1, "the original global capacity selector genuinely rejects a full 8000-slot registry");
                 var item = Place(context, host, input, entry, 44, 41); SetAutomatic(host, input, true);
-                Until(context, input, () => EligibilityDormant(item) && !(bool)Get(Get(tools, "Use"), "Active"));
+                Until(context, input, () => EligibilityDormant(host, item) && !(bool)Get(Get(tools, "Use"), "Active"));
                 Require(p.inventory[12].stack == 2 && !Main.tile[44, 41].active(), "full global chest capacity rejects actual native placement without spending");
                 Vector2 position = p.position; long epoch = (long)Get(host, "MaterialBuildEligibilityRevision"), inventory = ((BlueprintMaterialInventory)Get(host, "MaterialInventory")).Revision;
                 Require(Chest.DestroyChest(120, 5) && Chest.FindEmptyChest(44, 41) == 0, "the original remote chest removal frees its genuine global capacity slot");
@@ -235,7 +243,7 @@ namespace NativeWorldTextProbe
                     for (int x = 10; x < 91; x++) for (int y = 75; y < 101; y++) { Main.tile[x, y].active(true); Main.tile[x, y].type = TileID.SnowBlock; }
                     Main.PlayerSceneMetrics.Reset(); p.UpdateSceneMetrics(); p.UpdateBiomes(); Require(p.ZoneSnow, "original SceneMetrics/UpdateBiomes derive Snow from real remote tiles");
                     var item = Place(context, host, input, entry, 44, 42); SetAutomatic(host, input, true);
-                    Until(context, input, () => EligibilityDormant(item));
+                    Until(context, input, () => EligibilityDormant(host, item));
                     Require(p.inventory[12].stack == 2 && !Main.tile[44, 42].active(), "derived native Snow torch style cannot silently replace the captured ordinary style");
                     Vector2 position = p.position; long uses = (long)Get(host, "BuildUsesStarted"), epoch = (long)Get(host, "MaterialBuildEligibilityRevision");
                     for (int x = 10; x < 91; x++) for (int y = 75; y < 101; y++) WorldGen.KillTile(x, y, noItem: true);

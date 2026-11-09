@@ -156,7 +156,7 @@ namespace NativeWorldTextProbe
             foreach(var owner in Scene(host))if(GetOptional(owner,"Match")!=null)foreach(var range in EligibilityRanges(owner))
             {
                 var value=GetOptional(range,"Materials");if(value==null)continue;
-                Console.Error.WriteLine("RESTORATION range preferred="+Get(value,"PreferredCursor")+"/"+Get(value,"PreferredComplete")+"/"+Get(value,"PreferredRevisit")+
+                Console.Error.WriteLine("RESTORATION sharedNear="+NearRangeSummary(host,range)+
                     " waits="+Get(value,"BuildWaits")+" forward="+Get(value,"CandidateCursor")+" exhausted="+Get(value,"BuildExhausted"));
             }
         }

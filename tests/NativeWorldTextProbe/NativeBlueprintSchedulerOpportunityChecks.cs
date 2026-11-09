@@ -138,7 +138,11 @@ namespace NativeWorldTextProbe
                 Require(goals.All(goal => goal.SupplyType == 0 && goal.Kind != "Hammer" ?
                     p.IsInTileInteractionRange(goal.X, goal.Y, Terraria.DataStructures.TileReachCheckSettings.Simple, firstTool.tileBoost + p.blockRange) && !goal.Complete : probe.Runnable(goal)),
                     "mixed opportunity fixture starts with actual bodies, exact effects, genuine tools/supply and native reach");
-                PostProcessingPlace(context, host, input, goals); probe.Advance(); probe.Begin(automatic);
+                PostProcessingPlace(context, host, input, goals); probe.Advance();
+                int referenceSupplyClicks=0,referenceSupplyUpdates=0;
+                if(!automatic && replay[0].SupplyType!=0)
+                    SchedulerReferencePaintSupply(probe,p,replay[0].SupplyType,ref referenceSupplyClicks,ref referenceSupplyUpdates);
+                probe.Begin(automatic);
                 var patch = new Harmony("JueMingR.Tests.SchedulerScrapeCadence");
                 try
                 {
@@ -165,8 +169,18 @@ namespace NativeWorldTextProbe
                                 if (!p.selectedItemState.CanChangeSelectedItemImmediately) { probe.Advance(); continue; }
                             }
                             if (target.SupplyType != 0)
+                            {
+                                if(p.FindPaintOrCoating()==null || p.FindPaintOrCoating().type!=target.SupplyType)
+                                {
+                                    // Actual intermediate UI work advances the
+                                    // same world clock used for gap equality.
+                                    // No automatic Ready/flight/plan gates time.
+                                    SchedulerReferencePaintSupply(probe,p,target.SupplyType,ref referenceSupplyClicks,ref referenceSupplyUpdates);
+                                    continue;
+                                }
                                 Require(p.FindPaintOrCoating() != null && p.FindPaintOrCoating().type == target.SupplyType,
-                                    "paired exhausted-supply fixture naturally exposes the same next paint/coating, without hidden inventory edits");
+                                    "paired native input actually exposes the exact requested paint/coating through original inventory priority");
+                            }
                             // Only the hammer needs its real neutral recovery;
                             // paint, roller and scraper keep their own vanilla
                             // clocks. Selection never creates a default gap.
@@ -175,6 +189,7 @@ namespace NativeWorldTextProbe
                         }
                     }
                     probe.Report("scheduler scenario=" + scenario + " automatic=" + automatic);
+                    if(!automatic)Console.WriteLine("BlueprintSchedulerReferenceSupply scenario="+scenario+" realClicks="+referenceSupplyClicks+" realWorldUpdates="+referenceSupplyUpdates+" intermediateUpdatesIncludedInEventGaps=true");
                     timeline.Report("postprocessing " + scenario + " automatic=" + automatic);
                     Require(goals.All(goal => goal.Complete) && probe.Events.Count >= goals.Length && firstSupply.IsAir &&
                         (secondSupply == null || secondSupply.IsAir) && firstTool.stack == 1 && secondTool.stack == 1 && Main.mouseItem.IsAir,
@@ -184,6 +199,38 @@ namespace NativeWorldTextProbe
                 }
                 finally { foreach (var method in patch.GetPatchedMethods().ToArray()) patch.Unpatch(method, HarmonyPatchType.All, patch.Id); }
             }
+        }
+
+        // This fixture begins with an empty native paint endpoint. Reproduce
+        // the requested first material with legal original ItemSlot inputs,
+        // independently of Host selection or material-preparation internals.
+        // After that stock is exhausted, vanilla may naturally expose the next
+        // main-bag material. Never invent inverse clicks on two empty endpoints
+        // just to reproduce an automatic receipt's cleanup delay. Any retained
+        // real cursor/stock must still satisfy the endpoint checks below.
+        private static void SchedulerReferencePaintSupply(PostProcessingProbe probe,Player p,int type,ref int clicks,ref int updates)
+        {
+            var current=p.FindPaintOrCoating();if(current!=null && current.type==type)return;
+            var expected=probe.Supplies.Single(item=>item.type==type && item.stack>0);
+            int source=Array.IndexOf(p.inventory,expected);
+            Require(source>=0 && source<50 && p.inventory[54].IsAir && Main.mouseItem.IsAir,
+                "native reference has its exact genuine main-bag supply and an empty legal paint/cursor endpoint; type="+type+" source="+source+" first="+(current==null?0:current.type));
+            bool opened=!Main.playerInventory;if(opened)p.ToggleInv();
+            foreach(int slot in new[]{source,54})
+            {
+                ManualPreparationClick(probe.Context,probe.Input,p,slot);clicks++;
+                if(slot==source)Require(ReferenceEquals(Main.mouseItem,expected) && p.inventory[source].IsAir,
+                    "first original ItemSlot click picks up only the requested reference supply");
+                else Require(ReferenceEquals(p.inventory[54],expected) && Main.mouseItem.IsAir,
+                    "second original ItemSlot click delivers the same real supply to native paint priority");
+                // The existing helper sends real release/press/LeftClick input;
+                // a neutral Player.Update separates native UI clicks. These
+                // actual updates stay in any intermediate consumer interval.
+                probe.Advance();updates++;
+            }
+            if(opened)p.ToggleInv();
+            Require(ReferenceEquals(p.FindPaintOrCoating(),expected) && p.inventory[source].IsAir && Main.mouseItem.IsAir,
+                "original paint priority, exact source debit ownership and empty cursor agree after native reference preparation");
         }
 
         private static void SchedulerScrapeBefore(Player __instance, int __0, int __1, out PostProcessingEvent __state)

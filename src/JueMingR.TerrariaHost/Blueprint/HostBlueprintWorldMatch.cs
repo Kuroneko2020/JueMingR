@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using JueMingR.Features.Blueprint;
@@ -41,7 +41,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal readonly Dictionary<long, BlueprintWorldMatchResult> Visible = new Dictionary<long, BlueprintWorldMatchResult>();
         internal IReadOnlyDictionary<long, BlueprintWorldMatchResult> View;
         internal BlueprintMaterialTotals Materials;
-        internal int MaterialDemandCursor, MaterialBuildCursor;
+        internal int MaterialDemandCursor;
 #if DEBUG
         internal long WorldReads, SourceRequests, SourceArrivals;
 #endif

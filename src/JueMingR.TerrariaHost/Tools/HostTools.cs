@@ -167,8 +167,12 @@ namespace JueMingR.TerrariaHost.Tools
             // Draw-owned mouseInterface can be stale while the window is not
             // drawn. Actual menus, text, manual items and operation owners below
             // remain authoritative; background admission never clears them.
-            return Available && p!=null && ReferenceEquals(p,Player) && Input.CanRetainAutomaticIntent &&
-                !Main.gamePaused && !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity && !p.HasLockedInventory() &&
+            // Only the exact preparation owner (checked by the sole caller)
+            // can retain preference across its pause/closure tail. The public
+            // input permission and all automatic action gates stay unchanged.
+            return Available && p!=null && ReferenceEquals(p,Player) &&
+                (Input.CanRetainAutomaticIntent || buildPreparationIntent && !Input.IsFocused && Main.CanUpdateGameplay) &&
+                (!Main.gamePaused || buildPreparationIntent) && !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity && !p.HasLockedInventory() &&
                 !Items.World.Busy && !Items.World.HasManualOperation && !Main.mapFullscreen && !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride==null &&
                 !Main.ServerSideCharacter && (Main.ActivePlayerFileData==null || !Main.ActivePlayerFileData.ServerSideCharacter) && !WorldGen.isGeneratingOrLoadingWorld &&

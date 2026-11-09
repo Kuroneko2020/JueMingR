@@ -9,6 +9,7 @@ namespace Terraria
         internal static void Run()
         {
             F5NameHintChecks.Run();
+            CheckProcessPageLifetime();
             var state = new F5Interaction { Ready = true };
             var input = new F5Input { Width = 1920, Height = 1080, Scale = 1,
                 Active = true, Focused = true, Right = false, X = 1900, Y = 900 };
@@ -197,6 +198,7 @@ namespace Terraria
             var input = new F5Input { Width = 1280, Height = 720, Scale = 1.5f,
                 Active = true, Focused = true, F5 = true, X = 1900, Y = 1000 };
             state.Update(input);
+            state.Navigate(9);
             var font = new object();
             Func<string, F5Size> measure = text => new F5Size(text.Length * 18, 24);
             state.Layout.Ensure(input.Width, input.Height, input.Scale, state.Page, font, measure);
@@ -214,6 +216,22 @@ namespace Terraria
             state.Layout.Ensure(input.Width, input.Height, input.Scale, 0, font, measure);
             state.ClampScroll();
             Check(state.Scroll == 0, "shortened content immediately clamps an old offset");
+        }
+        private static void CheckProcessPageLifetime()
+        {
+            var state = new F5Interaction { Ready = true };
+            Check(state.Page == 5 && !state.Visible, "new process owner starts at About without opening F5");
+            var input = new F5Input { Width = 1920, Height = 1080, Scale = 1, Active = true, Focused = true };
+            state.Navigate(6); // Explicit feature navigation before any F5 press.
+            input.F5 = true; state.Update(input);
+            Check(state.Visible && state.Page == 6, "explicit feature navigation is already the last actual page");
+            input.F5 = false; state.Update(input); state.Navigate(9); state.Close();
+            input.Active = false; state.Update(input); input.Active = true;
+            input.F5 = true; state.Update(input);
+            Check(state.Visible && state.Page == 9, "close and session context changes preserve this process owner's last page");
+            state.CancelForFocusLoss(); input.F5 = false; state.Update(input); input.F5 = true; state.Update(input);
+            Check(state.Visible && state.Page == 9, "focus recovery preserves the actual information page");
+            Check(new F5Interaction().Page == 5, "another process owner starts at About independently");
         }
         private static void CheckDynamicScroll()
         {

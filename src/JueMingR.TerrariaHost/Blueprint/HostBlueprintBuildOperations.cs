@@ -101,7 +101,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 bool outside;
                 tool = FindAppearanceTool(target, p, out outside, preferred);
-                if (tool < 0) { wait = outside ? BlueprintBuildWait.Player : BlueprintBuildWait.Material | BlueprintBuildWait.Capability; return false; }
+                if (tool < 0) { // A matching longer tool can recover reach without any player movement.
+                    wait = outside ? BlueprintBuildWait.Player | BlueprintBuildWait.Capability : BlueprintBuildWait.Material | BlueprintBuildWait.Capability; return false; }
                 operation = CopyBuildOperation(operation);
             }
             else if (operation?.NativePlacement?.Producer != null)
@@ -127,7 +128,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     int x = target.Body == null ? target.WorldX : target.Bounds.Left + placement.OriginX;
                     int y = target.Body == null ? target.WorldY : target.Bounds.Top + placement.OriginY;
                     if (!p.IsInTileInteractionRange(x, y, TileReachCheckSettings.Simple, p.inventory[slot].tileBoost + p.blockRange))
-                    { failures |= BlueprintBuildWait.Player; continue; }
+                    { failures |= BlueprintBuildWait.Player | BlueprintBuildWait.Capability; continue; }
                     BlueprintBuildWait supplyWait; ulong supplySlots;
                     if (!TryPlanBuildSupply(target, p, candidate.SupplyType, candidate.SupplyDestination, out primary, out supplyWait, out supplySlots, intent == BuildPlanningIntent.ContinuationProbe))
                     { failures |= supplyWait; blocked |= supplySlots; continue; }
@@ -217,6 +218,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if((lane==BlueprintBuildLane.TileBody || lane==BlueprintBuildLane.WallBody) && descriptor==null)return BlueprintBuildReadiness.DoneInvalid;
             var next=CreateMaterialBuildTarget(owner,range,cell,descriptor,obj,body,ordinal,support,catalog.Revision);
             next.LocalProof=true;next.LocalPriority=localPriority;
+            CaptureNearBuildSeed(next);
             long reads=buildUnavailableReads;BlueprintWorldMatchSample actual;
             if(!TryBindConstructionTarget(next,lane,out actual))
             {

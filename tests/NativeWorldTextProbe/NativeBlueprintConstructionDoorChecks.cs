@@ -11,13 +11,10 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeBlueprintBuildChecks
     {
-        private sealed class DoorNativeAction
-        { internal int X, Y; internal string Kind; }
         private static object doorRepairHost;
         private static bool doorRepairWatch;
         private static bool doorWallBillWatch;
         private static bool doorWallStandaloneContext;
-        private static readonly List<DoorNativeAction> doorRepairActions = new List<DoorNativeAction>();
 
         internal static void ConstructionPlacementDoorRepair(object context, object host, object tools, object input)
         {

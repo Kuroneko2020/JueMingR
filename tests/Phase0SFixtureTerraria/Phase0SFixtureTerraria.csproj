@@ -44,6 +44,7 @@
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Information\InformationAdjustment.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\WorldObjectControls.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\World\WorldTileObservation.cs" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\World\WorldTileKnowledge.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\WorldTargets\*.cs" Link="Production\WorldTargets\%(Filename)%(Extension)" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Rendering\WorldPresentation.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\F5\WorldTargetControls.cs" />
@@ -53,7 +54,7 @@
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Hotkeys\HotkeyPopupLayout.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Hotkeys\HotkeyPopupView.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Hotkeys\VanillaHotkeyConflicts.cs" />
-    <Compile Include="..\..\src\JueMingR.TerrariaHost\Items\*.cs" Link="Production\Items\%(Filename)%(Extension)" />
+    <Compile Include="..\..\src\JueMingR.TerrariaHost\Items\*.cs" Exclude="..\..\src\JueMingR.TerrariaHost\Items\ItemMaterialPreparation*.cs" Link="Production\Items\%(Filename)%(Extension)" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Feedback\NativePopupText.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesInput.cs" Link="Production\NotesInput.cs" />
     <Compile Include="..\..\src\JueMingR.TerrariaHost\Notes\NotesPresentation.cs" Link="Production\NotesPresentation.cs" />

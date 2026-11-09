@@ -32,6 +32,8 @@ namespace NativeWorldTextProbe
             using(var file=File.OpenRead(typeof(Main).Assembly.Location))using(var sha=System.Security.Cryptography.SHA256.Create())
                 RequireHostIdentity(BitConverter.ToString(sha.ComputeHash(file)).Replace("-","")=="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3","fixed .8 source");
             var assembly=Assembly.LoadFrom(candidateAssembly??Path.Combine(Program.Repository,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
+            using(var bytes=File.OpenRead(assembly.Location))using(var hash=System.Security.Cryptography.SHA256.Create())
+                Console.WriteLine("TESTED-HOST path="+assembly.Location+" sha256="+BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-","")+" invocation="+(Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT")==null?"explicit-specialist":"formal-current"));
             if(candidateAssembly!=null)Console.WriteLine("Explicit historical candidate: "+assembly.Location+" MVID="+assembly.ManifestModule.ModuleVersionId);
             Initialize();
             string root=Path.Combine(Terraria.Program.SavePath,"composition");Directory.CreateDirectory(root);

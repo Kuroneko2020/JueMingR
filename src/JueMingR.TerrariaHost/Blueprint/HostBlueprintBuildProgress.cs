@@ -82,6 +82,12 @@ namespace JueMingR.TerrariaHost.Blueprint
             // The same one inventory walk still owns the broad-phase maximum.
             // This wakes a shorter material even if another item keeps the
             // overall envelope unchanged; stack noise/equivalent moves do not.
+            bool observeNear=p!=null && inventory?.Ready==true && MaterialCatalog!=null &&
+                CanRetainBuildIntent(p,true) && buildTools.Input.CanRunAutomaticActions;
+            // Retire an old identity before publishing the first new snapshot.
+            // Natural business switches do not enter this identity boundary.
+            if(observeNear)SynchronizeNearBuildIdentity();
+            BeginNearCapabilityObservation(observeNear);
             buildNextItemReach.Clear(); int envelopeBoost = 0;
             var hint = CurrentBuildSourceHint(p);
             if (p != null && inventory?.Ready == true) foreach (var slot in inventory.Slots)
@@ -92,6 +98,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (!slot.Eligible || slot.Stack <= 0 || slot.ItemType <= 0) continue;
                 var item = p.inventory[slot.Slot];
                 if (!buildTools.BuildInventoryEligible(slot.Slot, item)) continue;
+                ObserveNearCapabilityItem(slot.Slot,item);
                 envelopeBoost = Math.Max(envelopeBoost, item.tileBoost);
                 if (!buildNextItemReach.ContainsKey(slot.ItemType) || hint != null && hint.Slot == slot.Slot && hint.Type == slot.ItemType && ReferenceEquals(hint.Item, item))
                     buildNextItemReach[slot.ItemType] = item.tileBoost;
@@ -106,6 +113,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 BlueprintBuildTrace.Count(BuildTraceReason.SignalItemReach);
 #endif
             }
+            PublishNearCapabilityObservation();
             if (ReferenceEquals(buildSupplyInventory, inventory)) return;
             buildSupplyInventory = inventory; buildNextSupply.Clear(); buildNextAppearanceSupply.Clear();
             if (inventory?.Ready == true) foreach (var slot in inventory.Slots)
@@ -150,31 +158,17 @@ namespace JueMingR.TerrariaHost.Blueprint
             CaptureBuildWalkSignals(value);
             // Eligibility recovery invalidates this range's negative Focus
             // result too; it does not replace the business preference.
-            ReopenPreferredRange(range);
+            InvalidateNearBuildRange(range);
             if (resetNativeRetry) value.EligibilityRetry = false;
         }
         private void WaitForBuild(BlueprintBuildTarget target, BlueprintBuildWait reason, ulong dependencySlots = 0, bool retryPending = false)
         {
+            RecordNearBuildWait(target,reason,dependencySlots);
             if(target!=null)target.Readiness=BlueprintBuildReadiness.BlockedNow;
             if (target?.Range.Materials == null || !IsBuildTargetCurrent(target) || IsUnconfirmedTarget(target)) return;
             var value = target.Range.Materials;
             if(reason==BlueprintBuildWait.Material && target.Operation!=null)reason|=BlueprintBuildWait.Capability;
             value.BuildWaits |= reason; value.BuildDependencyWaitSlots |= dependencySlots;
-            if (target.LocalPriority && value.PreferredGroup == buildContinuation?.Group)
-            {
-                value.PreferredWaits |= reason; value.PreferredDependencySlots |= dependencySlots;
-                if ((reason & BlueprintBuildWait.Player) != 0)
-                {
-                    if(value.PreferredPositionNegatives==null)value.PreferredPositionNegatives=new Dictionary<int,BlueprintBuildPositionNegative>();
-                    BlueprintBuildPositionNegative proof;
-                    if(!value.PreferredPositionNegatives.TryGetValue(target.Ordinal,out proof))
-                        value.PreferredPositionNegatives.Add(target.Ordinal,proof=new BlueprintBuildPositionNegative());
-                    var world=BuildFocusWorldBounds(player);
-                    proof.X=target.WorldX;proof.Y=target.WorldY;proof.Active=true;CapturePreferredPositionNegative(proof,player,world);
-                    proof.OutOfReach=proof.X<world.Left || proof.X>=world.Right || proof.Y<world.Top || proof.Y>=world.Bottom;
-                }
-                if ((reason & BlueprintBuildWait.Dynamic) != 0 && (value.PreferredRetryAt == 0 || materialTick + 8 < value.PreferredRetryAt)) value.PreferredRetryAt = materialTick + 8;
-            }
             // A prepared source may move to another qualified slot without a
             // type ever becoming unavailable. Its invalid flight gets one local
             // merged retry, while later ordinals still finish this same walk.
@@ -194,12 +188,15 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool BuildDependencyReleased(BlueprintRangeMaterials value)
         { return BuildDependencyReleased(value.BuildDependencyWaitSlots); }
-        private bool BuildDependencyReleased(ulong waiting)
+        private bool BuildDependencyReleased(ulong waiting,bool nearProof=false)
         {
             var p = player; if (p == null || buildTools == null) return false;
             for (int slot = 0; slot < 58 && waiting != 0; slot++)
             {
                 ulong bit = 1UL << slot; if ((waiting & bit) == 0) continue; waiting &= ~bit;
+#if DEBUG
+                if(nearProof)NearBuildProofChecks++;
+#endif
                 var item = p.inventory[slot];
                 if (item == null || item.IsAir ||
                     !p.inventoryChestStack[slot] && !buildTools.Items.World.ManualMaterials.Contains(item) && !buildTools.ProtectedAfterYield(item) &&
@@ -207,76 +204,6 @@ namespace JueMingR.TerrariaHost.Blueprint
                     return true;
             }
             return false;
-        }
-        private void TryWakeBuildEligibility(BlueprintProjectionMatchRange range)
-        {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            BlueprintBuildTrace.Hit(BuildTraceStage.Wake);
-#endif
-            var value = range.Materials;
-            if (value == null || MaterialBuildDemand?.Invoke() != true) return;
-            // Re-enabling needs a fresh support read even when an independent
-            // material view kept the bill current while build watches slept.
-            // Keep this walk's forward cursor and the original source request.
-            if (value.BuildEpoch == 0)
-            { ResetMaterialBuildWalk(range, false); DemandProjectionMatchRange(range); }
-            if (value.BuildActivationRevision != buildActivationRevision)
-            {
-                value.BuildActivationRevision = buildActivationRevision;
-                value.Candidate = null; value.BuildRetryPending = true;
-                DemandProjectionMatchRange(range);
-            }
-            if ((value.BuildWaits & BlueprintBuildWait.Material) != 0 && value.CatalogRevision == materialPlacementIdentity && value.Desired != null)
-                foreach (var supply in buildSupply)
-                    if (supply.Value > value.BuildSupplyRevision)
-                        foreach (var requirement in value.Desired)
-                            if (SubstitutionSupplyFor(requirement.Key, supply.Key)) { value.BuildRetryPending = true; break; }
-            if((value.BuildWaits&BlueprintBuildWait.Capability)!=0 && value.BuildSupplyRevision!=buildSupplyRevision)value.BuildRetryPending=true;
-            if((value.BuildWaits&BlueprintBuildWait.Restoration)!=0 && value.BuildRestorationRevision!=appearanceRestorationRevision)
-            {value.BuildRestorationRevision=appearanceRestorationRevision;value.BuildRetryPending=true;ReopenPreferredRange(range);}
-            if ((value.BuildWaits & BlueprintBuildWait.Player) != 0 && value.BuildPlayerRevision != MaterialBuildEligibilityRevision ||
-                (value.BuildWaits & BlueprintBuildWait.Container) != 0 && value.BuildContainerRevision != buildContainerRevision ||
-                (value.BuildWaits & BlueprintBuildWait.Dependencies) != 0 && BuildDependencyReleased(value)) value.BuildRetryPending = true;
-
-            bool nativeDue = value.EligibilityRetry && materialTick >= value.EligibilityRetryAt;
-            bool dynamicDue = (value.BuildWaits & BlueprintBuildWait.Dynamic) != 0 && materialTick >= value.DynamicRetryAt;
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            if(nativeDue)BlueprintBuildTrace.Count(BuildTraceReason.RetryDue);
-#endif
-            // An outstanding source/sample is already an active walk. Later
-            // signals coalesce into one permission and cannot cancel/restart it.
-            if (!value.BuildExhausted || value.Candidate != null || range.Demand || range.Reading || value.Progress != null ||
-                !value.Current || !range.Current || !value.BuildRetryPending && !nativeDue && !dynamicDue)
-            {
-#if JMR_BLUEPRINT_DIAGNOSTIC
-                // These are the already-known scalar blockers. No dependency,
-                // demand, stamp or eligibility query is repeated to explain it.
-                BlueprintBuildTrace.Count(BuildTraceReason.WakeBlocked);
-                if(!value.BuildExhausted)BlueprintBuildTrace.Count(BuildTraceReason.WakeNotExhausted);
-                if(value.Candidate!=null)BlueprintBuildTrace.Count(BuildTraceReason.WakeCandidate);
-                if(range.Demand)BlueprintBuildTrace.Count(BuildTraceReason.WakeDemand);
-                if(range.Reading)BlueprintBuildTrace.Count(BuildTraceReason.WakeReading);
-                if(value.Progress!=null)BlueprintBuildTrace.Count(BuildTraceReason.WakeProgress);
-                if(!value.Current)BlueprintBuildTrace.Count(BuildTraceReason.WakeMaterialNotCurrent);
-                if(!range.Current)BlueprintBuildTrace.Count(BuildTraceReason.WakeRangeNotCurrent);
-                if(!value.BuildRetryPending && !nativeDue && !dynamicDue)BlueprintBuildTrace.Count(BuildTraceReason.WakeNoPermission);
-#endif
-                return;
-            }
-            // Keep the dirty retry, but an exhausted material-only walk has
-            // no possible consumer while this current qualified inventory is
-            // empty. Actual restock or an owned item's return reopens the same
-            // pending permission; independent world Match keeps advancing.
-            if (value.BuildWaits == BlueprintBuildWait.Material && buildSupplyInventory?.Ready == true &&
-                ReferenceEquals(buildSupplyInventory, MaterialInventory) && buildSupply.Count == 0) return;
-#if JMR_BLUEPRINT_DIAGNOSTIC
-            BlueprintBuildTrace.Semantic(BuildTraceStage.Wake,BuildTraceReason.WakePerformed,value.EligibilityRetryOrdinal,unchecked((long)materialTick),unchecked((long)value.EligibilityRetryAt),nativeDue?1:0);
-#endif
-            ResetMaterialBuildWalk(range, false);
-            DemandProjectionMatchRange(range);
-#if DEBUG
-            if (nativeDue) BuildEligibilityRetryWakes++;
-#endif
         }
         private bool BuildRetryReady(BlueprintBuildTarget target)
         {
@@ -290,8 +217,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 DiagnosticReject(target,BuildTraceStage.Retry,BuildTraceReason.RetryWaiting);
 #endif
                 target.Readiness=BlueprintBuildReadiness.BlockedNow;
-                if(target.LocalPriority && value.PreferredGroup==buildContinuation?.Group)
-                    value.PreferredRetryAt=value.EligibilityRetryAt;
+                BlockNearBuildFact(target,value.EligibilityRetryAt);
                 return false;
             }
 #if JMR_BLUEPRINT_DIAGNOSTIC

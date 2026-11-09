@@ -23,14 +23,27 @@ namespace NativeWorldTextProbe
             var sources=Enumerable.Range(0,33).Select(index=>(BlueprintProjectionSourceRange)constructor.Invoke(new object[]{
                 (long)index,new BlueprintProjectionBounds(index,0,1,1),1L,new[]{(long)(uint)index},new ushort[]{1},new int[]{0},
                 Array.CreateInstance(dependencyType,0),index,0})).ToArray();
-            var table=host.GetType().GetField("buildPhysicalDirectories",BindingFlags.Static|BindingFlags.NonPublic).GetValue(null);
-            var get=table.GetType().GetMethod("GetValue");
-            var factory=Delegate.CreateDelegate(get.GetParameters()[1].ParameterType,host,host.GetType().GetMethod("CreateBuildPhysicalDirectory",F));
-            long builds=(long)Get(host,"BuildFocusDirectoryBuilds"),construction=(long)Get(host,"BuildFocusDirectoryConstructionSteps"),
-                querySteps=(long)Get(host,"BuildFocusDirectorySteps");
-            object first=get.Invoke(table,new object[]{sources,factory}),second=get.Invoke(table,new object[]{sources,factory});
-            Require(ReferenceEquals(first,second) && !(bool)Get(first,"Ready") && (long)Get(host,"BuildFocusDirectoryBuilds")==builds+1,
-                "two owners of the same immutable qualified geometry share one unfinished directory without restarting it");
+            var builderType=typeof(BlueprintProjectionGeometryDirectory).GetNestedType("Builder",BindingFlags.NonPublic);
+            foreach(int count in new[]{0,1})
+            {
+                var tiny=sources.Take(count).ToArray();var small=Activator.CreateInstance(builderType,F,null,new object[]{tiny},null);
+                Require((int)Call(small,"Advance",64)==count && (bool)Get(small,"Ready"),"zero and single-range builders complete without a synthetic parent");
+                var frozen=(BlueprintProjectionGeometryDirectory)Call(small,"Freeze",tiny);
+                Require(frozen.NodeCount==count && frozen.Bytes==72L+count*32L &&
+                    (count==0 || frozen.GetNode(0).Group==0 && frozen.GetNode(0).Left==-1 && frozen.GetNode(0).Right==-1),
+                    "empty and singleton frozen geometry keeps exact leaf identity and byte ownership");
+            }
+            var builder=Activator.CreateInstance(builderType,F,null,new object[]{sources},null);
+            Require(!(bool)Get(builder,"Ready") && (int)Call(builder,"Advance",64)==64 && !(bool)Get(builder,"Ready"),
+                "a 65-node production builder remains genuinely incomplete after its first 64-node worker batch");
+            bool refused=false;
+            try {Call(builder,"Freeze",sources);}catch(TargetInvocationException error){refused=error.InnerException is InvalidOperationException;}
+            Require(refused,"incomplete production geometry cannot be frozen or queried by Host");
+            Require((int)Call(builder,"Advance",64)==1 && (bool)Get(builder,"Ready"),"the next batch pays exactly the final parent node");
+            var first=(BlueprintProjectionGeometryDirectory)Call(builder,"Freeze",sources);
+            Require(ReferenceEquals(first.Sources,sources) && first.NodeCount==65 && (long)Get(builder,"Bytes")==64,
+                "freeze transfers one node array, binds the qualified Sources identity and releases builder storage");
+            long construction=(long)Get(host,"BuildFocusDirectoryConstructionSteps"),querySteps=(long)Get(host,"BuildFocusDirectorySteps");
             var queryType=host.GetType().GetNestedType("BuildFocusNearQuery",BindingFlags.NonPublic);
             var queries=Enumerable.Range(0,2).Select(_=>Activator.CreateInstance(queryType,true)).ToArray();
             foreach(var query in queries)
@@ -54,10 +67,9 @@ namespace NativeWorldTextProbe
                     }
                     updates++;
                     Require((long)Get(host,"BuildFocusDirectorySteps")+(long)Get(host,"BuildFocusDirectoryConstructionSteps")-before<=64,
-                        "directory construction and both owner queries share the unchanged64-step allowance");
-                    if(updates==1)Require(!(bool)Get(first,"Ready") && routes.All(value=>value.Count==0),
-                        "a65-node directory is genuinely Pending after64 construction steps, with no premature owner query");
-                    Require(Math.Abs(routes[0].Count-routes[1].Count)<=1 && updates<=4,
+                        "both owner queries share the unchanged 64-step Host allowance; construction has already completed in the worker");
+                    Require(ReferenceEquals(Get(queries[0],"Directory"),Get(queries[1],"Directory")),"both owners query the same frozen directory without private construction");
+                    Require(Math.Abs(routes[0].Count-routes[1].Count)<=1 && updates<=3,
                         "one-node owner turns converge for both later and earlier owners without starvation");
                 }
                 long stable=(long)Get(host,"BuildFocusDirectorySteps")+(long)Get(host,"BuildFocusDirectoryConstructionSteps");
@@ -65,13 +77,13 @@ namespace NativeWorldTextProbe
                     Require(!(bool)Call(host,"AdvanceBuildFocusNearQuery",query,new Action<int>(_=>throw new InvalidOperationException("stable query emitted again"))),
                         "a completed stable geometric query performs no work");
                 Require(routes.All(value=>value.Count==33 && value.Distinct().Count()==33) &&
-                    (long)Get(host,"BuildFocusDirectoryConstructionSteps")-construction==65 && (long)Get(host,"BuildFocusDirectorySteps")-querySteps==130 &&
-                    (long)Get(host,"BuildFocusDirectoryBuilds")==builds+1 &&
+                    (long)Get(host,"BuildFocusDirectoryConstructionSteps")==construction && (long)Get(host,"BuildFocusDirectorySteps")-querySteps==130 &&
+                    (long)Get(host,"BuildFocusDirectoryBuilds")==0 &&
                     stable==(long)Get(host,"BuildFocusDirectorySteps")+(long)Get(host,"BuildFocusDirectoryConstructionSteps") &&
                     (long)Get(first,"Bytes")==72+65*32 && (long)Get(host,"BuildFocusDirectoryTemporaryBytes")==0,
-                    "the shared segment tree accounts for65 constant construction steps,130 owner node visits,2152 resident bytes and no sort buffer");
+                    "the frozen segment tree accounts for 65 worker construction steps, 130 Host owner node visits, 2152 shared worker bytes and no sort buffer");
                 Console.WriteLine("BlueprintFocusDirectory component physicalGroups=33 nodes=65 owners=2 updates="+updates+
-                    " builds=1 constructionSteps=65 queryNodes=130 routedLeaves=33/33 residentBytes="+Get(first,"Bytes")+
+                    " workerBuilds=1 constructionSteps=65 hostConstruction=0 queryNodes=130 routedLeaves=33/33 residentBytes="+Get(first,"Bytes")+
                     " temporaryOrderBytes=0 stableCalls=24 stableWork=0 nativeWorld=NOT_EVALUATED");
             }
             finally { Set(host,"materialBuildSearchBudget",priorBudget); }
@@ -96,7 +108,7 @@ namespace NativeWorldTextProbe
                 // worker timing claim is made, and no completion is fabricated.
                 var error=(BlueprintProjectionQualificationReceipt)Activator.CreateInstance(typeof(BlueprintProjectionQualificationReceipt),F,null,new object[]{
                     receipt.Identity,receipt.Catalog,receipt.Mask,receipt.TotalRequiredLayerCount,receipt.EffectiveRequiredLayerCount,
-                    receipt.EffectiveUnknownLayerCount,receipt.SourceRanges,receipt.MatchRanges,"fixture-completed-qualification-failure",receipt.View},null);
+                    receipt.EffectiveUnknownLayerCount,receipt.SourceRanges,receipt.MatchRanges,receipt.GeometryDirectory,"fixture-completed-qualification-failure",receipt.View},null);
                 Call(host,"ReleaseProjectionMatch",failed);Call(host,"AcceptProjectionQualification",failed,error);
                 Require((bool)Call(host,"ProjectionQualificationFailed",failed) && !(bool)Call(host,"ProjectionQualificationCurrent",failed),
                     "only a completed failure under the exact current identity is classified as failed construction qualification");
@@ -138,20 +150,23 @@ namespace NativeWorldTextProbe
         {
             if(!ReferenceEquals(__instance,focusRetirementHost))return;
             var group=GetOptional(__instance,"buildContinuation");focusRetirementGroup=group==null?0:(long)Get(group,"Group");
-            focusRetirementMaterials=group==null?Array.Empty<object>():
-                ((System.Collections.IEnumerable)Get(Get(group,"Discovery"),"Ranges")).Cast<object>()
-                    .Where(range=>GetOptional(Get(range,"Owner"),"Match")!=null)
-                    .Select(range=>GetOptional(range,"Materials")).Where(value=>value!=null &&
-                        (long)Get(value,"PreferredGroup")==focusRetirementGroup &&
-                        GetOptional(value,"PreferredNegativeOrdinals")!=null && (int)Get(Get(value,"PreferredNegativeOrdinals"),"Count")>0 &&
-                        GetOptional(value,"PreferredPositionNegatives")!=null && (int)Get(Get(value,"PreferredPositionNegatives"),"Count")>0).ToArray();
+            focusRetirementMaterials=((System.Collections.IEnumerable)Get(Get(__instance,"nearBuildDiscovery"),"Ranges")).Cast<object>()
+                .SelectMany(range=>NearRangeFacts(__instance,range)).Where(f=>!(bool)Get(f,"Ready") && !(bool)Get(f,"Pending") && group!=null &&
+                    GetOptional(Get(Get(f,"Seed"),"Owner"),"Match")!=null &&
+                    (int)Get(Get(Get(f,"Seed"),"Placement"),"UseItemType")== (int)Get(Get(group,"Source"),"Type")).ToArray();
         }
         private static void FocusRetirementAfter(object __instance)
         {
             if(!ReferenceEquals(__instance,focusRetirementHost) || focusRetirementGroup==0 || focusRetirementMaterials.Length==0)return;
             var group=GetOptional(__instance,"buildContinuation");if(group==null || (long)Get(group,"Group")==focusRetirementGroup)return;
             focusRetirementObserved++;
-            if(focusRetirementMaterials.All(value=>GetOptional(value,"PreferredNegativeOrdinals")==null && GetOptional(value,"PreferredPositionNegatives")==null))focusRetirementReleased++;
+            // Q1 retains shared semantic negatives across a natural material
+            // switch. Only the group-specific absence permission must retire.
+            var retainedFacts=((System.Collections.IDictionary)Get(__instance,"nearBuildRanges")).Values.Cast<object>()
+                .SelectMany(state=>((System.Collections.IDictionary)Get(state,"Facts")).Values.Cast<object>()).ToArray();
+            var proofGroup=GetOptional(__instance,"nearProofGroup");
+            if(focusRetirementMaterials.All(f=>retainedFacts.Contains(f)) &&
+                !ReferenceEquals(proofGroup,group))focusRetirementReleased++;
             var flight=GetOptional(__instance,"activeBuild");var use=Get(focusRetirementTools,"Use");
             if(flight!=null && (long)Get(flight,"Token")== (long)Get(use,"Operation") && (long)Get(use,"Operation")>0 &&
                 ReferenceEquals(Get(group,"Source"),Get(flight,"Source")) &&
@@ -219,13 +234,9 @@ namespace NativeWorldTextProbe
                     NativeQuickItemChecks.Until(()=>{scope.Step();prepared=GetOptional(host,"preparedBuild");return prepared!=null && ReferenceEquals(Get(Get(prepared,"Source"),"Item"),dirt.Item);});
                     Require(scope.Events.Count==1 && scope.Runnable(foreign) && !scope.Runnable(entered),"a genuine foreign plan is prepared while the logical Table click is still outside exact native reach");
                     var positionProofs=((System.Collections.IEnumerable)Get(Get(enteredOwner,"Match"),"Ranges")).Cast<object>()
-                        .Select(range=>GetOptional(range,"Materials")).Where(value=>value!=null)
-                        .Select(value=>new{Value=value,Proofs=GetOptional(value,"PreferredPositionNegatives")})
-                        .Where(value=>value.Proofs!=null).SelectMany(value=>((System.Collections.IEnumerable)value.Proofs).Cast<object>()
-                            .Select(pair=>new{Value=value.Value,Ordinal=(int)Get(pair,"Key"),Proof=Get(pair,"Value")}))
-                        .Where(value=>(bool)Get(value.Proof,"Active") && (int)Get(value.Proof,"X")==entered.X && (int)Get(value.Proof,"Y")==entered.Y).ToArray();
-                    Require(positionProofs.Length>0 && positionProofs.All(value=>(bool)Call(Get(value.Value,"PreferredNegativeOrdinals"),"Contains",value.Ordinal)),
-                        "the actual preferred logical-object reach rejection records its own live-position dependency before a foreign plan is admitted");
+                        .SelectMany(range=>NearRangeFacts(host,range)).Where(f=>!(bool)Get(f,"Ready") && !(bool)Get(f,"Pending")).ToArray();
+                    Require(positionProofs.Length>0 && positionProofs.All(f=>(long)Get(f,"Player")== (long)Get(host,"MaterialBuildEligibilityRevision")),
+                        "the actual logical-object reach rejection retains a live-player-stamped shared fact before a foreign plan is admitted");
                     Require(p.itemAnimation>0 || (bool)Get(Get(tools,"Use"),"Active"),
                         "native movement is observed while the preceding Table use still owns its natural interval, before any foreign admission");
                     Console.WriteLine("BlueprintFocus prepared foreign boundary world="+Main.GameUpdateCount+" host="+Get(host,"projectionMatchTick")+
@@ -241,7 +252,7 @@ namespace NativeWorldTextProbe
                         Scene(host).Length==1 && ReferenceEquals(Scene(host)[0],retained) && GetOptional(retained,"Match")!=null,
                         "the newly reachable whole Table precedes the already prepared Dirt; the still-outside logical object stays alive and unconsumed");
                     if(retirement)Require(focusRetirementObserved>0 && focusRetirementObserved==focusRetirementReleased && focusRetirementObserved==focusRetirementExact,
-                        "a real switch with both negative caches present on a still-live old range releases both immediately and preserves the new exact lease; observed="+
+                        "a real switch preserves shared negative facts on still-live ranges, retires old-group permission and preserves the new exact lease; observed="+
                         focusRetirementObserved+" released="+focusRetirementReleased+" exact="+focusRetirementExact);
                     Console.WriteLine("BlueprintFocus logicalObject retirement="+retirement+" beforeX="+oldX+" afterX="+p.position.X+" enteredClick="+entered.X+
                         " retainedOutside="+outside.X+" liveCacheTransitions="+focusRetirementObserved+" released="+focusRetirementReleased+" exact="+focusRetirementExact);

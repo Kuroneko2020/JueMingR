@@ -22,12 +22,13 @@ namespace NativeWorldTextProbe
         {
             requested=scope; expected=entered=null;
             var selectors=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var overrides=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var leaves=new Dictionary<string,string>(StringComparer.Ordinal);
             foreach(string line in File.ReadAllLines(Path.Combine(repository,"eng","Workload.NativeDispatch.tsv")))
             {
                 if(line.Length==0 || line[0]=='#')continue;
                 string[] row=line.Split('\t');
-                if(row.Length==2 && row[0]=="selector") { if(!selectors.Add(row[1]))throw new InvalidDataException("Duplicate native selector."); }
+                if(row.Length==2 && (row[0]=="selector" || row[0]=="override")) { if(!selectors.Add(row[1]))throw new InvalidDataException("Duplicate native selector."); if(row[0]=="override")overrides.Add(row[1]); }
                 else if(row.Length==3 && row[0]=="leaf")leaves.Add(row[1],row[2]);
                 else throw new InvalidDataException("Malformed native dispatch contract.");
             }
@@ -37,17 +38,23 @@ namespace NativeWorldTextProbe
             if(formal && context.Split('|')[0]!="native-"+scope.Replace(':','-'))
                 throw new ArgumentException("Formal check name and native scope differ.");
             // Named exclusive scopes own their complete family. The generic
-            // explicit NpcProduction/strategy specialist still permits its
+            // strategy specialist still permits its
             // deliberate environment axis when no formal runner requested it.
             if(formal || expected!=null)
                 foreach(DictionaryEntry pair in Environment.GetEnvironmentVariables())
                 {
                     string key=(string)pair.Key;
-                    if(key.StartsWith("JUEMINGR_",StringComparison.OrdinalIgnoreCase) &&
-                        (key.EndsWith("ONLY",StringComparison.OrdinalIgnoreCase) || key.EndsWith("SCOPE",StringComparison.OrdinalIgnoreCase) || key.EndsWith("PHASE",StringComparison.OrdinalIgnoreCase) || key.EndsWith("PHASES",StringComparison.OrdinalIgnoreCase) || key.EndsWith("SINGLE",StringComparison.OrdinalIgnoreCase)) && !selectors.Contains(key))
+                    if((key.StartsWith("JUEMINGR_",StringComparison.OrdinalIgnoreCase) || key.StartsWith("JMR_",StringComparison.OrdinalIgnoreCase)) &&
+                        (key.EndsWith("ONLY",StringComparison.OrdinalIgnoreCase) || key.EndsWith("SCOPE",StringComparison.OrdinalIgnoreCase) || key.EndsWith("PHASE",StringComparison.OrdinalIgnoreCase) || key.EndsWith("PHASES",StringComparison.OrdinalIgnoreCase) || key.EndsWith("SINGLE",StringComparison.OrdinalIgnoreCase) || key.EndsWith("CANDIDATE",StringComparison.OrdinalIgnoreCase)) && !selectors.Contains(key))
                         throw new ArgumentException("Unknown inherited workload selector: "+key);
-                    if(selectors.Contains(key))Environment.SetEnvironmentVariable(key,null);
+                    if(selectors.Contains(key) && (formal || !overrides.Contains(key)))Environment.SetEnvironmentVariable(key,null);
                 }
+        }
+        // Aliases deliberately rewrite their local scope to NpcProduction.
+        // Only the original request can own its completion responsibility.
+        internal static void EnterForRequest(string originalRequest, string leaf)
+        {
+            if(requested==originalRequest)Enter(leaf);
         }
         internal static string Enter(string leaf)
         {
@@ -61,6 +68,12 @@ namespace NativeWorldTextProbe
             // leaf. An explicit family must enter at its actual Run dispatch,
             // where a different family is rejected by the same exact guard.
             if(expected!=null)Enter(leaf);
+        }
+        internal static void RunNpcDiagnosticsOff(Action run)
+        {
+            string previous=Environment.GetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF");
+            try{Environment.SetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF","1");run();}
+            finally{Environment.SetEnvironmentVariable("JUEMINGR_NPC_MEASURE_OFF",previous);}
         }
         internal static void RunExclusiveEffectFamily(string family, Action run)
         {

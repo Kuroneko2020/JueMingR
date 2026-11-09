@@ -15,7 +15,7 @@ function Get-WorkloadLeafChecks {
     # This asset initializer is also called by the narrow combat fixture.
     # Preserve its worker consumers when adding the explicit combat leaf;
     # the combat scope itself must not inherit the legacy-worker group.
-    $workerAssetConsumers=@('native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields')
+    $workerAssetConsumers=@('native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields')
     foreach($scope in (Get-WorkloadNativeScopes).GetEnumerator()){
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
@@ -26,7 +26,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeRuntimeFailureChecks.cs'=@('native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu')
         'tests/NativeWorldTextProbe/NativeJourneyCloseAdmissionChecks.cs'=@('native-JourneyCloseCpu','native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu','native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu')
         'tests/NativeWorldTextProbe/NativeRuntimeFailureReturnChecks.cs'=@('native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu')
-        'tests/NativeWorldTextProbe/NativeRuntimeFailureBuildChecks.cs'=@('native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu')
+        'tests/NativeWorldTextProbe/NativeRuntimeFailureBuildChecks.cs'=@('native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu','native-RuntimeFailureBuildUsingSelectionCpu','native-RuntimeFailureBuildUsingScrollCpu','native-RuntimeFailureBuildSelectionCpu','native-RuntimeFailureBuildScrollCpu')
         'tests/NativeWorldTextProbe/NativeRuntimeFailureBuildReceiptChecks.cs'=@('native-RuntimeFailureBuildReceiptCpu')
         'tests/NativeWorldTextProbe/NativeCombatTerrainKnowledgeChecks.cs'=@('native-CombatTerrainKnowledgeCpu')
         'tests/NativeWorldTextProbe/NativeCombatShotBirthChecks.cs'=@('native-CombatShotFacingCpu','native-CombatShotBirthOrderCpu')
@@ -35,7 +35,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatSnapshotChecks.cs'=@('native-NpcSnapshot')
         'tests/NativeWorldTextProbe/NativeWorldGenPreviewChecks.cs'=@('native-WorldGenPreviewCpu')
         'tests/NativeWorldTextProbe/NativeCombatWorkerAssetChecks.cs'=$workerAssetConsumers
-        'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionChecks.cs'=@('native-BlueprintSubstitutionCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintSupplyContinuationCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionNativeChecks.cs'=@('native-BlueprintSubstitutionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionLifecycleChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionLifecycleCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSubstitutionUiChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput','native-BlueprintVisual','native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionVisual')
@@ -74,9 +74,9 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintBuildChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSubstitutionCpu','native-BlueprintCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildCadenceChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPostProcessingContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintBusinessContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBusinessContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSupplyContinuationCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSchedulerRunnableChecks.cs'=@('native-BlueprintBuildCadenceCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintSchedulerFreshnessChecks.cs'=@('native-BlueprintBuildCadenceCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintSchedulerFreshnessChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSupplyContinuationCpu','native-BlueprintNearQueueCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSchedulerOpportunityChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSchedulerColdChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintFocusDiscoveryChecks.cs'=@('native-BlueprintBuildCadenceCpu')
@@ -91,13 +91,13 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintConstructionDoorChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintConstructionWiringSpecialChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintLiquidChecks.cs'=@('native-BlueprintCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintBuildProgressChecks.cs'=@('native-BlueprintCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintBuildContinuationChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintCpu','native-BlueprintConstructionCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBuildProgressChecks.cs'=@('native-BlueprintCpu','native-BlueprintBuildCadenceCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSubstitutionCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBuildContinuationChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintSubstitutionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildThroughputChecks.cs'=@('native-BlueprintCpu','native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildWallContextChecks.cs'=@('native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildNativeTargetChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPersistenceChecks.cs'=@('native-BlueprintCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintQualificationChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintQualificationChecks.cs'=@('native-BlueprintCpu','native-BlueprintQualificationCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildMixedSourceChecks.cs'=@('native-BlueprintCpu','native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildPreflightChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildReviewPreflightChecks.cs'=@('native-BlueprintCpu')
@@ -129,6 +129,11 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeAnnouncementOutcomeChecks.cs'=@('native-BrowserCpu')
         'tests/NativeWorldTextProbe/NativeAnnouncementObjectChecks.cs'=@('native-BrowserCpu')
         'tests/NativeWorldTextProbe/NativeAnnouncementTargetChecks.cs'=@('native-BrowserCpu')
+        'tests/NativeWorldTextProbe/NativePlacementIdentityChecks.cs'=@('native-BrowserCpu')
+        'tests/NativeWorldTextProbe/NativeSwitchIdentityChecks.cs'=@('native-BrowserCpu')
+        'tests/NativeWorldTextProbe/NativeLegacyPlacementIdentityChecks.cs'=@('native-BrowserCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintQueueRecoveryChecks.cs'=@('native-BlueprintNearQueueCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintReachAdmissionChecks.cs'=@('native-BlueprintNearQueueCpu')
         # This owner authenticates only actual Content consumers; CPU fixtures
         # keep their original argument and proof projection.
         'scripts/workload/Workload.NativeContent.ps1'=@('native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','native-NpcReviewedParticle','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
@@ -282,6 +287,12 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatPreviewLeaseChecks.cs'=@('native-CombatCosts','native-CombatAttackCosts','native-CombatControlCpu','native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.Natural.cs'=@('native-CombatCosts','native-CombatAttackCosts')
         'tests/NativeWorldTextProbe/NativeCombatAttackCostChecks.CandidateState.cs'=@('native-CombatCosts','native-CombatAttackCosts')
+        'tests/NativeWorldTextProbe/NativeBlueprintSupplyHandoffChecks.cs'=@('native-BlueprintSupplyContinuationCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintSupplyReadyChecks.cs'=@('native-BlueprintSupplyContinuationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatObservationSuite.cs'=@('native-CombatObservationCpu','native-CombatObservationBoundaryCpu')
+        'tests/NativeWorldTextProbe/NativeObservationBoundaryChecks.cs'=@('native-CombatObservationBoundaryCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintSchedulerColdHandoffChecks.cs'=@('native-BlueprintBuildCadenceCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintSupplyConversionChecks.cs'=@('native-BlueprintPreparationCpu','native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeCombatEffectChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatProjectileEnvironmentChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatObstacleChecks.cs'=@('native-CombatEffectsCpu')
@@ -435,24 +446,90 @@ function Get-WorkloadLeafChecks {
     }
     # The failure-flight leaf reuses these real construction and input helpers.
     # Keep their assertion bytes bound without claiming sibling execution.
-    $failureBuild=@('native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu','native-RuntimeFailureBuildReceiptCpu')
+    $failureBuild=@('native-RuntimeFailureBuildUsingSelectionCpu','native-RuntimeFailureBuildUsingScrollCpu','native-RuntimeFailureBuildSelectionCpu','native-RuntimeFailureBuildScrollCpu','native-RuntimeFailureBuildCpu','native-RuntimeFailureBuildManualCpu','native-RuntimeFailureBuildWorldCpu','native-RuntimeFailureBuildReceiptCpu')
     foreach($path in @($leaves.Keys)){
         if(@($leaves[$path]|Where-Object {$_ -in @('native-BlueprintCpu','native-BlueprintConstructionCpu')}).Count -or $path -cin @('tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeRuntimeFailureReturnChecks.cs')){
             $leaves[$path]=@($leaves[$path])+@($failureBuild)
         }
     }
-    # Finite family scopes reuse the unchanged Effects entry and its helpers.
-    # Bind the aggregate's existing assertion dependencies conservatively; a
-    # family PASS never represents execution of the complete Effects matrix.
-    $families=@('native-CombatEffectsNailCpu','native-CombatEffectsPiranhaCpu','native-CombatEffectsPhoenixCpu','native-CombatEffectsSpecialArrowCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsPhantasmEchoCpu','native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsHomingEffectCpu','native-CombatEffectsJoustingLanceCpu','native-CombatEffectsWhipStarCpu','native-CombatEffectsThornCpu')
-    foreach($path in @($leaves.Keys)){
-        if($leaves[$path] -contains 'native-CombatEffectsCpu'){$leaves[$path]=@($leaves[$path])+@($families)}
+    # EmptyWorld/metadata are called by both actual Build and Construction
+    # runners, including their narrow families. Never discard that shared setup.
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs']+=@('native-BlueprintBuildCadenceCpu','native-BlueprintConstructionCpu','native-BlueprintPreparationCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
+    # SupplyRepair's actual preparation/conversion/handoff/Ready/native-tail
+    # call graph. PostProcessingProbe, BusinessScope and SchedulerTimeline are
+    # shared helpers despite their files' private cadence assertion bodies.
+    # Appearance/Continuation/Network/Hammer files also initialize this partial
+    # type; retain them until those initializers have a separate shared owner.
+    $supplyHelpers=@('Construction','SupplyConversion','SupplyHandoff','SupplyReady',
+        'Build','PostProcessingContinuity','BusinessContinuity','SchedulerFreshness',
+        'Substitution','SupplyLifecycle','WorldMatch','ConstructionAppearance',
+        'BuildContinuation','BuildNetwork','HammerEligibility','ConstructionWiringSpecial','CompletionV2')
+    foreach($helper in $supplyHelpers){
+        $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
+        $leaves[$path]=@($leaves[$path])+@('native-BlueprintSupplyContinuationCpu')
+    }
+    # NativeToolExecution/NativeTools stay shared through their ordinary group
+    # route; making an exclusive leaf map here would omit their other consumers.
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintWiringZeroDebitChecks.cs']=@('native-BlueprintConstructionCpu','native-BlueprintWiringCpu')
+    # The narrow queue scene shares the actual build and business fixture.
+    # Restock uses SupplyHandoff; exact native gap replay uses Opportunity's
+    # HandoffRun and Freshness's SchedulerTimeline (not ColdHandoff's body).
+    # CaptureCompletionAsset lives in CompletionV2; raw Save/Place consume
+    # LibraryWait. Keep their helper/partial-initialization bytes bound too.
+    foreach($helper in @('Build','BusinessContinuity','WorldMatch','Construction',
+        'BuildContinuation','BuildNetwork','HammerEligibility','ConstructionWiringSpecial','ConstructionAppearance',
+        'SupplyHandoff','SchedulerOpportunity','SchedulerFreshness','CompletionV2','PostProcessingContinuity','WiringZeroDebit','BuildMixedSource','BuildProgress')){
+        $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
+        $leaves[$path]=@($leaves[$path])+@('native-BlueprintNearQueueCpu')
+    }
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintCompletionV2Checks.cs']+=@($leaves['tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs'])
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs']+=@('native-BlueprintNearQueueCpu','native-BlueprintSupplyContinuationCpu','native-BlueprintBuildCadenceCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu','native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionLifecycleCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintExpectationChecks.cs']=@('native-BlueprintNearQueueCpu')
+    # A family enters EffectChecks.RunCore and returns from its exact branch.
+    # Its own body and called shared scene/Save/Step/solution helpers matter;
+    # sibling private assertions (for example Bee) do not execute on that path.
+    # NativeChecks/ScopeDispatch/QuickItem/Information remain common inputs.
+    $familyHelpers=@{
+        'Nail'=@('BallisticCandidate','Observation','Cadence','ControlPreview')
+        'Piranha'=@('BallisticCandidate','Observation','Cadence','ControlPreview')
+        'Phoenix'=@('Cadence','ControlPreview','Observation','SelectionPreview')
+        'SpecialArrow'=@('Observation')
+        'AttachedShot'=@('Cadence','ControlPreview','Observation','SelectionPreview')
+        'PhantasmEcho'=@('Cadence','Observation')
+        'BetsyFlame'=@('Cadence','ControlPreview','Observation','SelectionPreview')
+        'ArcSwing'=@('Cadence','ControlPreview','Observation','SelectionPreview')
+        'HomingEffect'=@('Cadence','Observation')
+        'JoustingLance'=@('Cadence','Observation')
+        'WhipStar'=@('Cadence','Observation')
+        'Thorn'=@('Cadence','ControlPreview','Observation','SelectionPreview')
+    }
+    # Initialize and the shared solution helpers physically live in AimFixture;
+    # ordinary AimChecks has no family callee or static initialization.
+    # The aggregate invokes every family and therefore owns their helper union.
+    $familyNames=@($familyHelpers.Keys|ForEach-Object {'native-CombatEffects'+$_+'Cpu'})
+    foreach($path in @($leaves.Keys)){if($path.StartsWith('src/') -and $leaves[$path] -contains 'native-CombatEffectsCpu'){$leaves[$path]=@($leaves[$path])+@($familyNames)}}
+    foreach($family in $familyHelpers.Keys){
+        $name='native-CombatEffects'+$family+'Cpu'
+        foreach($helper in @('Effect',$family,'WorkerAsset')+@($familyHelpers[$family])){
+            $path='tests/NativeWorldTextProbe/NativeCombat'+$helper+'Checks.cs'
+            # A previously shared path keeps its conservative existing route;
+            # adding a family must not silently remove its other consumers.
+            if($leaves.ContainsKey($path)){$leaves[$path]=@((@($leaves[$path])+@($name,'native-CombatEffectsCpu'))|Sort-Object -Unique)}
+        }
+        foreach($path in @('tests/NativeWorldTextProbe/NativeCombatAimFixture.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){
+            if($leaves.ContainsKey($path)){$leaves[$path]=@((@($leaves[$path])+@($name,'native-CombatEffectsCpu'))|Sort-Object -Unique)}
+        }
     }
     # These existing narrow bodies share the real aim/control/effects fixture.
     # Bind its existing assertions conservatively without executing siblings.
     foreach($path in @($leaves.Keys)){
         if(@($leaves[$path]|Where-Object {$_ -in @('native-CombatAimCpu','native-CombatControlCpu','native-CombatEffectsCpu')}).Count){$leaves[$path]=@($leaves[$path])+@('native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')}
     }
+    # These private cases are reached only by the full construction and
+    # appearance bodies. They export no shared fixture and have no static
+    # initializers; the older shared-partial expansions above do not apply.
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintEmptyReceiptChecks.cs']=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintSettledPaintAdmissionChecks.cs']=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
     return $leaves
 }
 function Get-WorkloadNativeScopes {
@@ -471,6 +548,11 @@ function Get-WorkloadNativeScopes {
         'RuntimeFailureBuildManualCpu'=@('shared-host','blueprint-host','tools-host');
         'RuntimeFailureBuildWorldCpu'=@('shared-host','blueprint-host','tools-host');
         'RuntimeFailureBuildReceiptCpu'=@('shared-host','blueprint-host','tools-host');
+        'BlueprintNearQueueCpu'=@('blueprint-host','tools-host');
+        'RuntimeFailureBuildUsingSelectionCpu'=@('shared-host','blueprint-host','tools-host');
+        'RuntimeFailureBuildUsingScrollCpu'=@('shared-host','blueprint-host','tools-host');
+        'RuntimeFailureBuildSelectionCpu'=@('shared-host','blueprint-host','tools-host');
+        'RuntimeFailureBuildScrollCpu'=@('shared-host','blueprint-host','tools-host');
         'JourneyCloseCpu'=@('journey-host','quick-items-host');
         'TargetGestureDiagnostic'=@('browser-host');
         'WorldGenPreviewCpu'=@('worldgen-preview','shared-host');
@@ -555,7 +637,7 @@ function Get-WorkloadNativeScopes {
         'NpcLegalCoverage'=@('legacy-worker'); 'NpcWorkerTransport'=@('legacy-worker'); 'NpcMenuPreparation'=@('legacy-worker'); 'NpcSessionCapacity'=@('legacy-worker'); 'NpcProduction'=@('legacy-worker'); 'NpcLongCoverage'=@('legacy-worker');
         'WorkloadCpu'=@('world-host','shared-host'); 'InformationCpu'=@('information','shared-host'); 'GuidanceCpu'=@('guidance','shared-host');
         'ShortFeedbackCpu'=@('shared-host','storage-host','quick-items-host','coin-deposit-host','recovery-host','processing-host','about-host','tools-host','fishing-host','combat-host','blueprint-host');
-        'CombatCpu'=@('combat-host'); 'CombatFacingCpu'=@('combat-host'); 'CombatHitsCpu'=@('combat-host'); 'CombatReportCpu'=@('combat-host'); 'CombatUiCpu'=@('combat-host'); 'CombatObservationCpu'=@('combat-host'); 'CombatCosts'=@('combat-host');
+        'CombatCpu'=@('combat-host'); 'CombatFacingCpu'=@('combat-host'); 'CombatHitsCpu'=@('combat-host'); 'CombatReportCpu'=@('combat-host'); 'CombatUiCpu'=@('combat-host'); 'CombatObservationCpu'=@('combat-host'); 'CombatObservationBoundaryCpu'=@('combat-host'); 'CombatCosts'=@('combat-host');
         'InputBoundary'=@('input-boundary','shared-host');
         'ToolsCpu'=@('tools-host'); 'ToolsCadence'=@('tools-host'); 'ToolsExecutionCpu'=@('tools-host'); 'ToolsWorkload'=@('tools-host');
         'BlueprintSubstitutionCpu'=@('blueprint-host','tools-host','browser-host');
@@ -564,6 +646,8 @@ function Get-WorkloadNativeScopes {
         'BlueprintExchangeCpu'=@('blueprint-host','tools-host','shared-host');
         'BlueprintExchangeFollowupCpu'=@('blueprint-host','shared-host','hotkeys');
         'BlueprintMirrorTrimCpu'=@('blueprint-host','hotkeys','tools-host');
+        'BlueprintQualificationCpu'=@('blueprint-host');
+        'BlueprintSupplyContinuationCpu'=@('blueprint-host','tools-host');
         'BlueprintConstructionCpu'=@('blueprint-host','tools-host');
         'BlueprintBuildCadenceCpu'=@('blueprint-host','tools-host');
         'BlueprintPreparationCpu'=@('blueprint-host','tools-host');

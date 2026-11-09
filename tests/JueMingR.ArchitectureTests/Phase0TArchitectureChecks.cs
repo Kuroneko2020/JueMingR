@@ -104,6 +104,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Blueprint.BlueprintTargetDisposition", "JueMingR.Features.Blueprint.BlueprintPlacementResolutionKind", "JueMingR.Features.Blueprint.BlueprintTargetReason",
                 "JueMingR.Features.Blueprint.BlueprintProducerSource", "JueMingR.Features.Blueprint.BlueprintPlacementDeclaration", "JueMingR.Features.Blueprint.BlueprintProducerCoverage",
                 "JueMingR.Features.Blueprint.BlueprintTargetQualification", "JueMingR.Features.Blueprint.BlueprintConstructionSelection", "JueMingR.Features.Blueprint.BlueprintProjectionQualificationReceipt",
+                "JueMingR.Features.Blueprint.BlueprintProjectionGeometryDirectory", "JueMingR.Features.Blueprint.BlueprintProjectionGeometryDirectory+Node",
                 "JueMingR.Features.Blueprint.BlueprintSelectionSnapshot", "JueMingR.Features.Blueprint.CaptureJob",
                 "JueMingR.Features.Blueprint.CaptureLayer", "JueMingR.Features.Blueprint.ContentHandle", "JueMingR.Features.Blueprint.CaptureToken",
                 "JueMingR.Features.Blueprint.CaptureCell", "JueMingR.Features.Blueprint.CaptureObject", "JueMingR.Features.Blueprint.CaptureChunk", "JueMingR.Features.Blueprint.CaptureSummary",

@@ -18,7 +18,7 @@ namespace NativeWorldTextProbe
     {
         private sealed class SchedulerCostRow
         {
-            internal long Calls, Ticks, MaximumTicks, Allocated, MaximumAllocated, MaximumBytes;
+            internal long Calls, Ticks, MaximumTicks, Allocated, MaximumAllocated;
         }
         private struct SchedulerCostStart
         {
@@ -65,9 +65,6 @@ namespace NativeWorldTextProbe
                         Require(target != null, "scheduler cost samples the real current owner method: " + entry);
                         Patch(target);
                     }
-                    var directory = host.GetType().GetNestedType("BuildPhysicalDirectory", BindingFlags.NonPublic);
-                    Require(directory != null, "cold allocation belongs to the existing physical directory owner");
-                    Patch(directory.GetConstructors(F).Single());
                     started = Stopwatch.GetTimestamp(); allocationStart = allocated();
                 }
                 catch { Dispose(); throw; }
@@ -94,7 +91,7 @@ namespace NativeWorldTextProbe
                     Console.WriteLine("BlueprintSchedulerCostMethod phase=" + phase + " method=" + pair.Key + " cumulativeCalls=" + pair.Value.Calls +
                         " cumulativeInclusiveMs=" + (pair.Value.Ticks * 1000.0 / Stopwatch.Frequency).ToString("F3", CultureInfo.InvariantCulture) +
                         " cumulativeMaxUs=" + (pair.Value.MaximumTicks * 1000000.0 / Stopwatch.Frequency).ToString("F3", CultureInfo.InvariantCulture) +
-                        " cumulativeAllocated=" + pair.Value.Allocated + " cumulativeMaxAllocated=" + pair.Value.MaximumAllocated + " cumulativeMaxOwnerBytes=" + pair.Value.MaximumBytes +
+                        " cumulativeAllocated=" + pair.Value.Allocated + " cumulativeMaxAllocated=" + pair.Value.MaximumAllocated +
                         " phaseDeltaCalls="+(pair.Value.Calls-prior.Calls)+" phaseDeltaInclusiveMs="+((pair.Value.Ticks-prior.Ticks)*1000.0/Stopwatch.Frequency).ToString("F3",CultureInfo.InvariantCulture)+
                         " phaseDeltaAllocated="+(pair.Value.Allocated-prior.Allocated));
                     reported[pair.Key]=new SchedulerCostRow{Calls=pair.Value.Calls,Ticks=pair.Value.Ticks,Allocated=pair.Value.Allocated};
@@ -112,12 +109,11 @@ namespace NativeWorldTextProbe
             {
                 if (!start.Watching) return;
                 long elapsed = Stopwatch.GetTimestamp() - start.Ticks, bytes = allocated() - start.Allocated;
-                string key = method is ConstructorInfo ? "BuildPhysicalDirectory.ctor" : method.Name;
+                string key = method.Name;
                 SchedulerCostRow row;
                 if (!Rows.TryGetValue(key, out row)) Rows.Add(key, row = new SchedulerCostRow());
                 row.Calls++; row.Ticks += elapsed; row.MaximumTicks = Math.Max(row.MaximumTicks, elapsed);
                 row.Allocated += bytes; row.MaximumAllocated = Math.Max(row.MaximumAllocated, bytes);
-                if (method is ConstructorInfo) row.MaximumBytes = Math.Max(row.MaximumBytes, (long)Get(instance, "Bytes"));
             }
         }
         private static void SchedulerCostBefore(out SchedulerCostStart __state)
@@ -137,18 +133,21 @@ namespace NativeWorldTextProbe
                 var ranges = Enumerable.Range(0, groups).Select(index => (BlueprintProjectionSourceRange)constructor.Invoke(new object[] {
                     (long)index, new BlueprintProjectionBounds(index, 0, 1, 1), 1L, new[] { (long)(uint)index }, new ushort[] { 1 }, new int[] { 0 },
                     Array.CreateInstance(dependencyType, 0), index, 0 })).ToArray();
-                var table = host.GetType().GetField("buildPhysicalDirectories", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
-                var get = table.GetType().GetMethod("GetValue");
-                var factory = Delegate.CreateDelegate(get.GetParameters()[1].ParameterType, host, host.GetType().GetMethod("CreateBuildPhysicalDirectory", F));
-                using (var cost = new SchedulerCostScope(host, "directory-component-groups-" + groups))
+                var builderType=typeof(BlueprintProjectionGeometryDirectory).GetNestedType("Builder",BindingFlags.NonPublic);
+                using(var cost=new SchedulerCostScope(host,"worker-directory-component-groups-"+groups))
                 {
-                    var first = get.Invoke(table, new object[] { ranges, factory });
-                    cost.Report("first-cold-construction-before-any-Step");
-                    var second = get.Invoke(table, new object[] { ranges, factory });
-                    Require(ReferenceEquals(first, second) && cost.Calls("BuildPhysicalDirectory.ctor") == 1 && !(bool)Get(first, "Ready"),
-                        "same immutable source shares the genuinely unfinished cold directory; sampling did not complete or recreate it");
-                    Console.WriteLine("BlueprintSchedulerColdDirectory groups=" + groups + " ownerBytes=" + Get(first, "Bytes") +
-                        " nodeCount=" + ((Array)Get(first, "Nodes")).LongLength + " constructionBeforeStep=0 nativeConsumption=NOT_EVALUATED");
+                    var builder=Activator.CreateInstance(builderType,F,null,new object[]{ranges},null);
+                    cost.Report("first-cold-builder-allocation-before-any-Advance");
+                    Require(!(bool)Get(builder,"Ready"),"cold allocation observation does not hide construction work");
+                    long steps=0;int batches=0;
+                    while(!(bool)Get(builder,"Ready"))
+                    {int count=(int)Call(builder,"Advance",64);Require(count>0 && count<=64,"production builder batches remain bounded by 64");steps+=count;batches++;}
+                    var directory=(BlueprintProjectionGeometryDirectory)Call(builder,"Freeze",ranges);
+                    Require(steps==2L*groups-1 && directory.NodeCount==steps && ReferenceEquals(directory.Sources,ranges),
+                        "real production builder freezes every physical ordinal, leaf and union exactly once");
+                    Console.WriteLine("BlueprintSchedulerColdDirectory groups="+groups+" ownerBytes="+directory.Bytes+" nodeCount="+directory.NodeCount+
+                        " workerConstructionSteps="+steps+" boundedBatches="+batches+" hostConstruction=0 nativeConsumption=NOT_EVALUATED");
+                    cost.Report("bounded-build-and-transfer-complete");
                 }
             }
         }
@@ -243,55 +242,7 @@ namespace NativeWorldTextProbe
             }
         }
 
-        private sealed class SchedulerColdNativeState
-        {
-            internal object Host, Owner, Directory;
-            internal int ColdEffects, Effects, PreparedCold;
-            internal bool RetainedAtConsume;
-        }
-        private sealed class SchedulerColdWallBefore
-        {
-            internal int X,Y,Before;
-            internal bool Cold,Retained;
-            internal object Directory;
-        }
-        private static SchedulerColdNativeState schedulerColdNative;
-        private static object SchedulerOwnerDirectory(object host,object owner)
-        {
-            var focus=GetOptional(host,"buildContinuation");if(focus==null)return null;
-            var owners=(IDictionary)Get(Get(focus,"Discovery"),"Owners");
-            return owners.Contains(owner)?Get(owners[owner],"Directory"):null;
-        }
-        // Harmony keys a prefix/postfix __state slot by patch declaring type.
-        // This distinct observer type must not reuse BusinessScope's state on
-        // the same original consumer; each pair owns its own exact snapshot.
-        private static class SchedulerColdWallHooks
-        {
-            internal static void Before(Player __instance,out SchedulerColdWallBefore __state)
-            {
-                __state=null;var observation=schedulerColdNative;
-                if(observation==null || !ReferenceEquals(__instance,Main.LocalPlayer))return;
-                var flight=GetOptional(observation.Host,"activeBuild");if(flight==null)return;
-                var target=Get(flight,"Target");var range=Get(target,"Range");
-                if(!ReferenceEquals(Get(range,"Owner"),observation.Owner))return;
-                var directory=SchedulerOwnerDirectory(observation.Host,observation.Owner);
-                int x=(int)Get(target,"WorldX"),y=(int)Get(target,"WorldY");
-                __state=new SchedulerColdWallBefore{X=x,Y=y,Before=Main.tile[x,y].wall,Directory=directory,
-                    Cold=directory!=null && !(bool)Get(directory,"Ready"),
-                    Retained=((IEnumerable)Get(observation.Host,"buildSources")).Cast<object>().Any(value=>ReferenceEquals(Get(value,"Range"),range))};
-            }
-            internal static void After(bool __runOriginal,SchedulerColdWallBefore __state)
-            {
-                if(!__runOriginal || __state==null || Main.tile[__state.X,__state.Y].wall==__state.Before)return;
-                var observation=schedulerColdNative;observation.Effects++;
-                if(__state.Directory!=null)observation.Directory=__state.Directory;
-                if(__state.Cold){observation.ColdEffects++;observation.RetainedAtConsume|=__state.Retained;}
-                Console.WriteLine("BlueprintSchedulerColdNative wallEffect world="+Main.GameUpdateCount+" target="+__state.X+","+__state.Y+
-                    " directoryReady="+!__state.Cold+" actualRangeRetained="+__state.Retained);
-            }
-        }
-
-        private static LibraryEntry SchedulerColdRealAsset(object host,int groups)
+        private static LibraryEntry SchedulerColdRealAsset(object host,int groups,bool handoff=false)
         {
             const int width=1024;var library=(LibraryState)Get(host,"Library");var token=new CaptureToken(Guid.NewGuid(),1,1,1);var handle=new ContentHandle(token.OperationId);
             var clock=Stopwatch.StartNew();
@@ -302,7 +253,7 @@ namespace NativeWorldTextProbe
                 for(int index=0;index<cells.Length;index++)
                 {
                     int ordinal=block*cells.Length+index,x=ordinal%width,y=ordinal/width;
-                    cells[index]=y==2 && (x==8 || x==10)?new CaptureCell{X=x,Y=y,Layers=CaptureLayer.Wall,WallType=WallID.Wood}:
+                    cells[index]=y==2 && (x==8 || x==10)?new CaptureCell{X=x,Y=y,Layers=CaptureLayer.Wall,WallType=handoff && x==10?WallID.Stone:WallID.Wood}:
                         new CaptureCell{X=x,Y=y,Layers=CaptureLayer.Tile,TileType=TileID.Dirt};
                 }
                 Require(library.TryAppendChunk(handle,new CaptureChunk(cells,cells.Length)),"one bounded real cold-template chunk is accepted");CadenceReceipt(library);
@@ -348,72 +299,60 @@ namespace NativeWorldTextProbe
 
         internal static void SchedulerColdKnownPositiveRuntime(object context,object host,object tools,object input)
         {
-            // Normalization repacks every physical block to 2048 records.
-            // A genuinely cold directory that outlasts the default seven-tick
-            // wall interval therefore needs this finite real source scale.
-            // Only two wall goals are supplied; the remaining Dirt is missing.
             const int groups=257;
             var screen=Main.screenPosition;
             using(NativeBlueprintWorldMatchChecks.EmptyWorld(host,2200,600))
             using(var scope=new BusinessScope(context,host,tools,input))
             using(var timeline=new SchedulerTimeline(host,tools,input))
             {
-                var patch=new Harmony("JueMingR.Tests.SchedulerColdKnownPositive");
                 try
                 {
                     var p=Reset(context,host,tools,input);p.position.X=42*16;
                     var wall=BusinessStock(p,12,ItemID.WoodWall,6);scope.Sources=new[]{wall};
                     scope.Goals=new[]{BusinessWallGoal(44,42,wall),BusinessWallGoal(46,42,wall)};
-                    var entry=SchedulerColdRealAsset(host,groups);var owner=Place(context,host,input,entry,36,40);
-                    NativeQuickItemChecks.Until(()=>{scope.Step();return GetOptional(owner,"Qualification")!=null && GetOptional(owner,"Match")!=null;});
-                    var qualification=(BlueprintProjectionQualificationReceipt)Get(owner,"Qualification");
-                    Require(qualification.SourceRanges.Count==groups && scope.Goals.All(scope.Runnable),
-                        "real saved normalized qualification has exactly 257 physical groups and only the two supplied reachable supported walls");
-                    long builds=(long)Get(host,"BuildFocusDirectoryBuilds");
-                    schedulerColdNative=new SchedulerColdNativeState{Host=host,Owner=owner};
-                    patch.Patch(typeof(Player).GetMethod("PlaceThing_Walls",F),prefix:new HarmonyMethod(typeof(SchedulerColdWallHooks),nameof(SchedulerColdWallHooks.Before)),
-                        postfix:new HarmonyMethod(typeof(SchedulerColdWallHooks),nameof(SchedulerColdWallHooks.After)));
+                    var entry=SchedulerColdRealAsset(host,groups);var worker=Get(Get(host,"Library"),"worker");
+                    long builds=(long)Get(worker,"projectionGeometryDirectoryBuilds"),nodes=(long)Get(worker,"projectionGeometryDirectoryNodes"),
+                        yields=(long)Get(worker,"projectionGeometryDirectoryYields");
+                    uint enabled=Main.GameUpdateCount;var clock=Stopwatch.StartNew();
+                    var owner=Place(context,host,input,entry,36,40);
+                    // Qualification already owns the only mandatory preparation
+                    // window. Enable immediately; never hide startup behind a
+                    // WaitReady, nor add a new Host gate before retained A.
                     scope.Begin(true);SetAutomatic(host,input,true);
-                    NativeQuickItemChecks.Until(()=>
-                    {
-                        scope.Step();var prepared=GetOptional(host,"preparedBuild");var directory=SchedulerOwnerDirectory(host,owner);
-                        if(prepared!=null && directory!=null && !(bool)Get(directory,"Ready") &&
-                            ReferenceEquals(Get(Get(Get(prepared,"Target"),"Range"),"Owner"),owner))schedulerColdNative.PreparedCold++;
-                        return scope.Goals.All(goal=>goal.Complete);
-                    });
-                    var first=scope.Events[0];var second=scope.Events[1];var sharedDirectory=schedulerColdNative.Directory;
-                    Require(scope.Events.Count==2 && wall.Item.stack==4 && schedulerColdNative.PreparedCold>0 && schedulerColdNative.ColdEffects>0 &&
-                        schedulerColdNative.RetainedAtConsume && sharedDirectory!=null && (long)Get(host,"BuildFocusDirectoryBuilds")==builds+1,
-                        "a real retained local A prepares and actually consumes while its own 513-node directory is still unfinished, with one genuine shared construction");
+                    NativeQuickItemChecks.Until(()=>{scope.Step();return scope.Goals.All(goal=>goal.Complete);});
+                    var qualification=(BlueprintProjectionQualificationReceipt)Get(owner,"Qualification");
+                    var directory=qualification.GeometryDirectory;var first=scope.Events[0];var second=scope.Events[1];
+                    Require(qualification.SourceRanges.Count==groups && directory.NodeCount==2*groups-1 &&
+                        ReferenceEquals(directory.Sources,qualification.SourceRanges) && scope.Events.Count==2 && wall.Item.stack==4 &&
+                        (long)Get(worker,"projectionGeometryDirectoryBuilds")==builds+1 && (long)Get(worker,"projectionGeometryDirectoryNodes")==nodes+2*groups-1 &&
+                        (long)Get(worker,"projectionGeometryDirectoryMaximumBatch")<=64 && (long)Get(worker,"projectionGeometryDirectoryYields")>yields &&
+                        (long)Get(host,"BuildFocusDirectoryConstructionSteps")==0 && (long)Get(host,"BuildFocusDirectoryBuilds")==0,
+                        "the real qualification publishes one complete 513-node directory built in existing worker yields, with no Host construction or extra first-use gate");
                     Require(unchecked(second.World-first.World)==first.Time,
-                        "cold directory construction does not lose the next natural same-wall itemTime opportunity");
-                    NativeQuickItemChecks.Until(()=>{scope.Step();return (bool)Get(sharedDirectory,"Ready");});
+                        "the retained local A still consumes on the next natural same-wall itemTime opportunity");
                     SetAutomatic(host,input,false);
                     for(int frame=0;frame<80 && (bool)Get(Get(tools,"Use"),"Active");frame++)scope.Step();
-                    // Reenter this still-live exact template at a disjoint
-                    // origin. Its worker-qualified geometry remains shared;
-                    // no private directory/cache state is reset or injected.
                     p.position=new Vector2(1104*16,646);p.velocity=Vector2.Zero;
                     for(int x=1090;x<1120;x++)NativeToolsChecks.Tile(x,43,TileID.Stone);
                     var secondOwner=Place(context,host,input,entry,1100,40);
-                    NativeQuickItemChecks.Until(()=>{scope.Step();return GetOptional(secondOwner,"Qualification")!=null && GetOptional(secondOwner,"Match")!=null;});
-                    Require(ReferenceEquals(qualification.SourceRanges,((BlueprintProjectionQualificationReceipt)Get(secondOwner,"Qualification")).SourceRanges),
-                        "the second genuine same-template projection receives the same immutable qualified source geometry");
                     scope.Goals=new[]{BusinessWallGoal(1108,42,wall),BusinessWallGoal(1110,42,wall)};
-                    scope.Begin(true);schedulerColdNative.Owner=secondOwner;schedulerColdNative.Directory=null;SetAutomatic(host,input,true);
+                    scope.Begin(true);SetAutomatic(host,input,true);
                     NativeQuickItemChecks.Until(()=>{scope.Step();return scope.Goals.All(goal=>goal.Complete);});
-                    Require(wall.Item.stack==2 && scope.Events.Count==2 && ReferenceEquals(schedulerColdNative.Directory,sharedDirectory) &&
-                        (long)Get(host,"BuildFocusDirectoryBuilds")==builds+1,
-                        "same-template reentry actually consumes both new walls using the already-built shared directory without a second construction");
+                    var next=(BlueprintProjectionQualificationReceipt)Get(secondOwner,"Qualification");
+                    Require(wall.Item.stack==2 && scope.Events.Count==2 && ReferenceEquals(qualification.SourceRanges,next.SourceRanges) &&
+                        ReferenceEquals(directory,next.GeometryDirectory) && (long)Get(worker,"projectionGeometryDirectoryBuilds")==builds+1,
+                        "the second genuine same-template instance consumes both new walls using the same frozen directory with no extra worker or Host construction");
                     Console.WriteLine("BlueprintSchedulerColdRuntime physicalGroups="+groups+" records="+((long)groups*CaptureChunk.MaximumRecords)+
-                        " preparedWhileCold="+schedulerColdNative.PreparedCold+" coldConsumerEffects="+schedulerColdNative.ColdEffects+
-                        " firstWorld="+first.World+" secondWorld="+second.World+" originalWallGap="+first.Time+" directoryBuilds=1 reentryActualEffects=2 sharedGeometry=true");
-                    scope.Report("cold known positive and same-template reentry");timeline.Report("cold known positive and same-template reentry");
+                        " firstWorld="+first.World+" secondWorld="+second.World+" enableToFirst="+unchecked(first.World-enabled)+
+                        " elapsedMs="+clock.ElapsedMilliseconds+" originalWallGap="+first.Time+" workerDirectoryBuilds=1 workerNodes=513"+
+                        " workerYields="+((long)Get(worker,"projectionGeometryDirectoryYields")-yields)+" maxNodesPerMoveNext="+Get(worker,"projectionGeometryDirectoryMaximumBatch")+
+                        " directoryBytes="+directory.Bytes+" hostConstruction=0 reentryActualEffects=2 sharedGeometry=true");
+                    scope.Report("qualified-directory retained positive and same-template reentry");timeline.Report("qualified-directory retained positive and same-template reentry");
                 }
-                catch {scope.Report("cold known-positive FAILURE");timeline.Report("cold known-positive FAILURE");throw;}
+                catch {scope.Report("qualified-directory positive FAILURE");timeline.Report("qualified-directory positive FAILURE");throw;}
                 finally
                 {
-                    patch.UnpatchAll(patch.Id);schedulerColdNative=null;SetAutomatic(host,input,false);Call(host,"ClearProjection");
+                    SetAutomatic(host,input,false);Call(host,"ClearProjection");
                     Main.screenPosition=screen;Main.LocalPlayer.position=new Vector2(42*16,646);Main.LocalPlayer.velocity=Vector2.Zero;
                 }
             }

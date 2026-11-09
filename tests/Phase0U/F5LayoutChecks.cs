@@ -90,6 +90,7 @@ namespace Terraria
                 throw new InvalidOperationException("Display-only Chinese title has its own fixed separator before navigation.");
             var input = new F5Input { Width = 1920, Height = 1080, Scale = 1, Active = true, Focused = true, F5 = true, BlockPointer = false };
             var state = new F5Interaction { Ready = true };
+            state.Navigate(9);
             state.Update(input); state.Layout.Ensure(1920, 1080, 1, 9, new object(), Measure);
             foreach (F5Element element in state.Layout.Elements)
             {

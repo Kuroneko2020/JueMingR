@@ -98,17 +98,37 @@ namespace NativeWorldTextProbe
         // TileObjectData/ContentSamples/catalog and tile-entity dictionaries run.
         internal sealed class World : IDisposable
         {
+            private static bool showEcho;
+            private readonly bool previousEcho=showEcho;
+            internal bool EchoVision { get=>showEcho; set=>showEcho=value; }
             private readonly Tile[,] tiles=Main.tile; private readonly Player[] players=Main.player; private readonly NPC[] npcs=Main.npc; private readonly WorldItem[] items=Main.item;
             private readonly int width=Main.maxTilesX,height=Main.maxTilesY,mode=Main.netMode;private readonly bool map=Main.mapFullscreen;
             private readonly Terraria.WorldSections sections=Main.sectionManager;
+            private readonly Terraria.Map.WorldMap mapTiles=Main.Map;
+            private readonly Terraria.Graphics.SpriteViewMatrix view=Main.GameViewMatrix;
+            private readonly Vector2 camera=Main.screenPosition,originalSize=Terraria.GameInput.PlayerInput.OriginalScreenSize;
             private readonly Harmony visibility=new Harmony("JueMingR.Tests.NaturalWorld."+Guid.NewGuid().ToString("N"));
             internal readonly object Catalog;private readonly MethodInfo observe;private long mapping;
             internal World(Assembly assembly,bool warm=true)
             {
+                showEcho=false;
                 Main.netMode=0;Main.mapFullscreen=false;Main.maxTilesX=Main.maxTilesY=64;Main.tile=new Tile[64,64];
                 for(int x=0;x<64;x++)for(int y=0;y<64;y++)Main.tile[x,y]=new Tile();
+                // Native PlaceTile/TileFrame queues real map updates. Keep its
+                // destination isolated with the tile array, including callers
+                // that deliberately skip Main.Initialize in BrowserCpu.
+                Main.Map=new Terraria.Map.WorldMap(64,64);
+                // Frozen TargetValue.StillMatches uses the real InView path.
+                // Provide a native CPU viewport instead of stubbing visibility
+                // or requiring a GraphicsDevice for SpriteViewMatrix rebuild.
+                Main.GameViewMatrix=new Terraria.Graphics.SpriteViewMatrix(null);
+                Main.GameViewMatrix.SetViewportOverride(new Viewport(0,0,960,640));Main.GameViewMatrix.Zoom=Vector2.One;Main.screenPosition=Vector2.Zero;
+                typeof(Terraria.GameInput.PlayerInput).GetField("_originalScreenWidth",F).SetValue(null,960);
+                typeof(Terraria.GameInput.PlayerInput).GetField("_originalScreenHeight",F).SetValue(null,640);
                 Main.player=new Player[players.Length];for(int i=0;i<Main.player.Length;i++)Main.player[i]=new Player{position=new Vector2(800,800)};Main.player[Main.myPlayer].active=true;
-                Main.npc=new NPC[npcs.Length];Main.item=new WorldItem[items.Length];
+                // Collision.EmptyTile used by native gate/trapdoor closing
+                // requires Main.Initialize's non-null inactive NPC slots.
+                Main.npc=new NPC[npcs.Length];for(int i=0;i<Main.npc.Length;i++)Main.npc[i]=new NPC();Main.item=new WorldItem[items.Length];
                 Main.sectionManager=new Terraria.WorldSections(1,1);Main.sectionManager.SetAllSectionsLoaded();
                 visibility.Patch(typeof(Lighting).GetMethod("GetColor",new[]{typeof(int),typeof(int)}),prefix:new HarmonyMethod(typeof(World).GetMethod(nameof(Light),F)));
                 visibility.Patch(typeof(Main).GetMethod("ShouldShowInvisibleBlocksAndWalls",F),prefix:new HarmonyMethod(typeof(World).GetMethod(nameof(NoEcho),F)));
@@ -121,8 +141,8 @@ namespace NativeWorldTextProbe
             internal object Observe(float x=328,float y=328,bool announcement=true){return observe.Invoke(null,new object[]{new Vector2(x,y),Catalog,announcement});}
             internal void Warm(){for(int i=0;i<200 && !(bool)Get(Catalog,"PlacementReady");i++){mapping++;object count=GetOptional(Catalog,"PlacementReads");Call(Catalog,"StepPlacement");if(count!=null)Require((long)Get(Catalog,"PlacementReads")-(long)count<=64,"query cold placement keeps actual per-mapping budget");}Require((bool)Get(Catalog,"PlacementReady"),"real native placement catalogue warm for outcome oracle");}
             private static bool Light(ref Color __result){__result=Color.White;return false;}
-            private static bool NoEcho(ref bool __result){__result=false;return false;}
-            public void Dispose(){((IDisposable)Catalog).Dispose();visibility.UnpatchAll(visibility.Id);Main.tile=tiles;Main.player=players;Main.npc=npcs;Main.item=items;Main.maxTilesX=width;Main.maxTilesY=height;Main.netMode=mode;Main.mapFullscreen=map;Main.sectionManager=sections;}
+            private static bool NoEcho(ref bool __result){__result=showEcho;return false;}
+            public void Dispose(){((IDisposable)Catalog).Dispose();visibility.UnpatchAll(visibility.Id);showEcho=previousEcho;Main.tile=tiles;Main.Map=mapTiles;Main.GameViewMatrix=view;Main.screenPosition=camera;typeof(Terraria.GameInput.PlayerInput).GetField("_originalScreenWidth",F).SetValue(null,(int)originalSize.X);typeof(Terraria.GameInput.PlayerInput).GetField("_originalScreenHeight",F).SetValue(null,(int)originalSize.Y);Main.player=players;Main.npc=npcs;Main.item=items;Main.maxTilesX=width;Main.maxTilesY=height;Main.netMode=mode;Main.mapFullscreen=map;Main.sectionManager=sections;}
         }
     }
 }

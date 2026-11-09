@@ -28,8 +28,9 @@ namespace JueMingR.TerrariaHost.Items
             internal Item Original, Expected;
         }
         private readonly HostTools tools;
-        private readonly Endpoint[] endpoints = new Endpoint[3];
-        private readonly int[] forward = new int[4], history = new int[4];
+        private readonly Endpoint[] endpoints = new Endpoint[4];
+        // Conversion keeps old cleanup plus its confirmed prefix (3+5 or 4+4).
+        private readonly int[] forward = new int[5], history = new int[8];
         private int endpointCount, forwardCount, forwardCursor, historyCount, sourceSlot, destination, activeSlot = -1;
         private Player player;
         private Item[] inventory;
@@ -41,6 +42,10 @@ namespace JueMingR.TerrariaHost.Items
         private bool nativeClick, tailOpen, oldLeft, ownLeft, clickApplied, returnRequested;
         private bool ownsInventory, nativeInventoryChange;
         private long receiptEpoch, tailEpoch;
+        private Player pauseTailPlayer;
+        private Item[] pauseTailInventory;
+        private long pauseTailSession, pauseTailSelection;
+        private uint pauseTailWorld;
         private int nativeCalls;
         private bool tailPending, displacedMoved;
         // These are only live carried identities displaced by our own swap.
@@ -53,19 +58,49 @@ namespace JueMingR.TerrariaHost.Items
         internal static ItemMaterialPreparation Current { get; private set; }
         internal bool HasWork { get { return phase != Phase.Idle; } }
         internal bool Ready { get { return phase == Phase.Ready; } }
+        internal long ReceiptEpoch { get { return receiptEpoch; } }
+        internal bool ReadyTicketCurrent(Player p, BlueprintProjectionIdentity target, long epoch, Item expected)
+        { return epoch==receiptEpoch && phase==Phase.Ready && identity!=null && identity.Equals(target) &&
+            ReferenceEquals(material,expected) && SameSession(p) && !tailPending && !returnRequested && !ownsInventory &&
+            tools.SelectionIntent==selection && !PhysicalInput && ExpectedCurrent(false,false) && PreparationItemsNotPending() && Main.mouseItem.IsAir; }
         internal bool Using { get { return phase == Phase.Using; } }
         internal bool Returning { get { return phase == Phase.Returning; } }
         internal bool Unknown { get { return phase == Phase.Unknown; } }
         internal bool Abandoning { get { return phase == Phase.Abandoning; } }
+        internal bool ObservesRetainedSelection(HostTools owner, Player p)
+        {
+            // A failed Build may still be Using while vanilla consumes its
+            // selection buffer/animation. Observe the real Select now, before
+            // that edge disappears; this grants no failed-session actions.
+            // The read accepts only the declared native debit without settling
+            // it. Returning keeps its strict, already settled endpoints.
+            if (!ReferenceEquals(owner, tools) || !OnGameThread || !tools.Runtime.HasFailed ||
+                !SameSession(p) || !tools.MatchesRetainedSession(p)) return false;
+            if (phase == Phase.Returning) return ExpectedCurrent(false, false);
+            return phase == Phase.Using && tools.Use.Building && tools.Use.Operation == token && ExpectedCurrent(true, false);
+        }
         // Retain only business intent across this owner's native inventory
         // sequence. This grants no ToolUse, source or consumer permission;
         // every action still requires its ordinary closed/empty-cursor gate.
         internal bool RetainsBuildIntent(Player p)
         {
-            return OnGameThread && (phase == Phase.Preparing || phase == Phase.Returning) && ReferenceEquals(p, player) &&
+            if (!OnGameThread) return false;
+            if (pauseTailPlayer != null && (!Main.gamePaused || Main.GameUpdateCount != pauseTailWorld ||
+                !tools.Runtime.IsSessionActive || pauseTailSession != tools.Runtime.Generation ||
+                !ReferenceEquals(pauseTailPlayer, tools.Items.World.SessionPlayer) || !ReferenceEquals(pauseTailInventory, pauseTailPlayer.inventory) ||
+                tools.SelectionIntent != pauseTailSelection || PhysicalInput || Main.playerInventory || Main.mouseItem == null || !Main.mouseItem.IsAir))
+                ClearPauseIntentTail();
+            // Closure can finish in vanilla's paused UI tail, including after
+            // Return has destroyed the receipt. Only the same paused world
+            // epoch retains intent; no token, Item permission or UI click is
+            // resurrected, and the next actual world step expires this tail.
+            if (phase == Phase.Idle) return ReferenceEquals(p, pauseTailPlayer) && pauseTailPlayer != null;
+            return (phase == Phase.Preparing || phase == Phase.Returning || phase == Phase.Ready) && ReferenceEquals(p, player) &&
                 SameSessionIdentity(p) && tools.Items.Ownership.OwnsUse(session, token) && !PhysicalInput &&
-                tools.SelectionIntent == selection && Main.playerInventory == ownsInventory;
+                tools.SelectionIntent == selection && Main.playerInventory == ownsInventory && ExpectedCurrent(false, false);
         }
+        private void ClearPauseIntentTail()
+        { pauseTailPlayer = null; pauseTailInventory = null; pauseTailSession = pauseTailSelection = 0; }
         internal Item Material { get { return material; } }
         internal string Reason { get; private set; }
         internal Func<int, int> UseConsumptionMaximum;
@@ -263,6 +298,39 @@ namespace JueMingR.TerrariaHost.Items
             return OnGameThread && phase == Phase.Using && token == useToken && nativeCalls == 0 && !tailPending &&
                 tools.Items.Ownership.OwnsUse(session, useToken) && SameSessionIdentity(player) && ExpectedCurrent(true);
         }
+        internal bool TryCompleteSettledEmptyUse(long useToken)
+        {
+            // Only the returned, positively confirmed native consumer may call
+            // this after ObserveUseConsumption settled its exact debit. Empty
+            // paint endpoints already at their updated originals have no inverse
+            // ItemSlot work; clicking them would delay vanilla's next material.
+            if (!OnGameThread || phase != Phase.Using || useToken <= 0 || token != useToken || destination != 54 ||
+                !tools.Runtime.IsSessionActive || tools.Runtime.HasFailed || !tools.Input.CanRunAutomaticActions ||
+                !tools.Use.Building || tools.Use.Operation != useToken || tools.Use.InNativeUse ||
+                !SameSession(player) || tools.SelectionIntent != selection || PhysicalInput ||
+                nativeCalls != 0 || lifecycleCalls != 0 || cursorSyncCalls != 0 || nativeClick || nativeInventoryChange ||
+                tailOpen || tailPending || tailStep != TailStep.None || activeSlot >= 0 || ownsInventory || Main.playerInventory ||
+                converting || returnRequested || endpointCount == 0 || historyCount == 0 || material == null || !material.IsAir ||
+                Main.mouseItem == null || !Main.mouseItem.IsAir || Main.LocalPlayerHasPendingInventoryActions() ||
+                !ExpectedCurrent(false, false) || !PreparationItemsNotPending()) return false;
+            for (int i = 0; i < endpointCount; i++)
+            {
+                var endpoint = endpoints[i]; var current = inventory[endpoint.Slot];
+                // Include the original source, which ordinary FinishReturn need
+                // not compare. A displaced nonempty 54, tool, remainder or any
+                // pending/manual endpoint must retain its real inverse route.
+                if (!Air(endpoint.OriginalType, endpoint.OriginalStack) || !Air(endpoint.Type, endpoint.Stack) ||
+                    !current.IsAir || !Matches(current, endpoint.Original, endpoint.OriginalType, endpoint.OriginalStack) ||
+                    player.inventoryChestStack[endpoint.Slot] || tools.Items.World.ManualMaterials.Contains(current) ||
+                    tools.ProtectedAfterYield(current)) return false;
+            }
+            // The existing ToolUse still owns this exact token and its source
+            // through vanilla's natural animation/selection tail. Forget only
+            // the completed preparation receipt; EndUse remains ToolUse's job.
+            // This grants no successor, input, inventory move or failed-runtime
+            // work, and leaves every nonempty return program unchanged.
+            ResetReceipt(); return true;
+        }
         internal bool IsDisplaced(Item item)
         { return item != null && !item.IsAir && (HasWork && ReferenceEquals(item, displaced) || abandonedDisplaced.Contains(item)); }
         internal void ObserveInventory(Player p)
@@ -403,6 +471,7 @@ namespace JueMingR.TerrariaHost.Items
         internal void ClearSession()
         {
             if (!OnGameThread) return;
+            ClearPauseIntentTail();
             RestoreHiddenPresentation();
             RestoreBorrowedInput();
             // Only an unchanged, still-owned UI with an empty cursor can be
@@ -410,6 +479,7 @@ namespace JueMingR.TerrariaHost.Items
             // open inventory; closing it would trigger vanilla GetOrDropItem.
             if (ownsInventory && SameSession(player) && !PhysicalInput && tools.SelectionIntent == selection &&
                 Main.mouseItem != null && Main.mouseItem.IsAir && OrdinaryInventoryUi(player)) CloseNativeInventory();
+            ClearPauseIntentTail();
             ownsInventory = false;
             if (session > 0) tools.Items.Ownership.EndUse(session, token);
             abandonedDisplaced.Clear(); guardPlayer = null; guardInventory = null; guardSession = 0;
@@ -418,6 +488,7 @@ namespace JueMingR.TerrariaHost.Items
         }
         private void LoseIdentity(string reason, bool manual)
         {
+            ClearPauseIntentTail();
             RestoreHiddenPresentation();
             RestoreBorrowedInput(); Reason = reason;
             if (!manual && ownsInventory && SameSession(player) && Main.mouseItem != null && Main.mouseItem.IsAir &&
@@ -456,7 +527,7 @@ namespace JueMingR.TerrariaHost.Items
             for (int i = 0; i < endpointCount; i++) endpoints[i] = null;
             endpointCount = forwardCount = forwardCursor = historyCount = 0;
             session = token = selection = 0; identity = default(BlueprintProjectionIdentity); Reason = null;
-            UseConsumptionMaximum = null;
+            UseConsumptionMaximum = null; converting = false; conversionMaterial = null;
             ownsInventory = nativeInventoryChange = false;
             nativeClick = tailOpen = tailPending = clickApplied = returnRequested = false; tailStep = TailStep.None; activeSlot = -1;
         }
@@ -481,6 +552,7 @@ namespace JueMingR.TerrariaHost.Items
         private void ExternalInventoryChange()
         {
             if (nativeInventoryChange) return;
+            ClearPauseIntentTail();
             RestoreHiddenPresentation(); presentationIntent++;
             if (!OnGameThread || !HasWork || phase == Phase.Unknown || nativeInventoryChange || !SameSession(player)) return;
             // This prefix observes intent before ToggleInv can close the UI
@@ -523,6 +595,11 @@ namespace JueMingR.TerrariaHost.Items
             catch { ownsInventory = false; LoseIdentity("material-preparation-inventory-close-failed", false); throw; }
             finally { nativeInventoryChange = false; }
             if (Main.playerInventory) return false;
+            if (Main.netMode == 0 && Main.autoPause && Main.gamePaused && SameSession(player))
+            {
+                pauseTailPlayer = player; pauseTailInventory = inventory;
+                pauseTailSession = session; pauseTailSelection = selection; pauseTailWorld = Main.GameUpdateCount;
+            }
             ownsInventory = false; return true;
         }
         private bool FinishInventoryPhase()
@@ -643,7 +720,7 @@ namespace JueMingR.TerrariaHost.Items
             var beforeSlot = array[slot]; var beforeCursor = Main.mouseItem;
             int slotType = beforeSlot.type, slotStack = beforeSlot.stack, oldCursorType = beforeCursor.type, oldCursorStack = beforeCursor.stack;
             if (ItemSlot.PickItemMovementAction(inventory, context, activeSlot, beforeCursor) != 0 ||
-                !beforeSlot.IsAir && !beforeCursor.IsAir && Item.CanStack(beforeSlot, beforeCursor))
+                !beforeSlot.IsAir && !beforeCursor.IsAir && (Item.CanStack(beforeSlot, beforeCursor) || Item.CanStack(beforeCursor, beforeSlot)))
             { LoseIdentity("material-preparation-native-swap-not-legal", false); return; }
             try
             {
@@ -692,6 +769,7 @@ namespace JueMingR.TerrariaHost.Items
                 history[historyCount++] = activeSlot; forwardCursor++;
                 if (forwardCursor == forwardCount)
                 {
+                    if (converting && !CompleteSupplyConversion()) return;
                     if (!Main.mouseItem.IsAir || MaterialSlot() != destination) { LoseIdentity("material-preparation-not-ready", false); return; }
                     if (!FinishInventoryPhase()) return;
                     phase = Phase.Ready;

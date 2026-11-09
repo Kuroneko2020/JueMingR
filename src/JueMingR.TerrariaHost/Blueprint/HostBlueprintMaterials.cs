@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using JueMingR.Features.Blueprint;
 using JueMingR.TerrariaHost.ItemBrowser;
@@ -58,16 +58,6 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal Item Source;
         internal bool Deferred;
     }
-    internal sealed class BlueprintBuildPositionNegative
-    {
-        internal int X,Y;
-        internal long Player;
-        internal Microsoft.Xna.Framework.Vector2 Position;
-        internal BlueprintProjectionBounds Reach;
-        internal int Width,Height,Direction,PulleyDirection;
-        internal bool Pulley;
-        internal bool OutOfReach,Active;
-    }
     internal sealed class BlueprintRangeMaterials
     {
         internal BlueprintMaterialAccumulator Progress;
@@ -81,19 +71,6 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal long CatalogRevision;
         internal BlueprintBuildTarget Candidate;
         internal int CandidateCursor;
-        // Stable absolute member/lane progress belongs to the source intent,
-        // not ToolUse's disposable token or one retained transport window.
-        internal long PreferredGroup, PreferredCompletedBatch, PreferredVersion = -1, PreferredPlayer = -1, PreferredWake = -1, PreferredSupply = -1, PreferredSupport = -1;
-        internal int PreferredCursor;
-        internal bool PreferredInitialized, PreferredComplete, PreferredRevisit;
-        internal HashSet<int> PreferredNegativeOrdinals;
-        internal Dictionary<int,BlueprintBuildPositionNegative> PreferredPositionNegatives;
-        internal BlueprintProjectionBounds PreferredBounds, PreferredCoveredBounds, PreferredPassCovered, PreferredFrontierBounds;
-        internal int PreferredFrontierCursor;
-        internal bool PreferredFrontier;
-        internal BlueprintBuildWait PreferredWaits;
-        internal ulong PreferredDependencySlots, PreferredRetryAt;
-        internal long PreferredContainer, PreferredRestoration, PreferredPermission;
         internal long BuildEpoch, BuildWakeRevision;
         internal long BuildPlayerRevision, BuildSupplyRevision, BuildContainerRevision, BuildActivationRevision;
         internal long BuildRestorationRevision;
@@ -132,7 +109,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private readonly LinkedList<BlueprintProjectionMatchRange> materialChanges = new LinkedList<BlueprintProjectionMatchRange>();
         private IReadOnlyList<BlueprintMaterialInstance> materialInstances = Array.Empty<BlueprintMaterialInstance>();
         private readonly Dictionary<long, BlueprintProjectionPlacement> materialInstanceOwners = new Dictionary<long, BlueprintProjectionPlacement>();
-        private int materialDemandSceneCursor, materialBuildSceneCursor, materialBuildSearchBudget;
+        private int materialDemandSceneCursor, materialBuildSearchBudget;
         private int materialMatchOwners;
         // A native placement condition can depend on another player's remote
         // structure, global capacity, or derived biome. Local watch/inventory
@@ -266,7 +243,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (value != null)
             {
                 value.BuildWakeRevision++; value.Candidate = null;
-                ReopenPreferredRange(range);
+                InvalidateNearBuildRange(range);
                 value.BuildRetryPending = true; value.EligibilityRetry = false;
             }
             // This demand uses the original bounded source/world scheduler.
@@ -284,8 +261,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (value.EligibilityRetry) return;
             value.EligibilityRetry = true; value.EligibilityRetryOrdinal = target.Ordinal;
             value.EligibilityRetryAt = materialTick + BuildEligibilityRetryDelay;
-            if (target.LocalPriority && value.PreferredGroup == buildContinuation?.Group &&
-                (value.PreferredRetryAt == 0 || value.EligibilityRetryAt < value.PreferredRetryAt)) value.PreferredRetryAt = value.EligibilityRetryAt;
+            BlockNearBuildFact(target,value.EligibilityRetryAt);
 #if JMR_BLUEPRINT_DIAGNOSTIC
             if(BlueprintBuildTrace.Active)
             {
@@ -383,7 +359,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             materialAll.Expected -= state.Ranges.Length;
             foreach (var range in state.Ranges)
             {
-                RetirePreferredRange(range);
+                RetireNearBuildRange(range);
                 if ((materialCatalogTransition || materialContextTransition) && range.MaterialDemandEpoch != materialDemandEpoch && materialTransitionRemaining > 0) materialTransitionRemaining--;
                 RevokeMaterialRange(range, true);
             }
@@ -393,7 +369,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void RevokeMaterialRange(BlueprintProjectionMatchRange range, bool retiring = false, bool resetBuild = false)
         {
             var value = range.Materials; if (value == null) return;
-            if(!retiring)ReopenPreferredRange(range);
+            if(!retiring)InvalidateNearBuildRange(range);
             if (value.Current)
             {
                 value.Current = false;
@@ -407,7 +383,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (retiring || resetBuild)
             {
                 ResetMaterialBuildWalk(range, true);
-                value.PreferredGroup = 0; value.PreferredCursor = 0; value.PreferredInitialized = value.PreferredComplete = value.PreferredRevisit = false;
             }
             value.Desired = null; QueueMaterialChange(range);
             if (retiring) value.CatalogRevision = -1;
@@ -557,7 +532,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             foreach (var range in materialChanges) range.Materials.Change?.Dispose(); materialChanges.Clear();
             materialInstances = Array.Empty<BlueprintMaterialInstance>(); materialInstanceOwners.Clear(); materialSceneIdentity = -1;
             materialDraftKey = null; materialDraftExclusions = null; materialDraftSnapshot = BlueprintMaterialSnapshot.Pending; materialAssetKeys.Clear();
-            materialDemandSceneCursor = materialBuildSceneCursor = materialBuildSearchBudget = 0;
+            materialDemandSceneCursor = materialBuildSearchBudget = 0;
             Library?.CancelMaterials(); CancelMaterialPublication();
         }
     }
