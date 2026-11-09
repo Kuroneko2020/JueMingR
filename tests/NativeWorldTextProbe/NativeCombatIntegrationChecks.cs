@@ -21,6 +21,7 @@ namespace NativeWorldTextProbe
             try
             {
                 string leaf=Environment.GetEnvironmentVariable("JMR_COMBAT_INTEGRATION_ONLY");
+                if(leaf=="prism-diagnostic"){NativeCombatPrismDiagnosticChecks.Run(context);return;}
                 if(leaf=="prism-chain"){NativeCombatPrismChainChecks.Run(context);return;}
                 if(leaf=="prism-lifecycle"){NativeCombatPrismChainChecks.RunLifecycle(context);return;}
                 if(leaf=="prism-lifecycle-remaining"){NativeCombatPrismChainChecks.RunRemainingLifecycle(context);return;}

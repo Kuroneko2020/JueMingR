@@ -117,6 +117,9 @@ namespace JueMingR.TerrariaHost.Combat
         public void Radius(int value){if(CanConfigure && Options.Radius!=value)Settings.Set(Options.WithRadius(value));}
         internal void Poll()
         {
+#if JMR_AIM_LIGHT
+            AimTrace.PrismPoll(runtime.IsSessionActive);
+#endif
             Settings.Poll();Attack?.Control.PollSources();Attack?.Demand();World.PollResources();bool collision=Collision,path=Path;
             if(wasCollision && !collision)Geometry.Clear();
             if(wasPath && !path)Prediction.Cache.Release(0);

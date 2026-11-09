@@ -10,7 +10,7 @@ using Terraria.GameInput;
 
 namespace JueMingR.TerrariaHost.Combat
 {
-    internal sealed class HostCombat : IRuntimeFeature,F5.ICombatControls
+    internal sealed partial class HostCombat : IRuntimeFeature,F5.ICombatControls
     {
         internal static readonly string[] Names=F5.CombatControls.Names;
         internal static readonly string[] Actions=F5.CombatControls.Actions;
@@ -73,6 +73,9 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal bool Admitted(Player player,bool cursor=false)
         {
+#if JMR_AIM_LIGHT
+            if(Prediction.AimLightTrace.PrismConsuming)return PrismAdmitted(player,cursor);
+#endif
             return Available && ReferenceEquals(player,Player) && Runtime.IsSessionActive && FreshGesture && (CanInterface?.Invoke()??false) &&
                 !Main.gamePaused && Main.CanUpdateGameplay && !player.dead && !player.ghost && !player.CCed && !player.cursed && !player.noItems &&
                 !player.HasLockedInventory() && !player.isControlledByFilm && !Tools.Items.World.Busy && !Tools.Items.World.HasManualOperation &&

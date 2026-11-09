@@ -25,9 +25,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         private long started;
         private int armed,stopping,closed;
         private long sequence,bytes;
+        private bool prismSummaryOffered;
         private string ending="unknown-tail",lastScene;
         internal long Dropped,HighWater;
         internal string Failure;
+        internal bool PrismOnly {get;private set;}
         internal bool Closed=>Volatile.Read(ref closed)!=0;
         internal bool Accepting=>Volatile.Read(ref armed)!=0 && Volatile.Read(ref stopping)==0 && !Closed;
         private sealed class Scene
@@ -100,6 +102,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             long total;counts.TryGetValue(kind,out total);counts[kind]=total+1;
             if(queue.Count>=QueueLimit){Interlocked.Increment(ref Dropped);return;}
+            if(kind=="prism-summary")prismSummaryOffered=true;
             // Escape after bounding the input; arbitrary exception text cannot
             // turn one event into fake rows or an unbounded temporary string.
             bool truncated=detail!=null && detail.Length>RecordLimit-256;
@@ -151,13 +154,16 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 if(!File.Exists(arm))return;
                 string run=DateTime.UtcNow.ToString("yyyyMMddTHHmmss",CultureInfo.InvariantCulture)+"-"+Guid.NewGuid().ToString("N");
                 string used=Path.Combine(root,"used-"+run+".txt");File.Move(arm,used);
-                var info=new FileInfo(used);if(info.Length>512 || File.ReadAllText(used).Trim()!=identity)throw new InvalidDataException("Diagnostic arm identity mismatch.");
+                var info=new FileInfo(used);if(info.Length>512)throw new InvalidDataException("Diagnostic arm identity mismatch.");
+                string requested=File.ReadAllText(used).Trim();PrismOnly=requested=="prism:"+identity;
+                if(requested!=identity && !PrismOnly)throw new InvalidDataException("Diagnostic arm identity mismatch.");
                 started=Stopwatch.GetTimestamp();
                 string directory=Path.Combine(root,run);Directory.CreateDirectory(directory);
                 using(var stream=new FileStream(Path.Combine(directory,"trace.tsv"),FileMode.CreateNew,FileAccess.Write,FileShare.Read,4096))
                 {
                     Write(stream,"0\t0\t-1\tstart\tformat=JueMingR.AimLight.1;host="+identity+";utc="+DateTime.UtcNow.ToString("O",CultureInfo.InvariantCulture)+";queue=256;recordChars=4096;maxBytes=16777216;seconds=600;workerInternals=not-recorded;tail=unknown-until-end");
                     if(describe!=null)Write(stream,"0\t0\t-1\tidentity\t"+Escape(describe()));
+                    Write(stream,"0\t0\t-1\tmode\t"+(PrismOnly?"prism-consumer;rows=192;aiCalls=1500;secondsAfterTrigger=120;untriggered=not-captured":"legacy-light"));
                     // No producer formatting/counters before the async arm is
                     // authenticated. A delayed arm cannot claim earlier history.
                     Volatile.Write(ref armed,1);
@@ -175,7 +181,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     }
                     foreach(string summary in Summaries(true))if(!Write(stream,summary))break;
                     int remaining;lock(gate)remaining=queue.Count+dequeuedUnwritten;
-                    string footer="0\t"+Elapsed()+"\t-1\tend\treason="+Escape(ending)+";observerFailure="+Escape(Failure)+";dropped="+Interlocked.Read(ref Dropped)+";unwritten="+remaining+";bytesBeforeEnd="+bytes+";businessTail=unobserved-after-stop\n";
+                    string footer="0\t"+Elapsed()+"\t-1\tend\treason="+Escape(ending)+";observerFailure="+Escape(Failure)+";dropped="+Interlocked.Read(ref Dropped)+";unwritten="+remaining+";bytesBeforeEnd="+bytes+(PrismOnly?";prismCapture="+(prismSummaryOffered?"summary-offered-check-unwritten":"not-captured"):"")+";businessTail=unobserved-after-stop\n";
                     byte[] tail=Encoding.UTF8.GetBytes(footer);stream.Write(tail,0,tail.Length);stream.Flush();
                 }
             }

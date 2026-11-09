@@ -184,7 +184,11 @@ namespace JueMingR.TerrariaHost.Tools
             try{host?.Combat?.Attack?.StartedHand(__instance,__0);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}
         }
         private static void AfterReuse(Player __instance){host?.Combat?.Use.AfterReuse(__instance);}
-        private static void ProjectileCreated(Player __instance,Projectile __0){host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);host?.Combat?.Use.Created(__instance,__0);host?.Combat?.Attack?.Control.Created(__instance,__0);}
+        private static void ProjectileCreated(Player __instance,Projectile __0){
+#if JMR_AIM_LIGHT
+            Combat.Prediction.AimLightTrace.PrismBirth(__instance,__0);
+#endif
+            host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);host?.Combat?.Use.Created(__instance,__0);host?.Combat?.Attack?.Control.Created(__instance,__0);}
         // Vanilla has finished ALL NPC slots here, but has not advanced any
         // projectile. Finite held volleys must capture their full receiver and
         // chase scene at this boundary, once; individual AI only consumes it.
@@ -192,13 +196,31 @@ namespace JueMingR.TerrariaHost.Tools
         // This call's receipt chooses its owner, even if that action has since
         // stopped or another one began. A value receipt adds no idle allocation;
         // the out scope is published before Combat borrows any input.
-        private struct ProjectileLease {internal long Token;internal ToolUse Tool;internal Combat.CombatUse Combat;internal Combat.CombatInputScope Scope;internal Combat.CombatCursorScope Attack;internal Combat.HostAttackControl.ShotReceipt Derived;}
+        private struct ProjectileLease {internal long Token;internal ToolUse Tool;internal Combat.CombatUse Combat;internal Combat.CombatInputScope Scope;internal Combat.CombatCursorScope Attack;internal Combat.HostAttackControl.ShotReceipt Derived;
+#if JMR_AIM_LIGHT
+            internal bool Prism;
+#endif
+        }
         private static void ProjectileBefore(Projectile __instance,out ProjectileLease __state)
         {
-            __state=default(ProjectileLease);var current=host;if(current==null)return;
+            __state=default(ProjectileLease);var current=host;
+#if JMR_AIM_LIGHT
+            __state.Prism=Combat.Prediction.AimLightTrace.PrismToolBefore(current?.Combat,__instance);
+#endif
+            if(current==null)return;
             __state.Combat=current.Combat?.Use;
             __state.Combat?.BeginProjectile(__instance,out __state.Scope);
-            try{__state.Attack=current.Combat?.Attack?.Control.BeginAI(__instance);__state.Derived=current.Combat?.Attack?.Control.BeginDerived(__instance);}catch(Exception error){current.Combat?.Attack?.FailLocal(error);}
+#if JMR_AIM_LIGHT
+            if(__state.Prism)Combat.Prediction.AimLightTrace.PrismBeginPoint();
+#endif
+            try{__state.Attack=current.Combat?.Attack?.Control.BeginAI(__instance);
+#if JMR_AIM_LIGHT
+                if(__state.Prism)Combat.Prediction.AimLightTrace.PrismEndPoint();
+#endif
+                __state.Derived=current.Combat?.Attack?.Control.BeginDerived(__instance);}catch(Exception error){current.Combat?.Attack?.FailLocal(error);}
+#if JMR_AIM_LIGHT
+            if(__state.Prism){Combat.Prediction.AimLightTrace.PrismEndPoint();Combat.Prediction.AimLightTrace.PrismBorrowed(__state.Attack);}
+#endif
             if(__state.Scope!=null || !current.Use.OwnsProjectile(__instance))return;
             __state.Tool=current.Use;__state.Token=current.Use.Operation;current.Use.BeginProjectile();
         }
@@ -211,6 +233,9 @@ namespace JueMingR.TerrariaHost.Tools
             receipt.Derived?.Owner.EndShot(receipt.Derived);
             if(receipt.Scope!=null)receipt.Combat.EndProjectile(shot,receipt.Scope,error);
             else if(receipt.Token>0)receipt.Tool.EndProjectile(receipt.Token,error);
+#if JMR_AIM_LIGHT
+            if(receipt.Prism)Combat.Prediction.AimLightTrace.PrismToolAfter(error);
+#endif
         }
         private static void ProjectileAfter(Projectile __instance,ref ProjectileLease __state){EndProjectile(__instance,ref __state,null);}
         private static Exception ProjectileFinal(Projectile __instance,ref ProjectileLease __state,Exception __exception){if(__exception!=null)EndProjectile(__instance,ref __state,__exception);return __exception;}

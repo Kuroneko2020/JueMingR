@@ -50,7 +50,11 @@ namespace JueMingR.TerrariaHost.Combat
         // Identity continuity alone is not permission to receive an attack.
         // Read only the already selected live receiver; phase displacement
         // never revokes it, but current damage/friendly/death gates do.
-        internal bool CurrentReceiver {get{return observation.Selection.HasTarget && CombatSelection.Valid(observation.Selection.Target,observation.Session) && CombatSelection.Receives(Main.npc[observation.Selection.Target.Slot],observation.Options.Dummy);}}
+        internal bool CurrentReceiver {get{
+#if JMR_AIM_LIGHT
+            if(Prediction.AimLightTrace.PrismConsuming)return PrismReceiver();
+#endif
+            return observation.Selection.HasTarget && CombatSelection.Valid(observation.Selection.Target,observation.Session) && CombatSelection.Receives(Main.npc[observation.Selection.Target.Slot],observation.Options.Dummy);}}
         internal AttackContact ExpectedImpact {get{if(!CurrentReceiver){ClearExecution();return null;}return Valid(false)?(Main.GameUpdateCount==prepared?current:next):Control.ExpectedImpact;}}
         internal void BindPresentation(AttackContact result)
         {presentation=result;presentationStep=Main.GameUpdateCount;presentationOrdinary=ReferenceEquals(result,current) || ReferenceEquals(result,next);if(!presentationOrdinary)Control.BindPresentation(result);}

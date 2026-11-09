@@ -45,11 +45,23 @@ namespace JueMingR.TerrariaHost.Combat
         // cannot grant input: observation/preparation and execution each have
         // their own current demand/permission checks below.
         private bool Current(Source source)
-        {var player=combat.Player;return source!=null && player!=null && player.active && !player.dead && !player.ghost && combat.Runtime.IsSessionActive && ReferenceEquals(source.Player,player) && source.Session==observation.Session && source.Selection==combat.Tools.SelectionIntent && source.Slot==player.selectedItem && ReferenceEquals(player.HeldItem,source.Weapon) && source.Weapon.type==source.Type && source.Weapon.prefix==source.Prefix;}
+        {
+#if JMR_AIM_LIGHT
+            if(Prediction.AimLightTrace.PrismConsuming && Prediction.AimLightTrace.PrismSourceMatches(source))return PrismCurrent(source);
+#endif
+            var player=combat.Player;return source!=null && player!=null && player.active && !player.dead && !player.ghost && combat.Runtime.IsSessionActive && ReferenceEquals(source.Player,player) && source.Session==observation.Session && source.Selection==combat.Tools.SelectionIntent && source.Slot==player.selectedItem && ReferenceEquals(player.HeldItem,source.Weapon) && source.Weapon.type==source.Type && source.Weapon.prefix==source.Prefix;}
         private bool Observed(Source source)
-        {return Current(source) && combat.Attack.AttackObservationDemand;}
+        {
+#if JMR_AIM_LIGHT
+            if(Prediction.AimLightTrace.PrismConsuming && Prediction.AimLightTrace.PrismSourceMatches(source))return Current(source) && Prediction.AimLightTrace.Gate(Prediction.AimLightTrace.PrismGate.Demand,combat.Attack.AttackObservationDemand);
+#endif
+            return Current(source) && combat.Attack.AttackObservationDemand;}
         private bool Allowed(Source source)
-        {return Observed(source) && observation.Options.Aim && combat.Admitted(combat.Player);}
+        {
+#if JMR_AIM_LIGHT
+            if(Prediction.AimLightTrace.PrismConsuming && Prediction.AimLightTrace.PrismSourceMatches(source))return Observed(source) && Prediction.AimLightTrace.Gate(Prediction.AimLightTrace.PrismGate.Aim,observation.Options.Aim) && combat.Admitted(combat.Player);
+#endif
+            return Observed(source) && observation.Options.Aim && combat.Admitted(combat.Player);}
         internal bool Pending
         {get{foreach(var entry in shots.Values)if((entry.Type==444 || HostWhipAttack.Pending(entry.Shot) || HostFlailAttack.Handles(entry.Type) || HostDirectionalControl.Handles(entry.Type) && HostDirectionalControl.Pending(combat.Player,entry.Shot)) && Valid(entry))return true;return false;}}
         // Scheduling reads an already prepared input, never mints permission.
@@ -90,7 +102,19 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool HasObservedPulse
         {get{foreach(var entry in shots.Values)if(HostPulseAttack.Handles(entry.Type) && Observed(entry))return true;return false;}}
         private bool Valid(Controlled entry)
-        {return entry.Shot.active && entry.Shot.owner==combat.Player?.whoAmI && (int)entry.Shot.key==entry.Key && entry.Shot.type==entry.Type && Allowed(entry.Source);}
+        {
+#if JMR_AIM_LIGHT
+            if(Prediction.AimLightTrace.PrismConsuming)
+            {
+                if(Prediction.AimLightTrace.PrismTracked(entry.Shot))return PrismValid(entry);
+                // BasicPermission may query other pending roles. Their failed
+                // membership is not this 633 consumer's first rejection.
+                Prediction.AimLightTrace.PrismSuspend();
+                try{return entry.Shot.active && entry.Shot.owner==combat.Player?.whoAmI && (int)entry.Shot.key==entry.Key && entry.Shot.type==entry.Type && Allowed(entry.Source);}
+                finally{Prediction.AimLightTrace.PrismResume();}
+            }
+#endif
+            return entry.Shot.active && entry.Shot.owner==combat.Player?.whoAmI && (int)entry.Shot.key==entry.Key && entry.Shot.type==entry.Type && Allowed(entry.Source);}
         private bool Observed(Controlled entry)
         {return entry.Shot.active && entry.Shot.owner==combat.Player?.whoAmI && (int)entry.Shot.key==entry.Key && entry.Shot.type==entry.Type && Observed(entry.Source);}
         private bool Current(Controlled entry)
@@ -481,12 +505,28 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool TryPoint(Projectile shot,out Vector2 point)
         {
             point=default(Vector2);Controlled entry;
+#if JMR_AIM_LIGHT
+            if(Prediction.AimLightTrace.PrismConsuming)
+            {
+                Prediction.AimLightTrace.PrismPointCheck(combat);
+                if(!Prediction.AimLightTrace.Gate(Prediction.AimLightTrace.PrismGate.Registry,shots.TryGetValue((int)shot.key,out entry)) || !Prediction.AimLightTrace.Gate(Prediction.AimLightTrace.PrismGate.ProjectileReference,ReferenceEquals(entry.Shot,shot)))return Prediction.AimLightTrace.PrismPoint(false,point,"source-rejected");
+                Prediction.AimLightTrace.PrismSource(entry.Source);
+                if(!Valid(entry))return Prediction.AimLightTrace.PrismPoint(false,point,"source-rejected");
+            }
+            else
+#endif
             if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot) || !Valid(entry))return false;
             // AI078 never reads the cursor. Its separate native Kill receipt
             // is the consumer; ordinary AI must neither inspect the target nor
             // retire that prepared receipt while waiting for the actual Kill.
             if(entry.Type==444)return false;
-            if(!combat.Attack.BasicPermission || !combat.Attack.CurrentReceiver)return false;
+            if(!combat.Attack.BasicPermission || !combat.Attack.CurrentReceiver)
+            {
+#if JMR_AIM_LIGHT
+                Prediction.AimLightTrace.PrismPoint(false,point,"permission-or-receiver-rejected");
+#endif
+                return false;
+            }
             EnsureNavigation(entry);
             // The native next-action split copies this birth-action direction.
             // Do not replace it with held navigation, or lend a cursor once the
@@ -504,11 +544,28 @@ namespace JueMingR.TerrariaHost.Combat
             // AI cannot obtain control by falling back from a missing contact.
             bool consumes=entry.Type==1035?HostWhipAttack.Consumes(shot):entry.Navigation!=null?combat.Player.channel && shot.ai[0]>=0:
                 HostDirectionalControl.Handles(entry.Type)?HostDirectionalControl.Consumes(combat.Player,shot):HostHeldAttack.Handles(entry.Type)?HostHeldAttack.Consumes(combat.Player,shot):HostGuidedAttack.Handles(entry.Type) && HostGuidedAttack.Consumes(combat.Player,shot);
+#if JMR_AIM_LIGHT
+            Prediction.AimLightTrace.Gate(Prediction.AimLightTrace.PrismGate.Consumes,consumes);
+#endif
             if(!consumes)return false;
-            if(TryEnhancedPoint(shot,out point)){combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Enhanced,entry.Solution.HasPoint?entry.Solution.PointSemantics:entry.Navigation!=null?AttackPointSemantics.WorldPoint:entry.Contact?.PointSemantics??AttackPointSemantics.Unknown);return true;}
+            if(TryEnhancedPoint(shot,out point)){combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Enhanced,entry.Solution.HasPoint?entry.Solution.PointSemantics:entry.Navigation!=null?AttackPointSemantics.WorldPoint:entry.Contact?.PointSemantics??AttackPointSemantics.Unknown);
+#if JMR_AIM_LIGHT
+                Prediction.AimLightTrace.PrismPoint(true,point,"enhanced");
+#endif
+                return true;}
             HostAttackInput input;
-            if(!combat.Attack.TryBasicInput(combat.Player,entry.Source.Weapon,shot,HostAttackPhase.Projectiles,out input))return false;
-            point=input.Point;combat.Attack.RecordInput(input);return true;
+            if(!combat.Attack.TryBasicInput(combat.Player,entry.Source.Weapon,shot,HostAttackPhase.Projectiles,out input))
+            {
+#if JMR_AIM_LIGHT
+                Prediction.AimLightTrace.PrismPoint(false,point,"basic-rejected");
+#endif
+                return false;
+            }
+            point=input.Point;combat.Attack.RecordInput(input);
+#if JMR_AIM_LIGHT
+            Prediction.AimLightTrace.PrismPoint(true,point,"basic");
+#endif
+            return true;
         }
         private bool TryEnhancedPoint(Projectile shot,out Vector2 point)
         {

@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.F5
 {
     // The shell combines its current UI owners. Leases remember values changed
     // by that decision; they are not a separate source of pointer ownership.
-    internal sealed class F5Shell
+    internal sealed partial class F5Shell
     {
         internal readonly F5Interaction State = new F5Interaction();
         private readonly F5Renderer renderer = new F5Renderer();
