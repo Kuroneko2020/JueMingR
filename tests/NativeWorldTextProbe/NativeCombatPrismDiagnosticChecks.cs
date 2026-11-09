@@ -21,6 +21,7 @@ namespace NativeWorldTextProbe
         {
             if(!injecting || __instance.type!=633 || __instance.owner!=Main.myPlayer)return;
             nativeCalls++;Main.hideUI=nativeCalls>=10 && nativeCalls<16;
+            Main.npc[2].dontTakeDamage=nativeCalls>=22 && nativeCalls<25;
         }
         internal static void Run(object context)
         {
@@ -52,15 +53,17 @@ namespace NativeWorldTextProbe
                 string[] rows=text.Split('\n').Where(line=>line.Contains("\tprism-consumer\t")).ToArray();
                 Require(rows.Length>0 && rows.Length<=192 && text.Contains("nativeAi075=") && text.Contains("observedBirths=1"),"same-parent native prefix, real birth and Tool consumer have bounded independent arrivals");
                 Require(rows.Any(row=>row.Contains("firstReject=HideUi;") && row.Contains("scope=False") && row.Contains("native=True")),"actual consumer records the precise conditional hideUI refusal rather than a Step-end inference");
+                Require(rows.Any(row=>row.Contains("firstReject=TargetReceives;") && (int.Parse(Value(row,"live").Split(',')[5],CultureInfo.InvariantCulture)&4)!=0),"a real consumer target refusal records the same live dontTakeDamage fact with identity, life and dummy qualification");
                 Require(rows.Any(row=>row.Contains("firstReject=none;") && row.Contains("point=True:") && row.Contains("scope=True") && row.Contains("native=True") && row.Contains("returned=True:")),"actual accepted consumer records point, borrowed/native cursor, native result and cursor return");
                 Require(rows.Where(row=>row.Contains("scope=True") && row.Contains("native=True")).All(row=>Value(row,"borrowed")==Value(row,"nativeCursor") && Value(row,"returned")=="True:"+Value(row,"beforeCursor")),"the actual native steering entry reads the borrowed coordinates and the real outer receipt returns its original cursor");
+                Require(rows.Where(row=>row.Contains("scope=True")).All(row=>Value(row,"frame")==Value(row,"sampledFrame") && int.Parse(Value(row,"boundary"),CultureInfo.InvariantCulture)>=0 && int.Parse(Value(row,"journey"),CultureInfo.InvariantCulture)>=0 && int.Parse(Value(row,"text"),CultureInfo.InvariantCulture)>=0 && int.Parse(Value(row,"pointer"),CultureInfo.InvariantCulture)>=0),"accepted consumers contain their exact sample epoch, cached input boundary and evaluated shell aggregate facts");
                 Require(rows.Where(row=>row.Contains("scope=True") && row.Contains("expected=True:")).All(row=>double.Parse(row.Split(';').Single(part=>part.StartsWith("steeringErrorSquared=",StringComparison.Ordinal)).Substring("steeringErrorSquared=".Length),CultureInfo.InvariantCulture)<.001),"native post-AI matches its actual consumed cursor and original .92 inertia, including initially incomplete alignment");
                 Require(rows.Where(row=>row.Contains("scope=True")).All(row=>!row.Contains("observedFirstFalse=HideUi")),"a prior rejected frame cannot contaminate later successful consumers");
                 Require(!text.Contains("\thost-gate\t") && !text.Contains("\tcache-publish\t") && (bool)trace.GetField("prismFinished",Flags).GetValue(null),"prism mode suppresses broad trace and remains stopped after native retirement");
                 File.WriteAllText(Path.Combine(root,"trace-copy.tsv"),text);
                 Console.WriteLine("PASS actual prism evidence: unarmed OFF / precise real CanInterface refusal / normal borrow-native-inertia-return / bounded native retirement; test-only hideUI counterexample is not the owner's root cause");
             }
-            finally{injecting=false;Main.hideUI=false;audit.UnpatchAll(audit.Id);field.SetValue(null,original);}
+            finally{injecting=false;Main.hideUI=false;Main.npc[2].dontTakeDamage=false;audit.UnpatchAll(audit.Id);field.SetValue(null,original);}
         }
         private static string Value(string row,string key)
         {string prefix=key+"=";return row.Trim().Split(';').Single(field=>field.StartsWith(prefix,StringComparison.Ordinal)).Substring(prefix.Length);}

@@ -11,6 +11,7 @@ namespace JueMingR.TerrariaHost.Combat
     // re-evaluation after the world step, and no alternative admission policy.
     internal sealed partial class HostCombat
     {
+        internal long PrismSampledFrame=>sampledFrame;
         private bool PrismAdmitted(Player player,bool cursor)
         {
             return Trace.Gate(Gate.Available,Available) && Trace.Gate(Gate.CombatPlayer,ReferenceEquals(player,Player)) && Trace.Gate(Gate.CombatSession,Runtime.IsSessionActive) &&
@@ -44,7 +45,15 @@ namespace JueMingR.TerrariaHost.Combat
         internal HostCombatObservation PrismObservation=>observation;
         internal HostCombat PrismCombat=>combat;
         private bool PrismReceiver()
-        {return Trace.Gate(Gate.HasTarget,observation.Selection.HasTarget) && Trace.Gate(Gate.TargetIdentity,CombatSelection.Valid(observation.Selection.Target,observation.Session)) && Trace.Gate(Gate.TargetReceives,CombatSelection.Receives(Main.npc[observation.Selection.Target.Slot],observation.Options.Dummy));}
+        {
+            if(!Trace.Gate(Gate.HasTarget,observation.Selection.HasTarget))return false;
+            var target=observation.Selection.Target;
+            // Raw live facts are distinct from policy evaluation: Identity
+            // can reject before Receives is called. Its unseen gate stays so.
+            var live=Main.npc!=null && target.Slot>=0 && target.Slot<Main.npc.Length?Main.npc[target.Slot]:null;
+            Trace.PrismTargetFacts(target,live,observation.Options.Dummy);
+            return Trace.Gate(Gate.TargetIdentity,CombatSelection.Valid(target,observation.Session)) && Trace.Gate(Gate.TargetReceives,CombatSelection.Receives(Main.npc[target.Slot],observation.Options.Dummy));
+        }
         private bool PrismBasicPermission()
         {
             return Trace.Gate(Gate.SelectionAvailable,observation.SelectionAvailable) && Trace.Gate(Gate.SettingsReady,observation.Settings.CanRun) && Trace.Gate(Gate.AimWanted,observation.Options.Aim) &&

@@ -144,6 +144,13 @@ namespace JueMingR.TerrariaHost.Input
         internal bool CanRetainIntent { get { return IsFocused && (ExternalModalBusy || !rearming && !quarantine); } }
         internal long Frame { get; private set; }
         internal long Mapping { get; private set; }
+#if JMR_AIM_LIGHT || JMR_INPUT_DIAGNOSTIC
+        // The existing input diagnostic's cached boundary bits. Consumers may
+        // read them without refreshing focus, devices or mapped ownership.
+        internal int DiagnosticBoundaryState {get{return (IsFocused?1:0)|(nativePermission?2:0)|(mapped?4:0)|(finalized?8:0)|(rearming?16:0)|(quarantine?32:0)|
+            (HotkeyCapture?64:0)|(Hotkeys.HasSuppressedKeys?128:0)|(hotkeyTailSample?256:0)|(Main.blockInput?512:0)|
+            (PlayerInput.WritingText?1024:0)|(CanUseInput?2048:0)|(Main.gameMenu?4096:0)|(Main.CurrentInputTextTakerOverride!=null?8192:0)|(MapPointerOwned?16384:0);}}
+#endif
 #if JMR_BLUEPRINT_DIAGNOSTIC
         // Only the already-sampled scalar epoch; no focus refresh or permission
         // evaluation is allowed through this diagnostic outlet.
@@ -282,9 +289,7 @@ namespace JueMingR.TerrariaHost.Input
             try
             {
                 if(!InputDiagnosticTrace.ShouldObserve(point,DiagnosticGameplayActive,IsFocused))return;
-                int state=(IsFocused?1:0)|(nativePermission?2:0)|(mapped?4:0)|(finalized?8:0)|(rearming?16:0)|(quarantine?32:0)|
-                    (HotkeyCapture?64:0)|(Hotkeys.HasSuppressedKeys?128:0)|(hotkeyTailSample?256:0)|(Main.blockInput?512:0)|
-                    (PlayerInput.WritingText?1024:0)|(CanUseInput?2048:0)|(Main.gameMenu?4096:0)|(Main.CurrentInputTextTakerOverride!=null?8192:0)|(MapPointerOwned?16384:0);
+                int state=DiagnosticBoundaryState;
                 int held=-1,mouse=-1;
                 // Only Final/Consumers contain a current, trusted sample.
                 // Background/native-synthetic zeros are unknown, never release.

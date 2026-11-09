@@ -28,6 +28,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         {
             internal uint Tick;internal long Frame;internal int Key,Owner,Slot,Weapon,Prefix,Target,TargetGeneration,TargetType,TargetNetId,SourceSlot,SourceType,SourcePrefix;
             internal long Session,Selection,SourceSession,SourceSelection;internal ulong Seen,Passed,SeenHigh,PassedHigh;
+            internal long SampledFrame,TargetSession;internal int Boundary,LiveSlot,LiveGeneration,LiveType,LiveNetId,LiveLife,LiveFlags,JourneyFacts,TextFacts,PointerFacts;
             internal string Reject,Outcome,Error;internal bool Tool,Native,Scope,PointKnown,ExpectedKnown,Returned;
             internal int PhysicalX,PhysicalY,RawX,RawY,BorrowedX,BorrowedY,NativeX,NativeY,ReturnedX,ReturnedY,Input,Ui,Availability;
             internal Vector2 Screen,Origin,Point,Before,After,Expected;internal float Gravity,Charge,Rotation,AfterRotation,SteeringError;
@@ -61,6 +62,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             var player=Main.LocalPlayer;var input=combat?.Tools.Input;var observation=combat?.Attack?.PrismObservation;
             var target=observation!=null && observation.Selection.HasTarget?observation.Selection.Target:default(JueMingR.Platform.Combat.NpcIdentity);
             prismRow=new PrismRow{Tick=Main.GameUpdateCount,Key=(int)shot.key,Owner=shot.owner,Frame=input?.Frame??-1,Session=observation?.Session??-1,
+                SampledFrame=combat?.PrismSampledFrame??-1,Boundary=input?.DiagnosticBoundaryState??-1,TargetSession=target.Session,LiveFlags=-1,JourneyFacts=-1,TextFacts=-1,PointerFacts=-1,
                 Selection=combat?.Tools.SelectionIntent??-1,Slot=player?.selectedItem??-1,Weapon=player?.HeldItem.type??0,Prefix=player?.HeldItem.prefix??0,
                 Target=observation!=null && observation.Selection.HasTarget?target.Slot:-1,TargetGeneration=target.Generation,TargetType=target.Type,TargetNetId=target.NetId,
                 PhysicalX=Main.mouseX,PhysicalY=Main.mouseY,RawX=input?.PhysicalMapX??-1,RawY=input?.PhysicalMapY??-1,Screen=Main.screenPosition,Gravity=player?.gravDir??0,Charge=shot.ai[0],Rotation=shot.rotation,Before=shot.velocity,
@@ -112,6 +114,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 prismPointCalls++;var player=combat.Player;var observation=combat.Attack.PrismObservation;var input=combat.Tools.Input;
                 var target=observation.Selection.HasTarget?observation.Selection.Target:default(JueMingR.Platform.Combat.NpcIdentity);
                 prismRow.Frame=input.Frame;prismRow.Session=observation.Session;prismRow.Selection=combat.Tools.SelectionIntent;
+                prismRow.SampledFrame=combat.PrismSampledFrame;prismRow.Boundary=input.DiagnosticBoundaryState;prismRow.TargetSession=target.Session;
                 prismRow.Slot=player?.selectedItem??-1;prismRow.Weapon=player?.HeldItem.type??0;prismRow.Prefix=player?.HeldItem.prefix??0;
                 prismRow.Target=observation.Selection.HasTarget?target.Slot:-1;prismRow.TargetGeneration=target.Generation;prismRow.TargetType=target.Type;prismRow.TargetNetId=target.NetId;
                 prismRow.Input=(input.IsFocused?1:0)|(input.CanStartActions?2:0)|(input.CanRetainIntent?4:0)|(input.HotkeyCapture?8:0)|
@@ -123,6 +126,17 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             }
             catch(Exception error){Broken(error);}
         }
+        internal static void PrismTargetFacts(JueMingR.Platform.Combat.NpcIdentity target,NPC live,bool dummy)
+        {
+            if(!PrismConsuming)return;
+            prismRow.TargetSession=target.Session;
+            if(live==null){prismRow.LiveFlags=0;return;}
+            prismRow.LiveSlot=live.whoAmI;prismRow.LiveGeneration=live.generation;prismRow.LiveType=live.type;prismRow.LiveNetId=live.netID;prismRow.LiveLife=live.life;
+            prismRow.LiveFlags=1|(live.active?2:0)|(live.dontTakeDamage?4:0)|(live.friendly?8:0)|(live.immortal?16:0)|(dummy?32:0)|(ReferenceEquals(target.Token,live)?64:0);
+        }
+        internal static void PrismJourneyFacts(int facts){if(PrismConsuming)prismRow.JourneyFacts=facts;}
+        internal static void PrismTextFacts(int facts){if(PrismConsuming)prismRow.TextFacts=facts;}
+        internal static void PrismPointerFacts(int facts){if(PrismConsuming)prismRow.PointerFacts=facts;}
         internal static bool PrismPoint(bool available,Vector2 point,string kind)
         {if(PrismConsuming){prismRow.PointKnown=available;prismRow.Point=point;prismRow.Outcome=kind;Gate(PrismGate.Point,available);}return available;}
         internal static void PrismBorrowed(CombatCursorScope scope)
@@ -201,11 +215,11 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             {
                 log.Offer("prism-summary",prismTriggered?(long)Main.GameUpdateCount:-1,"reason="+reason+";triggered="+prismTriggered+";observedBirths="+prismBirths+";toolPrefixes="+prismToolCalls+";nativeAi075="+prismNativeCalls+";pointChecks="+prismPointCalls+";rows="+prismCount+";subjectKey="+prismKey+";diagnosticHookFailure="+(prismSetupFailure??"none")+";missingGate=not-evaluated;phase=actual-consumer;noTrigger=not-captured");
                 log.Offer("prism-gates",-1,string.Join(",",Enum.GetNames(typeof(PrismGate))));
-                log.Offer("prism-masks",-1,"input:focused=1,canStart=2,retain=4,hotkeyCapture=8,rawLeft=16,combatLeft=32,useItem=64,channel=128,mappedLeft=256,externalModal=512,mapPointer=1024;ui:hide=1,map=2,paused=4,block=8,chat=16,sign=32,chest=64,writing=128,mouseInterface=256,onlyFancy=512,options=1024,fancy=2048,textTaker=4096");
+                log.Offer("prism-masks",-1,"input:focused=1,canStart=2,retain=4,hotkeyCapture=8,rawLeft=16,combatLeft=32,useItem=64,channel=128,mappedLeft=256,externalModal=512,mapPointer=1024;ui:hide=1,map=2,paused=4,block=8,chat=16,sign=32,chest=64,writing=128,mouseInterface=256,onlyFancy=512,options=1024,fancy=2048,textTaker=4096;boundary:focused=1,nativePermission=2,mapped=4,finalized=8,rearming=16,quarantine=32,hotkeyCapture=64,suppressed=128,hotkeyTail=256,block=512,writing=1024,canUse=2048,menu=4096,textTaker=8192,mapPointer=16384;live:snapshotExists=1,active=2,dontTakeDamage=4,friendly=8,immortal=16,dummyWanted=32,tokenMatches=64;journey:present=1,menu=2,textTaker=4,writing=8,cursorStack=16,player=32,mouseInterface=64,lastMouseInterface=128,leaseMatches=256,priorMouseInterface=512,stateVisible=1024,busy=2048;text:otherOwner=1,recognizedEvaluated=2,recognizedOwner=4,textTaker=8,writing=16;pointer:stateEvaluated=1,stateOwns=2,otherEvaluated=4,otherOwns=8,aggregateOwns=16;facts=-1:not-evaluated;raw-facts-do-not-mark-policy-gates-evaluated");
                 for(int i=0;i<prismCount;i++)
                 {
-                    var r=prismRows[i];log.Offer("prism-consumer",r.Tick,"frame="+r.Frame+";key="+r.Key+";owner="+r.Owner+";sourceSession="+r.SourceSession+";sourceSelection="+r.SourceSelection+";sourceItem="+r.SourceSlot+","+r.SourceType+","+r.SourcePrefix+";session="+r.Session+";selection="+r.Selection+";item="+r.Slot+","+r.Weapon+","+r.Prefix+
-                        ";target="+r.Target+","+r.TargetGeneration+","+r.TargetType+","+r.TargetNetId+";seen="+r.Seen.ToString("X16")+","+r.SeenHigh.ToString("X16")+";passed="+r.Passed.ToString("X16")+","+r.PassedHigh.ToString("X16")+";firstReject="+(r.PointKnown && r.Scope?"none":r.Reject??"none")+";observedFirstFalse="+(r.Reject??"none")+";outcome="+r.Outcome+";input="+r.Input+";ui="+r.Ui+";availability="+r.Availability+";tool="+r.Tool+";native="+r.Native+";scope="+r.Scope+
+                    var r=prismRows[i];log.Offer("prism-consumer",r.Tick,"frame="+r.Frame+";sampledFrame="+r.SampledFrame+";boundary="+r.Boundary+";key="+r.Key+";owner="+r.Owner+";sourceSession="+r.SourceSession+";sourceSelection="+r.SourceSelection+";sourceItem="+r.SourceSlot+","+r.SourceType+","+r.SourcePrefix+";session="+r.Session+";selection="+r.Selection+";item="+r.Slot+","+r.Weapon+","+r.Prefix+
+                        ";target="+r.Target+","+r.TargetGeneration+","+r.TargetType+","+r.TargetNetId+";targetSession="+r.TargetSession+";live="+r.LiveSlot+","+r.LiveGeneration+","+r.LiveType+","+r.LiveNetId+","+r.LiveLife+","+r.LiveFlags+";journey="+r.JourneyFacts+";text="+r.TextFacts+";pointer="+r.PointerFacts+";seen="+r.Seen.ToString("X16")+","+r.SeenHigh.ToString("X16")+";passed="+r.Passed.ToString("X16")+","+r.PassedHigh.ToString("X16")+";firstReject="+(r.PointKnown && r.Scope?"none":r.Reject??"none")+";observedFirstFalse="+(r.Reject??"none")+";outcome="+r.Outcome+";input="+r.Input+";ui="+r.Ui+";availability="+r.Availability+";tool="+r.Tool+";native="+r.Native+";scope="+r.Scope+
                         ";beforeCursor="+r.PhysicalX+","+r.PhysicalY+";physicalMap="+r.RawX+","+r.RawY+";borrowed="+r.BorrowedX+","+r.BorrowedY+";nativeCursor="+r.NativeX+","+r.NativeY+";returned="+r.Returned+":"+r.ReturnedX+","+r.ReturnedY+";screen="+V(r.Screen)+";gravity="+F(r.Gravity)+";origin="+V(r.Origin)+";point="+r.PointKnown+":"+V(r.Point)+";charge="+F(r.Charge)+";before="+V(r.Before)+";after="+V(r.After)+";expected="+r.ExpectedKnown+":"+V(r.Expected)+";steeringErrorSquared="+F(r.SteeringError)+";rotation="+F(r.Rotation)+","+F(r.AfterRotation)+";error="+(r.Error??"none"));
                 }
                 log.Stop("prism-"+reason);
