@@ -43,7 +43,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(parent.type==633)
                 {
                     var bounds=timeline[clock.FirstTick+step].ProjectileReceiveBounds;
-                    input=HostPrismSteering.Point(origin,direction,new Vector2(bounds.CenterX,bounds.CenterY));
+                    input=HostPrismSteering.Point(origin,direction,new Vector2(bounds.CenterX,bounds.CenterY),body.gravDir);
                     if(step==0)firstInput=input;
                     input=HostDirectionalControl.Cursor(body,input);
                 }

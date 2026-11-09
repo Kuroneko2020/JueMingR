@@ -111,17 +111,20 @@ namespace NativeWorldTextProbe
         private static void NativeMapping(Projectile parent)
         {
             var p=Main.LocalPlayer;var host=Get(context,"Combat").GetType().Assembly;var steering=host.GetType("JueMingR.TerrariaHost.Combat.HostPrismSteering",true);var scope=host.GetType("JueMingR.TerrariaHost.Combat.CombatCursorScope",true);
-            foreach(float gravity in new[]{1f,-1f})
+            var priorZoom=Main.GameViewMatrix.Zoom;
+            try{foreach(float zoom in new[]{.5f,1.25f})foreach(float gravity in new[]{1f,-1f})
             {
-                p.gravDir=gravity;Main.screenPosition=p.MountedCenter-new Vector2(Main.screenWidth/2,Main.screenHeight/2);var origin=p.RotatedRelativePoint(p.MountedCenter);var before=parent.velocity;
-                var logical=origin+before.SafeNormalize(Vector2.UnitX).RotatedBy(.03)*400;var point=(Vector2)Static(steering,"Point",origin,before,logical);var receipt=Static(scope,"Begin",point,true);
-                try{float z=Main.GameViewMatrix.RenderZoom.X;var raw=new Vector2(Main.screenWidth/2f+(Main.mouseX-Main.screenWidth/2f)*z,Main.screenHeight/2f+(Main.mouseY-Main.screenHeight/2f)*z);Require(raw.X>=0 && raw.X<Main.screenWidth && raw.Y>=0 && raw.Y<Main.screenHeight,"new compensating cursor is reachable from raw native client pixels under zoom, including reversed gravity");parent.AI();Require(Angle(parent.velocity,logical-origin)<.3f,"integer and reversed-gravity mouse is consumed by original AI, not merely an algebraic point assertion");}
+                Main.GameViewMatrix.Zoom=new Vector2(zoom);p.gravDir=gravity;Main.screenPosition=p.MountedCenter-new Vector2(Main.screenWidth/2,Main.screenHeight/2);var origin=p.RotatedRelativePoint(p.MountedCenter);var before=parent.velocity;
+                var logical=origin+before.SafeNormalize(Vector2.UnitX).RotatedBy(.03)*400;var point=(Vector2)Static(steering,"Point",origin,before,logical,gravity);var receipt=Static(scope,"Begin",point,true);
+                try{float inverse=1f/Main.GameViewMatrix.RenderZoom.X,cx=Main.screenWidth/2f,cy=Main.screenHeight/2f;Require(Enumerable.Range(0,Main.screenWidth).Any(raw=>(int)(cx+(raw-cx)*inverse)==Main.mouseX) && Enumerable.Range(0,Main.screenHeight).Any(raw=>(int)(cy+(raw-cy)*inverse)==Main.mouseY),"both borrowed native ints have an actual integer raw-client preimage at .5/1.25 zoom and either gravity");parent.AI();Require(Angle(parent.velocity,logical-origin)<.3f,"integer and reversed-gravity mouse is consumed by original AI, not merely an algebraic point assertion");}
                 finally{Call(receipt,"End");}
-            }
-            p.gravDir=1;var o=p.RotatedRelativePoint(p.MountedCenter);var old=parent.velocity;var opposite=o-old.SafeNormalize(Vector2.UnitX)*400;var a=(Vector2)Static(steering,"Point",o,old,opposite);var b=(Vector2)Static(steering,"Point",o,old,opposite);Require(a==b,"180-degree tie is stateless and deterministic");
-            Require((Vector2)Static(steering,"Point",o,Vector2.Zero,opposite)==opposite && (Vector2)Static(steering,"Point",o,old,o)==o,"zero direction/distance preserves the original safe logical-point fallback");
+            }}finally{Main.GameViewMatrix.Zoom=priorZoom;}
+            p.gravDir=1;var o=p.RotatedRelativePoint(p.MountedCenter);var old=parent.velocity;var opposite=o-old.SafeNormalize(Vector2.UnitX)*400;var a=(Vector2)Static(steering,"Point",o,old,opposite,p.gravDir);var b=(Vector2)Static(steering,"Point",o,old,opposite,p.gravDir);Require(a==b,"180-degree tie is stateless and deterministic");
+            Require((Vector2)Static(steering,"Point",o,Vector2.Zero,opposite,p.gravDir)==opposite && (Vector2)Static(steering,"Point",o,old,o,p.gravDir)==o,"zero direction/distance preserves the original safe logical-point fallback");
         }
         private static float Angle(Vector2 a,Vector2 b)
         {a=a.SafeNormalize(Vector2.UnitY);b=b.SafeNormalize(Vector2.UnitY);return (float)(Math.Abs(Math.Atan2(a.X*b.Y-a.Y*b.X,Vector2.Dot(a,b)))*180/Math.PI);}
+        private static object Static(Type type,string method,params object[] args)
+        {return type.GetMethod(method,Flags).Invoke(null,args);}
     }
 }

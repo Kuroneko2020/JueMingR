@@ -551,7 +551,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!consumes)return false;
             if(TryEnhancedPoint(shot,out point)){
                 var logicalPoint=point;
-                if(shot.type==633)point=HostPrismSteering.Point(combat.Player.RotatedRelativePoint(combat.Player.MountedCenter),shot.velocity,logicalPoint);
+                if(shot.type==633)point=HostPrismSteering.Point(combat.Player.RotatedRelativePoint(combat.Player.MountedCenter),shot.velocity,logicalPoint,combat.Player.gravDir);
                 combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Enhanced,shot.type==633?AttackPointSemantics.Direction:entry.Solution.HasPoint?entry.Solution.PointSemantics:entry.Navigation!=null?AttackPointSemantics.WorldPoint:entry.Contact?.PointSemantics??AttackPointSemantics.Unknown);
 #if JMR_AIM_LIGHT
                 Prediction.AimLightTrace.PrismLogicalPoint(logicalPoint);
@@ -570,7 +570,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Basic retains its current-only permission and receiver contract.
             // Prediction availability must not switch 633 between incompatible
             // steering laws: both paths transform only the accepted point.
-            if(shot.type==633){point=HostPrismSteering.Point(combat.Player.RotatedRelativePoint(combat.Player.MountedCenter),shot.velocity,point);combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Basic,AttackPointSemantics.Direction);}
+            if(shot.type==633){point=HostPrismSteering.Point(combat.Player.RotatedRelativePoint(combat.Player.MountedCenter),shot.velocity,point,combat.Player.gravDir);combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Basic,AttackPointSemantics.Direction);}
             else combat.Attack.RecordInput(input);
 #if JMR_AIM_LIGHT
             Prediction.AimLightTrace.PrismLogicalPoint(basicLogicalPoint);

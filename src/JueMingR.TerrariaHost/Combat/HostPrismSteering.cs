@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Combat
         // The ray is also clipped INSIDE the real client viewport below. Its
         // distance has no damage role; never invent off-client input precision.
         private const float CursorDistance=1024f;
-        internal static Vector2 Point(Vector2 origin,Vector2 velocity,Vector2 logicalTarget)
+        internal static Vector2 Point(Vector2 origin,Vector2 velocity,Vector2 logicalTarget,float gravity)
         {
             Vector2 delta=logicalTarget-origin;
             if(!Finite(delta) || !Finite(velocity) || delta.LengthSquared()<.000001f || velocity.LengthSquared()<.000001f)return logicalTarget;
@@ -42,7 +42,7 @@ namespace JueMingR.TerrariaHost.Combat
             // rectangle is smaller than screenWidth/Height. Use an interior
             // margin so the following int/gravity mapping stays reachable.
             float zoom=Main.GameViewMatrix.RenderZoom.X;
-            if(float.IsNaN(zoom) || float.IsInfinity(zoom) || zoom<=0)return logicalTarget;
+            if(float.IsNaN(zoom) || float.IsInfinity(zoom) || zoom<=0 || Main.screenWidth<4 || Main.screenHeight<4)return logicalTarget;
             float cx=Main.screenWidth/2f,cy=Main.screenHeight/2f;
             float minX=cx+(1-cx)/zoom,maxX=cx+(Main.screenWidth-2-cx)/zoom;
             float minY=cy+(1-cy)/zoom,maxY=cy+(Main.screenHeight-2-cy)/zoom;
@@ -56,7 +56,22 @@ namespace JueMingR.TerrariaHost.Combat
             // An off-screen or edge holder has no sufficiently resolved ray
             // here. Retain the original accepted logical point rather than
             // manufacturing an unreachable compensating mouse coordinate.
-            return distance>=16?origin+mouse*(distance-1):logicalTarget;
+            if(distance<16)return logicalTarget;
+            var world=origin+mouse*(distance-1);var native=world-Main.screenPosition;
+            if(gravity==-1)native.Y=Main.screenHeight-native.Y;
+            // A continuous native rectangle is insufficient at zoom<1: e.g.
+            // .5 maps integer raw X to a two-pixel native lattice. Choose an
+            // actual integer raw pixel, then replay vanilla's float transform
+            // and int truncation, on each axis. The half-cell encoding makes
+            // CombatCursorScope reproduce those exact ints even at fractional
+            // or large world screen positions and reversed gravity.
+            int x=NativePixel(native.X,cx,Main.screenWidth,zoom),y=NativePixel(native.Y,cy,Main.screenHeight,zoom);
+            return Main.screenPosition+new Vector2(x+.5f,gravity==-1?Main.screenHeight-(y+.5f):y+.5f);
+        }
+        private static int NativePixel(float desired,float centre,int extent,float zoom)
+        {
+            int raw=Math.Max(0,Math.Min(extent-1,(int)Math.Round(centre+(desired-centre)*zoom)));
+            return (int)(centre+(raw-centre)*(1f/zoom));
         }
         private static bool Finite(Vector2 value)
         {return !float.IsNaN(value.X) && !float.IsInfinity(value.X) && !float.IsNaN(value.Y) && !float.IsInfinity(value.Y);}
