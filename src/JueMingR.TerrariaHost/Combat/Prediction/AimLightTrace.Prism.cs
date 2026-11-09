@@ -199,7 +199,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(prismFinished)return;prismFinished=true;
             try
             {
-                log.Offer("prism-summary",(long)Main.GameUpdateCount,"reason="+reason+";triggered="+prismTriggered+";observedBirths="+prismBirths+";toolPrefixes="+prismToolCalls+";nativeAi075="+prismNativeCalls+";pointChecks="+prismPointCalls+";rows="+prismCount+";subjectKey="+prismKey+";diagnosticHookFailure="+(prismSetupFailure??"none")+";missingGate=not-evaluated;phase=actual-consumer;noTrigger=not-captured");
+                log.Offer("prism-summary",prismTriggered?(long)Main.GameUpdateCount:-1,"reason="+reason+";triggered="+prismTriggered+";observedBirths="+prismBirths+";toolPrefixes="+prismToolCalls+";nativeAi075="+prismNativeCalls+";pointChecks="+prismPointCalls+";rows="+prismCount+";subjectKey="+prismKey+";diagnosticHookFailure="+(prismSetupFailure??"none")+";missingGate=not-evaluated;phase=actual-consumer;noTrigger=not-captured");
                 log.Offer("prism-gates",-1,string.Join(",",Enum.GetNames(typeof(PrismGate))));
                 log.Offer("prism-masks",-1,"input:focused=1,canStart=2,retain=4,hotkeyCapture=8,rawLeft=16,combatLeft=32,useItem=64,channel=128,mappedLeft=256,externalModal=512,mapPointer=1024;ui:hide=1,map=2,paused=4,block=8,chat=16,sign=32,chest=64,writing=128,mouseInterface=256,onlyFancy=512,options=1024,fancy=2048,textTaker=4096");
                 for(int i=0;i<prismCount;i++)
