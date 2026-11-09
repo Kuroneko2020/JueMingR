@@ -62,11 +62,15 @@ namespace JueMingR.TerrariaHost.Combat
             // A continuous native rectangle is insufficient at zoom<1: e.g.
             // .5 maps integer raw X to a two-pixel native lattice. Choose an
             // actual integer raw pixel, then replay vanilla's float transform
-            // and int truncation, on each axis. The half-cell encoding makes
+            // and int truncation, on each axis. The signed half-cell encoding makes
             // CombatCursorScope reproduce those exact ints even at fractional
             // or large world screen positions and reversed gravity.
             int x=NativePixel(native.X,cx,Main.screenWidth,zoom),y=NativePixel(native.Y,cy,Main.screenHeight,zoom);
-            return Main.screenPosition+new Vector2(x+.5f,gravity==-1?Main.screenHeight-(y+.5f):y+.5f);
+            // C# casts truncate towards zero, including negative native pixels
+            // allowed by zoom<1. -476 must be encoded inside (-477,-476],
+            // never as -475.5, which would select another (unreachable) pixel.
+            float cellX=x+(x<0?-.5f:.5f),cellY=y+(y<0?-.5f:.5f);
+            return Main.screenPosition+new Vector2(cellX,gravity==-1?Main.screenHeight-cellY:cellY);
         }
         private static int NativePixel(float desired,float centre,int extent,float zoom)
         {

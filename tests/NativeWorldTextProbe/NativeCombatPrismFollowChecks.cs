@@ -56,7 +56,7 @@ namespace NativeWorldTextProbe
         {
             context=value;var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");attack=Get(combat,"Attack");control=Get(attack,"Control");var input=Get(context,"Input");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
-            var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3541,0,0);p.position=new Vector2(500,688-p.height);p.releaseUseItem=true;
+            var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),input,3541,0,0);p.position=new Vector2(250,688-p.height);p.releaseUseItem=true;
             p.statMana=p.statManaMax=p.statManaMax2=200;p.inventory[54].SetDefaults(499);p.inventory[54].stack=999;
             var oldBoots=p.armor[3];var oldFlower=p.armor[4];p.armor[3]=new Item();p.armor[3].SetDefaults(54);p.armor[4]=new Item();p.armor[4].SetDefaults(555);
             Main.screenPosition=new Vector2(400,200);
@@ -69,7 +69,11 @@ namespace NativeWorldTextProbe
             samples.Clear();shadowReady=false;withdraw=false;stage="stationary";workTotal=workMax=0;worldSteps=budgetStops=0;
             try
             {
-                Step(false,0);for(int i=0;i<12;i++)Step(true,0);
+                // Vanilla accelerates beyond maxRunSpeed towards Hermes'
+                // accRunSpeed only at runAcceleration*.2. Start the real run
+                // before channeling; 120 actions from rest did not reach 5.
+                // Neither this preparation nor measurement writes velocity.
+                for(int i=0;i<170;i++)Step(false,1);for(int i=0;i<12;i++)Step(true,1);
                 var parent=Main.projectile.Single(q=>q.active && q.owner==p.whoAmI && q.type==633);int key=(int)parent.key;
                 stage="holder-run";for(int i=0;i<120;i++)Step(true,1);
                 var moving=samples.Where(s=>s.Stage=="holder-run" && s.Speed>=5).ToArray();
@@ -102,7 +106,11 @@ namespace NativeWorldTextProbe
         }
         private static void Step(bool held,int movement)
         {
-            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");NativeToolExecutionChecks.Sample(context,Get(context,"Input"),new Vector2(500,400),held,movement);Call(combat,"Sample");Call(host,"SampleMouse");int x=Main.mouseX,y=Main.mouseY;
+            // The actual local holder remains in the client viewport as in a
+            // normal following camera, rather than running out of a frozen
+            // fixture camera and invalidating the new legal mouse-ray premise.
+            Main.screenPosition=Main.LocalPlayer.Center-new Vector2(Main.screenWidth/2f,Main.screenHeight/2f);
+            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var physical=Main.screenPosition+new Vector2(Main.screenWidth*.25f,Main.screenHeight*.25f);NativeToolExecutionChecks.Sample(context,Get(context,"Input"),physical,held,movement);Call(combat,"Sample");Call(host,"SampleMouse");int x=Main.mouseX,y=Main.mouseY;
             NativeQuickItemChecks.BeginWorldStep();Main.LocalPlayer.Update(0);foreach(var n in Main.npc)if(n.active)n.UpdateNPC(n.whoAmI);
             for(int i=0;i<Main.maxProjectiles;i++)if(Main.projectile[i].active){Main.ProjectileUpdateLoopIndex=i;Main.projectile[i].Update(i);}Main.ProjectileUpdateLoopIndex=-1;
             Call(context,"UpdateRuntime");Call(context,"UpdateShell");Require(Main.mouseX==x && Main.mouseY==y,"normal native chain returns the physical mouse");
@@ -116,8 +124,29 @@ namespace NativeWorldTextProbe
             {
                 Main.GameViewMatrix.Zoom=new Vector2(zoom);p.gravDir=gravity;Main.screenPosition=p.MountedCenter-new Vector2(Main.screenWidth/2,Main.screenHeight/2);var origin=p.RotatedRelativePoint(p.MountedCenter);var before=parent.velocity;
                 var logical=origin+before.SafeNormalize(Vector2.UnitX).RotatedBy(.03)*400;var point=(Vector2)Static(steering,"Point",origin,before,logical,gravity);var receipt=Static(scope,"Begin",point,true);
-                try{float inverse=1f/Main.GameViewMatrix.RenderZoom.X,cx=Main.screenWidth/2f,cy=Main.screenHeight/2f;Require(Enumerable.Range(0,Main.screenWidth).Any(raw=>(int)(cx+(raw-cx)*inverse)==Main.mouseX) && Enumerable.Range(0,Main.screenHeight).Any(raw=>(int)(cy+(raw-cy)*inverse)==Main.mouseY),"both borrowed native ints have an actual integer raw-client preimage at .5/1.25 zoom and either gravity");parent.AI();Require(Angle(parent.velocity,logical-origin)<.3f,"integer and reversed-gravity mouse is consumed by original AI, not merely an algebraic point assertion");}
+                try{RawPreimage();parent.AI();Require(Angle(parent.velocity,logical-origin)<.3f,"integer and reversed-gravity mouse is consumed by original AI, not merely an algebraic point assertion");}
                 finally{Call(receipt,"End");}
+                if(zoom<1)
+                {
+                    bool negativeX=false,negativeY=false;
+                    // These input-geometry counterexamples do not overwrite
+                    // the live parent's direction: they force each negative
+                    // coordinate ray and then check the ORIGINAL native motor
+                    // from whatever velocity the preceding real AI produced.
+                    foreach(var axis in new[]{-Vector2.UnitX,-Vector2.UnitY,Vector2.UnitY})
+                    {
+                        var ray=(Vector2)Static(steering,"Point",origin,axis*30,origin+axis*400,gravity);var borrow=Static(scope,"Begin",ray,true);
+                        try
+                        {
+                            RawPreimage();negativeX|=Main.mouseX<0;negativeY|=Main.mouseY<0;
+                            var cursor=Main.screenPosition+new Vector2(Main.mouseX,gravity==-1?Main.screenHeight-Main.mouseY:Main.mouseY);
+                            var expected=Vector2.Normalize(Vector2.Lerp((cursor-origin).SafeNormalize(-Vector2.UnitY),parent.velocity.SafeNormalize(Vector2.UnitY),.92f))*p.HeldItem.shootSpeed*parent.scale;
+                            parent.AI();Require(Vector2.DistanceSquared(expected,parent.velocity)<.00001f,"negative native integer cursor is consumed by the original motor with unchanged inertia");
+                        }
+                        finally{Call(borrow,"End");}
+                    }
+                    Require(negativeX && negativeY,"zoom .5 counterexamples actually exercise negative native X and Y under each gravity");
+                }
             }}finally{Main.GameViewMatrix.Zoom=priorZoom;}
             p.gravDir=1;var o=p.RotatedRelativePoint(p.MountedCenter);var old=parent.velocity;var opposite=o-old.SafeNormalize(Vector2.UnitX)*400;var a=(Vector2)Static(steering,"Point",o,old,opposite,p.gravDir);var b=(Vector2)Static(steering,"Point",o,old,opposite,p.gravDir);Require(a==b,"180-degree tie is stateless and deterministic");
             Require((Vector2)Static(steering,"Point",o,Vector2.Zero,opposite,p.gravDir)==opposite && (Vector2)Static(steering,"Point",o,old,o,p.gravDir)==o,"zero direction/distance preserves the original safe logical-point fallback");
@@ -126,5 +155,10 @@ namespace NativeWorldTextProbe
         {a=a.SafeNormalize(Vector2.UnitY);b=b.SafeNormalize(Vector2.UnitY);return (float)(Math.Abs(Math.Atan2(a.X*b.Y-a.Y*b.X,Vector2.Dot(a,b)))*180/Math.PI);}
         private static object Static(Type type,string method,params object[] args)
         {return type.GetMethod(method,Flags).Invoke(null,args);}
+        private static void RawPreimage()
+        {
+            float inverse=1f/Main.GameViewMatrix.RenderZoom.X,cx=Main.screenWidth/2f,cy=Main.screenHeight/2f;
+            Require(Enumerable.Range(0,Main.screenWidth).Any(raw=>(int)(cx+(raw-cx)*inverse)==Main.mouseX) && Enumerable.Range(0,Main.screenHeight).Any(raw=>(int)(cy+(raw-cy)*inverse)==Main.mouseY),"both actual borrowed native ints have an integer raw-client preimage at .5/1.25 zoom, including negative axes and either gravity");
+        }
     }
 }
