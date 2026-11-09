@@ -8,6 +8,18 @@ using System.Xml.Linq;
 
 namespace JueMingR.Setup
 {
+    internal static class SetupProductVersion
+    {
+        // UI shows the product/pre-release version. Keep the full source build
+        // identity in the readers and metadata; '+' is only its display boundary.
+        internal static string Display(string version)
+        {
+            if (version == null) return null;
+            int build = version.IndexOf('+');
+            return build < 0 ? version : version.Substring(0, build);
+        }
+    }
+
     internal enum SetupPairState { NotInstalled, Installed, Incomplete, Unknown }
 
     internal sealed class SetupTargetState
@@ -29,7 +41,7 @@ namespace JueMingR.Setup
             {
                 if (CanMaintain && Pair == SetupPairState.NotInstalled) return "当前未安装决明";
                 string value = !CanMaintain ? "无法确认" : Pair == SetupPairState.NotInstalled ? "未安装" : Pair == SetupPairState.Incomplete ? "安装不完整" : Pair == SetupPairState.Unknown ? "安装状态无法确认" :
-                    !string.IsNullOrEmpty(InstalledVersionProblem) ? "读取失败" : string.IsNullOrWhiteSpace(InstalledVersion) || InstalledVersion == "0.0.0.0" ? "无法确认" : InstalledVersion;
+                    !string.IsNullOrEmpty(InstalledVersionProblem) ? "读取失败" : string.IsNullOrWhiteSpace(InstalledVersion) || InstalledVersion == "0.0.0.0" ? "无法确认" : SetupProductVersion.Display(InstalledVersion);
                 return "已安装决明版本：" + value;
             }
         }
@@ -41,7 +53,7 @@ namespace JueMingR.Setup
             {
                 if (!CanMaintain) return Problem;
                 string state = Pair == SetupPairState.Installed ? "已安装决明" : Pair == SetupPairState.NotInstalled ? "未安装决明" : Pair == SetupPairState.Incomplete ? "安装不完整" : "安装状态无法确认";
-                string installedVersion = Pair == SetupPairState.Installed ? Environment.NewLine + "决明版本：" + (string.IsNullOrWhiteSpace(InstalledVersion) || InstalledVersion == "0.0.0.0" ? "无法确认" : InstalledVersion) : "";
+                string installedVersion = Pair == SetupPairState.Installed ? Environment.NewLine + "决明版本：" + (string.IsNullOrWhiteSpace(InstalledVersion) || InstalledVersion == "0.0.0.0" ? "无法确认" : SetupProductVersion.Display(InstalledVersion)) : "";
                 return "Terraria " + Version + " · " + state + installedVersion + (CanInstall ? "" : Environment.NewLine + InstallProblem) + (string.IsNullOrEmpty(Problem) ? "" : Environment.NewLine + Problem);
             }
         }
