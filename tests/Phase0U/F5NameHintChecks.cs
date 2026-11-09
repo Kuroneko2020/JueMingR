@@ -70,6 +70,7 @@ namespace Terraria
         private static void Interaction()
         {
             var state = new F5Interaction { Ready = true }; var renderer = new F5Renderer();
+            state.Navigate(9);
             var input = new F5Input { Active = true, Focused = true, Width = 1280, Height = 720, Scale = 1.5f, F5 = true };
             state.Update(input); input.F5 = false;
             object font = new object();
@@ -168,6 +169,7 @@ namespace Terraria
             Check(host.Preferences.Revision == revision && presentation.LayoutBuildCount == builds, "hover neither saves settings nor rebuilds Items");
             // Reuse the SAME shell-owned renderer/cache for the other real page.
             var information = new F5Interaction { Ready = true };
+            information.Navigate(9);
             var infoInput = new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, F5 = true };
             information.Update(infoInput); infoInput.F5 = false;
             information.Layout.Ensure(1920, 1080, 1, information.Page, font, s => new F5Size(s.Length * 18, 24));

@@ -42,6 +42,10 @@ namespace JueMingR.TerrariaHost.Items
         private bool nativeClick, tailOpen, oldLeft, ownLeft, clickApplied, returnRequested;
         private bool ownsInventory, nativeInventoryChange;
         private long receiptEpoch, tailEpoch;
+        private Player pauseTailPlayer;
+        private Item[] pauseTailInventory;
+        private long pauseTailSession, pauseTailSelection;
+        private uint pauseTailWorld;
         private int nativeCalls;
         private bool tailPending, displacedMoved;
         // These are only live carried identities displaced by our own swap.
@@ -80,10 +84,23 @@ namespace JueMingR.TerrariaHost.Items
         // every action still requires its ordinary closed/empty-cursor gate.
         internal bool RetainsBuildIntent(Player p)
         {
-            return OnGameThread && (phase == Phase.Preparing || phase == Phase.Returning) && ReferenceEquals(p, player) &&
+            if (!OnGameThread) return false;
+            if (pauseTailPlayer != null && (!Main.gamePaused || Main.GameUpdateCount != pauseTailWorld ||
+                !tools.Runtime.IsSessionActive || pauseTailSession != tools.Runtime.Generation ||
+                !ReferenceEquals(pauseTailPlayer, tools.Items.World.SessionPlayer) || !ReferenceEquals(pauseTailInventory, pauseTailPlayer.inventory) ||
+                tools.SelectionIntent != pauseTailSelection || PhysicalInput || Main.playerInventory || Main.mouseItem == null || !Main.mouseItem.IsAir))
+                ClearPauseIntentTail();
+            // Closure can finish in vanilla's paused UI tail, including after
+            // Return has destroyed the receipt. Only the same paused world
+            // epoch retains intent; no token, Item permission or UI click is
+            // resurrected, and the next actual world step expires this tail.
+            if (phase == Phase.Idle) return ReferenceEquals(p, pauseTailPlayer) && pauseTailPlayer != null;
+            return (phase == Phase.Preparing || phase == Phase.Returning || phase == Phase.Ready) && ReferenceEquals(p, player) &&
                 SameSessionIdentity(p) && tools.Items.Ownership.OwnsUse(session, token) && !PhysicalInput &&
-                tools.SelectionIntent == selection && Main.playerInventory == ownsInventory;
+                tools.SelectionIntent == selection && Main.playerInventory == ownsInventory && ExpectedCurrent(false, false);
         }
+        private void ClearPauseIntentTail()
+        { pauseTailPlayer = null; pauseTailInventory = null; pauseTailSession = pauseTailSelection = 0; }
         internal Item Material { get { return material; } }
         internal string Reason { get; private set; }
         internal Func<int, int> UseConsumptionMaximum;
@@ -454,6 +471,7 @@ namespace JueMingR.TerrariaHost.Items
         internal void ClearSession()
         {
             if (!OnGameThread) return;
+            ClearPauseIntentTail();
             RestoreHiddenPresentation();
             RestoreBorrowedInput();
             // Only an unchanged, still-owned UI with an empty cursor can be
@@ -461,6 +479,7 @@ namespace JueMingR.TerrariaHost.Items
             // open inventory; closing it would trigger vanilla GetOrDropItem.
             if (ownsInventory && SameSession(player) && !PhysicalInput && tools.SelectionIntent == selection &&
                 Main.mouseItem != null && Main.mouseItem.IsAir && OrdinaryInventoryUi(player)) CloseNativeInventory();
+            ClearPauseIntentTail();
             ownsInventory = false;
             if (session > 0) tools.Items.Ownership.EndUse(session, token);
             abandonedDisplaced.Clear(); guardPlayer = null; guardInventory = null; guardSession = 0;
@@ -469,6 +488,7 @@ namespace JueMingR.TerrariaHost.Items
         }
         private void LoseIdentity(string reason, bool manual)
         {
+            ClearPauseIntentTail();
             RestoreHiddenPresentation();
             RestoreBorrowedInput(); Reason = reason;
             if (!manual && ownsInventory && SameSession(player) && Main.mouseItem != null && Main.mouseItem.IsAir &&
@@ -532,6 +552,7 @@ namespace JueMingR.TerrariaHost.Items
         private void ExternalInventoryChange()
         {
             if (nativeInventoryChange) return;
+            ClearPauseIntentTail();
             RestoreHiddenPresentation(); presentationIntent++;
             if (!OnGameThread || !HasWork || phase == Phase.Unknown || nativeInventoryChange || !SameSession(player)) return;
             // This prefix observes intent before ToggleInv can close the UI
@@ -574,6 +595,11 @@ namespace JueMingR.TerrariaHost.Items
             catch { ownsInventory = false; LoseIdentity("material-preparation-inventory-close-failed", false); throw; }
             finally { nativeInventoryChange = false; }
             if (Main.playerInventory) return false;
+            if (Main.netMode == 0 && Main.autoPause && Main.gamePaused && SameSession(player))
+            {
+                pauseTailPlayer = player; pauseTailInventory = inventory;
+                pauseTailSession = session; pauseTailSelection = selection; pauseTailWorld = Main.GameUpdateCount;
+            }
             ownsInventory = false; return true;
         }
         private bool FinishInventoryPhase()

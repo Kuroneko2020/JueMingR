@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
 using JueMingR.Features.HiddenFeatures;
 using JueMingR.TerrariaHost.F5;
 
@@ -10,6 +11,7 @@ namespace JueMingR.TerrariaHost.About
     internal sealed class AboutPage
     {
         internal const string Group = "915753352";
+        internal static readonly string ProductVersion = (typeof(AboutPage).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "未知版本").Split('+')[0];
         private Func<string, bool> copy;
         private Func<double> milliseconds;
         private F5Element[] results;
@@ -65,7 +67,7 @@ namespace JueMingR.TerrariaHost.About
             FixedCenter(elements, measure, "(还没想好这块咋做)", 24, top + columns / 2, leftWidth - 48, 22, .62f, F5ElementKind.AboutMuted);
             float infoHeight = Math.Min(178, Math.Max(164, columns * .40f));
             Card(elements, rightX, top, rightWidth, infoHeight, "info");
-            FixedCenter(elements, measure, "决明R", rightX + 46, top + 11, rightWidth - 64, 19, .70f, F5ElementKind.AboutHeading);
+            FixedCenter(elements, measure, "决明R " + ProductVersion, rightX + 46, top + 11, rightWidth - 64, 19, .70f, F5ElementKind.AboutHeading);
             float textY = top + 40 + Math.Max(0, (infoHeight - 156) / 2);
             FixedCenter(elements, measure, "为 Terraria 玩家打造的轻量辅助工具。", rightX + 18, textY, rightWidth - 36, 23, .74f, F5ElementKind.Text);
             FixedCenter(elements, measure, "追求稳定、简洁，并尽量保留原版体验。", rightX + 18, textY + 23, rightWidth - 36, 23, .72f, F5ElementKind.Text);

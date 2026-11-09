@@ -55,7 +55,7 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); return (bool)Get(host, "ControlsEnabled"); });
                 using (NativeBlueprintWorldMatchChecks.EmptyWorld(host, 200, 160))
                 {
-                    if(repairsOnly){NearQueueGrandScreenReentry(context,host,tools,input);NearQueueNativeReentry(context,host,tools,input);return;}
+                    if(repairsOnly){NearQueueGrandScreenReentry(context,host,tools,input);NearQueueGrandScreenReentry(context,host,tools,input,true);SchedulerImmediateWriterFreshness(context,host,tools,input,true);NearQueueNativeReentry(context,host,tools,input);return;}
                     QueueContinuousMovement(context,host,tools,input,false);
                     QueueContinuousMovement(context,host,tools,input,true);
                     if(movingOnly)return;
@@ -89,6 +89,8 @@ namespace NativeWorldTextProbe
                         SchedulerNativeHandoffCadence(context, host, tools, input);
                         NearQueueMaterialDependency(context, host, tools, input);
                         NearQueueGrandScreenReentry(context,host,tools,input);
+                        NearQueueGrandScreenReentry(context,host,tools,input,true);
+                        SchedulerImmediateWriterFreshness(context,host,tools,input,true);
                         NearQueueGrandDesignMovement(context, host, tools, input);
                         NearQueueGrandDesignMovement(context, host, tools, input, true);
                         long oneCapabilitySlots = NearQueueCapabilityRecovery(context, host, tools, input, 1);
@@ -462,7 +464,7 @@ namespace NativeWorldTextProbe
             int left=(int)Math.Floor(Main.screenPosition.X/16d),top=(int)Math.Floor(Main.screenPosition.Y/16d);
             return new Rectangle(left,top,(int)Math.Ceiling((Main.screenPosition.X+Main.screenWidth)/16d)-left,(int)Math.Ceiling((Main.screenPosition.Y+Main.screenHeight)/16d)-top);
         }
-        private static void NearQueueGrandScreenReentry(object context,object host,object tools,object input)
+        private static void NearQueueGrandScreenReentry(object context,object host,object tools,object input,bool remainOutside=false)
         {
             using(var scope=new BusinessScope(context,host,tools,input))
             using(var observation=new NearQueueObservation(host,required:true))
@@ -512,6 +514,33 @@ namespace NativeWorldTextProbe
                     Require(!Main.tile[96,42].wire2() && !(bool)Call(host,"GrandBuildPointVisible",p,96,42) && wire.Item.stack==9998 && stone.Item.stack==9999,
                         "GD and 9999-stock sources remained present while the saved far A naturally acquired a stable offscreen Player rejection");
                     Console.WriteLine("NearQueue GD saved-negative world="+Main.GameUpdateCount+" factVersion="+version+" support="+support+" awake="+Get(host,"nearVisitNeeded")+" GDAlwaysPresent=True");
+                    if(remainOutside)
+                    {
+                        // Make B legal before the adversarial turn, then let
+                        // ordinary Update sign the resulting current negative.
+                        // The turn itself changes no world/support dependency.
+                        WorldGen.KillTile(46,42,false,false,true);
+                        NativeQuickItemChecks.Until(()=>
+                        {
+                            observation.Step(scope,()=>native(0));
+                            var prepared=GetOptional(host,"preparedBuild");
+                            return prepared!=null && (int)Get(Get(prepared,"Source"),"Type")==stone.Type && (bool)Get(host,"nearAbsenceReady");
+                        });
+                        var oldCapability=Get(rejected,"Capability");
+                        Require(oldCapability!=null && !(bool)Get(oldCapability,"Disposed") && !(bool)Call(host,"GrandBuildPointVisible",p,96,42),
+                            "stable offscreen A owns a genuine capability before the ordinary turn");
+                        long oldVersion=(long)Get(rejected,"Version"),oldSupport=(long)Get(rejected,"Support");
+                        p.ChangeDir(-p.direction);Call(context,"UpdateRuntime");
+                        Require((bool)Get(oldCapability,"Disposed") && !ReferenceEquals(oldCapability,Get(rejected,"Capability")) &&
+                            (long)Get(rejected,"Version")==oldVersion && (long)Get(rejected,"Support")==oldSupport &&
+                            !(bool)Get(rejected,"Ready") && !(bool)Call(host,"GrandBuildPointVisible",p,96,42),
+                            "normal ChangeDir reclassifies still-negative A and retires its last capability without world/support or screen recovery");
+                        NativeQuickItemChecks.Until(()=>{observation.Step(scope,()=>native(0));return scope.Goals[0].Complete && !(bool)Get(Get(tools,"Use"),"Active");});
+                        Require(stone.Item.stack==9998 && wire.Item.stack==9998 && !Main.tile[96,42].wire2(),
+                            "re-signed still-negative A lets B actually consume once at its original opportunity without spending offscreen A wire");
+                        Console.WriteLine("PASS NearQueue retired-capability normalTurn=true stillNegative=true foreignActualDebit=1 wireActualDebit=1");
+                        return;
+                    }
                     grandScreenReentryHost=host;grandScreenEntering=false;
                     patch.Patch(host.GetType().GetMethod("RememberBuildContinuation",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(GrandScreenReentryAdmission)));
                     NativeQuickItemChecks.Until(()=>{observation.Step(scope,()=>native(1));return entry && Main.tile[96,42].wire2() && scope.Goals[0].Complete && !(bool)Get(Get(tools,"Use"),"Active");});

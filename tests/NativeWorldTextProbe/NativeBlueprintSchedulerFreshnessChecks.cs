@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using HarmonyLib;
+using JueMingR.Features.Blueprint;
 using Terraria;
 using Terraria.ID;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -91,6 +92,7 @@ namespace NativeWorldTextProbe
             internal long WriterHost;
             internal uint WriterWorld;
             internal int AdmissionsAfterWriter;
+            internal bool Substrate;
         }
 
         // The adversarial event is a real hooked writer, immediately before
@@ -103,7 +105,7 @@ namespace NativeWorldTextProbe
                 !ReferenceEquals(__0, Main.LocalPlayer) || (int)Get(__1, "Slot") != observation.Foreign.Slot) return;
             Require(observation.Scope.Events.Count == 1 && observation.Scope.Goals[0].Complete &&
                 Main.tile[observation.Restored.X, observation.Restored.Y].active() &&
-                Main.tile[observation.Restored.X, observation.Restored.Y].type == TileID.Dirt,
+                Main.tile[observation.Restored.X, observation.Restored.Y].type == (observation.Substrate ? TileID.Stone : TileID.Dirt),
                 "the first real A establishes preference while the second A is still physically occupied before the foreign Acquire");
             observation.WriterHost = checked((long)(ulong)Get(observation.Host, "projectionMatchTick"));
             observation.WriterWorld = Main.GameUpdateCount;
@@ -145,21 +147,23 @@ namespace NativeWorldTextProbe
                 " noHostDrain=" + (hostTick == observation.WriterHost) + " token=" + Get(__0, "Token"));
         }
 
-        internal static void SchedulerImmediateWriterFreshness(object context, object host, object tools, object input)
+        internal static void SchedulerImmediateWriterFreshness(object context, object host, object tools, object input, bool substrate=false)
         {
             using (var scope = new BusinessScope(context, host, tools, input))
             {
                 var p = Reset(context, host, tools, input);
                 p.position.X = 42 * 16;
-                var wood = BusinessStock(p, 12, ItemID.Wood, 4);
+                var wood = BusinessStock(p, 12, substrate ? ItemID.DirtBlock : ItemID.Wood, 4);
                 var stone = new BusinessSource { Slot = 13, Type = ItemID.StoneBlock, Item = p.inventory[13] };
                 scope.Sources = new[] { wood, stone };
                 scope.RunnableOracle = goal => SchedulerBlockRunnable(goal, scope.Sources.Single(source => source.Type == goal.Type));
                 scope.Goals = new[] { BusinessTileGoal(44, 42, wood), BusinessTileGoal(46, 42, wood),
                     new BusinessGoal { X = 39, Y = 42, Type = ItemID.StoneBlock, TileType = TileID.Stone } };
-                NativeToolsChecks.Tile(46, 42, TileID.Dirt);
+                NativeToolsChecks.Tile(46, 42, substrate ? TileID.Stone : TileID.Dirt);
                 var woodAsset = BusinessTileAsset(host, wood);
-                Place(context, host, input, woodAsset, 44, 42); var restoredOwner = Place(context, host, input, woodAsset, 46, 42);
+                Place(context, host, input, woodAsset, 44, 42);
+                var restoredAsset=substrate ? Asset(host,new CaptureCell{Layers=CaptureLayer.Tile,TileType=TileID.Grass}) : woodAsset;
+                var restoredOwner = Place(context, host, input, restoredAsset, 46, 42);
                 Place(context, host, input, Asset(host, new JueMingR.Features.Blueprint.CaptureCell {
                     Layers = JueMingR.Features.Blueprint.CaptureLayer.Tile, TileType = TileID.Stone }), 39, 42);
                 var patch = new Harmony("JueMingR.Tests.BlueprintSchedulerFreshness");
@@ -180,7 +184,7 @@ namespace NativeWorldTextProbe
                     Require(scope.Events.Count == 1 && !SchedulerBlockRunnable(scope.Goals[1], wood) && SchedulerBlockRunnable(scope.Goals[2], stone),
                         "foreign B is genuinely prepared and legal, current A is physically blocked, and B has not consumed");
                     schedulerFreshness = new SchedulerFreshnessObservation { Host = host, Use = Get(tools, "Use"), Scope = scope,
-                        Current = wood, Foreign = stone, Restored = scope.Goals[1], RestoredOwner = restoredOwner, PreparedForeign = preparedForeign };
+                        Current = wood, Foreign = stone, Restored = scope.Goals[1], RestoredOwner = restoredOwner, PreparedForeign = preparedForeign, Substrate=substrate };
                     patch.Patch(Get(tools, "Use").GetType().GetMethod("Acquire", F),
                         prefix: new HarmonyMethod(typeof(NativeBlueprintBuildChecks), nameof(SchedulerFreshnessBeforeAcquire)));
                     patch.Patch(host.GetType().GetMethod("RememberBuildContinuation", F),
@@ -189,10 +193,13 @@ namespace NativeWorldTextProbe
                         Require(!schedulerFreshness.ForbiddenAdmission, "a pre-Admitted original writer invalidates the old A negative proof before foreign B can acquire; current real A is runnable");
                         return scope.Goals.All(goal => goal.Complete) && !(bool)Get(Get(tools, "Use"), "Active"); });
                     Require(schedulerFreshness.Written && schedulerFreshness.AdmissionsAfterWriter > 0 &&
-                        scope.Events.Select(value => value.Type).SequenceEqual(new int[] { ItemID.Wood, ItemID.Wood, ItemID.StoneBlock }) &&
+                        scope.Events.Select(value => value.Type).SequenceEqual(new int[] { wood.Type, wood.Type, ItemID.StoneBlock }) &&
                         wood.Item.stack == 2 && stone.Item.stack == 2,
                         "restored A actually consumes before prepared B with exact remaining stock; the writer stimulus was exercised");
-                    scope.Report("scheduler immediate writer freshness");
+                    if(substrate)Require(Main.tile[46,42].active() && Main.tile[46,42].type==TileID.Dirt &&
+                        p.inventory.All(item=>item.IsAir || item.type!=ItemID.GrassSeeds),
+                        "late grass A restores the actual dirt PlaceBase stage, without inventing or consuming conversion seeds");
+                    scope.Report(substrate ? "substrate base before foreign admission" : "scheduler immediate writer freshness");
                 }
                 catch { scope.Report("scheduler immediate writer freshness FAILURE"); throw; }
                 finally { patch.UnpatchAll(patch.Id); schedulerFreshness = null; }

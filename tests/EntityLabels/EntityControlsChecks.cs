@@ -22,6 +22,7 @@ namespace Terraria
             Check(layout.Elements.Where(e => e.Command != F5Command.None).All(e => EntityLabelControls.Target(e.Command).HasValue || WorldTargetControls.Target(e.Command).HasValue || WorldObjectControls.Target(e.Command).HasValue ||
                 JueMingR.TerrariaHost.Information.InformationControls.Target(e.Command).HasValue || e.Command == F5Command.AdjustInformation), "only accepted information commands activate");
             var shell = new F5Interaction { Ready = true };
+            shell.Navigate(9);
             shell.Update(new F5Input { Width = 1280, Height = 900, Scale = 1, Active = true, Focused = true, F5 = true });
             shell.Layout.Ensure(1280, 900, 1, 9, new object(), text => new F5Size(text.Length * 14, 24));
             F5Element enable = shell.Layout.Elements.First(e => e.Command == buttons[1].Command);

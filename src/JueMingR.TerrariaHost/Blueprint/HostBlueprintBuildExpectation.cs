@@ -33,6 +33,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal bool Ready, Pending=true;
             internal NearCapabilityDependency Capability;
             internal long CapabilitySerial=-1;
+            internal long AbsenceGeneration=-1;
         }
         private sealed class NearBuildRange
         {
@@ -89,6 +90,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private BlueprintProjectionBounds nearProofWorldDomain;
         private bool nearProofDomainGrand;
         private bool nearAbsenceReady,nearPlanDirty=true;
+        private long nearAbsenceGeneration;
         private readonly Dictionary<NearCapabilityDependency,long> nearProofCapabilities=new Dictionary<NearCapabilityDependency,long>();
         private sealed class NearBuildRangeProof
         {
@@ -119,7 +121,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 {
                     bytes+=160+range.Retired.Capacity*4L+4L*range.FactHighWater*40;
                     if(range.Body!=null)bytes+=128+range.Body.Width*range.Body.Height*8L;
-                    bytes+=range.Facts.Count*480L;
+                    bytes+=range.Facts.Count*488L;
                     for(int lane=0;lane<BuildLaneCount;lane++)if(range.Rows[lane]!=null)bytes+=128+4L*range.RowHighWater[lane]*48+range.Rows[lane].Count*64L;
                 }
                 return bytes; }
@@ -267,6 +269,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void ClassifyNearFact(NearBuildFact fact,Player p,ref int allowance)
         {
             if(allowance<=0)return;allowance--;nearPlanDirty=true;
+            // A proof signs this classification, not the mutable fact object.
+            // Retire it before replacing any wait reason/player/capability;
+            // unrelated dirty facts and retained world coverage still survive.
+            if(fact.AbsenceGeneration==nearAbsenceGeneration)nearAbsenceReady=false;
 #if DEBUG
             NearBuildClassifications++;
             var retry=fact.Seed.Range.Materials;
@@ -805,6 +811,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(lane!=BlueprintBuildLane.TileBody && lane!=BlueprintBuildLane.WallBody)return false;
             if(seed.Placement==null)return true;
             if(seed.Placement.UseItemType==group.Source.Type)return true;
+            BlueprintSubstrateRecipe substrate;
+            if(seed.Placement.RequiresSubstrate && BlueprintSubstrateRecipe.TryGet(seed.Placement.TileType,out substrate) &&
+                (substrate.BaseItem==group.Source.Type || substrate.ConversionItem==group.Source.Type))return true;
             var choices=MaterialCatalog.Substitution?.Candidates(seed.Placement,substitutionPolicy);
             if(choices!=null)foreach(var choice in choices)if(choice.UseItemType==group.Source.Type)return true;
             return false;
@@ -866,6 +875,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(sameGroup && nearAbsenceReady && NearBuildAbsenceCurrent(p))return;
             if(!nearPlanDirty && !nearVisitCompleted && buildContinuation==null)return;
             nearPlanDirty=false;
+            nearAbsenceGeneration++;
             nearProofDomainBoost=NearOperationBoost(buildContinuation.Operation,buildContinuation.Source.Type);
             nearProofWorldDomain=BuildPreferredWorldBounds(p);
             nearProofDomainGrand=WiringOperation(buildContinuation.Operation) && buildSupply.ContainsKey(3611);
@@ -878,6 +888,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 foreach(var fact in NearPreferredFacts(state,required))
                 {
                     relevant=true;
+                    fact.AbsenceGeneration=nearAbsenceGeneration;
                     if((fact.Wait&BlueprintBuildWait.Player)!=0)nearProofPlayers.Add(fact);
                     if((fact.Wait&BlueprintBuildWait.Capability)!=0 && fact.Capability!=null)
                     {long cutoff;nearProofCapabilities[fact.Capability]=nearProofCapabilities.TryGetValue(fact.Capability,out cutoff)?Math.Min(cutoff,fact.CapabilitySerial):fact.CapabilitySerial;}
@@ -975,7 +986,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                 {nearVisitNeeded=true;return false;}
             }
             foreach(var capability in nearProofCapabilities)
-                if(CurrentNearCapabilitySerial(capability.Key)>capability.Value || live && LiveNearCapabilityRecovery(capability.Key,capability.Value))return false;
+            {
+                long serial=CurrentNearCapabilitySerial(capability.Key);
+                if(serial<0 || serial>capability.Value || live && LiveNearCapabilityRecovery(capability.Key,capability.Value))
+                {nearVisitNeeded=true;return false;}
+            }
             if(live && nearProofMaterialDependencies.Count!=0)ReadNearMaterialSupply(p,nearLiveMaterialSupply);
             foreach(var dependency in nearProofMaterialDependencies)
             {

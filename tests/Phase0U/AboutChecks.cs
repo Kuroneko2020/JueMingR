@@ -16,6 +16,7 @@ namespace Terraria
             object font = new object(); Func<string, F5Size> measure = t => new F5Size(t.Length * 18, 24);
             Action prepare = () => state.Layout.Ensure(input.Width, input.Height, input.Scale, state.Page, font, measure);
             prepare(); var page = state.Layout.About;
+            Require(state.Layout.Elements.Any(e=>e.Text=="决明R "+AboutPage.ProductVersion),"About shows the actual assembly product version from the shared build input");
             Require(!state.Layout.Elements.Any(e => e.Text == "使用帮助 / 版本信息" || e.Text == "微信" || e.Text == "支付宝"), "About has no removed help/version entry or QR captions");
             Require(state.Layout.Elements.Any(e => e.Text == "决明R") && state.Layout.Elements.Count(e => e.Kind == F5ElementKind.Image) == 2, "Real page introduction and both image elements");
             Require(state.Layout.MaxScroll == 0, "Home presents its whole composition without scrolling");
