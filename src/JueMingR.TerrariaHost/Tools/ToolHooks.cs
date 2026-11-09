@@ -133,10 +133,17 @@ namespace JueMingR.TerrariaHost.Tools
         {__state=null;try{__state=host?.Combat?.Attack?.BeginPlacement(__instance,__0,false);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}}
         private static void PlacementCheckAfter(Combat.CombatCursorScope __state){__state?.End();}
         private static Exception PlacementCheckFinal(Combat.CombatCursorScope __state,Exception __exception){__state?.End();return __exception;}
-        private static void KillBefore(Projectile __instance,out Combat.CombatCursorScope __state)
-        {__state=null;try{__state=host?.Combat?.Attack?.Control.BeginKill(__instance);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}}
-        private static void KillAfter(Combat.CombatCursorScope __state){__state?.End();}
-        private static Exception KillFinal(Combat.CombatCursorScope __state,Exception __exception){__state?.End();return __exception;}
+        private struct KillLease {internal Combat.HostAttackControl Owner;internal int Key;internal Combat.CombatCursorScope Cursor;}
+        private static void KillBefore(Projectile __instance,out KillLease __state)
+        {__state=new KillLease{Owner=host?.Combat?.Attack?.Control,Key=(int)__instance.key};try{__state.Cursor=__state.Owner?.BeginKill(__instance);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}}
+        // Kill may consume the registered source (bubble child direction).
+        // Retire only after that native consumer and its cursor return finish;
+        // finalizer cleanup is idempotent and never suppresses native errors.
+        private static void EndKill(Projectile shot,ref KillLease state)
+        {var receipt=state;state=default(KillLease);try{receipt.Cursor?.End();}finally{receipt.Owner?.Retired(shot,receipt.Key);}}
+        private static void KillAfter(Projectile __instance,ref KillLease __state){EndKill(__instance,ref __state);}
+        private static Exception KillFinal(Projectile __instance,ref KillLease __state,Exception __exception)
+        {if(__exception!=null)EndKill(__instance,ref __state);return __exception;}
         private static void DamageBefore(Projectile __instance,out Combat.HostAttackControl.ShotReceipt __state)
         {__state=null;try{__state=host?.Combat?.Attack?.Control.BeginDamage(__instance);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}}
         internal static void Uninstall(){foreach(var m in harmony.GetPatchedMethods().ToArray())harmony.Unpatch(m,HarmonyPatchType.All,harmony.Id);host=null;deferredSync=null;}

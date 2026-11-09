@@ -25,6 +25,7 @@ namespace JueMingR.TerrariaHost.QuickItems
             internal string Id, Hint;
             internal int Type;
             internal bool Enabled=true, Selected, Icon, Cross;
+            internal bool Off { get { return Command == Command.QuickOff || Command == Command.FavoriteOff; } }
         }
         private readonly HostQuickItems host;
         private readonly F5Interaction shell;
@@ -230,7 +231,7 @@ namespace JueMingR.TerrariaHost.QuickItems
                 {
                     if(e.HotkeyTarget!=null && e.TextSize.Width>e.Rect.Width-8)
                     {renderer.Button(new F5Element(e.Kind,e.Rect,"",default(F5Size),e.TextScale,F5Command.None),false,part.Enabled,false,hover);renderer.Text(e.Text,e.Rect,Color.White,e.TextScale);}
-                    else renderer.Button(e,part.Selected,part.Enabled,false,hover);
+                    else renderer.Button(e,part.Selected,part.Enabled,part.Off,hover);
                 }
                 else if(e.Kind==F5ElementKind.Panel)renderer.Panel(e.Rect);
                 else if(e.Kind==F5ElementKind.Divider)renderer.Divider(e.Rect);

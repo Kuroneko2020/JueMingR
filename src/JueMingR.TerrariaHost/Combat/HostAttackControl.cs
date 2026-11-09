@@ -39,12 +39,15 @@ namespace JueMingR.TerrariaHost.Combat
         private HostYoyoNavigation openingNavigation;
         private Controlled presentation;
         private uint finiteHeldWorldStep;private bool hasFiniteHeldWorldStep,finiteHeldDemandRaised;
+        private uint maintenanceStep;private bool hasMaintenanceStep;
         internal HostAttackControl(HostCombat combat,HostCombatObservation observation){this.combat=combat;this.observation=observation;}
-        // A real birth remains an observation while Aim is off. Observation is
-        // not an input lease: every actual cursor consumer still requires
-        // Allowed, independently of the read-only preview's lifetime.
+        // Birth identity outlives demand and configuration saves. Keeping it
+        // cannot grant input: observation/preparation and execution each have
+        // their own current demand/permission checks below.
+        private bool Current(Source source)
+        {var player=combat.Player;return source!=null && player!=null && player.active && !player.dead && !player.ghost && combat.Runtime.IsSessionActive && ReferenceEquals(source.Player,player) && source.Session==observation.Session && source.Selection==combat.Tools.SelectionIntent && source.Slot==player.selectedItem && ReferenceEquals(player.HeldItem,source.Weapon) && source.Weapon.type==source.Type && source.Weapon.prefix==source.Prefix;}
         private bool Observed(Source source)
-        {return source!=null && combat.Attack.AttackObservationDemand && ReferenceEquals(source.Player,combat.Player) && source.Session==observation.Session && source.Selection==combat.Tools.SelectionIntent && source.Slot==combat.Player.selectedItem && ReferenceEquals(combat.Player.HeldItem,source.Weapon) && source.Weapon.type==source.Type && source.Weapon.prefix==source.Prefix;}
+        {return Current(source) && combat.Attack.AttackObservationDemand;}
         private bool Allowed(Source source)
         {return Observed(source) && observation.Options.Aim && combat.Admitted(combat.Player);}
         internal bool Pending
@@ -90,6 +93,28 @@ namespace JueMingR.TerrariaHost.Combat
         {return entry.Shot.active && entry.Shot.owner==combat.Player?.whoAmI && (int)entry.Shot.key==entry.Key && entry.Shot.type==entry.Type && Allowed(entry.Source);}
         private bool Observed(Controlled entry)
         {return entry.Shot.active && entry.Shot.owner==combat.Player?.whoAmI && (int)entry.Shot.key==entry.Key && entry.Shot.type==entry.Type && Observed(entry.Source);}
+        private bool Current(Controlled entry)
+        {return entry.Shot.active && entry.Shot.owner==combat.Player?.whoAmI && (int)entry.Shot.key==entry.Key && entry.Shot.type==entry.Type && Current(entry.Source);}
+        private static bool RetainedConsumer(Projectile shot)
+        {return HostGuidedAttack.Handles(shot.type) || HostDirectionalControl.Handles(shot.type) || HostHeldAttack.Handles(shot.type) || HostYoyoNavigation.Handles(shot) || shot.type==444 || shot.type==1035;}
+        private bool RetainedWeapon(Item item)
+        {return HostGuidedAttack.Handles(item.shoot) || HostDirectionalControl.Weapon(combat.Player,item) || HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || item.shoot==444 || HostWhipAttack.Weapon(item);}
+        private static void EnsureNavigation(Controlled entry)
+        {if(entry.Navigation==null && HostYoyoNavigation.Handles(entry.Shot))entry.Navigation=new HostYoyoNavigation();}
+        // Once per world step, inspect only registered births. Direct native
+        // deactivation has no Kill callback; it still cannot accumulate stale
+        // sources. No projectile-pool discovery or prediction runs while OFF.
+        internal void PollSources()
+        {
+            if(shots.Count==0 || hasMaintenanceStep && maintenanceStep==Main.GameUpdateCount)return;
+            hasMaintenanceStep=true;maintenanceStep=Main.GameUpdateCount;retired.Clear();
+            foreach(var pair in shots)if(!Current(pair.Value) || !combat.Attack.AttackObservationDemand && !RetainedConsumer(pair.Value.Shot))retired.Add(pair.Key);
+            foreach(int key in retired)shots.Remove(key);
+        }
+        // Kill can reuse the same pool object before returning. Its receipt's
+        // original full key must never retire that object's new generation.
+        internal void Retired(Projectile shot,int key)
+        {Controlled entry;if(shots.TryGetValue(key,out entry) && ReferenceEquals(entry.Shot,shot))shots.Remove(key);}
         private static bool FiniteHeld(int type){return type==615 || type==630 || type==705;}
         internal bool HasFiniteHeldSources
         {get{foreach(var entry in shots.Values)if(FiniteHeld(entry.Type) && Valid(entry))return true;return false;}}
@@ -175,12 +200,13 @@ namespace JueMingR.TerrariaHost.Combat
         internal ShotReceipt BeginShot(Player player,Item item,CombatCursorScope cursor)
         {
             var receipt=new ShotReceipt{Owner=this,Cursor=cursor,Previous=owner,Phase=preparedPhase,BirthCutoff=birthOrdinal};owner=receipt;
-            if(ReferenceEquals(player,combat.Player) && combat.Attack.AttackObservationDemand && item!=null && !item.IsAir)receipt.Source=new Source(combat,observation,item);
+            if(ReferenceEquals(player,combat.Player) && item!=null && !item.IsAir && (combat.Attack.AttackObservationDemand || RetainedWeapon(item)))
+            {var source=new Source(combat,observation,item);if(Current(source))receipt.Source=source;}
             return receipt;
         }
         internal ShotReceipt BeginDamage(Projectile shot)
         {
-            Controlled entry;if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot) || entry.Navigation==null || !Observed(entry) || shot.ai[0]<0)return null;
+            Controlled entry;if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot) || !HostYoyoNavigation.Handles(shot) || !Current(entry) || shot.ai[0]<0)return null;
             // Only a naturally executing registered ball Damage can lend its
             // source to a glove's real second-ball birth. Matching type/owner
             // in an arbitrary current array is not causal authorization.
@@ -212,13 +238,13 @@ namespace JueMingR.TerrariaHost.Combat
             if(shot.type==632 || shot.type==461)
             {
                 Controlled parent;int key=(int)(Terraria.DataStructures.ProjectileKey)shot.ai[1];
-                if(shots.TryGetValue(key,out parent) && Observed(parent) && parent.Children.Count<6 && (shot.type==632 && parent.Type==633 || shot.type==461 && parent.Type==460))parent.Children.Add(new HostBeamAttack.Child(shot));
+                if(shots.TryGetValue(key,out parent) && Current(parent) && parent.Children.Count<6 && (shot.type==632 && parent.Type==633 || shot.type==461 && parent.Type==460))parent.Children.Add(new HostBeamAttack.Child(shot));
                 return;
             }
             // Continuous pulses can outlive many later firing windows. The
             // native pool bounds this identity registry; sealed roles never
             // enter execution preparation or acquire an input capability.
-            if(owner?.Source==null || !ReferenceEquals(player,combat.Player) || !Observed(owner.Source) || shots.Count>=Main.maxProjectiles)return;
+            if(owner?.Source==null || !ReferenceEquals(player,combat.Player) || !Current(owner.Source) || !combat.Attack.AttackObservationDemand && !RetainedConsumer(shot) || shots.Count>=Main.maxProjectiles)return;
             if(shot.type==1035 && !HostWhipAttack.Primary(shot))return;
             if(!HostGuidedAttack.Handles(shot.type) && !HostDirectionalControl.Handles(shot.type) && shot.type!=698 && shot.type!=444 && shot.type!=1035 && shot.type!=611 && !HostPulseAttack.Handles(shot.type) && !HostHarpoonAttack.Handles(shot.type) && !HostHeldAttack.Handles(shot.type) && !HostYoyoNavigation.Handles(shot))return;
             if(HostYoyoNavigation.Handles(shot) && shot.ai[0]<0)return;
@@ -226,11 +252,11 @@ namespace JueMingR.TerrariaHost.Combat
             // Only the managed birth borrows the opening's ammo receipt. Other
             // controllers keep their existing independently prepared members;
             // a previous opening must not supply a later unrelated source.
-            shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,ManagedYoyo=managedYoyo,YoyoPoint=openingPoint,YoyoEnhanced=openingUsable,Ammo=managedYoyo?openingAmmo:null,Navigation=HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
+            shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,ManagedYoyo=managedYoyo,YoyoPoint=openingPoint,YoyoEnhanced=openingUsable,Ammo=managedYoyo?openingAmmo:null,Navigation=combat.Attack.AttackObservationDemand && HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
         }
         internal void Clear(){presentation=null;preparedTimeline=null;opening=null;openingNavigation=null;openingUsable=false;foreach(var entry in shots.Values)Retire(entry);}
         // An individual natural consumer can revoke only its own prepared
-        // capability. Source/registry lifetime belongs to Prepare/Reset; an
+        // capability. Source lifetime belongs to birth/retirement/session; an
         // unrelated or repeated projectile callback must never walk that pool.
         private static void Retire(Controlled entry)
         {entry.Contact=entry.NextKillContact=entry.AlternateKillContact=entry.AlternateNextKillContact=null;entry.Solution=default(HostAttackSolution);entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=entry.AlternateKillObstacles=null;}
@@ -239,7 +265,8 @@ namespace JueMingR.TerrariaHost.Combat
         // no other source is searched and Draw never checks terrain here.
         private void RejectDependencies(Controlled entry)
         {Retire(entry);if(ReferenceEquals(previewSource,entry))ClearPreview();}
-        internal void Reset(){Clear();ClearPreview();shots.Clear();preparedTimeline=null;opening=null;birthOrdinal=0;hasFiniteHeldWorldStep=finiteHeldDemandRaised=false;}
+        internal void ResetPreparation(){Clear();ClearPreview();preparedTimeline=null;opening=null;hasFiniteHeldWorldStep=finiteHeldDemandRaised=false;}
+        internal void Reset(){ResetPreparation();shots.Clear();birthOrdinal=0;hasMaintenanceStep=false;}
         internal void Prepare(NpcTrajectory timeline,HostAttackPhase phase)
         {
             Clear();retired.Clear();terrain.Reset();environmentState=new HostProjectileEnvironment.State(true);preparedTimeline=timeline;preparedPhase=phase;
@@ -258,6 +285,7 @@ namespace JueMingR.TerrariaHost.Combat
             foreach(var pair in shots)
             {
                 var entry=pair.Value;if(!Observed(entry)){retired.Add(pair.Key);continue;}if(!Valid(entry) || HostPulseAttack.Handles(entry.Type) || HostHarpoonAttack.Handles(entry.Type))continue;
+                EnsureNavigation(entry);
                 if(timeline==null || !timeline.Identity.Equals(observation.Selection.Target))continue;
                 if(entry.Navigation!=null && !entry.ManagedYoyo && yoyoGroup==null)yoyoGroup=new HostYoyoNavigation.GroupFacts(combat.Player);
                 PrepareEntry(entry,timeline,phase,yoyoGroup);
@@ -271,7 +299,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             HostYoyoNavigation.GroupFacts yoyoGroup=null;
             foreach(var entry in shots.Values)if(entry.BirthOrdinal>cutoff && ReferenceEquals(entry.Source,source) && Valid(entry) && !HostPulseAttack.Handles(entry.Type) && !HostHarpoonAttack.Handles(entry.Type))
-            {if(entry.Navigation!=null && !entry.ManagedYoyo && yoyoGroup==null)yoyoGroup=new HostYoyoNavigation.GroupFacts(combat.Player);PrepareEntry(entry,preparedTimeline,phase,yoyoGroup);}
+            {EnsureNavigation(entry);if(entry.Navigation!=null && !entry.ManagedYoyo && yoyoGroup==null)yoyoGroup=new HostYoyoNavigation.GroupFacts(combat.Player);PrepareEntry(entry,preparedTimeline,phase,yoyoGroup);}
         }
         private void PrepareEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase,HostYoyoNavigation.GroupFacts yoyoGroup)
         {
@@ -459,6 +487,7 @@ namespace JueMingR.TerrariaHost.Combat
             // retire that prepared receipt while waiting for the actual Kill.
             if(entry.Type==444)return false;
             if(!combat.Attack.BasicPermission || !combat.Attack.CurrentReceiver)return false;
+            EnsureNavigation(entry);
             // The native next-action split copies this birth-action direction.
             // Do not replace it with held navigation, or lend a cursor once the
             // cadence has released. The autonomous child is never registered.

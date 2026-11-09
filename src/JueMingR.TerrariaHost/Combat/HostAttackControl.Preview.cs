@@ -63,6 +63,7 @@ namespace JueMingR.TerrariaHost.Combat
             foreach(var pair in shots)
             {
                 var entry=pair.Value;if(!Observed(entry)){retired.Add(pair.Key);continue;}if(!HostPulseAttack.Handles(entry.Type))live=true;
+                EnsureNavigation(entry);
                 // A managed parent will release on its next native action;
                 // a held-navigation contact is not proof of that free flight.
                 if(entry.ManagedYoyo)continue;

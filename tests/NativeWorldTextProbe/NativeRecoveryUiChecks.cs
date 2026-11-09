@@ -14,6 +14,7 @@ namespace NativeWorldTextProbe
             var shell=Get(context,"Shell");var state=Get(shell,"State");var renderer=Get(shell,"renderer");var ui=Get(shell,"RecoveryUi");var layout=Get(state,"Layout");
             Call(state,"Navigate",10);Call(state,"RestoreVisible");Call(renderer,"RefreshResources");
             Action prepare=()=>{Call(renderer,"Prepare",state,960f,760f,1f);Call(ui,"PrepareLayout",Matrix.Identity);};prepare();
+            StateDecorations(context,ui,prepare);
             var rows=((IEnumerable)Get(ui,"logical")).Cast<object>().Where(p=>GetOptional(Get(p,"Element"),"Description")!=null).Select(p=>(string)Get(Get(p,"Element"),"Text")).ToArray();
             Require(string.Join("|",rows)=="自动回血|自动回蓝|自动护士|家具增益|自动增益","actual F5 recovery order");
             KeyboardHints(context,ui,prepare,Enumerable.Range(0,5).ToArray());
@@ -70,6 +71,48 @@ namespace NativeWorldTextProbe
             Call(state,"Close");Call(ui,"Suspend");NativeRecoveryChecks.Save(settings,new RecoveryOptions());
             Console.WriteLine("PASS G07 UI: real composition controls, full catalogue, stable off/pending/saved heights and scroll.");
         }
+        private static void StateDecorations(object context,object ui,Action prepare)
+        {
+            var host=Get(context,"Recovery");var shell=Get(context,"Shell");var state=Get(shell,"State");
+            var settings=new[]{(RecoverySettings)Get(host,"Potions"),(RecoverySettings)Get(host,"Buffs"),(RecoverySettings)Get(host,"Services")};
+            var original=settings.Select(s=>s.Value).ToArray();
+            Func<object[]> parts=()=>((IEnumerable)Get(ui,"logical")).Cast<object>().ToArray();
+            try
+            {
+                for(int feature=0;feature<6;feature++)
+                {
+                    Call(state,"Navigate",feature==5?1:10);prepare();
+                    foreach(int value in feature==0?new[]{0,1,2}:new[]{0,1})
+                    {
+                        var target=parts().Single(p=>(int)Get(p,"Command")==feature && (int)Get(p,"Value")==value && Get(Get(p,"Element"),"Kind").ToString()=="Button");
+                        Call(ui,"Execute",target);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return settings.All(s=>!s.Busy);});prepare();
+                        var selected=parts().Where(p=>(int)Get(p,"Command")==feature && (bool)Get(p,"Selected")).ToArray();
+                        Require(selected.Length==1 && (int)Get(selected[0],"Value")==value && (bool)Get(selected[0],"Off")== (value==0),
+                            "all six real Recovery rows project current selected mode with explicit off polarity, including tax on Misc");
+                    }
+                }
+                Call(state,"Navigate",10);prepare();
+                foreach(int feature in new[]{6,7})for(int step=0;step<2;step++)
+                {
+                    var target=parts().Single(p=>(int)Get(p,"Command")==feature);int before=(int)Call(host,"Value",feature);
+                    Require((bool)Get(target,"Selected") && (bool)Get(target,"Off")== (before==0) && (int)Get(target,"Value")==1-before,
+                        "single follow button decorates current owner state independently of its opposite click target");
+                    Call(ui,"Execute",target);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return settings.All(s=>!s.Busy);});prepare();
+                    Call(state,"Close");Call(ui,"Suspend");Call(state,"RestoreVisible");prepare();
+                    target=parts().Single(p=>(int)Get(p,"Command")==feature);
+                    Require((int)Call(host,"Value",feature)==1-before && (bool)Get(target,"Selected") && (bool)Get(target,"Off")== (before!=0),
+                        "saved follow state survives presentation close/reopen through the real owner");
+                }
+                Require(parts().Where(p=>(int)Get(p,"Command")==-4 || (int)Get(p,"Command")==-5).All(p=>!(bool)Get(p,"Selected")),
+                    "Recovery refresh/clear actions remain free of toggle decoration");
+            }
+            finally
+            {
+                for(int i=0;i<settings.Length;i++)NativeRecoveryChecks.Save(settings[i],original[i]);
+                Call(state,"Navigate",10);Call(state,"RestoreVisible");Call(ui,"Suspend");prepare();
+            }
+        }
+
         private static void KeyboardHints(object context,object ui,Action prepare,int[] features)
         {
             var shell=Get(context,"Shell");var state=Get(shell,"State");

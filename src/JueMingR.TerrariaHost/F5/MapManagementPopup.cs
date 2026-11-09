@@ -228,6 +228,12 @@ namespace JueMingR.TerrariaHost.F5
             if (changed) { Generation++; Hovered = Pressed = -1; } dirty = false; PrepareHint(measure);
         }
         internal bool Selected(int command) { return command == 20 && !host.FastScan || command == 21 && host.FastScan || (command == 24 || command == 25) && host.DynamicEnabled; }
+        internal Microsoft.Xna.Framework.Color? StateColor(int command)
+        {
+            if (command == 24 || command == 25)
+                return host.DynamicEnabled ? Microsoft.Xna.Framework.Color.LightGreen : Microsoft.Xna.Framework.Color.IndianRed;
+            return Selected(command) ? (Microsoft.Xna.Framework.Color?)Microsoft.Xna.Framework.Color.LightGreen : null;
+        }
         internal float TextX(int index)
         {
             var line = Text[index];
@@ -263,6 +269,6 @@ namespace JueMingR.TerrariaHost.F5
         private void AddText(string value, float x, float y, float width, Func<string, float, F5Size> measure, float scale = .70f)
         { value = Fit(value, width, measure, scale); var size = measure(value, scale); Text.Add(new F5Element(F5ElementKind.Text, new F5Rect(x, y, width, size.Height), value, size, scale, F5Command.None)); }
         private void Button(string value, int command, string target, float x, float y, float width, bool enabled, Func<string, float, F5Size> measure)
-        { var size = measure(value, .70f); Buttons.Add(new F5Element(F5ElementKind.Button, new F5Rect(x, y, width, Math.Max(30, size.Height + 8)), value, size, .70f, F5Command.None)); Commands.Add(command); Targets.Add(target); Enabled.Add(enabled); }
+        { var size = measure(value, .70f); Buttons.Add(new F5Element(F5ElementKind.Button, new F5Rect(x, y, width, Math.Max(30, size.Height + 12)), value, size, .70f, F5Command.None)); Commands.Add(command); Targets.Add(target); Enabled.Add(enabled); }
     }
 }

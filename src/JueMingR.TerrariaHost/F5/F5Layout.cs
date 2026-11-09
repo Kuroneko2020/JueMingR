@@ -197,6 +197,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (metricsChanged || Generation == 0) FontMetricsGeneration++;
             }
             if (Matches(width, height, scale, currentPage) && !metricsChanged) return;
+            decorationScale = scale;
             F5Size size = WindowSize(width, height, scale);
             Window = new F5Rect(0, 0, size.Width, size.Height);
             ContentPanel = new F5Rect(12, 131, 556, size.Height - 143);
@@ -264,42 +265,65 @@ namespace JueMingR.TerrariaHost.F5
         internal F5Rect NavigationLabel(int index)
         {
             F5Rect icon = NavigationIcon(index), nav = Navigation(index);
-            return new F5Rect(icon.Right + 5, nav.Y + (nav.Height - navSizes[index].Height) / 2,
+            return new F5Rect(icon.Right + 5, LabelTop(nav, navSizes[index].Height, decorationScale),
                 navSizes[index].Width, navSizes[index].Height);
         }
         internal F5Rect NavigationUnderline(int index)
+        { return NavigationUnderline(index, Microsoft.Xna.Framework.Matrix.CreateScale(decorationScale), 0, 0); }
+        internal F5Rect NavigationUnderline(int index, Microsoft.Xna.Framework.Matrix matrix, float x, float y)
         {
-            F5Rect nav = Navigation(index), label = NavigationLabel(index);
-            return ShortUnderline(nav, NavigationIcon(index).Width + 5 + label.Width, label.Bottom);
+            F5Rect nav = Navigation(index).Offset(x, y), label = NavigationLabel(index).Offset(x, y);
+            return ShortUnderline(nav, NavigationIcon(index).Width + 5 + label.Width, label.Bottom, matrix);
+        }
+        private float decorationScale = 1;
+        // The user slider starts at 0.50. Reserve the two device rows plus one
+        // device row of ceil slack, the glyph gap and the inner bottom margin.
+        // This only moves a label when centering cannot leave that space.
+        private static float LabelTop(F5Rect surface, float height, float scale)
+        {
+            float y = Math.Min(surface.Y + (surface.Height - height) / 2,
+                surface.Bottom - height - (2.5f + 3 / scale));
+            // Action-only compact buttons can use the ordinary top inset. A
+            // selected control still validates its real remaining line space.
+            return Math.Max(surface.Y + 1, y);
         }
         internal static F5Rect ButtonSurface(F5Element element)
         {
-            // Keep the old hit center. Tall glyphs retain four units on each
-            // side for the border/indicator instead of being squeezed.
-            float inset = Math.Min(1, Math.Max(0, (element.Rect.Height - element.TextSize.Height - 8) / 2));
+            // Skin stays within the shared hit rectangle. Tall glyph rows keep
+            // the extra decoration space allocated by the common row layout.
+            float inset = Math.Min(1, Math.Max(0, (element.Rect.Height - element.TextSize.Height - 12) / 2));
             return new F5Rect(element.Rect.X, element.Rect.Y + inset, element.Rect.Width, element.Rect.Height - 2 * inset);
         }
-        internal static F5Rect ButtonLabel(F5Element element)
+        internal static F5Rect ButtonLabel(F5Element element, float scale = 1)
         {
             F5Rect surface = ButtonSurface(element);
             return new F5Rect(surface.X + (surface.Width - element.TextSize.Width) / 2,
-                surface.Y + (surface.Height - element.TextSize.Height) / 2, element.TextSize.Width, element.TextSize.Height);
+                LabelTop(surface, element.TextSize.Height, scale), element.TextSize.Width, element.TextSize.Height);
         }
         internal static F5Rect ButtonUnderline(F5Element element)
-        { return ShortUnderline(ButtonSurface(element), element.TextSize.Width, ButtonLabel(element).Bottom); }
-        private static F5Rect ShortUnderline(F5Rect surface, float contentWidth, float textBottom)
+        { return ButtonUnderline(element, Microsoft.Xna.Framework.Matrix.Identity); }
+        internal static F5Rect ButtonUnderline(F5Element element, Microsoft.Xna.Framework.Matrix matrix, float x = 0, float y = 0)
+        { return ShortUnderline(ButtonSurface(element).Offset(x, y), element.TextSize.Width,
+            ButtonLabel(element, matrix.M22).Bottom + y, matrix); }
+        private static F5Rect ShortUnderline(F5Rect surface, float contentWidth, float textBottom, Microsoft.Xna.Framework.Matrix matrix)
         {
             // Ten-unit side clearance stays away from the visible rounded
             // corners of the existing ten-unit slices, not merely the hitbox.
             float width = Math.Min(contentWidth + 4, Math.Max(0, surface.Width - 20));
-            // Use one rounded boundary with double intermediates. Optimized x86
-            // can otherwise compare a stored float with an extended-precision
-            // equivalent and falsely report overflow at the exact bottom margin.
-            double bottom = surface.Bottom;
-            double y = Math.Max(bottom - 3, (double)textBottom + 0.5);
-            if (y + 1 > bottom - 2)
+            // Main.UIScaleMatrix is axis-aligned scale/translation. Snap in the
+            // actual batch's device domain, then divide back into that batch;
+            // neither Windows DPI nor the logical size defines line thickness.
+            double sx = matrix.M11, sy = matrix.M22, tx = matrix.M41, ty = matrix.M42;
+            double left = Math.Ceiling((surface.X + 10) * sx + tx);
+            double right = Math.Floor((surface.Right - 10) * sx + tx);
+            double top = Math.Floor((surface.Bottom - 2) * sy + ty) - 2;
+            if (top < Math.Ceiling((textBottom + 0.5) * sy + ty))
                 throw new InvalidOperationException("F5 text leaves no safe space for its state underline.");
-            return new F5Rect(surface.X + (surface.Width - width) / 2, (float)y, width, 1);
+            double pixels = Math.Max(0, Math.Min(right - left, Math.Round(width * sx)));
+            double start = Math.Max(left, Math.Min(right - pixels,
+                Math.Round((surface.X + surface.Width / 2) * sx + tx - pixels / 2)));
+            return new F5Rect((float)((start - tx) / sx), (float)((top - ty) / sy),
+                (float)(pixels / sx), (float)(2 / sy));
         }
         internal static bool IsSelected(F5Element element, bool biomeEnabled, bool biomeFailed)
         { return !biomeFailed && (biomeEnabled ? element.Command == F5Command.EnableBiome : element.Command == F5Command.DisableBiome); }

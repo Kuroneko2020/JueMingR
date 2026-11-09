@@ -13,6 +13,8 @@ namespace JueMingR.TerrariaHost.F5
         { Id = id; Text = text; NameStyle = nameStyle; }
     }
     // Shared row geometry; callers own commands and cache border-inclusive metrics.
+    // Tall buttons reserve 12 logical units beyond measured ink/border bounds:
+    // even native 50% UI then fits two device rows, ceil slack and inner padding.
     internal sealed class F5RowLayout
     {
         private const float HotkeySlotWidth = 22;
@@ -66,7 +68,7 @@ namespace JueMingR.TerrariaHost.F5
             float textHeight = labelY - 1 - (y + 4);
             float buttonHeight = 30;
             foreach (string action in actions)
-                if (action != null && action != "键") buttonHeight = Math.Max(buttonHeight, TextSize(action, 0.70f).Height + 8);
+                if (action != null && action != "键") buttonHeight = Math.Max(buttonHeight, TextSize(action, 0.70f).Height + 12);
             float rowHeight = Math.Max(38, Math.Max(textHeight, below ? 0 : buttonHeight) + 8);
             float shift = (rowHeight - textHeight) / 2 - 4;
             for (int i = firstText; i < elements.Count; i++)
@@ -96,7 +98,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             float cursor = x, rowHeight = 30;
             foreach (string label in labels)
-                if (label != null && label != "键") rowHeight = Math.Max(rowHeight, TextSize(label, 0.70f).Height + 8);
+                if (label != null && label != "键") rowHeight = Math.Max(rowHeight, TextSize(label, 0.70f).Height + 12);
             foreach (string label in labels)
             {
                 bool hotkey = label == "键";

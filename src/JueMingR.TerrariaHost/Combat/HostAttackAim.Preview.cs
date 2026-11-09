@@ -25,8 +25,8 @@ namespace JueMingR.TerrariaHost.Combat
         private Item previewCoverageWeapon;private int previewCoverageType,previewCoveragePrefix,previewCoverageSlot;private float previewCoverageScale;
         private bool previewSolvePending;
         internal bool AttackObservationDemand {get{return observation.Settings.CanRun && combat.Player!=null && combat.Player.active && !combat.Player.dead && !combat.Player.ghost && (observation.Path || observation.Options.Aim) && Eligible(combat.Player.HeldItem);}}
-// Owner stop-loss: pure impact preview is retired. Actual selection and
-        // live source registration use AttackObservationDemand independently.
+        // Owner stop-loss: pure impact preview is retired. Selection/planning
+        // use AttackObservationDemand; minimal real births have their own lifetime.
         internal bool PreviewDemand {get{return false;}}
         internal AttackContact ExpectedPreview {get{return PreviewLeaseCurrent()?preview.Contact:null;}}
         internal bool PreviewNeedsMore {get{return preview.Contact==null && preview.Timeline!=null && preview.Timeline.Stop==PredictionStop.None && preview.Timeline.Count<=NpcPredictionCache.Horizon;}}

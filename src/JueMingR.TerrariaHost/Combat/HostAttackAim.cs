@@ -204,7 +204,10 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void ClearExecution(){presentation=null;weapon=null;ammo=null;current=next=null;currentSolution=nextSolution=default(HostAttackSolution);currentBirthInputs=nextBirthInputs=default(HostAttackModels.BirthInputs);balancedOrdinary=false;environment=null;obstacles=null;harpyState=null;handTerrain=handMotionTerrain=null;sharedHandOwner=null;preparedOrdinary=false;cadence.Clear();Control.Clear();}
         internal void Clear(){ClearExecution();ClearPreview();}
-        internal void Reset(){demandActive=false;releaseHand=null;Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.Reset();hasConsumedInput=false;}
+        // User toggles/retries revoke derived work, never erase a real live
+        // birth. Session teardown alone invokes the complete registry reset.
+        internal void ResetPreparation(){demandActive=false;releaseHand=null;Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.ResetPreparation();hasConsumedInput=false;}
+        internal void Reset(){ResetPreparation();Control.Reset();}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
         {
             if(!ReferenceEquals(player,combat.Player) || !HostSwingAttack.Handles(item) || !AttackObservationDemand)return;

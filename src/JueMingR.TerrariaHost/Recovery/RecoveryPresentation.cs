@@ -15,7 +15,7 @@ namespace JueMingR.TerrariaHost.Recovery
     internal sealed class RecoveryPresentation
     {
         private sealed class Part
-        {internal F5Element Element;internal int Command,Value,Type;internal bool Enabled,Selected,MissingStock;internal string Hint;}
+        {internal F5Element Element;internal int Command,Value,Type;internal bool Enabled,Selected,Off,MissingStock;internal string Hint;}
         private readonly HostRecovery host;
         private readonly F5Interaction shell;
         private readonly ItemsRenderer renderer=new ItemsRenderer();
@@ -143,7 +143,7 @@ namespace JueMingR.TerrariaHost.Recovery
             foreach(var p in logical)
             {
                 var e=p.Element;if(e.Rect.Bottom<=shell.Scroll || e.Rect.Y>=shell.Scroll+view.Height)continue;
-                visible.Add(new Part{Element=new F5Element(e.Kind,e.Rect.Offset(view.X,view.Y-shell.Scroll),e.Text,e.TextSize,e.TextScale,e.Command,e.HotkeyTarget,e.Description,e.HintRect.Offset(view.X,view.Y-shell.Scroll)),Command=p.Command,Value=p.Value,Type=p.Type,Enabled=p.Enabled,Selected=p.Selected,MissingStock=p.MissingStock,Hint=p.Hint});
+                visible.Add(new Part{Element=new F5Element(e.Kind,e.Rect.Offset(view.X,view.Y-shell.Scroll),e.Text,e.TextSize,e.TextScale,e.Command,e.HotkeyTarget,e.Description,e.HintRect.Offset(view.X,view.Y-shell.Scroll)),Command=p.Command,Value=p.Value,Type=p.Type,Enabled=p.Enabled,Selected=p.Selected,Off=p.Off,MissingStock=p.MissingStock,Hint=p.Hint});
             }
             revision=Revision;generation=shell.Layout.Generation;skin=renderer.Generation;scroll=shell.Scroll;page=shell.Page;session=host.Runtime.Generation;dirty=false;
         }
@@ -158,7 +158,7 @@ namespace JueMingR.TerrariaHost.Recovery
                 if(e.Kind==F5ElementKind.Hotkey)command=-1;
                 var element=e.Kind==F5ElementKind.Hotkey?new F5Element(e.Kind,e.Rect,null,e.TextSize,e.TextScale,F5Command.None,HostRecovery.Actions[feature]):e;
                 string hint=e.Kind==F5ElementKind.Hotkey?F5HotkeyHints.Toggle:e.Text=="快速"?"掉血后立即选择合适的物品进行恢复":e.Text=="智能"?"掉血后会等待合适的阈值使用合适的药品":e.Description==null?null:host.Hint(feature)??help[feature];
-                logical.Add(new Part{Element=element,Command=command,Value=value,Enabled=host.Controls(feature),Selected=command>=0 && e.Kind==F5ElementKind.Button && host.Value(feature)==value,Hint=hint});
+                logical.Add(new Part{Element=element,Command=command,Value=value,Enabled=host.Controls(feature),Selected=command>=0 && e.Kind==F5ElementKind.Button && host.Value(feature)==value,Off=command>=0 && value==0,Hint=hint});
             }
         }
         private void Editor(ref float y)
@@ -192,7 +192,9 @@ namespace JueMingR.TerrariaHost.Recovery
         private void PaneButtons(ref float y,float x,float width,string[] labels,int[] commands)
         {
             var list=new List<F5Element>();new F5RowLayout(list,shell.Layout.TextSize).Buttons(ref y,x,width,labels);
-            for(int i=0;i<list.Count;i++)logical.Add(new Part{Element=list[i],Command=commands[i],Value=commands[i]>=6?1-host.Value(commands[i]):0,Selected=commands[i]>=6 && host.Value(commands[i])!=0,Hint=commands[i]==6?"手动使用的增益物品同步加入名单":commands[i]==7?"手动删除的增益物品从名单同步删除":null,Enabled=commands[i]==-3 || host.Controls(editor==2?4:editor)});
+            // Follow buttons always decorate the accepted current preference;
+            // their Value is only the next click target and has opposite polarity.
+            for(int i=0;i<list.Count;i++)logical.Add(new Part{Element=list[i],Command=commands[i],Value=commands[i]>=6?1-host.Value(commands[i]):0,Selected=commands[i]>=6,Off=commands[i]>=6 && host.Value(commands[i])==0,Hint=commands[i]==6?"手动使用的增益物品同步加入名单":commands[i]==7?"手动删除的增益物品从名单同步删除":null,Enabled=commands[i]==-3 || host.Controls(editor==2?4:editor)});
         }
         private void Grid(ref float y,IEnumerable<int> types,float x=0,float width=0,string empty=null)
         {
@@ -211,7 +213,7 @@ namespace JueMingR.TerrariaHost.Recovery
             if(!ready)return;renderer.Pass(matrix,view,()=>{foreach(var p in visible){var e=p.Element;
                 if(p.Type>0){renderer.ItemButton(e.Rect,p.Enabled,e.Rect.Contains(pointer.X,pointer.Y));Texture2D icon;if(icons.TryGetValue(p.Type,out icon))renderer.PreparedItem(p.Type,icon,ItemsLayout.IconBounds(e.Rect,true));if(p.Selected)renderer.Selection(e.Rect);else if(p.MissingStock)renderer.Cross(new F5Rect(e.Rect.Right-23,e.Rect.Y-3,24,24),true);}
                 else if(e.Kind==F5ElementKind.Hotkey)keyboard?.Invoke(e.Rect);
-                else if(e.Kind==F5ElementKind.Button)renderer.Button(e,p.Selected,p.Enabled,false,e.Rect.Contains(pointer.X,pointer.Y));
+                else if(e.Kind==F5ElementKind.Button)renderer.Button(e,p.Selected,p.Enabled,p.Off,e.Rect.Contains(pointer.X,pointer.Y));
                 else if(e.Kind==F5ElementKind.Panel)renderer.Panel(e.Rect);else renderer.Label(e);}});
         }
         internal string Hint(float x,float y,out F5Rect rect,F5Rect? clip=null)
