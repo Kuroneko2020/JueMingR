@@ -15,10 +15,14 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance;
         internal static void Run(object context)
+        {RunFor(context,new[]{3541,2882});}
+        internal static void RunPrism(object context)
+        {RunFor(context,new[]{3541});}
+        private static void RunFor(object context,int[] weapons)
         {
             var visual=new Harmony("JueMingR.Tests.BeamRippleOutlet");var ai=typeof(Projectile).GetMethod("AI",Flags);
             visual.Patch(ai,transpiler:new HarmonyMethod(typeof(NativeCombatBeamChecks).GetMethod(nameof(RippleOutlet),BindingFlags.NonPublic|BindingFlags.Static)));
-            try{RunCore(context);}finally{visual.Unpatch(ai,HarmonyPatchType.All,visual.Id);}
+            try{RunCore(context,weapons);}finally{visual.Unpatch(ai,HarmonyPatchType.All,visual.Id);}
         }
         // A CPU component has no scene filter/render target. Remove exactly
         // the WaterDistortion QUEUE outlet expression, not native beam AI,
@@ -36,10 +40,10 @@ namespace NativeWorldTextProbe
             }
             Require(matches==1,"one cosmetic ripple outlet, no broad native AI skip");Console.WriteLine("BEAM cosmetic isolation: exact WaterDistortion QueueRipple expressions="+matches+"; original AI/LaserScan/Damage retained.");return code;
         }
-        private static void RunCore(object context)
+        private static void RunCore(object context,int[] weapons)
         {
             var combat=Get(context,"Combat");var host=Get(context,"CombatObservation");var attack=Get(combat,"Attack");var tools=Get(context,"Tools");var input=Get(context,"Input");
-            foreach(int weapon in new[]{3541,2882})foreach(bool wall in new[]{false,true})
+            foreach(int weapon in weapons)foreach(bool wall in new[]{false,true})
             {
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,weapon,0,0);p.position=new Vector2(700,646);p.channel=p.controlUseItem=true;p.statMana=p.statManaMax2=10000;Main.screenPosition=new Vector2(600,500);
                 if(wall)for(int y=0;y<Main.maxTilesY;y++){Main.tile[60,y].active(true);Main.tile[60,y].type=Terraria.ID.TileID.Stone;}

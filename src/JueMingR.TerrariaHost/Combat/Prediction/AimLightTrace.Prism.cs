@@ -29,9 +29,9 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             internal uint Tick;internal long Frame;internal int Key,Owner,Slot,Weapon,Prefix,Target,TargetGeneration,TargetType,TargetNetId,SourceSlot,SourceType,SourcePrefix;
             internal long Session,Selection,SourceSession,SourceSelection;internal ulong Seen,Passed,SeenHigh,PassedHigh;
             internal long SampledFrame,TargetSession;internal int Boundary,LiveSlot,LiveGeneration,LiveType,LiveNetId,LiveLife,LiveFlags,JourneyFacts,TextFacts,PointerFacts;
-            internal string Reject,Outcome,Error;internal bool Tool,Native,Scope,PointKnown,ExpectedKnown,Returned;
+            internal string Reject,Outcome,Error;internal bool Tool,Native,Scope,PointKnown,LogicalKnown,ExpectedKnown,Returned;
             internal int PhysicalX,PhysicalY,RawX,RawY,BorrowedX,BorrowedY,NativeX,NativeY,ReturnedX,ReturnedY,Input,Ui,Availability;
-            internal Vector2 Screen,Origin,Point,Before,After,Expected;internal float Gravity,Charge,Rotation,AfterRotation,SteeringError;
+            internal Vector2 Screen,Origin,Point,LogicalPoint,Before,After,Expected;internal float Gravity,Charge,Rotation,AfterRotation,SteeringError;
         }
         private static readonly PrismRow[] prismRows=new PrismRow[192];
         private static PrismRow prismRow,prismPrevious;
@@ -139,6 +139,10 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal static void PrismPointerFacts(int facts){if(PrismConsuming)prismRow.PointerFacts=facts;}
         internal static bool PrismPoint(bool available,Vector2 point,string kind)
         {if(PrismConsuming){prismRow.PointKnown=available;prismRow.Point=point;prismRow.Outcome=kind;Gate(PrismGate.Point,available);}return available;}
+        // After steering inversion the borrowed cursor is deliberately not the
+        // logical receiver point. Keep both facts in the same bounded row.
+        internal static void PrismLogicalPoint(Vector2 point)
+        {if(PrismConsuming){prismRow.LogicalKnown=true;prismRow.LogicalPoint=point;}}
         internal static void PrismBorrowed(CombatCursorScope scope)
         {if(PrismOn && prismPending && prismRow.Tool){prismRow.Scope=scope!=null;prismRow.BorrowedX=Main.mouseX;prismRow.BorrowedY=Main.mouseY;if(scope==null && prismRow.PointKnown)prismRow.Reject="Scope";}}
         internal static void PrismNativeBefore(HostCombat combat,Projectile shot)
@@ -220,7 +224,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                 {
                     var r=prismRows[i];log.Offer("prism-consumer",r.Tick,"frame="+r.Frame+";sampledFrame="+r.SampledFrame+";boundary="+r.Boundary+";key="+r.Key+";owner="+r.Owner+";sourceSession="+r.SourceSession+";sourceSelection="+r.SourceSelection+";sourceItem="+r.SourceSlot+","+r.SourceType+","+r.SourcePrefix+";session="+r.Session+";selection="+r.Selection+";item="+r.Slot+","+r.Weapon+","+r.Prefix+
                         ";target="+r.Target+","+r.TargetGeneration+","+r.TargetType+","+r.TargetNetId+";targetSession="+r.TargetSession+";live="+r.LiveSlot+","+r.LiveGeneration+","+r.LiveType+","+r.LiveNetId+","+r.LiveLife+","+r.LiveFlags+";journey="+r.JourneyFacts+";text="+r.TextFacts+";pointer="+r.PointerFacts+";seen="+r.Seen.ToString("X16")+","+r.SeenHigh.ToString("X16")+";passed="+r.Passed.ToString("X16")+","+r.PassedHigh.ToString("X16")+";firstReject="+(r.PointKnown && r.Scope?"none":r.Reject??"none")+";observedFirstFalse="+(r.Reject??"none")+";outcome="+r.Outcome+";input="+r.Input+";ui="+r.Ui+";availability="+r.Availability+";tool="+r.Tool+";native="+r.Native+";scope="+r.Scope+
-                        ";beforeCursor="+r.PhysicalX+","+r.PhysicalY+";physicalMap="+r.RawX+","+r.RawY+";borrowed="+r.BorrowedX+","+r.BorrowedY+";nativeCursor="+r.NativeX+","+r.NativeY+";returned="+r.Returned+":"+r.ReturnedX+","+r.ReturnedY+";screen="+V(r.Screen)+";gravity="+F(r.Gravity)+";origin="+V(r.Origin)+";point="+r.PointKnown+":"+V(r.Point)+";charge="+F(r.Charge)+";before="+V(r.Before)+";after="+V(r.After)+";expected="+r.ExpectedKnown+":"+V(r.Expected)+";steeringErrorSquared="+F(r.SteeringError)+";rotation="+F(r.Rotation)+","+F(r.AfterRotation)+";error="+(r.Error??"none"));
+                        ";beforeCursor="+r.PhysicalX+","+r.PhysicalY+";physicalMap="+r.RawX+","+r.RawY+";borrowed="+r.BorrowedX+","+r.BorrowedY+";nativeCursor="+r.NativeX+","+r.NativeY+";returned="+r.Returned+":"+r.ReturnedX+","+r.ReturnedY+";screen="+V(r.Screen)+";gravity="+F(r.Gravity)+";origin="+V(r.Origin)+";point="+r.PointKnown+":"+V(r.Point)+";logicalPoint="+r.LogicalKnown+":"+V(r.LogicalPoint)+";charge="+F(r.Charge)+";before="+V(r.Before)+";after="+V(r.After)+";expected="+r.ExpectedKnown+":"+V(r.Expected)+";steeringErrorSquared="+F(r.SteeringError)+";rotation="+F(r.Rotation)+","+F(r.AfterRotation)+";error="+(r.Error??"none"));
                 }
                 log.Stop("prism-"+reason);
             }

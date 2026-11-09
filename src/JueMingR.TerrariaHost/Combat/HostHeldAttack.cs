@@ -31,7 +31,6 @@ namespace JueMingR.TerrariaHost.Combat
             if(item.type==113 || item.type==218 || item.type==495)lead=(int)Math.Ceiling(distance/32);
             else if(item.type==3030)lead=(int)Math.Ceiling(distance/20);
             else if(item.type==2797)lead=60/2+(int)Math.Ceiling(distance/Math.Max(1,ammo.Speed)/2);
-            else if(item.type==3541)lead=(int)Math.Ceiling(1/(1-.92f)); // native parent steering response
             else if(item.useAmmo>0)lead=(int)Math.Ceiling(distance/Math.Max(1,ammo.Speed));
             return DirectionPoint(player,timeline,lead);
         }
@@ -44,7 +43,11 @@ namespace JueMingR.TerrariaHost.Combat
             if(shot.type==439)return HostLaserAttack.SolvePrepared(player,shot,timeline,clock,terrain,out point,out obstacles,frame);
             if(shot.type==1058)return HostBubbleFlailFamilyAttack.Held(player,shot,timeline,clock,terrain,frame,out point,out obstacles);
             if(HostFlailAttack.Handles(shot.type))return HostFlailAttack.SolvePrepared(player,shot,timeline,clock,terrain,out point,frame);
-            if(shot.type==633){point=DirectionPoint(player,timeline,age+12);return null;}
+            // Keep the logical target at this action's actual receiver phase.
+            // The consumer inverts native steering from its live origin and
+            // direction; a fixed 12-step target lead cannot compensate a
+            // moving holder, and must not become a permanent future cursor.
+            if(shot.type==633){point=DirectionPoint(player,timeline,clock.FirstTick);return null;}
             if(shot.type==927)return HostMeleeAttack.StarlightPrepared(player,shot,timeline,clock,terrain,out point,frame);
             if(shot.type==460)return null;
             float baseSpeed=shot.type==705?12:shot.type==714?8:14;

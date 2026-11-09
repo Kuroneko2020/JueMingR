@@ -501,7 +501,8 @@ namespace JueMingR.TerrariaHost.Combat
         internal CombatCursorScope BeginAI(Projectile shot)
         {Vector2 point;return TryPoint(shot,out point)?CombatCursorScope.Begin(point):null;}
         // G11A can read this same prepared capability before entering its
-        // outer cursor scope. Reading never advances cadence or solves again.
+        // outer cursor scope. Reading never advances cadence or solves a
+        // future again; 633 applies only its O(1) live steering transform.
         internal bool TryPoint(Projectile shot,out Vector2 point)
         {
             point=default(Vector2);Controlled entry;
@@ -548,8 +549,12 @@ namespace JueMingR.TerrariaHost.Combat
             Prediction.AimLightTrace.Gate(Prediction.AimLightTrace.PrismGate.Consumes,consumes);
 #endif
             if(!consumes)return false;
-            if(TryEnhancedPoint(shot,out point)){combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Enhanced,entry.Solution.HasPoint?entry.Solution.PointSemantics:entry.Navigation!=null?AttackPointSemantics.WorldPoint:entry.Contact?.PointSemantics??AttackPointSemantics.Unknown);
+            if(TryEnhancedPoint(shot,out point)){
+                var logicalPoint=point;
+                if(shot.type==633)point=HostPrismSteering.Point(combat.Player.RotatedRelativePoint(combat.Player.MountedCenter),shot.velocity,logicalPoint);
+                combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Enhanced,shot.type==633?AttackPointSemantics.Direction:entry.Solution.HasPoint?entry.Solution.PointSemantics:entry.Navigation!=null?AttackPointSemantics.WorldPoint:entry.Contact?.PointSemantics??AttackPointSemantics.Unknown);
 #if JMR_AIM_LIGHT
+                Prediction.AimLightTrace.PrismLogicalPoint(logicalPoint);
                 Prediction.AimLightTrace.PrismPoint(true,point,"enhanced");
 #endif
                 return true;}
@@ -561,8 +566,14 @@ namespace JueMingR.TerrariaHost.Combat
 #endif
                 return false;
             }
-            point=input.Point;combat.Attack.RecordInput(input);
+            var basicLogicalPoint=input.Point;point=basicLogicalPoint;
+            // Basic retains its current-only permission and receiver contract.
+            // Prediction availability must not switch 633 between incompatible
+            // steering laws: both paths transform only the accepted point.
+            if(shot.type==633){point=HostPrismSteering.Point(combat.Player.RotatedRelativePoint(combat.Player.MountedCenter),shot.velocity,point);combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Basic,AttackPointSemantics.Direction);}
+            else combat.Attack.RecordInput(input);
 #if JMR_AIM_LIGHT
+            Prediction.AimLightTrace.PrismLogicalPoint(basicLogicalPoint);
             Prediction.AimLightTrace.PrismPoint(true,point,"basic");
 #endif
             return true;

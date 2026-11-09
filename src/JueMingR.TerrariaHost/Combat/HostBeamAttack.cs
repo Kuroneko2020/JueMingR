@@ -28,14 +28,26 @@ namespace JueMingR.TerrariaHost.Combat
             var motion=frame.Motion;var environment=frame.Environment;var body=(Player)copy.Invoke(player,null);
             var lengths=new float[children.Count];for(int i=0;i<lengths.Length;i++)lengths[i]=children[i].Shot.localAI[1];
             var fees=new HostAttackResources.FeeClock(player,parent);
-            bool scannedRay=false;Vector2 scannedOrigin=default(Vector2),scannedUnit=default(Vector2);float scannedLength=0;
+            bool scannedRay=false;Vector2 scannedOrigin=default(Vector2),scannedUnit=default(Vector2),firstInput=aim;float scannedLength=0;
             for(int step=0;step<120 && clock.FirstTick+step<timeline.Count;step++)
             {
                 // The player's movement is already complete at action sampling;
                 // a completed-world preparation predicts the next player's step.
                 if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
                 HostAttackPlayerFrame.ApplyPose(body,motion);Vector2 origin=body.RotatedRelativePoint(body.MountedCenter);armOffset=body.GetArmPosition()-origin;
-                Vector2 requested=(aim-origin).SafeNormalize(Vector2.UnitY);
+                // 633 consumes feedback, not a compensating world point held
+                // forever. Re-evaluate the same controller at each trusted
+                // target slice and predicted holder pose. The loop's timeline
+                // bound never manufactures an unknown future tail.
+                Vector2 input=aim;
+                if(parent.type==633)
+                {
+                    var bounds=timeline[clock.FirstTick+step].ProjectileReceiveBounds;
+                    input=HostPrismSteering.Point(origin,direction,new Vector2(bounds.CenterX,bounds.CenterY));
+                    if(step==0)firstInput=input;
+                    input=HostDirectionalControl.Cursor(body,input);
+                }
+                Vector2 requested=(input-origin).SafeNormalize(parent.type==633?-Vector2.UnitY:Vector2.UnitY);
                 float phase;bool readsDirection;if(!fees.Advance(out phase,out readsDirection))return null;
                 if(parent.type==633)direction=Vector2.Lerp(requested,direction,.92f).SafeNormalize(Vector2.UnitY);
                 else if(readsDirection)direction=requested;
@@ -74,8 +86,8 @@ namespace JueMingR.TerrariaHost.Combat
                     {scannedLength=Length(scan,unit,terrain);scannedOrigin=scan;scannedUnit=unit;scannedRay=true;}
                     lengths[i]=MathHelper.Lerp(lengths[i],scannedLength,parent.type==633?.75f:.5f);
                     if(!receives[i].Allows(clock.LaunchDelay+step+1))continue;
-                    var contact=AttackIntercept.LineContact(timeline,nativeAge,aim.X,aim.Y,center.X,center.Y,center.X+unit.X*lengths[i],center.Y+unit.Y*lengths[i],22*scale);
-                    if(contact!=null){receipt=child;return contact;}
+                    var contact=AttackIntercept.LineContact(timeline,nativeAge,firstInput.X,firstInput.Y,center.X,center.Y,center.X+unit.X*lengths[i],center.Y+unit.Y*lengths[i],22*scale);
+                    if(contact!=null){receipt=child;return parent.type==633?AttackIntercept.WithPointSemantics(contact,AttackPointSemantics.Direction):contact;}
                 }
             }
             return null;
