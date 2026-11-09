@@ -195,7 +195,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void RetireNearBuildRange(BlueprintProjectionMatchRange range)
         {
             NearBuildRange state;if(nearBuildRanges.TryGetValue(range,out state))ReleaseNearBuildRange(state);
-            nearBuildRanges.Remove(range);nearBuildDiscovery.Members.Remove(range);nearBuildDiscovery.Ranges.Remove(range);nearPlanDirty=true;
+            nearBuildRanges.Remove(range);nearBuildDiscovery.Members.Remove(range);nearBuildDiscovery.Ranges.Remove(range);nearPlanDirty=nearVisitNeeded=true;
         }
         private void ClearBuildContinuation()
         {

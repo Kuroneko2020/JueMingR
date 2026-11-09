@@ -31,6 +31,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private Dictionary<int,NearCapabilityType> nearCapabilityNext=new Dictionary<int,NearCapabilityType>();
         private readonly Dictionary<int,NearCapabilityType> nearCapabilityLive=new Dictionary<int,NearCapabilityType>();
         private readonly long[] nearCapabilityFamilies=new long[5];
+        private readonly int[] nearCapabilityReach=new int[5];
         private readonly long[] nearCapabilityLiveFamilies=new long[5];
         private object nearCapabilityCatalog;
         private long nearCapabilityCatalogIdentity,nearCapabilityClock;
@@ -52,7 +53,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 long typeSlots=4L*nearCapabilityTypeHighWater,keySlots=4L*nearCapabilityKeyHighWater;
                 // Four dictionary objects/owner fields, two five-long arrays;
                 // per-slot bounds include bucket ints, entry padding and refs.
-                return 4L*128+2L*(24+5*8)+64+3L*typeSlots*48+keySlots*40+nearCapabilityKeyPayloadBytes;
+                return 4L*128+2L*(24+5*8)+(24+5*4)+64+3L*typeSlots*48+keySlots*40+nearCapabilityKeyPayloadBytes;
             }
         }
         private static long NearCapabilityPayloadEstimate(NearCapabilityDependency dependency)
@@ -118,6 +119,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void PublishNearCapabilityObservation()
         {
             if(!nearCapabilityObserving)return;
+            Array.Clear(nearCapabilityReach,0,nearCapabilityReach.Length);
             // Arrays retain the greatest recovery even during absence. This
             // preserves a negative cutoff through ordinary positive-stack noise.
             foreach(var pair in nearCapabilityNext)
@@ -135,12 +137,56 @@ namespace JueMingR.TerrariaHost.Blueprint
                 for(int family=1;family<5;family++)
                 {
                     NearCapabilityDependencyWork();
-                    if((pair.Value.Families&(1<<family))!=0)nearCapabilityFamilies[family]=Math.Max(nearCapabilityFamilies[family],pair.Value.Serial);
+                    if((pair.Value.Families&(1<<family))!=0){nearCapabilityFamilies[family]=Math.Max(nearCapabilityFamilies[family],pair.Value.Serial);nearCapabilityReach[family]=Math.Max(nearCapabilityReach[family],pair.Value.Reach);}
                 }
             }
             nearCapabilityLive.Clear();
             var old=nearCapabilityTypes;nearCapabilityTypes=nearCapabilityNext;nearCapabilityNext=old;
             foreach(var dependency in nearCapabilityKeys.Values)RefreshNearCapabilitySerial(dependency);
+        }
+        // The shared qualified inventory publication already computes maxima;
+        // no candidate performs another inventory walk. A business family can
+        // keep its legal long tool even when its current source is shorter.
+        private int NearOperationBoost(BlueprintBuildOperation operation,int fallbackType)
+        {
+            if(operation?.Kind==BlueprintBuildOperationKind.Hammer)return nearCapabilityReach[(int)NearCapabilityFamily.Hammer];
+            if(operation?.Kind==BlueprintBuildOperationKind.PaintTile)return nearCapabilityReach[(int)NearCapabilityFamily.Brush];
+            if(operation?.Kind==BlueprintBuildOperationKind.PaintWall)return nearCapabilityReach[(int)NearCapabilityFamily.Roller];
+            if(operation?.Kind==BlueprintBuildOperationKind.Scrape)return nearCapabilityReach[(int)NearCapabilityFamily.Scraper];
+            if(WiringOperation(operation))
+            {
+                int best=0;
+                for(int option=0;option<3;option++){NearCapabilityType capability;int type=WiringToolType(operation,option);if(type>0 && WiringToolMatches(operation,type) && nearCapabilityTypes.TryGetValue(type,out capability))best=Math.Max(best,capability.Reach);}
+                return best;
+            }
+            // Producer matching may admit a different actual Item. Its shared
+            // discovery envelope is conservative until the exact plan rebinds.
+            if(operation?.NativePlacement?.Producer!=null)return buildEnvelopeBoost;
+            NearCapabilityType value;
+            return nearCapabilityTypes.TryGetValue(fallbackType,out value)?value.Reach:0;
+        }
+        private int NearLiveOperationBoost(BlueprintBuildOperation operation,int fallbackType)
+        {
+            var family=NearCapabilityFamily.Types;
+            if(operation?.Kind==BlueprintBuildOperationKind.Hammer)family=NearCapabilityFamily.Hammer;
+            else if(operation?.Kind==BlueprintBuildOperationKind.PaintTile)family=NearCapabilityFamily.Brush;
+            else if(operation?.Kind==BlueprintBuildOperationKind.PaintWall)family=NearCapabilityFamily.Roller;
+            else if(operation?.Kind==BlueprintBuildOperationKind.Scrape)family=NearCapabilityFamily.Scraper;
+            int best=0;
+            if(family!=NearCapabilityFamily.Types || operation?.NativePlacement?.Producer!=null)
+            {
+                foreach(var pair in nearCapabilityLive)
+                {NearCapabilityDependencyWork();if(family==NearCapabilityFamily.Types || (pair.Value.Families&(1<<(int)family))!=0)best=Math.Max(best,pair.Value.Reach);}
+                return best;
+            }
+            if(WiringOperation(operation))
+            {
+                for(int option=0;option<3;option++)
+                {NearCapabilityDependencyWork();NearCapabilityType capability;int type=WiringToolType(operation,option);if(type>0 && WiringToolMatches(operation,type) && nearCapabilityLive.TryGetValue(type,out capability))best=Math.Max(best,capability.Reach);}
+                return best;
+            }
+            NearCapabilityType value;NearCapabilityDependencyWork();
+            return nearCapabilityLive.TryGetValue(fallbackType,out value)?value.Reach:0;
         }
         private NearCapabilityDependency GetNearCapabilityDependency(BlueprintBuildOperation operation,CaptureCell cell,CaptureObject? obj,int fallbackType)
         {

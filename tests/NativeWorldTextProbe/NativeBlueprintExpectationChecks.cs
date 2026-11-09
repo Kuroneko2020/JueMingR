@@ -31,7 +31,7 @@ namespace NativeWorldTextProbe
             }
             return __exception;
         }
-        internal static void RunNearQueue(object context)
+        internal static void RunNearQueue(object context,bool movingOnly=false,bool repairsOnly=false)
         {
             var host = Get(context, "Blueprint"); var tools = Get(context, "Tools"); var input = Get(context, "Input");
             NativeToolExecutionChecks.Initialize(context, null);
@@ -55,6 +55,10 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); return (bool)Get(host, "ControlsEnabled"); });
                 using (NativeBlueprintWorldMatchChecks.EmptyWorld(host, 200, 160))
                 {
+                    if(repairsOnly){NearQueueGrandScreenReentry(context,host,tools,input);NearQueueNativeReentry(context,host,tools,input);return;}
+                    QueueContinuousMovement(context,host,tools,input,false);
+                    QueueContinuousMovement(context,host,tools,input,true);
+                    if(movingOnly)return;
                     BusinessNearQueue(context, host, tools, input, false);
                     BusinessNearQueue(context, host, tools, input, false, warm: true);
                     BusinessNearQueue(context, host, tools, input, true);
@@ -84,6 +88,7 @@ namespace NativeWorldTextProbe
                         SupplyCurrentRestockPriority(context, host, tools, input);
                         SchedulerNativeHandoffCadence(context, host, tools, input);
                         NearQueueMaterialDependency(context, host, tools, input);
+                        NearQueueGrandScreenReentry(context,host,tools,input);
                         NearQueueGrandDesignMovement(context, host, tools, input);
                         NearQueueGrandDesignMovement(context, host, tools, input, true);
                         long oneCapabilitySlots = NearQueueCapabilityRecovery(context, host, tools, input, 1);
@@ -107,13 +112,217 @@ namespace NativeWorldTextProbe
             }
         }
 
+        private static BusinessScope movingAdmissionScope;
+        private static void MovingBuildAdmitted(object __instance,object __0)
+        {
+            var scope=movingAdmissionScope;if(scope==null || !ReferenceEquals(scope.Host,__instance))return;
+            var group=GetOptional(__instance,"buildContinuation");
+            int next=(int)Get(Get(__0,"Source"),"Type"),previous=group==null?0:(int)Get(Get(group,"Source"),"Type");
+            if(previous==0 || previous==next)return;
+            bool runnable=scope.Goals.Any(g=>g.Type==previous && scope.Runnable(g));
+            Console.WriteLine("MovingBuild admission world="+Main.GameUpdateCount+" position="+Main.LocalPlayer.position+" previous="+previous+" next="+next+" previousRunnable="+runnable+" token="+Get(__0,"Token"));
+            Require(!runnable,"actual foreign admission must see no real currently runnable A; later movement cannot retroactively revoke an admitted B");
+        }
+        // One real input/native-consumption trajectory owns moving service,
+        // same-material order, natural foreign handoff and the shared work bill.
+        // The dense arm obtains its old prefix through normal saved-source
+        // extraction with an actual Laser Drill, never by inserting facts.
+        private static Player SetupContinuousMovement(BusinessScope scope,bool dense)
+        {
+            var p=Reset(scope.Context,scope.Host,scope.Tools,scope.Input);p.position.X=44*16;
+            var wall=BusinessStock(p,12,ItemID.StoneWall,9999);
+            var platform=BusinessStock(p,13,ItemID.WoodPlatform,9999);
+            var bench=BusinessStock(p,14,ItemID.WorkBench,9999);
+            var chair=BusinessStock(p,15,ItemID.WoodenChair,9999);
+            if(dense)p.inventory[16].SetDefaults(ItemID.LaserDrill);
+            scope.Sources=new[]{wall,platform,bench,chair};
+            var goals=new List<BusinessGoal>();
+            int left=dense?28:37,right=dense?65:60,top=dense?30:39;
+            // Reset's shared walking arena ends at x114. This source-only
+            // extension belongs to the current fixture and is reset on replay.
+            for(int x=89;x<=91+right-left;x++)for(int y=top-1;y<=40;y++)Main.tile[x,y].ClearEverything();
+            // Source and destination are disjoint. Permanent overhead
+            // supports never intersect the player's standing/walking body.
+            for(int x=left;x<=right;x++)
+            {
+                NativeToolsChecks.Tile(x,38,TileID.Stone);NativeToolsChecks.Tile(90+x-left,38,TileID.Stone);
+                for(int y=top;y<=39;y+=2)
+                {
+                    WorldGen.PlaceWall(90+x-left,y,wall.Item.createWall,true);
+                    goals.Add(BusinessWallGoal(x,y,wall));
+                    if(y!=39)WorldGen.PlaceWall(x,y-1,wall.Item.createWall,true);
+                }
+            }
+            // Keep all four real consumers in the same normalized source.
+            Require(WorldGen.PlaceTile(90+55-left,37,platform.Item.createTile,true,true,style:platform.Item.placeStyle),"moving source contains an original platform");
+            goals.Add(BusinessTileGoal(55,37,platform));
+            goals.Add(NearQueueFurniture(bench,90+57-left,37,57,37));
+            goals.Add(NearQueueFurniture(chair,90+60-left,37,60,37));
+            var entry=NativeBlueprintWorldMatchChecks.CaptureCompletionAsset(scope.Context,scope.Host,scope.Input,(LibraryState)Get(scope.Host,"Library"),
+                ()=>scope.Step(),90,Math.Min(top,36),right-left+1,40-Math.Min(top,36),"持续移动全料 "+dense);
+            Place(scope.Context,scope.Host,scope.Input,entry,left,Math.Min(top,36));scope.Goals=goals.ToArray();
+            return p;
+        }
+        private static void QueueContinuousMovement(object context,object host,object tools,object input,bool dense)
+        {
+            BusinessEvent[] automatic=null;var directions=new List<int>();var edgeRows=new Dictionary<uint,string>();int firstAutomatic=-1;
+            using(var scope=new BusinessScope(context,host,tools,input))
+            using(var observation=new NearQueueObservation(host,required:true))
+            {
+                var p=SetupContinuousMovement(scope,dense);
+                var wall=scope.Sources[0];
+                scope.Begin(true);scope.OrderCheckedAtAdmission=true;SetAutomatic(host,input,true);
+                var admissionPatch=new Harmony("JueMingR.Tests.MovingBuildAdmission");movingAdmissionScope=scope;
+                admissionPatch.Patch(host.GetType().GetMethod("RememberBuildContinuation",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(MovingBuildAdmitted)));
+                int updates=0,movedUses=0,nativeEdges=0,peakOutside=0,peakPrefix=0,peakUncurrent=0,peakFacts=0,peakWork=0,peakClassPrepare=0;
+                int pauseMoves=0,pauseTicks=0,resumedUses=0,missed=0,maxMissed=0,initialPhysicalWait=0,dataEpoch=-1;
+                bool initialData=false,paused=false,forward=true,partial=false,sawForeign=false;
+                float initial=p.position.X,min=initial,max=initial;Rectangle? previous=null;
+                var movingEvents=new List<uint>();
+                try
+                {
+                    for(;updates<700;updates++)
+                    {
+                        // Movement is genuine original Player.Update input after
+                        // Sample. A brief neutral window retains normal inertia.
+                        int direction,wallUses=scope.Events.Count(e=>e.Type==wall.Type);
+                        bool neutral=wallUses>=2 && !paused;
+                        if(neutral){direction=0;if(++pauseTicks==6)paused=true;}
+                        else if(wallUses<8){if(p.position.X>=47*16)forward=false;else if(p.position.X<=43*16)forward=true;direction=forward?1:-1;}
+                        else {if(p.position.X>=58*16)forward=false;else if(p.position.X<=56*16)forward=true;direction=forward?1:-1;}
+                        directions.Add(direction);
+                        long factsBefore=(long)Get(host,"NearBuildFactChecks"),classes=(long)Get(host,"NearBuildClassifications"),prepares=(long)Get(host,"BuildCandidateChecks");
+                        int events=scope.Events.Count;float before=p.position.X;
+                        if(p.itemTime<=1)
+                        {
+                            Func<object,string> flight=v=>v==null?"none":Get(Get(v,"Source"),"Type")+":"+Get(Get(v,"Target"),"WorldX")+","+Get(Get(v,"Target"),"WorldY")+":checked="+Get(v,"Checked")+":rejected="+Get(v,"Rejected");
+                            var head=GetOptional(host,"nearPreferredHead");var seed=head==null?null:Get(head,"Seed");
+                            var foreign=GetOptional(host,"nearForeignHead");var group=GetOptional(host,"buildContinuation");
+                            string runnable=string.Join(";",scope.Goals.Where(scope.Runnable).Take(3).Select(g=>g.Type+":"+g.X+","+g.Y));
+                            edgeRows[Main.GameUpdateCount+1]="position="+p.position+" v="+p.velocity+" dir="+direction+" time/anim="+p.itemTime+"/"+p.itemAnimation+
+                                " prepared="+flight(GetOptional(host,"preparedBuild"))+" active="+flight(GetOptional(host,"activeBuild"))+" head="+(head==null?"none":Get(Get(seed,"Cell"),"X")+":"+Get(head,"Ready")+":"+Get(head,"Pending"))+
+                                " absence="+Get(host,"nearAbsenceReady")+" group="+(group==null?"none":Get(group,"Group")+":"+Get(group,"Pending"))+" foreign="+(foreign==null?"none":Get(foreign,"Type")+":"+Get(foreign,"Ready")+":"+Get(foreign,"Pending"))+" runnable="+runnable;
+                        }
+                        if(!initialData)
+                        {
+                            var delivered=((IDictionary)Get(host,"nearBuildRanges")).Values.Cast<object>().ToArray();
+                            // One-time source prerequisite, not executable Ready
+                            // or first consumption. Later movement/Pending never
+                            // closes the physical-opportunity observation window.
+                            initialData=(bool)Get(host,"nearCoverageCurrent") && delivered.Length>0 && delivered.All(r=>(bool)Get(r,"Complete") && (bool)Get(r,"RawCurrent"));
+                            if(initialData){dataEpoch=updates;Console.WriteLine("MovingBuild initial-data dense="+dense+" update="+updates+" world="+Main.GameUpdateCount+" facts="+Get(host,"NearBuildFacts")+" directoryAndSourceCovered=True executableReadyNotRead=True firstConsumerSeen="+(scope.Events.Count>0));}
+                        }
+                        bool sameRunnable=scope.CurrentType!=0 && scope.Goals.Any(g=>g.Type==scope.CurrentType && scope.Runnable(g));
+                        Func<BusinessGoal,bool> qualified=g=>scope.Runnable(g) && scope.Sources.Any(v=>v.Type==g.Type && (bool)Call(tools,"BuildInventoryEligible",v.Slot,v.Item));
+                        bool opportunity=p.itemTime<=1 && p.reuseDelay==0 && (sameRunnable && p.itemAnimation>0 && p.HeldItem.type==scope.CurrentType ||
+                            p.itemAnimation==0 && p.releaseUseItem) && scope.Goals.Any(qualified);
+                        observation.Step(scope,()=>scope.Step(direction:direction));
+                        int dl,dt,dr,db;TileReachCheckSettings.Simple.GetTileRegion(p,out dl,out dt,out dr,out db,wall.Item.tileBoost+p.blockRange);
+                        var region=new Rectangle(dl,dt,dr-dl+1,db-dt+1);
+                        if(previous.HasValue && previous.Value!=region)nativeEdges++;previous=region;
+                        min=Math.Min(min,p.position.X);max=Math.Max(max,p.position.X);
+                        if(firstAutomatic<0 && scope.Events.Count>0)firstAutomatic=updates;
+                        bool moved=p.position.X!=before;
+                        if(neutral && moved)pauseMoves++;
+                        if(moved && scope.Events.Count>events){movedUses+=scope.Events.Count-events;movingEvents.Add(Main.GameUpdateCount);if(paused)resumedUses+=scope.Events.Count-events;}
+                        partial|=scope.Goals.Any(g=>g.Type==wall.Type && !g.Complete && !p.IsInTileInteractionRange(g.X,g.Y,TileReachCheckSettings.Simple,wall.Item.tileBoost+p.blockRange)) &&
+                            scope.Goals.Any(g=>g.Type==wall.Type && scope.Runnable(g));
+                        sawForeign|=scope.Events.Any(e=>e.Type!=wall.Type);
+                        var facts=((IDictionary)Get(host,"nearBuildRanges")).Values.Cast<object>().SelectMany(r=>((IDictionary)Get(r,"Facts")).Values.Cast<object>()).ToArray();
+                        int outside=facts.Count(f=>{var seed=Get(f,"Seed");var cell=(CaptureCell)Get(seed,"Cell");var owner=Get(seed,"Owner");return Convert.ToString(Call(host,"BuildLane",(int)Get(seed,"Ordinal")))=="WallBody" &&
+                            !p.IsInTileInteractionRange((int)Get(owner,"OriginX")+cell.X,(int)Get(owner,"OriginY")+cell.Y,TileReachCheckSettings.Simple,wall.Item.tileBoost+p.blockRange);});
+                        peakOutside=Math.Max(peakOutside,outside);peakFacts=Math.Max(peakFacts,facts.Length);
+                        int prefix=0;
+                        foreach(var fact in facts)
+                        {
+                            var seed=Get(fact,"Seed");if(Convert.ToString(Call(host,"BuildLane",(int)Get(seed,"Ordinal")))!="WallBody")continue;
+                            var cell=(CaptureCell)Get(seed,"Cell");var owner=Get(seed,"Owner");int x=(int)Get(owner,"OriginX")+cell.X,y=(int)Get(owner,"OriginY")+cell.Y;
+                            if(scope.Goals.Any(g=>g.Type==wall.Type && g.X==x && g.Y==y && scope.Runnable(g)))break;
+                            if(!p.IsInTileInteractionRange(x,y,TileReachCheckSettings.Simple,wall.Item.tileBoost+p.blockRange))prefix++;
+                        }
+                        if(scope.CurrentType==wall.Type && scope.Goals.Any(g=>g.Type==wall.Type && scope.Runnable(g)))peakPrefix=Math.Max(peakPrefix,prefix);
+                        peakUncurrent=Math.Max(peakUncurrent,facts.Count(f=>(bool)Get(f,"Pending") || (long)Get(f,"Player")<0 || (long)Get(f,"Version")!=(long)Get(Get(Get(f,"Seed"),"Range"),"Version")));
+                        peakWork=Math.Max(peakWork,checked((int)((long)Get(host,"NearBuildFactChecks")-factsBefore)));
+                        int charged=checked((int)((long)Get(host,"NearBuildClassifications")-classes+(long)Get(host,"BuildCandidateChecks")-prepares));
+                        peakClassPrepare=Math.Max(peakClassPrepare,charged);Require(charged<=64,"moving classification and actual preparation share the original 64 allowance");
+                        // Independent opportunities use the real current native
+                        // clocks/release and known physical goal oracle. Pending
+                        // or a planner Ready bit never defines this denominator.
+                        if(!initialData && opportunity && scope.Events.Count==events)initialPhysicalWait++;
+                        missed=initialData && opportunity && scope.Events.Count==events && scope.Goals.Any(qualified)?missed+1:0;maxMissed=Math.Max(maxMissed,missed);
+                        if(missed==3)foreach(var row in edgeRows.Where(row=>row.Key>=Main.GameUpdateCount-4))Console.Error.WriteLine("MovingBuild opportunity-miss world="+row.Key+" "+row.Value);
+                        if(updates>150 && sawForeign && !scope.Goals.Any(scope.Runnable) && !(bool)Get(Get(tools,"Use"),"Active"))break;
+                    }
+                    scope.Report("continuous moving dense="+dense);
+                    Console.WriteLine("MovingBuild dense="+dense+" updates="+updates+" actualX="+min+".."+max+" nativeEdges="+nativeEdges+
+                        " movingUses="+movedUses+" resumedUses="+resumedUses+" partialA="+partial+" foreign="+sawForeign+" cachedOutsideA="+peakOutside+" oldPrefix="+peakPrefix+" uncurrent="+peakUncurrent+" facts="+peakFacts+
+                        " peakVisit="+peakWork+" peakClassPrepare="+peakClassPrepare+" initialDataEpoch="+dataEpoch+" physicalWaitBeforeSource="+initialPhysicalWait+" maxIndependentMissed="+maxMissed+" neutralWindowInertialMoves="+pauseMoves+
+                        " movingWorlds="+string.Join(",",movingEvents)+" nativeEventGaps="+string.Join(",",scope.Events.Zip(scope.Events.Skip(1),(a,b)=>unchecked(b.World-a.World))));
+                    Require(updates<700 && max-min>16 && nativeEdges>2 && movedUses>=3 && paused && resumedUses>0 && partial && sawForeign,
+                        "one abundant-stock trajectory consumes repeatedly while moving across real domains, briefly pauses/resumes, keeps available A and then naturally admits B");
+                    Require(scope.Sources.All(source=>source.Item.stack>9000 && source.Item.stack==9999-scope.Events.Where(e=>e.Type==source.Type).Sum(e=>e.Count)),
+                        "every moving native world effect has exactly its real debit while all stocks remain above 9000");
+                    int nativeActionWindow=scope.Events.Where(e=>e.Time>0).Min(e=>e.Time);
+                    Require(initialData && maxMissed<nativeActionWindow,"after actual directory/source delivery, known reachable qualified goals cannot miss an entire measured original action window while clocks permit use");
+                    if(dense)Require(peakOutside>=32 && peakPrefix>=32 && peakUncurrent>64 && peakFacts>64,"normal source discovery actually retains at least 32 short-material out-of-range A facts and exceeds one classification allowance");
+                    if(GetOptional(host,"nearBuildVisits")!=null)Require(peakWork<=64,"all actual fact visits, including cheap current/retained visits, remain bounded instead of moving work to free whole-plan scans");
+                    automatic=scope.Events.ToArray();
+                    long starts=(long)Get(host,"BuildUsesStarted");SetAutomatic(host,input,false);
+                    for(int n=0;n<50;n++)observation.Step(scope,()=>scope.Step(direction:1));
+                    Require(starts==(long)Get(host,"BuildUsesStarted"),"stopping during native movement starts no new automatic action while the original finite tail settles");
+                }
+                catch{scope.Report("moving failure dense="+dense);Console.Error.WriteLine("MovingBuild failed update="+updates+" position="+p.position+" velocity="+p.velocity+" facts="+peakFacts+" outside="+peakOutside+" uses="+movedUses+" foreign="+sawForeign+" missed="+maxMissed);throw;}
+                finally{movingAdmissionScope=null;foreach(var method in admissionPatch.GetPatchedMethods().ToArray())admissionPatch.Unpatch(method,HarmonyPatchType.All,admissionPatch.Id);}
+            }
+            using(var scope=new BusinessScope(context,host,tools,input))
+            {
+                var p=SetupContinuousMovement(scope,dense);scope.Begin(false);int cursor=0;
+                for(int frame=0;frame<directions.Count+80 && cursor<automatic.Length;frame++)
+                {
+                    int direction=directions[Math.Min(frame,directions.Count-1)];
+                    if(frame<firstAutomatic){scope.Step(direction:direction);continue;}
+                    var expected=automatic[cursor];var source=scope.Sources.Single(v=>v.Type==expected.Type);
+                    // The reference performs the same captured right-facing
+                    // chair through a legal right control, instead of borrowing
+                    // the automatic direction field. Its reach/support oracle
+                    // still fences each native use during actual movement.
+                    if(expected.Type==ItemID.WoodenChair && p.itemTime==0 && p.itemAnimation==0 && p.releaseUseItem)direction=1;
+                    if(p.selectedItem!=source.Slot)
+                    {
+                        if(!p.selectedItemState.HasBufferedChange)p.selectedItemState.Select(source.Slot);
+                        if(!p.selectedItemState.CanChangeSelectedItemImmediately){scope.Step(direction:direction);continue;}
+                    }
+                    int before=scope.Events.Count;
+                    var goal=scope.Goals.Single(g=>g.X==expected.X && g.Y==expected.Y && g.Type==expected.Type);
+                    bool held=(scope.Runnable(goal) || p.itemAnimation>0) && (p.itemAnimation>0 || p.releaseUseItem || source.Item.autoReuse);
+                    scope.Step(new Vector2(expected.X*16+8,expected.Y*16+8),held,direction);
+                    if(scope.Events.Count>before)
+                    {
+                        Require(scope.Events.Count==before+1 && scope.Events.Last().Type==expected.Type && scope.Events.Last().Count==expected.Count,
+                            "same saved world and movement replay use the identical original consumer and exact debit");
+                        cursor++;
+                    }
+                }
+                scope.Report("continuous moving original dense="+dense+" cursor="+cursor+" position="+p.position);
+                Console.WriteLine("MovingBuild original coverage dense="+dense+" reached="+cursor+" automatic="+automatic.Length+" alignment=legal-input-reference; per-frame directions and one chair facing input do not prove identical later positions/domains");
+                for(int i=1;i<Math.Min(automatic.Length,scope.Events.Count);i++)
+                {
+                    uint actual=unchecked(automatic[i].World-automatic[i-1].World),native=unchecked(scope.Events[i].World-scope.Events[i-1].World);
+                    Console.WriteLine("MovingBuild original-gap dense="+dense+" index="+i+" previous="+automatic[i-1].Type+" next="+automatic[i].Type+" automatic="+actual+" original="+native+" extra="+((long)actual-native));
+                    // These intervals are observations, not a state-equivalence
+                    // claim. Actual-side qualified reach/body/support and native
+                    // opportunity misses above decide whether scheduling waited.
+                }
+            }
+        }
+
         private sealed class NearQueueObservation : IDisposable
         {
             private readonly object host;
             private readonly bool available;
             private readonly bool workChecksAvailable;
             private long peakBytes, peakSource, steps, classifications, eligibilityReads, peakEligibilityReads;
-            private long factChecks, retirementChecks, rangeChecks;
+            private long factChecks, retirementChecks, rangeChecks,nativeRegions,peakNativeRegions;
             private long headChecks, proofChecks, capabilityChecks, peakHeads, peakProofs, peakCapabilities;
             private int peakFacts, peakRanges;
             internal NearQueueObservation(object host, bool required)
@@ -134,7 +343,9 @@ namespace NativeWorldTextProbe
                 long beforeHeads = workChecksAvailable ? (long)Get(host, "NearBuildHeadChecks") : 0;
                 long beforeProofs = workChecksAvailable ? (long)Get(host, "NearBuildProofChecks") : 0;
                 long beforeCapabilities = workChecksAvailable ? (long)Get(host, "NearBuildCapabilityChecks") : 0;
+                long beforeRegions=GetOptional(host,"NearBuildNativeRegionChecks") is long?(long)Get(host,"NearBuildNativeRegionChecks"):0;
                 if (nativeStep == null) scope.Step(); else nativeStep();
+                if(GetOptional(host,"NearBuildNativeRegionChecks") is long){long regions=(long)Get(host,"NearBuildNativeRegionChecks")-beforeRegions;nativeRegions+=regions;peakNativeRegions=Math.Max(peakNativeRegions,regions);}
                 // Native eligibility reads predate the new planner. Measure
                 // them independently for historical candidates as well.
                 long reads = (long)Get(host, "BuildEligibilityReads") - beforeReads;
@@ -164,6 +375,7 @@ namespace NativeWorldTextProbe
             {
                 Console.WriteLine("NearQueue work observed=" + available + " semantic=" + steps + " classifications=" + classifications +
                     " peakFacts=" + peakFacts + " peakRanges=" + peakRanges + " estimatedPlanBytes=" + peakBytes + " actualRetainedSourceBytes=" + peakSource +
+                    " plannerNativeRegions="+nativeRegions+" maxUpdatePlannerNativeRegions="+peakNativeRegions+
                     " nativeEligibilityReads=" + eligibilityReads + " maxUpdateEligibilityReads=" + peakEligibilityReads +
                     " factWorkObserved=" + workChecksAvailable + " factChecks=" + factChecks + " retirementChecks=" + retirementChecks + " rangeMetadataChecks=" + rangeChecks +
                     " headChecks=" + headChecks + " maxUpdateHeads=" + peakHeads + " proofChecks=" + proofChecks + " maxUpdateProofs=" + peakProofs +
@@ -236,6 +448,78 @@ namespace NativeWorldTextProbe
                 foreach (object fact in ((IDictionary)Get(range, "Facts")).Values)
                     if ((bool)Get(fact, "Ready") && !(bool)Get(fact, "Pending")) types.Add((int)Get(fact, "Type"));
             return types;
+        }
+
+        private static object grandScreenReentryHost;
+        private static bool grandScreenEntering;
+        private static void GrandScreenReentryAdmission(object __instance,object __0)
+        {
+            if(!ReferenceEquals(__instance,grandScreenReentryHost) || !grandScreenEntering || (int)Get(Get(__0,"Source"),"Type")!=ItemID.StoneBlock)return;
+            Require(Main.tile[96,42].wire2(),"a GD A re-entering the real screen must consume before genuinely admitting the newly unblocked ordinary B");
+        }
+        private static Rectangle GrandScreenTileBounds()
+        {
+            int left=(int)Math.Floor(Main.screenPosition.X/16d),top=(int)Math.Floor(Main.screenPosition.Y/16d);
+            return new Rectangle(left,top,(int)Math.Ceiling((Main.screenPosition.X+Main.screenWidth)/16d)-left,(int)Math.Ceiling((Main.screenPosition.Y+Main.screenHeight)/16d)-top);
+        }
+        private static void NearQueueGrandScreenReentry(object context,object host,object tools,object input)
+        {
+            using(var scope=new BusinessScope(context,host,tools,input))
+            using(var observation=new NearQueueObservation(host,required:true))
+            {
+                var p=Reset(context,host,tools,input);p.inventory[12].SetDefaults(3611);var gd=p.inventory[12];
+                var stone=BusinessStock(p,13,ItemID.StoneBlock,9999);var wire=BusinessStock(p,20,ItemID.Wire,9999);
+                scope.Sources=new[]{stone};scope.Goals=new[]{BusinessTileGoal(46,42,stone)};
+                NativeToolsChecks.Tile(46,42,TileID.Dirt);
+                var screen=Main.screenPosition;var mode=WiresUI.Settings.ToolMode;
+                var patch=new Harmony("JueMingR.Tests.GrandScreenReentry");
+                try
+                {
+                    WiresUI.Settings.ToolMode=WiresUI.Settings.MultiToolMode.Green|WiresUI.Settings.MultiToolMode.Cutter;
+                    // The tile is already in coarse discovery, but its center
+                    // is 0.25px outside the actual GD consumer's right edge.
+                    Main.screenPosition=new Vector2(96*16+8-Main.screenWidth-0.25f,400);
+                    Place(context,host,input,Asset(host,new CaptureCell{Layers=CaptureLayer.Wire,Wires=2},
+                        new CaptureCell{X=2,Layers=CaptureLayer.Tile,TileType=TileID.Stone},new CaptureCell{X=52,Layers=CaptureLayer.Wire,Wires=2}),44,42);
+                    scope.Begin(true);SetAutomatic(host,input,true);object rejected=null;bool entry=false;long version=0,support=0;float start=p.position.X;
+                    var screenTiles=GrandScreenTileBounds();
+                    Action<int> native=direction=>
+                    {
+                        NativeToolExecutionChecks.Sample(context,input,new Vector2(480,540),false);
+                        p.controlLeft=direction<0;p.controlRight=direction>0;PlayerInput.Triggers.Current.Left=direction<0;PlayerInput.Triggers.Current.Right=direction>0;
+                        float before=p.position.X;Call(Get(scope,"pending"),"Clear");NativeQuickItemChecks.BeginWorldStep();p.Update(0);Call(scope,"FinishNativeStep");
+                        Main.screenPosition.X+=p.position.X-before;
+                        if(rejected!=null && !entry && (bool)Call(host,"GrandBuildPointVisible",p,96,42))
+                        {
+                            entry=true;grandScreenEntering=true;
+                            Require(GrandScreenTileBounds()==screenTiles && !p.IsInTileInteractionRange(96,42,TileReachCheckSettings.Simple,gd.tileBoost+p.blockRange) &&
+                                (long)Get(rejected,"Version")==version && (long)Get(rejected,"Support")==support,
+                                "the SAME retained Player-negative enters GD by target-center visibility while coarse screen tiles, native out-of-range result and its world proof stay unchanged");
+                            Console.WriteLine("NearQueue GD center-entry world="+Main.GameUpdateCount+" displacement="+(p.position.X-start)+" sameCoarseTiles=True nativeReach=False priorWait="+Get(rejected,"Wait")+" priorPending="+Get(rejected,"Pending"));
+                            WorldGen.KillTile(46,42,false,false,true);Require(!Main.tile[46,42].active(),"original writer makes ordinary B actually legal only after A becomes visible");
+                        }
+                        for(int i=0;i<Main.projectile.Length;i++)if(Main.projectile[i].active && Main.projectile[i].type==651 && Main.projectile[i].owner==Main.myPlayer)Main.projectile[i].Update(i);
+                        Call(context,"UpdateRuntime");constructionInputTail?.Invoke();
+                    };
+                    NativeQuickItemChecks.Until(()=>
+                    {
+                        observation.Step(scope,()=>native(0));
+                        rejected=QueueRecoveryFacts(host).FirstOrDefault(f=>{var seed=Get(f,"Seed");return (int)Get(Get(seed,"Cell"),"X")==52 &&
+                            Convert.ToString(Get(f,"Wait")).Contains("Player") && !(bool)Get(f,"Pending");});
+                        return rejected!=null && Main.tile[44,42].wire2() && GetOptional(host,"grandBuild")==null && !(bool)Get(host,"nearVisitNeeded");
+                    });
+                    version=(long)Get(rejected,"Version");support=(long)Get(rejected,"Support");
+                    Require(!Main.tile[96,42].wire2() && !(bool)Call(host,"GrandBuildPointVisible",p,96,42) && wire.Item.stack==9998 && stone.Item.stack==9999,
+                        "GD and 9999-stock sources remained present while the saved far A naturally acquired a stable offscreen Player rejection");
+                    Console.WriteLine("NearQueue GD saved-negative world="+Main.GameUpdateCount+" factVersion="+version+" support="+support+" awake="+Get(host,"nearVisitNeeded")+" GDAlwaysPresent=True");
+                    grandScreenReentryHost=host;grandScreenEntering=false;
+                    patch.Patch(host.GetType().GetMethod("RememberBuildContinuation",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(GrandScreenReentryAdmission)));
+                    NativeQuickItemChecks.Until(()=>{observation.Step(scope,()=>native(1));return entry && Main.tile[96,42].wire2() && scope.Goals[0].Complete && !(bool)Get(Get(tools,"Use"),"Active");});
+                    Require(p.position.X>start && entry && scope.Events.Count==1 && stone.Item.stack==9998 && wire.Item.stack==9997,
+                        "same-direction original movement wakes the saved GD negative, commits its exact wire and then ordinary B once with both stocks still above9000");
+                }
+                finally{grandScreenReentryHost=null;grandScreenEntering=false;foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);WiresUI.Settings.ToolMode=mode;Main.screenPosition=screen;}
+            }
         }
 
         private static void NearQueueGrandDesignMovement(object context, object host, object tools, object input, bool separateFurniture = false)

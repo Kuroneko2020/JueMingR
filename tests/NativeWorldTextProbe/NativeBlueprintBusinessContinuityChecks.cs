@@ -74,6 +74,7 @@ namespace NativeWorldTextProbe
             // real-world/native oracle; production Focus is never an oracle.
             internal Func<BusinessGoal, bool> RunnableOracle;
             internal bool Watching, Automatic;
+            internal bool OrderCheckedAtAdmission;
             internal int CurrentType;
             private long unknown;
 
@@ -162,19 +163,21 @@ namespace NativeWorldTextProbe
                     entry.Count = entry.BeforeStack - remaining;
                     if (entry.Count <= 0) continue;
                     entry.ChangedGoals = Enumerable.Range(0, Goals.Length).Where(index => !entry.BeforeGoals[index] && Goals[index].Complete).ToArray();
+                    if(!entry.Original || !entry.Exact || entry.ChangedGoals.Length!=entry.Count || entry.ChangedGoals.Any(index=>Goals[index].Type!=entry.Type))
+                        Console.Error.WriteLine("BlueprintBusiness exact-effect mismatch automatic="+Automatic+" type="+entry.Type+" xy="+entry.X+","+entry.Y+" debit="+entry.Count+" changed="+string.Join(",",entry.ChangedGoals)+" direction="+Main.LocalPlayer.direction);
                     Require(entry.Original && entry.Exact && entry.ChangedGoals.Length == entry.Count &&
                         entry.ChangedGoals.All(index => Goals[index].Type == entry.Type),
                         "one original consumer pairs every exact Item debit with its complete real body/wall goals, including whole furniture members");
                     Require(!Automatic || entry.Token > 0 && entry.Native > 0 && entry.Flight > 0,
                         "each automatic native business event owns its current exact use and flight generation");
-                    if (Automatic && CurrentType != 0 && CurrentType != entry.Type && entry.PreviousRunnable)
+                    if (Automatic && !OrderCheckedAtAdmission && CurrentType != 0 && CurrentType != entry.Type && entry.PreviousRunnable)
                     {
                         Report("before forbidden switch");
                         Console.Error.WriteLine("BlueprintBusiness forbidden actual consumer world="+entry.World+" input="+entry.Input+" host="+entry.Host+
                             " previous="+CurrentType+" next="+entry.Type+" source="+entry.Slot+" target="+entry.X+","+entry.Y+
                             " debit="+entry.Count+" token/native/flight="+entry.Token+"/"+entry.Native+"/"+entry.Flight+" previousRunnable="+entry.PreviousRunnable);
                     }
-                    Require(!Automatic || CurrentType == 0 || CurrentType == entry.Type || !entry.PreviousRunnable,
+                    Require(!Automatic || OrderCheckedAtAdmission || CurrentType == 0 || CurrentType == entry.Type || !entry.PreviousRunnable,
                         "known real reachable supplied same-material goals must precede an actual foreign consumer; current=" + CurrentType + " next=" + entry.Type);
                     entry.Time = Main.LocalPlayer.itemTime; entry.Animation = Main.LocalPlayer.itemAnimation;
                     CurrentType = entry.Type; Events.Add(entry);

@@ -582,7 +582,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // ReturnPreparedBuildLease may retain only one frozen search
                 // ticket; ToolUse must not idle while that discovery proceeds.
                 if(next==null && current.SettledConsumption && buildMaterialPreparation?.Using==true)return ToolReadiness.Yield;
-                return next == null && BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield;
+                // A foreign suggestion is not its Acquire boundary. Preserve
+                // this vanilla use's natural tail so A can return before then;
+                // the existing clock predicate yields at the real boundary.
+                return BuildDiscoveryPending() ? ToolReadiness.Pending : ToolReadiness.Yield;
             }
             // A settled paint can change business groups without another
             // ToolUse.Acquire. That is an admission boundary too: use live A

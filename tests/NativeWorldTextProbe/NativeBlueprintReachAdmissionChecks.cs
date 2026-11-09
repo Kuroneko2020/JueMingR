@@ -80,16 +80,16 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Until(()=>{probe.Advance();return probe.Events.Count==1 && a0.Complete && QueueRecoveryFacts(host).Any(fact=>
                     Convert.ToString(Get(fact,"Wait")).Contains("Player") && !(bool)Get(fact,"Pending"));});
                 Require(!a1.Complete && !b0.Complete && !b1.Complete,"A preference is established by real paint, with a real short-tool rejection and no B material yet");
-                var blue=NearQueueNativeRefill(p,ItemID.BluePaint,9999);probe.Supplies=new[]{red,blue.Item};
-                NativeQuickItemChecks.Until(()=>{probe.Advance();var prepared=GetOptional(host,"preparedBuild");return prepared!=null &&
-                    (int)Get(Get(prepared,"Source"),"Type")==ItemID.SpectrePaintRoller;});
-                Require(probe.Events.Count==1,"B has a genuine prepared suggestion without consuming or acquiring its new token");
                 var patch=new Harmony("JueMingR.Tests.QueueReachAdmission");
                 try
                 {
                     queueReachAdmission=new QueueReachAdmission{Host=host,Use=Get(tools,"Use"),Probe=probe,Restored=a1,Paint=red,Before=before};
                     patch.Patch(Get(tools,"Use").GetType().GetMethod("Acquire",F),prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(QueueReachBeforeAcquire)));
                     patch.Patch(host.GetType().GetMethod("RememberBuildContinuation",F),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(QueueReachAfterAdmitted)));
+                    // Observe the FIRST real B boundary. A fast prepared B can
+                    // acquire/consume before a later polling loop sees it, so
+                    // install both original boundary hooks before supplying B.
+                    var blue=NearQueueNativeRefill(p,ItemID.BluePaint,9999);probe.Supplies=new[]{red,blue.Item};
                     NativeQuickItemChecks.Until(()=>{probe.Advance();return probe.Goals.All(goal=>goal.Complete) && !(bool)Get(Get(tools,"Use"),"Active");});
                     var observation=queueReachAdmission;
                     Require(observation.Written && observation.ForeignAdmissions>=2 && red.stack==9997 && blue.Item.stack==9997 && probe.Events.Count==4,

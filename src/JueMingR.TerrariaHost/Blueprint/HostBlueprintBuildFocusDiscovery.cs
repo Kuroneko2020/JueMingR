@@ -92,16 +92,24 @@ namespace JueMingR.TerrariaHost.Blueprint
         // exclusively, never ordinary table/chair source demands.
         private BlueprintProjectionBounds BuildNearOrdinaryWorldBounds(Player p)
         {
-            int left,top,right,bottom;
-            Terraria.DataStructures.TileReachCheckSettings.Simple.GetTileRegion(p,out left,out top,out right,out bottom,buildEnvelopeBoost+Math.Max(0,p.blockRange));
-            return new BlueprintProjectionBounds(left,top,Math.Max(0,right-left+1),Math.Max(0,bottom-top+1));
+            return NativeNearRegion(p,buildEnvelopeBoost+Math.Max(0,p.blockRange));
         }
         private BlueprintProjectionBounds BuildNearOrdinaryBounds(BlueprintProjectionPlacement owner,Player p)
         {var world=BuildNearOrdinaryWorldBounds(p);return owner.View.SourceBounds(new BlueprintProjectionBounds(world.Left-owner.OriginX,world.Top-owner.OriginY,world.Width,world.Height));}
         private BlueprintProjectionBounds BuildFocusBounds(BlueprintProjectionPlacement owner,Player p)
         {var world=BuildFocusWorldBounds(p);return owner.View.SourceBounds(new BlueprintProjectionBounds(world.Left-owner.OriginX,world.Top-owner.OriginY,world.Width,world.Height));}
+        private BlueprintProjectionBounds BuildPreferredWorldBounds(Player p)
+        {
+            var group=buildContinuation;
+            if(group==null)return BuildNearOrdinaryWorldBounds(p);
+            if(WiringOperation(group.Operation) && buildSupply.ContainsKey(3611))return BuildFocusWorldBounds(p);
+            return NativeNearRegion(p,NearOperationBoost(group.Operation,group.Source.Type)+(group.Operation?.Kind==BlueprintBuildOperationKind.Hammer?0:p.blockRange));
+        }
         private BlueprintProjectionBounds BuildPreferredFocusBounds(BlueprintProjectionPlacement owner,Player p)
-        {return WiringOperation(buildContinuation?.Operation)?BuildFocusBounds(owner,p):BuildNearOrdinaryBounds(owner,p);}
+        {
+            var world=BuildPreferredWorldBounds(p);
+            return owner.View.SourceBounds(new BlueprintProjectionBounds(world.Left-owner.OriginX,world.Top-owner.OriginY,world.Width,world.Height));
+        }
         private bool AdvanceBuildFocusNearQuery(BuildFocusNearQuery query,Action<int> emit)
         {
             if(materialBuildSearchBudget<=0)return false;
@@ -122,8 +130,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(query.Stack.Count==0){query.Covered=query.Query;query.Complete=true;query.Started=false;}
             return true;
         }
+        // Complete describes the frozen in-flight query. Covered retains the
+        // previous fully scanned rectangle while its extension is still pending.
         private static bool BuildFocusQueryCurrent(BuildFocusNearQuery query,BlueprintProjectionBounds bounds)
-        {return query!=null && query.Complete && BuildBoundsContain(query.Covered,bounds);}
+        {return query!=null && BuildBoundsContain(query.Covered,bounds);}
         private static bool BuildFocusQueryRetains(BuildFocusNearQuery query,BlueprintProjectionBounds bounds)
         {return query!=null && (BuildBoundsOverlap(query.Covered,bounds) || query.Started && BuildBoundsOverlap(query.Query,bounds));}
         private static void PrepareBuildFocusQuery(BuildFocusNearQuery query,BlueprintProjectionBounds bounds)
@@ -244,7 +254,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(owner.Match==null || !ProjectionQualificationCurrent(owner) || !discovery.Owners.TryGetValue(owner,out query) ||
                     !ReferenceEquals(query.Match,owner.Match) || !ReferenceEquals(query.Sources,owner.Qualification.SourceRanges) ||
                     !ReferenceEquals(query.Directory,owner.Qualification.GeometryDirectory) ||
-                    !BuildFocusQueryCurrent(query.Ordinary,BuildNearOrdinaryBounds(owner,p)) ||
+                    !BuildFocusQueryCurrent(query.Ordinary,WiringOperation(buildContinuation?.Operation)?BuildNearOrdinaryBounds(owner,p):BuildPreferredFocusBounds(owner,p)) ||
                     WiringOperation(buildContinuation?.Operation) && buildSupply.ContainsKey(3611) && !BuildFocusQueryCurrent(query,BuildFocusBounds(owner,p)))return false;
             }
             return true;
