@@ -36,7 +36,9 @@ namespace NativeWorldTextProbe
         {
             __state=null;if(__instance.type!=633 || __instance.owner!=Main.myPlayer)return;
             var input=Get(attack,"consumedInput");
-            Require((uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount && ReferenceEquals(Get(input,"Source"),__instance),"each measured native AI has this actual registered source's same-step input");
+            bool current=(uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount && ReferenceEquals(GetOptional(input,"Source"),__instance);
+            if(!current)MissingInput(__instance,input);
+            Require(current,"each measured native AI has this actual registered source's same-step input");
             var identity=(JueMingR.Platform.Combat.NpcIdentity)Get(Get(Get(context,"CombatObservation"),"Selection"),"Target");var n=Main.npc[identity.Slot];var p=Main.LocalPlayer;
             var cursor=Main.screenPosition+new Vector2(Main.mouseX,Main.mouseY);if(p.gravDir==-1)cursor.Y=Main.screenPosition.Y+Main.screenHeight-Main.mouseY;
             __state=new Sample{Origin=p.RotatedRelativePoint(p.MountedCenter),Before=__instance.velocity,Cursor=cursor,Target=n.Center+n.netOffset,Stage=stage,Kind=Get(input,"Kind").ToString(),Semantics=Get(input,"PointSemantics").ToString(),Key=(int)__instance.key,Slot=identity.Slot,Speed=p.velocity.Length()};
@@ -75,6 +77,7 @@ namespace NativeWorldTextProbe
                 // Neither this preparation nor measurement writes velocity.
                 for(int i=0;i<170;i++)Step(false,1);for(int i=0;i<12;i++)Step(true,1);
                 var parent=Main.projectile.Single(q=>q.active && q.owner==p.whoAmI && q.type==633);int key=(int)parent.key;
+                Console.WriteLine("PRISM FOLLOW measured-run entry player="+p.position+" velocity="+p.velocity+" maxRun="+p.maxRunSpeed+" accRun="+p.accRunSpeed+" acceleration="+p.runAcceleration+" dummy="+dummy.Center+" active="+dummy.active+" distance="+Vector2.Distance(p.Center,dummy.Center)+" radiusTiles="+((ObservationOptions)Get(host,"Options")).Radius);
                 stage="holder-run";for(int i=0;i<120;i++)Step(true,1);
                 var moving=samples.Where(s=>s.Stage=="holder-run" && s.Speed>=5).ToArray();
                 Console.WriteLine("PRISM FOLLOW native moving samples="+moving.Length+" speedMax="+samples.Max(s=>s.Speed)+" errorMean="+(moving.Length==0?999:moving.Average(s=>s.Error))+" oldDirectMean="+(moving.Length==0?0:moving.Average(s=>s.OldError))+" errorMax="+(moving.Length==0?999:moving.Max(s=>s.Error))+" basic="+samples.Count(s=>s.Kind=="Basic")+" enhanced="+samples.Count(s=>s.Kind=="Enhanced"));
@@ -159,6 +162,17 @@ namespace NativeWorldTextProbe
         {
             float inverse=1f/Main.GameViewMatrix.RenderZoom.X,cx=Main.screenWidth/2f,cy=Main.screenHeight/2f;
             Require(Enumerable.Range(0,Main.screenWidth).Any(raw=>(int)(cx+(raw-cx)*inverse)==Main.mouseX) && Enumerable.Range(0,Main.screenHeight).Any(raw=>(int)(cy+(raw-cy)*inverse)==Main.mouseY),"both actual borrowed native ints have an integer raw-client preimage at .5/1.25 zoom, including negative axes and either gravity");
+        }
+        private static void MissingInput(Projectile shot,object input)
+        {
+            // Preserve the FIRST failed consumer, before throwing or any
+            // completed-world refresh. These are explicitly prefix snapshots,
+            // not a replacement for an actual production gate trace.
+            var p=Main.LocalPlayer;var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var selection=Get(host,"Selection");var registry=(IDictionary)Get(control,"shots");
+            var entry=registry.Contains((int)shot.key)?registry[(int)shot.key]:null;var source=entry==null?null:GetOptional(entry,"Source");var previous=GetOptional(input,"Source") as Projectile;
+            Console.WriteLine("PRISM FOLLOW FIRST missing-input prefix snapshot stage="+stage+" GUC="+Main.GameUpdateCount+" charge="+shot.ai[0]+" key="+shot.key+" inputStep="+Get(attack,"consumedInputStep")+" kind="+Get(input,"Kind")+" inputSource="+(previous==null?"null":previous.key.ToString())+" registered="+(entry!=null)+" registryCount="+registry.Count+" source="+(source!=null)+" sourceSelection="+(source==null?"none":Get(source,"Selection"))+" actualSelection="+Get(Get(context,"Tools"),"SelectionIntent")+" slot="+p.selectedItem+" held="+p.HeldItem.type+" player="+p.position+" velocity="+p.velocity+" hasTarget="+Get(selection,"HasTarget")+" target="+Get(selection,"Target")+" basic="+Get(attack,"BasicPermission")+" receiver="+Get(attack,"CurrentReceiver")+" admitted="+Call(combat,"Admitted",p,false)+" fresh="+Get(combat,"FreshGesture")+" channel="+p.channel+" use="+p.controlUseItem+" mana="+p.statMana+" sampled="+Get(combat,"sampledFrame")+" frame="+Get(Get(context,"Input"),"Frame")+" rawCanStart="+Get(Get(context,"Input"),"CanStartActions"));
+            foreach(int slot in new[]{2,3,4}){var n=Main.npc[slot];Console.WriteLine("PRISM FOLLOW FIRST npc="+slot+" active="+n.active+" type="+n.type+" life="+n.life+" center="+n.Center+" distance="+Vector2.Distance(p.Center,n.Center)+" dontTake="+n.dontTakeDamage+" friendly="+n.friendly+" immortal="+n.immortal);}
+            Console.WriteLine("PRISM FOLLOW FIRST prior successful samples="+samples.Count+" last="+(samples.Count==0?"none":samples[samples.Count-1].Stage+"/"+samples[samples.Count-1].Key+"/"+samples[samples.Count-1].Slot+"/"+samples[samples.Count-1].Speed));
         }
     }
 }
