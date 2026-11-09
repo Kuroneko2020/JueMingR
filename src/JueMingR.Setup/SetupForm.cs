@@ -49,8 +49,8 @@ namespace JueMingR.Setup
             actionFont = new Font(Font.FontFamily, 11.5F, FontStyle.Bold); install.Font = actionFont;
             ForeColor = Ink; BackColor = Color.FromArgb(247, 249, 248); AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(640, 360); FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false; StartPosition = FormStartPosition.CenterScreen;
-            // Complete development versions remain editable-text values for selection /
-            // horizontal caret navigation and copying, rather than enlarging the window.
+            // Display values remain selectable/copyable single-line text;
+            // long pre-release labels and errors do not enlarge the window.
             foreach (TextBox box in new[] { payloadVersion, identity, installedIdentity, feedback, summary })
             {
                 box.Multiline = false; box.WordWrap = false;

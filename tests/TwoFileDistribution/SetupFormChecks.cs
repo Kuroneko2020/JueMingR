@@ -10,6 +10,17 @@ internal static class SetupFormChecks
     internal static void Run()
     {
         Application.EnableVisualStyles();
+        foreach (string version in new[] { "0.1.0", "0.1.0+fb509f6f711e0e2a89f3bba9397c5c9e32f5ddd3", "0.2.0-preview.3+abcdef", "0.2.0-preview.3" })
+        {
+            string expected = version.Split('+')[0];
+            var package = new SetupVersionDisplay { Version = version };
+            var installed = Ready("A"); installed.InstalledVersion = version;
+            Check(package.Caption == expected && installed.InstalledCaption == "已安装决明版本：" + expected &&
+                installed.Caption.Contains("决明版本：" + expected) && package.Version == version && installed.InstalledVersion == version,
+                "version-captions-remove-only-build-metadata-preserve-pre-release-and-raw-identity:" + version);
+        }
+        Check(new SetupVersionDisplay { Problem = "读取失败：原因+详细", CleanupProblem = "清理失败+路径" }.Caption == "读取失败：原因+详细" + Environment.NewLine + "清理失败+路径" &&
+            new SetupVersionDisplay().Caption == "无法确认", "version-display-leaves-unknown-read-and-cleanup-failures-unchanged");
         int calls = 0;
         using (var started = new ManualResetEventSlim())
         using (var release = new ManualResetEventSlim())
@@ -38,7 +49,7 @@ internal static class SetupFormChecks
             form.Close(); Check(form.Visible && !form.IsDisposed, "form-busy-close-rejected");
             release.Set();
             Pump(() => install.Enabled && Find<TextBox>(form, "OperationSummary").Text.Contains("只完成了一部分"));
-            Check(Find<TextBox>(form, "InstalledIdentity").Text.Contains("已安装决明版本：0.0.0-dev+installed-target") && Find<TextBox>(form, "OperationSummary").Text.Contains("受控配置失败"), "form-current-state-does-not-erase-partial-result");
+            Check(Find<TextBox>(form, "InstalledIdentity").Text == "已安装决明版本：0.1.0" && Find<TextBox>(form, "OperationSummary").Text.Contains("受控配置失败"), "form-current-product-version-does-not-erase-partial-result");
             Check(Find<TextBox>(form, "OperationDetails").Visible && Find<TextBox>(form, "OperationDetails").Text.Contains("replace-config") && Find<TextBox>(form, "OperationDetails").Text.Contains("目标：A"), "form-default-visible-real-fields-and-target");
             Check(form.Size == fixedFrame, "form-result-does-not-enlarge-fixed-frame");
             form.Size = form.MinimumSize; Application.DoEvents();
@@ -74,21 +85,21 @@ internal static class SetupFormChecks
             });
         }
         int versionReads = 0, maintenanceCalls = 0;
-        string completePackageVersion = "0.0.0-dev+payload-different-from-installed-" + new string('v', 120);
+        string completePackageVersion = "0.1.0+" + new string('a', 40);
         using (var form = new SetupForm("A", new string[0], path => new SetupTargetState { Directory = path, Version = "1.4.5.8", CanMaintain = true, Pair = SetupPairState.NotInstalled },
             (operation, selected) => { Check(operation == "uninstall" && selected == "B", "form-exact-uninstall-operation-and-target"); maintenanceCalls++; return new SetupResult { operation = operation, gameDirectory = selected, status = "noop" }; },
             () => { Interlocked.Increment(ref versionReads); return new SetupVersionDisplay { Version = completePackageVersion }; }))
         {
             Observe(form, "package-and-maintenance", () =>
             {
-                Pump(() => Find<LinkLabel>(form, "UninstallLink").Enabled && Find<TextBox>(form, "PayloadVersion").Text.Contains("payload-different"));
+                Pump(() => Find<LinkLabel>(form, "UninstallLink").Enabled && Find<TextBox>(form, "PayloadVersion").Text == "0.1.0");
                 Find<ComboBox>(form, "GameDirectory").Text = "B";
                 Pump(() => Find<LinkLabel>(form, "UninstallLink").Enabled);
                 Check(versionReads == 1 && Find<TextBox>(form, "InstalledIdentity").Text == "当前未安装决明" && Find<LinkLabel>(form, "ClearConfigurationLink").Enabled && !Find<Button>(form, "InstallButton").Enabled, "form-package-read-once-independent-target-and-maintenance-pair");
-                Check(Find<TextBox>(form, "PayloadVersion").Text == completePackageVersion && Find<TextBox>(form, "PayloadVersion").AccessibleName == "待安装决明版本", "form-header-raw-product-version-with-accessible-meaning");
+                Check(Find<TextBox>(form, "PayloadVersion").Text == "0.1.0" && Find<TextBox>(form, "PayloadVersion").AccessibleName == "待安装决明版本", "form-header-product-version-with-accessible-meaning");
                 ActivateLink(Find<LinkLabel>(form, "UninstallLink"));
                 Pump(() => maintenanceCalls == 1 && Find<LinkLabel>(form, "UninstallLink").Enabled);
-                Check(Find<TextBox>(form, "OperationSummary").Text.Contains("无需处理") && Find<TextBox>(form, "PayloadVersion").Text.Contains("payload-different"), "form-noop-result-preserved-with-package-version");
+                Check(Find<TextBox>(form, "OperationSummary").Text.Contains("无需处理") && Find<TextBox>(form, "PayloadVersion").Text == "0.1.0", "form-noop-result-preserved-with-product-version");
                 form.Close();
             });
         }
@@ -161,7 +172,7 @@ internal static class SetupFormChecks
 
     private static SetupTargetState Ready(string path)
     {
-        return new SetupTargetState { Directory = path, Version = "1.4.5.8", InstalledVersion = "0.0.0-dev+installed-target", CanInstall = true, CanMaintain = true, Pair = SetupPairState.Installed };
+        return new SetupTargetState { Directory = path, Version = "1.4.5.8", InstalledVersion = "0.1.0+installed-target", CanInstall = true, CanMaintain = true, Pair = SetupPairState.Installed };
     }
 
     private static bool FullyVisible(Control control)
