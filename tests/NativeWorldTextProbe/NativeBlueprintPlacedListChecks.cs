@@ -272,6 +272,14 @@ namespace NativeWorldTextProbe
                     Require(GetOptional(list, "armed") == null && (long)Get(list, "PreviewRequests") == pausedRequests && (float)Get(state, "Scroll") == savedScroll,
                         "popup suspends list actions/new preview demand while preserving background scroll");
                 }
+                click(Get(row,"Materials"));
+                Require(!(bool)Get(popup,"Visible") && (bool)Get(list,"ready") && (long)Get(list,"drawnGeneration")== (long)Get(list,"generation") && (float)Get(state,"Scroll")==savedScroll,"late same-row material close restores current parent input/draw identity");
+                click(Get(row,"Materials"));
+                var siblingRow=Rows(list).Single(value=>((BlueprintMaterialInstance)Get(value,"Instance")).ProjectionGeneration==secondId);
+                object siblingAnchor=Call(Get(Get(Get(siblingRow,"Materials"),"Element"),"Rect"),"Offset",(float)Get(Get(list,"view"),"X"),(float)Get(Get(list,"view"),"Y")-savedScroll);
+                Require((bool)Call(host,"OpenPlacedInstanceMaterials",((BlueprintProjectionIdentity)Get(second,"Identity")).SessionGeneration,secondId,siblingAnchor) && (long)Get(popup,"Selected")==secondId,"same-template sibling is a distinct material navigation identity");
+                Require((bool)Call(host,"OpenPlacedInstanceMaterials",((BlueprintProjectionIdentity)Get(first,"Identity")).SessionGeneration,firstId,siblingAnchor) && (long)Get(popup,"Selected")==firstId,"switching back retains exact first-copy identity");
+                prepare();
                 graphics.Image(Path.Combine(output, "blueprint-placed-list-materials-background.png"), draw, Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
                 var close = ((IEnumerable)Get(popup, "buttons")).Cast<object>().First(); var closeRect = Get(close, "Rect");
                 float cx = (float)Get(closeRect, "X") + (float)Get(closeRect, "Width") / 2, cy = (float)Get(closeRect, "Y") + (float)Get(closeRect, "Height") / 2;

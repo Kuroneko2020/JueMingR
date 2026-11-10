@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using JueMingR.Features.Text;
@@ -75,8 +75,12 @@ namespace JueMingR.TerrariaHost.Processing
         }
         public void CancelEdit(){editing=false;TextInput.Release(true);RetireEditFeedback();dirty=true;}
         internal void BeforeInput(bool active){TextInput.BeforeSample(active && shell.Visible && shell.Page==1);}
+        internal bool SecondaryOnly;
+        internal bool SecondaryEntryAt(Vector2 point)
+        { return ready && !dirty && shell.Visible && shell.Page==1 && generation==shell.Layout.Generation && scroll==shell.Scroll && view.Contains(point.X,point.Y) && Parts.Exists(p=>p.Enabled && p.Command==6 && p.Element.Rect.Contains(point.X,point.Y)); }
         internal void ProcessInput(bool active,KeyboardState keys,Vector2 point,bool geometryCurrent,bool focused,bool blocked)
         {
+            bool secondaryOnly=SecondaryOnly;SecondaryOnly=false;
             pointer=point;bool left=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,right=PlayerInput.MouseInfo.RightButton==ButtonState.Pressed;
             ConsumeLeft=leftTail;ConsumeRight=rightTail;OwnsPointer=false;
             bool on=active && focused && shell.Visible && shell.Page==1;
@@ -93,7 +97,7 @@ namespace JueMingR.TerrariaHost.Processing
             if(!geometryCurrent || generation!=shell.Layout.Generation || revision!=host.Settings[2].Revision || available!=host.Controls(2) || scroll!=shell.Scroll || view.X!=shell.X+shell.Layout.Viewport.X || view.Y!=shell.Y+shell.Layout.Viewport.Y){dirty=true;ResetGesture();}
             OwnsPointer=ready && view.Contains(point.X,point.Y);
             if(OwnsPointer){if(left)leftTail=true;if(right)rightTail=true;}
-            Part hit=ready && !dirty && !blocked && OwnsPointer?Parts.FirstOrDefault(p=>p.Command!=0 && p.Enabled && p.Element.Rect.Contains(point.X,point.Y)):null;
+            Part hit=ready && !dirty && !blocked && OwnsPointer?Parts.FirstOrDefault(p=>p.Command!=0 && (!secondaryOnly || p.Command==6) && p.Enabled && p.Element.Rect.Contains(point.X,point.Y)):null;
             if(blocked){ResetGesture();if(editing)CancelEdit();}
             if(left && !previousLeft){armed=hit;if(hit==null || hit.Command!=1)clickPending=false;}
             if(!left && previousLeft && armed!=null && ReferenceEquals(armed,hit)){var action=armed;armed=null;Execute(action);}

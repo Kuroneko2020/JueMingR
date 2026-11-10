@@ -9,6 +9,7 @@ namespace Terraria
         internal static void Run()
         {
             F5NameHintChecks.Run();
+            CheckSecondaryEntry();
             CheckProcessPageLifetime();
             var state = new F5Interaction { Ready = true };
             var input = new F5Input { Width = 1920, Height = 1080, Scale = 1,
@@ -56,6 +57,24 @@ namespace Terraria
             CheckInterruptedDrag();
             CheckInvalidDragSamples();
             Console.WriteLine("PASS: Phase 0-U input ownership and release tail.");
+        }
+        private static void CheckSecondaryEntry()
+        {
+            var state=new F5Interaction{Ready=true};
+            var input=new F5Input{Width=1920,Height=1080,Scale=1,Active=true,Focused=true,F5=true};
+            state.Update(input);state.Navigate(2);
+            state.Layout.Ensure(1920,1080,1,2,new object(),text=>new F5Size(text.Length*10,20));
+            F5Element entry=null; foreach(var e in state.Layout.Elements)if(e.Command==F5Command.DeathDetails){entry=e;break;}
+            input.F5=false;input.BlockPointer=true;input.SecondaryEntry=entry;
+            input.X=state.X+state.Layout.Viewport.X+entry.Rect.X+2;input.Y=state.Y+state.Layout.Viewport.Y+entry.Rect.Y+2;
+            state.Update(input);input.Left=true;state.Update(input);input.Left=false;state.Update(input);
+            Check(state.Command==F5Command.DeathDetails && state.ConsumeLeft,"modal entry keeps complete release proof and physical tail");
+            input.SecondaryEntry=null;input.X=state.X+state.Layout.Navigation(0).X+3;input.Y=state.Y+state.Layout.Navigation(0).Y+3;
+            input.Left=true;state.Update(input);input.Left=false;state.Update(input);
+            Check(state.Page==2 && state.Command==F5Command.None,"modal entry exception cannot navigate the parent");
+            input.SecondaryEntry=entry;input.X=state.X+state.Layout.Viewport.X+entry.Rect.X+2;input.Y=state.Y+state.Layout.Viewport.Y+entry.Rect.Y+2;
+            input.Left=true;state.Update(input);input.SecondaryEntry=null;input.X+=100;state.Update(input);input.Left=false;state.Update(input);
+            Check(state.Command==F5Command.None && state.ConsumeLeft,"dragging away cancels activation but retains release ownership");
         }
         private static void CheckViewportDoesNotReplacePosition()
         {

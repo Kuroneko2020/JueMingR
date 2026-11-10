@@ -31,7 +31,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         private int lastGeneration, page, armedGeneration;
         private HotkeyPopupCommand armed = HotkeyPopupCommand.None;
         private F5Rect anchor, lastAnchor;
-        private bool previousLeft, awaitingSaveSlot;
+        private bool previousLeft, awaitingSaveSlot, entryTail;
         private HotkeyModifiers shownModifiers;
         private HotkeyChord candidate;
         private HotkeyPopupView view;
@@ -52,11 +52,20 @@ namespace JueMingR.TerrariaHost.Hotkeys
             }
             return bindings.Busy ? new HotkeyFeedback(HotkeyFeedbackKind.Saving, "其他设置正在保存，请稍候") : new HotkeyFeedback(HotkeyFeedbackKind.Ready);
         }
+        // Shell asks before leaving another popup's draft. The first click
+        // records a double-click candidate; it is not a navigation request.
+        internal bool WillNavigate(string target,F5Rect bounds,int generation,int currentPage,long milliseconds)
+        {
+            if(Visible && Target==target)return true;
+            var action=registry.Find(target);if(action==null || !action.CanConfigure)return false;
+            return lastClick==target && lastGeneration==generation && page==currentPage && milliseconds-lastClickTime<=500 &&
+                Math.Abs(lastAnchor.X-bounds.X)<=6 && Math.Abs(lastAnchor.Y-bounds.Y)<=6;
+        }
         internal void Click(string target, F5Rect bounds, int generation, int page, long milliseconds)
         {
+            if (Visible && Target == target) { Close(); return; }
             if (registry.Find(target) == null || !registry.Find(target).CanConfigure) return;
-            bool twice = lastClick == target && lastGeneration == generation && this.page == page && milliseconds - lastClickTime <= 500 &&
-                Math.Abs(lastAnchor.X - bounds.X) <= 6 && Math.Abs(lastAnchor.Y - bounds.Y) <= 6;
+            bool twice = WillNavigate(target,bounds,generation,page,milliseconds);
             lastClick = target; lastGeneration = generation; this.page = page; lastAnchor = bounds; lastClickTime = milliseconds;
             if (!twice) return;
             EndCapture(); Target = target; anchor = bounds; epoch++; armed = HotkeyPopupCommand.None; lastClick = null;
@@ -65,6 +74,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         }
         internal bool ContainsPointer(float x, float y)
         { return Visible && (Layout.Panel.Contains(x, y) || HelpVisible && Layout.HelpPanel.Contains(x, y)); }
+        internal bool EntryGesture;
         internal void Process(bool active, int currentPage, float x, float y, bool geometryCurrent, int wheel = 0)
         {
             bindings.Poll();
@@ -100,7 +110,10 @@ namespace JueMingR.TerrariaHost.Hotkeys
             }
             if (pressed && Hovered != HotkeyPopupCommand.None && !cancelledGesture)
             { armed = Hovered; armedGeneration = Layout.Generation; input.Hotkeys.SuppressHeld(); }
-            bool controlGesture = armed != HotkeyPopupCommand.None || cancelledGesture;
+            // Entry clicks are UI gestures before recording considers Mouse1.
+            // Retain the whole tail even if dragging away cancels activation.
+            if(EntryGesture && pressed)entryTail=true;
+            bool controlGesture = armed != HotkeyPopupCommand.None || cancelledGesture || EntryGesture || entryTail;
             if (released && armed != HotkeyPopupCommand.None)
             {
                 var command = armed; bool valid = Hovered == command && armedGeneration == Layout.Generation; armed = HotkeyPopupCommand.None;
@@ -129,6 +142,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
                     ScrollDetails(wheel > 0 ? -3 : 3);
             }
             if (Capturing || OwnsPointer && input.Hotkeys.HasSuppressedKeys) input.ConsumeHotkeyActions();
+            if(!left)entryTail=false;
             previousLeft = left;
         }
         private void Cancel(string message)

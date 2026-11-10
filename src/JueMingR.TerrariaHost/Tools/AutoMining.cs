@@ -33,6 +33,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(held && !manualHeld)gesture++;manualHeld=held;
         }
         internal readonly MiningOverlay Coverage=new MiningOverlay();
+        private readonly MiningSupport support=new MiningSupport();
         private int drawn;
         private bool displayFailed;
         private object failedPixel,failedBatch;
@@ -180,12 +181,17 @@ namespace JueMingR.TerrariaHost.Tools
         {
             Coverage.Prepare(Region,p,tool,p.selectedItem==slot && ReferenceEquals(p.HeldItem,tool));
             if(!Coverage.Any)return false;
+            support.Capture(p);
+            // Deferred means last among currently feasible candidates, never
+            // forbidden. Remote/unknown ordinary members cannot block support.
+            for(int priority=0;priority<2;priority++)
             for(int n=0;n<Region.Count;n++)
             {
                 int i=(cursor+n)%Region.Count;if(!Coverage.Candidate(i))continue;var point=Region[i];
+                if(support.Deferred(point)!=(priority==1))continue;
                 if(!MiningEligibility.CanProgress(p,tool,point.X,point.Y,point.Type)){Coverage.Reject(i);continue;}
                 // Native HitTile has a finite damage cache. Finish this valid
-                // tile before advancing, otherwise a broad low-power vein can
+                // tile within its priority before advancing, otherwise a broad low-power vein can
                 // evict every partial hit without ever removing anything.
                 cursor=i;
                 return true;
@@ -207,7 +213,7 @@ namespace JueMingR.TerrariaHost.Tools
         }
         // Completion does not manufacture a new physical press. Keep gesture
         // ownership while retiring all region-specific temporary references.
-        private void RetireRegion(){Region.Clear();gravityBaseline.Clear();vacated.Clear();Coverage.Clear();tool=null;falls=drawn=cursor=fallCursor=0;}
+        private void RetireRegion(){Region.Clear();gravityBaseline.Clear();vacated.Clear();Coverage.Clear();support.Clear();tool=null;falls=drawn=cursor=fallCursor=0;}
         internal void Clear(){RetireRegion();manualHeld=false;RecoverDisplay();}
     }
 }

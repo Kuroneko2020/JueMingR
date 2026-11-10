@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
@@ -115,7 +115,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(player.yoyoString)range=range*1.25f+30;
             float multiplier=(1+player.meleeSpeed*3)/4;range/=multiplier;speed/=multiplier;
         }
-        internal static bool BasicPoint(Player player,Item item,Projectile shot,Vector2 target,PredictionTerrain terrain,out Vector2 point)
+        internal static bool BasicPoint(Player player,Item item,Projectile shot,Vector2 target,PredictionTerrain terrain,out Vector2 point,bool throughWall=false)
         {
             point=Vector2.Zero;
             bool live=shot!=null;
@@ -124,6 +124,9 @@ namespace JueMingR.TerrariaHost.Combat
             if(range<=1 || speed<=0 || live && Vector2.Distance(shot.Center,player.Center)>range*1.3f)return false;
             var offset=target-player.Center;
             if(offset.Length()>range-1)target=player.Center+offset.SafeNormalize(Vector2.UnitX*player.direction)*(range-1);
+            // Through-wall changes terrain only: channel, return, lifetime and native
+            // owner range above remain authoritative even in the experiment.
+            if(throughWall){point=target;return true;}
             // No search or future replay belongs in a cursor consumer. Native
             // TileCollision examines the start's neighbours, not a long ray,
             // and mutates shared collision flags. Use existing pure body

@@ -873,6 +873,7 @@ namespace JueMingR.TerrariaHost
             internal Movement.MovementSession Movement { get; private set; }
             internal Combat.HostCombat Combat {get;private set;}
             internal Combat.HostCombatObservation CombatObservation {get;private set;}
+            internal Combat.HostCombatExperiments CombatExperiments {get;private set;}
             internal Feedback.LocalShortFeedback ShortFeedback { get; private set; }
             private Hotkeys.HotkeyStateFeedback hotkeyFeedback;
             private Npcs.NativeNpcObservation nativeNpcs;
@@ -971,6 +972,8 @@ namespace JueMingR.TerrariaHost
                     Combat.Handoff.Attach(Processing,QuickItems);
                     CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory),PackageId,exactPredictionComparison,hiddenAccess){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
                     Combat.Attack=CombatObservation.Attack=new Combat.HostAttackAim(Combat,CombatObservation);
+                    CombatExperiments=new Combat.HostCombatExperiments(gameDirectory,Combat,CombatObservation,hiddenAccess);
+                    runtime.SharedRuntime.AddFeature(CombatExperiments);CombatExperiments.Install();
                 }
                 if (entityPackage) { Labels = new EntityLabels.HostEntityLabels(gameDirectory, runtime.SharedRuntime, nativeNpcs) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(Labels); }
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }
@@ -1002,7 +1005,7 @@ namespace JueMingR.TerrariaHost
                     runtime.SharedRuntime.AddFeature(View);
                 }
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action<HotkeyChord>)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action<HotkeyChord>)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation, Journey, hiddenAccess, () => Shell?.ToggleJourneyFromHotkey(), Movement, Blueprint, View) : null;
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action<HotkeyChord>)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action<HotkeyChord>)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation, Journey, hiddenAccess, () => Shell?.ToggleJourneyFromHotkey(), Movement, Blueprint, View, CombatExperiments) : null;
                 hotkeyFeedback = hotkeys?.Feedback;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements, hiddenAccess) { LayersReady = f5LayersReady };
                 if (Blueprint != null) { Blueprint.Shell = Shell; Shell.AttachBlueprint(Blueprint); }
@@ -1019,6 +1022,7 @@ namespace JueMingR.TerrariaHost
 #endif
                 }
                 if(CombatObservation!=null)Shell.AttachCombatObservation(CombatObservation);
+                if(CombatExperiments!=null)Shell.AttachCombatExperiments(CombatExperiments);
                 if(Fishing!=null)Shell.AttachFishing(Fishing);
                 if(Processing!=null){Shell.AttachProcessing(Processing);Processing.CanInterface=()=>Shell.CanProcessingInput;Processing.CanAutomaticInterface=()=>Shell.CanAutomaticProcessingInput;Processing.BankGuardsReady=()=>Recovery!=null && Recovery.Available;}
                 if(Recovery!=null){Shell.AttachRecovery(Recovery);Recovery.CanGameplay=()=>Shell.CanAutomaticTargetInput && !Terraria.Main.mapFullscreen;Recovery.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Recovery.CanBuffInterface=()=>Shell.CanAutomaticBuff;Recovery.IsQuickUse=()=>QuickItems!=null && (QuickItems.Use.Active || QuickItems.Use.InNativeUse);}
@@ -1074,6 +1078,7 @@ namespace JueMingR.TerrariaHost
                 Fishing?.Poll();
                 Combat?.Poll();
                 CombatObservation?.Poll();
+                CombatExperiments?.Poll();
                 Labels?.PollPreferences();
                 WorldTargets?.PollPreferences();
                 WorldObjects?.PollPreferences();

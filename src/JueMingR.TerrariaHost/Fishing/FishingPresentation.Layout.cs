@@ -21,7 +21,7 @@ namespace JueMingR.TerrariaHost.Fishing
         private string composition,inputError,draftError,hostError;
         private float editWidth;
         private long projection;
-        private static readonly FishPreset TrashPreset=new FishPreset(2,0,new FishList(new[]{new FishKey(FishKind.Item,ItemID.OldShoe),new FishKey(FishKind.Item,ItemID.Seaweed),new FishKey(FishKind.Item,ItemID.TinCan)}),"builtin-trash");
+        private static readonly FishPreset TrashPreset=new FishPreset(2,0,new FishList(new[]{new FishKey(FishKind.Item,ItemID.OldShoe),new FishKey(FishKind.Item,ItemID.FishingSeaweed),new FishKey(FishKind.Item,ItemID.TinCan)}),"builtin-trash");
         private IReadOnlyList<FishPreset> presetSource;
         private FishPreset[] scopedPresets=Array.Empty<FishPreset>();
         private int presetMode,presetMatch;

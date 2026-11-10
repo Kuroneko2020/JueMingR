@@ -18,12 +18,12 @@ namespace JueMingR.ArchitectureTests
                 Require(newDefaultJson.Contains("\"version\":3") && newDefaultJson.Contains("\"discardFeedbackEnabled\":true") && !newDefaultJson.Contains("Binding"),
                     "current item writes must use version 3 with default feedback on and without retired bindings");
                 Require(!defaults.StackEnabled && !defaults.SellEnabled && !defaults.DiscardEnabled, "destructive defaults must stay off");
-                Require(defaults.SellTypes.SequenceEqual(new[] { 2337, 2338, 2339 }) && defaults.DiscardTypes.Count == 0, "only accepted default sale list");
+                Require(defaults.DiscardTypes.SequenceEqual(new[] { 2337, 2338, 2339 }) && defaults.SellTypes.Count == 0, "new installation default discard list");
                 int[] draft = { 9, 9, 71, 72, 73, 74, 8 };
                 var changed = defaults.WithTypes(ItemListKind.Sell, draft).WithEnabled(ItemActionKind.Sell, true);
                 draft[0] = 2;
                 Require(changed.SellTypes.SequenceEqual(new[] { 8, 9 }), "immutable deduplicated type lists exclude every coin");
-                Require(defaults.SellTypes.Count == 3 && !defaults.SellEnabled, "draft commands must not mutate earlier revisions");
+                Require(defaults.SellTypes.Count == 0 && defaults.DiscardTypes.Count == 3 && !defaults.SellEnabled, "draft commands must not mutate earlier revisions");
                 changed = changed.WithTypes(ItemListKind.Discard, new[] { 8, 9 });
                 Require(changed.DiscardTypes.SequenceEqual(new[] { 8, 9 }), "independent lists permit overlap");
                 var quiet = changed.WithDiscardFeedbackEnabled(false);

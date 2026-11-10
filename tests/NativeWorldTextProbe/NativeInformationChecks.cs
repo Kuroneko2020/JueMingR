@@ -63,6 +63,7 @@ namespace NativeWorldTextProbe
         }
         internal static void StopContext(object context)
         {
+                var experiments = GetOptional(context, "CombatExperiments"); if (experiments != null) Call(experiments, "Dispose");
                 var blueprint = GetOptional(context, "Blueprint"); if (blueprint != null) Call(blueprint, "ExitProcess", null, EventArgs.Empty);
                 var fishing=GetOptional(context,"Fishing");if(fishing!=null)Call(fishing,"Exit",null,EventArgs.Empty);
                 var hooks = GetOptional(context, "informationHooks"); if (hooks != null) Call(hooks, "Dispose");

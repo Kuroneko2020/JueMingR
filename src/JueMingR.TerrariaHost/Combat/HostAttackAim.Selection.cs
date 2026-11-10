@@ -47,6 +47,7 @@ namespace JueMingR.TerrariaHost.Combat
         // no contact or input capability is inherited by this lease.
         internal void RestorePresentationSelection(long tick)
         {
+            if(!OriginalAttackPredictionAllowed)return;
             var selection=observation.Selection;
             if(!presentationReachable || !observation.Options.ClearLine || !ReferenceEquals(selectionWeapon,combat.Player.HeldItem) || !ReferenceEquals(presentationOptions,observation.Options) || tick-presentationSelectionTick>HostCombatObservation.DisplayMaximumAge || !selection.HasTarget || !selection.Target.Equals(presentationNearest))return;
             for(int i=0;i<selection.CandidateCount;i++)
@@ -54,6 +55,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void ResolveSelection(long sampleTick,bool beforeNpc)
         {
+            if(!OriginalAttackPredictionAllowed)return;
             candidatePresentationPlan=null;
             candidateHandPlan=null;
             if(!CombatPredictionWork.TryContinue())return;

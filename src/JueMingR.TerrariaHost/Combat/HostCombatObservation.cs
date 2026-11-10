@@ -30,6 +30,8 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly CombatObservationWorldLayer World;
         internal readonly CombatPredictionWork PredictionWork=new CombatPredictionWork(6);
         internal HostAttackAim Attack;
+        internal HostCombatExperiments Experiments;
+        private bool OriginalAttackPredictionAllowed {get{return Experiments==null || Experiments.EffectiveMask==0;}}
         private readonly SingleFeatureRuntime runtime;
         private readonly HostInputState input;
         private readonly NativeNpcObservation npcs;
@@ -79,7 +81,7 @@ namespace JueMingR.TerrariaHost.Combat
         // Hidden qualification gates only this display reader. Aim and independently
         // registered prediction readers keep their original public demand.
         internal bool Path {get{return !World.Failed && Settings.CanRun && PathAccess && Options.Path && Unavailable(1)==null;}}
-        internal bool Marker {get{return !World.Failed && !World.Marker.Failed && !selectionFailed && Settings.CanRun && Options.Marker && (Path || BasicSelectionDemand) && LayerStatus!=Rendering.WorldLayerStatus.Unavailable;}}
+        internal bool Marker {get{return !World.Failed && !World.Marker.Failed && !selectionFailed && Settings.CanRun && Options.Marker && (Path || SharedSelectionDemand) && LayerStatus!=Rendering.WorldLayerStatus.Unavailable;}}
         public string Unavailable(int field)
         {
             if(selectionFailed)return "战斗目标观察暂不可用，设置已保留；可点击开启重试。";
@@ -97,7 +99,9 @@ namespace JueMingR.TerrariaHost.Combat
         // fails or both displays are OFF. Only selection's own failure revokes
         // that source; it never borrows a stale marker as an input target.
         private bool BasicSelectionDemand {get{return Settings.CanRun && Options.Aim && runtime.IsSessionActive;}}
-        public bool Enabled {get{return !selectionFailed && (Collision || Path || Marker || BasicSelectionDemand || !pathFailed && Prediction.Cache.Required>0);}}
+        private bool SharedSelectionDemand {get{return BasicSelectionDemand || Experiments!=null && Experiments.HardLockEffective;}}
+        private bool hadOriginalTargetDemand;
+        public bool Enabled {get{return !selectionFailed && (Collision || Path || Marker || SharedSelectionDemand || !pathFailed && Prediction.Cache.Required>0);}}
         public void Set(int field,bool value)
         {
             if(!CanConfigure || field==1 && !PathAccess)return;
@@ -120,23 +124,23 @@ namespace JueMingR.TerrariaHost.Combat
 #if JMR_AIM_LIGHT
             AimTrace.PrismPoll(runtime.IsSessionActive);
 #endif
-            Settings.Poll();Attack?.Control.PollSources();Attack?.Demand();World.PollResources();bool collision=Collision,path=Path;
+            Settings.Poll();Experiments?.AcceptModeEdge();Attack?.Control.PollSources();Attack?.Demand();World.PollResources();bool collision=Collision,path=Path;
             if(wasCollision && !collision)Geometry.Clear();
             if(wasPath && !path)Prediction.Cache.Release(0);
             // Other registered consumers can outlive the path toggle. Retire
             // the final target on actual demand removal, once, even when the
             // display was already OFF before that consumer released it.
-            bool targetDemand=path || BasicSelectionDemand;
+            bool targetDemand=path || SharedSelectionDemand;
             if(hadTargetDemand && !targetDemand)
             {
                 // Saved Marker is a child preference, never a producer demand.
                 // Retire only our two consumers and state on the final edge;
                 // independently registered prediction consumers remain intact.
-                Attack?.ResetPreparation();Prediction.Cache.Release(0);Prediction.Cache.Release(1);
+                if(hadOriginalTargetDemand)Attack?.ResetPreparation();else Attack?.RetireOriginalPrediction();Prediction.Cache.Release(0);Prediction.Cache.Release(1);
                 displayPath=null;displayTerrain=null;displayLeasePlayer=default(PredictionPlayerMotion);displayLeaseTick=optionalTick=previewOptionalTick=displayShortTick=-1;OptionalPreparation=false;
                 World.Marker.Clear();World.Impact.Clear();
             }
-            hadTargetDemand=targetDemand;
+            hadTargetDemand=targetDemand;hadOriginalTargetDemand=path || BasicSelectionDemand;
             // An independent reader may release after the Path/Aim falling
             // edge already passed. Retire that final target exactly once;
             // an idle OFF Poll must not repeatedly clear Source's arrays.
@@ -148,7 +152,7 @@ namespace JueMingR.TerrariaHost.Combat
             wasCollision=collision;wasPath=path;
             AimTrace.Host(this,pathFailed,"poll",false);
         }
-        internal void SampleMouse(){if(!selectionFailed && (Path || Marker || BasicSelectionDemand || !pathFailed && Prediction.Cache.Required>0))Selection.SampleMouse(input);}
+        internal void SampleMouse(){if(!selectionFailed && (Path || Marker || SharedSelectionDemand || !pathFailed && Prediction.Cache.Required>0))Selection.SampleMouse(input);}
         internal void CollisionFailed(){collisionFailed=true;Geometry.Clear();}
         public void OnSessionStarted(){Clear();Geometry.Session=runtime.Generation;}
         public void OnSessionEnded(){Clear();}
@@ -195,13 +199,13 @@ namespace JueMingR.TerrariaHost.Combat
             {
             Attack?.Demand(beforeNpc);
             if(!Enabled)return;
-            if(!Hooks.Ready && !Marker && !BasicSelectionDemand){Selection.RetireTarget();Prediction.Clear();return;}
+            if(!Hooks.Ready && !Marker && !SharedSelectionDemand){Selection.RetireTarget();Prediction.Clear();return;}
             var player=Main.LocalPlayer;if(player==null || !player.active || player.dead || player.ghost){Selection.RetireTarget();Prediction.Clear();Geometry.BeginNpcs();return;}
             if(Collision)Geometry.BeginNpcs();
             // Preferred demand records desired coverage, not this synchronous
             // call's work. Actual action prefixes run before optional tails.
             if(Path && !beforeNpc)Prediction.Cache.Demand(0,1,NpcPredictionCache.Horizon);else Prediction.Cache.Release(0);
-            try{Selection.Update(Options,Session,Marker || BasicSelectionDemand || !pathFailed && Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);selectionFailed=true;CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Stop();World.Clear();return;}
+            try{Selection.Update(Options,Session,Marker || SharedSelectionDemand || !pathFailed && Prediction.Cache.Required>0,Collision?Geometry:null);}catch(Exception error){AimTrace.Fault("host-selection",error,(long)tick);selectionFailed=true;CollisionFailed();pathFailed=true;Selection.RetireTarget();Prediction.Stop();World.Clear();return;}
             // The final-consumer edge already retired our producer. Collision
             // observation can remain active without clearing inactive Source
             // arrays on every empty update. Independent readers still retire
@@ -224,9 +228,12 @@ namespace JueMingR.TerrariaHost.Combat
             // 3ms limit and warm cadence; charging it to display's shared 2ms
             // producer slice can repeatedly pause a reachable candidate before
             // Plan completes. Pure Path hypotheses retain the optional slice.
-            bool actionSelection=Attack!=null && Options.ClearLine && Attack.BasicPermission;
-            if(beforeNpc || Attack!=null && Attack.UrgentPreparation || actionSelection)Attack?.ResolveSelection(sampleTick,beforeNpc);
-            else using(CombatPredictionWork.Optional(2))Attack?.ResolveSelection(sampleTick,false);
+            bool actionSelection=OriginalAttackPredictionAllowed && Attack!=null && Options.ClearLine && Attack.BasicPermission;
+            if(OriginalAttackPredictionAllowed)
+            {
+                if(beforeNpc || Attack!=null && Attack.UrgentPreparation || actionSelection)Attack?.ResolveSelection(sampleTick,beforeNpc);
+                else using(CombatPredictionWork.Optional(2))Attack?.ResolveSelection(sampleTick,false);
+            }
             Attack?.Demand(beforeNpc); // Keep a candidate's explicitly proven action prefix.
             // Ordinary prediction is synchronous and owned by Source. Native
             // failure belongs only to the explicit comparison route; a shared
@@ -236,8 +243,8 @@ namespace JueMingR.TerrariaHost.Combat
             // A newly selected candidate's proven late receive is an actual
             // action need. Keep it when moving from the candidate owner to
             // the selected owner; Path's desired tail never enters this value.
-            if(beforeNpc && Attack!=null)urgent=Math.Max(urgent,Attack.ActionRequired);
-            if(beforeNpc || urgent>0)
+            if(OriginalAttackPredictionAllowed && beforeNpc && Attack!=null)urgent=Math.Max(urgent,Attack.ActionRequired);
+            if(OriginalAttackPredictionAllowed && (beforeNpc || urgent>0))
             {
                 var priorPublication=beforeNpc?null:Prediction.Cache.Read(0);
                 PrepareSelectedPrediction(sampleTick,beforeNpc,tick,Math.Max(1,urgent));
@@ -403,7 +410,7 @@ namespace JueMingR.TerrariaHost.Combat
         {return ExpandControlPrediction(true);}
         internal bool ExpandControlPrediction(bool beforeNpc)
         {
-            if(pathFailed || TargetPredictionFailed || !Selection.HasTarget)return false;
+            if(!OriginalAttackPredictionAllowed || pathFailed || TargetPredictionFailed || !Selection.HasTarget)return false;
             var prior=Prediction.Cache.Read(1);if(prior==null || prior.BudgetPaused || prior.Stop!=PredictionStop.None || prior.Count>NpcPredictionCache.Horizon || !CombatPredictionWork.TryContinue())return false;
             int required=Math.Min(NpcPredictionCache.Horizon,Math.Max(prior.Count+7,(prior.Count-1)*2));
             Attack.SetActionDemand(required);

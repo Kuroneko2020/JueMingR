@@ -7,7 +7,7 @@ using Microsoft.Xna.Framework;
 
 namespace JueMingR.TerrariaHost.F5
 {
-    internal enum BlueprintMaterialsSource { World, F5, Library, PlacedList }
+    internal enum BlueprintMaterialsSource { World, F5, Library, PlacedList, Toolbar }
 
     // This modal owns only its source, selected identity, geometry and gestures.
     // Viewing a scope never selects or pauses an automatic construction target.
@@ -66,6 +66,9 @@ namespace JueMingR.TerrariaHost.F5
         internal BlueprintMaterialsSource Source { get { return source; } }
         internal Guid AssetId { get { return asset?.AssetId ?? Guid.Empty; } }
         internal long Selected { get { return selected; } }
+        internal bool SameWorld(BlueprintMaterialsSource origin){return Visible && source==origin && session==host.UiSession && asset==null && !strictInstance;}
+        internal bool SameAsset(LibraryEntry entry){return Visible && source==BlueprintMaterialsSource.Library && session==host.UiSession && asset!=null && entry!=null && asset.AssetId==entry.AssetId && asset.ContentRevision==entry.ContentRevision && asset.ContentHash==entry.ContentHash;}
+        internal bool SameInstance(long requestedSession,long instance){return Visible && source==BlueprintMaterialsSource.PlacedList && session==requestedSession && selected==instance && strictInstance;}
         internal bool RangeExpanded { get { return dropDown; } }
         internal int HoveredItem { get { return hoveredItem; } }
         internal int Generation { get { return generation; } }

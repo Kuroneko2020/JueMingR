@@ -60,7 +60,7 @@ namespace JueMingR.TerrariaHost.Combat
             rejected=player==null || item==null || !ReferenceEquals(player,combat.Player) || !ReferenceEquals(item,player.HeldItem) || !(consumer?BasicPermission:PreviewDemand) || !CurrentReceiver || !Eligible(item);
             if(rejected)return false;
             var npc=Main.npc[observation.Selection.Target.Slot];var point=npc.Center+npc.netOffset;
-            if(HostYoyoNavigation.Weapon(item) && !HostYoyoNavigation.BasicPoint(player,item,source,point,basicYoyoTerrain,out point))return false;
+            if(HostYoyoNavigation.Weapon(item) && !HostYoyoNavigation.BasicPoint(player,item,source,point,basicYoyoTerrain,out point,observation.Experiments?.ThroughWallEffective==true))return false;
             // These native controllers clamp world intent themselves. Keeping
             // that same value space also covers their real AI/Kill consumers.
             if(source!=null && HostGuidedAttack.Handles(source.type))player.LimitPointToPlayerReachableArea(ref point);

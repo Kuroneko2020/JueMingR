@@ -102,6 +102,7 @@ namespace NativeWorldTextProbe
             for(int x=37;x<48;x++)for(int y=34;y<65;y++)Main.tile[x,y].ClearEverything();NativeToolsChecks.Tile(41,38,123);NativeToolsChecks.Tile(41,39,123);NativeToolsChecks.Tile(41,44,0);NativeToolsChecks.SetMode(host,2,1);Require((bool)Call(mining,"Select",p,41,38,123,false),"dirt replacement evidence fixture");
             Main.tile[41,38].ClearEverything();NativeToolsChecks.Tile(41,39,0);Call(mining,"Update");NativeToolsChecks.Tile(41,39,123);NativeToolsChecks.Tile(41,44,123);Call(mining,"Update");Require(((MiningRegion)Get(mining,"Region")).Count==0,"active Dirt is occupied, never proof of air for prior or replaced selected cells");NativeToolsChecks.SetMode(host,2,0);
             GravityCapacity(context,host,mining,p);
+            NativeMiningPriorityChecks.Run(host,p);
             Console.WriteLine("PASS G09 mining: all 37 materials x ten powers x two depths and actual low-power native removal.");
             Console.WriteLine("PASS G09 held-tool causal first hit, foreign PickTile exclusion and bounded multiple-member gravity observations (physics not simulated).");
         }

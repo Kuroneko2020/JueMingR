@@ -83,7 +83,10 @@ namespace JueMingR.TerrariaHost.Footprints
             double now = host.UiSeconds, elapsed = shown ? Math.Max(0, now - lastUi) : 0; lastUi = now;
             if (!Active) { if (shown || visible != null || query != null) Invalidate(); return; }
             if (!shown) { Playback.Show(host.End); speedIndex = 0; shown = true; lastUi = now; nextRequest = 0; }
-            Playback.Advance(elapsed, host.End, input.SampleFocused && InputAvailable && !dragging);
+            // Playback consumes passive UI time, not this update's key/mouse
+            // sample. Vanilla can skip mapping on an outer update; that is not
+            // lost focus. Real focus/modal loss still stops without auto-resume.
+            Playback.Advance(elapsed, host.End, input.IsFocused && !input.ExternalModalBusy && InputAvailable && !dragging);
             var received = host.Query;
             if (received != null && received.Generation == host.Generation && !ReferenceEquals(received, query)) { query = received; pending = false; }
             long geometryVersion = host.Recorder?.GeometryVersion ?? 0;

@@ -50,7 +50,7 @@ namespace JueMingR.TerrariaHost.F5
         MovementFallAllow10, MovementFallDeny10, MovementFallAllow11, MovementFallDeny11,
         BlueprintCapture, BlueprintSave, BlueprintToolbarOn, BlueprintToolbarOff, BlueprintLibrary, BlueprintMove, BlueprintRemove,
         BlueprintMirror, BlueprintTrim, BlueprintConfirmTrim, BlueprintAutoBuildOn, BlueprintAutoBuildOff, BlueprintMaterials,
-        BlueprintSubstitutionConfigure, BlueprintSubstitutionOn, BlueprintSubstitutionOff, BlueprintPlacedList }
+        BlueprintSubstitutionConfigure, BlueprintSubstitutionOn, BlueprintSubstitutionOff, BlueprintPlacedList, ExperimentLockOn, ExperimentLockOff, ExperimentRateOn, ExperimentRateOff, ExperimentWallOn, ExperimentWallOff }
 
     internal sealed class F5Element
     {
@@ -113,6 +113,8 @@ namespace JueMingR.TerrariaHost.F5
         private long informationRevision, builtInformationRevision;
         private string deathCount = "正在读取…", worldDays = "正在读取…";
         private long deathRevision, builtDeathRevision;
+        private float announcementWidth=120, builtAnnouncementWidth;
+        internal void SetAnnouncementWidth(float width){announcementWidth=width;}
         internal void SetDeathInformation(string count, string days)
         { if (deathCount != count || worldDays != days) { deathCount = count; worldDays = days; deathRevision++; } }
         internal void SetWorldObjectSettings(Features.WorldObjectText.WorldObjectSettings value)
@@ -167,7 +169,7 @@ namespace JueMingR.TerrariaHost.F5
         // Qualification changes affect both pages that own hidden names. A
         // stable qualification remains a cache hit even while the pointer moves.
         internal bool Matches(float width, float height, float scale, int currentPage)
-        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 6 || builtBlueprintActive == blueprintActive && builtBlueprintOperation == blueprintOperation && builtBlueprintPreviewRevision == blueprintPreviewRevision && builtBlueprintAttached == BlueprintAttached && builtBlueprintLibraryVisible == blueprintLibraryVisible) && (currentPage != 11 || builtMovementMode == movementMode && builtMovementConfiguration == movementConfiguration) && (currentPage != 1 && currentPage != 8 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision) && (currentPage != 5 || builtAboutRevision == About.Revision); }
+        { return Generation > 0 && width == screenWidth && height == screenHeight && scale == uiScale && page == currentPage && (currentPage != 6 || builtBlueprintActive == blueprintActive && builtBlueprintOperation == blueprintOperation && builtBlueprintPreviewRevision == blueprintPreviewRevision && builtBlueprintAttached == BlueprintAttached && builtBlueprintLibraryVisible == blueprintLibraryVisible) && (currentPage != 11 || builtMovementMode == movementMode && builtMovementConfiguration == movementConfiguration) && (currentPage != 1 && currentPage != 8 || builtHiddenVisible == hiddenVisible) && (currentPage != 8 || builtObservationRevision == observationRevision) && (currentPage != 9 || builtInformationRevision == informationRevision) && (currentPage != 2 || builtDeathRevision == deathRevision && builtAnnouncementWidth == announcementWidth) && (currentPage != 5 || builtAboutRevision == About.Revision); }
 
         internal void Ensure(float width, float height, float scale, int currentPage,
             object font, Func<string, F5Size> measureText)
@@ -225,6 +227,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 CombatObservationControls.AddRows(elements,TextSize,observation,ref y);
                 CombatObservationControls.AddHiddenPathRow(elements,TextSize,ref y,hiddenVisible);
+                CombatExperimentControls.AddRows(elements,TextSize,ref y,hiddenVisible);
                 CombatControls.AddRows(elements,TextSize,ref y,0,6);GuidanceControls.AddRows(elements,TextSize,ref y,8);CombatControls.AddRows(elements,TextSize,ref y,6,2);
             }
             else if (currentPage == 1 || currentPage == 2) GuidanceControls.AddRows(elements, TextSize, ref y, currentPage, hiddenVisible);
@@ -233,7 +236,7 @@ namespace JueMingR.TerrariaHost.F5
             if (currentPage == 2) ViewControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) MapControls.AddRows(elements, TextSize, ref y);
             if (currentPage == 2) FootprintControls.AddRows(elements, TextSize, ref y);
-            if (currentPage == 2) AnnouncementControls.AddRows(elements, TextSize, ref y);
+            if (currentPage == 2) AnnouncementControls.AddRows(elements, TextSize, ref y, announcementWidth);
             if (currentPage == 11 && MovementAttached) MovementControls.AddRows(elements, TextSize, ref y, movementMode, movementConfiguration);
             builtMovementMode = movementMode;
             // Capture XOR edits do not affect these rows. The editor source and
@@ -247,7 +250,7 @@ namespace JueMingR.TerrariaHost.F5
             ContentHeight = Math.Max(0, y - 6);
             screenWidth = width; screenHeight = height; uiScale = scale; page = currentPage;
             builtInformationRevision = informationRevision;
-            builtDeathRevision = deathRevision;
+            builtDeathRevision = deathRevision; builtAnnouncementWidth = announcementWidth;
             builtAboutRevision = About.Revision;
             builtHiddenVisible = hiddenVisible;
             builtObservationRevision=observationRevision;

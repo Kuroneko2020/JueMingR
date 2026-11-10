@@ -34,15 +34,17 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal bool CanOpenMaterials { get { return MaterialsDisabledReason == null; } }
         internal void OpenMaterials()
         {
-            if (!CanOpenMaterials || !Input.CanStartActions || Shell?.BlueprintMaterialsUi == null) return;
+            if(!Input.CanStartActions || Shell?.BlueprintMaterialsUi==null)return;
+            var origin=Shell.State.Visible?BlueprintMaterialsSource.F5:BlueprintMaterialsSource.World;
+            if(!CanOpenMaterials && !Shell.BlueprintMaterialsUi.SameWorld(origin))return;
             Pointer.Cancel(); Toolbar.Cancel(); State.Interrupt();
-            Shell.OpenBlueprintMaterials(Shell.State.Visible ? BlueprintMaterialsSource.F5 : BlueprintMaterialsSource.World, Shell.BlueprintMaterialsAnchor());
+            Shell.OpenBlueprintMaterials(origin, Shell.BlueprintMaterialsAnchor());
         }
         internal void OpenMaterialsFromToolbar(F5Rect anchor)
         {
-            if (!CanOpenMaterials || !Input.CanStartActions || Shell?.BlueprintMaterialsUi == null) return;
+            if (!Input.CanStartActions || Shell?.BlueprintMaterialsUi == null || !CanOpenMaterials && !Shell.BlueprintMaterialsUi.SameWorld(BlueprintMaterialsSource.Toolbar)) return;
             Pointer.Cancel(); Toolbar.Cancel(); State.Interrupt();
-            Shell.OpenBlueprintMaterials(BlueprintMaterialsSource.World, anchor);
+            Shell.OpenBlueprintMaterials(BlueprintMaterialsSource.Toolbar, anchor);
         }
     }
 }

@@ -16,11 +16,17 @@ namespace Terraria
             object font = new object(); Func<string, F5Size> measure = t => new F5Size(t.Length * 18, 24);
             Action prepare = () => state.Layout.Ensure(input.Width, input.Height, input.Scale, state.Page, font, measure);
             prepare(); var page = state.Layout.About;
+            var title=state.Layout.Elements.First(e=>e.Command==F5Command.AboutRevealHidden); int stableGeneration=state.Layout.Generation;
+            page.TitleLift(false);page.TitleLift(true);now+=75;float lift=page.TitleLift(true);now+=75;float more=page.TitleLift(true);
+            Require(lift>0 && more>lift && more<=2 && state.Layout.Generation==stableGeneration && ReferenceEquals(title,state.Layout.Elements.First(e=>e.Command==F5Command.AboutRevealHidden)),"hover animation changes only bounded drawing offset");
+            foreach(string text in new[]{"为泰拉瑞亚原版打造的轻量辅助工具","仍在持续打磨中","欢迎反馈问题与建议","↓蓝绿修改器↓"})Require(state.Layout.Elements.Any(e=>e.Text==text),"About requested final text "+text);
+
             Require(state.Layout.Elements.Any(e=>e.Text=="决明R "+AboutPage.ProductVersion),"About shows the actual assembly product version from the shared build input");
             Require(!state.Layout.Elements.Any(e => e.Text == "使用帮助 / 版本信息" || e.Text == "微信" || e.Text == "支付宝"), "About has no removed help/version entry or QR captions");
             Require(state.Layout.Elements.Any(e => e.Text == "决明R") && state.Layout.Elements.Count(e => e.Kind == F5ElementKind.Image) == 2, "Real page introduction and both image elements");
             Require(state.Layout.MaxScroll == 0, "Home presents its whole composition without scrolling");
             Require(state.Layout.Elements.Count(e => e.Kind == F5ElementKind.Button) == 1, "Only the requested group action remains");
+            now=1000;
             F5Element group = state.Layout.Elements.First(e => e.Command == F5Command.AboutCopyGroup);
             Click(state, ref input, group, page); Require(copies == 1 && copied == "915753352", "Real release dispatch copies exactly the displayed group number");
             int generation = state.Layout.Generation, measurements = state.Layout.MeasurementCount;

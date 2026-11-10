@@ -90,8 +90,15 @@ namespace JueMingR.TerrariaHost.F5
         internal void ResumeAfterMaterials() { if (Visible) { ready = false; drawnGeneration = -1; } }
         private void CheckSession()
         { if (Opened && (!host.HasSession || session != host.UiSession)) Close(); }
+        internal bool SecondaryOnly;
+        internal bool MaterialsEntryAt(Vector2 point)
+        {
+            if(!Visible || !ready || drawnGeneration!=generation || layout!=shell.Layout.Generation || scroll!=shell.Scroll || matrix!=Main.UIScaleMatrix || !hitClip.Contains(point.X,point.Y))return false;
+            var part=Hit(point);return part?.Enabled==true && part.Command==BlueprintLibraryCommand.PlacedMaterials;
+        }
         internal void ProcessInput(bool active, KeyboardState keys, Vector2 point, bool geometryCurrent, bool focused, bool blocked)
         {
+            bool secondaryOnly=SecondaryOnly;SecondaryOnly=false;
             CheckSession(); bool left = host.Input.RawMouseLeft, right = host.Input.RawMouseRight;
             ConsumeLeft = leftTail; ConsumeRight = rightTail; ConsumeWheel = OwnsPointer = false;
             bool current = active && focused && Visible && ready && !blocked && geometryCurrent &&
@@ -101,6 +108,7 @@ namespace JueMingR.TerrariaHost.F5
                 ReferenceEquals(directory, host.MaterialInstances);
             bool inside = current && hitClip.Contains(point.X, point.Y);
             hovered = inside ? Hit(point) : null;
+            if(secondaryOnly && hovered?.Command!=BlueprintLibraryCommand.PlacedMaterials)hovered=null;
             OwnsPointer = inside || leftTail || rightTail;
             if (!current) armed = null;
             if (current)
@@ -116,7 +124,7 @@ namespace JueMingR.TerrariaHost.F5
                     var target = armed; armed = null;
                     if (!right && !previousRight && ReferenceEquals(target, hovered) && pressedGeneration == generation && pressedSession == session && pressedInstance == InstanceOf(target)) Execute(target, pressedInstance);
                 }
-                if (host.Input.Hotkeys.IsNew((int)Keys.Escape))
+                if (!secondaryOnly && host.Input.Hotkeys.IsNew((int)Keys.Escape))
                 { host.Input.Hotkeys.SuppressKey((int)Keys.Escape); host.Input.ConsumeHotkeyActions(); Back(); }
             }
             ConsumeLeft |= leftTail; ConsumeRight |= rightTail;

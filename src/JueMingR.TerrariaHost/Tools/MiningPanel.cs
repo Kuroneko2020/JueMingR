@@ -83,8 +83,12 @@ namespace JueMingR.TerrariaHost.Tools
             }
             start=bottom;scroll=shell.Scroll;generation=shell.Layout.Generation;skin=renderer.Generation;
         }
+        internal bool SecondaryOnly;
+        internal bool SecondaryEntryAt(Vector2 point)
+        { return ready && shell.Visible && shell.Page==1 && generation==shell.Layout.Generation && scroll==shell.Scroll && view.Contains(point.X,point.Y) && controls.Exists(c=>c.Enabled && (c.Command==ItemUiCommand.Hotkey) && c.Rect.Contains(point.X,point.Y)); }
         internal void ProcessInput(bool active,Vector2 point,bool geometryCurrent,bool focused,bool blocked)
         {
+            bool secondaryOnly=SecondaryOnly;SecondaryOnly=false;
             bool left=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,right=PlayerInput.MouseInfo.RightButton==ButtonState.Pressed;
             ConsumeLeft=leftTail;ConsumeRight=rightTail;OwnsPointer=false;
             if(!active || !focused || !shell.Visible || shell.Page!=1){Suspend();previousLeft=focused?left:true;if(focused){if(!left)leftTail=false;if(!right)rightTail=false;}return;}
@@ -93,6 +97,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(current && view.Contains(point.X,point.Y))foreach(var c in controls)if(c.Rect.Contains(point.X,point.Y)){hit=c;break;}
             OwnsPointer=hit!=null || leftTail || rightTail;
             if(OwnsPointer){if(left)leftTail=true;if(right)rightTail=true;}
+            if(secondaryOnly && hit!=null && !(hit.Command==ItemUiCommand.Hotkey))hit=null;
             if(left && !previousLeft)armed=hit;
             if(!current)armed=null;
             if(!left && previousLeft && armed!=null && ReferenceEquals(hit,armed) && hit.Enabled)

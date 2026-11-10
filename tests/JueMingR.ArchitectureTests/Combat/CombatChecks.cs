@@ -11,6 +11,7 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
+                CombatExperimentSettingsChecks.Run();
                 CombatDomainChecks.Run();
                 CombatObservationChecks.Run();
                 ObservationAimSettingsChecks.Run();

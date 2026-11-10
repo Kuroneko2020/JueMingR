@@ -62,8 +62,12 @@ namespace JueMingR.TerrariaHost.Items
         // Escape ownership is claimed by the shell before child cancellation.
         internal void BeforeInput(bool active)
         { ValidateSession(); QuickPanel?.BeforeInput(active); }
+        internal bool SecondaryOnly;
+        internal bool SecondaryEntryAt(Vector2 point)
+        { return ready && !dirty && shell.Visible && shell.Page==0 && layoutGeneration==shell.Layout.Generation && laidOutScroll==shell.Scroll && view.Contains(point.X,point.Y) && controls.Exists(c=>c.Enabled && c.Element.HotkeyTarget!=null && c.Rect.Contains(point.X,point.Y)); }
         internal void ProcessInput(bool active, KeyboardState sample, Vector2 pointer, bool geometryCurrent = true, bool focused = true, bool blockPointer = false)
         {
+            bool secondaryOnly=SecondaryOnly;SecondaryOnly=false;
             ValidateSession(); pointerPosition = pointer;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
             bool pageActive = active && focused && shell.Visible && shell.Page == 0;
@@ -89,6 +93,7 @@ namespace JueMingR.TerrariaHost.Items
                 if (left) leftTail = true; if (right) rightTail = true;
                 if (blockPointer) armed = null;
                 ItemUiControl hit = dirty || blockPointer ? null : Hit(pointer);
+                if(secondaryOnly && hit?.Element.HotkeyTarget==null)hit=null;
                 if (left && !previousLeft) { armed = hit; armedGeneration = shell.Layout.Generation; }
                 if (!left && previousLeft && armed != null && hit != null && armedGeneration == shell.Layout.Generation && Same(armed, hit)) Execute(hit);
             }

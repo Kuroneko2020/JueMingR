@@ -72,7 +72,7 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Projectile),"AI",Type.EmptyTypes,nameof(ProjectileBefore),nameof(ProjectileAfter),nameof(ProjectileFinal));
             Patch(typeof(Projectile),"Kill",Type.EmptyTypes,nameof(KillBefore),nameof(KillAfter),nameof(KillFinal));
             Patch(typeof(Projectile),"Damage",Type.EmptyTypes,nameof(DamageBefore),nameof(ShotAfter),nameof(ShotFinal));
-            Patch(typeof(Main),"UpdateWorld_Projectiles",Type.EmptyTypes,nameof(BeforeProjectileWorld));
+            Patch(typeof(Main),"UpdateWorld_Projectiles",Type.EmptyTypes,nameof(BeforeProjectileWorld),nameof(AfterProjectileWorld),nameof(FinalProjectileWorld));
             harmony.Patch(AccessTools.Method(typeof(Main),"DoDraw",new[]{typeof(Microsoft.Xna.Framework.GameTime)}),
                 transpiler:new HarmonyMethod(typeof(ToolHooks),nameof(ConstructionInputTail)),
                 finalizer:new HarmonyMethod(typeof(ToolHooks),nameof(ConstructionDrawFinal)));
@@ -221,7 +221,17 @@ namespace JueMingR.TerrariaHost.Tools
         // Vanilla has finished ALL NPC slots here, but has not advanced any
         // projectile. Finite held volleys must capture their full receiver and
         // chase scene at this boundary, once; individual AI only consumes it.
-        private static void BeforeProjectileWorld(){host?.Combat?.Attack?.PrepareControlledProjectileWorld();}
+        private static void BeforeProjectileWorld(out Combat.HostCombatExperiments.WorldScope __state)
+        {
+            __state=default(Combat.HostCombatExperiments.WorldScope);
+            host?.Combat?.Attack?.PrepareControlledProjectileWorld();
+            // Forecast preparation remains outside live mutation scope. Only
+            // this real native world phase grants experimental consumers access.
+            __state=host?.Combat?.Experiments?.BeginWorld()??default(Combat.HostCombatExperiments.WorldScope);
+        }
+        private static void AfterProjectileWorld(Combat.HostCombatExperiments.WorldScope __state){Combat.HostCombatExperiments.EndWorld(__state);}
+        private static Exception FinalProjectileWorld(Exception __exception,Combat.HostCombatExperiments.WorldScope __state)
+        {Combat.HostCombatExperiments.EndWorld(__state);return __exception;}
         // This call's receipt chooses its owner, even if that action has since
         // stopped or another one began. A value receipt adds no idle allocation;
         // the out scope is published before Combat borrows any input.

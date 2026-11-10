@@ -76,7 +76,9 @@ namespace Terraria
                         popup.Process(true, 9, x, y, popup.Layout.Matches(800, 600, font)); popup.Prepare(800, 600, font, Measure);
                     };
                     step(new int[0], false, 0, 0);
+                    Check(!popup.WillNavigate("test.command",anchor,1,9,100),"first entry click cannot ask a parent to save or navigate");
                     popup.Click("test.command", anchor, 1, 9, 100); Check(!popup.Visible, "single click cannot open binding window");
+                    Check(popup.WillNavigate("test.command",anchor,1,9,200) && !popup.WillNavigate("test.other",anchor,1,9,200),"only the second complete same-target click requests navigation");
                     popup.Click("test.command", anchor, 1, 9, 200); popup.Prepare(800, 600, font, Measure);
                     Check(popup.Visible && popup.Layout.Panel.Right <= 788 && popup.Layout.Panel.Bottom <= 588, "double click opens viewport-clamped window");
                     Check(popup.Layout.Index(HotkeyPopupCommand.Help) >= 0 && popup.Layout.Index(HotkeyPopupCommand.Close) >= 0, "popup header owns help and close");
@@ -87,6 +89,14 @@ namespace Terraria
                     click(3); Check(popup.HelpVisible && !popup.Capturing && owner.Get(target.Id) == null, "help is a hover surface, never a candidate");
                     Check(Localization.Language.Reads == languageReads, "help/open do not query native action labels");
                     click(0); step(new int[0], false, 0, 0); Check(popup.Capturing && owner.Get(target.Id) == null, "start activation click never binds Mouse1");
+                    popup.EntryGesture=true;step(new int[0],true,anchor.X+3,anchor.Y+3);
+                    popup.EntryGesture=false;step(new int[0],false,anchor.X+3,anchor.Y+3);
+                    Check(popup.Capturing && !owner.Busy && owner.Get(target.Id)==null,"entry press/release is reserved before recording Mouse1");
+                    popup.Click("test.command",anchor,1,9,300);
+                    Check(!popup.Visible && !popup.Capturing,"one complete same-target entry closes recording popup");
+                    popup.Click("test.command",anchor,1,9,400);popup.Click("test.command",anchor,1,9,500);popup.Prepare(800,600,font,Measure);
+                    step(new int[0],false,0,0);click(0);
+
                     click(3); Check(popup.Capturing && !owner.Busy, "help activation while recording cannot bind Mouse1");
                     var helpRect = popup.Layout.Buttons[popup.Layout.Index(HotkeyPopupCommand.Help)].Rect.Offset(popup.Layout.Panel.X, popup.Layout.Panel.Y);
                     step(new[] { 27 }, false, helpRect.X + 3, helpRect.Y + 3);

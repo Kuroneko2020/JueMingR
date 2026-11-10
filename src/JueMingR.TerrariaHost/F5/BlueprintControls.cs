@@ -90,7 +90,7 @@ namespace JueMingR.TerrariaHost.F5
         internal static string ReplacementHint(int index)
         { return index == 1 ? "王朝桌除外" : index == 10 ? "云/微光平台除外" : index == 11 ? "仅安全墙" : null; }
         // UI display is phase independent; Host action entries own admission.
-        internal bool Available(F5Command command) { return Owns(command) && owner.ControlsEnabled && (command != F5Command.BlueprintSave || owner.CanSave) &&
+        internal bool Available(F5Command command) { return command==F5Command.BlueprintMaterials && owner.Shell?.BlueprintMaterialsUi?.SameWorld(BlueprintMaterialsSource.F5)==true || Owns(command) && owner.ControlsEnabled && (command != F5Command.BlueprintSave || owner.CanSave) &&
             (command != F5Command.BlueprintLibrary || owner.CanOpenLibrary) &&
             (command != F5Command.BlueprintMove || owner.CanInvokeMove) && (command != F5Command.BlueprintRemove || owner.CanInvokeRemove) &&
             (command != F5Command.BlueprintMirror || owner.CanInvokeMirror) && (command != F5Command.BlueprintTrim || owner.CanInvokeTrim) &&
