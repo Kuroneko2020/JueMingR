@@ -106,6 +106,21 @@ internal static class SetupServiceChecks
             Check(migrated.exitCode == 0 && Pair(legacy) && !File.Exists(Path.Combine(legacy, "JueMingR.Bootstrap.dll")) && !File.Exists(Path.Combine(legacy, "JueMingR.Validation", "JueMingR.Features.dll")) && File.Exists(Path.Combine(legacy, "JueMingR.Validation", "unknown.txt")) && migrated.retained.Count != 0, "legacy-known-clean-unknown-preserved");
             Check(File.ReadAllBytes(legacyReceipt).SequenceEqual(originalLegacyReceipt), "legacy-receipt-original-bytes-preserved-after-migration");
             Check(Service().Execute("uninstall", legacy).exitCode == 0 && File.ReadAllBytes(legacyReceipt).SequenceEqual(originalLegacyReceipt), "legacy-receipt-original-bytes-preserved-after-uninstall");
+            string otherBaseline = Fresh("legacy-other-baseline"); WriteLegacy(otherBaseline);
+            string otherReceipt = Path.Combine(otherBaseline, "JueMingR.Validation", "phase-0-s-install-manifest.json");
+            var receiptDocument = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(otherReceipt));
+            var baseline = (Dictionary<string, object>)receiptDocument["target"];
+            baseline["version"] = "9.8.7.6"; baseline["mvid"] = "11111111-2222-3333-4444-555555555555"; baseline["sha256"] = new string('B', 64);
+            File.WriteAllText(otherReceipt, new JavaScriptSerializer().Serialize(receiptDocument)); byte[] otherOriginal = File.ReadAllBytes(otherReceipt);
+            Check(Service().Execute("install", otherBaseline).exitCode == 0 && !File.Exists(Path.Combine(otherBaseline, "JueMingR.Bootstrap.dll")) && File.ReadAllBytes(otherReceipt).SequenceEqual(otherOriginal),
+                "legacy-other-baseline-keeps-exact-payload-ownership-not-version-whitelist");
+            string malformed = Fresh("legacy-malformed-baseline"); WriteLegacy(malformed);
+            string malformedReceipt = Path.Combine(malformed, "JueMingR.Validation", "phase-0-s-install-manifest.json");
+            var invalidDocument = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(malformedReceipt));
+            ((Dictionary<string, object>)invalidDocument["target"])["mvid"] = "not-a-guid";
+            File.WriteAllText(malformedReceipt, new JavaScriptSerializer().Serialize(invalidDocument));
+            Check(Service().Execute("install", malformed).exitCode == 0 && File.Exists(Path.Combine(malformed, "JueMingR.Bootstrap.dll")) && File.Exists(malformedReceipt),
+                "legacy-malformed-baseline-cannot-authorize-deleting-old-files");
             string unknown = Fresh("unknown-legacy"); Directory.CreateDirectory(Path.Combine(unknown, "JueMingR.Validation")); File.WriteAllText(Path.Combine(unknown, "JueMingR.Validation", "unknown.txt"), "keep");
             Check(Service().Execute("install", unknown).exitCode == 0 && File.Exists(Path.Combine(unknown, "JueMingR.Validation", "unknown.txt")), "no-receipt-migration-no-fallback");
             string collision = Fresh("ordinary-file-check"); Directory.CreateDirectory(Path.Combine(collision, "JueMingR.dll"));

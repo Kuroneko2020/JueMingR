@@ -77,6 +77,9 @@ namespace JueMingR.Bootstrap
 
         private void OnAssemblyLoad(object sender, AssemblyLoadEventArgs eventArgs)
         {
+            // Resource metadata is not a live dependency notification. Ignore
+            // it before the install gate as concurrent readers may await it.
+            if(eventArgs.LoadedAssembly.ReflectionOnly)return;
             lock (gate)
             {
                 assemblyLoadHandlerDepth++;
@@ -788,7 +791,24 @@ namespace JueMingR.Bootstrap
                     stream.CopyTo(bytes);
                     // Reflection-only metadata never executes dependency code.
                     // Compare to this game's resource, not the old baseline DLL.
-                    var embedded=Assembly.ReflectionOnlyLoad(bytes.ToArray());
+                    byte[] image=bytes.ToArray();string metadataKey;
+                    using(var input=new MemoryStream(image,false))metadataKey="JueMingR.GameDependencyMetadata."+ComputeSha256(input);
+                    // Bootstrap's queued recheck and Host entry run in this
+                    // same AppDomain. CLR cannot reflection-load these bytes
+                    // repeatedly. Reuse only metadata already read from the
+                    // identical resource bytes, never a simple-name match.
+                    Lazy<Assembly> metadata;
+                    lock(AppDomain.CurrentDomain)
+                    {
+                        metadata=AppDomain.CurrentDomain.GetData(metadataKey) as Lazy<Assembly>;
+                        if(metadata==null)
+                        {
+                            metadata=new Lazy<Assembly>(()=>Assembly.ReflectionOnlyLoad(image),LazyThreadSafetyMode.ExecutionAndPublication);
+                            AppDomain.CurrentDomain.SetData(metadataKey,metadata);
+                        }
+                    }
+                    // Do not hold the publication lock through AssemblyLoad.
+                    var embedded=metadata.Value;
                     if(embedded.FullName!=reLogicAssembly.FullName ||
                         embedded.ManifestModule.ModuleVersionId!=reLogicAssembly.ManifestModule.ModuleVersionId)
                         throw new InvalidDataException("ReLogic is not this Terraria client's embedded dependency.");
