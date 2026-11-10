@@ -97,7 +97,7 @@ internal static class SetupServiceChecks
 
             string updated = Fresh("game-updated"); File.WriteAllBytes(Path.Combine(updated, "JueMingR.dll"), dll); File.WriteAllBytes(Path.Combine(updated, "Terraria.exe.config"), config);
             using (var append = new FileStream(Path.Combine(updated, "Terraria.exe"), FileMode.Append)) append.WriteByte(0);
-            Check(Service().Execute("install", updated).exitCode == 2 && Service().Execute("uninstall", updated).exitCode == 0 && !File.Exists(Path.Combine(updated, "JueMingR.dll")), "updated-game-can-uninstall-not-install");
+            Check(Service().Execute("install", updated).exitCode == 0 && Service().Execute("uninstall", updated).exitCode == 0 && !File.Exists(Path.Combine(updated, "JueMingR.dll")), "updated-game-can-install-and-uninstall-without-hash-whitelist");
 
             string legacy = Fresh("legacy"); WriteLegacy(legacy);
             string legacyReceipt = Path.Combine(legacy, "JueMingR.Validation", "phase-0-s-install-manifest.json");
@@ -183,7 +183,7 @@ internal static class SetupServiceChecks
             Check(SetupTargetState.Read(manual).Pair == SetupPairState.Unknown && SetupTargetState.Read(manual).CanMaintain, "state-unreadable-config-still-maintainable");
         using (var append = new FileStream(Path.Combine(manual, "Terraria.exe"), FileMode.Append)) append.WriteByte(0);
         state = SetupTargetState.Read(manual);
-        Check(state.CanMaintain && !state.CanInstall && state.Pair == SetupPairState.Installed, "state-updated-game-maintenance-independent");
+        Check(state.CanMaintain && state.CanInstall && state.Pair == SetupPairState.Installed, "state-updated-game-install-and-maintenance-independent");
         var removed = Service().Execute("uninstall", manual);
         Check(removed.status == "success" && SetupTargetState.Read(manual).CanMaintain && SetupTargetState.Read(manual).Pair == SetupPairState.NotInstalled, "state-after-uninstall-clear-remains-available");
         string partial = Fresh("pair-partial"); File.WriteAllBytes(Path.Combine(partial, "Terraria.exe.config"), Foreign);
