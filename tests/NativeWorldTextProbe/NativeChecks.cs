@@ -14,6 +14,15 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="BlueprintImportedMaterialsCpu" || scope=="BlueprintImportedMaterialsVisual")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{
+                    if(scope=="BlueprintImportedMaterialsVisual")using(var graphics=new ProbeGraphics(content))NativeBlueprintImportedMaterialsChecks.Run(context,graphics,output);
+                    else NativeBlueprintImportedMaterialsChecks.Run(context);
+                    NativeScopeDispatch.Enter(scope=="BlueprintImportedMaterialsVisual"?"blueprint-imported-materials-visual":"blueprint-imported-materials-cpu");
+                },processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
             if (scope == "ViewZoomControlDraw") return NativeViewOriginalChecks.Run(content, output, zoomControl: true);
             if (scope == "ViewZoomControlCpu" || scope == "ViewZoomControlVisual")
             {
@@ -123,10 +132,10 @@ namespace NativeWorldTextProbe
                     NativeBlueprintMirrorConsumerChecks.Run(context);
                 },processing:true,shortFeedback:true);return 0;
             }
-            if(scope=="BlueprintHoikCpu")
+            if(scope=="BlueprintHoikCpu" || scope=="BlueprintHoikSubstitutionCpu")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{NativeBlueprintBuildChecks.RunConstruction(context,family:"Hoik");NativeScopeDispatch.Enter("blueprint-hoik");},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+                NativeQuickItemChecks.Run(context=>{NativeBlueprintBuildChecks.RunConstruction(context,family:scope=="BlueprintHoikCpu"?"Hoik":"HoikSubstitution");NativeScopeDispatch.Enter(scope=="BlueprintHoikCpu"?"blueprint-hoik":"blueprint-hoik-substitution");},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="BlueprintSupplyContinuationCpu" || scope=="BlueprintSupplyPresentationCpu" || scope=="BlueprintSmartPlatformCpu" || scope=="BlueprintActuatorNetworkCpu" || scope=="BlueprintSupplySmartWiringCpu" || scope=="BlueprintConstructionCpu" || scope=="BlueprintPreparationCpu" || scope=="BlueprintAppearanceCpu" || scope=="BlueprintWiringCpu" || scope=="BlueprintSpecialCpu")
             {

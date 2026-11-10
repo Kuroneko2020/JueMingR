@@ -21,10 +21,13 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal int Mode, SupplyType, Cycle, BucketType;
         internal int SupplyDestination = -1, PrimaryMaximum = 1, HeldMaximum;
         internal bool Hoik;
-        internal int HoikWaitTool;
+        internal int HoikWaitTool; // 1 hammer, 2 pick, 3 current-policy final-platform supply.
         // This native step may place a recipe's base rather than its final
         // target. The immutable target Cell/Body and final Match never change.
         internal BlueprintPlacementDescriptor NativePlacement;
+        // The selected allowed final platform is separate from the temporary
+        // stone's native placement. It is a current plan, never persisted stock.
+        internal BlueprintPlacementDescriptor HoikPlatform;
         // Exact current occupied pose, in addition to canonical building
         // identity. A door opening/closing revokes this single-cell action.
         internal BlueprintWorldObject DoorForm;
@@ -53,7 +56,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             return value == null ? null : new BlueprintBuildOperation { Kind = value.Kind, Consumer = value.Consumer,
                 Mode = value.Mode, SupplyType = value.SupplyType, Cycle = value.Cycle, BucketType = value.BucketType,
                 SupplyDestination = value.SupplyDestination, PrimaryMaximum = value.PrimaryMaximum,
-                HeldMaximum = value.HeldMaximum, NativePlacement = value.NativePlacement, DoorForm = value.DoorForm, DoorProof = value.DoorProof, Hoik = value.Hoik, HoikWaitTool = value.HoikWaitTool };
+                HeldMaximum = value.HeldMaximum, NativePlacement = value.NativePlacement, HoikPlatform=value.HoikPlatform, DoorForm = value.DoorForm, DoorProof = value.DoorProof, Hoik = value.Hoik, HoikWaitTool = value.HoikWaitTool };
         }
         private int PlannedBuildToolSlot(Player p, BuildOperationPlan plan, bool afterOwnedPreparation = false)
         {
@@ -98,6 +101,16 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(IsUnconfirmedTarget(target)){target.Readiness=BlueprintBuildReadiness.BlockedNow;return false;}
             var operation = target.Operation;
             if (HoikOperation(operation) && !HoikCapabilities(target, p, operation.Kind == BlueprintBuildOperationKind.HoikBase, out wait)) return false;
+            if(HoikOperation(operation) && operation.Kind!=BlueprintBuildOperationKind.Hammer)
+            {
+                // Reuse the same policy choices, current supply, finite cursor
+                // and budget as ordinary platform substitution. The execution
+                // target retains Requirement; it never rewrites the blueprint.
+                bool ready=TryPlanSubstitutionBuild(target,p,preferred,intent,out plan,out wait);
+                if(!ready && (wait&BlueprintBuildWait.Material)!=0)
+                {operation.HoikWaitTool=3;wait|=BlueprintBuildWait.Capability;}
+                return ready;
+            }
             if (WiringOperation(operation)) return TryPlanWiringTool(target, p, preferred, out plan, out wait, out dependencySlots);
             int tool = -1, primary = -1;
             if (AppearanceOperation(operation))

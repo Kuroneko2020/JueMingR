@@ -25,7 +25,9 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintHoikMixedChecks.cs'=@('native-BlueprintHoikCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikPersistenceChecks.cs'=@('native-BlueprintHoikCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikRecoveryChecks.cs'=@('native-BlueprintHoikCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHoikSubstitutionChecks.cs'=@('native-BlueprintHoikSubstitutionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHelperImportChecks.cs'=@('native-BlueprintExchangeCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintImportedMaterialsChecks.cs'=@('native-BlueprintImportedMaterialsCpu')
         'tests/NativeWorldTextProbe/NativeViewZoomControlChecks.cs'=@('native-ViewZoomControlCpu')
         'tests/JueMingR.ArchitectureTests/RuntimeFailureChecks.cs'=@('RuntimeFailureChecks')
         'tests/JueMingR.ArchitectureTests/PreferenceDeadlineChecks.cs'=@('PreferenceDeadlineChecks')
@@ -494,8 +496,22 @@ function Get-WorkloadLeafChecks {
         $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
         $leaves[$path]=@($leaves[$path])+@('native-BlueprintNearQueueCpu')
     }
+    # Follow-up Hoik substitution calls these existing native preparation,
+    # actual source-capture, Save/Place and diagnostic helpers. Bind their
+    # bytes to this new leaf without executing their sibling families.
+    foreach($helper in @('Build','Construction','ConstructionAppearance','WorldMatch','Substitution','Hoik')){
+        $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
+        $leaves[$path]=@($leaves[$path])+@('native-BlueprintHoikSubstitutionCpu')
+    }
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintCompletionV2Checks.cs']+=@($leaves['tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs'])
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs']+=@('native-BlueprintNearQueueCpu','native-BlueprintSupplyContinuationCpu','native-BlueprintBuildCadenceCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu','native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionLifecycleCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs']+=@('native-BlueprintHoikSubstitutionCpu')
+    foreach($helper in @('WorldMatch','HelperImport','Build')){
+        $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
+        $leaves[$path]=@($leaves[$path])+@('native-BlueprintImportedMaterialsCpu')
+    }
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs']+=@('native-BlueprintImportedMaterialsCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeLegacyPlacementIdentityChecks.cs']+=@('native-BlueprintImportedMaterialsCpu')
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintExpectationChecks.cs']=@('native-BlueprintNearQueueCpu')
     # A family enters EffectChecks.RunCore and returns from its exact branch.
     # Its own body and called shared scene/Save/Step/solution helpers matter;
@@ -666,6 +682,8 @@ function Get-WorkloadNativeScopes {
         'BlueprintPreparationCpu'=@('blueprint-host','tools-host');
         'BlueprintAppearanceCpu'=@('blueprint-host','tools-host');
         'BlueprintHoikCpu'=@('blueprint-host','tools-host');
+        'BlueprintHoikSubstitutionCpu'=@('blueprint-host','tools-host');
+        'BlueprintImportedMaterialsCpu'=@('blueprint-host','tools-host');
         'ViewZoomControlCpu'=@('view-host','shared-host','hotkeys');
         'BlueprintWiringCpu'=@('blueprint-host','tools-host');
         'BlueprintSpecialCpu'=@('blueprint-host','tools-host');

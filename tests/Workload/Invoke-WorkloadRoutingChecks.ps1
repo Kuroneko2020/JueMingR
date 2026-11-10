@@ -20,7 +20,7 @@ function Assert-Route {
 }
 # New task leaves have one exact formal native responsibility each.
 $hoikPath='tests/NativeWorldTextProbe/NativeBlueprintHoikChecks.cs'
-$hoikConsumers=@('native-BlueprintHoikCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
+$hoikConsumers=@('native-BlueprintHoikCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintHoikSubstitutionCpu')
 foreach($consumer in $hoikConsumers){Assert-Route (@(Get-WorkloadPathChecks $hoikPath) -contains $consumer) ('Hoik manufacturing helper includes actual consumer '+$consumer)}
 foreach($helper in @('Build','Construction','ConstructionAppearance')){
     $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
@@ -33,11 +33,12 @@ foreach($consumer in $hoikConsumers){Assert-Route ((Get-WorkloadCheckFingerprint
 Assert-Route ((Get-WorkloadCheckFingerprint $hoikBefore 'native-ViewZoomControlCpu') -ceq (Get-WorkloadCheckFingerprint $hoikAfter 'native-ViewZoomControlCpu')) 'Hoik helper preserves unrelated view proof'
 foreach($identityHelper in @('NativePlacementIdentityChecks.cs','NativeSwitchIdentityChecks.cs','NativeLegacyPlacementIdentityChecks.cs')){
     $identityPath='tests/NativeWorldTextProbe/'+$identityHelper
-    Assert-Route ((@(Get-WorkloadPathChecks $identityPath) -join '|') -ceq 'native-BrowserCpu') ('private identity helper exact consumer '+$identityHelper)
+    $identityConsumers=@(if($identityHelper -ceq 'NativeLegacyPlacementIdentityChecks.cs'){@('native-BrowserCpu','native-BlueprintImportedMaterialsCpu')}else{@('native-BrowserCpu')})
+    Assert-Route (((@(Get-WorkloadPathChecks $identityPath)|Sort-Object)-join '|') -ceq (($identityConsumers|Sort-Object)-join '|')) ('identity helper actual consumers '+$identityHelper)
     $identityRoute=Get-WorkloadRoute @($identityPath)
     Assert-Route ($identityRoute.unknown.Count -eq 0) ('identity helper classified '+$identityHelper)
     $identityPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $identityRoute.groups)
-    Assert-Route ($identityPlan.Count -eq 1 -and $identityPlan[0].name -ceq 'native-BrowserCpu' -and $identityPlan[0].arguments[-1] -ceq 'BrowserCpu') ('identity helper selects real BrowserCpu entry '+$identityHelper)
+    Assert-Route ($identityPlan.Count -eq $identityConsumers.Count -and (($identityPlan.name|Sort-Object)-join '|') -ceq (($identityConsumers|Sort-Object)-join '|') -and @($identityPlan|Where-Object {$_.arguments[-1] -cne $_.name.Substring(7)}).Count -eq 0) ('identity helper selects real formal consumers '+$identityHelper)
     $identityBefore=[pscustomobject]@{inputs=@($identityPath+':'+('A'*64))}
     $identityAfter=[pscustomobject]@{inputs=@($identityPath+':'+('B'*64))}
     Assert-Route ((Get-WorkloadCheckFingerprint $identityBefore 'native-BrowserCpu') -cne (Get-WorkloadCheckFingerprint $identityAfter 'native-BrowserCpu')) ('identity bytes invalidate actual consumer '+$identityHelper)
@@ -68,7 +69,7 @@ foreach($privateHelper in @('tests/NativeWorldTextProbe/NativeBlueprintSettledPa
     foreach($consumer in $expectedPrivate){Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore $consumer) -cne (Get-WorkloadCheckFingerprint $privateAfter $consumer)) ('private admission bytes invalidate actual consumer '+$consumer)}
     Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore 'native-BlueprintSupplyContinuationCpu') -ceq (Get-WorkloadCheckFingerprint $privateAfter 'native-BlueprintSupplyContinuationCpu')) ('private admission helper preserves unrelated SupplyRepair '+$privateHelper)
 }
-foreach($scope in @('BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu')){
+foreach($scope in @('BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
     $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-'+$scope))
     Assert-Route ($plan.Count -eq 1 -and $plan[0].name -ceq ('native-'+$scope) -and $plan[0].arguments[-1] -ceq $scope) ('exact new native scope '+$scope)
     Assert-Route ($null -ne (Get-WorkloadExpectedNativeLeaf ('native-'+$scope))) ('new scope completion registered '+$scope)

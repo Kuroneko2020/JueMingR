@@ -94,12 +94,17 @@ namespace JueMingR.TerrariaHost.Blueprint
                 finally { target.Operation = original; }
                 if (hammer < 0)
                 { target.Operation.HoikWaitTool=1; wait=outside?BlueprintBuildWait.Player:BlueprintBuildWait.Material|BlueprintBuildWait.Capability; WaitForBuild(target,wait); return false; }
-                int missing=ConstructionItemSlot(p,ItemID.StoneBlock)<0?ItemID.StoneBlock:ConstructionItemSlot(p,target.Placement.UseItemType)<0?target.Placement.UseItemType:0;
+                // The shared substitution planner selects the actual allowed
+                // platform before starting. Recheck that exact prerequisite
+                // during preparation/admission; the raw original is no lease.
+                var platform=original.HoikPlatform;
+                int missing=ConstructionItemSlot(p,ItemID.StoneBlock)<0?ItemID.StoneBlock:
+                    platform!=null && ConstructionItemSlot(p,platform.UseItemType)<0?platform.UseItemType:0;
                 if(missing>0)
                 {
                     wait=BlueprintBuildWait.Material;WaitForBuild(target,wait);
                     if(nearWaitingFact!=null && ReferenceEquals(nearWaitingFact.Seed.Range,target.Range))nearWaitingFact.Supply=missing;
-                    projectionFeedback="Hoik施工需要石块底材和目标平台，补充后会继续。";return false;
+                    projectionFeedback="Hoik施工需要石块底材和可用平台，补充后会继续。";return false;
                 }
             }
             if (!HoikPickCurrent(p))
@@ -125,18 +130,29 @@ namespace JueMingR.TerrariaHost.Blueprint
             var target = flight.Target; var op = flight.Operation; var p = flight.Player;
             BlueprintWorldMatchSample actual;
             if (!ReadBuildCell(target.WorldX, target.WorldY, out actual)) return false;
-            BlueprintBuildOperation current;
-            if (!TryPlanHoikBuild(target, actual, BuildLane(target.Ordinal), out current) || current.Kind != op.Kind || current.Mode != op.Mode) return false;
             BlueprintBuildWait wait;
             if (!HoikCapabilities(target, p, op.Kind == BlueprintBuildOperationKind.HoikBase, out wait)) return false;
             if (op.Kind == BlueprintBuildOperationKind.Hammer)
             {
+                BlueprintBuildOperation current;
+                if (!TryPlanHoikBuild(target, actual, BuildLane(target.Ordinal), out current) || current.Kind != op.Kind || current.Mode != op.Mode) return false;
                 if (!AppearanceToolMatches(target, flight.Source.Item) || !ShapePreflight(target, p, flight.Source.Item)) return false;
                 flight.InputGesture = p.poundRelease ? ToolInputGesture.HeldPress : ToolInputGesture.NeutralRelease;
                 return true;
             }
-            if (flight.Source.Item.type != op.NativePlacement.UseItemType || !p.IsInTileInteractionRange(target.WorldX, target.WorldY,
-                TileReachCheckSettings.Simple, flight.Source.Item.tileBoost + p.blockRange)) return false;
+            return HoikPlacementGeometry(target,p,flight.Source.Item,actual);
+        }
+        private bool HoikPlacementGeometry(BlueprintBuildTarget target,Player p,Item item)
+        {
+            BlueprintWorldMatchSample actual;
+            return ReadBuildCell(target.WorldX,target.WorldY,out actual) && HoikPlacementGeometry(target,p,item,actual);
+        }
+        private bool HoikPlacementGeometry(BlueprintBuildTarget target,Player p,Item item,BlueprintWorldMatchSample actual)
+        {
+            var op=target.Operation;BlueprintBuildOperation current;
+            if(!TryPlanHoikBuild(target,actual,BuildLane(target.Ordinal),out current) || current.Kind!=op.Kind || current.Mode!=op.Mode)return false;
+            if (item.type != op.NativePlacement.UseItemType || !p.IsInTileInteractionRange(target.WorldX, target.WorldY,
+                TileReachCheckSettings.Simple, item.tileBoost + p.blockRange)) return false;
             if ((actual.Cell.Layers & CaptureLayer.Tile) != 0)
             {
                 // Original replacement can remove natural hanging extras.
@@ -146,7 +162,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                     below.active() && (TileID.Sets.ReplaceTileBreakDown[below.type] || below.type == 165)) return false;
                 return WorldGen.IsTileReplaceable(target.WorldX, target.WorldY) && WorldGen.WouldTileReplacementWork(op.NativePlacement.TileType, target.WorldX, target.WorldY);
             }
-            return op.Kind == BlueprintBuildOperationKind.HoikBase && PreflightBuildOrdinary(target, flight.Source.Item) &&
+            return op.Kind == BlueprintBuildOperationKind.HoikBase && PreflightBuildOrdinary(target, item) &&
                 (BuildNeighbor(target.WorldX, target.WorldY, false) || BuildNeighbor(target.WorldX - 1, target.WorldY, false) ||
                  BuildNeighbor(target.WorldX + 1, target.WorldY, false) || BuildNeighbor(target.WorldX, target.WorldY - 1, false) || BuildNeighbor(target.WorldX, target.WorldY + 1, false));
         }
@@ -171,7 +187,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             var op = flight.Operation; var target = flight.Target;
             bool applied = op.Kind == BlueprintBuildOperationKind.HoikBase ? actual.Cell.TileType == TileID.Stone :
                 op.Kind == BlueprintBuildOperationKind.Hammer ? actual.Cell.TileType == TileID.Stone && (actual.Cell.Slope | (actual.Cell.HalfBrick ? 8 : 0)) != op.Mode :
-                HoikFinalBody(target, actual) && actual.Cell.Slope == target.Cell.Slope && actual.Cell.HalfBrick == target.Cell.HalfBrick;
+                // This receipt proves the selected native output, whereas the
+                // projection's final Match separately accepts current policy.
+                (target.Body!=null?actual.Object!=null && target.Body.SamePlacement(actual.Object):
+                    BlueprintMaterialSteps.SameBody(target.Cell,actual,MaterialCatalog)==BlueprintBodyState.Same) &&
+                    actual.Cell.Slope == target.Cell.Slope && actual.Cell.HalfBrick == target.Cell.HalfBrick;
             if (!applied) return false;
             long key = WiringCoordinate(target.WorldX, target.WorldY);
             if (op.Kind == BlueprintBuildOperationKind.HoikSwap) hoikBases.Remove(key);

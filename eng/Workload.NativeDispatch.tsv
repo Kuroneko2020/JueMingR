@@ -390,3 +390,6 @@ leaf	ViewZoomControlCpu	view-zoom-control-cpu
 leaf	ViewZoomControlVisual	view-zoom-control-visual
 leaf	ViewZoomControlDraw	view-zoom-control-draw
 leaf	BlueprintHoikCpu	blueprint-hoik
+leaf	BlueprintHoikSubstitutionCpu	blueprint-hoik-substitution
+leaf	BlueprintImportedMaterialsCpu	blueprint-imported-materials-cpu
+leaf	BlueprintImportedMaterialsVisual	blueprint-imported-materials-visual

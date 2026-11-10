@@ -324,10 +324,10 @@ namespace JueMingR.TerrariaHost.F5
             if (!headerCurrent)
             {
                 lineHeight = Math.Max(28, measureHeader("测试Ag", .70f).Height + 8); closeSize = measureHeader("关闭", .70f);
-                // The summary uses only this vocabulary, decimal digits and
-                // the unknown dash. Reserve their actual visible line bounds:
+                // Include complete, partial and calculating summary vocabulary
+                // in the cached native line bounds as well as decimal digits:
                 // 70 -> 69 must not end a drag because those digits are taller.
-                summaryLineHeight = measureHeader("剩余材料 0123456789— 种 · 还需 · 总计", .70f).Height;
+                summaryLineHeight = measureHeader("剩余材料已确认正在计算核对 0123456789 种 · 数量 · 还需 · 总计", .70f).Height;
             }
             // Measure in local coordinates first. Width determines content; only
             // the complete height is clamped, then one origin is projected for

@@ -204,7 +204,23 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(!nearCapabilityObserving)return null;
             NearCapabilityDependencyWork();
             var family=NearCapabilityFamily.Types;string identity;int[] types=null;
-            if(HoikOperation(operation) && operation.HoikWaitTool==2){family=NearCapabilityFamily.Pick;identity="hoik-pick";}
+            if(HoikOperation(operation) && operation.HoikWaitTool==3)
+            {
+                // Starting/swap waits subscribe to this policy's actual final
+                // platform set, not to the temporary stone or original-only
+                // type. The existing shared type serials wake allowed restock
+                // without polling every candidate or widening its reach.
+                var placement=MaterialCatalog?.Tile(cell,obj);var accepted=new List<int>();
+                if(placement!=null)
+                {
+                    accepted.Add(placement.UseItemType);
+                    var candidates=MaterialCatalog.Substitution?.Candidates(placement,substitutionPolicy);
+                    if(candidates!=null)foreach(var candidate in candidates)
+                        if(BasicPlacement(candidate) && !accepted.Contains(candidate.UseItemType))accepted.Add(candidate.UseItemType);
+                }
+                types=accepted.ToArray();identity="hoik-platform:"+(placement?.UseItemType??0)+":"+substitutionRevision;
+            }
+            else if(HoikOperation(operation) && operation.HoikWaitTool==2){family=NearCapabilityFamily.Pick;identity="hoik-pick";}
             else if(operation?.Kind==BlueprintBuildOperationKind.Hammer || HoikOperation(operation) && operation.HoikWaitTool==1)
             {
                 family=NearCapabilityFamily.Hammer;

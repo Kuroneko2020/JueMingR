@@ -9,9 +9,10 @@ namespace JueMingR.Features.Blueprint
     public sealed class BlueprintPlacementRule
     {
         private readonly int[] rows;
+        private readonly int[] trackFrames;
         public BlueprintPlacementRule(BlueprintPlacementDescriptor descriptor, bool simple, int baseX = 0, int baseY = 0,
-            int columnStep = 18, int[] rowOffsets = null, int operatingX = 0, int operatingY = 0, bool door = false, int operatingY2 = 0)
-        { Descriptor = descriptor; Simple = simple; BaseX = baseX; BaseY = baseY; ColumnStep = columnStep; rows = rowOffsets == null ? new[] { 0 } : (int[])rowOffsets.Clone(); OperatingX = operatingX; OperatingY = operatingY; OperatingY2 = operatingY2; Door = door; }
+            int columnStep = 18, int[] rowOffsets = null, int operatingX = 0, int operatingY = 0, bool door = false, int operatingY2 = 0, int[] trackFrames = null)
+        { Descriptor = descriptor; Simple = simple; BaseX = baseX; BaseY = baseY; ColumnStep = columnStep; rows = rowOffsets == null ? new[] { 0 } : (int[])rowOffsets.Clone(); OperatingX = operatingX; OperatingY = operatingY; OperatingY2 = operatingY2; Door = door; this.trackFrames = trackFrames == null ? null : (int[])trackFrames.Clone(); }
         public BlueprintPlacementDescriptor Descriptor { get; }
         public bool Simple { get; }
         public int BaseX { get; }
@@ -41,6 +42,10 @@ namespace JueMingR.Features.Blueprint
                 return style == Descriptor.Style && cell.FrameX % 18 == 0 && cell.FrameY % 18 == 0;
             }
             if (cell.TileType != Descriptor.TileType) return false;
+            // Original track frames are semantic indices, not 18px object
+            // grids. The Host copies front-slot item identity once; -1 is a
+            // legal absent back rail, never a reason to discard its material.
+            if (trackFrames != null) return cell.FrameY >= -1 && cell.FrameY < 36 && Array.IndexOf(trackFrames, (int)cell.FrameX) >= 0;
             if (Descriptor.Platform) return cell.FrameY == (long)Descriptor.Style * 18;
             if (Descriptor.PlanterBox) return cell.FrameY == (long)Descriptor.Style * 18 &&
                 cell.FrameX >= 0 && cell.FrameX <= 54 && cell.FrameX % 18 == 0 && !cell.HalfBrick && cell.Slope == 0;
