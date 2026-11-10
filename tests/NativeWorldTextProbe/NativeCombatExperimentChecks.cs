@@ -161,20 +161,52 @@ namespace NativeWorldTextProbe
             }
             finally{cosmetic.UnpatchAll(cosmetic.Id);}
         }
+        private static Player castPlayer;
+        private static int castStarts,castShoots;
+        private static void CastStarted(Player __instance){if(ReferenceEquals(__instance,castPlayer))castStarts++;}
+        private static void CastShot(Player __instance){if(ReferenceEquals(__instance,castPlayer))castShoots++;}
+        private static void CastFacts(string stage,object context,object input,Player player,int itemType)
+        {
+            var shell=Get(context,"Shell");var state=Get(shell,"State");
+            Console.WriteLine("SUMMON INPUT "+stage+" item="+itemType+" visible="+Get(state,"Visible")+" shellPointer="+Get(shell,"OwnsPointer")+" mouseInterface="+player.mouseInterface+
+                " mappedLeft="+Terraria.GameInput.PlayerInput.Triggers.Current.MouseLeft+" physicalLeft="+Terraria.GameInput.PlayerInput.MouseInfo.LeftButton+" controlUse="+player.controlUseItem+
+                " canStart="+Get(input,"CanStartActions")+" selected="+player.selectedItem+" held="+player.HeldItem.type+" mana="+player.statMana+" noItems="+player.noItems+" cursed="+player.cursed+
+                " animation="+player.itemAnimation+" time="+player.itemTime+" reuse="+player.reuseDelay+" starts="+castStarts+" shoots="+castShoots);
+        }
         private static Projectile CastSummon(object context,object owner,object tools,object input,int itemType,Vector2 cursor)
         {
             var player=NativeToolExecutionChecks.Reset(context,tools,input,itemType,0,0);player.position=new Vector2(640,688-player.height);player.releaseUseItem=true;player.reuseDelay=0;
             player.statMana=player.statManaMax=player.statManaMax2=200;int projectileType=player.HeldItem.shoot;
-            NativeToolExecutionChecks.Sample(context,input,cursor,true);NativeQuickItemChecks.NativeFrame(player);
-            var body=Main.projectile.SingleOrDefault(p=>p.active && p.owner==0 && p.type==projectileType);
-            Require(body!=null && body.originalDamage>0,"actual summon ItemCheck supplies its native birth and unscaled originalDamage: "+itemType);
-            player.inventory[1].SetDefaults(ItemID.CopperPickaxe);player.selectedItemState.Select(1);
-            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");
-            // Actual buffered selection finishes this native use; no timer,
-            // minion bookkeeping, buff or source field is manufactured.
-            for(int i=0;i<60 && player.selectedItem!=1;i++)Step(context,owner,host,combat,input,cursor,false);
-            Require(player.selectedItem==1 && player.HeldItem.type==ItemID.CopperPickaxe,"summon owner naturally switches to a tool after the cast");
-            return body;
+            var shell=Get(context,"Shell");var state=Get(shell,"State");
+            var audit=new Harmony("JueMingR.Tests.ExperimentSummonUse");castPlayer=player;castStarts=castShoots=0;
+            try
+            {
+                audit.Patch(typeof(Player).GetMethod("ItemCheck_StartActualUse",Flags),prefix:new HarmonyMethod(typeof(NativeCombatExperimentChecks),nameof(CastStarted)));
+                audit.Patch(typeof(Player).GetMethod("ItemCheck_Shoot",Flags),prefix:new HarmonyMethod(typeof(NativeCombatExperimentChecks),nameof(CastShot)));
+                CastFacts("before",context,input,player,itemType);
+                NativeToolExecutionChecks.Sample(context,input,cursor,true);CastFacts("original-sample",context,input,player,itemType);
+                // The five-click registration fixture deliberately leaves About
+                // visible. Close through its ordinary owner and observe trusted
+                // neutral samples before creating a fresh world-input press.
+                // Never copy a consumed UI click into native player controls.
+                if((bool)Get(state,"Visible"))Call(state,"Close");
+                NativeToolExecutionChecks.Sample(context,input,cursor,false);NativeToolExecutionChecks.Sample(context,input,cursor,false);
+                CastFacts("closed-neutral",context,input,player,itemType);
+                Require(!(bool)Get(state,"Visible") && !(bool)Get(shell,"OwnsPointer") && (bool)Get(input,"CanStartActions"),"summon starts only after ordinary UI close and trusted neutral input");
+                NativeToolExecutionChecks.Sample(context,input,cursor,true);CastFacts("world-sample",context,input,player,itemType);
+                NativeQuickItemChecks.NativeFrame(player);CastFacts("native-use",context,input,player,itemType);
+                var body=Main.projectile.SingleOrDefault(p=>p.active && p.owner==0 && p.type==projectileType);
+                Console.WriteLine("SUMMON BIRTH item="+itemType+" expectedProjectile="+projectileType+" born="+(body!=null)+" originalDamage="+(body==null?-1:body.originalDamage)+" starts="+castStarts+" shoots="+castShoots);
+                Require(body!=null && body.originalDamage>0,"actual summon ItemCheck supplies its native birth and unscaled originalDamage: "+itemType);
+                player.inventory[1].SetDefaults(ItemID.CopperPickaxe);player.selectedItemState.Select(1);
+                var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");
+                // Actual buffered selection finishes this native use; no timer,
+                // minion bookkeeping, buff or source field is manufactured.
+                for(int i=0;i<60 && player.selectedItem!=1;i++)Step(context,owner,host,combat,input,cursor,false);
+                Require(player.selectedItem==1 && player.HeldItem.type==ItemID.CopperPickaxe,"summon owner naturally switches to a tool after the cast");
+                return body;
+            }
+            finally{audit.UnpatchAll(audit.Id);castPlayer=null;}
         }
         private static void SummonAttack(object context,object owner,object tools,object input)
         {
