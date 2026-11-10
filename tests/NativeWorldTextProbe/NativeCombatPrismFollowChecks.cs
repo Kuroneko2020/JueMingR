@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using JueMingR.Features.Combat;
+using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -34,6 +35,7 @@ namespace NativeWorldTextProbe
         private static AttackContact sealedContact;private static long sealedAbsolute,firstStrike;
         private static Vector2 sealedScreen,sealedOrigin;private static float sealedZoom;private static int sealedKey;
         private static Projectile damageSource;
+        private static int beamDepth,beamMoves,lastMoves;private static PredictionStop beamStop,lastStop;private static string lastBeamError;private static AttackContact lastBeamContact;
         private static void BeforeOuter(Projectile __instance)
         {if(withdraw && __instance.type==633 && __instance.owner==Main.myPlayer)Call(control,"ResetPreparation");}
         private static void BeforeNative(Projectile __instance,out Sample __state)
@@ -80,9 +82,12 @@ namespace NativeWorldTextProbe
             {
                 audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(AfterDamage)));
                 audit.Patch(typeof(NPC).GetMethod("StrikeNPC",Flags,null,new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)},null),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(Strike)));
+                var beam=combat.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostBeamAttack",true);
+                audit.Patch(beam.GetMethod("SolvePrepared",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(BeforeBeam)),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(AfterBeam)),finalizer:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(BeamFinal)));
+                audit.Patch(typeof(PlayerMotionContinuation).GetMethod("Advance",Flags),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(AfterMotion)));
             }
             samples.Clear();shadowReady=false;withdraw=false;stage="stationary";workTotal=workMax=0;worldSteps=budgetStops=0;
-            viewportCase=viewport;sealedContact=null;firstStrike=-1;frozenWouldExit=clearLineSeen=false;
+            viewportCase=viewport;sealedContact=null;firstStrike=-1;frozenWouldExit=clearLineSeen=false;beamDepth=lastMoves=0;lastStop=PredictionStop.None;lastBeamError=null;lastBeamContact=null;
             try
             {
                 // The fixed CPU world is only 120 tiles wide. Native borders
@@ -135,7 +140,14 @@ namespace NativeWorldTextProbe
             // The preceding world's Draw already established the viewport.
             // Original Main runs Player/NPC/projectiles BEFORE this world's
             // DoDraw_UpdateCameraPosition; do not centre after Player.Update.
-            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var physical=Main.screenPosition+new Vector2(Main.screenWidth*.25f,Main.screenHeight*.25f);NativeToolExecutionChecks.Sample(context,Get(context,"Input"),physical,held,movement);Call(combat,"Sample");Call(host,"SampleMouse");int x=Main.mouseX,y=Main.mouseY;
+            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");
+            // Sample accepts WORLD-native input and projects it to raw pixels.
+            // At zoom4 a native quarter-screen point projects outside the
+            // client. Choose a legal raw quarter first, then invert that same
+            // matrix; this is the physical cursor, unrelated to assisted aim.
+            var physical=Main.screenPosition+Vector2.Transform(new Vector2(Main.screenWidth*.25f,Main.screenHeight*.25f),Matrix.Invert(Main.GameViewMatrix.ZoomMatrix));NativeToolExecutionChecks.Sample(context,Get(context,"Input"),physical,held,movement);
+            var raw=Terraria.GameInput.PlayerInput.MouseInfo;Require(raw.X>=0 && raw.X<Main.screenWidth && raw.Y>=0 && raw.Y<Main.screenHeight,"fixture physical input remains an actual client pixel under the current zoom");
+            Call(combat,"Sample");Call(host,"SampleMouse");int x=Main.mouseX,y=Main.mouseY;
             NativeQuickItemChecks.BeginWorldStep();Main.LocalPlayer.Update(0);foreach(var n in Main.npc)if(n.active)n.UpdateNPC(n.whoAmI);
             for(int i=0;i<Main.maxProjectiles;i++)if(Main.projectile[i].active){Main.ProjectileUpdateLoopIndex=i;Main.projectile[i].Update(i);}Main.ProjectileUpdateLoopIndex=-1;
             Call(context,"UpdateRuntime");Call(context,"UpdateShell");Require(Main.mouseX==x && Main.mouseY==y,"normal native chain returns the physical mouse");
@@ -173,6 +185,14 @@ namespace NativeWorldTextProbe
         }
         private static void BeforeDamage(Projectile __instance,out Projectile __state){__state=damageSource;damageSource=__instance;}
         private static void AfterDamage(Projectile __state){damageSource=__state;}
+        private static void BeforeBeam(Projectile parent,out int __state)
+        {__state=beamDepth;if(viewportCase && parent.type==633 && parent.ai[0]<=8){beamDepth++;if(__state==0){beamMoves=0;beamStop=PredictionStop.None;lastBeamError=null;}}}
+        private static void AfterMotion(bool __result,PredictionStop stop)
+        {if(beamDepth>0){beamMoves++;if(!__result)beamStop=stop;}}
+        private static void AfterBeam(AttackContact __result,int __state)
+        {if(beamDepth>__state){lastMoves=beamMoves;lastStop=beamStop;lastBeamContact=__result;}beamDepth=__state;}
+        private static Exception BeamFinal(Exception __exception,int __state)
+        {if(__exception!=null && beamDepth>__state){lastMoves=beamMoves;lastStop=beamStop;lastBeamError=__exception.GetType().Name;lastBeamContact=null;}beamDepth=__state;return __exception;}
         private static void Strike(NPC __instance)
         {
             if(viewportCase && sealedContact!=null && firstStrike<0 && __instance.whoAmI==2 && damageSource?.type==632 && (int)(Terraria.DataStructures.ProjectileKey)damageSource.ai[1]==sealedKey)
@@ -184,6 +204,8 @@ namespace NativeWorldTextProbe
             if(sealedContact==null && parent.ai[0]>=1 && parent.ai[0]<=8)
             {
                 var contact=GetOptional(attack,"ExpectedImpact") as AttackContact;
+                var entry=((IDictionary)Get(control,"shots"))[(int)parent.key];var rawContact=GetOptional(entry,"Contact") as AttackContact;var timeline=GetOptional(control,"preparedTimeline") as NpcTrajectory;var work=Get(host,"PredictionWork");var lease=Get(entry,"PrismView");var physical=Terraria.GameInput.PlayerInput.MouseInfo;
+                Console.WriteLine("PRISM VIEWPORT prefix charge="+parent.ai[0]+" GUC="+Main.GameUpdateCount+" phase="+Get(control,"preparedPhase")+" prepared="+Get(entry,"Prepared")+" children="+((ICollection)Get(entry,"Children")).Count+" point="+Get(entry,"HasPoint")+" rawContact="+(rawContact==null?"null":rawContact.Tick.ToString())+" public="+(contact==null?"null":contact.Tick.ToString())+" viewCurrent="+Get(lease,"Current")+" futureUnknown="+Get(lease,"Unknown")+" timeline="+(timeline==null?"null":timeline.SampleTick+"/"+timeline.Count+"/"+timeline.Stop+"/paused="+timeline.BudgetPaused)+" moves="+lastMoves+" motionStop="+lastStop+" lastBeam="+(lastBeamContact==null?"null":lastBeamContact.Tick.ToString())+" error="+(lastBeamError??"none")+" work="+Get(work,"UsedMilliseconds")+" exceeded="+Get(work,"Exceeded")+" raw="+physical.X+","+physical.Y+" native="+Main.mouseX+","+Main.mouseY+" velocity="+parent.velocity+" view="+Main.screenPosition+" zoom="+Main.GameViewMatrix.RenderZoom.X);
                 if(contact!=null)
                 {
                     Require(contact.Timeline.SampleTick+contact.Tick>=Main.GameUpdateCount+20,"the sealed positive really needs a long future displacement before first receive");
@@ -191,7 +213,7 @@ namespace NativeWorldTextProbe
                     Console.WriteLine("PRISM VIEWPORT seal GUC="+Main.GameUpdateCount+" phase="+Get(control,"preparedPhase")+" charge="+parent.ai[0]+" sample="+contact.Timeline.SampleTick+" tick="+contact.Tick+" receive="+contact.ReceiveTick+" target="+contact.Timeline.Identity.Slot+" key="+sealedKey+" view="+sealedScreen+" zoom="+sealedZoom+" playArea="+Terraria.WorldBuilding.WorldUtils.GetWorldPlayArea());
                     var preview=Call(control,"Preview",contact.Timeline,Get(control,"preparedPhase"),0,false) as AttackContact;
                     Require(preview!=null && (bool)Call(control,"PreviewCurrent",preview),"the same positive Contact reaches its actual read-only controller preview consumer");
-                    var registry=(IDictionary)Get(control,"shots");var entry=registry[(int)parent.key];var z=Main.GameViewMatrix.Zoom;
+                    var registry=(IDictionary)Get(control,"shots");var z=Main.GameViewMatrix.Zoom;
                     try{Main.GameViewMatrix.Zoom=z*.9f;Require(GetOptional(attack,"ExpectedImpact")==null && !(bool)Call(control,"PreviewCurrent",preview) && (bool)Get(entry,"HasPoint") && registry.Contains((int)parent.key),"same-GUC viewport mutation withdraws only stale contact/preview, preserving the current point and source");}
                     finally{Main.GameViewMatrix.Zoom=z;}
                 }
