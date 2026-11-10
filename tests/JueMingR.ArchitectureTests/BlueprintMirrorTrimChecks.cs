@@ -67,9 +67,9 @@ namespace JueMingR.ArchitectureTests
             Require(!record.Mask.Apply(wall).HasContent,"old mask coordinates remain source local");
             var mirrored=new BlueprintSceneDocument(Scope,1000,500,8,new[]{new BlueprintSceneRecord(record.Template,record.OriginX,record.OriginY,record.Order,record.Mask,true)});
             byte[] bytes=BlueprintSceneCodec.Encode(mirrored);var reopened=BlueprintSceneCodec.Decode(bytes,Scope,1000,500);
-            Require(BitConverter.ToInt32(bytes,8)==2 && reopened.SourceVersion==2 && reopened.Records[0].MirroredHorizontally && !reopened.Records[0].Mask.Apply(wall).HasContent,"v2 persists pose with unchanged source mask");
+            Require(BitConverter.ToInt32(bytes,8)==3 && reopened.SourceVersion==3 && reopened.Records[0].MirroredHorizontally && !reopened.Records[0].Mask.Apply(wall).HasContent,"v3 persists pose with unchanged source mask");
             bytes[144]=2;ExpectProtected(Reseal(bytes),PreferenceStatus.UnsupportedVersion);
-            var future=old.Take(12).ToArray();Buffer.BlockCopy(BitConverter.GetBytes(3),0,future,8,4);ExpectProtected(future,PreferenceStatus.UnsupportedVersion);
+            var future=old.Take(12).ToArray();Buffer.BlockCopy(BitConverter.GetBytes(4),0,future,8,4);ExpectProtected(future,PreferenceStatus.UnsupportedVersion);
             var corrupt=(byte[])old.Clone();corrupt[50]^=1;ExpectProtected(corrupt,PreferenceStatus.Invalid);
         }
         private static void ExpectProtected(byte[] bytes,PreferenceStatus status)
@@ -85,7 +85,7 @@ namespace JueMingR.ArchitectureTests
                 Require(!history.Protected && File.ReadAllBytes(path).SequenceEqual(original) && !File.Exists(path+".schema1-original"),"loading old document does not rewrite or fabricate an archive");
                 var record=history.Restored.Records[0];Require(history.Offer(new[]{new BlueprintSceneRecord(record.Template,record.OriginX,record.OriginY,record.Order,record.Mask,true)}),"real committed pose accepted");
                 Until(()=>{history.Poll();return history.Saved;});
-                Require(File.ReadAllBytes(path+".schema1-original").SequenceEqual(original) && BlueprintSceneCodec.Decode(File.ReadAllBytes(path),Scope,1000,500).Records[0].MirroredHorizontally,"first actual v2 write retains exact authenticated source bytes");
+                Require(File.ReadAllBytes(path+".schema1-original").SequenceEqual(original) && BlueprintSceneCodec.Decode(File.ReadAllBytes(path),Scope,1000,500).Records[0].MirroredHorizontally,"first actual current-version write retains exact authenticated source bytes");
             }
             finally { Require(history.Stop(3000),"document worker stopped before cleanup"); }
             Directory.Delete(root,true);

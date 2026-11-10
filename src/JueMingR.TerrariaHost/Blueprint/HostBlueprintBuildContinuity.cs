@@ -91,8 +91,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             // PlaceBase and ordinary placement share the actual Tiles path.
             // Hammer Mode is an observed shape, not a borrowed tool setting.
-            bool baseA = a == null || a.Kind == BlueprintBuildOperationKind.PlaceBase || a.Kind == BlueprintBuildOperationKind.ConvertSubstrate;
-            bool baseB = b == null || b.Kind == BlueprintBuildOperationKind.PlaceBase || b.Kind == BlueprintBuildOperationKind.ConvertSubstrate;
+            bool baseA = a == null || a.Kind == BlueprintBuildOperationKind.PlaceBase || a.Kind == BlueprintBuildOperationKind.ConvertSubstrate || a.Kind == BlueprintBuildOperationKind.HoikBase || a.Kind == BlueprintBuildOperationKind.HoikSwap;
+            bool baseB = b == null || b.Kind == BlueprintBuildOperationKind.PlaceBase || b.Kind == BlueprintBuildOperationKind.ConvertSubstrate || b.Kind == BlueprintBuildOperationKind.HoikBase || b.Kind == BlueprintBuildOperationKind.HoikSwap;
             if (baseA || baseB) return baseA && baseB;
             if (a.Kind == BlueprintBuildOperationKind.Hammer && b.Kind == BlueprintBuildOperationKind.Hammer) return true;
             return a.Kind == b.Kind && a.Consumer == b.Consumer && a.Mode == b.Mode && a.SupplyType == b.SupplyType && a.Cycle == b.Cycle && a.BucketType == b.BucketType;
@@ -152,8 +152,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if(group==null)return false;
             var a=group.Operation;var b=operation;
-            bool ordinaryA=a==null || a.Kind==BlueprintBuildOperationKind.PlaceBase || a.Kind==BlueprintBuildOperationKind.ConvertSubstrate;
-            bool ordinaryB=b==null || b.Kind==BlueprintBuildOperationKind.PlaceBase || b.Kind==BlueprintBuildOperationKind.ConvertSubstrate;
+            bool ordinaryA=a==null || a.Kind==BlueprintBuildOperationKind.PlaceBase || a.Kind==BlueprintBuildOperationKind.ConvertSubstrate || a.Kind==BlueprintBuildOperationKind.HoikBase || a.Kind==BlueprintBuildOperationKind.HoikSwap;
+            bool ordinaryB=b==null || b.Kind==BlueprintBuildOperationKind.PlaceBase || b.Kind==BlueprintBuildOperationKind.ConvertSubstrate || b.Kind==BlueprintBuildOperationKind.HoikBase || b.Kind==BlueprintBuildOperationKind.HoikSwap;
             if(ordinaryA || ordinaryB)return ordinaryA && ordinaryB && group.Source.Type==toolType && group.Consumer==consumer;
             if(b==null || a.Kind!=b.Kind)return false;
             if(a.Kind==BlueprintBuildOperationKind.Hammer || a.Kind==BlueprintBuildOperationKind.Scrape)return true;

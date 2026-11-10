@@ -17,6 +17,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private string exchangeName, exchangeVersion;
         private BlueprintExportNameProposal exchangeProposal;
         private bool exchangeShowing;
+        private IBlueprintImportProfile exchangeImportProfile;
         internal bool ExchangeBusy { get { return exchangeRequest != Guid.Empty || Library?.ExchangeBusy == true; } }
         internal string ExchangeDisabledReason
         {
@@ -44,6 +45,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // versionNumber is display text (it may contain a leading 'v').
             // The verified host assembly owns the canonical target identity.
             exchangeTemplate = key; exchangeName = name; exchangeVersion = typeof(Main).Assembly.GetName().Version.ToString(); exchangeProposal = null;
+            exchangeImportProfile = key == null ? BlueprintHorizontalMirrorResolver.Create() : null;
             Pointer.Cancel(); Toolbar.Cancel(); State.Interrupt();
             if (key == null) { if (Library.TryReserveExchange(exchangeRequest)) ShowExchangeDialog(); else RetireExchange(); }
             else if (!Library.TryBeginExchange(new BlueprintExchangeRequest { RequestId = exchangeRequest, Kind = BlueprintExchangeKind.PrepareExport }))
@@ -76,7 +78,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 else
                 {
                     var request = new BlueprintExchangeRequest { RequestId = exchangeRequest, Kind = exchangeTemplate == null ? BlueprintExchangeKind.Import : BlueprintExchangeKind.Export,
-                        TemplateKey = exchangeTemplate, Name = exchangeName, SupportedTargetVersion = exchangeVersion, Ticket = selected.Ticket, Proposal = exchangeProposal, CounterCandidate = selected.CounterCandidate };
+                        TemplateKey = exchangeTemplate, Name = exchangeName, SupportedTargetVersion = exchangeVersion, Ticket = selected.Ticket, Proposal = exchangeProposal, CounterCandidate = selected.CounterCandidate, ImportProfile = exchangeImportProfile };
                     if (!Library.TryBeginExchange(request)) { selected.Ticket.Dispose(); Library.CancelExchange(exchangeRequest); projectionFeedback = "未能开始文件操作，请重新尝试"; RetireExchange(); }
                 }
             }
@@ -106,6 +108,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Keep request identity until its accepted write/dialog reports.
             // This cannot transfer its presentation rights to the new session.
         }
-        private void RetireExchange() { exchangeRequest = Guid.Empty; exchangeTemplate = null; exchangeName = exchangeVersion = null; exchangeProposal = null; exchangeShowing = false; }
+        private void RetireExchange() { exchangeRequest = Guid.Empty; exchangeTemplate = null; exchangeName = exchangeVersion = null; exchangeProposal = null; exchangeImportProfile = null; exchangeShowing = false; }
     }
 }

@@ -20,6 +20,15 @@ function Get-WorkloadLeafChecks {
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
     $leaves = @{
+        'tests/JueMingR.ArchitectureTests/BlueprintHoikSceneChecks.cs'=@('BlueprintHoikSceneChecks')
+        'tests/NativeWorldTextProbe/NativeBlueprintHoikChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHoikMixedChecks.cs'=@('native-BlueprintHoikCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHoikPersistenceChecks.cs'=@('native-BlueprintHoikCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHoikRecoveryChecks.cs'=@('native-BlueprintHoikCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHoikSubstitutionChecks.cs'=@('native-BlueprintHoikSubstitutionCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHelperImportChecks.cs'=@('native-BlueprintExchangeCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintImportedMaterialsChecks.cs'=@('native-BlueprintImportedMaterialsCpu')
+        'tests/NativeWorldTextProbe/NativeViewZoomControlChecks.cs'=@('native-ViewZoomControlCpu')
         'tests/JueMingR.ArchitectureTests/RuntimeFailureChecks.cs'=@('RuntimeFailureChecks')
         'tests/JueMingR.ArchitectureTests/PreferenceDeadlineChecks.cs'=@('PreferenceDeadlineChecks')
         'tests/JueMingR.ArchitectureTests/WorldObjectText/OpenedDeadlineChecks.cs'=@('OpenedDeadlineChecks')
@@ -71,7 +80,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintWorldChangeChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionLifecycleCpu','native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs'=@('native-BlueprintCpu','native-BlueprintInput')
-        'tests/NativeWorldTextProbe/NativeBlueprintBuildChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSubstitutionCpu','native-BlueprintCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBuildChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintBuildCadenceCpu','native-BlueprintSubstitutionCpu','native-BlueprintCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildCadenceChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPostProcessingContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBusinessContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSupplyContinuationCpu')
@@ -82,8 +91,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintFocusDiscoveryChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintOperationGroupChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPostProcessingCadenceChecks.cs'=@('native-BlueprintBuildCadenceCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintConstructionChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintPreparationCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintConstructionAppearanceChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintConstructionChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintPreparationCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintConstructionAppearanceChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintAppearanceRestorationChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSmartPlacementRepairChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintExactChoiceRepairChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintSpecialCpu')
@@ -487,8 +496,22 @@ function Get-WorkloadLeafChecks {
         $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
         $leaves[$path]=@($leaves[$path])+@('native-BlueprintNearQueueCpu')
     }
+    # Follow-up Hoik substitution calls these existing native preparation,
+    # actual source-capture, Save/Place and diagnostic helpers. Bind their
+    # bytes to this new leaf without executing their sibling families.
+    foreach($helper in @('Build','Construction','ConstructionAppearance','WorldMatch','Substitution','Hoik')){
+        $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
+        $leaves[$path]=@($leaves[$path])+@('native-BlueprintHoikSubstitutionCpu')
+    }
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintCompletionV2Checks.cs']+=@($leaves['tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs'])
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs']+=@('native-BlueprintNearQueueCpu','native-BlueprintSupplyContinuationCpu','native-BlueprintBuildCadenceCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu','native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionLifecycleCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs']+=@('native-BlueprintHoikSubstitutionCpu')
+    foreach($helper in @('WorldMatch','HelperImport','Build')){
+        $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
+        $leaves[$path]=@($leaves[$path])+@('native-BlueprintImportedMaterialsCpu')
+    }
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs']+=@('native-BlueprintImportedMaterialsCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeLegacyPlacementIdentityChecks.cs']+=@('native-BlueprintImportedMaterialsCpu')
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintExpectationChecks.cs']=@('native-BlueprintNearQueueCpu')
     # A family enters EffectChecks.RunCore and returns from its exact branch.
     # Its own body and called shared scene/Save/Step/solution helpers matter;
@@ -658,6 +681,10 @@ function Get-WorkloadNativeScopes {
         'BlueprintBuildCadenceCpu'=@('blueprint-host','tools-host');
         'BlueprintPreparationCpu'=@('blueprint-host','tools-host');
         'BlueprintAppearanceCpu'=@('blueprint-host','tools-host');
+        'BlueprintHoikCpu'=@('blueprint-host','tools-host');
+        'BlueprintHoikSubstitutionCpu'=@('blueprint-host','tools-host');
+        'BlueprintImportedMaterialsCpu'=@('blueprint-host','tools-host');
+        'ViewZoomControlCpu'=@('view-host','shared-host','hotkeys');
         'BlueprintWiringCpu'=@('blueprint-host','tools-host');
         'BlueprintSpecialCpu'=@('blueprint-host','tools-host');
         'BlueprintInput'=@('blueprint-host','shared-host','storage-host','notes-host','preferences','hotkeys');

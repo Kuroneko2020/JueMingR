@@ -172,6 +172,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             ClearProjectionPersistenceRead();
             projectionSceneDirty = false;
             ClearAutomaticBuild();
+            // Session/whole-scene cleanup also owns pending restore admissions
+            // that have not yet entered projectionScene. Normal session exit
+            // has sealed its committed snapshot before this resource release.
+            hoikBases.Clear();hoikInventory=null;hoikPick=null;hoikPickSlot=-1;
             projectionCapacityRevision++; ClearProjectionPoint();
             Library?.CloseProjection(); projectionTransaction++; projectionSceneRevision++; ClearProjectionEditor(); projectionEditKind = BlueprintProjectionEditKind.None;
             foreach (var item in projectionScene) DisposeProjectionData(item); projectionScene.Clear();
@@ -310,6 +314,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void DisposeProjectionData(BlueprintProjectionPlacement item)
         {
+            ReleaseHoikPending(item);
             RetireAutomaticBuild(item.Identity);
             // Delete rollback owns its separate Copy before this point. A dead
             // instance itself must release DTOs and the shared source index,
@@ -432,6 +437,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void RebuildProjectionMask(BlueprintProjectionPlacement item)
         {
+            RetireMaskedHoikPending(item);
             item.Denied.Clear();
             // A new Copy/retired hidden renderer needs every retained core.
             // Freeze this before the loop: publishing its first core must not

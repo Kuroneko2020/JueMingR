@@ -98,7 +98,10 @@ namespace JueMingR.Infrastructure.Blueprint
                 options &= ~(0x200u | 0x20u); // one file, no folder picker
                 options |= request.Kind == BlueprintFileDialogKind.Import ? 0x1000u : 0x2u | 0x4u | 0x8000u;
                 dialog.SetOptions(options);
-                dialog.SetFileTypes(1, new[] { new Filter { Name = "JueMingR 蓝图 (*.jmbp)", Pattern = "*.jmbp" } });
+                Filter[] filters = request.Kind == BlueprintFileDialogKind.Import
+                    ? new[] { new Filter { Name = "蓝图 (*.jmbp;*.json)", Pattern = "*.jmbp;*.json" }, new Filter { Name = "JueMingR 蓝图 (*.jmbp)", Pattern = "*.jmbp" }, new Filter { Name = "小助手蓝图 (*.json)", Pattern = "*.json" } }
+                    : new[] { new Filter { Name = "JueMingR 蓝图 (*.jmbp)", Pattern = "*.jmbp" } };
+                dialog.SetFileTypes((uint)filters.Length, filters);
                 dialog.SetFileTypeIndex(1); dialog.SetDefaultExtension("jmbp");
                 dialog.SetTitle(request.Kind == BlueprintFileDialogKind.Import ? "导入蓝图" : "导出蓝图");
                 if (request.Kind == BlueprintFileDialogKind.Export) dialog.SetFileName(request.SuggestedLeaf);
@@ -120,7 +123,9 @@ namespace JueMingR.Infrastructure.Blueprint
                     {
                         dialog.GetResult(out selected);
                         string path = Path.GetFullPath(PathOf(selected));
-                        if (!string.Equals(Path.GetExtension(path), ".jmbp", StringComparison.OrdinalIgnoreCase)) throw new IOException("dialog-extension");
+                        string extension = Path.GetExtension(path);
+                        if (!string.Equals(extension, ".jmbp", StringComparison.OrdinalIgnoreCase) &&
+                            !(request.Kind == BlueprintFileDialogKind.Import && string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase))) throw new IOException("dialog-extension");
                         if (request.Kind == BlueprintFileDialogKind.Import) ticket = WindowsBlueprintFileTicket.Source(request.RequestId, path);
                         else ticket = events.Finish(path);
                         outcome = BlueprintFileDialogOutcome.Selected; error = null;

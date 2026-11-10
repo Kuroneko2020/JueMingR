@@ -20,6 +20,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private static readonly FieldInfo materialBuckets = typeof(FlexibleTileWand).GetField("_options", BindingFlags.Instance | BindingFlags.NonPublic);
         private static readonly Type materialBucketType = typeof(FlexibleTileWand).GetNestedType("OptionBucket", BindingFlags.NonPublic);
         private static readonly FieldInfo materialOptions = materialBucketType?.GetField("Options"), materialConsume = materialBucketType?.GetField("ItemTypeToConsume");
+        private static readonly FieldInfo materialTrackTypes = typeof(Minecart).GetField("_trackType", BindingFlags.Static | BindingFlags.NonPublic);
         private BlueprintPlacementCatalog materialCatalog;
         private long placementRevision;
         private long materialPlacementTick;
@@ -162,6 +163,32 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private bool CompileMaterialRulesCore(Item sample, int tile, int style, int consumed, long units, bool flexible, BlueprintSpecialProducer producer)
         {
             if (tile < 0 || tile >= TileID.Count || style < 0) return false;
+            if (tile == TileID.MinecartTrack)
+            {
+                // Main.Initialize owns this table. Never initialize native
+                // metadata here or let the worker query Minecart/world state.
+                var types = materialTrackTypes?.GetValue(null) as int[];
+                if (types == null || types.Length != 36) return false;
+                var frames = new List<int>();
+                for (short frame = 0; frame < types.Length; frame++)
+                    if (Minecart.GetTrackItem(new Tile { frameX = frame }) == sample.type) frames.Add(frame);
+                if (frames.Count == 0) return false;
+                materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units,
+                    tile, style, flexible: flexible, producer: producer), false, trackFrames: frames.ToArray()));
+                return true;
+            }
+            if (tile == TileID.Traps)
+            {
+                // These original legacy cells have no TileObjectData. PlaceTile
+                // writes 18*style, Player's SpinTraps/hammer consumer selects a
+                // finite X direction bank. Direction does not change the item.
+                if (style > 5) return false;
+                int directions = style == 3 || style == 4 ? 5 : 6;
+                for (int direction = 0; direction < directions; direction++)
+                    materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units,
+                        tile, style, flexible: flexible, producer: producer), false, baseX: direction * 18, baseY: style * 18));
+                return true;
+            }
             if (tile == TileID.ClosedDoor)
             {
                 materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units,

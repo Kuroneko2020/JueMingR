@@ -19,7 +19,7 @@ namespace JueMingR.Features.Blueprint
             {
                 using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
                 {
-                    writer.Write(Magic); writer.Write(2); writer.Write(Hex(value.Scope)); writer.Write(value.Width); writer.Write(value.Height); writer.Write(value.Revision); writer.Write(value.Records.Count);
+                    writer.Write(Magic); writer.Write(3); writer.Write(Hex(value.Scope)); writer.Write(value.Width); writer.Write(value.Height); writer.Write(value.Revision); writer.Write(value.Records.Count);
                     foreach (var record in value.Records)
                     {
                         writer.Write(record.Template.AssetId.ToByteArray()); writer.Write(record.Template.ContentRevision.ToByteArray()); writer.Write(Convert.FromBase64String(record.Template.ContentHash));
@@ -29,6 +29,13 @@ namespace JueMingR.Features.Blueprint
                         var cells = record.Mask.CopyCells(); var keys = new List<long>(cells.Keys); keys.Sort(); writer.Write(keys.Count);
                         foreach (long key in keys) { writer.Write(key); writer.Write(cells[key]); }
                         var objects = new List<int>(record.Mask.CopyObjects()); objects.Sort(); writer.Write(objects.Count); foreach (int id in objects) writer.Write(id);
+                        writer.Write(record.HoikPending.Count);
+                        foreach (var pending in record.HoikPending)
+                        {
+                            var cell = pending.Expected; writer.Write(cell.X); writer.Write(cell.Y); writer.Write(cell.TileType); writer.Write(cell.Slope); writer.Write(cell.TilePaint);
+                            writer.Write((byte)((cell.HalfBrick ? 1 : 0) | (cell.Inactive ? 2 : 0) | (cell.InvisibleTile ? 4 : 0) | (cell.FullbrightTile ? 8 : 0)));
+                            writer.Write(cell.ObjectId);
+                        }
                     }
                     writer.Flush();
                 }
@@ -54,7 +61,7 @@ namespace JueMingR.Features.Blueprint
             {
                 if (header.ReadUInt64() != Magic) throw new InvalidDataException("blueprint-scene-format");
                 version = header.ReadInt32();
-                if (version != 1 && version != 2) throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "blueprint-scene-version");
+                if (version != 1 && version != 2 && version != 3) throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion, "blueprint-scene-version");
             }
             if (bytes == null || bytes.Length < 96) throw new InvalidDataException("blueprint-scene-truncated");
             using (var sha = SHA256.Create())
@@ -84,7 +91,20 @@ namespace JueMingR.Features.Blueprint
                     int objectCount = Count(reader, 4); var objects = new HashSet<int>(); int priorId = 0;
                     for (int i = 0; i < objectCount; i++) { int id = reader.ReadInt32(); if (id <= priorId) throw new InvalidDataException("blueprint-scene-mask-object"); priorId = id; objects.Add(id); }
                     if (cellCount == 0 && objectCount == 0 && removed != 0 || (cellCount != 0 || objectCount != 0) && removed == 0) throw new InvalidDataException("blueprint-scene-mask-count");
-                    records.Add(new BlueprintSceneRecord(template, x, y, order, new BlueprintProjectionMask(cells, objects, removed, construction), pose == 1));
+                    var pending = new List<BlueprintHoikPending>();
+                    if (version >= 3)
+                    {
+                        int pendingCount = Count(reader, 17);
+                        for (int i = 0; i < pendingCount; i++)
+                        {
+                            int px = reader.ReadInt32(), py = reader.ReadInt32(); ushort type = reader.ReadUInt16(); byte slope = reader.ReadByte(), paint = reader.ReadByte(), flags = reader.ReadByte();
+                            int targetObject=reader.ReadInt32();
+                            if (px < 0 || py < 0 || (long)x + px >= width || (long)y + py >= height || flags > 15) throw new InvalidDataException("blueprint-hoik-bounds");
+                            pending.Add(new BlueprintHoikPending(new CaptureCell { X = px, Y = py, ObjectId=targetObject, Layers = CaptureLayer.Tile, TileType = type, Slope = slope, TilePaint = paint,
+                                HalfBrick = (flags & 1) != 0, Inactive = (flags & 2) != 0, InvisibleTile = (flags & 4) != 0, FullbrightTile = (flags & 8) != 0 }));
+                        }
+                    }
+                    records.Add(new BlueprintSceneRecord(template, x, y, order, new BlueprintProjectionMask(cells, objects, removed, construction), pose == 1, pending));
                 }
                 if (stream.Position != stream.Length) throw new InvalidDataException("blueprint-scene-trailing");
                 return new BlueprintSceneDocument(scope, width, height, revision, records, version);

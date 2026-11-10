@@ -62,8 +62,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                     !OrdinaryHammerShapeType(type) ||
                     target.Cell.Slope == actual.Cell.Slope && target.Cell.HalfBrick == actual.Cell.HalfBrick) return false;
                 // Platforms never produce slope 3/4 in their native hammer
-                // cycle. Match can retain an already correct one; manufacturing
-                // a temporary block or replacing a different body is not ours.
+                // cycle. Special slopes are planned by the provenance-bound
+                // stone/hammer/BlockSwap route before this ordinary branch.
                 if (shape.Platform && target.Cell.Slope > 2) return false;
                 operation = new BlueprintBuildOperation {
                     Kind = BlueprintBuildOperationKind.Hammer, Consumer = ToolBuildConsumer.Hammer,

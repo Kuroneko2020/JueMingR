@@ -8,7 +8,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 {
     internal sealed partial class HostBlueprint
     {
-        private enum NearCapabilityFamily { Types, Hammer, Brush, Roller, Scraper }
+        private enum NearCapabilityFamily { Types, Hammer, Brush, Roller, Scraper, Pick }
         // Shared by live facts/ranges, with no Item, source window or lease.
         // A recovery serial changes only when a matching qualified capability
         // returns/expands. Loss and unrelated types do not reopen negatives.
@@ -30,9 +30,9 @@ namespace JueMingR.TerrariaHost.Blueprint
         private Dictionary<int,NearCapabilityType> nearCapabilityTypes=new Dictionary<int,NearCapabilityType>();
         private Dictionary<int,NearCapabilityType> nearCapabilityNext=new Dictionary<int,NearCapabilityType>();
         private readonly Dictionary<int,NearCapabilityType> nearCapabilityLive=new Dictionary<int,NearCapabilityType>();
-        private readonly long[] nearCapabilityFamilies=new long[5];
-        private readonly int[] nearCapabilityReach=new int[5];
-        private readonly long[] nearCapabilityLiveFamilies=new long[5];
+        private readonly long[] nearCapabilityFamilies=new long[6];
+        private readonly int[] nearCapabilityReach=new int[6];
+        private readonly long[] nearCapabilityLiveFamilies=new long[6];
         private object nearCapabilityCatalog;
         private long nearCapabilityCatalogIdentity,nearCapabilityClock;
         private bool nearCapabilityObserving,nearCapabilityLiveValid;
@@ -51,9 +51,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             get
             {
                 long typeSlots=4L*nearCapabilityTypeHighWater,keySlots=4L*nearCapabilityKeyHighWater;
-                // Four dictionary objects/owner fields, two five-long arrays;
+                // Four dictionary objects/owner fields, two six-long arrays;
                 // per-slot bounds include bucket ints, entry padding and refs.
-                return 4L*128+2L*(24+5*8)+(24+5*4)+64+3L*typeSlots*48+keySlots*40+nearCapabilityKeyPayloadBytes;
+                return 4L*128+2L*(24+6*8)+(24+6*4)+64+3L*typeSlots*48+keySlots*40+nearCapabilityKeyPayloadBytes;
             }
         }
         private static long NearCapabilityPayloadEstimate(NearCapabilityDependency dependency)
@@ -111,6 +111,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(item.type==ItemID.PaintRoller || item.type==ItemID.SpectrePaintRoller)value.Families|=1<<(int)NearCapabilityFamily.Roller;
             NearCapabilityDependencyWork();
             if(ItemID.Sets.IsPaintScraper[item.type])value.Families|=1<<(int)NearCapabilityFamily.Scraper;
+            if(item.pick>0)value.Families|=1<<(int)NearCapabilityFamily.Pick;
             destination[item.type]=value;
 #if DEBUG
             nearCapabilityTypeHighWater=Math.Max(nearCapabilityTypeHighWater,destination.Count);
@@ -120,6 +121,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if(!nearCapabilityObserving)return;
             Array.Clear(nearCapabilityReach,0,nearCapabilityReach.Length);
+            int presentFamilies=0;
             // Arrays retain the greatest recovery even during absence. This
             // preserves a negative cutoff through ordinary positive-stack noise.
             foreach(var pair in nearCapabilityNext)
@@ -134,10 +136,18 @@ namespace JueMingR.TerrariaHost.Blueprint
             foreach(var pair in nearCapabilityLive)
             {
                 NearCapabilityDependencyWork();nearCapabilityNext[pair.Key]=pair.Value;
-                for(int family=1;family<5;family++)
+                for(int family=1;family<6;family++)
                 {
                     NearCapabilityDependencyWork();
-                    if((pair.Value.Families&(1<<family))!=0){nearCapabilityFamilies[family]=Math.Max(nearCapabilityFamilies[family],pair.Value.Serial);nearCapabilityReach[family]=Math.Max(nearCapabilityReach[family],pair.Value.Reach);}
+                    if((pair.Value.Families&(1<<family))!=0)
+                    {
+                        nearCapabilityFamilies[family]=Math.Max(nearCapabilityFamilies[family],pair.Value.Serial);
+                        // Wooden tools can have negative tileBoost. Absence's
+                        // zero fallback must never widen a present -1 tool and
+                        // sign a false in-reach negative across its real edge.
+                        nearCapabilityReach[family]=(presentFamilies&(1<<family))==0?pair.Value.Reach:Math.Max(nearCapabilityReach[family],pair.Value.Reach);
+                        presentFamilies|=1<<family;
+                    }
                 }
             }
             nearCapabilityLive.Clear();
@@ -149,7 +159,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         // keep its legal long tool even when its current source is shorter.
         private int NearOperationBoost(BlueprintBuildOperation operation,int fallbackType)
         {
-            if(operation?.Kind==BlueprintBuildOperationKind.Hammer)return nearCapabilityReach[(int)NearCapabilityFamily.Hammer];
+            if(operation?.Kind==BlueprintBuildOperationKind.Hammer || HoikOperation(operation) && operation.HoikWaitTool==1)return nearCapabilityReach[(int)NearCapabilityFamily.Hammer];
             if(operation?.Kind==BlueprintBuildOperationKind.PaintTile)return nearCapabilityReach[(int)NearCapabilityFamily.Brush];
             if(operation?.Kind==BlueprintBuildOperationKind.PaintWall)return nearCapabilityReach[(int)NearCapabilityFamily.Roller];
             if(operation?.Kind==BlueprintBuildOperationKind.Scrape)return nearCapabilityReach[(int)NearCapabilityFamily.Scraper];
@@ -168,15 +178,16 @@ namespace JueMingR.TerrariaHost.Blueprint
         private int NearLiveOperationBoost(BlueprintBuildOperation operation,int fallbackType)
         {
             var family=NearCapabilityFamily.Types;
-            if(operation?.Kind==BlueprintBuildOperationKind.Hammer)family=NearCapabilityFamily.Hammer;
+            if(operation?.Kind==BlueprintBuildOperationKind.Hammer || HoikOperation(operation) && operation.HoikWaitTool==1)family=NearCapabilityFamily.Hammer;
             else if(operation?.Kind==BlueprintBuildOperationKind.PaintTile)family=NearCapabilityFamily.Brush;
             else if(operation?.Kind==BlueprintBuildOperationKind.PaintWall)family=NearCapabilityFamily.Roller;
             else if(operation?.Kind==BlueprintBuildOperationKind.Scrape)family=NearCapabilityFamily.Scraper;
             int best=0;
             if(family!=NearCapabilityFamily.Types || operation?.NativePlacement?.Producer!=null)
             {
+                bool found=false;
                 foreach(var pair in nearCapabilityLive)
-                {NearCapabilityDependencyWork();if(family==NearCapabilityFamily.Types || (pair.Value.Families&(1<<(int)family))!=0)best=Math.Max(best,pair.Value.Reach);}
+                {NearCapabilityDependencyWork();if(family==NearCapabilityFamily.Types || (pair.Value.Families&(1<<(int)family))!=0){best=found?Math.Max(best,pair.Value.Reach):pair.Value.Reach;found=true;}}
                 return best;
             }
             if(WiringOperation(operation))
@@ -193,7 +204,24 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(!nearCapabilityObserving)return null;
             NearCapabilityDependencyWork();
             var family=NearCapabilityFamily.Types;string identity;int[] types=null;
-            if(operation?.Kind==BlueprintBuildOperationKind.Hammer)
+            if(HoikOperation(operation) && operation.HoikWaitTool==3)
+            {
+                // Starting/swap waits subscribe to this policy's actual final
+                // platform set, not to the temporary stone or original-only
+                // type. The existing shared type serials wake allowed restock
+                // without polling every candidate or widening its reach.
+                var placement=MaterialCatalog?.Tile(cell,obj);var accepted=new List<int>();
+                if(placement!=null)
+                {
+                    accepted.Add(placement.UseItemType);
+                    var candidates=MaterialCatalog.Substitution?.Candidates(placement,substitutionPolicy);
+                    if(candidates!=null)foreach(var candidate in candidates)
+                        if(BasicPlacement(candidate) && !accepted.Contains(candidate.UseItemType))accepted.Add(candidate.UseItemType);
+                }
+                types=accepted.ToArray();identity="hoik-platform:"+(placement?.UseItemType??0)+":"+substitutionRevision;
+            }
+            else if(HoikOperation(operation) && operation.HoikWaitTool==2){family=NearCapabilityFamily.Pick;identity="hoik-pick";}
+            else if(operation?.Kind==BlueprintBuildOperationKind.Hammer || HoikOperation(operation) && operation.HoikWaitTool==1)
             {
                 family=NearCapabilityFamily.Hammer;
                 // The original hammer matcher also rejects axe/hammer tiles.
@@ -260,7 +288,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             nearCapabilityLiveValid=enabled && p!=null;
             if(!nearCapabilityLiveValid)return;
-            nearCapabilityLive.Clear();Array.Copy(nearCapabilityFamilies,nearCapabilityLiveFamilies,5);
+            nearCapabilityLive.Clear();Array.Copy(nearCapabilityFamilies,nearCapabilityLiveFamilies,nearCapabilityFamilies.Length);
             for(int slot=0;slot<50;slot++)
             {
                 NearCapabilitySlotWork();var item=p.inventory[slot];
@@ -272,7 +300,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 NearCapabilityDependencyWork();NearCapabilityType old;
                 long serial=!nearCapabilityTypes.TryGetValue(pair.Key,out old) ||
                     (pair.Value.Families&~old.Families)!=0 || pair.Value.Reach>old.Reach?nearCapabilityClock+1:old.Serial;
-                for(int family=1;family<5;family++)
+                for(int family=1;family<6;family++)
                 {NearCapabilityDependencyWork();if((pair.Value.Families&(1<<family))!=0)nearCapabilityLiveFamilies[family]=Math.Max(nearCapabilityLiveFamilies[family],serial);}
             }
         }
@@ -299,7 +327,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // retain their high-water backing arrays, including while OFF.
             nearCapabilityKeyPayloadBytes=0;
 #endif
-            Array.Clear(nearCapabilityFamilies,0,5);Array.Clear(nearCapabilityLiveFamilies,0,5);
+            Array.Clear(nearCapabilityFamilies,0,nearCapabilityFamilies.Length);Array.Clear(nearCapabilityLiveFamilies,0,nearCapabilityLiveFamilies.Length);
             nearCapabilityCatalog=null;nearCapabilityObserving=nearCapabilityLiveValid=false;
         }
     }

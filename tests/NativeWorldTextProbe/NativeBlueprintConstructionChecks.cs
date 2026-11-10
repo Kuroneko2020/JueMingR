@@ -86,6 +86,8 @@ namespace NativeWorldTextProbe
                     if(family==null || family=="SupplyPresentation" || family=="SupplySmartWiring")
                         check("disabled return selection and original map return provenance",()=>ConstructionPlacementSupplyRepair(context,host,tools,input));
                     if(family=="SmartPlatform")check("natural smart platform slopes and fallback",()=>ConstructionSmartPlatform(context,host,tools,input));
+                    if(family=="Hoik")check("native Hoik manufacturing and complete production targets",()=>ConstructionHoik(context,host,tools,input));
+                    if(family=="HoikSubstitution")check("Hoik allowed-platform substitution and restock",()=>ConstructionHoikSubstitution(context,host,tools,input));
                     if(family=="Substitution")ConstructionSubstitution(context,host,tools,input,check);
                     if(family=="ActuatorNetwork")check("original multiplayer temporary actuator provenance",()=>ConstructionWiringActuatorNetwork(context,host,tools,input));
                     if(family=="SupplyPresentation")

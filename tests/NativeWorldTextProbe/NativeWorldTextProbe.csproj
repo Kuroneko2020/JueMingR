@@ -9,6 +9,7 @@
     <JueMingRProbeBuildRoot Condition="'$(JueMingRProbeBuildRoot)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\build\Debug\work\bin</JueMingRProbeBuildRoot>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="System.Runtime.Serialization" />
     <Compile Include="../Workload/BusinessAssertionProtocol.cs" />
     <Compile Include="../Phase0U/ViewControlChecks.cs" Link="ViewControlChecks.cs" />
     <Reference Include="JueMingR.Platform"><HintPath>$(JueMingRProbeBuildRoot)\JueMingR.Platform\x86\$(JueMingRProbeReferenceConfiguration)\net472\JueMingR.Platform.dll</HintPath></Reference>

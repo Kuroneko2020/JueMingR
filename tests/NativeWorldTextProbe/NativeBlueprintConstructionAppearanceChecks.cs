@@ -14,6 +14,7 @@ namespace NativeWorldTextProbe
         // every destination change after SetAutomatic comes from production.
         internal static void ConstructionAppearance(object context, object host, object tools, object input)
         {
+            HoikNativeReachability(context, host, tools, input);
             ConstructionAppearanceRestoration(context, host, tools, input);
             Action<string, Action> check = (name, body) =>
             {
@@ -920,7 +921,7 @@ namespace NativeWorldTextProbe
                 "wall-only scraper cannot erase an unselected painted foreground and the other legitimate body still receives service");
         }
 
-        private static void ConstructionPlatformBoundary(object context, object host, object tools, object input, byte slope)
+        private static void ConstructionPlatformBoundary(object context, object host, object tools, object input, byte slope, bool existing = false)
         {
             var p = Reset(context, host, tools, input);
             // Both fixed cells must be reachable by the actual hammer, whose
@@ -936,14 +937,24 @@ namespace NativeWorldTextProbe
             var entry = Asset(host, new CaptureCell { Layers = CaptureLayer.Tile, TileType = TileID.Platforms,
                     FrameY = (short)(p.inventory[12].placeStyle * 18), Slope = slope },
                 new CaptureCell { X = 2, Layers = CaptureLayer.Tile, TileType = TileID.Stone, Slope = 1 });
-            Place(context, host, input, entry, 44, 42); SetAutomatic(host, input, true);
-            Until(context, input, () => Main.tile[44, 42].active() && Main.tile[46, 42].active() && Main.tile[46, 42].slope() == 1);
-            Until(context, input, () => !(bool)Get(Get(tools, "Use"), "Active"));
+            if(existing)Require(WorldGen.PlaceTile(44,42,TileID.Platforms,mute:true,forced:true,plr:0,style:p.inventory[12].placeStyle),"existing flat platform fixture");
+            Place(context, host, input, entry, 44, 42);
+            Call(host,"SetMaterialViewDemand",true);
+            Until(context,input,()=>
+            {
+                var view=(BlueprintMaterialSnapshot)Call(host,"MaterialWorld",0L);
+                return view.Status==BlueprintMaterialStatus.Exact && view.Rows.Any(r=>r.ItemType==ItemID.StoneBlock && r.Required==2) &&
+                    view.Rows.Any(r=>r.ItemType==ItemID.WoodPlatform && r.Required==1);
+            });
+            SetAutomatic(host, input, true);
+            Until(context, input, () => Scene(host).Length == 0 && !(bool)Get(Get(tools,"Use"),"Active"));
             long uses = (long)Get(host, "BuildUsesStarted");
             for (int frame = 0; frame < 80; frame++) Step(context, input);
-            Require(Main.tile[44, 42].type == TileID.Platforms && Main.tile[44, 42].slope() == 0 && !Main.tile[44, 42].halfBrick() &&
-                p.inventory[12].stack == 1 && p.inventory[13].stack == 1 && Scene(host).Length == 1 && (long)Get(host, "BuildUsesStarted") == uses,
-                "unreachable platform slope" + slope + " retains its pending goal without temporary blocks, replacement or repeated empty hammering; ordinary shape continues");
+            Require(Main.tile[44, 42].type == TileID.Platforms && Main.tile[44, 42].slope() == slope && !Main.tile[44, 42].halfBrick() &&
+                p.inventory[12].stack == 1 && p.inventory[13].IsAir && Scene(host).Length == 0 && (long)Get(host, "BuildUsesStarted") == uses &&
+                Main.tile[46,42].slope()==1 && (long)Get(host,"BuildUnknownResults")==0,
+                "platform slope" + slope + " completes through native intermediate stone/hammer/BlockSwap, ordinary shape also completes and exact material debits settle");
+            Call(host,"SetMaterialViewDemand",false);
         }
     }
 }

@@ -74,6 +74,16 @@ namespace JueMingR.TerrariaHost.View
             float next = permission ? (direction > 0 ? current * InputRatio : current / InputRatio) : current + direction * .02f;
             return MathHelper.Clamp(next, permission ? minimum : 1f, permission ? Maximum : 2f);
         }
+        // Explicit UI requests use the latest accepted target on every sample.
+        // A retained red value may move inward across blue, never outward or
+        // through blue into the opposite red range while permission is off.
+        internal static float Request(float current, float proposed, bool permission, float minimum)
+        {
+            if (!Finite(current) || current <= 0 || !Finite(proposed) || !Finite(minimum) || minimum <= 0 || minimum > 1f) return current;
+            float low = permission ? minimum : current < 1f ? Math.Max(minimum, current) : 1f;
+            float high = permission ? Maximum : current > 2f ? Math.Min(Maximum, current) : 2f;
+            return MathHelper.Clamp(proposed, low, high);
+        }
         internal static bool Finite(float value) { return !float.IsNaN(value) && !float.IsInfinity(value); }
     }
 

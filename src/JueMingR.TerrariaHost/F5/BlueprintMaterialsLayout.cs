@@ -280,9 +280,14 @@ namespace JueMingR.TerrariaHost.F5
         internal static string Number(long value) { return value.ToString(CultureInfo.InvariantCulture); }
         internal static string Summary(BlueprintMaterialSnapshot value, bool world)
         {
-            bool exact = value?.Status == BlueprintMaterialStatus.Exact && (!world || value.InventoryReady);
-            return world ? "剩余材料 " + (exact ? value.KindCount.ToString(CultureInfo.InvariantCulture) : "—") + " 种 · 还需 " + (exact ? Number(value.Total) : "—") :
-                "材料 " + (exact ? value.KindCount.ToString(CultureInfo.InvariantCulture) : "—") + " 种 · 总计 " + (exact ? Number(value.Total) : "—");
+            string subject = world ? "剩余材料" : "材料";
+            // Pending can retain a preceding row set for geometry. Neither its
+            // rows nor their old totals certify this snapshot's current scope.
+            if (value == null || value.Status == BlueprintMaterialStatus.Pending) return subject + "正在计算";
+            if (value.Status == BlueprintMaterialStatus.Unresolved)
+                return subject + "已确认 " + value.KindCount.ToString(CultureInfo.InvariantCulture) + " 种 · 数量 " + Number(value.Total);
+            if (world && !value.InventoryReady) return "剩余材料正在核对";
+            return subject + " " + value.KindCount.ToString(CultureInfo.InvariantCulture) + (world ? " 种 · 还需 " : " 种 · 总计 ") + Number(value.Total);
         }
         internal static List<F5Element> Wrap(string text, float available, float scale, Func<string, float, F5Size> measure)
         {

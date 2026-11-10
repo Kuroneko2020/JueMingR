@@ -64,7 +64,7 @@ namespace JueMingR.Features.Blueprint
                     request.Kind != BlueprintExchangeKind.PrepareExport && (request.Ticket == null || request.Ticket.RequestId != request.RequestId || String.IsNullOrEmpty(request.SupportedTargetVersion))) return false;
                 // Freeze caller-owned mutable DTO at admission; no UI selection
                 // or later request edit may replace the accepted source/ticket.
-                var frozen = new BlueprintExchangeRequest { RequestId = request.RequestId, Kind = request.Kind, TemplateKey = request.TemplateKey, Name = request.Name, SupportedTargetVersion = request.SupportedTargetVersion, Ticket = request.Ticket, Proposal = request.Proposal, CounterCandidate = request.CounterCandidate };
+                var frozen = new BlueprintExchangeRequest { RequestId = request.RequestId, Kind = request.Kind, TemplateKey = request.TemplateKey, Name = request.Name, SupportedTargetVersion = request.SupportedTargetVersion, Ticket = request.Ticket, Proposal = request.Proposal, CounterCandidate = request.CounterCandidate, ImportProfile = request.ImportProfile };
                 exchangeReservation = request.RequestId; exchange = new ExchangeOperation { Request = frozen };
                 exchange.Steps = ExchangeSteps(exchange).GetEnumerator(); exchangeReady = true; exchangePhase = BlueprintExchangePhase.Preparing; Monitor.Pulse(gate); return true;
             }
@@ -126,6 +126,7 @@ namespace JueMingR.Features.Blueprint
                     : operation.Publishing;
                 operation.Completion = ExchangeResult(operation, unknown ? BlueprintExchangeStatus.CommitUnconfirmed : error is OperationCanceledException ? BlueprintExchangeStatus.Cancelled : BlueprintExchangeStatus.Failed,
                     unknown ? "无法确认是否保存成功，相关文件已保留" : error is OperationCanceledException ? "文件操作已取消" : "蓝图文件格式、版本或读写校验失败，原件已保留");
+                if (!unknown && error is InvalidDataException && error.Message.StartsWith("小助手蓝图：", StringComparison.Ordinal)) operation.Completion.Message = error.Message + "，原件已保留";
                 operation.Finishing = true; operation.Steps = FinishExchange(operation).GetEnumerator(); WakeExchange();
             }
             finally { files.CloseMetadata(); }
@@ -217,6 +218,10 @@ namespace JueMingR.Features.Blueprint
         {
             foreach (bool step in Io(operation, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.OpenSource, Ticket = operation.Request.Ticket })) yield return step;
             operation.SourceLength = operation.Io.Length;
+            foreach (bool step in ReadExchange(operation, (int)Math.Min(16, operation.SourceLength), null, 0)) yield return step;
+            byte[] signature = operation.Read;
+            bool native = signature.Length >= 8 && signature[0] == 0x4A && signature[1] == 0x4D && signature[2] == 0x52 && signature[3] == 0x4A && signature[4] == 0x4D && signature[5] == 0x42 && signature[6] == 0x50 && signature[7] == 0;
+            if (!native) { foreach (bool step in ImportHelperJson(operation)) yield return step; yield break; }
             using (var digest = SHA256.Create())
             {
                 foreach (bool step in ReadExchange(operation, 16, digest)) yield return step;
@@ -256,45 +261,49 @@ namespace JueMingR.Features.Blueprint
                 digest.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
                 foreach (bool step in ReadExchange(operation, 32)) yield return step;
                 if (!LibraryCodec.Equal(operation.Read, digest.Hash) || operation.Position != operation.SourceLength) throw new InvalidDataException("blueprint-exchange-footer-or-tail");
-                var incremental = files as IBlueprintLibraryExchangeSteps;
-                if (incremental == null) throw new InvalidOperationException("blueprint-exchange-incremental-stage-unavailable");
-                foreach (int ignored in incremental.SealStageSteps(operation.Stage, rootBytes, 32)) yield return true;
-                exchangePhase = BlueprintExchangePhase.Validating; yield return true;
-                foreach (bool step in ValidateExchange(operation, operation.Stage, true, root)) yield return step;
-                string contentHash = LibraryCodec.HashString(rootBytes);
-                foreach (Guid candidate in files.EnumerateAssets())
-                {
-                    LibraryMetadata metadata = null;
-                    try { PreferenceReadResult read = files.OpenMetadata(candidate); if (read.Status == PreferenceReadStatus.Loaded && !protectedAssets.Contains(candidate)) metadata = LibraryCodec.DecodeMetadata(read.Contents, candidate); }
-                    catch { } finally { files.CloseMetadata(); }
-                    yield return true;
-                    if (metadata == null || metadata.Deleted || metadata.ContentHash != contentHash) continue;
-                    // A corrupt matching metadata claim is not a duplicate. The
-                    // iterator is stepped here so failures isolate only that item.
-                    IEnumerator<bool> health = HealthyExchangeCandidate(operation, metadata).GetEnumerator(); bool healthy = true;
-                    while (true)
-                    {
-                        bool next; try { next = health.MoveNext(); } catch { healthy = false; next = false; }
-                        if (!next) break; yield return true;
-                    }
-                    health.Dispose();
-                    if (healthy) { operation.Asset = candidate; operation.Completion = ExchangeResult(operation, BlueprintExchangeStatus.AlreadyExists, "蓝图已存在，已定位到原条目"); yield break; }
-                }
-                exchangePhase = BlueprintExchangePhase.Publishing;
-                // Proof scanning is still cancellable. Only the final atomic
-                // promotion/publish step crosses the irreversible boundary.
-                IEnumerator<int> promotion = incremental.PromoteStageSteps(operation.Stage, operation.Asset, 32).GetEnumerator();
-                try { while (promotion.MoveNext()) { if (promotion.Current < 0) { operation.Publishing = true; operation.Promoted = true; } yield return true; } }
-                finally { promotion.Dispose(); }
-                operation.Publishing = true; operation.Promoted = true;
-                PreferenceReadResult missing = files.OpenMetadata(operation.Asset, true); if (missing.Status != PreferenceReadStatus.Missing) throw new InvalidDataException("blueprint-exchange-publish-conflict");
-                long now = DateTime.UtcNow.Ticks;
-                var value = new LibraryMetadata { AssetId = operation.Asset, ContentRevision = root.ContentRevision, ContentHash = contentHash, Name = name, Width = root.Summary.Width, Height = root.Summary.Height, ContentCount = root.Summary.ContentCount, BlockCount = root.BlockCount, MissingSummary = String.Join("；", root.Summary.MissingPayloads), CreatedTicks = now, UpdatedTicks = now };
-                PreferenceWriteResult written = files.WriteMetadata(missing.Identity, LibraryCodec.EncodeMetadata(value)); files.CloseMetadata();
-                if (written.Status != PreferenceWriteStatus.Saved)
-                { operation.Publishing = written.CommitUnconfirmed; protectedAssets.Add(operation.Asset); throw new IOException("blueprint-exchange-metadata-not-saved"); }
-                operation.Completion = ExchangeResult(operation, BlueprintExchangeStatus.Completed, "蓝图已导入");
+                foreach (bool step in PublishImport(operation, root, rootBytes, name)) yield return step;
             }
+        }
+        private IEnumerable<bool> PublishImport(ExchangeOperation operation, LibraryRoot root, byte[] rootBytes, string name)
+        {
+            var incremental = files as IBlueprintLibraryExchangeSteps;
+            if (incremental == null) throw new InvalidOperationException("blueprint-exchange-incremental-stage-unavailable");
+            foreach (int ignored in incremental.SealStageSteps(operation.Stage, rootBytes, 32)) yield return true;
+            exchangePhase = BlueprintExchangePhase.Validating; yield return true;
+            foreach (bool step in ValidateExchange(operation, operation.Stage, true, root)) yield return step;
+            string contentHash = LibraryCodec.HashString(rootBytes);
+            foreach (Guid candidate in files.EnumerateAssets())
+            {
+                LibraryMetadata metadata = null;
+                try { PreferenceReadResult read = files.OpenMetadata(candidate); if (read.Status == PreferenceReadStatus.Loaded && !protectedAssets.Contains(candidate)) metadata = LibraryCodec.DecodeMetadata(read.Contents, candidate); }
+                catch { } finally { files.CloseMetadata(); }
+                yield return true;
+                if (metadata == null || metadata.Deleted || metadata.ContentHash != contentHash) continue;
+                // A corrupt matching metadata claim is not a duplicate. The
+                // iterator is stepped here so failures isolate only that item.
+                IEnumerator<bool> health = HealthyExchangeCandidate(operation, metadata).GetEnumerator(); bool healthy = true;
+                while (true)
+                {
+                    bool next; try { next = health.MoveNext(); } catch { healthy = false; next = false; }
+                    if (!next) break; yield return true;
+                }
+                health.Dispose();
+                if (healthy) { operation.Asset = candidate; operation.Completion = ExchangeResult(operation, BlueprintExchangeStatus.AlreadyExists, "蓝图已存在，已定位到原条目"); yield break; }
+            }
+            exchangePhase = BlueprintExchangePhase.Publishing;
+            // Proof scanning is still cancellable. Only the final atomic
+            // promotion/publish step crosses the irreversible boundary.
+            IEnumerator<int> promotion = incremental.PromoteStageSteps(operation.Stage, operation.Asset, 32).GetEnumerator();
+            try { while (promotion.MoveNext()) { if (promotion.Current < 0) { operation.Publishing = true; operation.Promoted = true; } yield return true; } }
+            finally { promotion.Dispose(); }
+            operation.Publishing = true; operation.Promoted = true;
+            PreferenceReadResult missing = files.OpenMetadata(operation.Asset, true); if (missing.Status != PreferenceReadStatus.Missing) throw new InvalidDataException("blueprint-exchange-publish-conflict");
+            long now = DateTime.UtcNow.Ticks;
+            var value = new LibraryMetadata { AssetId = operation.Asset, ContentRevision = root.ContentRevision, ContentHash = contentHash, Name = name, Width = root.Summary.Width, Height = root.Summary.Height, ContentCount = root.Summary.ContentCount, BlockCount = root.BlockCount, MissingSummary = String.Join("；", root.Summary.MissingPayloads), CreatedTicks = now, UpdatedTicks = now };
+            PreferenceWriteResult written = files.WriteMetadata(missing.Identity, LibraryCodec.EncodeMetadata(value)); files.CloseMetadata();
+            if (written.Status != PreferenceWriteStatus.Saved)
+            { operation.Publishing = written.CommitUnconfirmed; protectedAssets.Add(operation.Asset); throw new IOException("blueprint-exchange-metadata-not-saved"); }
+            operation.Completion = ExchangeResult(operation, BlueprintExchangeStatus.Completed, "蓝图已导入");
         }
         private IEnumerable<bool> HealthyExchangeCandidate(ExchangeOperation operation, LibraryMetadata metadata)
         {

@@ -35,11 +35,17 @@ namespace JueMingR.TerrariaHost.Blueprint
             BuildPlanningIntent intent, out BuildOperationPlan plan, out BlueprintBuildWait wait)
         {
             plan = null; wait = BlueprintBuildWait.None; substitutionPlanningPending = false;
+            bool hoik=HoikOperation(target.Operation),hoikBase=hoik && target.Operation.Kind==BlueprintBuildOperationKind.HoikBase;
             bool continuing = intent == BuildPlanningIntent.ContinuationProbe;
             if (continuing && (preferred == null || preferred.Slot < 0 || preferred.Slot >= 50 ||
                 !ReferenceEquals(p.inventory[preferred.Slot], preferred.Item) || preferred.Item.type != preferred.Type ||
                 preferred.Item.IsAir || !buildTools.BuildInventoryEligible(preferred.Slot, preferred.Item)))
             {wait=BlueprintBuildWait.Material;return false;}
+            // A base continuation consumes stone. Its future platform still
+            // uses ordinary new-selection preference, not the stone hint as a
+            // fictitious member of the platform choice set.
+            var platformHint=hoikBase?null:preferred;
+            continuing&=!hoikBase;
             bool wall = target.Placement.Kind == BlueprintPlacementKind.Wall;
             // Empty/readable/cardinal support is common to all wall materials
             // at this current target. A definite refusal is not budget Pending.
@@ -52,11 +58,11 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (!NativeWallBuildPosition(target)) return false;
             }
             var candidates = new List<BlueprintPlacementDescriptor>();
-            if ((!continuing || preferred.Type == target.Placement.UseItemType) && buildSupply.ContainsKey(target.Placement.UseItemType))
+            if ((!continuing || platformHint.Type == target.Placement.UseItemType) && buildSupply.ContainsKey(target.Placement.UseItemType))
                 candidates.Add(target.Placement);
-            if (preferred != null) AddSubstitutionCandidates(candidates, target, preferred.Type);
+            if (platformHint != null) AddSubstitutionCandidates(candidates, target, platformHint.Type);
             if (!continuing) foreach (var entry in buildSupply)
-                    if (preferred == null || entry.Key != preferred.Type) AddSubstitutionCandidates(candidates, target, entry.Key);
+                    if (platformHint == null || entry.Key != platformHint.Type) AddSubstitutionCandidates(candidates, target, entry.Key);
             if (candidates.Count == 0) { wait = BlueprintBuildWait.Material; return false; }
 
             var materials = target.Range.Materials;
@@ -89,20 +95,33 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if DEBUG
                 SubstitutionCandidateChecks++;
 #endif
-                int slot = preferred != null && preferred.Type == candidate.UseItemType && preferred.Slot >= 0 && preferred.Slot < 50 &&
-                    ReferenceEquals(p.inventory[preferred.Slot], preferred.Item) && buildTools.BuildInventoryEligible(preferred.Slot, preferred.Item)
-                    ? preferred.Slot : ConstructionItemSlot(p, candidate.UseItemType);
+                int slot = platformHint != null && platformHint.Type == candidate.UseItemType && platformHint.Slot >= 0 && platformHint.Slot < 50 &&
+                    ReferenceEquals(p.inventory[platformHint.Slot], platformHint.Item) && buildTools.BuildInventoryEligible(platformHint.Slot, platformHint.Item)
+                    ? platformHint.Slot : ConstructionItemSlot(p, candidate.UseItemType);
                 if (slot < 0) { wait |= BlueprintBuildWait.Material; continue; }
                 var item = p.inventory[slot]; BlueprintBuildTarget execution;
                 if (!TryCreateSubstitutionExecution(target, candidate, p, item, out execution)) continue;
+                if(hoik)
+                {
+                    execution.Operation=CopyBuildOperation(target.Operation);
+                    execution.Operation.HoikPlatform=execution.Placement;
+                    if(hoikBase)
+                    {
+                        slot=preferred?.Type==ItemID.StoneBlock && preferred.Slot>=0 && preferred.Slot<50 &&
+                            ReferenceEquals(p.inventory[preferred.Slot],preferred.Item) && buildTools.BuildInventoryEligible(preferred.Slot,preferred.Item)?preferred.Slot:ConstructionItemSlot(p,ItemID.StoneBlock);
+                        if(slot<0){wait|=BlueprintBuildWait.Material;continue;}
+                        item=p.inventory[slot];
+                    }
+                    else execution.Operation.NativePlacement=execution.Placement;
+                }
                 int direction = execution.Placement.Direction == (int)TileObjectDirection.PlaceLeft ? -1 :
                     execution.Placement.Direction == (int)TileObjectDirection.PlaceRight ? 1 : p.direction;
                 if (p.pulley && p.pulleyDir == 2 && direction != p.direction ||
                     !p.IsInTileInteractionRange(execution.WorldX, execution.WorldY, TileReachCheckSettings.Simple, item.tileBoost + p.blockRange))
                 { wait |= BlueprintBuildWait.Player; continue; }
-                if (!NativeBuildGeometry(execution, p, item, direction, wall))
+                if (!(hoik?HoikPlacementGeometry(execution,p,item):NativeBuildGeometry(execution, p, item, direction, wall)))
                 {progress.Deferred|=execution.Readiness==BlueprintBuildReadiness.Deferred;continue;}
-                plan = new BuildOperationPlan { ExecutionTarget = execution, Tool = item, ToolType = item.type,
+                plan = new BuildOperationPlan { ExecutionTarget = execution, Operation=execution.Operation, Tool = item, ToolType = item.type,
                     ToolSlot = slot, HeldMaximum = execution.Placement.Kind == BlueprintPlacementKind.Wall ? 5 : 1 };
                 PlanSmartPlatformInput(execution, p, plan);
                 progress.Cursor = 0; progress.Deferred = false;

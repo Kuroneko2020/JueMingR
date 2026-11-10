@@ -14,6 +14,27 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="BlueprintImportedMaterialsCpu" || scope=="BlueprintImportedMaterialsVisual")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{
+                    if(scope=="BlueprintImportedMaterialsVisual")using(var graphics=new ProbeGraphics(content))NativeBlueprintImportedMaterialsChecks.Run(context,graphics,output);
+                    else NativeBlueprintImportedMaterialsChecks.Run(context);
+                    NativeScopeDispatch.Enter(scope=="BlueprintImportedMaterialsVisual"?"blueprint-imported-materials-visual":"blueprint-imported-materials-cpu");
+                },processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if (scope == "ViewZoomControlDraw") return NativeViewOriginalChecks.Run(content, output, zoomControl: true);
+            if (scope == "ViewZoomControlCpu" || scope == "ViewZoomControlVisual")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user");
+                Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context => {
+                    NativeScopeDispatch.Enter(scope == "ViewZoomControlCpu" ? "view-zoom-control-cpu" : "view-zoom-control-visual");
+                    if (scope == "ViewZoomControlCpu") NativeViewZoomControlChecks.Cpu(context);
+                    else using (var graphics = new ProbeGraphics(content)) NativeViewZoomControlChecks.Visual(context, graphics, output);
+                }, processing: true, shortFeedback: true, candidateAssembly: Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));
+                return 0;
+            }
             if(scope=="RuntimeFailureCpu" || scope=="RuntimeFailureActiveCpu" || scope=="JourneyCloseCpu")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JMR-reviewed-runtime-"+Guid.NewGuid().ToString("N").Substring(0,10));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
@@ -110,6 +131,11 @@ namespace NativeWorldTextProbe
                     NativeBlueprintMirrorWaitChecks.Run(context);
                     NativeBlueprintMirrorConsumerChecks.Run(context);
                 },processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="BlueprintHoikCpu" || scope=="BlueprintHoikSubstitutionCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeBlueprintBuildChecks.RunConstruction(context,family:scope=="BlueprintHoikCpu"?"Hoik":"HoikSubstitution");NativeScopeDispatch.Enter(scope=="BlueprintHoikCpu"?"blueprint-hoik":"blueprint-hoik-substitution");},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="BlueprintSupplyContinuationCpu" || scope=="BlueprintSupplyPresentationCpu" || scope=="BlueprintSmartPlatformCpu" || scope=="BlueprintActuatorNetworkCpu" || scope=="BlueprintSupplySmartWiringCpu" || scope=="BlueprintConstructionCpu" || scope=="BlueprintPreparationCpu" || scope=="BlueprintAppearanceCpu" || scope=="BlueprintWiringCpu" || scope=="BlueprintSpecialCpu")
             {
@@ -264,6 +290,7 @@ namespace NativeWorldTextProbe
                     Action<string, Action> check = (name, body) => { try { body(); } catch (Exception error) { Console.Error.WriteLine("EXCHANGE CASE " + name + ": " + error); if (first == null) first = error; } };
                     check("external modal", () => NativeBlueprintExternalModalChecks.Cpu(context));
                     check("exchange Host lifecycle", () => NativeBlueprintExchangeLifecycleChecks.Run(context));
+                    check("helper JSON standard asset chain", () => NativeBlueprintHelperImportChecks.Run(context));
                     check("placed list", () => NativeBlueprintPlacedListChecks.Run(context));
                     check("seed substrate catalog", () => NativeBlueprintWorldMatchChecks.SubstrateSeedCatalog(context));
                     check("pinned materials and scene", () => NativeBlueprintWorldMatchChecks.PlacedMaterialTargets(context));

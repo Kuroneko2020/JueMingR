@@ -36,8 +36,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             Library = library;
             InitializeExchange(directory);
             preference = new PreferenceDocument<BlueprintPreferences>(new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "config", "features", "blueprint.json"), 65536, true), new BlueprintPreferenceCodec(), new BlueprintPreferences(false, false));
-            projectionHistory = new BlueprintSceneHistory(scope => new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "blueprints", "instances", scope, "scene.bin"), Int32.MaxValue, true, ".schema1-original"),
-                (storage, value) => { if (value.SourceVersion == 1) ((AtomicFileDocument)storage).RetainLoadedSource(); });
+            projectionHistory = new BlueprintSceneHistory(scope => new AtomicFileDocument(Path.Combine(directory, "JueMingRData", "blueprints", "instances", scope, "scene.bin"), Int32.MaxValue, true, ".schema1-original", new[] { ".schema2-original" }),
+                (storage, value) => { if (value.SourceVersion == 1 || value.SourceVersion == 2) ((AtomicFileDocument)storage).RetainLoadedSource(".schema" + value.SourceVersion + "-original"); });
             World = new BlueprintWorldLayer(this, geometry); Toolbar = new BlueprintToolbar(this);
             Pointer = new BlueprintPointerProof(this);
             try { BlueprintHooks.Install(this); Pointer.Install(); projectionChanges.Install(); ready = true; }

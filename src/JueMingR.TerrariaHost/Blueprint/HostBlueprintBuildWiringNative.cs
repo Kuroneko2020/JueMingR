@@ -384,8 +384,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             private static readonly Harmony harmony = new Harmony("JueMingR.Blueprint.Construction");
             private static HostBlueprint owner;
             internal static void ObserveStore(int x, int y, int kind, int oldValue, int newValue)
-            { owner?.ObserveOwnedActuatorStore(x, y, kind, oldValue, newValue); }
-            internal static void ObserveTileReplacement(int x, int y) { owner?.ObserveActuatorTileReplacement(x, y); }
+            { owner?.ObserveOwnedActuatorStore(x, y, kind, oldValue, newValue); owner?.ObserveHoikStore(x, y, kind, oldValue, newValue); }
+            internal static void ObserveTileReplacement(int x, int y) { owner?.ObserveActuatorTileReplacement(x, y); owner?.ObserveHoikStore(x, y, 0, -1, -2); }
             internal static void Install(HostBlueprint value)
             {
                 if (ReferenceEquals(owner, value)) return;

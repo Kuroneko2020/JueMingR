@@ -45,6 +45,20 @@ namespace JueMingR.TerrariaHost.View
         public bool ControlsEnabled { get { return ready && !failed && !stopping && runtime.IsSessionActive && preference.Snapshot.IsLoaded; } }
         public bool UnlockEnabled { get { return preference.Snapshot.Value; } }
         public bool SetUnlockEnabled(bool value) { return ControlsEnabled && preference.Set(value); }
+        public float ZoomTarget { get { return Main.GameZoomTarget; } }
+        public float MinimumZoomTarget { get { return MinimumTarget; } }
+        public float MaximumZoomTarget { get { return ViewZoom.Maximum; } }
+        public bool TrySetZoomTarget(float proposed)
+        {
+            // F5 owns the admitted gesture, including auto-paused input. Do not
+            // reuse CanZoom, whose world-key gates intentionally exclude UI.
+            if (!ControlsEnabled || !HasWorld) return false;
+            float current = Main.GameZoomTarget;
+            float next = ViewZoom.Request(current, proposed, UnlockEnabled, MinimumTarget);
+            if (!ViewZoom.Finite(next) || next == current) return false;
+            Main.GameZoomTarget = next;
+            return true;
+        }
         internal bool HasWorld { get { return ready && !failed && !stopping && runtime.IsSessionActive && !Main.gameMenu && !Main.dedServ && Main.netMode != 2; } }
         internal bool HasExtendedView { get { return HasWorld && ViewZoom.IsExpanded(Main.GameViewMatrix.RenderZoom.X,Main.ForcedMinimumZoom); } }
         // Section visibility follows the final semantic view. Renderer repair

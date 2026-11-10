@@ -198,7 +198,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             fact.PlayerX=target?.WorldX??fact.Seed.Owner.OriginX+fact.Seed.Cell.X;
             fact.PlayerY=target?.WorldY??fact.Seed.Owner.OriginY+fact.Seed.Cell.Y;
             fact.PlayerBody=target?.Bounds??new BlueprintProjectionBounds(fact.PlayerX,fact.PlayerY,1,1);
-            fact.PlayerHammer=target?.Operation?.Kind==BlueprintBuildOperationKind.Hammer;
+            fact.PlayerHammer=target?.Operation?.Kind==BlueprintBuildOperationKind.Hammer || HoikOperation(target?.Operation) && target.Operation.HoikWaitTool==1;
             fact.PlayerBoost=plan?.Tool?.tileBoost??NearOperationBoost(target?.Operation,fact.Seed.Placement?.UseItemType??0);
             if(fact.PlayerGrandAvailable)nearGrandPlayerFacts--;
             fact.PlayerUsesGrand=plan?.ToolType==3611 && WiringOperation(target?.Operation);
@@ -508,6 +508,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             var group=buildContinuation;if(group==null)return false;
             var kind=group.Operation?.Kind;
+            if(HoikOperation(group.Operation))return lane==(int)BlueprintBuildLane.TileBody || lane==(int)BlueprintBuildLane.Shape;
             if(kind==null || kind==BlueprintBuildOperationKind.PlaceBase || kind==BlueprintBuildOperationKind.ConvertSubstrate)
                 return lane==(int)(group.Consumer==Tools.ToolBuildConsumer.Walls?BlueprintBuildLane.WallBody:BlueprintBuildLane.TileBody);
             if(kind==BlueprintBuildOperationKind.Hammer)return lane==(int)BlueprintBuildLane.Shape;
@@ -795,6 +796,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool NearSeedMayContinue(RepeatedBuildSeed seed)
         {
             var group=buildContinuation;if(group==null)return true;
+            if(HoikOperation(group.Operation) && HoikTarget(seed.Cell))
+                return BuildLane(seed.Ordinal)==BlueprintBuildLane.TileBody || BuildLane(seed.Ordinal)==BlueprintBuildLane.Shape;
             bool ordinary=group.Operation==null || group.Operation.Kind==BlueprintBuildOperationKind.PlaceBase || group.Operation.Kind==BlueprintBuildOperationKind.ConvertSubstrate;
             var lane=BuildLane(seed.Ordinal);
             if(!ordinary)

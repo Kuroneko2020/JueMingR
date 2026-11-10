@@ -28,6 +28,7 @@ namespace JueMingR.Features.Blueprint
         public IBlueprintExchangeTicket Ticket { get; set; }
         public BlueprintExportNameProposal Proposal { get; set; }
         public long CounterCandidate { get; set; }
+        public IBlueprintImportProfile ImportProfile { get; set; }
     }
     public sealed class BlueprintExchangeReceipt
     {

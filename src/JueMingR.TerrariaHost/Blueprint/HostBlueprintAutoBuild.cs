@@ -734,6 +734,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(objectType)DiagnosticTarget(flight?.Target,BuildTraceStage.Choice,BuildTraceReason.None,flight,placement);
 #endif
             if (!NativeBuildConsumer(flight, false)) return false;
+            if (HoikOperation(flight.Operation)) return !objectType && flight.Operation.Kind == BlueprintBuildOperationKind.HoikBase && type == TileID.Stone;
             if (flight.Operation != null) return NativeSpecialBuildChoice(flight, objectType, placement, type);
             if (type != flight.Target.Placement.TileType) return false;
             if(!SmartPlatformLookupCurrent(flight))return false;
