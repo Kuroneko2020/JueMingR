@@ -12,6 +12,10 @@ namespace NativeWorldTextProbe
     {
         internal static void Run(object context,object host)
         {
+            // The visual map scope previously drew only. Use the same native
+            // trigger-table initialization as the CPU map input fixture before
+            // Gesture.Reset/Update can consume complete mapped samples.
+            Terraria.GameInput.PlayerInput.Triggers.Initialize();
             object originalMarkers=Get(host,"Markers"),originalWorkspace=Get(host,"Workspace");
             var shell=Get(context,"Shell");var input=Get(context,"Input");var popup=Get(shell,"MapPopup");var state=Get(shell,"State");
             object text=Get(popup,"TextInput"),oldIme=Get(text,"ime");

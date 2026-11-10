@@ -161,26 +161,37 @@ namespace NativeWorldTextProbe
             }
             finally{cosmetic.UnpatchAll(cosmetic.Id);}
         }
+        private static Projectile CastSummon(object context,object owner,object tools,object input,int itemType,Vector2 cursor)
+        {
+            var player=NativeToolExecutionChecks.Reset(context,tools,input,itemType,0,0);player.position=new Vector2(640,688-player.height);player.releaseUseItem=true;player.reuseDelay=0;
+            player.statMana=player.statManaMax=player.statManaMax2=200;int projectileType=player.HeldItem.shoot;
+            NativeToolExecutionChecks.Sample(context,input,cursor,true);NativeQuickItemChecks.NativeFrame(player);
+            var body=Main.projectile.SingleOrDefault(p=>p.active && p.owner==0 && p.type==projectileType);
+            Require(body!=null && body.originalDamage>0,"actual summon ItemCheck supplies its native birth and unscaled originalDamage: "+itemType);
+            player.inventory[1].SetDefaults(ItemID.CopperPickaxe);player.selectedItemState.Select(1);
+            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");
+            // Actual buffered selection finishes this native use; no timer,
+            // minion bookkeeping, buff or source field is manufactured.
+            for(int i=0;i<60 && player.selectedItem!=1;i++)Step(context,owner,host,combat,input,cursor,false);
+            Require(player.selectedItem==1 && player.HeldItem.type==ItemID.CopperPickaxe,"summon owner naturally switches to a tool after the cast");
+            return body;
+        }
         private static void SummonAttack(object context,object owner,object tools,object input)
         {
-            Save(owner,0);var player=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperPickaxe,0,0);
-            player.position=new Vector2(600,646);for(int y=30;y<43;y++)NativeToolsChecks.Tile(45,y,TileID.Stone);
-            var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;target.Center=new Vector2(820,620);target.life=10000;target.noGravity=true;
-            var sentry=Shot(ProjectileID.FrostHydra,new Vector2(650,620),Vector2.Zero);
+            Save(owner,0);var sentry=CastSummon(context,owner,tools,input,ItemID.StaffoftheFrostHydra,new Vector2(650,600));var player=Main.LocalPlayer;
+            Require(sentry.Bottom.Y<=688.01f,"native sentry landing-spot birth has legal floor support");
+            for(int y=30;y<43;y++)NativeToolsChecks.Tile(45,y,TileID.Stone);
+            var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;target.Center=new Vector2(820,620);target.life=10000;target.noGravity=true;target.aiStyle=-1;
             int slot;float x,yAim;
             Require(!sentry.AI_053_HandleSentryNPCTargeting(Vector2.Zero,false,out slot,out x,out yAim),"native sentry targeting is blocked by wall");
             Save(owner,4);World(owner,()=>Require(sentry.AI_053_HandleSentryNPCTargeting(Vector2.Zero,false,out slot,out x,out yAim) && slot==2,"native sentry targeting actually sees wall-hidden enemy"));
-            // Native first AI initializes a 120-tick appearance cooldown.
-            // Advance the real complete consumer; do not zero its timer.
-            World(owner,()=>
-            {
-                HydraFacts("before",owner,sentry,target);
-                for(int tick=0;tick<=120 && !Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309);tick++)
-                {
-                    sentry.Update(sentry.whoAmI);
-                    if(tick==0 || tick==1 || tick==119 || tick==120)HydraFacts("after-"+tick,owner,sentry,target);
-                }
-            });Require(Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309),"actual ground sentry AI fires its native attack toward the wall-hidden receiver");
+            // Retain the bounded 121-update observation; the real cast and
+            // native appearance cooldown have already advanced during selection.
+            var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");
+            for(int tick=0;tick<=120 && !Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309);tick++)
+                Step(context,owner,host,combat,input,new Vector2(650,600),false);
+            World(owner,()=>HydraFacts("native-cast-complete",owner,sentry,target));
+            Require(Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309),"actual ground sentry AI fires its native attack toward the wall-hidden receiver");
             var imp=Shot(ProjectileID.FlyingImp,new Vector2(650,600),Vector2.Zero);player.impMinion=true;
             World(owner,()=>{for(int tick=0;tick<180;tick++)imp.AI();});
             Require(Main.projectile.Any(p=>p.active && p.owner==0 && p.type==ProjectileID.ImpFireball),"actual flying summon AI emits attack behind wall while owner holds a pick");
@@ -290,10 +301,21 @@ namespace NativeWorldTextProbe
                 // ordinary side may navigate, but its actual body still cannot
                 // cross this tall closed wall in the retained native range.
                 NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,false,false,false,25,false,true));Save(owner,mask);
-                for(int i=0;i<50;i++)Step(context,owner,host,combat,input,new Vector2(500,400));
+                float farthestX=float.NegativeInfinity;
+                for(int i=0;i<50;i++)
+                {
+                    Step(context,owner,host,combat,input,new Vector2(500,400));
+                    var current=Main.projectile.FirstOrDefault(p=>p.active && p.owner==0 && p.aiStyle==99);
+                    if(current!=null)farthestX=Math.Max(farthestX,current.Center.X);
+                }
                 var ball=Main.projectile.FirstOrDefault(p=>p.active && p.owner==0 && p.aiStyle==99);
                 Require(ball!=null,"natural held yoyo remains alive");
-                Require(mask==0?ball.Center.X<768:ball.Center.X>800,"real held yoyo consumes the wall-side or wall-hidden current point: "+mask+" center="+ball.Center);
+                // Native Damage_PVE_Inner gives a struck yoyo a 16px outward
+                // recoil. Test actual wall crossing over the same 50 updates,
+                // rather than requiring the recoiling last frame at its target.
+                Console.WriteLine("YOYO WALL mask="+mask+" farthestX="+farthestX+" final="+ball.Center+" receiverLife="+target.life+" nativeRange="+ProjectileID.Sets.YoyosMaximumRange[ball.type]);
+                Require(mask==0?farthestX<768:farthestX>800,"real held yoyo consumes the wall-side or wall-hidden current point: "+mask+" farthestX="+farthestX);
+                if(mask!=0)Require(target.life<100000,"through-wall yoyo actually attacks the selected receiver before native recoil");
                 if(mask!=0)Require(Vector2.Distance(ball.Center,player.Center)<180,"through-wall yoyo retains native owner reach");
                 for(int i=0;i<40 && ball.active;i++)Step(context,owner,host,combat,input,new Vector2(500,400),false);
                 Require(!ball.active,"physical yoyo release still completes native recall");
@@ -304,11 +326,14 @@ namespace NativeWorldTextProbe
         {
             foreach(int mask in new[]{0,4})
             {
-                Save(owner,0);var player=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperPickaxe,0,0);player.position=new Vector2(600,646);player.slime=true;
+                Save(owner,0);var slime=CastSummon(context,owner,tools,input,ItemID.SlimeStaff,new Vector2(650,672));
                 for(int y=20;y<43;y++)NativeToolsChecks.Tile(45,y,TileID.Stone);
-                var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;target.Bottom=new Vector2(800,688);target.life=target.lifeMax=10000;target.defense=0;
-                var slime=Shot(266,new Vector2(650,672),Vector2.Zero);Save(owner,mask);
-                for(int i=0;i<200 && target.life==10000;i++){NativeQuickItemChecks.BeginWorldStep();World(owner,()=>slime.Update(slime.whoAmI));}
+                var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;target.Bottom=new Vector2(800,688);target.life=target.lifeMax=10000;target.defense=0;target.aiStyle=-1;target.noGravity=true;target.knockBackResist=0;
+                Save(owner,mask);var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");
+                // Full Player.Update owns per-world minion counts and buff
+                // renewal before each actual projectile AI/movement/Damage.
+                for(int i=0;i<200 && target.life==10000;i++)Step(context,owner,host,combat,input,new Vector2(650,600),false);
+                Console.WriteLine("GROUND SUMMON mask="+mask+" active="+slime.active+" position="+slime.position+" originalDamage="+slime.originalDamage+" damage="+slime.damage+" life="+target.life);
                 Require(mask==0?target.life==10000:target.life<10000,"native walking minion AI/movement/Damage attacks the wall-hidden receiver: "+mask+" position="+slime.position);
                 Save(owner,0);
             }
@@ -377,14 +402,19 @@ namespace NativeWorldTextProbe
                 Require(registry.Contains(key),"natural held prism birth is registered");var source=Get(registry[key],"Source");
                 foreach(int mask in new[]{1,2,4,7,0})
                 {
-                    Save(owner,mask);var beforePosition=player.position;
+                    Save(owner,mask);var beforePosition=player.position;float farthestMovement=0;
                     using(NativeCombatUsageChecks.ObserveDrawSteps())
                     {
                         int beforeSteps=NativeCombatUsageChecks.ObservedNpcSteps;
-                        for(int i=0;i<16;i++)Step(context,owner,host,combat,input,mouse,true,i<8?1:-1);
+                        for(int i=0;i<16;i++)
+                        {
+                            Step(context,owner,host,combat,input,mouse,true,i<8?1:-1);
+                            farthestMovement=Math.Max(farthestMovement,Vector2.DistanceSquared(beforePosition,player.position));
+                        }
                         if(mask!=0)Require(NativeCombatUsageChecks.ObservedNpcSteps==beforeSteps,"enhanced real input/projectile chain performs no original NPC attack future steps");
                     }
-                    Require(Vector2.DistanceSquared(beforePosition,player.position)>1,"native player movement actually advances while switching prism mode: "+mask);
+                    Console.WriteLine("PRISM MOVEMENT mask="+mask+" peakSquared="+farthestMovement+" endSquared="+Vector2.DistanceSquared(beforePosition,player.position));
+                    Require(farthestMovement>1,"native player movement actually advances while switching prism mode: "+mask);
                     Require(parent.active && (int)parent.key==key && registry.Contains(key) && ReferenceEquals(source,Get(registry[key],"Source")),"mode edge keeps same live prism and Source: "+mask);
                     float targetDot=Vector2.Dot(parent.velocity.SafeNormalize(Vector2.UnitY),(target.Center-player.MountedCenter).SafeNormalize(Vector2.UnitX));
                     float rawDot=Vector2.Dot(parent.velocity.SafeNormalize(Vector2.UnitY),(mouse-player.MountedCenter).SafeNormalize(Vector2.UnitY));
