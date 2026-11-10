@@ -38,7 +38,9 @@ namespace NativeWorldTextProbe
             Call(shell, "CloseAndSubmitPosition"); Call(host, "CancelCaptureOrDraft"); Call(host, "ClearProjection");
             NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !oldLibrary.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
             ((BlueprintCaptureState)Get(host, "State")).Exit();
-            string area = Path.Combine(Terraria.Program.SavePath, graphics == null ? "exchange-lifecycle" : "exchange-lifecycle-visual"); Directory.CreateDirectory(area); string source = Path.Combine(area, "source.jmbp");
+            // The formal scope output root is stable; each invocation must
+            // retain its own mutable library so old evidence cannot seed it.
+            string area = Path.Combine(Terraria.Program.SavePath, (graphics == null ? "exchange-lifecycle-" : "exchange-lifecycle-visual-") + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(area); string source = Path.Combine(area, "source.jmbp");
             WriteSource(Path.Combine(area, "seed"), source, 1);
             var files = new HeldSource();
             var library = new LibraryState(new FileBlueprintLibrary(Path.Combine(area, "templates"))); library.ConfigureExchange(files.Io, new AtomicFileDocument(Path.Combine(area, "counter.json"), 65536, true));

@@ -145,11 +145,17 @@ namespace JueMingR.TerrariaHost.Combat
         {return p.tileCollide && (!Bypass(p) || GroundSupport(p));}
         private static Vector2 NativeTileCollision(Vector2 position,Vector2 velocity,int width,int height,bool fallThrough,bool fall2,int gravDir,bool ignoreDoors,bool ignoreAetheriumPlatforms,bool hoik,Entity context)
         {
-            var result=Collision.TileCollision(position,velocity,width,height,fallThrough,fall2,gravDir,ignoreDoors,ignoreAetheriumPlatforms,hoik);
-            // A walking summon keeps vanilla's vertical floor/ceiling support.
-            // Only the blocking horizontal component is released, so it cannot
-            // fall through the world when a wall blocks its target.
-            if(Bypass(context) && GroundSupport((Projectile)context))result.X=velocity.X;return result;
+            if(Bypass(context) && GroundSupport((Projectile)context))
+            {
+                // Native diagonal collision may cancel its earlier floor clamp
+                // when a wall in the same column stops X. Restoring only X then
+                // keeps the cancelled Y and lets a walking summon fall below
+                // its support. Query vanilla's vertical movement independently;
+                // retain its platform/gravity rules and release horizontal walls.
+                var vertical=Collision.TileCollision(position,new Vector2(0,velocity.Y),width,height,fallThrough,fall2,gravDir,ignoreDoors,ignoreAetheriumPlatforms,hoik);
+                return new Vector2(velocity.X,vertical.Y);
+            }
+            return Collision.TileCollision(position,velocity,width,height,fallThrough,fall2,gravDir,ignoreDoors,ignoreAetheriumPlatforms,hoik);
         }
         private static Vector4 NativeSlopeCollision(Vector2 position,Vector2 velocity,int width,int height,float gravity,bool fall,bool ignoreAetheriumPlatforms,Entity context)
         {
