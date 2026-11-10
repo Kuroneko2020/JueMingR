@@ -12,7 +12,7 @@ namespace JueMingR.TerrariaHost.Tools
     internal enum ToolReadiness { Ready, Pending, Yield, Invalid }
     internal enum ToolTargetRejection { Resolution, Consumer }
     internal enum ToolInputGesture { HeldPress, NeutralRelease, SelectUp, SelectDown }
-    internal enum ToolBuildConsumer { Tiles, Walls, Hammer, Paintbrush, PaintRoller, PaintScraper, ApplyPaint, ApplyCoating, Wiring, GrandDesign, HittingWall, LongMoss }
+    internal enum ToolBuildConsumer { Tiles, Walls, Hammer, Paintbrush, PaintRoller, PaintScraper, ApplyPaint, ApplyCoating, Wiring, GrandDesign, HittingWall, LongMoss, TileReplacement }
     internal enum ToolBuildCursorMode { Precise, SmartPlatform }
     internal sealed class ToolIntent
     {

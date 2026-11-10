@@ -45,6 +45,7 @@ namespace JueMingR.TerrariaHost.Tools
                 transpiler:new HarmonyMethod(typeof(ToolHooks),nameof(ConstructionHotbarPresentation)));
             Patch(typeof(Player),"PickTile",new[]{typeof(int),typeof(int),typeof(int),typeof(int)},nameof(BeforePick),nameof(AfterPick));
             Patch(typeof(Player),"PlaceThing_Tiles",new[]{typeof(bool)},nameof(BeforePlant),nameof(AfterPlant),nameof(FinalPlant));
+            Patch(typeof(Player),"PlaceThing_TryReplacingTiles",new[]{typeof(bool)},nameof(BeforeTileReplacement));
             Patch(typeof(Player),"PlaceThing_Walls",Type.EmptyTypes,nameof(BeforeWall));
             Patch(typeof(Player),"PlaceThing_Tiles_PlaceIt",new[]{typeof(bool),typeof(TileObject),typeof(int)},nameof(BeforeTileChoice));
             Patch(typeof(Player),"PlaceThing_Tiles_BlockPlacementForAssortedThings",new[]{typeof(bool)},nameof(BeforeBuildPreparation),nameof(AfterBuildPreparation),nameof(FinalBuildPreparation));
@@ -362,6 +363,14 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private static bool BeforeWall(Player __instance)
         {return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Building || host.Use.AllowBuildPlacement(true);}
+        // Replacement precedes PlaceIt in vanilla. An ordinary placement lease
+        // never authorizes occupied terrain; Hoik supplies its exact next step.
+        private static bool BeforeTileReplacement(Player __instance, bool __0, ref bool __result)
+        {
+            if(host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Building)return true;
+            if(host.Use.AllowBuildConsumer(ToolBuildConsumer.TileReplacement))return true;
+            __result=__0;return false;
+        }
         private static bool BeforeTileChoice(Player __instance,bool __0,TileObject __1,int __2)
         {return host==null || !ReferenceEquals(__instance,host.Player) || !host.Use.Building || host.Use.AllowBuildTileChoice(__0,__1,__2);}
         private static void BeforeBuildPreparation(Player __instance,out Action<bool> __state)

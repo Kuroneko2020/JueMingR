@@ -19,7 +19,8 @@ namespace JueMingR.Infrastructure.Storage
         private string protectionError;
         private bool unconfirmed;
         private bool disposed;
-        private readonly string retainedSourcePath;
+        private string retainedSourcePath;
+        private readonly string[] additionalRetainedSourcePaths;
         private bool retainSource;
 #if DEBUG
         // Instance-local fault seam: exercises the real owned-candidate failure
@@ -30,6 +31,8 @@ namespace JueMingR.Infrastructure.Storage
         public AtomicFileDocument(string fullDocumentPath, int maximumBytes, bool protectRecovery = false)
             : this(fullDocumentPath, maximumBytes, protectRecovery, null) { }
         public AtomicFileDocument(string fullDocumentPath, int maximumBytes, bool protectRecovery, string retainedSourceSuffix)
+            : this(fullDocumentPath, maximumBytes, protectRecovery, retainedSourceSuffix, null) { }
+        public AtomicFileDocument(string fullDocumentPath, int maximumBytes, bool protectRecovery, string retainedSourceSuffix, string[] additionalRetainedSourceSuffixes)
         {
             if (String.IsNullOrWhiteSpace(fullDocumentPath) || !Path.IsPathRooted(fullDocumentPath))
                 throw new ArgumentException("An explicit absolute document path is required.", nameof(fullDocumentPath));
@@ -38,14 +41,12 @@ namespace JueMingR.Infrastructure.Storage
             path = Path.GetFullPath(fullDocumentPath);
             if (retainedSourceSuffix != null)
             {
-                if (!protectRecovery || retainedSourceSuffix.Length < 2 || retainedSourceSuffix[0] != '.' ||
-                    retainedSourceSuffix.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
-                    String.Equals(retainedSourceSuffix, ".bak", StringComparison.OrdinalIgnoreCase) ||
-                    String.Equals(retainedSourceSuffix, ".tmp", StringComparison.OrdinalIgnoreCase) ||
-                    String.Equals(retainedSourceSuffix, ".lock", StringComparison.OrdinalIgnoreCase))
-                    throw new ArgumentException("invalid-retained-source-suffix");
+                ValidateRetainedSuffix(retainedSourceSuffix);
                 retainedSourcePath = path + retainedSourceSuffix;
             }
+            additionalRetainedSourcePaths = new string[additionalRetainedSourceSuffixes?.Length ?? 0];
+            for(int n=0;n<additionalRetainedSourcePaths.Length;n++)
+            { ValidateRetainedSuffix(additionalRetainedSourceSuffixes[n]); additionalRetainedSourcePaths[n]=path+additionalRetainedSourceSuffixes[n]; }
             // IsPathRooted also accepts C:file and \file on Windows; those silently
             // depend on a working directory/drive and are not host-resolved data roots.
             if (!String.Equals(Path.GetPathRoot(fullDocumentPath), Path.GetPathRoot(path), StringComparison.OrdinalIgnoreCase))
@@ -89,7 +90,7 @@ namespace JueMingR.Infrastructure.Storage
             catch (FileNotFoundException)
             {
                 if (protectRecovery && (File.Exists(path + ".bak") || File.Exists(path + ".tmp") || Directory.Exists(path + ".bak") || Directory.Exists(path + ".tmp") ||
-                    retainedSourcePath != null && (File.Exists(retainedSourcePath) || Directory.Exists(retainedSourcePath))))
+                    HasRetainedRecovery()))
                     return RememberIoFailure("missing-document-with-recovery-material");
                 acceptedIdentity = MissingIdentity;
                 initialRead = new PreferenceReadResult(PreferenceReadStatus.Missing, null, acceptedIdentity, null);
@@ -107,6 +108,28 @@ namespace JueMingR.Infrastructure.Storage
             if (retainedSourcePath == null || initialRead == null || initialRead.Status != PreferenceReadStatus.Loaded)
                 throw new InvalidOperationException("retained-source-requires-validated-load");
             retainSource = true;
+        }
+        // The validated semantic decoder chooses the old version's archive.
+        // Mechanical storage still owns all path and exact-byte protection.
+        public void RetainLoadedSource(string suffix)
+        {
+            ValidateRetainedSuffix(suffix);
+            if (retainSource && !String.Equals(retainedSourcePath, path + suffix, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("retained-source-already-selected");
+            retainedSourcePath = path + suffix; RetainLoadedSource();
+        }
+        private void ValidateRetainedSuffix(string suffix)
+        {
+            if (!protectRecovery || suffix == null || suffix.Length < 2 || suffix[0] != '.' ||
+                suffix.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || String.Equals(suffix, ".bak", StringComparison.OrdinalIgnoreCase) ||
+                String.Equals(suffix, ".tmp", StringComparison.OrdinalIgnoreCase) || String.Equals(suffix, ".lock", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("invalid-retained-source-suffix");
+        }
+        private bool HasRetainedRecovery()
+        {
+            if(retainedSourcePath!=null && (File.Exists(retainedSourcePath) || Directory.Exists(retainedSourcePath)))return true;
+            foreach(string candidate in additionalRetainedSourcePaths)if(File.Exists(candidate) || Directory.Exists(candidate))return true;
+            return false;
         }
 
         public PreferenceWriteResult Write(string expectedIdentity, byte[] contents)

@@ -13,13 +13,15 @@ namespace JueMingR.TerrariaHost.Blueprint
     // their own appearance/wire/actuation work in the same bounded source.
     internal enum BlueprintBuildLane { TileBody, WallBody, Shape, Appearance, Wire, Actuation }
     internal enum BlueprintBuildOperationKind
-    { Body, Hammer, PaintTile, PaintWall, Scrape, AddWire, AddActuator, SetInactive, RemoveOwnedActuator, PlaceBase, ConvertSubstrate }
+    { Body, Hammer, PaintTile, PaintWall, Scrape, AddWire, AddActuator, SetInactive, RemoveOwnedActuator, PlaceBase, ConvertSubstrate, HoikBase, HoikSwap }
     internal sealed class BlueprintBuildOperation
     {
         internal BlueprintBuildOperationKind Kind;
         internal ToolBuildConsumer Consumer;
         internal int Mode, SupplyType, Cycle, BucketType;
         internal int SupplyDestination = -1, PrimaryMaximum = 1, HeldMaximum;
+        internal bool Hoik;
+        internal int HoikWaitTool;
         // This native step may place a recipe's base rather than its final
         // target. The immutable target Cell/Body and final Match never change.
         internal BlueprintPlacementDescriptor NativePlacement;
@@ -51,7 +53,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             return value == null ? null : new BlueprintBuildOperation { Kind = value.Kind, Consumer = value.Consumer,
                 Mode = value.Mode, SupplyType = value.SupplyType, Cycle = value.Cycle, BucketType = value.BucketType,
                 SupplyDestination = value.SupplyDestination, PrimaryMaximum = value.PrimaryMaximum,
-                HeldMaximum = value.HeldMaximum, NativePlacement = value.NativePlacement, DoorForm = value.DoorForm, DoorProof = value.DoorProof };
+                HeldMaximum = value.HeldMaximum, NativePlacement = value.NativePlacement, DoorForm = value.DoorForm, DoorProof = value.DoorProof, Hoik = value.Hoik, HoikWaitTool = value.HoikWaitTool };
         }
         private int PlannedBuildToolSlot(Player p, BuildOperationPlan plan, bool afterOwnedPreparation = false)
         {
@@ -95,6 +97,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!IsBuildTargetCurrent(target) || !ReferenceEquals(p, player)) return DeferBuildTarget(target);
             if(IsUnconfirmedTarget(target)){target.Readiness=BlueprintBuildReadiness.BlockedNow;return false;}
             var operation = target.Operation;
+            if (HoikOperation(operation) && !HoikCapabilities(target, p, operation.Kind == BlueprintBuildOperationKind.HoikBase, out wait)) return false;
             if (WiringOperation(operation)) return TryPlanWiringTool(target, p, preferred, out plan, out wait, out dependencySlots);
             int tool = -1, primary = -1;
             if (AppearanceOperation(operation))
@@ -192,6 +195,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         { return operation != null && (operation.Kind == BlueprintBuildOperationKind.AddWire || operation.Kind == BlueprintBuildOperationKind.AddActuator || operation.Kind == BlueprintBuildOperationKind.SetInactive || operation.Kind == BlueprintBuildOperationKind.RemoveOwnedActuator); }
         private bool TryPrepareConstructionBuild(BlueprintBuildTarget target, Player p, out BuildFlight flight, BuildOperationPlan plan)
         {
+            if (HoikOperation(target.Operation)) return TryPrepareHoikBuild(target, p, out flight, plan);
             if (AppearanceOperation(target.Operation)) return TryPrepareAppearanceBuild(target, p, out flight, plan);
             if (WiringOperation(target.Operation)) return TryPrepareWiringBuild(target, p, out flight, plan);
             return TryPrepareSpecialBuild(target, p, out flight, plan);
@@ -277,6 +281,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool TryPlanConstructionOperationFromSample(BlueprintBuildTarget target,BlueprintBuildLane lane,BlueprintWorldMatchSample actual,out BlueprintBuildOperation operation)
         {
             operation=null;
+            if (HoikTarget(target.Cell) && (lane == BlueprintBuildLane.TileBody || lane == BlueprintBuildLane.Shape))
+                return TryPlanHoikBuild(target, actual, lane, out operation);
             if (lane == BlueprintBuildLane.TileBody)
             {
                 if (!TryPlanSpecialBuild(target, actual, out operation) &&
@@ -307,12 +313,14 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool ConstructionBuildCurrent(BuildFlight flight)
         {
+            if (HoikOperation(flight.Operation)) return HoikBuildCurrent(flight);
             if (AppearanceOperation(flight.Operation)) return AppearanceBuildCurrent(flight);
             if (WiringOperation(flight.Operation)) return WiringBuildCurrent(flight);
             return SpecialBuildCurrent(flight);
         }
         private bool ConstructionBuildApplied(BuildFlight flight)
         {
+            if (HoikOperation(flight.Operation)) return HoikBuildApplied(flight);
             if (AppearanceOperation(flight.Operation)) return AppearanceBuildApplied(flight);
             if (WiringOperation(flight.Operation)) return WiringBuildApplied(flight);
             return SpecialBuildApplied(flight);
@@ -321,12 +329,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if (flight != null && !animation && !flight.Checked && !flight.Rejected && flight.Entered &&
                 ReferenceEquals(activeBuild,flight) && flight.Token==buildTools.Use.Operation &&
-                (flight.Operation==null || flight.Operation.Kind==BlueprintBuildOperationKind.Body || flight.Operation.Kind==BlueprintBuildOperationKind.PlaceBase || flight.Operation.Kind==BlueprintBuildOperationKind.ConvertSubstrate))
+                (flight.Operation==null || flight.Operation.Kind==BlueprintBuildOperationKind.Body || flight.Operation.Kind==BlueprintBuildOperationKind.PlaceBase || flight.Operation.Kind==BlueprintBuildOperationKind.ConvertSubstrate || HoikOperation(flight.Operation)))
                 return material==null || OwnsBuildDependency(flight,material);
             if (flight == null || flight.Operation == null || !ReferenceEquals(activeBuild, flight) || flight.Token != buildTools.Use.Operation ||
                 flight.Checked || flight.Rejected || !BuildFlightCurrent(flight, true) ||
                 Player.tileTargetX != flight.Target.WorldX || Player.tileTargetY != flight.Target.WorldY) return false;
-            bool allowed = AppearanceOperation(flight.Operation) ? NativeAppearanceConsumer(flight, consumer, material, wall, animation) :
+            bool allowed = HoikOperation(flight.Operation) ? NativeHoikConsumer(flight, consumer, material, wall, animation) : AppearanceOperation(flight.Operation) ? NativeAppearanceConsumer(flight, consumer, material, wall, animation) :
                 WiringOperation(flight.Operation) ? NativeWiringConsumer(flight, consumer, material, wall, animation) : NativeSpecialConsumer(flight, consumer, material, wall, animation);
             if (allowed && consumer != ToolBuildConsumer.ApplyPaint && consumer != ToolBuildConsumer.ApplyCoating) flight.Entered = true;
             return allowed;
@@ -334,6 +342,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private Action<Exception> BeginConstructionConsumer(BuildFlight flight,ToolBuildConsumer consumer)
         {
             if(flight?.Operation==null)return null;
+            if(HoikOperation(flight.Operation))return BeginHoikConsumer(flight,consumer);
             return WiringOperation(flight.Operation)?BeginWiringBuildConsumer(flight,consumer):
                 AppearanceOperation(flight.Operation)?null:BeginSpecialBuildConsumer(flight,consumer);
         }
@@ -387,6 +396,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 {dependency.Maximum=accessoryMaximum;dependencies.Add(dependency);slots|=1UL<<dependency.Slot;}
             }
             if(!CaptureAppearanceRestoreDependencies(target,p,dependencies,ref slots))return false;
+            if(HoikOperation(target.Operation) && HoikPickCurrent(p) && hoikPickSlot!=toolSlot && (slots&(1UL<<hoikPickSlot))==0)
+            {var pick=SnapshotSource(hoikPickSlot,hoikPick);pick.Maximum=0;dependencies.Add(pick);slots|=1UL<<hoikPickSlot;}
             AddPreparedBuildEndpoints(p,dependencies,toolSlot,ref slots);
             var source = SnapshotSource(toolSlot, tool); source.Maximum = heldMaximum;
             var placement=target.Operation.NativePlacement??target.Placement;

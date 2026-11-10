@@ -21,14 +21,14 @@ namespace NativeWorldTextProbe
     internal static class NativeViewOriginalChecks
     {
         private const BindingFlags F = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
-        internal static int Run(string content, string output,bool waterRepair=false,bool zoomSpeed=false,bool movement=false,bool blueprint=false,bool targets=false)
+        internal static int Run(string content, string output,bool waterRepair=false,bool zoomSpeed=false,bool movement=false,bool blueprint=false,bool targets=false,bool zoomControl=false)
         {
             output = Path.GetFullPath(output); Directory.CreateDirectory(output);
             Terraria.Program.SavePath = Path.Combine(output, "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath);
-            return RunNative(content, output,waterRepair,zoomSpeed,movement,blueprint,targets);
+            return RunNative(content, output,waterRepair,zoomSpeed,movement,blueprint,targets,zoomControl);
         }
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        private static int RunNative(string content, string output,bool waterRepair,bool zoomSpeed,bool movement,bool blueprint,bool targets)
+        private static int RunNative(string content, string output,bool waterRepair,bool zoomSpeed,bool movement,bool blueprint,bool targets,bool zoomControl)
         {
             NativeTestAudio.Install(typeof(Main).Assembly);
             if (movement) Console.WriteLine("MOVEMENT startup=audio-installed");
@@ -50,7 +50,7 @@ namespace NativeWorldTextProbe
             try
             {
                 Environment.CurrentDirectory = output;
-                using (var game = new ViewGame(content, output,waterRepair,zoomSpeed,movement,blueprint,targets))
+                using (var game = new ViewGame(content, output,waterRepair,zoomSpeed,movement,blueprint,targets,zoomControl))
                 {
                     if (movement) Console.WriteLine("MOVEMENT startup=start-game-loop-before");
                     // XNA's nonblocking entry performs CreateDevice and the
@@ -74,7 +74,7 @@ namespace NativeWorldTextProbe
             private object context, input, view;
             private int frame;
             private bool prepared;
-            private readonly bool waterRepair,zoomSpeed,movement,blueprint,targets;
+            private readonly bool waterRepair,zoomSpeed,movement,blueprint,targets,zoomControl;
             private bool ordinaryImage, wideImage, retainedImage;
             private readonly HashSet<string> images = new HashSet<string>();
             private readonly Dictionary<string, int> stableRebuilds = new Dictionary<string, int>();
@@ -92,10 +92,10 @@ namespace NativeWorldTextProbe
             private static bool movementMouseDown;
             private static RenderTarget2D capture;
             private static bool redirectOutput;
-            internal ViewGame(string content, string output,bool waterRepair,bool zoomSpeed,bool movement,bool blueprint,bool targets)
+            internal ViewGame(string content, string output,bool waterRepair,bool zoomSpeed,bool movement,bool blueprint,bool targets,bool zoomControl)
             {
                 this.output = output; this.content = content;this.waterRepair=waterRepair;this.zoomSpeed=zoomSpeed;this.movement=movement;this.blueprint=blueprint;
-                this.targets=targets;
+                this.targets=targets;this.zoomControl=zoomControl;
                 // Caller supplies a local Content directory alias rooted in the
                 // test output because native XnaContentSource takes relative URI.
                 Content.RootDirectory = "Content";
@@ -160,7 +160,7 @@ namespace NativeWorldTextProbe
                 // consumption, native world mouse conversion and final sample.
                 typeof(Main).GetMethod("DoUpdate_HandleInput", F).Invoke(this, null);
                 Call(context, "UpdateRuntime");
-                if(targets)Call(context,"UpdateShell");
+                if(targets || zoomControl)Call(context,"UpdateShell");
                 if(frame==70 && blueprint)
                 { NativeBlueprintOriginalChecks.Run(this,context,()=>InputStep(),()=>Draw(new GameTime()),()=>capture,output,(x,y,down)=>{movementMouseX=x;movementMouseY=y;movementMouseDown=down;});Complete=true;Exit();return; }
                 if(frame==70 && targets)
@@ -170,6 +170,13 @@ namespace NativeWorldTextProbe
                 if (frame == 70) { Require((bool)Call(view, "SetUnlockEnabled", true), "Native view enabled after document load"); Require(GameZoomTarget == 1f, "ON does not jump target"); }
                 // The public speed scope owns this finite obligation directly;
                 // private cache focus/profile variables cannot select it away.
+                if(frame==70 && zoomControl)
+                {
+                    NativeScopeDispatch.Enter("view-zoom-control-draw");
+                    NativeViewZoomDrawChecks.Run(context, k=>InputStep(k), ()=>Draw(new GameTime()), ()=>capture, output,
+                        (x,y,down)=>{movementMouseX=x;movementMouseY=y;movementMouseDown=down;});
+                    Complete=true;Exit();return;
+                }
                 if(frame==70 && zoomSpeed)
                 {Console.WriteLine("VIEW declared ViewZoomSpeed dispatch");PrepareCave();NativeViewZoomSpeedChecks.Run(this,view,k=>InputStep(k),()=>Draw(new GameTime()),()=>capture,output);CheckInputOwnership();Complete=true;Exit();return;}
                 if(frame==70 && waterRepair)
@@ -303,10 +310,10 @@ namespace NativeWorldTextProbe
             {
                 if(activeGame.input==null)return;
                 Call(activeGame.input,"AfterKeyboardRefresh");
-                // Only the blueprint specialist adds its actual late owner
-                // entry, in the same order as the ordinary InputPostfix.
+                // UI specialists add their actual late owner entry in the
+                // same order as the ordinary InputPostfix.
                 if(activeGame.targets)Call(Get(Get(activeGame.context,"Browser"),"Targets"),"ProcessInput");
-                if(activeGame.blueprint || activeGame.targets){Call(Get(activeGame.context,"Shell"),"ProcessInput");Call(Get(activeGame.context,"Blueprint"),"ProcessInput");}
+                if(activeGame.blueprint || activeGame.targets || activeGame.zoomControl){Call(Get(activeGame.context,"Shell"),"ProcessInput");Call(Get(activeGame.context,"Blueprint"),"ProcessInput");}
             }
             private void NetworkDraw()
             {
@@ -399,10 +406,10 @@ namespace NativeWorldTextProbe
                 // This specialist skips Main.DoUpdate. Each declared native
                 // input/update step still needs the original world's entry
                 // counter; repeated Draw and empty callbacks do not renew it.
-                if(blueprint || targets) NativeQuickItemChecks.BeginWorldStep();
+                if(blueprint || targets || zoomControl) NativeQuickItemChecks.BeginWorldStep();
                 Call(input,"BeginUpdate");keyboard=new KeyboardState(keys);
                 typeof(Main).GetMethod("DoUpdate_HandleInput",F).Invoke(this,null);Call(context,"UpdateRuntime");
-                if(targets)Call(context,"UpdateShell");
+                if(targets || zoomControl)Call(context,"UpdateShell");
                 if(frame>=820)Console.WriteLine("VIEW input witness keys="+String.Join(",",keys)+" before="+before+" after="+GameZoomTarget+" chat="+chat+"->"+Main.drawingPlayerChat+" map="+Main.mapFullscreen+" writing="+PlayerInput.WritingText);
             }
             private void CheckInputOwnership()
@@ -512,7 +519,7 @@ namespace NativeWorldTextProbe
                 try { base.Draw(time); }
                 finally { watch.Stop(); redirectOutput = false; if (capture != null) GraphicsDevice.SetRenderTarget(null); }
                 allocated=AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize-allocated;
-                if (!prepared || blueprint) return;
+                if (!prepared || blueprint || zoomControl) return;
                 if(frame>=700 && !caveWaterfalls){waterfallManager.FindWaterfalls(true);Require((int)Get(waterfallManager,"currentMax")>0,"native FindWaterfalls sees real peripheral half-brick/liquid source");caveWaterfalls=true;}
                 string group=frame>=25 && frame<65?"normal-off":frame>=90&&frame<125?"normal-on":frame>=200&&frame<250?"wide-on":frame>=285&&frame<335?"wide-retained":frame>=410&&frame<455?"returned-off":frame>=525&&frame<555?"white-wide":frame>=590&&frame<625?"retro-wide":frame>=655&&frame<685?"trippy-wide":frame>=720&&frame<745?"cave-color":null;
                 if(group!=null){if(!drawTimes.TryGetValue(group,out var samples)){drawTimes.Add(group,samples=new List<double>());drawAllocations.Add(group,0);stableRebuilds.Add(group,legacyRebuilds);stableTargets.Add(group,targetInitializations);stableScenes.Add(group,(int)Get(Get(view,"Scene"),"Generation"));stableWaters.Add(group,(int)Get(Get(view,"Water"),"Generation"));}else Require(stableRebuilds[group]==legacyRebuilds && stableTargets[group]==targetInitializations && stableScenes[group]==(int)Get(Get(view,"Scene"),"Generation") && stableWaters[group]==(int)Get(Get(view,"Water"),"Generation"),"stable view/mode does not rebuild lighting/targets per draw: "+group);samples.Add(watch.Elapsed.TotalMilliseconds);drawAllocations[group]+=allocated;}

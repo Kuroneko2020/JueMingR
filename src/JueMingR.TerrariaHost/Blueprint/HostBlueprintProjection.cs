@@ -310,6 +310,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void DisposeProjectionData(BlueprintProjectionPlacement item)
         {
+            ReleaseHoikPending(item);
             RetireAutomaticBuild(item.Identity);
             // Delete rollback owns its separate Copy before this point. A dead
             // instance itself must release DTOs and the shared source index,
@@ -432,6 +433,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private void RebuildProjectionMask(BlueprintProjectionPlacement item)
         {
+            RetireMaskedHoikPending(item);
             item.Denied.Clear();
             // A new Copy/retired hidden renderer needs every retained core.
             // Freeze this before the loop: publishing its first core must not

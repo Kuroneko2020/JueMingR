@@ -32,6 +32,14 @@ namespace JueMingR.TerrariaHost.F5
         internal GuidanceControls GuidanceControls { get; set; }
         internal JourneyControls JourneyControls { get; set; }
         internal ViewControls ViewControls { get; set; }
+        internal ViewZoomControl ViewZoom { get; set; }
+        private string zoomText;
+        private float zoomDisplay = float.NaN;
+        private object zoomFont;
+        private F5Size zoomSize;
+#if DEBUG
+        internal int ZoomMeasurements { get; private set; }
+#endif
         internal MovementControls MovementControls { get; set; }
         internal BlueprintControls BlueprintControls { get; set; }
         internal BlueprintReplacementPopup BlueprintReplacementPopup { get; set; }
@@ -224,6 +232,7 @@ namespace JueMingR.TerrariaHost.F5
             if(CombatObservationControls!=null)state.Layout.SetObservationOptions(CombatObservationControls.Options);
             if(state.Page==2){PrepareMapValue();state.Layout.SetAnnouncementWidth(sendFieldWidth);}
             state.Layout.Ensure(width, height, scale, state.Page, font, measure);
+            if (state.Page == 2 && ViewZoom != null) PrepareZoomValue(state.Layout);
             if(state.Page==8 && !ReferenceEquals(intervalFont,font))
             {for(int i=0;i<=30;i++){intervalLabels[i]="间隔 "+i;intervalSizes[i]=state.Layout.TextSize(intervalLabels[i],.65f);}for(int i=0;i<=50;i++){radiusLabels[i]="鼠标半径："+i+"格";radiusSizes[i]=state.Layout.TextSize(radiusLabels[i],.70f);}intervalFont=font;}
             // Dynamic pages clamp after committing their real content height.
@@ -233,6 +242,59 @@ namespace JueMingR.TerrariaHost.F5
 
         private F5Size Measure(string text)
         { return textMetrics.Measure(font, text); }
+
+        private void PrepareZoomValue(F5Layout layout)
+        {
+            float display = (float)Math.Round(ViewZoom.Value * 1000f) / 10f;
+            if (display == zoomDisplay && ReferenceEquals(zoomFont, font)) return;
+            // A single replaceable dynamic label; continuously dragged numbers
+            // must not enter Layout's lifetime fixed-string dictionary.
+            zoomText = display.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%";
+            zoomSize = layout.DynamicTextSize(zoomText, .70f);
+            zoomDisplay = display; zoomFont = font;
+#if DEBUG
+            ZoomMeasurements++;
+#endif
+        }
+
+        private void DrawZoomControl(SpriteBatch batch, F5Element element, F5Rect rect, F5Interaction state, Matrix matrix)
+        {
+            if (ViewZoom == null) return;
+            if (element.Command == F5Command.ViewZoomValue)
+            { Text(batch, zoomText, new Vector2(rect.Right - zoomSize.Width, rect.Y + (rect.Height - zoomSize.Height) / 2), .70f, Color.White, zoomSize); return; }
+            if (element.Command != F5Command.ViewZoomTrack)
+            {
+                bool hover = !state.PointerBlocked && rect.Contains(state.PointerX, state.PointerY);
+                var label = F5Layout.ButtonLabel(element, matrix.M22).Offset(rect.X - element.Rect.X, rect.Y - element.Rect.Y);
+                Text(batch, element.Text, new Vector2(label.X, label.Y), element.TextScale,
+                    !ViewZoom.Available ? Color.Gray : hover ? Color.LightGoldenrodYellow : Color.White, element.TextSize);
+                return;
+            }
+            float low = ViewZoomControl.BlueStart(ViewZoom.Minimum), high = ViewZoomControl.BlueEnd(ViewZoom.Minimum);
+            float center = rect.Y + rect.Height / 2;
+            DrawZoomSegment(batch, rect.X, rect.X + rect.Width * low, center, matrix, Color.IndianRed);
+            DrawZoomSegment(batch, rect.X + rect.Width * low, rect.X + rect.Width * high, center, matrix, Color.LightSkyBlue);
+            DrawZoomSegment(batch, rect.X + rect.Width * high, rect.Right, center, matrix, Color.IndianRed);
+            float tickWidth = 1 / matrix.M11;
+            if (low > 0) Decoration(batch, new F5Rect(rect.X + rect.Width * low - tickWidth / 2, center - 4, tickWidth, 8), Color.White);
+            Decoration(batch, new F5Rect(rect.X + rect.Width * high - tickWidth / 2, center - 4, tickWidth, 8), Color.White);
+            float thumb = rect.X + rect.Width * ViewZoomControl.ToPosition(ViewZoom.Value, ViewZoom.Minimum, ViewZoom.Maximum);
+            Color frame = new Color(20, 20, 52), face = ViewZoom.Available ? new Color(130, 151, 218) : Color.Gray;
+            // A stepped pixel frame and blue inset share the shell's palette;
+            // this small handle is not another flat white progress indicator.
+            Decoration(batch, new F5Rect(thumb - 3, center - 8, 6, 16), frame);
+            Decoration(batch, new F5Rect(thumb - 4, center - 7, 8, 14), frame);
+            Decoration(batch, new F5Rect(thumb - 3, center - 6, 6, 12), face);
+            Decoration(batch, new F5Rect(thumb - 2, center - 7, 4, 1), new Color(191, 211, 247));
+        }
+        private void DrawZoomSegment(SpriteBatch batch, float left, float right, float center, Matrix matrix, Color color)
+        {
+            if (right <= left) return;
+            float x = (float)Math.Round(left * matrix.M11 + matrix.M41), end = (float)Math.Round(right * matrix.M11 + matrix.M41);
+            float y = (float)Math.Round(center * matrix.M22 + matrix.M42 - 1);
+            Decoration(batch, new F5Rect((x - matrix.M41) / matrix.M11, (y - matrix.M42) / matrix.M22,
+                (end - x) / matrix.M11, 2 / matrix.M22), color);
+        }
 
         internal void Draw(F5Interaction state, Matrix matrix, bool biomeEnabled, bool biomeFailed)
         {
@@ -272,6 +334,7 @@ namespace JueMingR.TerrariaHost.F5
                     F5Rect rect = element.Rect.Offset(view.X, view.Y - state.Scroll);
                     if (rect.Bottom <= view.Y || rect.Y >= view.Bottom) continue;
                     if (element.Kind == F5ElementKind.Panel) F5ControlRenderer.Panel(batch, pixel, row, rect);
+                    else if (ViewZoomControl.Owns(element.Command)) DrawZoomControl(batch, element, rect, state, matrix);
                     else if (element.Kind == F5ElementKind.Field)
                     {
                         Panel(batch, rect, row, new Color(180, 180, 180));

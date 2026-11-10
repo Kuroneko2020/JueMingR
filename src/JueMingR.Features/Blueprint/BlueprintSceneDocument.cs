@@ -4,23 +4,48 @@ using System.Collections.ObjectModel;
 
 namespace JueMingR.Features.Blueprint
 {
+    // A confirmed intermediate foreground, relative to this exact committed
+    // scene pose. Expected.ObjectId identifies the final template object for
+    // mask retirement; its other foreground fields describe the actual stone.
+    // It contains no inventory, action token or completion claim.
+    public sealed class BlueprintHoikPending
+    {
+        public BlueprintHoikPending(CaptureCell expected)
+        {
+            if (expected.X < 0 || expected.Y < 0 || expected.ObjectId < 0 || expected.TileType != 1 || expected.Slope > 4 || expected.HalfBrick && expected.Slope != 0)
+                throw new ArgumentException("blueprint-hoik-pending");
+            Expected = expected;
+        }
+        public CaptureCell Expected { get; }
+    }
     public sealed class BlueprintSceneRecord
     {
-        public BlueprintSceneRecord(BlueprintTemplateKey template, int originX, int originY, long order, BlueprintProjectionMask mask, bool mirroredHorizontally = false)
-        { Template = template ?? throw new ArgumentNullException(nameof(template)); OriginX = originX; OriginY = originY; Order = order; Mask = mask ?? BlueprintProjectionMask.Empty; MirroredHorizontally = mirroredHorizontally; }
+        public BlueprintSceneRecord(BlueprintTemplateKey template, int originX, int originY, long order, BlueprintProjectionMask mask, bool mirroredHorizontally = false, IReadOnlyList<BlueprintHoikPending> hoikPending = null)
+        {
+            Template = template ?? throw new ArgumentNullException(nameof(template)); OriginX = originX; OriginY = originY; Order = order; Mask = mask ?? BlueprintProjectionMask.Empty; MirroredHorizontally = mirroredHorizontally;
+            var copy = new BlueprintHoikPending[hoikPending?.Count ?? 0]; var seen = new HashSet<long>();
+            for (int n = 0; n < copy.Length; n++)
+            {
+                var item = hoikPending[n] ?? throw new ArgumentException("blueprint-hoik-pending");
+                if (!seen.Add(((long)item.Expected.Y << 32) | (uint)item.Expected.X)) throw new ArgumentException("blueprint-hoik-duplicate");
+                copy[n] = item;
+            }
+            HoikPending = new ReadOnlyCollection<BlueprintHoikPending>(copy);
+        }
         public BlueprintTemplateKey Template { get; }
         public int OriginX { get; }
         public int OriginY { get; }
         public long Order { get; }
         public BlueprintProjectionMask Mask { get; }
         public bool MirroredHorizontally { get; }
+        public IReadOnlyList<BlueprintHoikPending> HoikPending { get; }
     }
 
     // Only committed scene facts cross the file boundary. Template summaries,
     // world Match, input/source ownership and execution generations are rebuilt.
     public sealed class BlueprintSceneDocument
     {
-        public BlueprintSceneDocument(string scope, int width, int height, long revision, IReadOnlyList<BlueprintSceneRecord> records, int sourceVersion = 2)
+        public BlueprintSceneDocument(string scope, int width, int height, long revision, IReadOnlyList<BlueprintSceneRecord> records, int sourceVersion = 3)
         {
             ValidateScope(scope);
             if (width <= 0 || height <= 0 || revision < 0 || records == null) throw new ArgumentException("blueprint-scene-header");
@@ -44,7 +69,7 @@ namespace JueMingR.Features.Blueprint
         public int Height { get; }
         public long Revision { get; }
         // SourceVersion is a validated decode fact, not a requested writer mode.
-        // A real committed mutation writes v2; merely loading v1 never rewrites it.
+        // A real committed mutation writes v3; merely loading v1/v2 never rewrites it.
         public int SourceVersion { get; }
         public IReadOnlyList<BlueprintSceneRecord> Records { get; }
         public static void ValidateScope(string value)

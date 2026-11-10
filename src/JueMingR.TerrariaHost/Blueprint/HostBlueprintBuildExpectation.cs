@@ -508,6 +508,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             var group=buildContinuation;if(group==null)return false;
             var kind=group.Operation?.Kind;
+            if(HoikOperation(group.Operation))return lane==(int)BlueprintBuildLane.TileBody || lane==(int)BlueprintBuildLane.Shape;
             if(kind==null || kind==BlueprintBuildOperationKind.PlaceBase || kind==BlueprintBuildOperationKind.ConvertSubstrate)
                 return lane==(int)(group.Consumer==Tools.ToolBuildConsumer.Walls?BlueprintBuildLane.WallBody:BlueprintBuildLane.TileBody);
             if(kind==BlueprintBuildOperationKind.Hammer)return lane==(int)BlueprintBuildLane.Shape;
@@ -795,6 +796,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool NearSeedMayContinue(RepeatedBuildSeed seed)
         {
             var group=buildContinuation;if(group==null)return true;
+            if(HoikOperation(group.Operation) && HoikTarget(seed.Cell))
+                return BuildLane(seed.Ordinal)==BlueprintBuildLane.TileBody || BuildLane(seed.Ordinal)==BlueprintBuildLane.Shape;
             bool ordinary=group.Operation==null || group.Operation.Kind==BlueprintBuildOperationKind.PlaceBase || group.Operation.Kind==BlueprintBuildOperationKind.ConvertSubstrate;
             var lane=BuildLane(seed.Ordinal);
             if(!ordinary)

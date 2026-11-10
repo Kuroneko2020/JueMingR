@@ -39,7 +39,7 @@ namespace JueMingR.TerrariaHost.F5
         CombatReportOn, CombatReportOff, CombatGoblinOn, CombatGoblinOff, CombatInterval,
         ObservationPolicy,ObservationCenter,ObservationDummy,ObservationRadius,
         ObservationCollisionOn,ObservationCollisionOff,ObservationPathOn,ObservationPathOff,ObservationMarker,ObservationAimOn,ObservationAimOff,
-        EnableViewUnlock, DisableViewUnlock,
+        EnableViewUnlock, DisableViewUnlock, ViewZoomMinus, ViewZoomTrack, ViewZoomPlus, ViewZoomValue,
         MovementJumpOn, MovementJumpOff, MovementDashOn, MovementDashOff, MovementTeleportOn, MovementTeleportOff, MovementDashMode,
         MovementFallOn, MovementFallOff, MovementFallConfigure,
         MovementFallAllow0, MovementFallDeny0, MovementFallAllow1, MovementFallDeny1,

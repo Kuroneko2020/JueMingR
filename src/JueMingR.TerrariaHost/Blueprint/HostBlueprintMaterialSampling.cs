@@ -50,6 +50,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             read.MaterialCrossLayerSeen |= (context.Layers & CaptureLayer.Wall) != 0;
             if (target.ObjectId > 0) target = target.WithoutTile();
             if (!target.HasContent) return;
+            if((target.Layers&CaptureLayer.Tile)!=0 && target.ObjectId==0)
+                HoikWorldMaterials(read.Owner,target,sample,BlueprintMaterialSteps.SameBody(target,sample,read.MaterialCatalog,policy:substitutionPolicy)==BlueprintBodyState.Same,read.Materials);
             BlueprintMaterialSteps.RequiredSteps(target, sample, read.MaterialCatalog, read.Materials, foregroundHandledElsewhere: objectForeground, policy: substitutionPolicy);
         }
         private void SampleMaterialObjectRead(BlueprintProjectionMatchRead read, BlueprintWorldMatchSample sample)
@@ -60,6 +62,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!sample.Available) return;
             int row = sample.Cell.Y - read.ObjectBounds.Top, column = sample.Cell.X - read.ObjectBounds.Left;
             if (row < 0 || row >= read.ObjectTarget.Height) return;
+            if(read.ObjectTarget.Width==1 && read.ObjectTarget.Height==1)
+                HoikWorldMaterials(read.Owner,MaterialSourceTarget(read,0),sample,sample.Object!=null && SameSubstitutionBody(read.ObjectTarget,sample.Object),read.Materials);
             if (read.ObjectTarget.Family == BlueprintWorldObjectFamily.Door)
             {
                 // Bill each actual member once. Two saved open columns may

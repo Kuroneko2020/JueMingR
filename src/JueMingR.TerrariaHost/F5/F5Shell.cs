@@ -77,7 +77,7 @@ namespace JueMingR.TerrariaHost.F5
             if (!State.Visible || State.Page != 6 || blueprint == null || !blueprint.ControlsEnabled ||
                 BlueprintUi != null && !BlueprintUi.RequestLeave()) return;
             BlueprintPlacedUi?.Close(); BlueprintMaterialsUi?.Close(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close();
-            FishingUi?.CloseOverlay(); CaptureUi?.Close(); RecoveryUi?.PotionPopup.Close(); CombatInterval?.Cancel(); CombatRadius?.Cancel();
+            FishingUi?.CloseOverlay(); CaptureUi?.Close(); RecoveryUi?.PotionPopup.Close(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); ViewZoom?.Cancel();
             State.Layout.SetBlueprintLibraryVisible(false);
             renderer.Prepare(State, PlayerInput.OriginalScreenSize.X, PlayerInput.OriginalScreenSize.Y, Main.UIScaleMatrix.M11);
             var anchor = PopupAnchor(F5Command.BlueprintSubstitutionConfigure);
@@ -141,8 +141,15 @@ namespace JueMingR.TerrariaHost.F5
             !(HotkeyPopup != null && HotkeyPopup.Visible) && !(StylePopup != null && StylePopup.Visible) && !(DeathPopup != null && DeathPopup.Visible) &&
             !(MapPopup != null && MapPopup.Visible) && !(FootprintPopup != null && FootprintPopup.Visible) && !(information != null && information.Adjustment.Active) && !adjustmentPending; } }
         private IViewControls view;
+        internal ViewZoomControl ViewZoom { get; private set; }
         internal void AttachView(IViewControls owner)
-        { view = owner; renderer.ViewControls = owner == null ? null : new ViewControls(owner); }
+        {
+            ViewZoom?.Cancel(); view = owner;
+            renderer.ViewControls = owner == null ? null : new ViewControls(owner);
+            ViewZoom = owner == null ? null : new ViewZoomControl(owner, State); renderer.ViewZoom = ViewZoom;
+            var prior = State.BeforeLeave;
+            State.BeforeLeave = page => { if (prior != null && !prior(page)) return false; ViewZoom?.Cancel(); return true; };
+        }
 
         internal void ToggleJourneyFromHotkey() { RequestJourneyCommand(F5Command.None, true); }
         private void RequestJourneyCommand(F5Command command, bool hotkey)
@@ -376,7 +383,7 @@ namespace JueMingR.TerrariaHost.F5
             // positioning without cancelling file work or leaving its parent.
             BlueprintUi?.RetireExchangeIntent();
             if (BlueprintPlacedUi?.Visible == true) BlueprintPlacedUi.PauseForMaterials();
-            BlueprintUi?.PauseForMaterials(); CombatInterval?.Cancel(); CombatRadius?.Cancel();
+            BlueprintUi?.PauseForMaterials(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); ViewZoom?.Cancel();
             BlueprintMaterialsUi.OpenWorld(source, anchor);
         }
         internal void OpenBlueprintTemplateMaterials(Features.Blueprint.LibraryEntry entry, F5Rect anchor)
@@ -404,7 +411,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (!success || failed || !ReferenceEquals(owner, blueprint) || !owner.HasSession || owner.UiSession != session || !owner.CanOpenPlacedList || !CanPresentNow) return;
                 BlueprintUi?.RequestLeave(); BlueprintMaterialsUi?.Close(); CloseBlueprintReplacementConfiguration();
                 HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close();
-                CombatInterval?.Cancel(); CombatRadius?.Cancel();
+                CombatInterval?.Cancel(); CombatRadius?.Cancel(); ViewZoom?.Cancel();
                 State.RestoreVisible(); State.Navigate(6); State.CancelControlCapture(); BlueprintPlacedUi.Open();
                 State.Layout.SetBlueprintLibraryVisible(true);
             };
@@ -479,7 +486,7 @@ namespace JueMingR.TerrariaHost.F5
         private bool CanTargetActions(bool requireFocus)
         { return !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresent(false,requireFocus) && !NativeJourneyInputBusy && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !inputState.HotkeyCapture && Main.LocalPlayer != null && Main.LocalPlayer.talkNPC < 0 && Main.LocalPlayer.sign < 0 && Main.npcShop == 0 && string.IsNullOrEmpty(Main.npcChatText) && !Main.clothesWindow && !Main.hairWindow && !(information != null && information.Adjustment.Active) && !adjustmentPending; }
         internal bool BlocksMapInput { get { return failed || State.Visible || BlueprintMaterialsUi?.Visible == true || notes.OwnsPointer || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || MapPopup != null && MapPopup.Visible; } }
-        internal void CloseForMapLocate() { CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); }
+        internal void CloseForMapLocate() { CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); ViewZoom?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); }
         internal void OpenHotkey(string id, F5Rect rect)
         {
             if(HotkeyPopup==null)return;
@@ -509,9 +516,9 @@ namespace JueMingR.TerrariaHost.F5
         private bool ClaimsPopupPoint(Vector2 point)
         {
             if (failed || !State.Visible && BlueprintMaterialsUi?.Visible != true && BlueprintReplacementPopup?.Captured != true || !CanPresentNow) return false;
-            return BlueprintReplacementPopup != null && (BlueprintReplacementPopup.Captured || BlueprintReplacementPopup.Contains(point.X, point.Y)) || BlueprintMaterialsUi != null && (BlueprintMaterialsUi.Captured || BlueprintMaterialsUi.Contains(point.X, point.Y)) || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true) || FishingUi != null && (FishingUi.Captured || FishingUi.Contains(point.X,point.Y)) || CaptureUi != null && (CaptureUi.Captured || CaptureUi.Contains(point.X,point.Y)) || RecoveryUi != null && (RecoveryUi.PotionPopup.Captured || RecoveryUi.PotionPopup.Contains(point.X,point.Y)) || StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y) || DeathPopup != null && (DeathPopup.Pressed >= 0 || DeathPopup.ContainsPointer(point.X, point.Y)) || MapPopup != null && (MapPopup.Pressed >= 0 || MapPopup.ContainsPointer(point.X, point.Y)) || FootprintPopup != null && (FootprintPopup.Pressed >= 0 || FootprintPopup.ContainsPointer(point.X, point.Y));
+            return BlueprintReplacementPopup != null && (BlueprintReplacementPopup.Captured || BlueprintReplacementPopup.Contains(point.X, point.Y)) || BlueprintMaterialsUi != null && (BlueprintMaterialsUi.Captured || BlueprintMaterialsUi.Contains(point.X, point.Y)) || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true || ViewZoom?.OwnsPointer==true) || FishingUi != null && (FishingUi.Captured || FishingUi.Contains(point.X,point.Y)) || CaptureUi != null && (CaptureUi.Captured || CaptureUi.Contains(point.X,point.Y)) || RecoveryUi != null && (RecoveryUi.PotionPopup.Captured || RecoveryUi.PotionPopup.Contains(point.X,point.Y)) || StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y) || DeathPopup != null && (DeathPopup.Pressed >= 0 || DeathPopup.ContainsPointer(point.X, point.Y)) || MapPopup != null && (MapPopup.Pressed >= 0 || MapPopup.ContainsPointer(point.X, point.Y)) || FootprintPopup != null && (FootprintPopup.Pressed >= 0 || FootprintPopup.ContainsPointer(point.X, point.Y));
         }
-        private bool OtherPointerOwner { get { return information != null && information.Adjustment.Dragging || BlueprintReplacementPopup?.BlockPointer == true || inputState.HotkeyPointerOwned || BlueprintMaterialsUi != null && BlueprintMaterialsUi.OwnsPointer || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true) || BlueprintPlacedUi?.OwnsPointer == true || BlueprintUi != null && BlueprintUi.OwnsPointer || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || MiscUi != null && MiscUi.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer; } }
+        private bool OtherPointerOwner { get { return information != null && information.Adjustment.Dragging || BlueprintReplacementPopup?.BlockPointer == true || inputState.HotkeyPointerOwned || BlueprintMaterialsUi != null && BlueprintMaterialsUi.OwnsPointer || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true || ViewZoom?.OwnsPointer==true) || BlueprintPlacedUi?.OwnsPointer == true || BlueprintUi != null && BlueprintUi.OwnsPointer || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || MiscUi != null && MiscUi.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer; } }
         internal bool OwnsPointer { get { return !failed && CanPresentNow && (State.OwnsPointer || OtherPointerOwner); } }
         internal bool TargetPointerOwned
         {
@@ -710,7 +717,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (!inputActive && adjustmentPending) CancelInformationAdjustment(false);
                 // Compose the complete page before release dispatch. An upstream
                 // list/font change must retire old targets, including the footer.
-                if (State.Visible && (State.Page==0 || State.Page==1 || State.Page==5 || State.Page==6 || State.Page==8) && renderer.RefreshResources())
+                if (State.Visible && (State.Page==0 || State.Page==1 || State.Page==2 || State.Page==5 || State.Page==6 || State.Page==8) && renderer.RefreshResources())
                 {
                     RefreshBlueprintPageState();
                     renderer.Prepare(State,screen.X,screen.Y,matrix.M11);
@@ -746,7 +753,7 @@ namespace JueMingR.TerrariaHost.F5
                 // its edge. Freeze the remaining Items intent before the shared
                 // barrier clears edges; never ask the child to replay raw keys.
                 bool cancelItems=inputActive && State.Visible && State.Page==0 && items?.Selecting==true && cancelGesture;
-                if(inputActive && (CombatInterval?.Captured==true || CombatRadius?.Captured==true || cancelItems) && cancelGesture)
+                if(inputActive && (CombatInterval?.Captured==true || CombatRadius?.Captured==true || ViewZoom?.Captured==true || cancelItems) && cancelGesture)
                 {
                     // Claim Escape before child cancellation exposes controls
                     // underneath it; the input owner consumes native actions
@@ -760,7 +767,10 @@ namespace JueMingR.TerrariaHost.F5
                 f5 &= inputState.Hotkeys.IsNew((int)Keys.F5);
                 CombatInterval?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelGesture,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
                 CombatRadius?.Process(inputActive && !higherPointer,inputState.SampleFocused,PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,inputState.Hotkeys.IsNew(256),f5 || cancelGesture,pointer.X,pointer.Y,matrix,renderer.FontIdentity,renderer.SkinGeneration);
-                popupPointer|=(CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true);
+                ViewZoom?.Process(inputActive && !higherPointer && !inputState.HotkeyCapture && !inputState.HotkeyPointerOwned,
+                    inputState.SampleFocused, PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed, inputState.Hotkeys.IsNew(256),
+                    f5 || cancelGesture, pointer.X, pointer.Y, matrix, renderer.FontIdentity, renderer.SkinGeneration);
+                popupPointer|=(CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true || ViewZoom?.OwnsPointer==true);
                 State.Update(new F5Input
                 {
                     Width = screen.X, Height = screen.Y, Scale = matrix.M11, X = pointer.X, Y = pointer.Y,
@@ -772,7 +782,7 @@ namespace JueMingR.TerrariaHost.F5
                     BlockPointer = popupPointer,
                     SecondaryEntry = secondaryEntry,
                     Wheel = PlayerInput.ScrollWheelDeltaForUI,
-                    PageWheelHandled = BlueprintReplacementPopup?.ConsumeWheel == true || materialsWasVisible || BlueprintMaterialsUi?.ConsumeWheel == true || (CombatInterval?.ConsumeWheel==true || CombatRadius?.ConsumeWheel==true) || FishingUi!=null && FishingUi.BlocksPageWheel || CaptureUi != null && CaptureUi.OwnsPointer || RecoveryUi != null && RecoveryUi.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible || FootprintPopup != null && FootprintPopup.Visible || inputActive && (notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI) || Browser != null && Browser.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI))
+                    PageWheelHandled = BlueprintReplacementPopup?.ConsumeWheel == true || materialsWasVisible || BlueprintMaterialsUi?.ConsumeWheel == true || (CombatInterval?.ConsumeWheel==true || CombatRadius?.ConsumeWheel==true || ViewZoom?.ConsumeWheel==true) || FishingUi!=null && FishingUi.BlocksPageWheel || CaptureUi != null && CaptureUi.OwnsPointer || RecoveryUi != null && RecoveryUi.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible || FootprintPopup != null && FootprintPopup.Visible || inputActive && (notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI) || Browser != null && Browser.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI))
                 });
                 // Blueprint's ProcessInput below owns hidden-view teardown and
                 // distinguishes focus suspension from an explicit departure.
@@ -925,7 +935,7 @@ namespace JueMingR.TerrariaHost.F5
                 blueprint.NativeUiBusy || notes.OwnsPointer || notes.OtherTextOwner || State.PointerBlocked || State.ConsumeLeft || State.ConsumeRight ||
                 materialsWasVisible || BlueprintMaterialsUi?.Visible == true || BlueprintReplacementPopup?.Visible == true || BlueprintContent != BlueprintContentMode.None || FishingUi?.Visible == true ||
                 HotkeyPopup?.Visible == true || StylePopup?.Visible == true || DeathPopup?.Visible == true || MapPopup?.Visible == true || FootprintPopup?.Visible == true ||
-                RecoveryUi?.Selecting == true || items?.Selecting == true || CombatInterval?.OwnsPointer == true || CombatRadius?.OwnsPointer == true ||
+                RecoveryUi?.Selecting == true || items?.Selecting == true || CombatInterval?.OwnsPointer == true || CombatRadius?.OwnsPointer == true || ViewZoom?.OwnsPointer == true ||
                 Browser?.OwnsTextToken == true || CaptureUi?.Visible == true) return false;
             // Ordinary F5 hover is the only relaxed pointer owner. A foreign
             // native lease, an actual UI gesture, or a world overlay still wins.
@@ -950,7 +960,7 @@ namespace JueMingR.TerrariaHost.F5
 
         private void ConsumeSample()
         {
-            if (BlueprintReplacementPopup?.ConsumeLeft == true || (CombatInterval?.ConsumeLeft==true || CombatRadius?.ConsumeLeft==true) || BlueprintMaterialsUi != null && BlueprintMaterialsUi.ConsumeLeft || BlueprintPlacedUi?.ConsumeLeft == true || BlueprintUi != null && BlueprintUi.ConsumeLeft || FishingUi != null && FishingUi.ConsumeLeft || CaptureUi != null && CaptureUi.ConsumeLeft || MiningUi != null && MiningUi.ConsumeLeft || MiscUi != null && MiscUi.ConsumeLeft || State.ConsumeLeft || Browser != null && Browser.ConsumeLeft || notes.ConsumeLeft || ReforgeUi != null && ReforgeUi.ConsumeLeft || RecoveryUi != null && RecoveryUi.ConsumeLeft || items != null && items.ConsumeLeft || information != null && information.Adjustment.ConsumeLeft)
+            if (BlueprintReplacementPopup?.ConsumeLeft == true || (CombatInterval?.ConsumeLeft==true || CombatRadius?.ConsumeLeft==true || ViewZoom?.ConsumeLeft==true) || BlueprintMaterialsUi != null && BlueprintMaterialsUi.ConsumeLeft || BlueprintPlacedUi?.ConsumeLeft == true || BlueprintUi != null && BlueprintUi.ConsumeLeft || FishingUi != null && FishingUi.ConsumeLeft || CaptureUi != null && CaptureUi.ConsumeLeft || MiningUi != null && MiningUi.ConsumeLeft || MiscUi != null && MiscUi.ConsumeLeft || State.ConsumeLeft || Browser != null && Browser.ConsumeLeft || notes.ConsumeLeft || ReforgeUi != null && ReforgeUi.ConsumeLeft || RecoveryUi != null && RecoveryUi.ConsumeLeft || items != null && items.ConsumeLeft || information != null && information.Adjustment.ConsumeLeft)
             {
                 PlayerInput.Triggers.Current.MouseLeft = false;
                 PlayerInput.Triggers.JustPressed.MouseLeft = false;
@@ -964,7 +974,7 @@ namespace JueMingR.TerrariaHost.F5
                 PlayerInput.Triggers.JustReleased.MouseRight = false;
                 Main.mouseRight = false;
             }
-            if (BlueprintReplacementPopup?.ConsumeWheel == true || (CombatInterval?.ConsumeWheel==true || CombatRadius?.ConsumeWheel==true) || BlueprintMaterialsUi != null && BlueprintMaterialsUi.ConsumeWheel || BlueprintPlacedUi?.ConsumeWheel == true || BlueprintUi != null && BlueprintUi.ConsumeWheel || FishingUi != null && FishingUi.ConsumeWheel || CaptureUi != null && CaptureUi.OwnsPointer || State.ConsumeWheel || Browser != null && Browser.ConsumeWheel || notes.ConsumeWheel || RecoveryUi != null && RecoveryUi.ConsumeWheel || items != null && items.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.ConsumeWheel || MapPopup != null && MapPopup.ConsumeWheel || FootprintPopup != null && FootprintPopup.OwnsPointer)
+            if (BlueprintReplacementPopup?.ConsumeWheel == true || (CombatInterval?.ConsumeWheel==true || CombatRadius?.ConsumeWheel==true || ViewZoom?.ConsumeWheel==true) || BlueprintMaterialsUi != null && BlueprintMaterialsUi.ConsumeWheel || BlueprintPlacedUi?.ConsumeWheel == true || BlueprintUi != null && BlueprintUi.ConsumeWheel || FishingUi != null && FishingUi.ConsumeWheel || CaptureUi != null && CaptureUi.OwnsPointer || State.ConsumeWheel || Browser != null && Browser.ConsumeWheel || notes.ConsumeWheel || RecoveryUi != null && RecoveryUi.ConsumeWheel || items != null && items.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.ConsumeWheel || MapPopup != null && MapPopup.ConsumeWheel || FootprintPopup != null && FootprintPopup.OwnsPointer)
             { PlayerInput.ScrollWheelDelta = 0; PlayerInput.ScrollWheelDeltaForUI = 0; }
             // Absolute wheel and physical MouseInfo are never changed. Consumed
             // button transitions/deltas are never restored or replayed later.
@@ -1232,7 +1242,7 @@ namespace JueMingR.TerrariaHost.F5
             if(!SecondaryModalVisible || !State.Visible || !inputState.SampleFocused || !State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page))return null;
             if(HotkeyPopup?.ContainsPointer(pointer.X,pointer.Y)==true || StylePopup?.ContainsPointer(pointer.X,pointer.Y)==true || DeathPopup?.ContainsPointer(pointer.X,pointer.Y)==true || MapPopup?.ContainsPointer(pointer.X,pointer.Y)==true || FootprintPopup?.ContainsPointer(pointer.X,pointer.Y)==true || BlueprintMaterialsUi?.Contains(pointer.X,pointer.Y)==true)return null;
             if(CaptureUi?.Contains(pointer.X,pointer.Y)==true || RecoveryUi?.PotionPopup.Contains(pointer.X,pointer.Y)==true || BlueprintReplacementPopup?.Contains(pointer.X,pointer.Y)==true || FishingUi?.Contains(pointer.X,pointer.Y)==true)return null;
-            if(StylePopup?.HasCapture==true || DeathPopup?.Pressed>=0 || MapPopup?.Pressed>=0 || FootprintPopup?.Pressed>=0 || CaptureUi?.Captured==true || RecoveryUi?.PotionPopup.Captured==true || CombatInterval?.Captured==true || CombatRadius?.Captured==true || BlueprintMaterialsUi?.Captured==true)return null;
+            if(StylePopup?.HasCapture==true || DeathPopup?.Pressed>=0 || MapPopup?.Pressed>=0 || FootprintPopup?.Pressed>=0 || CaptureUi?.Captured==true || RecoveryUi?.PotionPopup.Captured==true || CombatInterval?.Captured==true || CombatRadius?.Captured==true || ViewZoom?.Captured==true || BlueprintMaterialsUi?.Captured==true)return null;
             var entry=State.HitButton(pointer.X-State.X,pointer.Y-State.Y); if(entry==null)return null;
             var command=entry.Command;
             bool legal=entry.HotkeyTarget!=null || command==F5Command.MarkerManage || command==F5Command.ExplorationDetails || command==F5Command.DeathDetails || command==F5Command.DeathConfigure || command==F5Command.FootprintConfigure || command==F5Command.BlueprintMaterials || command==F5Command.BlueprintSubstitutionConfigure || EntityLabelControls.IsStyle(command) || WorldTargetControls.IsStyle(command) || WorldObjectControls.IsStyle(command) || Information.InformationControls.IsStyle(command) || GuidanceControls.IsStyle(command);
@@ -1305,14 +1315,14 @@ namespace JueMingR.TerrariaHost.F5
         private void CloseForUnavailablePresentation()
         { if (TemporaryPresentationUnavailable) SuspendForTemporaryUnavailability(!inputState.IsFocused); else CloseAndSubmitPosition(); }
 
-        internal void CloseAndSubmitPosition() { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
+        internal void CloseAndSubmitPosition() { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); ViewZoom?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
 
         internal void CancelForFocusLoss()
         {
             secondaryNavigation++; SuspendForTemporaryUnavailability(true); }
         private void SuspendForTemporaryUnavailability(bool focusLost)
         {
-            CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.LoseFocus(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close();
+            CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); ViewZoom?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.LoseFocus(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close();
             // Later update/draw gates may clean a focused modal's consumed
             // neutral frame after State.Update received a non-action sample.
             // Physical F5 history remains with HostInputState.Hotkeys.
@@ -1333,6 +1343,7 @@ namespace JueMingR.TerrariaHost.F5
             AttemptFailureCleanup(CloseBlueprintReplacementConfiguration);
             AttemptFailureCleanup(() => CombatInterval?.Cancel());
             AttemptFailureCleanup(() => CombatRadius?.Cancel());
+            AttemptFailureCleanup(() => ViewZoom?.Cancel());
             AttemptFailureCleanup(() => BlueprintMaterialsUi?.Close());
             AttemptFailureCleanup(() => BlueprintPlacedUi?.Close());
             AttemptFailureCleanup(() => BlueprintUi?.Suspend());

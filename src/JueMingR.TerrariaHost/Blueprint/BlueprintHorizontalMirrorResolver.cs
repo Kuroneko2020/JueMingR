@@ -12,12 +12,15 @@ namespace JueMingR.TerrariaHost.Blueprint
     // Construction belongs to the native metadata owner on the game thread.
     // The published graph contains copied scalars/arrays only. In particular,
     // calls from the library worker never reach TileObjectData, Main or a Tile.
-    internal sealed class BlueprintHorizontalMirrorResolver : IBlueprintHorizontalMirrorProfile
+    internal sealed class BlueprintHorizontalMirrorResolver : IBlueprintHorizontalMirrorProfile, IBlueprintImportProfile
     {
         private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
         private static BlueprintHorizontalMirrorResolver current;
         private readonly Layout[] roots;
         private readonly bool[] platforms, trees, campfires;
+        private readonly bool[] frameImportant;
+        public int TileCount { get { return roots.Length; } }
+        public int WallCount { get; }
         public long Revision { get { return Ready ? 14580001L : 0; } }
         public bool Ready { get; }
 
@@ -34,6 +37,8 @@ namespace JueMingR.TerrariaHost.Blueprint
         private BlueprintHorizontalMirrorResolver()
         {
             roots = new Layout[TileID.Count];
+            frameImportant = Main.tileFrameImportant == null ? Array.Empty<bool>() : (bool[])Main.tileFrameImportant.Clone();
+            WallCount = WallID.Count;
             platforms = new bool[TileID.Count]; trees = new bool[TileID.Count]; campfires = new bool[TileID.Count];
             try
             {
@@ -431,12 +436,22 @@ namespace JueMingR.TerrariaHost.Blueprint
         // only an unregistered selected-cell tile returns false/no shape.
         internal static bool TryDescribeNative(CaptureCell cell, out BlueprintObjectShape shape)
         {
-            shape = null; var profile = Create();
-            if (profile.Ready && (cell.TileType >= profile.roots.Length || profile.roots[cell.TileType] == null)) return false;
+            return Create().TryDescribe(cell, out shape);
+        }
+        public BlueprintObjectShape DescribeImport(CaptureCell cell)
+        {
+            if (!Ready) throw new InvalidOperationException("blueprint-import-profile-not-ready");
+            if ((cell.Layers & CaptureLayer.Tile) == 0 || cell.TileType >= frameImportant.Length || !frameImportant[cell.TileType]) return null;
+            BlueprintObjectShape shape; return TryDescribe(cell, out shape) ? shape : null;
+        }
+        private bool TryDescribe(CaptureCell cell, out BlueprintObjectShape shape)
+        {
+            shape = null;
+            if (Ready && (cell.TileType >= roots.Length || roots[cell.TileType] == null)) return false;
             Decoded decoded;
             try
             {
-                if (profile.Decode(cell, false, out decoded))
+                if (Decode(cell, false, out decoded))
                 {
                     shape = new BlueprintObjectShape { Object = decoded.Object, BaseFrameX = decoded.BaseX, BaseFrameY = decoded.BaseY,
                         ColumnStep = decoded.Data.Step, RowOffsets = (int[])decoded.Data.Rows.Clone(), IndependentMemberFrames = decoded.Independent };

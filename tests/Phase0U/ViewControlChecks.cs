@@ -104,6 +104,10 @@ namespace Terraria
             public bool ControlsEnabled { get { return Ready; } }
             public bool UnlockEnabled { get { return Enabled; } }
             public bool SetUnlockEnabled(bool value) { Commands++; Enabled = value; return true; }
+            public float ZoomTarget { get { return 1f; } }
+            public float MinimumZoomTarget { get { return .3f; } }
+            public float MaximumZoomTarget { get { return 10f; } }
+            public bool TrySetZoomTarget(float proposed) { return false; }
             public void TakeFeedback(Action<string> display) { }
         }
 #endif
