@@ -6,6 +6,7 @@ namespace JueMingR.Setup
 {
     internal static class TargetSafety
     {
+        // Build/test baseline only. A game update is not an installation veto.
         internal const string TerrariaHash = "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3";
 
         internal static string Validate(string directory, bool installing)
@@ -26,10 +27,36 @@ namespace JueMingR.Setup
             CheckPath(root, true, false);
             string exe = Path.Combine(root, "Terraria.exe");
             CheckPath(exe, false, false);
-            if (installing && SetupPayload.FileHash(exe) != TerrariaHash) throw new IOException("该目录的 Terraria 不是当前已验证的 Windows 1.4.5.8 客户端。");
-            // Removal remains available after a Steam update; this does not claim the new game is supported.
-            if (!installing && System.Reflection.AssemblyName.GetAssemblyName(exe).Name != "Terraria") throw new IOException("该目录不是可识别的 Terraria 客户端目录。");
+            if (System.Reflection.AssemblyName.GetAssemblyName(exe).Name != "Terraria") throw new IOException("该目录不是可识别的 Terraria 客户端目录。");
+            // Installation admits unverified versions; actual ABI gates decide
+            // activation. Keep the managed Windows/x86 client boundary, and let
+            // removal remain available if a later update changes its platform.
+            if (installing)
+            {
+                if(System.Reflection.AssemblyName.GetAssemblyName(exe).ProcessorArchitecture!=System.Reflection.ProcessorArchitecture.X86)
+                    throw new IOException("当前加载组件需要 Windows x86 Terraria 客户端。");
+                VerifyWindowsClient(exe);
+            }
             return root;
+        }
+
+        private static void VerifyWindowsClient(string path)
+        {
+            using(var stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read))
+            using(var reader=new BinaryReader(stream))
+            {
+                if(stream.Length<64 || reader.ReadUInt16()!=0x5A4D)throw new IOException("Terraria.exe 不是有效的 Windows 客户端。");
+                stream.Position=60;int offset=reader.ReadInt32();
+                if(offset<64 || offset>stream.Length-248)throw new IOException("Terraria.exe 的 PE 标头无效。");
+                stream.Position=offset;
+                if(reader.ReadUInt32()!=0x4550 || reader.ReadUInt16()!=0x14c)throw new IOException("当前加载组件需要 Windows x86 Terraria 客户端。");
+                stream.Position=offset+20;int optionalLength=reader.ReadUInt16();int characteristics=reader.ReadUInt16();
+                if(optionalLength<224 || (characteristics&0x2000)!=0 || reader.ReadUInt16()!=0x10b)throw new IOException("Terraria.exe 不是有效的 Windows x86 可执行文件。");
+                stream.Position=offset+24+68;
+                if(reader.ReadUInt16()!=2)throw new IOException("该目录不是 Windows Terraria 图形客户端目录。");
+                stream.Position=offset+24+208;
+                if(reader.ReadUInt32()==0 || reader.ReadUInt32()<72)throw new IOException("Terraria.exe 缺少受管 CLR 标头。");
+            }
         }
 
         // Check every existing ancestor: a leaf check alone misses a junction above the target.

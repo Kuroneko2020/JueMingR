@@ -27,7 +27,8 @@ namespace JueMingR.TerrariaHost.About
         private double visualTime;
         private float titleLift, initialLift;
         private bool titleHovered, titleAnimating;
-        // Pure drawing state: never changes the heading rect or its five-click identity.
+        // Bounded hover progress for centered Draw-only scaling/shadow. The hit
+        // rect, element and five-click identity never participate in animation.
         internal float TitleLift(bool hovered)
         {
             if(hovered!=titleHovered)
@@ -35,7 +36,7 @@ namespace JueMingR.TerrariaHost.About
             if(!titleAnimating)return titleLift;
             float fraction=(float)Math.Max(0,Math.Min(1,((milliseconds??Milliseconds)()-visualTime)/150));
             float eased=fraction*fraction*(3-2*fraction);
-            titleLift=initialLift+((hovered?2:0)-initialLift)*eased;
+            titleLift=initialLift+((hovered?1:0)-initialLift)*eased;
             if(fraction>=1)titleAnimating=false;
             return titleLift;
         }
@@ -93,9 +94,11 @@ namespace JueMingR.TerrariaHost.About
             ActionButton(elements, measure, new F5Rect(rightX + 28, feedbackY + 42, rightWidth - 56, 26), Group, F5Command.AboutCopyGroup, .88f);
             float qrY = feedbackY + 86, qrHeight = top + columns - qrY;
             Card(elements, rightX, qrY, rightWidth, qrHeight, "qr");
-            FixedCenter(elements, measure, "↓蓝绿修改器↓", rightX + 42, qrY + 9, rightWidth - 58, 22, .68f, F5ElementKind.Text);
             float qrSize = Math.Max(76, Math.Min(96, Math.Min((rightWidth - 42) / 2, qrHeight - 66)));
             float qrX = rightX + (rightWidth - qrSize * 2 - 16) / 2;
+            // The label follows the whole two-image area, independently of the
+            // decorative heart. Its center must not inherit one-sided icon space.
+            FixedCenter(elements, measure, "↓蓝绿修改器↓", qrX, qrY + 9, qrSize * 2 + 16, 22, .68f, F5ElementKind.Text);
             elements.Add(new F5Element(F5ElementKind.Image, new F5Rect(qrX, qrY + 42, qrSize, qrSize), "wechat.png", default(F5Size), 1, F5Command.None));
             elements.Add(new F5Element(F5ElementKind.Image, new F5Rect(qrX + qrSize + 16, qrY + 42, qrSize, qrSize), "alipay.jpg", default(F5Size), 1, F5Command.None));
             y = top + columns + 8; Card(elements, 0, y, 522, 54, "footer");

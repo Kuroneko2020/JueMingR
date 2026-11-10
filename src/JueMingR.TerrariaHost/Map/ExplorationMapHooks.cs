@@ -36,7 +36,7 @@ namespace JueMingR.TerrariaHost.Map
         {
             try
             {
-                if (installed != null || typeof(Main).Module.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083")) throw new InvalidOperationException("exploration-map-identity");
+                // Probe the actual ABI below; the build baseline MVID is not a capability gate.
                 installed = this;
                 Patch("Update", new[] { typeof(int), typeof(int), typeof(byte) }, true);
                 Patch("SetTile", new[] { typeof(int), typeof(int), typeof(MapTile).MakeByRefType() }, true);

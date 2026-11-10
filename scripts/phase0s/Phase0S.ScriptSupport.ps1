@@ -257,6 +257,7 @@ function Get-Phase0SPeClrShape {
             $sectionCount = $reader.ReadUInt16()
             $stream.Position = $peOffset + 20
             $optionalHeaderSize = $reader.ReadUInt16()
+            $characteristics = $reader.ReadUInt16()
             $optionalHeaderOffset = $peOffset + 24
             if ($optionalHeaderSize -lt 216 -or ([int64] $optionalHeaderOffset + $optionalHeaderSize) -gt $stream.Length) {
                 throw 'PE optional header is invalid.'
@@ -266,6 +267,8 @@ function Get-Phase0SPeClrShape {
             if ($magic -ne 0x010B) {
                 throw 'PE image is not PE32.'
             }
+            $stream.Position = $optionalHeaderOffset + 68
+            $subsystem = $reader.ReadUInt16()
             $stream.Position = $optionalHeaderOffset + 208
             $cliRva = $reader.ReadUInt32()
             $cliSize = $reader.ReadUInt32()
@@ -300,6 +303,8 @@ function Get-Phase0SPeClrShape {
                 machine = $machine
                 peMagic = $magic
                 clrFlags = $clrFlags
+                characteristics = $characteristics
+                subsystem = $subsystem
             }
         }
         finally {
@@ -332,15 +337,15 @@ function Test-Phase0STerrariaIdentity {
 
     try {
         $identity = Get-Phase0SAssemblyFileIdentity -Path $Path
-        if ($identity.simpleName -cne 'Terraria' -or
-            $identity.version -cne '1.4.5.8' -or
-            $identity.mvid -cne '2c29f6c3-4bd9-4add-9c58-da159804e083' -or
-            $identity.sha256 -cne '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3') {
+        # Version/MVID/hash describe a reference or observed client, not an
+        # installation whitelist. Keep the actual Windows managed-client shape.
+        if ($identity.simpleName -cne 'Terraria') {
             return $false
         }
         $shape = Get-Phase0SPeClrShape -Path $Path
         return $shape.machine -eq 0x014C -and $shape.peMagic -eq 0x010B -and
-            (($shape.clrFlags -band 0x1) -ne 0) -and (($shape.clrFlags -band 0x2) -ne 0)
+            (($shape.clrFlags -band 0x1) -ne 0) -and (($shape.clrFlags -band 0x2) -ne 0) -and
+            (($shape.characteristics -band 0x2000) -eq 0) -and $shape.subsystem -eq 2
     }
     catch {
         return $false

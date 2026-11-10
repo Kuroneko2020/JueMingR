@@ -37,7 +37,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             platforms = new bool[TileID.Count]; trees = new bool[TileID.Count]; campfires = new bool[TileID.Count];
             try
             {
-                if (typeof(TileObjectData).Assembly.GetName().Version != new Version(1, 4, 5, 8)) return;
+                // Qualify this game's actual object-data layout below; its
+                // assembly version alone does not disable mirror resolution.
                 PropertyInfo alternates = typeof(TileObjectData).GetProperty("Alternates", PrivateInstance);
                 PropertyInfo subTiles = typeof(TileObjectData).GetProperty("SubTiles", PrivateInstance);
                 PropertyInfo linked = typeof(TileObjectData).GetProperty("LinkedAlternates", PrivateInstance);

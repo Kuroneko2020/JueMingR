@@ -39,7 +39,7 @@ namespace JueMingR.TerrariaHost.CoinDeposit
         internal static void Install(HostCoinDeposit value)
         {
             host = value;
-            if (typeof(Main).Assembly.ManifestModule.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083")) throw new InvalidOperationException("coin-native-identity");
+                // Probe the actual ABI below; the build baseline MVID is not a capability gate.
             var slot = new[] { typeof(Item[]), typeof(int), typeof(int) };
             Patch(typeof(ChestUI), "LootAll", Type.EmptyTypes, nameof(BeforeLoot));
             Patch(typeof(ItemSlot), "LeftClick", slot, nameof(BeforeClick));

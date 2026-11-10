@@ -23,7 +23,7 @@ namespace JueMingR.TerrariaHost.Footprints
         {
             try
             {
-                if (current != null || typeof(Main).Module.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083")) throw new InvalidOperationException("footprint-source-identity");
+                if (current != null) throw new InvalidOperationException("footprint-source-identity");
                 var step = typeof(Main).GetMethod("DoUpdateInWorld_Inner", Flags, null, Type.EmptyTypes, null);
                 var update = typeof(Main).GetMethod("Update", Flags, null, new[] { typeof(GameTime) }, null);
                 var teleport = typeof(Player).GetMethod("Teleport", Flags, null, new[] { typeof(Vector2), typeof(int), typeof(int) }, null);

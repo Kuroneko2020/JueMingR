@@ -40,6 +40,7 @@ internal static class SetupServiceChecks
             Directory.CreateDirectory(root);
             if (args.Length == 5 && args[4] == "--presentation") { PresentationChecks(); Console.WriteLine(new JavaScriptSerializer().Serialize(new { status = "PASS", checks = count, scope = "isolated production pair reader and result projection; no game started" })); return 0; }
             if (args.Length == 5 && args[4] == "--ui-increment") { IncrementChecks(); Console.WriteLine(new JavaScriptSerializer().Serialize(new { status = "PASS", checks = count, scope = "Steam discovery and exact preference reset only" })); return 0; }
+            if (args.Length == 7 && args[4] == "--compatibility-admission") CompatibilityAdmissionChecks.Run(root, terraria, Path.GetFullPath(args[5]), Path.GetFullPath(args[6]), payload);
             string target = Fresh("中文 新装");
             byte[] data = Encoding.UTF8.GetBytes("笔记、蓝图和未来格式原样保留"), outsider = Encoding.UTF8.GetBytes("third-party-harmony");
             Directory.CreateDirectory(Path.Combine(target, "JueMingRData", "blueprints"));

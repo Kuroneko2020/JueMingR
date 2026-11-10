@@ -61,7 +61,7 @@ namespace JueMingR.TerrariaHost.Map
         }
         private void Install()
         {
-            if (typeof(Main).Module.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083")) throw new InvalidOperationException("map-drawing-identity");
+                // Probe the actual ABI below; the build baseline MVID is not a capability gate.
             try
             {
                 Patch(typeof(Main).GetMethod("DrawMap", Flags, null, new[] { typeof(GameTime) }, null), nameof(BeginMap), null, nameof(EndMap));

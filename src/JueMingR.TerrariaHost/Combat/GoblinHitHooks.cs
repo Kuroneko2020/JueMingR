@@ -24,7 +24,7 @@ namespace JueMingR.TerrariaHost.Combat
             try
             {
                 if(current!=null)throw new InvalidOperationException("Goblin hooks already installed.");
-                if(typeof(Main).Module.ModuleVersionId!=new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"))throw new InvalidOperationException("Goblin requires verified Terraria .8.");
+                // Probe the actual ABI below; the build baseline MVID is not a capability gate.
                 current=this;
                 Install(typeof(Player),"ProcessHitAgainstNPC",nameof(Melee));
                 Install(typeof(Projectile),"Damage_PVE_Inner",nameof(ProjectileGate));

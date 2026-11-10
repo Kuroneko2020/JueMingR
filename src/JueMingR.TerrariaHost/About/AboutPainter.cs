@@ -69,7 +69,9 @@ namespace JueMingR.TerrariaHost.About
             else if (style == "feedback") { Icon(c, 39, 9, "message"); c.Dots(34, 31, w - 68, border, 96); }
             else if (style == "qr")
             {
-                Icon(c, 15, 9, "heart"); c.Dots(38, 34, w - 56, border, 96);
+                // Images end at most at h-24 (their size is bounded by h-66).
+                // Keep this 20-unit ornament in that independent bottom band.
+                Icon(c, w / 2 - 10, h - 22, "heart"); c.Dots(38, 34, w - 56, border, 96);
                 float size = Math.Max(76, Math.Min(96, Math.Min((w - 42) / 2, h - 66)));
                 c.Fill(w / 2, 52, 1, Math.Max(30, size - 20), new Color(176, 192, 226), 78);
             }

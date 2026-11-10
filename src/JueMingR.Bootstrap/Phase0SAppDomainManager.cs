@@ -22,6 +22,7 @@ namespace JueMingR.Bootstrap
         private bool scanning;
         private int assemblyLoadHandlerDepth;
         private Assembly targetAssembly;
+        private string targetFileHash;
         private Assembly reLogicAssembly;
         private RuntimeManifest manifest;
         private string evidencePath;
@@ -92,6 +93,7 @@ namespace JueMingR.Bootstrap
 
         private void ObserveAssembly(Assembly assembly)
         {
+            if(assembly.ReflectionOnly)return;
             InstallRequest request = null;
             try
             {
@@ -194,13 +196,10 @@ namespace JueMingR.Bootstrap
                     string targetPath = Path.Combine(
                         Path.GetFullPath(request.AppDomain.BaseDirectory),
                         "Terraria.exe");
-                    AssemblyIdentity.VerifyLoaded(
-                        request.TargetAssembly,
-                        targetPath,
-                        manifest.TargetAssemblySimpleName,
-                        manifest.TargetAssemblyVersion,
-                        manifest.TargetAssemblyMvid,
-                        manifest.TargetAssemblySha256);
+                    AssemblyIdentity.VerifyGameTarget(request.TargetAssembly,targetPath);
+                    // Bind the queued work to the file actually observed in
+                    // this launch, rather than the build's reference EXE.
+                    AssemblyIdentity.VerifyFileHash(targetPath,targetFileHash);
                     AssemblyIdentity.VerifyCapturedReLogicBinding(
                         request.TargetAssembly,
                         request.ReLogicAssembly,
@@ -256,13 +255,8 @@ namespace JueMingR.Bootstrap
             string targetPath = Path.Combine(
                 Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory),
                 "Terraria.exe");
-            AssemblyIdentity.VerifyLoaded(
-                candidate,
-                targetPath,
-                manifest.TargetAssemblySimpleName,
-                manifest.TargetAssemblyVersion,
-                manifest.TargetAssemblyMvid,
-                manifest.TargetAssemblySha256);
+            AssemblyIdentity.VerifyGameTarget(candidate,targetPath);
+            targetFileHash=AssemblyIdentity.ComputeSha256(targetPath);
             targetAssembly = candidate;
             EvidenceWriter.CreateFirstEvent(
                 evidencePath,
@@ -273,12 +267,7 @@ namespace JueMingR.Bootstrap
 
         private void ObserveReLogicLocked(Assembly candidate)
         {
-            AssemblyIdentity.VerifyLoadedReLogic(
-                candidate,
-                manifest.ReLogicAssemblySimpleName,
-                manifest.ReLogicAssemblyVersion,
-                manifest.ReLogicAssemblyPublicKeyToken,
-                manifest.ReLogicAssemblyMvid);
+            AssemblyIdentity.VerifyLoadedReLogic(candidate);
             if (reLogicAssembly != null && !ReferenceEquals(reLogicAssembly, candidate))
             {
                 throw new InvalidDataException("A second ReLogic assembly was observed.");
@@ -554,16 +543,17 @@ namespace JueMingR.Bootstrap
             RequirePackageId(values[1]);
             RequireCharacters(values[2], 40, IsLowerHex);
             RequireExact(values[3], "Terraria");
-            RequireExact(values[4], "1.4.5.8");
+            // Target/dependency fields describe the build reference inputs;
+            // the live game is admitted by source/object and actual ABI checks.
+            new Version(values[4]);
             Guid targetMvid = ParseGuid(values[5]);
             RequireCharacters(values[6], 64, IsUpperHex);
             RequireExact(values[7], "ReLogic");
-            RequireExact(values[8], "1.0.0.0");
+            new Version(values[8]);
             RequireExact(values[9], "null");
             Guid reLogicMvid = ParseGuid(values[10]);
-            RequireExact(values[10], "ee258be9-88a4-423d-b3ce-84b6c35b141a");
             RequireExact(values[11], "Terraria.Libraries.ReLogic.ReLogic.dll");
-            RequireExact(values[12], "E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29");
+            RequireCharacters(values[12], 64, IsUpperHex);
             RequireExact(values[13], "Terraria.Main");
             RequireExact(values[14], "Update");
             RequireToken(values[15]);
@@ -739,7 +729,79 @@ namespace JueMingR.Bootstrap
 
     internal static class AssemblyIdentity
     {
-        private const int ReLogicResourceLength = 176128;
+
+        // Game identity is captured from this launch. Build reference versions,
+        // hashes and MVIDs remain provenance, never a product allow-list.
+        internal static void VerifyGameTarget(Assembly assembly,string path)
+        {
+            string expected=Path.GetFullPath(path);
+            if(assembly==null || assembly.IsDynamic || assembly.ReflectionOnly ||
+                assembly.GetName().Name!="Terraria" ||
+                !String.Equals(Path.GetFullPath(assembly.Location),expected,StringComparison.OrdinalIgnoreCase) ||
+                assembly.EntryPoint==null || assembly.GetType("Terraria.Main",false,false)==null)
+                throw new InvalidDataException("The live Terraria client object or path is invalid.");
+            for(var item=new FileInfo(expected) as FileSystemInfo;item!=null;item=item is FileInfo?((FileInfo)item).Directory:((DirectoryInfo)item).Parent)
+                if((item.Attributes&FileAttributes.ReparsePoint)!=0)throw new InvalidDataException("The Terraria path contains a reparse point.");
+            if(!String.Equals(AssemblyName.GetAssemblyName(expected).FullName,assembly.FullName,StringComparison.Ordinal))
+                throw new InvalidDataException("The Terraria file no longer matches the loaded object.");
+            PortableExecutableKinds kind;ImageFileMachine machine;
+            assembly.ManifestModule.GetPEKind(out kind,out machine);
+            if(IntPtr.Size!=4 || machine!=ImageFileMachine.I386 || (kind&PortableExecutableKinds.ILOnly)==0)
+                throw new InvalidDataException("The live Terraria CLR/architecture is not compatible with this x86 payload.");
+            int count=0;Assembly match=null;
+            foreach(var candidate in AppDomain.CurrentDomain.GetAssemblies())
+                if(candidate.GetName().Name=="Terraria"){count++;match=candidate;}
+            if(count!=1 || !ReferenceEquals(match,assembly))throw new InvalidDataException("The live Terraria assembly is not unique.");
+        }
+
+        internal static void VerifyLoadedReLogic(Assembly assembly)
+        {
+            if(assembly==null || assembly.IsDynamic || assembly.ReflectionOnly || assembly.GetName().Name!="ReLogic")
+                throw new InvalidDataException("The loaded ReLogic object is invalid.");
+        }
+
+        internal static void VerifyGameReLogicSource(Assembly targetAssembly,Assembly reLogicAssembly)
+        {
+            VerifyLoadedReLogic(reLogicAssembly);
+            AssemblyName reference=null;
+            foreach(var item in targetAssembly.GetReferencedAssemblies())
+                if(item.Name=="ReLogic")
+                {
+                    if(reference!=null)throw new InvalidDataException("The Terraria ReLogic reference is ambiguous.");
+                    reference=item;
+                }
+            if(reference==null || !String.Equals(reference.FullName,reLogicAssembly.FullName,StringComparison.Ordinal))
+                throw new InvalidDataException("ReLogic does not match this Terraria client's actual reference.");
+            string resource=null;
+            foreach(string name in targetAssembly.GetManifestResourceNames())
+                if(name.EndsWith(".ReLogic.dll",StringComparison.Ordinal))
+                {
+                    if(resource!=null)throw new InvalidDataException("The Terraria ReLogic resource is ambiguous.");
+                    resource=name;
+                }
+            if(resource!=null)
+            {
+                using(var stream=targetAssembly.GetManifestResourceStream(resource))
+                using(var bytes=new MemoryStream())
+                {
+                    if(stream==null || stream.Length<1 || stream.Length>67108864)throw new InvalidDataException("The Terraria ReLogic resource is invalid.");
+                    stream.CopyTo(bytes);
+                    // Reflection-only metadata never executes dependency code.
+                    // Compare to this game's resource, not the old baseline DLL.
+                    var embedded=Assembly.ReflectionOnlyLoad(bytes.ToArray());
+                    if(embedded.FullName!=reLogicAssembly.FullName ||
+                        embedded.ManifestModule.ModuleVersionId!=reLogicAssembly.ManifestModule.ModuleVersionId)
+                        throw new InvalidDataException("ReLogic is not this Terraria client's embedded dependency.");
+                }
+                return;
+            }
+            string expected=Path.Combine(Path.GetDirectoryName(targetAssembly.Location),"ReLogic.dll");
+            if(String.IsNullOrEmpty(reLogicAssembly.Location) ||
+                !String.Equals(Path.GetFullPath(reLogicAssembly.Location),expected,StringComparison.OrdinalIgnoreCase) ||
+                (File.GetAttributes(expected)&(FileAttributes.Directory|FileAttributes.ReparsePoint))!=0 ||
+                AssemblyName.GetAssemblyName(expected).FullName!=reference.FullName)
+                throw new InvalidDataException("ReLogic is not an ordinary dependency beside this Terraria client.");
+        }
 
         internal static void VerifyFileNameAndVersion(
             string path,
@@ -817,28 +879,6 @@ namespace JueMingR.Bootstrap
                 expectedSha256);
         }
 
-        internal static void VerifyLoadedReLogic(
-            Assembly assembly,
-            string expectedSimpleName,
-            Version expectedVersion,
-            string expectedPublicKeyToken,
-            Guid expectedMvid)
-        {
-            AssemblyName name = assembly.GetName();
-            byte[] token = name.GetPublicKeyToken();
-            string expectedFullName = expectedSimpleName + ", Version=" + expectedVersion +
-                ", Culture=neutral, PublicKeyToken=" + expectedPublicKeyToken;
-            if (!String.Equals(name.FullName, expectedFullName, StringComparison.Ordinal) ||
-                !String.Equals(name.Name, expectedSimpleName, StringComparison.Ordinal) ||
-                !Equals(name.Version, expectedVersion) ||
-                !String.Equals(expectedPublicKeyToken, "null", StringComparison.Ordinal) ||
-                (token != null && token.Length != 0) ||
-                assembly.ManifestModule.ModuleVersionId != expectedMvid)
-            {
-                throw new InvalidDataException("The loaded ReLogic identity does not match.");
-            }
-        }
-
         internal static void VerifyReLogicBinding(
             Assembly targetAssembly,
             Assembly reLogicAssembly,
@@ -871,24 +911,10 @@ namespace JueMingR.Bootstrap
             Assembly reLogicAssembly,
             RuntimeManifest manifest)
         {
-            VerifyLoadedReLogic(
-                reLogicAssembly,
-                manifest.ReLogicAssemblySimpleName,
-                manifest.ReLogicAssemblyVersion,
-                manifest.ReLogicAssemblyPublicKeyToken,
-                manifest.ReLogicAssemblyMvid);
-
-            using (Stream stream = targetAssembly.GetManifestResourceStream(manifest.ReLogicResourceName))
-            {
-                if (stream == null || stream.Length != ReLogicResourceLength ||
-                    !String.Equals(ComputeSha256(stream), manifest.ReLogicResourceSha256, StringComparison.Ordinal))
-                {
-                    throw new InvalidDataException("The Terraria ReLogic resource does not match.");
-                }
-            }
+            VerifyGameReLogicSource(targetAssembly,reLogicAssembly);
         }
 
-        private static string ComputeSha256(string path)
+        internal static string ComputeSha256(string path)
         {
             using (SHA256 algorithm = SHA256.Create())
             using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))

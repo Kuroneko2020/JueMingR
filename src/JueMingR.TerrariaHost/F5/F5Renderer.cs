@@ -298,9 +298,10 @@ namespace JueMingR.TerrariaHost.F5
                     }
                     else if (element.Command == F5Command.ExplorationValue)
                     { Text(batch, mapValue ?? "", new Vector2(rect.Right - mapValueSize.Width, rect.Y + (rect.Height - mapValueSize.Height) / 2), element.TextScale, Color.White, mapValueSize); }
+                    else if (element.Command == F5Command.AboutRevealHidden && element.Kind == F5ElementKind.AboutHeading)
+                        DrawAboutTitle(batch, element, rect, state.Layout.About.TitleLift(!state.PointerBlocked && rect.Contains(state.PointerX,state.PointerY) && view.Contains(state.PointerX,state.PointerY)));
                     else if (element.Kind == F5ElementKind.Text || element.Kind == F5ElementKind.AboutHeading || element.Kind == F5ElementKind.AboutMuted)
-                        Text(batch, element.Text, new Vector2(rect.X, rect.Y - (element.Command == F5Command.AboutRevealHidden ? state.Layout.About.TitleLift(!state.PointerBlocked && rect.Contains(state.PointerX,state.PointerY) && view.Contains(state.PointerX,state.PointerY)) : 0)), element.TextScale,
-                            TextColor(element), element.TextSize);
+                        Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale, TextColor(element), element.TextSize);
                     else if (element.Kind == F5ElementKind.AboutCard) aboutPainter.Card(batch, pixel, rect, element.Text, element.TextScale > 0 ? element.TextScale : 1);
                     else if (element.Kind == F5ElementKind.Divider) Decoration(batch, rect, Color.White * 0.35f);
                     else if (element.Kind == F5ElementKind.Image)
@@ -562,6 +563,21 @@ namespace JueMingR.TerrariaHost.F5
 
         private void Fill(SpriteBatch batch, F5Rect rect, Color color)
         { batch.Draw(pixel, new Rectangle((int)rect.X, (int)rect.Y, (int)rect.Width, (int)rect.Height), color); }
+        private void DrawAboutTitle(SpriteBatch batch,F5Element element,F5Rect rect,float progress)
+        {
+            float factor=1+.05f*progress,scale=element.TextScale*factor;
+            var measured=element.TextSize;
+            // Font ink and its bearing scale; Terraria's +/-2 outline does not.
+            // Reproject the existing metrics around the same visual center,
+            // without measuring, replacing the hit element or moving its body.
+            var size=new F5Size((measured.Width-4)*factor+4,(measured.Height-4)*factor+4,
+                (measured.OffsetX+2)*factor-2,(measured.OffsetY+2)*factor-2);
+            var position=new Vector2(rect.X+(rect.Width-size.Width)/2,rect.Y+(rect.Height-size.Height)/2);
+            if(progress>0)
+                batch.DrawString(font,element.Text,position-new Vector2(size.OffsetX,size.OffsetY)+new Vector2(1.5f,2.5f)*progress,
+                    Color.Black*(.22f*progress),0,Vector2.Zero,scale,SpriteEffects.None,0);
+            Text(batch,element.Text,position,scale,TextColor(element),size);
+        }
         private void Text(SpriteBatch batch, string text, Vector2 position, float scale, Color color, F5Size size)
         { Utils.DrawBorderStringFourWay(batch, font, text, position.X - size.OffsetX, position.Y - size.OffsetY,
             color, Color.Black, Vector2.Zero, scale); }
