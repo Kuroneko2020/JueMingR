@@ -172,6 +172,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             ClearProjectionPersistenceRead();
             projectionSceneDirty = false;
             ClearAutomaticBuild();
+            // Session/whole-scene cleanup also owns pending restore admissions
+            // that have not yet entered projectionScene. Normal session exit
+            // has sealed its committed snapshot before this resource release.
+            hoikBases.Clear();hoikInventory=null;hoikPick=null;hoikPickSlot=-1;
             projectionCapacityRevision++; ClearProjectionPoint();
             Library?.CloseProjection(); projectionTransaction++; projectionSceneRevision++; ClearProjectionEditor(); projectionEditKind = BlueprintProjectionEditKind.None;
             foreach (var item in projectionScene) DisposeProjectionData(item); projectionScene.Clear();

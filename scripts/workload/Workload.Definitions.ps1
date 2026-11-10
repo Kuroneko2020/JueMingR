@@ -20,6 +20,13 @@ function Get-WorkloadLeafChecks {
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
     $leaves = @{
+        'tests/JueMingR.ArchitectureTests/BlueprintHoikSceneChecks.cs'=@('BlueprintHoikSceneChecks')
+        'tests/NativeWorldTextProbe/NativeBlueprintHoikChecks.cs'=@('native-BlueprintHoikCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHoikMixedChecks.cs'=@('native-BlueprintHoikCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHoikPersistenceChecks.cs'=@('native-BlueprintHoikCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHoikRecoveryChecks.cs'=@('native-BlueprintHoikCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHelperImportChecks.cs'=@('native-BlueprintExchangeCpu')
+        'tests/NativeWorldTextProbe/NativeViewZoomControlChecks.cs'=@('native-ViewZoomControlCpu')
         'tests/JueMingR.ArchitectureTests/RuntimeFailureChecks.cs'=@('RuntimeFailureChecks')
         'tests/JueMingR.ArchitectureTests/PreferenceDeadlineChecks.cs'=@('PreferenceDeadlineChecks')
         'tests/JueMingR.ArchitectureTests/WorldObjectText/OpenedDeadlineChecks.cs'=@('OpenedDeadlineChecks')
@@ -658,6 +665,8 @@ function Get-WorkloadNativeScopes {
         'BlueprintBuildCadenceCpu'=@('blueprint-host','tools-host');
         'BlueprintPreparationCpu'=@('blueprint-host','tools-host');
         'BlueprintAppearanceCpu'=@('blueprint-host','tools-host');
+        'BlueprintHoikCpu'=@('blueprint-host','tools-host');
+        'ViewZoomControlCpu'=@('view-host','shared-host','hotkeys');
         'BlueprintWiringCpu'=@('blueprint-host','tools-host');
         'BlueprintSpecialCpu'=@('blueprint-host','tools-host');
         'BlueprintInput'=@('blueprint-host','shared-host','storage-host','notes-host','preferences','hotkeys');

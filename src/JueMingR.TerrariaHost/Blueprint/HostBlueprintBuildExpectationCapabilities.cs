@@ -121,6 +121,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if(!nearCapabilityObserving)return;
             Array.Clear(nearCapabilityReach,0,nearCapabilityReach.Length);
+            int presentFamilies=0;
             // Arrays retain the greatest recovery even during absence. This
             // preserves a negative cutoff through ordinary positive-stack noise.
             foreach(var pair in nearCapabilityNext)
@@ -138,7 +139,15 @@ namespace JueMingR.TerrariaHost.Blueprint
                 for(int family=1;family<6;family++)
                 {
                     NearCapabilityDependencyWork();
-                    if((pair.Value.Families&(1<<family))!=0){nearCapabilityFamilies[family]=Math.Max(nearCapabilityFamilies[family],pair.Value.Serial);nearCapabilityReach[family]=Math.Max(nearCapabilityReach[family],pair.Value.Reach);}
+                    if((pair.Value.Families&(1<<family))!=0)
+                    {
+                        nearCapabilityFamilies[family]=Math.Max(nearCapabilityFamilies[family],pair.Value.Serial);
+                        // Wooden tools can have negative tileBoost. Absence's
+                        // zero fallback must never widen a present -1 tool and
+                        // sign a false in-reach negative across its real edge.
+                        nearCapabilityReach[family]=(presentFamilies&(1<<family))==0?pair.Value.Reach:Math.Max(nearCapabilityReach[family],pair.Value.Reach);
+                        presentFamilies|=1<<family;
+                    }
                 }
             }
             nearCapabilityLive.Clear();
@@ -150,7 +159,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         // keep its legal long tool even when its current source is shorter.
         private int NearOperationBoost(BlueprintBuildOperation operation,int fallbackType)
         {
-            if(operation?.Kind==BlueprintBuildOperationKind.Hammer)return nearCapabilityReach[(int)NearCapabilityFamily.Hammer];
+            if(operation?.Kind==BlueprintBuildOperationKind.Hammer || HoikOperation(operation) && operation.HoikWaitTool==1)return nearCapabilityReach[(int)NearCapabilityFamily.Hammer];
             if(operation?.Kind==BlueprintBuildOperationKind.PaintTile)return nearCapabilityReach[(int)NearCapabilityFamily.Brush];
             if(operation?.Kind==BlueprintBuildOperationKind.PaintWall)return nearCapabilityReach[(int)NearCapabilityFamily.Roller];
             if(operation?.Kind==BlueprintBuildOperationKind.Scrape)return nearCapabilityReach[(int)NearCapabilityFamily.Scraper];
@@ -169,15 +178,16 @@ namespace JueMingR.TerrariaHost.Blueprint
         private int NearLiveOperationBoost(BlueprintBuildOperation operation,int fallbackType)
         {
             var family=NearCapabilityFamily.Types;
-            if(operation?.Kind==BlueprintBuildOperationKind.Hammer)family=NearCapabilityFamily.Hammer;
+            if(operation?.Kind==BlueprintBuildOperationKind.Hammer || HoikOperation(operation) && operation.HoikWaitTool==1)family=NearCapabilityFamily.Hammer;
             else if(operation?.Kind==BlueprintBuildOperationKind.PaintTile)family=NearCapabilityFamily.Brush;
             else if(operation?.Kind==BlueprintBuildOperationKind.PaintWall)family=NearCapabilityFamily.Roller;
             else if(operation?.Kind==BlueprintBuildOperationKind.Scrape)family=NearCapabilityFamily.Scraper;
             int best=0;
             if(family!=NearCapabilityFamily.Types || operation?.NativePlacement?.Producer!=null)
             {
+                bool found=false;
                 foreach(var pair in nearCapabilityLive)
-                {NearCapabilityDependencyWork();if(family==NearCapabilityFamily.Types || (pair.Value.Families&(1<<(int)family))!=0)best=Math.Max(best,pair.Value.Reach);}
+                {NearCapabilityDependencyWork();if(family==NearCapabilityFamily.Types || (pair.Value.Families&(1<<(int)family))!=0){best=found?Math.Max(best,pair.Value.Reach):pair.Value.Reach;found=true;}}
                 return best;
             }
             if(WiringOperation(operation))

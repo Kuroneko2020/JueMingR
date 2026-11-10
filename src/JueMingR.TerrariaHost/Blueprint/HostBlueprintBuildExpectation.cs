@@ -198,7 +198,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             fact.PlayerX=target?.WorldX??fact.Seed.Owner.OriginX+fact.Seed.Cell.X;
             fact.PlayerY=target?.WorldY??fact.Seed.Owner.OriginY+fact.Seed.Cell.Y;
             fact.PlayerBody=target?.Bounds??new BlueprintProjectionBounds(fact.PlayerX,fact.PlayerY,1,1);
-            fact.PlayerHammer=target?.Operation?.Kind==BlueprintBuildOperationKind.Hammer;
+            fact.PlayerHammer=target?.Operation?.Kind==BlueprintBuildOperationKind.Hammer || HoikOperation(target?.Operation) && target.Operation.HoikWaitTool==1;
             fact.PlayerBoost=plan?.Tool?.tileBoost??NearOperationBoost(target?.Operation,fact.Seed.Placement?.UseItemType??0);
             if(fact.PlayerGrandAvailable)nearGrandPlayerFacts--;
             fact.PlayerUsesGrand=plan?.ToolType==3611 && WiringOperation(target?.Operation);

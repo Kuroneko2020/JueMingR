@@ -11,6 +11,7 @@ namespace NativeWorldTextProbe
     {
         private static void ConstructionHoik(object context, object host, object tools, object input)
         {
+            ConstructionHoikMixed(context,host,tools,input);
             HoikNativeReachability(context,host,tools,input);
             foreach(byte slope in new byte[]{3,4})
             {
@@ -19,7 +20,6 @@ namespace NativeWorldTextProbe
             }
             ConstructionHoikPersistence(context,host,tools,input);
             ConstructionHoikRecovery(context,host,tools,input);
-            ConstructionHoikMixed(context,host,tools,input);
         }
         // Setup supplies support/inventory only. All three manufacturing steps
         // below run through the original Player.Update/ItemCheck consumers.
