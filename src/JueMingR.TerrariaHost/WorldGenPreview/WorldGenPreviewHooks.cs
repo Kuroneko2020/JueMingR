@@ -59,8 +59,8 @@ namespace JueMingR.TerrariaHost.WorldGenPreview
         {
             try
             {
-                if (current != null || target != typeof(Main).Assembly || target.ManifestModule.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"))
-                    throw new InvalidOperationException("World generation preview requires the verified Terraria 1.4.5.8 module.");
+                if (current != null || target != typeof(Main).Assembly)
+                    throw new InvalidOperationException("World generation preview is already installed or its live Terraria object differs.");
                 current = this;
                 ownsPatchScope = true;
                 progressTextures = new[] { "_texOuterCorrupt", "_texOuterCrimson", "_texOuterRandom", "_texOuterLower" }

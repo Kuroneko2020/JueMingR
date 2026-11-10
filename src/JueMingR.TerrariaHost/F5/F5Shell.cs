@@ -208,6 +208,8 @@ namespace JueMingR.TerrariaHost.F5
         private Fishing.HostFishing fishing;
         private Combat.HostCombat combat;
         private Combat.HostCombatObservation combatObservation;
+        private Combat.HostCombatExperiments combatExperiments;
+        internal void AttachCombatExperiments(Combat.HostCombatExperiments owner){combatExperiments=owner;renderer.CombatExperimentControls=owner==null?null:new CombatExperimentControls(owner);}
         internal CombatRadiusDrag CombatRadius {get;private set;}
         internal void AttachCombatObservation(Combat.HostCombatObservation owner)
         {
@@ -343,7 +345,7 @@ namespace JueMingR.TerrariaHost.F5
             if (hostItems != null) { items = new ItemsPresentation(hostItems, State); items.HotkeyClicked = OpenHotkey; }
             if (announcements != null) renderer.AnnouncementControls = new AnnouncementControls(announcements, hotkeys?.Bindings);
             Func<int, bool> prior = State.BeforeLeave;
-            State.BeforeLeave = page => { if (MapPopup != null && !MapPopup.TryLeave(() => { if (page < 0) State.Close(); else State.Navigate(page); })) return false; if (prior != null && !prior(page)) return false; if (Browser != null && !Browser.RequestFinish()) return false; Browser?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); State.Layout.About.Leave(); return true; };
+            State.BeforeLeave = page => { long intent=++secondaryNavigation, session=maps?.Session??0; int from=State.Page, layout=State.Layout.Generation; long focus=this.inputState.FocusGeneration; if (MapPopup != null && !MapPopup.TryLeave(() => { if(intent!=secondaryNavigation || failed || !State.Visible || State.Page!=from || State.Layout.Generation!=layout || (maps?.Session??0)!=session || focus!=this.inputState.FocusGeneration || !CanResumeSecondaryNavigation)return; if (page < 0) State.Close(); else State.Navigate(page); })) return false; if (prior != null && !prior(page)) return false; if (Browser != null && !Browser.RequestFinish()) return false; Browser?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); State.Layout.About.Leave(); return true; };
         }
         internal void AttachBrowser(IBrowserPage page) { if (Browser != null) throw new InvalidOperationException("Browser already attached."); Browser = page; }
         internal F5Rect BlueprintMaterialsAnchor()
@@ -361,9 +363,11 @@ namespace JueMingR.TerrariaHost.F5
                 return element.Rect.Offset(State.X + State.Layout.Viewport.X, State.Y + State.Layout.Viewport.Y);
             return State.Layout.Viewport.Offset(State.X, State.Y);
         }
+        private void CloseMaterials(){bool visible=BlueprintMaterialsUi?.Visible==true;BlueprintMaterialsUi?.Close();if(visible)BlueprintPlacedUi?.ResumeAfterMaterials();}
         internal void OpenBlueprintMaterials(BlueprintMaterialsSource source, F5Rect anchor)
         {
             if (BlueprintMaterialsUi == null) return;
+            if(BlueprintMaterialsUi.SameWorld(source)){CloseMaterials();return;}
             CloseBlueprintReplacementConfiguration();
             matrix = Main.UIScaleMatrix;
             HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close();
@@ -378,6 +382,7 @@ namespace JueMingR.TerrariaHost.F5
         internal void OpenBlueprintTemplateMaterials(Features.Blueprint.LibraryEntry entry, F5Rect anchor)
         {
             if (BlueprintMaterialsUi == null || entry == null) return;
+            if(BlueprintMaterialsUi.SameAsset(entry)){CloseMaterials();return;}
             CloseBlueprintReplacementConfiguration();
             matrix = Main.UIScaleMatrix;
             HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close();
@@ -415,6 +420,7 @@ namespace JueMingR.TerrariaHost.F5
         internal bool OpenBlueprintPlacedMaterials(long session, long instance, F5Rect anchor)
         {
             if (BlueprintMaterialsUi == null || BlueprintPlacedUi?.Visible != true || !blueprint.PlacedInstanceExists(session, instance)) return false;
+            if(BlueprintMaterialsUi.SameInstance(session,instance)){CloseMaterials();return true;}
             if (!BlueprintMaterialsUi.OpenWorldInstance(anchor, session, instance)) return false;
             BlueprintPlacedUi.PauseForMaterials(); State.CancelControlCapture(); return true;
         }
@@ -475,7 +481,20 @@ namespace JueMingR.TerrariaHost.F5
         internal bool BlocksMapInput { get { return failed || State.Visible || BlueprintMaterialsUi?.Visible == true || notes.OwnsPointer || HotkeyPopup != null && HotkeyPopup.Visible || StylePopup != null && StylePopup.Visible || MapPopup != null && MapPopup.Visible; } }
         internal void CloseForMapLocate() { CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); MapPopup?.Suspend(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); }
         internal void OpenHotkey(string id, F5Rect rect)
-        { HotkeyPopup?.Click(id, rect, State.Layout.Generation, State.Page, clickClock.ElapsedMilliseconds); if (HotkeyPopup != null && HotkeyPopup.Visible) { CloseBlueprintReplacementConfiguration(); BlueprintMaterialsUi?.Close(); FishingUi?.CloseOverlay(); CaptureUi?.Close(); RecoveryUi?.PotionPopup.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); } }
+        {
+            if(HotkeyPopup==null)return;
+            long now=clickClock.ElapsedMilliseconds;int generation=State.Layout.Generation,page=State.Page;
+            // Do not submit a map draft or switch its content for the first
+            // half of another binding entry's required double click.
+            if(!HotkeyPopup.WillNavigate(id,rect,generation,page,now))
+            {HotkeyPopup.Click(id,rect,generation,page,now);return;}
+            LeaveMapForSecondary(()=>
+            {
+                HotkeyPopup.Click(id,rect,generation,page,now);
+                if(HotkeyPopup.Visible)
+                {CloseBlueprintReplacementConfiguration();CloseMaterials();FishingUi?.CloseOverlay();CaptureUi?.Close();RecoveryUi?.PotionPopup.Close();StylePopup?.Close();DeathPopup?.Close();FootprintPopup?.Close();}
+            });
+        }
         private bool ClaimsPopupPointer()
         {
             // MouseInfo is already this tick's native sample at AfterMapping.
@@ -669,7 +688,11 @@ namespace JueMingR.TerrariaHost.F5
                     else if (BlueprintUi?.Submenu == true) BlueprintUi.Suspend();
                 }
                 Vector2 pointer = Vector2.Transform(raw, Matrix.Invert(matrix));
+                var secondaryEntry = SecondaryEntryAt(pointer, screen);
+                bool dynamicEntry = SecondaryDynamicAt(pointer,screen);
                 bool materialsWasVisible = BlueprintMaterialsUi?.Visible == true;
+                bool materialsParentEntry=materialsWasVisible && BlueprintMaterialsUi.Captured==false && !BlueprintMaterialsUi.Contains(pointer.X,pointer.Y) &&
+                    (BlueprintUi?.MaterialsEntryAt(pointer)==true || BlueprintPlacedUi?.MaterialsEntryAt(pointer)==true);
                 BlueprintMaterialsUi?.Process(inputActive, pointer, inputState.SampleFocused, PlayerInput.ScrollWheelDeltaForUI, f5);
                 if (materialsWasVisible && BlueprintMaterialsUi?.Visible != true) BlueprintPlacedUi?.ResumeAfterMaterials();
                 if (materialsWasVisible && f5) { inputState.Hotkeys.SuppressKey((int)Keys.F5); f5 = false; }
@@ -704,6 +727,7 @@ namespace JueMingR.TerrariaHost.F5
                     StylePopup.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y,
                         StylePopup.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, matrix.M11, renderer.FontIdentity, renderer.SkinGeneration, StyleAnchor()), PlayerInput.ScrollWheelDeltaForUI);
                 }
+                if(HotkeyPopup!=null)HotkeyPopup.EntryGesture=secondaryEntry?.HotkeyTarget != null || dynamicEntry;
                 HotkeyPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y,
                     HotkeyPopup.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
                 RefreshPopupAnchors();
@@ -746,22 +770,31 @@ namespace JueMingR.TerrariaHost.F5
                     Left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed,
                     Right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed,
                     BlockPointer = popupPointer,
+                    SecondaryEntry = secondaryEntry,
                     Wheel = PlayerInput.ScrollWheelDeltaForUI,
                     PageWheelHandled = BlueprintReplacementPopup?.ConsumeWheel == true || materialsWasVisible || BlueprintMaterialsUi?.ConsumeWheel == true || (CombatInterval?.ConsumeWheel==true || CombatRadius?.ConsumeWheel==true) || FishingUi!=null && FishingUi.BlocksPageWheel || CaptureUi != null && CaptureUi.OwnsPointer || RecoveryUi != null && RecoveryUi.ConsumeWheel || HotkeyPopup != null && HotkeyPopup.ConsumeWheel || StylePopup != null && StylePopup.ConsumeWheel || DeathPopup != null && DeathPopup.Visible || MapPopup != null && MapPopup.Visible || FootprintPopup != null && FootprintPopup.Visible || inputActive && (notes.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI) || Browser != null && Browser.Wheel(pointer.X, pointer.Y, PlayerInput.ScrollWheelDeltaForUI))
                 });
                 // Blueprint's ProcessInput below owns hidden-view teardown and
                 // distinguishes focus suspension from an explicit departure.
                 // Repeating Suspend here would cancel its accepted read job.
-                if (!State.Visible) { CloseBlueprintReplacementConfiguration(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); }
+                if (!State.Visible) { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); }
                 notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused, popupPointer, keySample);
-                items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused, popupPointer);
-                RecoveryUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer);
-                ReforgeUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer);
-                MiningUi?.ProcessInput(inputActive,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer);
-                MiscUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer);
-                BlueprintUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer);
-                BlueprintPlacedUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer);
-                FishingUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer,PlayerInput.ScrollWheelDeltaForUI);
+                if(items!=null)items.SecondaryOnly=popupPointer && dynamicEntry;
+                items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused, popupPointer && !dynamicEntry);
+                if(RecoveryUi!=null)RecoveryUi.SecondaryOnly=popupPointer && dynamicEntry;
+                RecoveryUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer && !dynamicEntry);
+                if(ReforgeUi!=null)ReforgeUi.SecondaryOnly=popupPointer && dynamicEntry;
+                ReforgeUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer && !dynamicEntry);
+                if(MiningUi!=null)MiningUi.SecondaryOnly=popupPointer && dynamicEntry;
+                MiningUi?.ProcessInput(inputActive,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer && !dynamicEntry);
+                if(MiscUi!=null)MiscUi.SecondaryOnly=popupPointer && dynamicEntry;
+                MiscUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer && !dynamicEntry);
+                if(BlueprintUi!=null)BlueprintUi.SecondaryOnly=materialsWasVisible;
+                BlueprintUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer && !materialsParentEntry);
+                if(BlueprintPlacedUi!=null)BlueprintPlacedUi.SecondaryOnly=materialsWasVisible;
+                BlueprintPlacedUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer && !materialsParentEntry);
+                if(FishingUi!=null)FishingUi.SecondaryOnly=popupPointer && dynamicEntry;
+                FishingUi?.ProcessInput(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,popupPointer && !dynamicEntry,PlayerInput.ScrollWheelDeltaForUI);
                 Browser?.Process(inputActive, pointer, popupPointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page));
                 if (information != null)
                 {
@@ -788,17 +821,9 @@ namespace JueMingR.TerrariaHost.F5
                 }
                 if (State.ClickedHotkey != null)
                     OpenHotkey(State.ClickedHotkey.HotkeyTarget, State.ClickedHotkey.Rect.Offset(State.X + State.Layout.Viewport.X, State.Y + State.Layout.Viewport.Y - State.Scroll));
-                if (State.ClickedControl != null && (State.Command == F5Command.MarkerManage || State.Command == F5Command.ExplorationDetails) && renderer.MapControls != null && renderer.MapControls.Available(State.Command))
-                { HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); mapPopupAnchor=State.Command;MapPopup.Open(State.Command == F5Command.ExplorationDetails); }
-                if (State.ClickedControl != null && (State.Command == F5Command.DeathDetails || State.Command == F5Command.DeathConfigure) && renderer.DeathControls != null && renderer.DeathControls.Available(State.Command))
-                { HotkeyPopup?.Close(); StylePopup?.Close(); FootprintPopup?.Close(); deathPopupAnchor=State.Command;DeathPopup.Open(State.Command == F5Command.DeathConfigure, State.Page); }
-                if (State.ClickedControl != null && State.Command == F5Command.FootprintConfigure && renderer.FootprintControls != null && renderer.FootprintControls.Available(State.Command))
-                { HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup.Open(State.Page); }
-                if (State.ClickedControl != null && EntityLabelControls.IsStyle(State.Command) && renderer.EntityControls != null && renderer.EntityControls.Available(State.Command))
-                {
-                    HotkeyPopup?.Close();
-                    StylePopup.Click(EntityLabelControls.Target(State.Command).Value, ControlRect(State.ClickedControl), State.Page);
-                }
+                if(State.ClickedControl!=null) NavigateSecondary(State.ClickedControl);
+                if(State.ClickedControl!=null && EntityLabelControls.IsStyle(State.Command) && renderer.EntityControls?.Available(State.Command)==true)
+                    { var target=EntityLabelControls.Target(State.Command).Value;var command=State.Command;LeaveMapForSecondary(()=>{HotkeyPopup?.Close();StylePopup.Click(target,PopupAnchor(command),State.Page);}); }
                 if (OwnsPointer) LeaseMouseInterface();
                 bool uiWheelOwner = PlayerInput.ScrollWheelDeltaForUI != 0 &&
                     (State.ConsumeWheel || notes.ConsumeWheel || Browser?.ConsumeWheel == true || items?.ConsumeWheel == true);
@@ -811,29 +836,34 @@ namespace JueMingR.TerrariaHost.F5
                 else if (State.ClickedControl != null && WorldTargetControls.IsStyle(State.Command) && renderer.WorldControls != null && renderer.WorldControls.Available(State.Command))
                 {
                     HotkeyPopup?.Close();
-                    StylePopup.Click(WorldTargetControls.Target(State.Command).Value, ControlRect(State.ClickedControl), State.Page);
+                    var styleTarget=WorldTargetControls.Target(State.Command).Value; var styleCommand=State.Command;
+                    LeaveMapForSecondary(()=>StylePopup.Click(styleTarget, PopupAnchor(styleCommand), State.Page));
                 }
                 else if (State.ClickedControl != null && WorldObjectControls.IsStyle(State.Command) && renderer.ObjectControls != null && renderer.ObjectControls.Available(State.Command))
                 {
                     HotkeyPopup?.Close();
-                    StylePopup.Click(WorldObjectControls.Target(State.Command).Value, ControlRect(State.ClickedControl), State.Page);
+                    var styleTarget=WorldObjectControls.Target(State.Command).Value; var styleCommand=State.Command;
+                    LeaveMapForSecondary(()=>StylePopup.Click(styleTarget, PopupAnchor(styleCommand), State.Page));
                 }
                 else if (State.ClickedControl != null && Information.InformationControls.IsStyle(State.Command) && renderer.InformationControls != null && renderer.InformationControls.Available(State.Command))
                 {
                     HotkeyPopup?.Close();
-                    StylePopup.Click(Information.InformationControls.Target(State.Command).Value, ControlRect(State.ClickedControl), State.Page);
+                    var styleTarget=Information.InformationControls.Target(State.Command).Value; var styleCommand=State.Command;
+                    LeaveMapForSecondary(()=>StylePopup.Click(styleTarget, PopupAnchor(styleCommand), State.Page));
                 }
                 else if (State.Command == F5Command.AdjustInformation) RequestInformationAdjustment();
                 else if (State.ClickedControl != null && GuidanceControls.IsStyle(State.Command) && renderer.GuidanceControls != null && renderer.GuidanceControls.Available(State.Command))
                 {
                     HotkeyPopup?.Close();
-                    StylePopup.Click(GuidanceControls.Target(State.Command).Value, ControlRect(State.ClickedControl), State.Page);
+                    var styleTarget=GuidanceControls.Target(State.Command).Value; var styleCommand=State.Command;
+                    LeaveMapForSecondary(()=>StylePopup.Click(styleTarget, PopupAnchor(styleCommand), State.Page));
                 }
                 else { renderer.EntityControls?.Execute(State.Command); renderer.WorldControls?.Execute(State.Command); renderer.ObjectControls?.Execute(State.Command);
                     renderer.GuidanceControls?.Execute(State.Command);
                     if (JourneyControls.Owns(State.Command) && renderer.JourneyControls != null && renderer.JourneyControls.Available(State.Command))
                         RequestJourneyCommand(State.Command, false);
                     renderer.CombatControls?.Execute(State.Command);
+                    renderer.CombatExperimentControls?.Execute(State.Command);
                     renderer.CombatObservationControls?.Execute(State.Command);
                     renderer.BlueprintControls?.Execute(State.Command);
                     if (State.Command == F5Command.AboutRevealHidden)
@@ -964,6 +994,7 @@ namespace JueMingR.TerrariaHost.F5
                     blueprint?.TakeFeedback(displayPreferenceFeedback);
                     fishing?.TakeFeedback(displayPreferenceFeedback);
                     combat?.Settings.TakeFeedback(displayPreferenceFeedback);
+                    combatExperiments?.TakeFeedback(displayPreferenceFeedback);
                     combatObservation?.TakeFeedback(displayPreferenceFeedback);
                     Onboarding?.State.TakeFeedback(displayPreferenceFeedback);
                     if (StylePopup?.Failure != null && StylePopup.FailureKey != reportedStyleFailure)
@@ -1156,6 +1187,57 @@ namespace JueMingR.TerrariaHost.F5
             if (position != null) preferences.SetPosition(position);
         }
 
+        private long secondaryNavigation;
+        // A reliable save may finish in an outer Update without native mapping.
+        // Continue only the accepted UI intent; no fresh input edge is required.
+        private bool CanResumeSecondaryNavigation {get{return CanPresentNow && inputState.CanPrepareText && !inputState.ExternalModalBusy;}}
+
+        private void LeaveMapForSecondary(Action action)
+        {
+            long intent=++secondaryNavigation, session=maps?.Session??0, focus=inputState.FocusGeneration; int page=State.Page; int generation=State.Layout.Generation;
+            Action complete=()=>{if(intent==secondaryNavigation && !failed && State.Visible && State.Page==page && State.Layout.Generation==generation && (maps?.Session??0)==session && focus==inputState.FocusGeneration && CanResumeSecondaryNavigation)action();};
+            if(MapPopup==null || MapPopup.TryLeave(complete))complete();
+        }
+        private void NavigateSecondary(F5Element entry)
+        {
+            F5Command command=entry.Command;
+            if(command==F5Command.MarkerManage || command==F5Command.ExplorationDetails)
+            {
+                bool close=MapPopup?.Visible==true && mapPopupAnchor==command;
+                if(!close && renderer.MapControls?.Available(command)!=true)return;
+                LeaveMapForSecondary(()=>{HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();FootprintPopup?.Close();if(!close){mapPopupAnchor=command;MapPopup.Open(command==F5Command.ExplorationDetails);}});
+            }
+            else if(command==F5Command.DeathDetails || command==F5Command.DeathConfigure)
+            {
+                bool close=DeathPopup?.Visible==true && deathPopupAnchor==command;
+                if(!close && renderer.DeathControls?.Available(command)!=true)return;
+                LeaveMapForSecondary(()=>{HotkeyPopup?.Close();StylePopup?.Close();FootprintPopup?.Close();if(close)DeathPopup.Close();else{deathPopupAnchor=command;DeathPopup.Open(command==F5Command.DeathConfigure,State.Page);}});
+            }
+            else if(command==F5Command.FootprintConfigure)
+            {
+                bool close=FootprintPopup?.Visible==true;
+                if(!close && renderer.FootprintControls?.Available(command)!=true)return;
+                LeaveMapForSecondary(()=>{HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();if(close)FootprintPopup.Close();else FootprintPopup.Open(State.Page);});
+            }
+        }
+        private bool SecondaryModalVisible {get{return HotkeyPopup?.Visible==true || StylePopup?.Visible==true || DeathPopup?.Visible==true || MapPopup?.Visible==true || FootprintPopup?.Visible==true || CaptureUi?.Visible==true || RecoveryUi?.PotionPopup.Visible==true || BlueprintMaterialsUi?.Visible==true || BlueprintReplacementPopup?.Visible==true || FishingUi?.Visible==true;}}
+        private bool SecondaryDynamicAt(Vector2 point,Vector2 screen)
+        {
+            if(!SecondaryModalVisible || !State.Visible || !inputState.SampleFocused || !State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page))return false;
+            if(DeathPopup?.Pressed>=0 || MapPopup?.Pressed>=0 || FootprintPopup?.Pressed>=0 || HotkeyPopup?.ContainsPointer(point.X,point.Y)==true || StylePopup?.ContainsPointer(point.X,point.Y)==true || StylePopup?.HasCapture==true || DeathPopup?.ContainsPointer(point.X,point.Y)==true || MapPopup?.ContainsPointer(point.X,point.Y)==true || FootprintPopup?.ContainsPointer(point.X,point.Y)==true || CaptureUi?.Contains(point.X,point.Y)==true || CaptureUi?.Captured==true || RecoveryUi?.PotionPopup.Contains(point.X,point.Y)==true || RecoveryUi?.PotionPopup.Captured==true || BlueprintMaterialsUi?.Contains(point.X,point.Y)==true || BlueprintMaterialsUi?.Captured==true || BlueprintReplacementPopup?.Contains(point.X,point.Y)==true || FishingUi?.Contains(point.X,point.Y)==true)return false;
+            return items?.SecondaryEntryAt(point)==true || RecoveryUi?.SecondaryEntryAt(point)==true || ReforgeUi?.SecondaryEntryAt(point)==true || MiningUi?.SecondaryEntryAt(point)==true || MiscUi?.SecondaryEntryAt(point)==true || FishingUi?.SecondaryEntryAt(point)==true;
+        }
+        private F5Element SecondaryEntryAt(Vector2 pointer,Vector2 screen)
+        {
+            if(!SecondaryModalVisible || !State.Visible || !inputState.SampleFocused || !State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page))return null;
+            if(HotkeyPopup?.ContainsPointer(pointer.X,pointer.Y)==true || StylePopup?.ContainsPointer(pointer.X,pointer.Y)==true || DeathPopup?.ContainsPointer(pointer.X,pointer.Y)==true || MapPopup?.ContainsPointer(pointer.X,pointer.Y)==true || FootprintPopup?.ContainsPointer(pointer.X,pointer.Y)==true || BlueprintMaterialsUi?.Contains(pointer.X,pointer.Y)==true)return null;
+            if(CaptureUi?.Contains(pointer.X,pointer.Y)==true || RecoveryUi?.PotionPopup.Contains(pointer.X,pointer.Y)==true || BlueprintReplacementPopup?.Contains(pointer.X,pointer.Y)==true || FishingUi?.Contains(pointer.X,pointer.Y)==true)return null;
+            if(StylePopup?.HasCapture==true || DeathPopup?.Pressed>=0 || MapPopup?.Pressed>=0 || FootprintPopup?.Pressed>=0 || CaptureUi?.Captured==true || RecoveryUi?.PotionPopup.Captured==true || CombatInterval?.Captured==true || CombatRadius?.Captured==true || BlueprintMaterialsUi?.Captured==true)return null;
+            var entry=State.HitButton(pointer.X-State.X,pointer.Y-State.Y); if(entry==null)return null;
+            var command=entry.Command;
+            bool legal=entry.HotkeyTarget!=null || command==F5Command.MarkerManage || command==F5Command.ExplorationDetails || command==F5Command.DeathDetails || command==F5Command.DeathConfigure || command==F5Command.FootprintConfigure || command==F5Command.BlueprintMaterials || command==F5Command.BlueprintSubstitutionConfigure || EntityLabelControls.IsStyle(command) || WorldTargetControls.IsStyle(command) || WorldObjectControls.IsStyle(command) || Information.InformationControls.IsStyle(command) || GuidanceControls.IsStyle(command);
+            return legal?entry:null;
+        }
         private F5Rect ControlRect(F5Element element)
         { return element.Rect.Offset(State.X + State.Layout.Viewport.X, State.Y + State.Layout.Viewport.Y - State.Scroll); }
         private void RefreshPopupAnchors()
@@ -1223,10 +1305,11 @@ namespace JueMingR.TerrariaHost.F5
         private void CloseForUnavailablePresentation()
         { if (TemporaryPresentationUnavailable) SuspendForTemporaryUnavailability(!inputState.IsFocused); else CloseAndSubmitPosition(); }
 
-        internal void CloseAndSubmitPosition() { CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
+        internal void CloseAndSubmitPosition() { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
 
         internal void CancelForFocusLoss()
-        { SuspendForTemporaryUnavailability(true); }
+        {
+            secondaryNavigation++; SuspendForTemporaryUnavailability(true); }
         private void SuspendForTemporaryUnavailability(bool focusLost)
         {
             CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.LoseFocus(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close();

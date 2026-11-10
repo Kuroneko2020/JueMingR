@@ -250,7 +250,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Newly born controllers can get their first AI in the SAME native
             // projectile pass. Reuse the already captured shared future at the
             // real birth boundary; never recapture/select inside each AI call.
-            if(receipt.Source!=null && preparedTimeline!=null && birthOrdinal>receipt.BirthCutoff)
+            if(combat.Attack.OriginalAttackPredictionAllowed && receipt.Source!=null && preparedTimeline!=null && birthOrdinal>receipt.BirthCutoff)
             {
                 try{using(observation.PredictionWork.Enter(Main.GameUpdateCount)){PrepareBorn(receipt.Source,receipt.Phase,receipt.BirthCutoff);}}
                 catch(CombatPredictionBudgetExceededException){Clear();}
@@ -289,7 +289,7 @@ namespace JueMingR.TerrariaHost.Combat
         // no other source is searched and Draw never checks terrain here.
         private void RejectDependencies(Controlled entry)
         {Retire(entry);if(ReferenceEquals(previewSource,entry))ClearPreview();}
-        internal void ResetPreparation(){Clear();ClearPreview();preparedTimeline=null;opening=null;hasFiniteHeldWorldStep=finiteHeldDemandRaised=false;}
+        internal void ResetPreparation(){Clear();ClearPreview();foreach(var entry in shots.Values)entry.YoyoEnhanced=false;preparedTimeline=null;opening=null;hasFiniteHeldWorldStep=finiteHeldDemandRaised=false;}
         internal void Reset(){ResetPreparation();shots.Clear();birthOrdinal=0;hasMaintenanceStep=false;}
         internal void Prepare(NpcTrajectory timeline,HostAttackPhase phase)
         {
@@ -449,6 +449,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private CombatCursorScope BeginEnhancedKill(Projectile shot)
         {
+            if(!combat.Attack.OriginalAttackPredictionAllowed)return null;
             Controlled entry;if(shot.type!=444 || !shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return null;
             if(!combat.Attack.CurrentReceiver){Retire(entry);return null;}
             bool later;
@@ -468,6 +469,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             get
             {
+                if(!combat.Attack.OriginalAttackPredictionAllowed)return null;
                 if(!combat.Attack.CurrentReceiver){Clear();return null;}
                 if(shots.Count==0)return null;
                 if(!environmentState.Current || !terrain.Unchanged)return null;
@@ -489,7 +491,7 @@ namespace JueMingR.TerrariaHost.Combat
         {presentation=null;if(result!=null)foreach(var entry in shots.Values)if(ReferenceEquals(result,entry.Type==444?entry.NextKillContact:entry.Contact)){presentation=entry;break;}}
         internal bool PresentationCurrent(AttackContact result)
         {
-            if(!combat.Attack.CurrentReceiver)return false;
+            if(!combat.Attack.OriginalAttackPredictionAllowed || !combat.Attack.CurrentReceiver)return false;
             // The entry reference was bound once at Capture. No registry lookup,
             // projectile pool, terrain or candidate-set scan is allowed in Draw.
             var entry=presentation;
@@ -537,7 +539,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(entry.ManagedYoyo)
             {
                 if(!combat.Use.ManagedYoyoHeld(shot))return false;
-                if(entry.YoyoEnhanced && entry.Ammo!=null && entry.Ammo.IdentityMatches(combat.Player,entry.Source.Weapon) && entry.Born==Main.GameUpdateCount && environmentState.Current && terrain.Unchanged && combat.Attack.TimelineCurrent(preparedTimeline) && entry.Target.Equals(observation.Selection.Target))
+                if(combat.Attack.OriginalAttackPredictionAllowed && entry.YoyoEnhanced && entry.Ammo!=null && entry.Ammo.IdentityMatches(combat.Player,entry.Source.Weapon) && entry.Born==Main.GameUpdateCount && environmentState.Current && terrain.Unchanged && combat.Attack.TimelineCurrent(preparedTimeline) && entry.Target.Equals(observation.Selection.Target))
                 {point=entry.YoyoPoint;combat.Attack.RecordControlInput(point,shot,HostAttackInputKind.Enhanced);return true;}
                 HostAttackInput basic;if(!combat.Attack.TryBasicInput(combat.Player,entry.Source.Weapon,shot,HostAttackPhase.Projectiles,out basic))return false;
                 point=basic.Point;combat.Attack.RecordInput(basic);return true;
@@ -582,7 +584,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private bool TryEnhancedPoint(Projectile shot,out Vector2 point)
         {
-            point=default(Vector2);Controlled entry;if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return false;
+            point=default(Vector2);if(!combat.Attack.OriginalAttackPredictionAllowed)return false;Controlled entry;if(!shots.TryGetValue((int)shot.key,out entry) || !ReferenceEquals(entry.Shot,shot))return false;
             // Bubble AI never reads the cursor. Its separate Kill receipt must
             // survive these natural AI calls, including a stationary bubble
             // whose current and expiry origins are exactly the same.

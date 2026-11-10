@@ -125,6 +125,10 @@ namespace NativeWorldTextProbe
         }
         private static void TimelineInput(object context, object host, object layer, Assembly assembly)
         {
+            // A known long isolated interval prevents setup/worker latency from
+            // reaching the actual end while checking a small passive UI delta.
+            var history = (FootprintRecorder)Get(host, "Recorder"); var tail = history.At(history.ActiveCount - 1);
+            Require(history.Observe(tail.X, tail.Y, tail.Position, false, TimeSpan.TicksPerSecond * 10), "timeline fixture retains a known ten-second history interval");
             object input = Get(context, "Input");
             var frameType = assembly.GetType("JueMingR.TerrariaHost.Map.MapView");
             object frame = Activator.CreateInstance(frameType, Flags, null, new object[] { Vector2.Zero, Vector2.Zero, 1f, 1f, 255 }, null);
@@ -139,6 +143,41 @@ namespace NativeWorldTextProbe
             };
             sample(false); sample(false); sample(true); Require(PlayerInput.MouseKeys.Count == 0, "actual timeline claims its play button before native keyboard mapping");
             sample(false); Require(playback.Playing && playback.Cursor == 0, "actual production play gesture starts latest timeline at earliest");
+            // Exercise the production outer-update gate after the real click,
+            // with no mapping callbacks. A missing sample is not focus loss.
+            long end = (long)Get(host, "End"); double seconds = Math.Min(.001, end / 40000000d);
+            Require(seconds > 0, "timeline fixture has a positive playback interval");
+            Func<bool> oldOwner = (Func<bool>)GetOptional(layer, "UiOwnsInput");
+            object oldForeground = Get(input, "foregroundWindow");
+            bool focused = true; Set(input, "foregroundWindow", (Func<IntPtr>)(() => focused ? new IntPtr(1) : IntPtr.Zero));
+            Set(layer, "UiOwnsInput", (Func<bool>)(() => false));
+            try
+            {
+                double before = playback.Cursor;
+                for (int i = 0; i < 3; i++)
+                {
+                    Call(input, "BeginUpdate");
+                    Require((bool)Get(input, "IsFocused") && !(bool)Get(input, "SampleFocused"), "empty outer update has real focus without a mapped sample");
+                    Set(layer, "lastUi", (double)Get(host, "UiSeconds") - seconds); Call(context, "UpdateRuntime");
+                    Require(playback.Playing, "empty outer runtime update retains the accepted play intent");
+                }
+                Require(playback.Cursor > before, "production playback advances UI time across empty outer updates");
+                focused = false; Call(input, "BeginUpdate"); Call(layer, "Update"); Require(!playback.Playing, "real focus loss stops playback");
+                focused = true; sample(false); sample(false); Call(layer, "Update"); Require(!playback.Playing, "focus recovery does not automatically resume playback");
+                playback.GoLatest(end); sample(true); sample(false); Require(playback.Playing, "new physical play gesture restarts after focus recovery");
+                var request = Guid.NewGuid(); Require((bool)Call(input, "TryAcquireExternalModal", request), "external modal acquires its real input owner");
+                Call(layer, "Update"); Require(!playback.Playing, "external modal stops passive playback even without F5 input blocking");
+                Call(input, "ReturnExternalModal", request); sample(false); sample(false); Call(layer, "Update");
+                Require(!(bool)Get(input, "ExternalModalBusy") && !playback.Playing, "neutral modal recovery does not reissue playback");
+                playback.GoLatest(end); sample(true); sample(false); long recorded = ((FootprintRecorder)Get(host, "Recorder")).End;
+                bool paused = Main.gamePaused; Main.gamePaused = true;
+                try { Set(layer, "lastUi", (double)Get(host, "UiSeconds") - seconds); Call(input, "BeginUpdate"); Call(context, "UpdateRuntime"); Require(playback.Playing && playback.Cursor > 0 && ((FootprintRecorder)Get(host, "Recorder")).End == recorded, "paused world retains passive UI playback without advancing recording"); }
+                finally { Main.gamePaused = paused; }
+                Main.mapFullscreen = false; Call(layer, "Update"); Require(!playback.Playing, "hiding the map retires playback");
+                Main.mapFullscreen = true; Call(layer, "Update"); Require(!playback.Playing && playback.Latest && playback.Speed == 1, "reopening resets to latest paused 1x without hidden-time catch-up");
+                Call(layer, "Layout", frame, Terraria.GameContent.FontAssets.MouseText.Value); Set(layer, "drewBar", true); Call(layer, "Completed", frame);
+            }
+            finally { Set(input, "foregroundWindow", oldForeground); Set(layer, "UiOwnsInput", oldOwner); }
             playback.GoLatest((long)Get(host, "End")); sample(true);
             var oldFont = Terraria.GameContent.FontAssets.MouseText; FiniteCostChecks.SetCpuFont(11); sample(false);
             Require(!playback.Playing, "font replacement rejects old physical release before draw"); Terraria.GameContent.FontAssets.MouseText = oldFont;

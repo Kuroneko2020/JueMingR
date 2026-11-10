@@ -613,6 +613,12 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(output); Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatInputGeometryChecks.Run(context);},processing:true,shortFeedback:true);return 0;
             }
+            if(scope=="CombatExperimentsCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeScopeDispatch.EnterSelected("combat-experiments");
+                NativeQuickItemChecks.Run(NativeCombatExperimentChecks.Run,processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="CombatIntegrationCpu")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-integration-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);

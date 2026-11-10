@@ -241,8 +241,15 @@ namespace JueMingR.TerrariaHost.F5
             activeReadGeneration = 0; pendingPreviewKey = null; pendingImage = null; pendingSummary = null;
         }
         internal bool RequestLeave() { Suspend(); return true; }
+        internal bool SecondaryOnly;
+        internal bool MaterialsEntryAt(Vector2 point)
+        {
+            if(!Visible || !ready || dirty || layoutGeneration!=shell.Layout.Generation || scroll!=shell.Scroll || matrix!=Main.UIScaleMatrix || !hitClip.Contains(point.X,point.Y))return false;
+            var part=Hit(point.X-view.X,point.Y-view.Y);return part?.Enabled==true && part.Command==BlueprintLibraryCommand.Materials;
+        }
         internal void ProcessInput(bool active, KeyboardState keys, Vector2 point, bool geometryCurrent, bool focused, bool blocked)
         {
+            bool secondaryOnly=SecondaryOnly;SecondaryOnly=false;
             materialPointer = point;
             bool left = host.Input.RawMouseLeft, right = host.Input.RawMouseRight;
             ConsumeLeft = ConsumeRight = ConsumeWheel = OwnsPointer = false;
@@ -262,11 +269,12 @@ namespace JueMingR.TerrariaHost.F5
             bool wasEditing = editor != null;
             // Scrolling/projection can retire pointer geometry before Prepare.
             // The same editable field still owns text until a real input exit.
-            bool textActive = active && Visible && Editable && !blocked;
+            bool textActive = active && Visible && Editable && !blocked && !secondaryOnly;
             TextInput.AfterSample(textActive, null, keys, focused);
             bool inside = hitClip.Contains(point.X, point.Y);
             OwnsPointer = pointerOn && (inside || leftTail || rightTail);
             hovered = pointerOn && inside ? Hit(point.X - view.X, point.Y - view.Y) : null;
+            if(secondaryOnly && hovered?.Command!=BlueprintLibraryCommand.Materials)hovered=null;
             if (!pointerOn || !focused) { armed = null; if (deleteConfirm.HasValue) { deleteConfirm = null; dirty = true; } lastClickName = false; }
             else
             {
@@ -282,7 +290,7 @@ namespace JueMingR.TerrariaHost.F5
                     var target = armed; armed = null;
                     if (ReferenceEquals(target, hovered) && pressProjection == projection && pressMatrix == matrix && Same(pressView, view)) Execute(target);
                 }
-                if (keys.IsKeyDown(Keys.Escape) && host.Input.Hotkeys.IsNew((int)Keys.Escape))
+                if (!secondaryOnly && keys.IsKeyDown(Keys.Escape) && host.Input.Hotkeys.IsNew((int)Keys.Escape))
                 {
                     if (editor != null && editProtected && mode == View.Capture && host.Flow.ContentHandle.IsEmpty &&
                         !TextInput.Owned && !TextInput.OtherTextOwner)

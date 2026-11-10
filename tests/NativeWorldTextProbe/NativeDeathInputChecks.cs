@@ -47,6 +47,14 @@ namespace NativeWorldTextProbe
                 return new Vector2((float)Get(rect, "X") + (float)Get(panel, "X") + 4, (float)Get(rect, "Y") + (float)Get(panel, "Y") + 4);
             };
             Func<Vector2> option = () => button(128);
+            open();
+            var entryElements=(IEnumerable)Get(Get(state,"Layout"),"Elements");object entry=null;
+            foreach(var e in entryElements)if(Get(e,"Command").ToString()=="DeathConfigure"){entry=e;break;}
+            var entryRect=Get(entry,"Rect");var viewport=Get(Get(state,"Layout"),"Viewport");
+            int entryX=(int)((float)Get(state,"X")+(float)Get(viewport,"X")+(float)Get(entryRect,"X")+4);
+            int entryY=(int)((float)Get(state,"Y")+(float)Get(viewport,"Y")+(float)Get(entryRect,"Y")-(float)Get(state,"Scroll")+4);
+            frame(entryX,entryY,true);frame(entryX,entryY,false);
+            Require(!(bool)Get(popup,"Visible") && (bool)Get(state,"ConsumeLeft"),"actual modal entry closes through Shell complete click and retains tail");
             open(); var point = option(); frame((int)point.X, (int)point.Y, true);
             Require((int)Get(popup, "Pressed") == 128, "actual shell forwards physical press into death popup");
             FiniteCostChecks.SetCpuFont(8); // Same dimensions; do not pre-refresh or Prepare before release.

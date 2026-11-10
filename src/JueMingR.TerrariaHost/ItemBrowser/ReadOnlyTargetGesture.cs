@@ -74,7 +74,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
 #endif
             try
             {
-                if (current != null || typeof(Main).Module.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083")) return;
+                if (current != null) return;
                 current = this;
                 Patch(typeof(Main), "DrawInterface", new[] { typeof(GameTime) }, nameof(BeginPass), nameof(EndPass), nameof(PassFinally));
                 Patch(typeof(Main), "DrawInterface_39_MouseOver", Type.EmptyTypes, nameof(BeforeWorldHover), null);

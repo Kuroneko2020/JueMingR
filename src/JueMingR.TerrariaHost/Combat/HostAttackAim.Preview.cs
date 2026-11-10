@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reflection;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
@@ -82,7 +82,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool TryCandidateDisplay(long tick,out NpcTrajectory path,out PredictionTerrain.CellLease terrain)
         {
             path=null;terrain=null;var plan=candidatePresentationPlan;
-            if(!observation.Path || BasicPermission || plan==null || !plan.Prepared || plan.Controlled || plan.Phase!=HostAttackPhase.CompletedWorld || !PlanPositive(plan) || plan.MotionTerrain==null || plan.Timeline==null || plan.Timeline.SampleTick!=tick || plan.Timeline.CaptureTick!=tick || !plan.Timeline.Identity.Equals(observation.Selection.Target))return false;
+            if(!OriginalAttackPredictionAllowed || !observation.Path || BasicPermission || plan==null || !plan.Prepared || plan.Controlled || plan.Phase!=HostAttackPhase.CompletedWorld || !PlanPositive(plan) || plan.MotionTerrain==null || plan.Timeline==null || plan.Timeline.SampleTick!=tick || plan.Timeline.CaptureTick!=tick || !plan.Timeline.Identity.Equals(observation.Selection.Target))return false;
             path=plan.Timeline;terrain=plan.MotionTerrain;return true;
         }
         internal void PublishCandidatePreview(NpcTrajectory path)

@@ -18,6 +18,10 @@ namespace Terraria
 {
     internal static class ItemUiChecks
     {
+        // This layout/selector fixture deliberately exercises a saved sale list.
+        // Production first-run defaults are checked separately by settings tests.
+        private static ItemAutomationSettings LayoutDefaults {get{return new ItemAutomationSettings(false,false,false,new[]{2337,2338,2339},new int[0]);}}
+
         private static readonly BindingFlags Fields = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
         internal static void RunLayout(HostItems host)
         {
@@ -27,7 +31,7 @@ namespace Terraria
             Func<string, F5Size> measure = t => new F5Size(t.Length * 18, 24);
             shell.Update(new F5Input { Active = true, Focused = true, Width = 1920, Height = 1080, Scale = 1, F5 = true }); shell.Navigate(0);
             Action prepare = () => { shell.Layout.Ensure(1920, 1080, 1, shell.Page, font, measure); p.PrepareLayout(Matrix.Identity, new Vector2(1920, 1080)); };
-            host.Change(ItemAutomationSettings.Default); host.PollPreferences(); prepare();
+            host.Change(LayoutDefaults); host.PollPreferences(); prepare();
             Check(HasControl(p, "ToggleDiscardFeedback"), "discard row provides its real feedback preference command");
             var feedback = Control(p, "ToggleDiscardFeedback");
             var feedbackRect = Rect(feedback); var discardAdd = Rect(Control(p, "Add", (int)ItemListKind.Discard));
@@ -94,13 +98,13 @@ namespace Terraria
             Check(!p.Selecting && Main.keyState.IsKeyDown(Keys.Escape) && HasControl(p, "Add", argument: (int)ItemListKind.Discard), "Shell-authorized cancellation preserves the physical keyboard snapshot");
             PlayerInput.WritingText = false; p.BeforeInput(true); Check(!PlayerInput.WritingText, "pointer chooser never starts a text tail");
             p.ProcessInput(true, new KeyboardState(), Vector2.Zero); PlayerInput.WritingText = false;
-            host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 5000))); prepare();
+            host.Change(LayoutDefaults.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 5000))); prepare();
             Check(((ICollection)typeof(ItemsPresentation).GetField("controls", Fields).GetValue(p)).Count < 360, "only visible cards are constructed");
             var oldEnable = Control(p, "Enable", 0); Pointer(p, oldEnable, true); shell.ScrollTo(shell.Layout.MaxScroll); Pointer(p, oldEnable, false); prepare();
             Check(!host.Preferences.Value.StackEnabled && !HasControl(p, "Replace", 1000) && HasControl(p, "Replace", 5999), "scroll cancels pressed command and retires hidden card hits");
             shell.ScrollTo(0); font = new object(); measure = t => new F5Size(t.Length * 20, 26, -3, 8); prepare();
             Check(Rect(Control(p, "Enable", 0)).Height > 30.1f, "high offset font drives common row height");
-            host.Change(ItemAutomationSettings.Default); prepare(); Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare(); notesMayLeave = true;
+            host.Change(LayoutDefaults); prepare(); Click(p, Control(p, "Add", (int)ItemListKind.Discard)); prepare(); notesMayLeave = true;
             Check(shell.BeforeLeave(9) && !p.Selecting, "accepted Notes leave cancels draft"); p.Suspend();
             Main.CurrentInputTextTakerOverride = null; PlayerInput.WritingText = false; Main.keyState = new KeyboardState();
             RunCardHints(host);
@@ -134,7 +138,7 @@ namespace Terraria
                 var selection = new ItemSelection(host); var layout = new ItemsLayout();
                 var elements = new System.Collections.Generic.List<F5Element>(); var controls = new System.Collections.Generic.List<ItemUiControl>();
                 var view = new F5Rect(10, 20, width, 5000);
-                var empty = ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, new int[0]).WithTypes(ItemListKind.Discard, new int[0]);
+                var empty = LayoutDefaults.WithTypes(ItemListKind.Sell, new int[0]).WithTypes(ItemListKind.Discard, new int[0]);
                 layout.Build(width, 38, empty, selection, true, false, measure); layout.Project(view, 0, elements, controls);
                 var compact = elements.Where(e => e.Kind == F5ElementKind.Panel).Select(e => e.Rect).ToArray();
                 Check(!elements.Any(e => e.Kind == F5ElementKind.Divider), "empty Items groups have no divider");
@@ -202,7 +206,7 @@ namespace Terraria
             {
                 foreach (ItemListKind list in new[] { ItemListKind.Sell, ItemListKind.Discard })
                 {
-                    shell.ScrollTo(0); host.Change(ItemAutomationSettings.Default.WithTypes(list, Enumerable.Range(1000, 20))); prepare();
+                    shell.ScrollTo(0); host.Change(LayoutDefaults.WithTypes(list, Enumerable.Range(1000, 20))); prepare();
                     var cards = ((System.Collections.Generic.List<ItemUiControl>)typeof(ItemsPresentation).GetField("controls", Fields).GetValue(page))
                         .Where(c => c.Command == ItemUiCommand.Replace && c.Argument == (int)list).ToArray();
                     Check(cards.Select(c => c.Rect.Y).Distinct().Count() >= 2, "hint regression uses real multirow list geometry");
@@ -218,7 +222,7 @@ namespace Terraria
                     hint((ItemUiControl)Control(page, "Select", type: 8), "·点击选择或取消，确定后添加");
                     Click(page, Control(page, "Cancel")); prepare();
                 }
-                host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 200))); prepare();
+                host.Change(LayoutDefaults.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 200))); prepare();
                 shell.ScrollTo(100); prepare();
                 var visible = ((System.Collections.Generic.List<ItemUiControl>)typeof(ItemsPresentation).GetField("controls", Fields).GetValue(page))
                     .First(c => c.Command == ItemUiCommand.Replace && c.Rect.Y >= shell.Y + shell.Layout.Viewport.Y);
@@ -241,8 +245,8 @@ namespace Terraria
             foreach (float width in new[] { 300f, 522f })
             {
                 var on = new ItemsLayout(); var off = new ItemsLayout(); var selection = new ItemSelection(host);
-                on.Build(width, 30, ItemAutomationSettings.Default, selection, true, false, measure);
-                off.Build(width, 30, ItemAutomationSettings.Default.WithDiscardFeedbackEnabled(false), selection, true, false, measure);
+                on.Build(width, 30, LayoutDefaults, selection, true, false, measure);
+                off.Build(width, 30, LayoutDefaults.WithDiscardFeedbackEnabled(false), selection, true, false, measure);
                 var elements = new System.Collections.Generic.List<F5Element>();
                 var onControls = new System.Collections.Generic.List<ItemUiControl>();
                 var offControls = new System.Collections.Generic.List<ItemUiControl>();
@@ -276,7 +280,7 @@ namespace Terraria
             Action prepare = () => { shell.Layout.Ensure(1920, 1080, 1, 0, font, t => new F5Size(t.Length * 18, 24)); p.PrepareLayout(Matrix.Identity, new Vector2(1920, 1080)); };
             try
             {
-                host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 20))); prepare();
+                host.Change(LayoutDefaults.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 20))); prepare();
                 AssertGridRow(p, shell, ItemUiCommand.Replace);
                 Click(p, Control(p, "Replace", (int)ItemListKind.Sell, 1009)); prepare();
                 var selection = (ItemSelection)typeof(ItemsPresentation).GetField("selection", Fields).GetValue(p);
@@ -308,7 +312,7 @@ namespace Terraria
             shell.Update(new F5Input { Active = true, Focused = true, Width = 1280, Height = 720, Scale = 1, F5 = true }); shell.Navigate(0);
             object font = new object(); Func<string, F5Size> measure = t => new F5Size(t.Length * 18, 24);
             Action prepare = () => { shell.Layout.Ensure(1280, 720, 1, 0, font, measure); p.PrepareLayout(Matrix.Identity, new Vector2(1280, 720)); };
-            host.Change(ItemAutomationSettings.Default); prepare();
+            host.Change(LayoutDefaults); prepare();
             var state = (ItemSelection)typeof(ItemsPresentation).GetField("selection", Fields).GetValue(p);
             var geometry = (ItemsLayout)typeof(ItemsPresentation).GetField("layout", Fields).GetValue(p);
             Func<F5Element[]> groups = () => ((System.Collections.Generic.List<F5Element>)typeof(ItemsLayout).GetField("rows", Fields).GetValue(geometry)).Where(e => e.Kind == F5ElementKind.Panel).ToArray();
@@ -359,10 +363,10 @@ namespace Terraria
             Check(Rect(remove).Width == 18 && Rect(remove).Right == body.Right && Rect(remove).Y == body.Y, "visible cross has bounded top-right hit region");
             Click(p, remove); prepare(); Check(!p.Selecting && !host.Preferences.Value.SellTypes.Contains(2337) && p.ConsumeLeft, "cross wins over body and consumes release after card shift");
             Pointer(p, remove, false); prepare(); Check(host.Preferences.Value.SellTypes.Contains(2338) && !p.Selecting, "same gesture cannot activate shifted neighbor");
-            host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 5000))); prepare(); shell.ScrollTo(700); prepare();
+            host.Change(LayoutDefaults.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 5000))); prepare(); shell.ScrollTo(700); prepare();
             float oldScroll = shell.Scroll; font = new object(); measure = t => new F5Size(t.Length * 20, 26, -3, 8); prepare();
             Check(shell.Scroll == oldScroll, "font reflow does not reset valid dynamic page offset");
-            host.Change(ItemAutomationSettings.Default); prepare(); Check(shell.Scroll == 0 && shell.Layout.MaxScroll == 0, "collapse clamps without invented empty scroll content");
+            host.Change(LayoutDefaults); prepare(); Check(shell.Scroll == 0 && shell.Layout.MaxScroll == 0, "collapse clamps without invented empty scroll content");
             var fontFeedback = (ItemUiControl)Control(p, "ToggleDiscardFeedback");
             var fontLabel = F5Layout.ButtonLabel(fontFeedback.Element);
             Check(fontLabel.Width <= fontFeedback.Rect.Width && fontLabel.Height <= fontFeedback.Rect.Height && fontLabel.X >= fontFeedback.Rect.X && fontLabel.Right <= fontFeedback.Rect.Right,
@@ -395,7 +399,7 @@ namespace Terraria
                 var shell = new F5Interaction { Ready = true }; bool notesMayLeave = false;
                 shell.BeforeLeave = page => notesMayLeave;
                 var presentation = new ItemsPresentation(host, shell);
-                host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, new[] { 100 }).WithTypes(ItemListKind.Discard, new int[0])); host.PollPreferences();
+                host.Change(LayoutDefaults.WithTypes(ItemListKind.Sell, new[] { 100 }).WithTypes(ItemListKind.Discard, new int[0])); host.PollPreferences();
                 Main.LocalPlayer.inventory[10] = new Item { type = 8, stack = 4, favorited = true };
                 Main.LocalPlayer.inventory[11] = new Item { type = 101, stack = 2 };
                 Main.LocalPlayer.inventory[50] = new Item { type = 71, stack = 10 };
@@ -495,7 +499,7 @@ namespace Terraria
                                 var texture = Read<Texture2D>(reader, Path.Combine(content, "Images/Item_" + type + ".xnb"));
                                 icons.Add(texture); TextureAssets.Item[type] = graphics.Asset("actual-item-" + type, texture);
                             }
-                            host.Change(ItemAutomationSettings.Default); shell.Navigate(9); prepare();
+                            host.Change(LayoutDefaults); shell.Navigate(9); prepare();
                             Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "information-original.png"));
                             shell.Navigate(0); prepare(); presentation.ProcessInput(true, new KeyboardState(), Vector2.Zero);
                             CheckOriginalHintRows(graphics, shellRenderer, shell, presentation, host, output);
@@ -511,16 +515,16 @@ namespace Terraria
                             Click(presentation, Control(presentation, "Replace", (int)ItemListKind.Sell, 2337)); prepare();
                             Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-inline-replace.png"));
                             Click(presentation, Control(presentation, "Cancel")); prepare();
-                            host.Change(ItemAutomationSettings.Default.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 180).Concat(new[] { 2337, 2338, 2339 }))); prepare();
+                            host.Change(LayoutDefaults.WithTypes(ItemListKind.Sell, Enumerable.Range(1000, 180).Concat(new[] { 2337, 2338, 2339 }))); prepare();
                             shell.ScrollTo(180); prepare();
                             Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-long-list.png"));
-                            host.Change(ItemAutomationSettings.Default); shell.ScrollTo(0); prepare();
+                            host.Change(LayoutDefaults); shell.ScrollTo(0); prepare();
                             Click(presentation, Control(presentation, "Add", (int)ItemListKind.Discard)); prepare();
                             Click(presentation, Control(presentation, "Select", type: 8)); prepare();
                             Click(presentation, Control(presentation, "Select", type: 101)); prepare();
                             Draw(graphics, shellRenderer, shell, presentation, Path.Combine(output, "items-inline-multiselect.png"));
                             Click(presentation, Control(presentation, "Cancel")); prepare();
-                            host.Change(ItemAutomationSettings.Default); shell.ScrollTo(0); prepare();
+                            host.Change(LayoutDefaults); shell.ScrollTo(0); prepare();
                             using (var replacement = new Texture2D(graphics.Device, 32, 32))
                             {
                                 replacement.SetData(Enumerable.Repeat(new Color(40, 88, 64), 1024).ToArray());
@@ -548,7 +552,7 @@ namespace Terraria
                 F5Rect onRect = default(F5Rect);
                 foreach (bool enabled in new[] { true, false })
                 {
-                    host.Change(ItemAutomationSettings.Default.WithDiscardFeedbackEnabled(enabled));
+                    host.Change(LayoutDefaults.WithDiscardFeedbackEnabled(enabled));
                     renderer.Prepare(shell, 1920, 1080, scale);
                     items.Prepare(true, Main.UIScaleMatrix, new Vector2(1920 / scale, 1080 / scale));
                     var hint = (ItemUiControl)Control(items, "ToggleDiscardFeedback");
@@ -565,7 +569,7 @@ namespace Terraria
             }
             Main.UIScaleMatrix = Matrix.Identity;
             shell.Update(new F5Input { Width = 1920, Height = 1080, Scale = 1, Active = true, Focused = true });
-            host.Change(ItemAutomationSettings.Default);
+            host.Change(LayoutDefaults);
             Console.WriteLine("PASS: original-font hint on/off keeps neighboring row heights and stable geometry at 100%/150% UI scale; four real XNA previews saved.");
         }
         private static void HoverName(F5Interaction shell, ItemsPresentation items)

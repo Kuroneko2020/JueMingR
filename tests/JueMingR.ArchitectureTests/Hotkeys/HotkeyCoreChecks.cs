@@ -17,12 +17,52 @@ namespace JueMingR.ArchitectureTests
             foreach (string text in valid) if (!HotkeyChord.TryParse(text, out chord, out reason)) failures.Add("Hotkeys valid chord rejected: " + text);
             foreach (string text in invalid) if (HotkeyChord.TryParse(text, out chord, out reason)) failures.Add("Hotkeys invalid/unreportable chord accepted: " + text);
             if (Parse("RightAlt+LeftControl+K").Text != "LeftControl+RightAlt+K") failures.Add("Hotkeys: canonical order lost side identity.");
-            ExerciseDispatch(failures); ExerciseWarnings(failures); ExerciseSaving(failures); ExerciseProtectedEntries(failures);
+            ExerciseMissingDefaults(failures); ExerciseDispatch(failures); ExerciseWarnings(failures); ExerciseSaving(failures); ExerciseProtectedEntries(failures);
         }
         internal static HotkeyChord Parse(string value)
         { HotkeyChord chord; string reason; if (!HotkeyChord.TryParse(value, out chord, out reason)) throw new Exception(value + ": " + reason); return chord; }
         internal static void Wait(HotkeyBindings owner, Func<bool> done)
         { var time = Stopwatch.StartNew(); while (!done() && time.ElapsedMilliseconds < 5000) { owner.Poll(); Thread.Sleep(1); } if (!done()) throw new Exception("Hotkey worker failed to finish controlled test."); }
+        private static void ExerciseMissingDefaults(IList<string> failures)
+        {
+            const string send="announcement.send", custom="test.explicit";
+            var registry=new HotkeyRegistry(); int sends=0, users=0;
+            registry.Register(new HotkeyAction(send,"宣告",HotkeyContext.Gameplay,()=>true,()=>sends++));
+            registry.Register(new HotkeyAction(custom,"用户",HotkeyContext.Gameplay,()=>true,()=>users++));
+            var dynamic=registry.CreateDynamicOwner("test.dynamic.");
+            var chord=Parse("LeftShift+LeftAlt+Mouse1");
+            var defaults=new Dictionary<string,HotkeyChord>{{send,chord}};
+            var storage=new MemoryStorage();
+            using(var owner=new HotkeyBindings(registry,storage,defaults))
+            {
+                Wait(owner,()=>owner.Loaded);
+                if(owner.Get(send)?.Text!=chord.Text || storage.Bytes!=null)failures.Add("Missing default must activate without a startup write.");
+                string reason; long command;
+                if(owner.Validate(custom,chord)!=null)failures.Add("Implicit default must yield during explicit validation.");
+                storage.Fail=true;
+                if(!owner.TrySet(custom,chord,null,out command,out reason))throw new Exception(reason);
+                Wait(owner,()=>!owner.Busy);
+                if(owner.Get(send)?.Text!=chord.Text || owner.Get(custom)!=null)failures.Add("Failed explicit save displaced the effective default.");
+                storage.Fail=false;Set(owner,custom,chord.Text,null);
+                if(owner.Get(send)!=null || owner.Get(custom)?.Text!=chord.Text || owner.Protected)failures.Add("Saved explicit chord did not take precedence over a missing default.");
+                dynamic.TryReplace(new[]{new HotkeyAction("test.dynamic.a","动态",HotkeyContext.Gameplay,()=>true,()=>{})},out reason);
+                if(owner.Get(send)!=null || owner.Get(custom)?.Text!=chord.Text)failures.Add("Registry refresh resurrected a conflicting default.");
+                var input=new HotkeyInput();var sample=new bool[HotkeyChord.KeyCount];input.Update(sample,true);
+                sample[160]=sample[164]=sample[256]=true;input.Update(sample,true);owner.Dispatch(input,HotkeyContext.Gameplay,true);
+                if(sends!=0 || users!=1)failures.Add("Real dispatch used missing default instead of explicit user's chord.");
+                Set(owner,custom,null,null);
+                if(owner.Get(send)?.Text!=chord.Text)failures.Add("Cleared explicit conflict failed to restore the missing default.");
+                storage.Fail=true;
+                if(!owner.TrySet(send,null,null,out command,out reason))throw new Exception(reason);
+                Wait(owner,()=>!owner.Busy);
+                if(owner.Get(send)?.Text!=chord.Text)failures.Add("Failed clear removed the committed default.");
+                storage.Fail=false;Set(owner,send,null,null);
+                if(owner.Get(send)!=null)failures.Add("Explicit empty string was replaced by a default.");
+            }
+            var customDocument=new MemoryStorage{Bytes=HotkeyDocument.Encode(new HotkeyDocument(new[]{new KeyValuePair<string,string>(send,"RightControl+J")}))};
+            using(var owner=new HotkeyBindings(registry,customDocument,defaults))
+            {Wait(owner,()=>owner.Loaded);if(owner.Get(send)?.Text!="RightControl+J")failures.Add("Explicit custom send binding was changed.");}
+        }
         private static void ExerciseDispatch(IList<string> failures)
         {
             int bare = 0, ctrl = 0, three = 0, command = 0, vanillaReads = 0;

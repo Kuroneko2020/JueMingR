@@ -43,6 +43,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if (!GeometryCurrent()) return false;
             Vector2 point = Pointer();
+            if(host.ToolbarMaterialsOnly && host.Shell.BlueprintMaterialsUi.Contains(point.X,point.Y))return false;
             return Layout.Panel.Contains(point.X, point.Y) && visibleClip.Contains(point.X, point.Y);
         }
         internal bool OwnsPoint(Vector2 point)
@@ -53,6 +54,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             var player = Main.LocalPlayer;
             bool eligible = host.ControlsEnabled && host.ToolbarEnabled && player != null && !player.dead && !player.ghost && player.HeldItem?.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0;
             if (!eligible) return false;
+            if(host.ToolbarMaterialsOnly && host.Shell.BlueprintMaterialsUi.Contains(point.X,point.Y) && !leftTail && !rightTail && armed<0)return false;
             if (leftTail || rightTail || armed >= 0) return true;
             if (!visibleKnown) return true;
             if (!visibleReceipt) return false;
@@ -85,6 +87,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool Available(int index)
         {
             if (!Layout.Available(index)) return false;
+            if(host.ToolbarMaterialsOnly && Layout.Action(index)!=BlueprintToolbarAction.Materials)return false;
             switch (Layout.Action(index))
             {
                 case BlueprintToolbarAction.PlacedList: return host.CanOpenPlacedList;
@@ -117,6 +120,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             bool current = host.Input.CanStartActions && GeometryCurrent();
             Vector2 point = current ? Pointer() : Vector2.Zero;
             bool over = current && Layout.Panel.Contains(point.X, point.Y) && visibleClip.Contains(point.X, point.Y);
+            if(host.ToolbarMaterialsOnly && host.Shell.BlueprintMaterialsUi.Contains(point.X,point.Y))over=false;
             int hit = over ? Layout.Hit(point.X, point.Y) : -1;
             if (!current) Cancel();
             if (over)

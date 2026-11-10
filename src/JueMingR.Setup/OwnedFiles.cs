@@ -34,7 +34,11 @@ namespace JueMingR.Setup
                 string source = (string)document["sourceCommit"], package = (string)document["packageId"];
                 if (Convert.ToInt32(document["schemaVersion"]) != 1 || !Regex.IsMatch(source, "^[0-9a-f]{40}$") || !package.EndsWith("-" + source, StringComparison.Ordinal) || !Regex.IsMatch(package, "^(phase0[s-w]|phase0t-biome|phase0u-f5-ui|phase0v-settings|phase0w-notes|item-automation|unified-hotkeys|entity-labels|world-targets|world-object-text|information-summary|direction-equipment|death-history|map-markers-exploration|footprints|item-browser|favorite-quick-items|coin-deposit|about-help-feedback|recovery-buffs-services|continuous-processing)-")) throw new InvalidDataException();
                 var target = (Dictionary<string, object>)document["target"];
-                if ((string)target["simpleName"] != "Terraria" || (string)target["version"] != "1.4.5.8" || (string)target["mvid"] != "2c29f6c3-4bd9-4add-9c58-da159804e083" || (string)target["sha256"] != TargetSafety.TerrariaHash) throw new InvalidDataException();
+                // Target metadata describes the historical build baseline, not
+                // today's client eligibility. Ownership still requires exact payload bytes below.
+                Version version; Guid mvid;
+                if ((string)target["simpleName"] != "Terraria" || !Version.TryParse((string)target["version"], out version) ||
+                    !Guid.TryParse((string)target["mvid"], out mvid) || !Regex.IsMatch((string)target["sha256"], "^[0-9A-F]{64}$")) throw new InvalidDataException();
                 object[] entries = ((System.Collections.IEnumerable)document["payload"]).Cast<object>().ToArray();
                 if (entries.Length != LegacyNames.Length) throw new InvalidDataException();
                 var set = new OwnedSet { Directory = directory, Receipt = receipt };

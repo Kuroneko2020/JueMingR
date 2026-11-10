@@ -3,6 +3,9 @@ using System.IO;
 using System.Reflection;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Collections;
+using HarmonyLib;
+using JueMingR.Platform.Hotkeys;
 using JueMingR.Features.Onboarding;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -29,8 +32,10 @@ namespace NativeWorldTextProbe
                 Require(size == 0 ? (float)Get(layout, "MaxScroll") == 0 : (float)Get(layout, "MaxScroll") > 0, "Default home fits wholly; short viewport preserves content with scrolling");
                 Call(state, "ScrollTo", 0f);
                 graphics.Image(Path.Combine(output, "about-top-" + size + ".png"), () => Call(renderer, "Draw", state, Main.UIScaleMatrix, false, false), Main.UIScaleMatrix, 1280, height);
+                if(size==0)CheckExperience(context,graphics,output,sample);
                 Call(state, "ScrollTo", (float)Get(layout, "MaxScroll"));
                 graphics.Image(Path.Combine(output, "about-support-" + size + ".png"), () => Call(renderer, "Draw", state, Main.UIScaleMatrix, false, false), Main.UIScaleMatrix, 1280, height);
+                CheckQrAlignment(state,renderer,graphics,height,scale);
                 var resources = Get(renderer, "sponsorImages");
                 Require(!(bool)Get(resources, "Failed"), "Both images decode from production assembly");
                 var textures = (Texture2D[])Get(resources, "textures"); Require(textures[0].Width == 631 && textures[1].Width == 819, "Original square source dimensions retained");
@@ -65,6 +70,87 @@ namespace NativeWorldTextProbe
                 Call(renderer, "Dispose"); Require(first.IsDisposed && second.IsDisposed, "Renderer exit releases owned sponsor textures");
             }
             Console.WriteLine("PASS: actual XNB About previews at normal, short and 150 percent; embedded image decode/reuse/disposal.");
+        }
+        private static object measuredOwner;
+        private static int measureCalls;
+        private static void ObserveMeasure(object __instance){if(ReferenceEquals(__instance,measuredOwner))measureCalls++;}
+        private static void CheckExperience(object context,ProbeGraphics graphics,string output,object sample)
+        {
+            object shell=Get(context,"Shell"),state=Get(shell,"State"),renderer=Get(shell,"renderer"),layout=Get(state,"Layout"),page=Get(layout,"About");
+            object oldClock=Get(page,"milliseconds");double now=1000;
+            var observation=new Harmony("JueMingR.Tests.HiddenExperiencePixels");
+            var metricType=Get(renderer,"textMetrics").GetType();var metricMethod=metricType.GetMethod("Measure",BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic);
+            measuredOwner=Get(renderer,"textMetrics");measureCalls=0;observation.Patch(metricMethod,prefix:new HarmonyMethod(typeof(NativeAboutVisualChecks).GetMethod(nameof(ObserveMeasure),BindingFlags.Static|BindingFlags.NonPublic)));
+            try
+            {
+                Call(page,"Leave");Set(page,"milliseconds",(Func<double>)(()=>now));Call(state,"ScrollTo",0f);
+                Set(sample,"X",1f);Set(sample,"Y",1f);Call(state,"Update",sample);Call(renderer,"Prepare",state,1280f,1080f,1f);
+                var title=((IEnumerable)Get(layout,"Elements")).Cast<object>().Single(e=>Get(e,"Command").ToString()=="AboutRevealHidden");object rect=Get(title,"Rect"),view=Get(layout,"Viewport");
+                float x=(float)Get(state,"X")+(float)Get(view,"X")+(float)Get(rect,"X"),y=(float)Get(state,"Y")+(float)Get(view,"Y")+(float)Get(rect,"Y");
+                var crop=new Rectangle((int)Math.Floor(x)-12,(int)Math.Floor(y)-12,(int)Math.Ceiling((float)Get(rect,"Width"))+24,(int)Math.Ceiling((float)Get(rect,"Height"))+24);
+                Action draw=()=>Call(renderer,"Draw",state,Microsoft.Xna.Framework.Matrix.Identity,false,false);
+                var normal=graphics.Pixels(draw,Microsoft.Xna.Framework.Matrix.Identity,1280,1080);var normalBounds=TitlePixels(normal,1280,crop);
+                var oldSize=Call(renderer,"PopupMeasure","决明R",1.42f);
+                float previousScale=1.42f*Math.Min(1,Math.Min(210/Math.Max(1,(float)Get(oldSize,"Width")-4),38/Math.Max(1,(float)Get(oldSize,"Height")-4)));
+                Require((float)Get(title,"TextScale")>previousScale+.01f,"actual XNB fitted title scale increases over the previous 214x42 title box");
+                int generation=(int)Get(layout,"Generation"),measurements=(int)Get(layout,"MeasurementCount");object titleRect=rect;
+                Set(sample,"X",x+(float)Get(rect,"Width")/2);Set(sample,"Y",y+(float)Get(rect,"Height")/2);Call(state,"Update",sample);
+                graphics.Pixels(draw,Microsoft.Xna.Framework.Matrix.Identity,1280,1080);now+=150;
+                var hovered=graphics.Pixels(draw,Microsoft.Xna.Framework.Matrix.Identity,1280,1080);var hoveredBounds=TitlePixels(hovered,1280,crop);
+                Require(hoveredBounds.Width>normalBounds.Width && hoveredBounds.Height>=normalBounds.Height &&
+                    hoveredBounds.Width>=normalBounds.Width*1.04f-2 && hoveredBounds.Width<=normalBounds.Width*1.06f+2 &&
+                    hoveredBounds.Height>=normalBounds.Height*1.04f-2 && hoveredBounds.Height<=normalBounds.Height*1.06f+2 &&
+                    Math.Abs(hoveredBounds.Center.X-normalBounds.Center.X)<=1 && Math.Abs(hoveredBounds.Center.Y-normalBounds.Center.Y)<=1,
+                    "actual title glyphs enlarge about five percent around their visual center instead of translating upward");
+                graphics.Image(Path.Combine(output,"about-hover-1x.png"),draw,Microsoft.Xna.Framework.Matrix.Identity,1280,1080);
+                int stableMeasures=measureCalls;
+                for(int i=0;i<12;i++){Call(renderer,"Prepare",state,1280f,1080f,1f);graphics.Pixels(draw,Microsoft.Xna.Framework.Matrix.Identity,1280,1080);}
+                Require(measureCalls==stableMeasures && generation==(int)Get(layout,"Generation") && measurements==(int)Get(layout,"MeasurementCount") && ReferenceEquals(title,((IEnumerable)Get(layout,"Elements")).Cast<object>().Single(e=>Get(e,"Command").ToString()=="AboutRevealHidden")) && Equals(titleRect,Get(title,"Rect")),"stable real hover Draw/Prepare reuses glyph metrics and title hit identity");
+                Set(sample,"X",1f);Set(sample,"Y",1f);Call(state,"Update",sample);graphics.Pixels(draw,Matrix.Identity,1280,1080);now+=150;
+                var returned=TitlePixels(graphics.Pixels(draw,Matrix.Identity,1280,1080),1280,crop);
+                Require(returned==normalBounds && measureCalls==stableMeasures && (int)Get(layout,"Generation")==generation,"hover departure restores the original glyph bounds without measuring or changing hits");
+                var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");NativeQuickItemChecks.Until(()=>{bindings.Poll();return bindings.Loaded;});
+                Require(bindings.Get("announcement.send")?.Text=="LeftShift+LeftAlt+Mouse1","normal missing announcement entry resolves the accepted default");
+                Call(page,"Leave");Call(state,"Navigate",2);Set(sample,"X",1f);Set(sample,"Y",1f);Call(state,"Update",sample);Call(renderer,"Prepare",state,1280f,1080f,1f);
+                var field=((IEnumerable)Get(layout,"Elements")).Cast<object>().Single(e=>(string)GetOptional(e,"HotkeyTarget")=="announcement.send");
+                Call(state,"ScrollTo",Math.Max(0,(float)Get(Get(field,"Rect"),"Bottom")-(float)Get(Get(layout,"Viewport"),"Height")+8));
+                string label=bindings.Get("announcement.send").DisplayText;
+                Require((string)Get(renderer,"fittedSendValue")==label && (float)Get(Get(field,"Rect"),"Width")>=(float)Get(Get(renderer,"sendValueSize"),"Width")+12,"real default label fits the measured field without truncation");
+                graphics.Image(Path.Combine(output,"map-default-announcement-1x.png"),draw,Microsoft.Xna.Framework.Matrix.Identity,1280,1080);
+                generation=(int)Get(layout,"Generation");stableMeasures=measureCalls;
+                for(int i=0;i<12;i++){Call(renderer,"Prepare",state,1280f,1080f,1f);graphics.Pixels(draw,Microsoft.Xna.Framework.Matrix.Identity,1280,1080);}
+                Require(measureCalls==stableMeasures && (int)Get(layout,"Generation")==generation,"stable default-label real rendering does not remeasure or reflow");
+                Console.WriteLine("PASS 1x visible experience: title fitted scale="+Get(title,"TextScale")+" centered glyph growth="+normalBounds+" -> "+hoveredBounds+"; full default="+label+" fieldWidth="+Get(Get(field,"Rect"),"Width")+"; stable metrics/geometry.");
+            }
+            finally
+            {
+                observation.Unpatch(metricMethod,HarmonyPatchType.All,observation.Id);measuredOwner=null;Set(page,"milliseconds",oldClock);Call(page,"Leave");Call(state,"Navigate",5);Call(renderer,"Prepare",state,1280f,1080f,1f);Call(state,"ScrollTo",0f);
+            }
+        }
+        private static void CheckQrAlignment(object state,object renderer,ProbeGraphics graphics,int height,float scale)
+        {
+            var elements=((IEnumerable)Get(Get(state,"Layout"),"Elements")).Cast<object>().ToArray();
+            var images=elements.Where(e=>Get(e,"Kind").ToString()=="Image").OrderBy(e=>(float)Get(Get(e,"Rect"),"X")).ToArray();
+            object first=Get(images[0],"Rect"),second=Get(images[1],"Rect"),label=Get(elements.Single(e=>(string)GetOptional(e,"Text")=="↓蓝绿修改器↓"),"Rect");
+            float left=(float)Get(first,"X"),right=(float)Get(second,"Right"),center=(left+right)/2;
+            Require(Math.Abs((float)Get(label,"X")+(float)Get(label,"Width")/2-center)<.01f,"actual font QR title is centered over both image squares");
+            Require((float)Get(first,"Width")== (float)Get(first,"Height") && (float)Get(first,"Width")== (float)Get(second,"Width") && (float)Get(second,"X")-(float)Get(first,"Right")==16,"original QR square sizes/proportions and gap remain unchanged");
+            object card=Get(elements.Single(e=>Get(e,"Kind").ToString()=="AboutCard" && (string)GetOptional(e,"Text")=="qr"),"Rect");
+            Require((float)Get(first,"Bottom")<=(float)Get(card,"Bottom")-24 && (float)Get(label,"Bottom")<(float)Get(first,"Y"),"title and independent heart band do not overlap either QR image");
+            object view=Get(Get(state,"Layout"),"Viewport");
+            float ox=(float)Get(state,"X")+(float)Get(view,"X"),oy=(float)Get(state,"Y")+(float)Get(view,"Y")-(float)Get(state,"Scroll");
+            var pixels=graphics.Pixels(()=>Call(renderer,"Draw",state,Main.UIScaleMatrix,false,false),Main.UIScaleMatrix,1280,height);
+            int pink=0;int x0=(int)((ox+center-10)*scale),x1=(int)((ox+center+10)*scale),y0=(int)((oy+(float)Get(card,"Bottom")-22)*scale),y1=(int)((oy+(float)Get(card,"Bottom")-2)*scale);
+            for(int y=Math.Max(0,y0);y<Math.Min(height,y1);y++)for(int x=Math.Max(0,x0);x<Math.Min(1280,x1);x++)
+            {var c=pixels[y*1280+x];if(c.A>128 && c.R>150 && c.R>c.G*1.3f && c.B>c.G*1.03f)pink++;}
+            Require(pink>0,"independent bottom heart remains visibly drawn with the actual font and viewport");
+        }
+        private static Rectangle TitlePixels(Color[] pixels,int width,Rectangle crop)
+        {
+            int left=int.MaxValue,right=-1,top=int.MaxValue,bottom=-1;
+            for(int y=Math.Max(0,crop.Top);y<Math.Min(pixels.Length/width,crop.Bottom);y++)for(int x=Math.Max(0,crop.Left);x<Math.Min(width,crop.Right);x++)
+            {var c=pixels[y*width+x];if(c.A>128 && c.R>210 && c.G>190 && c.B>160 && c.R>c.G+5 && c.G>c.B+10){left=Math.Min(left,x);right=Math.Max(right,x);top=Math.Min(top,y);bottom=Math.Max(bottom,y);}}
+            Require(right>=left,"actual gold title glyph pixels exist in their stable hit box");return new Rectangle(left,top,right-left+1,bottom-top+1);
         }
         private static void DrawOnboarding(object context, ProbeGraphics graphics, string output)
         {

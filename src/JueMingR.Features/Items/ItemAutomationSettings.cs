@@ -13,7 +13,7 @@ namespace JueMingR.Features.Items
     public sealed class ItemAutomationSettings : IEquatable<ItemAutomationSettings>
     {
         public static readonly ItemAutomationSettings Default = new ItemAutomationSettings(false, false, false,
-            new[] { 2337, 2338, 2339 }, new int[0]);
+            new int[0], new[] { 2337, 2338, 2339 });
         public bool StackEnabled { get; }
         public bool SellEnabled { get; }
         public bool DiscardEnabled { get; }

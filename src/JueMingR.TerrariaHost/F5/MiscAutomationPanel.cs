@@ -62,8 +62,12 @@ namespace JueMingR.TerrariaHost.F5
             }
             start=bottom;scroll=shell.Scroll;generation=shell.Layout.Generation;skin=renderer.Generation;
         }
+        internal bool SecondaryOnly;
+        internal bool SecondaryEntryAt(Vector2 point)
+        { return ready && shell.Visible && shell.Page==1 && generation==shell.Layout.Generation && scroll==shell.Scroll && view.Contains(point.X,point.Y) && controls.Exists(c=>c.Enabled && (c.Command==ItemUiCommand.Hotkey || c.Command==ItemUiCommand.Tools && c.Argument==3) && c.Rect.Contains(point.X,point.Y)); }
         internal void ProcessInput(bool active,KeyboardState keys,Vector2 point,bool geometryCurrent,bool focused,bool blocked)
         {
+            bool secondaryOnly=SecondaryOnly;SecondaryOnly=false;
             pointer=point;
             bool left=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,right=PlayerInput.MouseInfo.RightButton==ButtonState.Pressed;
             ConsumeLeft=leftTail;ConsumeRight=rightTail;OwnsPointer=false;
@@ -75,6 +79,7 @@ namespace JueMingR.TerrariaHost.F5
             if(current && view.Contains(point.X,point.Y))foreach(var c in controls)if(c.Enabled && c.Rect.Contains(point.X,point.Y)){hit=c;break;}
             OwnsPointer=hit!=null || leftTail || rightTail;
             if(OwnsPointer){if(left)leftTail=true;if(right)rightTail=true;}
+            if(secondaryOnly && hit!=null && !(hit.Command==ItemUiCommand.Hotkey || hit.Command==ItemUiCommand.Tools && hit.Argument==3))hit=null;
             if(left && !previousLeft)armed=hit;
             if(!current)armed=null;
             if(!left && previousLeft && armed!=null && ReferenceEquals(hit,armed))

@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.F5
     {
         internal const string ActionId = "death-markers.toggle";
         private static readonly F5RowDescription count = new F5RowDescription("death-history", "查看这个角色在当前世界的死亡次数和记录。");
-        private static readonly F5RowDescription days = new F5RowDescription("world-time", "累计这个角色在当前世界经历的游戏时间，包含睡觉等时间加速。");
+        private static readonly F5RowDescription days = new F5RowDescription("world-time", "当前角色在当前世界度过的天数");
         private static readonly F5RowDescription markers = new F5RowDescription(ActionId, "在大地图显示这个角色的历史死亡点，可设置显示数量。");
         private readonly IDeathControls host;
         internal DeathControls(IDeathControls host) { this.host = host; }

@@ -24,7 +24,7 @@ namespace JueMingR.TerrariaHost.WorldTime
             try
             {
                 if (current != null) throw new InvalidOperationException("world-time-source-already-installed");
-                if (typeof(Main).Module.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083")) throw new InvalidOperationException("world-time-source-version");
+                // Probe the actual ABI below; the build baseline MVID is not a capability gate.
                 target = typeof(Main).GetMethod("UpdateTime", Flags, null, Type.EmptyTypes, null);
                 if (target == null || target.IsPublic || !target.IsStatic || target.ReturnType != typeof(void) || target.ContainsGenericParameters || target.GetMethodBody() == null) throw new MissingMethodException("Main.UpdateTime");
                 current = this; harmony.Patch(target, transpiler: new HarmonyMethod(typeof(WorldTimeSourceHooks).GetMethod(nameof(Rewrite), Flags)));

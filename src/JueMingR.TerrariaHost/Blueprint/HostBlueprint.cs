@@ -65,9 +65,10 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool CanRetainWorldInput { get { return HasSession && Input.CanRetainIntent && !NativeUiBusy && !Main.gamePaused && !player.dead && !player.ghost &&
             !(Shell?.BlueprintMaterialsUi?.Visible ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode; } }
         internal bool CanRetainEdit { get { return CanRetainWorldInput && !(Shell?.State.Visible ?? false) && !(Shell?.OwnsPointer ?? false); } }
+        internal bool ToolbarMaterialsOnly { get { return Shell?.BlueprintMaterialsUi?.Visible==true && Shell.BlueprintMaterialsUi.Source==F5.BlueprintMaterialsSource.Toolbar; } }
         internal bool ShowToolbar { get { return ControlsEnabled && ToolbarEnabled && Input.CanPrepareText && !NativeUiBusy && !Main.hideUI &&
             !PlayerInput.Triggers.Current.MapFull && !PlayerInput.Triggers.Current.ToggleCameraMode &&
-            !(Shell?.State.Visible ?? false) && !(Shell?.BlueprintMaterialsUi?.Visible ?? false) && !(Shell?.OwnsPointer ?? false) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !player.dead && !player.ghost && player.HeldItem != null && player.HeldItem.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0; } }
+            !(Shell?.State.Visible ?? false) && (!(Shell?.BlueprintMaterialsUi?.Visible ?? false) || ToolbarMaterialsOnly) && (!(Shell?.OwnsPointer ?? false) || ToolbarMaterialsOnly) && !(Shell?.TargetGestureBusy?.Invoke() ?? false) && !player.dead && !player.ghost && player.HeldItem != null && player.HeldItem.type == Terraria.ID.ItemID.Gel && player.HeldItem.stack > 0; } }
         internal void SetToolbar(bool value) { if (ControlsEnabled && preference.Set(preference.Snapshot.Value.WithGelToolbar(value))) RefreshSubstitutionPolicy(); }
         // Display and cached UI use stable business eligibility. Every action
         // entry independently checks this Update's completed input permission.

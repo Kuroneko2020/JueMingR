@@ -4,6 +4,7 @@ using System.Threading;
 using System.Collections.Generic;
 using System.Linq;
 using JueMingR.Features.MapMarkers;
+using JueMingR.Platform.Settings;
 using JueMingR.Infrastructure.Storage;
 using JueMingR.TerrariaHost.F5;
 using JueMingR.TerrariaHost.Input;
@@ -86,7 +87,38 @@ namespace Terraria
                 d.Height = 800; d.Popup.Suspend(); d.Popup.Open(false); d.Prepare(); d.Click(2); Require(d.Popup.Icons.Count == 1 && d.Popup.Text.Any(t => t.Text == "第 2 / 2 页"), "second page states its identity explicitly"); d.Click(12); d.Click(12); Until(() => { owner.Markers.Poll(); owner.Workspace.Poll(); }, () => owner.Markers.Saved.Records.Count == 10); d.Prepare();
                 Require(d.Popup.Icons.Count == 10 && d.Popup.Panel.Height > 400, "deleting second-page tail clamps page before deriving first-page geometry");
             }
+            CheckSafeLeave();
             Console.WriteLine("PASS: map management physical clicks, name/IME transaction, confirmation identity and fixed progress geometry.");
+        }
+        private static void CheckSafeLeave()
+        {
+            foreach(int mode in new[]{0,1,2})
+            {
+                var storage=new GateStorage();
+                using(var owner=new Owner(storage))
+                {
+                    var driver=new Driver(owner);driver.Popup.Open(false);driver.Prepare();driver.Click(10);driver.Click(10);
+                    Require(owner.Workspace.Editor!=null,"safe leave starts from real marker editor");
+                    owner.Workspace.Editor.SelectAll();owner.Workspace.Editor.Insert("保存草稿");
+                    storage.Fail=mode==1;storage.Entered.Reset();storage.Release.Reset();int navigations=0;
+                    Require(!driver.Popup.TryLeave(()=>navigations++),"dirty marker safe leave defers navigation");
+                    Require(storage.Entered.Wait(3000) && driver.Popup.Visible && owner.Workspace.Editor!=null && navigations==0,"accepted save keeps draft and old popup while waiting");
+                    if(mode==2)driver.Popup.Suspend();
+                    storage.Release.Set();Until(()=>{owner.Markers.Poll();owner.Workspace.Poll();},()=>!owner.Markers.Busy);
+                    if(mode==0)Require(navigations==1 && !driver.Popup.Visible && owner.Workspace.Editor==null,"reliable save navigates once after safe close");
+                    else if(mode==1)Require(navigations==0 && driver.Popup.Visible && owner.Workspace.Editor?.Text=="保存草稿","failed save leaves draft and window intact");
+                    else Require(navigations==0 && !driver.Popup.Visible,"late saved receipt cannot reopen suspended popup");
+                }
+            }
+        }
+        private sealed class GateStorage:IPreferenceStorage
+        {
+            internal readonly ManualResetEventSlim Entered=new ManualResetEventSlim(),Release=new ManualResetEventSlim(true);
+            internal bool Fail;private int revision;
+            public PreferenceReadResult Read(){return new PreferenceReadResult(PreferenceReadStatus.Missing,null,"0",null);}
+            public PreferenceWriteResult Write(string identity,byte[] contents)
+            {Entered.Set();if(!Release.Wait(5000))throw new TimeoutException("controlled marker save");return Fail?new PreferenceWriteResult(PreferenceWriteStatus.IoFailure,identity,"controlled failure"):new PreferenceWriteResult(PreferenceWriteStatus.Saved,(++revision).ToString(),null);}
+            public void Dispose(){}
         }
         private static void Require(bool ok, string message) { if (!ok) throw new Exception(message); }
         private static void Until(Action pump, Func<bool> done) { if (!SpinWait.SpinUntil(() => { pump(); return done(); }, 5000)) throw new TimeoutException("map popup receipt"); }
@@ -106,10 +138,10 @@ namespace Terraria
             public string StatusMessage { get { return null; } }
             public MarkerLibrary Markers { get; }
             public MarkerWorkspace Workspace { get; }
-            internal Owner()
+            internal Owner(IPreferenceStorage storage=null)
             {
                 string root = Path.Combine(Path.GetTempPath(), "JueMingR-map-popup-" + Guid.NewGuid().ToString("N"));
-                Markers = new MarkerLibrary(pair => new AtomicFileDocument(Path.Combine(root, pair + ".json"), MarkerCodec.MaximumBytes, true)); Workspace = new MarkerWorkspace(Markers);
+                Markers = new MarkerLibrary(pair => storage ?? new AtomicFileDocument(Path.Combine(root, pair + ".json"), MarkerCodec.MaximumBytes, true)); Workspace = new MarkerWorkspace(Markers);
                 Markers.BeginSession(1, 128, 128); Markers.UsePair(new string('a', 64)); Until(Markers.Poll, () => Markers.Loaded);
                 long id = Markers.Create(new MarkerRecord("00000000000000000000000000000001", 50.125, 60.875, 8, "原名")); Until(Markers.Poll, () => Markers.LastOperation == id); Workspace.Poll();
             }

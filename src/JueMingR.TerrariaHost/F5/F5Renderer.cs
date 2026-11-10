@@ -36,6 +36,7 @@ namespace JueMingR.TerrariaHost.F5
         internal BlueprintControls BlueprintControls { get; set; }
         internal BlueprintReplacementPopup BlueprintReplacementPopup { get; set; }
         internal CombatControls CombatControls {get;set;}
+        internal CombatExperimentControls CombatExperimentControls {get;set;}
         internal CombatObservationControls CombatObservationControls {get;set;}
         internal CombatRadiusDrag CombatRadius {get;set;}
         private readonly string[] radiusLabels=new string[51];
@@ -78,6 +79,7 @@ namespace JueMingR.TerrariaHost.F5
         private string sendValue, fittedSendValue;
         private object sendValueFont;
         private F5Size sendValueSize;
+        private float sendFieldWidth=120;
         internal void PrepareMapValue()
         {
             string binding = AnnouncementControls?.SendBindingText ?? "暂不可用";
@@ -85,11 +87,15 @@ namespace JueMingR.TerrariaHost.F5
             {
                 sendValue = binding; sendValueFont = font; fittedSendValue = binding;
                 sendValueSize = PopupMeasure(binding, .70f);
-                if (sendValueSize.Width > 108)
+                // The required default gets the available full row when a font is
+                // unusually wide; ordinary custom chords retain a bounded column.
+                float maximum=binding=="LShift+LAlt+鼠标左键"?506:254;
+                sendFieldWidth = Math.Max(120, Math.Min(maximum, sendValueSize.Width + 16));
+                if (sendValueSize.Width > sendFieldWidth - 12)
                 {
                     var boundaries = Features.Text.TextElements.Boundaries(binding);
                     int end = boundaries.Length - 1;
-                    do { fittedSendValue = binding.Substring(0, boundaries[--end]) + "…"; sendValueSize = PopupMeasure(fittedSendValue, .70f); } while (end > 0 && sendValueSize.Width > 108);
+                    do { fittedSendValue = binding.Substring(0, boundaries[--end]) + "…"; sendValueSize = PopupMeasure(fittedSendValue, .70f); } while (end > 0 && sendValueSize.Width > sendFieldWidth - 12);
                 }
             }
             string value = MapControls?.Value ?? "暂不可用";
@@ -216,6 +222,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (BlueprintControls != null) { state.Layout.SetBlueprintMode(BlueprintControls.Active); state.Layout.SetBlueprintOperation(BlueprintControls.OperationMode); state.Layout.SetBlueprintPreviewRevision(BlueprintControls.PreviewRevision); }
             if(CombatObservationControls!=null)state.Layout.SetObservationOptions(CombatObservationControls.Options);
+            if(state.Page==2){PrepareMapValue();state.Layout.SetAnnouncementWidth(sendFieldWidth);}
             state.Layout.Ensure(width, height, scale, state.Page, font, measure);
             if(state.Page==8 && !ReferenceEquals(intervalFont,font))
             {for(int i=0;i<=30;i++){intervalLabels[i]="间隔 "+i;intervalSizes[i]=state.Layout.TextSize(intervalLabels[i],.65f);}for(int i=0;i<=50;i++){radiusLabels[i]="鼠标半径："+i+"格";radiusSizes[i]=state.Layout.TextSize(radiusLabels[i],.70f);}intervalFont=font;}
@@ -291,9 +298,10 @@ namespace JueMingR.TerrariaHost.F5
                     }
                     else if (element.Command == F5Command.ExplorationValue)
                     { Text(batch, mapValue ?? "", new Vector2(rect.Right - mapValueSize.Width, rect.Y + (rect.Height - mapValueSize.Height) / 2), element.TextScale, Color.White, mapValueSize); }
+                    else if (element.Command == F5Command.AboutRevealHidden && element.Kind == F5ElementKind.AboutHeading)
+                        DrawAboutTitle(batch, element, rect, state.Layout.About.TitleLift(!state.PointerBlocked && rect.Contains(state.PointerX,state.PointerY) && view.Contains(state.PointerX,state.PointerY)));
                     else if (element.Kind == F5ElementKind.Text || element.Kind == F5ElementKind.AboutHeading || element.Kind == F5ElementKind.AboutMuted)
-                        Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale,
-                            TextColor(element), element.TextSize);
+                        Text(batch, element.Text, new Vector2(rect.X, rect.Y), element.TextScale, TextColor(element), element.TextSize);
                     else if (element.Kind == F5ElementKind.AboutCard) aboutPainter.Card(batch, pixel, rect, element.Text, element.TextScale > 0 ? element.TextScale : 1);
                     else if (element.Kind == F5ElementKind.Divider) Decoration(batch, rect, Color.White * 0.35f);
                     else if (element.Kind == F5ElementKind.Image)
@@ -313,9 +321,10 @@ namespace JueMingR.TerrariaHost.F5
                         bool guidance = F5.GuidanceControls.Owns(element.Command);
                         bool journey = F5.JourneyControls.Owns(element.Command);
                         bool combat = F5.CombatControls.Owns(element.Command);
+                        bool experiment = F5.CombatExperimentControls.Owns(element.Command);
                         bool observation=F5.CombatObservationControls.Owns(element.Command);
                         bool blueprint = F5.BlueprintControls.Owns(element.Command);
-                        bool enabled = blueprint ? BlueprintControls != null && BlueprintControls.Available(element.Command) : F5.MovementControls.Owns(element.Command) ? MovementControls != null && MovementControls.Available(element.Command) : F5.ViewControls.Owns(element.Command) ? ViewControls != null && ViewControls.Available(element.Command) : journey ? JourneyControls != null && JourneyControls.Available(element.Command) : entity ? EntityControls != null && EntityControls.Available(element.Command) : world ? WorldControls != null && WorldControls.Available(element.Command) : objects ? ObjectControls != null && ObjectControls.Available(element.Command) :
+                        bool enabled = experiment ? CombatExperimentControls != null && CombatExperimentControls.Available(element.Command) : blueprint ? BlueprintControls != null && BlueprintControls.Available(element.Command) : F5.MovementControls.Owns(element.Command) ? MovementControls != null && MovementControls.Available(element.Command) : F5.ViewControls.Owns(element.Command) ? ViewControls != null && ViewControls.Available(element.Command) : journey ? JourneyControls != null && JourneyControls.Available(element.Command) : entity ? EntityControls != null && EntityControls.Available(element.Command) : world ? WorldControls != null && WorldControls.Available(element.Command) : objects ? ObjectControls != null && ObjectControls.Available(element.Command) :
                             observation ? CombatObservationControls!=null && CombatObservationControls.Available(element.Command) : combat ? CombatControls!=null && CombatControls.Available(element.Command) : information ? legacyBiome ? !biomeFailed : InformationControls != null && InformationControls.Available(element.Command) : guidance ? GuidanceControls != null && GuidanceControls.Available(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls != null && FootprintControls.Available(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls != null && MapControls.Available(element.Command) : F5.AnnouncementControls.Owns(element.Command) ? AnnouncementControls != null && AnnouncementControls.Available(element.Command) : DeathControls != null && DeathControls.Available(element.Command);
                         bool hovered = !state.PointerBlocked && rect.Contains(state.PointerX, state.PointerY) && view.Contains(state.PointerX, state.PointerY);
                         if (About.AboutPage.Owns(element.Command)) { enabled = true; element = state.Layout.About.Display(element); }
@@ -326,7 +335,7 @@ namespace JueMingR.TerrariaHost.F5
                             continue;
                         }
                         F5ControlRenderer.Button(batch, pixel, button, font, element, hovered, enabled,
-                            blueprint ? BlueprintControls?.Selected(element.Command) : F5.MovementControls.Owns(element.Command) ? MovementControls?.Selected(element.Command) : F5.ViewControls.Owns(element.Command) ? ViewControls?.Selected(element.Command) : journey ? JourneyControls?.Selected(element.Command) : entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) :
+                            experiment ? CombatExperimentControls?.Selected(element.Command) : blueprint ? BlueprintControls?.Selected(element.Command) : F5.MovementControls.Owns(element.Command) ? MovementControls?.Selected(element.Command) : F5.ViewControls.Owns(element.Command) ? ViewControls?.Selected(element.Command) : journey ? JourneyControls?.Selected(element.Command) : entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) :
                             observation ? CombatObservationControls?.Selected(element.Command) : combat ? CombatControls?.Selected(element.Command) : information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls?.Selected(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls?.Selected(element.Command) : F5.AnnouncementControls.Owns(element.Command) ? AnnouncementControls?.Selected(element.Command) : F5.DeathControls.Owns(element.Command) ? DeathControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
                             view.X, view.Y - state.Scroll, subduedWhenDisabled: blueprint, transform: matrix);
                     }
@@ -427,7 +436,7 @@ namespace JueMingR.TerrariaHost.F5
             if (hover.Command == F5Command.BlueprintCapture) return BlueprintControls != null && BlueprintControls.Active ? F5.BlueprintControls.ExitHint : F5.BlueprintControls.StartHint;
             if (hover.Command == F5Command.BlueprintSave) return BlueprintControls?.Hint(hover.Command) ?? F5.BlueprintControls.SaveHint;
             if (biomeFailed && (hover.Command == F5Command.EnableBiome || hover.Command == F5Command.DisableBiome)) return "群系显示暂不可用";
-            return MovementControls?.Hint(hover.Command) ?? ViewControls?.Hint(hover.Command) ?? JourneyControls?.Hint(hover.Command) ?? CombatObservationControls?.Hint(hover.Command) ?? CombatControls?.Hint(hover.Command) ?? EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command) ?? MapControls?.Hint(hover.Command) ?? FootprintControls?.Hint(hover.Command) ?? AnnouncementControls?.Hint(hover.Command);
+            return CombatExperimentControls?.Hint(hover.Command) ?? MovementControls?.Hint(hover.Command) ?? ViewControls?.Hint(hover.Command) ?? JourneyControls?.Hint(hover.Command) ?? CombatObservationControls?.Hint(hover.Command) ?? CombatControls?.Hint(hover.Command) ?? EntityControls?.Hint(hover.Command) ?? WorldControls?.Hint(hover.Command) ?? ObjectControls?.Hint(hover.Command) ?? InformationControls?.Hint(hover.Command) ?? GuidanceControls?.Hint(hover.Command) ?? DeathControls?.Hint(hover.Command) ?? MapControls?.Hint(hover.Command) ?? FootprintControls?.Hint(hover.Command) ?? AnnouncementControls?.Hint(hover.Command);
         }
         // The shell owns one current hint for every ordinary page. Adapters
         // supply only content and final name regions; preparation is shared with
@@ -554,6 +563,21 @@ namespace JueMingR.TerrariaHost.F5
 
         private void Fill(SpriteBatch batch, F5Rect rect, Color color)
         { batch.Draw(pixel, new Rectangle((int)rect.X, (int)rect.Y, (int)rect.Width, (int)rect.Height), color); }
+        private void DrawAboutTitle(SpriteBatch batch,F5Element element,F5Rect rect,float progress)
+        {
+            float factor=1+.05f*progress,scale=element.TextScale*factor;
+            var measured=element.TextSize;
+            // Font ink and its bearing scale; Terraria's +/-2 outline does not.
+            // Reproject the existing metrics around the same visual center,
+            // without measuring, replacing the hit element or moving its body.
+            var size=new F5Size((measured.Width-4)*factor+4,(measured.Height-4)*factor+4,
+                (measured.OffsetX+2)*factor-2,(measured.OffsetY+2)*factor-2);
+            var position=new Vector2(rect.X+(rect.Width-size.Width)/2,rect.Y+(rect.Height-size.Height)/2);
+            if(progress>0)
+                batch.DrawString(font,element.Text,position-new Vector2(size.OffsetX,size.OffsetY)+new Vector2(1.5f,2.5f)*progress,
+                    Color.Black*(.22f*progress),0,Vector2.Zero,scale,SpriteEffects.None,0);
+            Text(batch,element.Text,position,scale,TextColor(element),size);
+        }
         private void Text(SpriteBatch batch, string text, Vector2 position, float scale, Color color, F5Size size)
         { Utils.DrawBorderStringFourWay(batch, font, text, position.X - size.OffsetX, position.Y - size.OffsetY,
             color, Color.Black, Vector2.Zero, scale); }

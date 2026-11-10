@@ -40,6 +40,7 @@ internal static class SetupServiceChecks
             Directory.CreateDirectory(root);
             if (args.Length == 5 && args[4] == "--presentation") { PresentationChecks(); Console.WriteLine(new JavaScriptSerializer().Serialize(new { status = "PASS", checks = count, scope = "isolated production pair reader and result projection; no game started" })); return 0; }
             if (args.Length == 5 && args[4] == "--ui-increment") { IncrementChecks(); Console.WriteLine(new JavaScriptSerializer().Serialize(new { status = "PASS", checks = count, scope = "Steam discovery and exact preference reset only" })); return 0; }
+            if (args.Length == 7 && args[4] == "--compatibility-admission") CompatibilityAdmissionChecks.Run(root, terraria, Path.GetFullPath(args[5]), Path.GetFullPath(args[6]), payload);
             string target = Fresh("中文 新装");
             byte[] data = Encoding.UTF8.GetBytes("笔记、蓝图和未来格式原样保留"), outsider = Encoding.UTF8.GetBytes("third-party-harmony");
             Directory.CreateDirectory(Path.Combine(target, "JueMingRData", "blueprints"));
@@ -96,7 +97,7 @@ internal static class SetupServiceChecks
 
             string updated = Fresh("game-updated"); File.WriteAllBytes(Path.Combine(updated, "JueMingR.dll"), dll); File.WriteAllBytes(Path.Combine(updated, "Terraria.exe.config"), config);
             using (var append = new FileStream(Path.Combine(updated, "Terraria.exe"), FileMode.Append)) append.WriteByte(0);
-            Check(Service().Execute("install", updated).exitCode == 2 && Service().Execute("uninstall", updated).exitCode == 0 && !File.Exists(Path.Combine(updated, "JueMingR.dll")), "updated-game-can-uninstall-not-install");
+            Check(Service().Execute("install", updated).exitCode == 0 && Service().Execute("uninstall", updated).exitCode == 0 && !File.Exists(Path.Combine(updated, "JueMingR.dll")), "updated-game-can-install-and-uninstall-without-hash-whitelist");
 
             string legacy = Fresh("legacy"); WriteLegacy(legacy);
             string legacyReceipt = Path.Combine(legacy, "JueMingR.Validation", "phase-0-s-install-manifest.json");
@@ -105,6 +106,21 @@ internal static class SetupServiceChecks
             Check(migrated.exitCode == 0 && Pair(legacy) && !File.Exists(Path.Combine(legacy, "JueMingR.Bootstrap.dll")) && !File.Exists(Path.Combine(legacy, "JueMingR.Validation", "JueMingR.Features.dll")) && File.Exists(Path.Combine(legacy, "JueMingR.Validation", "unknown.txt")) && migrated.retained.Count != 0, "legacy-known-clean-unknown-preserved");
             Check(File.ReadAllBytes(legacyReceipt).SequenceEqual(originalLegacyReceipt), "legacy-receipt-original-bytes-preserved-after-migration");
             Check(Service().Execute("uninstall", legacy).exitCode == 0 && File.ReadAllBytes(legacyReceipt).SequenceEqual(originalLegacyReceipt), "legacy-receipt-original-bytes-preserved-after-uninstall");
+            string otherBaseline = Fresh("legacy-other-baseline"); WriteLegacy(otherBaseline);
+            string otherReceipt = Path.Combine(otherBaseline, "JueMingR.Validation", "phase-0-s-install-manifest.json");
+            var receiptDocument = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(otherReceipt));
+            var baseline = (Dictionary<string, object>)receiptDocument["target"];
+            baseline["version"] = "9.8.7.6"; baseline["mvid"] = "11111111-2222-3333-4444-555555555555"; baseline["sha256"] = new string('B', 64);
+            File.WriteAllText(otherReceipt, new JavaScriptSerializer().Serialize(receiptDocument)); byte[] otherOriginal = File.ReadAllBytes(otherReceipt);
+            Check(Service().Execute("install", otherBaseline).exitCode == 0 && !File.Exists(Path.Combine(otherBaseline, "JueMingR.Bootstrap.dll")) && File.ReadAllBytes(otherReceipt).SequenceEqual(otherOriginal),
+                "legacy-other-baseline-keeps-exact-payload-ownership-not-version-whitelist");
+            string malformed = Fresh("legacy-malformed-baseline"); WriteLegacy(malformed);
+            string malformedReceipt = Path.Combine(malformed, "JueMingR.Validation", "phase-0-s-install-manifest.json");
+            var invalidDocument = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(malformedReceipt));
+            ((Dictionary<string, object>)invalidDocument["target"])["mvid"] = "not-a-guid";
+            File.WriteAllText(malformedReceipt, new JavaScriptSerializer().Serialize(invalidDocument));
+            Check(Service().Execute("install", malformed).exitCode == 0 && File.Exists(Path.Combine(malformed, "JueMingR.Bootstrap.dll")) && File.Exists(malformedReceipt),
+                "legacy-malformed-baseline-cannot-authorize-deleting-old-files");
             string unknown = Fresh("unknown-legacy"); Directory.CreateDirectory(Path.Combine(unknown, "JueMingR.Validation")); File.WriteAllText(Path.Combine(unknown, "JueMingR.Validation", "unknown.txt"), "keep");
             Check(Service().Execute("install", unknown).exitCode == 0 && File.Exists(Path.Combine(unknown, "JueMingR.Validation", "unknown.txt")), "no-receipt-migration-no-fallback");
             string collision = Fresh("ordinary-file-check"); Directory.CreateDirectory(Path.Combine(collision, "JueMingR.dll"));
@@ -167,7 +183,7 @@ internal static class SetupServiceChecks
             Check(SetupTargetState.Read(manual).Pair == SetupPairState.Unknown && SetupTargetState.Read(manual).CanMaintain, "state-unreadable-config-still-maintainable");
         using (var append = new FileStream(Path.Combine(manual, "Terraria.exe"), FileMode.Append)) append.WriteByte(0);
         state = SetupTargetState.Read(manual);
-        Check(state.CanMaintain && !state.CanInstall && state.Pair == SetupPairState.Installed, "state-updated-game-maintenance-independent");
+        Check(state.CanMaintain && state.CanInstall && state.Pair == SetupPairState.Installed, "state-updated-game-install-and-maintenance-independent");
         var removed = Service().Execute("uninstall", manual);
         Check(removed.status == "success" && SetupTargetState.Read(manual).CanMaintain && SetupTargetState.Read(manual).Pair == SetupPairState.NotInstalled, "state-after-uninstall-clear-remains-available");
         string partial = Fresh("pair-partial"); File.WriteAllBytes(Path.Combine(partial, "Terraria.exe.config"), Foreign);

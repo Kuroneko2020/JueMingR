@@ -8,6 +8,7 @@ namespace JueMingR.Setup
 {
     internal sealed class SetupForm : Form
     {
+        private const string TestVersionNotice = "当前测试版遇到问题欢迎群里反馈";
         private static readonly Color Ink = Color.FromArgb(36, 45, 49), Muted = Color.FromArgb(98, 108, 112), Accent = Color.FromArgb(24, 121, 43);
         private readonly ComboBox directory = new ComboBox { Dock = DockStyle.Fill, Name = "GameDirectory", AccessibleName = "游戏目录", DropDownStyle = ComboBoxStyle.DropDown, IntegralHeight = false, DropDownHeight = 160, TabIndex = 0 };
         private readonly TextBox identity = ReadableText("GameIdentity", "Terraria 版本");
@@ -49,11 +50,11 @@ namespace JueMingR.Setup
             actionFont = new Font(Font.FontFamily, 11.5F, FontStyle.Bold); install.Font = actionFont;
             ForeColor = Ink; BackColor = Color.FromArgb(247, 249, 248); AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(640, 360); FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false; StartPosition = FormStartPosition.CenterScreen;
-            // Display values remain selectable/copyable single-line text;
-            // long pre-release labels and errors do not enlarge the window.
+            // Target values stay single-line. The payload caption adds only a
+            // presentation notice; wrapping keeps it visible without changing identity.
             foreach (TextBox box in new[] { payloadVersion, identity, installedIdentity, feedback, summary })
             {
-                box.Multiline = false; box.WordWrap = false;
+                if (box != payloadVersion) { box.Multiline = false; box.WordWrap = false; }
                 box.TextChanged += (sender, args) => fullText.SetToolTip(box, box.Text);
             }
             using (Stream stream = typeof(SetupForm).Assembly.GetManifestResourceStream("JueMingR.Setup.Brand.Icon")) Icon = new Icon(stream);
@@ -196,7 +197,7 @@ namespace JueMingR.Setup
             // Package identity belongs to this window, not the selected target generation.
             // Its finite failure also must not replace an operation's summary/details.
             if (closing || IsDisposed) return;
-            payloadVersion.Text = read.Caption; UpdateLayoutMetrics();
+            payloadVersion.Text = read.Caption + " " + TestVersionNotice; UpdateLayoutMetrics();
         }
 
         private void QueueCheck(bool clearResult)

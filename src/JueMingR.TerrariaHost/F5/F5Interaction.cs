@@ -11,6 +11,7 @@ namespace JueMingR.TerrariaHost.F5
         internal int Wheel;
         internal bool PageWheelHandled;
         internal bool BlockPointer;
+        internal F5Element SecondaryEntry;
     }
 
     internal sealed class F5Interaction
@@ -114,7 +115,12 @@ namespace JueMingR.TerrariaHost.F5
             }
             bool pressed = input.Left && !previousLeft;
             bool released = !input.Left && previousLeft;
-            if (input.BlockPointer) { CancelTitleGesture(); pressed = released = false; armed = null; capture = 0; }
+            if (input.BlockPointer)
+            {
+                CancelTitleGesture(); capture=0;
+                if(input.SecondaryEntry==null){pressed=released=false;armed=null;}
+                else if(armed!=null && !ReferenceEquals(armed,input.SecondaryEntry))armed=null;
+            }
             if (pressed) physicalClick++;
             if (input.F5 && !previousF5)
             {
@@ -162,7 +168,9 @@ namespace JueMingR.TerrariaHost.F5
                     if (pressed)
                     {
                         armed = null;
-                        if (Layout.Title.Contains(localX, localY))
+                        if (input.BlockPointer)
+                        { armed=input.SecondaryEntry;armedGeneration=Layout.Generation; }
+                        else if (Layout.Title.Contains(localX, localY))
                         {
                             CancelTitleGesture();
                             capture = 1; grabX = localX; grabY = localY;
@@ -203,7 +211,7 @@ namespace JueMingR.TerrariaHost.F5
                         float travel = Layout.ScrollTrack.Height - thumb.Height;
                         Scroll = travel <= 0 ? 0 : Clamp((localY - Layout.ScrollTrack.Y - grabY) / travel, 0, 1) * Layout.MaxScroll;
                     }
-                    if (input.Wheel != 0 && !input.PageWheelHandled && capture == 0 && layoutReady)
+                    if (!input.BlockPointer && input.Wheel != 0 && !input.PageWheelHandled && capture == 0 && layoutReady)
                     { Scroll = Clamp(Scroll - input.Wheel / 120f * 40, 0, Layout.MaxScroll); armed = null; }
                     // A click must release on the same element in the same layout generation.
                     if (released && capture == 0 && layoutReady && armed != null &&

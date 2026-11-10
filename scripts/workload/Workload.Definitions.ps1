@@ -192,6 +192,11 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatImpactRetirementChecks.cs'=@('native-CombatImpactVisual','native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatImpactVisualChecks.Geometry.cs'=@('native-CombatImpactVisual','native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatIntegrationChecks.cs'=@('native-CombatIntegrationCpu')
+        'tests/NativeWorldTextProbe/NativeCombatExperimentChecks.cs'=@('native-CombatExperimentsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatExperimentHotkeyChecks.cs'=@('native-CombatExperimentsCpu')
+        'tests/NativeWorldTextProbe/NativeDeathInputChecks.cs'=@('native-DeathCpu')
+        'tests/NativeWorldTextProbe/NativeFootprintChecks.cs'=@('native-FootprintsCpu')
+        'tests/NativeWorldTextProbe/NativeMapMarkerChecks.cs'=@('native-ExplorationCpu')
         'tests/NativeWorldTextProbe/NativeCombatBalancedAimChecks.cs'=@('native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatInputGeometryChecks.cs'=@('native-CombatInputGeometryCpu')
         'tests/NativeWorldTextProbe/NativeCombatSkyActionChecks.cs'=@('native-CombatSkyActionCpu')
@@ -590,6 +595,7 @@ function Get-WorkloadNativeScopes {
         'CombatEffectsWhipStarCpu'=@('combat-host','quick-items-host','tools-host'); 'CombatEffectsThornCpu'=@('combat-host','quick-items-host','tools-host');
         'DirectionalControl'=@('combat-host','quick-items-host','tools-host'); 'NpcSelectedContinuation'=@('combat-host','quick-items-host','tools-host'); 'TerrainLine'=@('combat-host','quick-items-host','tools-host');
         'CombatIntegrationCpu'=@('combat-host');
+        'CombatExperimentsCpu'=@('combat-host','quick-items-host');
         # The narrow bodies use NativeQuickItemChecks' real initialization;
         # bind that fixture owner without executing its feature matrices.
         'CombatInputGeometryCpu'=@('combat-host','quick-items-host');

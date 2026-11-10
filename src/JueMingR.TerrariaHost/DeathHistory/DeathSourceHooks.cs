@@ -42,7 +42,7 @@ namespace JueMingR.TerrariaHost.DeathHistory
             try
             {
                 if (current != null) throw new InvalidOperationException("death-source-already-installed");
-                if (typeof(Main).Module.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083")) throw new InvalidOperationException("death-source-version");
+                // Probe the actual ABI below; the build baseline MVID is not a capability gate.
                 NativeDeathText.Validate();
                 target = typeof(Player).GetMethod("KillMe", Flags, null, new[] { typeof(PlayerDeathReason), typeof(double), typeof(int), typeof(bool) }, null);
                 if (target == null || target.IsStatic || target.ReturnType != typeof(void) || target.ContainsGenericParameters || target.GetMethodBody() == null) throw new MissingMethodException("Player.KillMe");

@@ -16,11 +16,21 @@ namespace Terraria
             object font = new object(); Func<string, F5Size> measure = t => new F5Size(t.Length * 18, 24);
             Action prepare = () => state.Layout.Ensure(input.Width, input.Height, input.Scale, state.Page, font, measure);
             prepare(); var page = state.Layout.About;
+            var title=state.Layout.Elements.First(e=>e.Command==F5Command.AboutRevealHidden); int stableGeneration=state.Layout.Generation;
+            page.TitleLift(false);page.TitleLift(true);now+=75;float lift=page.TitleLift(true);now+=75;float more=page.TitleLift(true);
+            Require(lift>0 && more>lift && more==1 && state.Layout.Generation==stableGeneration && ReferenceEquals(title,state.Layout.Elements.First(e=>e.Command==F5Command.AboutRevealHidden)),"hover progress smoothly reaches one without changing the hit element");
+            now+=30;float outStart=page.TitleLift(false);now+=75;float fading=page.TitleLift(false);
+            Require(outStart==1 && fading>0 && fading<1,"hover departure eases back instead of snapping the enlarged title");
+            page.Leave();Require(page.TitleLift(false)==0,"leaving resets only the bounded title presentation");
+            CheckQrCenter(state);
+            foreach(string text in new[]{"为泰拉瑞亚原版打造的轻量辅助工具","仍在持续打磨中","欢迎反馈问题与建议","↓蓝绿修改器↓"})Require(state.Layout.Elements.Any(e=>e.Text==text),"About requested final text "+text);
+
             Require(state.Layout.Elements.Any(e=>e.Text=="决明R "+AboutPage.ProductVersion),"About shows the actual assembly product version from the shared build input");
             Require(!state.Layout.Elements.Any(e => e.Text == "使用帮助 / 版本信息" || e.Text == "微信" || e.Text == "支付宝"), "About has no removed help/version entry or QR captions");
             Require(state.Layout.Elements.Any(e => e.Text == "决明R") && state.Layout.Elements.Count(e => e.Kind == F5ElementKind.Image) == 2, "Real page introduction and both image elements");
             Require(state.Layout.MaxScroll == 0, "Home presents its whole composition without scrolling");
             Require(state.Layout.Elements.Count(e => e.Kind == F5ElementKind.Button) == 1, "Only the requested group action remains");
+            now=1000;
             F5Element group = state.Layout.Elements.First(e => e.Command == F5Command.AboutCopyGroup);
             Click(state, ref input, group, page); Require(copies == 1 && copied == "915753352", "Real release dispatch copies exactly the displayed group number");
             int generation = state.Layout.Generation, measurements = state.Layout.MeasurementCount;
@@ -47,9 +57,20 @@ namespace Terraria
             page.SetImageFailure(true); prepare(); Require(state.Layout.Elements.Any(e => e.Text != null && e.Text.Contains("赞助图片")), "Resource failure is visible");
             page.SetImageFailure(false); prepare(); Require(!state.Layout.Elements.Any(e => e.Text != null && e.Text.Contains("赞助图片")), "Actual resource recovery clears the stale error");
             input.Height = 720; input.Scale = 1.5f; prepare();
+            CheckQrCenter(state);
             Require(state.Layout.MaxScroll > 0 && state.Layout.Elements.Where(e => e.Kind == F5ElementKind.Image).All(e => e.Rect.Width >= 76), "Short viewport scrolls while preserving readable QR dimensions");
             Require(generation < state.Layout.Generation && copies == before, "Real changes reflow; passive timer expiry never changes clipboard");
             Console.WriteLine("PASS: About single action, shared input safety, three-second copy feedback, short hover, unchanged layout and readable small-window scrolling.");
+        }
+        private static void CheckQrCenter(F5Interaction state)
+        {
+            var images=state.Layout.Elements.Where(e=>e.Kind==F5ElementKind.Image).OrderBy(e=>e.Rect.X).ToArray();
+            var label=state.Layout.Elements.Single(e=>e.Text=="↓蓝绿修改器↓");
+            float center=(images[0].Rect.X+images[1].Rect.Right)/2;
+            Require(Math.Abs(label.Rect.X+label.Rect.Width/2-center)<.01f,"QR title follows the measured center of both images");
+            Require(images[0].Rect.Width==images[1].Rect.Width && images[0].Rect.Height==images[0].Rect.Width && images[1].Rect.X-images[0].Rect.Right==16,"QR source squares and original gap remain intact");
+            var card=state.Layout.Elements.Single(e=>e.Kind==F5ElementKind.AboutCard && e.Text=="qr");
+            Require(images[0].Rect.Bottom<=card.Rect.Bottom-24 && label.Rect.Bottom<images[0].Rect.Y,"independent heart bottom band and title stay clear of the images");
         }
         private static void Place(F5Interaction state, ref F5Input input, F5Element button)
         { state.ScrollTo(Math.Max(0, button.Rect.Bottom - state.Layout.Viewport.Height + 8)); input.X = state.X + state.Layout.Viewport.X + button.Rect.X + 5; input.Y = state.Y + state.Layout.Viewport.Y + button.Rect.Y - state.Scroll + 5; }

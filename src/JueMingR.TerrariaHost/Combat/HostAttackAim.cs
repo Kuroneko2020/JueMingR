@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using Microsoft.Xna.Framework;
@@ -55,7 +55,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(Prediction.AimLightTrace.PrismConsuming)return PrismReceiver();
 #endif
             return observation.Selection.HasTarget && CombatSelection.Valid(observation.Selection.Target,observation.Session) && CombatSelection.Receives(Main.npc[observation.Selection.Target.Slot],observation.Options.Dummy);}}
-        internal AttackContact ExpectedImpact {get{if(!CurrentReceiver){ClearExecution();return null;}return Valid(false)?(Main.GameUpdateCount==prepared?current:next):Control.ExpectedImpact;}}
+        internal AttackContact ExpectedImpact {get{if(!OriginalAttackPredictionAllowed)return null;if(!CurrentReceiver){ClearExecution();return null;}return Valid(false)?(Main.GameUpdateCount==prepared?current:next):Control.ExpectedImpact;}}
         internal void BindPresentation(AttackContact result)
         {presentation=result;presentationStep=Main.GameUpdateCount;presentationOrdinary=ReferenceEquals(result,current) || ReferenceEquals(result,next);if(!presentationOrdinary)Control.BindPresentation(result);}
         // Capture already performed full dependency checks during Prepare.
@@ -64,7 +64,7 @@ namespace JueMingR.TerrariaHost.Combat
         // native consumers still revalidate terrain/qualification before borrowing.
         internal bool PresentationCurrent(AttackContact result)
         {
-            if(!CurrentReceiver)return false;
+            if(!OriginalAttackPredictionAllowed || !CurrentReceiver)return false;
             var player=combat.Player;
             if(result==null || !ReferenceEquals(presentation,result) || presentationStep!=Main.GameUpdateCount || Failed || !observation.Options.Aim || !observation.Settings.CanRun || player==null || !combat.Admitted(player) || !observation.Selection.HasTarget || !result.Timeline.Identity.Equals(observation.Selection.Target) || !CombatSelection.Valid(observation.Selection.Target,observation.Session) || !TimelineCurrent(result.Timeline))return false;
             if(!presentationOrdinary)return Control.PresentationCurrent(result);
@@ -89,7 +89,8 @@ namespace JueMingR.TerrariaHost.Combat
             if(HasOwnMeleeHitFamily(player.HeldItem) && player.itemAnimation>0)return new FacingTarget(npc,observation.Session,player.MountedCenter+Vector2.UnitX*player.direction*100);
             Vector2 point;return TryPreparedMeleeFacing(player,out point)?new FacingTarget(npc,observation.Session,point):new FacingTarget(npc,observation.Session,true);
         }
-        internal bool Permission {get{return !Failed && BasicPermission;}}
+        internal bool OriginalAttackPredictionAllowed {get{return observation.Experiments==null || observation.Experiments.EffectiveMask==0;}}
+        internal bool Permission {get{return OriginalAttackPredictionAllowed && !Failed && BasicPermission;}}
         internal bool ActionPreparationNeeded {get{return combat.Player!=null && HostAttackWindow.NextAction(combat,combat.Player,combat.Player.HeldItem) && Control.FiniteHeldActionNeeded;}}
         internal bool UrgentPreparation {get{return Permission && (ActionPreparationNeeded || Control.Pending);}}
         internal int ActionRequired {get{return actionRequired;}}
@@ -211,6 +212,14 @@ namespace JueMingR.TerrariaHost.Combat
         // User toggles/retries revoke derived work, never erase a real live
         // birth. Session teardown alone invokes the complete registry reset.
         internal void ResetPreparation(){demandActive=false;releaseHand=null;Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.ResetPreparation();hasConsumedInput=false;}
+        // A mode edge retires only plans. Real release authority, births and faults
+        // survive; Path's independent cache consumer is deliberately untouched.
+        internal void RetireOriginalPrediction()
+        {
+            demandActive=false;actionRequired=expansion=0;preferred=4;demandWeapon=null;demandTarget=default(NpcIdentity);
+            Clear();ClearCandidatePlans();swing.Clear();Control.ResetPreparation();hasConsumedInput=false;
+            observation.Prediction.Cache.Release(1);
+        }
         internal void Reset(){ResetPreparation();Control.Reset();}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
         {
@@ -235,7 +244,7 @@ namespace JueMingR.TerrariaHost.Combat
         {PreparePhase(HostAttackPhase.Projectiles);}
         internal void PrepareControlledProjectileWorld()
         {
-            if(!BasicPermission || !CurrentReceiver || !Control.HasFiniteHeldSources)return;
+            if(!OriginalAttackPredictionAllowed || !BasicPermission || !CurrentReceiver || !Control.HasFiniteHeldSources)return;
             try
             {
                 // This borrows the existing update's total allowance. It does
@@ -258,6 +267,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal void EndPreparation(){candidateHandPlan=null;EndFlightPreparation();}
         private void PreparePhase(HostAttackPhase phase)
         {
+            if(!OriginalAttackPredictionAllowed)return;
             try{using(observation.PredictionWork.Enter(Main.GameUpdateCount))using(new SolvePreparation()){if(CombatPredictionWork.TryContinue())PrepareCore(phase);}}
             catch(CombatPredictionBudgetExceededException){EndFlightPreparation();}
             catch(Exception error){FailLocal(error);}

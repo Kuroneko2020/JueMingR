@@ -340,7 +340,7 @@ function Assert-Phase0SNoSuccessEvents {
     }
     foreach ($line in [System.IO.File]::ReadAllLines($EvidencePath)) {
         if ($line -match '^PHASE0S\|1\|[^|]+\|0[1-5]\|') {
-            throw 'The wrong-target-hash fixture emitted a success event instead of failing closed.'
+            throw 'The invalid runtime manifest emitted a success event instead of failing closed.'
         }
     }
 }
@@ -676,7 +676,7 @@ function Invoke-Phase0SLoadChainFixtureTests {
         $tempInstall = Invoke-Phase0STempPackageScript -PackageRoot $tempPackage.root -ScriptName 'Install-Phase0S.ps1' -TerrariaDirectory $tempTarget
         Assert-Phase0STempPackageSuccess -Result $tempInstall -Operation 'install' -Code 'INSTALL_COMPLETE' -PackageId $tempPackage.packageId
 
-        # The production installer validates the fixed real Terraria identity. The executable is
+        # This install scenario uses the fixed reference as its observed client. The executable is
         # substituted only inside this marked TEMP target so the two process launches remain a fixture.
         $tempTerrariaPath = Join-Path $tempTarget 'Terraria.exe'
         Copy-Item -LiteralPath $fixtureExe -Destination $tempTerrariaPath -Force
@@ -725,12 +725,13 @@ function Invoke-Phase0SLoadChainFixtureTests {
         }
 
         $wrongHash = New-Phase0SFixtureRunDirectory -Root $root -Name 'wrong-target-hash' -FixtureExe $fixtureExe -ProductionOutputs $productionOutputs -HarmonyPath $harmonyPath -PackageId ('phase0s-fixture-' + [Guid]::NewGuid().ToString('N')) -SourceCommit $sourceCommit -UseWrongTargetHash
-        $wrongHashResult = Invoke-Phase0SFixtureExe -FixtureExe $wrongHash.exePath -Mode 'expect-no-handoff' -EvidencePath $wrongHash.evidencePath -PackageId $wrongHash.packageId
+        # The manifest records build-baseline metadata; changing that informational
+        # hash must not veto an otherwise valid current client and actual Hook ABI.
+        $wrongHashResult = Invoke-Phase0SFixtureExe -FixtureExe $wrongHash.exePath -Mode 'expect-handoff' -EvidencePath $wrongHash.evidencePath -PackageId $wrongHash.packageId
         foreach ($line in $wrongHashResult.output) {
             Write-Host $line
         }
-        Assert-Phase0SCondition -Condition ($wrongHashResult.exitCode -eq 0) -Message "wrong target hash fixture: expected exit 0, actual $($wrongHashResult.exitCode)."
-        Assert-Phase0SNoSuccessEvents -EvidencePath $wrongHash.evidencePath
+        Assert-Phase0SCondition -Condition ($wrongHashResult.exitCode -eq 0) -Message "different baseline target hash fixture: expected actual handoff exit 0, actual $($wrongHashResult.exitCode)."
     }
     finally {
         Remove-Phase0STestRoot -Root $root

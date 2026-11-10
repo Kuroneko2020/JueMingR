@@ -11,6 +11,8 @@ namespace JueMingR.Platform.Hotkeys
     {
         private sealed class Bound { internal HotkeyAction Action; internal HotkeyChord Chord; }
         private readonly HotkeyRegistry registry;
+        private readonly Dictionary<string, HotkeyChord> defaults;
+        private readonly HashSet<string> implicitActions = new HashSet<string>(StringComparer.Ordinal);
         private readonly DocumentWorker<HotkeyDocument> worker;
         private readonly Dictionary<string, HotkeyChord> effective = new Dictionary<string, HotkeyChord>(StringComparer.Ordinal);
         private readonly Dictionary<string, string> errors = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -31,8 +33,9 @@ namespace JueMingR.Platform.Hotkeys
         public bool CompletionSucceeded { get; private set; }
         public bool CommitUnconfirmed { get; private set; }
         public string LoadError { get; private set; }
-        public HotkeyBindings(HotkeyRegistry registry, IPreferenceStorage storage)
+        public HotkeyBindings(HotkeyRegistry registry, IPreferenceStorage storage, IDictionary<string, HotkeyChord> missingDefaults = null)
         {
+            defaults = missingDefaults == null ? new Dictionary<string, HotkeyChord>(StringComparer.Ordinal) : new Dictionary<string, HotkeyChord>(missingDefaults, StringComparer.Ordinal);
             this.registry = registry ?? throw new ArgumentNullException(nameof(registry)); registry.Freeze();
             worker = new DocumentWorker<HotkeyDocument>(storage, HotkeyDocument.Decode, HotkeyDocument.Encode, HotkeyDocument.Empty);
         }
@@ -76,7 +79,7 @@ namespace JueMingR.Platform.Hotkeys
             if (Protected) return Message ?? "快捷键设置有问题，暂时无法修改。";
             if (chord == null) return null;
             foreach (var other in effective)
-                if (other.Key != id && chord.Equals(other.Value) && (registry.Find(other.Key).Context & action.Context) != 0)
+                if (other.Key != id && !implicitActions.Contains(other.Key) && chord.Equals(other.Value) && (registry.Find(other.Key).Context & action.Context) != 0)
                     return "此快捷键已用于「" + registry.Find(other.Key).Name + "」。";
             return null;
         }
@@ -124,7 +127,7 @@ namespace JueMingR.Platform.Hotkeys
         }
         private void Compile()
         {
-            effective.Clear(); errors.Clear(); byKey = new List<Bound>[HotkeyChord.KeyCount]; compiledRevision = registry.Revision;
+            effective.Clear(); errors.Clear(); implicitActions.Clear(); byKey = new List<Bound>[HotkeyChord.KeyCount]; compiledRevision = registry.Revision;
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var entry in document.Entries)
             {
@@ -144,6 +147,18 @@ namespace JueMingR.Platform.Hotkeys
                     { errors[a.Key] = "多个功能使用同一快捷键，相关快捷键已停用，原文件已保护。"; errors[b.Key] = errors[a.Key]; }
             if (errors.Count != 0) { Protected = true; Feedback = new HotkeyFeedback(HotkeyFeedbackKind.Protected, "快捷键文件已保护", "无效或重复的快捷键已停用，暂时无法修改。"); }
             foreach (var error in errors) effective.Remove(error.Key);
+            // Explicit entries (including empty or invalid records) own their action.
+            // Missing defaults never write a file or displace a user's chord.
+            if (!Protected)
+                foreach (var fallback in defaults)
+                {
+                    var action = registry.Find(fallback.Key);
+                    if (seen.Contains(fallback.Key) || action == null || fallback.Value == null) continue;
+                    bool occupied = false;
+                    foreach (var explicitBinding in effective)
+                        if (fallback.Value.Equals(explicitBinding.Value) && (action.Context & registry.Find(explicitBinding.Key).Context) != 0) { occupied = true; break; }
+                    if (!occupied) { effective[fallback.Key] = fallback.Value; implicitActions.Add(fallback.Key); }
+                }
             foreach (var entry in effective)
             {
                 int key = entry.Value.MainKey;

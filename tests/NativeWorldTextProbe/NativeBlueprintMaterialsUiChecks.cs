@@ -217,7 +217,9 @@ namespace NativeWorldTextProbe
                 ClickF5(shell, input, graphics, "BlueprintAutoBuildOff"); Require(!(bool)Get(host, "AutoBuildEnabled"), "actual F5 Off button is an idempotent setting command");
                 ClickF5(shell, input, graphics, "BlueprintMaterials"); Prepare(shell, graphics);
                 Require((bool)Get(popup, "Visible") && (bool)Get(state, "Visible") && Get(popup, "Source").ToString() == "F5", "F5 row calls the same modal through its F5 return context");
-                Call(popup, "Close"); Require((bool)Get(state, "Visible") && (int)Get(state, "Page") == 6, "closing F5 materials retains the blueprint main page");
+                ClickF5(shell,input,graphics,"BlueprintMaterials");
+                Require(!(bool)Get(popup,"Visible") && (bool)Get(state,"ConsumeLeft"),"same F5 material entry closes the actual modal without world-use tail");
+                Require((bool)Get(state,"Visible") && (int)Get(state,"Page")==6,"entry close retains blueprint parent");
                 LibraryReturn(context, graphics);
                 NativeBlueprintMaterialsDragChecks.Run(context, graphics, output);
                 HostPublicationGaps(context, graphics, output);
@@ -573,9 +575,13 @@ namespace NativeWorldTextProbe
                 Frame(shell, input, x, y, true); PlayerInput.Triggers.Current.CopyInto(player);
                 Require(!player.controlUseItem, "actual gel material press cannot become a native gel use");
                 Frame(shell, input, x, y, false); PlayerInput.Triggers.Current.CopyInto(player); Prepare(shell, graphics);
-                Require((bool)Get(popup, "Visible") && Get(popup, "Source").ToString() == "World" && !(bool)Get(Get(shell, "State"), "Visible") && !player.controlUseItem,
+                Require((bool)Get(popup, "Visible") && Get(popup, "Source").ToString() == "Toolbar" && !(bool)Get(Get(shell, "State"), "Visible") && !player.controlUseItem,
                     "actual gel material button opens the shared world popup and consumes the opening release");
-                Call(popup, "Close"); Require((bool)Get(host, "AutoBuildEnabled"), "closing only materials retains automatic-build intent");
+                DrawCurrentViewport(graphics,()=>Call(toolbar,"Draw"));
+                Require((bool)Get(host,"ShowToolbar") && (bool)Get(host,"ToolbarMaterialsOnly"),"toolbar material source keeps its own original entry presented");
+                Frame(shell,input,x,y,false);DrawCurrentViewport(graphics,()=>Call(toolbar,"Draw"));
+                Frame(shell,input,x,y,true);Frame(shell,input,x,y,false);PlayerInput.Triggers.Current.CopyInto(player);
+                Require(!(bool)Get(popup,"Visible") && !player.controlUseItem && (bool)Get(host,"AutoBuildEnabled"),"same presented toolbar entry closes only materials with no native gel use");
                 Frame(shell, input, 1, 1, false); Frame(shell, input, 1, 1, false); Call(host, "Toggle");
                 DrawCurrentViewport(graphics, () => Call(toolbar, "Draw"));
                 Require(((BlueprintCaptureState)Get(host, "State")).Active && (int)Get(layout, "MaterialsIndex") == -1 &&
@@ -731,7 +737,11 @@ namespace NativeWorldTextProbe
                 field.SetValue(host, library);
                 try
                 {
-                    var entry = NativeBlueprintPlacementChecks.Seed(library, 2, 2, "材料详情返回"); Call(ui, "OpenLibrary");
+                    // Seed both valid immutable identities before opening UI:
+                    // material close can already request the parent's next list.
+                    var entry = NativeBlueprintPlacementChecks.Seed(library, 2, 2, "材料详情返回");
+                    var alternate = NativeBlueprintPlacementChecks.Seed(library, 2, 2, "另一份材料身份");
+                    Call(ui, "OpenLibrary");
                     NativeBlueprintLibraryWait.HostCondition(library, "library material action", () =>
                     { Call(host, "Poll"); Call(shell, "AfterUpdate"); return !(bool)Get(ui, "dirty") && Objects(Get(ui, "parts")).Any(p => Get(p, "Command").ToString() == "Materials"); });
                     Call(ui, "BeginEdit", entry.AssetId, "尚未提交的名称"); Call(shell, "AfterUpdate");
@@ -739,7 +749,12 @@ namespace NativeWorldTextProbe
                     var materials = Objects(Get(ui, "parts")).Single(p => Get(p, "Command").ToString() == "Materials" && (Guid)Get(p, "AssetId") == entry.AssetId);
                     Call(ui, "Execute", materials); Prepare(shell, graphics);
                     Require((bool)Get(popup, "Visible") && Get(popup, "Source").ToString() == "Library" && !(bool)Get(popup, "WorldMode"), "the existing card material button opens the common static mode");
-                    Call(popup, "Close");
+                    Call(ui,"Execute",materials);
+                    Require(!(bool)Get(popup,"Visible"),"same library material source toggles closed through Shell without abandoning its parent");
+                    Call(ui,"Execute",materials);Call(shell,"OpenBlueprintTemplateMaterials",alternate,Get(popup,"Panel"));
+                    Require((bool)Get(popup,"Visible") && (Guid)Get(popup,"AssetId")==alternate.AssetId,"another template switches material identity instead of closing");
+                    Call(shell,"OpenBlueprintTemplateMaterials",entry,Get(popup,"Panel"));Call(shell,"OpenBlueprintTemplateMaterials",entry,Get(popup,"Panel"));
+                    Require(!(bool)Get(popup,"Visible"),"same immutable template identity closes after a switch");
                     Require((bool)Get(ui, "Visible") && ReferenceEquals(editor, Get(ui, "Editor")) && Equals(selected, GetOptional(ui, "selected")) && scroll == (float)Get(state, "Scroll") &&
                         (string)Get(editor, "Text") == "尚未提交的名称", "static detail close retains actual library page, scroll, selection and uncommitted name buffer");
                     Call(shell, "CloseAndSubmitPosition");

@@ -59,8 +59,12 @@ namespace JueMingR.TerrariaHost.Recovery
             this.host=host;this.shell=shell;PotionPopup=new PotionConfigurationPopup(host,shell.Layout.TextSize);var prior=shell.BeforeLeave;
             shell.BeforeLeave=p=>{if(prior!=null && !prior(p))return false;Suspend();return true;};
         }
+        internal bool SecondaryOnly;
+        internal bool SecondaryEntryAt(Vector2 point)
+        { return ready && !dirty && shell.Visible && generation==shell.Layout.Generation && scroll==shell.Scroll && view.Contains(point.X,point.Y) && visible.Exists(p=>p.Enabled && (p.Command==-1 || p.Command==-2 && p.Value<2) && p.Element.Rect.Contains(point.X,point.Y)); }
         internal void ProcessInput(bool active,KeyboardState keys,Vector2 point,bool geometryCurrent,bool focused,bool blocked)
         {
+            bool secondaryOnly=SecondaryOnly;SecondaryOnly=false;
             pointer=point;
             bool left=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,right=PlayerInput.MouseInfo.RightButton==ButtonState.Pressed;
             pageLeft=leftTail;pageRight=rightTail;pagePointer=false;
@@ -71,7 +75,7 @@ namespace JueMingR.TerrariaHost.Recovery
             if(pagePointer)
             {
                 if(left)leftTail=true;if(right)rightTail=true;
-                Part hit=dirty || blocked?null:visible.FirstOrDefault(p=>p.Enabled && (p.Element.Kind==F5ElementKind.Button || p.Element.Kind==F5ElementKind.Hotkey) && p.Element.Rect.Contains(point.X,point.Y));
+                Part hit=dirty || blocked?null:visible.FirstOrDefault(p=>p.Enabled && (!secondaryOnly || (p.Command==-1 || p.Command==-2 && p.Value<2)) && (p.Element.Kind==F5ElementKind.Button || p.Element.Kind==F5ElementKind.Hotkey) && p.Element.Rect.Contains(point.X,point.Y));
                 if(left && !previousLeft){armed=hit;armedGeneration=generation;}
                 if(!left && previousLeft && hit!=null && ReferenceEquals(armed,hit) && armedGeneration==generation)Execute(hit);
             }

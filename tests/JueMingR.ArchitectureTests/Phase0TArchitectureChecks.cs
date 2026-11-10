@@ -20,6 +20,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Fishing.FishKind", "JueMingR.Features.Fishing.FishKey", "JueMingR.Features.Fishing.FishFilter",
                 "JueMingR.Features.Fishing.FishList", "JueMingR.Features.Fishing.FishPreset", "JueMingR.Features.Fishing.FishingOptions",
                 "JueMingR.Features.Combat.CombatOptions", "JueMingR.Features.Combat.CombatSettings", "JueMingR.Features.Combat.BattleEndLedger",
+                "JueMingR.Features.Combat.CombatExperimentOptions", "JueMingR.Features.Combat.CombatExperimentSettings",
                 "JueMingR.Features.Combat.ObservationOptions", "JueMingR.Features.Combat.ObservationSettings", "JueMingR.Features.Combat.NpcMotion", "JueMingR.Features.Combat.NpcPredictionCache", "JueMingR.Features.Combat.NpcHealth",
                 "JueMingR.Features.Combat.FacingCandidate", "JueMingR.Features.Combat.FacingSelector",
                 "JueMingR.Features.Combat.RollingNpcPrediction",

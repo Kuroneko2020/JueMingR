@@ -40,7 +40,7 @@ namespace JueMingR.TerrariaHost.DeathHistory
         {
             try
             {
-                if (current != null || typeof(Main).Module.ModuleVersionId != new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083")) throw new InvalidOperationException("death-map-identity");
+                if (current != null) throw new InvalidOperationException("death-map-identity");
                 current = this;
                 drawing = Map.FullscreenMapDrawing.Acquire(); drawing.Begin += BeginShared; drawing.Icons += DrawShared; drawing.Overlay += TooltipShared; drawing.Completed += EndShared;
                 Patch(typeof(Main), "DrawPlayerDeathMarker", new[] { typeof(float), typeof(float), typeof(float), typeof(float), typeof(float), typeof(float), typeof(int), typeof(int) }, null, nameof(NativeDrawn), null);

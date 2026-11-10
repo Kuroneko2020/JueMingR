@@ -1,12 +1,14 @@
 using System;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 using JueMingR.Setup;
 
 internal static class SetupFormChecks
 {
+    private const string FeedbackNotice = "当前测试版遇到问题欢迎群里反馈";
     internal static void Run()
     {
         Application.EnableVisualStyles();
@@ -21,6 +23,33 @@ internal static class SetupFormChecks
         }
         Check(new SetupVersionDisplay { Problem = "读取失败：原因+详细", CleanupProblem = "清理失败+路径" }.Caption == "读取失败：原因+详细" + Environment.NewLine + "清理失败+路径" &&
             new SetupVersionDisplay().Caption == "无法确认", "version-display-leaves-unknown-read-and-cleanup-failures-unchanged");
+        var rawVersion = new SetupVersionDisplay { Version = "0.1.3+isolated-source-identity" };
+        using (var form = new SetupForm("A", new string[0], Ready,
+            (operation, path) => { throw new Exception("Header check cannot execute an operation"); }, () => rawVersion))
+        {
+            Observe(form, "test-version-header", () =>
+            {
+                var caption = Find<TextBox>(form, "PayloadVersion");
+                Pump(() => caption.Text == "0.1.3 " + FeedbackNotice);
+                Size frame = form.Size;
+                Check(NoticeVisible(caption) && caption.Multiline && caption.WordWrap, "form-test-notice-completely-visible-normal-width");
+                Check(rawVersion.Version == "0.1.3+isolated-source-identity" && rawVersion.Caption == "0.1.3" &&
+                    !Find<TextBox>(form, "InstalledIdentity").Text.Contains(FeedbackNotice) && !Find<TextBox>(form, "GameIdentity").Text.Contains(FeedbackNotice),
+                    "form-test-notice-is-only-payload-presentation-not-version-identity");
+                Capture(form, "setup-header-normal.png");
+                // Restrict only the existing heading's usable content width. This
+                // exercises real native wrapping without changing monitor settings.
+                var heading = (TableLayoutPanel)caption.Parent; Padding original = heading.Padding;
+                heading.Padding = new Padding(original.Left, original.Top, original.Right + Math.Max(0, caption.Width - 220), original.Bottom);
+                heading.PerformLayout();
+                typeof(SetupForm).GetMethod("UpdateLayoutMetrics", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(form, null);
+                Application.DoEvents();
+                Check(caption.Width <= 225 * form.DeviceDpi / 96F && NoticeVisible(caption) && form.Size == frame,
+                    "form-test-notice-wraps-completely-at-narrow-usable-width-without-frame-growth");
+                Capture(form, "setup-header-narrow.png");
+                form.Close();
+            });
+        }
         int calls = 0;
         using (var started = new ManualResetEventSlim())
         using (var release = new ManualResetEventSlim())
@@ -92,14 +121,14 @@ internal static class SetupFormChecks
         {
             Observe(form, "package-and-maintenance", () =>
             {
-                Pump(() => Find<LinkLabel>(form, "UninstallLink").Enabled && Find<TextBox>(form, "PayloadVersion").Text == "0.1.0");
+                Pump(() => Find<LinkLabel>(form, "UninstallLink").Enabled && Find<TextBox>(form, "PayloadVersion").Text == "0.1.0 " + FeedbackNotice);
                 Find<ComboBox>(form, "GameDirectory").Text = "B";
                 Pump(() => Find<LinkLabel>(form, "UninstallLink").Enabled);
                 Check(versionReads == 1 && Find<TextBox>(form, "InstalledIdentity").Text == "当前未安装决明" && Find<LinkLabel>(form, "ClearConfigurationLink").Enabled && !Find<Button>(form, "InstallButton").Enabled, "form-package-read-once-independent-target-and-maintenance-pair");
-                Check(Find<TextBox>(form, "PayloadVersion").Text == "0.1.0" && Find<TextBox>(form, "PayloadVersion").AccessibleName == "待安装决明版本", "form-header-product-version-with-accessible-meaning");
+                Check(Find<TextBox>(form, "PayloadVersion").Text == "0.1.0 " + FeedbackNotice && Find<TextBox>(form, "PayloadVersion").AccessibleName == "待安装决明版本", "form-header-product-version-with-accessible-meaning");
                 ActivateLink(Find<LinkLabel>(form, "UninstallLink"));
                 Pump(() => maintenanceCalls == 1 && Find<LinkLabel>(form, "UninstallLink").Enabled);
-                Check(Find<TextBox>(form, "OperationSummary").Text.Contains("无需处理") && Find<TextBox>(form, "PayloadVersion").Text == "0.1.0", "form-noop-result-preserved-with-product-version");
+                Check(Find<TextBox>(form, "OperationSummary").Text.Contains("无需处理") && Find<TextBox>(form, "PayloadVersion").Text == "0.1.0 " + FeedbackNotice, "form-noop-result-preserved-with-product-version");
                 form.Close();
             });
         }
@@ -190,6 +219,27 @@ internal static class SetupFormChecks
         if (start < 0 || !FullyVisible(summary)) return false;
         Point first = summary.GetPositionFromCharIndex(0), last = summary.GetPositionFromCharIndex(start + reason.Length - 1);
         return first.Y >= 0 && last.Y + summary.Font.Height <= summary.ClientSize.Height;
+    }
+
+    private static bool NoticeVisible(TextBox caption)
+    {
+        int start = caption.Text.IndexOf(FeedbackNotice, StringComparison.Ordinal);
+        if (start < 0 || !FullyVisible(caption)) return false;
+        for (int i = start; i < start + FeedbackNotice.Length; i++)
+        {
+            Point point = caption.GetPositionFromCharIndex(i);
+            if (point.X < 0 || point.X >= caption.ClientSize.Width || point.Y < 0 || point.Y + caption.Font.Height > caption.ClientSize.Height) return false;
+        }
+        return true;
+    }
+
+    private static void Capture(Form form, string name)
+    {
+        using (var bitmap = new Bitmap(form.Width, form.Height))
+        {
+            form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
+            bitmap.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, name), System.Drawing.Imaging.ImageFormat.Png);
+        }
     }
 
     private static void ActivateLink(LinkLabel link)

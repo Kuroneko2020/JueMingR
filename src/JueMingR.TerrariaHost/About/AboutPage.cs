@@ -24,6 +24,22 @@ namespace JueMingR.TerrariaHost.About
         { return hiddenAccess != null && hiddenAccess.TryCompleteTitleClick(now, identity); }
         internal int Revision { get; private set; }
         private bool imageFailed;
+        private double visualTime;
+        private float titleLift, initialLift;
+        private bool titleHovered, titleAnimating;
+        // Bounded hover progress for centered Draw-only scaling/shadow. The hit
+        // rect, element and five-click identity never participate in animation.
+        internal float TitleLift(bool hovered)
+        {
+            if(hovered!=titleHovered)
+            { titleHovered=hovered;initialLift=titleLift;visualTime=(milliseconds??Milliseconds)();titleAnimating=true; }
+            if(!titleAnimating)return titleLift;
+            float fraction=(float)Math.Max(0,Math.Min(1,((milliseconds??Milliseconds)()-visualTime)/150));
+            float eased=fraction*fraction*(3-2*fraction);
+            titleLift=initialLift+((hovered?1:0)-initialLift)*eased;
+            if(fraction>=1)titleAnimating=false;
+            return titleLift;
+        }
         internal void SetImageFailure(bool failed) { if (imageFailed != failed) { imageFailed = failed; Revision++; } }
         internal void Attach(Func<string, bool> clipboard, Func<double> clock = null)
         { copy = clipboard; milliseconds = clock ?? Milliseconds; outcome = 0; }
@@ -42,7 +58,7 @@ namespace JueMingR.TerrariaHost.About
             expires = (milliseconds ?? Milliseconds)() + 3000;
         }
         internal void Leave()
-        { outcome = 0; CancelGesture(); }
+        { outcome = 0; visualTime=0; titleLift=initialLift=0;titleHovered=titleAnimating=false; CancelGesture(); }
         internal string Hint(F5Command command)
         { return command == F5Command.AboutCopyGroup ? "点击复制" : null; }
         internal F5Element Display(F5Element element)
@@ -60,7 +76,7 @@ namespace JueMingR.TerrariaHost.About
             float columns = Math.Max(420, viewportHeight - 148), leftWidth = 254, rightX = 268, rightWidth = 254;
             Card(elements, 0, y, 522, columns + 148, "backdrop");
             Card(elements, 0, y, 522, 78, "header");
-            FixedCenter(elements, measure, "决明R", 154, y + 18, 214, 42, 1.42f, F5ElementKind.AboutHeading, F5Command.AboutRevealHidden);
+            FixedCenter(elements, measure, "决明R", 143, y + 16, 236, 46, 1.56f, F5ElementKind.AboutHeading, F5Command.AboutRevealHidden);
             y += 86; float top = y;
             Card(elements, 0, top, leftWidth, columns, "portrait");
             FixedCenter(elements, measure, "广 告 位 招 租", 24, top + columns / 2 - 26, leftWidth - 48, 22, .80f, F5ElementKind.AboutMuted);
@@ -69,19 +85,20 @@ namespace JueMingR.TerrariaHost.About
             Card(elements, rightX, top, rightWidth, infoHeight, "info");
             FixedCenter(elements, measure, "决明R " + ProductVersion, rightX + 46, top + 11, rightWidth - 64, 19, .70f, F5ElementKind.AboutHeading);
             float textY = top + 40 + Math.Max(0, (infoHeight - 156) / 2);
-            FixedCenter(elements, measure, "为 Terraria 玩家打造的轻量辅助工具。", rightX + 18, textY, rightWidth - 36, 23, .74f, F5ElementKind.Text);
-            FixedCenter(elements, measure, "追求稳定、简洁，并尽量保留原版体验。", rightX + 18, textY + 23, rightWidth - 36, 23, .72f, F5ElementKind.Text);
-            FixedCenter(elements, measure, "项目仍在持续打磨中。", rightX + 18, textY + 58, rightWidth - 36, 23, .72f, F5ElementKind.Text);
-            FixedCenter(elements, measure, "欢迎反馈问题与建议，一起把它做得更好。", rightX + 18, textY + 81, rightWidth - 36, 23, .68f, F5ElementKind.AboutMuted);
+            FixedCenter(elements, measure, "为泰拉瑞亚原版打造的轻量辅助工具", rightX + 18, textY, rightWidth - 36, 23, .74f, F5ElementKind.Text);
+            FixedCenter(elements, measure, "仍在持续打磨中", rightX + 18, textY + 30, rightWidth - 36, 23, .72f, F5ElementKind.Text);
+            FixedCenter(elements, measure, "欢迎反馈问题与建议", rightX + 18, textY + 60, rightWidth - 36, 23, .72f, F5ElementKind.AboutMuted);
             float feedbackY = top + infoHeight + 8;
             Card(elements, rightX, feedbackY, rightWidth, 78, "feedback");
             FixedCenter(elements, measure, "QQ 问题反馈群", rightX + 52, feedbackY + 9, rightWidth - 70, 20, .70f, F5ElementKind.Text);
             ActionButton(elements, measure, new F5Rect(rightX + 28, feedbackY + 42, rightWidth - 56, 26), Group, F5Command.AboutCopyGroup, .88f);
             float qrY = feedbackY + 86, qrHeight = top + columns - qrY;
             Card(elements, rightX, qrY, rightWidth, qrHeight, "qr");
-            FixedCenter(elements, measure, "喜欢的话，可以请我喝杯奶茶。", rightX + 42, qrY + 9, rightWidth - 58, 22, .68f, F5ElementKind.Text);
             float qrSize = Math.Max(76, Math.Min(96, Math.Min((rightWidth - 42) / 2, qrHeight - 66)));
             float qrX = rightX + (rightWidth - qrSize * 2 - 16) / 2;
+            // The label follows the whole two-image area, independently of the
+            // decorative heart. Its center must not inherit one-sided icon space.
+            FixedCenter(elements, measure, "↓蓝绿修改器↓", qrX, qrY + 9, qrSize * 2 + 16, 22, .68f, F5ElementKind.Text);
             elements.Add(new F5Element(F5ElementKind.Image, new F5Rect(qrX, qrY + 42, qrSize, qrSize), "wechat.png", default(F5Size), 1, F5Command.None));
             elements.Add(new F5Element(F5ElementKind.Image, new F5Rect(qrX + qrSize + 16, qrY + 42, qrSize, qrSize), "alipay.jpg", default(F5Size), 1, F5Command.None));
             y = top + columns + 8; Card(elements, 0, y, 522, 54, "footer");

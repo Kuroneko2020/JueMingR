@@ -32,10 +32,10 @@ namespace JueMingR.TerrariaHost.F5
         {
             get { string value = SendBindingText; if (hintedValue != value) { hintedValue = value; sendHint = "双击设置宣告触发快捷键；当前：" + value; } return sendHint; }
         }
-        internal static void AddRows(List<F5Element> elements, Func<string, float, F5Size> measure, ref float y)
+        internal static void AddRows(List<F5Element> elements, Func<string, float, F5Size> measure, ref float y, float fieldWidth=120)
         {
-            var description = new F5RowDescription(ToggleActionId, "按自设触发键宣告指向内容；左框设置触发键，右侧键盘设置功能开关快捷键。普通多人客户端使用原版聊天。");
-            new F5RowLayout(elements, measure).Row(ref y, 0, 522, "快捷宣告", new[] { null, "开启", "关闭", "键" }, text => text == "开启" ? F5Command.AnnouncementEnable : text == "关闭" ? F5Command.AnnouncementDisable : F5Command.None, description);
+            var description = new F5RowDescription(ToggleActionId, "按下快捷键后自动在聊天栏发送光标指向的东西");
+            new F5RowLayout(elements, measure).Row(ref y, 0, 522, "快捷宣告", new[] { null, "开启", "关闭", "键" }, text => text == "开启" ? F5Command.AnnouncementEnable : text == "关闭" ? F5Command.AnnouncementDisable : F5Command.None, description, fieldWidth: fieldWidth);
             var field = elements[elements.Count - 4]; elements[elements.Count - 4] = new F5Element(field.Kind, field.Rect, field.Text, field.TextSize, field.TextScale, F5Command.None, SendActionId);
             var key = elements[elements.Count - 1]; elements[elements.Count - 1] = new F5Element(key.Kind, key.Rect, key.Text, key.TextSize, key.TextScale, F5Command.None, ToggleActionId);
         }

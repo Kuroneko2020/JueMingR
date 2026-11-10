@@ -384,3 +384,4 @@ leaf	CombatEffectsThornCpu	effects-thorn
 leaf	DirectionalControl	directional-control
 leaf	NpcSelectedContinuation	npc-selected-continuation
 leaf	TerrainLine	terrain-line
+leaf	CombatExperimentsCpu	combat-experiments
