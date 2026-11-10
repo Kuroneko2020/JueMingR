@@ -737,7 +737,11 @@ namespace NativeWorldTextProbe
                 field.SetValue(host, library);
                 try
                 {
-                    var entry = NativeBlueprintPlacementChecks.Seed(library, 2, 2, "材料详情返回"); Call(ui, "OpenLibrary");
+                    // Seed both valid immutable identities before opening UI:
+                    // material close can already request the parent's next list.
+                    var entry = NativeBlueprintPlacementChecks.Seed(library, 2, 2, "材料详情返回");
+                    var alternate = NativeBlueprintPlacementChecks.Seed(library, 2, 2, "另一份材料身份");
+                    Call(ui, "OpenLibrary");
                     NativeBlueprintLibraryWait.HostCondition(library, "library material action", () =>
                     { Call(host, "Poll"); Call(shell, "AfterUpdate"); return !(bool)Get(ui, "dirty") && Objects(Get(ui, "parts")).Any(p => Get(p, "Command").ToString() == "Materials"); });
                     Call(ui, "BeginEdit", entry.AssetId, "尚未提交的名称"); Call(shell, "AfterUpdate");
@@ -747,7 +751,6 @@ namespace NativeWorldTextProbe
                     Require((bool)Get(popup, "Visible") && Get(popup, "Source").ToString() == "Library" && !(bool)Get(popup, "WorldMode"), "the existing card material button opens the common static mode");
                     Call(ui,"Execute",materials);
                     Require(!(bool)Get(popup,"Visible"),"same library material source toggles closed through Shell without abandoning its parent");
-                    var alternate=NativeBlueprintPlacementChecks.Seed(library,1,1,"另一份材料身份");
                     Call(ui,"Execute",materials);Call(shell,"OpenBlueprintTemplateMaterials",alternate,Get(popup,"Panel"));
                     Require((bool)Get(popup,"Visible") && (Guid)Get(popup,"AssetId")==alternate.AssetId,"another template switches material identity instead of closing");
                     Call(shell,"OpenBlueprintTemplateMaterials",entry,Get(popup,"Panel"));Call(shell,"OpenBlueprintTemplateMaterials",entry,Get(popup,"Panel"));

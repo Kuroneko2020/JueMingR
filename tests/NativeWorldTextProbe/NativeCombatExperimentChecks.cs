@@ -354,6 +354,36 @@ namespace NativeWorldTextProbe
                 NativeCombatObservationChecks.Save(host,new ObservationOptions());Save(owner,0);
             }
         }
+        private static Projectile groundBody;
+        private static object groundOwner;
+        private static List<string> groundFacts;
+        private static int groundTileCalls,groundSlopeCalls;
+        private static string GroundState(Projectile p)
+        {
+            var floor=Main.tile[(int)p.Center.X/16,43];
+            return "pos="+p.position+" bottom="+p.Bottom.Y+" velocity="+p.velocity+" ai="+string.Join(",",p.ai)+" tileCollide="+p.tileCollide+
+                " active="+p.active+" style="+p.aiStyle+" minion="+p.minion+" wall="+Call(groundOwner,"Wall",p)+" support="+Call(groundOwner,"GroundSupport",p)+
+                " floor="+(floor==null?"null":floor.active()+"/"+floor.type+"/solid="+Main.tileSolid[floor.type]+"/slope="+floor.slope()+"/half="+floor.halfBrick());
+        }
+        private static void GroundBeforeAi(Projectile __instance)
+        {if(ReferenceEquals(__instance,groundBody))groundFacts.Add("AI before "+GroundState(__instance));}
+        private static void GroundAfterAi(Projectile __instance)
+        {if(ReferenceEquals(__instance,groundBody))groundFacts.Add("AI after "+GroundState(__instance));}
+        private static void GroundBeforeMove(Projectile __instance)
+        {if(ReferenceEquals(__instance,groundBody))groundFacts.Add("MOVE before "+GroundState(__instance));}
+        private static void GroundAfterMove(Projectile __instance)
+        {if(ReferenceEquals(__instance,groundBody))groundFacts.Add("MOVE after "+GroundState(__instance));}
+        private static void GroundTileResult(Vector2 position,Vector2 velocity,int width,int height,bool fallThrough,bool fall2,int gravDir,bool ignoreDoors,bool ignoreAetheriumPlatforms,bool hoik,Entity context,Vector2 __result)
+        {
+            if(!ReferenceEquals(context,groundBody))return;groundTileCalls++;
+            groundFacts.Add("TILE pos="+position+" velocity="+velocity+" size="+width+","+height+" fall="+fallThrough+","+fall2+" gravity="+gravDir+
+                " ignore="+ignoreDoors+","+ignoreAetheriumPlatforms+" hoik="+hoik+" result="+__result);
+        }
+        private static void GroundSlopeResult(Vector2 position,Vector2 velocity,int width,int height,float gravity,bool fall,bool ignoreAetheriumPlatforms,Entity context,Vector4 __result)
+        {
+            if(!ReferenceEquals(context,groundBody))return;groundSlopeCalls++;
+            groundFacts.Add("SLOPE pos="+position+" velocity="+velocity+" size="+width+","+height+" gravity="+gravity+" fall="+fall+" ignore="+ignoreAetheriumPlatforms+" result="+__result);
+        }
         private static void GroundSummonAttack(object context,object owner,object tools,object input)
         {
             foreach(int mask in new[]{0,4})
@@ -364,7 +394,30 @@ namespace NativeWorldTextProbe
                 Save(owner,mask);var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");
                 // Full Player.Update owns per-world minion counts and buff
                 // renewal before each actual projectile AI/movement/Damage.
-                for(int i=0;i<200 && target.life==10000;i++)Step(context,owner,host,combat,input,new Vector2(650,600),false);
+                // Temporary, read-only facts for the remaining real walking
+                // summon failure. Patch only this body's actual consumers and
+                // retain the first floor crossing with its preceding steps.
+                var audit=new Harmony("JueMingR.Tests.ExperimentGroundFacts");
+                groundBody=slime;groundOwner=owner;groundFacts=new List<string>();groundTileCalls=groundSlopeCalls=0;
+                var trail=new Queue<string>();bool crossed=false;
+                try
+                {
+                    audit.Patch(typeof(Projectile).GetMethod("AI",Flags),prefix:new HarmonyMethod(typeof(NativeCombatExperimentChecks),nameof(GroundBeforeAi)),postfix:new HarmonyMethod(typeof(NativeCombatExperimentChecks),nameof(GroundAfterAi)));
+                    audit.Patch(typeof(Projectile).GetMethod("HandleMovement",Flags),prefix:new HarmonyMethod(typeof(NativeCombatExperimentChecks),nameof(GroundBeforeMove)),postfix:new HarmonyMethod(typeof(NativeCombatExperimentChecks),nameof(GroundAfterMove)));
+                    audit.Patch(owner.GetType().GetMethod("NativeTileCollision",Flags),postfix:new HarmonyMethod(typeof(NativeCombatExperimentChecks),nameof(GroundTileResult)));
+                    audit.Patch(owner.GetType().GetMethod("NativeSlopeCollision",Flags),postfix:new HarmonyMethod(typeof(NativeCombatExperimentChecks),nameof(GroundSlopeResult)));
+                    Console.WriteLine("GROUND TRACE start mask="+mask+" "+GroundState(slime));
+                    for(int i=0;i<200 && target.life==10000;i++)
+                    {
+                        groundFacts.Clear();Step(context,owner,host,combat,input,new Vector2(650,600),false);
+                        trail.Enqueue("GROUND TRACE mask="+mask+" tick="+i+"\n"+string.Join("\n",groundFacts));if(trail.Count>5)trail.Dequeue();
+                        if(!crossed && slime.Bottom.Y>689)
+                        {crossed=true;Console.WriteLine("GROUND TRACE FIRST FLOOR CROSSING\n"+string.Join("\n",trail));}
+                        if(i%25==0)Console.WriteLine("GROUND TRACE checkpoint mask="+mask+" tick="+i+" tileCalls="+groundTileCalls+" slopeCalls="+groundSlopeCalls+" "+GroundState(slime));
+                    }
+                    Console.WriteLine("GROUND TRACE totals mask="+mask+" tileCalls="+groundTileCalls+" slopeCalls="+groundSlopeCalls+" crossed="+crossed);
+                }
+                finally{audit.UnpatchAll(audit.Id);groundBody=null;groundOwner=null;groundFacts=null;}
                 Console.WriteLine("GROUND SUMMON mask="+mask+" active="+slime.active+" position="+slime.position+" originalDamage="+slime.originalDamage+" damage="+slime.damage+" life="+target.life);
                 Require(mask==0?target.life==10000:target.life<10000,"native walking minion AI/movement/Damage attacks the wall-hidden receiver: "+mask+" position="+slime.position);
                 Save(owner,0);
