@@ -176,9 +176,11 @@ namespace NativeWorldTextProbe
         }
         internal static void SubstrateSeedCatalog(object context)
         {
-            var host = Get(context, "Blueprint"); InitializeMetadata();
+            var host = Get(context, "Blueprint"); var input=Get(context,"Input"); InitializeMetadata();
             Call(host, "SetMaterialViewDemand", true);
-            try { NativeQuickItemChecks.Until(() => { NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); return GetOptional(host, "MaterialCatalog") != null; }); VerifySubstrateSeedCatalog((BlueprintPlacementCatalog)Get(host, "MaterialCatalog")); }
+            // Placement metadata pays one batch per real input mapping, not
+            // per empty runtime Update or synthetic world-clock increment.
+            try { NativeQuickItemChecks.Until(() => { NativeQuickItemChecks.BeginWorldStep(); NativeQuickItemChecks.Sample(input,Array.Empty<Microsoft.Xna.Framework.Input.Keys>()); Call(context, "UpdateRuntime"); return GetOptional(host, "MaterialCatalog") != null; }); VerifySubstrateSeedCatalog((BlueprintPlacementCatalog)Get(host, "MaterialCatalog")); }
             finally { Call(host, "SetMaterialViewDemand", false); }
         }
         private static void VerifySubstrateSeedCatalog(BlueprintPlacementCatalog catalog)

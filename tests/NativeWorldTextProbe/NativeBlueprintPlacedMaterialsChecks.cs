@@ -30,7 +30,9 @@ namespace NativeWorldTextProbe
                     Main.LocalPlayer.inventory = new Item[inventory.Length]; for (int i = 0; i < inventory.Length; i++) Main.LocalPlayer.inventory[i] = new Item();
                     Main.LocalPlayer.inventory[0].SetDefaults(ItemID.StoneBlock); Main.LocalPlayer.inventory[0].stack = 80;
                     Call(host, "SetAutoBuild", false); Call(host, "SetMaterialViewDemand", true);
-                    Action step = () => { NativeQuickItemChecks.BeginWorldStep(); Call(context, "UpdateRuntime"); };
+                    // The shared metadata producer is admitted by actual
+                    // mapping opportunities, including this cold empty scene.
+                    Action step = () => { NativeQuickItemChecks.BeginWorldStep(); NativeQuickItemChecks.Sample(input,Array.Empty<Microsoft.Xna.Framework.Input.Keys>()); Call(context, "UpdateRuntime"); };
                     NativeQuickItemChecks.Until(() => { step(); return GetOptional(host, "MaterialCatalog") != null; });
                     var entry = Small(own, Enumerable.Range(0, 50).Select(x => new CaptureCell { X = x, Layers = CaptureLayer.Tile, TileType = TileID.Stone }).ToArray());
                     var first = Place(host, input, entry, 40, 70, step); var second = Place(host, input, entry, 400, 70, step);
