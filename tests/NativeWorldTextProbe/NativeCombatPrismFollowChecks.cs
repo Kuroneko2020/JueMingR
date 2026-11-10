@@ -26,7 +26,8 @@ namespace NativeWorldTextProbe
         }
         private static object context,control,attack;
         private static string stage;
-        private static bool withdraw;
+        private static bool withdraw,measuringHeldInput,measuringRelease;
+        private static int physicalX,physicalY;
         private static Vector2 shadow;
         private static bool shadowReady;
         private static double workTotal,workMax;private static int worldSteps,budgetStops;
@@ -43,9 +44,18 @@ namespace NativeWorldTextProbe
         {if(withdraw && __instance.type==633 && __instance.owner==Main.myPlayer)Call(control,"ResetPreparation");}
         private static void BeforeNative(Projectile __instance,out Sample __state)
         {
+            // The fixture's requested held-input actions own this measurement.
+            // Native release/retirement AI intentionally has no aim input. Do
+            // not use live permission/channel gates here: an unexpected loss
+            // during a requested held action must still fail the assertion.
             __state=null;if(__instance.type!=633 || __instance.owner!=Main.myPlayer)return;
             var input=Get(attack,"consumedInput");
             bool current=(uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount && ReferenceEquals(GetOptional(input,"Source"),__instance);
+            if(!measuringHeldInput)
+            {
+                if(measuringRelease)Require(!current && Main.mouseX==physicalX && Main.mouseY==physicalY,"released native retirement has no same-step assisted input and sees the returned physical cursor");
+                return;
+            }
             if(!current)MissingInput(__instance,input);
             Require(current,"each measured native AI has this actual registered source's same-step input");
             var identity=(JueMingR.Platform.Combat.NpcIdentity)Get(Get(Get(context,"CombatObservation"),"Selection"),"Target");var n=Main.npc[identity.Slot];var p=Main.LocalPlayer;
@@ -90,7 +100,7 @@ namespace NativeWorldTextProbe
                 audit.Patch(typeof(PlayerMotionContinuation).GetMethod("Advance",Flags),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(AfterMotion)));
                 audit.Patch(attack.GetType().GetMethod("PreparePlan",Flags),finalizer:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(PlanExit)));
             }
-            samples.Clear();shadowReady=false;withdraw=false;stage="stationary";workTotal=workMax=0;worldSteps=budgetStops=0;
+            samples.Clear();shadowReady=false;withdraw=measuringHeldInput=measuringRelease=false;stage="stationary";workTotal=workMax=0;worldSteps=budgetStops=0;
             viewportCase=viewport;sealedContact=null;firstStrike=-1;frozenWouldExit=clearLineSeen=expectedImpactSeen=false;viewportIdentity=null;beamDepth=lastMoves=budgetCleanupChecks=0;lastStop=PredictionStop.None;lastBeamError=null;lastBeamContact=null;
             try
             {
@@ -148,7 +158,7 @@ namespace NativeWorldTextProbe
             }
             finally
             {
-                withdraw=false;audit.UnpatchAll(audit.Id);p.armor[3]=oldBoots;p.armor[4]=oldFlower;p.armor[5]=oldLight;p.gravDir=1;
+                withdraw=measuringRelease=false;audit.UnpatchAll(audit.Id);p.armor[3]=oldBoots;p.armor[4]=oldFlower;p.armor[5]=oldLight;p.gravDir=1;
                 viewportCase=false;damageSource=null;
                 try{NativeCombatObservationChecks.Save(host,new ObservationOptions());for(int i=0;i<8;i++)Step(false,0);}
                 finally{world.Dispose();context=control=attack=null;}
@@ -156,6 +166,7 @@ namespace NativeWorldTextProbe
         }
         private static void Step(bool held,int movement)
         {
+            measuringHeldInput=held;
             // The preceding world's Draw already established the viewport.
             // Original Main runs Player/NPC/projectiles BEFORE this world's
             // DoDraw_UpdateCameraPosition; do not centre after Player.Update.
@@ -166,7 +177,7 @@ namespace NativeWorldTextProbe
             // matrix; this is the physical cursor, unrelated to assisted aim.
             var physical=Main.screenPosition+Vector2.Transform(new Vector2(Main.screenWidth*.25f,Main.screenHeight*.25f),Matrix.Invert(Main.GameViewMatrix.ZoomMatrix));NativeToolExecutionChecks.Sample(context,Get(context,"Input"),physical,held,movement);
             var raw=Terraria.GameInput.PlayerInput.MouseInfo;Require(raw.X>=0 && raw.X<Main.screenWidth && raw.Y>=0 && raw.Y<Main.screenHeight,"fixture physical input remains an actual client pixel under the current zoom");
-            Call(combat,"Sample");Call(host,"SampleMouse");int x=Main.mouseX,y=Main.mouseY;
+            Call(combat,"Sample");Call(host,"SampleMouse");int x=Main.mouseX,y=Main.mouseY;physicalX=x;physicalY=y;
             NativeQuickItemChecks.BeginWorldStep();Main.LocalPlayer.Update(0);foreach(var n in Main.npc)if(n.active)n.UpdateNPC(n.whoAmI);
             for(int i=0;i<Main.maxProjectiles;i++)if(Main.projectile[i].active){Main.ProjectileUpdateLoopIndex=i;Main.projectile[i].Update(i);}Main.ProjectileUpdateLoopIndex=-1;
             Call(context,"UpdateRuntime");Call(context,"UpdateShell");Require(Main.mouseX==x && Main.mouseY==y,"normal native chain returns the physical mouse");
@@ -313,7 +324,10 @@ namespace NativeWorldTextProbe
             Step(true,1);Require(Call(control,"Preview",Get(control,"preparedTimeline"),completed,0,false)!=null,"normal camera supports a positive again after the local unknown ends");
             // Finish this source before setting up a separate fixed boundary
             // scene; never move a boundary to clamp a running test actor.
-            viewportCase=false;for(int i=0;i<8;i++)Step(false,0);EdgeViewport(host,p);
+            viewportCase=false;measuringRelease=true;
+            try{for(int i=0;i<8;i++)Step(false,0);Require(!parent.active && !((IDictionary)Get(control,"shots")).Contains(sealedKey),"the old parent and original registry key retire naturally before the independent edge source begins");}
+            finally{measuringRelease=false;}
+            EdgeViewport(host,p);
             Console.WriteLine("PASS prism future viewport: real Draw phase, sealed long positive/first native632 Strike, ClearLine/preview, scoped unknown/recovery, fixed world-edge clamp");
         }
         private static void EdgeViewport(object host,Player p)
