@@ -27,19 +27,46 @@ namespace NativeWorldTextProbe
             Save(owner,0);NativeCombatObservationChecks.Save(host,new ObservationOptions());
             try
             {
-                HardLock(context,owner,host,tools,input);
-                Movement(context,owner,tools,input);
-                SummonAttack(context,owner,tools,input);
-                NestedAttackGates(context,owner,tools,input);
-                Beams(context,owner,tools,input);
-                Timings(context,owner,tools,input);
-                Revolver(context,owner,tools,input);
-                MeleePeriod(context,owner,tools,input);
-                PathConsumer(context,owner,host,tools,input);
-                YoyoWallInput(context,owner,host,combat,tools,input);
-                GroundSummonAttack(context,owner,tools,input);
-                PredictionBoundary(context,owner,host,combat,tools,input);
-                PrismSource(context,owner,host,combat,tools,input);
+                var failures=new List<Exception>();
+                Action<string,Action> run=(name,check)=>
+                {
+                    // Each group below starts with its existing fresh native
+                    // Reset. Retire preferences between groups through their
+                    // actual owners; never repair a failing group mid-chain.
+                    Save(owner,0);NativeCombatObservationChecks.Save(host,new ObservationOptions());
+                    NativeCombatCadenceChecks.Save(combat,new CombatOptions());
+                    try{check();Console.WriteLine("PASS EXPERIMENT GROUP "+name);}
+                    catch(Exception error) when(JueMingR.Testing.BusinessAssertionProtocol.IsAssertion(error))
+                    {
+                        failures.Add(error);Console.WriteLine("FAIL EXPERIMENT GROUP "+name+": "+error);
+                        // Only an ordinary assertion with fully returned native
+                        // scopes can expose an independent later obligation.
+                        // An unknown exception or a leaked scope stops this leaf.
+                        var cursor=owner.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.CombatCursorScope",true);
+                        if(GetOptional(owner,"worldOwner")!=null || (int)Get(owner,"worldDepth")!=0 ||
+                            cursor.GetField("owner",Flags).GetValue(null)!=null || Main.ProjectileUpdateLoopIndex!=-1 ||
+                            Main.LocalPlayer.dead || Main.LocalPlayer.ghost || !(bool)Get(Get(owner,"Settings"),"Ready"))
+                            throw new InvalidOperationException("Experiment group did not return a clean independent native fixture: "+name,error);
+                    }
+                };
+                run("hard-lock",()=>HardLock(context,owner,host,tools,input));
+                run("movement",()=>Movement(context,owner,tools,input));
+                run("summon-attack",()=>SummonAttack(context,owner,tools,input));
+                run("nested-attack-gates",()=>NestedAttackGates(context,owner,tools,input));
+                run("beams",()=>Beams(context,owner,tools,input));
+                run("timings",()=>Timings(context,owner,tools,input));
+                run("revolver",()=>Revolver(context,owner,tools,input));
+                run("melee",()=>MeleePeriod(context,owner,tools,input));
+                run("path-consumer",()=>PathConsumer(context,owner,host,tools,input));
+                run("yoyo",()=>YoyoWallInput(context,owner,host,combat,tools,input));
+                run("ground-summon",()=>GroundSummonAttack(context,owner,tools,input));
+                run("prediction-boundary",()=>PredictionBoundary(context,owner,host,combat,tools,input));
+                run("prism-source",()=>PrismSource(context,owner,host,combat,tools,input));
+                if(failures.Count>0)
+                {
+                    Console.WriteLine("EXPERIMENT GROUP FAILURES="+failures.Count+"; original assertions and stacks retained above.");
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+                }
                 Console.WriteLine("PASS hidden experiments: actual native steering, terrain, beam, timing and basic prediction boundary; isolated components.");
             }
             finally{Save(owner,0);NativeCombatObservationChecks.Save(host,new ObservationOptions());foreach(var p in Main.projectile)p.active=false;}
@@ -94,7 +121,9 @@ namespace NativeWorldTextProbe
             var ordinary=Shot(14,new Vector2(600,646),new Vector2(80,0));for(int i=0;i<8 && ordinary.active;i++)ordinary.HandleMovement(ordinary.velocity);
             Require(!ordinary.active || ordinary.position.X<640,"vanilla real bullet cannot pass solid wall");
             Save(owner,4);var p=Shot(14,new Vector2(600,646),new Vector2(80,0));
-            World(owner,()=>{for(int i=0;i<8 && p.active;i++)p.HandleMovement(p.velocity);});Require(p.active && p.position.X>=680 && p.tileCollide,"real movement passes wall with native tileCollide field intact");
+            float nativeBirthSpeed=p.velocity.Length();World(owner,()=>{for(int i=0;i<8 && p.active;i++)p.HandleMovement(p.velocity);});
+            Console.WriteLine("EXPERIMENT MOVEMENT nativeBirthSpeed="+nativeBirthSpeed+" eightMovementConsumers position="+p.position+" active="+p.active);
+            Require(p.active && p.position.X>=680 && p.tileCollide,"real movement passes wall with native tileCollide field intact");
             var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;target.Center=new Vector2(800,650);target.life=10000;
             p.Center=new Vector2(800,650);p.ownerHitCheck=true;p.ownerHitCheckDistance=1000;
             Require(!p.CanHitWithMeleeWeapon(target),"unscoped owner LOS remains blocked");
@@ -135,7 +164,9 @@ namespace NativeWorldTextProbe
             int slot;float x,yAim;
             Require(!sentry.AI_053_HandleSentryNPCTargeting(Vector2.Zero,false,out slot,out x,out yAim),"native sentry targeting is blocked by wall");
             Save(owner,4);World(owner,()=>Require(sentry.AI_053_HandleSentryNPCTargeting(Vector2.Zero,false,out slot,out x,out yAim) && slot==2,"native sentry targeting actually sees wall-hidden enemy"));
-            World(owner,()=>sentry.AI());Require(Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309),"actual ground sentry AI fires its native attack toward the wall-hidden receiver");
+            // Native first AI initializes a 120-tick appearance cooldown.
+            // Advance the real complete consumer; do not zero its timer.
+            World(owner,()=>{for(int tick=0;tick<=120 && !Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309);tick++)sentry.Update(sentry.whoAmI);});Require(Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309),"actual ground sentry AI fires its native attack toward the wall-hidden receiver");
             var imp=Shot(ProjectileID.FlyingImp,new Vector2(650,600),Vector2.Zero);player.impMinion=true;
             World(owner,()=>{for(int tick=0;tick<180;tick++)imp.AI();});
             Require(Main.projectile.Any(p=>p.active && p.owner==0 && p.type==ProjectileID.ImpFireball),"actual flying summon AI emits attack behind wall while owner holds a pick");

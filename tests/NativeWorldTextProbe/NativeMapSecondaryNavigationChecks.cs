@@ -29,13 +29,13 @@ namespace NativeWorldTextProbe
                         NativeQuickItemChecks.Until(()=>{library.Poll();return library.Loaded;});
                         const string id="00000000000000000000000000000071";
                         long create=library.Create(new MarkerRecord(id,50,60,8,"原名"));NativeQuickItemChecks.Until(()=>{library.Poll();return library.LastOperation==create;});
-                        gesture.Frame(0,0);gesture.Frame(0,0);gesture.Open(2);gesture.Click(gesture.Find("MarkerManage"));Call(shell,"AfterUpdate");
+                        gesture.Frame(0,0);gesture.Frame(0,0);gesture.Open(2);Click(gesture,state,input,host,popup,"MarkerManage");Call(shell,"AfterUpdate");Trace(gesture,state,input,host,popup,"after-prepare");
                         Require((bool)Get(popup,"Visible") && (int)Get(popup,"mode")==1,"actual Shell manage entry opens original popup");
                         Require(workspace.BeginEdit(id),"real workspace admits marker edit");workspace.Editor.SelectAll();workspace.Editor.Insert("可靠草稿");Call(shell,"AfterUpdate");
                         storage.Fail=outcome==1;storage.Entered.Reset();storage.Release.Reset();
                         var entry=gesture.Find("ExplorationDetails");gesture.Point(entry);
                         Require(!(bool)Call(popup,"ContainsPointer",gesture.X,gesture.Y),"switch entry is visible and uncovered in the real prepared geometry");
-                        gesture.Click(entry);
+                        Click(gesture,state,input,host,popup,"ExplorationDetails");
                         Require(storage.Entered.Wait(3000) && library.Busy && workspace.Editor!=null && (int)Get(popup,"mode")==1,"complete real entry accepts save while retaining old popup and draft");
                         if(outcome==2){Set(input,"foregroundWindow",(Func<IntPtr>)(()=>IntPtr.Zero));Call(input,"BeginUpdate");Call(shell,"CancelForFocusLoss");}
                         if(outcome==3){Call(shell,"CloseAndSubmitPosition");gesture.Open(9);}
@@ -59,6 +59,19 @@ namespace NativeWorldTextProbe
             }
             finally{Set(text,"ime",oldIme);Call(shell,"CloseAndSubmitPosition");}
             Console.WriteLine("PASS real Shell marker entry -> blocked save -> empty outer runtime completion: one switch, failure retains draft, focus/departure late receipts stay retired.");
+        }
+        private static void Click(NativeHiddenEntryChecks.Gesture gesture,object state,object input,object host,object popup,string command)
+        {
+            var entry=gesture.Find(command);var rect=Get(entry,"Rect");var view=Get(Get(state,"Layout"),"Viewport");
+            Call(state,"ScrollTo",Math.Max(0,(float)Get(rect,"Bottom")-(float)Get(view,"Height")+4));gesture.Point(entry);
+            Trace(gesture,state,input,host,popup,command+"-before");
+            gesture.Sample(false);gesture.Sample(true);Trace(gesture,state,input,host,popup,command+"-press");
+            gesture.Sample(true);gesture.Sample(false);Trace(gesture,state,input,host,popup,command+"-release");
+        }
+        private static void Trace(NativeHiddenEntryChecks.Gesture gesture,object state,object input,object host,object popup,string stage)
+        {
+            var layout=Get(state,"Layout");var hit=Call(state,"HitButton",gesture.X-(float)Get(state,"X"),gesture.Y-(float)Get(state,"Y"));var armed=GetOptional(state,"armed");
+            Console.WriteLine("MAP ENTRY "+stage+" focused="+Get(input,"IsFocused")+" sample="+Get(input,"SampleFocused")+" usable="+Get(input,"CanUseInput")+" nativeTransition="+Get(input,"NativeUiTransitionRequest")+" hotkeyOwner="+Get(input,"HotkeyPointerOwned")+" page="+Get(state,"Page")+" ready="+Get(state,"Ready")+" visible="+Get(state,"Visible")+" present="+Get(gesture.Shell,"CanPresentNow")+" controls="+Get(host,"ControlsEnabled")+" matches="+Call(layout,"Matches",960f,640f,1f,Get(state,"Page"))+" generation="+Get(layout,"Generation")+" pointer="+gesture.X+","+gesture.Y+" scroll="+Get(state,"Scroll")+" hit="+(hit==null?"none":Get(hit,"Command"))+" armed="+(armed==null?"none":Get(armed,"Command"))+" command="+Get(state,"Command")+" left="+Get(input,"RawMouseLeft")+" tail="+Get(state,"ConsumeLeft")+" blocked="+Get(state,"PointerBlocked")+" popup="+Get(popup,"Visible")+" mode="+Get(popup,"mode"));
         }
         private sealed class Storage:IPreferenceStorage
         {
