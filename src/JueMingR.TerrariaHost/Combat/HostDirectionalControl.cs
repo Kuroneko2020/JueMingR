@@ -12,7 +12,9 @@ namespace JueMingR.TerrariaHost.Combat
     {
         internal static bool Handles(int type){return type==595 || type==735 || type==697 || type==707 || type==1117;}
         internal static Vector2 Cursor(Player player,Vector2 point)
-        {var screen=point-Main.screenPosition;if(player.gravDir==-1)screen.Y=Main.screenHeight-screen.Y;return new Vector2((int)screen.X+Main.screenPosition.X,player.gravDir==-1?Main.screenPosition.Y+Main.screenHeight-(int)screen.Y:Main.screenPosition.Y+(int)screen.Y);}
+        {return Cursor(player,point,Main.screenPosition,Main.screenHeight);}
+        internal static Vector2 Cursor(Player player,Vector2 point,Vector2 screenPosition,int screenHeight)
+        {var screen=point-screenPosition;if(player.gravDir==-1)screen.Y=screenHeight-screen.Y;return new Vector2((int)screen.X+screenPosition.X,player.gravDir==-1?screenPosition.Y+screenHeight-(int)screen.Y:screenPosition.Y+(int)screen.Y);}
         internal static bool Weapon(Player player,Item item){return item!=null && Handles(item.shoot) && !(item.type==3858 && player.altFunctionUse==2);}
         internal static bool Pending(Player player,Projectile shot)
         {

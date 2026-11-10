@@ -18,23 +18,32 @@ namespace JueMingR.TerrariaHost.Combat
             internal bool Valid(Projectile parent){return Shot.active && Shot.key.Equals(Key) && Parent.Equals(parent.key) && ((ProjectileKey)Shot.ai[1]).Equals(parent.key) && Shot.owner==parent.owner;}
         }
         internal static AttackContact Solve(Player player,Projectile parent,List<Child> children,Vector2 aim,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out Child receipt)
-        {return SolvePrepared(player,parent,children,aim,timeline,clock,terrain,out receipt,HostAttackPlayerFrame.Capture(player,timeline));}
-        internal static AttackContact SolvePrepared(Player player,Projectile parent,List<Child> children,Vector2 aim,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out Child receipt,HostAttackPlayerFrame frame)
+        {HostPrismSteering.ViewLease view;return SolvePrepared(player,parent,children,aim,timeline,clock,terrain,out receipt,HostAttackPlayerFrame.Capture(player,timeline),out view);}
+        internal static AttackContact SolvePrepared(Player player,Projectile parent,List<Child> children,Vector2 aim,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out Child receipt,HostAttackPlayerFrame frame,out HostPrismSteering.ViewLease viewLease,HostPrismSteering.Camera? preparedCamera=null)
         {
-            int age=clock.Age;receipt=null;
+            int age=clock.Age;receipt=null;viewLease=default(HostPrismSteering.ViewLease);
             if(children.Count==0 || !player.channel)return null;
             var receives=new HostAttackReceive[children.Count];for(int i=0;i<receives.Length;i++)receives[i]=HostAttackReceive.Capture(player,children[i].Shot,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
             Vector2 direction=parent.velocity.SafeNormalize(Vector2.UnitY),mounted=player.RotatedRelativePoint(player.MountedCenter),armOffset=player.GetArmPosition()-mounted;
             var motion=frame.Motion;var environment=frame.Environment;var body=(Player)copy.Invoke(player,null);
             var lengths=new float[children.Count];for(int i=0;i<lengths.Length;i++)lengths[i]=children[i].Shot.localAI[1];
             var fees=new HostAttackResources.FeeClock(player,parent);
+            var camera=parent.type==633?preparedCamera??new HostPrismSteering.Camera(player):default(HostPrismSteering.Camera);
             bool scannedRay=false;Vector2 scannedOrigin=default(Vector2),scannedUnit=default(Vector2),firstInput=aim;float scannedLength=0;
             for(int step=0;step<120 && clock.FirstTick+step<timeline.Count;step++)
             {
+                // A Draw between actions reads the PREVIOUS completed pose.
+                // Projectiles/BeforeNpc action0 still reads the existing live
+                // viewport. CompletedWorld action0 belongs to the next player.
+                if(parent.type==633)
+                {
+                    if(clock.MovePlayer(step) && !camera.Next(body)){viewLease=new HostPrismSteering.ViewLease(camera,clock.NextWorld || clock.LaunchDelay>0,true);return null;}
+                    if(step==0)viewLease=new HostPrismSteering.ViewLease(camera,clock.NextWorld || clock.LaunchDelay>0);
+                }
                 // The player's movement is already complete at action sampling;
                 // a completed-world preparation predicts the next player's step.
                 if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
-                HostAttackPlayerFrame.ApplyPose(body,motion);Vector2 origin=body.RotatedRelativePoint(body.MountedCenter);armOffset=body.GetArmPosition()-origin;
+                HostAttackPlayerFrame.ApplyPose(body,motion);if(parent.type==633)body.gfxOffY=motion.GfxOffset;Vector2 origin=body.RotatedRelativePoint(body.MountedCenter);armOffset=body.GetArmPosition()-origin;
                 // 633 consumes feedback, not a compensating world point held
                 // forever. Re-evaluate the same controller at each trusted
                 // target slice and predicted holder pose. The loop's timeline
@@ -43,9 +52,9 @@ namespace JueMingR.TerrariaHost.Combat
                 if(parent.type==633)
                 {
                     var bounds=timeline[clock.FirstTick+step].ProjectileReceiveBounds;
-                    input=HostPrismSteering.Point(origin,direction,new Vector2(bounds.CenterX,bounds.CenterY),body.gravDir);
+                    input=HostPrismSteering.PointInView(origin,direction,new Vector2(bounds.CenterX,bounds.CenterY),body.gravDir,camera.View);
                     if(step==0)firstInput=input;
-                    input=HostDirectionalControl.Cursor(body,input);
+                    input=HostDirectionalControl.Cursor(body,input,camera.View.Position,camera.View.Height);
                 }
                 Vector2 requested=(input-origin).SafeNormalize(parent.type==633?-Vector2.UnitY:Vector2.UnitY);
                 float phase;bool readsDirection;if(!fees.Advance(out phase,out readsDirection))return null;

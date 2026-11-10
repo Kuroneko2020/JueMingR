@@ -22,6 +22,7 @@ namespace NativeWorldTextProbe
             {
                 string leaf=Environment.GetEnvironmentVariable("JMR_COMBAT_INTEGRATION_ONLY");
                 if(leaf=="prism-follow"){NativeCombatPrismFollowChecks.Run(context);NativeCombatBeamChecks.RunPrism(context);return;}
+                if(leaf=="prism-viewport"){NativeCombatPrismFollowChecks.RunViewport(context);return;}
                 if(leaf=="prism-birth-outlet"){NativeCombatBirthJitChecks.RunOutlet(context);return;}
                 if(leaf=="birth-grand"){NativeBlueprintBuildChecks.RunConstruction(context,false,"BirthOutlet");return;}
                 if(leaf=="prism-prejit")

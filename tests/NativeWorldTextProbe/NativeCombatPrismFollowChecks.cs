@@ -30,6 +30,10 @@ namespace NativeWorldTextProbe
         private static bool shadowReady;
         private static double workTotal,workMax;private static int worldSteps,budgetStops;
         private static readonly List<Sample> samples=new List<Sample>();
+        private static bool viewportCase,frozenWouldExit,clearLineSeen;
+        private static AttackContact sealedContact;private static long sealedAbsolute,firstStrike;
+        private static Vector2 sealedScreen,sealedOrigin;private static float sealedZoom;private static int sealedKey;
+        private static Projectile damageSource;
         private static void BeforeOuter(Projectile __instance)
         {if(withdraw && __instance.type==633 && __instance.owner==Main.myPlayer)Call(control,"ResetPreparation");}
         private static void BeforeNative(Projectile __instance,out Sample __state)
@@ -43,6 +47,7 @@ namespace NativeWorldTextProbe
             var cursor=Main.screenPosition+new Vector2(Main.mouseX,Main.mouseY);if(p.gravDir==-1)cursor.Y=Main.screenPosition.Y+Main.screenHeight-Main.mouseY;
             __state=new Sample{Origin=p.RotatedRelativePoint(p.MountedCenter),Before=__instance.velocity,Cursor=cursor,Target=n.Center+n.netOffset,Stage=stage,Kind=Get(input,"Kind").ToString(),Semantics=Get(input,"PointSemantics").ToString(),Key=(int)__instance.key,Slot=identity.Slot,Speed=p.velocity.Length()};
             Require(((IDictionary)Get(control,"shots")).Contains(__state.Key),"the moving controller retains its original full source identity");
+            if(viewportCase)ObserveViewport(__instance,__state);
         }
         private static void AfterNative(Projectile __instance,Sample __state)
         {
@@ -54,7 +59,9 @@ namespace NativeWorldTextProbe
             if(!shadowReady){shadow=s.Before.SafeNormalize(Vector2.UnitY);shadowReady=true;}
             shadow=Vector2.Normalize(Vector2.Lerp(desired,shadow,.92f));s.OldError=Angle(desired,shadow);samples.Add(s);
         }
-        internal static void Run(object value)
+        internal static void Run(object value){RunCore(value,false);}
+        internal static void RunViewport(object value){RunCore(value,true);}
+        private static void RunCore(object value,bool viewport)
         {
             context=value;var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");attack=Get(combat,"Attack");control=Get(attack,"Control");var input=Get(context,"Input");
             NativeCombatObservationChecks.Save(host,new ObservationOptions());NativeCombatCadenceChecks.Save(combat,new CombatOptions());
@@ -62,14 +69,20 @@ namespace NativeWorldTextProbe
             p.statMana=p.statManaMax=p.statManaMax2=200;p.inventory[54].SetDefaults(499);p.inventory[54].stack=999;
             var oldBoots=p.armor[3];var oldFlower=p.armor[4];var oldLight=p.armor[5];p.armor[3]=new Item();p.armor[3].SetDefaults(54);p.armor[4]=new Item();p.armor[4].SetDefaults(555);p.armor[5]=new Item();p.armor[5].SetDefaults(5107);
             for(int x=115;x<Main.maxTilesX-1;x++)NativeToolsChecks.Tile(x,43,1);
-            Main.screenPosition=new Vector2(400,200);
+            var world=new CameraWorld(viewport?4f:1.25f);
             NPC dummy=null;
-            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,false,false,true,50,false,false));
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,viewport,false,true,50,false,false));
             Call(host,"Set",6,true);var settings=Get(host,"Settings");NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !(bool)Get(settings,"Busy");});Require((bool)Get(settings,"CompletionSucceeded"),"real aim Set commits");
             var audit=new Harmony("JueMingR.Tests.PrismFollow");
             audit.Patch(typeof(Projectile).GetMethod("AI",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(BeforeOuter)){priority=Priority.First},transpiler:new HarmonyMethod(typeof(NativeCombatBeamChecks).GetMethod("RippleOutlet",Flags)));
             audit.Patch(typeof(Projectile).GetMethod("AI_075",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(BeforeNative)),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(AfterNative)));
+            if(viewport)
+            {
+                audit.Patch(typeof(Projectile).GetMethod("Damage",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(BeforeDamage)),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(AfterDamage)));
+                audit.Patch(typeof(NPC).GetMethod("StrikeNPC",Flags,null,new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)},null),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(Strike)));
+            }
             samples.Clear();shadowReady=false;withdraw=false;stage="stationary";workTotal=workMax=0;worldSteps=budgetStops=0;
+            viewportCase=viewport;sealedContact=null;firstStrike=-1;frozenWouldExit=clearLineSeen=false;
             try
             {
                 // The fixed CPU world is only 120 tiles wide. Native borders
@@ -84,6 +97,7 @@ namespace NativeWorldTextProbe
                 // owner before the first real Shoot; keep moving naturally.
                 for(int i=0;i<2;i++)Step(false,1);for(int i=0;i<12;i++)Step(true,1);
                 var parent=Main.projectile.Single(q=>q.active && q.owner==p.whoAmI && q.type==633);int key=(int)parent.key;
+                if(viewport){FinishViewport(parent,host,p);return;}
                 Console.WriteLine("PRISM FOLLOW measured-run entry player="+p.position+" velocity="+p.velocity+" maxRun="+p.maxRunSpeed+" accRun="+p.accRunSpeed+" acceleration="+p.runAcceleration+" dummy="+dummy.Center+" active="+dummy.active+" distance="+Vector2.Distance(p.Center,dummy.Center)+" radiusTiles="+((ObservationOptions)Get(host,"Options")).Radius);
                 stage="holder-run";for(int i=0;i<120;i++)Step(true,1);
                 var moving=samples.Where(s=>s.Stage=="holder-run" && s.Speed>=5).ToArray();
@@ -111,20 +125,120 @@ namespace NativeWorldTextProbe
             finally
             {
                 withdraw=false;audit.UnpatchAll(audit.Id);p.armor[3]=oldBoots;p.armor[4]=oldFlower;p.armor[5]=oldLight;p.gravDir=1;
-                NativeCombatObservationChecks.Save(host,new ObservationOptions());for(int i=0;i<8;i++)Step(false,0);context=control=attack=null;
+                viewportCase=false;damageSource=null;
+                try{NativeCombatObservationChecks.Save(host,new ObservationOptions());for(int i=0;i<8;i++)Step(false,0);}
+                finally{world.Dispose();context=control=attack=null;}
             }
         }
         private static void Step(bool held,int movement)
         {
-            // The actual local holder remains in the client viewport as in a
-            // normal following camera, rather than running out of a frozen
-            // fixture camera and invalidating the new legal mouse-ray premise.
-            Main.screenPosition=Main.LocalPlayer.Center-new Vector2(Main.screenWidth/2f,Main.screenHeight/2f);
+            // The preceding world's Draw already established the viewport.
+            // Original Main runs Player/NPC/projectiles BEFORE this world's
+            // DoDraw_UpdateCameraPosition; do not centre after Player.Update.
             var host=Get(context,"CombatObservation");var combat=Get(context,"Combat");var physical=Main.screenPosition+new Vector2(Main.screenWidth*.25f,Main.screenHeight*.25f);NativeToolExecutionChecks.Sample(context,Get(context,"Input"),physical,held,movement);Call(combat,"Sample");Call(host,"SampleMouse");int x=Main.mouseX,y=Main.mouseY;
             NativeQuickItemChecks.BeginWorldStep();Main.LocalPlayer.Update(0);foreach(var n in Main.npc)if(n.active)n.UpdateNPC(n.whoAmI);
             for(int i=0;i<Main.maxProjectiles;i++)if(Main.projectile[i].active){Main.ProjectileUpdateLoopIndex=i;Main.projectile[i].Update(i);}Main.ProjectileUpdateLoopIndex=-1;
             Call(context,"UpdateRuntime");Call(context,"UpdateShell");Require(Main.mouseX==x && Main.mouseY==y,"normal native chain returns the physical mouse");
             var work=Get(host,"PredictionWork");double used=Convert.ToDouble(Get(work,"UsedMilliseconds"));workTotal+=used;workMax=Math.Max(workMax,used);worldSteps++;if((bool)Get(work,"Exceeded"))budgetStops++;
+            DrawCamera();
+            if(viewportCase && sealedContact!=null && firstStrike<0)
+            {
+                var focus=Main.PlayerFocusedScreenPosition();
+                Require(Main.screenPosition==new Vector2((int)focus.X,(int)focus.Y),"the sealed long positive stays in the actual normal following branch before first native receive, rather than accidentally reaching a world clamp");
+            }
+        }
+        private static void DrawCamera(){typeof(Main).GetMethod("DoDraw_UpdateCameraPosition",Flags).Invoke(null,null);}
+        private sealed class CameraWorld:IDisposable
+        {
+            private readonly float left=Main.leftWorld,right=Main.rightWorld,top=Main.topWorld,bottom=Main.bottomWorld,x=Main.cameraX,y=Main.cameraY;
+            private readonly Vector2 screen=Main.screenPosition,zoom=Main.GameViewMatrix.Zoom,pan=Main.CurrentPan;
+            private readonly Main instance=Main.instance;private readonly Terraria.Graphics.CameraModifiers.CameraModifierStack modifiers;
+            private readonly object lerp=typeof(Main).GetField("cameraLerp",Flags).GetValue(null);
+            internal CameraWorld(float renderZoom)
+            {
+                // The existing finite tile domain [0,1920] is this CPU scene's
+                // play area; native WorldUtils still removes its real 640px
+                // outer border. Both native BordersMovement and our predictor
+                // read these fixed world facts. No per-action border changes.
+                Main.leftWorld=Main.topWorld=-640;Main.rightWorld=Main.maxTilesX*16+640;Main.bottomWorld=Main.maxTilesY*16+640;
+                Main.CurrentPan=Vector2.Zero;Main.cameraX=Main.cameraY=0;typeof(Main).GetField("cameraLerp",Flags).SetValue(null,0f);
+                if(Main.instance==null){Main.instance=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));GC.SuppressFinalize(Main.instance);}
+                modifiers=Main.instance.CameraModifiers;Main.instance.CameraModifiers=new Terraria.Graphics.CameraModifiers.CameraModifierStack();Main.GameViewMatrix.Zoom=new Vector2(renderZoom);DrawCamera();
+            }
+            public void Dispose()
+            {
+                Main.leftWorld=left;Main.rightWorld=right;Main.topWorld=top;Main.bottomWorld=bottom;Main.cameraX=x;Main.cameraY=y;Main.CurrentPan=pan;Main.GameViewMatrix.Zoom=zoom;Main.screenPosition=screen;typeof(Main).GetField("cameraLerp",Flags).SetValue(null,lerp);
+                Main.instance.CameraModifiers=modifiers;Main.instance=instance;
+            }
+        }
+        private static void BeforeDamage(Projectile __instance,out Projectile __state){__state=damageSource;damageSource=__instance;}
+        private static void AfterDamage(Projectile __state){damageSource=__state;}
+        private static void Strike(NPC __instance)
+        {
+            if(viewportCase && sealedContact!=null && firstStrike<0 && __instance.whoAmI==2 && damageSource?.type==632 && (int)(Terraria.DataStructures.ProjectileKey)damageSource.ai[1]==sealedKey)
+            {firstStrike=Main.GameUpdateCount;Console.WriteLine("PRISM VIEWPORT first native632 Strike absolute="+firstStrike+" parentKey="+sealedKey+" childKey="+damageSource.key+" expected="+sealedAbsolute);}
+        }
+        private static void ObserveViewport(Projectile parent,Sample sample)
+        {
+            var host=Get(context,"CombatObservation");clearLineSeen|=(bool)Get(Get(host,"Selection"),"ClearLine");
+            if(sealedContact==null && parent.ai[0]>=1 && parent.ai[0]<=8)
+            {
+                var contact=GetOptional(attack,"ExpectedImpact") as AttackContact;
+                if(contact!=null)
+                {
+                    Require(contact.Timeline.SampleTick+contact.Tick>=Main.GameUpdateCount+20,"the sealed positive really needs a long future displacement before first receive");
+                    sealedContact=contact;sealedAbsolute=contact.Timeline.SampleTick+contact.Tick;sealedScreen=Main.screenPosition;sealedOrigin=sample.Origin;sealedZoom=Main.GameViewMatrix.RenderZoom.X;sealedKey=(int)parent.key;
+                    Console.WriteLine("PRISM VIEWPORT seal GUC="+Main.GameUpdateCount+" phase="+Get(control,"preparedPhase")+" charge="+parent.ai[0]+" sample="+contact.Timeline.SampleTick+" tick="+contact.Tick+" receive="+contact.ReceiveTick+" target="+contact.Timeline.Identity.Slot+" key="+sealedKey+" view="+sealedScreen+" zoom="+sealedZoom+" playArea="+Terraria.WorldBuilding.WorldUtils.GetWorldPlayArea());
+                    var preview=Call(control,"Preview",contact.Timeline,Get(control,"preparedPhase"),0,false) as AttackContact;
+                    Require(preview!=null && (bool)Call(control,"PreviewCurrent",preview),"the same positive Contact reaches its actual read-only controller preview consumer");
+                    var registry=(IDictionary)Get(control,"shots");var entry=registry[(int)parent.key];var z=Main.GameViewMatrix.Zoom;
+                    try{Main.GameViewMatrix.Zoom=z*.9f;Require(GetOptional(attack,"ExpectedImpact")==null && !(bool)Call(control,"PreviewCurrent",preview) && (bool)Get(entry,"HasPoint") && registry.Contains((int)parent.key),"same-GUC viewport mutation withdraws only stale contact/preview, preserving the current point and source");}
+                    finally{Main.GameViewMatrix.Zoom=z;}
+                }
+            }
+            if(sealedContact!=null && firstStrike<0)
+            {
+                var relative=sample.Origin-sealedScreen;float cx=Main.screenWidth/2f,cy=Main.screenHeight/2f;
+                frozenWouldExit|=relative.X<cx+(1-cx)/sealedZoom || relative.X>cx+(Main.screenWidth-2-cx)/sealedZoom || relative.Y<cy+(1-cy)/sealedZoom || relative.Y>cy+(Main.screenHeight-2-cy)/sealedZoom;
+            }
+        }
+        private static void FinishViewport(Projectile parent,object host,Player p)
+        {
+            Require(sealedContact!=null,"normal following camera produces a nonempty early frozen Contact under the existing budget");
+            for(int i=0;i<80 && firstStrike<0;i++)Step(true,1);
+            Console.WriteLine("PRISM VIEWPORT joint expected="+sealedAbsolute+" actual="+firstStrike+" frozenViewWouldExit="+frozenWouldExit+" originDisplacement="+(p.RotatedRelativePoint(p.MountedCenter)-sealedOrigin)+" clearLinePositive="+clearLineSeen);
+            Require(firstStrike==sealedAbsolute && frozenWouldExit && clearLineSeen,"one action-before Contact matches the later first actual632 receive with enough motion to break the old frozen view; ClearLine stays model-positive");
+            var timeline=Get(control,"preparedTimeline");var completed=Enum.Parse(Get(control,"preparedPhase").GetType(),"CompletedWorld");
+            Main.CurrentPan=new Vector2(20,0);
+            try
+            {
+                Require(Call(control,"Preview",timeline,completed,0,false)==null && (bool)Get(control,"PreviewFutureUnknown"),"observed unsupported pan marks only its future preview tail unknown");
+                Step(true,1);Require(((IDictionary)Get(control,"shots")).Contains((int)parent.key),"actual current consumer remains registered and executes through unsupported future pan");
+            }
+            finally{Main.CurrentPan=Vector2.Zero;}
+            Step(true,1);Require(Call(control,"Preview",Get(control,"preparedTimeline"),completed,0,false)!=null,"normal camera supports a positive again after the local unknown ends");
+            // Finish this source before setting up a separate fixed boundary
+            // scene; never move a boundary to clamp a running test actor.
+            viewportCase=false;for(int i=0;i<8;i++)Step(false,0);EdgeViewport(host,p);
+            Console.WriteLine("PASS prism future viewport: real Draw phase, sealed long positive/first native632 Strike, ClearLine/preview, scoped unknown/recovery, fixed world-edge clamp");
+        }
+        private static void EdgeViewport(object host,Player p)
+        {
+            var combat=Get(context,"Combat");NativeCombatObservationChecks.Save(host,new ObservationOptions());
+            p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),3541,0,0);p.position=new Vector2(1300,688-p.height);p.releaseUseItem=true;p.statMana=p.statManaMax=p.statManaMax2=200;
+            Main.rightWorld=p.position.X+p.width+100+640;Main.CurrentPan=Vector2.Zero;ElevatedDummy(2,(int)((p.Center.X-200-16)/16));
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,false,false,true,50,false,true));DrawCamera();for(int i=0;i<2;i++)Step(false,0);Step(true,0);
+            var assembly=combat.GetType().Assembly;var cameraType=assembly.GetType("JueMingR.TerrariaHost.Combat.HostPrismSteering+Camera",true);var steering=assembly.GetType("JueMingR.TerrariaHost.Combat.HostPrismSteering",true);
+            var camera=Activator.CreateInstance(cameraType,Flags,null,new object[]{p},null);var fixedView=Main.screenPosition;float start=p.position.X;
+            for(int i=0;i<38;i++)
+            {
+                Step(true,1);Require((bool)Call(camera,"Next",p),"fixed native world edge remains a supported camera branch");
+                Require((Vector2)Get(Get(camera,"View"),"Position")==Main.screenPosition && Main.screenPosition==fixedView,"predicted view agrees with actual native Draw clamp while the player moves relative to it");
+            }
+            var origin=p.RotatedRelativePoint(p.MountedCenter);var logical=origin+Vector2.UnitX*400;
+            var live=(Vector2)Static(steering,"Point",origin,Vector2.UnitX*30,logical,p.gravDir);
+            var predicted=(Vector2)Static(steering,"PointInView",origin,Vector2.UnitX*30,logical,p.gravDir,Get(camera,"View"));
+            Require(p.position.X>start+50 && live==logical && predicted==live,"real short ray at the fixed edge keeps the same logical-point fallback in live and predicted view, rather than eternally centring the holder");
         }
         private static NPC ElevatedDummy(int slot,int x)
         {

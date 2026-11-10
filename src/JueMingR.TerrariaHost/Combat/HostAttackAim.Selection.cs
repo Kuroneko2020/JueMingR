@@ -395,7 +395,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // Keep that causal stage unresolved until its family solver
                 // provides a contact; a genuine despawn still closes the tail.
                 bool positive=PlanPositive(plan);
-                candidateUnknown[key]=plan.Balanced?plan.Solution.Reachability==HostAttackReachability.Unknown:contact==null && (timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && (timeline.Count<=NpcPredictionCache.Horizon || HasOwnMeleeHitFamily(combat.Player.HeldItem)));
+                candidateUnknown[key]=plan.Balanced?plan.Solution.Reachability==HostAttackReachability.Unknown:contact==null && (combat.Player.HeldItem.shoot==633 && Control.PreviewFutureUnknown || timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && (timeline.Count<=NpcPredictionCache.Horizon || HasOwnMeleeHitFamily(combat.Player.HeldItem)));
                 plan.MotionTerrain=null;plan.MotionSource=null;
                 // Seal only a completed positive before another candidate can
                 // replace the producing owner's cells. This bounded copy ends

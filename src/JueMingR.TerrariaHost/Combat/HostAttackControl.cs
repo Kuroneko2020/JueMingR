@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal HostAttackControl Owner;internal Source Source;internal ShotReceipt Previous;internal CombatCursorScope Cursor;internal bool Ended;internal HostAttackPhase Phase;internal ulong BirthCutoff;
         }
         private sealed class Controlled
-        {internal Projectile Shot;internal int Key,Type,SelectedLife,RequiredRange=16,PhoenixCounter;internal Source Source;internal AttackContact Contact,NextKillContact,AlternateKillContact,AlternateNextKillContact;internal HostAttackSolution Solution;internal Vector2 HeldOwnerCenter;internal float HeldScale,HeldRotation,HeldGravity;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint,BornNext,ManagedYoyo,YoyoEnhanced;internal Vector2 YoyoPoint;internal AttackAmmoSnapshot Ammo;internal HostAttackObstacles Obstacles,AlternateKillObstacles;internal uint Prepared,Born;internal ulong BirthOrdinal;internal NpcIdentity Target,RangeTarget;internal HostYoyoNavigation Navigation,PreviewNavigation;internal HostBeamAttack.Child ContactChild;internal List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
+        {internal HostPrismSteering.ViewLease PrismView;internal Projectile Shot;internal int Key,Type,SelectedLife,RequiredRange=16,PhoenixCounter;internal Source Source;internal AttackContact Contact,NextKillContact,AlternateKillContact,AlternateNextKillContact;internal HostAttackSolution Solution;internal Vector2 HeldOwnerCenter;internal float HeldScale,HeldRotation,HeldGravity;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint,BornNext,ManagedYoyo,YoyoEnhanced;internal Vector2 YoyoPoint;internal AttackAmmoSnapshot Ammo;internal HostAttackObstacles Obstacles,AlternateKillObstacles;internal uint Prepared,Born;internal ulong BirthOrdinal;internal NpcIdentity Target,RangeTarget;internal HostYoyoNavigation Navigation,PreviewNavigation;internal HostBeamAttack.Child ContactChild;internal List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
         private readonly HostCombat combat;private readonly HostCombatObservation observation;
         private readonly Dictionary<int,Controlled> shots=new Dictionary<int,Controlled>();
         private readonly List<int> retired=new List<int>(64);
@@ -335,7 +335,7 @@ namespace JueMingR.TerrariaHost.Combat
             {Retire(entry);if(phase==HostAttackPhase.Projectiles && HostHeldAttack.Consumes(combat.Player,entry.Shot))SolveEntry(entry,timeline,phase,terrain,combat.Player);return;}
             if(entry.ManagedYoyo && !combat.Use.ManagedAttackIntent(combat.Player))entry.ManagedYoyo=false;if(entry.ManagedYoyo){entry.Prepared=Main.GameUpdateCount;entry.Target=timeline.Identity;return;}SolveEntry(entry,timeline,phase,terrain,combat.Player,yoyoGroup:yoyoGroup);
         }
-        private static void SolveEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase,PredictionTerrain terrain,Player player,int delay=0,HostAttackPlayerFrame? preparedPlayer=null,HostYoyoNavigation.GroupFacts yoyoGroup=null,bool beforeProjectilePass=false)
+        private static void SolveEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase,PredictionTerrain terrain,Player player,int delay=0,HostAttackPlayerFrame? preparedPlayer=null,HostYoyoNavigation.GroupFacts yoyoGroup=null,bool beforeProjectilePass=false,HostPrismSteering.Camera? prismCamera=null)
         {
             if(entry.BornNext && entry.Born==Main.GameUpdateCount && phase==HostAttackPhase.Projectiles)phase=HostAttackPhase.CompletedWorld;
             var clock=new HostAttackClock(timeline,phase,delay,beforeProjectilePass);int age=clock.Age;if(age<0 || age>1+delay || clock.FirstTick>=timeline.Count)return;
@@ -367,7 +367,7 @@ namespace JueMingR.TerrariaHost.Combat
                     entry.HeldOwnerCenter=player.RotatedRelativePoint(player.MountedCenter);entry.HeldScale=entry.Shot.scale;entry.HeldRotation=player.fullRotation;entry.HeldGravity=player.gravDir;
                 }
                 else {entry.Contact=HostHeldAttack.SolvePrepared(player,entry.Shot,timeline,clock,terrain,out entry.Point,out entry.Ammo,out entry.Obstacles,playerFrame);entry.HasPoint=!HostFlailAttack.Handles(entry.Type) || player.channel || entry.Contact!=null;}
-                if(entry.Type==633 || entry.Type==460)entry.Contact=HostBeamAttack.SolvePrepared(player,entry.Shot,entry.Children,entry.Point,timeline,clock,terrain,out entry.ContactChild,playerFrame);
+                if(entry.Type==633 || entry.Type==460)entry.Contact=HostBeamAttack.SolvePrepared(player,entry.Shot,entry.Children,entry.Point,timeline,clock,terrain,out entry.ContactChild,playerFrame,out entry.PrismView,prismCamera);
             }
             if(entry.Type==444)
             {
@@ -474,6 +474,7 @@ namespace JueMingR.TerrariaHost.Combat
                 foreach(var entry in shots.Values)
                 {
                     var result=entry.Type==444?entry.NextKillContact:entry.Contact;
+                    if(entry.Type==633 && !entry.PrismView.Current)continue;
                     if(!Valid(entry) || entry.Obstacles!=null && !(FiniteHeld(entry.Type)?entry.Obstacles.HeldControllerUnchanged:entry.Obstacles.Unchanged) || entry.Prepared!=Main.GameUpdateCount || result==null || !entry.Target.Equals(observation.Selection.Target) || !combat.Attack.TimelineCurrent(result.Timeline))continue;
                     if(HostGuidedAttack.Handles(entry.Type) && !HostGuidedAttack.Consumes(combat.Player,entry.Shot))continue;
                     if(HostHeldAttack.Handles(entry.Type) && !HostFlailAttack.Handles(entry.Type) && !combat.Player.channel)continue;
@@ -492,6 +493,7 @@ namespace JueMingR.TerrariaHost.Combat
             // The entry reference was bound once at Capture. No registry lookup,
             // projectile pool, terrain or candidate-set scan is allowed in Draw.
             var entry=presentation;
+            if(entry?.Type==633 && !entry.PrismView.Current)return false;
             if(entry==null || !environmentState.Current || !Valid(entry) || entry.Prepared!=Main.GameUpdateCount || !ReferenceEquals(result,entry.Type==444?entry.NextKillContact:entry.Contact) || !entry.Target.Equals(observation.Selection.Target) || entry.Ammo!=null && !entry.Ammo.MembersMatch(combat.Player,combat.Player.HeldItem) || entry.Obstacles!=null && !entry.Obstacles.BirthInputsCurrent)return false;
             if(HostGuidedAttack.Handles(entry.Type) && !HostGuidedAttack.Consumes(combat.Player,entry.Shot))return false;
             if(HostHeldAttack.Handles(entry.Type) && !HostFlailAttack.Handles(entry.Type) && !combat.Player.channel)return false;
