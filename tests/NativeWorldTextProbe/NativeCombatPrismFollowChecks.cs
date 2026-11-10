@@ -37,6 +37,7 @@ namespace NativeWorldTextProbe
         private static Projectile damageSource;
         private static Type drawViewHooks;
         private static bool expectedImpactSeen;private static NpcIdentity? viewportIdentity;
+        private static object worldPositivePlan;private static AttackContact worldPositiveContact;private static long worldPositiveGuc,worldPositiveSample;private static int worldPositiveRequest;
         private static int beamDepth,beamMoves,lastMoves;private static PredictionStop beamStop,lastStop;private static string lastBeamError;private static AttackContact lastBeamContact;
         private static void BeforeOuter(Projectile __instance)
         {if(withdraw && __instance.type==633 && __instance.owner==Main.myPlayer)Call(control,"ResetPreparation");}
@@ -87,6 +88,7 @@ namespace NativeWorldTextProbe
                 var beam=combat.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostBeamAttack",true);
                 audit.Patch(beam.GetMethod("SolvePrepared",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(BeforeBeam)),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(AfterBeam)),finalizer:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(BeamFinal)));
                 audit.Patch(typeof(PlayerMotionContinuation).GetMethod("Advance",Flags),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(AfterMotion)));
+                audit.Patch(attack.GetType().GetMethod("EvaluateCandidate",Flags),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(WorldCandidate)));
             }
             samples.Clear();shadowReady=false;withdraw=false;stage="stationary";workTotal=workMax=0;worldSteps=budgetStops=0;
             viewportCase=viewport;sealedContact=null;firstStrike=-1;frozenWouldExit=clearLineSeen=expectedImpactSeen=false;viewportIdentity=null;beamDepth=lastMoves=0;lastStop=PredictionStop.None;lastBeamError=null;lastBeamContact=null;
@@ -148,6 +150,7 @@ namespace NativeWorldTextProbe
         }
         private static void Step(bool held,int movement)
         {
+            worldPositiveGuc=-1;worldPositivePlan=null;worldPositiveContact=null;
             // The preceding world's Draw already established the viewport.
             // Original Main runs Player/NPC/projectiles BEFORE this world's
             // DoDraw_UpdateCameraPosition; do not centre after Player.Update.
@@ -219,6 +222,12 @@ namespace NativeWorldTextProbe
         }
         private static void BeforeDamage(Projectile __instance,out Projectile __state){__state=damageSource;damageSource=__instance;}
         private static void AfterDamage(Projectile __state){damageSource=__state;}
+        private static void WorldCandidate(NpcIdentity identity,long tick,bool beforeNpc,int key,int required,bool __result)
+        {
+            if(!viewportCase || beforeNpc || identity.Slot!=2 || !__result)return;
+            worldPositiveGuc=Main.GameUpdateCount;worldPositiveSample=tick;worldPositiveRequest=required;
+            worldPositivePlan=((Array)Get(attack,"candidatePlans")).GetValue(key);worldPositiveContact=GetOptional(worldPositivePlan,"Contact") as AttackContact;
+        }
         private static void BeforeBeam(Projectile parent,out int __state)
         {__state=beamDepth;if(viewportCase && parent.type==633 && parent.ai[0]<=8){beamDepth++;if(__state==0){beamMoves=0;beamStop=PredictionStop.None;lastBeamError=null;}}}
         private static void AfterMotion(bool __result,PredictionStop stop)
@@ -264,11 +273,15 @@ namespace NativeWorldTextProbe
         {
             var parent=Main.projectile.FirstOrDefault(q=>q.active && q.owner==Main.myPlayer && q.type==633);
             if(parent==null || parent.ai[0]>12)return;
-            var plans=(Array)Get(attack,"candidatePlans");var plan=plans.GetValue(2*2);
-            if(plan==null || !(bool)Get(plan,"Prepared") || (uint)Get(plan,"PreparedTick")!=Main.GameUpdateCount || Get(plan,"Phase").ToString()!="CompletedWorld")return;
+            var plans=(Array)Get(attack,"candidatePlans");var plan=plans.GetValue(2*2);var selected=GetOptional(attack,"candidatePresentationPlan");var path=plan==null?null:GetOptional(plan,"Timeline") as NpcTrajectory;var work=Get(Get(context,"CombatObservation"),"PredictionWork");
+            // Controlled PreparePlanCore deliberately returns before ordinary
+            // Prepared/PreparedTick/Phase stamps. Freshness belongs to this
+            // actual world EvaluateCandidate return and final selected owner.
+            Console.WriteLine("PRISM VIEWPORT world gate GUC="+Main.GameUpdateCount+" charge="+parent.ai[0]+" candidates="+Get(Get(Get(context,"CombatObservation"),"Selection"),"CandidateCount")+" pass="+Get(attack,"candidateWorldPass")+" currentPositive="+(worldPositiveGuc==Main.GameUpdateCount)+" selectedSame="+ReferenceEquals(selected,plan)+" plan="+(plan==null?"null":Get(plan,"Controlled")+"/ordinaryPrepared="+Get(plan,"Prepared"))+" timeline="+(path==null?"null":path.SampleTick+"/"+path.Count)+" work="+Get(work,"UsedMilliseconds")+" exceeded="+Get(work,"Exceeded"));
+            if(plan==null || worldPositiveGuc!=Main.GameUpdateCount || !ReferenceEquals(plan,worldPositivePlan) || !ReferenceEquals(plan,selected))return;
             var contact=GetOptional(plan,"Contact") as AttackContact;
-            Console.WriteLine("PRISM VIEWPORT world candidate GUC="+Main.GameUpdateCount+" charge="+parent.ai[0]+" count="+((NpcTrajectory)Get(plan,"Timeline")).Count+" contact="+(contact==null?"null":contact.Tick.ToString())+" request="+((int[])Get(attack,"candidateRequests"))[4]);
-            if(contact==null)return;
+            Console.WriteLine("PRISM VIEWPORT world candidate GUC="+Main.GameUpdateCount+" charge="+parent.ai[0]+" sample="+worldPositiveSample+" count="+((NpcTrajectory)Get(plan,"Timeline")).Count+" contact="+(contact==null?"null":contact.Tick.ToString())+" request="+worldPositiveRequest);
+            if(contact==null || !ReferenceEquals(contact,worldPositiveContact))return;
             Require((bool)Static(attack.GetType(),"PlanPositive",plan) && (bool)Get(plan,"Controlled"),"the actual clear-line consumer publishes a positive controlled plan");
             Require(viewportIdentity.HasValue && contact.Timeline.Identity.Equals(viewportIdentity.Value),"the sealed plan belongs to the same target2 identity consumed since the actual source birth");
             Require(contact.Timeline.SampleTick+contact.Tick>=Main.GameUpdateCount+20,"the action-before world plan still requires at least twenty future native actions");
