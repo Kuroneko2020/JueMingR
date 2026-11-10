@@ -19,6 +19,18 @@ function Assert-Route {
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
 # New task leaves have one exact formal native responsibility each.
+$hoikPath='tests/NativeWorldTextProbe/NativeBlueprintHoikChecks.cs'
+$hoikConsumers=@('native-BlueprintHoikCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
+foreach($consumer in $hoikConsumers){Assert-Route (@(Get-WorkloadPathChecks $hoikPath) -contains $consumer) ('Hoik manufacturing helper includes actual consumer '+$consumer)}
+foreach($helper in @('Build','Construction','ConstructionAppearance')){
+    $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper+'Checks.cs'
+    Assert-Route (@(Get-WorkloadPathChecks $path) -contains 'native-BlueprintHoikCpu') ('shared helper includes actual Hoik caller '+$helper)
+    $route=Get-WorkloadRoute @($path)
+    Assert-Route (@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $route.groups|ForEach-Object {$_.name}) -contains 'native-BlueprintHoikCpu') ('shared helper plan contains Hoik '+$helper)
+}
+$hoikBefore=[pscustomobject]@{inputs=@($hoikPath+':A')};$hoikAfter=[pscustomobject]@{inputs=@($hoikPath+':B')}
+foreach($consumer in $hoikConsumers){Assert-Route ((Get-WorkloadCheckFingerprint $hoikBefore $consumer) -cne (Get-WorkloadCheckFingerprint $hoikAfter $consumer)) ('Hoik helper invalidates actual consumer '+$consumer)}
+Assert-Route ((Get-WorkloadCheckFingerprint $hoikBefore 'native-ViewZoomControlCpu') -ceq (Get-WorkloadCheckFingerprint $hoikAfter 'native-ViewZoomControlCpu')) 'Hoik helper preserves unrelated view proof'
 foreach($identityHelper in @('NativePlacementIdentityChecks.cs','NativeSwitchIdentityChecks.cs','NativeLegacyPlacementIdentityChecks.cs')){
     $identityPath='tests/NativeWorldTextProbe/'+$identityHelper
     Assert-Route ((@(Get-WorkloadPathChecks $identityPath) -join '|') -ceq 'native-BrowserCpu') ('private identity helper exact consumer '+$identityHelper)

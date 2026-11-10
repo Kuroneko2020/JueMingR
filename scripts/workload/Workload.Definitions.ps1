@@ -21,7 +21,7 @@ function Get-WorkloadLeafChecks {
     }
     $leaves = @{
         'tests/JueMingR.ArchitectureTests/BlueprintHoikSceneChecks.cs'=@('BlueprintHoikSceneChecks')
-        'tests/NativeWorldTextProbe/NativeBlueprintHoikChecks.cs'=@('native-BlueprintHoikCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHoikChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikMixedChecks.cs'=@('native-BlueprintHoikCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikPersistenceChecks.cs'=@('native-BlueprintHoikCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikRecoveryChecks.cs'=@('native-BlueprintHoikCpu')
@@ -78,7 +78,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintWorldChangeChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionLifecycleCpu','native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs'=@('native-BlueprintCpu','native-BlueprintInput')
-        'tests/NativeWorldTextProbe/NativeBlueprintBuildChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSubstitutionCpu','native-BlueprintCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBuildChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintBuildCadenceCpu','native-BlueprintSubstitutionCpu','native-BlueprintCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildCadenceChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPostProcessingContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBusinessContinuityChecks.cs'=@('native-BlueprintBuildCadenceCpu','native-BlueprintSupplyContinuationCpu')
@@ -89,8 +89,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintFocusDiscoveryChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintOperationGroupChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPostProcessingCadenceChecks.cs'=@('native-BlueprintBuildCadenceCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintConstructionChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintPreparationCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintConstructionAppearanceChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintConstructionChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintPreparationCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintConstructionAppearanceChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintAppearanceRestorationChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSmartPlacementRepairChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintExactChoiceRepairChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintSpecialCpu')

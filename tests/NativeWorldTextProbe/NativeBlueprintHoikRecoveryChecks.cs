@@ -12,6 +12,7 @@ namespace NativeWorldTextProbe
     {
         private static void ConstructionHoikRecovery(object context,object host,object tools,object input)
         {
+            HoikLivePickRecovery(context);
             foreach(int missing in new[]{ItemID.StoneBlock,ItemID.WoodenHammer,ItemID.CopperPickaxe})
             {
                 var p=Reset(context,host,tools,input);p.position.X=42*16;
@@ -53,6 +54,39 @@ namespace NativeWorldTextProbe
                 SetAutomatic(host,input,false);Call(host,"ClearProjection");Call(host,"SetMaterialViewDemand",false);
             }
             Console.WriteLine("PASS HoikRecovery real stone/hammer/pick pickup wakes local negative facts; no incomplete start, independent wall progresses; foreign same-looking stone ABA revokes provenance");
+        }
+        // This is the final live admission fence, before another inventory
+        // publication. A speculative tool must disappear with its actual slot;
+        // its recovery serial cannot leak into the next callback or session.
+        internal static void HoikLivePickRecovery(object context)
+        {
+            var host=Get(context,"Blueprint");var p=Main.LocalPlayer;
+            foreach(var item in p.inventory)item.TurnToAir();
+            Call(host,"ClearNearCapabilityDependencies");
+            try
+            {
+                Call(host,"BeginNearCapabilityObservation",true);Call(host,"PublishNearCapabilityObservation");
+                var operationType=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintBuildOperation",true);
+                var operation=Activator.CreateInstance(operationType,true);
+                operationType.GetField("Kind",F).SetValue(operation,Enum.Parse(operationType.GetField("Kind",F).FieldType,"HoikSwap"));
+                operationType.GetField("Hoik",F).SetValue(operation,true);
+                operationType.GetField("HoikWaitTool",F).SetValue(operation,2);
+                var dependency=Call(host,"GetNearCapabilityDependency",operation,new CaptureCell{Layers=CaptureLayer.Tile,TileType=TileID.Platforms,Slope=3},null,0);
+                long cutoff=(long)Call(host,"CurrentNearCapabilitySerial",dependency);
+                p.inventory[15].SetDefaults(ItemID.CopperPickaxe);
+                Call(host,"BeginNearCapabilityLiveValidation",p,true);
+                Require((bool)Call(host,"LiveNearCapabilityRecovery",dependency,cutoff),"a newly present real pick invalidates the old negative dependency at live admission");
+                p.inventory[15].TurnToAir();Call(host,"BeginNearCapabilityLiveValidation",p,true);
+                Require(!(bool)Call(host,"LiveNearCapabilityRecovery",dependency,cutoff),"removing that unpublished pick removes its speculative recovery at the next live admission");
+                // Publish once to cover the corresponding actual session clear.
+                p.inventory[15].SetDefaults(ItemID.CopperPickaxe);Call(host,"BeginNearCapabilityObservation",true);
+                Call(host,"ObserveNearCapabilityItem",15,p.inventory[15]);Call(host,"PublishNearCapabilityObservation");
+                Call(host,"BeginNearCapabilityLiveValidation",p,true);Call(host,"ClearNearCapabilityDependencies");
+                Require(((long[])Get(host,"nearCapabilityFamilies"))[5]==0 && ((long[])Get(host,"nearCapabilityLiveFamilies"))[5]==0,
+                    "session clear resets the added pick family in both published and live snapshots");
+                Console.WriteLine("PASS Hoik live pick present -> removed before publication; both pick-family snapshots clear with session");
+            }
+            finally {Call(host,"ClearNearCapabilityDependencies");p.inventory[15].TurnToAir();}
         }
     }
 }

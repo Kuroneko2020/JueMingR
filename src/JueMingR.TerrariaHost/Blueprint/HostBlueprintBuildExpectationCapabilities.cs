@@ -272,7 +272,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             nearCapabilityLiveValid=enabled && p!=null;
             if(!nearCapabilityLiveValid)return;
-            nearCapabilityLive.Clear();Array.Copy(nearCapabilityFamilies,nearCapabilityLiveFamilies,5);
+            nearCapabilityLive.Clear();Array.Copy(nearCapabilityFamilies,nearCapabilityLiveFamilies,nearCapabilityFamilies.Length);
             for(int slot=0;slot<50;slot++)
             {
                 NearCapabilitySlotWork();var item=p.inventory[slot];
@@ -311,7 +311,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // retain their high-water backing arrays, including while OFF.
             nearCapabilityKeyPayloadBytes=0;
 #endif
-            Array.Clear(nearCapabilityFamilies,0,5);Array.Clear(nearCapabilityLiveFamilies,0,5);
+            Array.Clear(nearCapabilityFamilies,0,nearCapabilityFamilies.Length);Array.Clear(nearCapabilityLiveFamilies,0,nearCapabilityLiveFamilies.Length);
             nearCapabilityCatalog=null;nearCapabilityObserving=nearCapabilityLiveValid=false;
         }
     }
