@@ -218,8 +218,8 @@ namespace NativeWorldTextProbe
                     if (intent == "Page")
                     {
                         PageIntentFacts("before-preparation", library, ui);
-                        var page = library.Snapshot.Page;
-                        if (page == null || page.PageIndex != 0 || page.TotalCount < 7 || page.Generation != (long)Get(ui, "listGeneration") || (bool)Get(ui, "wantList"))
+                        var preparedPage = library.Snapshot.Page;
+                        if (preparedPage == null || preparedPage.PageIndex != 0 || preparedPage.TotalCount < 7 || preparedPage.Generation != (long)Get(ui, "listGeneration") || (bool)Get(ui, "wantList"))
                         {
                             // CPU does not perform active GPU preparation. Its
                             // direct Next command still needs the same real
@@ -233,9 +233,9 @@ namespace NativeWorldTextProbe
                                 return !library.Snapshot.Busy && !(bool)Get(ui, "wantList") && currentPage != null && currentPage.Generation == (long)Get(ui, "listGeneration");
                             });
                         }
-                        page = library.Snapshot.Page;
+                        preparedPage = library.Snapshot.Page;
                         PageIntentFacts("before-next", library, ui);
-                        Require(page != null && page.PageIndex == 0 && page.TotalCount >= 7 && page.Generation == (long)Get(ui, "listGeneration") && !(bool)Get(ui, "wantList"), "later-page oracle starts from a current real page zero with a second page");
+                        Require(preparedPage != null && preparedPage.PageIndex == 0 && preparedPage.TotalCount >= 7 && preparedPage.Generation == (long)Get(ui, "listGeneration") && !(bool)Get(ui, "wantList"), "later-page oracle starts from a current real page zero with a second page");
                     }
                     long frozen = (long)Get(ui, "ExchangePresentationGeneration");
                     Guid sentinel = Guid.NewGuid(); ((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId = sentinel;
