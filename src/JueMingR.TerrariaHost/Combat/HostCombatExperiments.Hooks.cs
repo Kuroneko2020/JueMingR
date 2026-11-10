@@ -147,13 +147,14 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(Bypass(context) && GroundSupport((Projectile)context))
             {
-                // Native diagonal collision may cancel its earlier floor clamp
-                // when a wall in the same column stops X. Restoring only X then
-                // keeps the cancelled Y and lets a walking summon fall below
-                // its support. Query vanilla's vertical movement independently;
-                // retain its platform/gravity rules and release horizontal walls.
+                // Query support independently of a side wall: vanilla's
+                // diagonal collision can cancel its earlier floor clamp. While
+                // rising inside a released wall, vanilla's ceiling separation
+                // can also turn a jump into +0.01 and put the feet below the
+                // floor's old-bottom eligibility test. Release that top wall;
+                // descending movement retains native floor/platform rules.
                 var vertical=Collision.TileCollision(position,new Vector2(0,velocity.Y),width,height,fallThrough,fall2,gravDir,ignoreDoors,ignoreAetheriumPlatforms,hoik);
-                return new Vector2(velocity.X,vertical.Y);
+                return new Vector2(velocity.X,velocity.Y<0?velocity.Y:vertical.Y);
             }
             return Collision.TileCollision(position,velocity,width,height,fallThrough,fall2,gravDir,ignoreDoors,ignoreAetheriumPlatforms,hoik);
         }
