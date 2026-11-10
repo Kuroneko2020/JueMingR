@@ -103,7 +103,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!CanConfigure || field==1 && !PathAccess)return;
             if(field==6 && value)
             {
-                selectionFailed=pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);Attack?.Reset();
+                selectionFailed=pathFailed=reportedPath=false;Array.Clear(failedTargets,0,failedTargets.Length);Attack?.ResetPreparation();
             }
             if(value && (field==0 || field==1 || field==5))selectionFailed=false;
             if(value && (field==0 || field==1 || field==5))World.Recover();
@@ -117,7 +117,10 @@ namespace JueMingR.TerrariaHost.Combat
         public void Radius(int value){if(CanConfigure && Options.Radius!=value)Settings.Set(Options.WithRadius(value));}
         internal void Poll()
         {
-            Settings.Poll();Attack?.Demand();World.PollResources();bool collision=Collision,path=Path;
+#if JMR_AIM_LIGHT
+            AimTrace.PrismPoll(runtime.IsSessionActive);
+#endif
+            Settings.Poll();Attack?.Control.PollSources();Attack?.Demand();World.PollResources();bool collision=Collision,path=Path;
             if(wasCollision && !collision)Geometry.Clear();
             if(wasPath && !path)Prediction.Cache.Release(0);
             // Other registered consumers can outlive the path toggle. Retire
@@ -129,7 +132,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // Saved Marker is a child preference, never a producer demand.
                 // Retire only our two consumers and state on the final edge;
                 // independently registered prediction consumers remain intact.
-                Attack?.Reset();Prediction.Cache.Release(0);Prediction.Cache.Release(1);
+                Attack?.ResetPreparation();Prediction.Cache.Release(0);Prediction.Cache.Release(1);
                 displayPath=null;displayTerrain=null;displayLeasePlayer=default(PredictionPlayerMotion);displayLeaseTick=optionalTick=previewOptionalTick=displayShortTick=-1;OptionalPreparation=false;
                 World.Marker.Clear();World.Impact.Clear();
             }

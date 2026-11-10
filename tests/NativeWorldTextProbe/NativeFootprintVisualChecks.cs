@@ -80,7 +80,13 @@ namespace NativeWorldTextProbe
             object input=Get(context,"Input");bool focused=true;
             Set(input,"gameWindow",(Func<IntPtr>)(()=>new IntPtr(1)));Set(input,"foregroundWindow",(Func<IntPtr>)(()=>focused?new IntPtr(1):IntPtr.Zero));
             Until(()=>{Call(context,"UpdateRuntime");return (bool)Get(host,"CanClear");});
-            var underline=popup.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.F5Layout").GetMethod("ButtonUnderline",Flags);
+            var hostAssembly=popup.GetType().Assembly;
+            var elementType=hostAssembly.GetType("JueMingR.TerrariaHost.F5.F5Element",true);
+            var layoutType=hostAssembly.GetType("JueMingR.TerrariaHost.F5.F5Layout",true);
+            var underline=layoutType.GetMethod("ButtonUnderline",Flags,null,new[]{elementType,typeof(Matrix),typeof(float),typeof(float)},null);
+            var buttonSurface=layoutType.GetMethod("ButtonSurface",Flags,null,new[]{elementType},null);
+            var buttonLabel=layoutType.GetMethod("ButtonLabel",Flags,null,new[]{elementType,typeof(float)},null);
+            Require(underline!=null && buttonSurface!=null && buttonLabel!=null,"exact production four-argument underline and surface/label overloads exist");
             float logicalWidth=960,logicalHeight=640,ui=1;int width=960,height=640;float mouseX=0,mouseY=0;
             Action prepare=()=>layout(logicalWidth,logicalHeight);
             Action<bool> frame=down=>{
@@ -102,11 +108,24 @@ namespace NativeWorldTextProbe
             };
             Action<string> image=name=>{
                 geometry();var commands=(IList)Get(popup,"Commands");var buttons=(IList)Get(popup,"Buttons");var panel=Get(popup,"Panel");
-                var pixels=graphics.Pixels(()=>Call(renderer,"DrawFootprintPopup",popup),Main.UIScaleMatrix,width,height);
-                Func<int,Color> mark=command=>{var line=underline.Invoke(null,new[]{buttons[commands.IndexOf(command)]});int x=(int)(((float)Get(panel,"X")+(float)Get(line,"X")+(float)Get(line,"Width")/2)*ui),y=(int)(((float)Get(panel,"Y")+(float)Get(line,"Y")+.5f)*ui);return pixels[y*width+x];};
-                foreach(int c in new[]{2,4})if(commands.Contains(c))Require(mark(c)!=new Color(255,145,130),"clear and clear-retry action have no selected underline");
-                Require(mark(1)==((bool)Get(host,"Recording")?Color.LightGreen:Color.LightGray),"recording selection underline remains the real preference projection");
-                graphics.Image(Path.Combine(output,name+".png"),()=>Call(renderer,"DrawFootprintPopup",popup),Main.UIScaleMatrix,width,height);
+                Matrix drawMatrix=Main.UIScaleMatrix;
+                var pixels=graphics.Pixels(()=>Call(renderer,"DrawFootprintPopup",popup),drawMatrix,width,height);
+                // Preserve the actual resource render even if a pixel assertion
+                // fails. Draw and the geometry helper use the very same batch.
+                graphics.Image(Path.Combine(output,name+".png"),()=>Call(renderer,"DrawFootprintPopup",popup),drawMatrix,width,height);
+                float panelX=(float)Get(panel,"X"),panelY=(float)Get(panel,"Y");
+                var line=underline.Invoke(null,new object[]{buttons[commands.IndexOf(1)],drawMatrix,panelX,panelY});
+                // The four-argument rectangle already includes panel origin.
+                // Only transform it to device space; never add origin/scale twice.
+                var start=Vector2.Transform(new Vector2((float)Get(line,"X"),(float)Get(line,"Y")),drawMatrix);
+                var end=Vector2.Transform(new Vector2((float)Get(line,"Right"),(float)Get(line,"Bottom")),drawMatrix);
+                Require(NearInteger(start.X) && NearInteger(start.Y) && NearInteger(end.X) && NearInteger(end.Y),"recording underline edges are aligned before device rounding");
+                int left=(int)Math.Round(start.X),right=(int)Math.Round(end.X),top=(int)Math.Round(start.Y),bottom=(int)Math.Round(end.Y);
+                Require(bottom-top==2 && right>left && left>=0 && right<=width && top>=0 && bottom<=height,"recording underline occupies two complete device rows inside the actual viewport");
+                Color expected=(bool)Get(host,"Recording")?Color.LightGreen:Color.IndianRed;
+                for(int y=top;y<bottom;y++)for(int x=left;x<right;x++)Require(pixels[y*width+x]==expected,"both complete recording rows project the actual green/on or red/off preference");
+                foreach(int c in new[]{2,4})if(commands.Contains(c))
+                    CheckActionDecorationAbsent(pixels,width,height,buttons[commands.IndexOf(c)],drawMatrix,panelX,panelY,buttonSurface,buttonLabel);
             };
             foreach(var size in new[]{new[]{960,640,100},new[]{640,220,100},new[]{960,540,150}})
             {
@@ -146,6 +165,29 @@ namespace NativeWorldTextProbe
             Require((bool)Get(host,"Recording"),"three presented clicks clear isolated archive and preserve recording preference");
             Call(popup,"Close");
             Console.WriteLine("PASS footprint popup-only actual font/layout/underline/state projections, stable Prepare, physical three presented clicks/cancel/geometry/focus; no route/history workload.");
+        }
+        private static bool NearInteger(float value) { return Math.Abs(value-Math.Round(value))<.01; }
+        private static void CheckActionDecorationAbsent(Color[] pixels,int width,int height,object element,Matrix matrix,float panelX,float panelY,MethodInfo surfaceMethod,MethodInfo labelMethod)
+        {
+            // An action has no selected state and need not reserve underline
+            // room. Inspect its real lower surface, not a hypothetical state
+            // helper that may correctly reject such a button's text geometry.
+            var surface=surfaceMethod.Invoke(null,new[]{element});
+            var a=Vector2.Transform(new Vector2(panelX+(float)Get(surface,"X")+10,panelY+(float)Get(surface,"Bottom")-2),matrix);
+            var b=Vector2.Transform(new Vector2(panelX+(float)Get(surface,"Right")-10,panelY+(float)Get(surface,"Bottom")-2),matrix);
+            int left=(int)Math.Ceiling(a.X),right=(int)Math.Floor(b.X),bottom=(int)Math.Floor(a.Y),top=bottom-2;
+            Require(right>left && left>=0 && right<=width && top>=0 && bottom<=height,"ordinary action has a nonempty in-viewport lower interior band");
+            var label=labelMethod.Invoke(null,new object[]{element,matrix.M22});
+            var labelStart=Vector2.Transform(new Vector2(panelX+(float)Get(label,"X"),panelY+(float)Get(label,"Y")),matrix);
+            var labelEnd=Vector2.Transform(new Vector2(panelX+(float)Get(label,"Right"),panelY+(float)Get(label,"Bottom")),matrix);
+            int checkedPixels=0;
+            for(int y=top;y<bottom;y++)for(int x=left;x<right;x++)
+            {
+                if(x>=Math.Floor(labelStart.X) && x<Math.Ceiling(labelEnd.X) && y>=Math.Floor(labelStart.Y) && y<Math.Ceiling(labelEnd.Y))continue;
+                Color actual=pixels[y*width+x];
+                Require(actual!=new Color(255,145,130) && actual!=Color.LightGreen && actual!=Color.IndianRed,"clear and clear-retry lower blank band contains no danger or current-state decoration");checkedPixels++;
+            }
+            Require(checkedPixels>0,"ordinary-action negative control inspects actual text-free surface pixels");
         }
         private static void Until(Func<bool> predicate) { var clock = System.Diagnostics.Stopwatch.StartNew(); while (!predicate()) { if (clock.ElapsedMilliseconds > 10000) throw new TimeoutException("footprint visual ready"); System.Threading.Thread.Sleep(5); } }
     }

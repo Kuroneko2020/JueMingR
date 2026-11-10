@@ -19,6 +19,7 @@ namespace NativeWorldTextProbe
     {
         internal static void Run(object context)
         {
+            ProcessingStateDecorations(context);
             var host=Get(context,"Processing");var shell=Get(context,"Shell");var state=Get(shell,"State");var layout=Get(state,"Layout");var ui=Get(shell,"ReforgeUi");var renderer=Get(shell,"renderer");var input=Get(context,"Input");
             var settings=((ProcessingSettings[])Get(host,"Settings"))[2];Save(settings,new ProcessingOptions());
             Main.mouseItem.TurnToAir();Main.reforgeItem.TurnToAir();Main.blockInput=false;PlayerInput.WritingText=false;
@@ -125,6 +126,48 @@ namespace NativeWorldTextProbe
             Call(state,"Close");Call(ui,"Suspend");Save(settings,new ProcessingOptions());
             Console.WriteLine("PASS G08 UI: physical editor/list controls, isolated IME boundary, whole-name persistence, stable height/measurement, movement keys and shared scroll.");
         }
+        internal static void ProcessingStateDecorations(object context)
+        {
+            var host=Get(context,"Processing");var shell=Get(context,"Shell");var state=Get(shell,"State");var items=Get(shell,"items");var renderer=Get(shell,"renderer");
+            var settings=(ProcessingSettings[])Get(host,"Settings");
+            NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return settings.All(s=>s.Loaded && !s.Busy);});
+            var original=settings.Take(2).Select(s=>s.Value).ToArray();
+            // CPU fixtures use the same real layout/projection entry as the
+            // existing Quick UI checks. Prepare also demands drawable textures;
+            // its GPU resource refusal says nothing about these row semantics.
+            Action prepare=()=>{Call(renderer,"Prepare",state,960f,760f,1f);Call(items,"PrepareLayout",Matrix.Identity,new Vector2(960,760));};
+            Func<object[]> controls=()=>((IEnumerable)Get(items,"controls")).Cast<object>().ToArray();
+            try
+            {
+                Call(state,"Navigate",0);Call(state,"RestoreVisible");Call(renderer,"RefreshResources");prepare();
+                for(int row=0;row<2;row++)foreach(bool enabled in new[]{true,false})
+                {
+                    var rows=(Array)Get(Get(items,"ProcessingPanel"),"rows");
+                    var button=((IEnumerable)rows.GetValue(row)).Cast<object>().First(e=>Get(e,"Kind").ToString()=="Button");
+                    Call(state,"ScrollTo",Math.Max(0,(float)Get(Get(button,"Rect"),"Y")-12));prepare();
+                    int argument=row*2+(enabled?1:0);
+                    var target=controls().Single(c=>Get(c,"Command").ToString()=="Processing" && (int)Get(c,"Argument")==argument);
+                    Call(items,"Execute",target);NativeQuickItemChecks.Until(()=>{Call(host,"Poll");return !settings[row].Busy;});prepare();
+                    var selected=controls().Single(c=>Get(c,"Command").ToString()=="Processing" && (int)Get(c,"Argument")==argument);
+                    Require(settings[row].Value.Enabled==enabled && (bool)Get(selected,"Selected") && (bool)Get(selected,"Off")==!enabled,
+                        "real bag/extraction argument projects enabled and disabled state independently of row index");
+                    Call(state,"Close");Call(items,"Suspend");Call(state,"RestoreVisible");prepare();
+                    selected=controls().Single(c=>Get(c,"Command").ToString()=="Processing" && (int)Get(c,"Argument")==argument);
+                    Require((bool)Get(selected,"Selected") && (bool)Get(selected,"Off")==!enabled,
+                        "saved processing decoration survives close/reopen through the real Items presenter");
+                }
+                Call(state,"ScrollTo",((float[])Get(Get(items,"layout"),"RowY"))[0]);prepare();
+                Require(controls().Any(c=>Get(c,"Command").ToString()=="Disable") && controls().Where(c=>Get(c,"Command").ToString()=="Disable").All(c=>(bool)Get(c,"Off")) &&
+                    controls().Where(c=>Get(c,"Command").ToString()=="Add" || Get(c,"Command").ToString()=="Hotkey").All(c=>!(bool)Get(c,"Off")),
+                    "original Items off commands and ordinary action/hotkey controls keep their distinct semantics");
+            }
+            finally
+            {
+                for(int i=0;i<2;i++)Save(settings[i],original[i]);
+                Call(items,"Suspend");Call(state,"Navigate",1);Call(state,"RestoreVisible");
+            }
+        }
+
         private static void ReforgeHints(object context,Ime ime)
         {
             var host=Get(context,"Processing");var shell=Get(context,"Shell");var ui=Get(shell,"ReforgeUi");var state=Get(shell,"State");

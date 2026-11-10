@@ -15,6 +15,7 @@ namespace Terraria
             UiTextMetricsChecks.Run();
             CheckRefinementContract();
             CheckVisualRows();
+            CheckDeviceUnderlines();
             var layout = new F5Layout();
             var font = new object();
             layout.Ensure(1920, 1080, 1, 9, font, Measure);
@@ -132,8 +133,25 @@ namespace Terraria
                     if (element.Command == F5Command.None && element.Description != null)
                         failures.Add("inactive control still has a development hover hint");
                 }
-                if (page == 9 && layout.Elements[0].Rect.Height > 44)
-                    failures.Add("ordinary row retains the removed second-line space");
+                if (page == 9)
+                {
+                    // Tall glyphs now need extra button clearance for two
+                    // device rows. A fixed old row-height cap mistakes that for
+                    // a removed status band; measure the one real content band.
+                    F5Rect first = layout.Elements[0].Rect;
+                    float tallest = 0; int nameLines = 0;
+                    for (int i = 1; i < layout.Elements.Count && layout.Elements[i].Kind != F5ElementKind.Panel; i++)
+                    {
+                        var child = layout.Elements[i];
+                        if (child.Kind != F5ElementKind.Text && child.Kind != F5ElementKind.Button && child.Kind != F5ElementKind.Hotkey) continue;
+                        if (child.Kind == F5ElementKind.Text) nameLines++;
+                        tallest = Math.Max(tallest, child.Rect.Height);
+                        if (child.Rect.Y < first.Y + 3.99f || child.Rect.Bottom > first.Bottom - 3.99f)
+                            failures.Add("ordinary row crowds its single content band");
+                    }
+                    if (nameLines != 1 || Math.Abs(first.Height - Math.Max(38, tallest + 8)) > .01f)
+                        failures.Add("ordinary row reserves space beyond its single measured content band and padding");
+                }
             }
             if (failures.Count != 0) throw new InvalidOperationException("Visual contract: " + string.Join("; ",
                 new System.Collections.Generic.HashSet<string>(failures)));
@@ -145,12 +163,14 @@ namespace Terraria
             {
                 F5Rect nav = layout.Navigation(i), icon = layout.NavigationIcon(i), label = layout.NavigationLabel(i);
                 F5Rect line = layout.NavigationUnderline(i);
-                Equal((icon.X + label.Right) / 2, line.X + line.Width / 2, "short underline uses icon-label center");
+                if (Math.Abs((icon.X + label.Right) / 2 - line.X - line.Width / 2) > 1)
+                    throw new InvalidOperationException("Pixel snapping must retain the icon-label underline center.");
                 if (line.X < nav.X + 9.99f || line.Right > nav.Right - 9.99f || line.Y < label.Bottom + 0.49f || line.Bottom > nav.Bottom - 1.99f)
                     throw new InvalidOperationException("Navigation underline must clear glyphs and rounded-surface edges.");
                 Equal(nav.X + nav.Width / 2, (icon.X + label.Right) / 2, "icon-label group horizontal center");
                 Equal(nav.Y + nav.Height / 2, icon.Y + icon.Height / 2, "icon visual midline");
-                Equal(nav.Y + nav.Height / 2, label.Y + label.Height / 2, "label visual midline");
+                if (label.Y < nav.Y + 1 || label.Bottom > nav.Bottom - 2)
+                    throw new InvalidOperationException("Navigation label must keep its readable inner bounds.");
             }
             F5Rect track = layout.ScrollTrack, visual = layout.ScrollThumbVisual(layout.MaxScroll / 2);
             if (visual.X < track.X || visual.Right > track.Right || visual.Width >= track.Width ||
@@ -167,7 +187,8 @@ namespace Terraria
                     F5Rect surface = F5Layout.ButtonSurface(element), label = F5Layout.ButtonLabel(element);
                     F5Rect line = F5Layout.ButtonUnderline(element);
                     Equal(element.Rect.Y + element.Rect.Height / 2, surface.Y + surface.Height / 2, "flattening preserves hit center");
-                    Equal(surface.Y + surface.Height / 2, label.Y + label.Height / 2, "label centered on the visible surface");
+                    if (label.Y < surface.Y + 1 || label.Bottom > surface.Bottom - 2)
+                        throw new InvalidOperationException("Button label must retain its own readable inner bounds.");
                     if (surface.Y < element.Rect.Y - 0.01f || surface.Bottom > element.Rect.Bottom + 0.01f ||
                         line.X < surface.X + 9.99f || line.Right > surface.Right - 9.99f || line.Y < label.Bottom + 0.49f || line.Bottom > surface.Bottom - 1.99f)
                         throw new InvalidOperationException("Function underline must fit its visible surface without crowding the label: " +
@@ -191,6 +212,51 @@ namespace Terraria
 
         private static F5Size Measure(string text)
         { return new F5Size(text.Length * 18, 24); }
+
+        private static void CheckDeviceUnderlines()
+        {
+            // 0.50 is the real native IngameOptions slider minimum. Window and
+            // scroll offsets are applied before snapping, including fractions.
+            foreach (float scale in new[] { .5f, .75f, 1f, 1.35f })
+            {
+                var matrix = Microsoft.Xna.Framework.Matrix.CreateScale(scale);
+                matrix.M41 = .37f; matrix.M42 = .61f;
+                var layout = new F5Layout();
+                var font = new object();
+                layout.Ensure(1920, 1080, scale, 9, font, Measure);
+                foreach (float offset in new[] { 0f, .43f, 17.73f })
+                {
+                    var rect = new F5Rect(20.3f, 48.7f, 100, 36);
+                    var element = new F5Element(F5ElementKind.Button, rect, "高字形", new F5Size(48, 24), .7f, F5Command.EnableBiome);
+                    var label = F5Layout.ButtonLabel(element, scale).Offset(offset, -offset);
+                    var surface = F5Layout.ButtonSurface(element).Offset(offset, -offset);
+                    var line = F5Layout.ButtonUnderline(element, matrix, offset, -offset);
+                    CheckDeviceLine(line, surface, label.Bottom, matrix);
+                    var nav = layout.Navigation(9).Offset(offset, -offset);
+                    var navLabel = layout.NavigationLabel(9).Offset(offset, -offset);
+                    CheckDeviceLine(layout.NavigationUnderline(9, matrix, offset, -offset), nav, navLabel.Bottom, matrix);
+                    F5InputChecks.Check(element.Rect.Contains(rect.X + rect.Width / 2, rect.Y + rect.Height / 2),
+                        "decoration geometry does not change the actual button hit rectangle");
+                }
+                int generation = layout.Generation, measures = layout.MeasurementCount;
+                for (int i = 0; i < 100; i++) layout.Ensure(1920, 1080, scale, 9, font, Measure);
+                Equal(measures, layout.MeasurementCount, "pixel rule does not remeasure stable pages");
+                Equal(generation, layout.Generation, "pixel rule does not rebuild stable pages");
+            }
+        }
+        private static void CheckDeviceLine(F5Rect line, F5Rect surface, float textBottom, Microsoft.Xna.Framework.Matrix matrix)
+        {
+            float left = line.X * matrix.M11 + matrix.M41, right = line.Right * matrix.M11 + matrix.M41;
+            float top = line.Y * matrix.M22 + matrix.M42, bottom = line.Bottom * matrix.M22 + matrix.M42;
+            Equal(2, bottom - top, "underline is exactly two final-render-target pixels");
+            Equal((float)Math.Round(left), left, "device left is integral");
+            Equal((float)Math.Round(right), right, "device right is integral");
+            Equal((float)Math.Round(top), top, "device top is integral");
+            Equal((float)Math.Round(bottom), bottom, "device bottom is integral");
+            F5InputChecks.Check(line.Y >= textBottom + .49f && line.Bottom <= surface.Bottom - 1.99f &&
+                line.X >= surface.X + 9.99f && line.Right <= surface.Right - 9.99f,
+                "snapped line retains glyph, bottom border and rounded-corner clearance");
+        }
 
         internal static void Equal(float expected, float actual, string message)
         {

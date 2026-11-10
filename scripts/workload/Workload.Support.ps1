@@ -110,7 +110,7 @@ function Get-WorkloadRoute {
             '^tests/NativeWorldTextProbe/NativeCombat(Worker|Private|Snapshot|Production|History|Preparation|Legal|Dd2|EventBirth|TileManifest)' { [void]$groups.Add('legacy-worker'); continue }
 
             '^tests/NativeWorldTextProbe/NativeOuterInputBoundaryChecks\.cs$' { [void]$groups.Add('input-boundary'); continue }
-            '^tests/NativeWorldTextProbe/NativeNpcLifetimeChecks\.cs$' { [void]$groups.Add('combat-host'); continue }
+            '^tests/NativeWorldTextProbe/(NativeNpcLifetimeChecks|NativeAimLightChecks)\.cs$' { [void]$groups.Add('combat-host'); continue }
             '^scripts/verify-existing-package\.ps1$|^scripts/phase0s/PackageVerification\.Support\.ps1$|^tests/Phase0S/Invoke-PackageVerificationChecks\.ps1$' { [void]$groups.Add('package-tools'); continue }
             '^src/JueMingR.PredictionWorker/' { [void]$groups.Add('combat-host'); continue }
             '^src/[^/]+/Combat/|^src/JueMingR.TerrariaHost/F5/Combat(Controls|IntervalDrag)\.cs$|^tests/JueMingR.ArchitectureTests/Combat/|^tests/NativeWorldTextProbe/(NativeCombat|NativeSamplePresentation|NativeFiniteFlight|NativeYoyo|CombatNetworkFixture)' { [void]$groups.Add('combat-host'); continue }

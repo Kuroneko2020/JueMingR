@@ -67,6 +67,12 @@ namespace JueMingR.TerrariaHost.Combat
                 Patch(typeof(NPC),"SetDefaults",nameof(NpcReset),null,null);
                 Patch(typeof(MessageBuffer),"GetData",nameof(BeforeNetwork),nameof(NpcNetwork),null);
                 PlayerCollisionGeometryHooks.Install(harmony,methods);
+#if JMR_AIM_LIGHT
+                // Independent of Tools' installation and prefix order. This
+                // observes the actual native steering consumer, never invokes it.
+                try{Patch(typeof(Projectile),"AI_075",nameof(PrismNativeBefore),nameof(PrismNativeAfter),nameof(PrismNativeFinal));}
+                catch(Exception diagnosticError){Prediction.AimLightTrace.PrismSetupFailed(diagnosticError);}
+#endif
                 Ready=true;
             }
             catch(Exception e){Error=e;Dispose();}
@@ -176,6 +182,13 @@ namespace JueMingR.TerrariaHost.Combat
         private static void BeforeAi(Projectile __instance,out int __state)
         {BeforeTransient(out __state);var self=current;if(self!=null && self.Ready && self.host.Capture && __instance.type==949)self.host.Geometry.BeginDamage(__instance);}
         private static void EndTransient(int __state){transientDepth=__state;}
+#if JMR_AIM_LIGHT
+        private static void PrismNativeBefore(Projectile __instance)
+        {Prediction.AimLightTrace.PrismNativeBefore(current?.host.Attack?.PrismCombat,__instance);}
+        private static void PrismNativeAfter(Projectile __instance){Prediction.AimLightTrace.PrismNativeAfter(__instance,null);}
+        private static Exception PrismNativeFinal(Projectile __instance,Exception __exception)
+        {if(__exception!=null)Prediction.AimLightTrace.PrismNativeAfter(__instance,__exception);return __exception;}
+#endif
         private static void BeforeMovement(Projectile __instance,out MovementScope __state)
         {
             __state=new MovementScope{Depth=transientDepth,Owner=movementOwner,InitialBounce=initialBounce,Sampled=movementSampled};var self=current;

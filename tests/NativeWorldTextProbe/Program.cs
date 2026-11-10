@@ -10,6 +10,7 @@ namespace NativeWorldTextProbe
         private static string references;
         private static Assembly game;
         internal static string Repository { get; private set; }
+        internal static string OutputDirectory { get; private set; }
         internal static string ProductionConfiguration { get; private set; } = "Debug";
         internal static bool TestSoundRequested { get; private set; }
         private static int Main(string[] args)
@@ -22,6 +23,7 @@ namespace NativeWorldTextProbe
                 {TestSoundRequested=true;Array.Resize(ref args,args.Length-1);}
                 if (args.Length < 3 || args.Length > 4) throw new ArgumentException("repository Content output [Full|SelectionCpuCosts|SelectionCpuChecks|WorkloadCpu|InformationCpu|GuidanceCpu|GuidanceVisual|DeathCpu|DeathVisual|ExplorationCpu|ExplorationRelease|MapVisual] required");
                 Repository = Path.GetFullPath(args[0]);
+                OutputDirectory = Path.GetFullPath(args[2]);
                 NativeScopeDispatch.Begin(Repository,args.Length==4?args[3]:"Full");
                 // A formal whole-strategy request owns its scope. Inherited
                 // debug-only variables cannot silently reduce the obligation.
@@ -55,6 +57,7 @@ namespace NativeWorldTextProbe
                 if (args.Length == 4 && args[3] == "JourneyKillCheck") return NativeJourneyChecks.RunKillCheck(args[1], args[2]);
                 if(args.Length==4 && args[3]=="InputBoundary")PreloadInputCandidate();
                 if(args.Length==4 && args[3]=="AimLightDiagnostics"){NativeAimLightChecks.Run(args[2]);return 0;}
+                if(args.Length==4 && args[3]=="PrismConsumerEvidence"){NativeCombatPrismDiagnosticChecks.ReadEvidence(args[1],args[2]);return 0;}
                 if(args.Length==4 && args[3]=="NpcPresentationOriginal")return NativeCombatPrivateImageChecks.PresentationOriginal(args[2]);
                 if(args.Length==4 && args[3]=="NpcPrivateValues")return NativeCombatPrivateImageChecks.Run(args[1],args[2]);
                 if(args.Length==4 && args[3]=="NpcPrivateSafety")return NativeCombatPrivateImageChecks.Run(args[1],args[2],true);

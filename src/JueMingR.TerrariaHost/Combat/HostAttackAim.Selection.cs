@@ -339,7 +339,10 @@ namespace JueMingR.TerrariaHost.Combat
             // interrupted Plan at twice the range pays more Source work before
             // retrying the missing solve and can starve an otherwise reachable
             // receiver. Grow only a fully solved, nonpaused requested prefix.
-            bool complete=plan!=null && plan.Prepared && plan.Contact==null && path!=null && !path.BudgetPaused && path.Count>requested;
+            // A 633 controlled preview has no ordinary Prepared stamp. Only
+            // its real beam-window completion may advance this existing fair
+            // request; camera/motion unknowns and interrupted solves cannot.
+            bool complete=plan!=null && (plan.Prepared || combat.Player.HeldItem.shoot==633 && plan.ControlledPrefixComplete) && plan.Contact==null && path!=null && !path.BudgetPaused && path.Count>requested;
             return Math.Min(NpcPredictionCache.Horizon,Math.Max(preferred,complete?Math.Max(32,requested*2):requested));
         }
         private bool EvaluateCandidate(NpcIdentity identity,long tick,bool beforeNpc,HostAttackPhase phase,int key,int required)
@@ -395,7 +398,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // Keep that causal stage unresolved until its family solver
                 // provides a contact; a genuine despawn still closes the tail.
                 bool positive=PlanPositive(plan);
-                candidateUnknown[key]=plan.Balanced?plan.Solution.Reachability==HostAttackReachability.Unknown:contact==null && (timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && (timeline.Count<=NpcPredictionCache.Horizon || HasOwnMeleeHitFamily(combat.Player.HeldItem)));
+                candidateUnknown[key]=plan.Balanced?plan.Solution.Reachability==HostAttackReachability.Unknown:contact==null && (combat.Player.HeldItem.shoot==633 && Control.PreviewFutureUnknown || timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && (timeline.Count<=NpcPredictionCache.Horizon || HasOwnMeleeHitFamily(combat.Player.HeldItem)));
                 plan.MotionTerrain=null;plan.MotionSource=null;
                 // Seal only a completed positive before another candidate can
                 // replace the producing owner's cells. This bounded copy ends

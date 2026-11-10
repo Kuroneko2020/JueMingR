@@ -17,7 +17,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     // Conditional call sites disappear, including argument evaluation, from
     // ordinary builds. In the diagnostic build every entry checks OFF before
     // clock/format/copy work and contains its own failures, including OOM.
-    internal static class AimLightTrace
+    internal static partial class AimLightTrace
     {
 #if JMR_AIM_LIGHT
         private static AimLightLog log;
@@ -33,7 +33,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             if(value==null)return 0;
             lock(identityGate){Token token;if(!tokens.TryGetValue(value,out token)){token=new Token{Id=++nextToken};tokens.Add(value,token);}return token.Id;}
         }
-        private static bool On=>log!=null && log.Accepting;
+        private static bool On=>log!=null && log.Accepting && !log.PrismOnly;
         private static string Identity(NpcIdentity n)
         {return "world="+n.Session+";token="+Id(n.Token)+";slot="+n.Slot+";generation="+n.Generation+";type="+n.Type+";netId="+n.NetId;}
         private static string Key(NpcIdentity n,long tick,object worker)
@@ -65,6 +65,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
         internal static void End(string reason)
         {
 #if JMR_AIM_LIGHT
+            if(PrismOn){PrismFinish(reason);return;}
             if(!On)return;try{FinishFrame();log.Offer("presentation-totals",frameTick,"published="+published+";pathPrepared="+prepared+";pathIssued="+issued+";pathCompleted="+completed+";textIssued="+textIssued+";textCompleted="+textCompleted+";collisionIssued="+collisionIssued+";collisionCompleted="+collisionCompleted+";gpuVisible=unknown");log.Stop(reason);}catch(Exception error){Broken(error);}
 #endif
         }

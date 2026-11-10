@@ -175,6 +175,11 @@ namespace NativeWorldTextProbe
                 open();
                 var parts=((IEnumerable)Get(panel,"logical")).Cast<object>().ToArray();var modes=parts.Where(p=>Get(p,"Command").ToString()=="Mode").ToArray();
                 Require(modes.Length==2 && modes.Select(p=>(int)Get(p,"Type")).SequenceEqual(new[]{0,1}) && (bool)Get(modes[0],"Selected") && !(bool)Get(modes[1],"Selected"),"legacy 2 selects ordinary Use in a two-mode editor");
+                Require(modes.All(p=>!(bool)Get(p,"Off")) && parts.Where(p=>Get(p,"Command").ToString()=="Add" || Get(p,"Command").ToString()=="Cancel").All(p=>!(bool)Get(p,"Selected")),
+                    "ordinary modes retain selection color and ordinary actions never become off switches");
+                Require(parts.Where(p=>Get(p,"Command").ToString()=="Policy" || Get(p,"Command").ToString()=="Enable").All(p=>(bool)Get(p,"Selected") &&
+                    (bool)Get(p,"Off")== (Get(p,"Command").ToString()=="Policy"?!legacy.Compatible:!legacy.Enabled)),
+                    "single Quick editor switches project current preference independently of the next-action label");
                 Require(parts.Any(p=>(string)GetOptional(Get(p,"Element"),"Text")=="更换/配置快捷物品") && !parts.Any(p=>((string)GetOptional(p,"Hint")??"").Contains("设置后使用")),"editing title and legacy card hint use current visible modes");
                 Reveal(panel,state,"Mode");prepare(960,760,1);
                 foreach(var mode in ((IEnumerable)Get(panel,"visible")).Cast<object>().Where(p=>Get(p,"Command").ToString()=="Mode"))
@@ -190,6 +195,19 @@ namespace NativeWorldTextProbe
                 var saved=settings.Current.Find(old.Id);
                 Require(saved.Mode==QuickItemMode.Use && saved.Target==5358 && !saved.Compatible && saved.Enabled && settings.Current.Entries.Count==original.Entries.Count &&
                     object.Equals(binding,bindings.Get(saved.ActionId)),"explicit mode save normalizes in place and preserves entry and binding identity");
+                foreach(string command in new[]{"Policy","Enable"})
+                {
+                    open();Reveal(panel,state,command);prepare(960,760,1);
+                    bool current=command=="Policy"?settings.Current.Find(old.Id).Compatible:settings.Current.Find(old.Id).Enabled;
+                    var single=((IEnumerable)Get(panel,"visible")).Cast<object>().Single(p=>Get(p,"Command").ToString()==command);
+                    Require((bool)Get(single,"Selected") && (bool)Get(single,"Off")==!current,"visible single switch keeps current polarity through projection");
+                    ClickControl(page,Controls(page).Single(c=>Get(c,"Command").ToString()=="Quick" && GetPart(panel,c,"Command")==command));
+                    NativeQuickUseMatrix.Until(()=>{Call(quick,"Poll");return !settings.Busy;});prepare(960,760,1);open();
+                    single=((IEnumerable)Get(panel,"logical")).Cast<object>().Single(p=>Get(p,"Command").ToString()==command);
+                    Require((bool)Get(single,"Selected") && (bool)Get(single,"Off")==current,
+                        "single switch save/reopen reads its committed owner with the new polarity");
+                    Call(panel,"Suspend");prepare(960,760,1);
+                }
             }
             finally
             {
@@ -315,12 +333,24 @@ namespace NativeWorldTextProbe
                         Reveal(panel,state,command);prepare(960,760,1);float[] before=Geometry(page);
                         if(delayed)storage.Gate.Reset();
                         var control=Controls(page).First(c=>Get(c,"Command").ToString()=="Quick" && GetPart(panel,c,"Command")==command);
+                        bool committed=command.StartsWith("Favorite",StringComparison.Ordinal)?temporary.Current.KeepFavorited:temporary.Current.Enabled;
                         ClickControl(page,control);Require(temporary.Busy,"physical switch release submits a real storage command");
                         prepare(960,760,1);Require(before.SequenceEqual(Geometry(page)),"accepted save has no message height or card movement");
+                        string priorCommand=(command.StartsWith("Favorite",StringComparison.Ordinal)?"Favorite":"Quick")+(committed?"On":"Off");
+                        var prior=((IEnumerable)Get(panel,"logical")).Cast<object>().Single(p=>Get(p,"Command").ToString()==priorCommand);
+                        Require((bool)Get(prior,"Selected") && (bool)Get(prior,"Off")==!committed,
+                            "pending storage suspension does not masquerade as a user-selected off state");
                         if(delayed)for(int i=0;i<20;i++)
                         {Call(quick,"Poll");prepare(960,760,1);Require(temporary.Busy && before.SequenceEqual(Geometry(page)),"blocked save remains paused with stable complete geometry");}
                         storage.Gate.Set();NativeQuickUseMatrix.Until(()=>{Call(quick,"Poll");return !temporary.Busy;});prepare(960,760,1);
                         Require(before.SequenceEqual(Geometry(page)),"reliable completion preserves all row/card positions");
+                        var accepted=((IEnumerable)Get(panel,"logical")).Cast<object>().Single(p=>Get(p,"Command").ToString()==command);
+                        Require((bool)Get(accepted,"Selected") && (bool)Get(accepted,"Off")==command.EndsWith("Off",StringComparison.Ordinal),
+                            "real Quick/Favorite current selection carries explicit enabled/off decoration after saving");
+                        Call(state,"Close");Call(panel,"Suspend");Call(state,"RestoreVisible");prepare(960,760,1);
+                        accepted=((IEnumerable)Get(panel,"logical")).Cast<object>().Single(p=>Get(p,"Command").ToString()==command);
+                        Require((bool)Get(accepted,"Selected") && (bool)Get(accepted,"Off")==command.EndsWith("Off",StringComparison.Ordinal),
+                            "closing and reopening derives decoration from the same saved Quick/Favorite owner");
                         Call(quick,"TakeFeedback",display);Require(alerts.Count==0,"normal pending/complete save stays silent");
                     }
                     // A failed new item never becomes an editable saved identity.

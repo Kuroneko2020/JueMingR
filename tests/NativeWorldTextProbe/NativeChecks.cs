@@ -616,6 +616,7 @@ namespace NativeWorldTextProbe
             if(scope=="CombatIntegrationCpu")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-integration-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                if(Environment.GetEnvironmentVariable("JMR_COMBAT_INTEGRATION_ONLY")=="prism-prejit")NativeCombatBirthJitChecks.PrepareBeforeHost();
                 NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatIntegrationChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="CombatNavigationCpu")

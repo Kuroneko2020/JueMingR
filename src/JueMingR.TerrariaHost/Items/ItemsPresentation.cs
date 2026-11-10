@@ -287,7 +287,7 @@ namespace JueMingR.TerrariaHost.Items
                         if (c.Command == ItemUiCommand.Replace && hover)
                             renderer.Cross(new F5Rect(c.Rect.Right - ItemsLayout.CrossSize, c.Rect.Y, ItemsLayout.CrossSize, ItemsLayout.CrossSize), c.Enabled);
                     }
-                    else renderer.Button(c.Element, c.Selected, c.Enabled, c.Command == ItemUiCommand.Disable, hover);
+                    else renderer.Button(c.Element, c.Selected, c.Enabled, c.Off, hover);
                 }
                 if (laidOutMessage != null) renderer.Text(laidOutMessage, OnScreen(layout.Error), Color.Gold, .63f);
                 QuickPanel?.Draw(renderer, pointerPosition, keyboard);

@@ -5,6 +5,7 @@ using JueMingR.Features.Notes;
 using JueMingR.Platform.DeathHistory;
 using JueMingR.TerrariaHost.F5;
 using JueMingR.TerrariaHost.Input;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria.GameInput;
 
@@ -16,6 +17,7 @@ namespace Terraria
         {
             var failures = new List<string>();
             Check(failures, "physical quantity click", Quantity);
+            Check(failures, "quantity minimum scale and tall glyph", QuantityMinimumScale);
             Check(failures, "short viewport", Small);
             Check(failures, "full text can close during layout", FullClose);
             Check(failures, "CRLF", Lines);
@@ -33,7 +35,8 @@ namespace Terraria
             var h = new Owner(); var d = new Driver(h); d.Popup.Open(true, 2); d.Prepare(); d.Click(128);
             Require(h.Settings.Count == 128 && h.Changes == 1, "a complete physical click selects 128 exactly once");
             Require(d.Popup.Text.Count == 1 && d.Popup.Text[0].Text == "地图显示死亡点数量：", "quantity has exact title and no descriptions/status slot");
-            Require(d.Popup.Panel.Width < 490 && d.Popup.Panel.Height < 104 && d.Popup.Buttons.Count == 5, "quantity panel and five controls are compact");
+            Require(d.Popup.Panel.Width < 490 && Math.Abs(d.Popup.Panel.Height - 32 - 2 * d.Popup.Body.Height) < .01f && d.Popup.Buttons.Count == 5,
+                "quantity panel contains only the measured header, one choice band and their padding");
             foreach (int n in new[] {256,512,1024,128}) { d.Click(n); Require(h.Settings.Count == n && d.Popup.IsSelected(n), "all four immediate choices remain selected"); }
             var close = d.Popup.Buttons[d.Popup.Commands.IndexOf(0)].Rect;
             var title = d.Popup.Text[0].Rect;
@@ -42,6 +45,31 @@ namespace Terraria
             d.Click(128); Require(h.Changes == changes, "same value never creates another intent");
             int builds = d.Popup.LayoutBuilds; for (int i = 0; i < 100; i++) d.Prepare(); Require(builds == d.Popup.LayoutBuilds, "stable quantity reuses layout");
             d.Click(0); Require(!d.Popup.Visible, "close is reachable");
+        }
+        private static void QuantityMinimumScale()
+        {
+            var h = new Owner(); var d = new Driver(h) { MeasureText = (value, scale) => new F5Size(value.Length * 12 * scale, 24 * scale) };
+            d.Popup.Open(true, 2); d.Prepare();
+            var matrix = Matrix.CreateScale(.5f); matrix.M41 = .37f; matrix.M42 = .61f;
+            foreach (int count in new[] { 128, 256, 512, 1024 })
+            {
+                d.Click(count); Require(d.Popup.IsSelected(count), "real quantity click still selects its shared hit control");
+                var button = d.Popup.Buttons[d.Popup.Commands.IndexOf(count)];
+                var line = F5Layout.ButtonUnderline(button, matrix, d.Popup.Panel.X, d.Popup.Panel.Y);
+                var label = F5Layout.ButtonLabel(button, .5f).Offset(d.Popup.Panel.X, d.Popup.Panel.Y);
+                var surface = F5Layout.ButtonSurface(button).Offset(d.Popup.Panel.X, d.Popup.Panel.Y);
+                Require(Math.Abs(line.Height * .5f - 2) < .01f && line.Y >= label.Bottom + .49f && line.Bottom <= surface.Bottom - 1.99f,
+                    "quantity's actual high-glyph geometry fits two device rows below its label at native minimum scale");
+                // Stored coordinates and the same float sum can have different
+                // extended precision in optimized x86. Compare geometry in the
+                // existing subpixel tolerance, keeping the full inner margin.
+                Require(button.Rect.Bottom <= d.Popup.Panel.Height - 11.99f && Math.Abs(d.Popup.Body.Height - button.Rect.Height) < .01f &&
+                    Math.Abs(d.Popup.Body.Y - d.Popup.Panel.Y - button.Rect.Y) < .01f,
+                    "quantity panel and body reserve the complete button/hit height");
+            }
+            var title = d.Popup.Text[0].Rect; var close = d.Popup.Buttons[d.Popup.Commands.IndexOf(0)].Rect;
+            Require(title.Right <= close.X && title.Bottom <= d.Popup.Body.Y - d.Popup.Panel.Y && close.Bottom <= d.Popup.Body.Y - d.Popup.Panel.Y,
+                "measured title and close header remain separate from the enlarged quantity body");
         }
         private static void Small()
         {

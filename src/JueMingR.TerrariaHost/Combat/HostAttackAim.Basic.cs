@@ -39,7 +39,11 @@ namespace JueMingR.TerrariaHost.Combat
         // A prediction fault retires enhanced information, not a current legal
         // consumer. This gate retains the actual focus/UI/source/use contract;
         // it has no terrain, future path, ammo prediction or damage premise.
-        internal bool BasicPermission {get{return observation.SelectionAvailable && observation.Settings.CanRun && observation.Options.Aim && combat.Player!=null && combat.Admitted(combat.Player) &&
+        internal bool BasicPermission {get{
+#if JMR_AIM_LIGHT
+            if(Prediction.AimLightTrace.PrismConsuming)return PrismBasicPermission();
+#endif
+            return observation.SelectionAvailable && observation.Settings.CanRun && observation.Options.Aim && combat.Player!=null && combat.Admitted(combat.Player) &&
             (combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active || Control.Pending || ReleaseHandCurrent || HostPhasebladeAttack.Handles(combat.Player.HeldItem.shoot) && combat.Player.itemAnimation>0);}}
         internal bool TryBasicInput(Player player,Item item,Projectile source,HostAttackPhase phase,out HostAttackInput input)
         {return TryBasicInputCore(player,item,source,phase,true,out input);}
@@ -48,7 +52,13 @@ namespace JueMingR.TerrariaHost.Combat
         private bool TryBasicInputCore(Player player,Item item,Projectile source,HostAttackPhase phase,bool consumer,out HostAttackInput input)
         {
             input=default(HostAttackInput);
-            if(player==null || item==null || !ReferenceEquals(player,combat.Player) || !ReferenceEquals(item,player.HeldItem) || !(consumer?BasicPermission:PreviewDemand) || !CurrentReceiver || !Eligible(item))return false;
+            bool rejected;
+#if JMR_AIM_LIGHT
+            if(Prediction.AimLightTrace.PrismConsuming)rejected=!PrismBasicMembers(player,item,consumer);
+            else
+#endif
+            rejected=player==null || item==null || !ReferenceEquals(player,combat.Player) || !ReferenceEquals(item,player.HeldItem) || !(consumer?BasicPermission:PreviewDemand) || !CurrentReceiver || !Eligible(item);
+            if(rejected)return false;
             var npc=Main.npc[observation.Selection.Target.Slot];var point=npc.Center+npc.netOffset;
             if(HostYoyoNavigation.Weapon(item) && !HostYoyoNavigation.BasicPoint(player,item,source,point,basicYoyoTerrain,out point))return false;
             // These native controllers clamp world intent themselves. Keeping

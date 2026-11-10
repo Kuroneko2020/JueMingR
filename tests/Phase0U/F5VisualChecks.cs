@@ -45,19 +45,17 @@ namespace Terraria
                         SaveTexture(inventory, Path.Combine(outputDirectory, "actual-inventory-back.png"));
                         Render(graphics, renderer, outputDirectory, "default-information", 9, 1, 0);
                         Render(graphics, renderer, outputDirectory, "default-information-off", 9, 1, 0, false);
+                        Render(graphics, renderer, outputDirectory, "default-scale050", 9, .5f, 0, false, fractional: true);
+                        Render(graphics, renderer, outputDirectory, "default-scale135-fractional-scroll", 9, 1.35f, 120, fractional: true);
+                        CheckDeviceRows(graphics, font, inventory, outputDirectory, "actual-font");
+                        CheckDeathQuantity(graphics, renderer, outputDirectory, "actual-font");
                         Render(graphics, renderer, outputDirectory, "default-information-unavailable", 9, 1, 0, false, true);
                         Render(graphics, renderer, outputDirectory, "name-chest", 9, 1, 0, hintTarget: "宝箱显名");
                         Render(graphics, renderer, outputDirectory, "name-infection", 9, 1, 0, hintTarget: "世界感染");
                         Render(graphics, renderer, outputDirectory, "hint-keyboard", 9, 1, 0, hintTarget: "keyboard");
                         Render(graphics, renderer, outputDirectory, "hint-unavailable", 9, 1, 0, false, true, "unavailable");
                         Render(graphics, renderer, outputDirectory, "default-fishing", 7, 1, 0);
-                        // Synthetic 24-high glyphs exercise a 0.6-unit surface inset;
-                        // this is a geometric stress case, not a real font-pack claim.
-                        GameContent.FontAssets.MouseText = graphics.Asset("synthetic-fractional-font", graphics.CreateFont(10, 24));
-                        Render(graphics, renderer, outputDirectory, "synthetic-fractional-font-information", 9, 1, 0);
-                        GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
-                        Render(graphics, renderer, outputDirectory, "default-scale150", 9, 1.5f, 240);
-                        CheckSkinAndLifetime(graphics, renderer, inventory, outputDirectory);
+                        CompleteUnderlineChecks(graphics, renderer, font, inventory, outputDirectory);
                         Console.WriteLine("PASS: production F5 offline previews with local XNB font and surface; owner visual acceptance remains pending.");
                     }
                 }
@@ -67,6 +65,136 @@ namespace Terraria
 
         private static T Read<T>(XnbReader reader, string path) where T : class
         { using (var stream = File.OpenRead(path)) return reader.FromStream<T>(stream); }
+
+        // Resume only the high-glyph/skin suffix after an earlier unrelated
+        // preview has already supplied its own valid evidence. No game startup.
+        internal static void RunUnderlineContinuation(string contentDirectory, string outputDirectory)
+        {
+            Directory.CreateDirectory(outputDirectory);
+            using (var graphics = new F5FixtureGraphics())
+            using (var renderer = new F5Renderer())
+            {
+                var services = new GameServiceContainer();
+                services.AddService(typeof(IGraphicsDeviceService), new GraphicsService(graphics.Device));
+                using (var reader = new XnbReader(services))
+                using (var inventory = Read<Texture2D>(reader, Path.Combine(contentDirectory, "Images/Inventory_Back.xnb")))
+                {
+                    var font = Read<DynamicSpriteFont>(reader, Path.Combine(contentDirectory, "Fonts/Mouse_Text.xnb"));
+                    GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
+                    GameContent.TextureAssets.InventoryBack = graphics.Asset("actual-inventory-back", inventory);
+                    CompleteUnderlineChecks(graphics, renderer, font, inventory, outputDirectory);
+                    Console.WriteLine("PASS: F5 visual underline continuation subset; earlier previews and full-suite qualification NOT_EVALUATED by this invocation.");
+                }
+            }
+        }
+        private static void CompleteUnderlineChecks(F5FixtureGraphics graphics, F5Renderer renderer, DynamicSpriteFont font, Texture2D inventory, string outputDirectory)
+        {
+            // Synthetic 24-high glyphs exercise the tall-font row reserve;
+            // this is geometry stress, not a real font-pack claim. The target
+            // state control may now require ordinary page scrolling to appear.
+            GameContent.FontAssets.MouseText = graphics.Asset("synthetic-fractional-font", graphics.CreateFont(10, 24));
+            Render(graphics, renderer, outputDirectory, "synthetic-fractional-font-information", 9, 1, 0, revealState: true);
+            CheckDeviceRows(graphics, GameContent.FontAssets.MouseText.Value, inventory, outputDirectory, "glyph24");
+            CheckDeathQuantity(graphics, renderer, outputDirectory, "glyph24");
+            GameContent.FontAssets.MouseText = graphics.Asset("actual-mouse-font", font);
+            Render(graphics, renderer, outputDirectory, "default-scale150", 9, 1.5f, 240);
+            CheckSkinAndLifetime(graphics, renderer, inventory, outputDirectory);
+        }
+
+        private static void CheckDeathQuantity(F5FixtureGraphics graphics, F5Renderer renderer, string output, string name)
+        {
+            var owner = new DeathPopupChecks.Owner();
+            var input = new JueMingR.TerrariaHost.Input.HostInputState(() => new IntPtr(1), () => new IntPtr(1));
+            var popup = new DeathHistoryPopup(owner, input);
+            var matrix = Matrix.CreateScale(.5f); matrix.M41 = .37f; matrix.M42 = .61f;
+            Main.UIScaleMatrix = matrix; renderer.RefreshResources();
+            popup.Open(true, 2); popup.Prepare(1600, 600, renderer.FontIdentity, renderer.PopupMeasure, renderer.SkinGeneration);
+            using (var target = new RenderTarget2D(graphics.Device, 800, 300))
+            {
+                graphics.Device.SetRenderTarget(target); graphics.Device.Clear(new Color(80, 100, 110));
+                Main.spriteBatch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, matrix);
+                // This is the actual popup draw route that previously threw from
+                // its selected compact choice, rather than a standalone swatch.
+                renderer.DrawDeathPopup(popup);
+                Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
+                var button = popup.Buttons[popup.Commands.IndexOf(owner.Settings.Count)];
+                var line = F5Layout.ButtonUnderline(button, matrix, popup.Panel.X, popup.Panel.Y);
+                int left = (int)Math.Round(line.X * .5f + matrix.M41), right = (int)Math.Round(line.Right * .5f + matrix.M41);
+                int top = (int)Math.Round(line.Y * .5f + matrix.M42), bottom = (int)Math.Round(line.Bottom * .5f + matrix.M42);
+                F5InputChecks.Check(bottom - top == 2 && left >= 0 && right <= target.Width && top >= 0 && bottom <= target.Height,
+                    "actual death quantity choice remains visible with two complete device rows at native 50% UI");
+                var pixels = new Color[target.Width * target.Height]; target.GetData(pixels);
+                for (int y = top; y < bottom; y++) for (int x = left; x < right; x++)
+                    F5InputChecks.Check(pixels[y * target.Width + x] == Color.LightGreen,
+                        "production death popup draws the selected quantity without throwing or dropping its state line");
+                SaveTexture(target, Path.Combine(output, "death-quantity-" + name + "-scale050.png"));
+            }
+            Console.WriteLine("PASS: actual death quantity popup at native minimum UI scale: " + name);
+        }
+
+        private static void CheckDeviceRows(F5FixtureGraphics graphics, DynamicSpriteFont font, Texture2D skin, string output, string name)
+        {
+            var metrics = new UiTextMetrics();
+            var raw = metrics.Measure(font, "关闭");
+            var size = new F5Size(raw.Width * .7f + 4, raw.Height * .7f + 4, raw.OffsetX * .7f - 2, raw.OffsetY * .7f - 2);
+            foreach (float scale in new[] { .5f, 1f, 1.35f })
+            {
+                var matrix = Matrix.CreateScale(scale); matrix.M41 = .37f; matrix.M42 = .61f;
+                Main.UIScaleMatrix = matrix;
+                var element = new F5Element(F5ElementKind.Button,
+                    new F5Rect(28.3f, 30.7f, Math.Max(100, size.Width + 20), Math.Max(30, size.Height + 12)),
+                    "关闭", size, .7f, F5Command.DisableBiome);
+                var line = F5Layout.ButtonUnderline(element, matrix);
+                int left = (int)Math.Round(line.X * scale + matrix.M41), right = (int)Math.Round(line.Right * scale + matrix.M41);
+                int top = (int)Math.Round(line.Y * scale + matrix.M42), bottom = (int)Math.Round(line.Bottom * scale + matrix.M42);
+                F5InputChecks.Check(bottom - top == 2 && right > left, "fully visible line spans exactly two integer device rows");
+                using (var baseline = new RenderTarget2D(graphics.Device, 420, 150))
+                using (var skinOnly = new RenderTarget2D(graphics.Device, 420, 150))
+                using (var target = new RenderTarget2D(graphics.Device, 420, 150))
+                using (var rasterizer = new RasterizerState { CullMode = CullMode.None, ScissorTestEnable = true })
+                {
+                    F5Element painted = element;
+                    Action<RenderTarget2D, Color?, Rectangle> draw = (image, color, clip) =>
+                    {
+                        Rectangle priorClip = graphics.Device.ScissorRectangle;
+                        graphics.Device.SetRenderTarget(image); graphics.Device.Clear(new Color(80, 100, 110));
+                        graphics.Device.ScissorRectangle = clip;
+                        Main.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp,
+                            DepthStencilState.None, rasterizer, null, matrix);
+                        F5ControlRenderer.Button(Main.spriteBatch, GameContent.TextureAssets.MagicPixel.Value, skin, font,
+                            painted, false, true, color, transform: matrix);
+                        Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null); graphics.Device.ScissorRectangle = priorClip;
+                    };
+                    foreach (bool clipped in new[] { false, true })
+                    {
+                        var clip = new Rectangle(0, clipped ? top + 1 : 0, 420, clipped ? 149 - top : 150);
+                        painted = new F5Element(element.Kind, element.Rect, "", element.TextSize, element.TextScale, element.Command);
+                        draw(skinOnly, null, clip); var backdrop = new Color[420 * 150]; skinOnly.GetData(backdrop);
+                        painted = element;
+                        draw(baseline, null, clip);
+                        var before = new Color[420 * 150]; baseline.GetData(before);
+                        foreach (Color color in new[] { Color.LightGreen, Color.IndianRed })
+                        {
+                            draw(target, color, clip); var after = new Color[420 * 150]; target.GetData(after);
+                            int changed = 0;
+                            for (int y = 0; y < 150; y++) for (int x = 0; x < 420; x++)
+                            {
+                                bool onLine = x >= left && x < right && y >= top && y < bottom && clip.Contains(x, y);
+                                if (onLine) F5InputChecks.Check(before[y * 420 + x] == backdrop[y * 420 + x],
+                                    "line occupies actual text-free skin rather than covering glyphs or their border");
+                                F5InputChecks.Check(onLine ? after[y * 420 + x] == color : after[y * 420 + x] == before[y * 420 + x],
+                                    "production button adds only the exact snapped line; text, skin, border and normal clipping match the undecorated render");
+                                if (onLine) changed++;
+                            }
+                            F5InputChecks.Check(changed == (right - left) * (clipped ? 1 : 2), "viewport crops one row only when the line crosses its edge");
+                            SaveTexture(target, Path.Combine(output, "underline-" + name + "-" + scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) +
+                                (color == Color.IndianRed ? "-off" : "-on") + (clipped ? "-clipped" : "") + ".png"));
+                        }
+                    }
+                }
+            }
+            Console.WriteLine("PASS: production button pixels at native minimum/normal/fractional scales; exact two rows, glyph/skin preservation and viewport clipping: " + name);
+        }
 
         private static void CheckIconScale(F5FixtureGraphics graphics, string output)
         {
@@ -158,9 +286,11 @@ namespace Terraria
         }
 
         private static void Render(F5FixtureGraphics graphics, F5Renderer renderer, string output,
-            string name, int page, float scale, int wheel, bool enabled = true, bool failed = false, string hintTarget = null)
+            string name, int page, float scale, int wheel, bool enabled = true, bool failed = false, string hintTarget = null, bool fractional = false, bool revealState = false)
         {
-            Main.UIScaleMatrix = Matrix.CreateScale(scale, scale, 1);
+            var matrix = Matrix.CreateScale(scale, scale, 1);
+            if (fractional) { matrix.M41 = .37f; matrix.M42 = .61f; }
+            Main.UIScaleMatrix = matrix;
             var state = new F5Interaction { Ready = true };
             var input = new F5Input { Width = 1280, Height = 1080, Scale = scale, Active = true,
                 Focused = true, F5 = true, X = 1900, Y = 1040 };
@@ -171,6 +301,15 @@ namespace Terraria
             state.Update(input); renderer.Prepare(state, input.Width, input.Height, input.Scale);
             input.Left = false; input.Wheel = -wheel; input.Y = state.Y + 160;
             state.Update(input); input.Wheel = 0;
+            if (fractional) state.ScrollTo(state.Scroll + .43f);
+            if (revealState)
+                foreach (var element in state.Layout.Elements)
+                    if (element.Command == (enabled ? F5Command.EnableBiome : F5Command.DisableBiome))
+                    {
+                        Console.WriteLine("F5 visual state reveal: " + name + " localY=" + element.Rect.Y + " height=" + element.Rect.Height +
+                            " viewportHeight=" + state.Layout.Viewport.Height + " previousScroll=" + state.Scroll);
+                        state.ScrollTo(element.Rect.Y - 100); break;
+                    }
             if (hintTarget != null)
                 foreach (var element in state.Layout.Elements)
                     if (element.Text == hintTarget || hintTarget == "keyboard" && element.HotkeyTarget != null ||
@@ -192,12 +331,26 @@ namespace Terraria
                 renderer.DrawHints(state, Main.UIScaleMatrix, null, false, failed);
                 if (hintTarget != null) F5InputChecks.Check(renderer.HintLayout.Visible, "real information preview consumes the shared hint draw path");
                 Main.spriteBatch.End(); graphics.Device.SetRenderTarget(null);
+                // Keep the actual failing framebuffer as evidence too.
+                SaveTexture(target, Path.Combine(output, name + ".png"));
+                CheckNavigationRows(target, state, matrix);
                 F5InputChecks.Check(Utils.RefinedTitleDraws == titles + 1 && Utils.FunctionColorErrors == errors &&
                     Utils.NormalStatusDraws == status && Utils.KeyboardTextDraws == keys,
                     "actual renderer uses the Chinese display title, neutral function text and no normal-status/key text");
                 if (page == 9 && scale == 1 && hintTarget == null) CheckRefinedPixels(target, state, enabled, failed);
-                SaveTexture(target, Path.Combine(output, name + ".png"));
             }
+        }
+
+        private static void CheckNavigationRows(RenderTarget2D target, F5Interaction state, Matrix matrix)
+        {
+            F5Rect line = state.Layout.NavigationUnderline(state.Page, matrix, state.X, state.Y);
+            int left = (int)Math.Round(line.X * matrix.M11 + matrix.M41), right = (int)Math.Round(line.Right * matrix.M11 + matrix.M41);
+            int top = (int)Math.Round(line.Y * matrix.M22 + matrix.M42), bottom = (int)Math.Round(line.Bottom * matrix.M22 + matrix.M42);
+            F5InputChecks.Check(bottom - top == 2, "selected gold navigation uses the same two device rows");
+            var pixels = new Color[target.Width * target.Height]; target.GetData(pixels);
+            for (int y = top; y < bottom; y++) for (int x = left; x < right; x++)
+                F5InputChecks.Check(pixels[y * target.Width + x] == Color.Gold,
+                    "actual production chrome fills both complete snapped navigation rows");
         }
 
         private static void CheckRefinedPixels(RenderTarget2D target, F5Interaction state, bool enabled, bool failed)
@@ -211,6 +364,9 @@ namespace Terraria
             F5InputChecks.Check(selected != null, "information page retains both named real controls");
             F5Rect view = state.Layout.Viewport.Offset(state.X, state.Y);
             F5Rect surface = F5Layout.ButtonSurface(selected).Offset(view.X, view.Y - state.Scroll);
+            var stateLine = F5Layout.ButtonUnderline(selected, Main.UIScaleMatrix, view.X, view.Y - state.Scroll);
+            F5InputChecks.Check(stateLine.Y >= view.Y && stateLine.Bottom <= view.Bottom,
+                "state-color pixel assertion requires its actual line fully inside the content viewport");
             int green = 0, red = 0, minX = int.MaxValue, maxX = 0;
             for (int y = 0; y < target.Height; y++) for (int x = 0; x < target.Width; x++)
             {
@@ -228,7 +384,7 @@ namespace Terraria
             if (!failed) F5InputChecks.Check(maxX - minX + 1 < surface.Width - 12,
                 "state line is visibly shorter than its button");
             F5Rect nav = state.Layout.Navigation(state.Page).Offset(state.X, state.Y);
-            F5Rect underline = state.Layout.NavigationUnderline(state.Page).Offset(state.X, state.Y);
+            F5Rect underline = state.Layout.NavigationUnderline(state.Page, Main.UIScaleMatrix, state.X, state.Y);
             int underlinePixels = 0;
             for (int y = (int)Math.Floor(underline.Y); y < Math.Ceiling(underline.Bottom); y++)
                 for (int x = (int)Math.Floor(underline.X); x < Math.Ceiling(underline.Right); x++)

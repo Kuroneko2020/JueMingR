@@ -62,6 +62,13 @@ namespace Terraria
                 Require(Math.Abs(valueLine.Rect.Y - progressLine.Rect.Y) < 10 && valueLine.Rect.Right <= progressLine.Rect.X, "scan status and progress share a nonoverlapping row");
                 Require(valueLine.TextScale > d.Popup.Buttons[0].TextScale, "main statistical value is larger than controls");
                 Require(d.Popup.Commands.Count(c => c == 24 || c == 25) == 1, "automatic updating has one explicit state/action control");
+                Require(d.Popup.StateColor(24) == Microsoft.Xna.Framework.Color.IndianRed && d.Popup.StateColor(23) == null &&
+                    d.Popup.StateColor(20) == Microsoft.Xna.Framework.Color.LightGreen && d.Popup.StateColor(21) == null,
+                    "dynamic off is red, ordinary scan mode stays green and recount remains an action");
+                d.Click(24); d.Prepare();
+                Require(d.Popup.StateColor(25) == Microsoft.Xna.Framework.Color.LightGreen, "dynamic on projects the accepted current owner value");
+                d.Click(25); d.Prepare();
+                Require(d.Popup.StateColor(24) == Microsoft.Xna.Framework.Color.IndianRed, "dynamic off restores red through its real click target");
                 int generation = d.Popup.Generation; owner.ExplorationText = "已揭示 12.34%"; owner.ScanText = "已扫描：34.00%"; d.Prepare(); Require(d.Popup.Generation == generation, "text-only progress preserves held actions");
                 long layouts = d.Popup.LayoutBuilds; for (int i = 0; i < 2000; i++) { owner.ScanText = "已扫描：" + (i / 100d).ToString("0.00") + "%"; d.Prepare(); } Require(d.Popup.LayoutBuilds == layouts, "2000 detail changes never rebuild controls");
                 owner.ScanActive = false; owner.ScanText = "上次结果"; d.Prepare(); Require(!d.Popup.Commands.Contains(22), "completed scan removes pause action");

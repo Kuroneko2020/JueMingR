@@ -90,12 +90,12 @@ namespace JueMingR.TerrariaHost.F5
             // the supported short viewport. Button minimums remain unchanged.
             if (compact)
             {
-                // Worst-case retry layout: 62 + 4*max(26,t+8) + 2*t,
+                // Worst-case retry layout: 62 + 4*max(26,t+12) + 2*t,
                 // within the viewport margin. Solve both button-height branches.
-                float maxTextHeight = Math.Min((h - 190) / 2, (h - 118) / 6);
+                float maxTextHeight = Math.Min((h - 190) / 2, (h - 134) / 6);
                 scale = Math.Min(scale, maxTextHeight / measure("测试Ag", 1).Height);
             }
-            float textHeight = measure("测试Ag", scale).Height, buttonHeight = Math.Max(26, textHeight + 8);
+            float textHeight = measure("测试Ag", scale).Height, buttonHeight = Math.Max(26, textHeight + 12);
             float padding = compact ? 6 : 10, gap = compact ? 4 : 6, sectionGap = compact ? 6 : 10;
             float outerTop = compact ? 8 : 10, outerBottom = compact ? 8 : 10;
             float header = outerTop + buttonHeight + (compact ? 4 : 10);
@@ -129,6 +129,6 @@ namespace JueMingR.TerrariaHost.F5
         private void AddText(string value, float x, float y, Func<string, float, F5Size> measure, Microsoft.Xna.Framework.Color? color = null)
         { var size = measure(value, scale); Text.Add(new F5Element(F5ElementKind.Text, new F5Rect(x, y, size.Width, size.Height), value, size, scale, F5Command.None)); TextColors.Add(color ?? Microsoft.Xna.Framework.Color.White); }
         private void AddButton(string value, int command, float x, float y, float width, bool enabled, Func<string, float, F5Size> measure)
-        { var size = measure(value, scale); Buttons.Add(new F5Element(F5ElementKind.Button, new F5Rect(x, y, width, Math.Max(26, size.Height + 8)), value, size, scale, F5Command.None)); Commands.Add(command); Enabled.Add(enabled); }
+        { var size = measure(value, scale); Buttons.Add(new F5Element(F5ElementKind.Button, new F5Rect(x, y, width, Math.Max(26, size.Height + 12)), value, size, scale, F5Command.None)); Commands.Add(command); Enabled.Add(enabled); }
     }
 }

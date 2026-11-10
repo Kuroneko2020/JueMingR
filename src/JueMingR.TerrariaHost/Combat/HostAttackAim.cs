@@ -50,7 +50,11 @@ namespace JueMingR.TerrariaHost.Combat
         // Identity continuity alone is not permission to receive an attack.
         // Read only the already selected live receiver; phase displacement
         // never revokes it, but current damage/friendly/death gates do.
-        internal bool CurrentReceiver {get{return observation.Selection.HasTarget && CombatSelection.Valid(observation.Selection.Target,observation.Session) && CombatSelection.Receives(Main.npc[observation.Selection.Target.Slot],observation.Options.Dummy);}}
+        internal bool CurrentReceiver {get{
+#if JMR_AIM_LIGHT
+            if(Prediction.AimLightTrace.PrismConsuming)return PrismReceiver();
+#endif
+            return observation.Selection.HasTarget && CombatSelection.Valid(observation.Selection.Target,observation.Session) && CombatSelection.Receives(Main.npc[observation.Selection.Target.Slot],observation.Options.Dummy);}}
         internal AttackContact ExpectedImpact {get{if(!CurrentReceiver){ClearExecution();return null;}return Valid(false)?(Main.GameUpdateCount==prepared?current:next):Control.ExpectedImpact;}}
         internal void BindPresentation(AttackContact result)
         {presentation=result;presentationStep=Main.GameUpdateCount;presentationOrdinary=ReferenceEquals(result,current) || ReferenceEquals(result,next);if(!presentationOrdinary)Control.BindPresentation(result);}
@@ -204,7 +208,10 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal void ClearExecution(){presentation=null;weapon=null;ammo=null;current=next=null;currentSolution=nextSolution=default(HostAttackSolution);currentBirthInputs=nextBirthInputs=default(HostAttackModels.BirthInputs);balancedOrdinary=false;environment=null;obstacles=null;harpyState=null;handTerrain=handMotionTerrain=null;sharedHandOwner=null;preparedOrdinary=false;cadence.Clear();Control.Clear();}
         internal void Clear(){ClearExecution();ClearPreview();}
-        internal void Reset(){demandActive=false;releaseHand=null;Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.Reset();hasConsumedInput=false;}
+        // User toggles/retries revoke derived work, never erase a real live
+        // birth. Session teardown alone invokes the complete registry reset.
+        internal void ResetPreparation(){demandActive=false;releaseHand=null;Clear();ClearCandidatePlans();RetryFaults();swing.Clear();Control.ResetPreparation();hasConsumedInput=false;}
+        internal void Reset(){ResetPreparation();Control.Reset();}
         internal void ObserveSwing(Player player,Item item,Rectangle frame,float offset)
         {
             if(!ReferenceEquals(player,combat.Player) || !HostSwingAttack.Handles(item) || !AttackObservationDemand)return;

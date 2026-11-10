@@ -5,6 +5,7 @@ using System.Reflection.Emit;
 using System.Reflection;
 using HarmonyLib;
 using Terraria;
+using Terraria.DataStructures;
 
 namespace JueMingR.TerrariaHost.Tools
 {
@@ -60,7 +61,14 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Player),"ApplyCoating",new[]{typeof(int),typeof(int),typeof(bool),typeof(bool),typeof(Item)},nameof(BeforeApplyCoating));
             Patch(typeof(Player),"ItemCheck_UseWiringTools",new[]{typeof(Item)},nameof(BeforeWiring),nameof(AfterWiring),nameof(FinalWiring));
             Patch(typeof(Player),"ItemCheck_UseMiningTools_ActuallyUseMiningTool",new[]{typeof(Item),typeof(bool).MakeByRefType(),typeof(int),typeof(int)},nameof(MiningEnter),nameof(MiningLeave),nameof(MiningFinal));
-            Patch(typeof(Player),"TryUpdateChannel",new[]{typeof(Projectile)},null,nameof(ProjectileCreated));
+            // This is the actual local birth outlet, after vanilla finalized
+            // the new body. A postfix on the tiny TryUpdateChannel forwarding
+            // method is not sufficient evidence that its factory caller will
+            // notify us in an already-running native client.
+            var projectileFactory=typeof(Projectile).GetMethod("NewProjectile",BindingFlags.Static|BindingFlags.Public,null,
+                new[]{typeof(IEntitySource),typeof(float),typeof(float),typeof(float),typeof(float),typeof(int),typeof(int),typeof(float),typeof(int),typeof(float),typeof(float),typeof(float),typeof(NewProjectileModifier)},null);
+            if(projectileFactory?.GetMethodBody()==null)throw new MissingMethodException("tools-abi:NewProjectile scalar");
+            harmony.Patch(projectileFactory,transpiler:new HarmonyMethod(typeof(ToolHooks),nameof(ProjectileBirthOutlet)));
             Patch(typeof(Projectile),"AI",Type.EmptyTypes,nameof(ProjectileBefore),nameof(ProjectileAfter),nameof(ProjectileFinal));
             Patch(typeof(Projectile),"Kill",Type.EmptyTypes,nameof(KillBefore),nameof(KillAfter),nameof(KillFinal));
             Patch(typeof(Projectile),"Damage",Type.EmptyTypes,nameof(DamageBefore),nameof(ShotAfter),nameof(ShotFinal));
@@ -80,6 +88,26 @@ namespace JueMingR.TerrariaHost.Tools
             harmony.Patch(m,Hook(prefix),Hook(postfix),null,Hook(finalizer));
         }
         private static HarmonyMethod Hook(string name){return name==null?null:new HarmonyMethod(typeof(ToolHooks).GetMethod(name,BindingFlags.Static|BindingFlags.NonPublic));}
+        private static IEnumerable<CodeInstruction> ProjectileBirthOutlet(IEnumerable<CodeInstruction> instructions)
+        {
+            var code=instructions.ToList();var native=AccessTools.Method(typeof(Player),"TryUpdateChannel",new[]{typeof(Projectile)});
+            var bridge=AccessTools.Method(typeof(ToolHooks),nameof(NativeChannelAndBirth));int matches=0;
+            foreach(var instruction in code)if(instruction.Calls(native))
+            {
+                // Identical stack shape: the actual Player and newly finalized
+                // Projectile are already on the stack. Labels/exception blocks
+                // remain attached; no pool lookup, adoption or second birth.
+                instruction.opcode=OpCodes.Call;instruction.operand=bridge;matches++;
+            }
+            if(matches!=1)throw new InvalidOperationException("tools-abi:NewProjectile channel outlet must be unique");
+            return code;
+        }
+        private static void NativeChannelAndBirth(Player player,Projectile projectile)
+        {
+            // Keep native channel-cache effects and exceptions first. The
+            // original factory's Owner==myPlayer branch alone reaches here.
+            player.TryUpdateChannel(projectile);ProjectileCreated(player,projectile);
+        }
         private static IEnumerable<CodeInstruction> ConstructionInputTail(IEnumerable<CodeInstruction> instructions)
         {
             var code=instructions.ToList();int start,end;
@@ -133,10 +161,17 @@ namespace JueMingR.TerrariaHost.Tools
         {__state=null;try{__state=host?.Combat?.Attack?.BeginPlacement(__instance,__0,false);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}}
         private static void PlacementCheckAfter(Combat.CombatCursorScope __state){__state?.End();}
         private static Exception PlacementCheckFinal(Combat.CombatCursorScope __state,Exception __exception){__state?.End();return __exception;}
-        private static void KillBefore(Projectile __instance,out Combat.CombatCursorScope __state)
-        {__state=null;try{__state=host?.Combat?.Attack?.Control.BeginKill(__instance);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}}
-        private static void KillAfter(Combat.CombatCursorScope __state){__state?.End();}
-        private static Exception KillFinal(Combat.CombatCursorScope __state,Exception __exception){__state?.End();return __exception;}
+        private struct KillLease {internal Combat.HostAttackControl Owner;internal int Key;internal Combat.CombatCursorScope Cursor;}
+        private static void KillBefore(Projectile __instance,out KillLease __state)
+        {__state=new KillLease{Owner=host?.Combat?.Attack?.Control,Key=(int)__instance.key};try{__state.Cursor=__state.Owner?.BeginKill(__instance);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}}
+        // Kill may consume the registered source (bubble child direction).
+        // Retire only after that native consumer and its cursor return finish;
+        // finalizer cleanup is idempotent and never suppresses native errors.
+        private static void EndKill(Projectile shot,ref KillLease state)
+        {var receipt=state;state=default(KillLease);try{receipt.Cursor?.End();}finally{receipt.Owner?.Retired(shot,receipt.Key);}}
+        private static void KillAfter(Projectile __instance,ref KillLease __state){EndKill(__instance,ref __state);}
+        private static Exception KillFinal(Projectile __instance,ref KillLease __state,Exception __exception)
+        {if(__exception!=null)EndKill(__instance,ref __state);return __exception;}
         private static void DamageBefore(Projectile __instance,out Combat.HostAttackControl.ShotReceipt __state)
         {__state=null;try{__state=host?.Combat?.Attack?.Control.BeginDamage(__instance);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}}
         internal static void Uninstall(){foreach(var m in harmony.GetPatchedMethods().ToArray())harmony.Unpatch(m,HarmonyPatchType.All,harmony.Id);host=null;deferredSync=null;}
@@ -177,7 +212,12 @@ namespace JueMingR.TerrariaHost.Tools
             try{host?.Combat?.Attack?.StartedHand(__instance,__0);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}
         }
         private static void AfterReuse(Player __instance){host?.Combat?.Use.AfterReuse(__instance);}
-        private static void ProjectileCreated(Player __instance,Projectile __0){host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);host?.Combat?.Use.Created(__instance,__0);host?.Combat?.Attack?.Control.Created(__instance,__0);}
+        private static void ProjectileCreated(Player __instance,Projectile __0){
+#if JMR_AIM_LIGHT
+            Combat.Prediction.AimLightTrace.PrismBirth(__instance,__0);
+#endif
+            // Preserve construction's former priority-first birth observer.
+            host?.BuildProjectile?.Invoke(__instance,__0);host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);host?.Combat?.Use.Created(__instance,__0);host?.Combat?.Attack?.Control.Created(__instance,__0);}
         // Vanilla has finished ALL NPC slots here, but has not advanced any
         // projectile. Finite held volleys must capture their full receiver and
         // chase scene at this boundary, once; individual AI only consumes it.
@@ -185,13 +225,31 @@ namespace JueMingR.TerrariaHost.Tools
         // This call's receipt chooses its owner, even if that action has since
         // stopped or another one began. A value receipt adds no idle allocation;
         // the out scope is published before Combat borrows any input.
-        private struct ProjectileLease {internal long Token;internal ToolUse Tool;internal Combat.CombatUse Combat;internal Combat.CombatInputScope Scope;internal Combat.CombatCursorScope Attack;internal Combat.HostAttackControl.ShotReceipt Derived;}
+        private struct ProjectileLease {internal long Token;internal ToolUse Tool;internal Combat.CombatUse Combat;internal Combat.CombatInputScope Scope;internal Combat.CombatCursorScope Attack;internal Combat.HostAttackControl.ShotReceipt Derived;
+#if JMR_AIM_LIGHT
+            internal bool Prism;
+#endif
+        }
         private static void ProjectileBefore(Projectile __instance,out ProjectileLease __state)
         {
-            __state=default(ProjectileLease);var current=host;if(current==null)return;
+            __state=default(ProjectileLease);var current=host;
+#if JMR_AIM_LIGHT
+            __state.Prism=Combat.Prediction.AimLightTrace.PrismToolBefore(current?.Combat,__instance);
+#endif
+            if(current==null)return;
             __state.Combat=current.Combat?.Use;
             __state.Combat?.BeginProjectile(__instance,out __state.Scope);
-            try{__state.Attack=current.Combat?.Attack?.Control.BeginAI(__instance);__state.Derived=current.Combat?.Attack?.Control.BeginDerived(__instance);}catch(Exception error){current.Combat?.Attack?.FailLocal(error);}
+#if JMR_AIM_LIGHT
+            if(__state.Prism)Combat.Prediction.AimLightTrace.PrismBeginPoint();
+#endif
+            try{__state.Attack=current.Combat?.Attack?.Control.BeginAI(__instance);
+#if JMR_AIM_LIGHT
+                if(__state.Prism)Combat.Prediction.AimLightTrace.PrismEndPoint();
+#endif
+                __state.Derived=current.Combat?.Attack?.Control.BeginDerived(__instance);}catch(Exception error){current.Combat?.Attack?.FailLocal(error);}
+#if JMR_AIM_LIGHT
+            if(__state.Prism){Combat.Prediction.AimLightTrace.PrismEndPoint();Combat.Prediction.AimLightTrace.PrismBorrowed(__state.Attack);}
+#endif
             if(__state.Scope!=null || !current.Use.OwnsProjectile(__instance))return;
             __state.Tool=current.Use;__state.Token=current.Use.Operation;current.Use.BeginProjectile();
         }
@@ -204,6 +262,9 @@ namespace JueMingR.TerrariaHost.Tools
             receipt.Derived?.Owner.EndShot(receipt.Derived);
             if(receipt.Scope!=null)receipt.Combat.EndProjectile(shot,receipt.Scope,error);
             else if(receipt.Token>0)receipt.Tool.EndProjectile(receipt.Token,error);
+#if JMR_AIM_LIGHT
+            if(receipt.Prism)Combat.Prediction.AimLightTrace.PrismToolAfter(error);
+#endif
         }
         private static void ProjectileAfter(Projectile __instance,ref ProjectileLease __state){EndProjectile(__instance,ref __state,null);}
         private static Exception ProjectileFinal(Projectile __instance,ref ProjectileLease __state,Exception __exception){if(__exception!=null)EndProjectile(__instance,ref __state,__exception);return __exception;}

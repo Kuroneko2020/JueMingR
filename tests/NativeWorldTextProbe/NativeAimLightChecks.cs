@@ -77,7 +77,27 @@ namespace NativeWorldTextProbe
                 string boundedText=File.ReadAllText(Directory.GetFiles(bounded,"trace.tsv",SearchOption.AllDirectories).Single());
                 Require(boundedText.Contains("reason="+limit+"-limit"),"Recorder stops automatically at the actual "+limit+" guard.");
             }
+            PrismMode(type,trace,output);
             Console.WriteLine("PASS light recorder: bounded queue, scene gaps, no Prepare, collision, consumed arm, write failure and readable prefix");
+        }
+        private static void PrismMode(Type type,Type trace,string output)
+        {
+            string root=Path.Combine(output,"prism-mode");Directory.CreateDirectory(root);File.WriteAllText(Path.Combine(root,"arm.txt"),"prism:test");
+            var log=Activator.CreateInstance(type,Flags,null,new object[]{root,"test"},null);
+            for(int i=0;i<100 && !(bool)type.GetProperty("Accepting",Flags).GetValue(log);i++)Thread.Sleep(10);
+            Require((bool)type.GetProperty("Accepting",Flags).GetValue(log) && (bool)type.GetProperty("PrismOnly",Flags).GetValue(log),"explicit prism arm authenticates the exact existing Host identity");
+            trace.GetField("log",Flags).SetValue(null,log);
+            trace.GetMethod("Fault",Flags).Invoke(null,new object[]{"legacy-must-stay-off",new InvalidOperationException("unused"),0L});
+            trace.GetMethod("End",Flags).Invoke(null,new object[]{"no-native-633-test"});Wait(log);
+            string text=File.ReadAllText(Directory.GetFiles(root,"trace.tsv",SearchOption.AllDirectories).Single());
+            Require(text.Contains("prism-consumer;rows=192") && text.Contains("triggered=False") && text.Contains("nativeAi075=0") && !text.Contains("legacy-must-stay-off"),"no trigger is explicitly not captured, and prism mode suppresses the old broad recorder");
+            var again=Activator.CreateInstance(type,Flags,null,new object[]{root,"test"},null);Wait(again);
+            Require((long)type.GetField("started",Flags).GetValue(again)==0,"prism arm remains single-use after a normal restart");
+            string bad=Path.Combine(output,"prism-wrong-host");Directory.CreateDirectory(bad);File.WriteAllText(Path.Combine(bad,"arm.txt"),"prism:wrong");
+            var wrong=Activator.CreateInstance(type,Flags,null,new object[]{bad,"test"},null);Wait(wrong);
+            Require((long)type.GetField("started",Flags).GetValue(wrong)==0,"prism mode cannot bypass Host identity authentication");
+            Require(Enum.GetNames(trace.GetNestedType("PrismGate",Flags)).Length<=128,"the two fixed gate masks cover every diagnostic gate");
+            Console.WriteLine("PASS prism one-use arm: exact Host/old mode compatible/no-trigger explicit/old broad trace OFF/wrong Host rejected");
         }
         private static void FileLimit(Type type,string root)
         {

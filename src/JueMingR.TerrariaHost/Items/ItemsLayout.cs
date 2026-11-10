@@ -14,6 +14,10 @@ namespace JueMingR.TerrariaHost.Items
         internal F5Rect Rect;
         internal F5Element Element;
         internal bool Selected, Enabled;
+        // Processing's low argument bit is the requested enabled value; the
+        // row number is not a state. Other action/mode commands stay neutral.
+        internal bool Off { get { return Command == ItemUiCommand.Disable ||
+            Command == ItemUiCommand.Processing && Argument % 2 == 0; } }
     }
 
     // Layout keeps full logical heights without materializing off-screen cards.

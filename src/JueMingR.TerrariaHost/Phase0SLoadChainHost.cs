@@ -1011,7 +1011,13 @@ namespace JueMingR.TerrariaHost
                 if (Movement != null) { Shell.AttachMovement(Movement); Movement.CanMovementInput = () => Shell.CanMovementInput; Movement.CanTeleportPointer = () => Shell.CanMovementInput && !Shell.OwnsPointer && !Terraria.Main.LocalPlayer.mouseInterface; }
                 Browser?.Attach(Shell, hotkeys);
                 if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanAutomaticProcessingInput;Tools.CanInventoryPreparationInterface=()=>Shell.CanInventoryPreparationInput;Tools.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Tools.Feedback=ShortFeedback;}
-                if(Combat!=null){Shell.AttachCombat(Combat);Combat.CanInterface=()=>Shell.CanTargetInput && !Shell.OwnsPointer && Shell.CanAutomaticMouseInterface;}
+                if(Combat!=null){Shell.AttachCombat(Combat);
+#if JMR_AIM_LIGHT
+                    Combat.CanInterface=Shell.PrismCombatInterface;
+#else
+                    Combat.CanInterface=()=>Shell.CanTargetInput && !Shell.OwnsPointer && Shell.CanAutomaticMouseInterface;
+#endif
+                }
                 if(CombatObservation!=null)Shell.AttachCombatObservation(CombatObservation);
                 if(Fishing!=null)Shell.AttachFishing(Fishing);
                 if(Processing!=null){Shell.AttachProcessing(Processing);Processing.CanInterface=()=>Shell.CanProcessingInput;Processing.CanAutomaticInterface=()=>Shell.CanAutomaticProcessingInput;Processing.BankGuardsReady=()=>Recovery!=null && Recovery.Available;}

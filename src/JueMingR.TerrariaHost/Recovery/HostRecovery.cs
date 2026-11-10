@@ -69,7 +69,11 @@ namespace JueMingR.TerrariaHost.Recovery
         internal bool Controls(int feature){var s=Settings(feature);return Available && Player!=null && s.Loaded && !s.Protected && !s.Busy;}
         internal void Set(int feature,int value){if(Controls(feature) && Settings(feature).Set(Settings(feature).Value.Change(feature,value)) && feature==2 && value==0)Nurse.Rearm();}
         internal int Value(int feature)
-        {var s=Settings(feature);if(!s.Ready)return 0;var v=s.Value;return feature==0?v.LifeMode:feature==1?(v.Mana?1:0):feature==2?(v.Nurse?1:0):feature==3?(v.Furniture?1:0):feature==4?(v.Buffs?1:0):feature==5?(v.Tax?1:0):feature==6?(v.FollowAdd?1:0):(v.FollowRemove?1:0);}
+        {return Settings(feature).Ready?PreferenceValue(feature):0;}
+        // Presentation reads the last reliably committed preference. A pending
+        // save revokes execution through Value/Controls, not the user's switch.
+        internal int PreferenceValue(int feature)
+        {var v=Settings(feature).Value;return feature==0?v.LifeMode:feature==1?(v.Mana?1:0):feature==2?(v.Nurse?1:0):feature==3?(v.Furniture?1:0):feature==4?(v.Buffs?1:0):feature==5?(v.Tax?1:0):feature==6?(v.FollowAdd?1:0):(v.FollowRemove?1:0);}
         internal void Register(HotkeyRegistry registry, Hotkeys.HotkeyStateFeedback feedback = null)
         {
             for(int i=0;i<6;i++)

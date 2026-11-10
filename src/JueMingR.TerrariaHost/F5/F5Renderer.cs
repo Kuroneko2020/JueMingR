@@ -66,7 +66,7 @@ namespace JueMingR.TerrariaHost.F5
                 int command = popup.Commands[i];
                 // Only recording projects a selected state. Clear/retry are
                 // actions; their danger section keeps its color, not a toggle underline.
-                Color? selected = command == 1 ? (Color?)(popup.RecordingSelected ? Color.LightGreen : Color.LightGray) : null;
+                Color? selected = command == 1 ? (Color?)(popup.RecordingSelected ? Color.LightGreen : Color.IndianRed) : null;
                 F5ControlRenderer.Button(batch, pixel, button, font, popup.Buttons[i], popup.Hovered == command, popup.Enabled[i], selected, popup.Panel.X, popup.Panel.Y, true, popup.Pressed == command);
             }
             popup.Presented();
@@ -104,7 +104,7 @@ namespace JueMingR.TerrariaHost.F5
             for (int i = 0; i < popup.Text.Count; i++)
             { var line = popup.Text[i]; Text(batch, line.Text, new Vector2(popup.Panel.X + popup.TextX(i), popup.Panel.Y + line.Rect.Y), line.TextScale, Color.White, line.TextSize); }
             foreach (var icon in popup.Icons) { F5Rect bounds; var rect = icon.Item2.Offset(popup.Panel.X, popup.Panel.Y); markerIcons.Draw(batch, icon.Item1, new Vector2(rect.X + rect.Width / 2, rect.Y + rect.Height / 2), 24, 1, out bounds); }
-            for (int i = 0; i < popup.Buttons.Count; i++) F5ControlRenderer.Button(batch, pixel, button, font, popup.Buttons[i], popup.Hovered == i, popup.Enabled[i], popup.Selected(popup.Commands[i]) ? (Color?)Color.LightGreen : null, popup.Panel.X, popup.Panel.Y, true, popup.Pressed == i && popup.Hovered == i);
+            for (int i = 0; i < popup.Buttons.Count; i++) F5ControlRenderer.Button(batch, pixel, button, font, popup.Buttons[i], popup.Hovered == i, popup.Enabled[i], popup.StateColor(popup.Commands[i]), popup.Panel.X, popup.Panel.Y, true, popup.Pressed == i && popup.Hovered == i);
             if (popup.Hint.Visible)
             {
                 var hint = popup.Hint.Panel; Panel(batch, hint, background, Color.White, true);
@@ -250,7 +250,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 batch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, matrix);
                 contentBatch = true;
-                DrawChrome(batch, state);
+                DrawChrome(batch, state, matrix);
                 batch.End();
                 contentBatch = false;
                 F5Rect view = layout.Viewport.Offset(state.X, state.Y);
@@ -328,7 +328,7 @@ namespace JueMingR.TerrariaHost.F5
                         F5ControlRenderer.Button(batch, pixel, button, font, element, hovered, enabled,
                             blueprint ? BlueprintControls?.Selected(element.Command) : F5.MovementControls.Owns(element.Command) ? MovementControls?.Selected(element.Command) : F5.ViewControls.Owns(element.Command) ? ViewControls?.Selected(element.Command) : journey ? JourneyControls?.Selected(element.Command) : entity ? EntityControls?.Selected(element.Command) : world ? WorldControls?.Selected(element.Command) : objects ? ObjectControls?.Selected(element.Command) :
                             observation ? CombatObservationControls?.Selected(element.Command) : combat ? CombatControls?.Selected(element.Command) : information && !legacyBiome ? InformationControls?.Selected(element.Command) : guidance ? GuidanceControls?.Selected(element.Command) : F5.FootprintControls.Owns(element.Command) ? FootprintControls?.Selected(element.Command) : F5.MapControls.Owns(element.Command) ? MapControls?.Selected(element.Command) : F5.AnnouncementControls.Owns(element.Command) ? AnnouncementControls?.Selected(element.Command) : F5.DeathControls.Owns(element.Command) ? DeathControls?.Selected(element.Command) : F5Layout.IsSelected(element, biomeEnabled, biomeFailed) ? (Color?)(biomeEnabled ? Color.LightGreen : Color.IndianRed) : null,
-                            view.X, view.Y - state.Scroll, subduedWhenDisabled: blueprint);
+                            view.X, view.Y - state.Scroll, subduedWhenDisabled: blueprint, transform: matrix);
                     }
                 }
                 batch.End();
@@ -483,7 +483,7 @@ namespace JueMingR.TerrariaHost.F5
             }
         }
 
-        private void DrawChrome(SpriteBatch batch, F5Interaction state)
+        private void DrawChrome(SpriteBatch batch, F5Interaction state, Matrix matrix)
         {
             F5Layout layout = state.Layout;
             Panel(batch, layout.Window.Offset(state.X, state.Y), background, new Color(235, 235, 235), true);
@@ -502,7 +502,7 @@ namespace JueMingR.TerrariaHost.F5
                 icons.Draw(batch, i, layout.NavigationIcon(i).Offset(state.X, state.Y), foreground);
                 F5Rect label = layout.NavigationLabel(i).Offset(state.X, state.Y);
                 Text(batch, F5Layout.Pages[i], new Vector2(label.X, label.Y), 0.75f, foreground, size);
-                if (selected) Decoration(batch, layout.NavigationUnderline(i).Offset(state.X, state.Y), Color.Gold);
+                if (selected) Decoration(batch, layout.NavigationUnderline(i, matrix, state.X, state.Y), Color.Gold);
             }
             Panel(batch, layout.ContentPanel.Offset(state.X, state.Y), row, new Color(205, 205, 205));
             RoundBar(batch, layout.ScrollTrackVisual.Offset(state.X, state.Y), Color.Black * 0.4f);

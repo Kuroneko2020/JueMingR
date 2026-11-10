@@ -128,7 +128,7 @@ namespace JueMingR.TerrariaHost.F5
             // A short list uses only its actual rows. Full text keeps a fixed
             // viewport while incremental wrapping continues, so exit stays put.
             int listSlots = Math.Max(1, (queryReady ? value.Rows.Count : 0) + (nextStatus == null ? 0 : 1));
-            float quantityButtonHeight = Mode == 1 ? Math.Max(24, Math.Max(measure("1024", .70f).Height, measure("关闭", .70f).Height) + 6) : 0;
+            float quantityButtonHeight = Mode == 1 ? QuantityButtonHeight(measure) : 0;
             float quantityHeight = Mode == 1 ? 32 + Math.Max(measure("地图显示死亡点数量：", .75f).Height, quantityButtonHeight) + quantityButtonHeight : 0;
             float wantedHeight = Mode == 1 ? quantityHeight : Mode == 2 ? (listSlots + 2) * lineHeight + 50 : 6 * lineHeight + 84;
             float panelHeight = Math.Min(wantedHeight, h - 24);
@@ -167,7 +167,7 @@ namespace JueMingR.TerrariaHost.F5
         private void BuildQuantity(float panelWidth, float panelHeight, Func<string, float, F5Size> measure)
         {
             float titleHeight = measure("地图显示死亡点数量：", .75f).Height;
-            float buttonHeight = Math.Max(24, Math.Max(measure("1024", .70f).Height, measure("关闭", .70f).Height) + 6);
+            float buttonHeight = QuantityButtonHeight(measure);
             float closeWidth = Math.Max(56, measure("关闭", .70f).Width + 16);
             float headerHeight = Math.Max(titleHeight, buttonHeight);
             float top = 20 + headerHeight, optionWidth = (panelWidth - 42) / 4;
@@ -181,9 +181,21 @@ namespace JueMingR.TerrariaHost.F5
             Body = new F5Rect(Panel.X + 12, Panel.Y + top, panelWidth - 24, buttonHeight);
             bodyMax = 0; scroll = 0;
         }
+        // Quantity choices use the public state underline. At native 50% UI,
+        // its two device rows and integer snapping need more than the old six
+        // logical units. Panel/header/body and hit controls share this height.
+        private static float QuantityButtonHeight(Func<string, float, F5Size> measure)
+        { return Math.Max(24, Math.Max(QuantityTextSize("1024", measure).Height, QuantityTextSize("关闭", measure).Height) + 12); }
+        private static F5Size QuantityTextSize(string text, Func<string, float, F5Size> measure)
+        {
+            // PopupMeasure returns raw glyph bounds. Public buttons need the
+            // four-way border in their bounds before reserving line clearance.
+            var size = measure(text, .70f);
+            return new F5Size(size.Width + 4, size.Height + 4, size.OffsetX - 2, size.OffsetY - 2);
+        }
         private void AddQuantityButton(string text, int command, float x, float y, float width, float height, bool enabled, Func<string, float, F5Size> measure)
         {
-            var size = measure(text, .70f);
+            var size = QuantityTextSize(text, measure);
             Buttons.Add(new F5Element(F5ElementKind.Button, new F5Rect(x, y, width, height), text, size, .70f, F5Command.None));
             Commands.Add(command); Enabled.Add(enabled);
         }

@@ -17,6 +17,7 @@ namespace JueMingR.TerrariaHost.Items
         private Texture2D pixel, surface;
         private RasterizerState clipped;
         private SpriteBatch batch;
+        private Matrix passMatrix;
         internal float RowHeight { get; set; }
         internal int Generation { get; private set; }
         internal bool ResourcesCurrent { get { return font != null && pixel != null && !pixel.IsDisposed && ReferenceEquals(font, FontAssets.MouseText?.Value) &&
@@ -52,7 +53,7 @@ namespace JueMingR.TerrariaHost.Items
             {
                 device.ScissorRectangle = F5ControlRenderer.ContentClip(clip, matrix, oldScissor);
                 target.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.None, clipped, null, matrix);
-                began = true; batch = target; draw();
+                began = true; batch = target; passMatrix = matrix; draw();
             }
             finally
             {
@@ -70,7 +71,7 @@ namespace JueMingR.TerrariaHost.Items
         internal void Label(F5Element element) { F5ControlRenderer.Text(batch, font, element, Color.White); }
         internal void Label(F5Element element, Color ink) { F5ControlRenderer.Text(batch, font, element, ink); }
         internal void Button(F5Element element, bool selected, bool enabled, bool off, bool hovered, bool pressed = false)
-        { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null, subduedWhenDisabled: true, pressed: pressed); }
+        { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null, subduedWhenDisabled: true, pressed: pressed, transform: passMatrix); }
         internal void ItemButton(F5Rect rect, bool enabled, bool hovered)
         {
             // Inset only the borrowed skin. Icon fitting and input still use
