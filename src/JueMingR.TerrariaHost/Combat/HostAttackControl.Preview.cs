@@ -28,6 +28,7 @@ namespace JueMingR.TerrariaHost.Combat
         private PreviewDependencies previewDependencies;
         private HostPrismSteering.ViewLease previewView;
         internal bool PreviewFutureUnknown {get;private set;}
+        internal bool PreviewFutureComplete {get;private set;}
 
         // A contact keeps the read set of its actual solver. The navigation,
         // controller and private opening own different terrain readers; later
@@ -47,14 +48,14 @@ namespace JueMingR.TerrariaHost.Combat
         internal PreviewDependencies CapturePreviewDependencies(AttackContact contact)
         {return contact!=null && ReferenceEquals(contact,previewContact)?previewDependencies:null;}
 
-        internal void ClearPreview(){previewContact=null;previewSource=null;previewChild=null;previewAmmo=null;previewWeapon=null;previewObstacles=null;previewDependencies=null;idlePreview=null;}
+        internal void ClearPreview(){PreviewFutureUnknown=PreviewFutureComplete=false;previewContact=null;previewSource=null;previewChild=null;previewAmmo=null;previewWeapon=null;previewObstacles=null;previewDependencies=null;idlePreview=null;}
 
         // This result has no Source or cursor capability. Existing native
         // controllers are observed through their real birth receipt; an idle
         // opening uses private ContentSamples copies and never enters the pool.
         internal AttackContact Preview(NpcTrajectory timeline,HostAttackPhase phase,int delay,bool allowOpening=true)
         {
-            PreviewFutureUnknown=false;
+            PreviewFutureUnknown=PreviewFutureComplete=false;
             if(allowOpening && TryReuseIdle(timeline,phase,delay))return previewContact;
             ClearPreview();var player=combat.Player;
             // Clear-line candidate plans are independent readers of live controls.
@@ -63,10 +64,11 @@ namespace JueMingR.TerrariaHost.Combat
             previewTerrain.Reset();previewEnvironment=new HostProjectileEnvironment.State(true);
             previewWeapon=player.HeldItem;previewSlot=player.selectedItem;previewType=previewWeapon.type;previewPrefix=previewWeapon.prefix;
             previewTick=Main.GameUpdateCount;previewSession=observation.Session;previewSelection=combat.Tools.SelectionIntent;
-            bool live=false;retired.Clear();
+            bool live=false,prismSeen=false,prismClosed=true,prismOnly=true;retired.Clear();
             foreach(var pair in shots)
             {
                 var entry=pair.Value;if(!Observed(entry)){retired.Add(pair.Key);continue;}if(!HostPulseAttack.Handles(entry.Type))live=true;
+                if(entry.Type!=633)prismOnly=false;
                 EnsureNavigation(entry);
                 // A managed parent will release on its next native action;
                 // a held-navigation contact is not proof of that free flight.
@@ -88,6 +90,7 @@ namespace JueMingR.TerrariaHost.Combat
                 else if(entry.Type==1035)view.Contact=HostWhipAttack.Contact(player,entry.Shot,timeline,clock,previewTerrain,out view.Point);
                 else SolveEntry(view,timeline,phase,previewTerrain,player);
                 if(view.Type==633 && view.PrismView.Unknown)PreviewFutureUnknown=true;
+                if(view.Type==633){prismSeen=true;prismClosed&=view.PrismView.Complete;}
                 if(view.Contact==null)continue;
                 BindPreview(view.Contact,entry,view.Ammo,view.ContactChild);
                 previewView=view.PrismView;
@@ -98,7 +101,7 @@ namespace JueMingR.TerrariaHost.Combat
             foreach(int key in retired)shots.Remove(key);
             // A current charge, bubble or release owns its stage even when it
             // has no contact. Do not replace it with a fictitious new opening.
-            if(live || previewContact!=null || !allowOpening)return previewContact;
+            if(live || previewContact!=null || !allowOpening){PreviewFutureComplete=previewContact==null && prismOnly && prismSeen && prismClosed;return previewContact;}
             if(!HostAttackResources.Initial(player,previewWeapon))return null;
             delay=Math.Max(delay,Math.Max(Math.Max(0,player.itemTime-1),Math.Max(0,player.reuseDelay)));
             var launchClock=new HostAttackClock(timeline,phase,delay);
@@ -162,6 +165,7 @@ namespace JueMingR.TerrariaHost.Combat
                 }
                 SolveEntry(openingView,timeline,phase,previewTerrain,body,delay,playerFrame,prismCamera:prismCamera);previewContact=openingView.Contact;previewObstacles=openingView.Obstacles;previewView=openingView.PrismView;
                 if(type==633 && openingView.PrismView.Unknown)PreviewFutureUnknown=true;
+                if(type==633)PreviewFutureComplete=previewContact==null && openingView.PrismView.Complete;
             }
             previewContact=AttackIntercept.WithLaunchDelay(previewContact,delay);
             if(previewContact!=null)previewDependencies=new PreviewDependencies(previewTerrain,openingView.Navigation,previewObstacles,previewEnvironment,player,controlInputCurrent,openingView.PrismView);

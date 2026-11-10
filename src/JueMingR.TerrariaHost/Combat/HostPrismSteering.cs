@@ -87,8 +87,12 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly struct ViewLease
         {
             private readonly Camera camera;private readonly bool present,acceptFirst;
-            internal readonly bool Unknown;
-            internal ViewLease(Camera camera,bool acceptFirst,bool unknown=false){this.camera=camera;this.acceptFirst=acceptFirst;present=true;Unknown=unknown;}
+            internal readonly bool Unknown,Complete;
+            internal ViewLease(Camera camera,bool acceptFirst,bool unknown=false,bool complete=false){this.camera=camera;this.acceptFirst=acceptFirst;present=true;Unknown=unknown;Complete=complete && !unknown;}
+            // Only the beam loop's normal window end may supply this fact.
+            // Current view validity or Controlled membership is not completion.
+            internal ViewLease CompleteWindow(){return new ViewLease(camera,acceptFirst,Unknown,true);}
+            internal ViewLease UnknownTail(){return new ViewLease(camera,acceptFirst,true);}
             // CompletedWorld predicts the intervening Draw before the next
             // player. That exact normal Draw may occur before presentation.
             internal bool Current{get{return !present || camera.ConfigurationCurrent && (camera.InitialView.Current && camera.InitialOffset==new Vector2(Main.cameraX,Main.cameraY) || acceptFirst && camera.View.Current && camera.Offset==new Vector2(Main.cameraX,Main.cameraY));}}

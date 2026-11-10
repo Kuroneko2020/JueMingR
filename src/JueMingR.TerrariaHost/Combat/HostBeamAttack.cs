@@ -29,7 +29,7 @@ namespace JueMingR.TerrariaHost.Combat
             var lengths=new float[children.Count];for(int i=0;i<lengths.Length;i++)lengths[i]=children[i].Shot.localAI[1];
             var fees=new HostAttackResources.FeeClock(player,parent);
             var camera=parent.type==633?preparedCamera??new HostPrismSteering.Camera(player):default(HostPrismSteering.Camera);
-            bool scannedRay=false;Vector2 scannedOrigin=default(Vector2),scannedUnit=default(Vector2),firstInput=aim;float scannedLength=0;
+            bool scannedRay=false,rayWindowKnown=true;Vector2 scannedOrigin=default(Vector2),scannedUnit=default(Vector2),firstInput=aim;float scannedLength=0;
             for(int step=0;step<120 && clock.FirstTick+step<timeline.Count;step++)
             {
                 // A Draw between actions reads the PREVIOUS completed pose.
@@ -37,12 +37,12 @@ namespace JueMingR.TerrariaHost.Combat
                 // viewport. CompletedWorld action0 belongs to the next player.
                 if(parent.type==633)
                 {
-                    if(clock.MovePlayer(step) && !camera.Next(body)){viewLease=new HostPrismSteering.ViewLease(camera,clock.NextWorld || clock.LaunchDelay>0,true);return null;}
+                    if(clock.MovePlayer(step) && !camera.Next(body)){viewLease=step==0?new HostPrismSteering.ViewLease(camera,clock.NextWorld || clock.LaunchDelay>0,true):viewLease.UnknownTail();return null;}
                     if(step==0)viewLease=new HostPrismSteering.ViewLease(camera,clock.NextWorld || clock.LaunchDelay>0);
                 }
                 // The player's movement is already complete at action sampling;
                 // a completed-world preparation predicts the next player's step.
-                if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop))return null;}
+                if(clock.MovePlayer(step)){PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref motion,environment,terrain,out stop)){if(parent.type==633)viewLease=viewLease.UnknownTail();return null;}}
                 HostAttackPlayerFrame.ApplyPose(body,motion);if(parent.type==633)body.gfxOffY=motion.GfxOffset;Vector2 origin=body.RotatedRelativePoint(body.MountedCenter);armOffset=body.GetArmPosition()-origin;
                 // 633 consumes feedback, not a compensating world point held
                 // forever. Re-evaluate the same controller at each trusted
@@ -92,21 +92,43 @@ namespace JueMingR.TerrariaHost.Combat
                     // immutable solve; changing rays or the next prepare scan
                     // afresh. Each child's native length smoothing stays independent.
                     if(!scannedRay || scan!=scannedOrigin || unit!=scannedUnit)
-                    {scannedLength=Length(scan,unit,terrain);scannedOrigin=scan;scannedUnit=unit;scannedRay=true;}
+                    {var scanResult=Length(scan,unit,terrain);scannedLength=scanResult.Length;if(parent.type==633)rayWindowKnown&=scanResult.Known;scannedOrigin=scan;scannedUnit=unit;scannedRay=true;}
                     lengths[i]=MathHelper.Lerp(lengths[i],scannedLength,parent.type==633?.75f:.5f);
                     if(!receives[i].Allows(clock.LaunchDelay+step+1))continue;
                     var contact=AttackIntercept.LineContact(timeline,nativeAge,firstInput.X,firstInput.Y,center.X,center.Y,center.X+unit.X*lengths[i],center.Y+unit.Y*lengths[i],22*scale);
                     if(contact!=null){receipt=child;return parent.type==633?AttackIntercept.WithPointSemantics(contact,AttackPointSemantics.Direction):contact;}
                 }
+                // A known conservative prefix may already have proved a
+                // same-action receive above. Otherwise do not carry an
+                // unknown scan's private length history into later actions.
+                if(parent.type==633 && !rayWindowKnown){viewLease=viewLease.UnknownTail();return null;}
             }
+            // A full, naturally exhausted 633 prefix can ask the existing
+            // candidate scheduler for a longer NPC window. Early motion/
+            // resource/camera exits and exceptions above never claim this.
+            if(parent.type==633)viewLease=rayWindowKnown?viewLease.CompleteWindow():viewLease.UnknownTail();
             return null;
         }
-        private static float Length(Vector2 origin,Vector2 unit,PredictionTerrain terrain)
+        private readonly struct RayScan
+        {
+            internal readonly float Length;internal readonly bool Known;
+            internal RayScan(float length,bool known){Length=length;Known=known;}
+        }
+        private static RayScan Length(Vector2 origin,Vector2 unit,PredictionTerrain terrain)
         {
             Vector2 old=origin;
             for(int distance=8;distance<=2400;distance+=8)
-            {Vector2 point=origin+unit*distance;if(!terrain.ProjectilePassage(old.X,old.Y,point.X,point.Y,1,1))return Math.Max(0,distance-32);old=point;}
-            return 2400;
+            {
+                Vector2 point=origin+unit*distance;float vx=point.X-old.X,vy=point.Y-old.Y,rx,ry;
+                // Same TileContact query and comparisons as ProjectilePassage.
+                // Preserve the conservative numeric scan for both beam types,
+                // but retain whether its truncation was an actual obstruction
+                // or missing terrain before claiming a 633 prefix completed.
+                bool known=terrain.ProjectileCollision(old.X,old.Y,vx,vy,1,1,out rx,out ry);
+                if(!known || !(Math.Abs(rx-vx)<.0001f && Math.Abs(ry-vy)<.0001f))return new RayScan(Math.Max(0,distance-32),known);
+                old=point;
+            }
+            return new RayScan(2400,true);
         }
     }
 }

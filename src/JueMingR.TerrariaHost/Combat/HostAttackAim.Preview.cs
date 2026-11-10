@@ -286,7 +286,11 @@ namespace JueMingR.TerrariaHost.Combat
             if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item))
             {
                 plan.Clear();plan.SetMembers(player,item);plan.Controlled=true;plan.Timeline=timeline;
-                plan.Contact=Control.Preview(timeline,phase,delay);plan.ControlDependencies=Control.CapturePreviewDependencies(plan.Contact);return plan.Contact;
+                plan.Contact=Control.Preview(timeline,phase,delay);plan.ControlDependencies=Control.CapturePreviewDependencies(plan.Contact);
+                // Controlled plans return before ordinary Prepared stamps.
+                // 633 publishes its own actually exhausted solve window, not
+                // a membership shortcut or a budget/unknown partial result.
+                plan.ControlledPrefixComplete=item.shoot==633 && Control.PreviewFutureComplete;return plan.Contact;
             }
             if(item.type==3473 && Control.HasObservedSolar)
             {
@@ -422,6 +426,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal PredictionTerrain.CellLease MotionTerrain;
             internal NpcPredictionSource MotionSource;
             internal HostAttackControl.PreviewDependencies ControlDependencies;
+            internal bool ControlledPrefixComplete;
             // Clear retires a fact, not its bounded fault history. Only a new
             // concrete context or explicit feature retry permits another try.
             internal readonly FaultGate Faults=new FaultGate();
@@ -468,12 +473,12 @@ namespace JueMingR.TerrariaHost.Combat
             internal void CopyPresentation(PreviewPlan source)
             {
                 Clear();Contact=source.Contact;Solution=source.Solution;Balanced=source.Balanced;Timeline=source.Timeline;Ammo=source.Ammo;Environment=source.Environment;EnvironmentState=source.EnvironmentState;Obstacles=source.Obstacles;
-                HarpyState=source.HarpyState;Flight=source.Flight;ControlDependencies=source.ControlDependencies;WhipOwner=source.WhipOwner;Direction=source.Direction;Controlled=source.Controlled;
+                HarpyState=source.HarpyState;Flight=source.Flight;ControlDependencies=source.ControlDependencies;ControlledPrefixComplete=source.ControlledPrefixComplete;WhipOwner=source.WhipOwner;Direction=source.Direction;Controlled=source.Controlled;
                 item=source.item;slot=source.slot;type=source.type;prefix=source.prefix;scale=source.scale;
                 birthRotation=source.birthRotation;birthGravity=source.birthGravity;birthScreen=source.birthScreen;birthHeight=source.birthHeight;
                 Phase=source.Phase;Immune=source.Immune;AttackCooldown=source.AttackCooldown;MeleeCooldown=source.MeleeCooldown;
             }
-            internal void Clear(){Contact=null;Solution=default(HostAttackSolution);Balanced=false;Timeline=null;MotionTerrain=null;MotionSource=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;HandOwner=null;Prepared=Controlled=HadFlight=false;}
+            internal void Clear(){Contact=null;Solution=default(HostAttackSolution);Balanced=false;Timeline=null;MotionTerrain=null;MotionSource=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;HandOwner=null;Prepared=Controlled=ControlledPrefixComplete=HadFlight=false;}
         }
     }
 }

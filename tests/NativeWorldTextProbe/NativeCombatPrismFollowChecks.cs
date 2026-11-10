@@ -38,6 +38,7 @@ namespace NativeWorldTextProbe
         private static Type drawViewHooks;
         private static bool expectedImpactSeen;private static NpcIdentity? viewportIdentity;
         private static object worldPositivePlan;private static AttackContact worldPositiveContact;private static long worldPositiveGuc,worldPositiveSample;private static int worldPositiveRequest;
+        private static int budgetCleanupChecks;
         private static int beamDepth,beamMoves,lastMoves;private static PredictionStop beamStop,lastStop;private static string lastBeamError;private static AttackContact lastBeamContact;
         private static void BeforeOuter(Projectile __instance)
         {if(withdraw && __instance.type==633 && __instance.owner==Main.myPlayer)Call(control,"ResetPreparation");}
@@ -89,9 +90,10 @@ namespace NativeWorldTextProbe
                 audit.Patch(beam.GetMethod("SolvePrepared",Flags),prefix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(BeforeBeam)),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(AfterBeam)),finalizer:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(BeamFinal)));
                 audit.Patch(typeof(PlayerMotionContinuation).GetMethod("Advance",Flags),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(AfterMotion)));
                 audit.Patch(attack.GetType().GetMethod("EvaluateCandidate",Flags),postfix:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(WorldCandidate)));
+                audit.Patch(attack.GetType().GetMethod("PreparePlan",Flags),finalizer:new HarmonyMethod(typeof(NativeCombatPrismFollowChecks),nameof(PlanExit)));
             }
             samples.Clear();shadowReady=false;withdraw=false;stage="stationary";workTotal=workMax=0;worldSteps=budgetStops=0;
-            viewportCase=viewport;sealedContact=null;firstStrike=-1;frozenWouldExit=clearLineSeen=expectedImpactSeen=false;viewportIdentity=null;beamDepth=lastMoves=0;lastStop=PredictionStop.None;lastBeamError=null;lastBeamContact=null;
+            viewportCase=viewport;sealedContact=null;firstStrike=-1;frozenWouldExit=clearLineSeen=expectedImpactSeen=false;viewportIdentity=null;beamDepth=lastMoves=budgetCleanupChecks=0;lastStop=PredictionStop.None;lastBeamError=null;lastBeamContact=null;
             try
             {
                 // The fixed CPU world is only 120 tiles wide. Native borders
@@ -109,6 +111,12 @@ namespace NativeWorldTextProbe
                     // a genuine negative rank, rather than letting an early
                     // fan-ray positive legitimately switch the selected NPC.
                     int wall=(int)farther.ai[0]-4;for(int y=0;y<Main.maxTilesY;y++)NativeToolsChecks.Tile(wall,y,1);
+                    // In this small allocated tile domain, close ray knowledge
+                    // with real boundary walls before firing. Otherwise a
+                    // 2400px scan leaves the 1920px fixture and is genuinely
+                    // unknown, rather than a completed no-contact prefix.
+                    for(int x=1;x<Main.maxTilesX-1;x++){NativeToolsChecks.Tile(x,1,1);NativeToolsChecks.Tile(x,Main.maxTilesY-2,1);}
+                    for(int y=1;y<Main.maxTilesY-1;y++){NativeToolsChecks.Tile(1,y,1);NativeToolsChecks.Tile(Main.maxTilesX-2,y,1);}
                 }
                 GeometryBounds(p,dummy,134);
                 // Let the new actual tile/NPC enter the ordinary observation
@@ -224,9 +232,16 @@ namespace NativeWorldTextProbe
         private static void AfterDamage(Projectile __state){damageSource=__state;}
         private static void WorldCandidate(NpcIdentity identity,long tick,bool beforeNpc,int key,int required,bool __result)
         {
-            if(!viewportCase || beforeNpc || identity.Slot!=2 || !__result)return;
+            if(!viewportCase || beforeNpc || identity.Slot!=2)return;
+            if(!__result)return;
             worldPositiveGuc=Main.GameUpdateCount;worldPositiveSample=tick;worldPositiveRequest=required;
             worldPositivePlan=((Array)Get(attack,"candidatePlans")).GetValue(key);worldPositiveContact=GetOptional(worldPositivePlan,"Contact") as AttackContact;
+        }
+        private static Exception PlanExit(Exception __exception,object plan)
+        {
+            if(viewportCase && __exception is CombatPredictionBudgetExceededException)
+            {budgetCleanupChecks++;Require(!(bool)Get(plan,"ControlledPrefixComplete"),"the actual PreparePlan budget catch clears the controlled-prefix completion fact before propagation");}
+            return __exception;
         }
         private static void BeforeBeam(Projectile parent,out int __state)
         {__state=beamDepth;if(viewportCase && parent.type==633 && parent.ai[0]<=8){beamDepth++;if(__state==0){beamMoves=0;beamStop=PredictionStop.None;lastBeamError=null;}}}
@@ -277,12 +292,13 @@ namespace NativeWorldTextProbe
             // Controlled PreparePlanCore deliberately returns before ordinary
             // Prepared/PreparedTick/Phase stamps. Freshness belongs to this
             // actual world EvaluateCandidate return and final selected owner.
-            Console.WriteLine("PRISM VIEWPORT world gate GUC="+Main.GameUpdateCount+" charge="+parent.ai[0]+" candidates="+Get(Get(Get(context,"CombatObservation"),"Selection"),"CandidateCount")+" pass="+Get(attack,"candidateWorldPass")+" currentPositive="+(worldPositiveGuc==Main.GameUpdateCount)+" selectedSame="+ReferenceEquals(selected,plan)+" plan="+(plan==null?"null":Get(plan,"Controlled")+"/ordinaryPrepared="+Get(plan,"Prepared"))+" timeline="+(path==null?"null":path.SampleTick+"/"+path.Count)+" work="+Get(work,"UsedMilliseconds")+" exceeded="+Get(work,"Exceeded"));
+            Console.WriteLine("PRISM VIEWPORT world gate GUC="+Main.GameUpdateCount+" charge="+parent.ai[0]+" candidates="+Get(Get(Get(context,"CombatObservation"),"Selection"),"CandidateCount")+" pass="+Get(attack,"candidateWorldPass")+" currentPositive="+(worldPositiveGuc==Main.GameUpdateCount)+" selectedSame="+ReferenceEquals(selected,plan)+" plan="+(plan==null?"null":Get(plan,"Controlled")+"/ordinaryPrepared="+Get(plan,"Prepared")+"/prefixComplete="+Get(plan,"ControlledPrefixComplete"))+" timeline="+(path==null?"null":path.SampleTick+"/"+path.Count)+" request="+((int[])Get(attack,"candidateRequests"))[4]+" work="+Get(work,"UsedMilliseconds")+" exceeded="+Get(work,"Exceeded"));
             if(plan==null || worldPositiveGuc!=Main.GameUpdateCount || !ReferenceEquals(plan,worldPositivePlan) || !ReferenceEquals(plan,selected))return;
             var contact=GetOptional(plan,"Contact") as AttackContact;
             Console.WriteLine("PRISM VIEWPORT world candidate GUC="+Main.GameUpdateCount+" charge="+parent.ai[0]+" sample="+worldPositiveSample+" count="+((NpcTrajectory)Get(plan,"Timeline")).Count+" contact="+(contact==null?"null":contact.Tick.ToString())+" request="+worldPositiveRequest);
             if(contact==null || !ReferenceEquals(contact,worldPositiveContact))return;
             Require((bool)Static(attack.GetType(),"PlanPositive",plan) && (bool)Get(plan,"Controlled"),"the actual clear-line consumer publishes a positive controlled plan");
+            Require(worldPositiveRequest>=32,"actual completed controlled-prefix feedback advances the real request beyond its original sixteen steps");
             Require(viewportIdentity.HasValue && contact.Timeline.Identity.Equals(viewportIdentity.Value),"the sealed plan belongs to the same target2 identity consumed since the actual source birth");
             Require(contact.Timeline.SampleTick+contact.Tick>=Main.GameUpdateCount+20,"the action-before world plan still requires at least twenty future native actions");
             var dependencies=Get(plan,"ControlDependencies");Require((bool)Call(dependencies,"Current",Main.LocalPlayer),"the actual Preview producer's immutable dependencies accompany the clear-line plan");
@@ -296,13 +312,13 @@ namespace NativeWorldTextProbe
         {
             Require(sealedContact!=null,"normal following camera produces a nonempty early frozen Contact under the existing budget");
             for(int i=0;i<80 && firstStrike<0;i++)Step(true,1);
-            Console.WriteLine("PRISM VIEWPORT joint expected="+sealedAbsolute+" actual="+firstStrike+" frozenViewWouldExit="+frozenWouldExit+" originDisplacement="+(p.RotatedRelativePoint(p.MountedCenter)-sealedOrigin)+" clearLinePositive="+clearLineSeen);
+            Console.WriteLine("PRISM VIEWPORT joint expected="+sealedAbsolute+" actual="+firstStrike+" frozenViewWouldExit="+frozenWouldExit+" originDisplacement="+(p.RotatedRelativePoint(p.MountedCenter)-sealedOrigin)+" clearLinePositive="+clearLineSeen+" actualBudgetCleanupChecks="+budgetCleanupChecks);
             Require(firstStrike==sealedAbsolute && frozenWouldExit && clearLineSeen && expectedImpactSeen,"one action-before Contact matches the later first actual632 receive with enough motion to break the old frozen view; ClearLine and actual ExpectedImpact stay model-positive");
             var timeline=Get(control,"preparedTimeline");var completed=Enum.Parse(Get(control,"preparedPhase").GetType(),"CompletedWorld");
             Main.CurrentPan=new Vector2(20,0);
             try
             {
-                Require(Call(control,"Preview",timeline,completed,0,false)==null && (bool)Get(control,"PreviewFutureUnknown"),"observed unsupported pan marks only its future preview tail unknown");
+                Require(Call(control,"Preview",timeline,completed,0,false)==null && (bool)Get(control,"PreviewFutureUnknown") && !(bool)Get(control,"PreviewFutureComplete"),"observed unsupported pan marks only its future preview tail unknown and never a completed prefix");
                 Step(true,1);Require(((IDictionary)Get(control,"shots")).Contains((int)parent.key),"actual current consumer remains registered and executes through unsupported future pan");
             }
             finally{Main.CurrentPan=Vector2.Zero;}
