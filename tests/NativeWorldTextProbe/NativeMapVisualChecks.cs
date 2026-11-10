@@ -39,6 +39,10 @@ namespace NativeWorldTextProbe
                 var prepare = popup.GetType().GetMethod("Prepare", Flags); var measure = Delegate.CreateDelegate(prepare.GetParameters()[3].ParameterType, renderer, renderer.GetType().GetMethod("PopupMeasure", Flags));
                 Action<float, float> layout = (w, h) => prepare.Invoke(popup, new object[] { w, h, Get(renderer, "FontIdentity"), measure, Get(renderer, "SkinGeneration") });
                 if (alignmentOnly) { AlignmentImages(graphics, output, context, host, shell, renderer, popup, layout); return; }
+                // The complete Shell preparation checks real MagicPixel/font resources.
+                // Keep this save/navigation chain on the existing XNB graphics fixture,
+                // rather than forcing Ready in the CPU metric-only map scope.
+                NativeMapSecondaryNavigationChecks.Run(context,host);
                 Call(popup, "Open", false); layout(960, 640); graphics.Image(Path.Combine(output, "map-empty.png"), () => Call(renderer, "DrawMapPopup", popup), Matrix.Identity);
                 int[] icons = { 8, 48, 50, 224, 171, 393, 966, 29 };
                 for (int i = 0; i < 11; i++) { long op = library.Create(new MarkerRecord((i + 1).ToString("x32"), 200 + i * 40.125, 200.375, icons[i % 8], i == 0 ? "营地家的第一处标记点" : "标记" + i)); Until(() => { library.Poll(); return library.LastOperation == op; }); }

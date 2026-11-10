@@ -25,8 +25,14 @@ namespace NativeWorldTextProbe
             var ready=(bool[])Get(owner,"ready");var errors=(Exception[])Get(owner,"errors");
             for(int i=0;i<3;i++)Require(ready[i],"independent native experiment hook "+i+" installed: "+errors[i]);
             Save(owner,0);NativeCombatObservationChecks.Save(host,new ObservationOptions());
+            var nativeOutlets=new Harmony("JueMingR.Tests.ExperimentNativeOutlets");
             try
             {
+                // Reuse the verified Usage/Yoyo CPU fixture's achievement-only
+                // outlets. Main.Achievements has no desktop host here; retain
+                // all original Player.Update movement/input/ItemCheck stages.
+                foreach(string name in new[]{"HandleSpecialEvent","HandleRunning","HandleMining"})
+                    nativeOutlets.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),"SkipAchievement"));
                 var failures=new List<Exception>();
                 Action<string,Action> run=(name,check)=>
                 {
@@ -69,7 +75,7 @@ namespace NativeWorldTextProbe
                 }
                 Console.WriteLine("PASS hidden experiments: actual native steering, terrain, beam, timing and basic prediction boundary; isolated components.");
             }
-            finally{Save(owner,0);NativeCombatObservationChecks.Save(host,new ObservationOptions());foreach(var p in Main.projectile)p.active=false;}
+            finally{nativeOutlets.UnpatchAll(nativeOutlets.Id);Save(owner,0);NativeCombatObservationChecks.Save(host,new ObservationOptions());foreach(var p in Main.projectile)p.active=false;}
         }
         private static void Save(object owner,int mask)
         {
@@ -166,10 +172,28 @@ namespace NativeWorldTextProbe
             Save(owner,4);World(owner,()=>Require(sentry.AI_053_HandleSentryNPCTargeting(Vector2.Zero,false,out slot,out x,out yAim) && slot==2,"native sentry targeting actually sees wall-hidden enemy"));
             // Native first AI initializes a 120-tick appearance cooldown.
             // Advance the real complete consumer; do not zero its timer.
-            World(owner,()=>{for(int tick=0;tick<=120 && !Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309);tick++)sentry.Update(sentry.whoAmI);});Require(Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309),"actual ground sentry AI fires its native attack toward the wall-hidden receiver");
+            World(owner,()=>
+            {
+                HydraFacts("before",owner,sentry,target);
+                for(int tick=0;tick<=120 && !Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309);tick++)
+                {
+                    sentry.Update(sentry.whoAmI);
+                    if(tick==0 || tick==1 || tick==119 || tick==120)HydraFacts("after-"+tick,owner,sentry,target);
+                }
+            });Require(Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309),"actual ground sentry AI fires its native attack toward the wall-hidden receiver");
             var imp=Shot(ProjectileID.FlyingImp,new Vector2(650,600),Vector2.Zero);player.impMinion=true;
             World(owner,()=>{for(int tick=0;tick<180;tick++)imp.AI();});
             Require(Main.projectile.Any(p=>p.active && p.owner==0 && p.type==ProjectileID.ImpFireball),"actual flying summon AI emits attack behind wall while owner holds a pick");
+        }
+        private static void HydraFacts(string stage,object owner,Projectile sentry,NPC target)
+        {
+            int selected;float x,y;bool acquired=sentry.AI_053_HandleSentryNPCTargeting(Vector2.Zero,false,out selected,out x,out y);
+            Console.WriteLine("HYDRA FACTS "+stage+" active="+sentry.active+" type="+sentry.type+" style="+sentry.aiStyle+" key="+sentry.key+" slot="+sentry.whoAmI+
+                " numUpdates="+sentry.numUpdates+" extraUpdates="+sentry.extraUpdates+" ai="+string.Join(",",sentry.ai)+" local="+string.Join(",",sentry.localAI)+
+                " pos="+sentry.position+" size="+sentry.Size+" velocity="+sentry.velocity+" tileCollide="+sentry.tileCollide+" sentry="+sentry.sentry+
+                " damage="+sentry.damage+" originalDamage="+sentry.originalDamage+" lifetime="+sentry.timeLeft+" mode="+Get(owner,"EffectiveMask")+
+                " target="+acquired+"/"+selected+"/"+new Vector2(x,y)+" receiver="+target.active+"/"+target.CanBeChasedBy(sentry)+"/"+target.life+
+                " bounds="+Main.leftWorld+","+Main.topWorld+","+Main.rightWorld+","+Main.bottomWorld);
         }
         private static void NestedAttackGates(object context,object owner,object tools,object input)
         {

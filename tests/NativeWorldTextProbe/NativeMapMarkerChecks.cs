@@ -53,7 +53,6 @@ namespace NativeWorldTextProbe
                 Geometry(assembly);
                 NativeMapDrawOracle.Run(host);
                 Inputs(worker, context, host);
-                NativeMapSecondaryNavigationChecks.Run(context,host);
                 NativeMapFeedbackChecks.Run(host);
                 HostCounting(context, host, root);
                 NativeExplorationCosts.Run(context, host, output);

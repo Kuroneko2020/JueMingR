@@ -197,7 +197,6 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeDeathInputChecks.cs'=@('native-DeathCpu')
         'tests/NativeWorldTextProbe/NativeFootprintChecks.cs'=@('native-FootprintsCpu')
         'tests/NativeWorldTextProbe/NativeMapMarkerChecks.cs'=@('native-ExplorationCpu')
-        'tests/NativeWorldTextProbe/NativeMapSecondaryNavigationChecks.cs'=@('native-ExplorationCpu')
         'tests/NativeWorldTextProbe/NativeCombatBalancedAimChecks.cs'=@('native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu')
         'tests/NativeWorldTextProbe/NativeCombatInputGeometryChecks.cs'=@('native-CombatInputGeometryCpu')
         'tests/NativeWorldTextProbe/NativeCombatSkyActionChecks.cs'=@('native-CombatSkyActionCpu')

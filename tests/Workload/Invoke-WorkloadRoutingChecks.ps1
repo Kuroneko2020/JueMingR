@@ -477,7 +477,6 @@ try {
         @('tests/NativeWorldTextProbe/NativeDeathInputChecks.cs','native-DeathCpu'),
         @('tests/NativeWorldTextProbe/NativeFootprintChecks.cs','native-FootprintsCpu'),
         @('tests/NativeWorldTextProbe/NativeMapMarkerChecks.cs','native-ExplorationCpu'),
-        @('tests/NativeWorldTextProbe/NativeMapSecondaryNavigationChecks.cs','native-ExplorationCpu'),
         @('tests/NativeWorldTextProbe/NativeCombatExperimentHotkeyChecks.cs','native-CombatExperimentsCpu'),
         @('tests/NativeWorldTextProbe/NativeCombatExperimentChecks.cs','native-CombatExperimentsCpu'))){
         $route=Get-WorkloadRoute @($entry[0])
@@ -486,6 +485,11 @@ try {
     }
     Assert-Route ($all.name -contains 'native-CombatExperimentsCpu' -and (Get-WorkloadExpectedNativeLeaf 'native-CombatExperimentsCpu') -ceq 'combat-experiments' -and (Get-WorkloadAssertionHost 'native-CombatExperimentsCpu') -ceq 'NativeWorldTextProbe.exe') 'hidden combat native leaf retains Full dispatch, exact completion and assertion protocol'
     Assert-Route ((Get-WorkloadAssertionHost 'native-ExplorationCpu') -ceq 'NativeWorldTextProbe.exe') 'map native assertions use the declared existing business failure protocol'
+    foreach($path in @('tests/NativeWorldTextProbe/NativeMapVisualChecks.cs','tests/NativeWorldTextProbe/NativeMapSecondaryNavigationChecks.cs')){
+        $directRoute=Get-WorkloadRoute @($path)
+        Assert-Route ($directRoute.unknown.Count -eq 0 -and $directRoute.groups -contains 'map-host' -and @($directRoute.groups|Where-Object {$_ -like 'check:*MapVisual*'}).Count -eq 0) 'direct map graphics retain map inputs without inventing CPU or Full GPU execution'
+    }
+    Assert-Route ($all.name -notcontains 'native-MapVisual') 'Full CPU catalogue does not automatically launch the explicit map graphics specialist'
     Write-Output 'PASS: actual Git diff routes, local exclusions, shared consumers, mixed/index/worktree/rename/deletion/cumulative/untracked/missing baseline and executable plan.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($fixtureRoot); $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
