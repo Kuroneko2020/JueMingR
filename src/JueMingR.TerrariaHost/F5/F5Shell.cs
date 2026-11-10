@@ -345,7 +345,7 @@ namespace JueMingR.TerrariaHost.F5
             if (hostItems != null) { items = new ItemsPresentation(hostItems, State); items.HotkeyClicked = OpenHotkey; }
             if (announcements != null) renderer.AnnouncementControls = new AnnouncementControls(announcements, hotkeys?.Bindings);
             Func<int, bool> prior = State.BeforeLeave;
-            State.BeforeLeave = page => { long intent=++secondaryNavigation, session=maps?.Session??0; int from=State.Page, layout=State.Layout.Generation; if (MapPopup != null && !MapPopup.TryLeave(() => { if(intent!=secondaryNavigation || failed || !State.Visible || State.Page!=from || State.Layout.Generation!=layout || (maps?.Session??0)!=session || !CanPresentNow || !this.inputState.SampleFocused)return; if (page < 0) State.Close(); else State.Navigate(page); })) return false; if (prior != null && !prior(page)) return false; if (Browser != null && !Browser.RequestFinish()) return false; Browser?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); State.Layout.About.Leave(); return true; };
+            State.BeforeLeave = page => { long intent=++secondaryNavigation, session=maps?.Session??0; int from=State.Page, layout=State.Layout.Generation; long focus=this.inputState.FocusGeneration; if (MapPopup != null && !MapPopup.TryLeave(() => { if(intent!=secondaryNavigation || failed || !State.Visible || State.Page!=from || State.Layout.Generation!=layout || (maps?.Session??0)!=session || focus!=this.inputState.FocusGeneration || !CanResumeSecondaryNavigation)return; if (page < 0) State.Close(); else State.Navigate(page); })) return false; if (prior != null && !prior(page)) return false; if (Browser != null && !Browser.RequestFinish()) return false; Browser?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); FootprintPopup?.Close(); State.Layout.About.Leave(); return true; };
         }
         internal void AttachBrowser(IBrowserPage page) { if (Browser != null) throw new InvalidOperationException("Browser already attached."); Browser = page; }
         internal F5Rect BlueprintMaterialsAnchor()
@@ -1188,10 +1188,14 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         private long secondaryNavigation;
+        // A reliable save may finish in an outer Update without native mapping.
+        // Continue only the accepted UI intent; no fresh input edge is required.
+        private bool CanResumeSecondaryNavigation {get{return CanPresentNow && inputState.CanPrepareText && !inputState.ExternalModalBusy;}}
+
         private void LeaveMapForSecondary(Action action)
         {
-            long intent=++secondaryNavigation, session=maps?.Session??0; int page=State.Page; int generation=State.Layout.Generation;
-            Action complete=()=>{if(intent==secondaryNavigation && !failed && State.Visible && State.Page==page && State.Layout.Generation==generation && (maps?.Session??0)==session && CanPresentNow && inputState.SampleFocused)action();};
+            long intent=++secondaryNavigation, session=maps?.Session??0, focus=inputState.FocusGeneration; int page=State.Page; int generation=State.Layout.Generation;
+            Action complete=()=>{if(intent==secondaryNavigation && !failed && State.Visible && State.Page==page && State.Layout.Generation==generation && (maps?.Session??0)==session && focus==inputState.FocusGeneration && CanResumeSecondaryNavigation)action();};
             if(MapPopup==null || MapPopup.TryLeave(complete))complete();
         }
         private void NavigateSecondary(F5Element entry)

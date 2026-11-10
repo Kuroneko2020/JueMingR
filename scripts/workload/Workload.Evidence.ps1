@@ -453,6 +453,7 @@ function Test-WorkloadLatestAttempt {
 }
 function Get-WorkloadAssertionHost {
     param([string] $Name)
+    if($Name -ceq 'native-CombatExperimentsCpu'){return 'NativeWorldTextProbe.exe'}
     # Only these current scopes have typed assertions and audited scene
     # aggregation. Legacy string/catch-all adapters remain unknown on failure.
     # This is an actual launch/protocol owner, so it stays in the bound recipe.

@@ -19,7 +19,7 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
         internal static void Run(object context)
         {
-            NativeCombatAimChecks.Initialize();NativeHiddenEntryChecks.RevealForComposition(context);
+            NativeCombatAimChecks.Initialize();NativeCombatExperimentHotkeyChecks.Reveal(context);
             var owner=Get(context,"CombatExperiments");var host=Get(context,"CombatObservation");
             var combat=Get(context,"Combat");var tools=Get(context,"Tools");var input=Get(context,"Input");
             var ready=(bool[])Get(owner,"ready");var errors=(Exception[])Get(owner,"errors");
@@ -30,8 +30,14 @@ namespace NativeWorldTextProbe
                 HardLock(context,owner,host,tools,input);
                 Movement(context,owner,tools,input);
                 SummonAttack(context,owner,tools,input);
+                NestedAttackGates(context,owner,tools,input);
                 Beams(context,owner,tools,input);
                 Timings(context,owner,tools,input);
+                Revolver(context,owner,tools,input);
+                MeleePeriod(context,owner,tools,input);
+                PathConsumer(context,owner,host,tools,input);
+                YoyoWallInput(context,owner,host,combat,tools,input);
+                GroundSummonAttack(context,owner,tools,input);
                 PredictionBoundary(context,owner,host,combat,tools,input);
                 PrismSource(context,owner,host,combat,tools,input);
                 Console.WriteLine("PASS hidden experiments: actual native steering, terrain, beam, timing and basic prediction boundary; isolated components.");
@@ -70,16 +76,25 @@ namespace NativeWorldTextProbe
             var clone=(Projectile)typeof(object).GetMethod("MemberwiseClone",Flags).Invoke(p,null);clone.velocity=new Vector2(12,0);
             World(owner,()=>clone.AI());Require(clone.velocity.Y==0,"same owner/slot/key clone cannot obtain a live write");
             p.owner=1;p.velocity=new Vector2(12,0);World(owner,()=>p.AI());Require(p.velocity.Y==0,"remote native object cannot obtain steering");
-            p.owner=0;Save(owner,0);p.velocity=new Vector2(12,0);World(owner,()=>p.AI());Require(p.velocity.Y==0,"OFF native consumer does not steer");
+            p.owner=0;
+            // AI208 charge belongs to native held input even with Aim disabled.
+            player.channel=true;player.HeldItem.SetDefaults(6153);Main.mouseX=0;Main.mouseY=100;
+            var charge=Shot(1115,player.MountedCenter,new Vector2(12,0));charge.ai[0]=3;charge.ai[1]=0;
+            World(owner,()=>charge.AI());var charging=charge.velocity;
+            Require(Vector2.Dot(charging.SafeNormalize(Vector2.UnitX),(target.Center-charge.Center).SafeNormalize(Vector2.UnitX))<.5f,"hard lock does not retarget native glacier held charge with Aim off");
+            NativeToolExecutionChecks.Sample(context,input,new Vector2(300,500),false);player.controlUseItem=false;player.ItemCheck();
+            Require(!player.channel,"actual ItemCheck observes physical release of glacier charge");World(owner,()=>charge.AI());
+            Require(charge.active && charge.ai[1]==1 && Vector2.Dot(charge.velocity.SafeNormalize(Vector2.UnitX),(target.Center-charge.Center).SafeNormalize(Vector2.UnitX))>.99f,"released glacier free flight joins hard lock");
+            Save(owner,0);p.velocity=new Vector2(12,0);World(owner,()=>p.AI());Require(p.velocity.Y==0,"OFF native consumer does not steer");
         }
         private static void Movement(object context,object owner,object tools,object input)
         {
             Save(owner,0);var player=NativeToolExecutionChecks.Reset(context,tools,input,95,0,0);player.position=new Vector2(580,646);
             for(int y=30;y<43;y++)NativeToolsChecks.Tile(40,y,TileID.Stone);
-            var ordinary=Shot(14,new Vector2(600,646),new Vector2(80,0));ordinary.HandleMovement(ordinary.velocity);
+            var ordinary=Shot(14,new Vector2(600,646),new Vector2(80,0));for(int i=0;i<8 && ordinary.active;i++)ordinary.HandleMovement(ordinary.velocity);
             Require(!ordinary.active || ordinary.position.X<640,"vanilla real bullet cannot pass solid wall");
             Save(owner,4);var p=Shot(14,new Vector2(600,646),new Vector2(80,0));
-            World(owner,()=>p.HandleMovement(p.velocity));Require(p.active && p.position.X>=680 && p.tileCollide,"real movement passes wall with native tileCollide field intact");
+            World(owner,()=>{for(int i=0;i<8 && p.active;i++)p.HandleMovement(p.velocity);});Require(p.active && p.position.X>=680 && p.tileCollide,"real movement passes wall with native tileCollide field intact");
             var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;target.Center=new Vector2(800,650);target.life=10000;
             p.Center=new Vector2(800,650);p.ownerHitCheck=true;p.ownerHitCheckDistance=1000;
             Require(!p.CanHitWithMeleeWeapon(target),"unscoped owner LOS remains blocked");
@@ -90,7 +105,7 @@ namespace NativeWorldTextProbe
             var slime=Shot(266,new Vector2(610,650),new Vector2(64,8));Require(slime.minion,"native baby slime is a minion body");slime.position.Y=43*16-slime.height-2;float floor=43*16-slime.height;
             World(owner,()=>slime.HandleMovement(slime.velocity));Require(slime.active && slime.position.X>=670 && slime.position.Y<=floor+.01f,"walking summon passes wall while retaining floor support");
             var hook=Shot(13,new Vector2(600,600),new Vector2(80,0));World(owner,()=>Require(!(bool)Call(owner,"Wall",hook),"noncombat hook is not granted terrain bypass"));
-            Save(owner,0);p=Shot(14,new Vector2(600,646),new Vector2(80,0));World(owner,()=>p.HandleMovement(p.velocity));Require(!p.active || p.position.X<640,"OFF next native movement restores wall behavior");
+            Save(owner,0);p=Shot(14,new Vector2(600,646),new Vector2(80,0));World(owner,()=>{for(int i=0;i<8 && p.active;i++)p.HandleMovement(p.velocity);});Require(!p.active || p.position.X<640,"OFF next native movement restores wall behavior");
         }
         private static void Beams(object context,object owner,object tools,object input)
         {
@@ -120,9 +135,128 @@ namespace NativeWorldTextProbe
             int slot;float x,yAim;
             Require(!sentry.AI_053_HandleSentryNPCTargeting(Vector2.Zero,false,out slot,out x,out yAim),"native sentry targeting is blocked by wall");
             Save(owner,4);World(owner,()=>Require(sentry.AI_053_HandleSentryNPCTargeting(Vector2.Zero,false,out slot,out x,out yAim) && slot==2,"native sentry targeting actually sees wall-hidden enemy"));
+            World(owner,()=>sentry.AI());Require(Main.projectile.Any(p=>p.active && p.owner==0 && p.type==309),"actual ground sentry AI fires its native attack toward the wall-hidden receiver");
             var imp=Shot(ProjectileID.FlyingImp,new Vector2(650,600),Vector2.Zero);player.impMinion=true;
             World(owner,()=>{for(int tick=0;tick<180;tick++)imp.AI();});
             Require(Main.projectile.Any(p=>p.active && p.owner==0 && p.type==ProjectileID.ImpFireball),"actual flying summon AI emits attack behind wall while owner holds a pick");
+        }
+        private static void NestedAttackGates(object context,object owner,object tools,object input)
+        {
+            foreach(int mask in new[]{0,4})
+            {
+                bool wall=mask!=0;Save(owner,0);var player=NativeToolExecutionChecks.Reset(context,tools,input,95,0,0);player.position=new Vector2(580,646);
+                for(int y=20;y<60;y++)NativeToolsChecks.Tile(40,y,TileID.Stone);
+                player.itemAnimation=4;player.itemAnimationMax=30;
+                var spear=Shot(342,player.MountedCenter,new Vector2(12,0));Save(owner,mask);World(owner,()=>spear.AI());
+                Require(Main.projectile.Any(p=>p.active && p.type==343)==wall,"actual North Pole spear terrain gate controls derived 343 birth: "+mask);
+
+                Save(owner,0);player=NativeToolExecutionChecks.Reset(context,tools,input,95,0,0);player.position=new Vector2(580,646);
+                for(int x=39;x<57;x++)for(int y=30;y<46;y++)NativeToolsChecks.Tile(x,y,TileID.Stone);
+                var edge=Shot(973,new Vector2(648,620),Vector2.UnitX);edge.ai[0]=1;edge.ai[1]=32;edge.ai[2]=1;Save(owner,mask);World(owner,()=>edge.AI());
+                Require((edge.damage>0)==wall,"actual True Night's Edge keeps its attack only when terrain gate is bypassed: "+mask);
+                var terra=Shot(985,new Vector2(648,620),new Vector2(12,0));terra.ai[0]=1;terra.ai[1]=32;terra.ai[2]=1;World(owner,()=>terra.AI());
+                Require((terra.localAI[1]==0)==wall,"actual Terra attack does not enter terrain-stop phase when enabled: "+mask);
+
+                Save(owner,0);player=NativeToolExecutionChecks.Reset(context,tools,input,6153,0,0);player.position=new Vector2(580,646);player.channel=false;
+                for(int y=20;y<60;y++)NativeToolsChecks.Tile(40,y,TileID.Stone);
+                var glacier=Shot(1115,new Vector2(700,630),new Vector2(12,0));glacier.ai[0]=20;glacier.ai[1]=0;Save(owner,mask);World(owner,()=>glacier.AI());
+                Require(glacier.active==wall,"actual released glacier owner LOS kill is bypassed only by through-wall: "+mask);
+
+                Save(owner,0);player=NativeToolExecutionChecks.Reset(context,tools,input,95,0,0);
+                var aura=Shot(688,new Vector2(650,640),Vector2.Zero);aura.AI();
+                for(int y=20;y<44;y++)NativeToolsChecks.Tile(43,y,TileID.Stone);
+                var receiver=new Rectangle(730,620,20,25);NativeToolsChecks.Tile(receiver.Center.X/16,receiver.Center.Y/16,TileID.Stone);
+                Save(owner,mask);World(owner,()=>Require(aura.Colliding(aura.Hitbox,receiver)==wall,"real Lightning Aura collision consumes nested terrain/solid-point gate: "+mask));
+                var outside=new Rectangle((int)aura.Center.X+400,(int)aura.Center.Y,20,25);World(owner,()=>Require(!aura.Colliding(aura.Hitbox,outside),"Lightning Aura original geometry and range remain authoritative"));
+
+                Save(owner,0);player=NativeToolExecutionChecks.Reset(context,tools,input,95,0,0);
+                for(int y=20;y<60;y++)NativeToolsChecks.Tile(43,y,TileID.Stone);
+                var nut=Shot(483,new Vector2(600,650),new Vector2(2,0));var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;target.life=10000;target.Center=nut.Center+new Vector2(205,-37);
+                Save(owner,mask);World(owner,()=>nut.Kill());
+                var children=Main.projectile.Where(p=>p.active && p.type==484).ToArray();Require(children.Length>=4 && children.Length<=7,"Seedler preserves its native burst count");
+                int directed=children.Count(p=>Math.Abs(p.velocity.X*37+p.velocity.Y*205)<.0001f);
+                Require(wall?directed==1:directed==0,"actual Seedler Kill admits the wall-hidden target without changing native child count: "+mask);
+            }
+        }
+        private static void Revolver(object context,object owner,object tools,object input)
+        {
+            Save(owner,0);var player=NativeToolExecutionChecks.Reset(context,tools,input,2269,0,0);player.inventory[54].SetDefaults(ItemID.MusketBall);player.inventory[54].stack=999;player.releaseUseItem=true;
+            Save(owner,2);var seen=new HashSet<int>();var events=new List<int>();int largestCritBonus=0;
+            for(int tick=0;tick<21;tick++)
+            {
+                bool held=tick%5==0;NativeToolExecutionChecks.Sample(context,input,new Vector2(1000,600),held);NativeQuickItemChecks.BeginWorldStep();player.controlUseItem=held;player.ItemCheck();
+                if(Main.projectile.Any(p=>p.active && p.owner==0 && seen.Add((int)p.key)))events.Add(tick);
+                largestCritBonus=Math.Max(largestCritBonus,player.revolverCritChanceBonus);
+            }
+            Require(events.SequenceEqual(new[]{0,5,10,15,20}),"Revolver actual press/release ItemCheck uses the five-tick period: "+string.Join(",",events));
+            Require(largestCritBonus>0 && !player.HeldItem.autoReuse && 999-player.inventory[54].stack==events.Count,"Revolver retains native release crit accumulation, explicit presses and resource consumption");
+            Save(owner,0);
+        }
+        private static Player meleePlayer;
+        private static int meleeTick;
+        private static List<int> meleeStarts;
+        private static void MeleeStarted(Player __instance)
+        {if(ReferenceEquals(__instance,meleePlayer))meleeStarts.Add(meleeTick);}
+        private static void MeleePeriod(object context,object owner,object tools,object input)
+        {
+            Save(owner,0);var player=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperBroadsword,0,0);player.releaseUseItem=true;Save(owner,2);
+            var audit=new Harmony("JueMingR.Tests.ExperimentMeleePeriod");var start=typeof(Player).GetMethod("ItemCheck_StartActualUse",Flags);
+            meleePlayer=player;meleeStarts=new List<int>();audit.Patch(start,postfix:new HarmonyMethod(typeof(NativeCombatExperimentChecks),nameof(MeleeStarted)));
+            try
+            {
+                for(int tick=0;tick<21;tick++)
+                {
+                    meleeTick=tick;bool held=tick%5==0;NativeToolExecutionChecks.Sample(context,input,new Vector2(1000,600),held);NativeQuickItemChecks.BeginWorldStep();player.controlUseItem=held;player.ItemCheck();
+                }
+                Require(meleeStarts.SequenceEqual(new[]{0,5,10,15,20}),"actual complete melee uses repeat every five native ticks: "+string.Join(",",meleeStarts));
+            }
+            finally{audit.UnpatchAll(audit.Id);meleePlayer=null;meleeStarts=null;Save(owner,0);}
+        }
+        private static void PathConsumer(object context,object owner,object host,object tools,object input)
+        {
+            Save(owner,0);NativeCombatObservationChecks.Save(host,new ObservationOptions());var player=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperPickaxe,0,0);
+            var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;target.Bottom=new Vector2(850,688);target.life=10000;target.target=0;
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(path:true));var cache=Get(Get(host,"Prediction"),"Cache");object publication=null;
+            for(int i=0;i<16;i++){NativeCombatObservationChecks.Fresh(context,host);publication=Call(cache,"Read",0);if(publication!=null && (int)Get(publication,"Count")>1)break;}
+            Require(publication!=null && (int)Get(publication,"Count")>1,"independent Path consumer actually publishes native NPC future");
+            Save(owner,4);Require(ReferenceEquals(publication,Call(cache,"Read",0)),"experiment mode edge retains the actual consumer-0 publication");long before=(long)Get(publication,"SampleTick");
+            bool advanced=false;for(int i=0;i<16;i++){NativeCombatObservationChecks.Fresh(context,host);publication=Call(cache,"Read",0);if(publication!=null && (long)Get(publication,"SampleTick")>before && (int)Get(publication,"Count")>1){advanced=true;break;}}
+            Require(advanced,"independent Path continues actual prediction while original attack future is suspended");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions());Save(owner,0);
+        }
+        private static void YoyoWallInput(object context,object owner,object host,object combat,object tools,object input)
+        {
+            foreach(int mask in new[]{0,4})
+            {
+                Save(owner,0);NativeCombatObservationChecks.Save(host,new ObservationOptions());var player=NativeToolExecutionChecks.Reset(context,tools,input,3278,0,0);player.position=new Vector2(700,688-player.height);player.releaseUseItem=true;
+                var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;target.Center=new Vector2(830,640);target.aiStyle=-1;target.noGravity=true;target.life=target.lifeMax=100000;
+                for(int y=20;y<44;y++)NativeToolsChecks.Tile(48,y,TileID.Stone);
+                // An enhanced experimental use is current-target Basic. The
+                // ordinary side may navigate, but its actual body still cannot
+                // cross this tall closed wall in the retained native range.
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,false,false,false,25,false,true));Save(owner,mask);
+                for(int i=0;i<50;i++)Step(context,owner,host,combat,input,new Vector2(500,400));
+                var ball=Main.projectile.FirstOrDefault(p=>p.active && p.owner==0 && p.aiStyle==99);
+                Require(ball!=null,"natural held yoyo remains alive");
+                Require(mask==0?ball.Center.X<768:ball.Center.X>800,"real held yoyo consumes the wall-side or wall-hidden current point: "+mask+" center="+ball.Center);
+                if(mask!=0)Require(Vector2.Distance(ball.Center,player.Center)<180,"through-wall yoyo retains native owner reach");
+                for(int i=0;i<40 && ball.active;i++)Step(context,owner,host,combat,input,new Vector2(500,400),false);
+                Require(!ball.active,"physical yoyo release still completes native recall");
+                NativeCombatObservationChecks.Save(host,new ObservationOptions());Save(owner,0);
+            }
+        }
+        private static void GroundSummonAttack(object context,object owner,object tools,object input)
+        {
+            foreach(int mask in new[]{0,4})
+            {
+                Save(owner,0);var player=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperPickaxe,0,0);player.position=new Vector2(600,646);player.slime=true;
+                for(int y=20;y<43;y++)NativeToolsChecks.Tile(45,y,TileID.Stone);
+                var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;target.Bottom=new Vector2(800,688);target.life=target.lifeMax=10000;target.defense=0;
+                var slime=Shot(266,new Vector2(650,672),Vector2.Zero);Save(owner,mask);
+                for(int i=0;i<200 && target.life==10000;i++){NativeQuickItemChecks.BeginWorldStep();World(owner,()=>slime.Update(slime.whoAmI));}
+                Require(mask==0?target.life==10000:target.life<10000,"native walking minion AI/movement/Damage attacks the wall-hidden receiver: "+mask+" position="+slime.position);
+                Save(owner,0);
+            }
         }
         private static void Timings(object context,object owner,object tools,object input)
         {
@@ -188,25 +322,28 @@ namespace NativeWorldTextProbe
                 Require(registry.Contains(key),"natural held prism birth is registered");var source=Get(registry[key],"Source");
                 foreach(int mask in new[]{1,2,4,7,0})
                 {
-                    Save(owner,mask);
+                    Save(owner,mask);var beforePosition=player.position;
                     using(NativeCombatUsageChecks.ObserveDrawSteps())
                     {
                         int beforeSteps=NativeCombatUsageChecks.ObservedNpcSteps;
-                        for(int i=0;i<16;i++)Step(context,owner,host,combat,input,mouse);
+                        for(int i=0;i<16;i++)Step(context,owner,host,combat,input,mouse,true,i<8?1:-1);
                         if(mask!=0)Require(NativeCombatUsageChecks.ObservedNpcSteps==beforeSteps,"enhanced real input/projectile chain performs no original NPC attack future steps");
                     }
+                    Require(Vector2.DistanceSquared(beforePosition,player.position)>1,"native player movement actually advances while switching prism mode: "+mask);
                     Require(parent.active && (int)parent.key==key && registry.Contains(key) && ReferenceEquals(source,Get(registry[key],"Source")),"mode edge keeps same live prism and Source: "+mask);
                     float targetDot=Vector2.Dot(parent.velocity.SafeNormalize(Vector2.UnitY),(target.Center-player.MountedCenter).SafeNormalize(Vector2.UnitX));
                     float rawDot=Vector2.Dot(parent.velocity.SafeNormalize(Vector2.UnitY),(mouse-player.MountedCenter).SafeNormalize(Vector2.UnitY));
                     Require(targetDot>.95f && targetDot>rawDot+.5f,"prism keeps current target and realtime inertia through mode edge: "+mask);
                     if(mask!=0)Require(GetOptional(attack,"ExpectedImpact")==null,"held prism cannot publish original future during experiment");
                 }
+                for(int i=0;i<3;i++)Step(context,owner,host,combat,input,mouse,false);
+                Require(!parent.active && !registry.Contains(key),"physical mouse release retires the natural continuous prism and source");
             }
             finally{cosmetic.UnpatchAll(cosmetic.Id);Save(owner,0);}
         }
-        private static void Step(object context,object owner,object host,object combat,object input,Vector2 mouse)
+        private static void Step(object context,object owner,object host,object combat,object input,Vector2 mouse,bool held=true,int movement=0)
         {
-            NativeToolExecutionChecks.Sample(context,input,mouse,true);Call(combat,"Sample");Call(host,"SampleMouse");NativeQuickItemChecks.BeginWorldStep();Main.LocalPlayer.Update(0);
+            NativeToolExecutionChecks.Sample(context,input,mouse,held,movement);Call(combat,"Sample");Call(host,"SampleMouse");NativeQuickItemChecks.BeginWorldStep();Main.LocalPlayer.Update(0);
             foreach(var n in Main.npc)if(n.active)n.UpdateNPC(n.whoAmI);
             Call(Get(combat,"Attack"),"PrepareControlledProjectileWorld");
             World(owner,()=>{for(int i=0;i<Main.maxProjectiles;i++)if(Main.projectile[i].active){Main.ProjectileUpdateLoopIndex=i;Main.projectile[i].Update(i);}});Main.ProjectileUpdateLoopIndex=-1;

@@ -25,6 +25,10 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly bool[] reported=new bool[3];
         private int acceptedMask;
         private bool disposed;
+        private readonly DynamicHotkeyOwner[] registrations=new DynamicHotkeyOwner[3];
+        private readonly HotkeyAction[][] registeredActions=new HotkeyAction[3][];
+        private static readonly HotkeyAction[] noActions=new HotkeyAction[0];
+        private bool actionsPublished;
         [ThreadStatic]private static HostCombatExperiments worldOwner;
         [ThreadStatic]private static int worldDepth;
         private readonly Projectile[] syncObjects=new Projectile[Main.maxProjectiles];
@@ -105,6 +109,9 @@ namespace JueMingR.TerrariaHost.Combat
         internal bool Wall(Projectile p){return ThroughWallEffective && AttackBody(p);}
         internal static bool FreeFlight(Projectile p)
         {
+            // Native AI208's held phase reads mouse and pins itself to the owner.
+            // Its released phase is a genuinely independent flying attack.
+            if(p!=null && p.type==1115 && p.ai[1]!=1f)return false;
             if(p==null || p.damage<=0 || !p.friendly || p.hostile || p.minion || p.sentry || p.bobber || p.ownerHitCheck || p.aiStyle==7 || Main.projPet[p.type] || ProjectileID.Sets.IsAWhip[p.type])return false;
             // Native constrained motion: returning weapons, anchored/held beams,
             // yoyo/rope, spear/whip and world-placeable controllers own velocity.
@@ -143,8 +150,20 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 int field=i;Action command=()=>Set(field,!Settings.Value.Enabled(field));
                 if(feedback!=null)command=feedback.Committed(Actions[i],Names[i],command,()=>IsEnabled(field)?1:0,()=>CanConfigure(field),()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded);
-                registry.Register(new HotkeyAction(Actions[i],Names[i],HotkeyContext.Gameplay,()=>CanConfigure(field),command,()=>Access));
+                registrations[i]=registry.CreateDynamicActionOwner(Actions[i]);
+                registeredActions[i]=new[]{new HotkeyAction(Actions[i],Names[i],HotkeyContext.Gameplay,()=>CanConfigure(field),command,()=>Access)};
             }
+            RefreshHiddenRegistration();
+        }
+        internal void RefreshHiddenRegistration()
+        {
+            bool publish=Access;if(actionsPublished==publish)return;
+            for(int i=0;i<3;i++)
+            {
+                if(registrations[i]==null)continue;
+                string reason;if(!registrations[i].TryReplace(publish?registeredActions[i]:noActions,out reason))throw new InvalidOperationException(reason);
+            }
+            actionsPublished=publish;
         }
         public void TakeFeedback(Action<string> show)
         {Settings.TakeFeedback(show);for(int i=0;i<3;i++)if(Access && errors[i]!=null && Settings.Value.Enabled(i) && !reported[i]){reported[i]=true;show(Unavailable(i));}}

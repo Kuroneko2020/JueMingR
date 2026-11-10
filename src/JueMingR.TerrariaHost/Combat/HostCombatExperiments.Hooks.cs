@@ -49,7 +49,7 @@ namespace JueMingR.TerrariaHost.Combat
             // predicate. Only their audited terrain queries receive a bypass.
             Patch(2,typeof(Projectile),"HandleMovement",transpiler:nameof(WallTranspiler));
             Patch(2,typeof(Projectile),"UpdatePosition",transpiler:nameof(WallTranspiler));
-            foreach(string name in new[]{"AI","AI_001","AI_003_Boomerang","AI_015_Flails","AI_015_Flails_Old","AI_016_Bombs","AI_026","AI_047_MagnetSphere_TryAttacking","AI_053_HandleSentryNPCTargeting","AI_062","AI_099_1_Counterweights","AI_099_2_Yoyos","AI_100_Medusa","AI_123_FloatingTurrets","AI_130_FlameBurstTower_FindTarget","AI_134_Ballista_FindTarget","AI_147_Celeb2Rocket","AI_196_Petal","AI_206_CustomEliminationCheck_Forbidden","CanHitWithMeleeWeapon","CanHitWithOwnBody","Colliding","FindTargetWithinRange","Damage_PVE_Inner"})
+            foreach(string name in new[]{"AI","AI_001","AI_003_Boomerang","AI_015_Flails","AI_015_Flails_Old","AI_016_Bombs","AI_026","AI_047_MagnetSphere_TryAttacking","AI_053_HandleSentryNPCTargeting","AI_062","AI_099_1_Counterweights","AI_099_2_Yoyos","AI_100_Medusa","AI_123_FloatingTurrets","AI_130_FlameBurstTower_FindTarget","AI_134_Ballista_FindTarget","AI_147_Celeb2Rocket","AI_196_Petal","AI_206_CustomEliminationCheck_Forbidden","AI_019_Spears","AI_191_TrueNightsEdge","AI_208_GlacierFangShot","AI_137_LightningAura_CanHit","Kill","CanHitWithMeleeWeapon","CanHitWithOwnBody","Colliding","FindTargetWithinRange","Damage_PVE_Inner"})
                 Patch(2,typeof(Projectile),name,transpiler:nameof(WallTranspiler));
             Patch(2,typeof(Projectile),"FindTargetWithLineOfSight",transpiler:nameof(WallTranspiler),signature:new[]{typeof(Entity),typeof(float),typeof(ICollection<int>)});
             // Immediate real ItemCheck births/damage precede projectile-world.
@@ -71,6 +71,7 @@ namespace JueMingR.TerrariaHost.Combat
             {"AI_047_MagnetSphere_TryAttacking",1},{"AI_053_HandleSentryNPCTargeting",4},{"AI_062",7},{"AI_099_1_Counterweights",1},{"AI_099_2_Yoyos",1},
             {"AI_100_Medusa",2},{"AI_123_FloatingTurrets",2},{"AI_130_FlameBurstTower_FindTarget",2},{"AI_134_Ballista_FindTarget",2},{"AI_147_Celeb2Rocket",1},
             {"AI_196_Petal",1},{"AI_206_CustomEliminationCheck_Forbidden",1},{"CanHitWithMeleeWeapon",4},{"CanHitWithOwnBody",5},{"Colliding",6},
+            {"AI_019_Spears",1},{"AI_191_TrueNightsEdge",2},{"AI_208_GlacierFangShot",1},{"AI_137_LightningAura_CanHit",5},{"Kill",1},
             {"FindTargetWithinRange",1},{"FindTargetWithLineOfSight",1},{"Damage_PVE_Inner",4},{"HandleMovement",1},{"UpdatePosition",0}
         };
         private static bool AttackQuery(string name,int ordinal)
@@ -81,17 +82,21 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private static IEnumerable<CodeInstruction> WallTranspiler(IEnumerable<CodeInstruction> instructions,MethodBase __originalMethod)
         {
-            string name=__originalMethod.Name;int query=0,lasers=0,tiles=0;
+            string name=__originalMethod.Name;int query=0,lasers=0,tiles=0,solid=0;
             var result=new List<CodeInstruction>();
             foreach(var original in instructions)
             {
                 var instruction=new CodeInstruction(original);var method=instruction.operand as MethodInfo;
                 if(instruction.opcode==OpCodes.Ldfld && Equals(instruction.operand,AccessTools.Field(typeof(Projectile),"tileCollide")) && (name=="HandleMovement" || name=="UpdatePosition"))
                 {instruction.opcode=OpCodes.Call;instruction.operand=AccessTools.Method(typeof(HostCombatExperiments),nameof(NativeTileCollide));tiles++;}
-                else if(method!=null && method.DeclaringType==typeof(Collision))
+                else if(method!=null && (method.DeclaringType==typeof(Collision) || method.DeclaringType==typeof(WorldGen)))
                 {
                     string replacement=null;
-                    if(method.Name=="CanHit" || method.Name=="CanHitLine")
+                    if(name=="AI_137_LightningAura_CanHit" && method.DeclaringType==typeof(WorldGen) && method.Name=="SolidTile")
+                    {replacement=nameof(NativeAttackSolidTile);solid++;}
+                    else if(name=="AI_191_TrueNightsEdge" && method.DeclaringType==typeof(Collision) && method.Name=="SolidTiles")
+                    {replacement=nameof(NativeAttackSolidTiles);solid++;}
+                    else if(method.Name=="CanHit" || method.Name=="CanHitLine")
                     {
                         bool selected=AttackQuery(name,query++);
                         if(selected)replacement=method.GetParameters().Length==2?nameof(NativeCanHitEntity):method.Name=="CanHit"?nameof(NativeCanHit):nameof(NativeCanHitLine);
@@ -109,11 +114,17 @@ namespace JueMingR.TerrariaHost.Combat
                 }
                 result.Add(instruction);
             }
-            int expected;if(!queryCounts.TryGetValue(name,out expected) || query!=expected || name=="AI" && lasers!=1 || (name=="HandleMovement" || name=="UpdatePosition") && tiles==0)
+            int expected;if(!queryCounts.TryGetValue(name,out expected) || query!=expected || name=="AI" && lasers!=1 || (name=="AI_137_LightningAura_CanHit" || name=="AI_191_TrueNightsEdge") && solid!=1 || (name=="HandleMovement" || name=="UpdatePosition") && tiles==0)
                 throw new InvalidOperationException("Fixed .8 terrain caller changed: "+name+" queries="+query+" expected="+expected);
             return result;
         }
         private static bool Bypass(Entity context){var p=context as Projectile;return current!=null && current.Wall(p);}
+        // These solid predicates belong only to the audited attack gates,
+        // never their environment/following queries or global terrain helpers.
+        private static bool NativeAttackSolidTile(int x,int y,bool noDoors,Entity context)
+        {return !Bypass(context) && WorldGen.SolidTile(x,y,noDoors);}
+        private static bool NativeAttackSolidTiles(Vector2 position,int width,int height,Entity context)
+        {return !Bypass(context) && Collision.SolidTiles(position,width,height);}
         private static bool NativeCanHit(Vector2 a,int aw,int ah,Vector2 b,int bw,int bh,Entity context)
         {return Bypass(context) || Collision.CanHit(a,aw,ah,b,bw,bh);}
         private static bool NativeCanHitLine(Vector2 a,int aw,int ah,Vector2 b,int bw,int bh,Entity context)

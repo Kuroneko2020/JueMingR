@@ -473,6 +473,18 @@ try {
     foreach ($expected in @('native-FishingCpu','native-BackgroundCpu','native-F5AutomationCpu','native-ToolsCpu','native-ToolsCadence','native-ToolsWorkload','native-ToolsExecutionCpu','native-RecoveryCpu','native-ProcessingCpu','native-AboutCpu','native-CoinDepositCpu')) {
         Assert-Route ($all.name -contains $expected) ('full entry retains ' + $expected)
     }
+    foreach($entry in @(
+        @('tests/NativeWorldTextProbe/NativeDeathInputChecks.cs','native-DeathCpu'),
+        @('tests/NativeWorldTextProbe/NativeFootprintChecks.cs','native-FootprintsCpu'),
+        @('tests/NativeWorldTextProbe/NativeMapMarkerChecks.cs','native-ExplorationCpu'),
+        @('tests/NativeWorldTextProbe/NativeMapSecondaryNavigationChecks.cs','native-ExplorationCpu'),
+        @('tests/NativeWorldTextProbe/NativeCombatExperimentHotkeyChecks.cs','native-CombatExperimentsCpu'),
+        @('tests/NativeWorldTextProbe/NativeCombatExperimentChecks.cs','native-CombatExperimentsCpu'))){
+        $route=Get-WorkloadRoute @($entry[0])
+        $leafPlan=@(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' @() $route.groups)
+        Assert-Route ($route.unknown.Count -eq 0 -and $leafPlan.Count -eq 1 -and $leafPlan[0].name -ceq $entry[1]) ('task leaf retains its actual consumer '+$entry[0])
+    }
+    Assert-Route ($all.name -contains 'native-CombatExperimentsCpu' -and (Get-WorkloadExpectedNativeLeaf 'native-CombatExperimentsCpu') -ceq 'combat-experiments' -and (Get-WorkloadAssertionHost 'native-CombatExperimentsCpu') -ceq 'NativeWorldTextProbe.exe') 'hidden combat native leaf retains Full dispatch, exact completion and assertion protocol'
     Write-Output 'PASS: actual Git diff routes, local exclusions, shared consumers, mixed/index/worktree/rename/deletion/cumulative/untracked/missing baseline and executable plan.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($fixtureRoot); $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'

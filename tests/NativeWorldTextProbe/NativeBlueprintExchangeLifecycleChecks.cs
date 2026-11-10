@@ -215,6 +215,28 @@ namespace NativeWorldTextProbe
                     // This is read preparation; it does not perform navigation.
                     if (intent == "Card" || intent == "Name") Call(ui, "RequestList", 0, (Guid?)other.AssetId);
                     if (graphics != null) NativeQuickItemChecks.Until(() => { step(); return !(bool)Get(ui, "dirty") && (bool)Get(ui, "ready") && !library.Snapshot.Busy; });
+                    if (intent == "Page")
+                    {
+                        PageIntentFacts("before-preparation", library, ui);
+                        var page = library.Snapshot.Page;
+                        if (page == null || page.PageIndex != 0 || page.TotalCount < 7 || page.Generation != (long)Get(ui, "listGeneration") || (bool)Get(ui, "wantList"))
+                        {
+                            // CPU does not perform active GPU preparation. Its
+                            // direct Next command still needs the same real
+                            // page-zero read as a visible Next button; do not
+                            // derive that premise from an old Snapshot page.
+                            Call(ui, "RequestList", 0, (Guid?)null); Call(ui, "RequestWork");
+                            NativeQuickItemChecks.Until(() =>
+                            {
+                                Call(host, "Poll"); Call(ui, "PollReceipts");
+                                var currentPage = library.Snapshot.Page;
+                                return !library.Snapshot.Busy && !(bool)Get(ui, "wantList") && currentPage != null && currentPage.Generation == (long)Get(ui, "listGeneration");
+                            });
+                        }
+                        page = library.Snapshot.Page;
+                        PageIntentFacts("before-next", library, ui);
+                        Require(page != null && page.PageIndex == 0 && page.TotalCount >= 7 && page.Generation == (long)Get(ui, "listGeneration") && !(bool)Get(ui, "wantList"), "later-page oracle starts from a current real page zero with a second page");
+                    }
                     long frozen = (long)Get(ui, "ExchangePresentationGeneration");
                     Guid sentinel = Guid.NewGuid(); ((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId = sentinel;
                     if (intent == "F5") frame(new[] { Keys.F5 }, 0);
@@ -232,6 +254,11 @@ namespace NativeWorldTextProbe
                         }
                         else
                             clickVisible(command, intent == "Card" ? (Guid?)other.AssetId : null);
+                        if (intent == "Page")
+                        {
+                            PageIntentFacts("after-next", library, ui);
+                            Require((int)Get(ui, "requestedPage") == 1, "actual Next requests page one before the held import completes");
+                        }
                     }
                     else if (intent == "PlacedList") Call(host, "OpenPlacedList");
                     else if (intent == "Session")
@@ -241,6 +268,7 @@ namespace NativeWorldTextProbe
                     }
                     Require((long)Get(ui, "ExchangePresentationGeneration") > frozen, "later " + intent + " retires the frozen display intent");
                     files.Release(); complete(); step();
+                    if (intent == "Page") PageIntentFacts("after-import-completion", library, ui);
                     if (intent == "Card" || intent == "Name") Require((Guid)Get(ui, "selected") == other.AssetId, "late imported receipt cannot steal later " + intent);
                     else if (intent == "Page") Require((int)Get(ui, "requestedPage") == 1, "late imported receipt cannot override later page");
                     else Require(!(bool)Get(ui, "Submenu"), "late receipt cannot recreate retired library after " + intent);
@@ -398,6 +426,14 @@ namespace NativeWorldTextProbe
             internal void Hold() { Entered.Reset(); allowed.Reset(); held = true; }
             internal void Release() { held = false; allowed.Set(); }
             public void Dispose() { Release(); Entered.Dispose(); allowed.Dispose(); }
+        }
+        private static void PageIntentFacts(string phase, LibraryState library, object ui)
+        {
+            var page = library.Snapshot.Page;
+            Console.WriteLine("EXCHANGE PAGE " + phase + " page=" + (page == null ? "null" : page.PageIndex.ToString()) +
+                " generation=" + (page == null ? "null" : page.Generation.ToString()) + " total=" + (page == null ? "null" : page.TotalCount.ToString()) +
+                " listGeneration=" + Get(ui, "listGeneration") + " requested=" + Get(ui, "requestedPage") + " wantList=" + Get(ui, "wantList") +
+                " pendingExchangeAsset=" + Get(ui, "pendingExchangeAsset") + " presentation=" + Get(ui, "ExchangePresentationGeneration"));
         }
         private sealed class Dialog : IBlueprintFileDialog
         {

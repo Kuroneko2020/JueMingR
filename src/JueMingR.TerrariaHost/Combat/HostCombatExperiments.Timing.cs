@@ -31,7 +31,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             return item!=null && !item.IsAir && item.damage>0 && item.useStyle>0 && item.useTime>0 && item.useAnimation>0 &&
                 item.pick<=0 && item.axe<=0 && item.hammer<=0 && item.fishingPole<=0 && item.createTile<0 && item.createWall<0 &&
-                item.ammo==0 && item.type!=2269 && item.type!=5095 && item.type!=3031 && item.type!=1991 && item.type!=3183 &&
+                item.ammo==0 && item.type!=5095 && item.type!=3031 && item.type!=1991 && item.type!=3183 &&
                 !item.potion && item.healLife<=0 && item.healMana<=0 && item.mountType<0 && (item.buffType<=0 || item.summon || item.sentry);
         }
         private bool Held(Player player,Item item)
