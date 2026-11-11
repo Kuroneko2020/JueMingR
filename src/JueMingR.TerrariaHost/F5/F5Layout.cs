@@ -47,7 +47,7 @@ namespace JueMingR.TerrariaHost.F5
         MovementFallAllow4, MovementFallDeny4, MovementFallAllow5, MovementFallDeny5,
         MovementFallAllow6, MovementFallDeny6, MovementFallAllow7, MovementFallDeny7,
         MovementFallAllow8, MovementFallDeny8, MovementFallAllow9, MovementFallDeny9,
-        MovementFallAllow10, MovementFallDeny10, MovementFallAllow11, MovementFallDeny11,
+        MovementFallAllow10, MovementFallDeny10, MovementFallAllow11, MovementFallDeny11, MovementFallAllow12, MovementFallDeny12,
         BlueprintCapture, BlueprintSave, BlueprintToolbarOn, BlueprintToolbarOff, BlueprintLibrary, BlueprintMove, BlueprintRemove,
         BlueprintMirror, BlueprintTrim, BlueprintConfirmTrim, BlueprintAutoBuildOn, BlueprintAutoBuildOff, BlueprintMaterials,
         BlueprintSubstitutionConfigure, BlueprintSubstitutionOn, BlueprintSubstitutionOff, BlueprintPlacedList, ExperimentLockOn, ExperimentLockOff, ExperimentRateOn, ExperimentRateOff, ExperimentWallOn, ExperimentWallOff }

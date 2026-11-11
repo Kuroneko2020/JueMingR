@@ -9,8 +9,9 @@ namespace JueMingR.TerrariaHost.Blueprint
 {
     // Never hands Tile or metadata references to the worker. Every footprint
     // member passes the same section gate before semantic values are copied.
-    internal sealed class BlueprintCaptureSource : IBlueprintCaptureSource
+    internal sealed class BlueprintCaptureSource : IBlueprintCaptureSource, IBlueprintCapturePayloadSource
     {
+        public bool PendingPayload { get; private set; }
         private readonly Func<bool> session;
         private readonly object tiles, sections;
         private CaptureCell describedCell;
@@ -51,7 +52,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (tile.liquid != 0) { value.Layers |= CaptureLayer.Liquid; value.LiquidAmount = tile.liquid; value.LiquidKind = tile.liquidType(); }
             // Resolve against this exact gated Tile before returning its copy.
             // Describe never rereads the world or hides reads outside the budget.
-            describedCell = value; describedShape = DescribeRead(value, tile); hasDescription = true;
+            describedShape = DescribeRead(value, tile);
+            value.Payload = BlueprintNativePayload.Read(value, describedShape);
+            PendingPayload = BlueprintNativePayload.NamePending(value);
+            describedCell = value; hasDescription = true;
             return true;
         }
         public BlueprintObjectShape Describe(CaptureCell cell)

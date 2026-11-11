@@ -393,3 +393,9 @@ leaf	BlueprintHoikCpu	blueprint-hoik
 leaf	BlueprintHoikSubstitutionCpu	blueprint-hoik-substitution
 leaf	BlueprintImportedMaterialsCpu	blueprint-imported-materials-cpu
 leaf	BlueprintImportedMaterialsVisual	blueprint-imported-materials-visual
+
+leaf	CombatGuidedNavigationCpu	combat-guided-navigation
+
+leaf	BlueprintPayloadCpu	blueprint-payload
+
+leaf	BlueprintStructureCpu	blueprint-structure

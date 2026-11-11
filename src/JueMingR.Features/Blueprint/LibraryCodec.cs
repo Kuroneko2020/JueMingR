@@ -69,11 +69,18 @@ namespace JueMingR.Features.Blueprint
         {
             using (var stream = new MemoryStream()) using (var writer = new BinaryWriter(stream, Utf8, true))
             {
-                writer.Write(0x43424D4A); writer.Write(1); writer.Write(chunk.Count); writer.Write(chunk.ObjectCount);
+                bool payload = false; for (int i = 0; i < chunk.Count; i++) payload |= chunk.Cells[i].Payload.HasValue;
+                writer.Write(0x43424D4A); writer.Write(payload ? 2 : 1); writer.Write(chunk.Count); writer.Write(chunk.ObjectCount);
                 for (int i = 0; i < chunk.Count; i++)
                 {
                     CaptureCell c = chunk.Cells[i]; writer.Write(c.X); writer.Write(c.Y); writer.Write(c.ObjectId); writer.Write((byte)c.Layers); writer.Write(c.TileType); writer.Write(c.WallType); writer.Write(c.FrameX); writer.Write(c.FrameY); writer.Write(c.TilePaint); writer.Write(c.WallPaint); writer.Write(c.Slope); writer.Write(c.Wires); writer.Write(c.LiquidAmount); writer.Write(c.LiquidKind);
                     int flags = (c.HalfBrick ? 1 : 0) | (c.Inactive ? 2 : 0) | (c.Actuator ? 4 : 0) | (c.InvisibleTile ? 8 : 0) | (c.FullbrightTile ? 16 : 0) | (c.InvisibleWall ? 32 : 0) | (c.FullbrightWall ? 64 : 0) | (c.UnreliableObject ? 128 : 0); writer.Write((byte)flags);
+                    if (payload)
+                    {
+                        if (!c.Payload.Valid(c.TileType)) throw Bad("payload-fields");
+                        writer.Write(c.Payload.EntityItemType); writer.Write((byte)c.Payload.EntityState); writer.Write((byte)c.Payload.NameState); writer.Write((byte)c.Payload.PoseState); writer.Write(c.Payload.Pose);
+                        if (c.Payload.NameState == BlueprintPayloadState.Known) WriteText(writer, c.Payload.Name, 160);
+                    }
                 }
                 for (int i = 0; i < chunk.ObjectCount; i++)
                 {
@@ -87,13 +94,20 @@ namespace JueMingR.Features.Blueprint
             if (bytes == null || bytes.Length < 16 || bytes.Length > 1048576) throw Bad("block-size");
             using (var stream = new MemoryStream(bytes, false)) using (var reader = new BinaryReader(stream, Utf8, true))
             {
-                if (reader.ReadInt32() != 0x43424D4A || reader.ReadInt32() != 1) throw Bad("block-format-or-version");
+                if (reader.ReadInt32() != 0x43424D4A) throw Bad("block-format-or-version");
+                int version = reader.ReadInt32(); if (version != 1 && version != 2) throw Bad("block-format-or-version");
                 int count = reader.ReadInt32(), objectCount = reader.ReadInt32(); if (count < 0 || objectCount < 0 || (long)count + objectCount > CaptureChunk.MaximumRecords) throw Bad("record-count");
                 var cells = new CaptureCell[count]; var coordinates = new HashSet<long>();
                 for (int i = 0; i < count; i++)
                 {
                     var c = new CaptureCell { X = reader.ReadInt32(), Y = reader.ReadInt32(), ObjectId = reader.ReadInt32(), Layers = (CaptureLayer)reader.ReadByte(), TileType = reader.ReadUInt16(), WallType = reader.ReadUInt16(), FrameX = reader.ReadInt16(), FrameY = reader.ReadInt16(), TilePaint = reader.ReadByte(), WallPaint = reader.ReadByte(), Slope = reader.ReadByte(), Wires = reader.ReadByte(), LiquidAmount = reader.ReadByte(), LiquidKind = reader.ReadByte() };
                     byte flags = reader.ReadByte(); c.HalfBrick = (flags & 1) != 0; c.Inactive = (flags & 2) != 0; c.Actuator = (flags & 4) != 0; c.InvisibleTile = (flags & 8) != 0; c.FullbrightTile = (flags & 16) != 0; c.InvisibleWall = (flags & 32) != 0; c.FullbrightWall = (flags & 64) != 0; c.UnreliableObject = (flags & 128) != 0;
+                    if (version == 2)
+                    {
+                        c.Payload = new BlueprintObjectPayload { EntityItemType = reader.ReadInt32(), EntityState = (BlueprintPayloadState)reader.ReadByte(), NameState = (BlueprintPayloadState)reader.ReadByte(), PoseState = (BlueprintPayloadState)reader.ReadByte(), Pose = reader.ReadByte() };
+                        if (c.Payload.NameState == BlueprintPayloadState.Known) c.Payload.Name = ReadText(reader, 160);
+                        if (!c.Payload.Valid(c.TileType) || c.Payload.HasValue && (c.Layers & CaptureLayer.Tile) == 0) throw Bad("payload-fields");
+                    }
                     if (c.X < 0 || c.Y < 0 || c.ObjectId < 0 || c.Layers == CaptureLayer.None || ((int)c.Layers & ~31) != 0 || c.Slope > 5 || c.Wires > 15 || c.LiquidKind > 3 || !coordinates.Add(((long)c.Y << 32) | (uint)c.X)) throw Bad("cell-fields-or-duplicate");
                     if ((c.Layers & CaptureLayer.Tile) == 0 && (c.ObjectId != 0 || c.UnreliableObject || c.TileType != 0 || c.FrameX != 0 || c.FrameY != 0 || c.TilePaint != 0 || c.Slope != 0 || c.HalfBrick || c.Inactive || c.InvisibleTile || c.FullbrightTile)) throw Bad("tile-without-host");
                     if ((c.Layers & CaptureLayer.Wall) == 0 && (c.WallType != 0 || c.WallPaint != 0 || c.InvisibleWall || c.FullbrightWall) || (c.Layers & CaptureLayer.Wall) != 0 && c.WallType == 0 || ((c.Layers & CaptureLayer.Wire) != 0) != (c.Wires != 0) || ((c.Layers & CaptureLayer.Actuator) != 0) != c.Actuator || ((c.Layers & CaptureLayer.Liquid) != 0) != (c.LiquidAmount != 0) || c.LiquidAmount == 0 && c.LiquidKind != 0 || c.UnreliableObject && c.ObjectId == 0) throw Bad("layer-fields");

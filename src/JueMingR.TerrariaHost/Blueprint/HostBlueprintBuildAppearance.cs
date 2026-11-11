@@ -55,6 +55,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             bool tileSame = (target.Cell.Layers & CaptureLayer.Tile) != 0 && BuildOperationBodySame(target, actual);
             if (lane == BlueprintBuildLane.Shape)
             {
+                if (BlueprintStructureSemantics.Special(target.Cell.TileType)) return TryPlanStructure(target, actual, out operation);
                 var shape = MaterialCatalog?.TileShape(target.Cell);
                 int type = target.Cell.TileType;
                 if (!tileSame || target.Cell.Slope > 4 || target.Cell.HalfBrick && target.Cell.Slope != 0 ||
@@ -218,6 +219,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (WorldGen.IsLockedDoor(Main.tile[target.WorldX, target.WorldY - 1]) ||
                 WorldGen.IsLockedDoor(Main.tile[target.WorldX, target.WorldY + 1]))
             { RequestBuildEligibilityRetry(target); return false; }
+            // Special native branches never call CanPoundTile (which even
+            // rejects traps). Keep their real IsTilePoundable gate separate
+            // from ordinary slope collision/CanKillTile requirements.
+            if (target.Operation?.Structure == true) return SpecialShapePoundable(p, Main.tile[target.WorldX,target.WorldY]);
             var bounds = new Rectangle(target.WorldX * 16, target.WorldY * 16, 16, 16);
             for (int index = 0; index < Main.maxPlayers; index++)
             {
@@ -349,7 +354,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             bool tileSame = (flight.Target.Cell.Layers & CaptureLayer.Tile) != 0 && BuildOperationBodySame(flight.Target, actual);
             if (flight.Operation.Kind == BlueprintBuildOperationKind.Hammer)
             {
-                if (!tileSame || flight.Target.Cell.Slope == actual.Cell.Slope && flight.Target.Cell.HalfBrick == actual.Cell.HalfBrick ||
+                if (flight.Operation.Structure)
+                {
+                    if (!tileSame || BlueprintStructureSemantics.Same(flight.Target.Cell, actual.Cell) || BlueprintStructureSemantics.State(actual.Cell) != flight.Operation.Mode) return false;
+                }
+                else if (!tileSame || flight.Target.Cell.Slope == actual.Cell.Slope && flight.Target.Cell.HalfBrick == actual.Cell.HalfBrick ||
                     (actual.Cell.Slope | (actual.Cell.HalfBrick ? 8 : 0)) != flight.Operation.Mode) return false;
             }
             else
@@ -416,6 +425,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintWorldMatchSample actual;
             if (!ReadBuildCell(flight.Target.WorldX, flight.Target.WorldY, out actual)) return false;
             var operation = flight.Operation;
+            if (operation.Kind == BlueprintBuildOperationKind.Hammer && operation.Structure) return StructureApplied(flight, actual);
             if (operation.Kind == BlueprintBuildOperationKind.Hammer)
                 return (actual.Cell.Layers & CaptureLayer.Tile) != 0 && actual.Cell.TileType == flight.Target.Cell.TileType &&
                     (actual.Cell.Slope | (actual.Cell.HalfBrick ? 8 : 0)) != operation.Mode;

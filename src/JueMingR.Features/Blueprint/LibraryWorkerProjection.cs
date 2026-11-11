@@ -541,10 +541,10 @@ namespace JueMingR.Features.Blueprint
                         CaptureCell cell = chunk.Cells[i]; cell.X -= summary.Left; cell.Y -= summary.Top;
                         if (!bounds.Contains(cell.X, cell.Y)) continue;
                         if ((long)cells.Count >= area) throw new InvalidDataException("blueprint-projection-window-duplicate");
-                        windowBytes += 64; if (windowBytes > ProjectionWindowLimit) throw new InvalidDataException("blueprint-projection-window-budget");
+                        windowBytes += 64 + cell.Payload.EstimatedBytes; if (windowBytes > ProjectionWindowLimit) throw new InvalidDataException("blueprint-projection-window-budget");
                         cells.Add(cell); if (cell.ObjectId != 0) objectIds.Add(cell.ObjectId);
                     }
-                    UpdateProjectionWindowWorkingBytes(256L + cells.Count * 64L + objectIds.Count * 32L);
+                    UpdateProjectionWindowWorkingBytes(windowBytes + objectIds.Count * 32L);
                     yield return true;
                 }
             }
@@ -594,6 +594,7 @@ namespace JueMingR.Features.Blueprint
             Interlocked.Increment(ref projectionBlockReads); Interlocked.Add(ref projectionDecodedRecords, chunk.Count + chunk.ObjectCount);
 #endif
             long retained = 128L + chunk.Count * 64L + chunk.ObjectCount * 128L;
+            for (int i = 0; i < chunk.Count; i++) retained += chunk.Cells[i].Payload.EstimatedBytes;
             for (int i = 0; i < chunk.ObjectCount; i++) retained += (long)((chunk.Objects[i].Reason ?? "").Length + (chunk.Objects[i].MissingPayload ?? "").Length) * 2;
             while (projectionCache.Count != 0 && (projectionCache.Count >= 64 || projectionCacheSize + retained > ProjectionCacheLimit)) { projectionCacheSize -= projectionCache[0].Bytes; projectionCache.RemoveAt(0); }
             if (retained <= ProjectionCacheLimit) { projectionCache.Add(new ProjectionCacheBlock { Owner = owner, Number = number, Bytes = retained, Chunk = chunk }); projectionCacheSize += retained; }

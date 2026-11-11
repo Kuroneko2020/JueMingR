@@ -38,6 +38,7 @@ namespace JueMingR.TerrariaHost.Movement
                 case SmartFallFamily.DjinnLegs: return t == 3770;
                 case SmartFallFamily.TeleportRod: return t == 5335 || t == 1326;
                 case SmartFallFamily.GravityGlobe: return t == 1131;
+                case SmartFallFamily.Cobweb: return item.createTile == 51 && item.consumable;
                 case SmartFallFamily.FlyingMount:
                 case SmartFallFamily.SafeMount:
                     var mounts = readMounts?.Invoke();

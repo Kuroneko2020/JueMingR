@@ -13,16 +13,16 @@ namespace JueMingR.TerrariaHost.Movement
     // One finite rescue, owned by MovementSession's exact local player epoch.
     // Native consumers alone own motion, fallStart, immunity and resources.
     // An equipment loan never creates a charge or bypasses a release phase.
-    internal sealed class SmartFallHost
+    internal sealed partial class SmartFallHost
     {
         private readonly MovementSession session;
         private readonly HostItems items;
         private readonly SmartFallBorrowOwner borrow;
         private readonly SmartFallGrapple grapple = new SmartFallGrapple();
-        private readonly SmartFallCandidate[] candidates = new SmartFallCandidate[12];
-        private readonly Item[] sources = new Item[12];
-        private readonly Item[] observedSources = new Item[12];
-        private readonly SmartFallPreparation[] preparations = new SmartFallPreparation[12];
+        private readonly SmartFallCandidate[] candidates = new SmartFallCandidate[SmartFallProtectionOptions.CapabilityCount];
+        private readonly Item[] sources = new Item[SmartFallProtectionOptions.CapabilityCount];
+        private readonly Item[] observedSources = new Item[SmartFallProtectionOptions.CapabilityCount];
+        private readonly SmartFallPreparation[] preparations = new SmartFallPreparation[SmartFallProtectionOptions.CapabilityCount];
         private readonly Item[] hookSources = new Item[51];
         private readonly SmartFallPreparation[] hookPreparations = new SmartFallPreparation[51];
         private readonly SmartFallGrapplePlan[] hookGeometry = new SmartFallGrapplePlan[51];
@@ -101,11 +101,16 @@ namespace JueMingR.TerrariaHost.Movement
         {
             if (!Current(p)) return;
             permitted = canAct;
+            AdvanceWeb(p,canAct);
+            // Actual selection/use remains exclusive. Waiting for another
+            // owner, or observing a placed web, never stalls the twelve native
+            // families. Their current-update protections can still win.
+            if(webSelected && borrow.HasPending)return;
             if (HasPending) { Continue(p); if (HasPending) return; }
             if (!canAct || !session.Value.SmartFallProtection.Enabled) return;
             if (takenOver) { if (SmartFallCapabilities.Risk(p) || SmartFallCapabilities.CriticalApproach(p)) return; takenOver = false; }
             bool currentRisk = SmartFallCapabilities.Risk(p);
-            if (!currentRisk && !SmartFallCapabilities.CriticalApproach(p)) { active = false; bandValid = false; rejected = blockingCount = 0; failedShot = grappleDependenciesValid = false; contact = default(SmartFallContact); return; }
+            if (!currentRisk && !SmartFallCapabilities.CriticalApproach(p)) { CancelWebRequest(); active = false; bandValid = false; rejected = blockingCount = 0; failedShot = grappleDependenciesValid = false; contact = default(SmartFallContact); return; }
             int currentMask = SmartFallCapabilities.NativeMask(p);
             long revision = items == null ? 0 : items.World.Revision;
             if (!active || sourceRevision != revision || mask != currentMask || !ReferenceEquals(sampledOptions, session.Value.SmartFallProtection))
@@ -115,7 +120,7 @@ namespace JueMingR.TerrariaHost.Movement
             long blockers = borrow.BlockerStamp(p);
             if (blockers != blockerStamp)
             { rejected &= blockingCount == 0 ? 0 : 1 << (int)SmartFallFamily.Grapple; Refresh(p, revision, currentMask); }
-            if (sourceCount == 0) return;
+            if (sourceCount == 0) {CancelWebRequest();return;}
             if (blockingCount > 0 && BlockingHookChanged(p))
             { blockingCount = 0; rejected &= ~(1 << (int)SmartFallFamily.Grapple); grappleSearched = false; bandValid = false; }
             // A failed shot owns its exact identity even after the item loan
@@ -142,25 +147,32 @@ namespace JueMingR.TerrariaHost.Movement
             if (stale)
             {
                 if (failedShot || grappleSearched) ReopenGrapple();
-                Count(ref Plans); contact = SmartFallGeometry.Contact(p, ref TileReads, contactBand); contactTick = sampledTick = tick; bandValid = true; grappleSearched = false;
+                PrepareWebSearch(p);
+                Count(ref Plans); contact = SmartFallGeometry.ContactWithWeb(p, ref TileReads, contactBand,CobwebNativeReady && session.Value.SmartFallProtection.Cobweb?webSearch:null); webPlan=webSearch.Finish(contact); webSampleTick=tick;
+                contactTick = sampledTick = tick; bandValid = true; grappleSearched = false;
                 sampledPosition = p.position; sampledVelocity = p.velocity; sampledDown = p.controlDown; originalGravity = p.gravDir;
                 sampledWidth = p.width; sampledHeight = p.height;
             }
             else if (contact.Found)
             {
-                contact.Ticks = Math.Max(0, contact.Ticks - (tick - contactTick)); contactTick = tick;
+                contact.Ticks = Math.Max(0, contact.Ticks - (tick - contactTick));
+                contact.WebTick-=(int)(tick-contactTick);webPlan.TouchTick-=(int)(tick-webSampleTick);webSampleTick=tick;contactTick = tick;
             }
-            if (!contact.Found || contact.SafeSurface) return;
+            if (!contact.Found || contact.SafeSurface) {CancelWebRequest();return;}
             bool contactRisk = currentRisk || SmartFallCapabilities.ContactRisk(p, contact);
-            if (!contactRisk) return;
+            if (!contactRisk) {CancelWebRequest();return;}
+            if(NaturalWebOpportunity(p)){CancelWebRequest();return;}
+            webAcquire=WebAcquireDelay(p);
             bool usableEndpoint = false;
-            for (int i = 0; i < 12; i++)
+            for (int i = 0; i < SmartFallProtectionOptions.CapabilityCount; i++)
                 if (session.Value.SmartFallProtection.Allows(i) && (rejected & 1 << i) == 0 &&
-                    (preparations[i].AvailableNow || (mask & 1 << i) != 0 || i == (int)SmartFallFamily.Grapple && hookCount > 0)) { usableEndpoint = true; break; }
+                    (preparations[i].AvailableNow || HasNativeCapability(mask,i) || i==12 && sources[i]!=null || i == (int)SmartFallFamily.Grapple && hookCount > 0)) { usableEndpoint = true; break; }
             if (!usableEndpoint) return;
             BuildCandidates(p);
             int choice = SmartFallDecision.Choose(candidates, count, contact.Ticks);
             if (choice < 0 || !Due(p, candidates[choice])) return;
+            if(candidates[choice].Family==SmartFallFamily.Cobweb){StartWeb(p);return;}
+            CancelWebRequest();
             if (!session.CanAct(p) || !(SmartFallCapabilities.Risk(p) || SmartFallCapabilities.ContactRisk(p, contact))) return;
             // Capture the original native selection BEFORE the rescue item is
             // exchanged into its misc slot. Type alone cannot authorize reuse.
@@ -174,6 +186,7 @@ namespace JueMingR.TerrariaHost.Movement
                 choice = SmartFallDecision.Choose(candidates, count, contact.Ticks);
                 if (choice < 0 || !Due(p, candidates[choice])) return;
                 c = candidates[choice]; item = sources[(int)c.Family];
+                if(c.Family==SmartFallFamily.Cobweb){StartWeb(p);return;}
             }
             family = c.Family; selected = item; action = true; landed = false; shot = false;
             actionResourceBit=resourceBefore=0;resourceConsumed=resourceHadCarpetStart=jumpReleasing=jumpPressed=false;releaseTick=upPressTick=-1;
@@ -204,6 +217,7 @@ namespace JueMingR.TerrariaHost.Movement
         }
         private bool Due(Player p, SmartFallCandidate candidate)
         {
+            if(candidate.Family==SmartFallFamily.Cobweb)return WebDue();
             if (SmartFallDecision.Due(candidate, contact.Ticks)) return true;
             if (candidate.Family != SmartFallFamily.Grapple || !grapplePlan.Found) return false;
             // A moving player's time-to-anchor can increase while time to
@@ -219,19 +233,19 @@ namespace JueMingR.TerrariaHost.Movement
             var options = session.Value.SmartFallProtection;
             sampledOptions = options;
             if (!options.Grapple) { failedShot = grappleDependenciesValid = false; blockingCount = 0; }
-            for (int i = 0; i < 12; i++)
+            for (int i = 0; i < SmartFallProtectionOptions.CapabilityCount; i++)
             {
                 Func<Item,bool> eligible=i==(int)SmartFallFamily.DoubleJump?jumpSourceReady:i==(int)SmartFallFamily.RocketBoots?rocketSourceReady:i==(int)SmartFallFamily.Carpet?carpetSourceReady:null;
-                Item next = options.Allows(i) ? borrow.GetCandidate(p,(SmartFallFamily)i,eligible) : null;
+                Item next = options.Allows(i) ? i==12?WebOpportunity(p):borrow.GetCandidate(p,(SmartFallFamily)i,eligible) : null;
                 // Our own failed action's restore legitimately increments the
                 // inventory revision. It is not a new capability and cannot
                 // reopen the identical failed transaction every Update.
-                if (!ReferenceEquals(observedSources[i], next) || ((previousMask ^ nativeMask) & 1 << i) != 0 || i == (int)SmartFallFamily.DoubleJump && ((previousMask ^ nativeMask) & (511 << 12)) != 0) rejected &= ~(1 << i);
+                if (!ReferenceEquals(observedSources[i], next) || i<12 && ((previousMask ^ nativeMask) & 1 << i) != 0 || i == (int)SmartFallFamily.DoubleJump && ((previousMask ^ nativeMask) & (511 << 12)) != 0) {rejected &= ~(1 << i);if(i==12)bandValid=false;}
                 sources[i] = observedSources[i] = next;
                 preparations[i] = next == null ? default(SmartFallPreparation) : borrow.GetPreparation(p, generation, next, (SmartFallFamily)i);
                 // Native ready abilities may belong to a mount rather than an
                 // Item endpoint. They still go through their real consumers.
-                if (options.Allows(i) && (sources[i] != null || (nativeMask & 1 << i) != 0)) sourceCount++;
+                if (options.Allows(i) && (sources[i] != null || HasNativeCapability(nativeMask,i))) sourceCount++;
             }
             if (options.Grapple)
             {
@@ -239,6 +253,10 @@ namespace JueMingR.TerrariaHost.Movement
                 if (items != null) for (int slot = 0; slot < 50; slot++) AddHook(p, p.inventory[slot]);
             }
         }
+        // NativeMask's bits 12..20 are individual unused jump facts, NOT
+        // permission bits. A consumable cobweb has no native capability bit.
+        private static bool HasNativeCapability(int facts,int family)
+        {return family<12 && (facts & 1<<family)!=0;}
         private void AddHook(Player p, Item item)
         {
             if (!SmartFallCapabilities.Matches(item, SmartFallFamily.Grapple)) return;
@@ -251,16 +269,17 @@ namespace JueMingR.TerrariaHost.Movement
         {
             count = 0;
             var options = session.Value.SmartFallProtection;
-            for (int i = 0; i < 12; i++)
+            for (int i = 0; i < SmartFallProtectionOptions.CapabilityCount; i++)
             {
                 if (!options.Allows(i) || (rejected & 1 << i) != 0) continue;
                 var f = (SmartFallFamily)i; Item item = sources[i];
-                bool native = (mask & 1 << i) != 0, ready = false; int delay = 0;
+                bool native = HasNativeCapability(mask,i), ready = false; int delay = 0;
                 if (item == null && !native) continue;
                 var preparation = preparations[i];
-                if (item != null && !preparation.AvailableNow && f != SmartFallFamily.Grapple) continue;
+                if (item != null && !preparation.AvailableNow && f != SmartFallFamily.Grapple && f!=SmartFallFamily.Cobweb) continue;
                 switch (f)
                 {
+                    case SmartFallFamily.Cobweb: ready=WebCandidate(p,out delay);break;
                     case SmartFallFamily.Horseshoe: ready = item != null && !p.stoned; break;
                     case SmartFallFamily.Wings: ready = item != null && !p.stoned; break;
                     case SmartFallFamily.DjinnLegs: ready = item != null && !p.stoned; delay = 1; break;
@@ -380,6 +399,12 @@ namespace JueMingR.TerrariaHost.Movement
                 case SmartFallFamily.TeleportRod:
                     cost += (p.controlUseItem ? 0 : 1) + Math.Max(item == null ? 0 : item.useAnimation, item == null ? 0 : item.useTime) / 6 + (int)Math.Ceiling(Vector2.Distance(p.position, target) / 16);
                     if (item != null && item.type == 1326 && p.chaosState) cost += Math.Max(1, p.statLifeMax2 / 7); break;
+                case SmartFallFamily.Cobweb:
+                    // One real consumable, native selection/return, and a
+                    // change in motion. Scarce last pieces cost more; an idle
+                    // held stack is cheaper than interrupting a live business.
+                    cost+=3+(item!=null && item.stack==1?8:1)+(rescueTools!=null && (rescueTools.Use.Active || (rescueTools.Combat?.Use.Active??false))?6:0);
+                    break;
             }
             return cost;
         }
@@ -700,12 +725,12 @@ namespace JueMingR.TerrariaHost.Movement
         internal void BeforeSync(Player p)
         {
             if (!Current(p)) return;
-            bool before = borrow.HasPending; borrow.BeforeSync(p, action && family == SmartFallFamily.TeleportRod && permitted);
+            bool before = borrow.HasPending; borrow.BeforeSync(p, (action && family == SmartFallFamily.TeleportRod || webSelected && !webIssued) && permitted);
             if (before && !borrow.HasPending && borrow.ReturnResult == SmartFallResult.TakenOver)
             { ReturnInputs(p); action = targetActive = false; takenOver = true; Result = SmartFallResult.TakenOver; }
         }
         internal void ManualSelection(Player p)
-        { if (!ReferenceEquals(p, retained) || items != null && items.ReturningSelection) return; originalMount=-1;originalMountItem=null;borrow.ManualSelection(); if (action && (family == SmartFallFamily.Umbrella || family == SmartFallFamily.TeleportRod)) { action = false; takenOver = true; Result = SmartFallResult.TakenOver; } }
+        { if (!ReferenceEquals(p, retained) || items != null && items.ReturningSelection || (rescueTools?.Use.Returning??false) || (rescueTools?.Combat?.Use.Selecting??false)) return; CancelWebRequest();if(webSelected){webSelected=false;webObserving=false;takenOver=true;Result=SmartFallResult.TakenOver;} originalMount=-1;originalMountItem=null;borrow.ManualSelection(); if (action && (family == SmartFallFamily.Umbrella || family == SmartFallFamily.TeleportRod)) { action = false; takenOver = true; Result = SmartFallResult.TakenOver; } }
         internal void ManualEquipment(Item[] array, int slot)
         {
             if (originalMount>=0 && retained!=null && array!=null && slot>=0 && slot<array.Length &&
@@ -735,6 +760,7 @@ namespace JueMingR.TerrariaHost.Movement
         {
             operation = borrow.Operation;
             if (!Current(p)) return false;
+            if(webSelected)return BeginWebItemCheck(p);
             if (action && family == SmartFallFamily.TeleportRod && (!permitted || !session.CanAct(p)))
             { action = false; targetActive = false; borrow.Restore(p, generation); Result = SmartFallResult.TakenOver; takenOver = true; return false; }
             targetActive = action && family == SmartFallFamily.TeleportRod && borrow.SelectionReady && permitted && session.CanAct(p);
@@ -743,6 +769,7 @@ namespace JueMingR.TerrariaHost.Movement
         internal void EndItemCheck(Player p, long operation, bool entered, Exception error)
         {
             if (!Current(p)) return;
+            if(webSelected && operation==webLoan){EndWebItemCheck(p,operation,entered,error);return;}
             try
             {
                 borrow.EndItemCheck(p, operation, entered, error);
@@ -779,6 +806,8 @@ namespace JueMingR.TerrariaHost.Movement
                 if(action && (family==SmartFallFamily.DoubleJump || family==SmartFallFamily.RocketBoots || family==SmartFallFamily.Carpet) && !resourceConsumed && releaseTick!=tick && jumpPressed)Fail(p);
                 if (action && p.velocity.Y == 0) landed = true;
                 borrow.EndUpdate(p, generation);
+                webAim?.End();webAim=null;
+                if(webSelected && !borrow.HasPending){webSelected=false;webLoan=0;}
             }
             finally { scope = permitted = false; player = null; targetActive = false; }
         }
@@ -794,6 +823,7 @@ namespace JueMingR.TerrariaHost.Movement
         }
         private void ClearState()
         {
+            webAim?.End();webAim=null;ClearWeb();
             if (player != null) ReturnInputs(player);
             borrow.EndSession(); player = retained = null; scope = permitted = active = action = landed = shot = returnGravity = takenOver = false;
             actionResourceBit=0;resourceConsumed=jumpReleasing=jumpPressed=false;releaseTick=upPressTick=-1;originalMountItem=originalSelectionItem=null;

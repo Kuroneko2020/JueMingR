@@ -11,7 +11,7 @@ function Get-WorkloadLeafChecks {
     # Hand-opening/navigation owners are consumed by the attack preparation,
     # G11 yoyo and presentation chains, not by NPC motion models. Parent CPU
     # entries still own Navigation/AttackCosts; the children remain specialists.
-    $attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
+    $attackConsumers=@('native-CombatGuidedNavigationCpu','native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')
     # This asset initializer is also called by the narrow combat fixture.
     # Preserve its worker consumers when adding the explicit combat leaf;
     # the combat scope itself must not inherit the legacy-worker group.
@@ -26,7 +26,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintHoikPersistenceChecks.cs'=@('native-BlueprintHoikCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikRecoveryChecks.cs'=@('native-BlueprintHoikCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikSubstitutionChecks.cs'=@('native-BlueprintHoikSubstitutionCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintHelperImportChecks.cs'=@('native-BlueprintExchangeCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHelperImportChecks.cs'=@('native-BlueprintPayloadCpu','native-BlueprintExchangeCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintImportedMaterialsChecks.cs'=@('native-BlueprintImportedMaterialsCpu')
         'tests/NativeWorldTextProbe/NativeViewZoomControlChecks.cs'=@('native-ViewZoomControlCpu')
         'tests/JueMingR.ArchitectureTests/RuntimeFailureChecks.cs'=@('RuntimeFailureChecks')
@@ -91,7 +91,10 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintFocusDiscoveryChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintOperationGroupChecks.cs'=@('native-BlueprintBuildCadenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPostProcessingCadenceChecks.cs'=@('native-BlueprintBuildCadenceCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintConstructionChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintPreparationCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintStructureChecks.cs'=@('native-BlueprintStructureCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintEntityNetworkChecks.cs'=@('native-BlueprintPayloadCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintPayloadChecks.cs'=@('native-BlueprintPayloadCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintConstructionChecks.cs'=@('native-BlueprintStructureCpu','native-BlueprintPayloadCpu','native-BlueprintHoikCpu','native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintPreparationCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintConstructionAppearanceChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintSubstitutionCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintAppearanceRestorationChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintSmartPlacementRepairChecks.cs'=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
@@ -315,6 +318,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatScatterChecks.cs'=@('native-CombatAimCpu')
         'tests/NativeWorldTextProbe/NativeCombatHeldSequenceChecks.cs'=@('native-CombatControlCpu')
         'tests/NativeWorldTextProbe/NativeCombatAttackFailureChecks.cs'=@('native-CombatControlCpu')
+        'tests/NativeWorldTextProbe/NativeCombatGuidedNavigationChecks.cs'=@('native-CombatGuidedNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCombatControlChecks.cs'=@('native-CombatControlCpu')
         'tests/NativeWorldTextProbe/NativeCombatBubbleChecks.cs'=@('native-CombatControlCpu')
         'tests/NativeWorldTextProbe/NativeCombatFlyingKnifeChecks.cs'=@('native-CombatControlCpu')
@@ -598,6 +602,7 @@ function Get-WorkloadNativeScopes {
         'JourneyPredictionCpu'=@('journey-host');
         'NpcRollingCpu'=@('combat-host');
         'CombatAimCpu'=@('combat-host');
+        'CombatGuidedNavigationCpu'=@('combat-host','quick-items-host','tools-host');
         'CombatControlCpu'=@('combat-host');
         # Reviewed regression leaves consume this existing full native fixture
         # initialization, without executing its quick-item feature matrix.
@@ -680,6 +685,8 @@ function Get-WorkloadNativeScopes {
         'BlueprintConstructionCpu'=@('blueprint-host','tools-host');
         'BlueprintBuildCadenceCpu'=@('blueprint-host','tools-host');
         'BlueprintPreparationCpu'=@('blueprint-host','tools-host');
+        'BlueprintStructureCpu'=@('blueprint-host','tools-host');
+        'BlueprintPayloadCpu'=@('blueprint-host','tools-host');
         'BlueprintAppearanceCpu'=@('blueprint-host','tools-host');
         'BlueprintHoikCpu'=@('blueprint-host','tools-host');
         'BlueprintHoikSubstitutionCpu'=@('blueprint-host','tools-host');

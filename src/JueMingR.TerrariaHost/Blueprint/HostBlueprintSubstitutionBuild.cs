@@ -176,6 +176,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (target.Placement.Kind == BlueprintPlacementKind.Wall)
                 return ReadBuildCell(target.WorldX, target.WorldY, out actual) &&
                     (actual.Cell.Layers & CaptureLayer.Wall) != 0 && actual.Cell.WallType == target.Placement.WallType;
+            if (BlueprintObjectPayload.EntityType(target.Cell.TileType))
+            {
+                // The native body receipt settles the one real debit even if
+                // the entity payload follows later. Final Match still waits
+                // for the exact item identity, so latency never spends twice.
+                return ReadBuildCell(target.WorldX,target.WorldY,out actual) && (actual.Cell.Layers&CaptureLayer.Tile)!=0 &&
+                    actual.Cell.TileType==target.Cell.TileType && actual.Cell.FrameX==target.Cell.FrameX && actual.Cell.FrameY==target.Cell.FrameY;
+            }
             if (target.Body == null)
                 return ReadBuildCell(target.WorldX, target.WorldY, out actual) &&
                     BlueprintMaterialSteps.SameBody(target.Cell, actual, MaterialCatalog) == BlueprintBodyState.Same;

@@ -262,6 +262,13 @@ namespace JueMingR.TerrariaHost.Combat
             if(PrepareBalancedPlan(plan,timeline,phase))return plan.Contact;
             int delay=HostAttackWindow.PreviewDelay(player,item);var clock=new HostAttackClock(timeline,phase);
             if(clock.Age<0 || clock.Age>1){plan.Clear();return null;}
+            // A registered Guided cursor owns this stage. Do not first spend
+            // its candidate allowance solving an unrelated ordinary flight.
+            if(HostGuidedAttack.Weapon(item))
+            {
+                plan.Clear();plan.SetMembers(player,item);plan.Controlled=true;plan.Timeline=timeline;
+                plan.Contact=Control.Preview(timeline,phase,delay);plan.ControlDependencies=Control.CapturePreviewDependencies(plan.Contact);return plan.Contact;
+            }
             bool hasFlight;var flight=ReadFlight(player,timeline,phase,out hasFlight);
             // Display consumes this already-born, fully solved native flight
             // before searching an unused hypothetical new hand. This is only

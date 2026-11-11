@@ -145,6 +145,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 #if DEBUG
                 var installTimer = System.Diagnostics.Stopwatch.StartNew();
 #endif
+                BlueprintNativePayload.Install(harmony, observer);
                 // These are actual .8 mutation mechanisms: local tools,
                 // natural tile changes, object/rail state, wiring and liquid,
                 // plus the receiving network paths. Drawing/lighting, all
@@ -224,7 +225,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             catch
             {
-                harmony.UnpatchAll(harmony.Id); owner = null; ReleasePools(); ResetThreadState(); throw;
+                harmony.UnpatchAll(harmony.Id); BlueprintNativePayload.Clear(); owner = null; ReleasePools(); ResetThreadState(); throw;
             }
         }
 
@@ -618,7 +619,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal static void Uninstall(BlueprintWorldChangeObserver observer)
         {
             if (!ReferenceEquals(owner, observer)) return;
-            harmony.UnpatchAll(harmony.Id); owner = null; ReleasePools(); ResetThreadState();
+            harmony.UnpatchAll(harmony.Id); BlueprintNativePayload.Clear(); owner = null; ReleasePools(); ResetThreadState();
         }
         internal static void ReleaseIdle(BlueprintWorldChangeObserver observer)
         { if (ReferenceEquals(owner, observer) && observer.WatchCount == 0) { ReleasePools(); ResetThreadState(); } }

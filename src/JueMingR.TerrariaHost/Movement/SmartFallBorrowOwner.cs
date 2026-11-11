@@ -36,7 +36,7 @@ namespace JueMingR.TerrariaHost.Movement
         private long nextNativeUse,nativeUse,nativeUseToken;
         private SmartFallFamily nativeUseFamily;
         private bool nativeUseConsumed;
-        private bool selection,selected,restoreRequested,pulsed,ownsMouse,ownedUseBit,originalUseBit,originalReleaseBit;
+        private bool selection,selected,restoreRequested,pulsed,ownsMouse,ownedUseBit,ownedUseValue,originalUseBit,originalReleaseBit;
         private bool misc,unknown;
         private bool borrowedFavorite,originalFavorite;
         private int borrowedType,borrowedPrefix,borrowedStack,originalType,originalPrefix,originalStack;
@@ -105,10 +105,27 @@ namespace JueMingR.TerrariaHost.Movement
         private bool Permitted(Player p,long epoch)
         {return (items==null || Thread.CurrentThread.ManagedThreadId==items.ThreadId) && p!=null && ReferenceEquals(p,Main.LocalPlayer) && epoch>0 && epoch==(currentGeneration?.Invoke()??0) && !p.dead && !p.ghost && !p.CCed && !Main.gameMenu && !Main.gamePaused && !Main.ServerSideCharacter && !(Main.ActivePlayerFileData?.ServerSideCharacter??false);}
         private bool ManualUse(Player p)
-        {return p.controlUseItem && !ownedUseBit || p.controlUseTile || p.controlTorch || PlayerInput.Triggers.Current.MouseLeft || PlayerInput.Triggers.Current.MouseRight || PlayerInput.Triggers.Current.SmartSelect;}
+        {return p.controlTorch || PlayerInput.Triggers.Current.SmartSelect || !(HeldRescuePermit?.Invoke()??false) && (p.controlUseItem && !ownedUseBit || p.controlUseTile || PlayerInput.Triggers.Current.MouseLeft || PlayerInput.Triggers.Current.MouseRight);}
         private bool Match(Item item,SmartFallFamily family)
-        {SourceReads++;return item!=null && !item.IsAir && item.stack==1 && (matches?.Invoke(item,family)??false);}
-        private static bool Held(SmartFallFamily family){return family==SmartFallFamily.Umbrella || family==SmartFallFamily.TeleportRod;}
+        {SourceReads++;return item!=null && !item.IsAir && (family==SmartFallFamily.Cobweb?item.stack>0:item.stack==1) && (matches?.Invoke(item,family)??false);}
+        private static bool Held(SmartFallFamily family){return family==SmartFallFamily.Umbrella || family==SmartFallFamily.TeleportRod || family==SmartFallFamily.Cobweb;}
+        internal Func<bool> HeldRescuePermit;
+        internal bool IsCobwebSelection(Player p)
+        { return selection && borrowedFamily==SmartFallFamily.Cobweb && Identity(p,generation) && items.Ownership.OwnsUse(generation,token); }
+        // The current tool may still own the same material. Its exact source
+        // may be planned for AFTER handoff; TryBorrow still rechecks every
+        // source/selection/use gate before acquiring a new token.
+        internal Item CobwebOpportunity(Player p, Func<int,Item,bool> ownedSource)
+        {
+            if(items==null || HasPending || p==null)return null;
+            for(int i=0;i<50;i++)
+            {
+                Item item=p.inventory[i];
+                if(!Match(item,SmartFallFamily.Cobweb) || p.inventoryChestStack[i] || ReferenceEquals(item,Main.mouseItem) || items.World.ManualMaterials.Contains(item))continue;
+                if(SourceAllowed(p,p.inventory,i) || (ownedSource?.Invoke(i,item)??false))return item;
+            }
+            return null;
+        }
         private static int MiscSlot(SmartFallFamily family)
         {return family==SmartFallFamily.Grapple?4:family==SmartFallFamily.FlyingMount || family==SmartFallFamily.SafeMount?3:-1;}
         private bool Protected(Item item)
@@ -183,7 +200,7 @@ namespace JueMingR.TerrariaHost.Movement
             SmartFallPreparation Block(SmartFallAvailability why){return new SmartFallPreparation{Availability=why,SourceSlot=-1,TargetSlot=-1,ReturnPending=HasPending};}
             if(!Permitted(p,epoch))return Block(SmartFallAvailability.IdentityBlocked);
             if(item==null || !Match(item,family))return Block(SmartFallAvailability.NoSource);
-            if(family==SmartFallFamily.TeleportRod && p.noItems)return Block(SmartFallAvailability.ItemUseBlocked);
+            if((family==SmartFallFamily.TeleportRod || family==SmartFallFamily.Cobweb) && p.noItems)return Block(SmartFallAvailability.ItemUseBlocked);
             if(HasPending)
             {
                 if(!Identity(p,epoch) || !ReferenceEquals(borrowed,item) || restoreRequested)return Block(SmartFallAvailability.OwnershipBlocked);
@@ -397,19 +414,47 @@ namespace JueMingR.TerrariaHost.Movement
         {
             if(selection && Identity(p,generation) && ManualUse(p)){ManualSelection();return;}
             if(!useItem || p.noItems || !SelectionReady || !ReferenceEquals(p,player) || pulsed || restoreRequested)return;
-            originalUseBit=p.controlUseItem;originalReleaseBit=p.releaseUseItem;ownedUseBit=true;p.controlUseItem=true;p.releaseUseItem=true;pulsed=true;
+            if(borrowedFamily==SmartFallFamily.Cobweb)
+            {
+                originalUseBit=p.controlUseItem;originalReleaseBit=p.releaseUseItem;ownedUseBit=true;
+                // A prior automatic hold is not a fresh native use edge.
+                // Submit a genuine neutral ItemCheck when necessary and let
+                // vanilla rearm releaseUseItem; never invent a release bit.
+                if(!p.releaseUseItem){ownedUseValue=false;p.controlUseItem=false;return;}
+                ownedUseValue=true;p.controlUseItem=true;pulsed=true;return;
+            }
+            originalUseBit=p.controlUseItem;originalReleaseBit=p.releaseUseItem;ownedUseBit=ownedUseValue=true;p.controlUseItem=true;p.releaseUseItem=true;pulsed=true;
         }
         internal bool BeginItemCheck(Player p)
         {if(!selection || !Identity(p,generation) || !pulsed || !SelectionReady)return false;if(!Main.mouseLeft){ownsMouse=true;Main.mouseLeft=true;}return true;}
         internal void EndItemCheck(Player p,long operation,bool entered,Exception error)
         {if(operation!=token || !Identity(p,generation) || !entered)return;ReleaseMouse();if(error!=null)Restore(p,generation);}
+        internal bool SettleCobweb(Player p,long operation,bool entered,Exception error,out int consumed)
+        {
+            consumed=0;
+            if(!entered || operation!=token || !IsCobwebSelection(p))return false;
+            Item current=p.inventory[heldSlot];
+            bool same=ReferenceEquals(current,borrowed) && current.type==borrowedType && current.prefix==borrowedPrefix;
+            bool last=borrowedStack==1 && current!=null && current.IsAir && (ReferenceEquals(current,borrowed) || borrowed.IsAir);
+            int remaining=last?0:current?.stack??-1;
+            if(error!=null || (!same && !last) || remaining>borrowedStack || remaining<borrowedStack-1)
+            {
+                unknown=true;items.Ownership.HoldInterruptedSource(generation,1UL<<heldSlot);ReturnResult=SmartFallResult.Unconfirmed;return false;
+            }
+            consumed=borrowedStack-remaining;
+            // Only this completed native call authorizes the real debit or
+            // last-piece Air. Return restores selection, never old quantities.
+            borrowed=current;borrowedStack=remaining;borrowedType=current.type;borrowedPrefix=current.prefix;
+            if(consumed!=0)items.World.InvalidateObservation();
+            return true;
+        }
         private void ReleaseMouse(){if(ownsMouse){if(Main.mouseLeft)Main.mouseLeft=false;ownsMouse=false;}}
         private void ReleaseInput()
         {
             if(!ownedUseBit || player==null)return;
-            if(player.controlUseItem)player.controlUseItem=originalUseBit;
+            if(player.controlUseItem==ownedUseValue)player.controlUseItem=originalUseBit;
             // A native consumed release=false is an effect, not our contribution.
-            if(player.releaseUseItem)player.releaseUseItem=originalReleaseBit;
+            if(borrowedFamily!=SmartFallFamily.Cobweb && player.releaseUseItem)player.releaseUseItem=originalReleaseBit;
             ownedUseBit=false;
         }
         internal void EndUpdate(Player p,long epoch)

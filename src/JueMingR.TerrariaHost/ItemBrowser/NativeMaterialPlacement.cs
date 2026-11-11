@@ -135,6 +135,12 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             if (sample.createTile == 23 || sample.createTile == 199)
                 CompileMaterialRules(sample, sample.createTile == 23 ? 661 : 662, sample.placeStyle,
                     sample.consumable ? sample.type : 0, sample.consumable ? 1 : 0, false, BlueprintProducerSource.Direct);
+            if (sample.createTile == 723 || sample.createTile == 724)
+            {
+                int style = sample.createTile == 724 ? Terraria.GameContent.Tile_Entities.TECritterAnchor.GetLeashedCritterPrototype(sample.type).anchorStyle : sample.placeStyle;
+                CompileMaterialRules(sample, sample.createTile, style, sample.type, 1, false, BlueprintProducerSource.Direct);
+                return;
+            }
             if (sample.createTile >= 0) CompileMaterialRules(sample, sample.createTile, sample.placeStyle,
                 sample.tileWand > 0 ? sample.tileWand : sample.consumable ? sample.type : 0,
                 sample.tileWand > 0 || sample.consumable ? 1 : 0, sample.tileWand > 0,
@@ -187,6 +193,13 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 for (int direction = 0; direction < directions; direction++)
                     materialRules.Add(new BlueprintPlacementRule(new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units,
                         tile, style, flexible: flexible, producer: producer), false, baseX: direction * 18, baseY: style * 18));
+                return true;
+            }
+            if (tile == TileID.WirePipe || tile == TileID.ProjectilePressurePad)
+            {
+                int step = tile == TileID.WirePipe ? 18 : 22, count = tile == TileID.WirePipe ? 3 : 4;
+                for (int frame = 0; frame < count; frame++) materialRules.Add(new BlueprintPlacementRule(
+                    new BlueprintPlacementDescriptor(BlueprintPlacementKind.Tile, sample.type, consumed, units, tile, style), false, baseX: frame * step, baseY: style * step));
                 return true;
             }
             if (tile == TileID.ClosedDoor)

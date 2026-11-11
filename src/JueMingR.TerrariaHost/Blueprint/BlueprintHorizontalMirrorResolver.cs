@@ -12,16 +12,20 @@ namespace JueMingR.TerrariaHost.Blueprint
     // Construction belongs to the native metadata owner on the game thread.
     // The published graph contains copied scalars/arrays only. In particular,
     // calls from the library worker never reach TileObjectData, Main or a Tile.
-    internal sealed class BlueprintHorizontalMirrorResolver : IBlueprintHorizontalMirrorProfile, IBlueprintImportProfile
+    internal sealed class BlueprintHorizontalMirrorResolver : IBlueprintHorizontalMirrorProfile, IBlueprintImportProfile, IBlueprintEntityImportProfile
     {
         private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
         private static BlueprintHorizontalMirrorResolver current;
         private readonly Layout[] roots;
         private readonly bool[] platforms, trees, campfires;
+        private readonly int[] trackMirror;
         private readonly bool[] frameImportant;
+        private readonly int[] entityTiles = new int[ItemID.Count], entityStyles = new int[ItemID.Count];
+        public bool ValidEntityItem(int tileType, int itemType, int frameY)
+        { return itemType > 0 && itemType < entityTiles.Length && entityTiles[itemType] == tileType && (tileType == 723 || frameY / 18 == entityStyles[itemType]); }
         public int TileCount { get { return roots.Length; } }
         public int WallCount { get; }
-        public long Revision { get { return Ready ? 14580001L : 0; } }
+        public long Revision { get { return Ready ? 14580002L : 0; } }
         public bool Ready { get; }
 
         internal static BlueprintHorizontalMirrorResolver Create()
@@ -36,6 +40,7 @@ namespace JueMingR.TerrariaHost.Blueprint
 
         private BlueprintHorizontalMirrorResolver()
         {
+            trackMirror = BlueprintTrackMirror.Capture();
             roots = new Layout[TileID.Count];
             frameImportant = Main.tileFrameImportant == null ? Array.Empty<bool>() : (bool[])Main.tileFrameImportant.Clone();
             WallCount = WallID.Count;
@@ -61,6 +66,13 @@ namespace JueMingR.TerrariaHost.Blueprint
                     trees[type] = type < TileID.Sets.IsATreeTrunk.Length && TileID.Sets.IsATreeTrunk[type];
                     campfires[type] = type < TileID.Sets.Campfires.Length && TileID.Sets.Campfires[type];
                 }
+                for (int id = 1; id < entityTiles.Length; id++)
+                {
+                    Terraria.Item item;
+                    if (!Terraria.ID.ContentSamples.ItemsByType.TryGetValue(id, out item)) continue;
+                    if (item.createTile == 723 && TileEntityItemValid(723, id, 0)) entityTiles[id] = 723;
+                    if (item.createTile == 724 && item.makeNPC > 0) { entityTiles[id] = 724; entityStyles[id] = Terraria.GameContent.Tile_Entities.TECritterAnchor.GetLeashedCritterPrototype(id).anchorStyle; }
+                }
                 Ready = true;
             }
             catch (NullReferenceException) { }
@@ -68,6 +80,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             catch (TargetInvocationException) { }
             catch (OverflowException) { }
         }
+
+        private static bool TileEntityItemValid(int type, int item, int frameY) { return BlueprintNativePayload.ValidEntityItem(type, item, frameY); }
 
         private sealed class Layout
         {
@@ -275,7 +289,32 @@ namespace JueMingR.TerrariaHost.Blueprint
             if ((source.Layers & CaptureLayer.Tile) == 0) return true;
             try
             {
-                if (source.TileType < platforms.Length && platforms[source.TileType])
+                if (source.TileType == TileID.MinecartTrack)
+                {
+                    if (trackMirror == null || source.FrameX < 0 || source.FrameX >= 36 || source.FrameY < -1 || source.FrameY >= 36) { reason = "轨道拓扑资料尚未就绪"; return false; }
+                    target.FrameX = (short)trackMirror[source.FrameX]; target.FrameY = source.FrameY == -1 ? (short)-1 : (short)trackMirror[source.FrameY];
+                }
+                else if (source.TileType == TileID.Traps)
+                {
+                    int slot = source.FrameX / 18, style = source.FrameY / 18;
+                    if (source.FrameX % 18 != 0 || source.FrameY % 18 != 0 || style < 0 || style > 5 || slot < 0 || slot >= (style == 3 || style == 4 ? 5 : 6)) { reason = "陷阱方向无法确认"; return false; }
+                    // Wiring's two spiky styles use 0/1 for the same downward
+                    // output, 2 up, 3 left, 4 right. Other styles use 0/1
+                    // left/right and duplicate up/down slots; preserve those.
+                    int mirrored = style == 3 || style == 4 ? slot == 3 ? 4 : slot == 4 ? 3 : slot : slot == 0 ? 1 : slot == 1 ? 0 : slot;
+                    target.FrameX = (short)(mirrored * 18);
+                }
+                else if (source.TileType == TileID.WirePipe)
+                {
+                    if (source.FrameX != 0 && source.FrameX != 18 && source.FrameX != 36) { reason = "逻辑管连接无法确认"; return false; }
+                    target.FrameX = source.FrameX == 0 ? (short)0 : source.FrameX == 18 ? (short)36 : (short)18;
+                }
+                else if (source.TileType == TileID.ProjectilePressurePad)
+                {
+                    if (source.FrameX < 0 || source.FrameX > 66 || source.FrameX % 22 != 0) { reason = "射弹压力板方向无法确认"; return false; }
+                    target.FrameX = source.FrameX == 44 ? (short)66 : source.FrameX == 66 ? (short)44 : source.FrameX;
+                }
+                else if (source.TileType < platforms.Length && platforms[source.TileType])
                 {
                     if (!Platform(source, ref target)) { reason = "平台帧超出原版二十七槽"; return false; }
                 }
@@ -366,6 +405,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                     }
                     members[i] = value;
                 }
+                // Payload belongs to the complete object's anchor, which is
+                // not the reflection of its old top-left member.
+                for (int i = 0; i < members.Length; i++) members[i].Payload = default(BlueprintObjectPayload);
+                members[0].Payload = sourceMembers[0].Payload;
                 Decoded decoded;
                 if (!Decode(members[0], false, out decoded)) { reason = "镜像后的合法布局无法确认"; return false; }
                 target = decoded.Object; target.Id = source.Id; target.MissingPayload = source.MissingPayload;
@@ -447,6 +490,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private bool TryDescribe(CaptureCell cell, out BlueprintObjectShape shape)
         {
             shape = null;
+            if (BlueprintStructureSemantics.Special(cell.TileType) && cell.TileType != TileID.DisplayDoll) return false;
             if (Ready && (cell.TileType >= roots.Length || roots[cell.TileType] == null)) return false;
             Decoded decoded;
             try

@@ -72,6 +72,9 @@ namespace JueMingR.Features.Blueprint
                 if (covered.ContainsKey(key)) { x++; Progress++; continue; }
                 CaptureCell cell;
                 if (!Read(x, span.Y, out cell)) { Error = "区域尚未收到或无法读取，请移动到附近后重试。"; return; }
+                if ((source as IBlueprintCapturePayloadSource)?.PendingPayload == true) return;
+                if (cell.Payload.EntityState == BlueprintPayloadState.Unknown) { Error = "实体物品信息尚未收到，请同步完成后重试采集。"; return; }
+                if (cell.Payload.NameState == BlueprintPayloadState.Unknown) { Error = "容器名称尚未收到，请连接正常后重试采集。"; return; }
                 x++; Progress++;
                 if ((cell.Layers & CaptureLayer.Tile) == 0) { Add(cell); continue; }
                 BlueprintObjectShape shape = source.Describe(cell);
@@ -110,7 +113,11 @@ namespace JueMingR.Features.Blueprint
                 CaptureCell value;
                 if (selection.Contains(px, py) && (py < firstCell.Y || py == firstCell.Y && px < firstCell.X))
                 { RejectObject("对象在选区读取后出现，外观无法保持一致"); return; }
-                if (!Read(px, py, out value) || covered.ContainsKey(Key(px, py)) || !Matches(shape, value, index))
+                if (!Read(px, py, out value)) { RejectObject("对象成员尚未收到、残缺或外观不一致"); return; }
+                if ((source as IBlueprintCapturePayloadSource)?.PendingPayload == true) return;
+                if (value.Payload.NameState == BlueprintPayloadState.Unknown || value.Payload.EntityState == BlueprintPayloadState.Unknown || value.Payload.PoseState == BlueprintPayloadState.Unknown)
+                { RejectObject("对象的名称或实体信息尚未收到"); return; }
+                if (covered.ContainsKey(Key(px, py)) || !Matches(shape, value, index))
                 { RejectObject("对象成员尚未收到、残缺或外观不一致"); return; }
                 objectCells[objectRead++] = value; return;
             }
@@ -201,7 +208,7 @@ namespace JueMingR.Features.Blueprint
         private static bool SameTile(CaptureCell a, CaptureCell b)
         {
             return (b.Layers & CaptureLayer.Tile) != 0 && a.TileType == b.TileType && a.FrameX == b.FrameX && a.FrameY == b.FrameY &&
-                a.TilePaint == b.TilePaint && a.Slope == b.Slope && a.HalfBrick == b.HalfBrick && a.Inactive == b.Inactive &&
+                a.Payload.Compare(b.Payload) == BlueprintWorldMatchState.Match && a.TilePaint == b.TilePaint && a.Slope == b.Slope && a.HalfBrick == b.HalfBrick && a.Inactive == b.Inactive &&
                 a.InvisibleTile == b.InvisibleTile && a.FullbrightTile == b.FullbrightTile;
         }
         public CaptureSummary Summary(ulong endTick)

@@ -345,7 +345,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(BalancedHand(player,item,captured))
             {PrepareBalancedOrdinary(player,item,captured,timeline,phase);return;}
             cadence.Prepare(player,item,captured,timeline,phase,null);
-            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item) || HostDirectionalControl.Weapon(player,item))
+            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item) || HostGuidedAttack.Weapon(item) || HostDirectionalControl.Weapon(player,item))
             {
                 if(beforeNpc && !Control.HasPreparedInput && observation.ExpandActionPrediction())PrepareCore(phase);
                 return; // Controller birth is not its later ordinary/beam damage phase.
@@ -505,7 +505,7 @@ namespace JueMingR.TerrariaHost.Combat
                 }
                 catch(CombatPredictionBudgetExceededException){return BeginBasic(player,item,null,HostAttackPhase.BeforeNpc);}
             }
-            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item) || HostDirectionalControl.Weapon(player,item))return Control.BeginOpening(player,item);
+            if(HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item) || HostGuidedAttack.Weapon(item) || HostDirectionalControl.Weapon(player,item))return Control.BeginOpening(player,item);
             // These native births establish G11A's real charge controller.
             // Their Shoot does not consume its later AI direction packet.
             if(item.type==5462 || item.type==6153)return null;

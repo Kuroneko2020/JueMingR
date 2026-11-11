@@ -43,7 +43,7 @@ namespace NativeWorldTextProbe
             Player previous=Main.LocalPlayer;double surface=Main.worldSurface;bool solid=Main.tileSolid[1],platform=Main.tileSolidTop[19],platformSolid=Main.tileSolid[19];
             bool up=Collision.up,down=Collision.down,stair=Collision.stair,stairFall=Collision.stairFall,sloping=Collision.sloping;
             var previousProjectile=Main.projectile[0];
-            var previousTiles=Main.tile;int previousHeight=Main.maxTilesY;
+            var previousTiles=Main.tile;int previousHeight=Main.maxTilesY;var previousMap=Main.Map;
             var saved=new Dictionary<Point,Tile>();
             try
             {
@@ -54,6 +54,12 @@ namespace NativeWorldTextProbe
                 var finite=new Tile[Main.maxTilesX,200];
                 for(int x=0;x<Main.maxTilesX;x++)for(int y=0;y<previousHeight;y++)finite[x,y]=previousTiles[x,y];
                 Main.tile=finite;Main.maxTilesY=200;
+                // Native PlaceTile refreshes its 3x3 neighborhood through
+                // TileFrame -> MapUpdateQueue -> WorldMap._tiles. The normal
+                // target119 therefore reaches120; the old120-high Map did not
+                // follow this existing finite world extension. Keep the real
+                // map consumer and restore its exact original owner below.
+                Main.Map=new Terraria.Map.WorldMap(Main.maxTilesX,Main.maxTilesY);
                 Main.worldSurface=10;Main.tileSolid[1]=true;Main.tileSolidTop[19]=Main.tileSolid[19]=true; // Original Main initialization 8073-8074.
                 for(int x=30;x<70;x++)for(int y=40;y<145;y++) { var at=new Point(x,y);saved.Add(at,Main.tile[x,y]);Main.tile[x,y]=new Tile(); }
                 Static(capabilities,"Bind");
@@ -84,7 +90,7 @@ namespace NativeWorldTextProbe
                 Call(jump,"ClearSession");Main.player[Main.myPlayer]=previous;Main.worldSurface=surface;Main.tileSolid[1]=solid;Main.tileSolidTop[19]=platform;Main.tileSolid[19]=platformSolid;
                 Main.projectile[0]=previousProjectile;Collision.up=up;Collision.down=down;Collision.stair=stair;Collision.stairFall=stairFall;Collision.sloping=sloping;
                 foreach(var pair in saved)Main.tile[pair.Key.X,pair.Key.Y]=pair.Value;
-                Main.tile=previousTiles;Main.maxTilesY=previousHeight;
+                Main.tile=previousTiles;Main.maxTilesY=previousHeight;Main.Map=previousMap;
             }
         }
         private static Player Local()

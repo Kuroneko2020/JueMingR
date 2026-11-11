@@ -15,12 +15,13 @@ namespace JueMingR.TerrariaHost.Combat
         private static readonly MethodInfo copy=typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic);
         internal struct State
         {
-            internal Vector2 Position,Velocity;private Vector2 halfSize;internal float Phase,Age;internal int Left;internal bool Alive,Tile,Wet,Honey;
+            internal Vector2 Position,Velocity;private Vector2 halfSize;internal float Phase,Age;internal int Left;internal bool Alive,Tile,Wet,Honey,Collided;
             internal Vector2 Center {get{return Position+halfSize;}}
-            internal State(Projectile p){Position=p.position;halfSize=p.Size*.5f;Velocity=p.velocity;Phase=p.ai[0];Age=p.localAI[0];Left=p.timeLeft;Alive=p.active;Tile=p.tileCollide;Wet=p.wet;Honey=p.honeyWet;}
+            internal State(Projectile p){Position=p.position;halfSize=p.Size*.5f;Velocity=p.velocity;Phase=p.ai[0];Age=p.localAI[0];Left=p.timeLeft;Alive=p.active;Tile=p.tileCollide;Wet=p.wet;Honey=p.honeyWet;Collided=false;}
         }
         internal static bool Step(Projectile sample,PredictionTerrain terrain,ref State s,Vector2 owner,Vector2 aim,bool channel)
         {
+            s.Collided=false;
             if(!s.Alive || s.Left<=0){s.Alive=false;return true;}Vector2 wetMove=s.Velocity;
             if(s.Phase<=0)
             {
@@ -48,7 +49,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 Vector2 previous=s.Velocity;bool hit;
                 if(!terrain.ProjectileTileMotion(sample,ref s.Position,ref s.Velocity,s.Wet,s.Honey,out wetMove,out hit))return false;
-                if(hit)
+                s.Collided=hit;if(hit)
                 {if(s.Phase<=0)s.Phase=-10;if(s.Velocity.X!=previous.X && Math.Abs(previous.X)>0)s.Velocity.X=-previous.X;if(s.Velocity.Y!=previous.Y && Math.Abs(previous.Y)>0)s.Velocity.Y=-previous.Y;}
             }
             // Native initializes wetVelocity before AI. Once returning with

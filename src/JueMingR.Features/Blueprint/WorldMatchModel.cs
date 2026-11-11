@@ -37,11 +37,11 @@ namespace JueMingR.Features.Blueprint
         private readonly int baseFrameX, baseFrameY, columnStep;
         private readonly bool independentFrames;
         public BlueprintWorldObject(int worldX, int worldY, int width, int height, int anchorX, int anchorY,
-            ushort kind, int style, int direction, BlueprintWorldObjectFamily family, int[] form, long frameGroup = 0, BlueprintObjectShape memberLayout = null)
+            ushort kind, int style, int direction, BlueprintWorldObjectFamily family, int[] form, long frameGroup = 0, BlueprintObjectShape memberLayout = null, int entityItemType = 0)
         {
             if (width <= 0 || height <= 0 || (long)width * height >= CaptureChunk.MaximumRecords) throw new ArgumentException("Invalid object footprint.");
             WorldX = worldX; WorldY = worldY; Width = width; Height = height; AnchorX = anchorX; AnchorY = anchorY;
-            Kind = kind; Style = style; Direction = direction; Family = family; FrameGroup = frameGroup;
+            EntityItemType = entityItemType; Kind = kind; Style = style; Direction = direction; Family = family; FrameGroup = frameGroup;
             this.form = form == null ? Array.Empty<int>() : (int[])form.Clone();
             if (memberLayout != null)
             {
@@ -55,6 +55,7 @@ namespace JueMingR.Features.Blueprint
         public int Height { get; }
         public int AnchorX { get; }
         public int AnchorY { get; }
+        public int EntityItemType { get; }
         public ushort Kind { get; }
         public int Style { get; }
         public int Direction { get; }
@@ -67,7 +68,7 @@ namespace JueMingR.Features.Blueprint
         public bool Contains(int x, int y) { return x >= WorldX && y >= WorldY && (long)x < (long)WorldX + Width && (long)y < (long)WorldY + Height; }
         public bool SameBuilding(BlueprintWorldObject other)
         {
-            if (other == null || Kind != other.Kind || Style != other.Style || Direction != other.Direction || Family != other.Family || form.Length != other.form.Length) return false;
+            if (other == null || EntityItemType > 0 && other.EntityItemType > 0 && EntityItemType != other.EntityItemType || Kind != other.Kind || Style != other.Style || Direction != other.Direction || Family != other.Family || form.Length != other.form.Length) return false;
             for (int i = 0; i < form.Length; i++) if (form[i] != other.form[i]) return false;
             return true;
         }

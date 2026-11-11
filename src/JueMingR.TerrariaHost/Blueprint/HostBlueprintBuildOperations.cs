@@ -20,6 +20,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal ToolBuildConsumer Consumer;
         internal int Mode, SupplyType, Cycle, BucketType;
         internal int SupplyDestination = -1, PrimaryMaximum = 1, HeldMaximum;
+        internal bool Structure;
         internal bool Hoik;
         internal int HoikWaitTool; // 1 hammer, 2 pick, 3 current-policy final-platform supply.
         // This native step may place a recipe's base rather than its final
@@ -56,7 +57,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             return value == null ? null : new BlueprintBuildOperation { Kind = value.Kind, Consumer = value.Consumer,
                 Mode = value.Mode, SupplyType = value.SupplyType, Cycle = value.Cycle, BucketType = value.BucketType,
                 SupplyDestination = value.SupplyDestination, PrimaryMaximum = value.PrimaryMaximum,
-                HeldMaximum = value.HeldMaximum, NativePlacement = value.NativePlacement, HoikPlatform=value.HoikPlatform, DoorForm = value.DoorForm, DoorProof = value.DoorProof, Hoik = value.Hoik, HoikWaitTool = value.HoikWaitTool };
+                HeldMaximum = value.HeldMaximum, NativePlacement = value.NativePlacement, HoikPlatform=value.HoikPlatform, DoorForm = value.DoorForm, DoorProof = value.DoorProof, Structure = value.Structure, Hoik = value.Hoik, HoikWaitTool = value.HoikWaitTool };
         }
         private int PlannedBuildToolSlot(Player p, BuildOperationPlan plan, bool afterOwnedPreparation = false)
         {

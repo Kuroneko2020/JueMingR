@@ -36,6 +36,7 @@ namespace JueMingR.Features.Blueprint
                         catalog?.Substitution.AllowsTile(target, actual, policy) == true &&
                         SingleCellFrameProfile(catalog.TileShape(target), world))) state = BlueprintWorldMatchState.Conflict;
                 else state = BlueprintWorldMatchState.Match;
+                if (state == BlueprintWorldMatchState.Match) state = target.Payload.Compare(actual.Payload);
                 Put(1, state, ref matches, ref conflicts, ref unknown);
             }
             if ((bits & 2) != 0)
@@ -65,13 +66,19 @@ namespace JueMingR.Features.Blueprint
             {
                 if (!sample.Available) { unknown = true; continue; }
                 if ((sample.Cell.Layers & CaptureLayer.Tile) == 0) { missing = true; continue; }
-                if (sample.ObjectUnknown) { unknown = true; continue; }
+                if (sample.ObjectUnknown || target.EntityItemType > 0 && sample.Cell.Payload.EntityItemType == 0) { unknown = true; continue; }
                 if (sample.Object == null || !(target.SamePlacement(sample.Object) || catalog?.Substitution.AllowsObject(target, sample.Object, policy) == true) ||
                     (sample.Object.Family == BlueprintWorldObjectFamily.Door ? sample.Cell.TileType != 10 && sample.Cell.TileType != 11 : sample.Cell.TileType != sample.Object.Kind)) { conflict = true; continue; }
                 if (observed == null) observed = sample.Object;
                 else if (!observed.SameObservedObject(sample.Object)) conflict = true;
                 if (sample.Cell.Slope > 4 || sample.Cell.HalfBrick && sample.Cell.Slope != 0) unknown = true;
                 else if (!MatchesMemberAppearance(target, targetMembers, sample.Object, sample.Cell, catalog, policy)) conflict = true;
+                int memberIndex = (sample.Cell.Y - sample.Object.WorldY) * target.Width + sample.Cell.X - sample.Object.WorldX;
+                if (memberIndex >= 0 && memberIndex < targetMembers.Count)
+                {
+                    var payload = targetMembers[memberIndex].Payload.Compare(sample.Cell.Payload);
+                    unknown |= payload == BlueprintWorldMatchState.Unknown; conflict |= payload == BlueprintWorldMatchState.Conflict;
+                }
             }
             if (conflict) return BlueprintWorldMatchState.Conflict;
             if (unknown) return BlueprintWorldMatchState.Unknown;

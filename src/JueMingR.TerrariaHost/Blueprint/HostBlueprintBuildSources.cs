@@ -52,6 +52,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         { if (node != null) { buildSourceBytes -= BuildSourceRetainedBytes(node.Value.Part); buildSources.Remove(node); } }
         private void RemoveBuildSources(BlueprintProjectionIdentity identity = null, BlueprintProjectionMatchRange range = null)
         {
+            if(range==null) { ClearStructureCycles(identity); if(identity!=null)ClearContainerNames(identity); }
             if(identity!=null && range==null)
             {
                 CancelWiringBuildIdentity(identity);

@@ -19,10 +19,15 @@ namespace NativeWorldTextProbe
         internal static void RunConstruction(object context, bool preparationOnly=false, string family=null)
         {
             var host=Get(context,"Blueprint");var tools=Get(context,"Tools");var input=Get(context,"Input");
+            if(family=="Structure")InitializeStructureNativeMetadata();
             NativeToolExecutionChecks.Initialize(context,null);
             Require((bool)Get(tools,"Available"),"construction native hooks initialized: "+GetOptional(tools,"SetupError"));
             Framing.Initialize();Main.SetupTileMerge();TorchID.Initialize();
             var lightingMode=Lighting.Mode;Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
+            var previousMain=Main.instance;bool suppliesMain=(family=="Payload" || family=="Structure") && previousMain==null;
+            // These new source samplers use the same full held-use Update as
+            // CombatCadence, whose native item-frame path requires Main.instance.
+            if(suppliesMain){Main.instance=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));GC.SuppressFinalize(Main.instance);}
             var patch=new Harmony("JueMingR.Tests.BlueprintConstructionOutlets");
             faultTools=tools;reportedNativeFault=false;
             patch.Patch(typeof(Player).GetMethod("ItemCheck",F),finalizer:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(NativeFault)));
@@ -48,6 +53,8 @@ namespace NativeWorldTextProbe
                     check("finite original inventory input preparation",()=>ConstructionMaterialPreparation(context,host,tools,input));
                     // Explicit local fixture diagnosis only; formal Appearance
                     // retains its complete body and reaches this case there.
+                    if(family=="Payload")ConstructionPayload(context,host,tools,input,check);
+                    if(family=="Structure")ConstructionStructures(context,host,tools,input,check);
                     if(family=="EmptyReceipt")check("truly empty settled receipt",()=>ConstructionEmptyPaintReceipt(context,host,tools,input));
                     if(family=="EmptyReceipt" || family=="SettledAdmission")check("settled paint live admission",()=>ConstructionSettledPaintAdmission(context,host,tools,input));
                     if(family=="QueueRecovery")
@@ -140,6 +147,7 @@ namespace NativeWorldTextProbe
                 foreach(var method in patch.GetPatchedMethods().ToArray())patch.Unpatch(method,HarmonyPatchType.All,patch.Id);
                 faultTools=null;
                 Lighting.Clear();Lighting.Mode=lightingMode;
+                if(suppliesMain)Main.instance=previousMain;
             }
         }
 

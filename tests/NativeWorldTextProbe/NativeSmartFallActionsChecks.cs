@@ -15,7 +15,7 @@ using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
 {
-    internal static class NativeSmartFallActionsChecks
+    internal static partial class NativeSmartFallActionsChecks
     {
         private const BindingFlags F=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static int stage;
@@ -28,7 +28,7 @@ namespace NativeWorldTextProbe
             movement=Get(context,"Movement");input=Get(context,"Input");host=Get(movement,"FallHost");items=Get(context,"items");
             Console.WriteLine("SMART-FALL REPRESENTATIVE SELECTION canonical-all");
             var before=(SmartFallProtectionOptions)Get(movement,"SmartFallProtection");bool jumping=(bool)Call(movement,"IsEnabled",0);
-            Player original=Main.LocalPlayer;var isolation=new Harmony("JueMingR.Tests.SmartFall.NativeSegments");
+            Player original=Main.LocalPlayer;Vector2 oldCamera=Main.screenPosition;var isolation=new Harmony("JueMingR.Tests.SmartFall.NativeSegments");
             var oldWingStats=ArmorIDs.Wing.Sets.Stats;var oldGore=(Gore[])Main.gore.Clone();
             Terraria.Initializers.WingStatsInitializer.Load();
             for(int i=0;i<Main.gore.Length;i++)if(Main.gore[i]==null)Main.gore[i]=new Gore();
@@ -85,6 +85,13 @@ namespace NativeWorldTextProbe
                 Independent("OppositeCaptureWork",OppositeCaptureWork,ref first);
                 Independent("NativeConsumerFailure",NativeConsumerFailure,ref first);
                 Independent("PairedRocketCosts",PairedRocketCosts,ref first);
+                Independent("CobwebNativePhases",CobwebNativePhases,ref first);
+                Independent("CobwebLastPiece",()=>CobwebNativeChain(1,0,false),ref first);
+                Independent("CobwebMoving",()=>CobwebNativeChain(400,2,false),ref first);
+                Independent("CobwebReverse",()=>CobwebNativeChain(20,0,false,true),ref first);
+                Independent("CobwebNaturalAndNearby",CobwebNaturalAndNearby,ref first);
+                Independent("CobwebDestroyedBeforeTouch",()=>CobwebNativeChain(5,0,true),ref first);
+                Independent("CobwebNativeMaskSeparation",CobwebNativeMaskSeparation,ref first);
                 if(first!=null)throw new InvalidOperationException("One or more independent native smart-fall representatives failed; individual raw failures retained.",first);
                 Console.WriteLine("PASS SMART-FALL native representatives selection=canonical-all; independent earlier evidence retains its original identity.");
             }
@@ -94,8 +101,9 @@ namespace NativeWorldTextProbe
                 foreach(var method in isolation.GetPatchedMethods().ToArray())isolation.Unpatch(method,HarmonyPatchType.All,isolation.Id);
                 Main.player[Main.myPlayer]=original;Call(context,"UpdateRuntime");Call(movement,"SetEnabled",0,jumping);
                 ArmorIDs.Wing.Sets.Stats=oldWingStats;for(int i=0;i<Main.gore.Length;i++)Main.gore[i]=oldGore[i];
-                for(int i=0;i<12;i++)Call(movement,"SetSmartFallPermission",i,before.Allows(i));Call(movement,"SetEnabled",3,before.Enabled);
+                for(int i=0;i<SmartFallProtectionOptions.CapabilityCount;i++)Call(movement,"SetSmartFallPermission",i,before.Allows(i));Call(movement,"SetEnabled",3,before.Enabled);
                 runtimeContext=null;
+                Main.screenPosition=oldCamera;
             }
         }
         private static void Independent(string name,Action check,ref Exception first)

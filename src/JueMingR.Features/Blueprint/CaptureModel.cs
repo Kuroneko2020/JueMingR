@@ -34,11 +34,13 @@ namespace JueMingR.Features.Blueprint
         public byte TilePaint, WallPaint, Slope, Wires, LiquidAmount, LiquidKind;
         public bool HalfBrick, Inactive, Actuator, InvisibleTile, FullbrightTile, InvisibleWall, FullbrightWall;
         public bool UnreliableObject;
+        public BlueprintObjectPayload Payload;
         public bool HasContent { get { return Layers != CaptureLayer.None; } }
         public CaptureCell WithoutTile()
         {
             var result = this; result.Layers &= ~CaptureLayer.Tile;
             result.ObjectId = 0; result.UnreliableObject = false;
+            result.Payload = default(BlueprintObjectPayload);
             result.TileType = 0; result.FrameX = result.FrameY = 0; result.TilePaint = result.Slope = 0;
             result.HalfBrick = result.Inactive = result.InvisibleTile = result.FullbrightTile = false;
             return result;
@@ -81,6 +83,8 @@ namespace JueMingR.Features.Blueprint
         public string[] MissingPayloads = Array.Empty<string>();
         public string[] UnreliableReasons = Array.Empty<string>();
     }
+
+    public interface IBlueprintCapturePayloadSource { bool PendingPayload { get; } }
 
     public interface IBlueprintCaptureSource
     {

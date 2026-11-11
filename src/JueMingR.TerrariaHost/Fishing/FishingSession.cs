@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.Fishing
         private Item rod,lastRod;
         private int rodSlot,rodType,life,lastSlot;
         private long generation,selection,lastGeneration,nextSession,operation,borrow;
+        private long fallBorrow;
         private Vector2 target,lastTarget;
         private bool manualCast,used,pullConsumed,newCast,truffle,lastTruffle;
         private ulong entered;
@@ -87,13 +88,25 @@ namespace JueMingR.TerrariaHost.Fishing
                 if(Tools.Fishing.Token!=previous || Tools.Fishing.Phase!=FishingBorrowPhase.Completed || host.Observation.Count==0){Stop();return;}
                 Snapshot();Phase=FishingPhase.Waiting;
             }
-            if(player.selectedItem!=rodSlot && !(Tools.Use.Active && (Tools.Use.Intent.SelectionOnly || Tools.Use.Intent.Kind< ToolKind.FishingPull)) && !Tools.Items.ReturningSelection){End(true);return;}
+            bool fallSelection=Tools.FallRescue?.CobwebSelection(player)??false;
+            if(fallSelection)fallBorrow=Tools.FallRescue.CobwebOperation;
+            else if(fallBorrow!=0)fallBorrow=0;
+            if(player.selectedItem!=rodSlot && !fallSelection && !(Tools.Use.Active && (Tools.Use.Intent.SelectionOnly || Tools.Use.Intent.Kind< ToolKind.FishingPull)) && !Tools.Items.ReturningSelection){End(true);return;}
             InLiquid=false;
             for(int i=0;i<host.Observation.Count;i++)if(host.Observation.Bobbers[i].InLiquid)
             {InLiquid=true;var b=host.Observation.Bobbers[i].Projectile;Liquid=b.lavaWet?3:b.honeyWet?2:1;break;}
             if(Phase==FishingPhase.Waiting)
             {
-                if(host.Observation.Count==0){End(true);return;}
+                if(host.Observation.Count==0)
+                {
+                    // The exact rescue's non-rod may naturally retire bobbers.
+                    // Observe that loss, then use normal recast admission after
+                    // return. Never fake a pull receipt/product or preserve a
+                    // session across an ordinary manual weapon switch.
+                    if(fallSelection && fallBorrow>0 && host.Settings.Value.Auto && host.KeepsSession)
+                    {Phase=FishingPhase.RecastReady;entered=Tools.Tick;return;}
+                    End(true);return;
+                }
                 Snapshot();return;
             }
             // Pauses do not erase observed consumption or authorize a new use.
@@ -205,7 +218,7 @@ namespace JueMingR.TerrariaHost.Fishing
         private void End(bool natural)
         {
             bool wasActive=Active;
-            Phase=FishingPhase.Idle;manualCast=false;InLiquid=false;Liquid=0;borrow=0;pullConsumed=false;
+            Phase=FishingPhase.Idle;manualCast=false;InLiquid=false;Liquid=0;borrow=fallBorrow=0;pullConsumed=false;
             if(wasActive)Prompt(false,natural);
             if(Tools.Use.Active && Tools.Use.Intent.Kind>=ToolKind.FishingPull)Tools.Use.Cancel();
             Array.Clear(owned,0,ownedCount);ownedCount=0;player=null;rod=null;

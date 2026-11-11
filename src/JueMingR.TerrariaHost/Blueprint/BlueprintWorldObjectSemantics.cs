@@ -70,7 +70,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 AddAnchor(form, data.AnchorTop); AddAnchor(form, data.AnchorBottom); AddAnchor(form, data.AnchorLeft); AddAnchor(form, data.AnchorRight);
                 form.Add(data.AnchorWall ? 1 : 0);
                 result = new BlueprintWorldObject(raw.X, raw.Y, raw.Width, raw.Height, raw.X, raw.Y, value.Type, style, value.Direction,
-                    BlueprintWorldObjectFamily.Metadata, form.ToArray(), FrameGroup(rawShape), rawShape);
+                    BlueprintWorldObjectFamily.Metadata, form.ToArray(), FrameGroup(rawShape), rawShape, cell.Payload.EntityItemType);
                 return true;
             }
             catch (ArgumentException) { return false; }
