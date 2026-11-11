@@ -154,6 +154,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeMovementJumpHandoffChecks.cs'=@('native-MovementJumpCpu')
         'tests/NativeWorldTextProbe/NativeSmartFallRiskActionsChecks.cs'=@('native-MovementSmartFallCpu')
         'tests/NativeWorldTextProbe/NativeSmartFallActionsChecks.cs'=@('native-MovementSmartFallCpu')
+        'tests/NativeWorldTextProbe/NativeSmartFallCobwebChecks.cs'=@('native-MovementSmartFallCpu')
         'tests/NativeWorldTextProbe/NativeSmartFallBorrowChecks.cs'=@('native-MovementSmartFallCpu')
         'tests/NativeWorldTextProbe/NativeSmartFallScopeChecks.cs'=@('native-MovementSmartFallCpu')
         'tests/Phase0U/MovementConfigurationChecks.cs'=@('fixture-movement-layout')
