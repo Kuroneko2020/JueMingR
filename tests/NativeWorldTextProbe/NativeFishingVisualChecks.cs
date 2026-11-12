@@ -35,7 +35,12 @@ namespace NativeWorldTextProbe
                 {
                     var row=((IEnumerable)Get(ui,"pageParts")).Cast<object>().First(part=>Get(part,"Command").ToString()=="Feature" && (int)Get(part,"Feature")==10);
                     Call(state,"ScrollTo",Get(Get(Get(row,"Element"),"Rect"),"Y"));Prepare(context,graphics,size);
-                    NativeFishingUiChecks.Click(context,NativeFishingUiChecks.Part(ui,"Feature",part=>(int)Get(part,"Feature")==10 && (int)Get(part,"Value")==1));NativeFishingUiChecks.Drain(host);Prepare(context,graphics,size);
+                    var enable=NativeFishingUiChecks.Part(ui,"Feature",part=>(int)Get(part,"Feature")==10 && (int)Get(part,"Value")==1);
+                    var button=Get(Get(enable,"Element"),"Rect");var pointer=new Vector2((float)Get(button,"X")+(float)Get(button,"Width")/2,(float)Get(button,"Y")+(float)Get(button,"Height")/2);
+                    // The general CPU Click helper prepares 960x760 afterward.
+                    // Keep all press/release and final image in THIS small view.
+                    NativeFishingUiChecks.Step(context,false,pointer);NativeFishingUiChecks.Step(context,true,pointer);NativeFishingUiChecks.Step(context,false,pointer);NativeFishingUiChecks.Drain(host);Prepare(context,graphics,size);
+                    Require(((IEnumerable)Get(ui,"Parts")).Cast<object>().Any(part=>(string)GetOptional(Get(part,"Element"),"Text")=="渔夫任务连续提交"),"the final minimum-height projection actually contains the scrolled angler name");
                     Require(((FishingSettings)Get(host,"Settings")).Value.AnglerContinuous,"real scrolled minimum-height standard row click reaches the angler setting");Image("angler-scrolled");
                     NativeFishingUiChecks.Save(host,((FishingSettings)Get(host,"Settings")).Value.Change(10,0));
                     var local=((IEnumerable)Get(ui,"pageParts")).Cast<object>().First(part=>Get(part,"Command").ToString()=="Plus");Call(state,"ScrollTo",Get(Get(Get(local,"Element"),"Rect"),"Y"));Prepare(context,graphics,size);
