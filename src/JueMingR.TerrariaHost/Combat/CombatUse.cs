@@ -51,8 +51,8 @@ namespace JueMingR.TerrariaHost.Combat
                 return host.IsEnabled(1) && WeaponCatalog.Flail(item) || host.IsEnabled(2) && WeaponCatalog.Switchable(item);
             }
         }
-        internal bool CanYield {get{return Active && Identity() && slot<10 && pendingSlot<0 && used && WeaponCatalog.Ready(player) && player.selectedItemState.CanChangeSelectedItemImmediately && (kind!=2 || releaseObserved) && CanLeaveProjectile();}}
-        internal bool CanOffer {get{return CanYield || Active && Identity() && slot<10 && used && (kind==0 || kind==3) && player.itemAnimation<=2 && player.itemTime<=2 && player.reuseDelay<=1;}}
+        internal bool CanYield {get{return !NativeHoldBlocked(player) && Active && Identity() && slot<10 && pendingSlot<0 && used && WeaponCatalog.Ready(player) && player.selectedItemState.CanChangeSelectedItemImmediately && (kind!=2 || releaseObserved) && CanLeaveProjectile();}}
+        internal bool CanOffer {get{return CanYield || !NativeHoldBlocked(player) && Active && Identity() && slot<10 && used && (kind==0 || kind==3) && player.itemAnimation<=2 && player.itemTime<=2 && player.reuseDelay<=1;}}
         internal void RequestYield(){yielding=true;decided=false;}
         internal void CancelYield(){yielding=false;decided=false;}
         internal long Operation {get{return token;}}
@@ -69,6 +69,11 @@ namespace JueMingR.TerrariaHost.Combat
             if(request.Stage==CombatAimStage.FlintCharge)return kind==2 && type==5462 && shot.ai[0]==0 && player.channel;
             return request.Stage==CombatAimStage.GlacierCharge && kind==2 && type==6153 && player.channel && shot.ai[1]==0 && (int)shot.ai[0]%3==0;
         }
+        // Native CopyInto rejects these held mouse inputs before ItemCheck.
+        // Keep this at new held-use / lending boundaries, not shared projectile
+        // admission: existing shots and independent explicit actions still own
+        // their own controls. Never clear native locks or add a release delay.
+        internal static bool NativeHoldBlocked(Player p){return p==null || p.delayUseItem || Main.blockMouse;}
         internal CombatUse(HostCombat host){this.host=host;}
         private bool Identity()
         {
@@ -127,7 +132,7 @@ namespace JueMingR.TerrariaHost.Combat
             host.Handoff.BeforeSync(p);
             if(host.Handoff.Waiting && !host.Handoff.Releasing)return;
             if(!Active && (!host.Settings.CanRun || (host.Settings.Value.EnabledMask & 31)==0 || !host.Left && !host.Right))return;
-            if(blockedGesture || !host.Admitted(p,p.selectedItem==58)){Stop();return;}
+            if(NativeHoldBlocked(p) || blockedGesture || !host.Admitted(p,p.selectedItem==58)){Stop();return;}
             if(!host.Left && host.Right && p.tileInteractionHappened){Stop();return;}
             if(Active && !Identity()){Stop();return;}
             if(pendingSlot>=0)
@@ -159,7 +164,7 @@ namespace JueMingR.TerrariaHost.Combat
             // belongs to us, so a fresh candidate search here would reject our
             // own pending destination and erase the confirmation/interval.
             if(ReferenceEquals(p,player) && pendingSlot>=0)return null;
-            if(!ReferenceEquals(p,player) || !Identity() || !host.Admitted(p,slot==58) || Qualify(p)!=kind){if(ReferenceEquals(p,player))Stop();return null;}
+            if(NativeHoldBlocked(p) || !ReferenceEquals(p,player) || !Identity() || !host.Admitted(p,slot==58) || Qualify(p)!=kind){if(ReferenceEquals(p,player))Stop();return null;}
             if(slot==58)source=p.inventory[58];
             Decide();
             var scope=new CombatInputScope(p,press,kind==1 || kind==2,true);scopes.Add(scope);inCheck++;scope.Apply();

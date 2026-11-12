@@ -23,7 +23,7 @@ namespace NativeWorldTextProbe
     // The writer uses the real Host composition and original serializers. The
     // reader is a fresh process which never initializes Host or installs R.
     // All paths belong to this invocation's disposable output directory.
-    internal static class NativeJourneyChecks
+    internal static partial class NativeJourneyChecks
     {
         private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
         private static ManualResetEvent saveEntered, saveContinue;

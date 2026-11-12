@@ -92,13 +92,14 @@ namespace NativeWorldTextProbe
         {
             object shell=Get(context,"Shell"),state=Get(shell,"State"),ui=Get(shell,"FishingUi"),host=Get(context,"Fishing"),information=Get(context,"Information"),popup=Get(shell,"HotkeyPopup");
             var bindings=(HotkeyBindings)Get(Get(shell,"hotkeys"),"Bindings");
-            var ids=new[]{"fishing.auto-fish.toggle","fishing.auto-loadout.toggle","fishing.auto-equipment.toggle","fishing.auto-store.toggle","fishing.cut-rod.toggle","information.full-fish.toggle","information.filtered-fish.toggle"};
+            var ids=new[]{"fishing.auto-fish.toggle","fishing.auto-loadout.toggle","fishing.auto-equipment.toggle","fishing.auto-store.toggle","fishing.cut-rod.toggle","fishing.angler-continuous.toggle","information.full-fish.toggle","information.filtered-fish.toggle"};
+            Require(bindings.Get("fishing.angler-continuous.toggle")==null,"new stable angler action has no assigned default key");
             Main.screenWidth=960;Main.screenHeight=760;Main.UIScale=1;PlayerInput.CacheOriginalScreenDimensions();Call(state,"RestoreVisible");
             NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);Save(host,new FishingOptions());
             for(int i=0;i<ids.Length;i++)
             {
-                NativeToolsUiChecks.Nav(context,i<5?7:9);NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);Vector2 point;
-                if(i<5)point=NativeToolsUiChecks.Point(Get(Get(Part(ui,"Hotkey",p=>(int)Get(p,"Feature")==i),"Element"),"Rect"));
+                NativeToolsUiChecks.Nav(context,i<6?7:9);NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);Vector2 point;
+                if(i<6)point=NativeToolsUiChecks.Point(Get(Get(Part(ui,"Hotkey",p=>(int)Get(p,"Feature")== (i==5?10:i)),"Element"),"Rect"));
                 else
                 {
                     var layout=Get(state,"Layout");var viewport=Get(layout,"Viewport");var inside=NativeToolsUiChecks.Point(viewport)+new Vector2((float)Get(state,"X"),(float)Get(state,"Y"));
@@ -118,14 +119,18 @@ namespace NativeWorldTextProbe
             for(int i=0;i<ids.Length;i++)foreach(bool enabled in new[]{true,false})
             {
                 var key=(Keys)((int)Keys.F13+i);for(int held=0;held<3;held++)NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.LeftControl,key);NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
-                if(i<5){Drain(host);Require(((FishingSettings)Get(host,"Settings")).Value.State(i)==(enabled?1:0),"real shell dispatch changes once per press: "+ids[i]);}
+                if(i<6)
+                {
+                    Drain(host);Require(((FishingSettings)Get(host,"Settings")).Value.State(i==5?10:i)==(enabled?1:0),"real shell dispatch changes once per press: "+ids[i]);
+                    if(i==5){NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);Require((NativeFishingExperienceChecks.FeedbackText(context,ids[i])??"").Contains(enabled?"已开启":"已关闭"),"new angler hotkey publishes only its reliably accepted actual state");}
+                }
                 else
                 {
                     NativeQuickItemChecks.Until(()=>{Call(information,"PollPreferences");return Get(Get(information,"Preferences"),"Status").ToString()=="Saved";});
-                    Require((bool)Call(information,"Enabled",(InformationKind)(i-1))==enabled && !(bool)Call(information,"Enabled",i==5?InformationKind.FilteredFish:InformationKind.FullFish),"real information key changes only its own fish display");
+                    Require((bool)Call(information,"Enabled",(InformationKind)(i-2))==enabled && !(bool)Call(information,"Enabled",i==6?InformationKind.FilteredFish:InformationKind.FullFish),"real information key changes only its own fish display");
                 }
             }
-            Console.WriteLine("PASS G10 seven actual keyboard buttons -> double click -> shared recorder -> reliable save -> physical shell dispatch, held-key single toggle and independent fish displays.");
+            Console.WriteLine("PASS G10 eight actual keyboard buttons -> double click -> shared recorder -> reliable save -> physical shell dispatch, held-key single toggle and independent fish displays.");
         }
         private static void BalancedLayout(object context,object host,object ui)
         {

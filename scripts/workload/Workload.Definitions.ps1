@@ -1,4 +1,4 @@
-# One maintained definition supplies both selection and evidence projection.
+﻿# One maintained definition supplies both selection and evidence projection.
 # Unknown/shared inputs stay conservative; compile identity is separate.
 function Test-WorkloadNonExecutableInput {
     param([string] $Path)
@@ -15,7 +15,7 @@ function Get-WorkloadLeafChecks {
     # This asset initializer is also called by the narrow combat fixture.
     # Preserve its worker consumers when adding the explicit combat leaf;
     # the combat scope itself must not inherit the legacy-worker group.
-    $workerAssetConsumers=@('native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields')
+    $workerAssetConsumers=@('native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
     foreach($scope in (Get-WorkloadNativeScopes).GetEnumerator()){
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
@@ -167,8 +167,10 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeViewCombatChecks.cs'=@('native-ViewCombatCpu')
         'tests/NativeWorldTextProbe/NativeViewRangeConsumerChecks.cs'=@('native-ViewRangeConsumerCpu')
         'tests/NativeWorldTextProbe/NativeViewZoomSpeedChecks.cs'=@('native-ViewZoomSpeedCpu')
-        'tests/NativeWorldTextProbe/NativeJourneyChecks.cs'=@('native-JourneyCpu','native-Journey','native-JourneyCloseCpu','native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu','native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu')
-        'tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs'=@('native-Journey')
+        'tests/NativeWorldTextProbe/NativeJourneyChecks.cs'=@('native-JourneyCpu','native-Journey','native-JourneyCloseCpu','native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu','native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu','native-JourneySinglePlayerExit')
+        'tests/NativeWorldTextProbe/NativeJourneySinglePlayerExitChecks.cs'=@('native-JourneySinglePlayerExit')
+        'tests/NativeWorldTextProbe/NativeRenameMapChecks.cs'=@('native-FishingAnglerContinuousCpu','native-FishingCpu','native-JourneySinglePlayerExit')
+        'tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs'=@('native-Journey','native-JourneySinglePlayerExit')
         'tests/NativeWorldTextProbe/NativeJourneyPredictionChecks.cs'=@('native-JourneyPredictionCpu')
         'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs'=$attackConsumers
         'src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs'=$attackConsumers
@@ -198,7 +200,7 @@ function Get-WorkloadLeafChecks {
         # Initialize also serves native Journey and graphical footprint/path
         # coexistence. The latter remains a separate graphics-risk entry; the
         # ordinary footprints CPU group cannot claim it executed real Draw.
-        'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual','native-CombatObservationCpu','native-CombatTerrainCpu','native-CombatShotFacingCpu','native-CombatShotBirthOrderCpu','native-CombatNailDetachCpu','native-NpcPlayerPolicy','native-Journey','native-JourneyCpu','native-JourneyPredictionCpu','native-FootprintsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs'=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatAimUi','native-CombatVisual','native-CombatObservationCpu','native-CombatTerrainCpu','native-CombatShotFacingCpu','native-CombatShotBirthOrderCpu','native-CombatNailDetachCpu','native-NpcPlayerPolicy','native-Journey','native-JourneyCpu','native-JourneyPredictionCpu','native-FootprintsCpu','native-JourneySinglePlayerExit')
         'tests/NativeWorldTextProbe/NativeCombatVisualChecks.cs'=@('native-CombatVisual')
         'tests/NativeWorldTextProbe/NativeCombatAimQualificationChecks.cs'=@('native-CombatIntegrationCpu')
         'tests/NativeWorldTextProbe/NativeCombatAimUiChecks.cs'=@('native-CombatAimUi','native-CombatVisual')
@@ -602,7 +604,7 @@ function Get-WorkloadNativeScopes {
         'ViewZoomSpeedCpu'=@('view-host');
         'ViewCombatCpu'=@('view-host');
         'ViewRangeConsumerCpu'=@('view-host');
-        'JourneyCpu'=@('journey-host');
+        'JourneyCpu'=@('journey-host'); 'JourneySinglePlayerExit'=@('journey-host');
         'JourneyPredictionCpu'=@('journey-host');
         'NpcRollingCpu'=@('combat-host');
         'CombatAimCpu'=@('combat-host');
@@ -699,7 +701,7 @@ function Get-WorkloadNativeScopes {
         'BlueprintWiringCpu'=@('blueprint-host','tools-host');
         'BlueprintSpecialCpu'=@('blueprint-host','tools-host');
         'BlueprintInput'=@('blueprint-host','shared-host','storage-host','notes-host','preferences','hotkeys');
-        'PageCompositionCpu'=@('pages-host'); 'FishingCpu'=@('fishing-host'); 'BackgroundCpu'=@('fishing-host','shared-host'); 'F5AutomationCpu'=@('fishing-host','shared-host');
+        'PageCompositionCpu'=@('pages-host'); 'FishingCpu'=@('fishing-host'); 'FishingAnglerContinuousCpu'=@('fishing-host'); 'CombatNativeInputCpu'=@('combat-host'); 'BackgroundCpu'=@('fishing-host','shared-host'); 'F5AutomationCpu'=@('fishing-host','shared-host');
         'AboutCpu'=@('about-host'); 'BrowserCpu'=@('browser-host'); 'QuickItemsCpu'=@('quick-items-host'); 'CoinDepositCpu'=@('coin-deposit-host');
         'RecoveryCpu'=@('recovery-host'); 'ProcessingCpu'=@('processing-host'); 'DeathCpu'=@('death-host'); 'FootprintsCpu'=@('footprints-host'); 'ExplorationCpu'=@('map-host')
     }

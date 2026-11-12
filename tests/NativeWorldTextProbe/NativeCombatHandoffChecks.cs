@@ -84,6 +84,7 @@ namespace NativeWorldTextProbe
                 Quick(context,combat,tools,input,false,false);
                 Quick(context,combat,tools,input,true,false);
                 Quick(context,combat,tools,input,true,true);
+                Quick(context,combat,tools,input,false,false,true);
                 Console.WriteLine("PASS G11A held left/right combat, native autoReuse weapon, actual harvest/extraction fairness and single quick-item pulse with 0/3 unsampled outer updates.");
             }
             finally
@@ -92,7 +93,7 @@ namespace NativeWorldTextProbe
                 NativeCombatCadenceChecks.Save(combat,new CombatOptions());foreach(var m in audit.GetPatchedMethods().ToArray())audit.Unpatch(m,HarmonyPatchType.All,audit.Id);
             }
         }
-        private static void Quick(object context,object combat,object tools,object input,bool right,bool interact)
+        private static void Quick(object context,object combat,object tools,object input,bool right,bool interact,bool nativeVeto=false)
         {
             NativeCombatCadenceChecks.Save(combat,new CombatOptions());
             int weapon=right?198:ItemID.CopperShortsword;
@@ -103,15 +104,41 @@ namespace NativeWorldTextProbe
             Require(settings.TryChange(new QuickItemDocument(false,true,new[]{entry}),entry.Id,out reason),"combat quick entry "+reason);NativeQuickItemChecks.Until(()=>{Call(quick,"Poll");return !settings.Busy;});
             var bindings=(HotkeyBindings)Get(Get(Get(context,"Shell"),"hotkeys"),"Bindings");NativeQuickGestureChecks.Bind(bindings,entry.ActionId,"J");
             NativeCombatCadenceChecks.Save(combat,new CombatOptions(right?4:1));uses.Clear();bool pressed=false;
+            var veto=new Harmony("JueMingR.Tests.QuickBorrowNativeVeto");vetoQuick=nativeVeto?quick:null;vetoCombat=combat;vetoObserved=false;
+            if(nativeVeto)veto.Patch(AccessTools.Method(typeof(Player),"LookForTileInteractions"),prefix:new HarmonyMethod(typeof(NativeCombatHandoffChecks),nameof(VetoBorrow)));
+            try
+            {
             for(int i=0;i<240;i++)
             {
                 bool press=!pressed && (bool)Get(Get(combat,"Use"),"CanYield");if(press)pressed=true;
                 if(press && interact)p.releaseUseTile=true;
                 NativeCombatCadenceChecks.Step(context,!right,right,1,press?new[]{Keys.J}:null,press && interact?(Microsoft.Xna.Framework.Vector2?)new Microsoft.Xna.Framework.Vector2(696,664):null);
+                if(press || i==239)Console.WriteLine("QUICK BORROW veto="+nativeVeto+" press="+press+" delay="+p.delayUseItem+" block="+Main.blockMouse+" waiting="+Get(Get(combat,"Handoff"),"Waiting")+" revoked="+Get(Get(combat,"Handoff"),"revoked")+" quick="+Get(Get(quick,"Use"),"Active")+" use="+p.controlUseItem+" selected="+p.selectedItem);
             }
+            if(nativeVeto)
+            {
+                Require(pressed && vetoObserved && uses.Count(t=>t==98)==0 && p.inventory[54].stack==100 && p.selectedItem==0 && !p.selectedItemState.HasActiveOverride && !(bool)Get(Get(quick,"Use"),"Active") && !p.controlUseItem,
+                    "real held-use permit revoked after pulse before ItemCheck; no quick shot/debit and same-frame cleanup cannot restore rejected hold");
+                Console.WriteLine("PASS actual quick-item borrow revoked at native veto: pulse existed, permit false, no actual-use receipt, token retired and hold not restored.");
+            }
+            else
             Require(pressed && uses.Count(t=>t==98)==(interact?0:1) && (interact?p.chest==0 && p.inventory[54].stack==100:uses.Count(t=>t==weapon)>3) && !(bool)Get(Get(quick,"Use"),"Active"),
                 "fresh quick request honors native interaction/one pulse and original return: right="+right+" interaction="+interact+" uses="+string.Join(",",uses));
+            }
+            finally{vetoQuick=null;Main.blockMouse=false;p.delayUseItem=false;foreach(var m in veto.GetPatchedMethods().ToArray())veto.Unpatch(m,HarmonyPatchType.All,veto.Id);}
             NativeCombatCadenceChecks.Step(context,false,false,0);NativeCombatCadenceChecks.Save(combat,new CombatOptions());p.chest=-1;Main.playerInventory=false;Main.chest[0]=null;
+        }
+        private static object vetoQuick,vetoCombat;
+        private static bool vetoObserved;
+        private static void VetoBorrow(Player __instance)
+        {
+            if(vetoQuick==null || vetoObserved)return;var use=Get(vetoQuick,"Use");
+            if(!(bool)Get(use,"Active") || !(bool)Get(use,"pulsed"))return;
+            var permit=(Func<bool>)Get(vetoQuick,"HeldUsePermit");
+            Require(permit(),"actual borrowed hold has a valid permit before native veto");
+            Require(__instance.controlUseItem,"real quick pulse exists before veto");
+            __instance.delayUseItem=true;Require(!permit(),"native veto invalidates existing held-use permit");
+            Require(!(bool)Get(Get(vetoCombat,"Use"),"CanOffer"),"veto cannot offer a new hold");vetoObserved=true;
         }
         private static void Started(Player __instance,Item __0){if(__instance.whoAmI==Main.myPlayer)uses.Add(__0.type);}
         internal static void RunCobweb(object context)

@@ -102,6 +102,14 @@ namespace JueMingR.TerrariaHost.Fishing
                 p.Hint=p.Command==Command.RenameField?"双击编辑名字，回车或点击确定保存。":p.Command==Command.Rename?"未编辑时将名字末尾数字加一。":null;
                 if(p.Command==Command.RenameField)p.Label=Fit(host.Player?.name??"",e.Rect,.7f,6);pageParts.Add(p);
             }
+            var continuousRow=new List<F5Element>();
+            new F5RowLayout(continuousRow,shell.Layout.TextSize).Row(ref y,0,view.Width,HostFishing.AnglerName,new[]{"开启","关闭","键"},description:new F5RowDescription(HostFishing.AnglerAction,HostFishing.AnglerHelp));
+            foreach(var e in continuousRow)
+            {
+                var p=Make(e,e.Kind==F5ElementKind.Hotkey?Command.Hotkey:e.Kind==F5ElementKind.Button?Command.Feature:Command.None);
+                p.Feature=10;p.Value=e.Text=="关闭"?0:1;p.Selected=p.Command==Command.Feature && host.Settings.Value.AnglerContinuous==(p.Value==1);
+                p.Enabled=p.Enabled && host.Angler.Available;p.Hint=e.Description!=null?HostFishing.AnglerHelp:!host.Angler.Available?host.Angler.Status:null;pageParts.Add(p);
+            }
             float top=y,left=y+8;
             float rightWidth=Math.Max(140,shell.Layout.DynamicTextSize("任务鱼：不要",.7f).Width+36);
             string matchLabel=scopeMatch==0?"精确匹配":"关键词";

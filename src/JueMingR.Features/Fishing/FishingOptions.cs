@@ -60,6 +60,7 @@ namespace JueMingR.Features.Fishing
         public bool Loadout {get;}
         public bool Equipment {get;}
         public bool Cut {get;}
+        public bool AnglerContinuous {get;}
         public int StoreMode {get;}
         public int LastStoreMode {get;}
         public int FilterMode {get;}
@@ -72,11 +73,11 @@ namespace JueMingR.Features.Fishing
         private readonly FishList[] lists;
         public IReadOnlyList<FishPreset> Presets {get;}
         public FishingOptions(bool auto=false,bool loadout=false,bool equipment=false,bool cut=false,int storeMode=0,int lastStoreMode=1,
-            int filterMode=0,int lastFilterMode=1,int match=0,int crates=1,int quests=1,int npcs=2,IEnumerable<FishList> lists=null,IEnumerable<FishPreset> presets=null)
+            int filterMode=0,int lastFilterMode=1,int match=0,int crates=1,int quests=1,int npcs=2,IEnumerable<FishList> lists=null,IEnumerable<FishPreset> presets=null,bool anglerContinuous=false)
         {
             if(loadout && equipment || storeMode<0 || storeMode>2 || lastStoreMode<1 || lastStoreMode>2 || filterMode<0 || filterMode>2 || lastFilterMode<1 || lastFilterMode>2 ||
                 match<0 || match>1 || crates<0 || crates>2 || quests<0 || quests>2 || npcs<0 || npcs>2)throw new ArgumentException("Invalid fishing settings.");
-            Auto=auto;Loadout=loadout;Equipment=equipment;Cut=cut;StoreMode=storeMode;LastStoreMode=storeMode==0?lastStoreMode:storeMode;
+            Auto=auto;Loadout=loadout;Equipment=equipment;Cut=cut;AnglerContinuous=anglerContinuous;StoreMode=storeMode;LastStoreMode=storeMode==0?lastStoreMode:storeMode;
             FilterMode=filterMode;LastFilterMode=filterMode==0?lastFilterMode:filterMode;Match=match;Crates=crates;Quests=quests;Npcs=npcs;
             this.lists=lists==null?new[]{new FishList(),new FishList(),new FishList(),new FishList()}:lists.ToArray();
             if(this.lists.Length!=4 || this.lists.Any(x=>x==null))throw new ArgumentException("Four lists required.");
@@ -98,21 +99,22 @@ namespace JueMingR.Features.Fishing
         public FishingOptions ApplyPreset(FishPreset preset,int mode,int match)
         {if(preset==null || preset.Mode!=mode || preset.Match!=match)throw new ArgumentException("Preset belongs to another list.");return WithList(mode,match,preset.Content);}
         private FishingOptions Copy(IEnumerable<FishList> next,IEnumerable<FishPreset> saved)
-        {return new FishingOptions(Auto,Loadout,Equipment,Cut,StoreMode,LastStoreMode,FilterMode,LastFilterMode,Match,Crates,Quests,Npcs,next,saved);}
+        {return new FishingOptions(Auto,Loadout,Equipment,Cut,StoreMode,LastStoreMode,FilterMode,LastFilterMode,Match,Crates,Quests,Npcs,next,saved,AnglerContinuous);}
         // Feature ids are private to this domain's commands, never persistent
         // hotkey identities: auto, loadout, equipment, store, cut, filter, match,
-        // crates, quests, NPCs. Enabling a strategy closes its peer atomically.
+        // crates, quests, NPCs, continuous angler turn-ins. Enabling a strategy
+        // closes its peer atomically; the appended angler command is boolean.
         public FishingOptions Change(int feature,int value)
         {
-            if(feature<0 || feature>9 || value<0 || value>(feature==3 || feature==5 || feature>=7?2:1))throw new ArgumentOutOfRangeException();
+            if(feature<0 || feature>10 || value<0 || value>(feature==3 || feature==5 || feature>=7 && feature<=9?2:1))throw new ArgumentOutOfRangeException();
             return new FishingOptions(feature==0?value!=0:Auto,feature==1?value!=0:feature==2 && value!=0?false:Loadout,
                 feature==2?value!=0:feature==1 && value!=0?false:Equipment,feature==4?value!=0:Cut,
                 feature==3?value:StoreMode,LastStoreMode,feature==5?value:FilterMode,LastFilterMode,feature==6?value:Match,
-                feature==7?value:Crates,feature==8?value:Quests,feature==9?value:Npcs,lists,Presets);
+                feature==7?value:Crates,feature==8?value:Quests,feature==9?value:Npcs,lists,Presets,feature==10?value!=0:AnglerContinuous);
         }
         public int State(int feature)
-        {switch(feature){case 0:return Auto?1:0;case 1:return Loadout?1:0;case 2:return Equipment?1:0;case 3:return StoreMode;case 4:return Cut?1:0;case 5:return FilterMode;case 6:return Match;case 7:return Crates;case 8:return Quests;case 9:return Npcs;default:throw new ArgumentOutOfRangeException();}}
+        {switch(feature){case 0:return Auto?1:0;case 1:return Loadout?1:0;case 2:return Equipment?1:0;case 3:return StoreMode;case 4:return Cut?1:0;case 5:return FilterMode;case 6:return Match;case 7:return Crates;case 8:return Quests;case 9:return Npcs;case 10:return AnglerContinuous?1:0;default:throw new ArgumentOutOfRangeException();}}
         public FishingOptions Toggle(int feature)
-        {if(feature<0 || feature>5)throw new ArgumentOutOfRangeException();return Change(feature,State(feature)!=0?0:feature==3?LastStoreMode:feature==5?LastFilterMode:1);}
+        {if(feature<0 || feature>5 && feature!=10)throw new ArgumentOutOfRangeException();return Change(feature,State(feature)!=0?0:feature==3?LastStoreMode:feature==5?LastFilterMode:1);}
     }
 }

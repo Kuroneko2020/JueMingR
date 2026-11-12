@@ -21,27 +21,37 @@ namespace JueMingR.TerrariaHost.Fishing
         private readonly object nativeLock;
         private readonly byte[] nativeKey;
         private bool available,busy;
+        private bool nativeRenameStarted,deferred;
+        internal sealed class Result
+        {
+            internal bool Started,Deferred,RuntimeNameApplied,NativeWriteCompleted,PersistedVerified;
+            internal string Name,Message;
+        }
         internal Func<bool> OwnTextInput;
         internal string Message {get;private set;}
         internal bool RuntimeNameApplied {get;private set;}
         internal bool NativeWriteCompleted {get;private set;}
         internal bool PersistedVerified {get;private set;}
         internal long Revision {get;private set;}
+        internal long ManualRevision {get;private set;}
         internal bool CanRename {get{return Reason==null;}}
         internal string Status {get{return Message??Reason;}}
-        private string Reason
+        private string Reason {get{bool wait;return GetReason(false,out wait);}}
+        private string GetReason(bool automatic,out bool wait)
         {
-            get
-            {
-                if(!available)return "快捷改名暂不可用。";
-                var p=host.Player;var file=Main.ActivePlayerFileData;
-                if(busy || p==null || !p.active || !ReferenceEquals(p,Main.LocalPlayer) || Main.gameMenu || p.dead || WorldGen.isGeneratingOrLoadingWorld)return "当前不能改名。";
-                if(file==null || !ReferenceEquals(file.Player,p) || string.IsNullOrWhiteSpace(file.Path) || file.Metadata==null)return "当前角色存档身份不可用。";
-                if(file.IsCloudSave && SocialAPI.Cloud==null)return "云存档服务不可用。";
-                if(host.Tools.Items.World.Busy || host.Tools.Items.World.HasManualOperation || host.Tools.Use.Active || host.Tools.Fishing.Active || p.UsingOrReusingItem)return "请等待当前操作结束后改名。";
-                if(Main.drawingPlayerChat || Main.editSign || Main.editChest || Main.CurrentInputTextTakerOverride!=null && !(OwnTextInput?.Invoke()??false))return "请先结束其它文字输入。";
-                return null;
-            }
+            wait=false;
+            if(!available)return "快捷改名暂不可用。";
+            var p=host.Player;var file=Main.ActivePlayerFileData;
+            if(busy || p==null || !p.active || !ReferenceEquals(p,Main.LocalPlayer) || Main.gameMenu || p.dead || WorldGen.isGeneratingOrLoadingWorld)return "当前不能改名。";
+            if(file==null || !ReferenceEquals(file.Player,p) || string.IsNullOrWhiteSpace(file.Path) || file.Metadata==null)return "当前角色存档身份不可用。";
+            if(file.IsCloudSave && SocialAPI.Cloud==null)return "云存档服务不可用。";
+            if(host.Tools.Items.World.Busy || host.Tools.Items.World.HasManualOperation || host.Tools.Use.Active || host.Tools.Fishing.Active || p.UsingOrReusingItem)
+            {wait=true;return "请等待当前操作结束后改名。";}
+            // Only the explicit editor confirmation may use its own text lease.
+            // A completed NPC submission must never confirm or consume a draft.
+            if(Main.drawingPlayerChat || Main.editSign || Main.editChest || Main.CurrentInputTextTakerOverride!=null && (automatic || !(OwnTextInput?.Invoke()??false)))
+            {wait=true;return "请先结束其它文字输入。";}
+            return null;
         }
         internal PlayerRename(HostFishing owner)
         {
@@ -52,28 +62,50 @@ namespace JueMingR.TerrariaHost.Fishing
                 nativeKey=(byte[])typeof(Player).GetField("ENCRYPTION_KEY",BindingFlags.Static|BindingFlags.NonPublic)?.GetValue(null);
                 if(nativeLock==null || nativeKey==null || nativeKey.Length!=16)throw new MissingFieldException("native player save identity");
                 PlayerRenameHooks.Install();available=true;
+                if(!PlayerRenameHooks.InstallMapOmission())host.Report("改名仍会保存探索地图，可能短暂停顿。");
             }
             catch(Exception){Message="快捷改名暂不可用，原版存档未改动。";}
         }
-        internal bool Rename(string requested)
+        internal bool Rename(string requested){ManualRevision++;return Execute(requested,false);}
+        internal Result RenameAutomatic()
         {
-            RuntimeNameApplied=NativeWriteCompleted=PersistedVerified=false;
-            string reason=Reason;if(reason!=null){Message=reason;Revision++;return false;}
-            var p=host.Player;string name;
+            Execute(null,true);
+            // Capture AFTER finally: runtime eligibility and message4 can change
+            // the final result even when the native local save succeeded.
+            return new Result{Started=nativeRenameStarted,Deferred=deferred,RuntimeNameApplied=RuntimeNameApplied,
+                NativeWriteCompleted=NativeWriteCompleted,PersistedVerified=PersistedVerified,Name=host.Player?.name,Message=Message};
+        }
+        private bool Execute(string requested,bool automatic)
+        {
+            bool saved=RenameCore(requested,automatic);
+            if(saved && Message==null)
+            {
+                var p=host.Player;string name=p?.name;var feedback=host.Tools.Feedback;
+                feedback?.Show("fishing.rename","已改名为「"+name+"」",true,()=>PersistedVerified && ReferenceEquals(host.Player,p) && p.name==name,feedback.Capture());
+            }
+            return saved;
+        }
+        private bool RenameCore(string requested,bool automatic)
+        {
+            nativeRenameStarted=deferred=false;RuntimeNameApplied=NativeWriteCompleted=PersistedVerified=false;
+            string reason=GetReason(automatic,out deferred);if(reason!=null){if(!automatic || !deferred){Message=reason;Revision++;}return false;}
+            var p=host.Player;string previousName=p.name,name;
             try{name=requested==null?PlayerNameRules.Increment(p.name):PlayerNameRules.Normalize(requested);}
             catch(ArgumentException error){Message=error.Message;Revision++;return false;}
-            if(!Monitor.TryEnter(nativeLock)){Message="角色正在保存，请稍后重试。";Revision++;return false;}
+            if(!Monitor.TryEnter(nativeLock)){deferred=true;if(!automatic){Message="角色正在保存，请稍后重试。";Revision++;}return false;}
             PlayerRenameHooks.SaveScope scope=null;
             try
             {
                 // Recheck after acquiring the same lock used by native autosave.
-                if(Reason!=null){Message=Reason;return false;}
+                string blocked=GetReason(automatic,out deferred);if(blocked!=null){Message=blocked;return false;}
                 var file=Main.ActivePlayerFileData;var cloud=file.IsCloudSave?SocialAPI.Cloud:null;
                 if(cloud!=null)PlayerRenameHooks.EnsureCloud(cloud);
                 busy=true;RuntimeNameApplied=NativeWriteCompleted=PersistedVerified=false;
                 scope=new PlayerRenameHooks.SaveScope(file,p,file.Path,file.IsCloudSave,cloud,host.Tools.Runtime.Generation);
                 PlayerRenameHooks.Begin(scope);
-                file.Rename(name);
+                scope.NativeRenameActive=true;
+                try{nativeRenameStarted=true;file.Rename(name);}
+                finally{scope.NativeRenameActive=false;}
                 RuntimeNameApplied=String.Equals(p.name,name,StringComparison.Ordinal);
                 NativeWriteCompleted=scope.Completed==1 && scope.Started==1 && scope.Depth==0 && !scope.Failed;
                 if(!scope.Matches(host.Player,host.Tools.Runtime.Generation) || !RuntimeNameApplied || !NativeWriteCompleted)throw new IOException("Native player write not confirmed.");
@@ -100,10 +132,6 @@ namespace JueMingR.TerrariaHost.Fishing
                 Verify(bytes,name);
                 if(!scope.Matches(host.Player,host.Tools.Runtime.Generation))throw new IOException("Player identity changed.");
                 PersistedVerified=true;Message=null;
-                // Publish only after the native save and readback were verified.
-                // A later request or changed name invalidates this short result.
-                var feedback=host.Tools.Feedback;
-                feedback?.Show("fishing.rename","已改名为「"+name+"」",true,()=>PersistedVerified && p.name==name,feedback.Capture());
                 return true;
             }
             catch(Exception)
@@ -116,9 +144,12 @@ namespace JueMingR.TerrariaHost.Fishing
             finally
             {
                 PlayerRenameHooks.End(scope);busy=false;Revision++;
-                // The name used by the actual angler gate is the runtime name,
-                // including a partially successful save. Never clear today's list.
-                if(ReferenceEquals(host.Player,p) && ReferenceEquals(Main.ActivePlayerFileData?.Player,p))
+                // Only an ACTUAL name change changes this local eligibility.
+                // Cloud hook setup can fail before Rename; in a client the local
+                // list may be empty even though vanilla just completed the task.
+                // Preserve that finished flag when the old name never changed.
+                // Partial native saves still use their actual new runtime name.
+                if(ReferenceEquals(host.Player,p) && ReferenceEquals(Main.ActivePlayerFileData?.Player,p) && !String.Equals(previousName,p.name,StringComparison.Ordinal))
                 {
                     Main.ActivePlayerFileData.Player=p;Main.anglerQuestFinished=Main.anglerWhoFinishedToday.Contains(p.name);
                     // Vanilla's regular client diff does not include name.

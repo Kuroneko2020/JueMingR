@@ -51,7 +51,7 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private bool Valid()
         {
-            return !revoked && Identity() && host.Tools.Input.CanRetainIntent && host.Settings.CanRun && (host.Settings.Value.EnabledMask & 31)!=0 &&
+            return !CombatUse.NativeHoldBlocked(player) && !revoked && Identity() && host.Tools.Input.CanRetainIntent && host.Settings.CanRun && (host.Settings.Value.EnabledMask & 31)!=0 &&
                 !PlayerInput.Triggers.Current.SmartSelect &&
                 (!PlayerInput.Triggers.Current.MouseLeft || left) && (!PlayerInput.Triggers.Current.MouseRight || right) &&
                 (PlayerInput.Triggers.Current.MouseLeft && left || PlayerInput.Triggers.Current.MouseRight && right) &&
@@ -149,7 +149,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!Identity()){Reset();return;}
             if(offered==Borrower.SmartFall && !borrowed && !(host.Tools.FallRescue?.CobwebSelection(player)??false) && !(host.Tools.FallRescue?.CobwebCombatRequest(player,0)??false))
             {host.Use.CancelYield();Reset();return;}
-            if(!Valid())revoked=true;
+            if(!Valid()){revoked=true;if(CombatUse.NativeHoldBlocked(player))Interrupted();}
             if(releasing)
             {if(revoked){host.Use.CancelYield();Reset();}return;}
             long current=offered==Borrower.Tools?host.Tools.Use.Operation:offered==Borrower.Extraction?processing.Extraction.Operation:offered==Borrower.QuickItem?quick.Use.Operation:host.Tools.FallRescue?.CobwebOperation??0;

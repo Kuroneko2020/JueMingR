@@ -17,6 +17,7 @@ namespace JueMingR.Features.Fishing
         // native catalog in all scopes. Oversize writes fail before storage.
         public const int MaximumBytes=4*1024*1024;
         private static readonly string[] Fields={"format","version","auto","loadout","equipment","cut","storeMode","lastStoreMode","filterMode","lastFilterMode","match","crates","quests","npcs","lists","presets"};
+        private static readonly string[] FieldsV2=Fields.Concat(new[]{"anglerContinuous"}).ToArray();
         public FishingOptions Decode(byte[] bytes)
         {
             try
@@ -30,8 +31,11 @@ namespace JueMingR.Features.Fishing
                     foreach(var node in root.DescendantsAndSelf())foreach(var attr in node.Attributes())
                         if(attr.Name!="type")throw new PreferenceFormatException(PreferenceStatus.UnknownFields,"Unknown fishing fields.");
                     if((string)root.Attribute("type")!="object" || Text(root,"format")!="JueMingR.Fishing")throw PreferenceJson.Invalid();
-                    if(Number(root,"version")!=1)throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion,"Unsupported fishing version.");
-                    PreferenceJson.ExactFields(root,Fields);
+                    int version=Number(root,"version");
+                    if(version!=1 && version!=2)throw new PreferenceFormatException(PreferenceStatus.UnsupportedVersion,"Unsupported fishing version.");
+                    // Legacy reads only add an in-memory default. V2 requires the
+                    // field explicitly so malformed/future data cannot be rewritten.
+                    PreferenceJson.ExactFields(root,version==1?Fields:FieldsV2);
                     int store=Number(root,"storeMode"),lastStore=Number(root,"lastStoreMode"),mode=Number(root,"filterMode"),lastMode=Number(root,"lastFilterMode");
                     if(store!=0 && store!=lastStore || mode!=0 && mode!=lastMode)throw PreferenceJson.Invalid();
                     var lists=Array(root,"lists").Select(ReadList).ToArray();
@@ -41,7 +45,7 @@ namespace JueMingR.Features.Fishing
                         return new FishPreset(Number(e,"mode"),Number(e,"match"),ReadList(PreferenceJson.Required(e,"content","object")),Text(e,"name"));
                     }).ToArray();
                     return new FishingOptions(Boolean(root,"auto"),Boolean(root,"loadout"),Boolean(root,"equipment"),Boolean(root,"cut"),store,lastStore,mode,lastMode,
-                        Number(root,"match"),Number(root,"crates"),Number(root,"quests"),Number(root,"npcs"),lists,presets);
+                        Number(root,"match"),Number(root,"crates"),Number(root,"quests"),Number(root,"npcs"),lists,presets,version==2 && Boolean(root,"anglerContinuous"));
                 }
             }
             catch(PreferenceFormatException){throw;}
@@ -73,7 +77,7 @@ namespace JueMingR.Features.Fishing
         public byte[] Encode(FishingOptions value)
         {
             if(value==null)throw new ArgumentNullException(nameof(value));
-            var root=Value("root","object",new object[]{Value("format","string","JueMingR.Fishing"),N("version",1),B("auto",value.Auto),B("loadout",value.Loadout),B("equipment",value.Equipment),B("cut",value.Cut),
+            var root=Value("root","object",new object[]{Value("format","string","JueMingR.Fishing"),N("version",2),B("auto",value.Auto),B("loadout",value.Loadout),B("equipment",value.Equipment),B("cut",value.Cut),B("anglerContinuous",value.AnglerContinuous),
                 N("storeMode",value.StoreMode),N("lastStoreMode",value.LastStoreMode),N("filterMode",value.FilterMode),N("lastFilterMode",value.LastFilterMode),N("match",value.Match),N("crates",value.Crates),N("quests",value.Quests),N("npcs",value.Npcs),
                 Value("lists","array",Enumerable.Range(0,4).Select(i=>WriteList("item",value.List(i/2+1,i%2)))),
                 Value("presets","array",value.Presets.Select(p=>Value("item","object",new object[]{Value("name","string",p.Name),N("mode",p.Mode),N("match",p.Match),WriteList("content",p.Content)})))});

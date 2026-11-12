@@ -24,7 +24,9 @@ namespace NativeWorldTextProbe
         private static readonly List<uint> switchDelays=new List<uint>();
         private static int splits;
         internal static int ManualMouseX,ManualMouseY;
-        internal static void Run(object context)
+        internal static void Run(object context){Run(context,false);}
+        internal static void RunBlocked(object context){Run(context,true);}
+        private static void Run(object context,bool blockedOnly)
         {
             object combat=Get(context,"Combat"),tools=Get(context,"Tools"),input=Get(context,"Input");
             var settings=(CombatSettings)Get(combat,"Settings");
@@ -47,6 +49,7 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Player).GetNestedType("SelectedItemState",Flags).GetMethod("Update",Flags),postfix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),nameof(Selected)));
             try
             {
+                if(blockedOnly){Blocked(context,combat,tools,input);NativeCombatInteractionChecks.Run(context);NativeCombatHandoffChecks.Run(context);return;}
                 if(Environment.GetEnvironmentVariable("JUEMINGR_YOYO_CAUSAL")=="1"){NativeYoyoCausalChecks.Run(context);NativeYoyoAdoptionChecks.Run(context,combat,tools,input);return;}
                 foreach(int empty in new[]{0,1,3})
                 {
@@ -78,6 +81,38 @@ namespace NativeWorldTextProbe
             }
             finally{watchSwitch=false;Save(combat,new CombatOptions());foreach(var method in audit.GetPatchedMethods().ToArray())audit.Unpatch(method,HarmonyPatchType.All,audit.Id);}
         }
+        private static void Blocked(object context,object combat,object tools,object input)
+        {
+            foreach(bool blockMouse in new[]{false,true})
+            {
+                Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperShortsword,0,0);
+                Save(combat,new CombatOptions(1));starts.Clear();shots.Clear();
+                try
+                {
+                    // Map already closed, no current hover: native held-input
+                    // veto remains. Full original mapping + Update + ItemCheck.
+                    p.delayUseItem=!blockMouse;Main.blockMouse=blockMouse;
+                    for(int i=0;i<3;i++)Step(context,true,false,0);
+                    Require(starts.Count==0 && shots.Count==0 && !(bool)Get(Get(combat,"Use"),"Active"),"native veto prevents actual use: blockMouse="+blockMouse);
+                    Require(blockMouse?Main.blockMouse:p.delayUseItem,"combat never clears native veto");
+                    Main.blockMouse=false;Step(context,false,false,0);Step(context,true,false,0);
+                    Require(starts.Count==1,"real release/repress immediately resumes native use");
+                    for(int i=0;i<100;i++)Step(context,true,false,0);
+                    Require(starts.Count>=4,"ordinary held cadence continues across native cooldown");
+                    Require(!(bool)Get(Get(combat,"Handoff"),"Waiting"),"neutral handoff fixture");
+                    p.itemAnimation=p.itemTime=p.reuseDelay=0;
+                    // Force the veto at the real ItemCheck entry AFTER Sync.
+                    var late=new Harmony("JueMingR.Tests.LateNativeVeto");
+                    late.Patch(AccessTools.Method(typeof(Player),"ItemCheck",Type.EmptyTypes),prefix:new HarmonyMethod(typeof(NativeCombatCadenceChecks),nameof(LateVeto)){priority=Priority.First});
+                    int before=starts.Count;
+                    try{Step(context,true,false,0);Require(starts.Count==before && !p.controlUseItem,"late native veto and scope cleanup prevent real use");}
+                    finally{foreach(var m in late.GetPatchedMethods().ToArray())late.Unpatch(m,HarmonyPatchType.All,late.Id);}
+                }
+                finally{Main.blockMouse=false;p.delayUseItem=false;Step(context,false,false,0);Save(combat,new CombatOptions());}
+            }
+            Console.WriteLine("PASS native held-input veto: independent delayUseItem/blockMouse, actual-use receipts, immediate repress, continuous cadence and Sync-to-ItemCheck veto; no map Draw or physical pylon operation.");
+        }
+        private static void LateVeto(Player __instance){if(ReferenceEquals(__instance,Main.LocalPlayer))__instance.delayUseItem=true;}
         private static void Cursor(object context,object combat,object tools,object input)
         {
             Save(combat,new CombatOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.CopperShortsword,0,0);

@@ -44,17 +44,15 @@ namespace NativeWorldTextProbe
             FullLoop(context,host,graphics!=null);
             NativeFishingUiChecks.Run(context);
             NativePlayerRenameChecks.Run(context);
+            NativeFishingAnglerContinuousChecks.Run(context);
             var observation=Get(host,"Observation");var catalog=Get(host,"Catalog");var equipment=Get(host,"Equipment");
             long scans=(long)Get(observation,"Scans"),tiles=(long)Get(catalog,"TileReads"),sources=(long)Get(equipment,"SourceReads"),shapes=(long)Get(catalog,"ShapeReads"),versions=(long)Get(catalog,"VersionReads");
             for(int i=0;i<120;i++){NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",(ulong)i);}
             Require((long)Get(observation,"Scans")==scans && (long)Get(catalog,"TileReads")==tiles && (long)Get(equipment,"SourceReads")==sources && (long)Get(catalog,"ShapeReads")==shapes && (long)Get(catalog,"VersionReads")==versions,"all G10 consumers off with no return tail performs no projectile/water/source/rule reads");
             textures=null;
         }
-        private static void FullLoop(object context,object host,bool nativeNet)
+        internal static void InitializeNativeEnvironment()
         {
-            object tools=Get(context,"Tools"),input=Get(context,"Input");
-            var settings=(FishingSettings)Get(host,"Settings");
-            NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return settings.Loaded;});
             typeof(Main).GetMethod("Initialize_TileAndNPCData1",Flags).Invoke(null,null);typeof(Main).GetMethod("Initialize_TileAndNPCData2",Flags).Invoke(null,null);
             Terraria.ObjectData.TileObjectData.Initialize();Terraria.GameContent.Creative.CreativePowerManager.Initialize();
             Terraria.DataStructures.ArmorSetBonuses.Initialize();Terraria.DataStructures.ArmorSetBonuses.BuildLookup();
@@ -65,6 +63,13 @@ namespace NativeWorldTextProbe
             for(int i=1;i<Main.player.Length;i++)if(Main.player[i]==null)Main.player[i]=new Player{whoAmI=i};
             for(int i=0;i<Main.item.Length;i++)Main.item[i].whoAmI=i;
             PopupText.popupText=new PopupText[20];for(int i=0;i<20;i++)PopupText.popupText[i]=new PopupText();
+        }
+        private static void FullLoop(object context,object host,bool nativeNet)
+        {
+            object tools=Get(context,"Tools"),input=Get(context,"Input");
+            var settings=(FishingSettings)Get(host,"Settings");
+            NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return settings.Loaded;});
+            InitializeNativeEnvironment();
             var audit=new Harmony("JueMingR.Tests.G10NativeLoop");
             foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(SkipAchievement)));
             audit.Patch(typeof(Player).GetMethod("ItemCheck_PullFishingBobbers",Flags),postfix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(Pulled)));
