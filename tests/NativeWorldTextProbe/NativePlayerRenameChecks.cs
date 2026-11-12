@@ -70,8 +70,9 @@ namespace NativeWorldTextProbe
                 cloud.Mode=3;Require(!(bool)Call(owner,"Rename","云端旧值"),"cloud true with old same-length body cannot pass exact candidate comparison");
             }
             finally{SocialAPI.Cloud=oldCloud;Main.ActivePlayerFileData=file;file.Player=p;}
+            NativeRenameMapChecks.Manual(owner);
             Ui(context,owner,path);
-            Call(owner,"Clear");Console.WriteLine("PASS G10 real Rename/outer SavePlayer, local decrypt/reload, identity/angler rules, multiplayer attempt, invalid/lock refusal, truncated/skipped native saves and isolated cloud true/false/short/stale results. Map saving disabled; no real cloud service.");
+            Call(owner,"Clear");Console.WriteLine("PASS G10 real Rename/outer SavePlayer, local decrypt/reload, identity/angler rules, multiplayer attempt, invalid/lock refusal, truncated/skipped native saves and isolated cloud true/false/short/stale results. Legacy fault/cloud cases disable maps; separate map-enabled native rename and ordinary map write checks included. No real cloud service.");
         }
         private static void Ui(object context,object owner,string path)
         {

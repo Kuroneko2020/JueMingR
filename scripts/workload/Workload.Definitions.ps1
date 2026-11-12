@@ -1,4 +1,4 @@
-# One maintained definition supplies both selection and evidence projection.
+﻿# One maintained definition supplies both selection and evidence projection.
 # Unknown/shared inputs stay conservative; compile identity is separate.
 function Test-WorkloadNonExecutableInput {
     param([string] $Path)
@@ -168,6 +168,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeViewRangeConsumerChecks.cs'=@('native-ViewRangeConsumerCpu')
         'tests/NativeWorldTextProbe/NativeViewZoomSpeedChecks.cs'=@('native-ViewZoomSpeedCpu')
         'tests/NativeWorldTextProbe/NativeJourneyChecks.cs'=@('native-JourneyCpu','native-Journey','native-JourneyCloseCpu','native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu','native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu')
+        'tests/NativeWorldTextProbe/NativeJourneySinglePlayerExitChecks.cs'=@('native-JourneySinglePlayerExit')
+        'tests/NativeWorldTextProbe/NativeRenameMapChecks.cs'=@('native-FishingAnglerContinuousCpu','native-FishingCpu','native-JourneySinglePlayerExit')
         'tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs'=@('native-Journey')
         'tests/NativeWorldTextProbe/NativeJourneyPredictionChecks.cs'=@('native-JourneyPredictionCpu')
         'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs'=$attackConsumers
@@ -602,7 +604,7 @@ function Get-WorkloadNativeScopes {
         'ViewZoomSpeedCpu'=@('view-host');
         'ViewCombatCpu'=@('view-host');
         'ViewRangeConsumerCpu'=@('view-host');
-        'JourneyCpu'=@('journey-host');
+        'JourneyCpu'=@('journey-host'); 'JourneySinglePlayerExit'=@('journey-host');
         'JourneyPredictionCpu'=@('journey-host');
         'NpcRollingCpu'=@('combat-host');
         'CombatAimCpu'=@('combat-host');
@@ -699,7 +701,7 @@ function Get-WorkloadNativeScopes {
         'BlueprintWiringCpu'=@('blueprint-host','tools-host');
         'BlueprintSpecialCpu'=@('blueprint-host','tools-host');
         'BlueprintInput'=@('blueprint-host','shared-host','storage-host','notes-host','preferences','hotkeys');
-        'PageCompositionCpu'=@('pages-host'); 'FishingCpu'=@('fishing-host'); 'FishingAnglerContinuousCpu'=@('fishing-host'); 'BackgroundCpu'=@('fishing-host','shared-host'); 'F5AutomationCpu'=@('fishing-host','shared-host');
+        'PageCompositionCpu'=@('pages-host'); 'FishingCpu'=@('fishing-host'); 'FishingAnglerContinuousCpu'=@('fishing-host'); 'CombatNativeInputCpu'=@('combat-host'); 'BackgroundCpu'=@('fishing-host','shared-host'); 'F5AutomationCpu'=@('fishing-host','shared-host');
         'AboutCpu'=@('about-host'); 'BrowserCpu'=@('browser-host'); 'QuickItemsCpu'=@('quick-items-host'); 'CoinDepositCpu'=@('coin-deposit-host');
         'RecoveryCpu'=@('recovery-host'); 'ProcessingCpu'=@('processing-host'); 'DeathCpu'=@('death-host'); 'FootprintsCpu'=@('footprints-host'); 'ExplorationCpu'=@('map-host')
     }

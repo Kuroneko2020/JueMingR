@@ -35,8 +35,10 @@ namespace JueMingR.TerrariaHost.Combat
             // and channel results must otherwise remain untouched.
             if(!completed && filledRelease && player.releaseUseItem)player.releaseUseItem=false;
             if(aim){if(Main.mouseX==ownX)Main.mouseX=oldX;if(Main.mouseY==ownY)Main.mouseY=oldY;}
-            if(player.controlUseItem==use)player.controlUseItem=oldUse;
-            if(player.controlUseTile==tile)player.controlUseTile=oldTile;
+            // A native veto may arise after Apply; cleanup must not replay
+            // the earlier accepted snapshot across that boundary.
+            if(player.controlUseItem==use)player.controlUseItem=oldUse && !CombatUse.NativeHoldBlocked(player);
+            if(player.controlUseTile==tile)player.controlUseTile=oldTile && !Main.blockMouse;
             if(hasMouse && Main.mouseLeft==mouse)Main.mouseLeft=oldMouse;
         }
     }

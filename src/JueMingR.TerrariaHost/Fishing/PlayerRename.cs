@@ -62,6 +62,7 @@ namespace JueMingR.TerrariaHost.Fishing
                 nativeKey=(byte[])typeof(Player).GetField("ENCRYPTION_KEY",BindingFlags.Static|BindingFlags.NonPublic)?.GetValue(null);
                 if(nativeLock==null || nativeKey==null || nativeKey.Length!=16)throw new MissingFieldException("native player save identity");
                 PlayerRenameHooks.Install();available=true;
+                if(!PlayerRenameHooks.InstallMapOmission())host.Report("改名仍会保存探索地图，可能短暂停顿。");
             }
             catch(Exception){Message="快捷改名暂不可用，原版存档未改动。";}
         }
@@ -102,7 +103,9 @@ namespace JueMingR.TerrariaHost.Fishing
                 busy=true;RuntimeNameApplied=NativeWriteCompleted=PersistedVerified=false;
                 scope=new PlayerRenameHooks.SaveScope(file,p,file.Path,file.IsCloudSave,cloud,host.Tools.Runtime.Generation);
                 PlayerRenameHooks.Begin(scope);
-                nativeRenameStarted=true;file.Rename(name);
+                scope.NativeRenameActive=true;
+                try{nativeRenameStarted=true;file.Rename(name);}
+                finally{scope.NativeRenameActive=false;}
                 RuntimeNameApplied=String.Equals(p.name,name,StringComparison.Ordinal);
                 NativeWriteCompleted=scope.Completed==1 && scope.Started==1 && scope.Depth==0 && !scope.Failed;
                 if(!scope.Matches(host.Player,host.Tools.Runtime.Generation) || !RuntimeNameApplied || !NativeWriteCompleted)throw new IOException("Native player write not confirmed.");

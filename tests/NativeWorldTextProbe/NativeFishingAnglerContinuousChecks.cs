@@ -66,6 +66,8 @@ namespace NativeWorldTextProbe
                 Call(state,"Close");Call(ui,"Suspend");
                 Reset(p,"测试009");NativeFishingUiChecks.Save(host,new FishingOptions(anglerContinuous:true));
                 long generation=(long)Get(Get(Get(context,"Tools"),"Runtime"),"Generation");int quest=Main.anglerQuest;
+                using(var map=NativeRenameMapChecks.Begin())
+                {
                 for(int i=1;i<=2;i++)
                 {
                     int before=Fish(p);Main.NPCChatText_DoAnglerQuest();
@@ -73,6 +75,8 @@ namespace NativeWorldTextProbe
                     Require(p.name=="测试0"+(9+i) && p.talkNPC==0 && Main.anglerQuest==quest && !Main.anglerQuestFinished && Main.npcChatCornerItem==Main.anglerQuestItemNetIDs[quest],"outer completion increments name once and refreshes the same quest/dialog immediately");
                     Require(Main.anglerWhoFinishedToday.SequenceEqual(i==1?new[]{"测试009"}:new[]{"测试009","测试010"}),"vanilla records each OLD name before the automatic rename");
                     Require(Player.LoadPlayer(file.Path,false).Player.name==p.name && (bool)Get(rename,"PersistedVerified") && ReferenceEquals(Main.ActivePlayerFileData,file) && ReferenceEquals(file.Player,p) && (long)Get(Get(Get(context,"Tools"),"Runtime"),"Generation")==generation,"actual native save/readback retains the same file/player/session");
+                }
+                map.AssertSkipped();map.OrdinarySave();
                 }
                 Require(achievements.GetCondition("SERVANT_IN_TRAINING","Finish").IsCompleted && ((CustomIntCondition)achievements.GetCondition("GOOD_LITTLE_SLAVE","Finish")).Value==2,"actual vanilla achievement completion and task counter remain intact");
                 Require(p.inventory.Any(item=>!item.IsAir && item.type!=Main.anglerQuestItemNetIDs[quest]),"real random vanilla rewards produced actual inventory content");

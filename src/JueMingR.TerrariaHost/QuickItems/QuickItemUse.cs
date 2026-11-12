@@ -72,6 +72,11 @@ namespace JueMingR.TerrariaHost.QuickItems
             catch {host.Feedback(HostQuickItems.FeedbackKind.Error,"快捷物品形态转换未确认，已停止本次操作。",entry.Id);Retire();return;}
             if(!choice.Use)
             {host.Feedback(HostQuickItems.FeedbackKind.Success,id:entry.Id);Retire();return;}
+            // Return only the completed combat owner's held control BEFORE
+            // native selection (the same residual hold BeforeSync removes).
+            // Do not fabricate releaseUseItem or clear native vetoes. The
+            // explicit shortcut supplies its own pulse later in BeforeSync.
+            if(host.HeldUsePermit?.Invoke()??false)current.controlUseItem=false;
             original=current.selectedItem;selected=true;slot=choice.Slot;result=true;
         }
         internal void BeforeSync(Player current)
@@ -147,7 +152,7 @@ namespace JueMingR.TerrariaHost.QuickItems
                 // A boundary can follow ItemCheck in the very same input
                 // frame. Completion of ItemCheck does not release controlUseItem;
                 // only the next native mapping does. Never edit a later frame.
-                player.controlUseItem=PlayerInput.Triggers.Current.MouseLeft;
+                player.controlUseItem=PlayerInput.Triggers.Current.MouseLeft && !player.delayUseItem && !Main.blockMouse;
                 player.releaseUseItem=!player.controlUseItem;
             }
         }

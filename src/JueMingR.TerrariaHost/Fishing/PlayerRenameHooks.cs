@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using Terraria;
 using Terraria.IO;
@@ -13,6 +14,8 @@ namespace JueMingR.TerrariaHost.Fishing
     internal static class PlayerRenameHooks
     {
         private static readonly Harmony harmony=new Harmony("JueMingR.PlayerRename");
+        private static readonly Harmony mapHarmony=new Harmony("JueMingR.PlayerRename.Map");
+        private static Action<bool> saveMap;
         private static readonly HashSet<MethodInfo> cloudMethods=new HashSet<MethodInfo>();
         [ThreadStatic] private static SaveScope current;
         internal sealed class SaveScope
@@ -24,7 +27,7 @@ namespace JueMingR.TerrariaHost.Fishing
             internal readonly CloudSocialModule Provider;
             internal readonly long Generation;
             internal int Started,Completed,Depth,CloudWrites;
-            internal bool Failed,CloudSucceeded;
+            internal bool Failed,CloudSucceeded,NativeRenameActive;
             internal byte[] Candidate;
             internal SaveScope(PlayerFileData file,Player player,string path,bool cloud,CloudSocialModule provider,long generation)
             {File=file;Player=player;Path=path;Cloud=cloud;Provider=provider;Generation=generation;}
@@ -38,6 +41,41 @@ namespace JueMingR.TerrariaHost.Fishing
             var target=typeof(Player).GetMethod("InternalSavePlayerFile",BindingFlags.Static|BindingFlags.NonPublic,null,new[]{typeof(PlayerFileData)},null);
             if(target==null || target.ReturnType!=typeof(void) || target.GetMethodBody()==null)throw new MissingMethodException("native player save");
             harmony.Patch(target,prefix:new HarmonyMethod(typeof(PlayerRenameHooks),nameof(SaveBefore)),finalizer:new HarmonyMethod(typeof(PlayerRenameHooks),nameof(SaveFinal)));
+        }
+        // Optional cost reduction is installed separately from required write
+        // observation. A missing callsite leaves the complete native save intact.
+        internal static bool InstallMapOmission()
+        {
+            try
+            {
+                var target=AccessTools.Method(typeof(Player),"InternalSavePlayer",new[]{typeof(PlayerFileData),typeof(bool)});
+                var map=AccessTools.Method(typeof(Player),"InternalSaveMap",new[]{typeof(bool)});
+                if(target==null || target.ReturnType!=typeof(void) || target.GetMethodBody()==null || map==null || map.ReturnType!=typeof(void))return false;
+                saveMap=(Action<bool>)Delegate.CreateDelegate(typeof(Action<bool>),map);
+                mapHarmony.Patch(target,transpiler:new HarmonyMethod(typeof(PlayerRenameHooks),nameof(MapCallsite)));
+                return true;
+            }
+            catch(Exception){foreach(var m in mapHarmony.GetPatchedMethods().ToArray())mapHarmony.Unpatch(m,HarmonyPatchType.All,mapHarmony.Id);return false;}
+        }
+        private static IEnumerable<CodeInstruction> MapCallsite(IEnumerable<CodeInstruction> instructions)
+        {
+            var code=instructions.ToList();var map=AccessTools.Method(typeof(Player),"InternalSaveMap",new[]{typeof(bool)});
+            if(code.Count(i=>i.Calls(map))!=1)throw new InvalidOperationException("Native map save callsite differs.");
+            foreach(var instruction in code)
+            {
+                if(!instruction.Calls(map)){yield return instruction;continue;}
+                // The existing bool stays on stack; add this invocation's actual
+                // file, retaining branch labels and exception boundaries.
+                var file=new CodeInstruction(OpCodes.Ldarg_0);file.labels.AddRange(instruction.labels);file.blocks.AddRange(instruction.blocks);
+                yield return file;yield return new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(PlayerRenameHooks),nameof(SaveMapUnlessRenaming)));
+            }
+        }
+        private static void SaveMapUnlessRenaming(bool cloud,PlayerFileData file)
+        {
+            var scope=current;
+            if(scope!=null && scope.NativeRenameActive && ReferenceEquals(file,scope.File) && ReferenceEquals(file.Player,scope.Player) &&
+                file.Path==scope.Path && file.IsCloudSave==scope.Cloud && (!scope.Cloud || ReferenceEquals(SocialAPI.Cloud,scope.Provider)))return;
+            saveMap(cloud);
         }
         internal static void EnsureCloud(CloudSocialModule provider)
         {
@@ -69,6 +107,6 @@ namespace JueMingR.TerrariaHost.Fishing
             if(__state!=null){bool ok=__exception==null && __runOriginal && __result;if(!ok)__state.Scope.Failed=true;if(__state.Target)__state.Scope.CloudSucceeded=ok;}
             return __exception;
         }
-        internal static void Uninstall(){foreach(var method in harmony.GetPatchedMethods().ToArray())harmony.Unpatch(method,HarmonyPatchType.All,harmony.Id);cloudMethods.Clear();current=null;}
+        internal static void Uninstall(){foreach(var m in mapHarmony.GetPatchedMethods().ToArray())mapHarmony.Unpatch(m,HarmonyPatchType.All,mapHarmony.Id);saveMap=null;foreach(var method in harmony.GetPatchedMethods().ToArray())harmony.Unpatch(method,HarmonyPatchType.All,harmony.Id);cloudMethods.Clear();current=null;}
     }
 }
