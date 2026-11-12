@@ -283,6 +283,14 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void AttachQuickItems(QuickItems.HostQuickItems owner) { QuickItems = owner; items?.AttachQuick(owner); }
         internal void AttachCoinDeposit(CoinDeposit.HostCoinDeposit owner) { coinDeposit = owner; EnsureMiscUi().AttachCoins(owner); }
+        internal void AttachAfk(AfkMode.HostAfkMode owner)
+        {
+            EnsureMiscUi().AttachAfk(owner);
+            // AFK alone treats every visible operation interface as a standby
+            // boundary. Existing automatic features retain their own gates.
+            owner.OperationInterfaceOpen = () => State.Visible || SecondaryModalVisible ||
+                information?.Adjustment.Active == true || adjustmentPending;
+        }
         internal readonly HotkeyPopup HotkeyPopup;
         internal readonly StylePopup StylePopup;
         internal readonly DeathHistoryPopup DeathPopup;
@@ -548,7 +556,7 @@ namespace JueMingR.TerrariaHost.F5
                     BlueprintUi?.ConsumeLeft == true || BlueprintUi?.ConsumeRight == true || BlueprintUi?.OwnsTextToken == true ||
                     FishingUi?.ConsumeLeft == true || FishingUi?.ConsumeRight == true || FishingUi?.OwnsTextToken == true ||
                     CaptureUi?.ConsumeLeft == true || CaptureUi?.ConsumeRight == true ||
-                    MiningUi?.ConsumeLeft == true || MiningUi?.ConsumeRight == true || MiscUi?.ConsumeLeft == true || MiscUi?.ConsumeRight == true ||
+                    MiningUi?.ConsumeLeft == true || MiningUi?.ConsumeRight == true || MiscUi?.ConsumeLeft == true || MiscUi?.ConsumeRight == true || MiscUi?.OwnsTextToken == true ||
                     Browser?.ConsumeLeft == true || Browser?.ConsumeRight == true || Browser?.OwnsTextToken == true ||
                     ReforgeUi?.ConsumeLeft == true || ReforgeUi?.ConsumeRight == true || ReforgeUi?.OwnsTextToken == true ||
                     RecoveryUi?.ConsumeLeft == true || RecoveryUi?.ConsumeRight == true || RecoveryUi?.Selecting == true ||
@@ -627,7 +635,7 @@ namespace JueMingR.TerrariaHost.F5
                     (!requireFocus || inputState.IsFocused) && !PlayerInput.UsingGamepad && !PlayerInput.ShouldFastUseItem &&
                     (!Main.mapFullscreen || allowMap) && !Main.hideUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                     !Main.inFancyUI && capture != null && !capture.Active &&
-                    (!notes.OtherTextOwner || (BlueprintUi != null && BlueprintUi.OwnsTextToken || FishingUi != null && FishingUi.OwnsTextToken || ReforgeUi != null && ReforgeUi.OwnsTextToken || Browser != null && Browser.OwnsTextToken || StylePopup != null && StylePopup.TextInput.OwnsTextToken || MapPopup != null && MapPopup.TextInput.OwnsTextToken) && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest);
+                    (!notes.OtherTextOwner || (BlueprintUi != null && BlueprintUi.OwnsTextToken || FishingUi != null && FishingUi.OwnsTextToken || ReforgeUi != null && ReforgeUi.OwnsTextToken || MiscUi?.OwnsTextToken == true || Browser != null && Browser.OwnsTextToken || StylePopup != null && StylePopup.TextInput.OwnsTextToken || MapPopup != null && MapPopup.TextInput.OwnsTextToken) && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest);
             }
 
         // Input may be taken over by vanilla after this frame's button release.
@@ -643,7 +651,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void BeforeInput()
-        { if (biome.SharedRuntime.HasFailed) { FailClosed(); return; } try { hotkeys?.PollHiddenRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && BlueprintMaterialsUi?.Visible != true); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
+        { if (biome.SharedRuntime.HasFailed) { FailClosed(); return; } try { hotkeys?.PollHiddenRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && BlueprintMaterialsUi?.Visible != true); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MiscUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && !SecondaryModalVisible); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
 
         internal void ProcessInput()
         {

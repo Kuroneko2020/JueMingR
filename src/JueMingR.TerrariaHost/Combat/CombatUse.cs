@@ -128,6 +128,9 @@ namespace JueMingR.TerrariaHost.Combat
         internal void Sync(Player p)
         {
             FinishFrame();
+            // The latched AFK owner supplies its own final use intention. Keep
+            // this owner's physical sampling real; do not run two cadences.
+            if(host.Tools.Afk?.ControlsUse==true){Stop();return;}
             if(!host.Left && !host.Right)blockedGesture=false;
             host.Handoff.BeforeSync(p);
             if(host.Handoff.Waiting && !host.Handoff.Releasing)return;

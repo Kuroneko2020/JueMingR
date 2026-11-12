@@ -399,3 +399,7 @@ leaf	CombatGuidedNavigationCpu	combat-guided-navigation
 leaf	BlueprintPayloadCpu	blueprint-payload
 
 leaf	BlueprintStructureCpu	blueprint-structure
+leaf	AfkModeCpu	afk-mode
+leaf	AfkModeVisual	afk-ui
+leaf	AfkModeCompletionCpu	afk-completion
+leaf	AfkModeBorrowCpu	afk-borrow

@@ -86,6 +86,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Biomes.BiomeDisplayViewModel",
                 "JueMingR.Features.Biomes.BiomePreferenceCodec",
                 "JueMingR.Features.View.ViewPreferenceCodec",
+                "JueMingR.Features.AfkMode.AfkPreferences", "JueMingR.Features.AfkMode.AfkPreferenceCodec",
                 "JueMingR.Features.Blueprint.BlueprintSelection", "JueMingR.Features.Blueprint.BlueprintSpan",
                 "JueMingR.Features.Blueprint.BlueprintRectangle", "JueMingR.Features.Blueprint.BlueprintCaptureState",
                 "JueMingR.Features.Blueprint.BlueprintPreferenceCodec",

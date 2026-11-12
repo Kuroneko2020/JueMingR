@@ -173,6 +173,7 @@ namespace NativeWorldTextProbe
             PlayerInput.Triggers.Update();Main.mouseLeft=PlayerInput.Triggers.Current.MouseLeft;Main.mouseRight=PlayerInput.Triggers.Current.MouseRight;
             PlayerInput.MouseX=(int)pixel.X;PlayerInput.MouseY=(int)pixel.Y;PlayerInput.UpdateMainMouse();PlayerInput.CacheZoomableValues();
             Main.oldKeyState=Main.keyState;Main.keyState=new KeyboardState(keys??new Keys[0]);Call(input,"AfterMapping");Call(input,"AfterKeyboardRefresh");Call(Get(context,"Shell"),"ProcessInput");Call(Get(context,"Combat"),"Sample");PlayerInput.SetZoom_World();
+            var afk=GetOptional(context,"Afk");if(afk!=null)Call(afk,"Sample");
             ManualMouseX=Main.mouseX;ManualMouseY=Main.mouseY;
             NativeQuickItemChecks.BeginWorldStep();Main.LocalPlayer.Update(0);
             for(int i=0;i<Main.maxProjectiles;i++)if(Main.projectile[i].active)Main.projectile[i].Update(i);
