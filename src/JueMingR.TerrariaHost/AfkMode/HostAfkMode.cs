@@ -37,7 +37,7 @@ namespace JueMingR.TerrariaHost.AfkMode
         internal bool Running {get{return player!=null;}}
         // A pending borrower still leaves the original startup tail owned by
         // this run. Physical combat must not acquire it as a competing hold.
-        internal bool ControlsUse {get{return Running && !manual && !Borrowed;}}
+        internal bool ControlsUse {get{return Running && !manual && (!Borrowed || initialHold);}}
         public bool ControlsEnabled {get{return !failed && !stopping && Tools.Available && Tools.Items.Available && Tools.Player!=null && preference.Snapshot.IsLoaded;}}
         public bool ModeEnabled {get{return preference.Snapshot.Value.Enabled;}}
         public int GapMilliseconds {get{return preference.Snapshot.Value.GapMilliseconds;}}
@@ -163,7 +163,7 @@ namespace JueMingR.TerrariaHost.AfkMode
         internal void BeforeSync(Player p)
         {
             FinishSync();ObserveCompletion(p);
-            if(!CanOutput(p))return;
+            if(!CanOutput(p)){if(QuickStartupTail(p))syncScope=BorrowTail(p,false);return;}
             if(!operating && (quickRequested || automaticRequested || !GapReady))
             {
                 ReleaseLease();
@@ -182,11 +182,23 @@ namespace JueMingR.TerrariaHost.AfkMode
         internal Scope Begin(Player p)
         {
             ObserveCompletion(p);
-            if(!CanOutput(p))return null;
+            if(!CanOutput(p))return QuickStartupTail(p)?BorrowTail(p,true):null;
             if(!operating && (quickRequested || automaticRequested || !GapReady))
             {ReleaseLease();return initialHold?BeginScope(p,true,false):null;}
             if(!Acquire())return null;
             return BeginScope(p,true);
+        }
+        private bool QuickStartupTail(Player p)
+        {return Running && ReferenceEquals(p,player) && initialHold && !manual && (quick?.Use.Active??false) &&
+            sampled==Tools.Input.Frame && Tools.Input.CanRunAutomaticActions && !Main.gamePaused && Main.CanUpdateGameplay && !CombatUse.NativeHoldBlocked(p);}
+        private Scope BorrowTail(Player p,bool itemCheck)
+        {
+            // Quick owns its single pulse and native return. Suppress our old
+            // physical tail before its Sync pulse, then preserve that pulse at
+            // ItemCheck while masking subsequent mouse tails. No AFK use lease
+            // or start receipt is acquired for the borrowed item's consumer.
+            var scope=new Scope(this,p,itemCheck && p.controlUseItem,false,false,itemCheck);
+            scope.Apply(point);return scope;
         }
         private Scope BeginScope(Player p,bool itemCheck,bool aim=true)
         {
@@ -267,7 +279,7 @@ namespace JueMingR.TerrariaHost.AfkMode
         {
             private readonly HostAfkMode owner;private readonly CombatInputScope input;private readonly bool check,aim;
             private CombatCursorScope cursor;private bool ended;
-            internal Scope(HostAfkMode owner,Player p,bool press,bool check,bool aim){this.owner=owner;this.check=check;this.aim=aim;input=new CombatInputScope(p,press,false,check);}
+            internal Scope(HostAfkMode owner,Player p,bool press,bool check,bool aim,bool mouse=false){this.owner=owner;this.check=check;this.aim=aim;input=new CombatInputScope(p,press,false,check || mouse);}
             internal void Apply(Vector2 world){input.Apply();if(aim)cursor=check?CombatCursorScope.BeginTileTarget(world):CombatCursorScope.Begin(world);}
             internal void End(Exception error)
             {

@@ -74,6 +74,8 @@ namespace NativeWorldTextProbe
                 p=Reset(context,3541,300);Step(context,true);for(int i=0;i<240;i++){p.statMana=200;Step(context,true);}
                 Require(starts.Count==1 && completions.Count==0 && p.channel,"infinite prism remains one real continuous operation, no periodic gap release");
                 QuickBorrow(context,p,true);
+                p=Reset(context,3541,300);Step(context,true);for(int i=0;i<45;i++){p.statMana=200;Step(context,true);}
+                QuickBorrow(context,p,true,98);
                 OverrideSelection(context);
                 AutomaticTool(context);
                 AimConsumption(context);
@@ -128,11 +130,11 @@ namespace NativeWorldTextProbe
         private static void Created(Player __instance,Projectile __0){if(__instance.whoAmI==Main.myPlayer){births++;if(__0.type==14)lastBulletVelocity=__0.velocity;}}
         private static bool Skip(){return false;}
         private static void LateVeto(Player __instance){if(lateVeto && ReferenceEquals(__instance,Main.LocalPlayer))__instance.delayUseItem=true;}
-        private static void QuickBorrow(object context,Player p,bool hold=false)
+        private static void QuickBorrow(object context,Player p,bool hold=false,int borrowedType=50)
         {
             var quick=Get(context,"QuickItems");var settings=(QuickItemSettings)Get(quick,"Settings");
-            p.inventory[5].SetDefaults(50);
-            var entry=new QuickItemEntry("0123456789abcdef0123456789abcdef",50,QuickItemMode.Use,true,true);string reason;
+            p.inventory[5].SetDefaults(borrowedType);
+            var entry=new QuickItemEntry("0123456789abcdef0123456789abcdef",borrowedType,QuickItemMode.Use,true,true);string reason;
             Require(settings.TryChange(new QuickItemDocument(false,true,new[]{entry}),entry.Id,out reason),"explicit quick borrow fixture accepted: "+reason);
             NativeQuickItemChecks.Until(()=>{Call(quick,"Poll");return !settings.Busy;});
             JueMingR.Platform.Hotkeys.HotkeyChord chord;string chordReason;
@@ -140,6 +142,7 @@ namespace NativeWorldTextProbe
             Call(quick,"Request",entry.Id,chord);
             Call(quick,"AfterDispatch",true);
             Require((bool)Get(owner,"Running") && (bool)Get(owner,"quickRequested"),"manual shortcut retains AFK run while releasing real prism");
+            int startsBeforeBorrow=starts.Count;int afkStartsBeforeBorrow=(int)Get(owner,"Starts");
             bool borrowed=false;
             for(int i=0;i<260;i++)
             {
@@ -148,6 +151,7 @@ namespace NativeWorldTextProbe
                 p.statMana=200;
             }
             Require(borrowed && (bool)Get(owner,"Running") && p.selectedItem==0 && !(bool)Get(Get(quick,"Use"),"Active"),"explicit temporary item obtains token, completes original use and returns without killing the AFK run: borrowed="+borrowed+" running="+Get(owner,"Running")+" slot="+p.selectedItem+" active="+Get(Get(quick,"Use"),"Active")+" message="+GetOptional(quick,"Message"));
+            if(borrowedType==98)Require(starts.Count==startsBeforeBorrow+2 && (int)Get(owner,"Starts")==afkStartsBeforeBorrow+1 && p.channel,"held startup tail permits exactly one native autoReuse borrow and then resumes the original prism");
         }
         private static void Boundaries(object context)
         {
@@ -178,7 +182,10 @@ namespace NativeWorldTextProbe
         private static void OverrideSelection(object context)
         {
             var p=Reset(context,98,200);p.inventory[2].SetDefaults(50);Step(context,true);Step(context,false);
-            var quick=Get(context,"QuickItems");var settings=(QuickItemSettings)Get(quick,"Settings");var entry=settings.Current.Entries[0];
+            var quick=Get(context,"QuickItems");var settings=(QuickItemSettings)Get(quick,"Settings");
+            var entry=new QuickItemEntry("0123456789abcdef0123456789abcdef",50,QuickItemMode.Use,true,true);string entryReason;
+            Require(settings.TryChange(new QuickItemDocument(false,true,new[]{entry}),entry.Id,out entryReason),"override fixture publishes its own mirror entry: "+entryReason);
+            NativeQuickItemChecks.Until(()=>{Call(quick,"Poll");return !settings.Busy;});
             JueMingR.Platform.Hotkeys.HotkeyChord chord;string reason;
             Require(JueMingR.Platform.Hotkeys.HotkeyChord.TryCreate(65,JueMingR.Platform.Hotkeys.HotkeyModifiers.None,out chord,out reason),"override fixture chord");
             Call(quick,"Request",entry.Id,chord);
@@ -253,8 +260,10 @@ namespace NativeWorldTextProbe
             finally{startupTailAudit=false;NativeCombatCadenceChecks.Save(combat,new JueMingR.Features.Combat.CombatOptions());}
             Require(starts.Count>=5 && births==starts.Count && (int)Get(owner,"Starts")-before==starts.Count,
                 "startup held tail has no uncounted native start/shot during positive gaps");
-            var p=Reset(context,98,300);Step(context,true);
-            for(int i=0;i<20 && completions.Count==0;i++)Step(context,false);
+            // Flintlock has no native Minishark ammo-conservation roll; keep
+            // this short real-debit/manual sample deterministic.
+            var p=Reset(context,95,300);Step(context,true);
+            for(int i=0;i<60 && completions.Count==0;i++)Step(context,false);
             Require(completions.Count==1,"manual-gap fixture has an actually completed first use");
             int nativeBefore=starts.Count,afkBefore=(int)Get(owner,"Starts");Step(context,true);
             Require(starts.Count==nativeBefore+1 && (int)Get(owner,"Starts")==afkBefore && (bool)Get(owner,"manual"),
