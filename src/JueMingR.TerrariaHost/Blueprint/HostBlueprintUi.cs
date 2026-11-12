@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if (!ControlsEnabled || !preference.Set(preference.Snapshot.Value.WithAutoBuild(value))) return;
             RefreshSubstitutionPolicy();
-            if (!value) CancelAutomaticBuild();
+            if (!value) CancelAutomaticBuild(); else ResumeContainerNames();
             AutomaticBuildChanged();
         }
         internal bool SameTypeReplacementEnabled { get { return preference.Snapshot.Value.SameTypeReplacement; } }

@@ -9,6 +9,9 @@ namespace JueMingR.TerrariaHost.Combat
     internal static class HostGuidedAttack
     {
         internal static bool Handles(int type){return type==16 || type==34 || type==79 || type==491;}
+        internal static bool Weapon(Item item){return item!=null && Weapon(item,item.shoot);}
+        internal static bool Weapon(Item item,int projectile)
+        {return item!=null && (item.type==113 && projectile==16 || item.type==218 && projectile==34 || item.type==495 && projectile==79 || item.type==3030 && projectile==491);}
         internal static bool Consumes(Player player,Projectile shot)
         {return player.channel && player.HeldItem.shoot==shot.type && (shot.type==491?shot.ai[0]<=0:shot.ai[0]>=0);}
         internal static AttackContact Solve(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain)

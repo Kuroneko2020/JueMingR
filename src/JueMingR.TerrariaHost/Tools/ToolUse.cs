@@ -25,6 +25,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal Func<int,int,bool> ResolvedTarget;
         internal Action<ToolTargetRejection> TargetRejected;
         internal bool PreciseTarget;
+        internal bool AlternatePlacement;
         internal ToolBuildCursorMode CursorMode;
         internal int SmartDirection, SmartDirectionY;
         internal Func<bool> NativeTargetReady;
@@ -72,6 +73,8 @@ namespace JueMingR.TerrariaHost.Tools
         private bool cursorBorrowed,oldSmartMouse,oldSmartPad,ownSmartMouse,ownSmartPad;
         private bool directionBorrowed;
         private bool deathRetire;
+        private bool alternateBorrowed,oldUseTile;
+        private int oldAlternate;
         private int oldDirection,ownDirection;
         private Projectile drill;
         private int drillKey;
@@ -80,6 +83,11 @@ namespace JueMingR.TerrariaHost.Tools
         internal bool Returning {get;private set;}
         internal bool Active {get{return player!=null;}}
         internal long Operation {get{return token;}}
+        private bool rescueYield;
+        internal bool PlanningSource(int slot,Item source)
+        {return Active && session==host.Runtime.Generation && selection==host.SelectionIntent && ReferenceEquals(player,host.Player) &&
+            slot>=0 && slot<50 && ReferenceEquals(player.inventory[slot],source) &&
+            (slot==Intent.Slot && ReferenceEquals(source,item) || Building && (Intent.OwnsMaterial?.Invoke(player.inventory,slot)??false));}
         internal long NativeGeneration {get{return nativeGeneration;}}
         internal bool CompletedAnimation {get{return Active && started && player.itemAnimation<=0;}}
         internal bool Building {get{return Active && Intent?.Kind==ToolKind.Build;}}
@@ -108,14 +116,17 @@ namespace JueMingR.TerrariaHost.Tools
 #endif
             if(Active)
             {
+                if(rescueYield && !(host.FallRescue?.CobwebYieldRequested(p,token)??false))rescueYield=yieldExternal=false;
+                if((host.FallRescue?.CobwebYieldRequested(p,token)??false) && checkedItem && !InNativeUse)
+                {rescueYield=yieldExternal=true;}
                 // Vanilla has restored its original selection before this
                 // callback. Reapplying the same override avoids a spurious
                 // selection change between animations; no timer is rewritten.
-                if(!result && !cancelled && (Intent.Refresh!=null || Intent.Readiness!=null) && SourceIdentity() &&
+                if(!result && !cancelled && !rescueYield && (Intent.Refresh!=null || Intent.Readiness!=null) && SourceIdentity() &&
                     host.ManualSelectionFrame!=host.Input.Frame && !host.ManualLeft &&
                     Admitted(p) && RetainAtSelection())
                 {chosen=Intent.Slot;result=true;return;}
-                bool handoff=yieldExternal;Retire();if(handoff)return;
+                bool handoff=yieldExternal;if(rescueYield)Intent.Yielded?.Invoke();Retire();if(handoff)return;
             }
             if(result || host.Input.Frame<host.NextUseFrame || host.ManualSelectionFrame==host.Input.Frame)
             {
@@ -153,6 +164,7 @@ namespace JueMingR.TerrariaHost.Tools
             nextContention=host.Input.Frame+Math.Max(1,item.useAnimation);
             pulsed=checkedItem=started=cancelled=notified=nativeReady=nativeBaseline=targetRejected=false;
             yieldExternal=returnRequested=deathRetire=false;
+            rescueYield=false;
             candidate.Admitted?.Invoke();
             return true;
         }
@@ -182,6 +194,7 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private bool RetainAtSelection()
         {
+            if(host.FallRescue?.CobwebYieldRequested(player,token)??false){rescueYield=yieldExternal=true;return false;}
             // SelectedItemState has already restored the original slot here;
             // source identity remains ours, selectedItem identity deliberately does not.
             var state=Intent.Readiness!=null?Intent.Readiness():(Intent.Refresh?.Invoke()==true?ToolReadiness.Ready:ToolReadiness.Invalid);
@@ -228,6 +241,9 @@ namespace JueMingR.TerrariaHost.Tools
                 if(Building)BlueprintBuildTrace.Count(BuildTraceReason.ManualInput);
 #endif
                 HandToManual();return;}
+            if(checkedItem && (host.FallRescue?.CobwebYieldRequested(p,token)??false))rescueYield=yieldExternal=true;
+            if(rescueYield && !(host.FallRescue?.CobwebYieldRequested(p,token)??false))rescueYield=yieldExternal=false;
+            if(rescueYield){SuspendInput();return;}
             var readiness=suspendedFrame==host.Input.Frame?ToolReadiness.Pending:Refresh();nativeReady=readiness==ToolReadiness.Ready;
 #if JMR_BLUEPRINT_DIAGNOSTIC
             DiagnosticPhase(BuildTraceStage.BeforeSync,readiness==ToolReadiness.Ready?BuildTraceReason.Ready:readiness==ToolReadiness.Pending?BuildTraceReason.Pending:readiness==ToolReadiness.Yield?BuildTraceReason.Yield:BuildTraceReason.Invalid);
@@ -271,12 +287,20 @@ namespace JueMingR.TerrariaHost.Tools
             // manual press owns this ItemCheck, including during a Boss pause.
             if(host.ManualLeft || host.SelectionIntent!=selection){HandToManual();return;}
             InNativeUse=true;
+            if(rescueYield){nativeReady=false;SuspendInput();return;}
             var readiness=suspendedFrame==host.Input.Frame?ToolReadiness.Pending:Refresh();nativeReady=readiness==ToolReadiness.Ready;
             if(readiness==ToolReadiness.Invalid || readiness==ToolReadiness.Yield){Cancel();return;}
             // A neutral ItemCheck owns cleanup, but no old target, consumption
             // baseline or rejection callback. Vanilla alone winds its timers down.
             if(!nativeReady){SuspendInput();return;}
             if(Intent.SelectionOnly)return;
+            if(Building && Intent.AlternatePlacement && player.itemAnimation==0 && player.altFunctionUse==2)
+            {
+                // Original ItemCheck clears a completed alt action before a
+                // later right edge can derive 1 again. Let that neutral pass
+                // happen rather than replacing 2 or starting the left action.
+                nativeReady=false;SuspendInput();return;
+            }
             // A same-mode successor can be admitted after this frame's
             // Lookup. BorrowAim below must never manufacture its receipt or
             // start an empty animation while waiting for the next real Lookup.
@@ -291,6 +315,7 @@ namespace JueMingR.TerrariaHost.Tools
             // aim/cursor still span this native use until the normal cleanup.
             BorrowCursorMode();
             BorrowAim();
+            BorrowAlternatePlacement();
             if(Building && nativeGesture!=ToolInputGesture.HeldPress)
             {p.controlUseItem=false;useMouseBorrowed=true;ownMouse=false;Main.mouseLeft=false;}
             else if(pulsed && (Intent.Refresh!=null || Intent.Readiness!=null || !checkedItem) && (!Building || pulseFrame==host.Input.Frame))
@@ -394,6 +419,18 @@ namespace JueMingR.TerrariaHost.Tools
             // pulley relocation; cleanup still respects a later native writer.
             player.direction=direction;
         }
+        private void BorrowAlternatePlacement()
+        {
+            if(!Building || !Intent.AlternatePlacement || item.type<0 || item.type>=Terraria.ID.ItemID.Sets.PlaceTileOnAltUse.Length ||
+                !Terraria.ID.ItemID.Sets.PlaceTileOnAltUse[item.type] || nativeGesture!=ToolInputGesture.HeldPress || alternateBorrowed)return;
+            oldUseTile=player.controlUseTile;oldAlternate=player.altFunctionUse;alternateBorrowed=true;
+            player.controlUseTile=true;
+            // .8 ManageRightClickFeatures derives 1 from a legal right press;
+            // ItemCheck alone promotes 1->2 at StartUse. Never write 2 or
+            // reset animation/release to force a placement. Mid-animation 2
+            // remains the native action state rather than being overwritten.
+            if(player.itemAnimation==0 && player.altFunctionUse==0)player.altFunctionUse=1;
+        }
         internal bool AllowBuildPlacement(bool wall)
         {
             bool allowed=!Building;
@@ -491,7 +528,12 @@ namespace JueMingR.TerrariaHost.Tools
                 Intent.ConsumptionValid!=null && !Intent.ConsumptionValid())
             {host.HoldUnknown((1UL<<Intent.Slot)|Intent.MaterialSlots);Notify(true);Cancel();}
             else if(nativeReady || !Building)Intent.NativeChecked?.Invoke();
-            if(!cancelled && (Intent.Refresh!=null || Intent.Readiness!=null) && (targetRejected || host.Input.Frame>=nextContention || (host.Combat?.Handoff.ResumeWanted??false)))
+            // This is after the real ItemCheck debit/receipt. Stop ONLY the
+            // next atomic action; original timers and current selection loan
+            // continue until vanilla's legal selection boundary. Retire then
+            // retains the checked-build Notify-before-Cancel ordering.
+            if(!cancelled && (host.FallRescue?.CobwebYieldRequested(p,token)??false))rescueYield=yieldExternal=true;
+            if(!cancelled && !rescueYield && (Intent.Refresh!=null || Intent.Readiness!=null) && (targetRejected || host.Input.Frame>=nextContention || (host.Combat?.Handoff.ResumeWanted??false)))
             {
                 nextContention=host.Input.Frame+Math.Max(1,p.itemAnimationMax);
                 bool external;if(host.Contended(Intent.Kind,out external)){yieldExternal=external;Intent.Yielded?.Invoke();Cancel();}
@@ -547,6 +589,14 @@ namespace JueMingR.TerrariaHost.Tools
         }
         private void Restore()
         {
+            if(alternateBorrowed)
+            {
+                alternateBorrowed=false;
+                if(player.controlUseTile)player.controlUseTile=oldUseTile;
+                // 2 is an actual native start result. Only unconsumed input
+                // state 1 belongs to this scope and can be withdrawn.
+                if(player.altFunctionUse==1)player.altFunctionUse=oldAlternate;
+            }
             if(cursorBorrowed)
             {
                 cursorBorrowed=false;

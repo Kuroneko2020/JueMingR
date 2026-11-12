@@ -36,6 +36,19 @@ namespace JueMingR.TerrariaHost.Movement
                 if (selection == null) throw new MissingMemberException("movement-selected-item-state");
                 Patch(harmony, AccessTools.DeclaredMethod(selection, "Select", new[] { typeof(int) }), "ManualSelection", null, null, null);
                 owner = value;
+                // This new consumer is optional for the new rescue only. Its
+                // ABI cannot withdraw the twelve established protection paths.
+                var sticky = AccessTools.DeclaredMethod(typeof(Player), "StickyMovement");
+                try
+                {
+                    Patch(harmony, sticky, "BeforeSticky", "AfterSticky", null, null);
+                    value.FallHost.EnableCobwebObservation(true);
+                }
+                catch
+                {
+                    if (sticky != null) { harmony.Unpatch(sticky, HarmonyPatchType.All, Id); targets.Remove(sticky); }
+                    value.FallHost.EnableCobwebObservation(false);
+                }
             }
             catch { foreach (var target in targets) harmony.Unpatch(target, HarmonyPatchType.All, Id); targets.Clear(); throw; }
         }
@@ -62,6 +75,8 @@ namespace JueMingR.TerrariaHost.Movement
         private static void AfterFlight(Player __instance) { owner?.AfterFlight(__instance); }
         private static void Capture(Player player) { owner?.CaptureInput(player); }
         private static void AfterEquips(Player __instance) { owner?.FallHost.AfterEquips(__instance); }
+        private static void BeforeSticky(Player __instance) { owner?.FallHost.BeforeSticky(__instance); }
+        private static void AfterSticky(Player __instance) { owner?.FallHost.AfterSticky(__instance); }
         private static void BeforeGrapple(Player player) { owner?.FallHost.BeforeGrapple(player); }
         private static void AfterGrapple(Player __instance) { owner?.FallHost.AfterGrapple(__instance); }
         private static void BeforeItemCheck(Player __instance, out ItemScope __state)

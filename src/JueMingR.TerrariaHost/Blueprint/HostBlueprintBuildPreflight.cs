@@ -27,7 +27,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Framing.GetTileSafely inside CanPlace fills null entries. Prove
             // all alternate footprints and real anchor extents readable first;
             // preview queries never create a Tile or assume an absent section.
-            var root = TileObjectData.GetTileData(item.createTile, item.placeStyle);
+            int nativeStyle = item.createTile==724 ? Terraria.GameContent.Tile_Entities.TECritterAnchor.GetLeashedCritterPrototype(item.type).anchorStyle : item.placeStyle;
+            var root = TileObjectData.GetTileData(item.createTile, nativeStyle);
             if (root == null)
             {
 #if JMR_BLUEPRINT_DIAGNOSTIC
@@ -39,7 +40,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             bool global = false;
             for (int alternate = 0; alternate <= root.AlternatesCount; alternate++)
             {
-                var data = TileObjectData.GetTileData(item.createTile, item.placeStyle, alternate);
+                var data = TileObjectData.GetTileData(item.createTile, nativeStyle, alternate);
                 if (data == null)
                 {
 #if JMR_BLUEPRINT_DIAGNOSTIC
@@ -100,7 +101,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return false;
             }
             var raw = Main.tile[target.WorldX, target.WorldY];
-            if (raw.liquid > 0 && raw.lava() && (Main.tileSolid[item.createTile] || !TileObjectData.CheckLiquidPlacement(item.createTile, item.placeStyle, raw)))
+            if (raw.liquid > 0 && raw.lava() && (Main.tileSolid[item.createTile] || !TileObjectData.CheckLiquidPlacement(item.createTile, nativeStyle, raw)))
             {
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 DiagnosticReject(target,BuildTraceStage.Geometry,BuildTraceReason.LiquidRejected);
@@ -115,10 +116,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 return NativeLegacyBuildChoice(new BuildFlight { Target = target, Player = p, Source = SnapshotSource(0, item) }, item.createTile, true);
             }
             if (item.createTile == 82 || item.createTile == 227)
-                return BlueprintPlacementQuery.LegacyPlant(target.WorldX, target.WorldY, item.createTile, item.placeStyle) &&
+                return BlueprintPlacementQuery.LegacyPlant(target.WorldX, target.WorldY, item.createTile, nativeStyle) &&
                     NativeLegacyBuildChoice(new BuildFlight { Target = target, Player = p, Source = SnapshotSource(0, item) }, item.createTile);
             TileObject choice;
-            bool canPlace=BlueprintPlacementQuery.CanPlace(target.WorldX, target.WorldY, item.createTile, item.placeStyle, direction, out choice);
+            bool canPlace=BlueprintPlacementQuery.CanPlace(target.WorldX, target.WorldY, item.createTile, nativeStyle, direction, out choice);
 #if JMR_BLUEPRINT_DIAGNOSTIC
             DiagnosticObjectChoice(target,direction,canPlace,choice);
 #endif

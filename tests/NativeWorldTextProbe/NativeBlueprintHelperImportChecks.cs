@@ -22,10 +22,14 @@ namespace NativeWorldTextProbe
         private const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
         internal static void Run(object context)
         {
+            // The real Main startup initializes Minecart before a ready
+            // immutable blueprint profile can capture its physical frame map.
+            // This CPU receiver must provide that same native metadata first.
+            typeof(NativeLegacyPlacementIdentityChecks).GetMethod("PrepareTrackMetadata",F).Invoke(null,null);
             NativeBlueprintWorldMatchChecks.InitializeMetadata();
             var host = NativeInformationChecks.Get(context, "Blueprint");
             var profile = (IBlueprintImportProfile)host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintHorizontalMirrorResolver").GetMethod("Create", F).Invoke(null, null);
-            RunWithProfile(profile, Path.Combine(Program.Repository, "references/JMR_Blueprint_Hoik_Zoom_20261110_v1/attachments/岛牌刷怪场4.0.json"), Path.Combine(Program.OutputDirectory, "helper-import-" + Guid.NewGuid().ToString("N")));
+            RunWithProfile(profile, Path.Combine(Program.Repository, "references/terraria-helper/JMR_Blueprint_Hoik_Zoom_20261110_v1/attachments/岛牌刷怪场4.0.json"), Path.Combine(Program.OutputDirectory, "helper-import-" + Guid.NewGuid().ToString("N")));
         }
         internal static void RunWithProfile(IBlueprintImportProfile profile, string sample, string area)
         {
@@ -54,9 +58,12 @@ namespace NativeWorldTextProbe
                     File.WriteAllBytes(reordered, stream.ToArray());
                 }
                 Need(Import(state, profile, reordered).Status == BlueprintExchangeStatus.AlreadyExists && List(state).TotalCount == 1, "format/property order independent identity");
+                var newer = new XElement(source); newer.AddFirst(new XElement("entities",new XAttribute("type","array")));
+                Need(Import(state,profile,WriteJson(area,"new-empty-entities",newer)).Status==BlueprintExchangeStatus.AlreadyExists,
+                    "R0.4.9 empty entities before tiles retains the old immutable content identity");
                 var containers = new XElement(source); containers.Element("containers").Add(new XElement("item", new XAttribute("type", "object"), new XElement("items", new XAttribute("type", "array"))));
                 var containerResult = Import(state, profile, WriteJson(area, "containers", containers));
-                Need(containerResult.Status == BlueprintExchangeStatus.AlreadyExists && containerResult.Message.Contains("容器附加内容未导入"), "nonempty container payload warns once without changing building identity");
+                Need(containerResult.Status == BlueprintExchangeStatus.Failed, "malformed known container payload is rejected rather than silently discarded");
                 Export(state, entry, exported);
                 Need(Import(state, null, exported).Status == BlueprintExchangeStatus.AlreadyExists, "old jmbp decoder shares original content identity");
                 BadInputs(state, profile, source, area);
@@ -105,7 +112,7 @@ namespace NativeWorldTextProbe
                     Need(target.X == 195 - obj.X - obj.Width && target.Y == obj.Y, "full declared-width mirror and original Y");
                 }
                 foreach (CaptureCell cell in window.Cells.Where(c => c.ObjectId == 0))
-                { CaptureCell target; string reason; Need(mirror.TryMirrorCell(cell, 195, out target, out reason) && target.X == 194 - cell.X && target.Y == cell.Y, "ordinary cell mirror coordinates"); }
+                { CaptureCell target; string reason; Need(mirror.TryMirrorCell(cell, 195, out target, out reason) && target.X == 194 - cell.X && target.Y == cell.Y, "ordinary cell mirror coordinates: type="+cell.TileType+" frame="+cell.FrameX+","+cell.FrameY+" at="+cell.X+","+cell.Y+" reason="+reason); }
                 Cooperation(state, profile, sample, entry, identity);
             }
             Need(original.SequenceEqual(File.ReadAllBytes(sample)), "external original never changed");
@@ -178,20 +185,20 @@ namespace NativeWorldTextProbe
         private static int N(XElement item, string field) { return Int32.Parse(item.Element(field).Value, CultureInfo.InvariantCulture); }
         private static bool B(XElement item, string field) { return item.Element(field).Value == "true"; }
         private static void Need(bool value, string message) { if (!value) throw new InvalidOperationException("HelperImport: " + message); }
-        private static LibraryState State(string path, string counter)
+        internal static LibraryState State(string path, string counter)
         { var state = new LibraryState(new FileBlueprintLibrary(path)); state.ConfigureExchange(new FileBlueprintExchange(), new AtomicFileDocument(counter, 65536, true)); return state; }
-        private static IBlueprintExchangeTicket Ticket(string method, Guid request, string path)
+        internal static IBlueprintExchangeTicket Ticket(string method, Guid request, string path)
         { return (IBlueprintExchangeTicket)typeof(WindowsBlueprintFileTicket).GetMethod(method, F).Invoke(null, new object[] { request, path }); }
-        private static BlueprintExchangeReceipt Import(LibraryState state, IBlueprintImportProfile profile, string source)
+        internal static BlueprintExchangeReceipt Import(LibraryState state, IBlueprintImportProfile profile, string source)
         { Guid request = Guid.NewGuid(); Need(state.TryBeginExchange(new BlueprintExchangeRequest { Kind = BlueprintExchangeKind.Import, RequestId = request, Ticket = Ticket("Source", request, source), SupportedTargetVersion = "1.4.5.8", ImportProfile = profile }), "import admitted"); return Await(state); }
         private static BlueprintExchangeReceipt Await(LibraryState state)
         { var watch = Stopwatch.StartNew(); BlueprintExchangeReceipt result; while (watch.ElapsedMilliseconds < 30000) { if (state.TryTakeExchangeReceipt(out result)) return result; Thread.Sleep(1); } throw new TimeoutException("helper import exchange"); }
-        private static LibraryReceipt Command(LibraryState state, bool admitted)
+        internal static LibraryReceipt Command(LibraryState state, bool admitted)
         { Need(admitted, "ordinary command admitted"); var watch = Stopwatch.StartNew(); LibraryReceipt result; while (watch.ElapsedMilliseconds < 30000) { state.Pump(); if (state.TryTakeReceipt(out result)) return result; Thread.Sleep(1); } throw new TimeoutException("helper import ordinary command"); }
         private static LibraryPage List(LibraryState state) { return Command(state, state.TryList(10, 0)).Page; }
         private static BlueprintProjectionReceipt Projection(LibraryState state)
         { var watch = Stopwatch.StartNew(); BlueprintProjectionReceipt result; while (watch.ElapsedMilliseconds < 30000) { if (state.TryTakeProjectionReceipt(out result)) return result; Thread.Sleep(1); } throw new TimeoutException("helper import projection"); }
-        private static void Export(LibraryState state, LibraryEntry entry, string target)
+        internal static void Export(LibraryState state, LibraryEntry entry, string target)
         {
             Guid id = Guid.NewGuid(); Need(state.TryBeginExchange(new BlueprintExchangeRequest { RequestId = id, Kind = BlueprintExchangeKind.PrepareExport }), "prepare export"); var proposal = Await(state).Proposal;
             Need(state.TryBeginExchange(new BlueprintExchangeRequest { RequestId = id, Kind = BlueprintExchangeKind.Export, Proposal = proposal, CounterCandidate = proposal.CounterCandidate, Ticket = Ticket("NewTarget", id, target), SupportedTargetVersion = "1.4.5.8", Name = entry.Name, TemplateKey = new BlueprintTemplateKey(entry.AssetId, Guid.Parse(entry.ContentRevision), entry.ContentHash) }), "normal export admitted");

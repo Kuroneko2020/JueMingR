@@ -3,10 +3,10 @@ using System;
 namespace JueMingR.Features.Movement
 {
     // Durable permissions, never readiness or borrowed game state. The main
-    // switch can be OFF without discarding any of the twelve choices.
+    // switch can be OFF without discarding any individual permission.
     public sealed class SmartFallProtectionOptions : IEquatable<SmartFallProtectionOptions>
     {
-        public const int CapabilityCount = 12;
+        public const int CapabilityCount = 13;
         public bool Enabled { get; }
         private readonly ushort permissions;
         public bool DoubleJump => Allows(0);
@@ -21,8 +21,9 @@ namespace JueMingR.Features.Movement
         public bool SafeMount => Allows(9);
         public bool TeleportRod => Allows(10);
         public bool GravityGlobe => Allows(11);
-        public SmartFallProtectionOptions(bool enabled = false, ushort permissions = 4095)
-        { if ((permissions & ~4095) != 0) throw new ArgumentOutOfRangeException(nameof(permissions)); Enabled = enabled; this.permissions = permissions; }
+        public bool Cobweb => Allows(12);
+        public SmartFallProtectionOptions(bool enabled = false, ushort permissions = 8191)
+        { if ((permissions & ~8191) != 0) throw new ArgumentOutOfRangeException(nameof(permissions)); Enabled = enabled; this.permissions = permissions; }
         public bool Allows(int capability)
         { Validate(capability); return (permissions & (1 << capability)) != 0; }
         public SmartFallProtectionOptions WithEnabled(bool value) => new SmartFallProtectionOptions(value, permissions);
@@ -32,6 +33,6 @@ namespace JueMingR.Features.Movement
         { if (capability < 0 || capability >= CapabilityCount) throw new ArgumentOutOfRangeException(nameof(capability)); }
         public bool Equals(SmartFallProtectionOptions other) => other != null && Enabled == other.Enabled && permissions == other.permissions;
         public override bool Equals(object other) => Equals(other as SmartFallProtectionOptions);
-        public override int GetHashCode() => permissions | (Enabled ? 4096 : 0);
+        public override int GetHashCode() => permissions | (Enabled ? 8192 : 0);
     }
 }

@@ -981,7 +981,7 @@ namespace JueMingR.TerrariaHost
                 if (worldPackage) { worldTiles = new World.WorldTileObservation(() => runtime.SharedRuntime.IsSessionActive); WorldTargets = new WorldTargets.HostWorldTargets(gameDirectory, runtime.SharedRuntime, worldTiles) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldTargets); }
                 if((PackageId.StartsWith("recovery-buffs-services-",StringComparison.Ordinal) || PackageId.StartsWith("continuous-processing-",StringComparison.Ordinal)))
                 {Recovery=new Recovery.HostRecovery(gameDirectory,runtime.SharedRuntime,items,Input,worldTiles,nativeNpcs);runtime.SharedRuntime.AddFeature(Recovery);}
-                if (objectPackage) { WorldObjects = new WorldObjectText.HostWorldObjectText(gameDirectory, runtime.SharedRuntime, worldTiles, () => items != null && items.World.AutomaticOperation) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldObjects); }
+                if (objectPackage) { WorldObjects = new WorldObjectText.HostWorldObjectText(gameDirectory, runtime.SharedRuntime, worldTiles, () => items != null && items.World.AutomaticOperation || Blueprint?.AutomaticContainerOperation == true) { LayerStatus = entityLayerStatus }; runtime.SharedRuntime.AddFeature(WorldObjects); }
                 Information = new Information.HostInformation(gameDirectory, runtime, preferences, InformationReadiness, error => RecordBiomeFailure("BIOME_DRAW", error), nativeNpcs);
                 runtime.SharedRuntime.AddFeature(Information);
                 Fishing?.AttachInformation(Information);
@@ -997,6 +997,7 @@ namespace JueMingR.TerrariaHost
                     Journey = new Journey.JourneySession(runtime.SharedRuntime, hiddenAccess, () => Input.CanPrepareText);
                     runtime.SharedRuntime.AddFeature(Journey);
                     Movement = new Movement.MovementSession(gameDirectory, runtime.SharedRuntime, Input, items, Fishing?.Equipment);
+                    Movement.FallHost.AttachTools(Tools);
                     runtime.SharedRuntime.AddFeature(Movement);
                     var blueprintLibrary = new Features.Blueprint.LibraryState(new Infrastructure.Blueprint.FileBlueprintLibrary(System.IO.Path.Combine(gameDirectory, "JueMingRData", "blueprints", "templates")));
                     Blueprint = new Blueprint.HostBlueprint(gameDirectory, runtime.SharedRuntime, Input, worldTiles, blueprintLibrary);

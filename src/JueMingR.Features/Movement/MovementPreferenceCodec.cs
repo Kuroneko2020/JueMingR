@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 using System.Xml.Linq;
 using JueMingR.Platform.Settings;
@@ -6,7 +7,7 @@ namespace JueMingR.Features.Movement
 {
     public sealed class MovementPreferenceCodec : IPreferenceCodec<MovementOptions>
     {
-        private static readonly string[] permissionNames = { "doubleJump", "rocketBoots", "carpet", "wings", "horseshoe", "umbrella", "grapple", "flyingMount", "djinnLegs", "safeMount", "teleportRod", "gravityGlobe" };
+        private static readonly string[] permissionNames = { "doubleJump", "rocketBoots", "carpet", "wings", "horseshoe", "umbrella", "grapple", "flyingMount", "djinnLegs", "safeMount", "teleportRod", "gravityGlobe", "cobweb" };
         public MovementOptions Decode(byte[] bytes)
         {
             var root = PreferenceJson.ReadOptional(bytes, "JueMingR.Movement", "smartFallProtection", "format", "version", "simulatedJump", "continuousDash", "teleportCorrection", "dashMode");
@@ -16,10 +17,14 @@ namespace JueMingR.Features.Movement
             if (root.Element("smartFallProtection") != null)
             {
                 var node = PreferenceJson.Required(root, "smartFallProtection", "object");
-                var fields = new string[permissionNames.Length + 1]; fields[0] = "enabled"; permissionNames.CopyTo(fields, 1);
+                // The sole older shape has all twelve original permissions.
+                // Missing cobweb enables the new default; missing any older
+                // field, unknown fields and duplicate fields remain invalid.
+                int length = node.Element("cobweb") == null ? permissionNames.Length - 1 : permissionNames.Length;
+                var fields = new string[length + 1]; fields[0] = "enabled"; Array.Copy(permissionNames, 0, fields, 1, length);
                 PreferenceJson.ExactFields(node, fields);
                 protection = protection.WithEnabled(Boolean(node, "enabled"));
-                for (int i = 0; i < permissionNames.Length; i++) protection = protection.WithPermission(i, Boolean(node, permissionNames[i]));
+                for (int i = 0; i < length; i++) protection = protection.WithPermission(i, Boolean(node, permissionNames[i]));
             }
             return new MovementOptions(Boolean(root, "simulatedJump"), Boolean(root, "continuousDash"), Boolean(root, "teleportCorrection"), mode.Value == "hold" ? ContinuousDashMode.Hold : ContinuousDashMode.DoubleTap, protection);
         }

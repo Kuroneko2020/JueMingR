@@ -19,6 +19,23 @@ function Assert-Route {
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
 # New task leaves have one exact formal native responsibility each.
+foreach($guidedHelper in @('NativeCombatGuidedBudgetChecks.cs','NativeCombatGuidedLiquidChecks.cs')){
+    $guidedPath='tests/NativeWorldTextProbe/'+$guidedHelper
+    $guidedRoute=Get-WorkloadRoute @($guidedPath)
+    $guidedPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $guidedRoute.groups)
+    Assert-Route ($guidedRoute.unknown.Count -eq 0 -and $guidedRoute.groups -notcontains 'combat-host' -and
+        $guidedPlan.Count -eq 1 -and $guidedPlan[0].name -ceq 'native-CombatGuidedNavigationCpu') ('Guided private helper selects its actual parent alone: '+$guidedHelper)
+    $guidedBefore=[pscustomobject]@{inputs=@($guidedPath+':'+('A'*64))}
+    $guidedAfter=[pscustomobject]@{inputs=@($guidedPath+':'+('B'*64))}
+    Assert-Route ((Get-WorkloadCheckFingerprint $guidedBefore 'native-CombatGuidedNavigationCpu') -cne
+        (Get-WorkloadCheckFingerprint $guidedAfter 'native-CombatGuidedNavigationCpu')) ('Guided private helper invalidates its true consumer: '+$guidedHelper)
+    Assert-Route ((Get-WorkloadCheckFingerprint $guidedBefore 'native-CombatControlCpu') -ceq
+        (Get-WorkloadCheckFingerprint $guidedAfter 'native-CombatControlCpu')) ('Guided private helper preserves unrelated control proof: '+$guidedHelper)
+}
+$guidedProductionRoute=Get-WorkloadRoute @('src/JueMingR.TerrariaHost/Combat/HostAttackAim.Preview.cs')
+Assert-Route ($guidedProductionRoute.groups -contains 'combat-host') 'Guided private test mapping does not narrow the production shared combat route'
+$guidedProductionPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $guidedProductionRoute.groups)
+Assert-Route ($guidedProductionPlan.name -contains 'native-CombatGuidedNavigationCpu' -and $guidedProductionPlan.name -contains 'native-CombatControlCpu') 'Production retains Guided parent and shared Control consumers'
 $hoikPath='tests/NativeWorldTextProbe/NativeBlueprintHoikChecks.cs'
 $hoikConsumers=@('native-BlueprintHoikCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu','native-BlueprintHoikSubstitutionCpu')
 foreach($consumer in $hoikConsumers){Assert-Route (@(Get-WorkloadPathChecks $hoikPath) -contains $consumer) ('Hoik manufacturing helper includes actual consumer '+$consumer)}
@@ -170,7 +187,7 @@ foreach($consumer in $selectionConsumers){
 }
 Assert-Route ((Get-WorkloadCheckFingerprint $before 'native-NpcEyeBoss') -ceq (Get-WorkloadCheckFingerprint $after 'native-NpcEyeBoss')) 'shared Step edit does not invalidate unrelated NPC motion proof'
 Assert-Route ($selectionPlan -notcontains 'native-NpcEyeBoss' -and $selectionPlan -notcontains 'native-CombatNavigationCpu') 'shared Step has no unrelated NPC or navigation consumer'
-$attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')+$reviewedSharedConsumers
+$attackConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatGuidedNavigationCpu','native-CombatNavigationCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatCpu','native-CombatYoyoCausal','native-CombatAimUi','native-CombatImpactVisual','native-CombatVisual')+$reviewedSharedConsumers
 foreach($path in @('src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs','src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs','src/JueMingR.TerrariaHost/Combat/HostYoyoNavigation.cs')){
     $consumers=@(Get-WorkloadPathChecks $path)
     Assert-Route ((($consumers|Sort-Object)-join '|') -ceq (($attackConsumers|Sort-Object)-join '|')) ('three attack owners bind all direct consumers '+$path)

@@ -125,6 +125,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             BlueprintBuildTrace.Hit(BuildTraceStage.Advance);
 #endif
             var p = buildTools?.Player;
+            AdvanceContainerNames(p);
             if (p == null || !CanRetainBuildIntent(p, true) ||
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 !BlueprintBuildTrace.Gate(MaterialInventory?.Ready == true,BuildTraceReason.InventoryNotReady,BuildTraceStage.Advance))
@@ -383,13 +384,25 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if(item.createWall!=placement.WallType)return InvalidBuildTarget(target);
                 return wallPositionCurrent || NativeWallBuildPosition(target);
             }
-            if(item.createTile!=sourcePlacement.TileType || item.placeStyle!=sourcePlacement.Style)return InvalidBuildTarget(target);
-            int nativeType=item.createTile,nativeStyle=item.placeStyle;
+            if(item.createTile!=sourcePlacement.TileType || item.createTile!=724 && item.placeStyle!=sourcePlacement.Style)return InvalidBuildTarget(target);
+            int nativeType=item.createTile,nativeStyle=item.createTile==724?Terraria.GameContent.Tile_Entities.TECritterAnchor.GetLeashedCritterPrototype(item.type).anchorStyle:item.placeStyle;
             if(nativeType==TileID.Torches)p.BiomeTorchPlaceStyle(ref nativeType,ref nativeStyle);
             if(nativeType==TileID.Campfire)p.BiomeCampfirePlaceStyle(ref nativeType,ref nativeStyle);
             if(nativeType!=placement.TileType || nativeStyle!=placement.Style)
             {RequestBuildEligibilityRetry(target);return BlockBuildTarget(target,BlueprintBuildWait.Dynamic);}
-            if(nativeType==724)return InvalidBuildTarget(target);
+            if(BlueprintObjectPayload.EntityType(nativeType) && (!BlueprintNativePayload.ValidEntityItem(nativeType,item.type,target.Cell.FrameY) || target.Cell.Payload.EntityItemType!=item.type)) return InvalidBuildTarget(target);
+            if(BlueprintStructureSemantics.Special(nativeType) && nativeType!=TileID.DisplayDoll)
+            {
+                BlueprintWorldMatchSample empty;
+                if(!ReadBuildCell(target.WorldX,target.WorldY,out empty) || (empty.Cell.Layers&CaptureLayer.Tile)!=0)return false;
+                if(nativeType==TileID.ProjectilePressurePad)
+                {
+                    for(int dy=-1;dy<=1;dy++)for(int dx=-1;dx<=1;dx++){BlueprintWorldMatchSample support;if(!ReadBuildCell(target.WorldX+dx,target.WorldY+dy,out support))return false;}
+                    TileObject choice;
+                    return BlueprintPlacementQuery.CanPlace(target.WorldX,target.WorldY,nativeType,nativeStyle,direction,out choice);
+                }
+                return PreflightBuildOrdinary(target,item);
+            }
             // The catalog's ordinary platform uses legacy PlaceTile even
             // when capture attached one-member object metadata to it.
             bool platform=placement.Platform && TileID.Sets.Platforms[nativeType];
@@ -486,7 +499,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             preparedBuild = null;
             var intent = new ToolIntent {
-                Kind = ToolKind.Build, Slot = next.Source.Slot, PreciseTarget = next.CursorMode==ToolBuildCursorMode.Precise, CursorMode=next.CursorMode, SmartDirection=next.SmartDirection, SmartDirectionY=next.SmartDirectionY,
+                Kind = ToolKind.Build, Slot = next.Source.Slot, AlternatePlacement = BlueprintObjectPayload.EntityType(next.Target.Cell.TileType), PreciseTarget = next.CursorMode==ToolBuildCursorMode.Precise, CursorMode=next.CursorMode, SmartDirection=next.SmartDirection, SmartDirectionY=next.SmartDirectionY,
                 Target = new Vector2(next.Target.WorldX * 16 + 8, next.Target.WorldY * 16 + 8),
                 PlayerDirection = next.Direction, MaterialSlots = next.DependencySlots, MaximumConsumption = BuildHeldMaximum(next),
 #if JMR_BLUEPRINT_DIAGNOSTIC
@@ -568,6 +581,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // preparation, which cannot start while THIS exact old lease owns
             // its natural tail. Yield that lease; Pending here would retain
             // the very owner that the pending preparation needs to release.
+            if (buildTools.FallRescue?.CobwebYieldRequested(p, buildTools.Use.Operation) == true) return ToolReadiness.Yield;
             if (current.SettledSupplyPreparationPending) return ToolReadiness.Yield;
             var next = preparedBuild;
             bool settledPaint = next != null && !SameBuildSource(current, next, intent.MaterialSlots);
@@ -739,7 +753,9 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (type != flight.Target.Placement.TileType) return false;
             if(!SmartPlatformLookupCurrent(flight))return false;
             if (flight.Target.Placement.Platform) return !objectType && BuildPlatformForm(flight.Target, type);
-            if (flight.Target.Body == null) return !objectType;
+            if (flight.Target.Body == null)
+                return type==TileID.ProjectilePressurePad ? objectType && placement.type==type && placement.style==flight.Target.Placement.Style &&
+                    placement.xCoord==flight.Target.WorldX && placement.yCoord==flight.Target.WorldY : !objectType;
             if (!objectType) return NativeLegacyBuildChoice(flight, type);
             if (!ExactObjectBuildChoice(flight.Target, placement, type)) return false;
             flight.Chosen = true;
@@ -907,7 +923,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             activeBuild = null; if(!buildTools.Runtime.HasFailed)NotifyBuildAttempt(flight.Target);
         }
         internal void CancelAutomaticBuild()
-        { preparedBuild = null; ClearBuildContinuation(); StopWiringBuild(false); buildMaterialPreparation?.RequestReturn(); if (buildTools?.Use.Building == true) buildTools.Use.Cancel(); }
+        { ReleaseContainerName(player); preparedBuild = null; ClearBuildContinuation(); StopWiringBuild(false); buildMaterialPreparation?.RequestReturn(); if (buildTools?.Use.Building == true) buildTools.Use.Cancel(); }
         internal void AutomaticBuildChanged()
         { preparedBuild = null; ClearBuildContinuation(); if (AutoBuildEnabled) buildActivationRevision++; else RemoveBuildSources(); MaterialBuildEligibilityRevision++; ObserveMaterialDemand(); }
         private void ClearAutomaticBuild()
@@ -926,7 +942,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // until its decoder reply or the actual session boundary below.
             MaterialBuildEligibilityRevision++; ClearBuildProgressSignals(); RemoveBuildSources();
         }
-        private void ClearBuildSession() { buildContainer = null; StopWiringBuild(true); buildMaterialPreparation?.ClearSession(); ClearBuildSupplyHint(); ClearAppearanceRestoration(); }
+        private void ClearBuildSession() { ClearContainerNames(); containerOpenDebts.Clear(); containerOpenGeneration = 0; structureCycles.Clear(); buildContainer = null; StopWiringBuild(true); buildMaterialPreparation?.ClearSession(); ClearBuildSupplyHint(); ClearAppearanceRestoration(); }
         private void StartBuildUnknownSession()
         {
             // Match Tools' real identity boundary. A menu/UI interruption or
@@ -952,6 +968,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool BuildBlocksRetirement(BlueprintProjectionPlacement item)
         {
+            if (namingContainer?.Owner == item) return true;
             if (WiringBuildBlocksRetirement(item.Identity)) return true;
             if(buildMaterialPreparation?.Blocks(item.Identity)==true)return true;
             if (activeBuild != null && activeBuild.Target.Identity.Equals(item.Identity) && buildTools?.Use.InNativeUse == true) return true;

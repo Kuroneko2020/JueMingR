@@ -100,6 +100,10 @@ namespace JueMingR.Platform.Items
                 ((saleSlots | discardSlots | storeSlots | interruptedSourceSlots | useSlots) & slots) == 0;
         }
         public bool IsUseSlot(int slot) { return slot >= 0 && slot < 50 && (useSlots & (1UL << slot)) != 0; }
+        // Planning a finite handoff may inspect a current use source, but not
+        // a sale/recovery/transfer range overlapping it. This grants no use.
+        public bool OnlyUseProtects(long generation, long token, int slot)
+        { return OwnsUse(generation, token) && IsUseSlot(slot) && ((saleSlots | discardSlots | storeSlots | interruptedSourceSlots | coinSlots | recoverySlots[0] | processingSlots[0] | fallInventory) & (1UL << slot)) == 0; }
         public bool HasUse {get{return useToken!=0;}}
         // A retained native preparation may continue only its current lease;
         // protected slots alone cannot distinguish a later use owner.

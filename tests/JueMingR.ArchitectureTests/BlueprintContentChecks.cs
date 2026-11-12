@@ -9,6 +9,7 @@ namespace JueMingR.ArchitectureTests
     {
         internal static void Check(IList<string> failures)
         {
+            BlueprintPayloadChecks.Check(failures);
             try { Sparse(); Objects(); BudgetAndScale(); Lifetimes(); }
             catch (Exception error) { failures.Add("BlueprintContent: " + error.Message); }
         }

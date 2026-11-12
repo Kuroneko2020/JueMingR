@@ -15,7 +15,8 @@ namespace JueMingR.Features.Blueprint
     {
         internal string Name;
         internal int Width, Height;
-        internal bool HasContainers;
+        private readonly SortedDictionary<long, int> entities = new SortedDictionary<long, int>();
+        private readonly SortedDictionary<long, string> containers = new SortedDictionary<long, string>();
         internal readonly SortedDictionary<long, CaptureCell> Cells = new SortedDictionary<long, CaptureCell>();
         internal readonly List<CaptureObject> Objects = new List<CaptureObject>();
         private readonly HashSet<long> tileKeys = new HashSet<long>(), wallKeys = new HashSet<long>(), wireKeys = new HashSet<long>();
@@ -46,14 +47,12 @@ namespace JueMingR.Features.Blueprint
                         }
                         if (!empty) reader.ReadEndElement();
                     }
-                    else if (field == "containers")
+                    else if (field == "containers" || field == "entities")
                     {
-                        Type(reader, "array"); int depth = reader.Depth; bool empty = reader.IsEmptyElement; reader.Read();
-                        if (!empty) while (!(reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth))
+                        Type(reader, "array"); bool empty = reader.IsEmptyElement; reader.ReadStartElement();
+                        while (!empty && reader.MoveToContent() == XmlNodeType.Element)
                         {
-                            if (reader.EOF) throw Bad("容器数据截断");
-                            if (reader.NodeType == XmlNodeType.Element && reader.Depth == depth + 1) HasContainers = true;
-                            reader.Read(); yield return true;
+                            PayloadRecord((XElement)XNode.ReadFrom(reader), field); yield return true;
                         }
                         if (!empty) reader.ReadEndElement();
                     }
@@ -69,7 +68,8 @@ namespace JueMingR.Features.Blueprint
                     yield return true;
                 }
                 reader.ReadEndElement(); if (reader.MoveToContent() != XmlNodeType.None) throw Bad("蓝图尾部有额外内容");
-                if (fields.Count != 8) throw Bad("蓝图缺少必需属性");
+                foreach (string required in new[] { "name", "createdAt", "width", "height", "tiles", "walls", "wires", "containers" })
+                    if (!fields.Contains(required)) throw Bad("蓝图缺少必需属性：" + required);
             }
             string error;
             if (!LibraryName.TryValidate(Name, out error) || Cells.Count == 0) throw Bad("蓝图名称无效或没有建筑内容");
@@ -109,6 +109,42 @@ namespace JueMingR.Features.Blueprint
                     }
                 }
                 yield return true;
+            }
+            foreach (var entry in entities)
+            {
+                CaptureCell cell;
+                if (!Cells.TryGetValue(entry.Key, out cell) || (cell.Layers & CaptureLayer.Tile) == 0 || !BlueprintObjectPayload.EntityType(cell.TileType)) throw Bad("实体记录没有对应锚点");
+                var validation = profile as IBlueprintEntityImportProfile;
+                if (validation == null || !validation.ValidEntityItem(cell.TileType, entry.Value, cell.FrameY)) throw Bad("实体物品与原版生产者不符");
+                cell.Payload.EntityItemType = entry.Value; cell.Payload.EntityState = BlueprintPayloadState.Known; Cells[entry.Key] = cell; yield return true;
+            }
+            foreach (var entry in containers)
+            {
+                CaptureCell cell;
+                if (!Cells.TryGetValue(entry.Key, out cell) || cell.ObjectId == 0 || !BlueprintObjectPayload.ContainerType(cell.TileType)) throw Bad("容器记录没有完整箱体");
+                CaptureObject obj = Objects[cell.ObjectId - 1];
+                if (obj.X != cell.X || obj.Y != cell.Y) throw Bad("容器记录不是左上锚点");
+                cell.Payload.NameState = BlueprintPayloadState.Known; cell.Payload.Name = entry.Value; Cells[entry.Key] = cell; yield return true;
+            }
+        }
+        private void PayloadRecord(XElement item, string layer)
+        {
+            string payload = layer == "entities" ? "itemType" : "name";
+            if ((string)item.Attribute("type") != "object") throw Bad("附加记录必须是对象");
+            var fields = new Dictionary<string, XElement>(StringComparer.Ordinal);
+            foreach (XElement value in item.Elements()) { if (fields.ContainsKey(value.Name.LocalName)) throw Bad("附加记录属性重复"); fields.Add(value.Name.LocalName, value); }
+            if (fields.Count != 3 || !fields.ContainsKey("x") || !fields.ContainsKey("y") || !fields.ContainsKey(payload)) throw Bad("附加记录属性不支持或缺失");
+            int x = Integer(fields["x"], 0, Int32.MaxValue), y = Integer(fields["y"], 0, Int32.MaxValue); long key = Key(x, y);
+            if (layer == "entities")
+            {
+                int value = Integer(fields[payload], 1, Int16.MaxValue);
+                if (entities.ContainsKey(key)) throw Bad("实体锚点重复"); entities.Add(key, value);
+            }
+            else
+            {
+                string value = Scalar(fields[payload], "string");
+                if (value.Length > 20) throw Bad("容器名称超过20字");
+                if (containers.ContainsKey(key)) throw Bad("容器锚点重复"); containers.Add(key, value);
             }
         }
         private static bool Same(CaptureObject a, CaptureObject b)

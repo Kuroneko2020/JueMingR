@@ -28,6 +28,11 @@ namespace JueMingR.ArchitectureTests
                 Require(owner.OwnsFallEquipment(10,token,true,4) && !owner.OwnsFallEquipment(9,token,true,4) && !owner.OwnsFallEquipment(10,token+1,true,4) &&
                     !owner.OwnsFallEquipment(10,token,false,4) && !owner.OwnsFallEquipment(10,token,true,3),"native use requires exact current generation, operation and misc endpoint");
                 owner.EndFallEquipment(10,token);
+                long use=owner.NewUseToken();Require(owner.TryBeginUse(10,17,use),"finite tool owns a planning source");
+                Require(owner.OnlyUseProtects(10,use,17) && !owner.OnlyUseProtects(10,use+1,17) && !owner.OnlyUseProtects(9,use,17),"handoff planning requires exact owner and generation");
+                owner.HoldInterruptedSource(10,1UL<<17);
+                Require(!owner.OnlyUseProtects(10,use,17),"unknown native debt cannot be hidden by a current use source");
+                owner.EndUse(10,use);
                 Require(!owner.OwnsFallEquipment(10,token,true,4),"retired native equipment token cannot grant use");
                 Require(!owner.TryBeginFallEquipment(10,1UL<<50,0,0,owner.NewUseToken()) && !owner.TryBeginFallEquipment(10,0,1U<<20,0,owner.NewUseToken()) && !owner.TryBeginFallEquipment(10,0,0,1U<<5,owner.NewUseToken()),"no bank, invalid inventory, armor or misc endpoints admitted");
             }

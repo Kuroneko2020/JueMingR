@@ -137,11 +137,11 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context=>{NativeBlueprintBuildChecks.RunConstruction(context,family:scope=="BlueprintHoikCpu"?"Hoik":"HoikSubstitution");NativeScopeDispatch.Enter(scope=="BlueprintHoikCpu"?"blueprint-hoik":"blueprint-hoik-substitution");},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
-            if(scope=="BlueprintSupplyContinuationCpu" || scope=="BlueprintSupplyPresentationCpu" || scope=="BlueprintSmartPlatformCpu" || scope=="BlueprintActuatorNetworkCpu" || scope=="BlueprintSupplySmartWiringCpu" || scope=="BlueprintConstructionCpu" || scope=="BlueprintPreparationCpu" || scope=="BlueprintAppearanceCpu" || scope=="BlueprintWiringCpu" || scope=="BlueprintSpecialCpu")
+            if(scope=="BlueprintStructureCpu" || scope=="BlueprintPayloadCpu" || scope=="BlueprintSupplyContinuationCpu" || scope=="BlueprintSupplyPresentationCpu" || scope=="BlueprintSmartPlatformCpu" || scope=="BlueprintActuatorNetworkCpu" || scope=="BlueprintSupplySmartWiringCpu" || scope=="BlueprintConstructionCpu" || scope=="BlueprintPreparationCpu" || scope=="BlueprintAppearanceCpu" || scope=="BlueprintWiringCpu" || scope=="BlueprintSpecialCpu")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                string family=scope=="BlueprintSupplyContinuationCpu"?"SupplyRepair":scope=="BlueprintSupplyPresentationCpu"?"SupplyPresentation":scope=="BlueprintSmartPlatformCpu"?"SmartPlatform":scope=="BlueprintActuatorNetworkCpu"?"ActuatorNetwork":scope=="BlueprintSupplySmartWiringCpu"?"SupplySmartWiring":scope=="BlueprintAppearanceCpu"?"Appearance":scope=="BlueprintWiringCpu"?"Wiring":scope=="BlueprintSpecialCpu"?"Special":null;
-                NativeQuickItemChecks.Run(context=>{NativeBlueprintBuildChecks.RunConstruction(context,scope=="BlueprintPreparationCpu",family);if(scope=="BlueprintSupplyContinuationCpu")NativeScopeDispatch.Enter("blueprint-supply-continuation");},processing:true,shortFeedback:true);return 0;
+                string family=scope=="BlueprintStructureCpu"?"Structure":scope=="BlueprintPayloadCpu"?"Payload":scope=="BlueprintSupplyContinuationCpu"?"SupplyRepair":scope=="BlueprintSupplyPresentationCpu"?"SupplyPresentation":scope=="BlueprintSmartPlatformCpu"?"SmartPlatform":scope=="BlueprintActuatorNetworkCpu"?"ActuatorNetwork":scope=="BlueprintSupplySmartWiringCpu"?"SupplySmartWiring":scope=="BlueprintAppearanceCpu"?"Appearance":scope=="BlueprintWiringCpu"?"Wiring":scope=="BlueprintSpecialCpu"?"Special":null;
+                NativeQuickItemChecks.Run(context=>{if(scope=="BlueprintPayloadCpu")NativeBlueprintHelperImportChecks.Run(context);NativeBlueprintBuildChecks.RunConstruction(context,scope=="BlueprintPreparationCpu",family);if(scope=="BlueprintStructureCpu")NativeScopeDispatch.Enter("blueprint-structure");if(scope=="BlueprintPayloadCpu")NativeScopeDispatch.Enter("blueprint-payload");if(scope=="BlueprintSupplyContinuationCpu")NativeScopeDispatch.Enter("blueprint-supply-continuation");},processing:true,shortFeedback:true);return 0;
             }
             if (scope == "BlueprintMaterialsAutomationVisual")
             {
@@ -360,6 +360,7 @@ namespace NativeWorldTextProbe
                     catch (Exception error) { Console.Error.WriteLine("SMART-FALL SCOPE: " + error); if (first == null) first = error; }
                     if (first != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
                     }
+                    NativeCombatHandoffChecks.RunCobweb(context);
                 }, processing: true, shortFeedback: true, candidateAssembly: Environment.GetEnvironmentVariable("JUEMINGR_INPUT_BOUNDARY_CANDIDATE")); return 0;
             }
             if (scope == "MovementJumpCpu" || scope == "MovementDashCpu" || scope == "MovementTeleportCpu")
@@ -599,6 +600,12 @@ namespace NativeWorldTextProbe
                 // The standalone terrain body reaches native UpdateWeather;
                 // share the same Main fixture preparation as ObservationCpu.
                 NativeQuickItemChecks.Run(context=>{NativeCombatAimChecks.Initialize();NativeCombatTerrainChecks.Run(context);},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="CombatGuidedNavigationCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JMR-guided-"+Guid.NewGuid().ToString("N").Substring(0,10));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context => { NativeScopeDispatch.Enter("combat-guided-navigation"); NativeCombatAimChecks.Initialize(); NativeCombatGuidedNavigationChecks.Run(context); }, processing:true, shortFeedback:true, candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));
+                return 0;
             }
             if(scope=="CombatTerrainKnowledgeCpu" || scope=="CombatShotFacingCpu" || scope=="CombatShotBirthOrderCpu" || scope=="CombatNailDetachCpu")
             {

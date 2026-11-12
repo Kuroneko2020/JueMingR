@@ -118,7 +118,7 @@ namespace JueMingR.Features.Blueprint
             if (!tiles.TryGetValue(cell.TileType, out rules)) return Array.Empty<BlueprintPlacementDescriptor>();
             var result = new List<BlueprintPlacementDescriptor>();
             foreach (var rule in rules)
-                if (rule.Matches(cell) && (!obj.HasValue || rule.Door || rule.Descriptor.Width == obj.Value.Width && rule.Descriptor.Height == obj.Value.Height))
+                if (EntityProducer(cell, rule.Descriptor) && rule.Matches(cell) && (!obj.HasValue || rule.Door || rule.Descriptor.Width == obj.Value.Width && rule.Descriptor.Height == obj.Value.Height))
                     result.Add(rule.Descriptor);
             return result;
         }
@@ -152,6 +152,8 @@ namespace JueMingR.Features.Blueprint
         // still prove that body and its current native operation separately.
         public BlueprintPlacementDescriptor TileShape(CaptureCell cell)
         { return Substrate(cell) ?? ResolveTile(cell, null, out _); }
+        private static bool EntityProducer(CaptureCell cell, BlueprintPlacementDescriptor descriptor)
+        { return !BlueprintObjectPayload.EntityType(cell.TileType) || cell.Payload.EntityState == BlueprintPayloadState.Known && cell.Payload.EntityItemType > 0 && descriptor.UseItemType == cell.Payload.EntityItemType; }
         private BlueprintPlacementDescriptor ResolveTile(CaptureCell cell, CaptureObject? obj, out bool ambiguous)
         {
             ambiguous = false;
@@ -159,7 +161,7 @@ namespace JueMingR.Features.Blueprint
             BlueprintPlacementDescriptor found = null;
             foreach (var rule in list)
             {
-                if (!rule.Matches(cell)) continue;
+                if (!EntityProducer(cell, rule.Descriptor) || !rule.Matches(cell)) continue;
                 // Original anchor alternates can write a frame whose reverse
                 // metadata uses a different canonical origin/direction. Those
                 // reverse values are not operation permits or a second
@@ -194,7 +196,7 @@ namespace JueMingR.Features.Blueprint
                 // failed grid, so even a second rule from the same use item may
                 // change the bill. Only reliable style facts may exclude it;
                 // absent object metadata keeps every failed style conservative.
-                foreach (var value in declared) if (!value.Compiled && (!obj.HasValue || value.Style == obj.Value.PlacementStyle || value.Style == obj.Value.Style || placement != null && value.Style == placement.Style))
+                foreach (var value in declared) if ((!BlueprintObjectPayload.EntityType(cell.TileType) || value.UseItemType == cell.Payload.EntityItemType) && !value.Compiled && (!obj.HasValue || value.Style == obj.Value.PlacementStyle || value.Style == obj.Value.Style || placement != null && value.Style == placement.Style))
                     return Qualification(BlueprintTargetDisposition.Construction, BlueprintPlacementResolutionKind.Unsupported, null, BlueprintTargetReason.DeclaredOutputUnsupported);
             }
             if (placement != null) return Qualification(BlueprintTargetDisposition.Construction, BlueprintPlacementResolutionKind.Exact, placement, BlueprintTargetReason.None);

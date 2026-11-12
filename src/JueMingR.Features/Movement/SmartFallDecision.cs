@@ -2,7 +2,7 @@ using System;
 
 namespace JueMingR.Features.Movement
 {
-    public enum SmartFallFamily { DoubleJump, RocketBoots, Carpet, Wings, Horseshoe, Umbrella, Grapple, FlyingMount, DjinnLegs, SafeMount, TeleportRod, GravityGlobe }
+    public enum SmartFallFamily { DoubleJump, RocketBoots, Carpet, Wings, Horseshoe, Umbrella, Grapple, FlyingMount, DjinnLegs, SafeMount, TeleportRod, GravityGlobe, Cobweb }
     public enum SmartFallResult { None, Prepared, Consumed, Protected, Returning, Returned, TakenOver, Failed, Unconfirmed }
 
     public struct SmartFallContact
@@ -14,6 +14,11 @@ namespace JueMingR.Features.Movement
         public ushort Type;
         public short FrameY;
         public bool HalfBrick;
+        // A future native StickyTiles sample is an event on this corridor,
+        // never a safe floor and never proof the live player touched it.
+        public bool WebFound;
+        public int WebTick, WebTileX, WebTileY;
+        public float WebPlayerY;
     }
 
     public struct SmartFallCandidate

@@ -262,6 +262,13 @@ namespace JueMingR.TerrariaHost.Combat
             if(PrepareBalancedPlan(plan,timeline,phase))return plan.Contact;
             int delay=HostAttackWindow.PreviewDelay(player,item);var clock=new HostAttackClock(timeline,phase);
             if(clock.Age<0 || clock.Age>1){plan.Clear();return null;}
+            // A registered Guided cursor owns this stage. Do not first spend
+            // its candidate allowance solving an unrelated ordinary flight.
+            if(HostGuidedAttack.Weapon(item))
+            {
+                plan.Clear();plan.SetMembers(player,item);plan.Controlled=true;plan.Timeline=timeline;
+                plan.Contact=Control.Preview(timeline,phase,delay);plan.GuidedWindow=Control.PreviewGuidedWindow;plan.Phase=phase;plan.PreparedTick=Main.GameUpdateCount;plan.ControlDependencies=Control.CapturePreviewDependencies(plan.Contact);return plan.Contact;
+            }
             bool hasFlight;var flight=ReadFlight(player,timeline,phase,out hasFlight);
             // Display consumes this already-born, fully solved native flight
             // before searching an unused hypothetical new hand. This is only
@@ -427,6 +434,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal NpcPredictionSource MotionSource;
             internal HostAttackControl.PreviewDependencies ControlDependencies;
             internal bool ControlledPrefixComplete;
+            internal HostGuidedWindow GuidedWindow;
             // Clear retires a fact, not its bounded fault history. Only a new
             // concrete context or explicit feature retry permits another try.
             internal readonly FaultGate Faults=new FaultGate();
@@ -472,13 +480,13 @@ namespace JueMingR.TerrariaHost.Combat
             internal bool PresentationMembersCurrent(Player player,int age){return age==0?MembersCurrent(player) && HandReceiveCurrent(player):WeaponCurrent(player) && Direction==player.direction && EnvironmentState.Current && !Controlled && HandReceiveCurrent(player) && (WhipOwner==null || WhipOwner.Current) && (Ammo==null || Ammo.MembersMatch(player,item)) && (Obstacles==null || Obstacles.BirthInputsCurrent) && (HarpyState==null || HarpyState.MembersCurrent) && (Flight==null || Flight.PresentationCurrent(age));}
             internal void CopyPresentation(PreviewPlan source)
             {
-                Clear();Contact=source.Contact;Solution=source.Solution;Balanced=source.Balanced;Timeline=source.Timeline;Ammo=source.Ammo;Environment=source.Environment;EnvironmentState=source.EnvironmentState;Obstacles=source.Obstacles;
+                Clear();GuidedWindow=source.GuidedWindow;Contact=source.Contact;Solution=source.Solution;Balanced=source.Balanced;Timeline=source.Timeline;Ammo=source.Ammo;Environment=source.Environment;EnvironmentState=source.EnvironmentState;Obstacles=source.Obstacles;
                 HarpyState=source.HarpyState;Flight=source.Flight;ControlDependencies=source.ControlDependencies;ControlledPrefixComplete=source.ControlledPrefixComplete;WhipOwner=source.WhipOwner;Direction=source.Direction;Controlled=source.Controlled;
                 item=source.item;slot=source.slot;type=source.type;prefix=source.prefix;scale=source.scale;
                 birthRotation=source.birthRotation;birthGravity=source.birthGravity;birthScreen=source.birthScreen;birthHeight=source.birthHeight;
                 Phase=source.Phase;Immune=source.Immune;AttackCooldown=source.AttackCooldown;MeleeCooldown=source.MeleeCooldown;
             }
-            internal void Clear(){Contact=null;Solution=default(HostAttackSolution);Balanced=false;Timeline=null;MotionTerrain=null;MotionSource=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;HandOwner=null;Prepared=Controlled=ControlledPrefixComplete=HadFlight=false;}
+            internal void Clear(){GuidedWindow=default(HostGuidedWindow);Contact=null;Solution=default(HostAttackSolution);Balanced=false;Timeline=null;MotionTerrain=null;MotionSource=null;Ammo=null;Environment=null;Obstacles=null;HarpyState=null;Flight=PreparedFlight=null;ControlDependencies=null;WhipOwner=null;item=null;HandOwner=null;Prepared=Controlled=ControlledPrefixComplete=HadFlight=false;}
         }
     }
 }

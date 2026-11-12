@@ -23,7 +23,7 @@ namespace JueMingR.Features.Blueprint
             using (var identity = SHA256.Create())
             {
                 // Stable semantic identity excludes JSON ordering/whitespace,
-                // names, source dates, import time, stage and local asset IDs.
+                // template titles, source dates, import time, stage and local asset IDs.
                 byte[] domain = Encoding.UTF8.GetBytes("JueMingR.HelperBlueprint/1\0" + operation.Request.SupportedTargetVersion + "\0" + document.Width.ToString(CultureInfo.InvariantCulture) + "x" + document.Height.ToString(CultureInfo.InvariantCulture) + "\0");
                 identity.TransformBlock(domain, 0, domain.Length, null, 0);
                 var cells = new CaptureCell[CaptureChunk.MaximumRecords]; int count = 0;
@@ -47,7 +47,6 @@ namespace JueMingR.Features.Blueprint
                 // Generated revisions are independent of the private stage.
                 root.ContentRevision = new Guid(revisionBytes);
                 foreach (bool step in PublishImport(operation, root, LibraryCodec.EncodeRoot(root), document.Name)) yield return step;
-                if (document.HasContainers && operation.Completion != null) operation.Completion.Message += "；已导入建筑外观，容器附加内容未导入";
             }
         }
         private void WriteHelperChunk(ExchangeOperation operation, CaptureChunk chunk, HashAlgorithm identity)

@@ -22,12 +22,13 @@ namespace JueMingR.TerrariaHost.F5
     {
         internal static readonly string[] ActionIds = { "movement.simulated-jump", "movement.continuous-dash", "movement.teleport-correction", "movement.smart-fall-protection" };
         internal static readonly string[] Names = { "模拟连跳", "连续冲刺", "传送修正", "智能防摔" };
-        internal static readonly string[] CapabilityNames = { "二段跳", "火箭靴", "飞毯", "翅膀", "马掌", "雨伞", "抓钩", "飞行坐骑", "精灵腿", "免摔坐骑", "传送杖", "重力球" };
+        internal static readonly string[] CapabilityNames = { "二段跳", "火箭靴", "飞毯", "翅膀", "马掌", "雨伞", "抓钩", "飞行坐骑", "精灵腿", "免摔坐骑", "传送杖", "重力球", "蜘蛛网" };
         private static readonly F5RowDescription jump = new F5RowDescription(ActionIds[0], "按住跳跃键连跳，类似蛙腿效果");
         private static readonly F5RowDescription hold = new F5RowDescription(ActionIds[1], "按住方向键冲刺");
         private static readonly F5RowDescription doubleTap = new F5RowDescription(ActionIds[1], "双击按住方向键冲刺");
         private static readonly F5RowDescription teleport = new F5RowDescription(ActionIds[2], "传送杖点击到物块内时，传送到附近空地");
-        private static readonly F5RowDescription fall = new F5RowDescription(ActionIds[3], "用身上的装备进行防摔操作");
+        private static readonly F5RowDescription fall = new F5RowDescription(ActionIds[3], "使用身上的装备或物品自动防摔");
+        private static readonly F5RowDescription cobweb = new F5RowDescription(ActionIds[3], "允许消耗背包中的蜘蛛网进行防摔");
         internal bool ConfigurationExpanded { get; private set; }
         private readonly IMovementControls owner;
         internal MovementControls(IMovementControls owner) { this.owner = owner; }
@@ -39,7 +40,7 @@ namespace JueMingR.TerrariaHost.F5
                 int feature = i;
                 var labels = i == 1 ? new[] { mode == ContinuousDashMode.Hold ? "按住" : "双击", "开启", "关闭", "键" } : i == 3 ? new[]
                 {
-                    // "配置",
+                    "配置",
                     "开启", "关闭", "键"
                 } : new[] { "开启", "关闭", "键" };
                 rows.Row(ref y, 0, 522, Names[i], labels,
@@ -53,13 +54,13 @@ namespace JueMingR.TerrariaHost.F5
                 {
                     int capability = i;
                     rows.Row(ref y, 12, 510, CapabilityNames[i], new[] { "允许", "禁用" },
-                        text => (F5Command)((int)F5Command.MovementFallAllow0 + capability * 2 + (text == "允许" ? 0 : 1)));
+                        text => (F5Command)((int)F5Command.MovementFallAllow0 + capability * 2 + (text == "允许" ? 0 : 1)), i == 12 ? cobweb : null);
                 }
         }
         private static F5Command On(int feature) { return feature == 0 ? F5Command.MovementJumpOn : feature == 1 ? F5Command.MovementDashOn : feature == 2 ? F5Command.MovementTeleportOn : F5Command.MovementFallOn; }
         private static F5Command Off(int feature) { return feature == 0 ? F5Command.MovementJumpOff : feature == 1 ? F5Command.MovementDashOff : feature == 2 ? F5Command.MovementTeleportOff : F5Command.MovementFallOff; }
-        internal static bool Owns(F5Command command) { return command >= F5Command.MovementJumpOn && command <= F5Command.MovementFallDeny11; }
-        private static bool Permission(F5Command command) => command >= F5Command.MovementFallAllow0 && command <= F5Command.MovementFallDeny11;
+        internal static bool Owns(F5Command command) { return command >= F5Command.MovementJumpOn && command <= F5Command.MovementFallDeny12; }
+        private static bool Permission(F5Command command) => command >= F5Command.MovementFallAllow0 && command <= F5Command.MovementFallDeny12;
         private static int Feature(F5Command command) { return command == F5Command.MovementJumpOn || command == F5Command.MovementJumpOff ? 0 : command == F5Command.MovementTeleportOn || command == F5Command.MovementTeleportOff ? 2 : command >= F5Command.MovementFallOn ? 3 : 1; }
         internal bool Available(F5Command command) { return Owns(command) && (command == F5Command.MovementDashMode || command == F5Command.MovementFallConfigure || Permission(command) ? owner.ControlsEnabled : owner.Available(Feature(command))); }
         internal Color? Selected(F5Command command)

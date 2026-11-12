@@ -21,6 +21,16 @@ namespace JueMingR.Features.Blueprint
         {
             var exact = SameBody(target, world, wall);
             if (wall) return exact == BlueprintBodyState.Conflict && catalog?.Substitution.AllowsWall(target.WallType, world.Cell.WallType, policy) == true ? BlueprintBodyState.Same : exact;
+            if (!wall && world.Available && (world.Cell.Layers & CaptureLayer.Tile) != 0 && target.TileType == world.Cell.TileType)
+            {
+                if (target.Payload.EntityItemType > 0 && world.Cell.Payload.EntityItemType == 0) return BlueprintBodyState.Unknown;
+                if (target.Payload.EntityItemType > 0 && target.Payload.EntityItemType != world.Cell.Payload.EntityItemType) return BlueprintBodyState.Conflict;
+                if (BlueprintStructureSemantics.Special(target.TileType) && target.ObjectId == 0 && !world.ObjectUnknown)
+                {
+                    var wanted = catalog?.Tile(target, null); var observed = catalog?.Tile(world.Cell, null);
+                    if (wanted != null && observed != null && wanted.SameConsumption(observed)) return BlueprintBodyState.Same;
+                }
+            }
             var descriptor = catalog?.TileShape(target);
             if (descriptor?.RequiresObject == true && target.ObjectId == 0) return BlueprintBodyState.Unknown;
             if ((descriptor?.Platform == true || descriptor?.PlanterBox == true) && world.Available && (world.Cell.Layers & CaptureLayer.Tile) != 0 && target.TileType == world.Cell.TileType)
@@ -187,6 +197,7 @@ namespace JueMingR.Features.Blueprint
             if (!sample.Available || sample.ObjectUnknown) { unknown = true; return; }
             if ((sample.Cell.Layers & CaptureLayer.Tile) == 0) { missing = true; return; }
             active++;
+            if (target.EntityItemType > 0 && sample.Cell.Payload.EntityItemType == 0) { unknown = true; return; }
             if (sample.Object == null || !(target.SamePlacement(sample.Object) || catalog?.Substitution.AllowsObject(target, sample.Object, policy) == true) ||
                 (sample.Object.Family == BlueprintWorldObjectFamily.Door ? sample.Cell.TileType != 10 && sample.Cell.TileType != 11 : sample.Cell.TileType != sample.Object.Kind)) { conflict = true; return; }
             if (observed == null) observed = sample.Object;

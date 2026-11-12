@@ -58,6 +58,7 @@ namespace JueMingR.Features.Blueprint
             Identity = identity ?? throw new ArgumentNullException(nameof(identity)); WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary) ?? throw new ArgumentNullException(nameof(summary)); Bounds = bounds;
             Cells = Array.AsReadOnly(owned ? cells : (CaptureCell[])cells.Clone()); Objects = Array.AsReadOnly(owned ? objects : (CaptureObject[])objects.Clone());
             long bytes = checked(256L + cells.LongLength * 64L + objects.LongLength * 128L);
+            foreach (CaptureCell cell in cells) bytes = checked(bytes + cell.Payload.EstimatedBytes);
             foreach (CaptureObject obj in objects) bytes = checked(bytes + (long)((obj.Reason ?? "").Length + (obj.MissingPayload ?? "").Length) * 2);
             EstimatedBytes = checked(bytes + (sourceWindow?.EstimatedBytes ?? 0));
         }

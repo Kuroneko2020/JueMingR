@@ -27,6 +27,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal readonly NativeNpcObservation Npcs;
         internal readonly ToolUse Use;
         internal Combat.HostCombat Combat;
+        internal Movement.SmartFallHost FallRescue;
         internal readonly AutoCapture Capture;
         internal readonly HerbHarvest Herbs;
         internal readonly AutoMining Mining;
@@ -205,7 +206,7 @@ namespace JueMingR.TerrariaHost.Tools
 #if JMR_BLUEPRINT_DIAGNOSTIC
             BlueprintBuildTrace.Hit(BuildTraceStage.ToolsChoose);
 #endif
-            if(!Enabled || Use.Active || ManualLeft || p.selectedItemState.HasBufferedChange)
+            if(!Enabled || Use.Active || (FallRescue?.CobwebOpportunityReserved(p)??false) || ManualLeft || p.selectedItemState.HasBufferedChange)
             {
 #if JMR_BLUEPRINT_DIAGNOSTIC
                 BlueprintBuildTrace.Count(BuildTraceReason.ToolsOccupied);

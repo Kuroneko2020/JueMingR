@@ -46,10 +46,30 @@ namespace NativeWorldTextProbe
                 var rows = h.Elements().Where(e => names.Contains((string)GetOptional(e, "Text"))).ToArray();
                 Require(rows.Select(e => (string)Get(e, "Text")).SequenceEqual(names), "real movement page has four ordered names");
                 Require(h.Elements().Count(e => ids.Contains((string)GetOptional(e, "HotkeyTarget"))) == ids.Length, "four standard row-end binding slots");
-                Require(!h.Elements().Any(e => GetOptional(e, "Command")?.ToString() == "MovementFallConfigure"), "Temporary hidden fall configuration entry leaves no layout or hitbox.");
+                Require(h.Elements().Any(e => GetOptional(e, "Command")?.ToString() == "MovementFallConfigure"), "Fall configuration has a visible standard button and real command.");
                 var controls=Get(Get(shell,"renderer"),"MovementControls");
                 Require(!(bool)Get(controls,"ConfigurationExpanded"), "Fall permission configuration remains initially collapsed.");
                 var savedPermissions=Get(movement,"SmartFallProtection");
+                h.ClickCommand("MovementFallConfigure");
+                Require((bool)Get(controls,"ConfigurationExpanded") && h.Elements().Any(e=>GetOptional(e,"Command")?.ToString()=="MovementFallDeny12"),"All thirteen permission controls expand while the main switch is off.");
+                Call(state,"ScrollTo",(float)Get(Get(state,"Layout"),"MaxScroll"));h.Frame();
+                h.ClickCommand("MovementFallDeny12");
+                Require(!(bool)Call(Get(movement,"SmartFallProtection"),"Allows",12) && !(bool)Call(movement,"IsEnabled",3),"Scrolled spiderweb hitbox changes only its persisted permission while main remains off.");
+                h.Hover(h.Command("MovementFallDeny12"));Render(game,shell,Path.Combine(output,"movement-cobweb-permission.png"));
+                var preferences=Get(movement,"preferences");
+                NativeQuickItemChecks.Until(()=>{h.Frame();return Get(Get(preferences,"Snapshot"),"Status").ToString()=="Saved";});
+                string preferencePath=(string)Get(Get(preferences,"storage"),"path");
+                var reopened=new JueMingR.Features.Movement.MovementPreferenceCodec().Decode(File.ReadAllBytes(preferencePath)).SmartFallProtection;
+                Require(!reopened.Cobweb && !reopened.Enabled,"The actual click persists spiderweb OFF independently of the main switch in a fresh file/codec read.");
+                for(int capability=0;capability<12;capability++)Require(reopened.Allows(capability)==(bool)Call(savedPermissions,"Allows",capability),"Saved/reopened spiderweb permission preserves original bit "+capability);
+                Call(shell,"CloseAndSubmitPosition");h.Frame();h.Open();h.Navigate(11);
+                if(!(bool)Get(controls,"ConfigurationExpanded"))h.ClickCommand("MovementFallConfigure");
+                Call(state,"ScrollTo",(float)Get(Get(state,"Layout"),"MaxScroll"));h.Frame();
+                Require(!(bool)Call(Get(movement,"SmartFallProtection"),"Allows",12) && h.Command("MovementFallDeny12")!=null,"Actual F5 reopen retains the saved row and scrollable hitbox.");
+                h.ClickCommand((bool)Call(savedPermissions,"Allows",12)?"MovementFallAllow12":"MovementFallDeny12");
+                Call(state,"ScrollTo",0f);h.Frame();h.ClickCommand("MovementFallConfigure");
+                Require(!(bool)Get(controls,"ConfigurationExpanded"),"Same real configuration button collapses permission rows.");
+                for(int capability=0;capability<13;capability++)Require((bool)Call(Get(movement,"SmartFallProtection"),"Allows",capability)==(bool)Call(savedPermissions,"Allows",capability),"Permission fixture returns loaded bit "+capability);
                 for (int i = 0; i < ids.Length; i++) Require(registry.Find(ids[i]) != null, "real shared registry owns action " + ids[i]);
                 Require(Get(movement, "DashMode").ToString() == "DoubleTap", "OFF presentation begins with the specified mode");
                 h.ClickCommand("MovementDashMode");
@@ -74,8 +94,8 @@ namespace NativeWorldTextProbe
                     Require(!(bool)Call(movement, "IsEnabled", 0) && !(bool)Call(movement, "IsEnabled", 2), "scaled clicks reach exact owning settings");
                 }
                 Main.UIScale = 1; h.Frame(); h.Frame();
-                for(int capability=0;capability<12;capability++)
-                    Require((bool)Call(Get(movement,"SmartFallProtection"),"Allows",capability)==(bool)Call(savedPermissions,"Allows",capability), "Hidden entry and real main-switch clicks preserve the loaded permission bit "+capability);
+                for(int capability=0;capability<13;capability++)
+                    Require((bool)Call(Get(movement,"SmartFallProtection"),"Allows",capability)==(bool)Call(savedPermissions,"Allows",capability), "Configuration and real main-switch clicks preserve the loaded permission bit "+capability);
                 for (int feature = 0; feature < ids.Length; feature++)
                 {
                     string id = ids[feature]; object icon = h.Elements().Single(e => (string)GetOptional(e, "HotkeyTarget") == id);

@@ -14,9 +14,11 @@ namespace JueMingR.TerrariaHost.Movement
         internal static SmartFallContact Contact(Player p, ref long reads)
         { return Contact(p.position, p.velocity, p.width, p.height, p.gravity, p.maxFallSpeed, p.gravDir, p.controlDown, ref reads); }
         internal static SmartFallContact Contact(Player p, ref long reads, SmartFallContactBand band)
+        { return ContactWithWeb(p,ref reads,band,null); }
+        internal static SmartFallContact ContactWithWeb(Player p, ref long reads, SmartFallContactBand band, SmartFallCobwebSearch web)
         {
             band.Begin();
-            var contact = Contact(p.position,p.velocity,p.width,p.height,p.gravity,p.maxFallSpeed,p.gravDir,p.controlDown,ref reads,band);
+            var contact = Sweep(p.position,p.velocity,p.width,p.height,p.gravity,p.maxFallSpeed,p.gravDir,p.controlDown,ref reads,band,Horizon,web);
             // An out-of-band trajectory cannot certify a cached contact. Keep
             // it unknown until actual motion/source prerequisites change,
             // rather than rerunning an overflowing sweep every idle snapshot.
@@ -61,11 +63,20 @@ namespace JueMingR.TerrariaHost.Movement
 
         internal static SmartFallContact Contact(Vector2 position, Vector2 velocity, int width, int height,
             float gravity, float maxFall, float direction, bool down, ref long reads, SmartFallContactBand band = null, int horizon = Horizon)
+        {return Sweep(position,velocity,width,height,gravity,maxFall,direction,down,ref reads,band,horizon,null);}
+        private static SmartFallContact Sweep(Vector2 position,Vector2 velocity,int width,int height,
+            float gravity,float maxFall,float direction,bool down,ref long reads,SmartFallContactBand band,int horizon,SmartFallCobwebSearch web)
         {
             var contact = default(SmartFallContact);
+            bool webFound=false;int webTick=0,webX=0,webY=0;float webPlayerY=0;
             float x = position.X, y = position.Y, vy = velocity.Y, vx = velocity.X;
             for (int tick = 0; tick < horizon; tick++)
             {
+                // Locked .8: StickyMovement samples BEFORE motion; ItemCheck
+                // places only after motion. A swept subsegment is insufficient.
+                if(web!=null && !webFound && NativeWeb(new Vector2(x,y),width,height,direction,ref reads,band,tick,out int wx,out int wy))
+                {webFound=true;webTick=tick;webX=wx;webY=wy;webPlayerY=y;}
+                web?.Sample(new Vector2(x,y),tick,ref reads,band);
                 vy = direction * Math.Min(maxFall, vy * direction + Math.Abs(gravity));
                 int steps = Math.Max(1, (int)Math.Ceiling(Math.Max(Math.Abs(vx), Math.Abs(vy)) / 4));
                 if (steps > 32) return contact; // unmodelled portal/high-speed motion
@@ -112,13 +123,27 @@ namespace JueMingR.TerrariaHost.Movement
                             SafeSurface = TileID.Sets.Clouds[tile.type] || tile.type == 666 || tile.type == 19 && tile.frameY / 18 == 49,
                             X = nx, Y = direction > 0 ? surface - height : surface,
                             Ticks = tick + (step + 1f) / steps, TileX = tx, TileY = ty, Slope = slope,
-                            Type = tile.type, FrameY = tile.frameY, HalfBrick = tile.halfBrick() };
+                            Type = tile.type, FrameY = tile.frameY, HalfBrick = tile.halfBrick(),
+                            WebFound=webFound,WebTick=webTick,WebTileX=webX,WebTileY=webY,WebPlayerY=webPlayerY };
                     }
                     if (contact.Found) return contact;
                     x = nx; y = ny;
                 }
             }
             return contact;
+        }
+        internal static bool NativeWeb(Vector2 position,int width,int height,float direction,ref long reads,SmartFallContactBand band,int tick,out int wx,out int wy)
+        {
+            wx=wy=-1;float y=position.Y-direction*.01f;
+            int left=(int)Math.Floor(position.X/16),right=(int)Math.Floor((position.X+width-.001f)/16);
+            int top=(int)Math.Floor(y/16),bottom=(int)Math.Floor((y+height-.001f)/16);
+            for(int tx=left;tx<=right;tx++)for(int ty=top;ty<=bottom;ty++)
+            {
+                Tile tile=Read(tx,ty,ref reads);band?.Observe(tx,ty,tile,tick);
+                if(tile!=null && tile.nactive() && tile.type==51 && position.X+width>tx*16 && position.X<tx*16+16 && y+height>ty*16 && y<ty*16+16.01f)
+                {wx=tx;wy=ty;return true;}
+            }
+            return false;
         }
         internal static Tile Read(int x, int y, ref long reads)
         {
@@ -148,14 +173,16 @@ namespace JueMingR.TerrariaHost.Movement
         private readonly Cell[] cells=new Cell[4096];
         private readonly int[] occupied=new int[4096];
         private readonly bool skipPassed, liquid;
+        private bool placement;
         private int stamp,count;
         private bool complete;
         internal bool Complete { get { return complete; } }
         internal SmartFallContactBand(bool skipPassed = true, bool liquid = false)
         { this.skipPassed = skipPassed; this.liquid = liquid; }
+        internal void ObservePlacement(bool enabled){placement=enabled;}
         internal void Begin(){if(++stamp==0){Array.Clear(cells,0,cells.Length);stamp=1;}count=0;complete=true;}
         private ulong Fact(Tile tile)
-        { return tile == null ? 0 : (liquid ? (ulong)tile.liquid << 48 : 0) | (!tile.nactive()?0:1UL | ((ulong)tile.type<<32) | ((ulong)(ushort)tile.frameY<<8) | ((ulong)tile.slope()<<2) | (tile.halfBrick()?2UL:0)); }
+        { return tile == null ? 0 : (liquid ? (ulong)tile.liquid << 48 : 0) | (placement?((ulong)tile.wall<<48)|((ulong)tile.liquid<<24)|(tile.active()?64UL:0):0) | (!tile.nactive()?0:1UL | ((ulong)tile.type<<32) | ((ulong)(ushort)tile.frameY<<8) | ((ulong)tile.slope()<<2) | (tile.halfBrick()?2UL:0)); }
         internal void Observe(int x,int y,Tile tile,int tick)
         {
             long key=((long)x<<32)|(uint)y;int slot=(int)(((uint)x*73856093U^(uint)y*19349663U)&4095);

@@ -27,6 +27,7 @@ namespace JueMingR.TerrariaHost.Combat
         private IdlePreview idlePreview;
         private PreviewDependencies previewDependencies;
         private HostPrismSteering.ViewLease previewView;
+        internal HostGuidedWindow PreviewGuidedWindow {get;private set;}
         internal bool PreviewFutureUnknown {get;private set;}
         internal bool PreviewFutureComplete {get;private set;}
 
@@ -37,25 +38,26 @@ namespace JueMingR.TerrariaHost.Combat
         {
             private readonly PredictionTerrain.CellLease terrain;
             private readonly HostYoyoNavigation.PresentationDependencies navigation;
+            private readonly HostGuidedNavigation.Dependencies guided;
             private readonly HostAttackObstacles obstacles;
             private readonly HostProjectileEnvironment.State environment;
             private readonly Func<Player,bool> controlInputCurrent;
             private readonly HostPrismSteering.ViewLease prismView;
-            internal PreviewDependencies(PredictionTerrain terrain,HostYoyoNavigation navigation,HostAttackObstacles obstacles,HostProjectileEnvironment.State environment,Player openingInput=null,Func<Player,bool> controlInputCurrent=null,HostPrismSteering.ViewLease prismView=default(HostPrismSteering.ViewLease))
-            {this.terrain=terrain.FreezeCells();this.navigation=navigation?.FreezePresentation(openingInput);this.obstacles=obstacles;this.environment=environment;this.controlInputCurrent=controlInputCurrent;this.prismView=prismView;}
-            internal bool Current(Player player){return player!=null && prismView.Current && terrain.Current && (navigation==null || navigation.Current(player)) && environment.Current && (obstacles==null || obstacles.Unchanged) && (controlInputCurrent==null || controlInputCurrent(player));}
+            internal PreviewDependencies(PredictionTerrain terrain,HostYoyoNavigation navigation,HostAttackObstacles obstacles,HostProjectileEnvironment.State environment,Player openingInput=null,Func<Player,bool> controlInputCurrent=null,HostPrismSteering.ViewLease prismView=default(HostPrismSteering.ViewLease),HostGuidedNavigation guided=null)
+            {this.guided=guided?.Freeze(openingInput);this.terrain=terrain.FreezeCells();this.navigation=navigation?.FreezePresentation(openingInput);this.obstacles=obstacles;this.environment=environment;this.controlInputCurrent=controlInputCurrent;this.prismView=prismView;}
+            internal bool Current(Player player){return player!=null && prismView.Current && terrain.Current && (navigation==null || navigation.Current(player)) && (guided==null || guided.Current(player)) && environment.Current && (obstacles==null || obstacles.Unchanged) && (controlInputCurrent==null || controlInputCurrent(player));}
         }
         internal PreviewDependencies CapturePreviewDependencies(AttackContact contact)
         {return contact!=null && ReferenceEquals(contact,previewContact)?previewDependencies:null;}
 
-        internal void ClearPreview(){PreviewFutureUnknown=PreviewFutureComplete=false;previewContact=null;previewSource=null;previewChild=null;previewAmmo=null;previewWeapon=null;previewObstacles=null;previewDependencies=null;idlePreview=null;}
+        internal void ClearPreview(){PreviewGuidedWindow=default(HostGuidedWindow);PreviewFutureUnknown=PreviewFutureComplete=false;previewContact=null;previewSource=null;previewChild=null;previewAmmo=null;previewWeapon=null;previewObstacles=null;previewDependencies=null;idlePreview=null;}
 
         // This result has no Source or cursor capability. Existing native
         // controllers are observed through their real birth receipt; an idle
         // opening uses private ContentSamples copies and never enters the pool.
         internal AttackContact Preview(NpcTrajectory timeline,HostAttackPhase phase,int delay,bool allowOpening=true)
         {
-            PreviewFutureUnknown=PreviewFutureComplete=false;
+            PreviewGuidedWindow=default(HostGuidedWindow);PreviewFutureUnknown=PreviewFutureComplete=false;
             if(allowOpening && TryReuseIdle(timeline,phase,delay))return previewContact;
             ClearPreview();var player=combat.Player;
             // Clear-line candidate plans are independent readers of live controls.
@@ -64,7 +66,7 @@ namespace JueMingR.TerrariaHost.Combat
             previewTerrain.Reset();previewEnvironment=new HostProjectileEnvironment.State(true);
             previewWeapon=player.HeldItem;previewSlot=player.selectedItem;previewType=previewWeapon.type;previewPrefix=previewWeapon.prefix;
             previewTick=Main.GameUpdateCount;previewSession=observation.Session;previewSelection=combat.Tools.SelectionIntent;
-            bool live=false,prismSeen=false,prismClosed=true,prismOnly=true;retired.Clear();
+            bool guidedSeen=false;bool live=false,prismSeen=false,prismClosed=true,prismOnly=true;retired.Clear();
             foreach(var pair in shots)
             {
                 var entry=pair.Value;if(!Observed(entry)){retired.Add(pair.Key);continue;}if(!HostPulseAttack.Handles(entry.Type))live=true;
@@ -77,9 +79,10 @@ namespace JueMingR.TerrariaHost.Combat
                 // its immutable contact as an observation, not its consumable
                 // capability; a later Clear cannot erase this preview fact.
                 if(ReferenceEquals(preparedTimeline,timeline) && preparedPhase==phase && entry.Prepared==Main.GameUpdateCount && entry.Contact!=null && entry.Type!=444 && entry.Type!=1035 && (entry.Type!=633 || entry.PrismView.Current))
-                {BindPreview(entry.Contact,entry,entry.Ammo,entry.ContactChild);previewObstacles=entry.Obstacles;previewDependencies=new PreviewDependencies(terrain,entry.Navigation,entry.Obstacles,environmentState,prismView:entry.PrismView);break;}
+                {BindPreview(entry.Contact,entry,entry.Ammo,entry.ContactChild);previewObstacles=entry.Obstacles;previewDependencies=new PreviewDependencies(terrain,entry.Navigation,entry.Obstacles,environmentState,prismView:entry.PrismView,guided:entry.Guided);break;}
                 var view=new Controlled{Shot=entry.Shot,Key=entry.Key,Type=entry.Type,Source=entry.Source,Born=entry.Born,BornNext=entry.BornNext,Children=entry.Children};
                 if(entry.Navigation!=null)view.Navigation=entry.PreviewNavigation??(entry.PreviewNavigation=new HostYoyoNavigation());
+                if(entry.Guided!=null)view.Guided=entry.PreviewGuided??(entry.PreviewGuided=new HostGuidedNavigation());
                 var clock=new HostAttackClock(timeline,phase);
                 if(entry.Type==611)
                 {
@@ -89,6 +92,11 @@ namespace JueMingR.TerrariaHost.Combat
                 else if(entry.Type==444)view.Contact=BubblePreview(player,entry.Shot,timeline,clock,false);
                 else if(entry.Type==1035)view.Contact=HostWhipAttack.Contact(player,entry.Shot,timeline,clock,previewTerrain,out view.Point);
                 else SolveEntry(view,timeline,phase,previewTerrain,player);
+                if(HostGuidedAttack.Handles(view.Type))
+                {
+                    PreviewGuidedWindow=guidedSeen?PreviewGuidedWindow.Merge(view.GuidedWindow,timeline,phase):view.GuidedWindow;
+                    guidedSeen=true;
+                }
                 if(view.Type==633 && view.PrismView.Unknown)PreviewFutureUnknown=true;
                 if(view.Type==633){prismSeen=true;prismClosed&=view.PrismView.Complete;}
                 if(view.Contact==null)continue;
@@ -96,7 +104,7 @@ namespace JueMingR.TerrariaHost.Combat
                 previewView=view.PrismView;
                 // BubblePreview supplies its child obstacle owner directly.
                 if(entry.Type!=444)previewObstacles=view.Obstacles;
-                previewDependencies=new PreviewDependencies(previewTerrain,view.Navigation,previewObstacles,previewEnvironment,prismView:view.PrismView);break;
+                previewDependencies=new PreviewDependencies(previewTerrain,view.Navigation,previewObstacles,previewEnvironment,prismView:view.PrismView,guided:view.Guided);break;
             }
             foreach(int key in retired)shots.Remove(key);
             // A current charge, bubble or release owns its stage even when it
@@ -130,6 +138,14 @@ namespace JueMingR.TerrariaHost.Combat
             Vector2 mounted=body.RotatedRelativePoint(body.MountedCenter),unit=(aim-mounted).SafeNormalize(Vector2.UnitX*body.direction);
             shot.Center=mounted;shot.velocity=unit*previewAmmo.Speed;
             var openingView=new Controlled{Shot=shot,Key=(int)shot.key,Type=type};
+            if(HostGuidedAttack.Weapon(previewWeapon,type))
+            {
+                Vector2 input;bool usable;HostGuidedNavigation navigation;AttackContact contact;
+                shot=HostGuidedNavigation.OpeningShot(body,previewWeapon,previewAmmo,timeline,launchClock,playerFrame,out input,out usable,out navigation,out contact);
+                if(shot==null)return null;
+                PreviewGuidedWindow=navigation.Window;
+                openingView.Shot=shot;openingView.Guided=navigation;openingView.Point=input;openingView.HasPoint=usable;openingView.Contact=contact;
+            }
             bool managedYoyo=HostYoyoNavigation.Handles(shot) && player.magicString && combat.Use.ManagedAttackIntent(player);
             Func<Player,bool> controlInputCurrent=null;
             if(HostYoyoNavigation.Handles(shot))
@@ -143,7 +159,8 @@ namespace JueMingR.TerrariaHost.Combat
                     shot.velocity=(waypoint-mounted).SafeNormalize(unit)*16;openingView.Navigation=navigation;
                 }
             }
-            if(managedYoyo)previewContact=HostYoyoReleaseAttack.Preview(body,previewWeapon,previewAmmo.Speed,shot,timeline,launchClock,previewTerrain,out previewObstacles);
+            if(openingView.Guided!=null)previewContact=openingView.Contact;
+            else if(managedYoyo)previewContact=HostYoyoReleaseAttack.Preview(body,previewWeapon,previewAmmo.Speed,shot,timeline,launchClock,previewTerrain,out previewObstacles);
             else if(type==444)
             {
                 // Native bubble births have random spread and 5..25% speed.
@@ -168,7 +185,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(type==633)PreviewFutureComplete=previewContact==null && openingView.PrismView.Complete;
             }
             previewContact=AttackIntercept.WithLaunchDelay(previewContact,delay);
-            if(previewContact!=null)previewDependencies=new PreviewDependencies(previewTerrain,openingView.Navigation,previewObstacles,previewEnvironment,player,controlInputCurrent,openingView.PrismView);
+            if(previewContact!=null)previewDependencies=new PreviewDependencies(previewTerrain,openingView.Navigation,previewObstacles,previewEnvironment,player,controlInputCurrent,openingView.PrismView,openingView.Guided);
             if(CacheableOpening(player,type,delay))idlePreview=new IdlePreview(player,type,timeline,phase,launchClock.Age,previewAmmo,openingView.PrismView);
             return previewContact;
         }
@@ -227,6 +244,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
         }
 
+        internal static Projectile CopyGuidedProjectile(int type,int owner){return CopyProjectile(type,owner);}
         private static Projectile CopyProjectile(int type,int owner)
         {
             Projectile sample;if(!ContentSamples.ProjectilesByType.TryGetValue(type,out sample))return null;

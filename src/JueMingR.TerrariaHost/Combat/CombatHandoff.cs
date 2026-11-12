@@ -11,7 +11,7 @@ namespace JueMingR.TerrariaHost.Combat
     // restoration remain the actual borrower's responsibility.
     internal sealed class CombatHandoff
     {
-        private enum Borrower { None, Tools, Extraction, QuickItem }
+        private enum Borrower { None, Tools, Extraction, QuickItem, SmartFall }
         private readonly HostCombat host;
         private Processing.HostProcessing processing;
         private QuickItems.HostQuickItems quick;
@@ -63,9 +63,11 @@ namespace JueMingR.TerrariaHost.Combat
             if(probing || !borrowed)return true;
             return who==Borrower.Tools?host.Tools.Use.Active && host.Tools.Use.Operation==borrowToken:
                 who==Borrower.Extraction?processing.Extraction.Active && processing.Extraction.Operation==borrowToken:
-                quick.Use.Active && quick.Use.Operation==borrowToken;
+                who==Borrower.QuickItem?quick.Use.Active && quick.Use.Operation==borrowToken:
+                host.Tools.FallRescue!=null && host.Tools.FallRescue.CobwebSelection(player) && host.Tools.FallRescue.CobwebOperation==borrowToken;
         }
         internal bool AllowsTools {get{return Allows(Borrower.Tools);}}
+        internal bool AllowsSmartFall {get{return Allows(Borrower.SmartFall);}}
         internal bool Protect(Item item){return Waiting && Identity() && ReferenceEquals(item,weapon);}
         private void Capture(Borrower who)
         {
@@ -79,6 +81,12 @@ namespace JueMingR.TerrariaHost.Combat
             if(Waiting)
             {
                 if(releasing && host.Use.CanYield){host.Use.Stop();releasing=false;}
+                return;
+            }
+            if(host.Use.CanOffer && (host.Tools.FallRescue?.CobwebCombatRequest(p,host.Use.Operation)??false))
+            {
+                Capture(Borrower.SmartFall);
+                if(host.Use.CanYield)host.Use.Stop();else{releasing=true;host.Use.RequestYield();}
                 return;
             }
             if(!host.Use.CanOffer || !host.FreshGesture)return;
@@ -110,7 +118,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(!ReferenceEquals(p,host.Player))return;FinishFrame();Observe(true);
             // This seam runs before every borrower's Sync prefix. Remove only
             // our old hold; the actual borrower then supplies its own pulse.
-            if(Waiting && Valid() && (AllowsTools || Allows(Borrower.Extraction) || Allows(Borrower.QuickItem)))
+            if(Waiting && Valid() && (AllowsTools || Allows(Borrower.Extraction) || Allows(Borrower.QuickItem) || AllowsSmartFall))
             {if(left)p.controlUseItem=false;}
         }
         internal void AfterInteractions(Player p)
@@ -122,7 +130,7 @@ namespace JueMingR.TerrariaHost.Combat
             // token; QuickItems must retire its not-yet-consumed pulse too.
             if(right && (p.tileInteractionHappened || p.chest>=0 || p.talkNPC>=0 || p.sign>=0))
             {Interrupted();return;}
-            if(right && Valid() && !releasing && (AllowsTools || Allows(Borrower.Extraction) || Allows(Borrower.QuickItem)))
+            if(right && Valid() && !releasing && (AllowsTools || Allows(Borrower.Extraction) || Allows(Borrower.QuickItem) || AllowsSmartFall))
             {FinishFrame();tileScope=new CombatInputScope(p,p.controlUseItem,true,false);tileScope.Apply();}
         }
         internal void Interrupted()
@@ -132,19 +140,26 @@ namespace JueMingR.TerrariaHost.Combat
             if(offered==Borrower.Tools && host.Tools.Use.Operation==borrowToken)host.Tools.Yield();
             else if(offered==Borrower.Extraction && processing.Extraction.Operation==borrowToken)processing.Extraction.Cancel();
             else if(offered==Borrower.QuickItem && quick.Use.Operation==borrowToken)quick.Use.Retire();
+            else if(offered==Borrower.SmartFall)host.Tools.FallRescue?.CancelCobwebBorrow(player,borrowToken);
         }
         internal void FinishFrame(){tileScope?.End();tileScope=null;}
         private void Observe(bool afterSelection)
         {
             if(!Waiting)return;
             if(!Identity()){Reset();return;}
+            if(offered==Borrower.SmartFall && !borrowed && !(host.Tools.FallRescue?.CobwebSelection(player)??false) && !(host.Tools.FallRescue?.CobwebCombatRequest(player,0)??false))
+            {host.Use.CancelYield();Reset();return;}
             if(!Valid())revoked=true;
             if(releasing)
             {if(revoked){host.Use.CancelYield();Reset();}return;}
-            long current=offered==Borrower.Tools?host.Tools.Use.Operation:offered==Borrower.Extraction?processing.Extraction.Operation:quick.Use.Operation;
-            bool active=offered==Borrower.Tools?host.Tools.Use.Active:offered==Borrower.Extraction?processing.Extraction.Active:quick.Use.Active;
+            long current=offered==Borrower.Tools?host.Tools.Use.Operation:offered==Borrower.Extraction?processing.Extraction.Operation:offered==Borrower.QuickItem?quick.Use.Operation:host.Tools.FallRescue?.CobwebOperation??0;
+            bool active=offered==Borrower.Tools?host.Tools.Use.Active:offered==Borrower.Extraction?processing.Extraction.Active:offered==Borrower.QuickItem?quick.Use.Active:host.Tools.FallRescue?.CobwebSelection(player)??false;
             if(!borrowed && active){borrowed=true;borrowToken=current;last=offered;}
             if(borrowed && active && current!=borrowToken){Reset();return;}
+            // Movement acquires at its next trusted Capture, whereas tools
+            // can acquire inside this selection callback. Preserve only the
+            // one offered, deadline-bound request across that phase difference.
+            if(offered==Borrower.SmartFall && !borrowed && (host.Tools.FallRescue?.CobwebCombatRequest(player,0)??false))return;
             if(afterSelection && !active && !PickingReturn())Reset();
         }
         private bool PickingReturn(){return player.selectedItem!=slot || player.selectedItemState.HasBufferedChange || player.selectedItemState.HasActiveOverride;}
