@@ -54,6 +54,7 @@ namespace NativeWorldTextProbe
                     // Explicit local fixture diagnosis only; formal Appearance
                     // retains its complete body and reaches this case there.
                     if(family=="Payload")ConstructionPayload(context,host,tools,input,check);
+                    if(family=="Payload")ConstructionContainerRepairs(context,host,tools,input,check);
                     if(family=="Structure")ConstructionStructures(context,host,tools,input,check);
                     if(family=="EmptyReceipt")check("truly empty settled receipt",()=>ConstructionEmptyPaintReceipt(context,host,tools,input));
                     if(family=="EmptyReceipt" || family=="SettledAdmission")check("settled paint live admission",()=>ConstructionSettledPaintAdmission(context,host,tools,input));

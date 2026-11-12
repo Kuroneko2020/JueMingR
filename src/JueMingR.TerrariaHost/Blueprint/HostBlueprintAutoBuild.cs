@@ -942,7 +942,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // until its decoder reply or the actual session boundary below.
             MaterialBuildEligibilityRevision++; ClearBuildProgressSignals(); RemoveBuildSources();
         }
-        private void ClearBuildSession() { ClearContainerNames(); containerOpenDebts.Clear(); containerManualGeneration = 0; structureCycles.Clear(); buildContainer = null; StopWiringBuild(true); buildMaterialPreparation?.ClearSession(); ClearBuildSupplyHint(); ClearAppearanceRestoration(); }
+        private void ClearBuildSession() { ClearContainerNames(); containerOpenDebts.Clear(); containerOpenGeneration = 0; structureCycles.Clear(); buildContainer = null; StopWiringBuild(true); buildMaterialPreparation?.ClearSession(); ClearBuildSupplyHint(); ClearAppearanceRestoration(); }
         private void StartBuildUnknownSession()
         {
             // Match Tools' real identity boundary. A menu/UI interruption or

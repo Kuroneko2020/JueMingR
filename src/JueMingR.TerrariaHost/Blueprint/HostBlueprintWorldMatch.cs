@@ -813,7 +813,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (BlueprintMaterialSteps.SameBody(read.ObjectTarget,read.ObjectTargets.Cells,read.ObjectSamples,
                 ProjectionMatchReadCurrent(read.Range,read.Range.ProgressStamp),MaterialCatalog,substitutionPolicy)==BlueprintBodyState.Same)
                 for (int member=0;member<read.ObjectTargets.Cells.Count && member<read.ObjectSamples.Count;member++)
-                    ObserveContainerNameTarget(read.Owner,read.ObjectTargets.Cells[member],read.ObjectSamples[member]);
+                    ObserveContainerNameTarget(read.Owner,read.ObjectTargets.Cells[member],read.ObjectSamples[member],read.ObjectTarget);
             if(state==BlueprintWorldMatchState.Match)
             {
                 if(read.ObjectTarget.Family==BlueprintWorldObjectFamily.Door)

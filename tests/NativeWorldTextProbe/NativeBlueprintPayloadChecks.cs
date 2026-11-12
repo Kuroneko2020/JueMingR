@@ -83,8 +83,8 @@ namespace NativeWorldTextProbe
                     var cell=new CaptureCell{X=ca.x,Y=ca.y,Layers=CaptureLayer.Tile,TileType=TileID.Containers};
                     Require(PayloadRead(host,cell).NameState==BlueprintPayloadState.Unknown,"A client local name alone cannot authorize a rename.");
                     PayloadReceive(current,PayloadNamePacket(a,ca,""),true);
-                    Until(context,input,()=>GetOptional(host,"namingContainer")!=null && GetOptional(Get(host,"namingContainer"),"PendingOpen")!=null);
-                    object originalTarget=Get(host,"namingContainer"),originalOwner=Get(originalTarget,"Owner");int closes=PayloadCloseCount();
+                    Until(context,input,()=>GetOptional(host,"waitingContainer")!=null && GetOptional(Get(host,"waitingContainer"),"PendingOpen")!=null);
+                    object originalTarget=Get(host,"waitingContainer"),originalOwner=Get(originalTarget,"Owner");int closes=PayloadCloseCount();
                     Require(p.chest==-1 && !(bool)Get(host,"AutomaticContainerOperation"),"An outstanding31 has not opened a UI or acquired another chest's history suppression.");
                     if(scenario==3)
                     {
@@ -105,11 +105,11 @@ namespace NativeWorldTextProbe
                         {
                             Call(host,"ClearProjection");Place(context,host,input,entry,ca.x,ca.y);SetAutomatic(host,input,true);
                             for(int frame=0;frame<16;frame++)Step(context,input);
-                            Require(GetOptional(host,"namingContainer")==null && Scene(host).Length==1,"A new instance cannot borrow an old outstanding31 permission at the same coordinate.");
+                            Require(GetOptional(host,"waitingContainer")==null && Scene(host).Length==1,"A new instance cannot borrow an old outstanding31 permission at the same coordinate.");
                             PayloadReceive(current,PayloadOpenPacket(a,ca),true);
                             Require(p.chest==-1 && PayloadCloseCount()==closes+1,"A cancelled old33 is rejected before UI assignment and closed only when it has no newer manual successor.");
-                            Until(context,input,()=>GetOptional(host,"namingContainer")!=null && GetOptional(Get(host,"namingContainer"),"PendingOpen")!=null);
-                            Require(!ReferenceEquals(Get(Get(host,"namingContainer"),"Owner"),originalOwner),"The new instance obtains its own new native31.");
+                            Until(context,input,()=>GetOptional(host,"waitingContainer")!=null && GetOptional(Get(host,"waitingContainer"),"PendingOpen")!=null);
+                            Require(!ReferenceEquals(Get(Get(host,"waitingContainer"),"Owner"),originalOwner),"The new instance obtains its own new native31.");
                             PayloadReceive(current,PayloadOpenPacket(a,ca),true);Step(context,input);
                             Require(ca.name=="" && Scene(host).Length==1 && p.chest==-1 && !Main.playerInventory,"A real submission remains unconfirmed and promptly returns its own UI before a delayed69.");
                             byte[] submitted=payloadChestPackets.Last(bytes=>bytes[2]==33 && BitConverter.ToInt16(bytes,3)==a && bytes[9]!=0);

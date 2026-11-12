@@ -269,10 +269,7 @@ namespace JueMingR.TerrariaHost.Combat
                         // so it need not take another first slice unnecessarily.
                         candidateWorldVisited[next]=true;
                         if(EvaluateCandidate(identity,sampleTick,false,phase,nextKey,required))best=next;
-                        var completed=candidatePlans[nextKey];var completedPath=completed?.Timeline;
-                        if(completed?.Prepared==true && completed.PreparedTick==Main.GameUpdateCount && completed.Phase==phase &&
-                            completedPath!=null && completedPath.SampleTick==sampleTick && !completedPath.BudgetPaused && completedPath.Count>required)
-                            candidateAttempt[nextKey]=pass;
+                        RecordCandidateRemainder(identity,phase,required,nextKey,sampleTick,pass);
                     }
                 }
                 // Positives are fresh in this pass under the selected model:
@@ -320,6 +317,17 @@ namespace JueMingR.TerrariaHost.Combat
                 presentationSelection=selection.Target;presentationNearest=nearest;presentationSelectionTick=sampleTick;selectionWeapon=item;presentationOptions=observation.Options;presentationReachable=best>=0;
             }
         }
+        // This is the World remainder's only completion-ticket outlet. With
+        // a farther positive, required may be a cheap 16-step rank revisit;
+        // it must not retire the nearer Guided candidate's retained 32-step
+        // turn. Ordinary Prepared plans keep their existing admitted-range rule.
+        private void RecordCandidateRemainder(NpcIdentity identity,HostAttackPhase phase,int required,int key,long sampleTick,long pass)
+        {
+            var completed=candidatePlans[key];var completedPath=completed?.Timeline;
+            if(completed!=null && (completed.Prepared || GuidedCandidateComplete(completed,identity,phase,Math.Max(required,candidateRequests[key]))) && completed.PreparedTick==Main.GameUpdateCount && completed.Phase==phase &&
+                completedPath!=null && completedPath.SampleTick==sampleTick && !completedPath.BudgetPaused && completedPath.Count>required)
+                candidateAttempt[key]=pass;
+        }
         private int CandidateProgressRequired(NpcIdentity identity,int key,bool beforeNpc)
         {
             int preferred=CandidatePreferred(identity),requested=candidateRequests[key];
@@ -344,8 +352,19 @@ namespace JueMingR.TerrariaHost.Combat
             // A 633 controlled preview has no ordinary Prepared stamp. Only
             // its real beam-window completion may advance this existing fair
             // request; camera/motion unknowns and interrupted solves cannot.
-            bool complete=plan!=null && (plan.Prepared || combat.Player.HeldItem.shoot==633 && plan.ControlledPrefixComplete) && plan.Contact==null && path!=null && !path.BudgetPaused && path.Count>requested;
+            bool complete=plan!=null && ((plan.Prepared || combat.Player.HeldItem.shoot==633 && plan.ControlledPrefixComplete) && plan.Contact==null && path!=null && !path.BudgetPaused && path.Count>requested ||
+                GuidedCandidateComplete(plan,identity,beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld,requested));
             return Math.Min(NpcPredictionCache.Horizon,Math.Max(preferred,complete?Math.Max(32,requested*2):requested));
+        }
+        // This is a finite miss of THIS view, not Prepared's hand-input lease
+        // or 633's beam window. A cheap 16-step revisit cannot complete a
+        // retained 32-step request, even if Source has a longer publication.
+        private bool GuidedCandidateComplete(PreviewPlan plan,NpcIdentity identity,HostAttackPhase phase,int required)
+        {
+            var path=plan?.Timeline;
+            return plan!=null && plan.Controlled && HostGuidedAttack.Weapon(combat.Player.HeldItem) && plan.Contact==null &&
+                path!=null && !path.BudgetPaused && path.Count>required && plan.Phase==phase &&
+                plan.GuidedWindow.Covers(path,identity,phase,plan.PreparedTick,required);
         }
         private bool EvaluateCandidate(NpcIdentity identity,long tick,bool beforeNpc,HostAttackPhase phase,int key,int required)
         {
@@ -400,7 +419,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // Keep that causal stage unresolved until its family solver
                 // provides a contact; a genuine despawn still closes the tail.
                 bool positive=PlanPositive(plan);
-                candidateUnknown[key]=plan.Balanced?plan.Solution.Reachability==HostAttackReachability.Unknown:contact==null && (combat.Player.HeldItem.shoot==633 && Control.PreviewFutureUnknown || timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && (timeline.Count<=NpcPredictionCache.Horizon || HasOwnMeleeHitFamily(combat.Player.HeldItem)));
+                candidateUnknown[key]=plan.Balanced?plan.Solution.Reachability==HostAttackReachability.Unknown:contact==null && (HostGuidedAttack.Weapon(combat.Player.HeldItem) && !GuidedCandidateComplete(plan,identity,phase,required) || combat.Player.HeldItem.shoot==633 && Control.PreviewFutureUnknown || timeline==null || timeline.BudgetPaused || timeline.Stop==PredictionStop.None && (timeline.Count<=NpcPredictionCache.Horizon || HasOwnMeleeHitFamily(combat.Player.HeldItem)));
                 plan.MotionTerrain=null;plan.MotionSource=null;
                 // Seal only a completed positive before another candidate can
                 // replace the producing owner's cells. This bounded copy ends

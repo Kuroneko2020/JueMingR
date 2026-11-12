@@ -23,7 +23,13 @@ namespace JueMingR.TerrariaHost.Combat
         private Vector2 safePoint;
         private PredictionTerrain.CellLease safeMotor,safeRoute;
         private uint preparedTick;
+        // The meet of this call's required proposals. Native destruction or
+        // a definitely rejected proposal closes that proposal's remainder;
+        // unknown dependencies never do. A later required route can still
+        // invalidate completion of the whole candidate.
+        private int through,attemptThrough;
         internal bool BudgetPaused {get;private set;}
+        internal HostGuidedWindow Window {get;private set;}
         internal int Searches {get{return route.Searches;}}
         internal int Reuses {get{return route.Reuses;}}
         internal int Replays {get;private set;}
@@ -44,13 +50,14 @@ namespace JueMingR.TerrariaHost.Combat
         internal AttackContact Prepare(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,HostAttackPlayerFrame frame,out Vector2 point,out bool hasPoint,AttackAmmoSnapshot birthAmmo=null)
         {
             hasSafePrefix=false;safeMotor=safeRoute=null;BudgetPaused=false;preparedTick=Main.GameUpdateCount;
+            Window=new HostGuidedWindow(timeline,clock.Phase);through=int.MaxValue;attemptThrough=-1;
             try{return PrepareCore(player,shot,timeline,clock,frame,out point,out hasPoint,birthAmmo);}
             catch(CombatPredictionBudgetExceededException)
             {
                 // A completed three-world-step prefix already owns its exact
                 // read set. Optional tail exhaustion cannot erase that input
                 // or turn it into a damage Contact. No allowance is restarted.
-                BudgetPaused=true;point=safePoint;hasPoint=usable=hasSafePrefix;motorLease=safeMotor;routeLease=safeRoute;return null;
+                BudgetPaused=true;Window=new HostGuidedWindow(timeline,clock.Phase,through:Math.Min(through,attemptThrough),budgetPaused:true);point=safePoint;hasPoint=usable=hasSafePrefix;motorLease=safeMotor;routeLease=safeRoute;return null;
             }
         }
         private AttackContact PrepareCore(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,HostAttackPlayerFrame frame,out Vector2 point,out bool hasPoint,AttackAmmoSnapshot birthAmmo)
@@ -75,37 +82,42 @@ namespace JueMingR.TerrariaHost.Combat
             var receive=HostAttackReceive.Capture(player,shot,timeline.Identity.Slot,clock.BeforeNpc,clock.NextWorld);
             int updates=shot.extraUpdates+1;
             int estimate=Math.Max(1,(int)(Vector2.Distance(shot.Center,new Vector2(timeline[clock.FirstTick].Bounds.CenterX,timeline[clock.FirstTick].Bounds.CenterY))/(shot.type==491?20:32)/updates));
-            bool blocked=false;Vector2 directPoint=default(Vector2),previousAim=new Vector2(float.NaN);bool directUsable=false;
+            bool blocked=false,complete=true;Vector2 directPoint=default(Vector2),previousAim=new Vector2(float.NaN);bool directUsable=false;
             foreach(int offset in shot.type==491?KnifeOffsets:MissileOffsets)
             {
                 var box=timeline[Math.Min(timeline.Count-1,clock.FirstTick+estimate+offset)].ProjectileReceiveBounds;
-                Vector2 candidate=new Vector2(box.CenterX,box.CenterY),first;bool safe,hit;
+                Vector2 candidate=new Vector2(box.CenterX,box.CenterY),first;bool safe,hit,finished;
                 if(candidate==previousAim)continue;previousAim=candidate;
-                var contact=Replay(player,body,shot,timeline,clock,positions,limit,receive,new[]{candidate},false,out first,out safe,out hit,birthAmmo);
-                blocked|=hit;
+                var contact=Replay(player,body,shot,timeline,clock,positions,limit,receive,new[]{candidate},false,out first,out safe,out hit,out finished,birthAmmo);
+                through=Math.Min(through,attemptThrough);complete&=finished;blocked|=hit;
                 if(safe && !directUsable){directPoint=first;directUsable=true;}
                 if(contact!=null){point=first;hasPoint=usable=true;motorLease=terrain.FreezeCells();return contact;}
             }
             // No Contact can mean horizon/immune, not a wall. Keep the cheap
             // native control prefix unless actual motor collision needs a route.
             if(!blocked)
-            {point=directPoint;hasPoint=usable=directUsable;motorLease=terrain.FreezeCells();return null;}
+            {Window=new HostGuidedWindow(timeline,clock.Phase,complete,through);point=directPoint;hasPoint=usable=directUsable;motorLease=terrain.FreezeCells();return null;}
             var receiver=timeline[Math.Min(timeline.Count-1,clock.FirstTick+estimate)].ProjectileReceiveBounds;
+            attemptThrough=clock.FirstTick-1;
             if(route.Prepare(player,shot,timeline.Identity,receiver))
             {
-                bool safe,hit;Vector2 first;
-                var contact=Replay(player,body,shot,timeline,clock,positions,limit,receive,route.Points,true,out first,out safe,out hit,birthAmmo);
+                bool safe,hit,finished;Vector2 first;
+                var contact=Replay(player,body,shot,timeline,clock,positions,limit,receive,route.Points,true,out first,out safe,out hit,out finished,birthAmmo);
+                through=Math.Min(through,attemptThrough);complete&=finished;Window=new HostGuidedWindow(timeline,clock.Phase,contact==null && complete,through);
                 route.Freeze();routeLease=route.Lease;
                 point=first;hasPoint=usable=safe;motorLease=terrain.FreezeCells();return contact;
             }
             // A failed geometric proposal cannot forbid native Shoot. Basic
             // remains the existing fallback; no synthetic Contact is emitted.
+            complete&=route.Status==HostGuidedRouteStatus.Blocked;
+            if(!complete)through=Math.Min(through,attemptThrough);
+            Window=new HostGuidedWindow(timeline,clock.Phase,complete,through);
             motorLease=terrain.FreezeCells();return null;
         }
         private static readonly int[] MissileOffsets={0,1,3,8},KnifeOffsets={0,3,10,25};
-        private AttackContact Replay(Player player,Player body,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PlayerPoses positions,int limit,HostAttackReceive receive,IReadOnlyList<Vector2> path,bool navigation,out Vector2 first,out bool safe,out bool blocked,AttackAmmoSnapshot birthAmmo)
+        private AttackContact Replay(Player player,Player body,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PlayerPoses positions,int limit,HostAttackReceive receive,IReadOnlyList<Vector2> path,bool navigation,out Vector2 first,out bool safe,out bool blocked,out bool complete,AttackAmmoSnapshot birthAmmo)
         {
-            Replays++;first=default(Vector2);safe=blocked=false;if(path.Count==0)return null;
+            Replays++;attemptThrough=clock.FirstTick-1;first=default(Vector2);safe=blocked=complete=false;if(path.Count==0)return null;
             int at=0,updates=shot.extraUpdates+1;var knife=new HostFlyingKnifeAttack.State(shot);
             Vector2 center=shot.Center,velocity=shot.velocity,position=shot.position;bool wet=shot.wet,honey=shot.honeyWet,lava=shot.lavaWet,shimmer=shot.shimmerWet;
             for(int step=0;step<limit;step++)
@@ -116,7 +128,11 @@ namespace JueMingR.TerrariaHost.Combat
                     // A future corner may be selected only through a full-body
                     // clear connection. The native motor still checks every
                     // movement substep, including knife inertia/reflections.
-                    if(navigation)while(at<path.Count-1 && route.Clear(center,path[at+1]))at++;
+                    if(navigation)while(at<path.Count-1)
+                    {
+                        bool clear=route.Clear(center,path[at+1]);if(route.LastClearUnknown)return null;
+                        if(!clear)break;at++;
+                    }
                     Vector2 aim=path[at];
                     if(navigation && shot.type==491 && at<path.Count-1 && Vector2.Distance(center,aim)<120)
                         aim=center+(aim-center).SafeNormalize(velocity.SafeNormalize(Vector2.UnitX))*120;
@@ -138,12 +154,13 @@ namespace JueMingR.TerrariaHost.Combat
                     if(shot.type==491)
                     {
                         var previous=knife;
-                        if(!HostFlyingKnifeAttack.Step(shot,terrain,ref knife,body.Center,aim,true) || !knife.Alive)return null;
+                        if(!HostFlyingKnifeAttack.Step(shot,terrain,ref knife,body.Center,aim,true))return null;
+                        if(!knife.Alive){attemptThrough=clock.FirstTick+limit-1;complete=true;return null;}
                         center=knife.Center;velocity=knife.Velocity;
                         // A reflection is real knife behavior, but a straight
                         // proposal which bounces is a reason to query a route.
                         if(knife.Collided)blocked=true;
-                        if(navigation && !route.Clear(previous.Center,center)){blocked=true;return null;}
+                        if(navigation && !route.Clear(previous.Center,center)){blocked=!route.LastClearUnknown;complete=blocked;if(complete)attemptThrough=clock.FirstTick+limit-1;return null;}
                     }
                     else
                     {
@@ -159,18 +176,19 @@ namespace JueMingR.TerrariaHost.Combat
                             // assigning this action's WetCollision result.
                             // Flame lash dies in water on that native phase;
                             // touching lava instead clears its wet/lava flags.
-                            if(wet && !lava && Terraria.ID.ProjectileID.Sets.IsDestroyedByWater[shot.type])return null;
+                            if(wet && !lava && Terraria.ID.ProjectileID.Sets.IsDestroyedByWater[shot.type]){attemptThrough=clock.FirstTick+limit-1;complete=true;return null;}
                             if(shot.type==34 && lava){touching=wet=lava=false;}
                             wet=touching;if(!wet)lava=honey=shimmer=false;
                         }
                         if(shimmer)return null;
                         Vector2 displacement=velocity;bool hit=false;
                         if(shot.tileCollide && !terrain.ProjectileTileMotion(shot,ref position,ref velocity,wet,honey,out displacement,out hit))return null;
-                        if(hit){blocked=true;return null;}
+                        if(hit){attemptThrough=clock.FirstTick+limit-1;blocked=complete=true;return null;}
                         position+=wet?displacement:velocity;center=position+shot.Size*.5f;
                     }
                     // A prefix authorizes only this frame's first input. It
                     // does not promise that an uncomputed tail will hit.
+                    if(sub==updates-1)attemptThrough=clock.FirstTick+step;
                     if(step>=2 && sub==updates-1 && !safe){safe=true;CapturePrefix(first,navigation);}
                     if(receive.Allows(clock.LaunchDelay+step+1))
                     {
@@ -179,7 +197,7 @@ namespace JueMingR.TerrariaHost.Combat
                     }
                 }
             }
-            return null;
+            complete=true;return null;
         }
         private void CapturePrefix(Vector2 point,bool navigation)
         {

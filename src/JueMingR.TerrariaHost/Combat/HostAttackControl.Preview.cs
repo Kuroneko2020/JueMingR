@@ -27,6 +27,7 @@ namespace JueMingR.TerrariaHost.Combat
         private IdlePreview idlePreview;
         private PreviewDependencies previewDependencies;
         private HostPrismSteering.ViewLease previewView;
+        internal HostGuidedWindow PreviewGuidedWindow {get;private set;}
         internal bool PreviewFutureUnknown {get;private set;}
         internal bool PreviewFutureComplete {get;private set;}
 
@@ -49,14 +50,14 @@ namespace JueMingR.TerrariaHost.Combat
         internal PreviewDependencies CapturePreviewDependencies(AttackContact contact)
         {return contact!=null && ReferenceEquals(contact,previewContact)?previewDependencies:null;}
 
-        internal void ClearPreview(){PreviewFutureUnknown=PreviewFutureComplete=false;previewContact=null;previewSource=null;previewChild=null;previewAmmo=null;previewWeapon=null;previewObstacles=null;previewDependencies=null;idlePreview=null;}
+        internal void ClearPreview(){PreviewGuidedWindow=default(HostGuidedWindow);PreviewFutureUnknown=PreviewFutureComplete=false;previewContact=null;previewSource=null;previewChild=null;previewAmmo=null;previewWeapon=null;previewObstacles=null;previewDependencies=null;idlePreview=null;}
 
         // This result has no Source or cursor capability. Existing native
         // controllers are observed through their real birth receipt; an idle
         // opening uses private ContentSamples copies and never enters the pool.
         internal AttackContact Preview(NpcTrajectory timeline,HostAttackPhase phase,int delay,bool allowOpening=true)
         {
-            PreviewFutureUnknown=PreviewFutureComplete=false;
+            PreviewGuidedWindow=default(HostGuidedWindow);PreviewFutureUnknown=PreviewFutureComplete=false;
             if(allowOpening && TryReuseIdle(timeline,phase,delay))return previewContact;
             ClearPreview();var player=combat.Player;
             // Clear-line candidate plans are independent readers of live controls.
@@ -65,7 +66,7 @@ namespace JueMingR.TerrariaHost.Combat
             previewTerrain.Reset();previewEnvironment=new HostProjectileEnvironment.State(true);
             previewWeapon=player.HeldItem;previewSlot=player.selectedItem;previewType=previewWeapon.type;previewPrefix=previewWeapon.prefix;
             previewTick=Main.GameUpdateCount;previewSession=observation.Session;previewSelection=combat.Tools.SelectionIntent;
-            bool live=false,prismSeen=false,prismClosed=true,prismOnly=true;retired.Clear();
+            bool guidedSeen=false;bool live=false,prismSeen=false,prismClosed=true,prismOnly=true;retired.Clear();
             foreach(var pair in shots)
             {
                 var entry=pair.Value;if(!Observed(entry)){retired.Add(pair.Key);continue;}if(!HostPulseAttack.Handles(entry.Type))live=true;
@@ -91,6 +92,11 @@ namespace JueMingR.TerrariaHost.Combat
                 else if(entry.Type==444)view.Contact=BubblePreview(player,entry.Shot,timeline,clock,false);
                 else if(entry.Type==1035)view.Contact=HostWhipAttack.Contact(player,entry.Shot,timeline,clock,previewTerrain,out view.Point);
                 else SolveEntry(view,timeline,phase,previewTerrain,player);
+                if(HostGuidedAttack.Handles(view.Type))
+                {
+                    PreviewGuidedWindow=guidedSeen?PreviewGuidedWindow.Merge(view.GuidedWindow,timeline,phase):view.GuidedWindow;
+                    guidedSeen=true;
+                }
                 if(view.Type==633 && view.PrismView.Unknown)PreviewFutureUnknown=true;
                 if(view.Type==633){prismSeen=true;prismClosed&=view.PrismView.Complete;}
                 if(view.Contact==null)continue;
@@ -137,6 +143,7 @@ namespace JueMingR.TerrariaHost.Combat
                 Vector2 input;bool usable;HostGuidedNavigation navigation;AttackContact contact;
                 shot=HostGuidedNavigation.OpeningShot(body,previewWeapon,previewAmmo,timeline,launchClock,playerFrame,out input,out usable,out navigation,out contact);
                 if(shot==null)return null;
+                PreviewGuidedWindow=navigation.Window;
                 openingView.Shot=shot;openingView.Guided=navigation;openingView.Point=input;openingView.HasPoint=usable;openingView.Contact=contact;
             }
             bool managedYoyo=HostYoyoNavigation.Handles(shot) && player.magicString && combat.Use.ManagedAttackIntent(player);

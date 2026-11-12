@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal HostAttackControl Owner;internal Source Source;internal ShotReceipt Previous;internal CombatCursorScope Cursor;internal bool Ended;internal HostAttackPhase Phase;internal ulong BirthCutoff;
         }
         private sealed class Controlled
-        {internal HostPrismSteering.ViewLease PrismView;internal Projectile Shot;internal int Key,Type,SelectedLife,RequiredRange=16,PhoenixCounter;internal Source Source;internal AttackContact Contact,NextKillContact,AlternateKillContact,AlternateNextKillContact;internal HostAttackSolution Solution;internal Vector2 HeldOwnerCenter;internal float HeldScale,HeldRotation,HeldGravity;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint,BornNext,ManagedYoyo,YoyoEnhanced;internal Vector2 YoyoPoint;internal AttackAmmoSnapshot Ammo;internal HostAttackObstacles Obstacles,AlternateKillObstacles;internal uint Prepared,Born;internal ulong BirthOrdinal;internal NpcIdentity Target,RangeTarget;internal HostYoyoNavigation Navigation,PreviewNavigation;internal HostGuidedNavigation Guided,PreviewGuided;internal HostBeamAttack.Child ContactChild;internal List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
+        {internal HostGuidedWindow GuidedWindow;internal HostPrismSteering.ViewLease PrismView;internal Projectile Shot;internal int Key,Type,SelectedLife,RequiredRange=16,PhoenixCounter;internal Source Source;internal AttackContact Contact,NextKillContact,AlternateKillContact,AlternateNextKillContact;internal HostAttackSolution Solution;internal Vector2 HeldOwnerCenter;internal float HeldScale,HeldRotation,HeldGravity;internal Vector2 KillOrigin,NextKillOrigin,Point;internal bool ChildLaterSlot,HasPoint,BornNext,ManagedYoyo,YoyoEnhanced;internal Vector2 YoyoPoint;internal AttackAmmoSnapshot Ammo;internal HostAttackObstacles Obstacles,AlternateKillObstacles;internal uint Prepared,Born;internal ulong BirthOrdinal;internal NpcIdentity Target,RangeTarget;internal HostYoyoNavigation Navigation,PreviewNavigation;internal HostGuidedNavigation Guided,PreviewGuided;internal HostBeamAttack.Child ContactChild;internal List<HostBeamAttack.Child> Children=new List<HostBeamAttack.Child>(6);}
         private readonly HostCombat combat;private readonly HostCombatObservation observation;
         private readonly Dictionary<int,Controlled> shots=new Dictionary<int,Controlled>();
         private readonly List<int> retired=new List<int>(64);
@@ -278,12 +278,12 @@ namespace JueMingR.TerrariaHost.Combat
             // a previous opening must not supply a later unrelated source.
             shots[(int)shot.key]=new Controlled{Shot=shot,Key=(int)shot.key,Type=shot.type,Source=owner.Source,BirthOrdinal=++birthOrdinal,Born=Main.GameUpdateCount,BornNext=Main.ProjectileUpdateLoopIndex>=0 && shot.whoAmI<=Main.ProjectileUpdateLoopIndex,ManagedYoyo=managedYoyo,YoyoPoint=openingPoint,YoyoEnhanced=openingUsable,Ammo=managedYoyo?openingAmmo:null,Navigation=combat.Attack.AttackObservationDemand && HostYoyoNavigation.Handles(shot)?new HostYoyoNavigation():null};
         }
-        internal void Clear(){PreviewFutureUnknown=PreviewFutureComplete=false;presentation=null;preparedTimeline=null;opening=null;openingNavigation=null;openingGuided=null;openingUsable=false;foreach(var entry in shots.Values)Retire(entry);}
+        internal void Clear(){PreviewGuidedWindow=default(HostGuidedWindow);PreviewFutureUnknown=PreviewFutureComplete=false;presentation=null;preparedTimeline=null;opening=null;openingNavigation=null;openingGuided=null;openingUsable=false;foreach(var entry in shots.Values)Retire(entry);}
         // An individual natural consumer can revoke only its own prepared
         // capability. Source lifetime belongs to birth/retirement/session; an
         // unrelated or repeated projectile callback must never walk that pool.
         private static void Retire(Controlled entry)
-        {entry.Contact=entry.NextKillContact=entry.AlternateKillContact=entry.AlternateNextKillContact=null;entry.Solution=default(HostAttackSolution);entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=entry.AlternateKillObstacles=null;}
+        {entry.GuidedWindow=default(HostGuidedWindow);entry.Contact=entry.NextKillContact=entry.AlternateKillContact=entry.AlternateNextKillContact=null;entry.Solution=default(HostAttackSolution);entry.HasPoint=false;entry.ContactChild=null;entry.Obstacles=entry.AlternateKillObstacles=null;}
         // Execution retirement alone leaves a read-only fact intact. Only an
         // actual consumer's failed dependency check revokes its bound fact;
         // no other source is searched and Draw never checks terrain here.
@@ -345,6 +345,10 @@ namespace JueMingR.TerrariaHost.Combat
         }
         private static void SolveEntry(Controlled entry,NpcTrajectory timeline,HostAttackPhase phase,PredictionTerrain terrain,Player player,int delay=0,HostAttackPlayerFrame? preparedPlayer=null,HostYoyoNavigation.GroupFacts yoyoGroup=null,bool beforeProjectilePass=false,HostPrismSteering.Camera? prismCamera=null)
         {
+            // PreviewGuided is reusable storage, not this invocation's fact.
+            // Age rejection and an autonomous returning knife must both leave
+            // progress unknown even if the previous private solve completed.
+            entry.GuidedWindow=default(HostGuidedWindow);var requestedPhase=phase;
             if(entry.BornNext && entry.Born==Main.GameUpdateCount && phase==HostAttackPhase.Projectiles)phase=HostAttackPhase.CompletedWorld;
             var clock=new HostAttackClock(timeline,phase,delay,beforeProjectilePass);int age=clock.Age;if(age<0 || age>1+delay || clock.FirstTick>=timeline.Count)return;
             var playerFrame=preparedPlayer??(entry.Navigation!=null || HostGuidedAttack.Handles(entry.Type) || HostHeldAttack.Handles(entry.Type) || HostDirectionalBladeAttack.Handles(entry.Type) || HostDirectionalStaffAttack.Handles(entry.Type)?HostAttackPlayerFrame.Capture(player,timeline):default(HostAttackPlayerFrame));
@@ -369,6 +373,7 @@ namespace JueMingR.TerrariaHost.Combat
                 {
                     if(entry.Guided==null)entry.Guided=new HostGuidedNavigation();
                     entry.Contact=entry.Guided.Prepare(player,entry.Shot,timeline,clock,playerFrame,out entry.Point,out entry.HasPoint);
+                    entry.GuidedWindow=entry.Guided.Window.AtPhase(requestedPhase);
                 }
                 else if(entry.Type==491)entry.Contact=HostFlyingKnifeAttack.SolvePrepared(player,entry.Shot,timeline,clock,terrain,playerFrame);
             }

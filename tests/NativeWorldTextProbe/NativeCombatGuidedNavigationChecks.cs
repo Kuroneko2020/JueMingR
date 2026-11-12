@@ -19,7 +19,9 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
         private static NPC receiver;
         private static int damage;
-        private static uint firstDamage;
+        private static uint firstDamage,damageBorn;
+        private static bool progressWatch,shortComplete,longContact;
+        private static int grownRequest;
         private static object watchedEntry;
         private static long contactAtDamage;
         private static object naturalControl,naturalAttack;
@@ -42,7 +44,7 @@ namespace NativeWorldTextProbe
         {
             if(ReferenceEquals(receiver,__instance) && __result>0 && damage++==0)
             {
-                firstDamage=Main.GameUpdateCount;var contact=watchedEntry==null?null:(AttackContact)GetOptional(watchedEntry,"Contact");
+                firstDamage=Main.GameUpdateCount;damageBorn=watchedEntry==null?0:(uint)Get(watchedEntry,"Born");var contact=watchedEntry==null?null:(AttackContact)GetOptional(watchedEntry,"Contact");
                 contactAtDamage=contact==null?-1:contact.Timeline.SampleTick+contact.Tick;
             }
         }
@@ -57,7 +59,7 @@ namespace NativeWorldTextProbe
             {
                 NativeCombatGuidedLiquidChecks.Run(context);NativeCombatGuidedBudgetChecks.Run(context);
                 foreach(int weapon in new[]{113,218,495,3030})AroundWall(context,weapon,weapon==495,weapon==218);
-                PrefixAndDependencies(context);Geometry(context);Lifecycle(context);
+                ClearLineProgress(context);PrefixAndDependencies(context);Geometry(context);Lifecycle(context);
             }
             finally
             {natural=false;receiver=null;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());}
@@ -122,6 +124,52 @@ namespace NativeWorldTextProbe
             Require(maximumSearches>0,"wall scene exercises geometry rather than a direct control hit");
             Require(preparedActions>0,"normal six-ms repeated updates obtain actual guided input, not persistent Basic or a component-only proof");
             Require(!moving || p.position.X>700,"moving scene advances the actual player while the camera moves");
+        }
+        private static void ProgressPlan(object __0,NpcTrajectory __1,AttackContact __result)
+        {
+            if(!progressWatch || __1.Identity.Slot!=4)return;
+            var window=Get(__0,"GuidedWindow");
+            if(__result==null && (bool)Get(window,"Complete") && (int)Get(window,"Through")==16)shortComplete=true;
+            if(__result!=null && __result.Tick>16 && ReferenceEquals(__result.Timeline,__1) && (uint)Get(__0,"PreparedTick")==Main.GameUpdateCount)longContact=true;
+        }
+        private static void ProgressRequest(NpcIdentity identity,int __result)
+        {if(progressWatch && identity.Slot==4)grownRequest=Math.Max(grownRequest,__result);}
+        private static void ClearLineProgress(object context)
+        {
+            var p=Scene(context,3030,true);p.position.X=1000;
+            var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");
+            // Near dummy is sealed on every side. The other direction stays
+            // open, inside the real 640px control border. Native knife travel
+            // and Strike, rather than a distance estimate, prove >16 ticks.
+            receiver.active=false;NativeCombatControlPreviewChecks.Dummy(2,75,50);
+            receiver=NativeCombatControlPreviewChecks.Dummy(4,40,50);
+            for(int x=74;x<=78;x++)NativeToolsChecks.Tile(x,49,1);
+            for(int y=49;y<=52;y++){NativeToolsChecks.Tile(74,y,1);NativeToolsChecks.Tile(78,y,1);}
+            var limited=receiver.Center;p.LimitPointToPlayerReachableArea(ref limited);
+            Require(Vector2.DistanceSquared(limited,receiver.Center)<.01f,"far clear-line receiver is inside vanilla's current control area");
+            NativeCombatObservationChecks.Save(host,new ObservationOptions(false,false,true,false,true,50,false,true));
+            naturalControl=Get(attack,"Control");naturalAttack=attack;natural=true;progressWatch=true;shortComplete=longContact=false;grownRequest=0;
+            nativeActions=preparedActions=basicActions=births=preparedBirthActions=observedSearches=0;seen.Clear();
+            var audit=new Harmony("JueMingR.Tests.GuidedCandidateProgress");
+            audit.Patch(attack.GetType().GetMethod("PreparePlan",Flags),postfix:new HarmonyMethod(typeof(NativeCombatGuidedNavigationChecks).GetMethod(nameof(ProgressPlan),Flags)));
+            audit.Patch(attack.GetType().GetMethod("CandidateProgressRequired",Flags),postfix:new HarmonyMethod(typeof(NativeCombatGuidedNavigationChecks).GetMethod(nameof(ProgressRequest),Flags)));
+            bool chosen=false,multiple=false,lastHeld=false;
+            try
+            {
+                for(int tick=0;tick<160 && damage==0;tick++)
+                {
+                    bool active=Main.projectile.Any(q=>q.active && q.owner==0 && q.type==491);
+                    bool held=tick==0 || active || !lastHeld;lastHeld=held;
+                    NativeCombatSelectionPreviewChecks.Step(context,new Vector2(1200,820),held);
+                    var selection=Get(host,"Selection");multiple|=(int)Get(selection,"CandidateCount")>=2;
+                    chosen|=((NpcIdentity)Get(selection,"Target")).Slot==4 && (bool)Get(selection,"ClearLine");
+                }
+            }
+            finally{natural=progressWatch=false;audit.UnpatchAll(audit.Id);}
+            Console.WriteLine("GUIDED candidate progression short16="+shortComplete+" request="+grownRequest+" longContact="+longContact+" selected="+chosen+" damage="+firstDamage+" born="+damageBorn+" contact="+contactAtDamage+" nativeAI="+nativeActions+" preparedAI="+preparedActions);
+            Require(multiple && shortComplete && grownRequest>=32 && longContact,"multiple guided candidates complete 16, grow their own requested window and produce a fresh contact beyond 16");
+            Require(chosen && damage>0 && damageBorn>0 && (long)firstDamage-damageBorn>16 && contactAtDamage==firstDamage,"clear-line selects the farther real positive and native knife damages it after more than 16 actual world steps at the Contact clock");
+            Require(preparedActions>0,"actual guided input consumes the naturally selected positive under the normal cumulative allowance");
         }
         private static void PrefixAndDependencies(object context)
         {

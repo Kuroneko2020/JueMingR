@@ -22,6 +22,7 @@ namespace JueMingR.TerrariaHost.Combat
         private Vector2 offset;
         private bool incomplete;
         internal HostGuidedRouteStatus Status {get;private set;}
+        internal bool LastClearUnknown {get;private set;}
         internal int Searches {get;private set;}
         internal int Reuses {get;private set;}
         internal int BlockRejections {get;private set;}
@@ -29,6 +30,7 @@ namespace JueMingR.TerrariaHost.Combat
         internal PredictionTerrain.CellLease Lease {get{return lease;}}
         internal bool Clear(Vector2 from,Vector2 to)
         {
+            LastClearUnknown=false;
             // A long goal ray is tried from many nearby A* vertices. Once an
             // actual native segment hit proves a full/half solid tile, reject
             // later rays through that SAME complete body obstacle cheaply.
@@ -43,7 +45,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 var next=Vector2.Lerp(from,to,(float)i/count)+offset;
                 float x,y;
-                if(!terrain.ProjectileCollision(previous.X,previous.Y,next.X-previous.X,next.Y-previous.Y,width,height,out x,out y)){incomplete=true;return false;}
+                if(!terrain.ProjectileCollision(previous.X,previous.Y,next.X-previous.X,next.Y-previous.Y,width,height,out x,out y)){LastClearUnknown=incomplete=true;return false;}
                 if(Math.Abs(x-(next.X-previous.X))>.0001f || Math.Abs(y-(next.Y-previous.Y))>.0001f){RememberBarrier(previous,next);return false;}
                 previous=next;
             }
