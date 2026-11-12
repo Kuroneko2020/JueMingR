@@ -179,7 +179,7 @@ namespace JueMingR.TerrariaHost.QuickItems
         {
             string id=requested;
             if(id==null)return;
-            if(!permitted || requestRevision!=Settings.Revision || !Settings.CanExecute(id)) {CancelAfkBorrow();return;}
+            if(!permitted || requestRevision!=Settings.Revision || !Settings.CanExecute(id)) {requested=null;CancelAfkBorrow();return;}
             // Only the explicit shortcut that asked the current AFK run to
             // release is retained. No general retry queue is created: source,
             // selection, UI and session cancellation revoke this one request.

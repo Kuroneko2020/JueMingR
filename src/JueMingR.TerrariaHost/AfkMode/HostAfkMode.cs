@@ -35,7 +35,9 @@ namespace JueMingR.TerrariaHost.AfkMode
         internal Func<bool> OperationInterfaceOpen;
         internal Exception SetupError {get;private set;}
         internal bool Running {get{return player!=null;}}
-        internal bool ControlsUse {get{return Running && !manual && !quickRequested && !Borrowed;}}
+        // A pending borrower still leaves the original startup tail owned by
+        // this run. Physical combat must not acquire it as a competing hold.
+        internal bool ControlsUse {get{return Running && !manual && !Borrowed;}}
         public bool ControlsEnabled {get{return !failed && !stopping && Tools.Available && Tools.Items.Available && Tools.Player!=null && preference.Snapshot.IsLoaded;}}
         public bool ModeEnabled {get{return preference.Snapshot.Value.Enabled;}}
         public int GapMilliseconds {get{return preference.Snapshot.Value.GapMilliseconds;}}
@@ -82,6 +84,9 @@ namespace JueMingR.TerrariaHost.AfkMode
             processing=process;quick=value;if(quick==null)return;
             quick.AfkYield=PrepareQuickBorrow;
             quick.AfkBorrowFinished=()=>{quickRequested=false;if(!operating)yieldRequested=false;};
+            var permit=quick.HeldUsePermit;
+            quick.HeldUsePermit=()=> (permit?.Invoke()??false) || Running && Identity() && initialHold && !manual &&
+                !CombatUse.NativeHoldBlocked(player) && (quickRequested || quick.Use.Active);
         }
         internal void Poll()
         {
@@ -122,10 +127,10 @@ namespace JueMingR.TerrariaHost.AfkMode
             if(initialHold && !Tools.Input.RawMouseLeft)initialHold=false;
             if(fresh && !initialHold || Tools.Input.CanStartActions && PlayerInput.Triggers.Current.MouseRight)
             {manual=true;ReleaseLease();}
-            if(Borrowed){manual=true;ReleaseLease();}
+            if(Borrowed)ReleaseLease();
             // A same-slot hand use releases its own native controls and timers.
             // Neither an override nor a foreign use token is forcibly returned.
-            if(manual && !Tools.Input.RawMouseLeft && !Tools.Input.RawMouseRight && !Borrowed && WeaponCatalog.Ready(player) && !player.channel)
+            if(manual && (!Tools.Input.RawMouseLeft || initialHold) && !Tools.Input.RawMouseRight && !Borrowed && WeaponCatalog.Ready(player) && !player.channel)
                 manual=false;
         }
         private bool CanOutput(Player p)
@@ -159,8 +164,15 @@ namespace JueMingR.TerrariaHost.AfkMode
         {
             FinishSync();ObserveCompletion(p);
             if(!CanOutput(p))return;
-            if((quickRequested || automaticRequested) && !operating){ReleaseLease();return;}
-            if(!operating && !GapReady){ReleaseLease();return;}
+            if(!operating && (quickRequested || automaticRequested || !GapReady))
+            {
+                ReleaseLease();
+                // The still-held FIRST press belongs to this run, not to a new
+                // manual use. Suppress only that tail at native consumers;
+                // a fresh physical click sets manual and bypasses this scope.
+                if(initialHold)syncScope=BeginScope(p,false,false);
+                return;
+            }
             if(!Acquire())return;
             // Sync carries held controls, not a cursor lease across native
             // tile/NPC interactions. ItemCheck and controller AI borrow their
@@ -170,7 +182,10 @@ namespace JueMingR.TerrariaHost.AfkMode
         internal Scope Begin(Player p)
         {
             ObserveCompletion(p);
-            if(!CanOutput(p) || (quickRequested || automaticRequested) && !operating || !operating && !GapReady || !Acquire())return null;
+            if(!CanOutput(p))return null;
+            if(!operating && (quickRequested || automaticRequested || !GapReady))
+            {ReleaseLease();return initialHold?BeginScope(p,true,false):null;}
+            if(!Acquire())return null;
             return BeginScope(p,true);
         }
         private Scope BeginScope(Player p,bool itemCheck,bool aim=true)
@@ -244,7 +259,9 @@ namespace JueMingR.TerrariaHost.AfkMode
         public void OnSessionEnded(){Stop();sampled=-1;quick?.CancelAfkBorrow();}
         public void Update(ulong tick){FinishSync();if(Running){if(!Identity() || Unusable(player))Stop();else ObserveCompletion(player);}}
         public void FailClosed(){Stop();failed=true;}
-        private void Exit(object sender,EventArgs args){AppDomain.CurrentDomain.ProcessExit-=Exit;Stop();stopping=true;preference.Stop(750);}
+        // CLR exit is not the game thread. Session/failure callbacks own live
+        // scopes and leases; this thread may only retire preference I/O.
+        private void Exit(object sender,EventArgs args){stopping=true;AppDomain.CurrentDomain.ProcessExit-=Exit;preference.Stop(750);}
 
         internal sealed class Scope
         {

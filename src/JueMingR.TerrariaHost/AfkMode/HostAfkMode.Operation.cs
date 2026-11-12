@@ -119,8 +119,13 @@ namespace JueMingR.TerrariaHost.AfkMode
         }
         internal void AfterProjectile(Projectile shot)
         {
-            var body=Find(shot);
-            if(body!=null && HostYoyoNavigation.Handles(shot) && !released && !manual && !quickRequested && shot.ai[0]>=0)
+            // The native AI may have just killed this exact body. Preserve its
+            // captured identity without requiring active, but do no completion
+            // work for unrelated world AI callbacks (including our bullets).
+            Body body=null;
+            for(int i=0;i<bodies.Count;i++)if(ReferenceEquals(bodies[i].Shot,shot) && (int)shot.key==bodies[i].Key){body=bodies[i];break;}
+            if(body==null)return;
+            if(Valid(body) && HostYoyoNavigation.Handles(shot) && !released && !manual && !quickRequested && shot.ai[0]>=0)
                 ObserveYoyo(body);
             ObserveCompletion(player);
         }

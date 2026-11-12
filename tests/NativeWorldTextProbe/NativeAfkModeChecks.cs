@@ -25,6 +25,7 @@ namespace NativeWorldTextProbe
         private static int births,previousCompletions;
         private static Vector2 lastBulletVelocity;
         private static bool lateVeto;
+        private static bool startupTailAudit;
         internal static void Run(object context,string section="all")
         {
             owner=Get(context,"Afk");var tools=Get(context,"Tools");var input=Get(context,"Input");
@@ -70,12 +71,14 @@ namespace NativeWorldTextProbe
                 if(section=="completion"){Console.WriteLine("PASS AFK completion: real normal/burst/release/return/yoyo/summon timelines and exact zero-gap native cadence.");return;}
                 }
 
-                p=Reset(context,3541,300);Step(context,true);for(int i=0;i<240;i++){p.statMana=200;Step(context,false);}
+                p=Reset(context,3541,300);Step(context,true);for(int i=0;i<240;i++){p.statMana=200;Step(context,true);}
                 Require(starts.Count==1 && completions.Count==0 && p.channel,"infinite prism remains one real continuous operation, no periodic gap release");
-                QuickBorrow(context,p);
+                QuickBorrow(context,p,true);
                 OverrideSelection(context);
                 AutomaticTool(context);
                 AimConsumption(context);
+                StartupTail(context);
+                RejectedQuickRequests(context);
                 Boundaries(context);
                 Costs(context);
                 Console.WriteLine("PASS AFK borrow/boundaries: persistent channel, explicit quick return, override-slot selection, manual completion timing, UI/selection veto and bounded work.");
@@ -111,6 +114,7 @@ namespace NativeWorldTextProbe
         {
             if(__instance.whoAmI!=Main.myPlayer || owner==null)return;
             bool owned=(int)Get(owner,"inCheck")>0;
+            if(startupTailAudit)Require(owned && (long)Get(owner,"token")!=0,"ALL native starts during the startup hold belong to an admitted AFK operation");
             if(starts.Count<3)Console.WriteLine("AFK START tick="+Main.GameUpdateCount+" owned="+owned+" operating="+Get(owner,"operating")+" token="+Get(owner,"token")+" native animation="+__instance.itemAnimation+" time="+__instance.itemTime+" completions="+Get(owner,"Completions")+" manual="+Get(owner,"manual"));
             if(owned && starts.Count>0)
             {
@@ -124,7 +128,7 @@ namespace NativeWorldTextProbe
         private static void Created(Player __instance,Projectile __0){if(__instance.whoAmI==Main.myPlayer){births++;if(__0.type==14)lastBulletVelocity=__0.velocity;}}
         private static bool Skip(){return false;}
         private static void LateVeto(Player __instance){if(lateVeto && ReferenceEquals(__instance,Main.LocalPlayer))__instance.delayUseItem=true;}
-        private static void QuickBorrow(object context,Player p)
+        private static void QuickBorrow(object context,Player p,bool hold=false)
         {
             var quick=Get(context,"QuickItems");var settings=(QuickItemSettings)Get(quick,"Settings");
             p.inventory[5].SetDefaults(50);
@@ -139,7 +143,7 @@ namespace NativeWorldTextProbe
             bool borrowed=false;
             for(int i=0;i<260;i++)
             {
-                Step(context,false);
+                Step(context,hold);
                 borrowed|=(bool)Get(Get(quick,"Use"),"Active");
                 p.statMana=200;
             }
@@ -236,7 +240,36 @@ namespace NativeWorldTextProbe
             Require((int)Get(owner,"SourceReads")==sources && (int)Get(owner,"BodyReads")==bodies,"disabled has no AFK source/body observation");
             Reset(context,98,0);Step(context,true);for(int i=0;i<120;i++)Step(context,false);
             Require((int)Get(owner,"BodyReads")==bodies,"ordinary flying bullets incur no completion-body reads");
+            sources=(int)Get(owner,"SourceReads");var unrelated=Main.projectile[900];unrelated.SetDefaults(14);unrelated.owner=Main.myPlayer;unrelated.active=true;
+            for(int i=0;i<1000;i++)Call(owner,"AfterProjectile",unrelated);
+            Require((int)Get(owner,"SourceReads")==sources && (int)Get(owner,"BodyReads")==bodies,"unrelated real world-body callback count does not scale AFK completion observation");
             Require(!(bool)Get(Get(Get(context,"Tools"),"Use"),"Active"),"AFK does not enable tools");
+        }
+        private static void StartupTail(object context)
+        {
+            Reset(context,98,300);var combat=Get(context,"Combat");NativeCombatCadenceChecks.Save(combat,new JueMingR.Features.Combat.CombatOptions(1));
+            int before=(int)Get(owner,"Starts");startupTailAudit=true;
+            try{for(int i=0;i<190;i++)Step(context,true);}
+            finally{startupTailAudit=false;NativeCombatCadenceChecks.Save(combat,new JueMingR.Features.Combat.CombatOptions());}
+            Require(starts.Count>=5 && births==starts.Count && (int)Get(owner,"Starts")-before==starts.Count,
+                "startup held tail has no uncounted native start/shot during positive gaps");
+            var p=Reset(context,98,300);Step(context,true);
+            for(int i=0;i<20 && completions.Count==0;i++)Step(context,false);
+            Require(completions.Count==1,"manual-gap fixture has an actually completed first use");
+            int nativeBefore=starts.Count,afkBefore=(int)Get(owner,"Starts");Step(context,true);
+            Require(starts.Count==nativeBefore+1 && (int)Get(owner,"Starts")==afkBefore && (bool)Get(owner,"manual"),
+                "a NEW real click may use the same gun inside the AFK gap, with its own native start");
+            Require(p.inventory[54].stack<9999,"startup/manual representative uses original real ammunition");Step(context,false);
+        }
+        private static void RejectedQuickRequests(object context)
+        {
+            Call(owner,"SetModeEnabled",false);var quick=Get(context,"QuickItems");var settings=(QuickItemSettings)Get(quick,"Settings");var entry=settings.Current.Entries[0];
+            JueMingR.Platform.Hotkeys.HotkeyChord chord;string reason;
+            Require(JueMingR.Platform.Hotkeys.HotkeyChord.TryCreate(65,JueMingR.Platform.Hotkeys.HotkeyModifiers.None,out chord,out reason),"rejected quick fixture chord");
+            Step(context,false);Call(quick,"Request",entry.Id,chord);Call(quick,"AfterDispatch",false);
+            Require(GetOptional(quick,"requested")==null && !(bool)Get(quick,"afkDeferred"),"denied fresh non-AFK request is retired without leaving a queue");
+            Call(quick,"Request",entry.Id,chord);
+            Require((string)GetOptional(quick,"requested")==entry.Id,"next explicit shortcut remains available after a rejected dispatch");Call(quick,"AfterDispatch",false);
         }
     }
 }
