@@ -17,7 +17,7 @@ namespace JueMingR.ArchitectureTests
         {
             try
             {
-                Names();Filters();Scopes();Persistence();
+                Names();Filters();Scopes();ContinuousOptions();Persistence();
                 Equipment();
             }
             catch(Exception error){failures.Add("Fishing: "+error);}
@@ -93,16 +93,47 @@ namespace JueMingR.ArchitectureTests
             Require(options.Change(5,2).Toggle(5).Change(6,1).Toggle(5).FilterMode==2,"filter toggle restores remembered non-off mode");
         }
         private static void Reject(Action action){try{action();}catch(ArgumentException){return;}throw new InvalidOperationException("Invalid command accepted.");}
+        private static void ContinuousOptions()
+        {
+            var options=new FishingOptions(auto:true,loadout:true,cut:true,storeMode:2,filterMode:2,match:1,crates:2,quests:0,npcs:1,anglerContinuous:true);
+            for(int mode=1;mode<=2;mode++)for(int match=0;match<=1;match++)
+            {
+                var list=match==0?new FishList(new[]{new FishKey(FishKind.Item,mode)}):new FishList(keywords:new[]{"scope"+mode});
+                options=options.WithList(mode,match,list).SavePreset(mode,match);
+                Require(options.AnglerContinuous,"list and preset saves preserve continuous turn-ins");
+                var preset=options.Presets.Last();
+                var applied=options.WithList(mode,match,new FishList()).ApplyPreset(preset,mode,match);
+                Require(applied.AnglerContinuous && applied.List(mode,match)==list && applied.DeletePreset(mode,match,preset.Name).AnglerContinuous,"clear/apply/delete preserve continuous turn-ins in every scope");
+            }
+            for(int feature=0;feature<10;feature++)
+                Require(options.Change(feature,0).AnglerContinuous && options.Change(feature,1).AnglerContinuous,"old feature edits preserve continuous turn-ins: "+feature);
+            foreach(int feature in Enumerable.Range(0,6))Require(options.Toggle(feature).AnglerContinuous,"old toggles preserve continuous turn-ins");
+            Require(!new FishingOptions().AnglerContinuous && options.State(10)==1 && !options.Toggle(10).AnglerContinuous && options.Toggle(10).Toggle(10).AnglerContinuous,"continuous feature defaults off and toggles independently");
+            Require(options.Change(10,0).Auto && options.Change(10,0).Loadout && options.Change(10,0).StoreMode==2,"continuous command retains other settings");
+            Reject(()=>options.Change(10,2));Reject(()=>options.Change(10,-1));Reject(()=>options.Change(11,0));
+            var codec=new FishingCodec();
+            Require(codec.Encode(codec.Decode(codec.Encode(options))).SequenceEqual(codec.Encode(options)),"v2 roundtrip retains enabled switch and every scoped list/preset");
+            string v2=Encoding.UTF8.GetString(codec.Encode(options.Change(10,0)));
+            Require(v2.Contains("\"version\":2") && v2.Contains("\"anglerContinuous\":false"),"writer emits explicit v2 boolean");
+            string legacy=v2.Replace("\"version\":2","\"version\":1").Replace(",\"anglerContinuous\":false","");
+            var read=codec.Decode(Encoding.UTF8.GetBytes(legacy));
+            Require(!read.AnglerContinuous && codec.Encode(read).SequenceEqual(codec.Encode(options.Change(10,0))),"strict v1 migration retains all switches, modes, four lists and scoped presets");
+            foreach(string invalid in new[]{legacy.Replace("\"version\":1","\"version\":2"),legacy.Replace("\"auto\":true","\"auto\":true,\"anglerContinuous\":false"),
+                legacy.Replace("\"auto\":true","\"auto\":true,\"future\":false"),legacy.Replace("\"auto\":true","\"auto\":true,\"auto\":false"),
+                v2.Replace("\"anglerContinuous\":false","\"anglerContinuous\":2"),v2.Replace("\"anglerContinuous\":false","\"anglerContinuous\":\"false\""),
+                v2.Replace("\"anglerContinuous\":false","\"anglerContinuous\":null"),v2.Replace("\"anglerContinuous\":false","\"anglerContinuous\":false,\"anglerContinuous\":true")})
+            {try{codec.Decode(Encoding.UTF8.GetBytes(invalid));throw new InvalidOperationException("Malformed v1/v2 fishing file accepted.");}catch(PreferenceFormatException){}}
+        }
         private static void Persistence()
         {
             var codec=new FishingCodec();
-            var options=new FishingOptions(storeMode:2,filterMode:2).WithList(1,0,new FishList(Enumerable.Range(1,6200).Select(i=>new FishKey(FishKind.Item,i))))
+            var options=new FishingOptions(storeMode:2,filterMode:2,anglerContinuous:true).WithList(1,0,new FishList(Enumerable.Range(1,6200).Select(i=>new FishKey(FishKind.Item,i))))
                 .WithList(2,1,new FishList(keywords:new[]{"鱼\\\"\t名","换\n行","😀"})).SavePreset(2,1).Toggle(3).Toggle(5);
             byte[] bytes=codec.Encode(options);var read=codec.Decode(bytes);
             Require(read.List(1,0).Exact.Count==6200 && read.List(2,1).Keywords.SequenceEqual(new[]{"鱼\\\"\t名","换\n行","😀"}) && read.Presets.Count==1,"full catalog and escaped localized keywords persist beyond 96");
-            Require(read.Toggle(3).StoreMode==2 && read.Toggle(5).FilterMode==2,"restart retains both non-off modes");
+            Require(read.AnglerContinuous && read.Toggle(3).StoreMode==2 && read.Toggle(5).FilterMode==2,"restart retains continuous turn-ins and both non-off modes");
             string json=Encoding.UTF8.GetString(codec.Encode(new FishingOptions()));
-            foreach(string invalid in new[]{json.Replace("\"version\":1","\"version\":77"),json.Replace("\"auto\":false","\"auto\":false,\"future\":true"),
+            foreach(string invalid in new[]{json.Replace("\"version\":2","\"version\":77"),json.Replace("\"auto\":false","\"auto\":false,\"future\":true"),
                 json.Replace("\"auto\":false","\"auto\":false,\"auto\":true"),json.Replace("\"storeMode\":0","\"storeMode\":2"),json.Replace("\"keywords\":[]","\"keywords\":[],\"extra\":0")})
             {try{codec.Decode(Encoding.UTF8.GetBytes(invalid));throw new InvalidOperationException("Unknown/ambiguous fishing file accepted.");}catch(PreferenceFormatException){}}
             string directory=Path.Combine(Path.GetTempPath(),"JueMingR-fishing-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
@@ -111,22 +142,46 @@ namespace JueMingR.ArchitectureTests
                 string path=Path.Combine(directory,"fishing.json");
                 using(var settings=new FishingSettings(new AtomicFileDocument(path,FishingCodec.MaximumBytes)))
                 {
-                    Until(()=>{settings.Poll();return settings.Loaded;});Require(settings.Ready && !settings.Value.Auto,"missing file defaults off");
-                    Require(settings.Set(options) && settings.Busy && settings.Value.List(1,0).Exact.Count==0,"accepted save does not publish before receipt");
+                    Until(()=>{settings.Poll();return settings.Loaded;});Require(settings.Ready && !settings.Value.Auto && !settings.Value.AnglerContinuous && !File.Exists(path),"missing file defaults off without writing defaults");
+                    Require(settings.Set(options) && settings.Busy && settings.Requested.AnglerContinuous && !settings.Value.AnglerContinuous && settings.Value.List(1,0).Exact.Count==0,"accepted save does not publish before receipt");
                     Require(!settings.Set(new FishingOptions()),"one consistency command at a time");
-                    Until(()=>{settings.Poll();return !settings.Busy;});Require(settings.CompletionSucceeded && settings.CompletedCommandId==settings.AcceptedCommandId && settings.Value.List(1,0).Exact.Count==6200,"matching reliable save publishes whole list");
+                    Until(()=>{settings.Poll();return !settings.Busy;});Require(settings.CompletionSucceeded && settings.CompletedCommandId==settings.AcceptedCommandId && settings.Value.AnglerContinuous && settings.Value.List(1,0).Exact.Count==6200,"matching reliable save publishes whole list and continuous turn-ins");
                 }
                 using(var settings=new FishingSettings(new AtomicFileDocument(path,FishingCodec.MaximumBytes)))
-                {Until(()=>{settings.Poll();return settings.Loaded;});Require(settings.Value.List(1,0).Exact.Count==6200,"actual file restart roundtrip");}
-                string future=File.ReadAllText(path).Replace("\"version\":1","\"version\":77");File.WriteAllText(path,future);
+                {Until(()=>{settings.Poll();return settings.Loaded;});Require(settings.Value.AnglerContinuous && settings.Value.List(1,0).Exact.Count==6200,"actual file restart roundtrip");}
+                string legacy=Encoding.UTF8.GetString(codec.Encode(options.Change(10,0))).Replace("\"version\":2","\"version\":1").Replace(",\"anglerContinuous\":false","");
+                File.WriteAllText(path,legacy,new UTF8Encoding(false));
+                byte[] original=File.ReadAllBytes(path);
                 using(var settings=new FishingSettings(new AtomicFileDocument(path,FishingCodec.MaximumBytes)))
-                {Until(()=>{settings.Poll();return settings.Loaded;});Require(settings.Protected && !settings.Set(options) && File.ReadAllText(path)==future,"future file protected without rewriting");}
+                {
+                    Until(()=>{settings.Poll();return settings.Loaded;});
+                    Require(settings.Ready && !settings.Value.AnglerContinuous && settings.Value.List(1,0).Exact.Count==6200 && File.ReadAllBytes(path).SequenceEqual(original),"loading valid v1 is read-only with new switch off");
+                    Require(settings.Set(settings.Value.Change(10,1)),"first real legacy edit accepted");
+                    Until(()=>{settings.Poll();return !settings.Busy;});
+                    Require(settings.CompletionSucceeded && settings.Value.AnglerContinuous && Encoding.UTF8.GetString(File.ReadAllBytes(path)).Contains("\"version\":2") && File.ReadAllBytes(path+".bak").SequenceEqual(original),"real save upgrades to v2 and preserves v1 backup");
+                }
+                string saved=File.ReadAllText(path);
+                foreach(string invalid in new[]{saved.Replace("\"version\":2","\"version\":77"),saved.Replace(",\"anglerContinuous\":true",""),
+                    saved.Replace("\"anglerContinuous\":true","\"anglerContinuous\":2"),saved.Replace("\"anglerContinuous\":true","\"anglerContinuous\":true,\"future\":false")})
+                {
+                    File.WriteAllText(path,invalid,new UTF8Encoding(false));
+                    byte[] protectedBytes=File.ReadAllBytes(path);
+                    using(var settings=new FishingSettings(new AtomicFileDocument(path,FishingCodec.MaximumBytes)))
+                    {Until(()=>{settings.Poll();return settings.Loaded;});Require(settings.Protected && !settings.Set(options) && File.ReadAllBytes(path).SequenceEqual(protectedBytes),"future, incomplete, mistyped or unknown v2 file protected without rewriting");}
+                }
                 foreach(bool unknown in new[]{false,true})using(var settings=new FishingSettings(new FailingStorage(unknown)))
                 {
                     Until(()=>{settings.Poll();return settings.Loaded;});Require(settings.Set(options),"failure candidate accepted");
                     Until(()=>{settings.Poll();return !settings.Busy;});
-                    Require(!settings.CompletionSucceeded && settings.Value.List(1,0).Exact.Count==0 && settings.Protected==unknown && settings.Message!=null,"failed or unknown receipt never publishes candidate");
+                    Require(!settings.CompletionSucceeded && !settings.Value.AnglerContinuous && settings.Requested==null && settings.Value.List(1,0).Exact.Count==0 && settings.Protected==unknown && settings.Message!=null,"failed or unknown receipt never publishes candidate");
                     Require(settings.Set(options)!=unknown,"only known not-committed failure permits explicit retry");
+                }
+                foreach(bool unknown in new[]{false,true})using(var settings=new FishingSettings(new FailingStorage(unknown,options)))
+                {
+                    Until(()=>{settings.Poll();return settings.Loaded;});Require(settings.Value.AnglerContinuous && settings.Set(options.Change(10,0)),"disable accepted from saved enabled value");
+                    Require(settings.Value.AnglerContinuous && !settings.Requested.AnglerContinuous,"pending disable retains reliable value");
+                    Until(()=>{settings.Poll();return !settings.Busy;});
+                    Require(!settings.CompletionSucceeded && settings.Value.AnglerContinuous && settings.Protected==unknown,"failed disable preserves reliably saved enabled value");
                 }
             }
             finally
@@ -139,8 +194,9 @@ namespace JueMingR.ArchitectureTests
         private sealed class FailingStorage : IPreferenceStorage
         {
             private readonly bool unknown;
-            internal FailingStorage(bool unknown){this.unknown=unknown;}
-            public PreferenceReadResult Read(){return new PreferenceReadResult(PreferenceReadStatus.Missing,null,"missing",null);}
+            private readonly byte[] initial;
+            internal FailingStorage(bool unknown,FishingOptions initial=null){this.unknown=unknown;this.initial=initial==null?null:new FishingCodec().Encode(initial);}
+            public PreferenceReadResult Read(){return new PreferenceReadResult(initial==null?PreferenceReadStatus.Missing:PreferenceReadStatus.Loaded,initial,initial==null?"missing":"initial",null);}
             public PreferenceWriteResult Write(string expectedIdentity,byte[] bytes)
             {return new PreferenceWriteResult(PreferenceWriteStatus.IoFailure,null,"injected before commit / unconfirmed",unknown,unknown);}
             public void Dispose(){}

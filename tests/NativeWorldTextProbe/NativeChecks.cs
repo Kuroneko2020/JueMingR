@@ -727,6 +727,21 @@ namespace NativeWorldTextProbe
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-background-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(scope=="BackgroundCpu"?(Action<object>)NativeBackgroundAutomationChecks.Run:NativeBackgroundAutomationChecks.RunF5,processing:true,shortFeedback:true,candidateAssembly:scope=="F5AutomationCpu"?Environment.GetEnvironmentVariable("JUEMINGR_INPUT_BOUNDARY_CANDIDATE"):null);return 0;
             }
+            if(scope=="FishingAnglerContinuousCpu" || scope=="FishingAnglerContinuousVisual")
+            {
+                Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-angler-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                Directory.CreateDirectory(output);
+                NativeQuickItemChecks.Run(context=>
+                {
+                    NativeFishingUiChecks.Drain(NativeInformationChecks.Get(context,"Fishing"));
+                    NativeFishingChecks.InitializeNativeEnvironment();
+                    NativeFishingUiChecks.Run(context);
+                    NativePlayerRenameChecks.Run(context);
+                    NativeFishingAnglerContinuousChecks.Run(context);
+                    if(scope=="FishingAnglerContinuousVisual")using(var graphics=new ProbeGraphics(content))
+                    {graphics.SetMouseFont(graphics.Font);NativeFishingVisualChecks.Run(context,graphics,output);}
+                },processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="FishingCpu" || scope=="FishingVisual" || scope=="FishingRelease")
             {
                 Terraria.Program.SavePath=Path.Combine(Path.GetTempPath(),"JueMingR-native-fishing-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);

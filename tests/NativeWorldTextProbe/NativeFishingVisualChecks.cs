@@ -24,8 +24,22 @@ namespace NativeWorldTextProbe
                 float scale=size[2]/100f;var matrix=Matrix.CreateScale(scale);Call(state,"ScrollTo",0f);
                 string notice="当前名单已保存为预设。";Call(host,"ClearReport",notice);Prepare(context,graphics,size);Call(host,"Report",notice);
                 Prepare(context,graphics,size);Image("page");
+                if(size[0]==960 && size[1]==760)
+                {
+                    NativeFishingUiChecks.Save(host,((FishingSettings)Get(host,"Settings")).Value.Change(10,1));Prepare(context,graphics,size);Image("angler-enabled");
+                    NativeFishingUiChecks.Save(host,((FishingSettings)Get(host,"Settings")).Value.Change(10,0));Prepare(context,graphics,size);
+                }
                 if(!((IEnumerable)Get(ui,"Parts")).Cast<object>().Any(p=>Get(p,"Command").ToString()=="Plus"))
                 {var local=((IEnumerable)Get(ui,"pageParts")).Cast<object>().First(p=>Get(p,"Command").ToString()=="Plus");Call(state,"ScrollTo",Get(Get(Get(local,"Element"),"Rect"),"Y"));Prepare(context,graphics,size);Image("scrolled");}
+                if(size[0]==604 && size[1]==220)
+                {
+                    var row=((IEnumerable)Get(ui,"pageParts")).Cast<object>().First(part=>Get(part,"Command").ToString()=="Feature" && (int)Get(part,"Feature")==10);
+                    Call(state,"ScrollTo",Get(Get(Get(row,"Element"),"Rect"),"Y"));Prepare(context,graphics,size);
+                    NativeFishingUiChecks.Click(context,NativeFishingUiChecks.Part(ui,"Feature",part=>(int)Get(part,"Feature")==10 && (int)Get(part,"Value")==1));NativeFishingUiChecks.Drain(host);Prepare(context,graphics,size);
+                    Require(((FishingSettings)Get(host,"Settings")).Value.AnglerContinuous,"real scrolled minimum-height standard row click reaches the angler setting");Image("angler-scrolled");
+                    NativeFishingUiChecks.Save(host,((FishingSettings)Get(host,"Settings")).Value.Change(10,0));
+                    var local=((IEnumerable)Get(ui,"pageParts")).Cast<object>().First(part=>Get(part,"Command").ToString()=="Plus");Call(state,"ScrollTo",Get(Get(Get(local,"Element"),"Rect"),"Y"));Prepare(context,graphics,size);
+                }
                 var plus=NativeFishingUiChecks.Part(ui,"Plus");Call(ui,"Execute",plus);NativeFishingUiChecks.Step(context,false,Vector2.Zero,"鱼");Prepare(context,graphics,size);Image("search");
                 var body=Get(ui,"popupBody");Require((float)Get(body,"Height")>=36,"actual-font minimum logical viewport retains a full candidate-card height");
                 long builds=(long)Get(ui,"LayoutBuilds"),rules=(long)Get(Get(host,"Catalog"),"RuleChecks"),tiles=(long)Get(Get(host,"Catalog"),"TileReads");

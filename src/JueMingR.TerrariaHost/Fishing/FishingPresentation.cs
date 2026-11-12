@@ -261,7 +261,7 @@ namespace JueMingR.TerrariaHost.Fishing
             switch(p.Command)
             {
                 case Command.Feature:host.Set(p.Feature,p.Value);break;
-                case Command.Hotkey:CloseOverlay();HotkeyClicked?.Invoke(HostFishing.Actions[p.Feature],p.Element.Rect);break;
+                case Command.Hotkey:CloseOverlay();HotkeyClicked?.Invoke(HostFishing.ActionFor(p.Feature),p.Element.Rect);break;
                 case Command.Match:CloseOverlay();host.Set(6,p.Value);break;
                 case Command.Filter:CloseOverlay();host.Set(5,(value.FilterMode+1)%3);break;
                 case Command.Special:host.Set(p.Feature,(value.State(p.Feature)+1)%3);break;

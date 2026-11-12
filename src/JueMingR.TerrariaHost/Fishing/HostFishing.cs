@@ -22,6 +22,7 @@ namespace JueMingR.TerrariaHost.Fishing
         internal void AttachInformation(Information.HostInformation information){Display=new FishingDisplay(this,information);}
         internal readonly FishingSession Session;
         internal readonly PlayerRename Rename;
+        internal readonly AnglerContinuous Angler;
         internal readonly FishingEquipment Equipment;
         internal Func<bool> CanEquipmentInterface;
         internal bool Available {get;private set;}
@@ -35,7 +36,7 @@ namespace JueMingR.TerrariaHost.Fishing
         internal bool NeedsSession {get{var v=Settings.Value;return Ready && (v.Auto || v.Loadout || v.Equipment || v.StoreMode!=0);}}
         internal bool KeepsSession {get{return Available && Settings.Loaded && !Settings.Protected && Settings.Message==null && WantsSession(Settings.Value) && (!Settings.Busy || WantsSession(Settings.Requested));}}
         private static bool WantsSession(FishingOptions value){return value!=null && (value.Auto || value.Loadout || value.Equipment || value.StoreMode!=0);}
-        public bool Enabled {get{return NeedsSession || Session.Active || Equipment.Active || (Display?.Enabled??false);}}
+        public bool Enabled {get{return Angler.Pending || NeedsSession || Session.Active || Equipment.Active || (Display?.Enabled??false);}}
         internal HostFishing(string directory,HostTools tools,KeepFavorited.HostKeepFavorited favorites)
         {
             Tools=tools;Settings=new FishingSettings(new AtomicFileDocument(Path.Combine(directory,"JueMingRData","config","features","fishing.json"),FishingCodec.MaximumBytes));
@@ -48,6 +49,7 @@ namespace JueMingR.TerrariaHost.Fishing
             tools.Items.World.AdditionalProtection=item=>(prior?.Invoke(item)??false) || Session.Protect(item) || Equipment.Protect(item);
             try{FishingHooks.Install(this);FishingEquipmentHooks.Install(Equipment);Available=tools.Available;}
             catch(Exception error){SetupError=error;FishingHooks.Uninstall();FishingEquipmentHooks.Uninstall();Report("钓鱼辅助暂不可用，原版操作不受影响。");}
+            Angler=new AnglerContinuous(this);
             AppDomain.CurrentDomain.ProcessExit+=Exit;
         }
         internal void Poll(){Settings.Poll();}
@@ -68,18 +70,24 @@ namespace JueMingR.TerrariaHost.Fishing
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride==null &&
                 !Main.ServerSideCharacter && !(Main.ActivePlayerFileData?.ServerSideCharacter??false) && !WorldGen.isGeneratingOrLoadingWorld && p.talkNPC<0 && p.sign<0 && Main.npcShop==0 && Main.mouseItem!=null && Main.mouseItem.IsAir;
         }
-        internal void Set(int feature,int value){if(Controls && Settings.Value.State(feature)!=value)Settings.Set(Settings.Value.Change(feature,value));}
+        internal bool CanSet(int feature){return Controls && (feature!=10 || Angler.Available);}
+        internal void Set(int feature,int value){if(CanSet(feature) && Settings.Value.State(feature)!=value){if(feature==10 && value==0)Angler.Clear();Settings.Set(Settings.Value.Change(feature,value));}}
         internal static string ModeName(int feature,int value)
         {return value==0?(feature==5?"关闭过滤":"关闭"):feature==3?(value==1?"所有":"任务鱼"):feature==5?(value==1?"白名单":"黑名单"):"开启";}
+        internal const string AnglerAction="fishing.angler-continuous.toggle";
+        internal const string AnglerName="渔夫任务连续提交";
+        internal const string AnglerHelp="可以不关渔夫窗口连续提交多次任务，玩家名会自动变更";
+        internal static string ActionFor(int feature){return feature==10?AnglerAction:Actions[feature];}
         internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {
-            // The owner chose an on-page cycle for the filter mode, without a
-            // public key binding. The five automation actions remain bindable.
-            for(int i=0;i<5;i++)
+            // Filter remains an on-page cycle. Stable public action identities
+            // do not depend on the private numeric feature ids or array order.
+            foreach(int feature in new[]{0,1,2,3,4,10})
             {
-                int feature=i;Action command=()=>{if(Controls)Settings.Set(Settings.Value.Toggle(feature));};
-                if(feedback!=null)command=feedback.Committed(Actions[i],Names[i],command,()=>Settings.Value.State(feature),()=>Controls,()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded,value=>ModeName(feature,value));
-                registry.Register(new HotkeyAction(Actions[i],Names[i],HotkeyContext.Gameplay,()=>Controls,command));
+                int id=feature;string action=ActionFor(id),name=id==10?AnglerName:Names[id];
+                Action command=()=>{if(CanSet(id)){if(id==10 && Settings.Value.AnglerContinuous)Angler.Clear();Settings.Set(Settings.Value.Toggle(id));}};
+                if(feedback!=null)command=feedback.Committed(action,name,command,()=>Settings.Value.State(id),()=>CanSet(id),()=>Settings.AcceptedCommandId,()=>Settings.CompletedCommandId,()=>Settings.CompletionSucceeded,value=>ModeName(id,value));
+                registry.Register(new HotkeyAction(action,name,HotkeyContext.Gameplay,()=>CanSet(id),command));
             }
         }
         internal void Report(string message){if(Error==message)return;Error=message;feedback=true;}
@@ -90,7 +98,7 @@ namespace JueMingR.TerrariaHost.Fishing
             if(endedNotice!=null){string notice=endedNotice;endedNotice=null;display(notice);if(Error==notice)feedback=false;}
             if(feedback){feedback=false;display(Error);}
         }
-        public void OnSessionStarted(){Session.Reset();Observation.Clear();Catalog.Clear();Display?.Clear();Rename.Clear();Equipment.StartSession();Error=endedNotice;feedback=false;}
+        public void OnSessionStarted(){Angler.Clear();Session.Reset();Observation.Clear();Catalog.Clear();Display?.Clear();Rename.Clear();Equipment.StartSession();Error=endedNotice;feedback=false;}
         public void OnSessionEnded()
         {
             // SaveAndQuit enters gameMenu before UI feedback can run. Retain
@@ -98,10 +106,11 @@ namespace JueMingR.TerrariaHost.Fishing
             // retain item objects or an old character's restoration journal.
             bool pending=Equipment.Active;Equipment.EndSession();
             if(pending){endedNotice="上一会话的部分钓鱼装备未归还，已保留在角色实际物品格中；请手动检查。";Error=endedNotice;}
-            Session.Reset();Observation.Clear();Catalog.Clear();Display?.Clear();Rename.Clear();
+            Angler.Clear();Session.Reset();Observation.Clear();Catalog.Clear();Display?.Clear();Rename.Clear();
         }
         public void Update(ulong tick)
         {
+            Angler.Update();
             if(!Available){Equipment.Update();return;}
             if(!Enabled){Observation.Clear();Display?.Clear();return;}
             var p=Player;
@@ -120,11 +129,11 @@ namespace JueMingR.TerrariaHost.Fishing
             // Read-only displays must also wake when automation is disabled.
             Observation.Invalidate();Session.ObserveCreated(p,projectile);
         }
-        public void FailClosed(){Available=false;Session.Stop();Equipment.Fail("钓鱼辅助已停止，仍需归还的装备保留实际记录。");Observation.Clear();Display?.Clear();Report("钓鱼辅助已停止，未确认的操作不会重试。");}
+        public void FailClosed(){Angler.Clear();Available=false;Session.Stop();Equipment.Fail("钓鱼辅助已停止，仍需归还的装备保留实际记录。");Observation.Clear();Display?.Clear();Report("钓鱼辅助已停止，未确认的操作不会重试。");}
         // Equipment owns exact original/borrowed objects and its save/manual
         // gates. A common failure keeps that journal until return or a real
         // session edge; no fishing observation, recast or new swap is admitted.
         public void UpdateFailureCleanup(ulong tick){Equipment.Update();}
-        private void Exit(object sender,EventArgs e){AppDomain.CurrentDomain.ProcessExit-=Exit;Settings.Stop(1000);Rename.Dispose();Display?.Dispose();}
+        private void Exit(object sender,EventArgs e){AppDomain.CurrentDomain.ProcessExit-=Exit;Settings.Stop(1000);Angler.Dispose();Rename.Dispose();Display?.Dispose();}
     }
 }
