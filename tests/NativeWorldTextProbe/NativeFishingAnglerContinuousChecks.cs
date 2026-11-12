@@ -13,6 +13,8 @@ using Terraria.Achievements;
 using Terraria.GameContent.Achievements;
 using Terraria.ID;
 using Terraria.IO;
+using Terraria.Social;
+using Terraria.Social.Base;
 using static NativeWorldTextProbe.NativeInformationChecks;
 using static NativeWorldTextProbe.NativeFishingUiChecks;
 
@@ -85,6 +87,7 @@ namespace NativeWorldTextProbe
                 Partial(context,host,p,rename);
                 Pending(context,host,p,owner,rename,ui,state);
                 Network(context,host,p);
+                UnchangedFailure(context,host,p);
                 Ui(context,host,p,ui,state);
                 Storage(context,host,p);
                 Console.WriteLine("PASS continuous angler: two original outer submissions, real fish/reward/achievement/save effects, old-name list, same-window quest refresh, failures/OFF, partial one-shot, actual lock/draft postponement and retirement, original 75->4 client serialization; no server acknowledgement or gameplay claim.");
@@ -170,6 +173,42 @@ namespace NativeWorldTextProbe
             }
             finally{Main.ServerSideCharacter=false;Main.netMode=0;Netplay.Connection=connection;NetMessage.buffer[256]=buffer;Call(context,"UpdateRuntime");}
         }
+        private static void UnchangedFailure(object context,object host,Player p)
+        {
+            var connection=Netplay.Connection;var buffer=NetMessage.buffer[256];var file=Main.ActivePlayerFileData;var cloud=SocialAPI.Cloud;
+            var unavailable=new UnsupportedCloud();
+            try
+            {
+                Netplay.Connection=new RemoteServer{PendingTermination=true};NetMessage.buffer[256]=new MessageBuffer();Main.netMode=1;
+                Main.ActivePlayerFileData=new PlayerFileData("players/angler-unavailable.plr",true){Player=p,Metadata=FileMetadata.FromCurrentSettings(FileType.Player)};SocialAPI.Cloud=unavailable;
+                Call(context,"UpdateRuntime");Reset(p,"拒绝009");NativeFishingUiChecks.Save(host,new FishingOptions(anglerContinuous:true));
+                Main.NPCChatText_DoAnglerQuest();int fish=Fish(p);
+                Require(p.name=="拒绝009" && p.anglerQuestsFinished==1 && rewards==1 && saves==0 && Main.anglerQuestFinished && Main.anglerWhoFinishedToday.Count==0 && messages.SequenceEqual(new byte[]{75}),"real multiplayer submission precedes actual unsupported cloud ABI rejection: unchanged name retains vanilla completion, no message4 or native save");
+                Require(!(bool)Get(Get(host,"Angler"),"Pending") && !(bool)Get(Get(host,"Rename"),"RuntimeNameApplied") && unavailable.Writes==0,"pre-Rename capability rejection consumes once, never queues or touches cloud writer");
+                for(int i=0;i<5;i++)Call(host,"Update",(ulong)i);Main.NPCChatText_DoAnglerQuest();
+                Require(Fish(p)==fish && p.anglerQuestsFinished==1 && rewards==1 && saves==0 && Main.anglerQuestFinished && p.name=="拒绝009" && messages.SequenceEqual(new byte[]{75}) && unavailable.Writes==0,"next real native click cannot reuse the unchanged finished name, and updates never retry this failure");
+            }
+            finally{SocialAPI.Cloud=cloud;Main.ActivePlayerFileData=file;Main.netMode=0;Netplay.Connection=connection;NetMessage.buffer[256]=buffer;Call(context,"UpdateRuntime");}
+            Console.WriteLine("PASS continuous angler unchanged-name MP capability failure: original75 and one task retained, no4/save/retry, native second click stays ineligible.");
+        }
+        private class CloudWriter : CloudSocialModule
+        {
+            internal int Writes;
+            public override void Initialize(){}public override void Shutdown(){}
+            public override IEnumerable<string> GetFiles(){return Array.Empty<string>();}
+            public override bool Write(string path,byte[] data,int length){Writes++;return false;}
+            public override void Read(string path,byte[] buffer,int length){}
+            public override Stream OpenRead(string path){return Stream.Null;}
+            public override bool HasFile(string path){return false;}
+            public override int GetFileSize(string path){return 0;}
+            public override bool Delete(string path){return false;}
+            public override bool Forget(string path){return false;}
+        }
+        // The inherited native virtual writer exists, but this provider's public
+        // metadata exposes an incompatible same-signature method. Production
+        // EnsureCloud must really reject it before native Rename is entered.
+        private sealed class UnsupportedCloud : CloudWriter
+        {public new string Write(string path,byte[] data,int length){throw new InvalidOperationException("unsupported test ABI must not be called");}}
         private static void Storage(object context,object host,Player p)
         {
             object tools=Get(context,"Tools"),input=Get(context,"Input"),items=Get(tools,"Items");

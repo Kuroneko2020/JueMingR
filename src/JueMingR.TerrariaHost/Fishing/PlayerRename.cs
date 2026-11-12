@@ -88,7 +88,7 @@ namespace JueMingR.TerrariaHost.Fishing
         {
             nativeRenameStarted=deferred=false;RuntimeNameApplied=NativeWriteCompleted=PersistedVerified=false;
             string reason=GetReason(automatic,out deferred);if(reason!=null){if(!automatic || !deferred){Message=reason;Revision++;}return false;}
-            var p=host.Player;string name;
+            var p=host.Player;string previousName=p.name,name;
             try{name=requested==null?PlayerNameRules.Increment(p.name):PlayerNameRules.Normalize(requested);}
             catch(ArgumentException error){Message=error.Message;Revision++;return false;}
             if(!Monitor.TryEnter(nativeLock)){deferred=true;if(!automatic){Message="角色正在保存，请稍后重试。";Revision++;}return false;}
@@ -141,9 +141,12 @@ namespace JueMingR.TerrariaHost.Fishing
             finally
             {
                 PlayerRenameHooks.End(scope);busy=false;Revision++;
-                // The name used by the actual angler gate is the runtime name,
-                // including a partially successful save. Never clear today's list.
-                if(ReferenceEquals(host.Player,p) && ReferenceEquals(Main.ActivePlayerFileData?.Player,p))
+                // Only an ACTUAL name change changes this local eligibility.
+                // Cloud hook setup can fail before Rename; in a client the local
+                // list may be empty even though vanilla just completed the task.
+                // Preserve that finished flag when the old name never changed.
+                // Partial native saves still use their actual new runtime name.
+                if(ReferenceEquals(host.Player,p) && ReferenceEquals(Main.ActivePlayerFileData?.Player,p) && !String.Equals(previousName,p.name,StringComparison.Ordinal))
                 {
                     Main.ActivePlayerFileData.Player=p;Main.anglerQuestFinished=Main.anglerWhoFinishedToday.Contains(p.name);
                     // Vanilla's regular client diff does not include name.
