@@ -1,4 +1,4 @@
-﻿# One maintained definition supplies both selection and evidence projection.
+# One maintained definition supplies both selection and evidence projection.
 # Unknown/shared inputs stay conservative; compile identity is separate.
 function Test-WorkloadNonExecutableInput {
     param([string] $Path)
@@ -568,6 +568,15 @@ function Get-WorkloadLeafChecks {
     # initializers; the older shared-partial expansions above do not apply.
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintEmptyReceiptChecks.cs']=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintSettledPaintAdmissionChecks.cs']=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
+    $afkInputs=@('src/JueMingR.Features/AfkMode/AfkPreferences.cs','src/JueMingR.TerrariaHost/AfkMode/HostAfkMode.cs','src/JueMingR.TerrariaHost/AfkMode/HostAfkMode.Operation.cs','src/JueMingR.TerrariaHost/AfkMode/AfkNativeHooks.cs','tests/NativeWorldTextProbe/NativeAfkModeChecks.cs')
+    foreach($path in $afkInputs){$leaves[$path]=@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu','native-AfkModeVisual')}
+    $leaves['tests/NativeWorldTextProbe/NativeAfkModeChecks.cs']=@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeAfkUiChecks.cs']=@('native-AfkModeVisual')
+    # Actual shared native cadence helpers and composition remain inputs to
+    # the new leaf; sibling assertion bodies do not become AFK obligations.
+    foreach($path in @('tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs','tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs','tests/NativeWorldTextProbe/NativeCombatObservationChecks.cs','tests/NativeWorldTextProbe/NativeCombatBeamChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeCombatAimFixture.cs','tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){
+        $leaves[$path]=@($leaves[$path])+@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu')
+    }
     return $leaves
 }
 function Get-WorkloadNativeScopes {
@@ -576,6 +585,8 @@ function Get-WorkloadNativeScopes {
     # in test-world-object-text. Impact/AimUi/Visual need matching real Content
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
+        'AfkModeCompletionCpu'=@('afk-host','combat-host','tools-host','quick-items-host','shared-host');
+        'AfkModeBorrowCpu'=@('afk-host','combat-host','tools-host','quick-items-host','shared-host');
         'RuntimeFailureCpu'=@('shared-host','journey-host','quick-items-host');
         'RuntimeFailureActiveCpu'=@('shared-host','journey-host','quick-items-host');
         'RuntimeFailureToolsCpu'=@('shared-host','journey-host','quick-items-host','tools-host');

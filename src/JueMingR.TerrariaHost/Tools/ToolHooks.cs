@@ -188,7 +188,7 @@ namespace JueMingR.TerrariaHost.Tools
         {
             bool defer=false;
             if(ReferenceEquals(__instance,host?.Player))
-            {deferredSync=null;host.Mining.ObserveManual();host.Combat?.Use.BeforeSync(__instance);defer=Main.netMode==1 && (host.Combat?.Use.DeferSync??false);}
+            {deferredSync=null;host.Mining.ObserveManual();host.Afk?.BeforeSync(__instance);host.Combat?.Use.BeforeSync(__instance);defer=Main.netMode==1 && (host.Combat?.Use.DeferSync??false);}
             host?.Use.BeforeSync(__instance);
             if(defer){deferredSync=__instance;deferredSyncStep=Main.GameUpdateCount;deferredSyncSession=host.Combat.Runtime.Generation;}
             return !defer;
@@ -210,15 +210,16 @@ namespace JueMingR.TerrariaHost.Tools
         private static void Started(Player __instance,Item __0)
         {
             host?.Use.Started(__instance);host?.Fishing.ObserveCast(__instance,__0);host?.FishingStarted?.Invoke(__instance,__0);host?.Combat?.Use.Started(__instance,__0);
+            host?.Afk?.Started(__instance,__0);
             try{host?.Combat?.Attack?.StartedHand(__instance,__0);}catch(Exception error){host?.Combat?.Attack?.FailLocal(error);}
         }
-        private static void AfterReuse(Player __instance){host?.Combat?.Use.AfterReuse(__instance);}
+        private static void AfterReuse(Player __instance){host?.Combat?.Use.AfterReuse(__instance);host?.Afk?.AfterReuse(__instance);}
         private static void ProjectileCreated(Player __instance,Projectile __0){
 #if JMR_AIM_LIGHT
             Combat.Prediction.AimLightTrace.PrismBirth(__instance,__0);
 #endif
             // Preserve construction's former priority-first birth observer.
-            host?.BuildProjectile?.Invoke(__instance,__0);host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);host?.Combat?.Use.Created(__instance,__0);host?.Combat?.Attack?.Control.Created(__instance,__0);}
+            host?.BuildProjectile?.Invoke(__instance,__0);host?.Use.ObserveProjectile(__instance,__0);host?.FishingProjectile?.Invoke(__instance,__0);host?.Combat?.Use.Created(__instance,__0);host?.Afk?.Created(__instance,__0);host?.Combat?.Attack?.Control.Created(__instance,__0);}
         // Vanilla has finished ALL NPC slots here, but has not advanced any
         // projectile. Finite held volleys must capture their full receiver and
         // chase scene at this boundary, once; individual AI only consumes it.
@@ -236,7 +237,7 @@ namespace JueMingR.TerrariaHost.Tools
         // This call's receipt chooses its owner, even if that action has since
         // stopped or another one began. A value receipt adds no idle allocation;
         // the out scope is published before Combat borrows any input.
-        private struct ProjectileLease {internal long Token;internal ToolUse Tool;internal Combat.CombatUse Combat;internal Combat.CombatInputScope Scope;internal Combat.CombatCursorScope Attack;internal Combat.HostAttackControl.ShotReceipt Derived;
+        private struct ProjectileLease {internal long Token;internal ToolUse Tool;internal Combat.CombatUse Combat;internal Combat.CombatInputScope Scope;internal Combat.CombatCursorScope Attack;internal Combat.HostAttackControl.ShotReceipt Derived;internal AfkMode.HostAfkMode Afk;internal AfkMode.HostAfkMode.Scope AfkScope;
 #if JMR_AIM_LIGHT
             internal bool Prism;
 #endif
@@ -248,6 +249,7 @@ namespace JueMingR.TerrariaHost.Tools
             __state.Prism=Combat.Prediction.AimLightTrace.PrismToolBefore(current?.Combat,__instance);
 #endif
             if(current==null)return;
+            __state.Afk=current.Afk;__state.AfkScope=__state.Afk?.BeginProjectile(__instance);
             __state.Combat=current.Combat?.Use;
             __state.Combat?.BeginProjectile(__instance,out __state.Scope);
 #if JMR_AIM_LIGHT
@@ -271,6 +273,7 @@ namespace JueMingR.TerrariaHost.Tools
             var receipt=state;state=default(ProjectileLease);
             receipt.Attack?.End();
             receipt.Derived?.Owner.EndShot(receipt.Derived);
+            try{receipt.Afk?.AfterProjectile(shot);}finally{receipt.AfkScope?.End(error);}
             if(receipt.Scope!=null)receipt.Combat.EndProjectile(shot,receipt.Scope,error);
             else if(receipt.Token>0)receipt.Tool.EndProjectile(receipt.Token,error);
 #if JMR_AIM_LIGHT
@@ -295,7 +298,7 @@ namespace JueMingR.TerrariaHost.Tools
         {Items.ItemMaterialPreparation.LeaveDeathCall(__state);return __exception;}
         // Reference state exists before Begin; even a Prefix exception midway
         // through temporary input borrowing reaches the same idempotent cleanup.
-        private sealed class Lease {internal long Token,Generation;internal Combat.CombatInputScope Combat;internal Combat.HostAttackAim.PlacementUse Placement;internal Blueprint.BlueprintHooks.MouseLease Blueprint;}
+        private sealed class Lease {internal long Token,Generation;internal Combat.CombatInputScope Combat;internal Combat.HostAttackAim.PlacementUse Placement;internal Blueprint.BlueprintHooks.MouseLease Blueprint;internal AfkMode.HostAfkMode.Scope Afk;}
         private static void SeedBoundary(Player player){if(ReferenceEquals(player,host?.Player))host.Herbs.InvalidateSeeds();}
         // Select from the captured physical sample before optional Facing and
         // before vanilla builds this action's pose; input leases follow it.
@@ -309,17 +312,18 @@ namespace JueMingR.TerrariaHost.Tools
             {__state=new Lease{Blueprint=Blueprint.BlueprintHooks.BeginHeld(__instance)};return;}
             if(ReferenceEquals(__instance,host.Player))
             {
+                if(host.Afk?.Running==true){__state=new Lease();__state.Afk=host.Afk.Begin(__instance);}
                 host.Combat?.Attack?.PrepareNatural();host.Combat?.Facing.Apply(__instance);
                 if(Combat.HostPlacementAttack.Handles(__instance.HeldItem))
-                {var placement=host.Combat?.Attack?.EnterPlacementUse(__instance);if(placement!=null)__state=new Lease{Placement=placement};}
+                {var placement=host.Combat?.Attack?.EnterPlacementUse(__instance);if(placement!=null){if(__state==null)__state=new Lease();__state.Placement=placement;}}
             }
             if(host.Combat?.Use.Active??false){if(__state==null)__state=new Lease();__state.Combat=host.Combat.Use.Begin(__instance);return;}
             if(!host.Use.Active)return;if(__state==null)__state=new Lease();__state.Token=host.Use.Operation;__state.Generation=host.Use.NativeGeneration+1;host.Use.Begin(__instance);
         }
         private static void After(Player __instance,Lease __state)
-        {try{SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}finally{__state?.Placement?.End();__state?.Blueprint?.End();}}
+        {try{SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,null,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,null);if(ReferenceEquals(__instance,host?.Player))host.Combat?.Facing.Apply(__instance);}finally{try{__state?.Placement?.End();__state?.Blueprint?.End();}finally{__state?.Afk?.End(null);}}}
         private static Exception Final(Player __instance,Lease __state,Exception __exception)
-        {try{if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,__exception);}}finally{__state?.Placement?.End();__state?.Blueprint?.End();}return __exception;}
+        {try{if(__exception!=null){SeedBoundary(__instance);host?.Use.End(__instance,__state?.Token??0,__exception,__state?.Generation??0);host?.Combat?.Use.End(__state?.Combat,__exception);}}finally{try{__state?.Placement?.End();__state?.Blueprint?.End();}finally{__state?.Afk?.End(__exception);}}return __exception;}
         // Closing/failure can leave an exact Using/Returning receipt alive.
         // Observe selection for that finite duty without enabling world tools;
         // native cursor override 58 otherwise consumes the buffered change
@@ -327,9 +331,10 @@ namespace JueMingR.TerrariaHost.Tools
         private static bool PreparationSelection {get{return Items.ItemMaterialPreparation.Current?.HasWork==true;}}
         private static bool SelectionPlayer(Player p)
         { return host != null && (ReferenceEquals(p, host.Player) || Items.ItemMaterialPreparation.Current?.ObservesRetainedSelection(host, p) == true); }
-        private static void Select(Player ___player){if(host!=null && (host.Enabled || host.Combat?.Enabled==true || PreparationSelection) && SelectionPlayer(___player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.ManualSelection();}}
+        private static void Select(Player ___player,int __0){if(host!=null && (host.Enabled || host.Combat?.Enabled==true || host.Afk?.Running==true || PreparationSelection) && SelectionPlayer(___player) && !host.Use.Returning && !host.Items.ReturningSelection && !(host.Combat?.Use.Selecting??false)){manualBuffered=true;host.Afk?.ManualSelection(__0);host.ManualSelection();}}
         private static void SelectionUpdate(Player ___player)
         {
+            host?.Afk?.BeforeSelection(___player);
             host?.Combat?.Handoff.BeforeSelection(___player);
             if(!SelectionPlayer(___player))return;
             // Use.Active can keep Enabled true during failed Using cleanup.

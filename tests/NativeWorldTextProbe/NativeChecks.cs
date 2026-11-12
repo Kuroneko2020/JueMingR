@@ -14,6 +14,15 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="AfkModeCpu" || scope=="AfkModeBorrowCpu" || scope=="AfkModeCompletionCpu" || scope=="AfkModeVisual")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{
+                    if(scope=="AfkModeVisual")using(var graphics=new ProbeGraphics(content))NativeAfkUiChecks.Run(context,graphics,output);
+                    else NativeAfkModeChecks.Run(context,scope=="AfkModeBorrowCpu"?"borrow":scope=="AfkModeCompletionCpu"?"completion":"all");
+                    NativeScopeDispatch.Enter(scope=="AfkModeVisual"?"afk-ui":scope=="AfkModeBorrowCpu"?"afk-borrow":scope=="AfkModeCompletionCpu"?"afk-completion":"afk-mode");
+                },processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="BlueprintImportedMaterialsCpu" || scope=="BlueprintImportedMaterialsVisual")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);

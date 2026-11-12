@@ -28,6 +28,9 @@ namespace JueMingR.TerrariaHost.QuickItems
         internal Func<bool> CanGameplay;
         internal Action YieldTools;
         internal Func<bool> HeldUsePermit;
+        internal Func<bool> AfkYield;
+        internal Action AfkBorrowFinished;
+        private bool afkDeferred;
         internal KeepFavorited.HostKeepFavorited Favorite;
         private HostHotkeys hotkeys;
         private DynamicHotkeyOwner actions;
@@ -174,10 +177,18 @@ namespace JueMingR.TerrariaHost.QuickItems
         }
         internal void AfterDispatch(bool permitted)
         {
-            string id=requested; requested=null;
-            if (id==null || !permitted || requestRevision!=Settings.Revision || !Settings.CanExecute(id)) return;
-            Use.TryStart(Settings.Current.Find(id));
+            string id=requested;
+            if(id==null)return;
+            if(!permitted || requestRevision!=Settings.Revision || !Settings.CanExecute(id)) {CancelAfkBorrow();return;}
+            // Only the explicit shortcut that asked the current AFK run to
+            // release is retained. No general retry queue is created: source,
+            // selection, UI and session cancellation revoke this one request.
+            if(AfkYield?.Invoke()==true){afkDeferred=true;return;}
+            requested=null;
+            try{Use.TryStart(Settings.Current.Find(id));}
+            finally{afkDeferred=false;AfkBorrowFinished?.Invoke();}
         }
+        internal void CancelAfkBorrow(){if(afkDeferred){requested=null;afkDeferred=false;AfkBorrowFinished?.Invoke();}}
         // These are presentation events, never admission or recovery permits.
         // Manual pre-emption is a quiet non-execution; a fresh missing-provider
         // request may alert once. Unknown use errors survive unrelated success.

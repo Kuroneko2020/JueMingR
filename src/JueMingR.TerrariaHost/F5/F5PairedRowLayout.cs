@@ -3,8 +3,8 @@ using System.Collections.Generic;
 
 namespace JueMingR.TerrariaHost.F5
 {
-    // Only the reforge add/field and mining field/mode need an inseparable
-    // leading pair. Keep the common row/label controls and all other rows alone.
+    // A leading field/button pair wraps as one unit. The remaining actions,
+    // shared name layout and row styling retain the ordinary row contract.
     internal static class F5PairedRowLayout
     {
         internal static void Row(List<F5Element> elements,Func<string,float,F5Size> measure,ref float y,float width,string name,string button,bool fieldFirst,string[] remaining,F5RowDescription description,float fieldWidth=120)

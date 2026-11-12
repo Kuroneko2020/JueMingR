@@ -27,6 +27,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal readonly NativeNpcObservation Npcs;
         internal readonly ToolUse Use;
         internal Combat.HostCombat Combat;
+        internal AfkMode.HostAfkMode Afk;
         internal Movement.SmartFallHost FallRescue;
         internal readonly AutoCapture Capture;
         internal readonly HerbHarvest Herbs;

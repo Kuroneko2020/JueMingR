@@ -33,7 +33,7 @@ namespace JueMingR.TerrariaHost.Combat
         // This same-world-step fact belongs to a real native cursor consumer.
         // Read-only candidate/preview queries never publish it or acquire input.
         internal void RecordInput(HostAttackInput input)
-        {int facing;consumedInput=input;consumedOrigin=input.Source?.Center??HostAttackModels.NativeLaunchOrigin(combat.Player,input.Weapon,HostAttackModels.LaunchOrigin(combat.Player,input.Weapon),input.Point,out facing);consumedInputStep=Main.GameUpdateCount;hasConsumedInput=true;}
+        {int facing;consumedInput=input;consumedOrigin=input.Source?.Center??HostAttackModels.NativeLaunchOrigin(combat.Player,input.Weapon,HostAttackModels.LaunchOrigin(combat.Player,input.Weapon),input.Point,out facing);consumedInputStep=Main.GameUpdateCount;hasConsumedInput=true;combat.Tools.Afk?.ConsumedAim(input.Source,input.Target);}
         internal void RecordControlInput(Vector2 point,Projectile source,HostAttackInputKind kind,AttackPointSemantics pointSemantics=AttackPointSemantics.WorldPoint)
         {RecordInput(new HostAttackInput(this,kind,point,observation.Selection.Target,combat.Player.HeldItem,source,source==null?HostAttackPhase.BeforeNpc:HostAttackPhase.Projectiles,true,false,pointSemantics));}
         // A prediction fault retires enhanced information, not a current legal
