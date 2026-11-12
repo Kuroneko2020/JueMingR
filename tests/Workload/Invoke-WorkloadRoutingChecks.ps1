@@ -86,7 +86,7 @@ foreach($privateHelper in @('tests/NativeWorldTextProbe/NativeBlueprintSettledPa
     foreach($consumer in $expectedPrivate){Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore $consumer) -cne (Get-WorkloadCheckFingerprint $privateAfter $consumer)) ('private admission bytes invalidate actual consumer '+$consumer)}
     Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore 'native-BlueprintSupplyContinuationCpu') -ceq (Get-WorkloadCheckFingerprint $privateAfter 'native-BlueprintSupplyContinuationCpu')) ('private admission helper preserves unrelated SupplyRepair '+$privateHelper)
 }
-foreach($scope in @('BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
+foreach($scope in @('AfkModeCompletionCpu','AfkModeBorrowCpu','BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
     $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-'+$scope))
     Assert-Route ($plan.Count -eq 1 -and $plan[0].name -ceq ('native-'+$scope) -and $plan[0].arguments[-1] -ceq $scope) ('exact new native scope '+$scope)
     Assert-Route ($null -ne (Get-WorkloadExpectedNativeLeaf ('native-'+$scope))) ('new scope completion registered '+$scope)
@@ -174,7 +174,7 @@ $reviewedSharedConsumers=@('native-CombatEffectsNailCpu','native-CombatEffectsPi
 # Only these family bodies actually call SelectionPreview.Step; sharing the
 # aggregate entry does not call its sibling bodies.
 $selectionFamilyConsumers=@('native-CombatEffectsPhoenixCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsThornCpu','native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')
-$selectionConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual')+$selectionFamilyConsumers
+$selectionConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual','native-AfkModeCompletionCpu','native-AfkModeBorrowCpu')+$selectionFamilyConsumers
 Assert-Route (((Get-WorkloadPathChecks $selectionPath|Sort-Object)-join '|') -ceq (($selectionConsumers|Sort-Object)-join '|')) 'selection shared Step binds its complete actual consumer union'
 $selectionRoute=Get-WorkloadRoute @($selectionPath)
 $selectionPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $selectionRoute.groups|ForEach-Object {$_.name})
