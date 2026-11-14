@@ -48,6 +48,7 @@ namespace NativeWorldTextProbe
                 if (args.Length == 4 && args[3] == "ExplorationRelease") ProductionConfiguration = "Release";
                 references = Path.Combine(Repository, "external", "TerrariaRefs");
                 AppDomain.CurrentDomain.AssemblyResolve += Resolve;
+                if(args.Length==4 && args[3]=="CompanionRead")return NativeCompanionPersistenceChecks.ReadChild(args[2]);
                 if (args.Length == 4 && args[3] == "JourneyRead") return NativeJourneyChecks.ReadChild(args[2]);
                 if (args.Length == 4 && args[3] == "JourneyPredictionRead") return NativeJourneyPredictionChecks.ReadChild(args[2]);
                 if (args.Length == 4 && args[3] == "JourneyKillWriter") return NativeJourneyChecks.KillWriter(args[1], args[2]);

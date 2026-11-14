@@ -78,6 +78,7 @@ function Get-WorkloadRoute {
             continue
         }
         switch -Regex ($path) {
+            '^src/[^/]+/Companions/|^src/JueMingR.TerrariaHost/F5/Companion|^tests/Companions/|^tests/NativeWorldTextProbe/NativeCompanion' { [void]$groups.Add('companion-host'); continue }
             # Deployment changes select package/tool consumers, not every game
             # feature. The production CLR/Setup mechanisms have explicit fixture
             # evidence; Host/Worker edits retain their own routes below. The

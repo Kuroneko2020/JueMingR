@@ -107,7 +107,7 @@ namespace JueMingR.TerrariaHost.Tools
         {
             // Keep native channel-cache effects and exceptions first. The
             // original factory's Owner==myPlayer branch alone reaches here.
-            player.TryUpdateChannel(projectile);ProjectileCreated(player,projectile);
+            player.TryUpdateChannel(projectile);Companions.CompanionHooks.ProjectileBorn(player,projectile);ProjectileCreated(player,projectile);
         }
         private static IEnumerable<CodeInstruction> ConstructionInputTail(IEnumerable<CodeInstruction> instructions)
         {

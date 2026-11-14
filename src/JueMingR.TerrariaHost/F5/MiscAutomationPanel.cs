@@ -19,6 +19,11 @@ namespace JueMingR.TerrariaHost.F5
         internal CoinDeposit.CoinPanel CoinPanel {get;private set;}
         internal AfkModeRow AfkRow {get;private set;}
         internal Action<string,F5Rect> HotkeyClicked;
+        private Action<F5Rect> companionOpen;
+        private static readonly F5RowDescription companionDescription=new F5RowDescription("companions.manage","创建和管理自己的队友，查看背包、装备与行为设置");
+        private readonly List<F5Element> companionRows=new List<F5Element>();
+        private ItemUiControl companionControl;
+        internal F5Rect CompanionAnchor {get{return companionControl?.Rect??default(F5Rect);}}
         private F5Rect view;
         private Matrix matrix;
         private Vector2 pointer;
@@ -35,6 +40,7 @@ namespace JueMingR.TerrariaHost.F5
         internal bool OwnsTextToken {get{return AfkRow?.OwnsTextToken==true;}}
         internal bool NeedsBuild {get{return dirty || ToolsPanel!=null && ToolsPanel.NeedsBuild || CoinPanel!=null && CoinPanel.NeedsBuild || AfkRow?.NeedsBuild==true;}}
         internal MiscAutomationPanel(F5Interaction shell){this.shell=shell;}
+        internal void AttachCompanions(Action<F5Rect> open){companionOpen=open;dirty=true;}
         internal void AttachTools(Tools.HostTools host,Action<F5Rect> configure){ToolsPanel=new Tools.ToolsPanel(host){Configure=configure};dirty=true;}
         internal void AttachCoins(CoinDeposit.HostCoinDeposit host){CoinPanel=new CoinDeposit.CoinPanel(host);dirty=true;}
         internal void AttachAfk(AfkMode.HostAfkMode host){AfkRow=new AfkModeRow(host,shell);dirty=true;}
@@ -58,7 +64,9 @@ namespace JueMingR.TerrariaHost.F5
                 CoinPanel?.Build(y,view.Width,shell.Layout.TextSize);
                 y=CoinPanel==null?y:CoinPanel.Height;
                 AfkRow?.Build(y,view.Width,shell.Layout.TextSize);
-                Height=AfkRow==null?y:AfkRow.Height;dirty=false;LayoutBuildCount++;
+                y=AfkRow==null?y:AfkRow.Height;companionRows.Clear();
+                if(companionOpen!=null)new F5RowLayout(companionRows,shell.Layout.TextSize).Row(ref y,0,view.Width,"AI 队友",new[]{"管理"},description:companionDescription);
+                Height=y;dirty=false;LayoutBuildCount++;
             }
             if(project)
             {
@@ -66,13 +74,21 @@ namespace JueMingR.TerrariaHost.F5
                 ToolsPanel?.Project(view,shell.Scroll,controls,elements);
                 CoinPanel?.Project(view,shell.Scroll,controls,elements);
                 AfkRow?.Project(view,shell.Scroll,controls,elements);
+                companionControl=null;
+                foreach(var e in companionRows)
+                {
+                    var rect=e.Rect.Offset(view.X,view.Y-shell.Scroll);
+                    var projected=new F5Element(e.Kind,rect,e.Text,e.TextSize,e.TextScale,e.Command,e.HotkeyTarget,e.Description,e.HintRect.Offset(view.X,view.Y-shell.Scroll));
+                    if(e.Kind==F5ElementKind.Button){companionControl=new ItemUiControl{Rect=rect,Element=projected,Enabled=true};controls.Add(companionControl);}
+                    else elements.Add(projected);
+                }
             }
             AfkRow?.PrepareEdit(shell.Layout.DynamicTextSize);
             start=bottom;scroll=shell.Scroll;generation=shell.Layout.Generation;skin=renderer.Generation;
         }
         internal bool SecondaryOnly;
         internal bool SecondaryEntryAt(Vector2 point)
-        { return ready && shell.Visible && shell.Page==1 && generation==shell.Layout.Generation && scroll==shell.Scroll && view.Contains(point.X,point.Y) && controls.Exists(c=>c.Enabled && (c.Command==ItemUiCommand.Hotkey || c.Command==ItemUiCommand.Tools && c.Argument==3) && c.Rect.Contains(point.X,point.Y)); }
+        { return ready && shell.Visible && shell.Page==1 && generation==shell.Layout.Generation && scroll==shell.Scroll && view.Contains(point.X,point.Y) && controls.Exists(c=>c.Enabled && (ReferenceEquals(c,companionControl) || c.Command==ItemUiCommand.Hotkey || c.Command==ItemUiCommand.Tools && c.Argument==3) && c.Rect.Contains(point.X,point.Y)); }
         internal void ProcessInput(bool active,KeyboardState keys,Vector2 point,bool geometryCurrent,bool focused,bool blocked)
         {
             bool secondaryOnly=SecondaryOnly;SecondaryOnly=false;
@@ -89,12 +105,13 @@ namespace JueMingR.TerrariaHost.F5
             if(current && view.Contains(point.X,point.Y))foreach(var c in controls)if(c.Enabled && c.Rect.Contains(point.X,point.Y)){hit=c;break;}
             OwnsPointer=hit!=null || leftTail || rightTail;
             if(OwnsPointer){if(left)leftTail=true;if(right)rightTail=true;}
-            if(secondaryOnly && hit!=null && !(hit.Command==ItemUiCommand.Hotkey || hit.Command==ItemUiCommand.Tools && hit.Argument==3))hit=null;
+            if(secondaryOnly && hit!=null && !(ReferenceEquals(hit,companionControl) || hit.Command==ItemUiCommand.Hotkey || hit.Command==ItemUiCommand.Tools && hit.Argument==3))hit=null;
             if(left && !previousLeft){armed=hit;AfkRow?.PointerPressed(hit);}
             if(!current)armed=null;
             if(!left && previousLeft && armed!=null && ReferenceEquals(hit,armed))
             {
-                if(hit.Command==ItemUiCommand.Hotkey)HotkeyClicked?.Invoke(hit.Element.HotkeyTarget,hit.Rect);
+                if(ReferenceEquals(hit,companionControl))companionOpen?.Invoke(hit.Rect);
+                else if(hit.Command==ItemUiCommand.Hotkey)HotkeyClicked?.Invoke(hit.Element.HotkeyTarget,hit.Rect);
                 else if(hit.Command==ItemUiCommand.Afk || hit.Command==ItemUiCommand.AfkGap)AfkRow?.Click(hit,matrix,generation,skin);
                 else {if(hit.Command==ItemUiCommand.Tools)ToolsPanel?.Execute(hit);else if(hit.Command==ItemUiCommand.Coin)CoinPanel?.Execute(hit);dirty=true;}
             }
@@ -113,6 +130,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             rect=default(F5Rect);
             if(!ready || NeedsBuild || generation!=shell.Layout.Generation || scroll!=shell.Scroll || !view.Contains(x,y) || clip.HasValue && !clip.Value.Contains(x,y))return null;
+            foreach(var e in elements)if(ReferenceEquals(e.Description,companionDescription) && e.HintRect.Contains(x,y)){rect=e.HintRect;return companionDescription.Text;}
             foreach(var c in controls)if(c.Command==ItemUiCommand.Hotkey && c.Rect.Contains(x,y)){rect=clip.HasValue?F5HintLayout.Intersect(c.Rect,clip.Value):c.Rect;return c.Element.HotkeyTarget==Tools.HostTools.SelectAction?F5HotkeyHints.MiningSelection:F5HotkeyHints.Toggle;}
             string hint=ToolsPanel?.Hint(x,y,out rect);
             if(hint!=null)return hint;

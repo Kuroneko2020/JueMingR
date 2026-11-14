@@ -121,7 +121,14 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Settings.UiPreferenceCodec",
                 "JueMingR.Platform.Settings.WindowPosition",
                 "JueMingR.Platform.Persistence.DocumentWorker`1",
-                "JueMingR.Platform.Persistence.DocumentResult`1"
+                "JueMingR.Platform.Persistence.DocumentResult`1",
+                "JueMingR.Platform.Companions.CompanionInventoryArea",
+                "JueMingR.Platform.Companions.CompanionBehavior",
+                "JueMingR.Platform.Companions.CompanionProfile",
+                "JueMingR.Platform.Companions.CompanionOwnerArchive",
+                "JueMingR.Platform.Companions.ICompanionArchive",
+                "JueMingR.Platform.Companions.CompanionMovementObservation",
+                "JueMingR.Platform.Companions.CompanionControlFrame"
             };
             var actual = new HashSet<string>(assembly.GetExportedTypes().Select(type => type.FullName), StringComparer.Ordinal);
             if (!expected.SetEquals(actual))

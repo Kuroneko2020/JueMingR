@@ -20,6 +20,17 @@ function Get-WorkloadLeafChecks {
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
     $leaves = @{
+        # These leaves are called only by the companion CPU dispatcher. Shared
+        # NativeChecks/Program/fixture inputs retain their existing propagation.
+        'tests/Companions/CompanionCoreChecks.cs'=@('CompanionCoreChecks')
+        'tests/NativeWorldTextProbe/NativeCompanionChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionBehaviorChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionContinuousChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionLifecycleChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionPersistenceChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionPredictionChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionTransportChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionUiChecks.cs'=@('native-CompanionCpu')
         'tests/JueMingR.ArchitectureTests/BlueprintHoikSceneChecks.cs'=@('BlueprintHoikSceneChecks')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikMixedChecks.cs'=@('native-BlueprintHoikCpu')
@@ -585,6 +596,7 @@ function Get-WorkloadNativeScopes {
     # in test-world-object-text. Impact/AimUi/Visual need matching real Content
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
+        'CompanionCpu'=@('companion-host','combat-host','shared-host');
         'AfkModeCompletionCpu'=@('afk-host','combat-host','tools-host','quick-items-host','shared-host');
         'AfkModeBorrowCpu'=@('afk-host','combat-host','tools-host','quick-items-host','shared-host');
         'RuntimeFailureCpu'=@('shared-host','journey-host','quick-items-host');

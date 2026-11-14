@@ -86,10 +86,14 @@ foreach($privateHelper in @('tests/NativeWorldTextProbe/NativeBlueprintSettledPa
     foreach($consumer in $expectedPrivate){Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore $consumer) -cne (Get-WorkloadCheckFingerprint $privateAfter $consumer)) ('private admission bytes invalidate actual consumer '+$consumer)}
     Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore 'native-BlueprintSupplyContinuationCpu') -ceq (Get-WorkloadCheckFingerprint $privateAfter 'native-BlueprintSupplyContinuationCpu')) ('private admission helper preserves unrelated SupplyRepair '+$privateHelper)
 }
-foreach($scope in @('AfkModeCompletionCpu','AfkModeBorrowCpu','BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
+foreach($scope in @('CompanionCpu','AfkModeCompletionCpu','AfkModeBorrowCpu','BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
     $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-'+$scope))
     Assert-Route ($plan.Count -eq 1 -and $plan[0].name -ceq ('native-'+$scope) -and $plan[0].arguments[-1] -ceq $scope) ('exact new native scope '+$scope)
     Assert-Route ($null -ne (Get-WorkloadExpectedNativeLeaf ('native-'+$scope))) ('new scope completion registered '+$scope)
+}
+foreach($helper in @('','Behavior','Continuous','Lifecycle','Persistence','Prediction','Transport','Ui')){
+    $companionLeaf='tests/NativeWorldTextProbe/NativeCompanion'+$helper+'Checks.cs'
+    Assert-Route ((@(Get-WorkloadPathChecks $companionLeaf)-join '|') -ceq 'native-CompanionCpu') ('companion private leaf retains its sole real caller '+$companionLeaf)
 }
 $supply='native-BlueprintSupplyContinuationCpu'
 Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeBlueprintConstructionDoorChecks.cs') -notcontains $supply) 'Door private body does not select SupplyRepair'

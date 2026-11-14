@@ -14,6 +14,11 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="CompanionCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCompanionChecks.Run(context);NativeScopeDispatch.Enter("companions-cpu");},processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="AfkModeCpu" || scope=="AfkModeBorrowCpu" || scope=="AfkModeCompletionCpu" || scope=="AfkModeVisual")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);

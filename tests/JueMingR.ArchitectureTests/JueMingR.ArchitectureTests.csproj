@@ -12,6 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Companions\CompanionCoreChecks.cs" Link="Companions\CompanionCoreChecks.cs" />
     <Compile Include="..\ItemBrowser\BrowserCoreChecks.cs" Link="ItemBrowser\BrowserCoreChecks.cs" />
     <Compile Include="..\ItemBrowser\RelationChecks.cs" Link="ItemBrowser\RelationChecks.cs" />
     <Compile Include="..\ItemBrowser\BrowserHistoryChecks.cs" Link="ItemBrowser\BrowserHistoryChecks.cs" />

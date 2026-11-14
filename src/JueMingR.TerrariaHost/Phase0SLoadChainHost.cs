@@ -875,6 +875,7 @@ namespace JueMingR.TerrariaHost
             internal Movement.MovementSession Movement { get; private set; }
             internal Combat.HostCombat Combat {get;private set;}
             internal AfkMode.HostAfkMode Afk {get;private set;}
+            internal Companions.HostCompanions Companions {get;private set;}
             internal Combat.HostCombatObservation CombatObservation {get;private set;}
             internal Combat.HostCombatExperiments CombatExperiments {get;private set;}
             internal Feedback.LocalShortFeedback ShortFeedback { get; private set; }
@@ -974,6 +975,7 @@ namespace JueMingR.TerrariaHost
                     Combat=new Combat.HostCombat(gameDirectory,Tools);runtime.SharedRuntime.AddFeature(Combat);
                     Combat.Handoff.Attach(Processing,QuickItems);
                     Afk=new AfkMode.HostAfkMode(gameDirectory,Tools);Afk.Attach(QuickItems,Processing);runtime.SharedRuntime.AddFeature(Afk);
+                    Companions=new Companions.HostCompanions(gameDirectory){OwnerOperations=items.Ownership};runtime.SharedRuntime.AddFeature(Companions);
                     CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory),PackageId,exactPredictionComparison,hiddenAccess){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
                     Combat.Attack=CombatObservation.Attack=new Combat.HostAttackAim(Combat,CombatObservation);
                     CombatExperiments=new Combat.HostCombatExperiments(gameDirectory,Combat,CombatObservation,hiddenAccess);
@@ -1017,6 +1019,7 @@ namespace JueMingR.TerrariaHost
                 if (Journey != null) Shell.AttachJourney(Journey);
                 if (View != null) Shell.AttachView(View);
                 if (Afk != null) Shell.AttachAfk(Afk);
+                Shell.Companions=Companions;
                 if (Movement != null) { Shell.AttachMovement(Movement); Movement.CanMovementInput = () => Shell.CanMovementInput; Movement.CanTeleportPointer = () => Shell.CanMovementInput && !Shell.OwnsPointer && !Terraria.Main.LocalPlayer.mouseInterface; }
                 Browser?.Attach(Shell, hotkeys);
                 if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanAutomaticProcessingInput;Tools.CanInventoryPreparationInterface=()=>Shell.CanInventoryPreparationInput;Tools.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Tools.Feedback=ShortFeedback;}
