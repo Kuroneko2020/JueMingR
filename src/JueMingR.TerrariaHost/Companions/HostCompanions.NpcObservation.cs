@@ -12,7 +12,7 @@ namespace JueMingR.TerrariaHost.Companions
         // actor. Only currently relevant server observations become active.
         // The human table remains the original primary-stream native table.
         private NPC[] observedNpcs;
-        private uint[] observedTicks;private long[] observedRevisions;private long nextObservationRevision;
+        private uint[] observedTicks;private long[] observedRevisions,advancedRevisions;private long nextObservationRevision;
         private uint observationStep=UInt32.MaxValue;
         internal bool ReadingObservation {get;private set;}
         private readonly MessageBuffer observationDecoder=new MessageBuffer{whoAmI=256};
@@ -24,10 +24,11 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(observedNpcs!=null)return;
             observedNpcs=new NPC[Main.maxNPCs];for(int i=0;i<observedNpcs.Length;i++)observedNpcs[i]=new NPC{whoAmI=i,active=false};
-            observedTicks=new uint[observedNpcs.Length];observedRevisions=new long[observedNpcs.Length];
+            observedTicks=new uint[observedNpcs.Length];observedRevisions=new long[observedNpcs.Length];advancedRevisions=new long[observedNpcs.Length];
         }
         internal long NpcObservationRevision(NPC npc){return Main.netMode==1 && observedNpcs!=null && ReferenceEquals(observedNpcs[npc.whoAmI],npc)?observedRevisions[npc.whoAmI]:0;}
-        internal bool FreshNpcObservation(NPC npc){return Main.netMode!=1 || observedNpcs!=null && ReferenceEquals(observedNpcs[npc.whoAmI],npc) && observedTicks[npc.whoAmI]==Main.GameUpdateCount;}
+        internal bool FreshNpcObservation(NPC npc){return Main.netMode!=1 || observedNpcs!=null && ReferenceEquals(observedNpcs[npc.whoAmI],npc) && observedTicks[npc.whoAmI]+1==Main.GameUpdateCount && advancedRevisions[npc.whoAmI]!=observedRevisions[npc.whoAmI];}
+        internal long NpcSampleTick(NPC npc){return Main.netMode==1?observedTicks[npc.whoAmI]:(long)Main.GameUpdateCount-1;}
         internal NPC[] EnterNpcObservation()
         {
             if(Main.netMode!=1 || !HasActors)return null;
@@ -53,6 +54,7 @@ namespace JueMingR.TerrariaHost.Companions
             try{foreach(var npc in observedNpcs)
             {
                 if(!npc.active)continue;if(!NeededNpc(npc.Center)){npc.active=false;continue;}
+                advancedRevisions[npc.whoAmI]=observedRevisions[npc.whoAmI];
                 if(NPC.offSetDelayTime>0 || Main.multiplayerNPCSmoothingRange<=0 || NPCID.Sets.NoMultiplayerSmoothingByType[npc.type] || NPCID.Sets.NoMultiplayerSmoothingByAI[npc.aiStyle] || npc.townNPC && npc.ai[0]==25f)npc.netOffset=Vector2.Zero;
                 else if(Terraria.Testing.DebugOptions.FakeNetOffset!=Vector2.Zero)npc.netOffset=Terraria.Testing.DebugOptions.FakeNetOffset;
                 else if(npc.netOffset!=Vector2.Zero)
@@ -74,6 +76,8 @@ namespace JueMingR.TerrariaHost.Companions
             finally{Main.npc=previous;ReadingObservation=reading;gravityField.SetValue(null,previousGravity);Collision.stair=stair;Collision.stairFall=fall;Collision.honey=honey;Collision.shimmer=shimmer;Collision.sloping=sloping;Collision.landMine=mine;Collision.up=up;Collision.down=down;}
         }
         internal void DecodeNpcObservation(Actor source,byte[] packet,int start,int length)
+        {DecodeNpcObservationAt(source,packet,start,length,Main.GameUpdateCount);}
+        private void DecodeNpcObservationAt(Actor source,byte[] packet,int start,int length,uint sampleTick)
         {
             if(!HasActors || ReadingObservation || length<3)return;
             EnsureNpcObservation();int slot=packet[start]==54?BitConverter.ToInt16(packet,start+1):packet[start+1];if(slot<0 || slot>=observedNpcs.Length)return;
@@ -82,7 +86,7 @@ namespace JueMingR.TerrariaHost.Companions
             try
             {
                 Buffer.BlockCopy(packet,start,observationDecoder.readBuffer,0,length);observationDecoder.ResetReader();int id;observationDecoder.GetData(0,length,out id);
-                if(id==23){observedTicks[slot]=Main.GameUpdateCount;observedRevisions[slot]=++nextObservationRevision;}
+                if(id==23){observedTicks[slot]=sampleTick;observedRevisions[slot]=++nextObservationRevision;}
             }
             finally{Decoding=decoding;ReadingObservation=false;Main.npc=previous;}
         }

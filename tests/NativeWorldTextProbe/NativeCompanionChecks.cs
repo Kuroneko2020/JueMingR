@@ -50,6 +50,7 @@ namespace NativeWorldTextProbe
             var independentFailures=new List<Exception>();
             NativeBody(context,host,list[1].Id,list[0].Id,independentFailures);
             NativeCompanionTransportChecks.Run();
+            NativeCompanionCoreNetworkChecks.CheckIdle(host);
             NativeCompanionPersistenceChecks.RunWriter(host,list[0].Id,Environment.GetCommandLineArgs()[2],Program.OutputDirectory);
             if(independentFailures.Count!=0)throw independentFailures[0];
             Console.WriteLine("PASS companions: production composition/serialization/full native archive/activation isolation/actual resource continuity/UI layout/transport framing. No game, Steam or FPS acceptance.");
@@ -68,6 +69,11 @@ namespace NativeWorldTextProbe
                 Require((bool)Call(host,"Join",id),"actual native Spawn joins saved character: "+Get(host,"Feedback"));
                 var p=(Player)Call(host,"GetBody",id);Require(p.active && p.whoAmI!=Main.myPlayer,"independent active native body");
                 NativeCompanionTileContextChecks.Run(host,p);
+                try{NativeCompanionCoreLifecycleChecks.Run(host,p,other);}
+                catch(Exception failure){Console.Error.WriteLine("FAIL companion core lifecycle (independent checks continue): "+failure);independentFailures.Add(failure);}
+                try{NativeCompanionCoreNetworkChecks.Run(host,p,other);}
+                catch(Exception failure){Console.Error.WriteLine("FAIL companion core network (independent checks continue): "+failure);independentFailures.Add(failure);}
+                p=(Player)Call(host,"GetBody",id);
                 try{NativeCompanionBehaviorChecks.RunJumpReachability(host);}
                 catch(Exception failure){Console.Error.WriteLine("FAIL companion jump (other restored native checks continue): "+failure);independentFailures.Add(failure);}
                 var human=Main.LocalPlayer;human.position=new Vector2(1300,900);var start=p.position;int realSlot=Main.myPlayer;var mouse=Main.mouseItem;int x=Main.mouseX,y=Main.mouseY;

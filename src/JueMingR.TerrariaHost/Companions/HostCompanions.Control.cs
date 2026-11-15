@@ -19,7 +19,7 @@ namespace JueMingR.TerrariaHost.Companions
             // follows this body's current position, never the old load/world
             // or dead target. Do not call this for budget-delayed valid shots.
             a.Aim=a.Body.Center;a.HasAim=a.WasUsing=false;
-            a.AimTimeline=null;a.AimTerrain=null;a.AimRevision=0;
+            a.AimTimeline=null;a.AimTerrain=null;a.AimRevision=0;a.AimPlayer=null;
         }
         internal void Control(Actor a)
         {
@@ -48,6 +48,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if(a.Aim.X!=p.Center.X && p.itemAnimation<=0)p.ChangeDir(a.Aim.X>p.Center.X?1:-1);
             }
             else {IdleAim(a);p.channel=false;}
+            if(ReferenceEquals(a,planningActor) && !p.controlUseItem)aimTurn++;
             a.Status=frame.Status;
         }
         private void SelectTarget(Actor a)
@@ -68,22 +69,42 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal void PrepareUse(Actor a)
         {
-            if(a.Target==null || !a.Body.controlUseItem || !ReferenceEquals(a,planningActor) || aimStep==Main.GameUpdateCount)return;
-            aimStep=Main.GameUpdateCount;
+            if(a.Target==null)return;
+            bool fresh=FreshNpcObservation(a.Target);
+            if(fresh && aimStep!=Main.GameUpdateCount && aimSelectionStep!=Main.GameUpdateCount)
+            {
+                aimSelectionStep=Main.GameUpdateCount;aimSelected=null;
+                // Least recently offered eligible role wins this coherent
+                // window. Dead/disabled/faulted/no-target/stale roles cannot
+                // monopolize another target's fresh packet phase.
+                foreach(var candidate in actors.Values)
+                {
+                    var p=candidate.Body;var n=candidate.Target;
+                    if(!candidate.Ready || candidate.Closing || candidate.Faulted || p.dead || !candidate.Profile.Behavior.AttackEnabled || p.noItems || p.CCed || n==null || candidate.TargetGeneration!=n.generation || !CombatSelection.Receives(n,false) || n.townNPC || PredictionDead(candidate,n) || Vector2.DistanceSquared(p.Center,n.Center)>=1600*1600 || !FreshNpcObservation(n) || p.HeldItem.shoot<=0 || p.HeldItem.damage<=0)continue;
+                    if(aimSelected==null || candidate.LastAimAttempt<aimSelected.LastAimAttempt)aimSelected=candidate;
+                }
+            }
+            // The opportunity to capture a coherent sample is independent of
+            // a semi-auto release edge. Only native ItemCheck may actually use
+            // the item. Selection is O(team) once per world step, with no
+            // per-candidate visibility rays and one shared enhancement budget.
+            bool capture=fresh && ReferenceEquals(a,aimSelected) && aimStep!=Main.GameUpdateCount;
+            if(capture){aimStep=Main.GameUpdateCount;a.LastAimAttempt=++aimAttempt;}
+            if(!capture && a.AimTimeline==null)return;
             // One shared enhancement allowance, never one human-sized budget
             // per actor. Exhaustion retains legal basic input and movement.
             using(work.Enter(Main.GameUpdateCount))
             {
                 try
                 {
-                    long revision=NpcObservationRevision(a.Target);bool fresh=FreshNpcObservation(a.Target);
-                    if(a.AimRevision!=revision){a.AimTimeline=null;a.AimTerrain=null;a.AimRevision=revision;}
+                    long revision=NpcObservationRevision(a.Target);
+                    if(a.AimRevision!=revision){a.AimTimeline=null;a.AimTerrain=null;a.AimPlayer=null;a.AimRevision=revision;}
                     // Raw AI clocks belong to the last server 23, not the
                     // geometry-only interpolation between packets. Capture a
                     // model only from a fresh coherent sample. Its immutable
                     // timeline may still be consumed at its real age while
                     // identity, player premise, geometry and cells stay valid.
-                    a.Aim=HostAttackAim.ActorPoint(a.Body,a.Target,session,prediction,ref a.AimTimeline,ref a.AimTerrain,fresh);a.HasAim=true;a.AimWeapon=a.Body.HeldItem;a.AimOrigin=HostAttackModels.LaunchOrigin(a.Body,a.Body.HeldItem);a.AimTarget=a.Target.Center+a.Target.netOffset;a.AimVelocity=a.Target.velocity;
+                    a.Aim=HostAttackAim.ActorPoint(a.Body,a.Target,session,prediction,ref a.AimTimeline,ref a.AimTerrain,capture,NpcSampleTick(a.Target),ref a.AimPlayer,ref a.AimPlayerTick);a.HasAim=true;a.AimWeapon=a.Body.HeldItem;a.AimOrigin=HostAttackModels.LaunchOrigin(a.Body,a.Body.HeldItem);a.AimTarget=a.Target.Center+a.Target.netOffset;a.AimVelocity=a.Target.velocity;
                 }
                 catch(CombatPredictionBudgetExceededException){}
             }
@@ -92,7 +113,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(projectile.type!=633)return a.Aim;
             var view=new HostPrismSteering.View(a.Body.Center-new Vector2(960,540),1920,1080,1);
-            return HostPrismSteering.PointInView(projectile.Center,projectile.velocity,a.Aim,a.Body.gravDir,view);
+            return HostPrismSteering.PointInView(a.Body.RotatedRelativePoint(a.Body.MountedCenter),projectile.velocity,a.Aim,a.Body.gravDir,view);
         }
         internal void AfterBody(Actor a)
         {

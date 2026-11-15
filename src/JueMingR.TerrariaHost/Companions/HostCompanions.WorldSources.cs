@@ -18,7 +18,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private sealed class WorldLease
         {
-            internal Actor Source,Pending;internal bool Waiting,AwaitBaseline,Terminated;internal long Barrier;
+            internal Actor Source,Pending;internal bool Waiting,AwaitBaseline,Terminated,PrimaryProjectile;internal long Barrier;
             internal int Key;
 
         }
@@ -96,7 +96,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(length<3)return false;int slot=data[start+1];WorldLease lease;
             if(data[start]==23 && Flow(source).Snapshot)Flow(source).SeenNpc.Add(slot);
-            if(!npcSources.TryGetValue(slot,out lease)){lease=new WorldLease{AwaitBaseline=data[start]!=23};npcSources.Add(slot,lease);if(source==null && data[start]==23)return true;}
+            if(!npcSources.TryGetValue(slot,out lease)){lease=new WorldLease{Source=source,AwaitBaseline=data[start]!=23};npcSources.Add(slot,lease);if(data[start]==23)return true;}
             var npc=observedNpcs==null?Main.npc[slot]:observedNpcs[slot];
             var point=data[start]==23 && length>=19?new Vector2(BitConverter.ToSingle(data,start+3),BitConverter.ToSingle(data,start+7)):npc.Center;
             bool accepted=Route(lease,source,point,data[start]==23);
@@ -120,7 +120,7 @@ namespace JueMingR.TerrariaHost.Companions
             if(!projectileSources.TryGetValue(slot,out lease))
             {
                 Projectile old;bool known=key.TryGet(out old);
-                lease=new WorldLease{Source=source,Key=(int)key};projectileSources.Add(slot,lease);
+                lease=new WorldLease{Source=source,Key=(int)key,PrimaryProjectile=source==null};projectileSources.Add(slot,lease);
                 if(data[start]==27 && !known)return true;
                 lease.Source=null;
             }
@@ -140,10 +140,16 @@ namespace JueMingR.TerrariaHost.Companions
                 // delta handoff for the old object. Ordinary projectiles may
                 // send this 27 only once, so admit it now from its live source;
                 // never discard it behind the old generation's ping barrier.
-                lease.Key=(int)key;lease.Source=source;lease.Pending=null;lease.Waiting=lease.AwaitBaseline=lease.Terminated=false;return true;
+                lease.Key=(int)key;lease.Source=source;lease.Pending=null;lease.Waiting=lease.AwaitBaseline=lease.Terminated=false;lease.PrimaryProjectile=source==null;return true;
             }
             if(lease.Key!=(int)key)return false;
             if(lease.Terminated)return false;
+            // A legal primary 27 is the human native consumer's update, not
+            // an optional AI observation. Once this identity is on that stream,
+            // only its FIFO updates may write it; late secondary packets cannot
+            // overwrite it or freeze its sole update behind an AI pong barrier.
+            if(source==null){lease.PrimaryProjectile=true;lease.Source=lease.Pending=null;lease.Waiting=lease.AwaitBaseline=false;return true;}
+            if(lease.PrimaryProjectile)return false;
             return Route(lease,source,point,true);
         }
         internal void PrimaryPingSent(){primarySource.Pings.Enqueue(issuingPrimaryBarrier?primarySource.Sent:0);}

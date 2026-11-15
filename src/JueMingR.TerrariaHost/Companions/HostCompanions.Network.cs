@@ -23,6 +23,20 @@ namespace JueMingR.TerrariaHost.Companions
                 using(var stream=new MemoryStream(packet,false))using(var r=new BinaryReader(stream))
                 {
                     byte id=r.ReadByte();
+                    if(id==90){DecodePersonalItem(a,packet);continue;}
+                    // Server instance expiry/reuse is FIFO with this role's
+                    // 90 births. Retire its sparse copy only; the primary
+                    // connection still owns the one shared native151 consumer.
+                    if(id==151){if(packet.Length<3)throw new InvalidDataException("物品结束帧不完整。");a.PersonalItems.Remove(BitConverter.ToInt16(packet,1));continue;}
+                    if(!a.Ready && (id==23 || id==54))
+                    {
+                        int slot=id==23?packet[1]:BitConverter.ToInt16(packet,1);
+                        if(slot<0 || slot>=Main.maxNPCs)throw new InvalidDataException("初始人物观察槽位无效。");
+                        // Native initial NPCs precede 49/129. Retain at most
+                        // one full state/buff frame per actual slot until the
+                        // validated world has a spawned, consumable body.
+                        (id==23?a.InitialNpc:a.InitialNpcBuffs)[slot]=packet;if(id==23)a.InitialNpcTicks[slot]=Main.GameUpdateCount;continue;
+                    }
                     if(id==23)ObservePredictedNpc(a,packet,0,packet.Length);
                     if(id==154){ActorPingReceived(a);continue;}
                     if(id==162){StrikeAcknowledged(a);continue;}
@@ -52,11 +66,24 @@ namespace JueMingR.TerrariaHost.Companions
                     }
                     if(id==49 && !a.Ready)
                     {
+                        a.InitialNpcComplete=true;
                         Spawn(a,PlayerSpawnContext.SpawningIntoWorld);
                         using(CompanionHooks.Enter(a,a.Body.Center))NetMessage.SendData(12,-1,-1,null,a.Body.whoAmI,(byte)PlayerSpawnContext.SpawningIntoWorld);
                         continue;
                     }
-                    if(id==129){a.Ready=true;profiles.BeginPlay(a.Body);a.Status="跟随中";continue;}
+                    if(id==129)
+                    {
+                        if(!a.InitialNpcComplete || !a.SpawnSent)throw new InvalidDataException("队友初始世界基线未完成。");
+                        if(!a.Ready)
+                        {
+                            a.Ready=true;profiles.BeginPlay(a.Body);a.Status="跟随中";
+                            foreach(var pair in a.InitialNpc){var state=pair.Value;if(RouteNpc(a,state,0,state.Length))DecodeNpcObservationAt(a,state,0,state.Length,a.InitialNpcTicks[pair.Key]);}
+                            foreach(var buffs in a.InitialNpcBuffs.Values)
+                            {WorldLease lease;int slot=BitConverter.ToInt16(buffs,1);if(npcSources.TryGetValue(slot,out lease) && ReferenceEquals(lease.Source,a) && !lease.Waiting && !lease.AwaitBaseline)DecodeNpcObservation(a,buffs,0,buffs.Length);}
+                            a.InitialNpc.Clear();a.InitialNpcBuffs.Clear();a.InitialNpcTicks.Clear();
+                        }
+                        continue;
+                    }
                     if(id==5 || id==13 || id==16 || id==117 || id==4 || id==12 || id==14)continue;
                     if(id==23 || id==28){if(RouteNpc(a,packet,0,packet.Length))DecodeNpcObservation(a,packet,0,packet.Length);continue;}
                     if(id==54){WorldLease lease;int slot=packet.Length>=3?BitConverter.ToInt16(packet,1):-1;if(slot>=0 && npcSources.TryGetValue(slot,out lease) && !lease.Waiting && !lease.AwaitBaseline && ReferenceEquals(lease.Source,a))DecodeNpcObservation(a,packet,0,packet.Length);continue;}
@@ -109,6 +136,9 @@ namespace JueMingR.TerrariaHost.Companions
             // Native Spawn chooses the real position for joins and revivals.
             // The deserialized body's pre-spawn center is not a world cursor.
             a.Target=null;IdleAim(a);
+            // Only the native restoration consumer borrows this body's owner
+            // context. Spawn's human UI/refund/HostPlay branches stay closed.
+            using(CompanionHooks.Enter(a,a.Aim))a.Minions.RestoreMinionsFor(p);
         }
         internal void Publish(Actor a)
         {
