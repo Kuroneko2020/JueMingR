@@ -404,3 +404,4 @@ leaf	AfkModeVisual	afk-ui
 leaf	AfkModeCompletionCpu	afk-completion
 leaf	AfkModeBorrowCpu	afk-borrow
 leaf	CompanionCpu	companions-cpu
+leaf	CompanionVisual	companions-ui

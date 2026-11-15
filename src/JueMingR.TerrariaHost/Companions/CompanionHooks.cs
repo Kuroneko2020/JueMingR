@@ -90,17 +90,35 @@ namespace JueMingR.TerrariaHost.Companions
             var a=host?.Owned(__instance);if(a==null)return true;
             if(!a.Ready || a.Closing || a.Faulted)return false;
             if(a.LastUpdate==Main.GameUpdateCount)return false;
+#if JMR_COMPANION_FAULT_DIAGNOSTIC
+            CompanionUpdateFaultTrace.Phase(a,"before-body/observation");
+#endif
             __state=new PlayerStep{X=Player.tileTargetX,Y=Player.tileTargetY,Npcs=host.EnterNpcObservation()};
             a.LastUpdate=Main.GameUpdateCount;
-            host.Control(a);return true;
+#if JMR_COMPANION_FAULT_DIAGNOSTIC
+            CompanionUpdateFaultTrace.Phase(a,"before-body/control");
+#endif
+            host.Control(a);
+#if JMR_COMPANION_FAULT_DIAGNOSTIC
+            CompanionUpdateFaultTrace.Phase(a,"native-player-update");
+#endif
+            return true;
         }
         private static void PlayerAfter(Player __instance,PlayerStep __state)
-        {var a=host?.Owned(__instance);if(__state!=null && a!=null && a.Ready && !a.Closing)host.AfterBody(a);}
+        {var a=host?.Owned(__instance);if(__state!=null && a!=null && a.Ready && !a.Closing){
+#if JMR_COMPANION_FAULT_DIAGNOSTIC
+            CompanionUpdateFaultTrace.Phase(a,"after-body/publish");
+#endif
+            host.AfterBody(a);}}
         private static void NpcWorldAfter(){host?.AdvanceNpcObservation();}
         private static Exception PlayerFinal(Exception __exception,Player __instance,PlayerStep __state)
         {
             if(__state!=null){host.LeaveNpcObservation(__state.Npcs);Player.tileTargetX=__state.X;Player.tileTargetY=__state.Y;}
-            if(__exception!=null){var a=host?.Owned(__instance);if(a!=null){a.Status="人物更新失败："+__exception.Message;a.Faulted=true;a.Body.controlUseItem=false;a.Body.channel=false;return null;}}return __exception;
+            if(__exception!=null){var a=host?.Owned(__instance);if(a!=null){
+#if JMR_COMPANION_FAULT_DIAGNOSTIC
+                CompanionUpdateFaultTrace.Capture(a,__exception);
+#endif
+                a.Status="人物更新失败："+__exception.Message;a.Faulted=true;a.Body.controlUseItem=false;a.Body.channel=false;return null;}}return __exception;
         }
         private static void UseBefore(Player __instance,MethodBase __originalMethod,ref Scope __state)
         {var a=host?.Owned(__instance);if(a!=null && a.Ready && !a.Closing){bool use=__originalMethod.Name=="ItemCheck";if(use)host.PrepareUse(a);__state=Enter(a,a.Aim,__originalMethod.Name=="PickupItem" || use && (__instance.controlUseItem || __instance.itemAnimation>0 || __instance.channel));}}

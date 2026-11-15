@@ -93,7 +93,8 @@ foreach($scope in @('CompanionCpu','AfkModeCompletionCpu','AfkModeBorrowCpu','Bl
 }
 foreach($helper in @('','Behavior','Continuous','Lifecycle','Persistence','Prediction','Transport','Ui')){
     $companionLeaf='tests/NativeWorldTextProbe/NativeCompanion'+$helper+'Checks.cs'
-    Assert-Route ((@(Get-WorkloadPathChecks $companionLeaf)-join '|') -ceq 'native-CompanionCpu') ('companion private leaf retains its sole real caller '+$companionLeaf)
+    $expectedCompanionLeaf=if($helper -ceq 'Ui'){'native-CompanionCpu|native-CompanionVisual'}else{'native-CompanionCpu'}
+    Assert-Route ((@(Get-WorkloadPathChecks $companionLeaf)-join '|') -ceq $expectedCompanionLeaf) ('companion private leaf retains its real callers '+$companionLeaf)
 }
 $supply='native-BlueprintSupplyContinuationCpu'
 Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeBlueprintConstructionDoorChecks.cs') -notcontains $supply) 'Door private body does not select SupplyRepair'

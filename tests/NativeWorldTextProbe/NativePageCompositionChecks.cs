@@ -77,6 +77,7 @@ namespace NativeWorldTextProbe
             var controls=NativeToolsUiChecks.Controls(misc);
             var expectedBindings=new System.Collections.Generic.List<string>{"tools.capture","tools.herbs","items.coin-deposit.toggle"};
             if(GetOptional(misc,"AfkRow")!=null)expectedBindings.Add("afk.toggle");
+            if(GetOptional(shell,"Companions")!=null)expectedBindings.Add("companions.manage");
             Require(controls.Where(c=>Get(c,"Command").ToString()=="Hotkey").Select(c=>(string)Get(Get(c,"Element"),"HotkeyTarget"))
                 .OrderBy(x=>x).SequenceEqual(expectedBindings.OrderBy(x=>x)),"migrated bindings retain exact original identities and the attached AFK action");
             var on=controls.Single(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==1);

@@ -1,7 +1,7 @@
 # These ordinary mixed scopes really construct ProbeGraphics. Keep resource
 # admission in this separately bound owner, not in a pure plan projection.
 function Get-WorkloadNativeContentScopes {
-    return @('BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
+    return @('CompanionVisual','BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
 }
 function Get-WorkloadNativeContentFiles {
     param([string]$Scope)

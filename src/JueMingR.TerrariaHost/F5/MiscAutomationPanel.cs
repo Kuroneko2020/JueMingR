@@ -65,7 +65,7 @@ namespace JueMingR.TerrariaHost.F5
                 y=CoinPanel==null?y:CoinPanel.Height;
                 AfkRow?.Build(y,view.Width,shell.Layout.TextSize);
                 y=AfkRow==null?y:AfkRow.Height;companionRows.Clear();
-                if(companionOpen!=null)new F5RowLayout(companionRows,shell.Layout.TextSize).Row(ref y,0,view.Width,"AI 队友",new[]{"管理"},description:companionDescription);
+                if(companionOpen!=null)new F5RowLayout(companionRows,shell.Layout.TextSize).Row(ref y,0,view.Width,"AI 队友",new[]{"管理","键"},description:companionDescription);
                 Height=y;dirty=false;LayoutBuildCount++;
             }
             if(project)
@@ -78,8 +78,10 @@ namespace JueMingR.TerrariaHost.F5
                 foreach(var e in companionRows)
                 {
                     var rect=e.Rect.Offset(view.X,view.Y-shell.Scroll);
-                    var projected=new F5Element(e.Kind,rect,e.Text,e.TextSize,e.TextScale,e.Command,e.HotkeyTarget,e.Description,e.HintRect.Offset(view.X,view.Y-shell.Scroll));
+                    var projected=new F5Element(e.Kind,rect,e.Text,e.TextSize,e.TextScale,e.Command,
+                        e.Kind==F5ElementKind.Hotkey?CompanionWindow.ActionId:e.HotkeyTarget,e.Description,e.HintRect.Offset(view.X,view.Y-shell.Scroll));
                     if(e.Kind==F5ElementKind.Button){companionControl=new ItemUiControl{Rect=rect,Element=projected,Enabled=true};controls.Add(companionControl);}
+                    else if(e.Kind==F5ElementKind.Hotkey)controls.Add(new ItemUiControl{Command=ItemUiCommand.Hotkey,Rect=rect,Element=projected,Enabled=true});
                     else elements.Add(projected);
                 }
             }
@@ -131,7 +133,8 @@ namespace JueMingR.TerrariaHost.F5
             rect=default(F5Rect);
             if(!ready || NeedsBuild || generation!=shell.Layout.Generation || scroll!=shell.Scroll || !view.Contains(x,y) || clip.HasValue && !clip.Value.Contains(x,y))return null;
             foreach(var e in elements)if(ReferenceEquals(e.Description,companionDescription) && e.HintRect.Contains(x,y)){rect=e.HintRect;return companionDescription.Text;}
-            foreach(var c in controls)if(c.Command==ItemUiCommand.Hotkey && c.Rect.Contains(x,y)){rect=clip.HasValue?F5HintLayout.Intersect(c.Rect,clip.Value):c.Rect;return c.Element.HotkeyTarget==Tools.HostTools.SelectAction?F5HotkeyHints.MiningSelection:F5HotkeyHints.Toggle;}
+            foreach(var c in controls)if(c.Command==ItemUiCommand.Hotkey && c.Rect.Contains(x,y)){rect=clip.HasValue?F5HintLayout.Intersect(c.Rect,clip.Value):c.Rect;
+                return c.Element.HotkeyTarget==CompanionWindow.ActionId?"双击设置打开或关闭 AI 队友管理窗的快捷键":c.Element.HotkeyTarget==Tools.HostTools.SelectAction?F5HotkeyHints.MiningSelection:F5HotkeyHints.Toggle;}
             string hint=ToolsPanel?.Hint(x,y,out rect);
             if(hint!=null)return hint;
             hint=CoinPanel?.Hint(x,y,out rect);

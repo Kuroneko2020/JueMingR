@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using JueMingR.Features.Text;
 using JueMingR.Platform.Companions;
+using JueMingR.Platform.Hotkeys;
 using JueMingR.TerrariaHost.Companions;
 using JueMingR.TerrariaHost.Input;
 using JueMingR.TerrariaHost.Items;
@@ -17,6 +18,7 @@ namespace JueMingR.TerrariaHost.F5
     // command reads the current native inventories again at the Host outlet.
     internal sealed partial class CompanionWindow : ITextEditSession
     {
+        internal const string ActionId = "companions.manage";
         private sealed class Control
         {
             internal string Key, Text;
@@ -61,6 +63,9 @@ namespace JueMingR.TerrariaHost.F5
         private TextEditBuffer editor;
         private string editKind, armedKey, notice, pendingCreatedName;
         private F5Rect panel, listView, bodyView, field;
+        private F5Rect titleBar;
+        private Vector2 requestedPosition, grabOffset, dragStartPosition;
+        private bool dragging, userPositioned, dragStartPositioned;
         private Matrix matrix;
         private Vector2 screen, pointer;
         private Guid selected;
@@ -72,7 +77,9 @@ namespace JueMingR.TerrariaHost.F5
         private string sourceIdentity;
         public TextEditBuffer Editor { get { return editor; } }
         internal bool Visible { get; private set; }
-        internal bool Captured { get { return armedKey != null || leftTail || rightTail; } }
+        internal bool Captured { get { return dragging || armedKey != null || leftTail || rightTail; } }
+        internal bool Independent { get; private set; }
+        internal bool Dragging { get { return dragging; } }
         internal bool OwnsPointer { get; private set; }
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
@@ -85,9 +92,19 @@ namespace JueMingR.TerrariaHost.F5
             textInput = new TextEditInput(this, new NotesClipboard(() => Main.instance.Window.Handle));
         }
         internal void Toggle(F5Rect anchor)
+        { ToggleCore(false); }
+        internal void ToggleIndependent(HotkeyChord chord)
+        {
+            // Only an admitted mouse-primary opener owns that physical tail.
+            // Keyboard open never steals an already-held world mouse gesture.
+            if (chord?.MainKey == 256) leftTail = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed;
+            if (chord?.MainKey == 257) rightTail = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
+            ToggleCore(true);
+        }
+        private void ToggleCore(bool independent)
         {
             if (Visible) { Close(); return; }
-            Visible = true; ready = false; notice = null;
+            Visible = true; Independent = independent; ready = false; notice = null;
             // The entry's release belongs to the entry. A held button cannot
             // become a fresh slot press when this upper surface appears.
             previousLeft = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed;
@@ -95,10 +112,16 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal bool Contains(float x, float y) { return Visible && ready && panel.Contains(x, y); }
         internal void BeforeInput(bool active) { textInput.BeforeSample(active && Visible); }
+        internal void CloseWithParent() { if (!Independent) Close(); }
+        internal void CancelForFocusLoss()
+        {
+            if (dragging) { requestedPosition = dragStartPosition; userPositioned = dragStartPositioned; }
+            Close();
+        }
         internal void Close()
         {
             if (!Visible && !ready && editor == null) return;
-            Visible = false; ready = false; armedKey = null; creating = confirmingReset = false;
+            Visible = false; ready = false; armedKey = null; creating = confirmingReset = dragging = false;
             CancelEdit(); icons.Clear(); renderer.Dispose(); controls.Clear(); labels.Clear(); generation++;
             // Keep already owned physical tails until the shared trusted sample
             // observes release, including close, lost focus and world departure.
@@ -112,13 +135,26 @@ namespace JueMingR.TerrariaHost.F5
             Vector2 logical = physical / transform.M11;
             float width = Math.Min(860, logical.X - 24), height = Math.Min(710, logical.Y - 24);
             if (width < 520 || height < 270) { Close(); return; }
-            var next = new F5Rect((logical.X - width) / 2, (logical.Y - height) / 2, width, height);
+            if (dragging && (matrix != transform || screen != physical || skin != renderer.Generation)) dragging = false;
+            Vector2 origin = userPositioned ? requestedPosition : new Vector2((logical.X - width) / 2, (logical.Y - height) / 2);
+            var next = new F5Rect(Math.Max(12, Math.Min(logical.X - width - 12, origin.X)),
+                Math.Max(12, Math.Min(logical.Y - height - 12, origin.Y)), width, height);
+            if (ready && panel.Width == width && panel.Height == height && matrix == transform && screen == physical && skin == renderer.Generation && !ViewChanged() &&
+                (panel.X != next.X || panel.Y != next.Y))
+            {
+                // A title drag translates the prepared cells without remeasuring
+                // text, rebuilding inventory controls or changing either scroll.
+                Translate(next.X - panel.X, next.Y - panel.Y);
+                generation++; preparedGeneration = generation;
+                if (resources) icons.Prepare(); return;
+            }
             if (!panel.Equals(next) || matrix != transform || screen != physical || skin != renderer.Generation)
             { armedKey = null; generation++; }
             if (skin != renderer.Generation) { sizes70.Clear(); sizes65.Clear(); hint.Clear(); editRevision = -1; }
             if (skin != renderer.Generation || rowHeight == 0) rowHeight = Math.Max(34, measure("主人附近优先", .7f).Height + 14);
             panel = next; matrix = transform; screen = physical; skin = renderer.Generation;
             float row = rowHeight;
+            titleBar = new F5Rect(panel.X + 8, panel.Y + 4, width - 56, row);
             listView = new F5Rect(panel.X + 10, panel.Y + row + 8, Math.Max(142, width * .24f), height - row * 2 - 28);
             bodyView = new F5Rect(listView.Right + 12, listView.Y + row + 8, panel.Right - listView.Right - 24, panel.Bottom - listView.Y - row - 64);
             if (ready && !ViewChanged()) { if (resources) icons.Prepare(); PrepareEditPresentation(); return; }
@@ -174,6 +210,18 @@ namespace JueMingR.TerrariaHost.F5
         private void SelectPage(int value)
         { CancelEdit(); creating = confirmingReset = false; page = value; bodyOffset = 0; Invalidate(); }
         private void Invalidate() { armedKey = null; generation++; }
+        private void Translate(float x, float y)
+        {
+            panel = panel.Offset(x, y); listView = listView.Offset(x, y); bodyView = bodyView.Offset(x, y);
+            titleBar = titleBar.Offset(x, y); field = field.Offset(x, y); contentY += y;
+            foreach (var c in controls) { c.Rect = c.Rect.Offset(x, y); if (c.Element != null) c.Element = Move(c.Element, x, y); }
+            for (int i = 0; i < labels.Count; i++) labels[i] = Move(labels[i], x, y);
+            if (editElement != null) editElement = Move(editElement, x, y);
+            hint.Hide();
+        }
+        private static F5Element Move(F5Element element, float x, float y)
+        { return new F5Element(element.Kind, element.Rect.Offset(x, y), element.Text, element.TextSize, element.TextScale,
+            element.Command, element.HotkeyTarget, element.Description, element.HintRect.Offset(x, y)); }
         private F5Size MeasureCached(string text, float scale)
         {
             if (scale != .7f && scale != .65f) return measureSource(text, scale);
@@ -257,22 +305,42 @@ namespace JueMingR.TerrariaHost.F5
             ConsumeLeft = leftTail; ConsumeRight = rightTail;
             bool wasEditing = editor != null;
             textInput.AfterSample(active && Visible && focused, null, keys, focused);
-            if (!active || !focused) { Close(); previousLeft = focused ? left : true; ReleaseTails(left, right, focused); return; }
+            if (!active || !focused)
+            {
+                if (!focused) CancelForFocusLoss(); else Close();
+                previousLeft = focused ? left : true; ReleaseTails(left, right, focused); return;
+            }
             if (!Visible) { previousLeft = left; ReleaseTails(left, right, true); return; }
             if (!wasEditing && editor == null && input.Hotkeys.IsNew((int)Keys.Escape)) { input.ConsumeCancellation((int)Keys.Escape); Close(); ReleaseTails(left, right, true); return; }
             PrepareCore(transform, physical, resources);
+            bool wasDragging = dragging;
+            if (dragging)
+            {
+                leftTail = true;
+                if (left) { requestedPosition = point - grabOffset; PrepareCore(transform, physical, resources); }
+                else dragging = false;
+            }
             OwnsPointer = Captured || Contains(point.X, point.Y);
             if (OwnsPointer) { if (left) leftTail = true; if (right) rightTail = true; }
             if (wheel != 0 && Contains(point.X, point.Y))
             {
-                if (listView.Contains(point.X, point.Y)) listOffset = Math.Max(0, Math.Min(listMaximum, listOffset - Math.Sign(wheel)));
-                else if (bodyView.Contains(point.X, point.Y)) bodyOffset = Math.Max(0, Math.Min(bodyMaximum, bodyOffset - Math.Sign(wheel) * 48));
+                if (!dragging && listView.Contains(point.X, point.Y)) listOffset = Math.Max(0, Math.Min(listMaximum, listOffset - Math.Sign(wheel)));
+                else if (!dragging && bodyView.Contains(point.X, point.Y)) bodyOffset = Math.Max(0, Math.Min(bodyMaximum, bodyOffset - Math.Sign(wheel) * 48));
                 ConsumeWheel = true; Invalidate(); PrepareCore(transform, physical, resources);
             }
             Control hit = null;
             if (ready) foreach (var c in controls) if (c.Enabled && c.Rect.Contains(point.X, point.Y)) { hit = c; break; }
-            if (left && !previousLeft) { armedKey = hit?.Key; armedGeneration = generation; }
-            if (!left && previousLeft && armedKey != null && armedGeneration == generation && hit?.Key == armedKey)
+            if (left && !previousLeft && !wasDragging)
+            {
+                if (hit == null && ready && titleBar.Contains(point.X, point.Y))
+                {
+                    dragStartPosition = requestedPosition; dragStartPositioned = userPositioned;
+                    requestedPosition = new Vector2(panel.X, panel.Y); grabOffset = point - requestedPosition;
+                    dragging = userPositioned = true; armedKey = null;
+                }
+                else { armedKey = hit?.Key; armedGeneration = generation; }
+            }
+            if (!wasDragging && !left && previousLeft && armedKey != null && armedGeneration == generation && hit?.Key == armedKey)
             {
                 var execute = hit.Execute; armedKey = null; execute?.Invoke();
                 if (Visible) PrepareCore(transform, physical, resources);

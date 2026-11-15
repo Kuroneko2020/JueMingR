@@ -26,6 +26,9 @@ namespace JueMingR.TerrariaHost.Companions
             internal CompanionBehaviorHost Behavior=new CompanionBehaviorHost();
             internal bool WaitingPassword,HasAim;internal Item AimWeapon;internal Vector2 AimOrigin,AimTarget,AimVelocity;
             internal bool Dirty,Faulted,WasUsing;
+#if JMR_COMPANION_FAULT_DIAGNOSTIC
+            internal string FaultPhase;
+#endif
             internal bool DeathObserved;
             internal int[] SyncType,SyncStack,SyncPrefix,SyncBuffType,SyncBuffTime;
             internal int[] NetworkSlotIds;
@@ -57,6 +60,9 @@ namespace JueMingR.TerrariaHost.Companions
             profiles=new CompanionProfiles(new FileCompanionArchive(gameDirectory));
             try{CompanionHooks.Install(this);CompanionProfiles.InstallSerializationHooks(CompanionHooks.Harmony);}
             catch(Exception e){CompanionHooks.Uninstall();failed=true;Feedback="AI队友原生接口不可用："+e.GetBaseException().Message;}
+#if JMR_COMPANION_FAULT_DIAGNOSTIC
+            CompanionUpdateFaultTrace.Install(gameDirectory);
+#endif
             AppDomain.CurrentDomain.ProcessExit+=Exit;
         }
         internal Player GetBody(Guid id)

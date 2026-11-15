@@ -10,6 +10,10 @@
     <DefineConstants Condition="'$(JueMingRAimLight)' == 'true'">$(DefineConstants);JMR_AIM_LIGHT</DefineConstants>
     <DefineConstants Condition="'$(JueMingRBlueprintDiagnostic)' == 'true'">$(DefineConstants);JMR_BLUEPRINT_DIAGNOSTIC</DefineConstants>
     <DefineConstants Condition="'$(JueMingRTargetGestureDiagnostic)' == 'true'">$(DefineConstants);JMR_TARGET_GESTURE_DIAGNOSTIC</DefineConstants>
+    <!-- Task184 temporary one-use fault candidate; unset ordinary builds omit
+         the type and all producers. This environment property is included by
+         the existing evaluated compilation/input identity reader. -->
+    <DefineConstants Condition="'$(JUEMINGR_COMPANION_FAULT_DIAGNOSTIC)' == '1'">$(DefineConstants);JMR_COMPANION_FAULT_DIAGNOSTIC</DefineConstants>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <TerrariaReferencesDirectory Condition="'$(TerrariaReferencesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\external\TerrariaRefs</TerrariaReferencesDirectory>
     <HarmonyReferencesDirectory Condition="'$(HarmonyReferencesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\external\Harmony</HarmonyReferencesDirectory>

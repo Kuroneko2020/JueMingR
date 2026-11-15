@@ -43,7 +43,7 @@ namespace JueMingR.TerrariaHost.F5
         private bool blueprintLeavePending;
         private string blueprintLeaveAction;
         private readonly Func<HotkeyAction, HotkeyChord, bool> admitHotkey;
-        private bool dispatchGameplay, dispatchBlueprint, dispatchJourneyClose, dispatchTarget, dispatchMap;
+        private bool dispatchGameplay, dispatchBlueprint, dispatchJourneyClose, dispatchTarget, dispatchMap, dispatchCompanion;
         internal BlueprintLibraryPresentation BlueprintUi { get; private set; }
         internal BlueprintMaterialsPresentation BlueprintMaterialsUi { get; private set; }
         internal BlueprintPlacedListPresentation BlueprintPlacedUi { get; private set; }
@@ -252,16 +252,47 @@ namespace JueMingR.TerrariaHost.F5
                 CompanionUi=value==null?null:new CompanionWindow(value,inputState,State.Layout.DynamicTextSize);
                 EnsureMiscUi().AttachCompanions(value==null?(Action<F5Rect>)null:OpenCompanions);
                 var prior=State.BeforeLeave;
-                State.BeforeLeave=p=>{if(prior!=null && !prior(p))return false;CompanionUi?.Close();return true;};
+                State.BeforeLeave=p=>{if(prior!=null && !prior(p))return false;CompanionUi?.CloseWithParent();return true;};
             }
         }
         private void OpenCompanions(F5Rect anchor)
+        { ToggleCompanionWindow(anchor,false,null); }
+        // Notes hover may coexist with this keyboard action. An existing drag
+        // and its final consumed release sample must finish before a new window.
+        internal bool CanToggleCompanionsFromHotkey
+        {
+            get{return CompanionUi!=null && !failed && LayersReady && biome.SharedRuntime.IsSessionActive && CanPresentNow && inputState.CanUseInput &&
+                !NativeJourneyInputBusy && !inputState.NativeUiTransitionRequest && !(TargetGestureBusy?.Invoke()??false) &&
+                !inputState.HotkeyCapture && !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest &&
+                Main.CurrentInputTextTakerOverride==null && !PlayerInput.WritingText && !notes.OtherTextOwner &&
+                !notes.CapturesPointer && !notes.ConsumeLeft && !notes.ConsumeRight &&
+                CompanionUi.Editor==null && !CompanionUi.Captured && !CompanionUi.ConsumeLeft && !CompanionUi.ConsumeRight &&
+                !State.ConsumeLeft && !State.ConsumeRight && !State.DraggingScroll &&
+                !(information!=null && information.Adjustment.Active) && !adjustmentPending &&
+                HotkeyPopup?.Visible!=true && StylePopup?.Visible!=true && DeathPopup?.Visible!=true && MapPopup?.Visible!=true && FootprintPopup?.Visible!=true &&
+                BlueprintMaterialsUi?.Visible!=true && BlueprintReplacementPopup?.Visible!=true && FishingUi?.Visible!=true && CaptureUi?.Visible!=true &&
+                RecoveryUi?.Selecting!=true && RecoveryUi?.PotionPopup.Visible!=true && items?.Selecting!=true &&
+                CombatInterval?.OwnsPointer!=true && CombatRadius?.OwnsPointer!=true && ViewZoom?.OwnsPointer!=true;}
+        }
+        internal void ToggleCompanionsFromHotkey(HotkeyChord chord)
+        {
+            if(!CanToggleCompanionsFromHotkey)return;
+            // Keep shared physical history intact: one accepted edge clears this
+            // epoch, without suppressing unrelated held movement until release.
+            inputState.ConsumeHotkeyActions();
+            ToggleCompanionWindow(default(F5Rect),true,chord);
+        }
+        private void ToggleCompanionWindow(F5Rect anchor,bool independent,HotkeyChord chord)
         {
             if(CompanionUi==null)return;
-            if(CompanionUi.Visible){CompanionUi.Close();return;}
+            if(CompanionUi.Visible){if(independent)CompanionUi.ToggleIndependent(chord);else CompanionUi.Close();return;}
             CloseBlueprintReplacementConfiguration();CaptureUi?.Close();FishingUi?.CloseOverlay();RecoveryUi?.PotionPopup.Close();
             HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();MapPopup?.Suspend();FootprintPopup?.Close();
-            State.CancelControlCapture();CompanionUi.Toggle(anchor);CompanionUi.Prepare(Main.UIScaleMatrix,PlayerInput.OriginalScreenSize);
+            renderer.RefreshResources();
+            renderer.Prepare(State,PlayerInput.OriginalScreenSize.X,PlayerInput.OriginalScreenSize.Y,Main.UIScaleMatrix.M11);
+            State.CancelControlCapture();
+            if(independent)CompanionUi.ToggleIndependent(chord);else CompanionUi.Toggle(anchor);
+            CompanionUi.Prepare(Main.UIScaleMatrix,PlayerInput.OriginalScreenSize);
         }
         private MiscAutomationPanel EnsureMiscUi()
         {
@@ -545,7 +576,7 @@ namespace JueMingR.TerrariaHost.F5
         }
         private bool ClaimsPopupPoint(Vector2 point)
         {
-            if (failed || !State.Visible && BlueprintMaterialsUi?.Visible != true && BlueprintReplacementPopup?.Captured != true || !CanPresentNow) return false;
+            if (failed || !State.Visible && CompanionUi?.Visible != true && CompanionUi?.Captured != true && BlueprintMaterialsUi?.Visible != true && BlueprintReplacementPopup?.Captured != true || !CanPresentNow) return false;
             return CompanionUi != null && (CompanionUi.Captured || CompanionUi.Contains(point.X,point.Y)) || BlueprintReplacementPopup != null && (BlueprintReplacementPopup.Captured || BlueprintReplacementPopup.Contains(point.X, point.Y)) || BlueprintMaterialsUi != null && (BlueprintMaterialsUi.Captured || BlueprintMaterialsUi.Contains(point.X, point.Y)) || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true || ViewZoom?.OwnsPointer==true) || FishingUi != null && (FishingUi.Captured || FishingUi.Contains(point.X,point.Y)) || CaptureUi != null && (CaptureUi.Captured || CaptureUi.Contains(point.X,point.Y)) || RecoveryUi != null && (RecoveryUi.PotionPopup.Captured || RecoveryUi.PotionPopup.Contains(point.X,point.Y)) || StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y) || DeathPopup != null && (DeathPopup.Pressed >= 0 || DeathPopup.ContainsPointer(point.X, point.Y)) || MapPopup != null && (MapPopup.Pressed >= 0 || MapPopup.ContainsPointer(point.X, point.Y)) || FootprintPopup != null && (FootprintPopup.Pressed >= 0 || FootprintPopup.ContainsPointer(point.X, point.Y));
         }
         private bool OtherPointerOwner { get { return CompanionUi?.OwnsPointer == true || information != null && information.Adjustment.Dragging || BlueprintReplacementPopup?.BlockPointer == true || inputState.HotkeyPointerOwned || BlueprintMaterialsUi != null && BlueprintMaterialsUi.OwnsPointer || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true || ViewZoom?.OwnsPointer==true) || BlueprintPlacedUi?.OwnsPointer == true || BlueprintUi != null && BlueprintUi.OwnsPointer || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || MiscUi != null && MiscUi.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer; } }
@@ -775,7 +806,7 @@ namespace JueMingR.TerrariaHost.F5
                 FootprintPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y, FootprintPopup.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration));
                 RecoveryUi?.PotionPopup.Process(inputActive && State.Visible && State.Page==10,keySample,pointer,matrix,screen,inputState.SampleFocused,PlayerInput.ScrollWheelDeltaForUI);
                 BlueprintReplacementPopup?.Process(inputActive && State.Visible && State.Page == 6, keySample, pointer, matrix, screen, inputState.SampleFocused, PlayerInput.ScrollWheelDeltaForUI);
-                CompanionUi?.Process(inputActive && State.Visible && State.Page==1,keySample,pointer,matrix,screen,inputState.SampleFocused,PlayerInput.ScrollWheelDeltaForUI);
+                CompanionUi?.Process(inputActive && (CompanionUi.Independent || State.Visible && State.Page==1),keySample,pointer,matrix,screen,inputState.SampleFocused,PlayerInput.ScrollWheelDeltaForUI);
                 CaptureUi?.Process(inputActive && State.Visible && State.Page==1,keySample,pointer,matrix,screen,inputState.SampleFocused);
                 FishingUi?.ProcessPopup(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,PlayerInput.ScrollWheelDeltaForUI);
                 bool higherPointer = CompanionUi?.Visible == true || CompanionUi?.Captured == true || BlueprintReplacementPopup?.BlockPointer == true || materialsWasVisible || BlueprintMaterialsUi?.BlockPointer == true || FishingUi!=null && FishingUi.BlockPointer || CaptureUi!=null && (CaptureUi.OwnsPointer || CaptureUi.ConsumeLeft || CaptureUi.ConsumeRight) || RecoveryUi != null && RecoveryUi.PotionPopup.OwnsPointer || HotkeyPopup != null && HotkeyPopup.BlockPointer || StylePopup != null && StylePopup.BlockPointer || DeathPopup != null && DeathPopup.BlockPointer || MapPopup != null && MapPopup.BlockPointer || FootprintPopup != null && FootprintPopup.BlockPointer;
@@ -819,7 +850,7 @@ namespace JueMingR.TerrariaHost.F5
                 // Blueprint's ProcessInput below owns hidden-view teardown and
                 // distinguishes focus suspension from an explicit departure.
                 // Repeating Suspend here would cancel its accepted read job.
-                if (!State.Visible) { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); CompanionUi?.Close(); MiningUi?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); }
+                if (!State.Visible) { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); CompanionUi?.CloseWithParent(); MiningUi?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); }
                 notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused, popupPointer, keySample);
                 if(items!=null)items.SecondaryOnly=popupPointer && dynamicEntry;
                 items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused, popupPointer && !dynamicEntry);
@@ -944,6 +975,7 @@ namespace JueMingR.TerrariaHost.F5
                 dispatchBlueprint = !uiWheelOwner && CanDispatchBlueprintEdit(inputActive, materialsWasVisible, popupPointer);
                 dispatchJourneyClose = journeyClose;
                 dispatchTarget = targetHotkey; dispatchMap = mapHotkey;
+                dispatchCompanion = inputActive && CanToggleCompanionsFromHotkey;
                 // A single compiled-match pass owns every primary. In particular,
                 // a bound Mouse1 cannot both confirm a preview and start a drag.
                 hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer,
@@ -978,6 +1010,10 @@ namespace JueMingR.TerrariaHost.F5
 
         private bool AdmitHotkey(HotkeyAction action, HotkeyChord chord)
         {
+            // Hover may coexist with this keyboard-only UI intent. A mouse
+            // primary already owned by a real control can never also toggle it.
+            if(action.Id==CompanionWindow.ActionId)return dispatchCompanion &&
+                (chord.MainKey<256 || !OwnsPointer && !inputState.HotkeyPointerOwned);
             if (blueprint != null && blueprint.ProjectionEditing && blueprint.CanRetainEdit &&
                 (chord.MainKey == 256 || chord.MainKey == 257))
                 return dispatchBlueprint && action.Id == BlueprintControls.ConfirmTrimAction &&
@@ -1057,9 +1093,9 @@ namespace JueMingR.TerrariaHost.F5
                 // finishes loading and permits in-memory use of that document.
                 if (movement != null) { State.Layout.SetMovementMode(movement.DashMode); State.Layout.SetMovementConfiguration(renderer.MovementControls.ConfigurationExpanded); }
                 if (!preferences.UiLoaded) { State.Ready = false; notes.Prepare(CanPresentNow && LayersReady, matrix, PlayerInput.OriginalScreenSize); return; }
-                if (State.Visible || BlueprintMaterialsUi?.Visible == true || !State.Ready) State.Ready = LayersReady && renderer.RefreshResources();
+                if (State.Visible || CompanionUi?.Visible == true || BlueprintMaterialsUi?.Visible == true || !State.Ready) State.Ready = LayersReady && renderer.RefreshResources();
                 if (!State.Ready) { CloseAndSubmitPosition(); notes.Prepare(false, matrix, PlayerInput.OriginalScreenSize); return; }
-                if (State.Visible || BlueprintMaterialsUi?.Visible == true)
+                if (State.Visible || CompanionUi?.Visible == true || BlueprintMaterialsUi?.Visible == true)
                 {
                     Vector2 screen = PlayerInput.OriginalScreenSize;
                     RefreshBlueprintPageState();
@@ -1085,6 +1121,7 @@ namespace JueMingR.TerrariaHost.F5
                 BlueprintMaterialsUi?.Prepare(CanPresentNow && LayersReady,matrix,PlayerInput.OriginalScreenSize);
                 FishingUi?.Prepare(CanPresentNow && LayersReady,matrix,PlayerInput.OriginalScreenSize);
                 PrepareMisc(CanPresentNow && LayersReady,matrix,PlayerInput.OriginalScreenSize);
+                CompanionUi?.Prepare(matrix,PlayerInput.OriginalScreenSize);
                 Browser?.Prepare(CanPresentNow && LayersReady, matrix);
             }
             catch { FailClosed(); }
@@ -1170,7 +1207,6 @@ namespace JueMingR.TerrariaHost.F5
                         RecoveryUi?.PotionPopup.Draw();
                         BlueprintReplacementPopup?.Draw();
                         CaptureUi?.Draw();
-                        CompanionUi?.Draw();
                         FishingUi?.DrawPopup(drawKeyboard);
                         renderer.DrawHints(State, matrix, items, hintsBlocked,
                             !biome.CanObserveLocalPlayer || biome.FeatureFailed || !preferences.BiomeLoaded);
@@ -1181,6 +1217,7 @@ namespace JueMingR.TerrariaHost.F5
                         if (FootprintPopup != null) renderer.DrawFootprintPopup(FootprintPopup);
                     }
                     BlueprintMaterialsUi?.Draw();
+                    CompanionUi?.Draw();
                 }
             }
             catch { FailClosed(); }
@@ -1334,7 +1371,6 @@ namespace JueMingR.TerrariaHost.F5
             State.ClampScroll();
             ReforgeUi?.PrepareLayout(matrix,0);MiningUi?.PrepareLayout(matrix,miningStart);
             MiscUi?.PrepareLayout(matrix,miscStart);RecoveryUi?.PrepareLayout(matrix);
-            CompanionUi?.Prepare(matrix,screen);
             if(CaptureUi!=null && MiscUi!=null){CaptureUi.MoveAnchor(MiscUi.ConfigurationAnchor,State.Layout.Generation);CaptureUi.Prepare(matrix,screen,resources);}
         }
         // Only the sampled focus/modal boundary is temporary. Menu/map/text
@@ -1356,6 +1392,7 @@ namespace JueMingR.TerrariaHost.F5
             secondaryNavigation++; SuspendForTemporaryUnavailability(true); }
         private void SuspendForTemporaryUnavailability(bool focusLost)
         {
+            if(focusLost)CompanionUi?.CancelForFocusLoss();
             CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); ViewZoom?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.LoseFocus(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); CompanionUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close();
             // Later update/draw gates may clean a focused modal's consumed
             // neutral frame after State.Update received a non-action sample.

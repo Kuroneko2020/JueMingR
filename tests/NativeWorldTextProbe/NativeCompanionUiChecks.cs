@@ -1,6 +1,11 @@
 using System;
 using System.Collections;
+using System.IO;
 using System.Linq;
+using System.Runtime.Remoting.Messaging;
+using System.Runtime.Remoting.Proxies;
+using JueMingR.Platform.Hotkeys;
+using JueMingR.Features.Notes;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -52,6 +57,14 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < 120; i++) prepare();
                 Require((int)Get(window, "LayoutBuilds") == builds && (int)Get(layout, "MeasurementCount") == measurements,
                     "120 stable real window prepares rebuild no controls and measure no text");
+                var oldPanel = Get(window, "panel");
+                var titlePoint = NativeToolsUiChecks.Point(Get(window, "titleBar"));
+                sample(titlePoint, false, true, 0); sample(titlePoint, true, true, 0);
+                sample(titlePoint + new Vector2(24, 8), true, true, 0); sample(titlePoint + new Vector2(24, 8), false, true, 0);
+                Require((float)Get(Get(window, "panel"), "X") == (float)Get(oldPanel, "X") + 24 &&
+                    (float)Get(Get(window, "panel"), "Y") == (float)Get(oldPanel, "Y") + 8 &&
+                    (int)Get(window, "LayoutBuilds") == builds && (int)Get(layout, "MeasurementCount") == measurements,
+                    "real title drag translates prepared geometry without rebuilding cells or remeasuring text");
                 var beforeList = Get(window, "listView"); var body = Get(window, "bodyView");
                 var bodyPoint = NativeToolsUiChecks.Point(body);
                 sample(bodyPoint, false, true, -120);
@@ -109,6 +122,238 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS companion actual two-page layout, native profile selection, stable/closed work, independent scroll, changed matrix/focus gesture retirement and real close release tail; no Draw, Windows IME, owner input or FPS claim.");
             }
             finally { Call(window, "Close"); NativeToolsUiChecks.Mouse(origin, false); }
+        }
+        internal static void FullInput(object context, ProbeGraphics graphics, string output)
+        {
+            const string actionId = "companions.manage";
+            var shell = Get(context, "Shell"); var state = Get(shell, "State"); var window = Get(shell, "CompanionUi"); var input = Get(context, "Input");
+            var bindings = (HotkeyBindings)Get(Get(shell, "hotkeys"), "Bindings"); var popup = Get(shell, "HotkeyPopup");
+            var previousForeground = Get(input, "foregroundWindow"); var previousGameWindow = Get(input, "gameWindow");
+            var text = Get(window, "textInput"); var imeField = text.GetType().GetField("ime", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var previousIme = imeField.GetValue(text); bool focused = true;
+            Set(input, "gameWindow", (Func<IntPtr>)(() => new IntPtr(1))); Set(input, "foregroundWindow", (Func<IntPtr>)(() => focused ? new IntPtr(1) : new IntPtr(2)));
+            imeField.SetValue(text, new InputIme(imeField.FieldType).GetTransparentProxy());
+            Action<Vector2, bool, Keys[]> frame = (point, left, keys) => NativeToolsUiChecks.UiFrame(context, point, left, keys);
+            var neutral = new Keys[0]; var chordKeys = new[] { Keys.LeftControl, Keys.F6 };
+            Action release = () => frame(Vector2.Zero, false, neutral);
+            Action pulse = () => { release(); frame(Vector2.Zero, false, chordKeys); release(); };
+            Func<string, object> control = prefix => Controls(window).Single(c => ((string)Get(c, "Key")).StartsWith(prefix, StringComparison.Ordinal));
+            try
+            {
+                Require(!((IEnumerable)Get(Get(shell, "Companions"), "Profiles")).Cast<object>().Any(),
+                    "independent-window input fixture starts with a clean archive; portrait/resource gameplay belongs to the separate real-profile checks");
+                Main.screenWidth = 960; Main.screenHeight = 760; Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = 1;
+                Call(shell, "CloseAndSubmitPosition"); release(); release();
+                NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); bindings.Poll(); return bindings.Loaded && !bindings.Busy; });
+                Require(bindings.Get(actionId) == null, "new management action has no implicit default key");
+                frame(Vector2.Zero, false, new[] { Keys.F5 }); release(); NativeToolsUiChecks.Nav(context, 1);
+                object entry = null;
+                while (true)
+                {
+                    var misc = Get(shell, "MiscUi"); var view = Get(misc, "view");
+                    entry = NativeToolsUiChecks.Controls(misc).Single(c => (string)GetOptional(Get(c, "Element"), "HotkeyTarget") == actionId);
+                    var rect = Get(entry, "Rect");
+                    if ((float)Get(rect, "Y") >= (float)Get(view, "Y") && (float)Get(rect, "Bottom") <= (float)Get(view, "Bottom")) break;
+                    float before = (float)Get(state, "Scroll");
+                    NativeToolsUiChecks.UiFrame(context, NativeToolsUiChecks.Point(view), false, neutral, -120);
+                    Require((float)Get(state, "Scroll") > before, "new standard keyboard entry is reachable through the actual Misc scroll");
+                }
+                var keyPoint = NativeToolsUiChecks.Point(Get(entry, "Rect"));
+                NativeToolsUiChecks.Click(context, keyPoint); NativeToolsUiChecks.Click(context, keyPoint);
+                Require((bool)Get(popup, "Visible") && (string)Get(popup, "Target") == actionId, "new keyboard icon opens the existing recorder for its exact stable action");
+                NativeToolsUiChecks.PopupClick(context, popup, "Record"); release(); frame(Vector2.Zero, false, chordKeys); release();
+                NativeQuickItemChecks.Until(() => { bindings.Poll(); Call(context, "UpdateShell"); return !bindings.Busy; });
+                Require(bindings.CompletionSucceeded && bindings.Get(actionId)?.MainKey == (int)Keys.F6, "real recorder saves the new key through the existing reliable binding owner");
+                var registry = (HotkeyRegistry)Get(Get(shell, "hotkeys"), "Registry");
+                string otherAction = registry.Actions.First(a => a.Id != actionId && a.Context == HotkeyContext.Gameplay).Id;
+                long duplicateCommand; string duplicateReason;
+                Require(!bindings.TrySet(otherAction, bindings.Get(actionId), null, out duplicateCommand, out duplicateReason) && !string.IsNullOrEmpty(duplicateReason),
+                    "the actual shared binding owner rejects a duplicate management chord without altering the accepted binding");
+                NativeToolsUiChecks.PopupClick(context, popup, "Close"); release();
+                frame(Vector2.Zero, false, new[] { Keys.F5 }); release();
+                Require(!(bool)Get(state, "Visible"), "main F5 is closed before testing the independent action");
+                NotesCapture(context, chordKeys);
+                pulse();
+                Require((bool)Get(window, "Visible") && (bool)Get(window, "Independent") && !(bool)Get(state, "Visible"),
+                    "a trusted new edge opens only the independent management window");
+                frame(Vector2.Zero, false, chordKeys); frame(Vector2.Zero, false, chordKeys);
+                Require(!(bool)Get(window, "Visible"), "the first later new edge closes the independent window");
+                release(); pulse();
+                frame(Vector2.Zero, false, chordKeys); frame(Vector2.Zero, false, chordKeys);
+                Require(!(bool)Get(window, "Visible"), "holding a close edge never reopens the window");
+                release(); pulse();
+                var panel = Get(window, "panel");
+                int cornerX = (int)(float)Get(panel, "X") + 3, cornerY = (int)(float)Get(panel, "Y") + 3;
+                // UiSurface preserves the native skin's transparent 10px corner
+                // slices. Presence is tested inside the stretched surface, not
+                // at a corner whose transparency is valid original artwork.
+                int sampleX = (int)(float)Get(panel, "X") + 16, sampleY = (int)(float)Get(panel, "Y") + 16;
+                Console.WriteLine("COMPANION DRAW before visible=" + Get(window, "Visible") + " independent=" + Get(window, "Independent") +
+                    " ready=" + Get(window, "ready") + " preparedGeneration=" + Get(window, "preparedGeneration") + " generation=" + Get(window, "generation") +
+                    " resources=" + Get(Get(window, "renderer"), "ResourcesCurrent") + " shellVisible=" + Get(state, "Visible") +
+                    " shellReady=" + Get(state, "Ready") + " layersReady=" + Get(shell, "LayersReady") + " failed=" + Get(shell, "Failed") +
+                    " panel=" + Get(panel, "X") + "," + Get(panel, "Y") + "," + Get(panel, "Width") + "," + Get(panel, "Height") +
+                    " nativeMatrix=" + Main.UIScaleMatrix + " preparedMatrix=" + Get(window, "matrix") + " sample=" + sampleX + "," + sampleY);
+                var pixels = graphics.Pixels(() => Call(shell, "DrawLayer"), Matrix.Identity, 960, 760);
+                // Save exactly this DrawLayer result before asserting. A second
+                // draw after a fail-closed transition could erase the first image.
+                string drawPath = Path.Combine(output, "companion-independent-f5-closed.png");
+                using (var image = new Microsoft.Xna.Framework.Graphics.Texture2D(graphics.GraphicsDevice, 960, 760))
+                { image.SetData(pixels); using (var stream = File.Create(drawPath)) image.SaveAsPng(stream, 960, 760); }
+                Console.WriteLine("COMPANION DRAW after visible=" + Get(window, "Visible") + " ready=" + Get(window, "ready") +
+                    " shellVisible=" + Get(state, "Visible") + " failed=" + Get(shell, "Failed") + " samplePixel=" + pixels[sampleY * 960 + sampleX] +
+                    " corner3Pixel=" + pixels[cornerY * 960 + cornerX] + " nontransparent=" + pixels.Count(p => p.A != 0) + " artifact=" + drawPath);
+                Require(pixels[sampleY * 960 + sampleX].A > 0 && !(bool)Get(state, "Visible"), "actual DrawLayer paints the independent panel with F5 still closed");
+                var title = NativeToolsUiChecks.Point(Get(window, "titleBar"));
+                frame(title, false, neutral); frame(title, true, neutral); frame(title + new Vector2(26, 9), true, neutral);
+                frame(title + new Vector2(26, 9), false, neutral);
+                typeof(Player).GetMethod("ResetControls", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(Main.LocalPlayer, null);
+                Terraria.GameInput.PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);
+                Require((bool)Get(window, "Visible") && !(bool)Get(window, "Dragging") && !Terraria.GameInput.PlayerInput.Triggers.Current.MouseLeft,
+                    "full shared input chain retains the real title release without a native world-use pulse");
+                Require(!Main.LocalPlayer.controlUseItem && !Main.LocalPlayer.controlUseTile, "the original native CopyInto consumer receives no world use from the UI title gesture");
+                var accepted = Get(window, "panel"); title = NativeToolsUiChecks.Point(Get(window, "titleBar"));
+                frame(title, true, neutral); frame(title - new Vector2(30, 5), true, neutral);
+                focused = false; frame(title, true, neutral);
+                Require(!(bool)Get(window, "Visible"), "sampled focus loss retires the uncommitted drag");
+                focused = true; frame(title, true, chordKeys); frame(title, false, chordKeys); release(); release();
+                Require(!(bool)Get(window, "Visible"), "reactivation and held key tails do not reopen the window");
+                pulse();
+                Require((float)Get(Get(window, "panel"), "X") == (float)Get(accepted, "X") && (float)Get(Get(window, "panel"), "Y") == (float)Get(accepted, "Y"),
+                    "interrupted drag restores the last accepted temporary position");
+                title = NativeToolsUiChecks.Point(Get(window, "titleBar")); frame(title, true, neutral);
+                Main.screenWidth = 1440; Main.screenHeight = 900; Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = 1.5f;
+                Require(Math.Abs(Main.UIScale - 1.5f) < .001f, "scale check uses the actual supported native 150 percent setting");
+                frame(title, true, neutral); frame(title, false, neutral);
+                var scaledPanel = Get(window, "panel"); var transform = Main.UIScaleMatrix;
+                Require(!(bool)Get(window, "Dragging") && (float)Get(scaledPanel, "X") >= 12 && (float)Get(scaledPanel, "Y") >= 12 &&
+                    (float)Get(scaledPanel, "Right") <= 1440 / transform.M11 - 12 + .01f &&
+                    (float)Get(scaledPanel, "Bottom") <= 900 / transform.M22 - 12 + .01f,
+                    "viewport/scale change cancels the old grab and clamps the entire independent panel in the new logical domain");
+                graphics.Image(Path.Combine(output, "companion-independent-native-150.png"), () => Call(shell, "DrawLayer"), transform, 1440, 900);
+                Main.screenWidth = 960; Main.screenHeight = 760; Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = 1; release();
+                var plus = NativeToolsUiChecks.Point(Get(control("create/"), "Rect")); NativeToolsUiChecks.Click(context, plus);
+                Require(GetOptional(window, "Editor") != null, "actual create click enters the shared text editor");
+                pulse(); Require((bool)Get(window, "Visible") && GetOptional(window, "Editor") != null, "text ownership blocks management hotkeys without replaying them");
+                Call(window, "CancelEdit"); release(); pulse();
+                Main.drawingPlayerChat = true; release(); frame(Vector2.Zero, false, chordKeys); Main.drawingPlayerChat = false;
+                frame(Vector2.Zero, false, chordKeys); release();
+                Require(!(bool)Get(window, "Visible"), "native chat and its held edge cannot open a management window later");
+                frame(Vector2.Zero, false, new[] { Keys.W, Keys.LeftControl, Keys.F6 });
+                var physical = (HotkeyInput)Get(input, "Hotkeys");
+                Require((bool)Get(window, "Visible") && !physical.IsSuppressed((int)Keys.W), "UI open does not globally suppress unrelated held movement");
+                release(); pulse();
+                frame(Vector2.Zero, false, new[] { Keys.F5 }); release(); NativeToolsUiChecks.Nav(context, 1);
+                entry = NativeToolsUiChecks.Controls(Get(shell, "MiscUi")).Single(c => (string)GetOptional(Get(c, "Element"), "HotkeyTarget") == actionId);
+                keyPoint = NativeToolsUiChecks.Point(Get(entry, "Rect")); NativeToolsUiChecks.Click(context, keyPoint); NativeToolsUiChecks.Click(context, keyPoint);
+                NativeToolsUiChecks.PopupClick(context, popup, "Clear");
+                NativeQuickItemChecks.Until(() => { bindings.Poll(); Call(context, "UpdateShell"); return !bindings.Busy; });
+                Require(bindings.CompletionSucceeded && bindings.Get(actionId) == null, "the same public binding popup reliably clears the independent action");
+                NativeToolsUiChecks.PopupClick(context, popup, "Close"); release(); frame(Vector2.Zero, false, new[] { Keys.F5 }); release(); pulse();
+                Require(!(bool)Get(window, "Visible") && !(bool)Get(state, "Visible"), "cleared key no longer opens either management or F5");
+                Console.WriteLine("PASS actual shared keyboard recorder/save, independent closed-F5 open/close/DrawLayer, title gesture/native mouse consumption, focus-neutral rearm and text/chat boundaries. OS IME and FPS remain unverified.");
+            }
+            finally
+            {
+                Main.drawingPlayerChat = false; Call(window, "Close"); Call(shell, "CloseAndSubmitPosition");
+                imeField.SetValue(text, previousIme); Set(input, "foregroundWindow", previousForeground); Set(input, "gameWindow", previousGameWindow);
+                NativeToolsUiChecks.Mouse(Vector2.Zero, false);
+            }
+        }
+        private static void NotesCapture(object context, Keys[] chordKeys)
+        {
+            var shell = Get(context, "Shell"); var window = Get(shell, "CompanionUi"); var notes = Get(shell, "notes");
+            var pins = Get(notes, "pins"); var workspace = (NotesWorkspace)Get(notes, "workspace"); var feature = workspace.Feature;
+            var neutral = new Keys[0];
+            Action<Vector2, bool, Keys[]> frame = (point, left, keys) => NativeToolsUiChecks.UiFrame(context, point, left, keys);
+            Note note = null; Exception firstFailure = null; string stage = "load-notes-owner";
+            try
+            {
+                NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); Call(context, "UpdateShell"); return feature.Loaded && !feature.Busy; });
+                var originalIds = feature.Saved.Notes.Select(n => n.Id).ToArray();
+                stage = "create-temporary-note";
+                // The running Host polls Workspace, which owns completion IDs.
+                // Establish and remove fixture notes through that same owner;
+                // a direct Feature submit would publish an unowned completion.
+                Require(workspace.Request(new NotesAction(NotesActionKind.Create)), "actual notes workspace accepts the isolated note creation");
+                NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); Call(context, "UpdateShell"); return !feature.Busy; });
+                note = feature.Saved.Notes.Single(n => !originalIds.Contains(n.Id));
+                stage = "pin-temporary-note";
+                Require(workspace.Request(new NotesAction(NotesActionKind.Pin, note.Id, x: 20, y: 20)), "actual notes workspace accepts the isolated pin action");
+                NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); Call(context, "UpdateShell"); return !feature.Busy && feature.Saved.Find(note.Id).Pinned; });
+                var pin = ((IEnumerable)Get(pins, "Pins")).Cast<object>().Single(p => ((Note)Get(p, "Note")).Id == note.Id);
+                stage = "capture-and-drag-note";
+                var point = NativeToolsUiChecks.Point(Get(pin, "Drag"));
+                frame(point, false, neutral); frame(point, true, neutral);
+                Require((bool)Get(notes, "CapturesPointer") && GetOptional(pins, "drag") != null, "real pinned-note toolbar owns the physical Mouse1 drag");
+                var movedPoint = point + new Vector2(35, 20); frame(movedPoint, true, neutral);
+                var moved = Get(pin, "Rect");
+                frame(movedPoint, true, chordKeys);
+                Require(!(bool)Get(window, "Visible") && GetOptional(pins, "drag") != null && Get(pin, "Rect").Equals(moved),
+                    "management edge during note capture does not open, cancel or roll back the actual note drag");
+                frame(movedPoint, true, neutral);
+                stage = "release-tail-and-held-key";
+                frame(movedPoint, false, chordKeys);
+                Require(!(bool)Get(window, "Visible") && (bool)Get(notes, "ConsumeLeft"),
+                    "a fresh management edge on the owned real release sample stays consumed until that physical tail is retired");
+                frame(movedPoint, false, chordKeys);
+                Require(!(bool)Get(window, "Visible"), "a blocked management edge is never replayed after the note releases capture");
+                NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); Call(context, "UpdateShell"); return !feature.Busy; });
+                Require(feature.Saved.Find(note.Id).X == (int)(float)Get(moved, "X") && feature.Saved.Find(note.Id).Y == (int)(float)Get(moved, "Y"),
+                    "the actual note drag reaches its original reliable position writer without manager interference");
+                stage = "ordinary-hover-new-edge";
+                frame(movedPoint, false, neutral);
+                Require((bool)Get(notes, "OwnsPointer") && !(bool)Get(notes, "CapturesPointer"), "the same real note remains ordinary hover after trusted release");
+                frame(movedPoint, false, chordKeys);
+                Require((bool)Get(window, "Visible") && !(bool)Get(Get(shell, "State"), "Visible"),
+                    "ordinary note hover still admits a later trusted keyboard edge without opening F5");
+                frame(Vector2.Zero, false, neutral); frame(Vector2.Zero, false, chordKeys); frame(Vector2.Zero, false, neutral);
+                Require(!(bool)Get(window, "Visible"), "independent management closes on a later new edge after the note regression");
+                Console.WriteLine("PASS existing note capture/release-tail priority, no blocked-key replay, preserved native note position commit and keyboard management action over ordinary note hover.");
+            }
+            catch (Exception error)
+            {
+                firstFailure = error;
+                Console.Error.WriteLine("COMPANION NOTES first-failure stage=" + stage + " note=" + (note?.Id ?? "<not-created>") +
+                    " workspacePending=" + GetOptional(workspace, "pendingId") + " featureBusy=" + feature.Busy + Environment.NewLine + error);
+                throw;
+            }
+            finally
+            {
+                try
+                {
+                    Call(window, "Close"); frame(Vector2.Zero, false, neutral);
+                    NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); return !feature.Busy; });
+                    if (note != null && feature.Saved.Find(note.Id) != null)
+                    {
+                        Require(workspace.Request(new NotesAction(NotesActionKind.ConfirmDelete, note.Id)), "actual notes workspace accepts cleanup confirmation for only its temporary note");
+                        Require(workspace.Request(new NotesAction(NotesActionKind.Delete, note.Id)), "actual notes workspace owns the temporary note cleanup commit");
+                        NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); Call(context, "UpdateShell"); return !feature.Busy; });
+                        Require(feature.Saved.Find(note.Id) == null, "temporary pinned note is removed by its acknowledged workspace command");
+                    }
+                }
+                catch (Exception cleanupError)
+                {
+                    Console.Error.WriteLine("COMPANION NOTES cleanup-failure after-stage=" + stage + " firstFailure=" + (firstFailure != null) +
+                        " note=" + (note?.Id ?? "<not-created>") + " workspacePending=" + GetOptional(workspace, "pendingId") +
+                        " featureBusy=" + feature.Busy + Environment.NewLine + cleanupError);
+                    // Preserve the first exception's original stack. A cleanup
+                    // error is independently logged and fails an otherwise good run.
+                    if (firstFailure == null) throw;
+                }
+            }
+        }
+        // Only the OS IME service is replaced. Native character queues, text
+        // lease, trusted input phases and the binding writer stay production.
+        private sealed class InputIme : RealProxy
+        {
+            internal InputIme(Type type) : base(type) { }
+            public override IMessage Invoke(IMessage message)
+            {
+                var call = (IMethodCallMessage)message;
+                object value = call.MethodName == "get_Composition" ? (object)"" : call.MethodName == "get_Candidates" ? false : (object)null;
+                return new ReturnMessage(value, null, 0, call.LogicalCallContext, call);
+            }
         }
         internal static void Equipment(object shell, Guid id)
         {
