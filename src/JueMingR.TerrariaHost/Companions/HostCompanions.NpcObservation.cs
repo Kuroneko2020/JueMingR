@@ -41,6 +41,13 @@ namespace JueMingR.TerrariaHost.Companions
             foreach(var actor in actors.Values)if(actor.Ready && !actor.Closing && Microsoft.Xna.Framework.Vector2.DistanceSquared(actor.Body.Center,point)<2200*2200)return true;
             return false;
         }
+        private void RetireNpcInterest(int slot)
+        {
+            observedNpcs[slot].active=false;
+            // Interest eviction is not a consumed native inactive/death state.
+            // A later ready actor needs a usable initial baseline again.
+            WorldLease lease;if(npcSources.TryGetValue(slot,out lease)){lease.NpcBaseline=false;lease.AwaitBaseline=true;}
+        }
         internal void AdvanceNpcObservation()
         {
             if(Main.netMode!=1 || observedNpcs==null || observationStep==Main.GameUpdateCount)return;observationStep=Main.GameUpdateCount;
@@ -53,7 +60,7 @@ namespace JueMingR.TerrariaHost.Companions
             float previousGravity=(float)gravityField.GetValue(null);
             try{foreach(var npc in observedNpcs)
             {
-                if(!npc.active)continue;if(!NeededNpc(npc.Center)){npc.active=false;continue;}
+                if(!npc.active)continue;if(!NeededNpc(npc.Center)){RetireNpcInterest(npc.whoAmI);continue;}
                 advancedRevisions[npc.whoAmI]=observedRevisions[npc.whoAmI];
                 if(NPC.offSetDelayTime>0 || Main.multiplayerNPCSmoothingRange<=0 || NPCID.Sets.NoMultiplayerSmoothingByType[npc.type] || NPCID.Sets.NoMultiplayerSmoothingByAI[npc.aiStyle] || npc.townNPC && npc.ai[0]==25f)npc.netOffset=Vector2.Zero;
                 else if(Terraria.Testing.DebugOptions.FakeNetOffset!=Vector2.Zero)npc.netOffset=Terraria.Testing.DebugOptions.FakeNetOffset;
@@ -81,12 +88,17 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(!HasActors || ReadingObservation || length<3)return;
             EnsureNpcObservation();int slot=packet[start]==54?BitConverter.ToInt16(packet,start+1):packet[start+1];if(slot<0 || slot>=observedNpcs.Length)return;
-            if(packet[start]==23 && length>=19 && !NeededNpc(new Microsoft.Xna.Framework.Vector2(BitConverter.ToSingle(packet,start+3),BitConverter.ToSingle(packet,start+7))))return;
+            if(packet[start]==23 && length>=19 && !NeededNpc(new Microsoft.Xna.Framework.Vector2(BitConverter.ToSingle(packet,start+3),BitConverter.ToSingle(packet,start+7)))){RetireNpcInterest(slot);return;}
             var previous=Main.npc;var decoding=Decoding;Main.npc=observedNpcs;ReadingObservation=true;Decoding=source;
             try
             {
                 Buffer.BlockCopy(packet,start,observationDecoder.readBuffer,0,length);observationDecoder.ResetReader();int id;observationDecoder.GetData(0,length,out id);
-                if(id==23){observedTicks[slot]=sampleTick;observedRevisions[slot]=++nextObservationRevision;}
+                if(id==23)
+                {
+                    observedTicks[slot]=sampleTick;observedRevisions[slot]=++nextObservationRevision;
+                    WorldLease lease;if(npcSources.TryGetValue(slot,out lease) && ReferenceEquals(lease.Source,source) && !lease.Waiting)
+                    {lease.NpcBaseline=true;lease.AwaitBaseline=false;}
+                }
             }
             finally{Decoding=decoding;ReadingObservation=false;Main.npc=previous;}
         }
@@ -99,7 +111,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 int slot=BitConverter.ToInt16(packet,start+1);
                 WorldLease lease;
-                if(slot>=0 && slot<observedNpcs.Length && observedNpcs[slot].active && observedNpcs[slot].generation==Main.npc[slot].generation && npcSources.TryGetValue(slot,out lease) && lease.Source==null && !lease.Waiting && !lease.AwaitBaseline)DecodeNpcObservation(null,packet,start,length);
+                if(slot>=0 && slot<observedNpcs.Length && observedNpcs[slot].active && observedNpcs[slot].generation==Main.npc[slot].generation && npcSources.TryGetValue(slot,out lease) && lease.NpcBaseline && lease.Source==null && !lease.Waiting && !lease.AwaitBaseline)DecodeNpcObservation(null,packet,start,length);
             }
         }
     }

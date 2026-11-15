@@ -23,7 +23,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal uint LastUpdate=UInt32.MaxValue,NextSave;internal Vector2 Aim;
             internal NPC Target;internal int TargetGeneration;
             internal JueMingR.Platform.Combat.NpcTrajectory AimTimeline;internal PredictionTerrain.CellLease AimTerrain;internal long AimRevision;
-            internal JueMingR.Platform.Combat.PredictionPlayerMotion? AimPlayer;internal uint AimPlayerTick;
+            internal JueMingR.Platform.Combat.PredictionPlayerMotion? AimPlayer;internal uint AimPlayerTick,AimPlayerAnchor;
             internal long LastAimAttempt;
             internal CompanionBehaviorHost Behavior=new CompanionBehaviorHost();
             internal bool WaitingPassword,HasAim;internal Item AimWeapon;internal Vector2 AimOrigin,AimTarget,AimVelocity;
@@ -52,7 +52,7 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly HashSet<Guid> resetAfterRecall=new HashSet<Guid>();
         private readonly NpcPredictionSource prediction=new NpcPredictionSource();
         private readonly JueMingR.Features.Combat.CombatPredictionWork work=new JueMingR.Features.Combat.CombatPredictionWork(2);
-        private object world;private Player owner;private long session;private int aimTurn;private uint aimStep;
+        private object world;private Player owner;private long session;private int planningTurn;private uint planningStep=UInt32.MaxValue,aimStep;
         private Actor planningActor;
         private long aimAttempt;
         private uint aimSelectionStep=UInt32.MaxValue;
@@ -167,7 +167,7 @@ namespace JueMingR.TerrariaHost.Companions
             Detach(a);var p=a.Body;
             profiles.Release(a.Profile,a.Generation);actors.Remove(a.Profile.Id);previews[a.Profile.Id]=p;states[a.Profile.Id]=a.TerminalFailure??(saved?"已收回":"加入失败");
             if(saved && resetAfterRecall.Remove(a.Profile.Id)){profiles.Reset(a.Profile.Id);previews.Remove(a.Profile.Id);Feedback="人物已清空，正在保存。";}
-            if(actors.Count==0){prediction.EndWorld();CompanionThreatField.Reset();aimTurn=0;}
+            if(actors.Count==0){prediction.EndWorld();CompanionThreatField.Reset();planningTurn=0;}
         }
         internal bool Reset(Guid id)
         {
@@ -205,11 +205,16 @@ namespace JueMingR.TerrariaHost.Companions
             FlushSourceRequests();RequestSharedTerrain();
             bool cloud;var path=Onboarding.CharacterIdentity.Path(out cloud);if(path!=null)profiles.SetOwner(Onboarding.CharacterIdentity.Key(path,cloud));
             if(actors.Count==0)return;
-            var active=actors.Values.Where(a=>a.Ready && !a.Closing).ToArray();
-            // An outer update without a coherent fresh sample consumes no
-            // enhancement turn. Otherwise periodic packet/actor phases can
-            // lock one role out forever despite an available shared budget.
-            planningActor=active.Length==0?null:active[(int)((uint)aimTurn%(uint)active.Length)];
+            if(planningStep!=Main.GameUpdateCount)
+            {
+                planningStep=Main.GameUpdateCount;
+                var active=actors.Values.Where(a=>a.Ready && !a.Closing && !a.Faulted && a.Body.active && !a.Body.dead && !a.Body.CCed).ToArray();
+                // One movement/target-refresh slice per real world step,
+                // independent of attacking, channel release or packet phase.
+                // Retained navigation prefixes remain usable by every body;
+                // fresh aiming opportunities have their separate scheduler.
+                planningActor=active.Length==0?null:active[(int)((uint)planningTurn++%(uint)active.Length)];
+            }
             foreach(var a in actors.Values.ToArray())
             {
                 try

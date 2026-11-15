@@ -35,7 +35,16 @@ namespace JueMingR.TerrariaHost.Companions
                         // Native initial NPCs precede 49/129. Retain at most
                         // one full state/buff frame per actual slot until the
                         // validated world has a spawned, consumable body.
-                        (id==23?a.InitialNpc:a.InitialNpcBuffs)[slot]=packet;if(id==23)a.InitialNpcTicks[slot]=Main.GameUpdateCount;continue;
+                        if(id==23)
+                        {
+                            byte[] old;if(a.InitialNpc.TryGetValue(slot,out old) && old[2]!=packet[2])a.InitialNpcBuffs.Remove(slot);
+                            a.InitialNpc[slot]=packet;a.InitialNpcTicks[slot]=Main.GameUpdateCount;
+                        }
+                        // 54 has no generation field. Its identity is the last
+                        // preceding 23 on this same FIFO stream; a later new
+                        // generation cannot inherit that earlier buff frame.
+                        else if(a.InitialNpc.ContainsKey(slot))a.InitialNpcBuffs[slot]=packet;
+                        continue;
                     }
                     if(id==23)ObservePredictedNpc(a,packet,0,packet.Length);
                     if(id==154){ActorPingReceived(a);continue;}
@@ -79,14 +88,14 @@ namespace JueMingR.TerrariaHost.Companions
                             a.Ready=true;profiles.BeginPlay(a.Body);a.Status="跟随中";
                             foreach(var pair in a.InitialNpc){var state=pair.Value;if(RouteNpc(a,state,0,state.Length))DecodeNpcObservationAt(a,state,0,state.Length,a.InitialNpcTicks[pair.Key]);}
                             foreach(var buffs in a.InitialNpcBuffs.Values)
-                            {WorldLease lease;int slot=BitConverter.ToInt16(buffs,1);if(npcSources.TryGetValue(slot,out lease) && ReferenceEquals(lease.Source,a) && !lease.Waiting && !lease.AwaitBaseline)DecodeNpcObservation(a,buffs,0,buffs.Length);}
+                            {WorldLease lease;int slot=BitConverter.ToInt16(buffs,1);if(npcSources.TryGetValue(slot,out lease) && lease.NpcBaseline && ReferenceEquals(lease.Source,a) && !lease.Waiting && !lease.AwaitBaseline)DecodeNpcObservation(a,buffs,0,buffs.Length);}
                             a.InitialNpc.Clear();a.InitialNpcBuffs.Clear();a.InitialNpcTicks.Clear();
                         }
                         continue;
                     }
                     if(id==5 || id==13 || id==16 || id==117 || id==4 || id==12 || id==14)continue;
                     if(id==23 || id==28){if(RouteNpc(a,packet,0,packet.Length))DecodeNpcObservation(a,packet,0,packet.Length);continue;}
-                    if(id==54){WorldLease lease;int slot=packet.Length>=3?BitConverter.ToInt16(packet,1):-1;if(slot>=0 && npcSources.TryGetValue(slot,out lease) && !lease.Waiting && !lease.AwaitBaseline && ReferenceEquals(lease.Source,a))DecodeNpcObservation(a,packet,0,packet.Length);continue;}
+                    if(id==54){WorldLease lease;int slot=packet.Length>=3?BitConverter.ToInt16(packet,1):-1;if(slot>=0 && npcSources.TryGetValue(slot,out lease) && lease.NpcBaseline && !lease.Waiting && !lease.AwaitBaseline && ReferenceEquals(lease.Source,a))DecodeNpcObservation(a,packet,0,packet.Length);continue;}
                     // World facts have one stream at a time. Source changes
                     // wait for an ordered native ping barrier, not arrival time.
                     if(!WorldPacket(a,packet))continue;

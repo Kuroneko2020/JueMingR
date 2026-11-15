@@ -48,7 +48,6 @@ namespace JueMingR.TerrariaHost.Companions
                 if(a.Aim.X!=p.Center.X && p.itemAnimation<=0)p.ChangeDir(a.Aim.X>p.Center.X?1:-1);
             }
             else {IdleAim(a);p.channel=false;}
-            if(ReferenceEquals(a,planningActor) && !p.controlUseItem)aimTurn++;
             a.Status=frame.Status;
         }
         private void SelectTarget(Actor a)
@@ -104,7 +103,7 @@ namespace JueMingR.TerrariaHost.Companions
                     // model only from a fresh coherent sample. Its immutable
                     // timeline may still be consumed at its real age while
                     // identity, player premise, geometry and cells stay valid.
-                    a.Aim=HostAttackAim.ActorPoint(a.Body,a.Target,session,prediction,ref a.AimTimeline,ref a.AimTerrain,capture,NpcSampleTick(a.Target),ref a.AimPlayer,ref a.AimPlayerTick);a.HasAim=true;a.AimWeapon=a.Body.HeldItem;a.AimOrigin=HostAttackModels.LaunchOrigin(a.Body,a.Body.HeldItem);a.AimTarget=a.Target.Center+a.Target.netOffset;a.AimVelocity=a.Target.velocity;
+                    a.Aim=HostAttackAim.ActorPoint(a.Body,a.Target,session,prediction,ref a.AimTimeline,ref a.AimTerrain,capture,NpcSampleTick(a.Target),ref a.AimPlayer,ref a.AimPlayerTick,ref a.AimPlayerAnchor);a.HasAim=true;a.AimWeapon=a.Body.HeldItem;a.AimOrigin=HostAttackModels.LaunchOrigin(a.Body,a.Body.HeldItem);a.AimTarget=a.Target.Center+a.Target.netOffset;a.AimVelocity=a.Target.velocity;
                 }
                 catch(CombatPredictionBudgetExceededException){}
             }

@@ -9,7 +9,7 @@ namespace JueMingR.TerrariaHost.Combat
     {
         // This is the same explicit-player weapon/terrain solver as the human
         // hand. Selection, budget and retained action remain the actor owner's.
-        internal static Vector2 ActorPoint(Player player,NPC target,long session,NpcPredictionSource prediction,ref NpcTrajectory timeline,ref PredictionTerrain.CellLease terrain,bool capture,long sampleTick,ref PredictionPlayerMotion? playerPremise,ref uint playerTick)
+        internal static Vector2 ActorPoint(Player player,NPC target,long session,NpcPredictionSource prediction,ref NpcTrajectory timeline,ref PredictionTerrain.CellLease terrain,bool capture,long sampleTick,ref PredictionPlayerMotion? playerPremise,ref uint playerTick,ref uint playerAnchor)
         {
             var item=player.HeldItem;var basic=target.Center+target.netOffset;
             if(item==null || item.IsAir || item.shoot<=0)return basic;
@@ -24,7 +24,7 @@ namespace JueMingR.TerrariaHost.Combat
                 // epoch is T, not today's player clock (which would give -1).
                 prediction.PrepareActionPrefix(identity,sampleTick,60,60);timeline=prediction.Cache.Read(1);terrain=null;
                 playerPremise=timeline?.PlayerCondition.Kind==PredictionPlayerConditionKind.HeldControls?(PredictionPlayerMotion?)timeline.PlayerCondition.Sample:null;
-                if(playerPremise.HasValue)playerTick=Main.GameUpdateCount-(playerPremise.Value.PlayerIndex>player.whoAmI?1U:0U);
+                if(playerPremise.HasValue)playerAnchor=playerTick=Main.GameUpdateCount-(playerPremise.Value.PlayerIndex>player.whoAmI?1U:0U);
             }
             else
             {
@@ -48,6 +48,16 @@ namespace JueMingR.TerrariaHost.Combat
                     {
                         PredictionStop stop;if(!PlayerMotionContinuation.Advance(ref expected,world,prediction.Terrain,out stop))return basic;
                         if(expected.WallImmunityCaptured && expected.WallImmune && --expected.WallImmuneTime<=0)expected.WallImmune=false;
+                    }
+                    // ReadPlayer has physical facts but no trajectory ordinal.
+                    // Bind only this comparison copy to the actual accumulated
+                    // ordinary player actions since capture, not NPC age or the
+                    // mutable last-success tick. All physical/source inputs are
+                    // still compared by the existing fixed-input predicate.
+                    if(timeline.GravitySources==null && !expected.GravitySourceExpected && expected.ForcedGravityTicks==0)
+                    {
+                        if(current<playerAnchor || current-playerAnchor>timeline.Count || observed.GravitySourceExpected || observed.ForcedGravityTicks>0)return basic;
+                        if(observed.GravityControlCaptured)observed.GravityAction=condition.Sample.GravityAction+(int)(current-playerAnchor);
                     }
                     if(!RetainedNextMotionCurrent(expected,observed,timeline,world))return basic;
                     playerPremise=expected;playerTick=current;

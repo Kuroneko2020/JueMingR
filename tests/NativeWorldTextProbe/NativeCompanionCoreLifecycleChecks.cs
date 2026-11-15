@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using JueMingR.Platform.Companions;
@@ -14,6 +15,11 @@ namespace NativeWorldTextProbe
     internal static class NativeCompanionCoreLifecycleChecks
     {
         private static object lifecycleHost;
+        private static Player planningSecond;
+        private static int planningSlices,secondSlices;
+        private static void PlanningSlice(Player __0){planningSlices++;if(ReferenceEquals(__0,planningSecond))secondSlices++;}
+        private static void PlanningResult(object __instance,Player body,Vector2 target,int direction,bool allowPlanning,bool __result)
+        {if(ReferenceEquals(body,planningSecond) && allowPlanning)Console.WriteLine("PLAN RESULT accepted="+__result+" body="+body.position+" vel="+body.velocity+" gravity="+body.gravity+" maxFall="+body.maxFallSpeed+" jump="+Get(__instance,"jumpSpeed")+" hold="+Get(__instance,"jumpHold")+" target="+target+" dir="+direction+" landed="+Get(__instance,"hasLanding"));}
         private static Player preparedHuman;
         private static bool HumanDiskSink(){return Call(lifecycleHost,"Owned",Main.LocalPlayer)!=null;}
         internal static void PrepareHuman()
@@ -80,6 +86,71 @@ namespace NativeWorldTextProbe
                 Call(host,"SetBehavior",other,otherProfile.Behavior);Call(host,"Recall",other);
                 NativeQuickItemChecks.Until(()=>{Call(host,"Update",0UL);return !((IDictionary)Get(host,"actors")).Contains(other);});
                 files.UnpatchAll(files.Id);lifecycleHost=null;
+            }
+        }
+        internal static void Planning(object host,Player first,Player second)
+        {
+            var a=Call(host,"Owned",first);var b=Call(host,"Owned",second);var human=Main.LocalPlayer;
+            var originalA=((CompanionProfile)Get(a,"Profile")).Behavior;var originalB=((CompanionProfile)Get(b,"Profile")).Behavior;
+            var brainA=Get(a,"Behavior");var brainB=Get(b,"Behavior");var navigation=Get(brainB,"navigation").GetType();
+            var positions=new[]{human.position,first.position,second.position};var velocities=new[]{human.velocity,first.velocity,second.velocity};
+            var originalItems=new[]{first.inventory[0],first.inventory[54]};int selected=first.selectedItem;
+            double surface=Main.worldSurface;
+            var oldNpc=Main.npc[11];var tiles=new List<Tuple<int,int,Tile>>();var existing=new HashSet<int>(Main.projectile.Where(p=>p.active).Select(p=>(int)p.key));
+            var probe=new Harmony("JueMingR.Tests.CompanionMovementSlices");probe.Patch(AccessTools.Method(navigation,"TerrainIdentity"),prefix:new HarmonyMethod(typeof(NativeCompanionCoreLifecycleChecks),nameof(PlanningSlice)));
+            probe.Patch(AccessTools.Method(navigation,"JumpSafe"),postfix:new HarmonyMethod(typeof(NativeCompanionCoreLifecycleChecks),nameof(PlanningResult)));
+            try
+            {
+                // Reuse the established real jump scene's complete vertical
+                // premise: clear Y50..94, bank Y72, lower floor Y80, surface40.
+                // Y60 is space gravity even after merely changing surface40.
+                Main.worldSurface=40;
+                for(int x=48;x<90;x++)for(int y=50;y<95;y++)
+                {tiles.Add(Tuple.Create(x,y,Main.tile[x,y]));Main.tile[x,y]=new Tile();if(y>=80 || y>=72 && (x<66 || x>=70)){Main.tile[x,y].active(true);Main.tile[x,y].type=1;}}
+                foreach(bool firing in new[]{false,true})
+                {
+                    Call(host,"ClearWorldSources");foreach(var actor in new[]{a,b}){Set(actor,"Target",null);Set(actor,"AimTimeline",null);Set(actor,"AimTerrain",null);Set(actor,"AimPlayer",null);Set(actor,"HasAim",false);}
+                    human.position=new Vector2(1220,1110);human.velocity=Vector2.Zero;
+                    first.position=new Vector2(800,1110);second.position=new Vector2(1044,1110);first.velocity=second.velocity=Vector2.Zero;
+                    first.inventory[0]=new Item(ItemID.VenusMagnum);first.inventory[54]=new Item(ItemID.MusketBall){stack=100};first.selectedItemState.Select(0);first.itemAnimation=first.itemTime=first.reuseDelay=0;first.releaseUseItem=true;
+                    Require(first.HeldItem.autoReuse,"ordinary automatic fixture weapon supplies held native fire without random ammo conservation");
+                    Set(a,"Behavior",Activator.CreateInstance(brainA.GetType(),true));Set(b,"Behavior",Activator.CreateInstance(brainB.GetType(),true));
+                    Set(host,"planningTurn",0);Set(host,"planningStep",UInt32.MaxValue);
+                    Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=true,AttackEnabled=firing,PreferOwner=false});
+                    Call(host,"SetBehavior",((CompanionProfile)Get(b,"Profile")).Id,new CompanionBehavior{Follow=true,AttackEnabled=false});
+                    // This native armor survives the automatic weapon's first
+                    // real hit. A dead ordinary zombie correctly stops fire.
+                    var target=new NPC{whoAmI=11};target.SetDefaults(NPCID.PossessedArmor);target.active=true;target.position=new Vector2(900,1152-target.height);Main.npc[11]=target;
+                    var observed=(NPC[])GetOptional(host,"observedNpcs");if(observed!=null)observed[11].active=false;
+                    NetMessage.SendData(23,-1,-1,null,11);
+                    // Consume the real primary frame through the ordinary
+                    // serializer/decoder callback already installed by Run.
+                    NativeCompanionCoreNetworkChecks.ApplyLatestNpc(11);
+                    planningSecond=second;planningSlices=secondSlices=0;bool tookOff=false,continuous=true;
+                    Require(!(bool)Get(Get(Get(b,"Behavior"),"navigation"),"hasLanding"),"second role starts without a retained landing prefix");
+                    for(int step=0;step<4;step++)
+                    {
+                        NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",0UL);var selectedRole=GetOptional(host,"planningActor");Call(host,"Update",0UL);
+                        Require(ReferenceEquals(selectedRole,GetOptional(host,"planningActor")),"repeated outer updates cannot advance the real-step planning slice twice");
+                        int slices=planningSlices;human.Update(human.whoAmI);first.Update(first.whoAmI);second.Update(second.whoAmI);StepProjectiles();Call(host,"AdvanceNpcObservation");
+                        Require(planningSlices-slices<=1,"team grants at most one new finite navigation trajectory per world step");
+                        tookOff|=second.velocity.Y<0 && second.position.Y<1110;continuous&=!firing || first.controlUseItem;
+                        Require(!(bool)Get(a,"Faulted") && !(bool)Get(b,"Faulted"),"both real native bodies run without swallowed planning/weapon failure");
+                    }
+                    Console.WriteLine("PLAN FAIR firstAttack="+firing+" secondNewPlans="+secondSlices+" totalSlices="+planningSlices+" steps=4 takeoff="+tookOff+" continuous="+continuous);
+                    Require(secondSlices>0 && tookOff,"uncached second role receives a bounded new plan and real native takeoff while first attack="+firing);
+                    Require(continuous && (!firing || first.inventory[54].stack<100 && Main.projectile.Any(p=>p.active && p.owner==first.whoAmI)),"automatic native attack remains continuously held and pays actual ammo during peer planning");
+                }
+            }
+            finally
+            {
+                planningSecond=null;probe.UnpatchAll(probe.Id);foreach(var tile in tiles)Main.tile[tile.Item1,tile.Item2]=tile.Item3;
+                foreach(var p in Main.projectile)if(p.active && !existing.Contains((int)p.key) && (p.owner==first.whoAmI || p.owner==second.whoAmI))p.Kill();
+                Main.npc[11]=oldNpc;Call(host,"ClearWorldSources");
+                human.position=positions[0];first.position=positions[1];second.position=positions[2];human.velocity=velocities[0];first.velocity=velocities[1];second.velocity=velocities[2];
+                first.inventory[0]=originalItems[0];first.inventory[54]=originalItems[1];first.selectedItemState.Select(selected);first.itemAnimation=first.itemTime=first.reuseDelay=0;first.channel=false;
+                Main.worldSurface=surface;
+                Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,originalA);Call(host,"SetBehavior",((CompanionProfile)Get(b,"Profile")).Id,originalB);Set(a,"Behavior",brainA);Set(b,"Behavior",brainB);
             }
         }
         private static void Step(object host,params Player[] bodies)
